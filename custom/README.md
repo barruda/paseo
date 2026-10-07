@@ -1,23 +1,58 @@
 # Local customizations
 
-This checkout runs upstream Paseo (`origin` = getpaseo/paseo) plus our own changes. The `custom`
-branch is backed up to the `fork` remote (barruda/paseo, pushed over the `github.com-personal` SSH
-alias); the update script pushes it after every update. The changes
-live as commits on the local `custom` branch, on top of upstream. Updating means rebasing that
-branch onto the new upstream, which the update script does for you.
+This checkout runs upstream Paseo plus our own changes. The changes are commits on the `custom`
+branch, on top of upstream. Updating means rebasing that branch onto the new upstream, which the
+update script does for you.
+
+| Remote   | Repository     | Used for                                                         |
+| -------- | -------------- | ---------------------------------------------------------------- |
+| `origin` | getpaseo/paseo | Upstream. Fetch only.                                            |
+| `fork`   | barruda/paseo  | Backup of `custom`. The update script pushes after every update. |
+
+Both remotes use the `github.com-personal` SSH alias, so git authenticates with the personal
+GitHub account instead of the work one.
 
 | File                                             | What it is                                                                                                   |
 | ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
 | `CHANGES.md`                                     | History of every customization: what, why, files touched, re-apply notes. Read this when a rebase conflicts. |
 | `UPDATE-LOG.md`                                  | Written by the script on every update: upstream before/after, backup tag.                                    |
-| `update-paseo-source-and-apply-customization.sh` | Fetch upstream, replay customizations, verify, build, install.                                               |
+| `update-paseo-source-and-apply-customization.sh` | Fetch upstream, replay customizations, verify, build, install, back up to `fork`.                            |
 | `plugins/`                                       | Paseo plugins we maintain. Self-contained; they never conflict with upstream.                                |
+
+Agents (Claude Code, Codex) have a skill for this workflow: `.agents/skills/paseo-customizations/`.
+
+## New machine
+
+1. Add the SSH alias to `~/.ssh/config`, with a key registered on the personal GitHub account:
+   ```
+   Host github.com-personal
+       HostName github.com
+       User git
+       IdentityFile ~/.ssh/id_ed25519_github
+   ```
+2. Clone the fork on the `custom` branch and wire the remotes:
+   ```bash
+   git clone -b custom git@github.com-personal:barruda/paseo.git paseo && cd paseo
+   git remote rename origin fork
+   git remote add origin git@github.com-personal:getpaseo/paseo.git
+   git fetch origin
+   git branch -u fork/custom
+   ```
+3. Install Node 24 (see `.nvmrc`), then build and install:
+   ```bash
+   custom/update-paseo-source-and-apply-customization.sh --install
+   ```
+   This also pulls in whatever upstream released since the last update. The install step repoints
+   existing `~/.local/share/applications/paseo*.desktop` launchers. On a fresh machine there are
+   none, so create one whose `Exec=` runs `~/Applications/Paseo-builds/<newest>/Paseo`; later
+   installs keep it current.
+4. Open Paseo once so it starts its daemon, then do the plugin setup below for each daemon home.
 
 ## Updating
 
 ```bash
 git checkout custom
-custom/update-paseo-source-and-apply-customization.sh --install   # rebase onto origin/main, verify, build, install
+custom/update-paseo-source-and-apply-customization.sh --install
 ```
 
 Then close and reopen the Paseo window. Use `--ref v0.11.0` to follow a release tag instead of
@@ -34,14 +69,6 @@ launcher from its `.desktop.bak`. Before rebasing, the script tags the current s
 `custom-backup/<timestamp>`; roll the source back with `git reset --hard custom-backup/<timestamp>`.
 Delete old backup tags with `git tag -l 'custom-backup/*'` and `git tag -d`.
 
-On a new machine, restore everything with:
-
-```bash
-git clone git@github.com-personal:getpaseo/paseo.git && cd paseo
-git remote add fork git@github.com-personal:barruda/paseo.git
-git fetch fork && git checkout -b custom fork/custom
-```
-
 ### When the rebase conflicts
 
 The script stops and prints which customization failed. Look that commit up in `CHANGES.md`. Its
@@ -55,18 +82,25 @@ The script runs from that copy in `.git/` because mid-rebase the working tree ma
 
 ## Adding a customization
 
-1. Make the change on the `custom` branch. Prefer a plugin in `custom/plugins/` over editing core
-   files. A plugin can't conflict with upstream.
-2. When you must touch a core file, keep the edit small and mark it with a
-   `CUSTOM(<name>)` comment. `rg "CUSTOM\("` then lists every patched spot.
-3. Commit with a `custom: ` subject prefix, one commit per customization. Fold follow-up fixes into
-   that commit (`git commit --fixup <sha>` then `git rebase --autosquash origin/main`), so each
-   customization replays as a unit.
-4. Add an entry to `CHANGES.md`.
+1. Work on the `custom` branch. Prefer a plugin in `custom/plugins/` over editing core files. A
+   plugin can't conflict with upstream. See `docs/plugins.md`.
+2. When you must touch a core file, keep the edit small and mark it with a `CUSTOM(<name>)`
+   comment. `rg "CUSTOM\("` then lists every patched spot.
+3. Add tests and list them in the script's "Running customization tests" step.
+4. Commit with a `custom: ` subject prefix, one commit per customization. Stage files by name:
+   `git commit -a` would also pick up npm's `package-lock.json` noise. Fold follow-up fixes into
+   their customization: `git commit --fixup <sha>`, then
+   `git rebase --autosquash "$(git merge-base HEAD origin/main)"`.
+5. Add an entry to `CHANGES.md`.
+6. Back up: `git push --force-with-lease fork custom`.
 
-## One-time setup: shell-command plugin
+A plugin-only change needs no app rebuild: run `paseo plugin reload <id> --home <home>` for each
+daemon. A core change needs a new app build. To build without pulling upstream, run
+`npm run build:desktop`, then `custom/update-paseo-source-and-apply-customization.sh --install-only`.
 
-Each daemon must have plugins enabled and the plugin installed once. The daemon keeps the source
+## One-time setup: plugins
+
+Each daemon must have plugins enabled and each plugin installed once. The daemon keeps the source
 path in its `config.json` and recompiles the plugin from disk on every start, so updates need no
 reinstall. Plugins are unsandboxed code that runs with your user's permissions.
 
@@ -75,9 +109,9 @@ Run this once per daemon home (`~/.paseo`, `~/.paseo-telus`) while that Paseo is
 
 ```bash
 paseo() { npx tsx packages/cli/src/index.js "$@"; }
-paseo plugin install "$PWD/custom/plugins/shell-command" --home ~/.paseo
 # set "pluginsEnabled": true in ~/.paseo/config.json, then:
 paseo reload --home ~/.paseo
+paseo plugin install "$PWD/custom/plugins/shell-command" --home ~/.paseo
 ```
 
-After editing the plugin source: `paseo plugin reload shell-command --home ~/.paseo`.
+After editing a plugin's source: `paseo plugin reload <id> --home ~/.paseo`.
