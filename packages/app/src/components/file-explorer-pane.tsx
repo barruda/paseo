@@ -78,6 +78,11 @@ import { confirmDialog } from "@/utils/confirm-dialog";
 import { useToast } from "@/contexts/toast-context";
 import { openDesktopTarget, useDesktopOpenTargets } from "@/workspace/desktop-open-targets";
 import { useOpenDirectoryInEditor } from "@/workspace/open-in-editor/directory";
+import {
+  ExternalFolderBar,
+  useFolderLinkReveal,
+  useFolderLinkRoot,
+} from "@/file-explorer/folder-links-pane";
 
 const SORT_OPTIONS: { value: SortOption }[] = [
   { value: "name" },
@@ -405,7 +410,43 @@ interface FileExplorerPaneProps {
   onAddToChat?: (path: string) => void;
 }
 
-export function FileExplorerPane({
+// CUSTOM(explorer-folder-links): a folder link outside the workspace swaps the tree to that
+// folder until the user goes back. Its own state key (no workspaceId) keeps the two trees apart,
+// and its paths reach the callbacks absolute because they are relative to the temporary root.
+export function FileExplorerPane(props: FileExplorerPaneProps) {
+  const workspaceStateKey = buildWorkspaceExplorerStateKey({
+    workspaceId: props.workspaceId,
+    workspaceRoot: props.workspaceRoot.trim(),
+  });
+  const { externalRoot, clearExternalRoot } = useFolderLinkRoot({
+    workspaceStateKey,
+    workspaceRoot: props.workspaceRoot.trim(),
+  });
+  if (!externalRoot) {
+    return <FileExplorerTreePane {...props} />;
+  }
+  const toAbsolute = (handler?: (path: string) => void) =>
+    handler
+      ? (path: string) =>
+          handler(buildAbsoluteExplorerPath({ workspaceRoot: externalRoot, entryPath: path }))
+      : undefined;
+  return (
+    <View style={styles.container}>
+      <ExternalFolderBar root={externalRoot} onBack={clearExternalRoot} />
+      <FileExplorerTreePane
+        key={externalRoot}
+        serverId={props.serverId}
+        workspaceId={null}
+        workspaceRoot={externalRoot}
+        onOpenFile={toAbsolute(props.onOpenFile)}
+        onOpenFileToSide={toAbsolute(props.onOpenFileToSide)}
+        onAddToChat={toAbsolute(props.onAddToChat)}
+      />
+    </View>
+  );
+}
+
+function FileExplorerTreePane({
   serverId,
   workspaceId,
   workspaceRoot,
@@ -934,6 +975,16 @@ export function FileExplorerPane({
     });
     return rows;
   }, [pendingEdit, treeRows]);
+
+  // CUSTOM(explorer-folder-links): reveal folders that chat links point at.
+  useFolderLinkReveal({
+    workspaceStateKey,
+    listRows,
+    treeListRef,
+    requestDirectoryListing,
+    setExpandedPathsForWorkspace,
+    selectExplorerEntry,
+  });
 
   const showInitialLoading = resolveShowInitialLoading({
     directories,

@@ -85,3 +85,38 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts)`.
   The update script runs it. In the app, open a symlinked folder that points out of the workspace
   in the Files sidebar, and open a file link with an absolute path in another directory.
+
+## explorer-folder-links: folder links in chat open in the Files sidebar
+
+- **Added:** 2026-10-07 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: open folder links from chat in the Files sidebar`
+- **Why:** Clicking a folder path in an agent message tried to open it as a file. Upstream only
+  treats paths ending in `/` as folders, and then only opens the sidebar without showing the
+  folder.
+- **What:**
+  - A link is a folder when it ends in `/`, or when it has no extension and the daemon can list it.
+    Names with a dot (`notes.md`, `.bashrc`) open as files without a daemon round trip.
+  - A folder inside the workspace: the sidebar opens, expands each parent, selects the folder, and
+    scrolls to it.
+  - A folder outside the workspace: the sidebar browses that folder instead, with a bar showing
+    its path and a **Workspace** button to go back. Files opened from it use absolute paths. Needs
+    [explorer-outside-workspace](#explorer-outside-workspace-open-files-outside-the-workspace).
+  - The temporary root is in memory only; reloading the app returns to the workspace.
+- **Files:** `packages/app/src/file-explorer/folder-links.ts` (store and path logic, tested in
+  `folder-links.test.ts`) and `folder-links-pane.tsx` (hooks and the bar). New files; no conflict
+  risk.
+- **Core files touched:**
+  - `packages/app/src/components/file-explorer-pane.tsx`: the exported `FileExplorerPane` became
+    a wrapper that swaps in the temporary root; the original component is `FileExplorerTreePane`,
+    which calls `useFolderLinkReveal` after `listRows`.
+  - `packages/app/src/agent-stream/view.tsx`: `handleInlinePathPress` sends folders to
+    `useFolderLinkStore` instead of `requestDirectoryListing`.
+- **Re-apply:** In the explorer pane, wrap the exported component so it renders the tree with
+  `workspaceId={null}` and `workspaceRoot={externalRoot}` when `useFolderLinkRoot` returns a root,
+  converting callback paths to absolute; call `useFolderLinkReveal` with the tree's list rows and
+  ref. In the chat's inline path handler, call `requestFolder(explorerStateKey, absolutePath)` and
+  open the Files sidebar for folder links, probing extensionless paths with
+  `client.listDirectory` first.
+- **Verify:** `npx vitest run packages/app/src/file-explorer/folder-links.test.ts` (the update
+  script runs it). In the app, ask an agent to print `` `/home/bruno/` `` and a workspace subfolder
+  in backticks, then click each.

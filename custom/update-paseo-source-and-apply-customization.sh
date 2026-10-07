@@ -258,7 +258,7 @@ if $VERIFY; then
   step "Typechecking"
   npm run typecheck
   step "Running customization tests"
-  npx vitest run custom/plugins/shell-command packages/app/src/plugins/client-slash-commands/model.test.ts --bail=1
+  npx vitest run custom/plugins/shell-command packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
   (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts --bail=1)
 fi
