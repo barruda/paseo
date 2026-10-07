@@ -30,6 +30,12 @@ import { Check, ChevronDown, X } from "lucide-react-native";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
 import {
+  absoluteInlinePath,
+  filesystemRootOf,
+  mayBeFolderPath,
+  useFolderLinkStore,
+} from "@/file-explorer/folder-links";
+import {
   AssistantMessage,
   SpeakMessage,
   UserMessage,
@@ -53,7 +59,7 @@ import type {
 import type { AgentScreenAgent } from "@/hooks/use-agent-screen-state-machine";
 import { useSessionStore } from "@/stores/session-store";
 import { useRevealedText } from "@/hooks/use-revealed-text";
-import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
+import { buildWorkspaceExplorerStateKey } from "@/hooks/use-file-explorer-actions";
 import { useLoadOlderAgentHistory } from "@/hooks/use-load-older-agent-history";
 import { resolveContentMaxWidth, useSettings } from "@/hooks/use-settings";
 import type { ToastApi } from "@/components/toast-host";
@@ -398,11 +404,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const workspaceRoot = context.cwd?.trim() || "";
-    const { requestDirectoryListing } = useFileExplorerActions({
-      serverId: resolvedServerId,
-      workspaceId: context.workspaceId,
-      workspaceRoot,
-    });
     const agentHistoryPagination = useLoadOlderAgentHistory({
       serverId: resolvedServerId,
       agentId,
@@ -448,9 +449,34 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           return;
         }
 
-        if (normalized.file) {
+        // CUSTOM(explorer-folder-links): folder links open in the Files sidebar. A path ending
+        // in "/" is a folder; an extensionless one is checked with the daemon first.
+        const openFolder = (absolutePath: string | null) => {
+          const key = buildWorkspaceExplorerStateKey({
+            workspaceId: context.workspaceId,
+            workspaceRoot,
+          });
+          if (key && absolutePath) {
+            useFolderLinkStore.getState().requestFolder(key, absolutePath);
+          }
+          openExplorerSidebarView({
+            isCompact: isMobile,
+            workspaceKey: buildWorkspaceTabPersistenceKey({
+              serverId: resolvedServerId,
+              workspaceId: context.workspaceId ?? "",
+            }),
+            checkout: {
+              serverId: resolvedServerId,
+              cwd: context.cwd,
+              isGit: context.projectPlacement?.checkout?.isGit ?? true,
+            },
+            view: "files",
+          });
+        };
+
+        const openFile = (file: string) => {
           const location = normalizeWorkspaceFileLocation({
-            path: normalized.file,
+            path: file,
             lineStart: target.lineStart,
             lineEnd: target.lineEnd,
           });
@@ -473,27 +499,24 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               target: createWorkspaceFileTabTarget(location),
             });
           }
+        };
+
+        const { file } = normalized;
+        if (!file) {
+          openFolder(absoluteInlinePath(normalized.directory, context.cwd));
           return;
         }
 
-        void requestDirectoryListing(normalized.directory, {
-          recordHistory: false,
-          setCurrentPath: false,
-        });
-
-        openExplorerSidebarView({
-          isCompact: isMobile,
-          workspaceKey: buildWorkspaceTabPersistenceKey({
-            serverId: resolvedServerId,
-            workspaceId: context.workspaceId ?? "",
-          }),
-          checkout: {
-            serverId: resolvedServerId,
-            cwd: context.cwd,
-            isGit: context.projectPlacement?.checkout?.isGit ?? true,
-          },
-          view: "files",
-        });
+        const absoluteFile = absoluteInlinePath(file, context.cwd);
+        if (!client || !absoluteFile || !mayBeFolderPath(file)) {
+          openFile(file);
+          return;
+        }
+        // Listed from the filesystem root so a daemon without explorer-outside-workspace can answer.
+        void client.listDirectory(filesystemRootOf(absoluteFile), absoluteFile).then(
+          () => openFolder(absoluteFile),
+          () => openFile(file),
+        );
       },
     );
 
