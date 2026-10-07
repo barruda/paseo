@@ -344,8 +344,11 @@ if (electronFlags) {
 
 if (process.platform === "linux") {
   // Keep the desktop/dock identity independent of the wrapped Electron filename.
-  app.setDesktopName("Paseo.desktop");
-  if (!app.commandLine.hasSwitch("class")) app.commandLine.appendSwitch("class", "Paseo");
+  // CUSTOM(desktop-name): PASEO_DESKTOP_NAME gives side-by-side installs (e.g. a paseo-work.desktop launcher with its
+  // own PASEO_HOME) their own dock entry; on Wayland the desktop name is the window's app_id.
+  const desktopName = process.env.PASEO_DESKTOP_NAME?.trim().replace(/\.desktop$/, "") || "Paseo";
+  app.setDesktopName(`${desktopName}.desktop`);
+  if (!app.commandLine.hasSwitch("class")) app.commandLine.appendSwitch("class", desktopName);
   log.info("[linux-sandbox]", {
     enabled: !app.commandLine.hasSwitch("no-sandbox"),
     reason: process.env.PASEO_DESKTOP_SANDBOX_REASON ?? "Chromium default",
