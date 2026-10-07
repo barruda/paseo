@@ -19,6 +19,7 @@ import {
   deleteExplorerEntry,
   duplicateExplorerEntry,
   getExplorerFileVersion,
+  listDirectoryEntries,
   readExplorerFile,
   renameExplorerEntry,
   streamExplorerFile,
@@ -375,18 +376,25 @@ describe("file explorer service", () => {
     }
   });
 
-  it("rejects ~-prefixed paths that resolve outside the workspace", async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), "paseo-file-explorer-outside-home-"));
+  // CUSTOM(explorer-outside-workspace): absolute paths outside the workspace are readable.
+  it("reads absolute paths outside the workspace and returns them absolute", async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), "paseo-file-explorer-root-"));
+    const outsideRoot = await mkdtemp(path.join(os.tmpdir(), "paseo-file-explorer-outside-"));
 
     try {
-      await expect(
-        readExplorerFile({
-          root,
-          relativePath: "~/some/file.txt",
-        }),
-      ).rejects.toThrow("Access outside of workspace is not allowed");
+      const externalFile = path.join(outsideRoot, "external.txt");
+      await writeFile(externalFile, "external\n", "utf8");
+
+      const file = await readExplorerFile({ root, relativePath: externalFile });
+      expect(file.path).toBe(externalFile);
+      expect(file.content).toBe("external\n");
+
+      const directory = await listDirectoryEntries({ root, relativePath: outsideRoot });
+      expect(directory.path).toBe(outsideRoot);
+      expect(directory.entries.map((entry) => entry.path)).toEqual([externalFile]);
     } finally {
       await rm(root, { recursive: true, force: true });
+      await rm(outsideRoot, { recursive: true, force: true });
     }
   });
 
@@ -567,7 +575,7 @@ describe("file explorer service", () => {
     }
   });
 
-  it("deletes files and directories but never the workspace root or outside paths", async () => {
+  it("deletes files and directories but never the workspace root", async () => {
     const root = await createTempDir("paseo-entry-delete-");
     try {
       await writeFile(path.join(root, "doomed.txt"), "bye", "utf8");
@@ -583,10 +591,6 @@ describe("file explorer service", () => {
 
       const rootDelete = await deleteExplorerEntry({ root, relativePath: "." });
       expect(rootDelete.status).toBe("error");
-
-      await expect(
-        deleteExplorerEntry({ root, relativePath: "../outside" }),
-      ).resolves.toMatchObject({ status: "error" });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

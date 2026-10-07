@@ -260,6 +260,7 @@ if $VERIFY; then
   step "Running customization tests"
   npx vitest run custom/plugins/shell-command packages/app/src/plugins/client-slash-commands/model.test.ts --bail=1
   (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts --bail=1)
 fi
 
 step "Building the desktop app"

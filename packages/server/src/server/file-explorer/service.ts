@@ -98,7 +98,6 @@ export const FILE_EXPLORER_STREAM_CHUNK_BYTES = 256 * 1024;
 export const MAX_EDITABLE_FILE_BYTES = 1024 * 1024;
 const READ_FILE_OPEN_FLAGS =
   process.platform === "win32" ? constants.O_RDONLY : constants.O_RDONLY | constants.O_NOFOLLOW;
-const ACCESS_OUTSIDE_WORKSPACE_MESSAGE = "Access outside of workspace is not allowed";
 
 function fileRevision(stats: BigIntStats): string {
   return `${stats.dev}:${stats.ino}:${stats.size}:${stats.mtimeNs}`;
@@ -167,7 +166,7 @@ export async function listDirectoryEntries({
       } catch (error) {
         // Directories can contain dangling links (e.g. AGENTS.md -> CLAUDE.md).
         // Skip entries whose targets disappeared instead of failing the whole listing.
-        if (isMissingEntryError(error) || isOutsideWorkspaceError(error)) {
+        if (isMissingEntryError(error)) {
           return null;
         }
         throw error;
@@ -806,11 +805,10 @@ async function resolveScopedPath({
 }: ScopedPathParams): Promise<ScopedPath> {
   const workspacePath = expandUserPath(root);
   const requestedPath = resolvePathFromBase(workspacePath, relativePath);
-  assertWithinWorkspace(workspacePath, requestedPath);
-  const canonicalRoot = await fs.realpath(workspacePath);
+  // CUSTOM(explorer-outside-workspace): no workspace containment check, so the explorer
+  // follows symlinks out of the workspace and opens absolute paths anywhere on the host.
   try {
     const canonicalPath = await fs.realpath(requestedPath);
-    assertWithinWorkspace(canonicalRoot, canonicalPath);
     return { requestedPath, resolvedPath: canonicalPath };
   } catch (error) {
     if (isMissingEntryError(error)) return { requestedPath, resolvedPath: requestedPath };
@@ -818,10 +816,9 @@ async function resolveScopedPath({
   }
 }
 
-function assertWithinWorkspace(root: string, candidate: string): void {
+function isWithinWorkspace(root: string, candidate: string): boolean {
   const relative = path.relative(root, candidate);
-  if (relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative))) return;
-  throw new Error(ACCESS_OUTSIDE_WORKSPACE_MESSAGE);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 async function openFileForRead(filePath: string): Promise<FileHandle> {
@@ -853,13 +850,11 @@ function isMissingEntryError(error: unknown): boolean {
   return code === "ENOENT" || code === "ENOTDIR" || code === "ELOOP";
 }
 
-function isOutsideWorkspaceError(error: unknown): boolean {
-  return error instanceof Error && error.message === ACCESS_OUTSIDE_WORKSPACE_MESSAGE;
-}
-
 function normalizeRelativePath({ root, targetPath }: { root: string; targetPath: string }): string {
   const normalizedRoot = expandUserPath(root);
   const normalizedTarget = expandUserPath(targetPath);
+  // CUSTOM(explorer-outside-workspace): paths outside the workspace come back absolute.
+  if (!isWithinWorkspace(normalizedRoot, normalizedTarget)) return normalizedTarget;
   const relative = path.relative(normalizedRoot, normalizedTarget);
   return relative === "" ? "." : relative.split(path.sep).join("/");
 }
