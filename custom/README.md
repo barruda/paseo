@@ -1,6 +1,8 @@
 # Local customizations
 
-This checkout runs upstream Paseo (`origin` = getpaseo/paseo) plus our own changes. The changes
+This checkout runs upstream Paseo (`origin` = getpaseo/paseo) plus our own changes. The `custom`
+branch is backed up to the `fork` remote (barruda/paseo, pushed over the `github.com-personal` SSH
+alias); the update script pushes it after every update. The changes
 live as commits on the local `custom` branch, on top of upstream. Updating means rebasing that
 branch onto the new upstream, which the update script does for you.
 
@@ -31,6 +33,14 @@ The script keeps the two newest builds plus any still in use. To roll back an in
 launcher from its `.desktop.bak`. Before rebasing, the script tags the current state as
 `custom-backup/<timestamp>`; roll the source back with `git reset --hard custom-backup/<timestamp>`.
 Delete old backup tags with `git tag -l 'custom-backup/*'` and `git tag -d`.
+
+On a new machine, restore everything with:
+
+```bash
+git clone git@github.com:getpaseo/paseo.git && cd paseo
+git remote add fork git@github.com-personal:barruda/paseo.git
+git fetch fork && git checkout -b custom fork/custom
+```
 
 ### When the rebase conflicts
 
