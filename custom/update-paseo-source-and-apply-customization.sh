@@ -13,14 +13,18 @@ Usage: custom/update-paseo-source-and-apply-customization.sh [options]
                   and staged the conflicted files.
   --no-verify     Skip typecheck and the customization tests.
   --no-build      Skip npm install, verification, and the desktop build (rebase only).
-  --install       After building, replace the installed app (PASEO_INSTALL_DIR, default
-                  ~/Applications/Paseo). Quit Paseo first. The previous copy is kept
-                  as <dir>.previous.
+  --install       After building, install the app into a new folder under
+                  PASEO_BUILDS_DIR and point the Paseo launchers at it. Running
+                  apps and daemons keep using their old folder, so nothing has to
+                  be closed first. Reopen the Paseo window to get the new app.
+  --install-only  Install the last build without fetching, rebasing, or building.
   -h, --help      Show this help.
 
 Environment:
   CUSTOM_BRANCH       Branch holding the customizations (default: custom)
-  PASEO_INSTALL_DIR   Installed desktop app directory (default: ~/Applications/Paseo)
+  PASEO_BUILDS_DIR    Where installed builds live (default: ~/Applications/Paseo-builds)
+  PASEO_LAUNCHERS     Space-separated .desktop files to repoint
+                      (default: ~/.local/share/applications/paseo*.desktop)
   PASEO_HOMES         Space-separated daemon homes to check for the shell-command plugin
                       (default: "~/.paseo ~/.paseo-telus")
 EOF
@@ -54,6 +58,7 @@ CONTINUE=false
 VERIFY=true
 BUILD=true
 INSTALL=false
+INSTALL_ONLY=false
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --ref) REF="${2:?--ref needs a value}"; shift 2 ;;
@@ -61,13 +66,16 @@ while [[ $# -gt 0 ]]; do
     --no-verify) VERIFY=false; shift ;;
     --no-build) BUILD=false; shift ;;
     --install) INSTALL=true; shift ;;
+    --install-only) INSTALL_ONLY=true; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "Unknown option: $1" >&2; usage >&2; exit 2 ;;
   esac
 done
 
 BRANCH="${CUSTOM_BRANCH:-custom}"
-INSTALL_DIR="${PASEO_INSTALL_DIR:-$HOME/Applications/Paseo}"
+BUILDS_DIR="${PASEO_BUILDS_DIR:-$HOME/Applications/Paseo-builds}"
+LAUNCHERS="${PASEO_LAUNCHERS:-$(ls "$HOME"/.local/share/applications/paseo*.desktop 2>/dev/null || true)}"
+RELEASE_DIR="$ROOT/packages/desktop/release/linux-unpacked"
 HOMES="${PASEO_HOMES:-$HOME/.paseo $HOME/.paseo-telus}"
 
 step() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
@@ -96,6 +104,52 @@ To give up and go back to where you were:          git rebase --abort
 (The pre-update state is also saved as tag $backup_tag.)
 EOF
 }
+
+# Copies the build into its own folder and repoints the launchers. Never touches a folder an
+# app or daemon is running from: a running daemon keeps its old files, and the next app launch
+# reuses it as long as the version matches.
+install_build() {
+  [[ -x "$RELEASE_DIR/Paseo" ]] || die "No build at $RELEASE_DIR. Run without --install-only first."
+  local target
+  target="$BUILDS_DIR/$(date +%Y%m%d-%H%M%S)-$(git rev-parse --short HEAD)"
+  step "Installing into $target"
+  mkdir -p "$BUILDS_DIR"
+  cp -a "$RELEASE_DIR" "$target"
+
+  local launcher
+  for launcher in $LAUNCHERS; do
+    [[ -f "$launcher" ]] || continue
+    cp "$launcher" "$launcher.bak"
+    # Replace the quoted path to the Paseo binary on Exec lines only.
+    sed -E -i "/^Exec=/ s#\"[^\"]*/Paseo\"#\"$target/Paseo\"#" "$launcher"
+    echo "  $launcher -> $(grep -o '"[^"]*/Paseo"' "$launcher" | head -1)"
+  done
+  command -v update-desktop-database >/dev/null &&
+    update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
+
+  step "Removing old builds that nothing runs from"
+  local old
+  while IFS= read -r old; do
+    [[ -n "$old" && "$old" != "$target" ]] || continue
+    if pgrep -f "$old/" >/dev/null; then
+      echo "  keeping $old (in use)"
+    else
+      rm -rf "$old" && echo "  removed $old"
+    fi
+  done < <(ls -1dt "$BUILDS_DIR"/*/ 2>/dev/null | sed 's#/$##' | tail -n +3)
+
+  echo
+  echo "Installed. Close and reopen the Paseo window(s) to use it. Launchers were backed up as"
+  echo "<file>.desktop.bak; restore one to roll back."
+  if [[ -d "$HOME/Applications/Paseo" ]] && ! pgrep -f "$HOME/Applications/Paseo/" >/dev/null; then
+    echo "The original ~/Applications/Paseo is no longer used; you can delete it."
+  fi
+}
+
+if $INSTALL_ONLY; then
+  install_build
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # 1. Rebase onto upstream
@@ -198,21 +252,13 @@ fi
 
 step "Building the desktop app"
 npm run build:desktop
-release_dir="$ROOT/packages/desktop/release/linux-unpacked"
-[[ -x "$release_dir/Paseo" ]] || die "Build finished but $release_dir/Paseo is missing."
+[[ -x "$RELEASE_DIR/Paseo" ]] || die "Build finished but $RELEASE_DIR/Paseo is missing."
 
 if $INSTALL; then
-  step "Installing into $INSTALL_DIR"
-  if pgrep -f "$INSTALL_DIR/Paseo" >/dev/null; then
-    die "Paseo is running from $INSTALL_DIR. Quit it (this stops its daemon and agents), then rerun with --no-verify --install, or copy $release_dir yourself."
-  fi
-  rm -rf "$INSTALL_DIR.previous"
-  [[ -d "$INSTALL_DIR" ]] && mv "$INSTALL_DIR" "$INSTALL_DIR.previous"
-  cp -a "$release_dir" "$INSTALL_DIR"
-  echo "Installed. Previous version kept at $INSTALL_DIR.previous"
+  install_build
 else
-  echo "Built: $release_dir"
-  echo "Rerun with --install (Paseo closed) to replace $INSTALL_DIR."
+  echo "Built: $RELEASE_DIR"
+  echo "Install it with: custom/update-paseo-source-and-apply-customization.sh --install-only"
 fi
 
 # ---------------------------------------------------------------------------

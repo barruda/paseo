@@ -15,17 +15,22 @@ branch onto the new upstream, which the update script does for you.
 
 ```bash
 git checkout custom
-custom/update-paseo-source-and-apply-customization.sh             # rebase onto origin/main, verify, build
-# quit Paseo, then:
-custom/update-paseo-source-and-apply-customization.sh --no-verify --install
+custom/update-paseo-source-and-apply-customization.sh --install   # rebase onto origin/main, verify, build, install
 ```
 
-Use `--ref v0.11.0` to follow a release tag instead of `main`. `--no-build` only rebases.
+Then close and reopen the Paseo window. Use `--ref v0.11.0` to follow a release tag instead of
+`main`. `--no-build` only rebases. `--install-only` installs the last build.
 
-Before rebasing, the script tags the current state as `custom-backup/<timestamp>`. To roll back:
-`git reset --hard custom-backup/<timestamp>`. The installed app's previous copy stays in
-`~/Applications/Paseo.previous`; move it back to undo an install. Delete old backup tags with
-`git tag -l 'custom-backup/*'` and `git tag -d`.
+Each install goes to a new folder under `~/Applications/Paseo-builds/`, and the script repoints the
+`paseo*.desktop` launchers at it. It never replaces files a running app or daemon uses, so you
+don't have to quit anything first. When you reopen the window, the new app reuses the running
+daemon if the versions match. If the update changed the daemon version, the app restarts the
+daemon, which stops its running agents.
+
+The script keeps the two newest builds plus any still in use. To roll back an install, restore a
+launcher from its `.desktop.bak`. Before rebasing, the script tags the current state as
+`custom-backup/<timestamp>`; roll the source back with `git reset --hard custom-backup/<timestamp>`.
+Delete old backup tags with `git tag -l 'custom-backup/*'` and `git tag -d`.
 
 ### When the rebase conflicts
 
