@@ -22,6 +22,7 @@ Usage: custom/update-paseo-source-and-apply-customization.sh [options]
 
 Environment:
   CUSTOM_BRANCH       Branch holding the customizations (default: custom)
+  CUSTOM_BACKUP_REMOTE  Remote that receives the rebased branch after each update (default: fork)
   PASEO_BUILDS_DIR    Where installed builds live (default: ~/Applications/Paseo-builds)
   PASEO_LAUNCHERS     Space-separated .desktop files to repoint
                       (default: ~/.local/share/applications/paseo*.desktop)
@@ -73,6 +74,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 BRANCH="${CUSTOM_BRANCH:-custom}"
+BACKUP_REMOTE="${CUSTOM_BACKUP_REMOTE:-fork}"
 BUILDS_DIR="${PASEO_BUILDS_DIR:-$HOME/Applications/Paseo-builds}"
 LAUNCHERS="${PASEO_LAUNCHERS:-$(ls "$HOME"/.local/share/applications/paseo*.desktop 2>/dev/null || true)}"
 RELEASE_DIR="$ROOT/packages/desktop/release/linux-unpacked"
@@ -229,6 +231,16 @@ else
   step "Already on $ref; nothing new upstream"
 fi
 rm -f "$STATE_FILE"
+
+# Back up the rebased branch to your fork. The rebase rewrote the commits, so this force-pushes,
+# but only over the state this checkout last saw on the fork.
+if git remote get-url "$BACKUP_REMOTE" >/dev/null 2>&1; then
+  step "Backing up $BRANCH to $BACKUP_REMOTE"
+  git push --force-with-lease "$BACKUP_REMOTE" "$BRANCH" ||
+    warn "Push to $BACKUP_REMOTE failed; run: git push --force-with-lease $BACKUP_REMOTE $BRANCH"
+else
+  warn "No '$BACKUP_REMOTE' remote; customizations exist only on this machine. See custom/README.md."
+fi
 
 if ! $BUILD; then
   step "Done (build skipped)"
