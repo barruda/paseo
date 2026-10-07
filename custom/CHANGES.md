@@ -120,3 +120,35 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `npx vitest run packages/app/src/file-explorer/folder-links.test.ts` (the update
   script runs it). In the app, ask an agent to print `` `/home/bruno/` `` and a workspace subfolder
   in backticks, then click each.
+
+## workspace-tasks: a task list per workspace that agents work through
+
+- **Added:** 2026-10-07 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: workspace task list with /next and auto-next`
+- **Why:** To queue up work for a workspace and tell an agent "next task" instead of retyping
+  prompts. Upstream's Tasks track only mirrors the agent's own todo list, and the Queue track is
+  per agent, client-side, and lost on reload.
+- **What:**
+  - A **Task list** panel (Command Center: "Open task list", or `/tasks`; it can also sit in the
+    Explorer sidebar). Add, edit (tap the text), reorder, check off, delete, clear done.
+  - `/task <text>` in an agent's chat adds a task to that workspace.
+  - `/next` marks the agent's in-progress task done and sends it the first pending task as a
+    prompt. If the agent is busy, the task goes out when its turn ends.
+  - `/autonext` toggles auto-next for that agent: each completed turn finishes the current task
+    and sends the next. A failed or interrupted turn doesn't advance. It turns itself off when the
+    list runs out. One auto-next agent per workspace.
+  - Each command posts a one-line note in the chat. Notes live in daemon memory like the Terminal
+    cards; the tasks don't.
+  - Storage: `$PASEO_HOME/plugin-data/workspace-tasks/tasks.json`, keyed by workspace id. The
+    plugin refuses to start from an empty list over a file it can't parse.
+- **Files:** `custom/plugins/workspace-tasks/` (no conflict risk) and
+  `packages/server/src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts` (breaks only if
+  upstream changes the test utilities).
+- **Core files touched:** none.
+- **Re-apply:** Nothing to redo in core. If the plugin SDK changes, the plugin uses
+  `addWorkspacePanel`, `addSlashCommand`, `addCommandCenterItem`, `addTimelineRenderer`,
+  `server.on("agent.turn_ended")`, `paseo.agents.ref(id).send/refresh/timeline.append`.
+- **Setup:** One-time plugin install per daemon. See [README.md](README.md#one-time-setup-plugins).
+- **Verify:** `npx vitest run custom/plugins/workspace-tasks` and
+  `(cd packages/server && npx vitest run src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts)`.
+  The update script runs both. In the app, run `/task try it`, then `/next`.

@@ -26,7 +26,7 @@ Environment:
   PASEO_BUILDS_DIR    Where installed builds live (default: ~/Applications/Paseo-builds)
   PASEO_LAUNCHERS     Space-separated .desktop files to repoint
                       (default: ~/.local/share/applications/paseo*.desktop)
-  PASEO_HOMES         Space-separated daemon homes to check for the shell-command plugin
+  PASEO_HOMES         Space-separated daemon homes to check for the custom plugins
                       (default: "~/.paseo ~/.paseo-telus")
 EOF
 }
@@ -258,8 +258,8 @@ if $VERIFY; then
   step "Typechecking"
   npm run typecheck
   step "Running customization tests"
-  npx vitest run custom/plugins/shell-command packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
-  (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts --bail=1)
+  npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
+  (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts --bail=1)
 fi
 
@@ -277,20 +277,22 @@ fi
 # ---------------------------------------------------------------------------
 # 4. Check plugin registration
 # ---------------------------------------------------------------------------
-step "Checking the shell-command plugin on each daemon"
-plugin_dir="$ROOT/custom/plugins/shell-command"
-for home in $HOMES; do
-  config="$home/config.json"
-  [[ -f "$config" ]] || continue
-  if node -e '
-    const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-    const p = c.plugins?.["shell-command"];
-    process.exit(c.pluginsEnabled === true && p?.enabled !== false && p?.path === process.argv[2] ? 0 : 1);
-  ' "$config" "$plugin_dir"; then
-    echo "  $home: installed (the daemon recompiles it from source on start)"
-  else
-    warn "$home: shell-command plugin not set up. See 'One-time setup' in custom/README.md."
-  fi
+step "Checking the custom plugins on each daemon"
+for plugin in shell-command workspace-tasks; do
+  plugin_dir="$ROOT/custom/plugins/$plugin"
+  for home in $HOMES; do
+    config="$home/config.json"
+    [[ -f "$config" ]] || continue
+    if node -e '
+      const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+      const p = c.plugins?.[process.argv[3]];
+      process.exit(c.pluginsEnabled === true && p?.enabled !== false && p?.path === process.argv[2] ? 0 : 1);
+    ' "$config" "$plugin_dir" "$plugin"; then
+      echo "  $home: $plugin installed (the daemon recompiles it from source on start)"
+    else
+      warn "$home: $plugin plugin not set up. See 'One-time setup' in custom/README.md."
+    fi
+  done
 done
 
 step "Done"
