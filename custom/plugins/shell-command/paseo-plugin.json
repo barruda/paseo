@@ -1,0 +1,4 @@
+{
+  "id": "shell-command",
+  "requirements": { "paseo": ">=0.11.0" }
+}
