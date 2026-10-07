@@ -45,12 +45,20 @@ export function mergeSlashCommandSources<
   return commands;
 }
 
+const BANG_COMMAND_NAME = "sh";
+
 export function resolvePluginClientSlashCommand<Command extends SlashCommandDescriptor>(input: {
   text: string;
   hasAttachments: boolean;
   commands: readonly Command[];
 }): { command: Command; args: string } | null {
   if (input.hasAttachments) return null;
+  // CUSTOM(shell-command): `!<command>` is shorthand for the shell-command plugin's `/sh <command>`.
+  const bang = /^!\s*([\s\S]+)$/.exec(input.text.trim());
+  if (bang) {
+    const command = input.commands.find((candidate) => candidate.name === BANG_COMMAND_NAME);
+    return command ? { command, args: bang[1]!.trim() } : null;
+  }
   const match = /^\/([^\s]+)(?:\s+([\s\S]*))?$/.exec(input.text.trim());
   if (!match) return null;
   const command = input.commands.find((candidate) => candidate.name === match[1]);

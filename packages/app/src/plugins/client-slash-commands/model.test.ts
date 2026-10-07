@@ -46,6 +46,23 @@ describe("plugin client slash commands", () => {
     ).toBeNull();
   });
 
+  it("routes !<command> to the sh plugin command", () => {
+    const sh = { name: "sh" };
+    expect(
+      resolvePluginClientSlashCommand({
+        text: "  !git status | head ",
+        hasAttachments: false,
+        commands: [sh],
+      }),
+    ).toEqual({ command: sh, args: "git status | head" });
+    expect(
+      resolvePluginClientSlashCommand({ text: "!ls", hasAttachments: false, commands: [] }),
+    ).toBeNull();
+    expect(
+      resolvePluginClientSlashCommand({ text: "!", hasAttachments: false, commands: [sh] }),
+    ).toBeNull();
+  });
+
   it("runs the client handler and reports failures", async () => {
     const run = vi.fn(async (_args: string) => undefined);
     const onError = vi.fn();
