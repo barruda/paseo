@@ -37,7 +37,7 @@ Delete old backup tags with `git tag -l 'custom-backup/*'` and `git tag -d`.
 On a new machine, restore everything with:
 
 ```bash
-git clone git@github.com:getpaseo/paseo.git && cd paseo
+git clone git@github.com-personal:getpaseo/paseo.git && cd paseo
 git remote add fork git@github.com-personal:barruda/paseo.git
 git fetch fork && git checkout -b custom fork/custom
 ```
