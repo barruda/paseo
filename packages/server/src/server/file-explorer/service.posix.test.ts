@@ -35,42 +35,43 @@ describe.skipIf(isPlatform("win32"))("service POSIX-only", () => {
     }
   });
 
-  it("rejects symlinked files that resolve outside the workspace", async () => {
+  // CUSTOM(explorer-outside-workspace): symlinks that leave the workspace are followed.
+  it("reads symlinked files that resolve outside the workspace", async () => {
     const root = await createTempDir("paseo-file-explorer-");
     const outsideRoot = await createTempDir("paseo-file-explorer-outside-");
 
     try {
-      const externalFile = path.join(outsideRoot, "secret.txt");
-      await writeFile(externalFile, "top secret\n", "utf-8");
-      await symlink(externalFile, path.join(root, "secret-link.txt"));
+      const externalFile = path.join(outsideRoot, "external.txt");
+      await writeFile(externalFile, "external\n", "utf-8");
+      await symlink(externalFile, path.join(root, "external-link.txt"));
 
-      await expect(
-        readExplorerFile({
-          root,
-          relativePath: "secret-link.txt",
-        }),
-      ).rejects.toThrow("Access outside of workspace is not allowed");
+      const file = await readExplorerFile({ root, relativePath: "external-link.txt" });
+
+      expect(file.path).toBe("external-link.txt");
+      expect(file.content).toBe("external\n");
     } finally {
       await rm(root, { recursive: true, force: true });
       await rm(outsideRoot, { recursive: true, force: true });
     }
   });
 
-  it("skips listed symlink entries that resolve outside the workspace", async () => {
+  it("lists symlink entries that resolve outside the workspace", async () => {
     const root = await createTempDir("paseo-file-explorer-");
     const outsideRoot = await createTempDir("paseo-file-explorer-outside-");
 
     try {
       await writeFile(path.join(root, "visible.txt"), "visible\n", "utf-8");
-      const externalFile = path.join(outsideRoot, "secret.txt");
-      await writeFile(externalFile, "top secret\n", "utf-8");
-      await symlink(externalFile, path.join(root, "secret-link.txt"));
+      await writeFile(path.join(outsideRoot, "inner.txt"), "inner\n", "utf-8");
+      await symlink(outsideRoot, path.join(root, "linked-dir"));
 
       const result = await listDirectoryEntries({ root });
-
       const names = result.entries.map((entry) => entry.name);
       expect(names).toContain("visible.txt");
-      expect(names).not.toContain("secret-link.txt");
+      expect(names).toContain("linked-dir");
+
+      const linked = await listDirectoryEntries({ root, relativePath: "linked-dir" });
+      expect(linked.path).toBe("linked-dir");
+      expect(linked.entries.map((entry) => entry.path)).toEqual(["linked-dir/inner.txt"]);
     } finally {
       await rm(root, { recursive: true, force: true });
       await rm(outsideRoot, { recursive: true, force: true });

@@ -60,3 +60,28 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `npx vitest run custom/plugins/shell-command packages/app/src/plugins/client-slash-commands/model.test.ts`
   and `(cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts)`.
   The update script runs both.
+
+## explorer-outside-workspace: open files outside the workspace
+
+- **Added:** 2026-10-07 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: let the file explorer open files outside the workspace`
+- **Why:** The Files sidebar refused symlinks that point out of the workspace (they were hidden
+  from listings) and absolute paths elsewhere on the host, failing with "Access outside of
+  workspace is not allowed".
+- **What:** The daemon's file explorer no longer checks that a path stays inside the workspace.
+  Symlinked files and folders that leave the workspace are listed and open normally, and absolute
+  paths anywhere on the host can be listed, read, edited, renamed, and deleted. Paths outside the
+  workspace come back absolute in responses instead of as `../..` paths. Deleting the workspace
+  root itself is still refused.
+  - Security: anyone who can reach the daemon (paired devices, the relay) can now read and write
+    any file the daemon's user can, through the explorer.
+- **Core files touched:** `packages/server/src/server/file-explorer/service.ts` (`resolveScopedPath`,
+  `normalizeRelativePath`, the listing's skip filter), plus the outside-path tests in
+  `service.test.ts` and `service.posix.test.ts`.
+- **Re-apply:** In `resolveScopedPath`, drop both workspace containment checks (before and after
+  `realpath`). In `listDirectoryEntries`, stop skipping entries that failed that check. In
+  `normalizeRelativePath`, return the absolute target when it is outside the root. Flip the tests
+  that expected "Access outside of workspace is not allowed" to expect the read to succeed.
+- **Verify:** `(cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts)`.
+  The update script runs it. In the app, open a symlinked folder that points out of the workspace
+  in the Files sidebar, and open a file link with an absolute path in another directory.
