@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { StyleSheet } from "react-native-unistyles";
 import { WebView } from "react-native-webview";
 import { withPreviewCsp } from "./html-preview-csp";
+import type { PreviewAssetLoader } from "./html-preview-assets";
 import { htmlPreviewNavigationKind } from "./html-preview-navigation";
 
 // A preview is a viewer, not a browser. Only the document Paseo hands the WebView
@@ -32,7 +33,16 @@ const ORIGIN_WHITELIST = ["*"];
 // would arrive with no injected policy and a clean slate to egress from.
 const BASE_URL = "about:blank";
 
-export function FileHtmlPreview({ html, testID }: { html: string; testID?: string }) {
+// CUSTOM(html-preview-assets): `loadAsset` is web-only; native keeps the
+// self-contained preview.
+export function FileHtmlPreview({
+  html,
+  testID,
+}: {
+  html: string;
+  testID?: string;
+  loadAsset?: PreviewAssetLoader;
+}) {
   const document = useMemo(() => withPreviewCsp(html), [html]);
   const source = useMemo(() => ({ html: document, baseUrl: BASE_URL }), [document]);
   // Latched per document rather than once for the lifetime of the WebView: the

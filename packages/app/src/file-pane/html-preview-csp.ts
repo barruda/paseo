@@ -9,7 +9,8 @@
 // (both verified against the Chromium this app ships against). So a hostile page
 // can still reach a server by navigating, carrying data available inside the
 // preview. The opaque origin is what bounds the damage: the frame has no storage,
-// no parent access, and no way to read any file but itself. Native narrows it
+// no parent access, and no way to read any file but itself and, on web, the images
+// in its own folder (CUSTOM(html-preview-assets), see html-preview-assets.ts). Native narrows it
 // further in html-preview.tsx, because a WebView can refuse navigation outside CSP — see the
 // caveat there on why that is a mitigation rather than a guarantee.
 const POLICY = [
@@ -50,6 +51,8 @@ const PROLOGUE = `<!doctype html>${META}`;
 // Left where it is, a BOM would sit mid-document and render as a zero-width space.
 const BOM = "\uFEFF";
 
-export function withPreviewCsp(html: string): string {
-  return PROLOGUE + (html.startsWith(BOM) ? html.slice(BOM.length) : html);
+// CUSTOM(html-preview-assets): `headMarkup` lands right after the policy, so it is
+// in the head and bound by it. The web preview passes the asset bridge here.
+export function withPreviewCsp(html: string, headMarkup = ""): string {
+  return PROLOGUE + headMarkup + (html.startsWith(BOM) ? html.slice(BOM.length) : html);
 }

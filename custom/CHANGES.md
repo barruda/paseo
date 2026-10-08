@@ -198,3 +198,41 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts)` (the update
   script runs it). In the app, press `Ctrl+J` three times: terminal appears, hides, comes back
   with the same terminal.
+
+## html-preview-assets: HTML previews show the images next to them
+
+- **Added:** 2026-10-08 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: HTML preview loads images from the file's folder`
+- **Why:** Agents write image galleries as `index.html` plus `images/*.png`. Upstream's preview
+  is a self-contained srcdoc frame whose CSP allows only `data:` and `blob:` images, so every
+  relative `<img src>` came up broken.
+- **What:**
+  - On web and desktop, a bridge script injected after the CSP watches `<img src>` (static markup
+    and script-set) and posts each relative URL to the parent. The parent reads the file through
+    the daemon (`client.readFile`) and posts the bytes back; the bridge swaps in a `blob:` URL.
+  - Only image files (`png jpg jpeg gif webp avif svg bmp ico`) in the HTML file's folder or below,
+    up to 32 MB each. URLs with a scheme, root-relative paths, and paths that climb above the
+    folder are refused before any read. The frame's sandbox and CSP are unchanged.
+  - Not covered: CSS `url()`, `srcset`, `<video>`, images never attached to the document, and
+    links to images (`<a href>`; popups stay blocked). Native keeps the self-contained preview.
+- **Files:** `packages/app/src/file-pane/html-preview-assets.ts` (path rules, loader, bridge),
+  `html-preview-assets.test.ts`, `html-preview-assets.browser.test.ts`. New files; no conflict
+  risk.
+- **Core files touched** (each marked `CUSTOM(html-preview-assets)`):
+  - `packages/app/src/file-pane/html-preview-csp.ts`: `withPreviewCsp` takes a second
+    `headMarkup` argument inserted after the policy meta.
+  - `packages/app/src/file-pane/html-preview.web.tsx`: iframe ref, injects the bridge, answers
+    asset requests from its own frame. `html-preview.tsx` (native) accepts and ignores `loadAsset`.
+  - `packages/app/src/file-pane/pane.tsx`: `FilePane` builds the loader from `client` and
+    `readTarget`; `htmlAssetLoader` is threaded through `FilePanePresentation`,
+    `EditableFilePane`, and `FilePreviewBody` to `FileHtmlPreview`.
+  - `SECURITY.md`: the HTML preview section says which files the preview can read.
+- **Re-apply:** Wherever the web preview builds its srcdoc, append `PREVIEW_ASSET_BRIDGE_SCRIPT`
+  right after the CSP meta, listen for `message` events whose `source` is the frame's
+  `contentWindow`, and answer `parsePreviewAssetRequest` hits with `respondToPreviewAssetRequest`
+  using a loader from `createPreviewAssetLoader({ client, cwd, htmlPath })` for the previewed file.
+- **Verify:** `(cd packages/app && npx vitest run src/file-pane/html-preview-assets.test.ts)` and
+  `(cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts)`
+  (needs `npx playwright install --only-shell chromium` once). The update script runs both. In the
+  app, open `~/uprojects/DreamMMO/docs/art/guided-lighting-2026-10-08/gallery/index.html` and check
+  that the comparison and cards show the captures.
