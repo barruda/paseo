@@ -193,7 +193,14 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "workspace-pane-move-tab-down",
     "workspace-pane-close",
   ],
-  layout: ["toggle-left-sidebar", "toggle-right-sidebar", "toggle-both-sidebars", "toggle-focus"],
+  layout: [
+    "toggle-left-sidebar",
+    "toggle-right-sidebar",
+    "toggle-both-sidebars",
+    // CUSTOM(bottom-panel)
+    "toggle-bottom-panel",
+    "toggle-focus",
+  ],
   "agent-input": [
     "focus-message-input",
     "cycle-agent-mode",
@@ -950,6 +957,31 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     action: "sidebar.toggle.right",
     combo: "Ctrl+`",
     when: { commandCenter: false },
+  },
+
+  // CUSTOM(bottom-panel): VS Code's panel toggle. Works from inside a terminal so the
+  // terminal it shows can also hide it.
+  {
+    id: "bottom-panel-toggle-cmd-j-mac",
+    action: "workspace.bottom-panel.toggle",
+    combo: "Cmd+J",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "toggle-bottom-panel",
+      section: "layout",
+      label: "Toggle bottom panel",
+    },
+  },
+  {
+    id: "bottom-panel-toggle-ctrl-j-non-mac",
+    action: "workspace.bottom-panel.toggle",
+    combo: "Ctrl+J",
+    when: { mac: false, commandCenter: false },
+    help: {
+      id: "toggle-bottom-panel",
+      section: "layout",
+      label: "Toggle bottom panel",
+    },
   },
 
   // --- Toggle both sidebars ---
