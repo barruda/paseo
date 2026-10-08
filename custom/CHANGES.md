@@ -236,3 +236,27 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   (needs `npx playwright install --only-shell chromium` once). The update script runs both. In the
   app, open `~/uprojects/DreamMMO/docs/art/guided-lighting-2026-10-08/gallery/index.html` and check
   that the comparison and cards show the captures.
+
+## no-auto-update: installed builds never update themselves to upstream
+
+- **Added:** 2026-10-08 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: keep the auto-updater off in installed builds`
+- **Why:** Closing Paseo sometimes asked for the root password to run `zypper` on
+  `Paseo-<upstream version>-x86_64.rpm`. The custom build reports an older version than upstream's
+  latest release, so the updater downloaded the official package and tried to install it on quit.
+  It picked the RPM path because electron-builder writes `resources/package-type` into
+  `linux-unpacked` for each package it makes, and `rpm` comes last. Accepting would replace the
+  custom build with upstream.
+- **What:** The install step deletes `resources/package-type` from each new build folder.
+  `electron-updater` then falls back to its AppImage updater, which is inactive when `APPIMAGE` is
+  unset, so no check, download, or install happens.
+  - The script builds only the unpacked app (`npm run build:desktop -- --linux dir`), which writes
+    no `package-type` at all and skips the rpm step that fails on Ubuntu without `rpmbuild`. The
+    delete still covers a full `npm run build:desktop`.
+- **Files:** `custom/update-paseo-source-and-apply-customization.sh` (`install_build` and the
+  build step). No core files touched.
+- **Re-apply:** If upstream's updater stops reading `package-type`, disable updates another way in
+  the installed copy, for example by deleting `resources/app-update.yml` (this logs an update error
+  instead of staying silent).
+- **Verify:** `ls ~/Applications/Paseo-builds/<newest>/resources/package-type` fails, and
+  `~/.cache/@getpaseodesktop-updater/pending/` stays empty after the app has run a while.

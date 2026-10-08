@@ -64,6 +64,9 @@ don't have to quit anything first. When you reopen the window, the new app reuse
 daemon if the versions match. If the update changed the daemon version, the app restarts the
 daemon, which stops its running agents.
 
+Installed builds have the auto-updater off, so they never replace themselves with upstream's
+release; updates only come from this script.
+
 The script keeps the two newest builds plus any still in use. To roll back an install, restore a
 launcher from its `.desktop.bak`. Before rebasing, the script tags the current state as
 `custom-backup/<timestamp>`; roll the source back with `git reset --hard custom-backup/<timestamp>`.
@@ -96,7 +99,14 @@ The script runs from that copy in `.git/` because mid-rebase the working tree ma
 
 A plugin-only change needs no app rebuild: run `paseo plugin reload <id> --home <home>` for each
 daemon. A core change needs a new app build. To build without pulling upstream, run
-`npm run build:desktop`, then `custom/update-paseo-source-and-apply-customization.sh --install-only`.
+`npm run build:desktop -- --linux dir`, then
+`custom/update-paseo-source-and-apply-customization.sh --install-only`.
+
+Build with `--linux dir`, as the script does. The install only copies
+`packages/desktop/release/linux-unpacked`, so the packages upstream's `electron-builder.yml` also
+makes (AppImage, deb, rpm, tar.gz) are wasted minutes. On Ubuntu, a plain `npm run build:desktop`
+also ends in an error at the rpm step (`Need executable 'rpmbuild'`); `linux-unpacked` is
+already complete by then, so `--install-only` still works.
 
 ## One-time setup: plugins
 

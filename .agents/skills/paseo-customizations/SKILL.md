@@ -38,7 +38,8 @@ rules agents get wrong.
   `npx tsx packages/cli/src/index.js plugin reload <id> --home ~/.paseo` (and `~/.paseo-telus`).
 - New plugin: it must be installed on each daemon once. See "One-time setup: plugins" in
   `custom/README.md`. Plugins run unsandboxed, so ask before enabling `pluginsEnabled` on a daemon.
-- Core change: `npm run build:desktop`, then
+- Core change: `npm run build:desktop -- --linux dir` (only the folder the install copies; the
+  full build fails at rpm on Ubuntu), then
   `custom/update-paseo-source-and-apply-customization.sh --install-only`. The user then reopens the
   Paseo window.
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user

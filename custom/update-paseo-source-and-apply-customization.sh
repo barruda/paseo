@@ -117,6 +117,11 @@ install_build() {
   step "Installing into $target"
   mkdir -p "$BUILDS_DIR"
   cp -a "$RELEASE_DIR" "$target"
+  # A full build leaves package-type=rpm in linux-unpacked (the last package electron-builder
+  # made), and the auto-updater would pkexec zypper to replace this build with upstream's RPM on
+  # quit. Without the file it falls back to the AppImage updater, which stays off outside an
+  # AppImage. The script's own dir-only build writes no package-type; this covers a full build.
+  rm -f "$target/resources/package-type"
 
   local launcher
   for launcher in $LAUNCHERS; do
@@ -267,7 +272,10 @@ if $VERIFY; then
 fi
 
 step "Building the desktop app"
-npm run build:desktop
+# Only the unpacked app: install_build copies linux-unpacked and nothing else. The packages
+# electron-builder.yml also lists (AppImage, deb, rpm, tar.gz) cost minutes, and rpm fails
+# outright on machines without rpmbuild (Ubuntu).
+npm run build:desktop -- --linux dir
 [[ -x "$RELEASE_DIR/Paseo" ]] || die "Build finished but $RELEASE_DIR/Paseo is missing."
 
 if $INSTALL; then
