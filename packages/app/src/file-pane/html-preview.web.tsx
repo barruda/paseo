@@ -1,6 +1,12 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { withPreviewCsp } from "./html-preview-csp";
+import {
+  PREVIEW_ASSET_BRIDGE_SCRIPT,
+  parsePreviewAssetRequest,
+  respondToPreviewAssetRequest,
+  type PreviewAssetLoader,
+} from "./html-preview-assets";
 
 // `allow-scripts` alone: the file gets an opaque origin, so a plan page can run
 // its own scripts (Excalidraw, charts) but cannot reach the Paseo app's DOM,
@@ -23,11 +29,41 @@ const iframeStyle = {
   backgroundColor: "white",
 } as const;
 
-export function FileHtmlPreview({ html, testID }: { html: string; testID?: string }) {
+export function FileHtmlPreview({
+  html,
+  testID,
+  loadAsset,
+}: {
+  html: string;
+  testID?: string;
+  loadAsset?: PreviewAssetLoader;
+}) {
   const { t } = useTranslation();
-  const document = useMemo(() => withPreviewCsp(html), [html]);
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  // CUSTOM(html-preview-assets): serve the page's sibling images through the bridge.
+  const hasAssets = Boolean(loadAsset);
+  const document = useMemo(
+    () => withPreviewCsp(html, hasAssets ? PREVIEW_ASSET_BRIDGE_SCRIPT : ""),
+    [html, hasAssets],
+  );
+  useEffect(() => {
+    if (!loadAsset) return;
+    function receive(event: MessageEvent) {
+      const frame = frameRef.current?.contentWindow;
+      if (!frame || event.source !== frame || !loadAsset) return;
+      const request = parsePreviewAssetRequest(event.data);
+      if (!request) return;
+      loadAsset(request.url).then(
+        (asset) => respondToPreviewAssetRequest(frame, request, asset),
+        () => respondToPreviewAssetRequest(frame, request, null),
+      );
+    }
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [loadAsset]);
   return (
     <iframe
+      ref={frameRef}
       data-testid={testID}
       title={t("panels.file.editor.preview")}
       srcDoc={document}

@@ -29,6 +29,7 @@ import { useFilePreview } from "./preview-lifecycle/hook";
 import { resolveFilePreviewLifecycle } from "./preview-lifecycle/model";
 import { FilePanelBar } from "./bar";
 import { FileHtmlPreview } from "./html-preview";
+import { createPreviewAssetLoader, type PreviewAssetLoader } from "./html-preview-assets";
 import { FileMarkdownPreview } from "./markdown-preview";
 import { FileEditorModel, getFileConflictCallout, type FileConflictCallout } from "./editor/model";
 import { createFileObservationSource } from "./editor/observation-source";
@@ -54,6 +55,7 @@ interface FilePreviewBodyProps {
   location: WorkspaceFileLocation;
   navigationRevision: number;
   imagePreviewUri: string | null;
+  htmlAssetLoader?: PreviewAssetLoader;
 }
 
 type TextExplorerFile = ExplorerFile & { kind: "text" };
@@ -135,6 +137,7 @@ function FilePreviewBody({
   location,
   navigationRevision,
   imagePreviewUri,
+  htmlAssetLoader,
 }: FilePreviewBodyProps) {
   const { t } = useTranslation();
   const filePath = location.path;
@@ -169,7 +172,11 @@ function FilePreviewBody({
       // The HTML document owns its own scrolling, so no ScrollView wrapper here.
       return (
         <View style={styles.previewScrollContainer}>
-          <FileHtmlPreview html={preview.content ?? ""} testID="file-html-preview" />
+          <FileHtmlPreview
+            html={preview.content ?? ""}
+            testID="file-html-preview"
+            loadAsset={htmlAssetLoader}
+          />
         </View>
       );
     }
@@ -279,6 +286,14 @@ export function FilePane({
   useEffect(() => setPreviewMode("preview"), [targetKey]);
 
   const { file: preview, imageAttachment } = resolveFilePreviewLifecycle(previewLifecycle);
+  // CUSTOM(html-preview-assets): lets an HTML preview load the images next to it.
+  const htmlAssetLoader = useMemo(
+    () =>
+      client && readTarget
+        ? createPreviewAssetLoader({ client, cwd: readTarget.cwd, htmlPath: readTarget.path })
+        : undefined,
+    [client, readTarget],
+  );
   const imagePreviewUri = useAttachmentPreviewUrl(imageAttachment);
   const isRenderable = isRenderablePreview(preview, location.path);
   const editable = isEditableTextFile({
@@ -316,6 +331,7 @@ export function FilePane({
       location={location}
       navigationRevision={navigationRevision}
       imagePreviewUri={imagePreviewUri}
+      htmlAssetLoader={htmlAssetLoader}
     />
   );
 }
@@ -357,6 +373,7 @@ function FilePanePresentation({
   location,
   navigationRevision,
   imagePreviewUri,
+  htmlAssetLoader,
 }: {
   serverId: string;
   client: DaemonClient | null;
@@ -378,6 +395,7 @@ function FilePanePresentation({
   location: WorkspaceFileLocation;
   navigationRevision: number;
   imagePreviewUri: string | null;
+  htmlAssetLoader?: PreviewAssetLoader;
 }) {
   if (!client && readTarget) {
     return (
@@ -407,6 +425,7 @@ function FilePanePresentation({
         isMobile={isMobile}
         location={location}
         navigationRevision={navigationRevision}
+        htmlAssetLoader={htmlAssetLoader}
       />
     );
   }
@@ -449,6 +468,7 @@ function FilePanePresentation({
         location={location}
         navigationRevision={navigationRevision}
         imagePreviewUri={imagePreviewUri}
+        htmlAssetLoader={htmlAssetLoader}
       />
     </View>
   );
@@ -469,6 +489,7 @@ function EditableFilePane({
   isMobile,
   location,
   navigationRevision,
+  htmlAssetLoader,
 }: {
   client: DaemonClient;
   cwd: string;
@@ -484,6 +505,7 @@ function EditableFilePane({
   isMobile: boolean;
   location: WorkspaceFileLocation;
   navigationRevision: number;
+  htmlAssetLoader?: PreviewAssetLoader;
 }) {
   const { settings } = useAppSettings();
   const { t } = useTranslation();
@@ -622,6 +644,7 @@ function EditableFilePane({
           location={location}
           navigationRevision={navigationRevision}
           imagePreviewUri={null}
+          htmlAssetLoader={htmlAssetLoader}
         />
       )}
     </View>
