@@ -48,6 +48,8 @@ export type KeyboardActionId =
   | "command-center.files"
   | "shortcuts.dialog.toggle"
   | "workspace.terminal.new"
+  // CUSTOM(bottom-panel)
+  | "workspace.bottom-panel.toggle"
   | "workspace.new"
   | "workspace.project.pick"
   | "worktree.new"

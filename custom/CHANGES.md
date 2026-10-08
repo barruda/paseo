@@ -152,3 +152,49 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `npx vitest run custom/plugins/workspace-tasks` and
   `(cd packages/server && npx vitest run src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts)`.
   The update script runs both. In the app, run `/task try it`, then `/next`.
+
+## bottom-panel: Ctrl+J toggles a bottom panel
+
+- **Added:** 2026-10-08 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: Ctrl+J toggles a bottom panel`
+- **Why:** VS Code's panel toggle. Upstream has no bottom panel, only left and right sidebars and
+  splits you create and close by hand.
+- **What:**
+  - `Ctrl+J` (`Cmd+J` on macOS) in a workspace. The first press splits a full-width pane under the
+    whole workspace and opens a terminal in it. Later presses hide and show that pane. It also
+    works while a terminal has focus, so the terminal can hide its own panel.
+  - Hiding uses the layout's `hidden` pane flag, the same one the Explorer uses: tabs stay mounted
+    and terminals keep running. The pane's id is the literal `bottom-panel`, so the layout's own
+    persistence remembers it and no extra store is needed.
+  - Closing the panel's last tab removes the pane; the next press creates a new one. Hiding is
+    refused when the panel is the only ordinary pane left.
+  - Desktop and wide web only. Compact layouts ignore the shortcut.
+  - Rebindable in Settings → Keyboard shortcuts ("Toggle bottom panel", Layout section).
+  - A **Toggle bottom panel** icon in the left sidebar footer, after Hosts. It dispatches the same
+    keyboard action, so it does nothing outside a workspace.
+- **Files:** `packages/app/src/workspace-tabs/bottom-panel.ts` (toggle logic) and
+  `bottom-panel.test.ts`. New files; no conflict risk.
+- **Core files touched** (each marked `CUSTOM(bottom-panel)`):
+  - `packages/app/src/stores/workspace-layout-actions.ts`: `splitWorkspaceRootBottomInLayout`,
+    added before `moveTabToPaneInLayout`.
+  - `packages/app/src/keyboard/actions.ts`, `keyboard-action-dispatcher.ts`: the
+    `workspace.bottom-panel.toggle` action id.
+  - `packages/app/src/keyboard/route-shortcut.ts`: a `PASSTHROUGH_DISPATCH` entry.
+  - `packages/app/src/keyboard/keyboard-shortcuts.ts`: two bindings before "Toggle both
+    sidebars", and `toggle-bottom-panel` in `SHORTCUT_HELP_ROW_ORDER.layout`.
+  - `packages/app/src/screens/workspace/workspace-screen.tsx`: `handleBottomPanelToggle` and its
+    `useKeyboardActionHandler` registration after the sidebar one.
+  - `packages/app/src/components/left-sidebar.tsx`: `BottomPanelToggleButton` (before
+    `IconTooltipContent`) and its use in `SidebarFooter` after `SidebarHostPicker`.
+- **Re-apply:** Copy `splitWorkspaceRootRightInLayout` as `splitWorkspaceRootBottomInLayout`
+  with `direction: "vertical"` and a caller-supplied pane id. Add the action id to both
+  `KeyboardActionId` unions and the dispatcher's `KeyboardActionDefinition`, route it as a
+  workspace-scoped passthrough, and bind `Cmd+J`/`Ctrl+J` with `commandCenter: false` and no
+  `terminal: false`. In the workspace screen, register a handler that calls `toggleBottomPanel`
+  and, when it returns `created`, calls `createTerminal` with
+  `{ kind: "replace", tabId: launcherTabId }`. For the footer icon, render a `FooterIconButton`
+  with lucide's `PanelBottom` that calls
+  `useKeyboardActionDispatcher().dispatch({ id: "workspace.bottom-panel.toggle", scope: "workspace" })`.
+- **Verify:** `(cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts)` (the update
+  script runs it). In the app, press `Ctrl+J` three times: terminal appears, hides, comes back
+  with the same terminal.

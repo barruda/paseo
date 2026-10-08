@@ -3,6 +3,8 @@ import {
   CircleGauge,
   FolderPlus,
   GitBranch,
+  // CUSTOM(bottom-panel)
+  PanelBottom,
   Server,
   Settings,
   X,
@@ -41,6 +43,8 @@ import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout"
 import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import { useImportSession } from "@/hooks/use-import-session";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
+// CUSTOM(bottom-panel)
+import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import {
   type SidebarProjectEntry,
   type SidebarWorkspaceEntry,
@@ -386,6 +390,27 @@ function SidebarHostPicker({
   );
 }
 
+// CUSTOM(bottom-panel): sends the Ctrl+J action, which the focused workspace screen handles
+// (creating the panel and its terminal the first time). Wide layouts only, like the panel.
+function BottomPanelToggleButton() {
+  const isCompact = useIsCompactFormFactor();
+  const keyboardActionDispatcher = useKeyboardActionDispatcher();
+  const shortcutKeys = useShortcutKeys("toggle-bottom-panel");
+  const handlePress = useCallback(() => {
+    keyboardActionDispatcher.dispatch({ id: "workspace.bottom-panel.toggle", scope: "workspace" });
+  }, [keyboardActionDispatcher]);
+  if (isCompact) return null;
+  return (
+    <FooterIconButton
+      onPress={handlePress}
+      testID="sidebar-bottom-panel-toggle"
+      label="Toggle bottom panel"
+      icon={PanelBottom}
+      shortcutKeys={shortcutKeys}
+    />
+  );
+}
+
 function IconTooltipContent({
   label,
   shortcutKeys,
@@ -425,7 +450,7 @@ function SidebarFooter({
   const newAgentKeys = useShortcutKeys("new-agent");
   const settingsKeys = useShortcutKeys("toggle-settings");
 
-  // One line of icons: Add project, Usage, Hosts, then Help and Settings at the end.
+  // One line of icons: Add project, Usage, Hosts, Bottom panel, then Help and Settings at the end.
   return (
     <UsageSidebarRoot>
       <View style={styles.footerContainer} testID="sidebar-footer">
@@ -444,6 +469,8 @@ function SidebarFooter({
             onAddHost={handleAddHost}
             onOpenHostSettings={handleOpenHostSettings}
           />
+          {/* CUSTOM(bottom-panel) */}
+          <BottomPanelToggleButton />
           <View style={styles.footerSpacer} />
           <SidebarHelpMenu />
           <FooterIconButton

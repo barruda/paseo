@@ -2023,6 +2023,29 @@ export function splitWorkspaceRootRightInLayout(
   };
 }
 
+// CUSTOM(bottom-panel): the bottom panel is a full-width pane under the whole split tree, the
+// vertical twin of splitWorkspaceRootRightInLayout. See workspace-tabs/bottom-panel.ts.
+export function splitWorkspaceRootBottomInLayout(
+  input: SplitWorkspaceRootRightInLayoutInput & { paneId: string },
+): SplitPaneInLayoutResult | null {
+  const layout = asInternalLayout(input.layout);
+  const root = createGroupNode({
+    id: input.createNodeId("group"),
+    direction: "vertical",
+    children: [layout.root, createPaneNode({ id: input.paneId, tabs: [createNewWorkspaceTab()] })],
+    sizes: [0.7, 0.3],
+  });
+  if (getTreeDepth(root) > input.maxTreeDepth) return null;
+  return {
+    paneId: input.paneId,
+    layout: withNormalizedParentTabMap({
+      root,
+      focusedPaneId: input.paneId,
+      parentTabIdByTabId: input.layout.parentTabIdByTabId,
+    }),
+  };
+}
+
 export function moveTabToPaneInLayout(input: MoveTabToPaneInLayoutInput): WorkspaceLayout | null {
   const layout = asInternalLayout(input.layout);
   const sourcePane = findPaneContainingTab(layout.root, input.tabId);

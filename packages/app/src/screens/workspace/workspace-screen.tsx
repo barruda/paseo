@@ -55,6 +55,8 @@ import {
   toggleExplorerSidebar,
   useIsExplorerSidebarOpen,
 } from "@/workspace-tabs/explorer-sidebar";
+// CUSTOM(bottom-panel)
+import { toggleBottomPanel } from "@/workspace-tabs/bottom-panel";
 import {
   openPreferredWorkspacePreview,
   openPreferredWorkspaceTarget,
@@ -2733,6 +2735,15 @@ function WorkspaceScreenContent({
     ],
   );
 
+  // CUSTOM(bottom-panel): Ctrl/Cmd+J shows or hides the bottom panel; a new one opens a terminal.
+  const handleBottomPanelToggle = useCallback((): boolean => {
+    const result = toggleBottomPanel({ workspaceKey: persistenceKey, isCompact: isMobile });
+    if (result?.kind === "created") {
+      createTerminal({ destination: { kind: "replace", tabId: result.launcherTabId } });
+    }
+    return true;
+  }, [createTerminal, isMobile, persistenceKey]);
+
   // Shared by every handler below: these actions only exist on a focused workspace route.
   const workspaceActionsEnabled = Boolean(
     isRouteFocused && normalizedServerId && normalizedWorkspaceId,
@@ -2863,6 +2874,20 @@ function WorkspaceScreenContent({
     priority: 100,
     isActive: () => true,
     handle: handleWorkspaceSidebarAction,
+  });
+
+  // CUSTOM(bottom-panel)
+  useKeyboardActionHandler({
+    handlerId: buildWorkspaceKeyboardHandlerId({
+      name: "workspace-bottom-panel-actions",
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+    }),
+    actions: ["workspace.bottom-panel.toggle"] as const,
+    enabled: workspaceActionsEnabled,
+    priority: 100,
+    isActive: () => true,
+    handle: handleBottomPanelToggle,
   });
 
   // Gated on the same predicate as the header menu item, so the command center never lists a
