@@ -123,6 +123,7 @@ paseo() { npx tsx packages/cli/src/index.js "$@"; }
 paseo reload --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/shell-command" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/workspace-tasks" --home ~/.paseo
+paseo plugin install "$PWD/custom/plugins/warp" --home ~/.paseo
 ```
 
 After editing a plugin's source: `paseo plugin reload <id> --home ~/.paseo`.

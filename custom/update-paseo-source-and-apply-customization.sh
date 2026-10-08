@@ -264,7 +264,7 @@ if $VERIFY; then
   npm run typecheck
   step "Running customization tests"
   npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
-  (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts --bail=1)
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts --bail=1)
   (cd packages/app && npx vitest run src/file-pane/html-preview-assets.test.ts --bail=1)
   (cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts --bail=1)
@@ -289,7 +289,7 @@ fi
 # 4. Check plugin registration
 # ---------------------------------------------------------------------------
 step "Checking the custom plugins on each daemon"
-for plugin in shell-command workspace-tasks; do
+for plugin in shell-command workspace-tasks warp; do
   plugin_dir="$ROOT/custom/plugins/$plugin"
   for home in $HOMES; do
     config="$home/config.json"

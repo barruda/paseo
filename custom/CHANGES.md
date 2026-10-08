@@ -260,3 +260,43 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   instead of staying silent).
 - **Verify:** `ls ~/Applications/Paseo-builds/<newest>/resources/package-type` fails, and
   `~/.cache/@getpaseodesktop-updater/pending/` stays empty after the app has run a while.
+
+## warp: Warp terminal tabs
+
+- **Added:** 2026-10-08 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: Warp terminal tabs`
+- **Why:** Warp's terminal UX (blocks, input editor) inside Paseo. Warp is a native GPU app that
+  can't be embedded, but its open-source client also compiles to the web, and its `remote_tty`
+  build feature drives a shell over a plain WebSocket. Paseo runs that build in a browser tab.
+- **What:**
+  - **Warp** in the "+" new-tab menu (and Command Center: "Open Warp") opens a Warp session in a
+    workspace browser tab, in the workspace's folder. The Warp panel stays as a launcher with a
+    "New Warp session" button. Browser tabs exist only in Electron; elsewhere the panel shows a
+    link.
+  - The Warp side lives outside this repo, in `~/projetos/warp-web-custom` (override with
+    `PASEO_WARP_WEB_DIR`): a Warp checkout with a one-function patch
+    (`app/src/terminal/remote_tty/event_loop.rs` reads the PTY URL from
+    `window.PASEO_WARP_PTY_URL` instead of the hard-coded `ws://127.0.0.1:3030/create`), its web
+    build, and `paseo-bridge/server.mjs`. The bridge serves the build and the `/create` PTY
+    WebSocket with node-pty.
+  - The plugin's server side starts the bridge with system `node` on first use (the plugin process
+    runs on Electron's Node, which can't load the bridge's node-pty) and stops it with the plugin.
+    It listens on 127.0.0.1 and requires a token; the port and token are kept in
+    `$PASEO_HOME/plugin-data/warp/bridge.json` so restored Warp tabs keep working after a restart.
+  - Limits: zsh only (Warp's remote_tty bootstrap is zsh-only), no Warp sign-in (app.warp.dev
+    blocks the local origin with CORS, so "Skip login"), no Warp AI.
+- **Files:** `custom/plugins/warp/` and
+  `packages/server/src/server/plugins/custom-warp-plugin.e2e.test.ts`.
+- **Core files touched:** none.
+- **Re-apply:** Nothing to redo in core. If the plugin SDK changes, the plugin uses
+  `addWorkspacePanel`, `addCommandCenterItem`, `navigation.openBrowser`, and one RPC.
+  To rebuild Warp after pulling it:
+  `cd ~/projetos/warp-web-custom && script/wasm/bundle --channel oss --features remote_tty`
+  (needs Rust from `rust-toolchain.toml`, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli`
+  at the version in `Cargo.lock`, and `wasm-split` on PATH). Re-apply the `event_loop.rs` patch
+  if upstream Warp moved it; it's the commit on the `paseo` branch there.
+- **Setup:** One-time plugin install per daemon. See [README.md](README.md#one-time-setup-plugins).
+  Then `npm install` in `~/projetos/warp-web-custom/paseo-bridge`.
+- **Verify:** `(cd packages/server && npx vitest run src/server/plugins/custom-warp-plugin.e2e.test.ts)`
+  (skipped when the bridge isn't installed). The update script runs it. In the app, pick Warp from
+  the "+" menu, then "Skip for now" → "Yes, skip login".
