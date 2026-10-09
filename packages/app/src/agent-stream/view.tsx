@@ -75,6 +75,10 @@ import { resolveStreamRenderStrategy } from "./strategy-resolver";
 import { type StreamSegmentRenderers, type StreamViewportHandle } from "./strategy";
 import { ChatOutlineRail } from "@/agent-stream/chat-outline/rail";
 import { useChatOutline } from "@/agent-stream/chat-outline/use-chat-outline";
+// CUSTOM(chat-images)
+import { createActivePromptPublisher } from "@/agent-stream/chat-outline/model";
+import { collectChatImages } from "@/agent-stream/chat-images/model";
+import { ChatImagesRail } from "@/agent-stream/chat-images/rail";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import {
@@ -653,6 +657,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       revealLoadedMessage: revealLoadedHistory,
     });
 
+    // CUSTOM(chat-images): images in the loaded transcript, and where the reader is.
+    const chatImages = useMemo(
+      () => collectChatImages([...effectiveStreamItems, ...(effectiveStreamHead ?? [])]),
+      [effectiveStreamItems, effectiveStreamHead],
+    );
+    const [chatImagesReadingPosition] = useState(createActivePromptPublisher);
+
     useImperativeHandle(
       ref,
       () => ({
@@ -1044,6 +1055,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           ? undefined
           : (layoutHistoryItemById.get(rowId) ?? layoutLiveHeadItemById.get(rowId));
       chatOutline.reportReadingPosition(row?.item.timelineCursor?.seq ?? null);
+      chatImagesReadingPosition.publish(row?.item.timelineCursor?.seq ?? null); // CUSTOM(chat-images)
     });
 
     const renderHistoryRow = useCallback(
@@ -1162,6 +1174,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               prompts={chatOutline.prompts}
               activePrompt={chatOutline.activePrompt}
               onJumpToPrompt={chatOutline.jumpToPrompt}
+            />
+            {/* CUSTOM(chat-images) */}
+            <ChatImagesRail
+              images={chatImages}
+              readingPosition={chatImagesReadingPosition}
+              client={client}
+              serverId={resolvedServerId}
+              workspaceRoot={workspaceRoot}
+              contentMaxWidth={contentMaxWidth}
+              viewportRef={viewportRef}
+              visibleMessageIds={visibleMessageIds}
+              revealLoadedMessage={revealLoadedHistory}
             />
             {(!isNearBottom || isTimelineDetached) && (
               <View style={scrollToBottomContainerStyle} pointerEvents="box-none">
