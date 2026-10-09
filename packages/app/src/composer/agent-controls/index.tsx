@@ -2,6 +2,7 @@ import {
   memo,
   useCallback,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -70,6 +71,8 @@ import {
   type AgentControlCommandCenterSource,
 } from "@/command-center/agent-control-registration";
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
+// CUSTOM(model-picker)
+import { useModelPickerSource } from "@/model-picker/use-model-picker-source";
 import { isNative } from "@/constants/platform";
 import {
   resolveComposerControlDensity,
@@ -183,6 +186,8 @@ function AgentControlCommandCenterRegistration({
     enabled: enabled && isActiveComposer,
     controls,
   });
+  // CUSTOM(model-picker)
+  useModelPickerSource({ sourceId, enabled: enabled && isActiveComposer, controls });
   return null;
 }
 
@@ -1907,6 +1912,55 @@ export function DraftAgentControls({
         : null,
     [selectedProvider, providerDefinitions, modeOptions, selectedMode, onSelectMode, disabled],
   );
+
+  // CUSTOM(model-picker): every draft composer (New Workspace screen and draft tabs) feeds the
+  // Shift+Tab model picker; upstream only registers draft tabs with the command center.
+  const pickerSourceId = `draft-controls:${useId()}`;
+  const { isActiveComposer } = useComposerKeyboardScope();
+  const pickerControls = useMemo<AgentControlCommandCenterSource>(
+    () => ({
+      serverId: modelSelectorServerId ?? "",
+      ownerKey: pickerSourceId,
+      provider: selectedProvider,
+      providerDefinitions,
+      models: {
+        providers: modelSelectorProviders,
+        selectedProvider,
+        // An untouched draft leaves the model empty and runs the provider's default.
+        selectedModelId:
+          selectedModel.trim() ||
+          models.find((model) => model.isDefault)?.id ||
+          models[0]?.id ||
+          null,
+        select: onSelectProviderAndModel,
+      },
+      thinking: {
+        options: thinkingOptions,
+        selectedId: effectiveSelectedThinkingOption ?? null,
+        select: onSelectThinkingOption,
+      },
+      features: { list: features },
+    }),
+    [
+      effectiveSelectedThinkingOption,
+      features,
+      models,
+      modelSelectorProviders,
+      modelSelectorServerId,
+      onSelectProviderAndModel,
+      onSelectThinkingOption,
+      pickerSourceId,
+      providerDefinitions,
+      selectedModel,
+      selectedProvider,
+      thinkingOptions,
+    ],
+  );
+  useModelPickerSource({
+    sourceId: pickerSourceId,
+    enabled: isActiveComposer && !disabled,
+    controls: pickerControls,
+  });
 
   return (
     <>

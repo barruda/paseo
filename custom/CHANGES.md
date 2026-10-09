@@ -283,23 +283,27 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     runs on Electron's Node, which can't load the bridge's node-pty) and stops it with the plugin.
     It listens on 127.0.0.1 and requires a token; the port and token are kept in
     `$PASEO_HOME/plugin-data/warp/bridge.json` so restored Warp tabs keep working after a restart.
-  - Limits: zsh only (Warp's remote_tty bootstrap is zsh-only), no Warp sign-in (app.warp.dev
-    blocks the local origin with CORS, so "Skip login"), no Warp AI.
+  - The build uses Warp's `skip_login` feature, so it starts signed in as Warp's offline test user
+    with no login screen. A second patch (`app/src/wasm_nux_dialog.rs`) hides the "Download Warp
+    Desktop?" dialog in `remote_tty` builds.
+  - Limits: zsh only (Warp's remote_tty bootstrap is zsh-only), no Warp account or Warp AI
+    (app.warp.dev blocks the local origin with CORS, and `skip_login` fails every authenticated
+    request on purpose).
 - **Files:** `custom/plugins/warp/` and
   `packages/server/src/server/plugins/custom-warp-plugin.e2e.test.ts`.
 - **Core files touched:** none.
 - **Re-apply:** Nothing to redo in core. If the plugin SDK changes, the plugin uses
   `addWorkspacePanel`, `addCommandCenterItem`, `navigation.openBrowser`, and one RPC.
   To rebuild Warp after pulling it:
-  `cd ~/projetos/warp-web-custom && script/wasm/bundle --channel oss --features remote_tty`
+  `cd ~/projetos/warp-web-custom && script/wasm/bundle --channel oss --features remote_tty,skip_login`
   (needs Rust from `rust-toolchain.toml`, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli`
-  at the version in `Cargo.lock`, and `wasm-split` on PATH). Re-apply the `event_loop.rs` patch
-  if upstream Warp moved it; it's the commit on the `paseo` branch there.
+  at the version in `Cargo.lock`, and `wasm-split` on PATH). Re-apply the
+  patches if upstream Warp moved the code; they're the commits on the `paseo` branch there.
 - **Setup:** One-time plugin install per daemon. See [README.md](README.md#one-time-setup-plugins).
   Then `npm install` in `~/projetos/warp-web-custom/paseo-bridge`.
 - **Verify:** `(cd packages/server && npx vitest run src/server/plugins/custom-warp-plugin.e2e.test.ts)`
   (skipped when the bridge isn't installed). The update script runs it. In the app, pick Warp from
-  the "+" menu, then "Skip for now" → "Yes, skip login".
+  the "+" menu; a Warp prompt in the workspace folder appears with no login screen.
 
 ## chat-images: an image strip beside the chat
 
@@ -338,3 +342,58 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts)` (the
   update script runs it). In the app, ask an agent to reply with a few `![x](path.png)` images,
   then hover and click the thumbnails on the right.
+
+## model-picker: Shift+Tab picks the model and effort from the keyboard
+
+- **Added:** 2026-10-08 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: Shift+Tab model and effort picker`
+- **Why:** Changing model or effort meant reaching for the composer's dropdowns, or opening the
+  command center and typing "model". The model dropdown also searches one provider at a time.
+- **What:**
+  - Shift+Tab in an agent's message input (or a new-agent draft) opens a centered picker shaped like
+    the command center.
+  - With an empty search, the list is: **Current** (the composer's model), **Favorites** (in the
+    order you added them), then every model under its provider. Typing searches the models of every
+    provider in one ranked list, favorites first.
+  - **Ctrl+D** (⌘D on macOS) or the star on a row favorites or unfavorites the highlighted model.
+    Favorites are stored in the app's local storage (`custom-model-picker-favorites`), so each
+    install and each launcher profile keeps its own. A running agent's picker only shows favorites
+    from its own provider.
+  - ↑/↓ move through models, ←/→ pick the effort, Enter applies both and closes, Esc closes. Click
+    works too.
+  - The effort bar shows the highlighted model's levels: the live effort for the current model, the
+    model's default for others. An effort picked with ←/→ carries to other models that offer it.
+  - Switching model and effort together sets the model first, then the effort once the composer
+    reports the new model (given up after 15 s).
+  - A running agent lists only its own provider's models: upstream can't move a running agent to
+    another provider. Drafts list every enabled provider.
+  - Shift+Tab used to cycle the agent mode. That shortcut is now unbound; assign it a key in
+    Settings → Shortcuts ("Cycle agent mode") to get it back.
+- **Files:** `packages/app/src/model-picker/` (`model.ts` list/effort/favorite logic with
+  `model.test.ts`, `store.ts`, `favorites-store.ts`, `use-model-picker-source.ts`,
+  `model-picker.tsx`). New files; no conflict risk.
+- **Core files touched** (each marked `CUSTOM(model-picker)`):
+  - `packages/app/src/keyboard/actions.ts`, `keyboard-action-dispatcher.ts`, `route-shortcut.ts`:
+    the `model-picker` message-input kind and its `message-input.model-picker` action.
+  - `packages/app/src/keyboard/keyboard-shortcuts.ts`: the mode-cycle binding's combo is `""`, a new
+    `message-input-model-picker-shift-tab` binding, and its help row in the agent-input order.
+    Tests in `keyboard-shortcuts.test.ts` and `route-shortcut.test.ts`.
+  - `packages/app/src/provider-selection/provider-selection.ts`: model rows carry
+    `thinkingOptions` and `defaultThinkingOptionId`.
+  - `packages/app/src/composer/agent-controls/index.tsx`: `AgentControlCommandCenterRegistration`
+    (running agents) and `DraftAgentControls` (the New Workspace screen and draft tabs) call
+    `useModelPickerSource`. Upstream registers the New Workspace composer with nothing, so the
+    draft side builds its own controls object from its props, resolving an untouched draft's empty
+    model to the provider's default.
+  - `packages/app/src/app/_layout.tsx`: `<ModelPicker />` next to `<CommandCenter />`.
+- **Re-apply:** Add a message-input keyboard kind that dispatches `message-input.model-picker`,
+  bind Shift+Tab to it in the message-input focus scope, and set the mode-cycle binding's combo to
+  `""` (keep its id so saved overrides survive). Copy each model's thinking options onto the
+  provider selector rows. Call `useModelPickerSource` from the running agent's command-center
+  registration (same source id, enabled flag, and controls) and from the draft agent controls (an
+  `AgentControlCommandCenterSource` built from its props, enabled while it is the active composer).
+  Mount `<ModelPicker />` in the root layout.
+- **Verify:** `(cd packages/app && npx vitest run src/model-picker/model.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts)`
+  (the update script runs it). In the app, focus a message input (New Workspace screen and a running
+  agent), press Shift+Tab, type part of a model name, press → and Enter, and check the composer's
+  model and effort controls.

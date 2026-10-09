@@ -203,6 +203,8 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
   ],
   "agent-input": [
     "focus-message-input",
+    // CUSTOM(model-picker)
+    "open-model-picker",
     "cycle-agent-mode",
     "voice-toggle",
     "dictation-toggle",
@@ -1106,9 +1108,11 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
   {
+    // CUSTOM(model-picker): Shift+Tab opens the model picker instead. The binding stays, unbound,
+    // so mode cycling can still be assigned a key in Settings → Shortcuts.
     id: "message-input-mode-cycle-shift-tab",
     action: "message-input.action",
-    combo: "Shift+Tab",
+    combo: "",
     repeat: false,
     when: { commandCenter: false, focusScope: "message-input" },
     payload: { type: "message-input", kind: "mode-cycle" },
@@ -1116,6 +1120,20 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "cycle-agent-mode",
       section: "agent-input",
       label: "Cycle agent mode",
+    },
+  },
+  // CUSTOM(model-picker)
+  {
+    id: "message-input-model-picker-shift-tab",
+    action: "message-input.action",
+    combo: "Shift+Tab",
+    repeat: false,
+    when: { commandCenter: false, focusScope: "message-input" },
+    payload: { type: "message-input", kind: "model-picker" },
+    help: {
+      id: "open-model-picker",
+      section: "agent-input",
+      label: "Select model and effort",
     },
   },
   {
