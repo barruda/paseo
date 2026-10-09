@@ -10,6 +10,8 @@ export interface WorkspaceTabMenuLabels {
   copyAgentId: string;
   copyTerminalId: string;
   copyFilePath: string;
+  // CUSTOM(copy-full-file-path): optional so upstream's label builders need no edit.
+  copyFullFilePath?: string;
   rename: string;
   closeAbove: string;
   closeBelow: string;
@@ -71,7 +73,8 @@ interface BuildWorkspaceTabMenuEntriesInput {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
-  onCopyFilePath: (path: string) => Promise<void> | void;
+  // CUSTOM(copy-full-file-path): "full" asks for the absolute path.
+  onCopyFilePath: (path: string, mode?: "full") => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -88,7 +91,8 @@ interface BuildWorkspaceDesktopTabActionsInput {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
-  onCopyFilePath: (path: string) => Promise<void> | void;
+  // CUSTOM(copy-full-file-path): "full" asks for the absolute path.
+  onCopyFilePath: (path: string, mode?: "full") => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -231,6 +235,18 @@ export function buildWorkspaceTabMenuEntries(
 
   if (tab.target.kind === "file") {
     const filePath = tab.target.path;
+    // CUSTOM(copy-full-file-path): the absolute path, resolved against the workspace root by
+    // the handler. "Copy file path" below copies the tab's path as stored (often relative).
+    entries.push({
+      kind: "item",
+      key: "copy-full-file-path",
+      label: labels.copyFullFilePath ?? "Copy full file path",
+      icon: "copy",
+      testID: `${menuTestIDBase}-copy-full-file-path`,
+      onSelect: () => {
+        void onCopyFilePath(filePath, "full");
+      },
+    });
     entries.push({
       kind: "item",
       key: "copy-file-path",

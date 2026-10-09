@@ -397,3 +397,33 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   (the update script runs it). In the app, focus a message input (New Workspace screen and a running
   agent), press Shift+Tab, type part of a model name, press → and Enter, and check the composer's
   model and effort controls.
+
+## copy-full-file-path: "Copy full file path" in the file tab menu
+
+- **Added:** 2026-10-09 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: Copy full file path in the file tab menu`
+- **Why:** Upstream's "Copy file path" copies the tab's path as stored, which is relative to the
+  workspace for files opened from the explorer. Pasting a path into another tool or terminal needs
+  the absolute one.
+- **What:** File tabs get a first menu entry, **Copy full file path**, that copies the path
+  resolved against the workspace root (`/home/bruno/uprojects/teste.html`). A path that is already
+  absolute is copied as is. "Copy file path" is unchanged. Same menu on desktop and mobile. The
+  label is English only.
+- **Core files touched** (each marked `CUSTOM(copy-full-file-path)`):
+  - `packages/app/src/screens/workspace/workspace-tab-menu.ts`: the entry, and an optional
+    `copyFullFilePath` label.
+  - `packages/app/src/screens/workspace/workspace-screen.tsx`: `handleCopyFilePath` takes
+    `mode?: "full"` and resolves the path with `buildAbsoluteExplorerPath`.
+  - The `onCopyFilePath` prop type gains `mode?: "full"` in
+    `compact-workspace-header/tab-switcher.tsx` (two places), `workspace-desktop-tabs-row.tsx`
+    (two places), and `components/split-container.tsx`. The props
+    pass the handler through unchanged, so the second argument reaches it.
+  - `workspace-tab-menu.test.ts`: expects the new entry first.
+- **Re-apply:** In the file-tab branch of `buildWorkspaceTabMenuEntries`, push an entry before
+  "Copy file path" that calls `onCopyFilePath(path, "full")`. In the workspace screen's copy
+  handler, when the mode is `"full"` and the path is relative, join it to `workspaceDirectory`.
+  Widen every `onCopyFilePath` prop type the handler passes through. If upstream wraps the prop in
+  a lambda somewhere on the way, forward the second argument there too.
+- **Verify:** `(cd packages/app && npx vitest run src/screens/workspace/workspace-tab-menu.test.ts)`
+  (the update script runs it). In the app, right-click a file tab, pick **Copy full file path**,
+  and paste.
