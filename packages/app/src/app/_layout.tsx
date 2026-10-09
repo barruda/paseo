@@ -22,6 +22,8 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { AppearanceProvider } from "@/appearance/provider";
 import { CommandCenter } from "@/command-center/command-center";
+// CUSTOM(model-picker)
+import { ModelPicker } from "@/model-picker/model-picker";
 import { CommandCenterRootActions } from "@/command-center/root-registration";
 import { CommandCenterProvider } from "@/command-center/provider";
 import { CommandCenterWorkspaceActions } from "@/command-center/workspace-registration";
@@ -606,6 +608,8 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
         <WorkspacePinShortcutHandler />
         <WorkspaceRenameHost />
         <CommandCenter />
+        {/* CUSTOM(model-picker) */}
+        <ModelPicker />
         <AddProjectFlowHost />
         <HostChooserModal />
         <HostConfirmationSheet />
