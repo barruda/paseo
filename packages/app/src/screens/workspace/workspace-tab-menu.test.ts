@@ -258,7 +258,9 @@ describe("buildWorkspaceTabMenuEntries", () => {
     });
 
     const labels = entries.filter((entry) => entry.kind === "item").map((entry) => entry.label);
-    expect(labels[0]).toBe("Copy file path");
+    // CUSTOM(copy-full-file-path): the full path comes first.
+    expect(labels[0]).toBe("Copy full file path");
+    expect(labels[1]).toBe("Copy file path");
     expect(labels).not.toContain("Copy resume command");
     expect(labels).not.toContain("Copy agent id");
     expect(labels).not.toContain("Rename");
@@ -272,6 +274,15 @@ describe("buildWorkspaceTabMenuEntries", () => {
     }
     copyFilePathEntry.onSelect();
     expect(onCopyFilePath).toHaveBeenCalledWith("/some/path.ts");
+
+    const copyFullFilePathEntry = entries.find(
+      (entry) => entry.kind === "item" && entry.key === "copy-full-file-path",
+    );
+    if (!copyFullFilePathEntry || copyFullFilePathEntry.kind !== "item") {
+      throw new Error("Copy full file path entry missing");
+    }
+    copyFullFilePathEntry.onSelect();
+    expect(onCopyFilePath).toHaveBeenLastCalledWith("/some/path.ts", "full");
   });
 
   it("uses a Changes close id for the working diff tab", () => {
