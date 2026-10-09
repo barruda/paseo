@@ -320,11 +320,12 @@ describe("keyboard-shortcuts", () => {
       payload: { kind: "dictation-toggle" },
     },
     {
-      name: "routes Shift+Tab to cycle agent mode from the message input",
+      // CUSTOM(model-picker)
+      name: "routes Shift+Tab to the model picker from the message input",
       event: { key: "Tab", code: "Tab", shiftKey: true },
       context: { focusScope: "message-input" },
       action: "message-input.action",
-      payload: { kind: "mode-cycle" },
+      payload: { kind: "model-picker" },
     },
     {
       name: "routes space to voice mute toggle outside editable scopes",
@@ -482,12 +483,12 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: true, focusScope: "terminal" },
     },
     {
-      name: "does not cycle agent mode outside the message input",
+      name: "does not open the model picker outside the message input",
       event: { key: "Tab", code: "Tab", shiftKey: true },
       context: { focusScope: "other" },
     },
     {
-      name: "does not repeat agent mode cycling while Shift+Tab is held",
+      name: "does not repeat the model picker while Shift+Tab is held",
       event: { key: "Tab", code: "Tab", shiftKey: true, repeat: true },
       context: { focusScope: "message-input" },
     },
@@ -708,7 +709,8 @@ describe("keyboard-shortcut help sections", () => {
         "workspace-tab-close-current": ["alt", "shift", "W"],
         "workspace-pane-split-right": ["mod", "\\"],
         "workspace-pane-close": ["mod", "shift", "W"],
-        "cycle-agent-mode": ["shift", "Tab"],
+        // CUSTOM(model-picker)
+        "open-model-picker": ["shift", "Tab"],
       },
     },
     {

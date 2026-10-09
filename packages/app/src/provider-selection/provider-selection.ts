@@ -2,6 +2,7 @@ import type {
   AgentMode,
   AgentModelDefinition,
   AgentProvider,
+  AgentSelectOption,
   ProviderSnapshotEntry,
 } from "@getpaseo/protocol/agent-types";
 import type { AgentProviderDefinition } from "@getpaseo/protocol/provider-manifest";
@@ -23,6 +24,9 @@ export interface ProviderSelectionModelRow {
   modelLabel: string;
   description?: string;
   isDefault?: boolean;
+  // CUSTOM(model-picker): the picker shows a model's effort levels before it is selected.
+  thinkingOptions?: AgentSelectOption[];
+  defaultThinkingOptionId?: string;
 }
 
 function buildModelRowKey(provider: string, modelId: string): string {
@@ -67,6 +71,11 @@ function buildModelRows(
     modelLabel: model.label,
     description: model.description ?? model.id,
     isDefault: model.isDefault,
+    // CUSTOM(model-picker)
+    ...(model.thinkingOptions ? { thinkingOptions: model.thinkingOptions } : {}),
+    ...(model.defaultThinkingOptionId
+      ? { defaultThinkingOptionId: model.defaultThinkingOptionId }
+      : {}),
   }));
 }
 
