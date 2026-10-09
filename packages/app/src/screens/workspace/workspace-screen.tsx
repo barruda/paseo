@@ -199,6 +199,9 @@ import {
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
 import { RenderProfile } from "@/utils/render-profiler";
+// CUSTOM(copy-full-file-path)
+import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
+import { isAbsolutePath } from "@/utils/path";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 import { useHasPullRequest, usePullRequestAutoAdd } from "@/panels/pull-request";
 
@@ -2110,16 +2113,28 @@ function WorkspaceScreenContent({
   );
 
   const handleCopyFilePath = useCallback(
-    async (path: string) => {
+    async (path: string, mode?: "full") => {
       if (!path) return;
+      // CUSTOM(copy-full-file-path): resolve the tab's path against the workspace root.
+      let copiedPath = path;
+      if (mode === "full" && !isAbsolutePath(path)) {
+        if (!workspaceDirectory) {
+          toast.error(t("workspace.header.toasts.workspacePathUnavailable"));
+          return;
+        }
+        copiedPath = buildAbsoluteExplorerPath({
+          workspaceRoot: workspaceDirectory,
+          entryPath: path,
+        });
+      }
       try {
-        await Clipboard.setStringAsync(path);
+        await Clipboard.setStringAsync(copiedPath);
         toast.copied(t("workspace.tabs.toasts.filePathCopiedLabel"));
       } catch {
         toast.error(t("workspace.tabs.toasts.copyFailed"));
       }
     },
-    [toast, t],
+    [toast, t, workspaceDirectory],
   );
 
   const handleCopyResumeCommand = useCallback(
