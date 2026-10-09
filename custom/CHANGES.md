@@ -427,3 +427,32 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run src/screens/workspace/workspace-tab-menu.test.ts)`
   (the update script runs it). In the app, right-click a file tab, pick **Copy full file path**,
   and paste.
+
+## html-preview-keys: app shortcuts work inside the HTML preview
+
+- **Added:** 2026-10-09 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: app shortcuts work while an HTML preview has focus`
+- **Why:** After clicking into an HTML file preview, Ctrl+Tab and every other app shortcut did
+  nothing. The preview is a sandboxed `srcdoc` iframe, and key events inside an iframe never reach
+  the app window where the shortcut listener runs. Browser tabs don't have this problem: their
+  guest preload already forwards shortcuts.
+- **What:** A bridge script in the frame posts every Ctrl, Cmd, or Alt combo the page didn't cancel
+  to the parent, which replays it as a `keydown` on the `<iframe>` element. The page gets first
+  refusal (a combo it `preventDefault`s stays in the page). The frame doesn't cancel what it
+  forwards, so the page's own default still runs too (Ctrl+C keeps copying). Plain keys and
+  modifier-only presses are not forwarded. Web and desktop; native keeps upstream's preview.
+  The page can post the message itself, so a hostile preview can fire app shortcuts; `SECURITY.md`
+  says so.
+- **Files:** `packages/app/src/file-pane/html-preview-keys.ts` (bridge script, message parser,
+  replay) and `html-preview-keys.browser.test.ts`. New files; no conflict risk.
+- **Core files touched** (each marked `CUSTOM(html-preview-keys)`):
+  - `packages/app/src/file-pane/html-preview.web.tsx`: prepends `PREVIEW_KEY_BRIDGE_SCRIPT` to the
+    head markup passed to `withPreviewCsp`, and a `message` listener that replays parsed keys.
+  - `SECURITY.md`: the HTML preview section says the page can trigger app shortcuts.
+- **Re-apply:** Wherever the web preview builds its srcdoc, add `PREVIEW_KEY_BRIDGE_SCRIPT` after
+  the CSP meta (it needs inline script, which the preview CSP allows). Listen for `message` events
+  whose `source` is the frame's `contentWindow` and call `replayPreviewKey(frame, key)` for each
+  `parsePreviewKey` hit. The replay only has to reach a window-level `keydown` capture listener.
+- **Verify:** `(cd packages/app && npx vitest run --project browser src/file-pane/html-preview-keys.browser.test.ts)`
+  (the update script runs it). In the app, open an `.html` file, click inside the preview, and press
+  your next-tab shortcut.
