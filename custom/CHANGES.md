@@ -300,3 +300,41 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/server && npx vitest run src/server/plugins/custom-warp-plugin.e2e.test.ts)`
   (skipped when the bridge isn't installed). The update script runs it. In the app, pick Warp from
   the "+" menu, then "Skip for now" → "Yes, skip login".
+
+## chat-images: an image strip beside the chat
+
+- **Added:** 2026-10-08 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: image strip beside the chat`
+- **Why:** Agents that post screenshots and renders spread them across a long chat. Finding one
+  meant scrolling back through the transcript.
+- **What:**
+  - A column of thumbnails on the right edge of the chat, one per image the agent put in a
+    message (`![alt](path)`, the same images the chat renders), oldest at the top. It shows only
+    when the chat has images.
+  - Hover a thumbnail for a larger preview. Click it to scroll the chat to that image.
+  - The thumbnails of the message you are reading are fully opaque, and the strip scrolls to keep
+    them in view.
+  - The strip sits in the gutter beside the transcript: 64 px thumbnails when the gutter fits them,
+    40 px when it is narrower, hidden when even those don't fit (with the default 820 px content
+    width that is a chat pane under about 900 px). Desktop and web only.
+  - It lists the loaded part of the history. Older pages appear once you scroll up and load them.
+  - Not covered: images a tool returned (the chat doesn't render those either), image paths
+    written as plain text or `` `code` ``, and images you attached to your own messages.
+- **Files:** `packages/app/src/agent-stream/chat-images/` (`model.ts` parses the images, `rail.web.tsx`
+  is the strip, `rail.tsx` is the native no-op, `model.test.ts`). New files; no conflict risk.
+- **Core files touched** (each marked `CUSTOM(chat-images)`):
+  - `packages/app/src/agent-stream/view.tsx`: `chatImages` and `chatImagesReadingPosition` before
+    `useImperativeHandle`, a publish in `handleReadingPositionChange`, and `<ChatImagesRail>` after
+    `<ChatOutlineRail>`.
+  - `packages/app/src/components/message.tsx`: `AssistantMarkdownImage` puts `CHAT_IMAGE_DATASET`
+    on the frame in all three states (failed, loading, loaded), so the strip can find the n-th
+    image of a message in the DOM.
+- **Re-apply:** In the agent stream view, collect images with
+  `collectChatImages([...tail items, ...head items])`, keep a `createActivePromptPublisher()` fed
+  with the timeline seq of the row at the top of the viewport (wherever the chat outline gets its
+  reading position), and render `ChatImagesRail` next to the outline rail with the viewport ref,
+  visible message ids, and the history window's reveal function. In the assistant markdown image
+  component, add `dataSet={CHAT_IMAGE_DATASET}` to the outermost view of every state.
+- **Verify:** `(cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts)` (the
+  update script runs it). In the app, ask an agent to reply with a few `![x](path.png)` images,
+  then hover and click the thumbnails on the right.

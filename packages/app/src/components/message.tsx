@@ -95,6 +95,8 @@ import {
 } from "@/assistant-file-links";
 import { getCompactionMarkerLabel } from "./message-compaction-label";
 import { useAssistantImage } from "@/assistant-image/use-assistant-image";
+// CUSTOM(chat-images)
+import { CHAT_IMAGE_DATASET } from "@/agent-stream/chat-images/model";
 import {
   AttachmentFrame,
   AttachmentLabel,
@@ -886,7 +888,11 @@ function AssistantMarkdownImage({
     ],
     [containerStyle, imageSizeStyle],
   );
-  const copyDataSet = useMemo(() => markdownCopyImageDataSet(source, alt), [source, alt]);
+  // CUSTOM(chat-images): every state carries the strip's marker so image order matches the strip.
+  const copyDataSet = useMemo(
+    () => ({ ...markdownCopyImageDataSet(source, alt), ...CHAT_IMAGE_DATASET }),
+    [source, alt],
+  );
 
   if (image.status === "failed") {
     return (
