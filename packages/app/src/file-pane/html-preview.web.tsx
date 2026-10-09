@@ -7,6 +7,8 @@ import {
   respondToPreviewAssetRequest,
   type PreviewAssetLoader,
 } from "./html-preview-assets";
+// CUSTOM(html-preview-keys)
+import { PREVIEW_KEY_BRIDGE_SCRIPT, parsePreviewKey, replayPreviewKey } from "./html-preview-keys";
 
 // `allow-scripts` alone: the file gets an opaque origin, so a plan page can run
 // its own scripts (Excalidraw, charts) but cannot reach the Paseo app's DOM,
@@ -43,7 +45,12 @@ export function FileHtmlPreview({
   // CUSTOM(html-preview-assets): serve the page's sibling images through the bridge.
   const hasAssets = Boolean(loadAsset);
   const document = useMemo(
-    () => withPreviewCsp(html, hasAssets ? PREVIEW_ASSET_BRIDGE_SCRIPT : ""),
+    () =>
+      withPreviewCsp(
+        html,
+        // CUSTOM(html-preview-keys): forward shortcuts typed in the frame.
+        PREVIEW_KEY_BRIDGE_SCRIPT + (hasAssets ? PREVIEW_ASSET_BRIDGE_SCRIPT : ""),
+      ),
     [html, hasAssets],
   );
   useEffect(() => {
@@ -61,6 +68,17 @@ export function FileHtmlPreview({
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
   }, [loadAsset]);
+  // CUSTOM(html-preview-keys): replay forwarded shortcuts so the app's listener sees them.
+  useEffect(() => {
+    function receive(event: MessageEvent) {
+      const frame = frameRef.current;
+      if (!frame || event.source !== frame.contentWindow) return;
+      const key = parsePreviewKey(event.data);
+      if (key) replayPreviewKey(frame, key);
+    }
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, []);
   return (
     <iframe
       ref={frameRef}
