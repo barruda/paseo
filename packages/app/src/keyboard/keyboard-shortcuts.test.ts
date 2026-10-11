@@ -336,6 +336,20 @@ describe("keyboard-shortcuts", () => {
       payload: { kind: "active-workspace-cycle" },
     },
     {
+      // CUSTOM(workspace-rename-f2)
+      name: "routes F2 to workspace rename from the message input",
+      event: { key: "F2", code: "F2" },
+      context: { focusScope: "message-input" },
+      action: "workspace.rename",
+    },
+    {
+      // CUSTOM(workspace-rename-f2)
+      name: "routes F2 to workspace rename from the terminal",
+      event: { key: "F2", code: "F2" },
+      context: { focusScope: "terminal" },
+      action: "workspace.rename",
+    },
+    {
       name: "routes space to voice mute toggle outside editable scopes",
       event: { key: " ", code: "Space" },
       context: { focusScope: "other" },
@@ -726,6 +740,8 @@ describe("keyboard-shortcut help sections", () => {
         "open-model-picker": ["ctrl", "M"],
         // CUSTOM(active-workspace-cycle)
         "cycle-active-workspaces": ["shift", "Tab"],
+        // CUSTOM(workspace-rename-f2)
+        "rename-workspace": ["F2"],
       },
     },
     {

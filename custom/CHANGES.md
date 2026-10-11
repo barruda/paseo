@@ -711,3 +711,27 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run src/header-shortcuts/fit.test.ts)` (the update
   script runs it). In the app, the shortcuts sit left of the Commit button; narrowing the window
   drops them from the right end of the list first.
+
+## workspace-rename-f2: F2 renames the active workspace
+
+- **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
+- **Commit:** `custom: F2 renames the active workspace from anywhere`
+- **Why:** Renaming meant the sidebar kebab or the command center.
+- **What:** F2 opens the rename dialog for the active workspace from anywhere: message input,
+  terminal, file views. Only the command center keeps F2 to itself. Holding the key doesn't
+  repeat. Listed under Workspaces in Settings → Shortcuts ("Rename workspace"), where it can be
+  rebound.
+- **Core files touched** (each marked `CUSTOM(workspace-rename-f2)`):
+  - `packages/app/src/keyboard/actions.ts`: `workspace.rename` added to `KeyboardActionId`.
+  - `packages/app/src/keyboard/route-shortcut.ts`: maps it to the dispatcher's existing
+    `workspace.rename` action (scope `workspace`). Test in `route-shortcut.test.ts`.
+  - `packages/app/src/keyboard/keyboard-shortcuts.ts`: the `workspace-rename-f2` binding and its
+    `rename-workspace` help row after `pin-workspace`. Tests in `keyboard-shortcuts.test.ts`.
+- **Re-apply:** Upstream already has the dispatcher action `workspace.rename` (used by the command
+  center) and `WorkspaceRenameHost`, which handles it for the active workspace. Add the action to
+  the shortcut action ids, route it to the dispatcher action, and bind F2 with
+  `repeat: false` and `when: { commandCenter: false }` (no `terminal: false`, so it works in a
+  terminal too).
+- **Verify:** `(cd packages/app && npx vitest run src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts)`
+  (the update script runs it). In the app, press F2 with focus in a message input, then in a
+  terminal: the rename dialog opens for the active workspace.
