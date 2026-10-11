@@ -595,3 +595,46 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   without hover.
 - **Verify:** No unit test; it is layout only. In the app, the row sits under "Workspaces" with
   Ctrl+N showing, and pressing it opens New Workspace for the active workspace's project.
+
+## model-picker-project: Shift+Tab picks the project of a new conversation
+
+- **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
+- **Commit:** `custom: Shift+Tab picker lists the project first in new conversations`
+- **Why:** Starting a conversation from the keyboard meant Shift+Tab for the model, then Ctrl+P
+  or the mouse for the project.
+- **What:** Extends [model-picker](#model-picker-shifttab-picks-the-model-and-effort-from-the-keyboard).
+  - In a composer with no messages yet (the New Workspace screen, or an empty agent tab), the
+    picker's first row is **Project** with the current project's name, highlighted when the picker
+    opens. ↓ moves to the models as before; while Project is highlighted the effort bar shows the
+    current model's effort.
+  - Enter (or a click) on Project lists the projects with a search field, current one first. Enter
+    picks one, Esc goes back to the models.
+  - New Workspace screen: the project changes in place and the picker returns to the models with
+    the current model highlighted, so a second Enter applies the model and effort.
+  - Empty agent tab: the tab belongs to its workspace, so another project opens New Workspace for
+    that project and closes the picker. What you typed stays in the tab's draft.
+  - Running agents keep the picker as it was.
+  - Effort doesn't depend on the Project row: ←/→ (or a click on an effort) while Project is
+    highlighted moves the highlight to the current model, so Enter applies the new effort instead
+    of opening the projects.
+- **Files:** `packages/app/src/model-picker/project.ts` (list, label, pick plan) with
+  `project.test.ts`, and `use-draft-tab-project-source.ts`. New files; no conflict risk. Changes
+  in the model-picker files marked `CUSTOM(model-picker-project)`: the Project row,
+  `resolveModelPickerHighlight`, and `resolveHighlightAfterEffortChange` in `model.ts` (tested in
+  `model.test.ts`), `chooseEffort` in `model-picker.tsx`, the store's `project`,
+  the `project` input of `useModelPickerSource`, and the project mode in `model-picker.tsx`.
+- **Core files touched** (each marked `CUSTOM(model-picker-project)`):
+  - `packages/app/src/composer/agent-controls/index.tsx`: `DraftAgentControlsProps` takes
+    `modelPickerProject` and passes it to `useModelPickerSource`.
+  - `packages/app/src/screens/new-workspace-screen.tsx`: `modelPickerProject` built from the
+    project picker's options, selected id, and `handleSelectProjectOption`, added to
+    `agentControlsWithDisabled`.
+  - `packages/app/src/composer/draft/workspace-tab.tsx`: `useDraftTabProjectSource` added to
+    `composerAgentControls`.
+- **Re-apply:** Give the draft agent controls an optional `modelPickerProject`
+  (`ModelPickerProjectSource`) and hand it to `useModelPickerSource`. On the New Workspace screen,
+  fill it from the project combobox state; in the draft tab, use `useDraftTabProjectSource`.
+- **Verify:** `(cd packages/app && npx vitest run src/model-picker/model.test.ts src/model-picker/project.test.ts)`
+  (the update script runs it). In the app, open New Workspace, press Shift+Tab, Enter, type part of
+  a project name, Enter: the project changes and the picker shows the models. Then press
+  Shift+Tab, →, Enter: the composer's effort changes and the picker closes.

@@ -6,8 +6,10 @@ import {
   moveHighlightedKey,
   planModelPickerApply,
   resolveEffortId,
+  resolveHighlightAfterEffortChange,
   resolveHighlightedKey,
   resolveModelEffort,
+  resolveModelPickerHighlight,
   toggleFavoriteKey,
   type ModelPickerSelection,
 } from "./model";
@@ -180,5 +182,69 @@ describe("planModelPickerApply", () => {
     expect(
       planModelPickerApply({ selection: sel, model: byKey("opencode:gpt"), effortId: "low" }),
     ).toEqual({ kind: "model", provider: "opencode", modelId: "gpt", effortId: "low" });
+  });
+});
+
+describe("project row", () => {
+  it("comes first for a new conversation and leaves the model rows alone", () => {
+    const { rows, items, projectRow } = buildModelPickerRows(selection(), "", [], "paseo");
+    expect(rows[0]).toEqual({ kind: "project", key: "project", label: "paseo" });
+    expect(projectRow).toBe(rows[0]);
+    expect(items.every((item) => item.kind === "model")).toBe(true);
+    expect(moveHighlightedKey("project", [rows[0], ...items], 1)).toBe("current:claude:opus");
+  });
+
+  it("is absent while searching, and for a running agent", () => {
+    expect(buildModelPickerRows(selection(), "son", [], "paseo").projectRow).toBeNull();
+    expect(buildModelPickerRows(selection(), "").projectRow).toBeNull();
+  });
+});
+
+describe("resolveModelPickerHighlight", () => {
+  const built = buildModelPickerRows(selection(), "", [], "paseo");
+  const resolve = (highlightedKey: string | null) =>
+    resolveModelPickerHighlight({ highlightedKey, ...built, query: "" });
+
+  it("starts on the Project row, with the current model's effort", () => {
+    const result = resolve(null);
+    expect(result.resolvedKey).toBe("project");
+    expect(result.highlightedItem).toBeNull();
+    expect(result.effortModel?.key).toBe("claude:opus");
+    expect(result.navigableItems[0]?.key).toBe("project");
+  });
+
+  it("follows a model row once one is highlighted", () => {
+    const result = resolve("claude:sonnet");
+    expect(result.resolvedKey).toBe("claude:sonnet");
+    expect(result.effortModel?.key).toBe("claude:sonnet");
+  });
+});
+
+describe("resolveHighlightAfterEffortChange", () => {
+  const built = buildModelPickerRows(selection(), "", [], "paseo");
+  const after = (highlightedKey: string | null) => {
+    const { resolvedKey, currentItem } = resolveModelPickerHighlight({
+      highlightedKey,
+      ...built,
+      query: "",
+    });
+    return resolveHighlightAfterEffortChange({ resolvedKey, currentItem });
+  };
+
+  it("leaves the Project row for the current model, so Enter applies the effort", () => {
+    const key = after(null);
+    expect(key).toBe("current:claude:opus");
+    const result = resolveModelPickerHighlight({ highlightedKey: key, ...built, query: "" });
+    expect(
+      planModelPickerApply({
+        selection: selection(),
+        model: result.highlightedItem?.model ?? null,
+        effortId: "max",
+      }),
+    ).toEqual({ kind: "effort", effortId: "max" });
+  });
+
+  it("keeps a highlighted model row", () => {
+    expect(after("claude:sonnet")).toBe("claude:sonnet");
   });
 });

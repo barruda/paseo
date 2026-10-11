@@ -11,7 +11,7 @@ import {
   type NativeSyntheticEvent,
   type PressableStateCallbackType,
 } from "react-native";
-import { Check, Star } from "lucide-react-native";
+import { Check, CornerDownLeft, Folder, Star } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { formatThinkingOptionLabel } from "@/agent-controls/labels";
 import type { AgentControlCommandCenterSource } from "@/command-center/agent-control-registration";
@@ -32,17 +32,29 @@ import {
 } from "@/lib/overlay-root";
 import {
   buildModelPickerRows,
+  MODEL_PICKER_PROJECT_KEY,
   moveEffortId,
   moveHighlightedKey,
   planModelPickerApply,
   resolveEffortId,
-  resolveHighlightedKey,
+  resolveHighlightAfterEffortChange,
   resolveModelEffort,
+  resolveModelPickerHighlight,
+  type ModelPickerEffort,
   type ModelPickerModel,
   type ModelPickerModelRow,
+  type ModelPickerProjectRow,
   type ModelPickerRow,
   type ModelPickerSelection,
 } from "./model";
+import {
+  buildProjectPickerItems,
+  currentProjectLabel,
+  planProjectPick,
+  type ModelPickerProjectItem,
+  type ModelPickerProjectOption,
+  type ModelPickerProjectSource,
+} from "./project";
 import { useModelFavoritesStore } from "./favorites-store";
 import { PENDING_EFFORT_TTL_MS, useModelPickerStore } from "./store";
 
@@ -51,6 +63,10 @@ const ThemedTextInput = withUnistyles(TextInput, (theme) => ({
 }));
 const ThemedCheck = withUnistyles(Check, (theme) => ({ color: theme.colors.foreground }));
 const ThemedStar = withUnistyles(Star, (theme) => ({ color: theme.colors.foregroundMuted }));
+const ThemedFolder = withUnistyles(Folder, (theme) => ({ color: theme.colors.foregroundMuted }));
+const ThemedEnter = withUnistyles(CornerDownLeft, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
 const ThemedFavoriteStar = withUnistyles(Star, (theme) => ({
   color: theme.colors.palette.yellow[400],
   fill: theme.colors.palette.yellow[400],
@@ -61,11 +77,34 @@ const SECTION_HEIGHT = 30;
 const MODEL_HEIGHT = 36;
 const KEYBOARD_SHOULD_PERSIST_TAPS = "always" as const;
 
-function rowHeight(row: ModelPickerRow): number {
+// CUSTOM(model-picker-project): the project list (Enter on the Project row) reuses the same list.
+type PickerRow = ModelPickerRow | ModelPickerProjectItem;
+type PickerMode = "models" | "projects";
+
+const MODE_TEXT: Record<PickerMode, { placeholder: string; empty: string }> = {
+  models: { placeholder: "Search models from every provider…", empty: "No matching models" },
+  projects: { placeholder: "Search projects…", empty: "No matching projects" },
+};
+
+function useProjectPickerList(
+  project: ModelPickerProjectSource | null,
+  mode: PickerMode,
+  query: string,
+) {
+  const [highlightKey, setHighlightKey] = useState<string | null>(null);
+  const items = useMemo(
+    () => (project && mode === "projects" ? buildProjectPickerItems(project, query) : []),
+    [mode, project, query],
+  );
+  const resolvedKey = items.find((item) => item.key === highlightKey)?.key ?? items[0]?.key ?? null;
+  return { items, resolvedKey, setHighlightKey };
+}
+
+function rowHeight(row: PickerRow): number {
   return row.kind === "section" ? SECTION_HEIGHT : MODEL_HEIGHT;
 }
 
-function getRowLayout(rows: readonly ModelPickerRow[], index: number) {
+function getRowLayout(rows: readonly PickerRow[], index: number) {
   let offset = 0;
   for (let i = 0; i < index; i += 1) offset += rowHeight(rows[i]);
   return { index, length: rowHeight(rows[index]), offset };
@@ -85,46 +124,108 @@ function toSelection(controls: AgentControlCommandCenterSource): ModelPickerSele
 export function ModelPicker() {
   const controls = useModelPickerStore((state) => state.controls);
   const sourceId = useModelPickerStore((state) => state.sourceId);
+  const project = useModelPickerStore((state) => state.project);
   if (!controls || !sourceId) return null;
-  return <ModelPickerPanel sourceId={sourceId} controls={controls} />;
+  return <ModelPickerPanel sourceId={sourceId} controls={controls} project={project} />;
 }
 
 function ModelPickerPanel({
   sourceId,
   controls,
+  project,
 }: {
   sourceId: string;
   controls: AgentControlCommandCenterSource;
+  project: ModelPickerProjectSource | null;
 }) {
   const close = useModelPickerStore((state) => state.close);
   const setPendingEffort = useModelPickerStore((state) => state.setPendingEffort);
   const modalLayer = useGlobalWebOverlayLayer("modal", isWeb);
   const inputRef = useRef<EditingTextInputHandle>(null);
-  const listRef = useRef<FlatList<ModelPickerRow>>(null);
+  const listRef = useRef<FlatList<PickerRow>>(null);
   const [query, setQueryState] = useState("");
   const [highlightedKey, setHighlightedKey] = useState<string | null>(null);
   const [chosenEffortId, setChosenEffortId] = useState<string | null>(null);
+  const [mode, setMode] = useState<PickerMode>("models");
 
   const favoriteKeys = useModelFavoritesStore((state) => state.favoriteKeys);
   const toggleFavorite = useModelFavoritesStore((state) => state.toggle);
   const selection = useMemo(() => toSelection(controls), [controls]);
-  const { rows, items } = useMemo(
-    () => buildModelPickerRows(selection, query, favoriteKeys),
-    [favoriteKeys, query, selection],
+  const projectLabel = project ? currentProjectLabel(project) : null;
+  const {
+    rows: modelRows,
+    items,
+    projectRow,
+  } = useMemo(
+    () => buildModelPickerRows(selection, query, favoriteKeys, projectLabel),
+    [favoriteKeys, projectLabel, query, selection],
   );
-  const resolvedKey = resolveHighlightedKey(highlightedKey, items, !query.trim());
-  const highlightedItem = items.find((item) => item.key === resolvedKey) ?? null;
+  const { resolvedKey, navigableItems, highlightedItem, currentItem, effortModel } = useMemo(
+    () => resolveModelPickerHighlight({ highlightedKey, items, projectRow, query }),
+    [highlightedKey, items, projectRow, query],
+  );
   const highlighted = highlightedItem?.model ?? null;
   const effort = useMemo(
-    () => resolveModelEffort(selection, highlighted),
-    [highlighted, selection],
+    () => resolveModelEffort(selection, effortModel),
+    [effortModel, selection],
   );
   const effortId = resolveEffortId(effort, chosenEffortId);
+  // CUSTOM(model-picker-project): picking an effort on the Project row targets the current model.
+  const chooseEffort = useCallback(
+    (id: string | null) => {
+      setChosenEffortId(id);
+      setHighlightedKey(resolveHighlightAfterEffortChange({ resolvedKey, currentItem }));
+    },
+    [currentItem, resolvedKey],
+  );
 
-  const setQuery = useCallback((next: string) => {
-    setQueryState(next);
-    setHighlightedKey(null);
-  }, []);
+  const projectList = useProjectPickerList(project, mode, query);
+  const { items: projectItems, resolvedKey: resolvedProjectKey, setHighlightKey } = projectList;
+  const rows: readonly PickerRow[] = mode === "projects" ? projectItems : modelRows;
+
+  // Clearing the input on a mode switch may echo an empty change; it must not move the highlight.
+  const queryRef = useRef("");
+  const setQuery = useCallback(
+    (next: string) => {
+      if (next === queryRef.current) return;
+      queryRef.current = next;
+      setQueryState(next);
+      setHighlightedKey(null);
+      setHighlightKey(null);
+    },
+    [setHighlightKey],
+  );
+
+  const switchMode = useCallback(
+    (next: PickerMode, nextHighlight: string | null) => {
+      queryRef.current = "";
+      inputRef.current?.reset();
+      setQueryState("");
+      setMode(next);
+      setHighlightKey(null);
+      setHighlightedKey(nextHighlight);
+    },
+    [setHighlightKey],
+  );
+  const openProjects = useCallback(() => switchMode("projects", null), [switchMode]);
+  // Back to the models, on the current model so a second Enter applies the model and effort.
+  const backToModels = useCallback(
+    (highlight: string | null) => switchMode("models", highlight),
+    [switchMode],
+  );
+  const pickProject = useCallback(
+    (option: ModelPickerProjectOption) => {
+      if (!project) return;
+      const plan = planProjectPick(project, option.id);
+      if (plan !== "none") project.select(option.id);
+      if (plan === "select-and-close") {
+        close();
+        return;
+      }
+      backToModels(currentItem ? `current:${currentItem.model.key}` : null);
+    },
+    [backToModels, close, currentItem, project],
+  );
 
   const apply = useCallback(
     (model: ModelPickerModel | null, nextEffortId: string | null) => {
@@ -161,8 +262,34 @@ function ModelPickerPanel({
     [toggleFavorite],
   );
 
+  const projectKey = useCallback(
+    (pressed: string, modifier: boolean): boolean => {
+      if (modifier) return false;
+      switch (pressed) {
+        case "Escape":
+          backToModels(MODEL_PICKER_PROJECT_KEY);
+          return true;
+        case "Enter": {
+          const item = projectItems.find((entry) => entry.key === resolvedProjectKey);
+          if (item) pickProject(item.option);
+          return true;
+        }
+        case "ArrowDown":
+        case "ArrowUp":
+          setHighlightKey(
+            moveHighlightedKey(resolvedProjectKey, projectItems, pressed === "ArrowDown" ? 1 : -1),
+          );
+          return true;
+        default:
+          return false;
+      }
+    },
+    [backToModels, pickProject, projectItems, resolvedProjectKey, setHighlightKey],
+  );
+
   const key = useCallback(
     (pressed: string, modifier = false): boolean => {
+      if (mode === "projects") return projectKey(pressed, modifier);
       if (modifier) {
         if (pressed.toLowerCase() !== "d" || !highlightedItem) return false;
         toggleItemFavorite(highlightedItem);
@@ -173,18 +300,22 @@ function ModelPickerPanel({
           close();
           return true;
         case "Enter":
+          if (resolvedKey === MODEL_PICKER_PROJECT_KEY) {
+            openProjects();
+            return true;
+          }
           apply(highlighted, effortId);
           return true;
         case "ArrowDown":
         case "ArrowUp":
           setHighlightedKey(
-            moveHighlightedKey(resolvedKey, items, pressed === "ArrowDown" ? 1 : -1),
+            moveHighlightedKey(resolvedKey, navigableItems, pressed === "ArrowDown" ? 1 : -1),
           );
           return true;
         case "ArrowLeft":
         case "ArrowRight":
           if (effort.options.length < 2) return false;
-          setChosenEffortId(moveEffortId(effort, effortId, pressed === "ArrowRight" ? 1 : -1));
+          chooseEffort(moveEffortId(effort, effortId, pressed === "ArrowRight" ? 1 : -1));
           return true;
         default:
           return false;
@@ -192,12 +323,16 @@ function ModelPickerPanel({
     },
     [
       apply,
+      chooseEffort,
       close,
       effort,
       effortId,
       highlighted,
       highlightedItem,
-      items,
+      mode,
+      navigableItems,
+      openProjects,
+      projectKey,
       resolvedKey,
       toggleItemFavorite,
     ],
@@ -260,7 +395,8 @@ function ModelPickerPanel({
 
   // Scroll only as far as needed to show the highlighted row, like the command center.
   const scrollRef = useRef({ offset: 0, visibleLength: 0 });
-  const highlightedIndex = rows.findIndex((row) => row.key === resolvedKey);
+  const activeKey = mode === "projects" ? resolvedProjectKey : resolvedKey;
+  const highlightedIndex = rows.findIndex((row) => row.key === activeKey);
   const revealHighlighted = useCallback(() => {
     const { offset, visibleLength } = scrollRef.current;
     if (highlightedIndex < 0 || visibleLength <= 0) return;
@@ -292,8 +428,22 @@ function ModelPickerPanel({
   const getProviderIcon = useProviderIcons(controls.serverId);
   const hasQuery = Boolean(query.trim());
   const renderItem = useCallback(
-    ({ item }: ListRenderItemInfo<ModelPickerRow>) =>
-      item.kind === "section" ? (
+    ({ item }: ListRenderItemInfo<PickerRow>) => {
+      if (item.kind === "project") {
+        return (
+          <ProjectRow item={item} highlighted={item.key === resolvedKey} onPress={openProjects} />
+        );
+      }
+      if (item.kind === "project-option") {
+        return (
+          <ProjectOptionRow
+            item={item}
+            highlighted={item.key === resolvedProjectKey}
+            onSelect={pickProject}
+          />
+        );
+      }
+      return item.kind === "section" ? (
         <Text style={styles.sectionLabel} numberOfLines={1}>
           {item.label}
         </Text>
@@ -307,13 +457,25 @@ function ModelPickerPanel({
           onSelect={selectModel}
           onToggleFavorite={toggleItemFavorite}
         />
-      ),
-    [getProviderIcon, hasQuery, resolvedKey, selectModel, toggleItemFavorite],
+      );
+    },
+    [
+      getProviderIcon,
+      hasQuery,
+      openProjects,
+      pickProject,
+      resolvedKey,
+      resolvedProjectKey,
+      selectModel,
+      toggleItemFavorite,
+    ],
   );
-  const emptyList = useMemo(() => <Text style={styles.empty}>No matching models</Text>, []);
+  const emptyList = useMemo(
+    () => <Text style={styles.empty}>{MODE_TEXT[mode].empty}</Text>,
+    [mode],
+  );
   const getItemLayout = useCallback(
-    (_data: ArrayLike<ModelPickerRow> | null | undefined, index: number) =>
-      getRowLayout(rows, index),
+    (_data: ArrayLike<PickerRow> | null | undefined, index: number) => getRowLayout(rows, index),
     [rows],
   );
 
@@ -331,7 +493,7 @@ function ModelPickerPanel({
                 onChangeText={setQuery}
                 onKeyPress={keyPress}
                 onSubmitEditing={submit}
-                placeholder="Search models from every provider…"
+                placeholder={MODE_TEXT[mode].placeholder}
                 style={styles.input}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -352,14 +514,12 @@ function ModelPickerPanel({
               scrollEventThrottle={16}
               ListEmptyComponent={emptyList}
             />
-            <EffortBar
-              options={effort.options}
-              selectedId={effortId}
-              onSelect={setChosenEffortId}
+            <PickerFooter
+              mode={mode}
+              effort={effort}
+              effortId={effortId}
+              onSelectEffort={chooseEffort}
             />
-            <Text style={styles.hint}>
-              ↑↓ model · ←→ effort · Enter select · {FAVORITE_SHORTCUT_LABEL} favorite · Esc close
-            </Text>
           </View>
         </View>
       </Modal>
@@ -437,6 +597,108 @@ const ModelRow = memo(function ModelRow({
   );
 });
 
+function PickerFooter({
+  mode,
+  effort,
+  effortId,
+  onSelectEffort,
+}: {
+  mode: PickerMode;
+  effort: ModelPickerEffort;
+  effortId: string | null;
+  onSelectEffort(id: string): void;
+}) {
+  if (mode === "projects") {
+    return (
+      <Text style={[styles.hint, styles.projectHint]}>↑↓ project · Enter select · Esc back</Text>
+    );
+  }
+  return (
+    <>
+      <EffortBar options={effort.options} selectedId={effortId} onSelect={onSelectEffort} />
+      <Text style={styles.hint}>
+        ↑↓ model · ←→ effort · Enter select · {FAVORITE_SHORTCUT_LABEL} favorite · Esc close
+      </Text>
+    </>
+  );
+}
+
+function ProjectRow({
+  item,
+  highlighted,
+  onPress,
+}: {
+  item: ModelPickerProjectRow;
+  highlighted: boolean;
+  onPress(): void;
+}) {
+  const style = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.row,
+      (highlighted || Boolean(hovered) || pressed) && styles.highlightedRow,
+    ],
+    [highlighted],
+  );
+  return (
+    <Pressable
+      style={style}
+      focusable={false}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Project ${item.label}`}
+      testID="model-picker-project"
+    >
+      <View style={styles.iconSlot}>
+        <ThemedFolder size={16} />
+      </View>
+      <Text style={styles.modelLabel} numberOfLines={1}>
+        Project
+      </Text>
+      <Text style={styles.projectValue} numberOfLines={1}>
+        {item.label}
+      </Text>
+      <View style={styles.checkSlot}>{highlighted ? <ThemedEnter size={14} /> : null}</View>
+    </Pressable>
+  );
+}
+
+const ProjectOptionRow = memo(function ProjectOptionRow({
+  item,
+  highlighted,
+  onSelect,
+}: {
+  item: ModelPickerProjectItem;
+  highlighted: boolean;
+  onSelect(option: ModelPickerProjectOption): void;
+}) {
+  const style = useCallback(
+    ({ hovered, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
+      styles.row,
+      (highlighted || Boolean(hovered) || pressed) && styles.highlightedRow,
+    ],
+    [highlighted],
+  );
+  const press = useCallback(() => onSelect(item.option), [item.option, onSelect]);
+  return (
+    <Pressable
+      style={style}
+      focusable={false}
+      onPress={press}
+      accessibilityRole="button"
+      accessibilityLabel={item.option.label}
+      testID={`model-picker-project-option-${item.option.id}`}
+    >
+      <View style={styles.iconSlot}>
+        <ThemedFolder size={16} />
+      </View>
+      <Text style={styles.modelLabel} numberOfLines={1}>
+        {item.option.label}
+      </Text>
+      <View style={styles.checkSlot}>{item.current ? <ThemedCheck size={14} /> : null}</View>
+    </Pressable>
+  );
+});
+
 function EffortBar({
   options,
   selectedId,
@@ -494,7 +756,7 @@ const EffortChip = memo(function EffortChip({
   );
 });
 
-function keyExtractor(row: ModelPickerRow): string {
+function keyExtractor(row: PickerRow): string {
   return row.key;
 }
 
@@ -559,6 +821,13 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.sm,
   },
   checkSlot: { width: 14, alignItems: "center" },
+  projectValue: {
+    flexShrink: 1,
+    minWidth: 0,
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.base,
+  },
+  projectHint: { paddingTop: theme.spacing[2] },
   starSlot: { width: 14, height: 14, alignItems: "center", justifyContent: "center" },
   empty: {
     paddingHorizontal: theme.spacing[4],

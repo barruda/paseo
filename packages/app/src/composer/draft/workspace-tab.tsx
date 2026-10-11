@@ -48,6 +48,8 @@ import {
 } from "@/workspace-tabs/model";
 import { openWorkspaceChanges } from "@/workspace-tabs/open-supporting-view";
 import { useSettings } from "@/hooks/use-settings";
+// CUSTOM(model-picker-project)
+import { useDraftTabProjectSource } from "@/model-picker/use-draft-tab-project-source";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
@@ -609,13 +611,16 @@ export function WorkspaceDraftAgentTab({
     focusInputRef.current?.();
   }, []);
   const importPillPress = resolveImportPillPress(onOpenImportSheet, isSubmitting);
+  // CUSTOM(model-picker-project): Shift+Tab lists the project first; another project opens New Workspace.
+  const modelPickerProject = useDraftTabProjectSource(serverId, workspaceId);
   const composerAgentControls = useMemo(
     () => ({
       ...composerState.agentControls,
       onDropdownClose: handleDropdownCloseFocus,
       disabled: isSubmitting,
+      modelPickerProject,
     }),
-    [composerState.agentControls, handleDropdownCloseFocus, isSubmitting],
+    [composerState.agentControls, handleDropdownCloseFocus, isSubmitting, modelPickerProject],
   );
   const dockContent = (
     <View style={styles.contentContainer}>

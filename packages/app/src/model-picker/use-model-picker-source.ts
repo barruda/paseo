@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from "react";
 import type { AgentControlCommandCenterSource } from "@/command-center/agent-control-registration";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
+import type { ModelPickerProjectSource } from "./project";
 import { useModelPickerStore } from "./store";
 
 const MODEL_PICKER_ACTIONS = ["message-input.model-picker"] as const;
@@ -15,15 +16,19 @@ export function useModelPickerSource(input: {
   sourceId: string;
   enabled: boolean;
   controls: AgentControlCommandCenterSource;
+  project?: ModelPickerProjectSource | null;
 }): void {
   const { sourceId, enabled, controls } = input;
+  const project = input.project ?? null;
   const controlsRef = useRef(controls);
   controlsRef.current = controls;
+  const projectRef = useRef(project);
+  projectRef.current = project;
 
   const handle = useCallback(
     (action: KeyboardActionDefinition) => {
       if (action.id !== "message-input.model-picker") return false;
-      useModelPickerStore.getState().open(sourceId, controlsRef.current);
+      useModelPickerStore.getState().open(sourceId, controlsRef.current, projectRef.current);
       return true;
     },
     [sourceId],
@@ -38,8 +43,8 @@ export function useModelPickerSource(input: {
 
   const isOpenHere = useModelPickerStore((state) => state.sourceId === sourceId);
   useEffect(() => {
-    if (isOpenHere) useModelPickerStore.getState().update(sourceId, controls);
-  }, [controls, isOpenHere, sourceId]);
+    if (isOpenHere) useModelPickerStore.getState().update(sourceId, controls, project);
+  }, [controls, isOpenHere, project, sourceId]);
 
   const pending = useModelPickerStore((state) =>
     state.pendingEffort?.sourceId === sourceId ? state.pendingEffort : null,
