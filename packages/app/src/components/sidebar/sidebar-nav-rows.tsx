@@ -4,6 +4,8 @@ import { memo, useCallback, useMemo, useRef, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { View, type StyleProp, type ViewStyle } from "react-native";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
+// CUSTOM(sidebar-new-workspace-in-list)
+import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { PluginSidebarItem } from "@/plugins/sidebar-items";
 import { canCreateWorktreeForProjectKind } from "@/projects/host-projects";
@@ -39,7 +41,15 @@ interface SidebarNavRowsProps extends SidebarNavRowProps {
  */
 export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps) {
   const { items } = useSidebarNavItems("header");
-  const visibleItems = useMemo(() => items.filter((item) => item.visible), [items]);
+  // CUSTOM(sidebar-new-workspace-in-list): New workspace renders in the Workspaces area instead,
+  // through SidebarWorkspacesNewWorkspaceRow.
+  const visibleItems = useMemo(
+    () =>
+      items.filter(
+        (item) => item.visible && !(item.kind === "builtin" && item.id === "new-workspace"),
+      ),
+    [items],
+  );
   const groupRef = useRef<View | null>(null);
 
   if (visibleItems.length === 0) return null;
@@ -65,9 +75,23 @@ export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps)
   );
 }
 
+/**
+ * CUSTOM(sidebar-new-workspace-in-list): the New workspace row, placed under the Workspaces title.
+ * Hiding it in Settings → Sidebar still hides it here.
+ */
+export function SidebarWorkspacesNewWorkspaceRow({ onBeforeNavigate }: SidebarNavRowProps) {
+  const { items } = useSidebarNavItems("header");
+  const visible = items.some(
+    (item) => item.kind === "builtin" && item.id === "new-workspace" && item.visible,
+  );
+  if (!visible) return null;
+  return <SidebarNewWorkspaceRow onBeforeNavigate={onBeforeNavigate} variant="inline" />;
+}
+
 const SidebarNewWorkspaceRow = memo(function SidebarNewWorkspaceRow({
   onBeforeNavigate,
-}: SidebarNavRowProps) {
+  variant = "compact",
+}: SidebarNavRowProps & { variant?: "compact" | "inline" }) {
   const { t } = useTranslation();
   const shortcutKeys = useShortcutKeys(builtinSidebarNavShortcutAction("new-workspace"));
   const activeWorkspaceSelection = useActiveWorkspaceSelection();
@@ -100,14 +124,20 @@ const SidebarNewWorkspaceRow = memo(function SidebarNewWorkspaceRow({
     );
   }, [activeWorkspace, activeWorkspaceServerId, canUseActiveWorkspaceContext, onBeforeNavigate]);
 
+  // CUSTOM(sidebar-new-workspace-in-list): the shortcut shows all the time, not only on hover.
+  const shortcutBadge = useMemo(
+    () => (shortcutKeys ? <Shortcut chord={shortcutKeys} /> : undefined),
+    [shortcutKeys],
+  );
+
   return (
     <SidebarHeaderRow
       icon={Plus}
       label={t(builtinSidebarNavLabelKey("new-workspace"))}
       onPress={handlePress}
       testID="sidebar-global-new-workspace"
-      variant="compact"
-      shortcutKeys={shortcutKeys}
+      variant={variant}
+      trailing={shortcutBadge}
     />
   );
 });

@@ -570,3 +570,28 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run src/components/sidebar/done-task-archive.test.ts)`
   (the update script runs it). In the app, hover a workspace labeled `task:done`: the archive icon
   sits under the three dots and archives the workspace.
+
+## sidebar-new-workspace-in-list: New workspace sits in the Workspaces area
+
+- **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
+- **Commit:** `custom: New workspace row under the Workspaces title`
+- **Why:** The New workspace row sat in the top block with History and Search, away from the list
+  it adds to. Its shortcut only showed on hover.
+- **What:** The row moved from the top block to right under the "Workspaces" title, above the
+  projects. Its shortcut (Ctrl+N by default) always shows on the right. Hiding "New workspace" in
+  Settings → Sidebar still hides it; its position in that list no longer does anything. Like the
+  title, the row is absent when the sidebar has no projects at all.
+- **Core files touched** (each marked `CUSTOM(sidebar-new-workspace-in-list)`):
+  - `packages/app/src/components/sidebar/sidebar-nav-rows.tsx`: `SidebarNavRows` skips the
+    `new-workspace` item; new `SidebarWorkspacesNewWorkspaceRow`; `SidebarNewWorkspaceRow` takes a
+    `variant` and passes the shortcut as `trailing`.
+  - `packages/app/src/components/left-sidebar.tsx`: `WorkspacesSectionHeader` renders the old
+    header (now `WorkspacesSectionTitleRow`) and the row; the mobile sidebar builds its header
+    element with `closeSidebar`.
+- **Re-apply:** Filter the `new-workspace` builtin out of the header nav rows. Render the New
+  workspace row (variant `inline`, so the list's padding is the only inset) inside the element the
+  sidebar passes as the workspace list's `listHeaderComponent`, under the title, only when that nav
+  item is visible. Pass `<Shortcut chord={shortcutKeys} />` as the row's `trailing` so it shows
+  without hover.
+- **Verify:** No unit test; it is layout only. In the app, the row sits under "Workspaces" with
+  Ctrl+N showing, and pressing it opens New Workspace for the active workspace's project.
