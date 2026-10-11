@@ -58,6 +58,12 @@ import { SIDEBAR_ROW_ITEMS, type SidebarRowItem } from "./row-items";
 import { useWorkspaceLabelProjection } from "@/workspace-labels";
 import { WorkspaceLabelDot } from "@/workspace-labels/swatch";
 import { WorkspaceLabelManagerModal } from "@/workspace-labels/manager-modal";
+// CUSTOM(sidebar-workspace-limit): Show Recent and the per-project workspace limit.
+import {
+  SIDEBAR_WORKSPACE_LIMIT_PAGE_ID,
+  SidebarWorkspaceLimitPage,
+  SidebarWorkspaceLimitRootItems,
+} from "@/sidebar-workspace-limit/menu";
 
 const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
@@ -238,6 +244,12 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
           />
         ),
       },
+      // CUSTOM(sidebar-workspace-limit)
+      {
+        id: SIDEBAR_WORKSPACE_LIMIT_PAGE_ID,
+        title: "Per project",
+        content: <SidebarWorkspaceLimitPage />,
+      },
     ];
 
     if (showHostFilter) {
@@ -325,6 +337,8 @@ export function SidebarDisplayPreferencesMenu(): ReactElement {
           <MenuSubTrigger id="show" testID="sidebar-display-show">
             {t("sidebar.display.show.label")}
           </MenuSubTrigger>
+          {/* CUSTOM(sidebar-workspace-limit) */}
+          <SidebarWorkspaceLimitRootItems />
           {showHostFilter ? (
             <>
               <MenuSeparator />

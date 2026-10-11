@@ -100,6 +100,8 @@ import {
   RecentWorkspaceProjectIcon,
   useRecentWorkspaceProjectIcons,
 } from "@/recent-workspaces/trailing";
+// CUSTOM(sidebar-workspace-limit)
+import { useLimitedProjectWorkspaces } from "@/sidebar-workspace-limit/use-project-workspaces";
 import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
 import { useLimitedSidebarGroup } from "@/components/sidebar/use-limited-sidebar-group";
 import {
@@ -1610,12 +1612,20 @@ function ProjectBlock({
   supportsPinningByServerId: ReadonlyMap<string, boolean>;
   onToggleWorkspacePin: ToggleSidebarWorkspacePin;
 }) {
-  const {
-    visibleItems: visibleWorkspaces,
-    expanded: workspacesExpanded,
-    canToggle: canToggleWorkspaces,
-    toggleExpanded: toggleWorkspacesExpanded,
-  } = useLimitedSidebarGroup(project.workspaces);
+  // CUSTOM(sidebar-workspace-limit): the per-project count and age limit trims the rows; its
+  // Show more replaces the 20-row one, and shows every row.
+  const limit = useLimitedProjectWorkspaces({
+    viewKey: project.viewKey,
+    workspaces: project.workspaces,
+  });
+  const limitedGroup = useLimitedSidebarGroup(limit.workspaces);
+  const visibleWorkspaces =
+    limit.limited && limit.expanded ? limit.workspaces : limitedGroup.visibleItems;
+  const workspacesExpanded = limit.limited ? limit.expanded : limitedGroup.expanded;
+  const canToggleWorkspaces = limit.limited || limitedGroup.canToggle;
+  const toggleWorkspacesExpanded = limit.limited
+    ? limit.toggleExpanded
+    : limitedGroup.toggleExpanded;
   const rowModel = useMemo(
     () =>
       buildSidebarProjectRowModel({
@@ -1789,6 +1799,7 @@ function ProjectBlock({
             <SidebarGroupToggleRow
               expanded={workspacesExpanded}
               onPress={toggleWorkspacesExpanded}
+              hiddenCount={limit.limited ? limit.hiddenCount : undefined}
               testID={`sidebar-project-show-more-${project.viewKey}`}
             />
           ) : null}

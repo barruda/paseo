@@ -780,3 +780,52 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   the recent set (the update script runs it). In the app, send a prompt in two workspaces: both
   appear under "Recent" (below New workspace, Shift+Tab chip on the right) with their project icons on the right, Ctrl+1 still goes to
   the first workspace under the projects, and Shift+Tab alternates between the two.
+
+## sidebar-workspace-limit: each project shows its few newest workspaces
+
+- **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
+- **Commit:** `custom: sidebar shows each project's newest workspaces`
+- **Why:** Projects with many old workspaces push everything else out of the sidebar. The Recent
+  section can also be noise, so it gets an off switch.
+- **What:**
+  - In project mode, a project shows a workspace only if it is younger than X hours (default 12)
+    and among the project's N most recent (default 3). Both rules apply: five workspaces from the
+    last 12 hours still show three. Age is the row's timestamp (`statusEnteredAt`). Pinned
+    workspaces and the open workspace are never hidden and don't count toward N; a workspace
+    with no timestamp is never hidden for its age.
+  - A trimmed project ends with "> Show N more" (N is how many it hides) / "Show less", which
+    shows every row (it replaces upstream's
+    20-row Show more there). Expanded projects reset on restart.
+  - Ctrl+1..9 number only the rows the sidebar shows.
+  - Display preferences gains "Show Recent" (toggles the
+    [Recent](#recent-workspaces-recent-workspaces-section-in-the-sidebar) section) and "Per
+    project", a page with the count (3, 5, 10, All) and the age (6h, 12h, 24h, 3d, Any age).
+    Stored in app storage (`custom-sidebar-workspace-limit`), not synced settings.
+  - Status grouping mode is not limited.
+- **Files:** `packages/app/src/sidebar-workspace-limit/` (`model.ts` the rule, `store.ts` the
+  preferences, `use-sidebar-workspace-limit.ts` the live result with a minute tick, `context.ts`,
+  `use-project-workspaces.ts` the per-project rows and toggle, `menu.tsx` the menu rows and page).
+  New files; no conflict risk.
+- **Core files touched** (each marked `CUSTOM(sidebar-workspace-limit)`):
+  - `packages/app/src/components/sidebar/sidebar-model.tsx`: runs `useSidebarWorkspaceLimit`,
+    passes `hiddenWorkspaceKeys` to the projection, and provides `SidebarWorkspaceLimitContext`.
+  - `packages/app/src/components/sidebar/sidebar-projection.ts`: optional `hiddenWorkspaceKeys`
+    input; project-mode shortcut sections skip those workspaces.
+  - `packages/app/src/components/sidebar-workspace-list.tsx`: `ProjectBlock` feeds its rows
+    through `useLimitedProjectWorkspaces` before `useLimitedSidebarGroup`, and its Show more row
+    uses the limit's toggle when the limit trims the project.
+  - `packages/app/src/components/sidebar/sidebar-group-toggle-row.tsx`: optional `hiddenCount`;
+    set, the collapsed row shows a right chevron and "Show N more".
+  - `packages/app/src/components/sidebar/display-preferences/menu.tsx`: the "Per project" page and
+    `<SidebarWorkspaceLimitRootItems />` after the Show row.
+  - `packages/app/src/recent-workspaces/section.tsx` (a custom file): returns null when Show
+    Recent is off.
+- **Re-apply:** In the sidebar model provider, compute the hidden keys from the filtered projects
+  and entries (project mode only), filter project-mode shortcut sections by them, and provide the
+  result through `SidebarWorkspaceLimitContext`. In the project block, filter `project.workspaces`
+  by the hidden keys before the 20-row limiter and swap its toggle for the limit's when the
+  project is limited. Add the menu rows and page.
+- **Verify:** `(cd packages/app && npx vitest run src/sidebar-workspace-limit/model.test.ts)` (the
+  update script runs it). In the app, a project with many workspaces shows its three newest from
+  the last 12 hours plus Show more; Ctrl+1..9 badges are consecutive; changing "Per project" or
+  turning off "Show Recent" updates the sidebar at once.

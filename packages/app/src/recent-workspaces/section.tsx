@@ -9,15 +9,33 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
 import type { SidebarWorkspacePlacement } from "@/hooks/use-sidebar-workspaces-list";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
+import { useSidebarWorkspaceLimitStore } from "@/sidebar-workspace-limit/store";
 import { density, densityFontSize } from "@/styles/density";
 import { RecentWorkspaceTrailingContext } from "./trailing";
 
 /**
  * The workspaces Shift+Tab cycles through (activity in the last 45 minutes), under New workspace.
  * Rows are the list's own workspace rows, without Ctrl+1..9 numbers and with the project icon on
- * the right. Absent when nothing is recent.
+ * the right. Absent when nothing is recent or when "Show Recent" is off in display preferences.
  */
 export function RecentWorkspacesSection({
+  projectIconByProjectViewKey,
+  renderRow,
+}: {
+  projectIconByProjectViewKey: ReadonlyMap<string, string | null>;
+  renderRow: (workspace: SidebarWorkspacePlacement) => ReactNode;
+}) {
+  const showRecent = useSidebarWorkspaceLimitStore((state) => state.showRecent);
+  if (!showRecent) return null;
+  return (
+    <RecentWorkspacesSectionBody
+      projectIconByProjectViewKey={projectIconByProjectViewKey}
+      renderRow={renderRow}
+    />
+  );
+}
+
+function RecentWorkspacesSectionBody({
   projectIconByProjectViewKey,
   renderRow,
 }: {
