@@ -168,6 +168,8 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "workspace-prev",
     "workspace-next",
     "pin-workspace",
+    // CUSTOM(workspace-rename-f2)
+    "rename-workspace",
     "archive-workspace",
   ],
   "tabs-panes": [
@@ -393,6 +395,21 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "pin-workspace",
       section: "workspaces",
       label: "Pin chat",
+    },
+  },
+
+  // CUSTOM(workspace-rename-f2): F2 renames the active workspace from anywhere, terminal
+  // included. WorkspaceRenameHost already handles `workspace.rename` globally.
+  {
+    id: "workspace-rename-f2",
+    action: "workspace.rename",
+    combo: "F2",
+    repeat: false,
+    when: { commandCenter: false },
+    help: {
+      id: "rename-workspace",
+      section: "workspaces",
+      label: "Rename workspace",
     },
   },
 

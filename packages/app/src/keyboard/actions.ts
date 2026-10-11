@@ -59,6 +59,8 @@ export type KeyboardActionId =
   | "worktree.new"
   | "workspace.archive"
   | "workspace.pin"
+  // CUSTOM(workspace-rename-f2)
+  | "workspace.rename"
   | "view.toggle.focus"
   | "theme.cycle"
   | "message-input.action";
