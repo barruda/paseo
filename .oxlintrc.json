@@ -3,7 +3,11 @@
   "options": {
     "typeAware": false
   },
-  "ignorePatterns": [".dev/**"],
+  "ignorePatterns": [
+    ".dev/**",
+    "custom/plugins/beautiful-chat/**",
+    "!custom/plugins/beautiful-chat/client/expand-memory*.ts"
+  ],
   "plugins": ["react", "react-perf", "unicorn", "typescript", "oxc", "import", "promise"],
   "categories": {
     "correctness": "error",
