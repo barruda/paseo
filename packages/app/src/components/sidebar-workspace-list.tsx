@@ -94,6 +94,12 @@ import {
 } from "@/components/sidebar/sidebar-workspace-menu";
 import { useLongPressDragInteraction } from "@/components/sidebar/use-long-press-drag-interaction";
 import { PinnedSectionHeader } from "@/components/sidebar/pinned-section-header";
+// CUSTOM(recent-workspaces): the Recent section and its project-icon trailing slot.
+import { RecentWorkspacesSection } from "@/recent-workspaces/section";
+import {
+  RecentWorkspaceProjectIcon,
+  useRecentWorkspaceProjectIcons,
+} from "@/recent-workspaces/trailing";
 import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
 import { useLimitedSidebarGroup } from "@/components/sidebar/use-limited-sidebar-group";
 import {
@@ -642,13 +648,7 @@ function WorkspaceRowRightGroup({
   const { t } = useTranslation();
   const trailing = useSidebarWorkspaceTrailing();
   const showShortcut = showShortcutBadge && shortcutNumber !== null;
-  const {
-    trailingPresentation,
-    showKebab: showKebabInSlot,
-    showScrim,
-    renderSlot,
-    reserveSlotWidth,
-  } = resolveTrailingActionVisibility({
+  const visibility = resolveTrailingActionVisibility({
     workspace,
     trailing,
     hasArchiveAction: Boolean(onArchive),
@@ -656,6 +656,15 @@ function WorkspaceRowRightGroup({
     isTouchPlatform,
     showShortcut,
   });
+  // CUSTOM(recent-workspaces): rows in Recent always have the project icon to show.
+  const recentProjectIcons = useRecentWorkspaceProjectIcons();
+  const { showKebab: showKebabInSlot, showScrim } = visibility;
+  let { trailingPresentation, renderSlot, reserveSlotWidth } = visibility;
+  if (recentProjectIcons) {
+    trailingPresentation = onArchive && isTouchPlatform ? "absent" : "visible";
+    renderSlot = true;
+    reserveSlotWidth = true;
+  }
   const kebab = useOpenKebabMenuVisibility(showKebabInSlot);
 
   return (
@@ -666,7 +675,15 @@ function WorkspaceRowRightGroup({
       {renderSlot ? (
         <SidebarWorkspaceTrailingActionSlot reserveWidth={reserveSlotWidth}>
           <SidebarWorkspaceTrailingActionBase presentation={trailingPresentation}>
-            <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
+            {recentProjectIcons ? (
+              <RecentWorkspaceProjectIcon
+                workspace={workspace}
+                iconDataUri={recentProjectIcons.get(workspace.projectViewKey) ?? null}
+                backdrop={backdrop}
+              />
+            ) : (
+              <SidebarWorkspaceTrailingContent workspace={workspace} trailing={trailing} />
+            )}
           </SidebarWorkspaceTrailingActionBase>
           <SidebarWorkspaceTrailingActionOverlay
             visible={kebab.showKebab}
@@ -1311,8 +1328,11 @@ function WorkspaceRowWithMenu({
     });
   }, [markUnread, toast]);
 
+  // CUSTOM(recent-workspaces): the same workspace can also have a row in Recent; the
+  // dispatcher keys handlers by id, so that row needs its own.
+  const isRecentRow = useRecentWorkspaceProjectIcons() !== null;
   useKeyboardActionHandler({
-    handlerId: `workspace-archive-${workspace.workspaceKey}`,
+    handlerId: `workspace-archive-${isRecentRow ? "recent-" : ""}${workspace.workspaceKey}`,
     actions: ["workspace.archive"],
     enabled: selected && !isArchiving,
     priority: 0,
@@ -1954,6 +1974,45 @@ export function SidebarWorkspaceList({
   // reach the display menu to reveal their work again.
   const sidebarFilterEmpty = hasProjectsBeforeFilter && projects.length === 0;
 
+  // CUSTOM(recent-workspaces): its rows are left out of Ctrl+1..9 (no shortcut number).
+  const activeWorkspaceSelection = useActiveWorkspaceSelection();
+  const recentSelectionEnabled = Boolean(pathname && parseHostWorkspaceRouteFromPathname(pathname));
+  const renderRecentRow = useCallback(
+    (workspace: SidebarWorkspacePlacement) => (
+      <MemoWorkspaceRowItem
+        workspace={workspace}
+        workspaceEntry={workspaceEntriesByKey.get(workspace.workspaceKey) ?? null}
+        hostBadge={hostBadgeByServerId.get(workspace.serverId) ?? null}
+        shortcutNumber={null}
+        showShortcutBadge={false}
+        canCopyBranchName={workspace.projectKind === "git"}
+        canPin={supportsPinningByServerId.get(workspace.serverId) === true}
+        onToggleWorkspacePin={onToggleWorkspacePin}
+        selectionEnabled={recentSelectionEnabled}
+        activeWorkspaceSelection={activeWorkspaceSelection}
+        onWorkspacePress={onWorkspacePress}
+      />
+    ),
+    [
+      activeWorkspaceSelection,
+      hostBadgeByServerId,
+      onToggleWorkspacePin,
+      onWorkspacePress,
+      recentSelectionEnabled,
+      supportsPinningByServerId,
+      workspaceEntriesByKey,
+    ],
+  );
+  const recentSection = useMemo(
+    () => (
+      <RecentWorkspacesSection
+        projectIconByProjectViewKey={projectIconByProjectViewKey}
+        renderRow={renderRecentRow}
+      />
+    ),
+    [projectIconByProjectViewKey, renderRecentRow],
+  );
+
   // Project mode is the one that keeps its project headers; every other grouping mode is a flat
   // list of grouped rows, so a new mode lands in the grouped branch rather than silently in this
   // one's `else`.
@@ -1971,6 +2030,7 @@ export function SidebarWorkspaceList({
         onToggleWorkspacePin={onToggleWorkspacePin}
         onPinnedWorkspaceReorder={handlePinnedWorkspaceReorder}
         listHeaderComponent={listHeaderComponent}
+        recentSection={recentSection}
         sidebarFilterEmpty={sidebarFilterEmpty}
         parentGestureRef={parentGestureRef}
         dragGestureHostActive={dragGestureHostActive}
@@ -1999,6 +2059,7 @@ export function SidebarWorkspaceList({
         supportsPinningByServerId={supportsPinningByServerId}
         onToggleWorkspacePin={onToggleWorkspacePin}
         onPinnedWorkspaceReorder={handlePinnedWorkspaceReorder}
+        recentSection={recentSection}
       />
     );
 
@@ -2023,10 +2084,12 @@ function SidebarGroupedModeList({
   onToggleWorkspacePin,
   onPinnedWorkspaceReorder,
   listHeaderComponent,
+  recentSection,
   sidebarFilterEmpty,
   parentGestureRef,
   dragGestureHostActive,
 }: {
+  recentSection: ReactElement | null;
   workspaceGroups: SidebarWorkspaceGroup[];
   pinnedGroups: PinnedSidebarGroups;
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
@@ -2065,6 +2128,7 @@ function SidebarGroupedModeList({
       onToggleWorkspacePin={onToggleWorkspacePin}
       onPinnedWorkspaceReorder={onPinnedWorkspaceReorder}
       listHeaderComponent={listHeaderComponent}
+      leadingSection={recentSection}
       sidebarFilterEmpty={sidebarFilterEmpty}
       parentGestureRef={parentGestureRef}
       dragGestureHostActive={dragGestureHostActive}
@@ -2095,6 +2159,7 @@ function ProjectModeList({
   supportsPinningByServerId,
   onToggleWorkspacePin,
   onPinnedWorkspaceReorder,
+  recentSection,
 }: Omit<
   SidebarWorkspaceListProps,
   | "workspaceGroups"
@@ -2113,6 +2178,7 @@ function ProjectModeList({
   supportsPinningByServerId: ReadonlyMap<string, boolean>;
   onToggleWorkspacePin: ToggleSidebarWorkspacePin;
   onPinnedWorkspaceReorder: (workspaces: SidebarWorkspacePlacement[]) => void;
+  recentSection: ReactElement | null;
 }) {
   const hasActiveHostFilter = useSidebarViewStore((state) => state.hostFilters.length > 0);
   const [creatingWorkspaceIds, setCreatingWorkspaceIds] = useState<Set<string>>(() => new Set());
@@ -2453,6 +2519,8 @@ function ProjectModeList({
       sidebarFilterEmpty
         ? listHeaderComponent
         : null}
+      {/* CUSTOM(recent-workspaces): inside the Workspaces area, under New workspace. */}
+      {recentSection}
       {sidebarFilterEmpty ? <SidebarFilterEmptyState /> : projectBody}
       {listFooterComponent}
     </>

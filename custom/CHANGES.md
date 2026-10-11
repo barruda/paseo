@@ -735,3 +735,46 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts)`
   (the update script runs it). In the app, press F2 with focus in a message input, then in a
   terminal: the rename dialog opens for the active workspace.
+
+## recent-workspaces: Recent workspaces section in the sidebar
+
+- **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
+- **Commit:** `custom: Recent workspaces section in the sidebar`
+- **Why:** See at a glance which workspaces Shift+Tab cycles through, and click into them without
+  hunting through the projects.
+- **What:**
+  - A collapsible "Recent" section inside the Workspaces area, right under New workspace (below
+    Pinned). Its header shows the Shift+Tab shortcut on the right, lined up with New workspace's
+    Ctrl+N. It lists the same workspaces, in the same order, as
+    [active-workspace-cycle](#active-workspace-cycle-shifttab-cycles-recently-active-workspaces):
+    activity in the last 45 minutes, or an agent running. Absent when none qualify. Rechecks
+    every 30 seconds so stale workspaces drop out.
+  - Rows are the project-mode workspace rows (status on the left, menu, context menu), with the
+    project's icon on the right where other rows show the time or the diff.
+  - The rows stay in their projects too. Ctrl+1..9 skip the section: its rows have no number and
+    the numbering is unchanged.
+  - Works in project mode and in the status/label grouping modes. Collapsing is not remembered
+    across restarts.
+- **Files:** `packages/app/src/recent-workspaces/` (`section.tsx` the section and header,
+  `trailing.tsx` the context that swaps the trailing slot for the project icon), and
+  `packages/app/src/active-workspace-cycle/use-recently-active-workspaces.ts` (the sidebar order,
+  shared with the Shift+Tab handler, and the live recent set). New files; no conflict risk.
+- **Core files touched** (each marked `CUSTOM(recent-workspaces)`):
+  - `packages/app/src/components/sidebar-workspace-list.tsx`: `SidebarWorkspaceList` builds the
+    section with `MemoWorkspaceRowItem` rows (`shortcutNumber={null}`) and passes it to
+    `ProjectModeList` (rendered right after `listHeaderComponent`) and `SidebarGroupedModeList`.
+    `WorkspaceRowRightGroup` shows `RecentWorkspaceProjectIcon` in the trailing slot inside the
+    section. `WorkspaceRowWithMenu` gives a section row its own archive handler id, since the
+    dispatcher keys handlers by id and the same workspace also has a row in its project.
+  - `packages/app/src/components/sidebar/sidebar-status-list.tsx`: `leadingSection` prop, rendered
+    right after `listHeaderComponent`.
+- **Re-apply:** Render `<RecentWorkspacesSection renderRow={...} projectIconByProjectViewKey={...}>`
+  right after each list mode's `listHeaderComponent` (the Workspaces title and New workspace), with `renderRow` returning the project-mode
+  workspace row with no shortcut number. In the row's trailing slot, when
+  `useRecentWorkspaceProjectIcons()` is non-null, always render the slot and show
+  `RecentWorkspaceProjectIcon` instead of the time/diff. Suffix the row's archive keyboard handler
+  id inside the section.
+- **Verify:** `(cd packages/app && npx vitest run src/active-workspace-cycle/model.test.ts)` covers
+  the recent set (the update script runs it). In the app, send a prompt in two workspaces: both
+  appear under "Recent" (below New workspace, Shift+Tab chip on the right) with their project icons on the right, Ctrl+1 still goes to
+  the first workspace under the projects, and Shift+Tab alternates between the two.
