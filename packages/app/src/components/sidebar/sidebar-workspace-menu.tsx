@@ -1,6 +1,6 @@
 import { useMemo, type ComponentProps, type PropsWithChildren, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { type PressableStateCallbackType } from "react-native";
+import { Pressable, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
   Archive,
@@ -39,6 +39,8 @@ import {
   workspaceServiceLabelKey,
   type WorkspaceServiceSummary,
 } from "@/components/sidebar/workspace-meta-row";
+// CUSTOM(done-task-archive)
+import { isDoneTaskWorkspace } from "@/components/sidebar/done-task-archive";
 import {
   useWorkspaceLabelMenuPages,
   WORKSPACE_LABEL_PAGE_ID,
@@ -249,7 +251,49 @@ function SidebarWorkspaceMenuItems({
   );
 }
 
-export function SidebarWorkspaceMenu({
+// CUSTOM(done-task-archive): a finished Workboard task gets a one-click archive under the kebab,
+// so clearing done tasks from the sidebar skips the menu. Upstream's menu is renamed and wrapped
+// so its body stays untouched.
+export function SidebarWorkspaceMenu(props: SidebarWorkspaceMenuProps) {
+  const { t } = useTranslation();
+  const { onArchive, archiveStatus, archiveLabel, workspaceKey } = props;
+  const showDoneArchive = Boolean(onArchive) && isDoneTaskWorkspace(props.workspaceLabels);
+  return (
+    <>
+      <UpstreamSidebarWorkspaceMenu {...props} />
+      {showDoneArchive ? (
+        <Pressable
+          hitSlop={4}
+          style={archiveButtonStyle}
+          disabled={archiveStatus === "pending"}
+          onPress={onArchive}
+          accessibilityRole="button"
+          accessibilityLabel={archiveLabel ?? t("sidebar.workspace.actions.archive")}
+          testID={`sidebar-workspace-done-archive-${workspaceKey}`}
+        >
+          {renderArchiveIcon}
+        </Pressable>
+      ) : null}
+    </>
+  );
+}
+
+function renderArchiveIcon({ hovered }: { hovered?: boolean }) {
+  return (
+    <ThemedArchive
+      size={13}
+      uniProps={hovered ? foregroundColorMapping : foregroundMutedColorMapping}
+    />
+  );
+}
+
+function archiveButtonStyle({
+  hovered = false,
+}: PressableStateCallbackType & { hovered?: boolean }) {
+  return [styles.archiveButton, hovered && styles.triggerHovered];
+}
+
+function UpstreamSidebarWorkspaceMenu({
   workspaceKey,
   serverId,
   workspaceId,
@@ -445,6 +489,20 @@ const styles = StyleSheet.create((theme) => ({
     // MoreVertical paints only around the center of its SVG. Keep the padded hit box, but
     // pull the painted dots through that unused view-box space onto the trailing-content rail.
     marginRight: -7,
+  },
+  // CUSTOM(done-task-archive): a bigger box than the kebab's, because hitSlop does nothing on web
+  // and a 17px target was easy to slip off. The negative margins keep it centered under the dots
+  // (the kebab's center sits 2px left of the rail) and keep its laid-out width at the kebab's 13px,
+  // so the overlay doesn't widen and shift the kebab when the button appears.
+  archiveButton: {
+    width: 26,
+    height: 26,
+    alignSelf: "flex-end",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 4,
+    marginLeft: -2,
+    marginRight: -11,
   },
   triggerHovered: {
     backgroundColor: theme.colors.surface2,
