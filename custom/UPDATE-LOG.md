@@ -26,3 +26,31 @@ Written by update-paseo-source-and-apply-customization.sh. Newest last.
   - `2cc1bb6e3` wip
   - `ecfadb6b1` custom: Copy full file path in the file tab menu
   - `101b7110f` custom: app shortcuts work while an HTML preview has focus
+
+## 2026-10-11 01:08
+
+- Upstream: `ee0d901ef` → `7f9b65d46` (origin/main, v0.11.1)
+- Upstream commits pulled: 4
+- Backup tag: `custom-backup/20261011-010856`
+- Customizations replayed:
+  - `1b0acc580` custom: PASEO_DESKTOP_NAME for side-by-side Linux desktop installs
+  - `c9268777d` custom: run shell commands from the chat with !<command>
+  - `e804a7409` custom: update script, workflow guide, and customization history
+  - `8e0e5dcdc` custom: install builds side by side so the running daemon keeps its files
+  - `2022279f0` custom: back up the custom branch to the fork after each update
+  - `1e6944e22` custom: clone upstream over the personal SSH alias in restore steps
+  - `2b2c797d0` custom: paseo-customizations agent skill and new-machine setup guide
+  - `c97899b36` custom: let the file explorer open files outside the workspace
+  - `675291b01` custom: open folder links from chat in the Files sidebar
+  - `abee12377` custom: workspace task list with /next and auto-next
+  - `1ffd926a0` custom: Ctrl+J toggles a bottom panel
+  - `8e5762ee2` custom: HTML preview loads images from the file's folder
+  - `3e1b77486` custom: keep the auto-updater off in installed builds
+  - `177e28af4` custom: Warp terminal tabs
+  - `46a1ffab8` custom: image strip beside the chat
+  - `faeda7dbd` wip
+  - `76415c678` custom: Copy full file path in the file tab menu
+  - `d06573015` custom: app shortcuts work while an HTML preview has focus
+  - `3fe41c595` custom: record the plugins installed on each daemon
+  - `6ff2289dc` custom: beautiful-chat cards remember open or closed per kind
+  - `f8c5b9877` custom: Workboard opens as a tab and takes pasted images
