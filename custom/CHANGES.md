@@ -456,3 +456,45 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run --project browser src/file-pane/html-preview-keys.browser.test.ts)`
   (the update script runs it). In the app, open an `.html` file, click inside the preview, and press
   your next-tab shortcut.
+
+## beautiful-chat: chat cards remember open or closed per kind
+
+- **Added:** 2026-10-10 (based on upstream 0.11.2; plugin vendored from
+  [ABorakati/beautiful-chat](https://github.com/ABorakati/beautiful-chat) `42b61d8`)
+- **Commit:** `custom: beautiful-chat cards remember open or closed per kind`
+- **Why:** Upstream beautiful-chat decides a card's open state once, when it mounts: tool calls open
+  while running, thinking opens while streaming. In a live chat every card mounts while running, so
+  every shell, edit, and thinking card stayed open. Its settings have no option for it.
+- **What:** Each kind of card (the tool name, such as `bash`, `edit`, `read`, or `thinking` for both
+  reasoning and thinking tool calls) starts the way you last left a card of that kind. Every kind
+  starts closed until you toggle one. The choice is saved in the app's `localStorage`, so each
+  Paseo window profile (personal, Telus) keeps its own. Cards already on screen don't change when you
+  toggle another; the next card that mounts uses the new state. Failed tools no longer force open.
+- **What (messages):** The "enhanced user bubble" and "assistant markdown" preferences default to off
+  (`CUSTOM(beautiful-chat-native-messages)` in `client/preferences.ts`), so Paseo draws user and
+  assistant messages itself. Only Paseo's own bubbles carry the rewind menu on user messages and the
+  fork menu on assistant replies, and the plugin SDK exposes neither. Both can be turned back on in
+  Settings → Chat presentation, at the cost of those menus. A choice saved there wins over the
+  default.
+- **Files:** `custom/plugins/beautiful-chat/`, a copy of upstream without `docs/`, `images/`, and
+  `.showcase/`. The change is `client/expand-memory.ts` (new, marked
+  `CUSTOM(beautiful-chat-collapse)`), `client/expand-memory.test.ts`, and the open-state lines in
+  `client/components/tool-callouts.tsx`, `client/components/reasoning-trace.tsx`, and
+  `client/live-renderers.tsx`. Upstream's own code fails this repo's lint and format rules and is
+  left as upstream wrote it.
+- **Core files touched:** `.oxlintrc.json` and `.oxfmtrc.json`: `ignorePatterns` skip
+  `custom/plugins/beautiful-chat/**` except `client/expand-memory*.ts`, so the pre-commit hook
+  passes on the vendored code and still checks ours. JSON has no comments, so no `CUSTOM(` marker.
+  On conflict, re-add the two patterns to whatever list upstream has.
+- **Re-apply:** To take a newer upstream, copy its files over the plugin folder (keep
+  `expand-memory.ts` and its test), then redo the three edits: in `ToolCallout` replace
+  `useState(defaultExpanded)` with `useRememberedExpanded(data.tool)` and toggle with the returned
+  function; in `ReasoningTrace` do the same with `useRememberedExpanded("thinking")`; in
+  `live-renderers.tsx` stop passing `defaultExpanded` to both. Set `enhancedUserBubble` and
+  `assistantMarkdown` to `false` in `DEFAULT_PREFERENCES`. Then
+  `plugin reload beautiful-chat` on each daemon (the daemon reruns `npm ci` from
+  `paseo-plugin.json`).
+- **Setup:** One-time plugin install per daemon. See [README.md](README.md#one-time-setup-plugins).
+  Remove the registry copy first: `paseo plugin remove beautiful-chat --home <home>`.
+- **Verify:** `npx vitest run custom/plugins/beautiful-chat` (the update script runs it). In the app,
+  close a thinking card, then send a prompt: new thinking cards in any chat start closed.
