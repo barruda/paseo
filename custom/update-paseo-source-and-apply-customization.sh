@@ -265,6 +265,7 @@ if $VERIFY; then
   step "Running customization tests"
   npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
   (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts --bail=1)
+  (cd custom/plugins/workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts --bail=1)
   (cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/file-pane/html-preview-assets.test.ts --bail=1)

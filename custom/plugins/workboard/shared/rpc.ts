@@ -1,0 +1,113 @@
+import { defineRpc } from "@getpaseo/plugin";
+import { z } from "zod";
+import {
+  boardSchema,
+  groupOrderSchema,
+  groupsSchema,
+  groupSchema,
+  settingsSchema,
+  stageSchema,
+  startSchema,
+} from "./model";
+
+export const snapshotRpc = defineRpc({
+  name: "workboard.snapshot",
+  input: z.object({}),
+  output: boardSchema,
+});
+export const CANCEL_BINDING_BUSY_ERROR_CODE = "cancel-binding-busy";
+export const mutationSchema = z.discriminatedUnion("action", [
+  z.object({
+    action: z.literal("create"),
+    title: z.string().trim().min(1).max(1000),
+    description: z.string().max(50000).default(""),
+    projectId: z.string().nullable().default(null),
+    stage: stageSchema.optional(),
+  }),
+  z.object({
+    action: z.literal("edit"),
+    taskId: z.string(),
+    updatedAt: z.string(),
+    title: z.string().trim().min(1).max(1000),
+    description: z.string().max(50000),
+    projectId: z.string().nullable(),
+  }),
+  z.object({ action: z.literal("start"), ...startSchema.shape }),
+  z.object({
+    action: z.literal("stage"),
+    taskId: z.string(),
+    stage: stageSchema,
+    expectedLabels: z.array(z.string()),
+    expectedUpdatedAt: z.string().optional(),
+    expectedGroup: groupSchema
+      .pick({ id: true, kind: true, label: true })
+      .optional(),
+  }),
+  z.object({
+    action: z.literal("reorder-cards"),
+    taskId: z.string(),
+    stage: stageSchema,
+    expectedOrder: z.array(z.string()),
+    cardOrder: z.array(z.string()),
+  }),
+  z.object({
+    action: z.literal("reset-card-order"),
+    stage: stageSchema,
+    expectedOrder: z.array(z.string()),
+  }),
+  z.object({ action: z.literal("archive-draft"), taskId: z.string() }),
+  z.object({
+    action: z.literal("detach-draft"),
+    taskId: z.string(),
+    draftId: z.string(),
+    updatedAt: z.string(),
+  }),
+  z.object({
+    action: z.literal("cancel-binding"),
+    taskId: z.string(),
+    operationId: z.string(),
+  }),
+  z.object({
+    action: z.literal("resolve-archive"),
+    taskId: z.string(),
+    operationId: z.string(),
+    updatedAt: z.string(),
+    outcome: z.enum(["confirm", "restore"]),
+  }),
+  z.object({
+    action: z.literal("reorder-groups"),
+    expectedGroupOrder: groupOrderSchema,
+    groupOrder: groupOrderSchema,
+  }),
+  z.object({
+    action: z.literal("settings"),
+    revision: z.number(),
+    expectedSettings: settingsSchema
+      .extend({ groups: groupsSchema })
+      .strict()
+      .optional(),
+    settings: settingsSchema.extend({ groups: groupsSchema }).strict(),
+  }),
+]);
+export type Mutation = z.infer<typeof mutationSchema>;
+export const mutateRpc = defineRpc({
+  name: "workboard.mutate",
+  input: mutationSchema,
+  output: boardSchema,
+});
+
+// CUSTOM(workboard-images): save a pasted image on the daemon host, and read one back to show it.
+export const saveImageRpc = defineRpc({
+  name: "workboard.image.save",
+  input: z.object({
+    mimeType: z.string(),
+    // Base64 of at most IMAGE_MAX_BYTES (10 MiB) is just under 14M characters.
+    base64: z.string().min(1).max(14_000_000),
+  }),
+  output: z.object({ path: z.string() }),
+});
+export const readImageRpc = defineRpc({
+  name: "workboard.image.read",
+  input: z.object({ path: z.string() }),
+  output: z.object({ dataUri: z.string() }),
+});
