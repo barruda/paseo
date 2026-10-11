@@ -683,3 +683,33 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run src/active-workspace-cycle/model.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts)`
   (the update script runs it). In the app, send prompts in two workspaces, then press Shift+Tab in a
   message input a few times: it alternates between them.
+
+## header-shortcuts: everyday shortcuts in the workspace header
+
+- **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
+- **Commit:** `custom: everyday shortcuts in the workspace header`
+- **Why:** The customized shortcuts (Ctrl+M, Shift+Tab) and the common ones are easy to forget,
+  and Settings → Shortcuts is a long list.
+- **What:**
+  - A row of key badges with a label of two words at most, in the workspace header, 30 px left of
+    the header buttons (editor, Commit, Explorer toggle): New workspace, Model, Next active, New
+    tab, Search, Bottom panel. Edit the list in `HEADER_SHORTCUTS` in `strip.tsx`.
+  - Each badge shows the current binding, overrides included. A shortcut with no binding is left
+    out.
+  - When the header is narrow, shortcuts drop from the end of the list, keeping 380 px for the
+    title. Item widths are estimated from their text, not measured.
+  - Desktop layout only.
+- **Files:** `packages/app/src/header-shortcuts/` (`strip.tsx` the list and row, `fit.ts` how many
+  fit, `layout.tsx` the width measuring, `fit.test.ts`). New files; no conflict risk.
+- **Core files touched** (marked `CUSTOM(header-shortcuts)`):
+  `packages/app/src/screens/workspace/workspace-screen.tsx`: the `headerRight` `View` became
+  `HeaderShortcutsRightRow` (which renders the strip, then the buttons in a `View` with the same
+  style), `HeaderShortcutsLeftProbe` is the first child of the header's `left`, and
+  `persistenceKey` joins both memo dependency lists.
+- **Re-apply:** Wrap the workspace header's right-side buttons in `HeaderShortcutsRightRow` with
+  the workspace's persistence key, and put `HeaderShortcutsLeftProbe` with the same key inside the
+  header's left side, which must still flex to fill the leftover width. The strip needs the left
+  and right widths to add up to the header width.
+- **Verify:** `(cd packages/app && npx vitest run src/header-shortcuts/fit.test.ts)` (the update
+  script runs it). In the app, the shortcuts sit left of the Commit button; narrowing the window
+  drops them from the right end of the list first.

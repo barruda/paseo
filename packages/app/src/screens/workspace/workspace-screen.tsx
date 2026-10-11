@@ -204,6 +204,8 @@ import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import { isAbsolutePath } from "@/utils/path";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 import { useHasPullRequest, usePullRequestAutoAdd } from "@/panels/pull-request";
+// CUSTOM(header-shortcuts)
+import { HeaderShortcutsRightRow, useHeaderShortcutsRowLayout } from "@/header-shortcuts/layout";
 
 const WORKSPACE_FLOATING_PANEL_PORTAL_HOST_PREFIX = "workspace-floating-panels";
 const EMPTY_UI_TABS: WorkspaceTab[] = [];
@@ -3202,9 +3204,12 @@ function WorkspaceScreenContent({
     workspaceKey: persistenceKey,
   });
 
+  // CUSTOM(header-shortcuts): the row's width is the header width the shortcut strip fits into.
+  const onHeaderRowLayout = useHeaderShortcutsRowLayout(persistenceKey);
   const headerRight = useMemo(
     () => (
-      <View style={styles.headerRight}>
+      // CUSTOM(header-shortcuts): the shortcut strip, then these buttons, both measured.
+      <HeaderShortcutsRightRow layoutKey={persistenceKey} style={styles.headerRight}>
         <PluginHeaderButtons serverId={normalizedServerId} workspaceId={normalizedWorkspaceId} />
         {workspaceDescriptor && workspaceDescriptor.scripts.length > 0 ? (
           <WorkspaceScriptsButton
@@ -3240,9 +3245,10 @@ function WorkspaceScreenContent({
             />
           </>
         ) : null}
-      </View>
+      </HeaderShortcutsRightRow>
     ),
     [
+      persistenceKey,
       workspaceDescriptor,
       normalizedServerId,
       normalizedWorkspaceId,
@@ -3318,6 +3324,7 @@ function WorkspaceScreenContent({
     () =>
       showScreenHeader ? (
         <ScreenHeader
+          onRowLayout={onHeaderRowLayout}
           left={
             <>
               <SidebarMenuToggle />
@@ -3350,6 +3357,7 @@ function WorkspaceScreenContent({
       headerRight,
       isWorkspaceHeaderLoading,
       normalizedServerId,
+      onHeaderRowLayout,
       openImportSheet,
       showScreenHeader,
       showWorkspaceSetup,
