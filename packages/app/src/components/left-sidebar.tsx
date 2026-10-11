@@ -33,7 +33,11 @@ import {
 import { HostPicker } from "@/components/hosts/host-picker";
 import { SidebarDisplayPreferencesMenu } from "@/components/sidebar/display-preferences/menu";
 import { SidebarSeparator } from "@/components/sidebar/sidebar-separator";
-import { SidebarNavRows } from "@/components/sidebar/sidebar-nav-rows";
+import {
+  SidebarNavRows,
+  // CUSTOM(sidebar-new-workspace-in-list)
+  SidebarWorkspacesNewWorkspaceRow,
+} from "@/components/sidebar/sidebar-nav-rows";
 import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { SidebarResizeHandle } from "@/components/sidebar-resize-handle";
 import { DensityIcon } from "@/components/ui/density-icon";
@@ -567,6 +571,12 @@ function MobileSidebar({
     closeSidebar();
   }, [closeSidebar]);
 
+  // CUSTOM(sidebar-new-workspace-in-list)
+  const mobileWorkspacesSectionHeaderElement = useMemo(
+    () => <WorkspacesSectionHeader onBeforeNavigate={closeSidebar} />,
+    [closeSidebar],
+  );
+
   const mobileSidebarInsetStyle = useMemo(
     () => ({
       paddingTop: insetsTop,
@@ -631,7 +641,7 @@ function MobileSidebar({
             onImportSession={handleImportSession}
             parentGestureRef={closeGestureRef}
             dragGestureHostActive={active}
-            listHeaderComponent={workspacesSectionHeaderElement}
+            listHeaderComponent={mobileWorkspacesSectionHeaderElement}
           />
         )}
 
@@ -830,7 +840,17 @@ function DesktopSidebar({
   );
 }
 
-function WorkspacesSectionHeader() {
+// CUSTOM(sidebar-new-workspace-in-list): the header carries the New workspace row under its title.
+function WorkspacesSectionHeader({ onBeforeNavigate }: { onBeforeNavigate?: () => void }) {
+  return (
+    <View>
+      <WorkspacesSectionTitleRow />
+      <SidebarWorkspacesNewWorkspaceRow onBeforeNavigate={onBeforeNavigate} />
+    </View>
+  );
+}
+
+function WorkspacesSectionTitleRow() {
   return (
     <View style={styles.workspacesSectionHeader}>
       <Text style={styles.workspacesSectionTitle}>Workspaces</Text>
@@ -851,7 +871,8 @@ function WorkspacesSectionHeader() {
 }
 
 // Stable element so the sidebar list's listHeaderComponent prop keeps identity across
-// renders (WorkspacesSectionHeader takes no props).
+// renders. CUSTOM(sidebar-new-workspace-in-list): the mobile sidebar builds its own element
+// with closeSidebar.
 const workspacesSectionHeaderElement = <WorkspacesSectionHeader />;
 
 // Static styles for Animated.Views — must NOT use Unistyles dynamic theme to
