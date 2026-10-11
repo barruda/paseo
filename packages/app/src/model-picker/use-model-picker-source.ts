@@ -8,7 +8,7 @@ import { useModelPickerStore } from "./store";
 const MODEL_PICKER_ACTIONS = ["message-input.model-picker"] as const;
 
 /**
- * Connects one composer's model and effort controls to the model picker: Shift+Tab in the active
+ * Connects one composer's model and effort controls to the model picker: Ctrl+M in the active
  * composer opens the picker on it, the picker sees its controls live while open, and an effort
  * chosen together with a new model is applied once the composer has switched to that model.
  */

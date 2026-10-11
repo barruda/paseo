@@ -16,7 +16,9 @@ export type MessageInputKeyboardActionKind =
   | "voice-mute-toggle"
   | "mode-cycle"
   // CUSTOM(model-picker)
-  | "model-picker";
+  | "model-picker"
+  // CUSTOM(active-workspace-cycle)
+  | "active-workspace-cycle";
 
 export type KeyboardActionId =
   | "agent.interrupt"

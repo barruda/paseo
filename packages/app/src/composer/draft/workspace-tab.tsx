@@ -611,7 +611,7 @@ export function WorkspaceDraftAgentTab({
     focusInputRef.current?.();
   }, []);
   const importPillPress = resolveImportPillPress(onOpenImportSheet, isSubmitting);
-  // CUSTOM(model-picker-project): Shift+Tab lists the project first; another project opens New Workspace.
+  // CUSTOM(model-picker-project): Ctrl+M lists the project first; another project opens New Workspace.
   const modelPickerProject = useDraftTabProjectSource(serverId, workspaceId);
   const composerAgentControls = useMemo(
     () => ({

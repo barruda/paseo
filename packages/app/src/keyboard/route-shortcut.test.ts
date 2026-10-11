@@ -307,6 +307,8 @@ describe("routeKeyboardShortcut — message-input.action", () => {
     ["mode-cycle", "message-input.mode-cycle"],
     // CUSTOM(model-picker)
     ["model-picker", "message-input.model-picker"],
+    // CUSTOM(active-workspace-cycle)
+    ["active-workspace-cycle", "message-input.active-workspace-cycle"],
   ] as const)("kind=%s → dispatch %s", (kind, id) => {
     expect(
       routeKeyboardShortcut({ action: "message-input.action", payload: { kind } }, makeCtx()),

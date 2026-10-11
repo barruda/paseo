@@ -120,7 +120,7 @@ function toSelection(controls: AgentControlCommandCenterSource): ModelPickerSele
   };
 }
 
-/** Shift+Tab in a composer: pick a model from any provider, and its effort, from the keyboard. */
+/** Ctrl+M in a composer: pick a model from any provider, and its effort, from the keyboard. */
 export function ModelPicker() {
   const controls = useModelPickerStore((state) => state.controls);
   const sourceId = useModelPickerStore((state) => state.sourceId);

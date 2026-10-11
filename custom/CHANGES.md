@@ -345,15 +345,17 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   update script runs it). In the app, ask an agent to reply with a few `![x](path.png)` images,
   then hover and click the thumbnails on the right.
 
-## model-picker: Shift+Tab picks the model and effort from the keyboard
+## model-picker: Ctrl+M picks the model and effort from the keyboard
 
 - **Added:** 2026-10-08 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
 - **Commit:** `custom: Shift+Tab model and effort picker`
 - **Why:** Changing model or effort meant reaching for the composer's dropdowns, or opening the
   command center and typing "model". The model dropdown also searches one provider at a time.
 - **What:**
-  - Shift+Tab in an agent's message input (or a new-agent draft) opens a centered picker shaped like
-    the command center.
+  - Ctrl+M (on every platform, since Cmd+M minimizes on macOS) in an agent's message input (or a
+    new-agent draft) opens a centered picker shaped like the
+    command center. A chip with the shortcut sits at the end of the composer controls (desktop
+    layout), after the model, effort, and mode controls.
   - With an empty search, the list is: **Current** (the composer's model), **Favorites** (in the
     order you added them), then every model under its provider. Typing searches the models of every
     provider in one ranked list, favorites first.
@@ -369,8 +371,10 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     reports the new model (given up after 15 s).
   - A running agent lists only its own provider's models: upstream can't move a running agent to
     another provider. Drafts list every enabled provider.
-  - Shift+Tab used to cycle the agent mode. That shortcut is now unbound; assign it a key in
-    Settings → Shortcuts ("Cycle agent mode") to get it back.
+  - Shift+Tab used to cycle the agent mode. It now cycles recently active workspaces
+    ([active-workspace-cycle](#active-workspace-cycle-shifttab-cycles-recently-active-workspaces)),
+    and mode cycling is unbound; assign it a key in Settings → Shortcuts ("Cycle agent mode") to
+    get it back.
 - **Files:** `packages/app/src/model-picker/` (`model.ts` list/effort/favorite logic with
   `model.test.ts`, `store.ts`, `favorites-store.ts`, `use-model-picker-source.ts`,
   `model-picker.tsx`). New files; no conflict risk.
@@ -378,7 +382,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   - `packages/app/src/keyboard/actions.ts`, `keyboard-action-dispatcher.ts`, `route-shortcut.ts`:
     the `model-picker` message-input kind and its `message-input.model-picker` action.
   - `packages/app/src/keyboard/keyboard-shortcuts.ts`: the mode-cycle binding's combo is `""`, a new
-    `message-input-model-picker-shift-tab` binding, and its help row in the agent-input order.
+    `message-input-model-picker-ctrl-m` binding, and its help row in the agent-input order.
     Tests in `keyboard-shortcuts.test.ts` and `route-shortcut.test.ts`.
   - `packages/app/src/provider-selection/provider-selection.ts`: model rows carry
     `thinkingOptions` and `defaultThinkingOptionId`.
@@ -389,7 +393,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     model to the provider's default.
   - `packages/app/src/app/_layout.tsx`: `<ModelPicker />` next to `<CommandCenter />`.
 - **Re-apply:** Add a message-input keyboard kind that dispatches `message-input.model-picker`,
-  bind Shift+Tab to it in the message-input focus scope, and set the mode-cycle binding's combo to
+  bind Ctrl+M to it in the message-input focus scope, and set the mode-cycle binding's combo to
   `""` (keep its id so saved overrides survive). Copy each model's thinking options onto the
   provider selector rows. Call `useModelPickerSource` from the running agent's command-center
   registration (same source id, enabled flag, and controls) and from the draft agent controls (an
@@ -397,7 +401,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   Mount `<ModelPicker />` in the root layout.
 - **Verify:** `(cd packages/app && npx vitest run src/model-picker/model.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts)`
   (the update script runs it). In the app, focus a message input (New Workspace screen and a running
-  agent), press Shift+Tab, type part of a model name, press → and Enter, and check the composer's
+  agent), press Ctrl+M, type part of a model name, press → and Enter, and check the composer's
   model and effort controls.
 
 ## copy-full-file-path: "Copy full file path" in the file tab menu
@@ -596,13 +600,13 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** No unit test; it is layout only. In the app, the row sits under "Workspaces" with
   Ctrl+N showing, and pressing it opens New Workspace for the active workspace's project.
 
-## model-picker-project: Shift+Tab picks the project of a new conversation
+## model-picker-project: Ctrl+M picks the project of a new conversation
 
 - **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
 - **Commit:** `custom: Shift+Tab picker lists the project first in new conversations`
-- **Why:** Starting a conversation from the keyboard meant Shift+Tab for the model, then Ctrl+P
+- **Why:** Starting a conversation from the keyboard meant Ctrl+M for the model, then Ctrl+P
   or the mouse for the project.
-- **What:** Extends [model-picker](#model-picker-shifttab-picks-the-model-and-effort-from-the-keyboard).
+- **What:** Extends [model-picker](#model-picker-ctrlm-picks-the-model-and-effort-from-the-keyboard).
   - In a composer with no messages yet (the New Workspace screen, or an empty agent tab), the
     picker's first row is **Project** with the current project's name, highlighted when the picker
     opens. ↓ moves to the models as before; while Project is highlighted the effort bar shows the
@@ -635,6 +639,47 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   (`ModelPickerProjectSource`) and hand it to `useModelPickerSource`. On the New Workspace screen,
   fill it from the project combobox state; in the draft tab, use `useDraftTabProjectSource`.
 - **Verify:** `(cd packages/app && npx vitest run src/model-picker/model.test.ts src/model-picker/project.test.ts)`
-  (the update script runs it). In the app, open New Workspace, press Shift+Tab, Enter, type part of
-  a project name, Enter: the project changes and the picker shows the models. Then press
-  Shift+Tab, →, Enter: the composer's effort changes and the picker closes.
+  (the update script runs it). In the app, open New Workspace, press Ctrl+M, Enter, type part of
+  a project name, Enter: the project changes and the picker shows the models. Then press Ctrl+M,
+  →, Enter: the composer's effort changes and the picker closes.
+
+## active-workspace-cycle: Shift+Tab cycles recently active workspaces
+
+- **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
+- **Commit:** `custom: Shift+Tab cycles workspaces active in the last 45 minutes`
+- **Why:** Hopping between the few workspaces with agents at work. Ctrl+1..9 number the whole
+  sidebar, and numbering by activity instead (tried and dropped the same day) moved the numbers
+  around too much.
+- **What:**
+  - Shift+Tab in a message input goes to the next workspace, in sidebar order, that had activity in
+    the last 45 minutes, wrapping at the end. From a workspace that isn't in that set, it goes to
+    the first one. When no other workspace had activity in that window, a toast says so.
+  - Activity is the newest `lastActivityAt` of any of the workspace's agents (subagents count,
+    archived ones don't). A workspace whose agent is running counts too, so a long quiet tool call
+    doesn't drop it.
+  - Sidebar order is what the sidebar shows: pinned chats, then each project's workspaces (or the
+    status groups in status mode), collapsed projects included, filtered-out workspaces excluded.
+  - After switching, the new workspace's message input gets focus, so pressing again keeps cycling.
+  - Only in a message input, like the old Shift+Tab. Holding the keys doesn't repeat. Rebindable in
+    Settings → Shortcuts ("Next workspace active in the last 45 minutes").
+- **Files:** `packages/app/src/active-workspace-cycle/` (`model.ts` the set and the next target,
+  `cycle-handler.tsx` the action handler, `model.test.ts`). New files; no conflict risk.
+- **Core files touched** (each marked `CUSTOM(active-workspace-cycle)`):
+  - `packages/app/src/keyboard/actions.ts`, `keyboard-action-dispatcher.ts`, `route-shortcut.ts`:
+    the `active-workspace-cycle` message-input kind and its `message-input.active-workspace-cycle`
+    action. Tests in `route-shortcut.test.ts`.
+  - `packages/app/src/keyboard/keyboard-shortcuts.ts`: the
+    `message-input-active-workspace-cycle-shift-tab` binding and its help row in the agent-input
+    order. Tests in `keyboard-shortcuts.test.ts`.
+  - `packages/app/src/composer/agent-controls/index.tsx`: `ModelPickerShortcutChip`
+    (`model-picker/shortcut-chip.tsx`) at the end of `ControlledAgentControls` when not compact,
+    marked `CUSTOM(model-picker)`.
+  - `packages/app/src/app/_layout.tsx`: `<ActiveWorkspaceCycleHandler>` next to
+    `<WorkspaceShortcutTargetsSubscriber>`, inside the `SidebarModelProvider`.
+- **Re-apply:** Add a message-input keyboard kind that dispatches
+  `message-input.active-workspace-cycle` and bind Shift+Tab to it in the message-input focus scope
+  with `repeat: false`. Mount the handler wherever the sidebar model is available; it reads the
+  order from `useSidebarModel()` and the activity from `useSessionStore.getState()` at key press.
+- **Verify:** `(cd packages/app && npx vitest run src/active-workspace-cycle/model.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts)`
+  (the update script runs it). In the app, send prompts in two workspaces, then press Shift+Tab in a
+  message input a few times: it alternates between them.
