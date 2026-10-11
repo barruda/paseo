@@ -273,6 +273,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/screens/workspace/workspace-tab-menu.test.ts --bail=1)
   (cd packages/app && npx vitest run src/components/sidebar/done-task-archive.test.ts --bail=1)
   (cd packages/app && npx vitest run src/active-workspace-cycle/model.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/sidebar-workspace-limit/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/header-shortcuts/fit.test.ts --bail=1)
   (cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts src/file-pane/html-preview-keys.browser.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts --bail=1)

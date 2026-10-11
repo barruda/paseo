@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
-import { ChevronDown, ChevronUp } from "lucide-react-native";
+import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { isWeb } from "@/constants/platform";
 import { sidebarWorkspaceRowStyles } from "@/components/sidebar/sidebar-workspace-row-content";
@@ -22,17 +22,22 @@ export function SidebarGroupToggleRow({
   expanded,
   onPress,
   indented = false,
+  hiddenCount,
   testID,
 }: {
   expanded: boolean;
   onPress: () => void;
   indented?: boolean;
+  /** CUSTOM(sidebar-workspace-limit): set, the collapsed row reads "> Show N more". */
+  hiddenCount?: number;
   testID: string;
 }) {
   const { t } = useTranslation();
-  const label = t(
+  let label = t(
     expanded ? "sidebar.workspace.actions.showLess" : "sidebar.workspace.actions.showMore",
   );
+  if (!expanded && hiddenCount !== undefined) label = `Show ${hiddenCount} more`;
+  const collapsedIcon = hiddenCount === undefined ? ChevronDown : ChevronRight;
   const rowStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [
       styles.row,
@@ -55,7 +60,7 @@ export function SidebarGroupToggleRow({
         <>
           <View style={styles.iconSlot}>
             <DensityIcon
-              icon={expanded ? ChevronUp : ChevronDown}
+              icon={expanded ? ChevronUp : collapsedIcon}
               size="sm"
               color={hovered || pressed ? "foreground" : "foregroundMuted"}
             />

@@ -24,6 +24,9 @@ import {
   hasAuthoritativeWorkspaceLabelCatalog,
   useWorkspaceLabelProjection,
 } from "@/workspace-labels";
+// CUSTOM(sidebar-workspace-limit)
+import { useSidebarWorkspaceLimit } from "@/sidebar-workspace-limit/use-sidebar-workspace-limit";
+import { SidebarWorkspaceLimitContext } from "@/sidebar-workspace-limit/context";
 
 interface SidebarModel extends SidebarWorkspacesListResult {
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
@@ -148,6 +151,13 @@ export function SidebarModelProvider({
     visibleWorkspaceKeys,
   ]);
   const pinnedKeys = usePinnedSidebarKeys(filteredProjects);
+  // CUSTOM(sidebar-workspace-limit)
+  const workspaceLimit = useSidebarWorkspaceLimit({
+    enabled: groupMode === "project",
+    projects: filteredProjects,
+    entriesByKey: filteredWorkspaceEntriesByKey,
+    pinnedWorkspaceKeys: pinnedKeys.pinnedWorkspaceKeys,
+  });
   const projectionInput = useMemo(
     () => ({
       projects: filteredProjects,
@@ -159,9 +169,11 @@ export function SidebarModelProvider({
       pinnedCollapsed,
       collapsedProjectKeys,
       collapsedWorkspaceGroupKeys,
+      hiddenWorkspaceKeys: workspaceLimit.hiddenWorkspaceKeys,
       t,
     }),
     [
+      workspaceLimit,
       collapsedProjectKeys,
       collapsedWorkspaceGroupKeys,
       groupMode,
@@ -203,7 +215,14 @@ export function SidebarModelProvider({
     ],
   );
 
-  return <SidebarModelContext.Provider value={value}>{children}</SidebarModelContext.Provider>;
+  return (
+    <SidebarModelContext.Provider value={value}>
+      {/* CUSTOM(sidebar-workspace-limit) */}
+      <SidebarWorkspaceLimitContext.Provider value={workspaceLimit}>
+        {children}
+      </SidebarWorkspaceLimitContext.Provider>
+    </SidebarModelContext.Provider>
+  );
 }
 
 export function useSidebarModel(): SidebarModel {

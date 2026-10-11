@@ -46,6 +46,8 @@ export interface SidebarProjectionInput {
   pinnedCollapsed: boolean;
   collapsedProjectKeys: ReadonlySet<string>;
   collapsedWorkspaceGroupKeys: ReadonlySet<string>;
+  /** CUSTOM(sidebar-workspace-limit): project-mode rows the per-project limit leaves out. */
+  hiddenWorkspaceKeys?: ReadonlySet<string>;
   t: TFunction;
 }
 
@@ -71,7 +73,12 @@ export function buildSidebarProjection(input: SidebarProjectionInput): SidebarPr
   if (input.groupMode === "project") {
     sections.push(
       ...pinnedGroups.unpinnedProjects.map((project) => ({
-        workspaces: project.workspaces,
+        // CUSTOM(sidebar-workspace-limit): Ctrl+1..9 walk only the rows the sidebar shows.
+        workspaces: input.hiddenWorkspaceKeys?.size
+          ? project.workspaces.filter(
+              (workspace) => !input.hiddenWorkspaceKeys?.has(workspace.workspaceKey),
+            )
+          : project.workspaces,
         collapsed: input.collapsedProjectKeys.has(project.viewKey),
       })),
     );
