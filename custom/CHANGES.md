@@ -827,3 +827,36 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   update script runs it). In the app, a project with many workspaces shows its three newest from
   the last 12 hours plus Show more; Ctrl+1..9 badges are consecutive; changing "Per project" or
   turning off "Show Recent" updates the sidebar at once.
+
+## new-workspace-terminal: Ctrl+J on the New Workspace screen
+
+- **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
+- **Commit:** `custom: Ctrl+J opens a project terminal on the New Workspace screen`
+- **Why:** [bottom-panel](#bottom-panel-ctrlj-toggles-a-bottom-panel) only works inside a
+  workspace. On New Workspace you sometimes want a shell in the project first (pull, check a
+  branch) without creating anything.
+- **What:**
+  - Ctrl+J (Cmd+J on macOS) on the New Workspace screen shows a panel under the form with a
+    terminal in the selected project's folder and focuses it. Ctrl+J again hides it and returns
+    the keyboard to the composer. Each visit to the screen starts with the panel hidden.
+  - The daemon only runs a terminal inside a workspace, so the panel borrows the most recently
+    active workspace whose folder is the project's folder (its main checkout). The terminal is
+    a normal terminal of that workspace and shows up as a tab there too.
+  - One terminal per folder, reused across visits while the daemon runs it (the memory is in
+    the app, so it resets on restart). Typing `exit` hides the panel; the next Ctrl+J starts a
+    new terminal. Changing the project shows that project's terminal.
+  - No workspace in the folder (a project made only of worktrees): the panel says so.
+  - Desktop and wide web only, same binding as the bottom panel.
+- **Files:** `packages/app/src/screens/new-workspace/bottom-terminal.ts` (workspace pick, step
+  logic, terminal memory) with `bottom-terminal.test.ts`, and `bottom-terminal-panel.tsx` (the
+  panel and its Ctrl+J handler). New files; no conflict risk.
+- **Core files touched** (marked `CUSTOM(new-workspace-terminal)`):
+  - `packages/app/src/screens/new-workspace-screen.tsx`: renders
+    `<NewWorkspaceBottomTerminal serverId={selectedServerId} cwd={selectedSourceDirectory} />`
+    after the `content` view, inside `FileDropZone`.
+- **Re-apply:** Render the panel at the bottom of the New Workspace screen's root column with the
+  selected host and the project's source directory. It registers its own handler for
+  `workspace.bottom-panel.toggle`, active only while the screen is on top.
+- **Verify:** `(cd packages/app && npx vitest run src/screens/new-workspace/bottom-terminal.test.ts)`
+  (the update script runs it). In the app, open New Workspace, press Ctrl+J three times: a
+  terminal in the project's folder appears, hides, and comes back with the same shell.

@@ -132,6 +132,8 @@ import {
 } from "./workspace/terminals/state";
 import { captureWorkspaceDraftCleanup } from "./new-workspace/background-handoff";
 import { useNewWorkspaceScreenPresence } from "./new-workspace/screen-presence";
+// CUSTOM(new-workspace-terminal)
+import { NewWorkspaceBottomTerminal } from "./new-workspace/bottom-terminal-panel";
 
 const ThemedFolderPlus = withUnistyles(FolderPlus);
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
@@ -2461,6 +2463,8 @@ export function NewWorkspaceScreen({
           {errorMessage ? <Text style={styles.errorText}>{errorMessage}</Text> : null}
         </NewWorkspaceLayout>
       </View>
+      {/* CUSTOM(new-workspace-terminal): Ctrl/Cmd+J terminal in the project's folder. */}
+      <NewWorkspaceBottomTerminal serverId={selectedServerId} cwd={selectedSourceDirectory} />
       {importSession.sheet}
     </FileDropZone>
   );
