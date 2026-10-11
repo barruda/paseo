@@ -543,3 +543,28 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd custom/plugins/workboard && npx tsc --noEmit && npx vitest run)` (the update
   script runs it). In the app, open a workspace, pick Workboard from "+", edit a task, and paste a
   screenshot into the description.
+
+## done-task-archive: one-click archive for done tasks in the sidebar
+
+- **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
+- **Commit:** `custom: archive button under the kebab for done tasks`
+- **Why:** Workspaces whose Workboard task is done pile up in the sidebar. Archiving each through
+  the kebab menu takes two clicks and a precise aim.
+- **What:** A sidebar workspace row with the `task:done` label shows an archive icon under its
+  kebab, wherever the kebab shows (hover on desktop, always on touch). Pressing it runs the row's
+  normal archive action, with the same worktree warning. A renamed Done label in Workboard isn't
+  picked up; the label is a constant in `done-task-archive.ts`.
+- **Files:** `packages/app/src/components/sidebar/done-task-archive.ts` and its test.
+- **Core files touched:** `packages/app/src/components/sidebar/sidebar-workspace-menu.tsx`, marked
+  `CUSTOM(done-task-archive)`. Upstream's `SidebarWorkspaceMenu` is renamed
+  `UpstreamSidebarWorkspaceMenu`, and a new `SidebarWorkspaceMenu` wraps it and adds the button.
+  Also a `Pressable` import, the `isDoneTaskWorkspace` import, and an `archiveButton` style.
+- **Re-apply:** Wherever upstream renders the sidebar row kebab (all three row renderers share
+  `SidebarWorkspaceMenu`), render after it a `Pressable` with the `Archive` icon that calls
+  `onArchive` when `isDoneTaskWorkspace(workspaceLabels)`. Give it a 26px box (`hitSlop` does
+  nothing on web, and a smaller target is easy to slip off), with negative margins that center it
+  under the dots without widening the overlay. The kebab sits in an absolutely positioned
+  overlay at the top right of the title row, so the button drops onto the meta line.
+- **Verify:** `(cd packages/app && npx vitest run src/components/sidebar/done-task-archive.test.ts)`
+  (the update script runs it). In the app, hover a workspace labeled `task:done`: the archive icon
+  sits under the three dots and archives the workspace.
