@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef } from "react";
-import { useSidebarModel } from "@/components/sidebar/sidebar-model";
 import { useToast } from "@/contexts/toast-api-context";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
@@ -14,6 +13,7 @@ import {
   nextRecentlyActiveWorkspace,
   type CycleWorkspaceTarget,
 } from "./model";
+import { useSidebarWorkspaceOrder } from "./use-recently-active-workspaces";
 
 const ACTIONS = ["message-input.active-workspace-cycle"] as const;
 // The next workspace's composer mounts or becomes active over a few frames; ask twice.
@@ -26,7 +26,7 @@ const REFOCUS_DELAYS_MS = [60, 250];
 export function ActiveWorkspaceCycleHandler({ enabled }: { enabled: boolean }) {
   const toast = useToast();
   const dispatcher = useKeyboardActionDispatcher();
-  const { pinnedGroups, groupMode, workspaceGroups } = useSidebarModel();
+  const order = useSidebarWorkspaceOrder();
   const active = useActiveWorkspaceSelection();
   // The route catches up a render after navigating; quick repeated presses use the last target.
   const pendingRef = useRef<CycleWorkspaceTarget | null>(null);
@@ -37,12 +37,6 @@ export function ActiveWorkspaceCycleHandler({ enabled }: { enabled: boolean }) {
   const handle = useCallback(
     (action: KeyboardActionDefinition) => {
       if (action.id !== "message-input.active-workspace-cycle") return false;
-      const order: CycleWorkspaceTarget[] = [
-        ...pinnedGroups.pinnedChats,
-        ...(groupMode === "project"
-          ? pinnedGroups.unpinnedProjects.flatMap((project) => project.workspaces)
-          : workspaceGroups.flatMap((group) => group.rows)),
-      ];
       const state = useSessionStore.getState();
       const targets = collectRecentlyActiveWorkspaces({
         order,
@@ -66,7 +60,7 @@ export function ActiveWorkspaceCycleHandler({ enabled }: { enabled: boolean }) {
       }
       return true;
     },
-    [active, dispatcher, groupMode, pinnedGroups, toast, workspaceGroups],
+    [active, dispatcher, order, toast],
   );
 
   useKeyboardActionHandler({
