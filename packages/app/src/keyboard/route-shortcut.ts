@@ -89,6 +89,11 @@ const MESSAGE_INPUT_DISPATCH: Record<
   "mode-cycle": { id: "message-input.mode-cycle", scope: "message-input" },
   // CUSTOM(model-picker)
   "model-picker": { id: "message-input.model-picker", scope: "message-input" },
+  // CUSTOM(active-workspace-cycle)
+  "active-workspace-cycle": {
+    id: "message-input.active-workspace-cycle",
+    scope: "message-input",
+  },
 };
 
 function hasPayloadKey<K extends "index" | "delta" | "kind">(

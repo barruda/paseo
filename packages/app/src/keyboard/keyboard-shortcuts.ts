@@ -205,6 +205,8 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "focus-message-input",
     // CUSTOM(model-picker)
     "open-model-picker",
+    // CUSTOM(active-workspace-cycle)
+    "cycle-active-workspaces",
     "cycle-agent-mode",
     "voice-toggle",
     "dictation-toggle",
@@ -1108,8 +1110,8 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
   {
-    // CUSTOM(model-picker): Shift+Tab opens the model picker instead. The binding stays, unbound,
-    // so mode cycling can still be assigned a key in Settings → Shortcuts.
+    // CUSTOM(model-picker): Shift+Tab cycles recently active workspaces instead. The binding
+    // stays, unbound, so mode cycling can still be assigned a key in Settings → Shortcuts.
     id: "message-input-mode-cycle-shift-tab",
     action: "message-input.action",
     combo: "",
@@ -1122,11 +1124,11 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       label: "Cycle agent mode",
     },
   },
-  // CUSTOM(model-picker)
+  // CUSTOM(model-picker): Ctrl+M on every platform; Cmd+M is the macOS minimize key.
   {
-    id: "message-input-model-picker-shift-tab",
+    id: "message-input-model-picker-ctrl-m",
     action: "message-input.action",
-    combo: "Shift+Tab",
+    combo: "Ctrl+M",
     repeat: false,
     when: { commandCenter: false, focusScope: "message-input" },
     payload: { type: "message-input", kind: "model-picker" },
@@ -1134,6 +1136,20 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "open-model-picker",
       section: "agent-input",
       label: "Select model and effort",
+    },
+  },
+  // CUSTOM(active-workspace-cycle)
+  {
+    id: "message-input-active-workspace-cycle-shift-tab",
+    action: "message-input.action",
+    combo: "Shift+Tab",
+    repeat: false,
+    when: { commandCenter: false, focusScope: "message-input" },
+    payload: { type: "message-input", kind: "active-workspace-cycle" },
+    help: {
+      id: "cycle-active-workspaces",
+      section: "agent-input",
+      label: "Next workspace active in the last 45 minutes",
     },
   },
   {

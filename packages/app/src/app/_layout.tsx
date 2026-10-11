@@ -46,6 +46,8 @@ import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sideba
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
+// CUSTOM(active-workspace-cycle)
+import { ActiveWorkspaceCycleHandler } from "@/active-workspace-cycle/cycle-handler";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
 import { HostChooserModal, useHostChooser } from "@/hosts/host-chooser";
 import { HostConfirmationSheet } from "@/hosts/host-confirmation-sheet";
@@ -649,6 +651,8 @@ function SidebarChrome({
     <SidebarModelProvider active={active}>
       {mounted ? <LeftSidebar active={active} /> : null}
       <WorkspaceShortcutTargetsSubscriber enabled={keyboardShortcutsEnabled} />
+      {/* CUSTOM(active-workspace-cycle) */}
+      <ActiveWorkspaceCycleHandler enabled={keyboardShortcutsEnabled} />
     </SidebarModelProvider>
   );
 }

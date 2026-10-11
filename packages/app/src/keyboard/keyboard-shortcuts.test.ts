@@ -321,11 +321,19 @@ describe("keyboard-shortcuts", () => {
     },
     {
       // CUSTOM(model-picker)
-      name: "routes Shift+Tab to the model picker from the message input",
-      event: { key: "Tab", code: "Tab", shiftKey: true },
+      name: "routes Ctrl+M to the model picker from the message input",
+      event: { key: "m", code: "KeyM", ctrlKey: true },
       context: { focusScope: "message-input" },
       action: "message-input.action",
       payload: { kind: "model-picker" },
+    },
+    {
+      // CUSTOM(active-workspace-cycle)
+      name: "routes Shift+Tab to the active workspace cycle from the message input",
+      event: { key: "Tab", code: "Tab", shiftKey: true },
+      context: { focusScope: "message-input" },
+      action: "message-input.action",
+      payload: { kind: "active-workspace-cycle" },
     },
     {
       name: "routes space to voice mute toggle outside editable scopes",
@@ -484,11 +492,16 @@ describe("keyboard-shortcuts", () => {
     },
     {
       name: "does not open the model picker outside the message input",
+      event: { key: "m", code: "KeyM", ctrlKey: true },
+      context: { focusScope: "other" },
+    },
+    {
+      name: "does not cycle workspaces on Shift+Tab outside the message input",
       event: { key: "Tab", code: "Tab", shiftKey: true },
       context: { focusScope: "other" },
     },
     {
-      name: "does not repeat the model picker while Shift+Tab is held",
+      name: "does not repeat the workspace cycle while Shift+Tab is held",
       event: { key: "Tab", code: "Tab", shiftKey: true, repeat: true },
       context: { focusScope: "message-input" },
     },
@@ -710,7 +723,9 @@ describe("keyboard-shortcut help sections", () => {
         "workspace-pane-split-right": ["mod", "\\"],
         "workspace-pane-close": ["mod", "shift", "W"],
         // CUSTOM(model-picker)
-        "open-model-picker": ["shift", "Tab"],
+        "open-model-picker": ["ctrl", "M"],
+        // CUSTOM(active-workspace-cycle)
+        "cycle-active-workspaces": ["shift", "Tab"],
       },
     },
     {

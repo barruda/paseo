@@ -15,6 +15,8 @@ export type KeyboardActionId =
   | "message-input.mode-cycle"
   // CUSTOM(model-picker)
   | "message-input.model-picker"
+  // CUSTOM(active-workspace-cycle)
+  | "message-input.active-workspace-cycle"
   | "workspace.agent.new"
   | "workspace.tab.menu.open"
   | "workspace.tab.target.agent"
@@ -72,6 +74,8 @@ export type KeyboardActionDefinition =
   | { id: "message-input.mode-cycle"; scope: KeyboardActionScope }
   // CUSTOM(model-picker)
   | { id: "message-input.model-picker"; scope: KeyboardActionScope }
+  // CUSTOM(active-workspace-cycle)
+  | { id: "message-input.active-workspace-cycle"; scope: KeyboardActionScope }
   | { id: "workspace.agent.new"; scope: KeyboardActionScope }
   | { id: "workspace.tab.menu.open"; scope: KeyboardActionScope }
   | { id: "workspace.tab.target.agent"; scope: KeyboardActionScope }

@@ -2291,7 +2291,7 @@ export function NewWorkspaceScreen({
     ],
   );
 
-  // CUSTOM(model-picker-project): Shift+Tab lists the project first and changes it in place.
+  // CUSTOM(model-picker-project): Ctrl+M lists the project first and changes it in place.
   const modelPickerProject = useMemo<ModelPickerProjectSource | null>(
     () =>
       projectPickerOptions.length > 0

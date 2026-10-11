@@ -74,6 +74,7 @@ import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 // CUSTOM(model-picker)
 import { useModelPickerSource } from "@/model-picker/use-model-picker-source";
 import type { ModelPickerProjectSource } from "@/model-picker/project";
+import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
 import { isNative } from "@/constants/platform";
 import {
   resolveComposerControlDensity,
@@ -163,7 +164,7 @@ export interface DraftAgentControlsProps {
   disabled?: boolean;
   modelSelectorServerId?: string | null;
   isCompactLayout?: boolean;
-  // CUSTOM(model-picker-project): the project row of the Shift+Tab picker.
+  // CUSTOM(model-picker-project): the project row of the Ctrl+M picker.
   modelPickerProject?: ModelPickerProjectSource | null;
 }
 
@@ -833,6 +834,8 @@ function ControlledAgentControls({
             canSwitchProvider={Boolean(onSelectProviderAndModel)}
           />
         )}
+        {/* CUSTOM(model-picker) */}
+        {!isCompact ? <ModelPickerShortcutChip /> : null}
       </View>
     </ComposerControlLayoutProvider>
   );
@@ -1918,7 +1921,7 @@ export function DraftAgentControls({
   );
 
   // CUSTOM(model-picker): every draft composer (New Workspace screen and draft tabs) feeds the
-  // Shift+Tab model picker; upstream only registers draft tabs with the command center.
+  // Ctrl+M model picker; upstream only registers draft tabs with the command center.
   const pickerSourceId = `draft-controls:${useId()}`;
   const { isActiveComposer } = useComposerKeyboardScope();
   const pickerControls = useMemo<AgentControlCommandCenterSource>(
