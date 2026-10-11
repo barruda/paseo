@@ -6,7 +6,8 @@
   "ignorePatterns": [
     ".dev/**",
     "custom/plugins/beautiful-chat/**",
-    "!custom/plugins/beautiful-chat/client/expand-memory*.ts"
+    "!custom/plugins/beautiful-chat/client/expand-memory*.ts",
+    "custom/plugins/workboard/**"
   ],
   "plugins": ["react", "react-perf", "unicorn", "typescript", "oxc", "import", "promise"],
   "categories": {

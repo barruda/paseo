@@ -498,3 +498,48 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   Remove the registry copy first: `paseo plugin remove beautiful-chat --home <home>`.
 - **Verify:** `npx vitest run custom/plugins/beautiful-chat` (the update script runs it). In the app,
   close a thinking card, then send a prompt: new thinking cards in any chat start closed.
+
+## workboard: Workboard as a tab, and images in task descriptions
+
+- **Added:** 2026-10-10 (based on upstream 0.11.2; plugin vendored from
+  [fxbing/paseo-workboard](https://github.com/fxbing/paseo-workboard) `e8cba65`, release 0.2.0)
+- **Commit:** `custom: Workboard opens as a tab and takes pasted images`
+- **Why:** The board only opened as a full-screen sidebar screen, which hides the workspace you're
+  in. Task descriptions were plain text, with no way to keep a screenshot with a task.
+- **What:**
+  - **Tab:** Workboard is also a workspace panel. Open it from the "+" new-tab menu or with
+    "Open Workboard tab" in the Command Center. The tab shows the whole board, like the sidebar
+    screen, which stays.
+  - **Images:** In the task editor (new or edit), pasting an image into the description uploads it
+    to the daemon, saved under `$PASEO_HOME/plugin-data/paseo-workboard/images/`. The description
+    gets `![image](<absolute path>)` at the cursor, so the text stays readable and an agent given
+    the description can open the file. Thumbnails show under the field: press one to enlarge it,
+    × removes its reference. PNG, JPEG, GIF, and WebP up to 10 MB; the file type comes from the
+    bytes. Save waits for uploads. Web and desktop only: native text fields never receive pasted
+    images. Removing a reference leaves the file on disk.
+  - The read RPC serves only files directly inside that image folder, so a description can't make
+    it read anything else.
+- **Files:** `custom/plugins/workboard/`, a copy of upstream without `docs/`, `images/`,
+  `scripts/`, `.github/`, and the integration fixture. Ours, marked `CUSTOM(workboard-tab)` or
+  `CUSTOM(workboard-images)`: `shared/images.ts`, `server/images.ts`, `client/image-paste.ts`,
+  `client/DescriptionImages.tsx`, `tests/images.test.ts`, and additions in `index.client.tsx`
+  (panel and command), `index.server.ts` (RPC handlers), `shared/rpc.ts` (two RPCs),
+  `client/strings.ts` (labels), and `client/WorkboardScreen.tsx` (`TaskModal`).
+- **Core files touched:** `.oxlintrc.json` and `.oxfmtrc.json` skip `custom/plugins/workboard/**`.
+  The plugin keeps upstream's style (Prettier, 80 columns) and is checked with its own `tsc`,
+  `vitest`, and `prettier` instead. `lefthook.yml` (marked `CUSTOM(vendored-plugins)`) passes
+  `--no-error-on-unmatched-pattern` to lint and format, so a commit that stages only ignored files
+  still passes the hook. JSON has no comments; on conflict, re-add the patterns and the flag.
+- **Re-apply:** To take a newer upstream, copy its files over the plugin folder, keeping ours. Then
+  redo the additions: register the panel and command in `index.client.tsx`; handle
+  `saveImageRpc`/`readImageRpc` with an `ImageStore` in `index.server.ts`; in `TaskModal`, pass
+  `useImagePaste`'s ref to the description `TextInput`, render `DescriptionImages` under it with
+  the paste hint, and disable Save while uploads run. Keep the plugin id `paseo-workboard`: the
+  plugin calls its own RPCs by that id.
+- **Setup:** One-time plugin install per daemon. **Don't `plugin remove` the registry copy
+  without saving the board first:** removing a plugin deletes `$PASEO_HOME/plugin-settings/<id>/`,
+  which holds the board. Disable it, copy that folder aside, remove, copy it back, then install.
+  The 2026-10-10 copies are in `$PASEO_HOME/plugin-settings.bak-workboard-20261010/`.
+- **Verify:** `(cd custom/plugins/workboard && npx tsc --noEmit && npx vitest run)` (the update
+  script runs it). In the app, open a workspace, pick Workboard from "+", edit a task, and paste a
+  screenshot into the description.
