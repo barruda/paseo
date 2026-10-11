@@ -73,6 +73,7 @@ import {
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 // CUSTOM(model-picker)
 import { useModelPickerSource } from "@/model-picker/use-model-picker-source";
+import type { ModelPickerProjectSource } from "@/model-picker/project";
 import { isNative } from "@/constants/platform";
 import {
   resolveComposerControlDensity,
@@ -162,6 +163,8 @@ export interface DraftAgentControlsProps {
   disabled?: boolean;
   modelSelectorServerId?: string | null;
   isCompactLayout?: boolean;
+  // CUSTOM(model-picker-project): the project row of the Shift+Tab picker.
+  modelPickerProject?: ModelPickerProjectSource | null;
 }
 
 interface AgentControlsProps {
@@ -1854,6 +1857,7 @@ export function DraftAgentControls({
   disabled = false,
   modelSelectorServerId = null,
   isCompactLayout,
+  modelPickerProject = null,
 }: DraftAgentControlsProps) {
   const mappedThinkingOptions = useMemo<AgentControlOption[]>(() => {
     return toThinkingControlOptions(thinkingOptions);
@@ -1960,6 +1964,7 @@ export function DraftAgentControls({
     sourceId: pickerSourceId,
     enabled: isActiveComposer && !disabled,
     controls: pickerControls,
+    project: modelPickerProject,
   });
 
   return (

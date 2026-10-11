@@ -35,7 +35,17 @@ export interface ModelPickerModelRow {
   key: string;
   model: ModelPickerModel;
 }
-export type ModelPickerRow = { kind: "section"; key: string; label: string } | ModelPickerModelRow;
+// CUSTOM(model-picker-project): a new conversation lists its project first.
+export const MODEL_PICKER_PROJECT_KEY = "project";
+export interface ModelPickerProjectRow {
+  kind: "project";
+  key: typeof MODEL_PICKER_PROJECT_KEY;
+  label: string;
+}
+export type ModelPickerRow =
+  | { kind: "section"; key: string; label: string }
+  | ModelPickerModelRow
+  | ModelPickerProjectRow;
 
 export function modelPickerModelKey(provider: string, modelId: string): string {
   return `${provider}:${modelId}`;
@@ -75,7 +85,12 @@ export function buildModelPickerRows(
   selection: ModelPickerSelection,
   query: string,
   favoriteKeys: readonly string[] = [],
-): { rows: ModelPickerRow[]; items: ModelPickerModelRow[] } {
+  projectLabel: string | null = null,
+): {
+  rows: ModelPickerRow[];
+  items: ModelPickerModelRow[];
+  projectRow: ModelPickerProjectRow | null;
+} {
   const favorites = new Set(favoriteKeys);
   const normalized = query.trim().toLowerCase();
   if (normalized) {
@@ -88,7 +103,7 @@ export function buildModelPickerRows(
       ...ranked.filter((model) => !model.favorite),
     ];
     const items = ordered.map((model) => modelRow("", model));
-    return { rows: items, items };
+    return { rows: items, items, projectRow: null };
   }
 
   const byProvider: { id: string; label: string; models: ModelPickerModel[] }[] = [];
@@ -102,6 +117,11 @@ export function buildModelPickerRows(
   const all = new Map(byProvider.flatMap((group) => group.models.map((m) => [m.key, m] as const)));
 
   const rows: ModelPickerRow[] = [];
+  const projectRow: ModelPickerProjectRow | null =
+    projectLabel === null
+      ? null
+      : { kind: "project", key: MODEL_PICKER_PROJECT_KEY, label: projectLabel };
+  if (projectRow) rows.push(projectRow);
   const current = [...all.values()].find((model) => model.current);
   if (current) {
     rows.push({ kind: "section", key: "section:current", label: "Current" });
@@ -117,7 +137,52 @@ export function buildModelPickerRows(
     for (const model of group.models) rows.push(modelRow("", model));
   }
   const items = rows.filter((row): row is ModelPickerModelRow => row.kind === "model");
-  return { rows, items };
+  return { rows, items, projectRow };
+}
+
+/**
+ * CUSTOM(model-picker-project): the Project row is the first option, highlighted when the picker opens.
+ * While it is highlighted, the effort bar shows the current model's effort.
+ */
+export function resolveModelPickerHighlight(input: {
+  highlightedKey: string | null;
+  items: readonly ModelPickerModelRow[];
+  projectRow: ModelPickerProjectRow | null;
+  query: string;
+}): {
+  resolvedKey: string | null;
+  navigableItems: readonly { key: string }[];
+  highlightedItem: ModelPickerModelRow | null;
+  currentItem: ModelPickerModelRow | null;
+  effortModel: ModelPickerModel | null;
+} {
+  const { highlightedKey, items, projectRow } = input;
+  const onProject =
+    projectRow !== null && (highlightedKey === null || highlightedKey === MODEL_PICKER_PROJECT_KEY);
+  const resolvedKey = onProject
+    ? MODEL_PICKER_PROJECT_KEY
+    : resolveHighlightedKey(highlightedKey, items, !input.query.trim());
+  const highlightedItem = items.find((item) => item.key === resolvedKey) ?? null;
+  const currentItem = items.find((item) => item.model.current) ?? null;
+  return {
+    resolvedKey,
+    navigableItems: projectRow ? [projectRow, ...items] : items,
+    highlightedItem,
+    currentItem,
+    effortModel: highlightedItem?.model ?? (onProject ? (currentItem?.model ?? null) : null),
+  };
+}
+
+/**
+ * CUSTOM(model-picker-project): effort is picked on its own. Changing it on the Project row moves
+ * the highlight to the current model, so Enter applies the effort instead of opening the projects.
+ */
+export function resolveHighlightAfterEffortChange(input: {
+  resolvedKey: string | null;
+  currentItem: ModelPickerModelRow | null;
+}): string | null {
+  const { resolvedKey, currentItem } = input;
+  return resolvedKey === MODEL_PICKER_PROJECT_KEY && currentItem ? currentItem.key : resolvedKey;
 }
 
 /** The highlight survives a re-rank when its row is still listed; otherwise the first row. */
@@ -138,7 +203,7 @@ export function resolveHighlightedKey(
 
 export function moveHighlightedKey(
   highlightedKey: string | null,
-  items: readonly ModelPickerModelRow[],
+  items: readonly { key: string }[],
   direction: 1 | -1,
 ): string | null {
   if (items.length === 0) return null;

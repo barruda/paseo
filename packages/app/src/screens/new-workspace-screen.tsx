@@ -121,6 +121,8 @@ import {
 } from "./new-workspace-initial-context";
 import { buildNewWorkspaceProjectIconTargets } from "./new-workspace/project-icon-targets";
 import { useNewWorkspaceProjectPicker } from "./new-workspace/project-picker";
+// CUSTOM(model-picker-project)
+import type { ModelPickerProjectSource } from "@/model-picker/project";
 import { ImportSessionButton } from "./new-workspace/import-session-button";
 import { useImportSession } from "@/hooks/use-import-session";
 import {
@@ -2289,15 +2291,32 @@ export function NewWorkspaceScreen({
     ],
   );
 
+  // CUSTOM(model-picker-project): Shift+Tab lists the project first and changes it in place.
+  const modelPickerProject = useMemo<ModelPickerProjectSource | null>(
+    () =>
+      projectPickerOptions.length > 0
+        ? {
+            selectedId: selectedProjectOptionId || null,
+            options: projectPickerOptions.map((option) => ({
+              id: option.id,
+              label: option.label,
+            })),
+            select: handleSelectProjectOption,
+          }
+        : null,
+    [handleSelectProjectOption, projectPickerOptions, selectedProjectOptionId],
+  );
+
   const agentControlsWithDisabled = useMemo(
     () =>
       composerState
         ? {
             ...composerState.agentControls,
             disabled: isPending,
+            modelPickerProject,
           }
         : undefined,
-    [composerState, isPending],
+    [composerState, isPending, modelPickerProject],
   );
 
   const pickerEmptyText =

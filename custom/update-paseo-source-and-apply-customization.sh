@@ -269,7 +269,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts --bail=1)
   (cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/file-pane/html-preview-assets.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/model-picker/model.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/model-picker/model.test.ts src/model-picker/project.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts --bail=1)
   (cd packages/app && npx vitest run src/screens/workspace/workspace-tab-menu.test.ts --bail=1)
   (cd packages/app && npx vitest run src/components/sidebar/done-task-archive.test.ts --bail=1)
   (cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts src/file-pane/html-preview-keys.browser.test.ts --bail=1)
