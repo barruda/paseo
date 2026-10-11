@@ -6,9 +6,11 @@ pre-commit:
       exclude:
         - "package-lock.json"
         - "**/package-lock.json"
-      run: npm run format:check:files -- {staged_files}
+      # CUSTOM(vendored-plugins): .oxfmtrc.json and .oxlintrc.json ignore the vendored plugins in
+      # custom/plugins; without the flag, a commit that stages only those files fails the hook.
+      run: npm run format:check:files -- --no-error-on-unmatched-pattern {staged_files}
     - name: lint
       glob: "*.{js,jsx,ts,tsx}"
-      run: npm run lint -- {staged_files}
+      run: npm run lint -- --no-error-on-unmatched-pattern {staged_files}
     - name: typecheck
       run: npm run typecheck
