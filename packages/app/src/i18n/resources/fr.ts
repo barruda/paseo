@@ -1,4 +1,5 @@
 import { en, type TranslationResources } from "./en";
+import { VOICE_SETTINGS_FR } from "./custom-voice-settings";
 import { pluginSettings } from "./plugin-settings";
 
 export const fr: TranslationResources = {
@@ -2078,6 +2079,8 @@ export const fr: TranslationResources = {
     },
   },
   settings: {
+    // CUSTOM(voice-settings)
+    voiceSettings: VOICE_SETTINGS_FR,
     title: "Paramètres",
     loading: "Chargement des paramètres…",
     groups: {
@@ -2138,6 +2141,8 @@ export const fr: TranslationResources = {
       connections: "Connexions",
       agents: "Agents",
       metadata: "Métadonnées",
+      // CUSTOM(voice-settings)
+      voice: "Voix et dictée",
       workspaces: "Espaces de travail",
       providers: "Fournisseurs",
       usage: "Utilisation",

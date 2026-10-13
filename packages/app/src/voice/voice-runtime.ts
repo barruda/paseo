@@ -7,6 +7,12 @@ import {
   THINKING_TONE_NATIVE_PCM_BASE64,
   THINKING_TONE_NATIVE_PCM_DURATION_MS,
 } from "@/utils/thinking-tone.native-pcm";
+import {
+  DEFAULT_THINKING_TONE,
+  scalePcm16,
+  thinkingToneGain,
+  type ThinkingToneSettings,
+} from "@/voice/thinking-tone-settings";
 
 const PCM_MIME_TYPE = "audio/pcm;rate=16000;bits=16";
 const KEEP_AWAKE_TAG = "paseo:voice";
@@ -66,6 +72,8 @@ export interface VoiceRuntimeDeps {
   getServerInfo(serverId: string): DaemonServerInfo | null;
   activateKeepAwake(tag: string): Promise<void>;
   deactivateKeepAwake(tag: string): Promise<void>;
+  // CUSTOM(voice-settings): the thinking tone's on/off and volume from Settings.
+  getThinkingTone?(): ThinkingToneSettings;
 }
 
 interface RuntimeSessionState {
@@ -212,11 +220,13 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     timeout: null,
   };
   const cuePcm16 = Uint8Array.from(Buffer.from(THINKING_TONE_NATIVE_PCM_BASE64, "base64"));
+  const thinkingTone = () => deps.getThinkingTone?.() ?? DEFAULT_THINKING_TONE;
   const cueSource = {
     size: cuePcm16.byteLength,
     type: "audio/pcm;rate=16000;bits=16",
     async arrayBuffer() {
-      return cuePcm16.buffer.slice(cuePcm16.byteOffset, cuePcm16.byteOffset + cuePcm16.byteLength);
+      // CUSTOM(voice-settings): the volume chosen in Settings, read at each play.
+      return Uint8Array.from(scalePcm16(cuePcm16, thinkingToneGain(thinkingTone().volume))).buffer;
     },
   };
   function emit(): void {
@@ -431,6 +441,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
   function canPlayCue(): boolean {
     return (
+      thinkingTone().enabled &&
       state.snapshot.isVoiceMode &&
       state.snapshot.phase === "waiting" &&
       !state.telemetry.isSpeaking

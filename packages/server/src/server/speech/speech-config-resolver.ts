@@ -175,6 +175,10 @@ export function resolveSpeechConfig(params: {
       providers,
       sttLanguages: local.sttLanguages,
       ...(local.local ? { local: local.local } : {}),
+      // CUSTOM(voice-settings)
+      ...(params.persisted.features?.voiceMode?.instructions?.trim()
+        ? { voiceInstructions: params.persisted.features.voiceMode.instructions.trim() }
+        : {}),
     },
   };
 }

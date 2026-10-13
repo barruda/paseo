@@ -281,7 +281,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/screens/new-workspace/bottom-terminal.test.ts --bail=1)
   (cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts src/file-pane/html-preview-keys.browser.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts --bail=1)
-  (cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts src/server/speech/providers/local/model-files.test.ts src/server/speech/speech-config-resolver.test.ts src/server/speech/speech-settings-service.test.ts src/server/daemon-config-store.test.ts src/server/voice-config.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/screens/settings/voice src/voice/thinking-tone-settings.test.ts src/i18n/resources.test.ts --bail=1)
 fi
 
 step "Building the desktop app"

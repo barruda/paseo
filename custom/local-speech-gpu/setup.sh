@@ -4,9 +4,9 @@
 #
 # Everything lands in user directories: no sudo, no driver or system package changes.
 #   $CUDA_ROOT/venv   pip wheels with the CUDA 12 runtime and cuDNN 9 (~2.7 GB)
-#   $CUDA_ROOT/lib    the directory PASEO_LOCAL_SPEECH_CUDA_DIR points at: symlinks to
-#                     those libraries plus sherpa-onnx's CUDA build matching the
-#                     sherpa-onnx-node version this checkout uses
+#   $CUDA_ROOT/lib    where the daemon looks for the CUDA build (override with
+#                     PASEO_LOCAL_SPEECH_CUDA_DIR): symlinks to those libraries plus
+#                     sherpa-onnx's CUDA build matching this checkout's sherpa-onnx-node
 #   <home>/models/local-speech/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16
 #                     the fp16 model plus encoder.fp16-cuda.onnx (patched for CUDA)
 #
@@ -69,8 +69,7 @@ done
 
 cat <<EOF
 
-Done. Add these to the env of each Paseo launcher (Exec=env ... in ~/.local/share/applications/paseo*.desktop):
-  PASEO_LOCAL_SPEECH_CUDA_DIR=$CUDA_ROOT/lib
-  PASEO_DICTATION_LOCAL_STT_MODEL=parakeet-tdt-0.6b-v2-fp16
-  PASEO_VOICE_LOCAL_STT_MODEL=parakeet-tdt-0.6b-v2-fp16
+Done. In Paseo, open Settings > (host) > Voice and dictation, turn on "Use the GPU" and pick
+"Parakeet v2 (fp16, GPU)" for dictation and voice mode listening.
+The CUDA build lives in $CUDA_ROOT/lib; set PASEO_LOCAL_SPEECH_CUDA_DIR only to use another folder.
 EOF

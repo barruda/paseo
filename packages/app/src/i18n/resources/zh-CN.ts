@@ -1,4 +1,5 @@
 import { en, type TranslationResources } from "./en";
+import { VOICE_SETTINGS_ZH_CN } from "./custom-voice-settings";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
@@ -2010,6 +2011,8 @@ export const zhCN: TranslationResources = {
     },
   },
   settings: {
+    // CUSTOM(voice-settings)
+    voiceSettings: VOICE_SETTINGS_ZH_CN,
     title: "设置",
     loading: "正在加载设置...",
     groups: {
@@ -2070,6 +2073,8 @@ export const zhCN: TranslationResources = {
       connections: "连接",
       agents: "Agents",
       metadata: "元数据",
+      // CUSTOM(voice-settings)
+      voice: "语音和听写",
       workspaces: "Workspaces",
       providers: "Providers",
       usage: "使用情况",

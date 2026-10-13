@@ -1,16 +1,10 @@
-import { existsSync } from "node:fs";
-import path from "node:path";
-
 import pino from "pino";
 
 import type { StreamingTranscriptionSession } from "../../speech-provider.js";
 import type { TurnDetectionSession } from "../../turn-detection-provider.js";
-import {
-  resolveLocalSpeechExecutionProvider,
-  resolveTransducerEncoderFile,
-} from "./local-speech-gpu.js";
-import { getLocalSpeechModelDir, type LocalSttModelId, type LocalTtsModelId } from "./models.js";
-import { getSherpaOnnxModelSpec } from "./sherpa/model-catalog.js";
+import { resolveLocalSpeechExecutionProvider } from "./local-speech-gpu.js";
+import { resolveSttModelFiles } from "./model-files.js";
+import { getLocalSpeechModelDir, type LocalSpeechModelId } from "./models.js";
 import { SherpaOfflineRecognizerEngine } from "./sherpa/sherpa-offline-recognizer.js";
 import { SherpaOnnxParakeetSTT } from "./sherpa/sherpa-parakeet-stt.js";
 import { SherpaParakeetRealtimeTranscriptionSession } from "./sherpa/sherpa-parakeet-realtime-session.js";
@@ -37,6 +31,7 @@ const logger = pino({
 const sttEngines = new Map<string, LocalSttEngine>();
 const sttProviders = new Map<string, SherpaOnnxParakeetSTT>();
 const ttsProviders = new Map<string, SherpaOnnxTTS>();
+const loadedModelIds = new Set<string>();
 const sessions = new Map<string, StreamingTranscriptionSession | TurnDetectionSession>();
 const unsubscribeBySessionId = new Map<string, Array<() => void>>();
 let ipcClosing = false;
@@ -64,28 +59,30 @@ function sendToParent(message: LocalSpeechWorkerToParentMessage): void {
   }
 }
 
-function sttModelId(
-  config: LocalSpeechWorkerConfig,
-  model: "voice" | "dictation",
-): LocalSttModelId {
-  return (model === "voice" ? config.voiceSttModel : config.dictationSttModel) as LocalSttModelId;
+function sttModelId(config: LocalSpeechWorkerConfig, model: "voice" | "dictation"): string {
+  return model === "voice" ? config.voiceSttModel : config.dictationSttModel;
 }
 
-function ttsModelId(config: LocalSpeechWorkerConfig): LocalTtsModelId {
-  return config.voiceTtsModel as LocalTtsModelId;
+function ttsModelId(config: LocalSpeechWorkerConfig): string {
+  return config.voiceTtsModel;
 }
 
-function sttEngineKey(config: LocalSpeechWorkerConfig, modelId: LocalSttModelId): string {
+// CUSTOM(voice-settings): folders registered in Settings come with their own path.
+function modelDirFor(config: LocalSpeechWorkerConfig, modelId: string): string {
+  return (
+    config.modelDirs?.[modelId] ??
+    getLocalSpeechModelDir(config.modelsDir, modelId as LocalSpeechModelId)
+  );
+}
+
+function sttEngineKey(config: LocalSpeechWorkerConfig, modelId: string): string {
   return `${config.modelsDir}:${modelId}`;
 }
 
+// CUSTOM(voice-settings): speaker and speed are passed per synthesis, so one loaded model
+// serves every voice of the same language.
 function ttsKey(config: LocalSpeechWorkerConfig): string {
-  return [
-    config.modelsDir,
-    config.voiceTtsModel,
-    config.voiceTtsSpeakerId ?? 0,
-    config.voiceTtsSpeed ?? 1,
-  ].join(":");
+  return [config.modelsDir, config.voiceTtsModel, config.voiceTtsLanguage ?? ""].join(":");
 }
 
 function getSttEngine(
@@ -98,30 +95,13 @@ function getSttEngine(
   if (existing) {
     return existing;
   }
-  const modelDir = getLocalSpeechModelDir(config.modelsDir, modelId);
-  // CUSTOM(local-speech-gpu): take file names from the catalog so non-int8 models load.
-  const modelFile = (prefix: string): string => {
-    const file = getSherpaOnnxModelSpec(modelId).requiredFiles.find((name) =>
-      name.startsWith(prefix),
-    );
-    if (!file) {
-      throw new Error(`Local speech model ${modelId} has no ${prefix}* file`);
-    }
-    return file;
-  };
+  // CUSTOM(voice-settings): pick the files by folder contents and execution provider.
+  const files = resolveSttModelFiles(modelDirFor(config, modelId), executionProvider);
   const created = new SherpaOfflineRecognizerEngine(
     {
       model: {
         kind: "nemo_transducer",
-        encoder: resolveTransducerEncoderFile({
-          modelDir,
-          encoderFile: modelFile("encoder."),
-          provider: executionProvider,
-          exists: existsSync,
-        }),
-        decoder: path.join(modelDir, modelFile("decoder.")),
-        joiner: path.join(modelDir, modelFile("joiner.")),
-        tokens: path.join(modelDir, "tokens.txt"),
+        ...files,
       },
       numThreads: 2,
       provider: executionProvider,
@@ -130,6 +110,7 @@ function getSttEngine(
     logger,
   );
   sttEngines.set(key, created);
+  loadedModelIds.add(modelId);
   return created;
 }
 
@@ -154,7 +135,16 @@ function getTtsProvider(config: LocalSpeechWorkerConfig): SherpaOnnxTTS {
   if (existing) {
     return existing;
   }
-  const modelDir = getLocalSpeechModelDir(config.modelsDir, ttsModelId(config));
+  // CUSTOM(voice-settings): a multi-language Kokoro loads once per language; drop the other
+  // languages of the same model so previews across languages don't stack copies in memory.
+  const modelPrefix = `${config.modelsDir}:${config.voiceTtsModel}:`;
+  for (const [otherKey, other] of ttsProviders) {
+    if (otherKey.startsWith(modelPrefix)) {
+      other.free();
+      ttsProviders.delete(otherKey);
+    }
+  }
+  const modelDir = modelDirFor(config, ttsModelId(config));
   const created = new SherpaOnnxTTS(
     {
       preset: ttsModelId(config),
@@ -162,10 +152,12 @@ function getTtsProvider(config: LocalSpeechWorkerConfig): SherpaOnnxTTS {
       speakerId: config.voiceTtsSpeakerId,
       speed: config.voiceTtsSpeed,
       provider: executionProvider,
+      language: config.voiceTtsLanguage,
     },
     logger,
   );
   ttsProviders.set(key, created);
+  loadedModelIds.add(ttsModelId(config));
   return created;
 }
 
@@ -312,8 +304,21 @@ function handleSessionRequest(message: LocalSpeechWorkerSessionRequest): void {
 }
 
 async function handleRequest(message: LocalSpeechWorkerRequest): Promise<void> {
+  // CUSTOM(voice-settings): what Settings shows as loaded in this worker.
+  if (message.type === "status.get") {
+    sendOk(message.requestId, {
+      executionProvider,
+      loadedModels: Array.from(loadedModelIds),
+      activeSessions: sessions.size,
+    });
+    return;
+  }
+
   if (message.type === "tts.synthesize") {
-    const result = await getTtsProvider(message.config).synthesizeSpeech(message.text);
+    const result = await getTtsProvider(message.config).synthesizeSpeech(message.text, {
+      speakerId: message.config.voiceTtsSpeakerId,
+      speed: message.config.voiceTtsSpeed,
+    });
     const chunks: Buffer[] = [];
     for await (const chunk of result.stream) {
       chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));

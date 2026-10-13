@@ -187,6 +187,8 @@ import type {
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
 import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
+import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
+import type { SpeechCustomModel } from "@getpaseo/protocol/speech-settings";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import { ScriptHealthMonitor } from "./script-health-monitor.js";
@@ -372,6 +374,8 @@ export interface PaseoSpeechConfig {
   providers: RequestedSpeechProviders;
   sttLanguages?: PaseoSpeechSttLanguages;
   local?: PaseoLocalSpeechConfig;
+  // CUSTOM(voice-settings): replaces the built-in voice-mode instructions when set.
+  voiceInstructions?: string;
 }
 
 export type DaemonLifecycleIntent =
@@ -537,6 +541,38 @@ function resolveExpressTrustProxySetting(config: PaseoDaemonConfig): true | stri
   return config.trustedProxies ?? ["loopback"];
 }
 
+// CUSTOM(voice-settings): the effective speech settings, as Settings shows them.
+function buildMutableSpeechConfig(
+  speech: PaseoSpeechConfig | undefined,
+): NonNullable<MutableDaemonConfig["speech"]> {
+  const local = speech?.local;
+  return {
+    ...(local
+      ? {
+          executionProvider: local.executionProvider,
+          dictationSttModel: local.models.dictationStt,
+          voiceSttModel: local.models.voiceStt,
+          voiceTtsModel: local.models.voiceTts,
+          ...(local.models.voiceTtsSpeakerId !== undefined
+            ? { voiceTtsSpeakerId: local.models.voiceTtsSpeakerId }
+            : {}),
+          ...(local.models.voiceTtsSpeed !== undefined
+            ? { voiceTtsSpeed: local.models.voiceTtsSpeed }
+            : {}),
+          customModels: local.customModels.map(
+            (model): SpeechCustomModel => ({
+              id: model.id,
+              kind: model.kind,
+              path: model.path,
+              label: model.label,
+            }),
+          ),
+        }
+      : {}),
+    voiceInstructions: speech?.voiceInstructions ?? "",
+  };
+}
+
 function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDaemonConfig {
   const providers = config.providerOverrides ?? {};
 
@@ -565,6 +601,8 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     pluginsEnabled: config.pluginsEnabled ?? false,
     plugins: config.plugins ?? {},
     skills: { selection: config.skillSelection },
+    // CUSTOM(voice-settings)
+    speech: buildMutableSpeechConfig(config.speech),
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -1591,6 +1629,22 @@ export async function createPaseoDaemon(
     logger,
     openaiConfig: config.openai,
     speechConfig: config.speech,
+  });
+  // CUSTOM(voice-settings): Settings edits reload the speech engine without a restart. The
+  // store has already written config.json, so re-resolve from it (env overrides still win).
+  // A rejected edit throws before the engine changes; the store then calls back with the
+  // previous settings to roll back, which must be a no-op rather than a second failure.
+  let appliedSpeechSettings = JSON.stringify(daemonConfigStore.get().speech);
+  daemonConfigStore.onFieldChange("speech", (value) => {
+    const settings = JSON.stringify(value);
+    if (settings === appliedSpeechSettings) return;
+    const resolved = resolveSpeechConfig({
+      paseoHome: config.paseoHome,
+      env: config.configReload?.env ?? process.env,
+      persisted: loadPersistedConfig(config.paseoHome),
+    });
+    speechService.reconfigure({ speechConfig: resolved.speech, openaiConfig: resolved.openai });
+    appliedSpeechSettings = settings;
   });
   logger.info({ elapsed: elapsed() }, "Speech service created");
 

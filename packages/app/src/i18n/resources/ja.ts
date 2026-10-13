@@ -1,4 +1,5 @@
 import { en, type TranslationResources } from "./en";
+import { VOICE_SETTINGS_JA } from "./custom-voice-settings";
 import { pluginSettings } from "./plugin-settings";
 
 export const ja: TranslationResources = {
@@ -2053,6 +2054,8 @@ export const ja: TranslationResources = {
     },
   },
   settings: {
+    // CUSTOM(voice-settings)
+    voiceSettings: VOICE_SETTINGS_JA,
     title: "設定",
     loading: "設定を読み込み中...",
     groups: {
@@ -2113,6 +2116,8 @@ export const ja: TranslationResources = {
       connections: "接続",
       agents: "エージェント",
       metadata: "メタデータ",
+      // CUSTOM(voice-settings)
+      voice: "音声と音声入力",
       workspaces: "ワークスペース",
       providers: "プロバイダー",
       usage: "使用状況",

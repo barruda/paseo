@@ -9,7 +9,7 @@ describe("resolveSpeechConfig", () => {
   test("resolves local-first defaults without env overrides", () => {
     const paseoHome = "/tmp/paseo-home";
     const persisted = PersistedConfigSchema.parse({});
-    const env = {} as NodeJS.ProcessEnv;
+    const env = { PASEO_LOCAL_SPEECH_CUDA_DIR: "/opt/paseo-cuda/lib" } as NodeJS.ProcessEnv;
 
     const result = resolveSpeechConfig({
       paseoHome,
@@ -40,6 +40,9 @@ describe("resolveSpeechConfig", () => {
     });
     expect(result.speech.local).toEqual({
       modelsDir: path.join(paseoHome, "models", "local-speech"),
+      executionProvider: "cpu",
+      cudaLibDir: "/opt/paseo-cuda/lib",
+      customModels: [],
       models: {
         dictationStt: "parakeet-tdt-0.6b-v2-int8",
         voiceStt: "parakeet-tdt-0.6b-v2-int8",
@@ -90,8 +93,10 @@ describe("resolveSpeechConfig", () => {
       persisted,
     });
 
-    expect(result.speech.local).toEqual({
+    expect(result.speech.local).toMatchObject({
       modelsDir: "/tmp/models",
+      executionProvider: "cpu",
+      customModels: [],
       models: {
         dictationStt: "parakeet-tdt-0.6b-v2-int8",
         voiceStt: "parakeet-tdt-0.6b-v2-int8",
@@ -199,5 +204,57 @@ describe("resolveSpeechConfig", () => {
       explicit: false,
       enabled: false,
     });
+  });
+
+  // CUSTOM(voice-settings)
+  test("resolves Settings choices: GPU, folders registered as models, and instructions", () => {
+    const persisted = PersistedConfigSchema.parse({
+      features: {
+        dictation: { stt: { provider: "local", model: "custom-my-parakeet-abc123" } },
+        voiceMode: {
+          tts: { provider: "local", model: "kokoro-multi-lang-v1_0", speakerId: 42 },
+          instructions: "  Answer in Portuguese.  ",
+        },
+      },
+      providers: {
+        local: {
+          executionProvider: "cuda",
+          customModels: [
+            { id: "custom-my-parakeet-abc123", kind: "stt", path: "/models/my-parakeet" },
+          ],
+        },
+      },
+    });
+
+    const result = resolveSpeechConfig({ paseoHome: "/tmp/paseo-home", env: {}, persisted });
+
+    expect(result.speech.local?.executionProvider).toBe("cuda");
+    expect(result.speech.local?.models.dictationStt).toBe("custom-my-parakeet-abc123");
+    expect(result.speech.local?.models.voiceTts).toBe("kokoro-multi-lang-v1_0");
+    expect(result.speech.local?.models.voiceTtsSpeakerId).toBe(42);
+    expect(result.speech.voiceInstructions).toBe("Answer in Portuguese.");
+  });
+
+  test("rejects a model that is neither in the catalog nor registered", () => {
+    const persisted = PersistedConfigSchema.parse({
+      features: { voiceMode: { stt: { provider: "local", model: "custom-gone-123456" } } },
+    });
+
+    expect(() => resolveSpeechConfig({ paseoHome: "/tmp/paseo-home", env: {}, persisted })).toThrow(
+      /Unknown local speech recognition model: custom-gone-123456/,
+    );
+  });
+
+  test("does not accept a synthesis folder as a recognition model", () => {
+    const persisted = PersistedConfigSchema.parse({
+      features: { dictation: { stt: { provider: "local", model: "custom-voice-1" } } },
+      providers: {
+        local: { customModels: [{ id: "custom-voice-1", kind: "tts", path: "/models/voice" }] },
+      },
+    });
+
+    expect(() => resolveSpeechConfig({ paseoHome: "/tmp/paseo-home", env: {}, persisted })).toThrow(
+      /Unknown local speech recognition model/,
+    );
   });
 });

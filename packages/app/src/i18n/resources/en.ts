@@ -1,3 +1,5 @@
+import { VOICE_SETTINGS_EN } from "./custom-voice-settings";
+
 export const en = {
   paneFind: {
     connectionFailure: "Could not search this chat. Check the host connection and retry.",
@@ -2057,6 +2059,8 @@ export const en = {
     },
   },
   settings: {
+    // CUSTOM(voice-settings)
+    voiceSettings: VOICE_SETTINGS_EN,
     title: "Settings",
     loading: "Loading settings...",
     groups: {
@@ -2155,6 +2159,8 @@ export const en = {
       connections: "Connections",
       agents: "Agents",
       metadata: "Metadata",
+      // CUSTOM(voice-settings)
+      voice: "Voice and dictation",
       workspaces: "Workspaces",
       providers: "Providers",
       usage: "Usage",

@@ -141,6 +141,8 @@ export interface VoiceSessionOptions {
   stt: Resolvable<SpeechToTextProvider | null>;
   voice?: {
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
+    // CUSTOM(voice-settings): instructions edited in Settings, read at each enable.
+    instructions?: () => string | undefined;
   };
   voiceBridge?: {
     registerVoiceSpeakHandler?: (agentId: string, handler: VoiceSpeakHandler) => void;
@@ -206,6 +208,7 @@ export class VoiceSession {
   ) => void;
   private readonly unregisterVoiceCallerContext?: (agentId: string) => void;
   private readonly getSpeechReadiness?: () => SpeechReadinessSnapshot;
+  private readonly resolveVoiceInstructions: () => string | undefined;
 
   private voiceModeAgentId: string | null = null;
   private voiceModeBaseConfig: VoiceModeBaseConfig | null = null;
@@ -226,6 +229,7 @@ export class VoiceSession {
     this.registerVoiceCallerContext = voiceBridge?.registerVoiceCallerContext;
     this.unregisterVoiceCallerContext = voiceBridge?.unregisterVoiceCallerContext;
     this.getSpeechReadiness = dictation?.getSpeechReadiness;
+    this.resolveVoiceInstructions = voice?.instructions ?? (() => undefined);
 
     this.ttsManager = new TTSManager(this.sessionId, this.sessionLogger, tts);
     this.sttManager = new STTManager(this.sessionId, this.sessionLogger, stt, {
@@ -505,7 +509,11 @@ export class VoiceSession {
     };
     this.voiceModeBaseConfig = baseConfig;
     const refreshOverrides: Partial<AgentSessionConfig> = {
-      systemPrompt: buildVoiceModeSystemPrompt(baseConfig.systemPrompt, true),
+      systemPrompt: buildVoiceModeSystemPrompt(
+        baseConfig.systemPrompt,
+        true,
+        this.resolveVoiceInstructions(),
+      ),
     };
 
     try {

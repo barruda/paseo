@@ -66,6 +66,11 @@ import type { ScriptHealthState } from "./script-health-monitor.js";
 import type { ServiceProxySubsystem } from "./service-proxy.js";
 import type { WorkspaceScriptRuntimeStore } from "./workspace-script-runtime-store.js";
 import type { SpeechReadinessSnapshot, SpeechService } from "./speech/speech-runtime.js";
+// CUSTOM(voice-settings)
+import {
+  createSpeechSettingsService,
+  type SpeechSettingsService,
+} from "./speech/speech-settings-service.js";
 import type { VoiceCallerContext, VoiceSpeakHandler } from "./voice-types.js";
 import {
   computeNotificationPlan,
@@ -556,6 +561,8 @@ export class VoiceAssistantWebSocketServer {
   private readonly pushNotificationSender: PushNotificationSender;
   private readonly mcpBaseUrl: string | null;
   private speech!: SpeechService | null;
+  // CUSTOM(voice-settings)
+  private speechSettings: SpeechSettingsService | null = null;
   private terminalManager!: TerminalManager | null;
   private serviceProxy!: ServiceProxySubsystem | null;
   private scriptRuntimeStore!: WorkspaceScriptRuntimeStore | null;
@@ -776,6 +783,13 @@ export class VoiceAssistantWebSocketServer {
     resolveScriptHealth: ((hostname: string) => ScriptHealthState | null) | undefined;
   }): void {
     this.speech = params.speech ?? null;
+    this.speechSettings = this.speech
+      ? createSpeechSettingsService({
+          speech: this.speech,
+          paseoHome: this.paseoHome,
+          env: process.env,
+        })
+      : null;
     this.terminalManager = params.terminalManager ?? null;
     if (this.terminalManager) {
       this.unsubscribeTerminalActivity = this.terminalManager.subscribeTerminalActivity((event) => {
@@ -1512,7 +1526,10 @@ export class VoiceAssistantWebSocketServer {
       resolveScriptHealth: this.resolveScriptHealth ?? undefined,
       voice: {
         turnDetection: () => this.speech?.resolveTurnDetection() ?? null,
+        // CUSTOM(voice-settings)
+        instructions: () => this.speech?.resolveVoiceInstructions(),
       },
+      speechSettings: this.speechSettings ?? undefined,
       voiceBridge: {
         registerVoiceSpeakHandler: (agentId, handler) => {
           if (this.voiceSpeakHandlers.has(agentId))
@@ -1828,6 +1845,8 @@ export class VoiceAssistantWebSocketServer {
         ...(this.advertiseDaemonStatusRpc ? { daemonStatusRpc: true } : {}),
         // COMPAT(daemonConfigReload): added in v0.4.0, remove gate after 2027-02-14.
         daemonConfigReload: true,
+        // CUSTOM(voice-settings)
+        ...(this.speechSettings ? { speechSettings: true } : {}),
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         ...(this.advertiseRelayConfig ? { relayConfig: true } : {}),
         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.

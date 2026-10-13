@@ -944,17 +944,21 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 ## local-speech-gpu: local speech recognition and synthesis on the GPU
 
 - **Added:** 2026-10-13
-- **Commit:** pending
+- **Commit:** a040c449d
 - **Why:** Voice mode on the CPU costs ~1.9 s of Kokoro synthesis per sentence and re-decodes
   the whole utterance on 2 CPU threads every 350 ms. On an RTX 4070 Ti SUPER the same work
   takes ~100 ms (TTS) and ~15 ms (STT) with almost no CPU. RAM does not drop: ONNX Runtime
-  keeps a host copy of the weights, and the worker sits around 2 GB plus ~3.5 GB of VRAM.
-- **What:** Setting `PASEO_LOCAL_SPEECH_CUDA_DIR` makes the local speech worker load
-  sherpa-onnx's CUDA build from that directory (ahead of the CPU-only npm package on
-  `LD_LIBRARY_PATH`) and run Parakeet and Kokoro on the `cuda` provider. Silero VAD stays on
+  keeps a host copy of the weights, and the worker sits around 2 GB plus ~1-3.5 GB of VRAM.
+- **What:** With GPU selected (Settings > Voice and dictation, stored as
+  `providers.local.executionProvider: "cuda"`), the worker client forks the local speech
+  worker with sherpa-onnx's CUDA build ahead of the CPU-only npm package on
+  `LD_LIBRARY_PATH` and runs Parakeet and Kokoro on the `cuda` provider. The build lives in
+  `~/.local/share/paseo-cuda/lib` (`PASEO_LOCAL_SPEECH_CUDA_DIR` or
+  `providers.local.cudaLibDir` override it); when it is missing or doesn't match the bundled
+  sherpa-onnx version, the worker stays on the CPU and Settings says why. Silero VAD stays on
   the CPU: per-window GPU launches cost ~8x more CPU than running it there. Adds the
   `parakeet-tdt-0.6b-v2-fp16` model (int8 kernels have no CUDA implementation, so int8 models
-  stay on the CPU under CUDA). On CUDA the worker loads `encoder.fp16-cuda.onnx` when present:
+  stay on the CPU under CUDA). On CUDA the worker picks `encoder.fp16-cuda.onnx` when present:
   `custom/local-speech-gpu/patch-parakeet-encoder-for-cuda.py` fixes two fp16 bugs that only
   show on CUDA (its docstring has the details). Under CUDA the worker turns SIGTERM into
   SIGKILL, because Node's SIGTERM teardown deadlocks once the CUDA runtime is loaded and
@@ -962,23 +966,71 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Setup:** `custom/local-speech-gpu/setup.sh [paseo-home ...]` installs the CUDA 12 runtime
   and cuDNN 9 as pip wheels under `~/.local/share/paseo-cuda` (no sudo, no driver changes),
   downloads the matching sherpa-onnx CUDA build, downloads the fp16 model, and patches the
-  encoder. Then add `PASEO_LOCAL_SPEECH_CUDA_DIR=~/.local/share/paseo-cuda/lib`,
-  `PASEO_DICTATION_LOCAL_STT_MODEL=parakeet-tdt-0.6b-v2-fp16` and
-  `PASEO_VOICE_LOCAL_STT_MODEL=parakeet-tdt-0.6b-v2-fp16` to the launcher's `Exec=env ...`. The
-  daemon reads them when it starts. Rerun `setup.sh` when upstream bumps `sherpa-onnx-node`;
-  the update script warns when the versions differ.
+  encoder. Then turn on "Use the GPU" in Settings. Rerun `setup.sh` when upstream bumps
+  `sherpa-onnx-node`; the update script warns when the versions differ.
 - **Core files touched:** in `packages/server/src/server/speech/providers/local/`:
-  `worker-process.ts` (provider, catalog file names, SIGTERM), `worker-client.ts` (loader
-  path, spawn log), `sherpa/model-catalog.ts` (fp16 entry),
+  `worker-process.ts` (provider, SIGTERM), `worker-client.ts` (fork env, spawn log),
+  `runtime.ts` (CPU fallback), `sherpa/model-catalog.ts` (fp16 entry),
   `sherpa/sherpa-offline-recognizer.ts` and `sherpa/sherpa-tts.ts` (provider option instead
-  of hardcoded `"cpu"`). Logic lives in `local-speech-gpu.ts` with `local-speech-gpu.test.ts`.
+  of hardcoded `"cpu"`). Logic lives in `local-speech-gpu.ts` and `model-files.ts`, with tests.
 - **Re-apply:** Give the recognizer and TTS configs a `provider` field passed to sherpa's
-  model config. In the worker, resolve the provider once from the env, pass it to both, read
-  transducer file names from the catalog's `requiredFiles`, use
-  `resolveTransducerEncoderFile` for the encoder, and add the SIGTERM handler under CUDA. In
-  the worker client, call `applyLocalSpeechCudaLoaderEnv(env)` right after
-  `applySherpaLoaderEnv(env)`. Re-add the fp16 catalog entry.
-- **Verify:** `cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts --bail=1`
-  (included in the update script). After restarting the daemon with the env set, use voice
-  mode once: `rg 'Local speech worker spawned' ~/.paseo/daemon.log | tail -1` shows
-  `"executionProvider":"cuda"`, and `nvidia-smi` lists the `Paseo Voice` process.
+  model config. The worker reads its provider from the env the client sets
+  (`applyLocalSpeechWorkerEnv`, called right after `applySherpaLoaderEnv` when forking),
+  passes it to both, and adds the SIGTERM handler under CUDA. `runtime.ts` resolves the
+  requested provider against `checkCudaAvailability` before creating the worker client.
+- **Verify:** `cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts src/server/speech/providers/local/model-files.test.ts --bail=1`
+  (included in the update script). Turn on "Use the GPU", use voice mode once, and the
+  Status section shows "Running on GPU" with VRAM in use.
+
+## voice-settings: Settings > Voice and dictation
+
+- **Added:** 2026-10-13
+- **Commit:** pending
+- **Why:** Speech settings lived only in `config.json` and env vars, needed a daemon restart,
+  and nothing showed whether the voice worker was running or what it cost.
+- **What:** A host settings page with:
+  - Status, refreshed every 2 s: engine state, worker PID and uptime, RAM, VRAM and CPU of the
+    worker, the GPU's memory and load (`nvidia-smi`), loaded models, dictation and voice
+    readiness, model downloads.
+  - Engine: CPU/GPU switch (see local-speech-gpu).
+  - Models: dictation, voice-mode listening and voice-mode speaking pickers over the catalog
+    (now with Parakeet v3, 25 languages, and Kokoro v1.0 multi-language, 54 voices including
+    Brazilian Portuguese) plus folders the user registers ("Add a model folder"; Electron with
+    the local daemon gets a folder picker, other clients type a host path). A missing catalog
+    model downloads in the background when picked. Folders are detected as NeMo transducer
+    (Parakeet) or Kokoro by their files.
+  - Voice: speaker (names and languages from the catalog), speed, and a preview played through
+    the app's audio engine.
+  - Voice mode instructions: edit or restore the built-in text the agent gets when voice mode
+    turns on (`features.voiceMode.instructions`).
+  - Thinking tone, per device: on/off and volume.
+  - Logs: recent speech lines from the daemon log (JSON or the dev daemon's pretty format).
+    Changes apply live: the settings ride on the daemon config patch (`MutableDaemonConfig.speech`),
+    and a `speech` field-change handler in `bootstrap.ts` re-resolves the speech config and calls
+    `speechService.reconfigure()`, which swaps in a new worker client. Settings an env var
+    controls show as locked. Multi-language Kokoro needs an espeak-ng `lang` (or a lexicon) or
+    the native code aborts the process; the worker derives it from the voice name's first letter.
+- **Core files touched:** protocol: `messages.ts` (import, `speech` on the mutable config and
+  patch, three RPCs in the unions, `speechSettings` feature flag); schemas in
+  `speech-settings.ts`. Server: `persisted-config.ts`, `daemon-config-store.ts`,
+  `bootstrap.ts`, `session.ts` (handler, cases in `dispatchMiscMessage`), `websocket-server.ts`,
+  `voice-config.ts`, `session/voice/voice-session.ts`, `authorization/operation-permissions.ts`,
+  `speech/speech-runtime.ts` (`reconfigure`, `getLocalStatus`, `previewVoice`),
+  `speech/speech-config-resolver.ts`, `speech/providers/local/{config,runtime,worker-*}.ts`,
+  `sherpa/sherpa-tts.ts`; new `speech/speech-settings-service.ts`,
+  `speech/providers/local/model-files.ts`. Client: `daemon-client.ts` (three methods). App:
+  `settings-screen.tsx`, `utils/host-routes.ts`, `voice/voice-runtime.ts`,
+  `contexts/voice-context.tsx`, each locale file (import + two keys); new
+  `screens/settings/voice/`, `voice/thinking-tone-settings.ts`,
+  `i18n/resources/custom-voice-settings.ts`.
+- **Re-apply:** Re-add the `speech` field and the three `speech.local.*` RPCs to the protocol
+  unions and permission maps. In the config store, map `speech` to `features.dictation`,
+  `features.voiceMode` and `providers.local` (reloadable paths and the persisted merge). Keep
+  `SpeechService.reconfigure` validating before it mutates, because the store's rollback calls
+  the field handler again with the old value. Register the host page slug `voice` with its
+  sidebar item and render case.
+- **Verify:** Server: `npx vitest run src/server/speech src/server/daemon-config-store.test.ts src/server/voice-config.test.ts --bail=1`.
+  App: `npx vitest run src/screens/settings/voice src/voice/thinking-tone-settings.test.ts src/i18n --bail=1`.
+  Both are in the update script. In the app, open Settings > host > Voice and dictation: the
+  status fills in; switch a model and the status shows the download or the new model loaded
+  after the next use; Preview plays the selected voice.

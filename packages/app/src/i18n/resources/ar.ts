@@ -1,4 +1,5 @@
 import { en, type TranslationResources } from "./en";
+import { VOICE_SETTINGS_AR } from "./custom-voice-settings";
 import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
@@ -2032,6 +2033,8 @@ export const ar: TranslationResources = {
     },
   },
   settings: {
+    // CUSTOM(voice-settings)
+    voiceSettings: VOICE_SETTINGS_AR,
     title: "إعدادات",
     loading: "جارٍ تحميل الإعدادات...",
     groups: {
@@ -2092,6 +2095,8 @@ export const ar: TranslationResources = {
       connections: "اتصالات",
       agents: "Agents",
       metadata: "البيانات الوصفية",
+      // CUSTOM(voice-settings)
+      voice: "الصوت والإملاء",
       workspaces: "Workspaces",
       providers: "مقدمي الخدمات",
       usage: "الاستخدام",
