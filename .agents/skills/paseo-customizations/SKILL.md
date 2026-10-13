@@ -41,7 +41,11 @@ rules agents get wrong.
 - Core change: `npm run build:desktop -- --linux dir` (only the folder the install copies; the
   full build fails at rpm on Ubuntu), then
   `custom/update-paseo-source-and-apply-customization.sh --install-only`. The user then reopens the
-  Paseo window.
+  Paseo window. For daemon-side changes that is not enough: with an unchanged version the
+  `Paseo Supervisor` keeps respawning the daemon from the old build, even after Settings >
+  Restart daemon. Tell the user to close Paseo, run
+  `~/Applications/Paseo-builds/<newest>/resources/bin/paseo daemon stop --home ~/.paseo`, and
+  reopen it (see "Updating" in `custom/README.md`).
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user
   first when the upstream version changed: reopening the app restarts the daemon, which stops its
   running agents.

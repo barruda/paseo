@@ -64,6 +64,12 @@ don't have to quit anything first. When you reopen the window, the new app reuse
 daemon if the versions match. If the update changed the daemon version, the app restarts the
 daemon, which stops its running agents.
 
+A daemon-side change with an unchanged version needs the daemon stopped by hand. The daemon runs
+under a long-lived `Paseo Supervisor` that respawns it from the build the supervisor started from,
+so neither reopening the window nor Settings > Restart daemon picks up new daemon code. Close the
+Paseo windows, run `~/Applications/Paseo-builds/<newest>/resources/bin/paseo daemon stop --home
+~/.paseo` (and `~/.paseo-telus`), then reopen Paseo. This stops the running agents.
+
 Installed builds have the auto-updater off, so they never replace themselves with upstream's
 release; updates only come from this script.
 
