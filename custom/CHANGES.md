@@ -938,3 +938,45 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   (included in the update script). In desktop, open a chat with an empty composer: press Enter
   twice quickly and voice mode starts; double-click the empty input and voice mode starts. Type
   text and verify Enter sends and double-click selects a word.
+
+## local-speech-gpu: local speech recognition and synthesis on the GPU
+
+- **Added:** 2026-10-13
+- **Commit:** pending
+- **Why:** Voice mode on the CPU costs ~1.9 s of Kokoro synthesis per sentence and re-decodes
+  the whole utterance on 2 CPU threads every 350 ms. On an RTX 4070 Ti SUPER the same work
+  takes ~100 ms (TTS) and ~15 ms (STT) with almost no CPU. RAM does not drop: ONNX Runtime
+  keeps a host copy of the weights, and the worker sits around 2 GB plus ~3.5 GB of VRAM.
+- **What:** Setting `PASEO_LOCAL_SPEECH_CUDA_DIR` makes the local speech worker load
+  sherpa-onnx's CUDA build from that directory (ahead of the CPU-only npm package on
+  `LD_LIBRARY_PATH`) and run Parakeet and Kokoro on the `cuda` provider. Silero VAD stays on
+  the CPU: per-window GPU launches cost ~8x more CPU than running it there. Adds the
+  `parakeet-tdt-0.6b-v2-fp16` model (int8 kernels have no CUDA implementation, so int8 models
+  stay on the CPU under CUDA). On CUDA the worker loads `encoder.fp16-cuda.onnx` when present:
+  `custom/local-speech-gpu/patch-parakeet-encoder-for-cuda.py` fixes two fp16 bugs that only
+  show on CUDA (its docstring has the details). Under CUDA the worker turns SIGTERM into
+  SIGKILL, because Node's SIGTERM teardown deadlocks once the CUDA runtime is loaded and
+  leaves a hung worker holding VRAM.
+- **Setup:** `custom/local-speech-gpu/setup.sh [paseo-home ...]` installs the CUDA 12 runtime
+  and cuDNN 9 as pip wheels under `~/.local/share/paseo-cuda` (no sudo, no driver changes),
+  downloads the matching sherpa-onnx CUDA build, downloads the fp16 model, and patches the
+  encoder. Then add `PASEO_LOCAL_SPEECH_CUDA_DIR=~/.local/share/paseo-cuda/lib`,
+  `PASEO_DICTATION_LOCAL_STT_MODEL=parakeet-tdt-0.6b-v2-fp16` and
+  `PASEO_VOICE_LOCAL_STT_MODEL=parakeet-tdt-0.6b-v2-fp16` to the launcher's `Exec=env ...`. The
+  daemon reads them when it starts. Rerun `setup.sh` when upstream bumps `sherpa-onnx-node`;
+  the update script warns when the versions differ.
+- **Core files touched:** in `packages/server/src/server/speech/providers/local/`:
+  `worker-process.ts` (provider, catalog file names, SIGTERM), `worker-client.ts` (loader
+  path, spawn log), `sherpa/model-catalog.ts` (fp16 entry),
+  `sherpa/sherpa-offline-recognizer.ts` and `sherpa/sherpa-tts.ts` (provider option instead
+  of hardcoded `"cpu"`). Logic lives in `local-speech-gpu.ts` with `local-speech-gpu.test.ts`.
+- **Re-apply:** Give the recognizer and TTS configs a `provider` field passed to sherpa's
+  model config. In the worker, resolve the provider once from the env, pass it to both, read
+  transducer file names from the catalog's `requiredFiles`, use
+  `resolveTransducerEncoderFile` for the encoder, and add the SIGTERM handler under CUDA. In
+  the worker client, call `applyLocalSpeechCudaLoaderEnv(env)` right after
+  `applySherpaLoaderEnv(env)`. Re-add the fp16 catalog entry.
+- **Verify:** `cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts --bail=1`
+  (included in the update script). After restarting the daemon with the env set, use voice
+  mode once: `rg 'Local speech worker spawned' ~/.paseo/daemon.log | tail -1` shows
+  `"executionProvider":"cuda"`, and `nvidia-smi` lists the `Paseo Voice` process.

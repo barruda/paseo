@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 
 import type { SpeechStreamResult, TextToSpeechProvider } from "../../../speech-provider.js";
 import { chunkBuffer, float32ToPcm16le } from "../../../audio.js";
+import type { LocalSpeechExecutionProvider } from "../local-speech-gpu.js";
 import { loadSherpaOnnxNode } from "./sherpa-onnx-node-loader.js";
 
 export type SherpaTtsPreset = "kokoro-en-v0_19";
@@ -15,6 +16,7 @@ export interface SherpaTtsConfig {
   speed?: number;
   lengthScale?: number;
   numThreads?: number;
+  provider?: LocalSpeechExecutionProvider;
 }
 
 function assertFileExists(filePath: string, label: string): void {
@@ -72,7 +74,7 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
     const modelConfig = {
       // The native parser reads these under model, despite the upstream JS typedef.
       numThreads: config.numThreads ?? 2,
-      provider: "cpu",
+      provider: config.provider ?? "cpu",
       kokoro: {
         model: modelPath,
         voices: voicesPath,
@@ -91,7 +93,7 @@ export class SherpaOnnxTTS implements TextToSpeechProvider {
       sherpa as unknown as { OfflineTts: new (config: unknown) => SherpaOfflineTtsNative }
     ).OfflineTts(offlineTtsConfig);
     this.logger.info(
-      { preset: config.preset, modelDir: config.modelDir },
+      { preset: config.preset, modelDir: config.modelDir, executionProvider: modelConfig.provider },
       "Sherpa offline TTS initialized",
     );
   }

@@ -32,6 +32,17 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     description:
       "NVIDIA Parakeet TDT v3 (offline NeMo transducer, 25 European languages, auto-detected).",
   },
+  // CUSTOM(local-speech-gpu): full-precision Parakeet for the CUDA provider. int8 kernels
+  // have no CUDA implementation, so the int8 models stay on the CPU even under CUDA.
+  // Needs ~5.5 GB of RAM on the CPU; use it with PASEO_LOCAL_SPEECH_CUDA_DIR.
+  "parakeet-tdt-0.6b-v2-fp16": {
+    kind: "stt-offline",
+    archiveUrl:
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16.tar.bz2",
+    extractedDir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16",
+    requiredFiles: ["encoder.fp16.onnx", "decoder.fp16.onnx", "joiner.fp16.onnx", "tokens.txt"],
+    description: "NVIDIA Parakeet TDT v2, fp16 (offline NeMo transducer, English, GPU).",
+  },
   "kokoro-en-v0_19": {
     kind: "tts",
     archiveUrl:

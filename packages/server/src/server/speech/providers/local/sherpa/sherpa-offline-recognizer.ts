@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import type pino from "pino";
 
+import type { LocalSpeechExecutionProvider } from "../local-speech-gpu.js";
 import { loadSherpaOnnxNode } from "./sherpa-onnx-node-loader.js";
 
 function assertFileExists(filePath: string, label: string): void {
@@ -20,7 +21,7 @@ export interface SherpaOfflineRecognizerModel {
 export interface SherpaOfflineRecognizerConfig {
   model: SherpaOfflineRecognizerModel;
   numThreads?: number;
-  provider?: "cpu";
+  provider?: LocalSpeechExecutionProvider;
   debug?: 0 | 1;
   sampleRate?: number;
   featureDim?: number;
@@ -94,7 +95,11 @@ export class SherpaOfflineRecognizerEngine {
         : recognizerConfig.featConfig.sampleRate;
 
     this.logger.info(
-      { sampleRate: this.sampleRate, numThreads: recognizerConfig.modelConfig.numThreads },
+      {
+        sampleRate: this.sampleRate,
+        numThreads: recognizerConfig.modelConfig.numThreads,
+        executionProvider: recognizerConfig.modelConfig.provider,
+      },
       "Sherpa offline recognizer initialized",
     );
   }
