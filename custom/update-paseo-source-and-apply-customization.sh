@@ -281,6 +281,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/screens/new-workspace/bottom-terminal.test.ts --bail=1)
   (cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts src/file-pane/html-preview-keys.browser.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts --bail=1)
 fi
 
 step "Building the desktop app"
@@ -317,5 +318,14 @@ for plugin in shell-command workspace-tasks warp; do
     fi
   done
 done
+
+# The CUDA libraries must match the sherpa-onnx-node version the app bundles.
+cuda_dir="${PASEO_CUDA_ROOT:-$HOME/.local/share/paseo-cuda}/lib"
+if [[ -f "$cuda_dir/SHERPA_VERSION" ]]; then
+  bundled="$(node -p "require('$ROOT/node_modules/sherpa-onnx-linux-x64/package.json').version")"
+  if [[ "$(cat "$cuda_dir/SHERPA_VERSION")" != "$bundled" ]]; then
+    warn "Local speech GPU libraries are for sherpa-onnx $(cat "$cuda_dir/SHERPA_VERSION"); the app now bundles $bundled. Run custom/local-speech-gpu/setup.sh."
+  fi
+fi
 
 step "Done"

@@ -12,6 +12,10 @@ import type {
   TextToSpeechProvider,
 } from "../../speech-provider.js";
 import type { TurnDetectionProvider, TurnDetectionSession } from "../../turn-detection-provider.js";
+import {
+  applyLocalSpeechCudaLoaderEnv,
+  resolveLocalSpeechExecutionProvider,
+} from "./local-speech-gpu.js";
 import { applySherpaLoaderEnv } from "./sherpa/sherpa-runtime-env.js";
 import type {
   LocalSpeechCreateSessionResult,
@@ -94,6 +98,8 @@ function resolveWorkerExecArgv(): string[] {
 function forkLocalSpeechWorker(): LocalSpeechWorkerProcess {
   const env = { ...process.env };
   applySherpaLoaderEnv(env);
+  // CUSTOM(local-speech-gpu): the CUDA build must shadow the CPU package's libraries.
+  applyLocalSpeechCudaLoaderEnv(env);
   return fork(fileURLToPath(resolveWorkerUrl()), [], {
     env,
     execArgv: resolveWorkerExecArgv(),
@@ -367,6 +373,7 @@ export class LocalSpeechWorkerClient {
         voiceSttModel: this.config.voiceSttModel,
         dictationSttModel: this.config.dictationSttModel,
         voiceTtsModel: this.config.voiceTtsModel,
+        executionProvider: resolveLocalSpeechExecutionProvider(),
       },
       "Local speech worker spawned",
     );

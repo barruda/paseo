@@ -1,8 +1,16 @@
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 import pino from "pino";
 
 import type { StreamingTranscriptionSession } from "../../speech-provider.js";
 import type { TurnDetectionSession } from "../../turn-detection-provider.js";
+import {
+  resolveLocalSpeechExecutionProvider,
+  resolveTransducerEncoderFile,
+} from "./local-speech-gpu.js";
 import { getLocalSpeechModelDir, type LocalSttModelId, type LocalTtsModelId } from "./models.js";
+import { getSherpaOnnxModelSpec } from "./sherpa/model-catalog.js";
 import { SherpaOfflineRecognizerEngine } from "./sherpa/sherpa-offline-recognizer.js";
 import { SherpaOnnxParakeetSTT } from "./sherpa/sherpa-parakeet-stt.js";
 import { SherpaParakeetRealtimeTranscriptionSession } from "./sherpa/sherpa-parakeet-realtime-session.js";
@@ -32,6 +40,14 @@ const ttsProviders = new Map<string, SherpaOnnxTTS>();
 const sessions = new Map<string, StreamingTranscriptionSession | TurnDetectionSession>();
 const unsubscribeBySessionId = new Map<string, Array<() => void>>();
 let ipcClosing = false;
+// CUSTOM(local-speech-gpu): CUDA when the daemon points us at a CUDA build of sherpa-onnx.
+const executionProvider = resolveLocalSpeechExecutionProvider();
+if (executionProvider === "cuda") {
+  // Node's default SIGTERM teardown deadlocks once the CUDA runtime is loaded, leaving a
+  // hung worker that pins GPU memory. The client sends SIGTERM on every idle shutdown.
+  // SIGKILL is safe here: the kernel releases the GPU context.
+  process.on("SIGTERM", () => process.kill(process.pid, "SIGKILL"));
+}
 
 function sendToParent(message: LocalSpeechWorkerToParentMessage): void {
   if (ipcClosing || !process.connected || !process.send) {
@@ -83,16 +99,32 @@ function getSttEngine(
     return existing;
   }
   const modelDir = getLocalSpeechModelDir(config.modelsDir, modelId);
+  // CUSTOM(local-speech-gpu): take file names from the catalog so non-int8 models load.
+  const modelFile = (prefix: string): string => {
+    const file = getSherpaOnnxModelSpec(modelId).requiredFiles.find((name) =>
+      name.startsWith(prefix),
+    );
+    if (!file) {
+      throw new Error(`Local speech model ${modelId} has no ${prefix}* file`);
+    }
+    return file;
+  };
   const created = new SherpaOfflineRecognizerEngine(
     {
       model: {
         kind: "nemo_transducer",
-        encoder: `${modelDir}/encoder.int8.onnx`,
-        decoder: `${modelDir}/decoder.int8.onnx`,
-        joiner: `${modelDir}/joiner.int8.onnx`,
-        tokens: `${modelDir}/tokens.txt`,
+        encoder: resolveTransducerEncoderFile({
+          modelDir,
+          encoderFile: modelFile("encoder."),
+          provider: executionProvider,
+          exists: existsSync,
+        }),
+        decoder: path.join(modelDir, modelFile("decoder.")),
+        joiner: path.join(modelDir, modelFile("joiner.")),
+        tokens: path.join(modelDir, "tokens.txt"),
       },
       numThreads: 2,
+      provider: executionProvider,
       debug: 0,
     },
     logger,
@@ -129,6 +161,7 @@ function getTtsProvider(config: LocalSpeechWorkerConfig): SherpaOnnxTTS {
       modelDir,
       speakerId: config.voiceTtsSpeakerId,
       speed: config.voiceTtsSpeed,
+      provider: executionProvider,
     },
     logger,
   );
