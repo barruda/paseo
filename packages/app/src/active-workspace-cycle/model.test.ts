@@ -1,3 +1,4 @@
+import { shouldHighlightWorkspaceRow } from "@/recent-workspaces/highlight";
 import { describe, expect, it } from "vitest";
 import {
   ACTIVE_WORKSPACE_WINDOW_MS,
@@ -109,5 +110,54 @@ describe("nextRecentlyActiveWorkspace", () => {
   it("has nowhere to go when only the current workspace is active, or none", () => {
     expect(nextRecentlyActiveWorkspace([ORDER[0]], ORDER[0])).toBeNull();
     expect(nextRecentlyActiveWorkspace([], ORDER[0])).toBeNull();
+  });
+});
+
+describe("Recent row highlighting", () => {
+  const workspace = { serverId: "host-1", workspaceId: "workspace-1" };
+  const state = { target: workspace, visibleWorkspaces: [workspace] };
+
+  it("highlights only the Recent copy after cycling", () => {
+    expect(
+      shouldHighlightWorkspaceRow({ ...state, workspace, selected: true, isRecentRow: true }),
+    ).toBe(true);
+    expect(
+      shouldHighlightWorkspaceRow({ ...state, workspace, selected: true, isRecentRow: false }),
+    ).toBe(false);
+    expect(
+      shouldHighlightWorkspaceRow({ ...state, workspace, selected: false, isRecentRow: true }),
+    ).toBe(false);
+  });
+
+  it("restores the ordinary highlight when Recent is collapsed, hidden, or the target ages out", () => {
+    expect(
+      shouldHighlightWorkspaceRow({
+        ...state,
+        visibleWorkspaces: [],
+        workspace,
+        selected: true,
+        isRecentRow: false,
+      }),
+    ).toBe(true);
+  });
+
+  it("keeps normal navigation and other hosts highlighted", () => {
+    expect(
+      shouldHighlightWorkspaceRow({
+        ...state,
+        target: null,
+        workspace,
+        selected: true,
+        isRecentRow: false,
+      }),
+    ).toBe(true);
+    expect(
+      shouldHighlightWorkspaceRow({
+        ...state,
+        workspace: { ...workspace, serverId: "host-2" },
+        selected: true,
+        isRecentRow: false,
+      }),
+    ).toBe(true);
   });
 });

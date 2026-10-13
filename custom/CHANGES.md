@@ -702,12 +702,12 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Core files touched** (marked `CUSTOM(header-shortcuts)`):
   `packages/app/src/screens/workspace/workspace-screen.tsx`: the `headerRight` `View` became
   `HeaderShortcutsRightRow` (which renders the strip, then the buttons in a `View` with the same
-  style), `HeaderShortcutsLeftProbe` is the first child of the header's `left`, and
-  `persistenceKey` joins both memo dependency lists.
+  style), and `ScreenHeader` gets `onRowLayout` from `useHeaderShortcutsRowLayout`.
 - **Re-apply:** Wrap the workspace header's right-side buttons in `HeaderShortcutsRightRow` with
-  the workspace's persistence key, and put `HeaderShortcutsLeftProbe` with the same key inside the
-  header's left side, which must still flex to fill the leftover width. The strip needs the left
-  and right widths to add up to the header width.
+  the workspace's persistence key, and pass `useHeaderShortcutsRowLayout(persistenceKey)` as the
+  `ScreenHeader`'s `onRowLayout`. The strip fits into the row's width, not the sum of its children:
+  measuring the children made the strip's own width feed back into the count and flicker when the
+  window was narrow.
 - **Verify:** `(cd packages/app && npx vitest run src/header-shortcuts/fit.test.ts)` (the update
   script runs it). In the app, the shortcuts sit left of the Commit button; narrowing the window
   drops them from the right end of the list first.
@@ -751,12 +751,16 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     every 30 seconds so stale workspaces drop out.
   - Rows are the project-mode workspace rows (status on the left, menu, context menu), with the
     project's icon on the right where other rows show the time or the diff.
+  - Shift+Tab highlights only the Recent copy while it is visible. Normal navigation restores
+    ordinary selection highlighting; hiding/collapsing Recent or aging out restores the project
+    highlight. A faint inset dashed divider separates Recent from the projects.
   - The rows stay in their projects too. Ctrl+1..9 skip the section: its rows have no number and
     the numbering is unchanged.
   - Works in project mode and in the status/label grouping modes. Collapsing is not remembered
     across restarts.
 - **Files:** `packages/app/src/recent-workspaces/` (`section.tsx` the section and header,
-  `trailing.tsx` the context that swaps the trailing slot for the project icon), and
+  `trailing.tsx` the context that swaps the trailing slot for the project icon, `highlight.ts`
+  transient cycle target and visible-row highlight policy), and
   `packages/app/src/active-workspace-cycle/use-recently-active-workspaces.ts` (the sidebar order,
   shared with the Shift+Tab handler, and the live recent set). New files; no conflict risk.
 - **Core files touched** (each marked `CUSTOM(recent-workspaces)`):
@@ -767,17 +771,24 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     section. `WorkspaceRowWithMenu` gives a section row its own archive handler id, since the
     dispatcher keys handlers by id and the same workspace also has a row in its project.
   - `packages/app/src/components/sidebar/sidebar-status-list.tsx`: `leadingSection` prop, rendered
-    right after `listHeaderComponent`.
+    right after `listHeaderComponent`; its inner row applies the Recent highlight policy.
+  - `packages/app/src/stores/navigation-active-workspace-store/index.ts`: records the transient
+    Recent target for cycle navigation and clears it for ordinary navigation.
 - **Re-apply:** Render `<RecentWorkspacesSection renderRow={...} projectIconByProjectViewKey={...}>`
   right after each list mode's `listHeaderComponent` (the Workspaces title and New workspace), with `renderRow` returning the project-mode
   workspace row with no shortcut number. In the row's trailing slot, when
   `useRecentWorkspaceProjectIcons()` is non-null, always render the slot and show
   `RecentWorkspaceProjectIcon` instead of the time/diff. Suffix the row's archive keyboard handler
-  id inside the section.
+  id inside the section. Pass `sidebarHighlight: "recent"` from the cycle handler; clear the
+  highlight target on other workspace navigation. Apply the highlight policy only to the visual
+  row renderers so archive actions retain the actual active selection. The section publishes its
+  visible workspaces and clears them when collapsed or unmounted; keep the dashed divider inside
+  the section so it disappears when Recent is hidden or empty.
 - **Verify:** `(cd packages/app && npx vitest run src/active-workspace-cycle/model.test.ts)` covers
   the recent set (the update script runs it). In the app, send a prompt in two workspaces: both
   appear under "Recent" (below New workspace, Shift+Tab chip on the right) with their project icons on the right, Ctrl+1 still goes to
-  the first workspace under the projects, and Shift+Tab alternates between the two.
+  the first workspace under the projects, and Shift+Tab alternates between the two with only the
+  Recent copy highlighted. The same suite checks highlight fallback and host identity.
 
 ## sidebar-workspace-limit: each project shows its few newest workspaces
 
@@ -860,3 +871,46 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run src/screens/new-workspace/bottom-terminal.test.ts)`
   (the update script runs it). In the app, open New Workspace, press Ctrl+J three times: a
   terminal in the project's folder appears, hides, and comes back with the same shell.
+
+## empty-composer-shortcuts: project cycling and message rewind
+
+- **Added:** 2026-10-13
+- **Commit:** pending
+- **Why:** Choose a project and reach rewind actions directly from an empty composer.
+- **What:** Left cycles projects backwards with wraparound on New Workspace. In an ongoing
+  chat, Up selects the latest sent message and scrolls it into view; Enter opens its existing
+  rewind menu. Escape or typing clears selection. Modified keys and autocomplete retain priority.
+  Web and desktop placeholders show the appropriate hints, translated in every supported locale.
+- **Core files touched:** `screens/new-workspace-screen.tsx`, `composer/index.tsx`,
+  `composer/input/input.tsx`, `agent-stream/view.tsx`, `components/message.tsx`,
+  `components/rewind/rewind-menu.tsx`, and `i18n/resources/*.ts` under `packages/app/src/`.
+- **Re-apply:** Forward an optional key callback through Composer after autocomplete. New
+  Workspace uses the existing project selection callback. Running chat composers select from
+  stream tail/head through `composer/empty-shortcuts.ts`; the transcript observes that selection
+  to scroll, highlight the message, and open RewindMenu on Enter. Keep IME and modified keys out
+  of the shortcut path. Add translated placeholder hints and the focused test to the update script.
+- **Verify:** `cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts --bail=1`.
+  In desktop, cycle past the first project with an empty prompt; type text and verify Left edits
+  normally. In an ongoing chat, press Up then Enter and verify rewind options appear without
+  executing a rewind; dismiss with Escape and verify typing resumes normally.
+
+## composer-project-icon: identify the project beside context usage
+
+- **Added:** 2026-10-13
+- **Commit:** pending
+- **Why:** Recognize the current project directly in the chat composer.
+- **What:** The ongoing chat toolbar shows the project's icon immediately before the context
+  meter, with its name in a tooltip. It uses the sidebar's project identity, image cache, and
+  colored-initial fallback. Worktrees use their parent project's icon; host-local project IDs
+  are matched together with the host. Uploaded and discovered icon revisions remain live.
+- **Core files touched:** `packages/app/src/composer/index.tsx` (marked
+  `CUSTOM(composer-project-icon)`). New implementation files live alongside it in
+  `project-icon.tsx`, `project-icon-model.ts`, and `project-icon-model.test.ts`.
+- **Re-apply:** Render `ComposerProjectIcon` beside `ContextWindowMeter` in a horizontal group
+  in `beforeVoiceContent`. Pass the composer host, agent, workspace, and meter glyph size.
+  Resolve the workspace's project ID through session state and the canonical host project list;
+  reuse `useProjectIcons` and `ProjectIconView` instead of looking up the worktree directory.
+- **Verify:** `cd packages/app && npx vitest run src/composer/project-icon-model.test.ts --bail=1`
+  (included in the update script). Open chats in two projects and a worktree: the icon follows
+  the project, hovering reveals its name, and context usage still opens normally. Check a
+  project with an uploaded icon and one using the colored initial.

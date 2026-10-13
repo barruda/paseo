@@ -1,3 +1,5 @@
+// CUSTOM(recent-workspaces): Shift+Tab highlights only the visible Recent copy.
+import { useWorkspaceRowHighlight } from "@/recent-workspaces/highlight";
 import {
   memo,
   useCallback,
@@ -766,7 +768,7 @@ function StatusWorkspaceRowInnerContent({
   hostBadge,
   projectName,
   projectIconDataUri,
-  selected,
+  selected: active,
   shortcutNumber,
   showShortcutBadge,
   onPress,
@@ -791,6 +793,7 @@ function StatusWorkspaceRowInnerContent({
 }: StatusWorkspaceRowInnerProps & {
   dragInteraction?: ReturnType<typeof useLongPressDragInteraction>;
 }) {
+  const selected = useWorkspaceRowHighlight(active, false, workspace);
   const isCompact = useIsCompactFormFactor();
   const isTouchPlatform = platformIsNative || isCompact;
   const [isPressed, setIsPressed] = useState(false);

@@ -116,6 +116,8 @@ export const zhCN: TranslationResources = {
   },
   composer: {
     placeholders: {
+      projectHint: "← 切换项目",
+      rewindHint: "↑ 选择上一条消息；Enter 打开回退选项",
       desktop: "给 Agent 发消息，标记 @files，或使用 /commands 和 /skills",
       mobile: "发消息，@files，/commands",
       fallback: "输入消息...",

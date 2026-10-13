@@ -1,3 +1,5 @@
+// CUSTOM(recent-workspaces): navigation origin controls duplicate row highlighting.
+import { useRecentHighlightStore } from "@/recent-workspaces/highlight";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useLocalSearchParams, usePathname } from "expo-router";
 import { useEffect, useSyncExternalStore } from "react";
@@ -59,11 +61,17 @@ export function getIsLastWorkspaceSelectionHydrated(): boolean {
   return lastWorkspaceSelectionStore.isHydrated();
 }
 
-export function navigateToWorkspace(input: NavigateToWorkspaceInput): string {
+export function navigateToWorkspace(
+  input: NavigateToWorkspaceInput & { sidebarHighlight?: "recent" },
+): string {
+  useRecentHighlightStore.setState({
+    target: input.sidebarHighlight === "recent" ? input : null,
+  });
   return navigateToWorkspacePure(input, navigateDeps());
 }
 
 export function navigateToLastWorkspace(): boolean {
+  useRecentHighlightStore.setState({ target: null });
   return navigateToLastWorkspacePure({
     ...navigateDeps(),
     getLastWorkspaceSelection: () => lastWorkspaceSelectionStore.getSelection(),

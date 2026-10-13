@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -11,6 +11,7 @@ import type { SidebarWorkspacePlacement } from "@/hooks/use-sidebar-workspaces-l
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarWorkspaceLimitStore } from "@/sidebar-workspace-limit/store";
 import { density, densityFontSize } from "@/styles/density";
+import { useRecentHighlightStore } from "./highlight";
 import { RecentWorkspaceTrailingContext } from "./trailing";
 
 /**
@@ -45,6 +46,10 @@ function RecentWorkspacesSectionBody({
   const workspaces = useRecentlyActiveWorkspaces();
   const [collapsed, setCollapsed] = useState(false);
   const toggle = useCallback(() => setCollapsed((value) => !value), []);
+  useEffect(() => {
+    useRecentHighlightStore.setState({ visibleWorkspaces: collapsed ? [] : workspaces });
+    return () => useRecentHighlightStore.setState({ visibleWorkspaces: [] });
+  }, [collapsed, workspaces]);
   if (workspaces.length === 0) return null;
   return (
     <View style={styles.section} testID="sidebar-recent-section">
@@ -56,6 +61,7 @@ function RecentWorkspacesSectionBody({
           ))}
         </RecentWorkspaceTrailingContext.Provider>
       )}
+      <View style={styles.divider} testID="sidebar-recent-divider" />
     </View>
   );
 }
@@ -99,6 +105,15 @@ function RecentWorkspacesHeader({
 // Same header and spacing as the Pinned section; the shortcut lines up with New workspace's.
 const styles = StyleSheet.create((theme) => ({
   section: {
+    marginBottom: theme.spacing[1],
+  },
+  divider: {
+    borderBottomWidth: theme.borderWidth[1],
+    borderColor: theme.colors.border,
+    borderStyle: "dashed",
+    opacity: theme.opacity[50],
+    marginHorizontal: theme.spacing[2],
+    marginTop: theme.spacing[2],
     marginBottom: theme.spacing[1],
   },
   header: {

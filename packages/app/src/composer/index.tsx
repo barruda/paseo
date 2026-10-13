@@ -1,3 +1,5 @@
+import { ComposerProjectIcon } from "./project-icon";
+import { handleEmptyRewindKey } from "./empty-shortcuts";
 import type { ComposerTextSource } from "./text-source";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { useStore } from "zustand";
@@ -966,6 +968,7 @@ interface ComposerProps {
   submitLabel?: string;
   /** Overrides the mode's default placeholder, for text only the caller can build. */
   placeholder?: string;
+  onKeyPress?: (event: ComposerKeyPressEvent) => boolean;
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
@@ -1234,6 +1237,7 @@ function ComposerContentImpl({
   readOnly = false,
   submitLabel,
   placeholder,
+  onKeyPress,
 }: ComposerContentProps) {
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
@@ -1269,7 +1273,12 @@ function ComposerContentImpl({
   const isDesktopWebBreakpoint = resolveIsDesktopWebBreakpoint(isCompactFormFactor);
   const hasFinePointer = useHasFinePointer();
   const isDesktopLayout = resolveIsDesktopWebBreakpoint(isCompactLayout);
-  const messagePlaceholder = resolveMessagePlaceholder(inputMode, isDesktopLayout, t, placeholder);
+  const basePlaceholder = resolveMessagePlaceholder(inputMode, isDesktopLayout, t, placeholder);
+  // CUSTOM(empty-composer-shortcuts): hints belong to the surface that owns the shortcut.
+  const messagePlaceholder =
+    isWeb && inputMode === "chat" && !commandDraft && !placeholder
+      ? `${basePlaceholder} · ${t("composer.placeholders.rewindHint")}`
+      : basePlaceholder;
   const hasText = useSyncExternalStore(
     textSource.subscribe,
     () => textSource.getSnapshot().trim().length > 0,
@@ -1950,8 +1959,21 @@ function ComposerContentImpl({
 
   // Handle keyboard navigation for command autocomplete.
   const handleCommandKeyPress = useCallback(
-    (event: ComposerKeyPressEvent) => autocompleteRef.current?.onKeyPress(event) ?? false,
-    [],
+    (event: ComposerKeyPressEvent) => {
+      if (autocompleteRef.current?.onKeyPress(event)) return true;
+      if (onKeyPress?.(event)) return true;
+      if (commandDraft || inputMode !== "chat" || event.hasModifier) return false;
+      const session = useSessionStore.getState().sessions[serverId];
+      const items =
+        event.key === "ArrowUp"
+          ? [
+              ...(session?.agentStreamTail.get(agentId) ?? []),
+              ...(session?.agentStreamHead.get(agentId) ?? []),
+            ]
+          : [];
+      return handleEmptyRewindKey({ event, serverId, agentId, items });
+    },
+    [onKeyPress, commandDraft, inputMode, serverId, agentId],
   );
 
   const cancelButtonStyle = useMemo(
@@ -2029,21 +2051,31 @@ function ComposerContentImpl({
   const beforeVoiceContent = useMemo(
     () =>
       hasAgent ? (
-        <View style={styles.contextWindowMeterSlot}>
-          <ContextWindowMeter
+        <View style={styles.projectContextIndicators}>
+          {/* CUSTOM(composer-project-icon): keep project identity next to context usage. */}
+          <ComposerProjectIcon
             serverId={serverId}
             agentId={agentId}
-            maxTokens={agentState.contextWindowMaxTokens}
-            usedTokens={agentState.contextWindowUsedTokens}
-            totalCostUsd={agentState.totalCostUsd}
-            glyphSize={contextWindowMeterGlyphSize}
+            workspaceId={workspaceId}
+            size={contextWindowMeterGlyphSize}
           />
+          <View style={styles.contextWindowMeterSlot}>
+            <ContextWindowMeter
+              serverId={serverId}
+              agentId={agentId}
+              maxTokens={agentState.contextWindowMaxTokens}
+              usedTokens={agentState.contextWindowUsedTokens}
+              totalCostUsd={agentState.totalCostUsd}
+              glyphSize={contextWindowMeterGlyphSize}
+            />
+          </View>
         </View>
       ) : null,
     [
       hasAgent,
       serverId,
       agentId,
+      workspaceId,
       agentState.contextWindowMaxTokens,
       agentState.contextWindowUsedTokens,
       agentState.totalCostUsd,
@@ -2511,6 +2543,11 @@ const styles = StyleSheet.create((theme: Theme) => ({
     marginLeft: theme.spacing[1],
   },
   rightControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+  projectContextIndicators: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
