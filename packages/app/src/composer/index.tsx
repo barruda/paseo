@@ -1,5 +1,6 @@
 import { ComposerProjectIcon } from "./project-icon";
 import { handleEmptyRewindKey } from "./empty-shortcuts";
+import { createDoubleTrigger } from "./empty-voice-trigger";
 import type { ComposerTextSource } from "./text-source";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { useStore } from "zustand";
@@ -1956,6 +1957,15 @@ function ComposerContentImpl({
   );
 
   const hasSendableContent = hasText || selectedAttachments.length > 0;
+  // CUSTOM(empty-composer-voice): gate for the double Enter / double-click voice shortcut.
+  const canStartVoiceFromEmpty =
+    mode.showVoice &&
+    hasAgent &&
+    isConnected &&
+    !isVoiceModeForAgent &&
+    !commandDraft &&
+    selectedAttachments.length === 0;
+  const [emptyVoiceTrigger] = useState(createDoubleTrigger);
 
   // Handle keyboard navigation for command autocomplete.
   const handleCommandKeyPress = useCallback(
@@ -1971,10 +1981,41 @@ function ComposerContentImpl({
               ...(session?.agentStreamHead.get(agentId) ?? []),
             ]
           : [];
-      return handleEmptyRewindKey({ event, serverId, agentId, items });
+      if (handleEmptyRewindKey({ event, serverId, agentId, items })) return true;
+      // CUSTOM(empty-composer-voice): a second Enter on an empty composer starts voice mode.
+      if (event.key !== "Enter") {
+        emptyVoiceTrigger.reset();
+        return false;
+      }
+      if (!canStartVoiceFromEmpty || event.input.text.trim().length > 0) return false;
+      event.preventDefault();
+      if (emptyVoiceTrigger.hit()) handleToggleRealtimeVoice();
+      return true;
     },
-    [onKeyPress, commandDraft, inputMode, serverId, agentId],
+    [
+      onKeyPress,
+      commandDraft,
+      inputMode,
+      serverId,
+      agentId,
+      canStartVoiceFromEmpty,
+      emptyVoiceTrigger,
+      handleToggleRealtimeVoice,
+    ],
   );
+
+  // CUSTOM(empty-composer-voice): double-clicking an empty composer starts voice mode.
+  useEffect(() => {
+    if (!isWeb || !canStartVoiceFromEmpty) return;
+    const element = messageInputRef.current?.getNativeElement?.() ?? null;
+    if (!element) return;
+    const handleDoubleClick = () => {
+      if (textSource.getSnapshot().trim().length > 0) return;
+      handleToggleRealtimeVoice();
+    };
+    element.addEventListener("dblclick", handleDoubleClick);
+    return () => element.removeEventListener("dblclick", handleDoubleClick);
+  }, [canStartVoiceFromEmpty, handleToggleRealtimeVoice, textSource]);
 
   const cancelButtonStyle = useMemo(
     () => buildCancelButtonStyle(isConnected, isCancellingAgent),

@@ -916,3 +916,27 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   (included in the update script). Open chats in two projects and a worktree: the icon follows
   the project, hovering reveals its name, and context usage still opens normally. Check a
   project with an uploaded icon and one using the colored initial.
+
+## empty-composer-voice: double Enter or double-click starts voice mode
+
+- **Added:** 2026-10-13
+- **Commit:** pending
+- **Why:** Start voice mode without reaching for the mic button.
+- **What:** In a chat composer with no text and no attachments, pressing Enter twice within
+  400 ms, or double-clicking the input, starts realtime voice mode for that agent. A single
+  Enter on an empty composer does nothing, as before. Modified keys, autocomplete, and the
+  rewind selection (Up then Enter) keep priority. Web and desktop only; native has no hardware
+  Enter or double-click.
+- **Core files touched:** `packages/app/src/composer/index.tsx` (marked
+  `CUSTOM(empty-composer-voice)`). The timing logic is in `composer/empty-voice-trigger.ts`
+  with `empty-voice-trigger.test.ts`.
+- **Re-apply:** In the composer's key handler, after autocomplete and the rewind handler,
+  intercept a plain Enter when the text is empty and feed it to a `createDoubleTrigger`; on the
+  second hit call the same handler as the voice-mode button. Gate it on the voice button's
+  conditions (voice shown, agent present, connected, not already in voice mode, no command
+  draft, no attachments). Add a web-only `dblclick` listener on the input's native element with
+  the same gate.
+- **Verify:** `cd packages/app && npx vitest run src/composer/empty-voice-trigger.test.ts --bail=1`
+  (included in the update script). In desktop, open a chat with an empty composer: press Enter
+  twice quickly and voice mode starts; double-click the empty input and voice mode starts. Type
+  text and verify Enter sends and double-click selects a word.
