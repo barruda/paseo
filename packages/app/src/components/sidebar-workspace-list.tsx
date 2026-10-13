@@ -1,3 +1,5 @@
+// CUSTOM(recent-workspaces): Shift+Tab highlights only the visible Recent copy.
+import { useWorkspaceRowHighlight } from "@/recent-workspaces/highlight";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   View,
@@ -1070,7 +1072,7 @@ function WorkspaceRowInner({
   hostBadge,
   leadingProjectName,
   leadingProjectIconDataUri,
-  selected,
+  selected: active,
   shortcutNumber,
   showShortcutBadge,
   onPress,
@@ -1094,6 +1096,11 @@ function WorkspaceRowInner({
   onTogglePin,
   reserveIdleStatusIndicatorSpace = true,
 }: WorkspaceRowInnerProps) {
+  const selected = useWorkspaceRowHighlight(
+    active,
+    useRecentWorkspaceProjectIcons() !== null,
+    workspace,
+  );
   const isCompact = useIsCompactFormFactor();
   const [isPressed, setIsPressed] = useState(false);
   const isTouchPlatform = platformIsNative || isCompact;

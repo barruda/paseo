@@ -51,7 +51,11 @@ export function ActiveWorkspaceCycleHandler({ enabled }: { enabled: boolean }) {
         return true;
       }
       pendingRef.current = next;
-      navigateToWorkspace({ serverId: next.serverId, workspaceId: next.workspaceId });
+      navigateToWorkspace({
+        serverId: next.serverId,
+        workspaceId: next.workspaceId,
+        sidebarHighlight: "recent",
+      });
       // Keep focus in a message input so the next Shift+Tab keeps cycling.
       for (const delay of REFOCUS_DELAYS_MS) {
         setTimeout(() => {

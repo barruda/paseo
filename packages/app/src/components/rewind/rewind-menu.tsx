@@ -22,6 +22,8 @@ interface RewindMenuProps {
   onRewind: (input: { mode: RewindMode; rewoundText: string }) => Promise<void> | void;
   isPending?: boolean;
   testID?: string;
+  keyboardOpen?: boolean;
+  onKeyboardClose?: () => void;
 }
 
 function getIcon(mode: RewindMode, color: string): ReactElement {
@@ -37,6 +39,8 @@ function getIcon(mode: RewindMode, color: string): ReactElement {
 
 export const RewindMenu = memo(function RewindMenu({
   capabilities,
+  keyboardOpen = false,
+  onKeyboardClose,
   rewoundText,
   onRewind,
   isPending: isPendingProp = false,
@@ -61,8 +65,9 @@ export const RewindMenu = memo(function RewindMenu({
     (next: boolean) => {
       if (!next && pendingMode !== null) return;
       setIsOpen(next);
+      if (!next) onKeyboardClose?.();
     },
-    [pendingMode],
+    [pendingMode, onKeyboardClose],
   );
 
   const handleSelect = useCallback(
@@ -76,9 +81,10 @@ export const RewindMenu = memo(function RewindMenu({
       } finally {
         setPendingMode(null);
         setIsOpen(false);
+        onKeyboardClose?.();
       }
     },
-    [isLocked, onRewind, rewoundText],
+    [isLocked, onRewind, rewoundText, onKeyboardClose],
   );
 
   const triggerStyle = useCallback(
@@ -100,7 +106,8 @@ export const RewindMenu = memo(function RewindMenu({
   }
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>
+    // CUSTOM(empty-composer-shortcuts): keyboard and pointer share the existing menu.
+    <DropdownMenu open={isOpen || keyboardOpen} onOpenChange={handleOpenChange}>
       <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
         <TooltipTrigger asChild>
           <View style={styles.triggerSlot} collapsable={false}>

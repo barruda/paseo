@@ -1,3 +1,7 @@
+import {
+  clearComposerRewindSelection,
+  useMessageKeyboardSelection,
+} from "@/composer/empty-shortcuts";
 import type { AgentMessage } from "@getpaseo/protocol/agent-message";
 import { ASSISTANT_IMAGE_DEFAULT_ASPECT_RATIO } from "@/utils/assistant-image-metadata";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -457,7 +461,12 @@ export const UserMessage = memo(function UserMessage({
   const hasText = message.trim().length > 0;
   const hasImages = images.length > 0;
   const hasAttachments = attachments.length > 0;
-  const showTrailingRow = !isPending && hasText && (isCompact || isNative || isHovered);
+  // CUSTOM(empty-composer-shortcuts): keyboard selection exposes the existing rewind actions.
+  const keyboardSelection = useMessageKeyboardSelection(serverId, agentId, messageId);
+  const isKeyboardSelected = keyboardSelection.selected;
+  const hasActions = hasText || isKeyboardSelected;
+  const showTrailingRow =
+    !isPending && hasActions && (isCompact || isNative || isHovered || isKeyboardSelected);
   const formattedTimestamp = useMemo(
     () => formatMessageTimestamp(new Date(timestamp)),
     [timestamp],
@@ -516,7 +525,15 @@ export const UserMessage = memo(function UserMessage({
         onPointerEnter={handlePointerEnter}
         onPointerLeave={handlePointerLeave}
       >
-        <View style={userMessageStylesheet.bubble}>
+        <View
+          style={[
+            userMessageStylesheet.bubble,
+            isKeyboardSelected && {
+              outlineWidth: 2,
+              outlineColor: userMessageStylesheet.text.color,
+            },
+          ]}
+        >
           {hasImages ? (
             <View style={imagePreviewContainerStyle}>
               {images.map((image) => (
@@ -553,7 +570,7 @@ export const UserMessage = memo(function UserMessage({
             </Text>
           ) : null}
         </View>
-        {hasText ? (
+        {hasActions ? (
           <View
             style={trailingRowStyle}
             pointerEvents={showTrailingRow ? "auto" : "none"}
@@ -565,6 +582,8 @@ export const UserMessage = memo(function UserMessage({
             {capabilities && messageId ? (
               <RewindMenu
                 capabilities={capabilities}
+                keyboardOpen={keyboardSelection.open}
+                onKeyboardClose={clearComposerRewindSelection}
                 isPending={rewindMutation.isPending}
                 rewoundText={message}
                 onRewind={handleRewind}

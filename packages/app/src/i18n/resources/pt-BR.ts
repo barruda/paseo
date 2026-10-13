@@ -117,6 +117,8 @@ export const ptBR: TranslationResources = {
   },
   composer: {
     placeholders: {
+      projectHint: "← trocar projeto",
+      rewindHint: "↑ selecionar última mensagem; Enter para opções de retrocesso",
       desktop: "Envie uma mensagem ao agente, marque @files ou use /commands e /skills",
       mobile: "Mensagem, @files, /commands",
       fallback: "Mensagem...",

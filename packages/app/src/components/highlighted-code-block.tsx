@@ -87,6 +87,12 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
   // and ends in more than one when the author left a blank line before the closing
   // fence; pasting any of them into a terminal runs the last line.
   const getCode = useCallback(() => code.replace(TRAILING_CODE_LINE_BREAKS, ""), [code]);
+  // CUSTOM(code-block-bottom-copy): long blocks get a second copy button at the
+  // bottom so copying does not require scrolling back up to the top one.
+  const showBottomCopy = useMemo(
+    () => renderedCode.split("\n").length >= BOTTOM_COPY_MIN_LINES,
+    [renderedCode],
+  );
 
   return (
     <View
@@ -104,7 +110,10 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
           {renderedCode}
         </MarkdownTextSpan>
       )}
-      <CopyButton getCode={getCode} visible={controlsVisible} />
+      <CopyButton getCode={getCode} visible={controlsVisible} placement="top" />
+      {showBottomCopy ? (
+        <CopyButton getCode={getCode} visible={controlsVisible} placement="bottom" />
+      ) : null}
     </View>
   );
 });
@@ -167,11 +176,17 @@ function splitFenceStyle(inheritedStyles: TextStyle, textStyle: TextStyle): Spli
 interface CopyButtonProps {
   getCode: () => string;
   visible: boolean;
+  placement: "top" | "bottom";
 }
 
 const COPIED_RESET_MS = 1500;
+const BOTTOM_COPY_MIN_LINES = 10;
 
-const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButtonProps) {
+const CopyButton = React.memo(function CopyButton({
+  getCode,
+  visible,
+  placement,
+}: CopyButtonProps) {
   const { t } = useTranslation();
   const [copied, setCopied] = useState(false);
   const resetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -198,9 +213,11 @@ const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButt
   const visibilityStyle = visible
     ? copyButtonStyles.containerVisible
     : copyButtonStyles.containerHidden;
+  const placementStyle =
+    placement === "top" ? copyButtonStyles.containerTop : copyButtonStyles.containerBottom;
   const wrapperStyle = useMemo(
-    () => [copyButtonStyles.container, visibilityStyle],
-    [visibilityStyle],
+    () => [copyButtonStyles.container, placementStyle, visibilityStyle],
+    [placementStyle, visibilityStyle],
   );
 
   return (
@@ -230,9 +247,14 @@ const CopyButton = React.memo(function CopyButton({ getCode, visible }: CopyButt
 const copyButtonStyles = StyleSheet.create((theme) => ({
   container: {
     position: "absolute",
-    top: theme.spacing[2],
     right: theme.spacing[2],
     padding: theme.spacing[1],
+  },
+  containerTop: {
+    top: theme.spacing[2],
+  },
+  containerBottom: {
+    bottom: theme.spacing[2],
   },
   containerVisible: {
     opacity: 1,

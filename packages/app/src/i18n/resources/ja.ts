@@ -117,6 +117,8 @@ export const ja: TranslationResources = {
   },
   composer: {
     placeholders: {
+      projectHint: "← プロジェクト切替",
+      rewindHint: "↑ 最後のメッセージを選択、Enterで巻き戻しオプション",
       desktop: "エージェントにメッセージ、@ファイル、/コマンドや/スキルを入力",
       mobile: "メッセージ、@ファイル、/コマンド",
       fallback: "メッセージ...",

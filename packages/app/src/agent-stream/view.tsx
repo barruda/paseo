@@ -1,3 +1,4 @@
+import { useComposerRewindSelection } from "@/composer/empty-shortcuts";
 import { ChatFind, ChatFindExpansion } from "@/agent-stream/chat-find";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
@@ -384,6 +385,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
+    // CUSTOM(empty-composer-shortcuts): bring keyboard-selected messages into view.
+    const rewindSelection = useComposerRewindSelection((state) => state.selection);
+    useEffect(() => {
+      if (rewindSelection?.serverId === resolvedServerId && rewindSelection.agentId === agentId) {
+        viewportRef.current?.scrollToMessage?.(rewindSelection.messageId);
+      }
+    }, [rewindSelection, resolvedServerId, agentId]);
     const transformTimelineItem = useInstalledTimelineTransform(resolvedServerId);
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);

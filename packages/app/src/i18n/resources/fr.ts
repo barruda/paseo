@@ -118,6 +118,8 @@ export const fr: TranslationResources = {
   },
   composer: {
     placeholders: {
+      projectHint: "← changer de projet",
+      rewindHint: "↑ sélectionner le dernier message ; Entrée pour les options de retour",
       desktop: "Écrivez à l’agent, mentionnez des @fichiers ou utilisez les /commandes et /skills",
       mobile: "Message, @fichiers, /commandes",
       fallback: "Message…",

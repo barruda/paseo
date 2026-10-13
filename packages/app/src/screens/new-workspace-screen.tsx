@@ -1,3 +1,6 @@
+import { isWeb } from "@/constants/platform";
+import { previousProjectId } from "@/composer/empty-shortcuts";
+import type { ComposerKeyPressEvent } from "@/composer/input/input";
 import type {
   CreateAgentRequestOptions,
   CreateWorkspaceRequestOptions,
@@ -1971,6 +1974,28 @@ export function NewWorkspaceScreen({
     handle: handleProjectPick,
   });
 
+  // CUSTOM(empty-composer-shortcuts): skip model controls when choosing a project.
+  const cycleProjectFromEmptyPrompt = useCallback(
+    (event: ComposerKeyPressEvent) => {
+      if (
+        event.key !== "ArrowLeft" ||
+        event.input.text.length > 0 ||
+        event.hasModifier ||
+        isPending
+      )
+        return false;
+      const nextId = previousProjectId(
+        projectPickerOptions.map((option) => option.id),
+        selectedProjectOptionId,
+      );
+      if (nextId === null) return false;
+      event.preventDefault();
+      handleSelectProjectOption(nextId);
+      return true;
+    },
+    [projectPickerOptions, selectedProjectOptionId, isPending, handleSelectProjectOption],
+  );
+
   const openIsolationPicker = useCallback(() => {
     setIsolationPickerOpen(true);
   }, []);
@@ -2390,6 +2415,7 @@ export function NewWorkspaceScreen({
 
   const importSession = useImportSession({ serverId: selectedServerId });
 
+  const newWorkspacePlaceholder = buildNewWorkspacePlaceholder(t);
   const composer = isTerminalLaunch ? (
     <Composer
       key="terminal"
@@ -2420,6 +2446,8 @@ export function NewWorkspaceScreen({
   ) : (
     <Composer
       key="chat"
+      onKeyPress={cycleProjectFromEmptyPrompt}
+      placeholder={newWorkspacePlaceholder}
       agentId={draftKey}
       serverId={selectedServerId}
       isPaneFocused={true}
@@ -2638,3 +2666,9 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 4,
   },
 }));
+
+// CUSTOM(empty-composer-shortcuts): native placeholders stay short for touch input.
+function buildNewWorkspacePlaceholder(t: import("i18next").TFunction): string | undefined {
+  if (!isWeb) return undefined;
+  return `${t("composer.placeholders.desktop")} · ${t("composer.placeholders.projectHint")}`;
+}
