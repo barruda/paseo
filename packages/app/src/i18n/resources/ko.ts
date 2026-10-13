@@ -1,4 +1,5 @@
 import { en, type TranslationResources } from "./en";
+import { VOICE_SETTINGS_KO } from "./custom-voice-settings";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
@@ -2042,6 +2043,8 @@ export const ko: TranslationResources = {
     },
   },
   settings: {
+    // CUSTOM(voice-settings)
+    voiceSettings: VOICE_SETTINGS_KO,
     title: "설정",
     loading: "설정 불러오는 중...",
     groups: {
@@ -2102,6 +2105,8 @@ export const ko: TranslationResources = {
       connections: "연결",
       agents: "에이전트",
       metadata: "메타데이터",
+      // CUSTOM(voice-settings)
+      voice: "음성 및 받아쓰기",
       workspaces: "워크스페이스",
       providers: "프로바이더",
       usage: "사용량",

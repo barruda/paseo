@@ -4,15 +4,17 @@ import type { PaseoSpeechConfig } from "../../../bootstrap.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "../../speech-provider.js";
 import type { RequestedSpeechProviders } from "../../speech-types.js";
 import type { TurnDetectionProvider } from "../../turn-detection-provider.js";
+import { checkCudaAvailability, type LocalSpeechExecutionProvider } from "./local-speech-gpu.js";
 import {
   DEFAULT_LOCAL_STT_MODEL,
   DEFAULT_LOCAL_TTS_MODEL,
-  LocalSttModelIdSchema,
-  LocalTtsModelIdSchema,
   type LocalSpeechModelId,
-  type LocalSttModelId,
-  type LocalTtsModelId,
 } from "./models.js";
+import {
+  getSherpaOnnxModelSpec,
+  kokoroLanguageForSpeaker,
+  SHERPA_ONNX_MODEL_CATALOG,
+} from "./sherpa/model-catalog.js";
 import {
   LocalSpeechWorkerClient,
   WorkerBackedSpeechToTextProvider,
@@ -21,9 +23,31 @@ import {
 } from "./worker-client.js";
 
 interface ResolvedLocalModels {
-  dictationLocalSttModel: LocalSttModelId;
-  voiceLocalSttModel: LocalSttModelId;
-  voiceLocalTtsModel: LocalTtsModelId;
+  dictationLocalSttModel: string;
+  voiceLocalSttModel: string;
+  voiceLocalTtsModel: string;
+}
+
+// CUSTOM(voice-settings): GPU only when selected and the CUDA build is usable; otherwise
+// the worker runs on the CPU and Settings shows why.
+export interface LocalSpeechExecutionState {
+  requested: LocalSpeechExecutionProvider;
+  effective: LocalSpeechExecutionProvider;
+  cudaLibDir: string;
+  cudaUnavailableReason: string | null;
+}
+
+function isCatalogModelId(id: string): id is LocalSpeechModelId {
+  return Object.hasOwn(SHERPA_ONNX_MODEL_CATALOG, id);
+}
+
+export function resolveTtsLanguage(
+  modelId: string,
+  speakerId: number | undefined,
+): string | undefined {
+  if (!isCatalogModelId(modelId)) return undefined;
+  const { speakers } = getSherpaOnnxModelSpec(modelId);
+  return speakers ? kokoroLanguageForSpeaker(speakers[speakerId ?? 0]) : undefined;
 }
 
 interface LocalSpeechAvailability {
@@ -43,19 +67,16 @@ export interface InitializedLocalSpeech {
   } | null;
   availability: LocalSpeechAvailability;
   cleanup: () => void;
+  // CUSTOM(voice-settings)
+  workerClient: LocalSpeechWorkerClient | null;
+  execution: LocalSpeechExecutionState | null;
 }
 
 function resolveConfiguredLocalModels(speechConfig: PaseoSpeechConfig | null): ResolvedLocalModels {
   return {
-    dictationLocalSttModel: LocalSttModelIdSchema.parse(
-      speechConfig?.local?.models.dictationStt ?? DEFAULT_LOCAL_STT_MODEL,
-    ),
-    voiceLocalSttModel: LocalSttModelIdSchema.parse(
-      speechConfig?.local?.models.voiceStt ?? DEFAULT_LOCAL_STT_MODEL,
-    ),
-    voiceLocalTtsModel: LocalTtsModelIdSchema.parse(
-      speechConfig?.local?.models.voiceTts ?? DEFAULT_LOCAL_TTS_MODEL,
-    ),
+    dictationLocalSttModel: speechConfig?.local?.models.dictationStt ?? DEFAULT_LOCAL_STT_MODEL,
+    voiceLocalSttModel: speechConfig?.local?.models.voiceStt ?? DEFAULT_LOCAL_STT_MODEL,
+    voiceLocalTtsModel: speechConfig?.local?.models.voiceTts ?? DEFAULT_LOCAL_TTS_MODEL,
   };
 }
 
@@ -73,7 +94,8 @@ function computeRequiredLocalModelIds(params: {
   providers: RequestedSpeechProviders;
   models: ResolvedLocalModels;
 }): LocalSpeechModelId[] {
-  const ids = new Set<LocalSpeechModelId>();
+  // Custom folders are never downloaded, so only catalog models can be missing.
+  const ids = new Set<string>();
   if (
     params.providers.dictationStt.enabled !== false &&
     params.providers.dictationStt.provider === "local"
@@ -92,7 +114,7 @@ function computeRequiredLocalModelIds(params: {
   ) {
     ids.add(params.models.voiceLocalTtsModel);
   }
-  return Array.from(ids);
+  return Array.from(ids).filter(isCatalogModelId);
 }
 
 function isLocalProviderEnabled(provider: { enabled?: boolean; provider: string }): boolean {
@@ -134,6 +156,63 @@ function initializeLocalVoiceTts(params: {
   return new WorkerBackedTextToSpeechProvider(client);
 }
 
+function resolveExecutionState(
+  localConfig: NonNullable<PaseoSpeechConfig["local"]>,
+  logger: Logger,
+): LocalSpeechExecutionState {
+  const requested = localConfig.executionProvider;
+  if (requested !== "cuda") {
+    return {
+      requested,
+      effective: "cpu",
+      cudaLibDir: localConfig.cudaLibDir,
+      cudaUnavailableReason: null,
+    };
+  }
+  const cuda = checkCudaAvailability(localConfig.cudaLibDir);
+  if (!cuda.available) {
+    logger.warn(
+      { cudaLibDir: cuda.libDir, reason: cuda.reason },
+      "GPU speech selected but unavailable; using the CPU",
+    );
+    return {
+      requested,
+      effective: "cpu",
+      cudaLibDir: cuda.libDir,
+      cudaUnavailableReason: cuda.reason,
+    };
+  }
+  return { requested, effective: "cuda", cudaLibDir: cuda.libDir, cudaUnavailableReason: null };
+}
+
+function createWorkerClient(params: {
+  localConfig: NonNullable<PaseoSpeechConfig["local"]>;
+  execution: LocalSpeechExecutionState;
+  localModels: ResolvedLocalModels;
+  speechConfig: PaseoSpeechConfig | null;
+  logger: Logger;
+}): LocalSpeechWorkerClient {
+  const { localConfig, execution, localModels, speechConfig, logger } = params;
+  const speakerId = speechConfig?.local?.models.voiceTtsSpeakerId;
+  const voiceTtsLanguage = resolveTtsLanguage(localModels.voiceLocalTtsModel, speakerId);
+  return new LocalSpeechWorkerClient({
+    logger,
+    execution: { provider: execution.effective, cudaLibDir: execution.cudaLibDir },
+    config: {
+      modelsDir: localConfig.modelsDir,
+      voiceSttModel: localModels.voiceLocalSttModel,
+      dictationSttModel: localModels.dictationLocalSttModel,
+      voiceTtsModel: localModels.voiceLocalTtsModel,
+      voiceTtsSpeakerId: speakerId,
+      voiceTtsSpeed: speechConfig?.local?.models.voiceTtsSpeed,
+      modelDirs: Object.fromEntries(
+        localConfig.customModels.map((model) => [model.id, model.path]),
+      ),
+      ...(voiceTtsLanguage ? { voiceTtsLanguage } : {}),
+    },
+  });
+}
+
 export async function initializeLocalSpeechServices(params: {
   providers: RequestedSpeechProviders;
   speechConfig: PaseoSpeechConfig | null;
@@ -154,19 +233,11 @@ export async function initializeLocalSpeechServices(params: {
     models: localModels,
   });
 
-  const workerClient = localConfig
-    ? new LocalSpeechWorkerClient({
-        logger,
-        config: {
-          modelsDir: localConfig.modelsDir,
-          voiceSttModel: localModels.voiceLocalSttModel,
-          dictationSttModel: localModels.dictationLocalSttModel,
-          voiceTtsModel: localModels.voiceLocalTtsModel,
-          voiceTtsSpeakerId: speechConfig?.local?.models.voiceTtsSpeakerId,
-          voiceTtsSpeed: speechConfig?.local?.models.voiceTtsSpeed,
-        },
-      })
-    : null;
+  const execution = localConfig ? resolveExecutionState(localConfig, logger) : null;
+  const workerClient =
+    localConfig && execution
+      ? createWorkerClient({ localConfig, execution, localModels, speechConfig, logger })
+      : null;
 
   if (isLocalProviderEnabled(providers.voiceTurnDetection)) {
     if (workerClient) {
@@ -221,5 +292,7 @@ export async function initializeLocalSpeechServices(params: {
       : null,
     availability: getLocalSpeechAvailability(speechConfig),
     cleanup,
+    workerClient,
+    execution,
   };
 }

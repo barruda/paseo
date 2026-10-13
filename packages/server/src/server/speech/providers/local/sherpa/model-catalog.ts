@@ -11,6 +11,101 @@ interface SherpaOnnxCatalogEntry {
   requiredFiles: string[];
   description: string;
   defaultFor?: DefaultModelRole;
+  // CUSTOM(voice-settings): what Settings shows in the model and voice pickers.
+  label: string;
+  languages: string;
+  downloadSizeMb: number;
+  speakers?: readonly string[];
+}
+
+// CUSTOM(voice-settings): Kokoro voice names, by speaker id.
+const KOKORO_V0_19_SPEAKERS = [
+  "af",
+  "af_bella",
+  "af_nicole",
+  "af_sarah",
+  "af_sky",
+  "am_adam",
+  "am_michael",
+  "bf_emma",
+  "bf_isabella",
+  "bm_george",
+  "bm_lewis",
+] as const;
+
+const KOKORO_V1_0_SPEAKERS = [
+  "af_alloy",
+  "af_aoede",
+  "af_bella",
+  "af_heart",
+  "af_jessica",
+  "af_kore",
+  "af_nicole",
+  "af_nova",
+  "af_river",
+  "af_sarah",
+  "af_sky",
+  "am_adam",
+  "am_echo",
+  "am_eric",
+  "am_fenrir",
+  "am_liam",
+  "am_michael",
+  "am_onyx",
+  "am_puck",
+  "am_santa",
+  "bf_alice",
+  "bf_emma",
+  "bf_isabella",
+  "bf_lily",
+  "bm_daniel",
+  "bm_fable",
+  "bm_george",
+  "bm_lewis",
+  "ef_dora",
+  "em_alex",
+  "ff_siwis",
+  "hf_alpha",
+  "hf_beta",
+  "hm_omega",
+  "hm_psi",
+  "if_sara",
+  "im_nicola",
+  "jf_alpha",
+  "jf_gongitsune",
+  "jf_nezumi",
+  "jf_tebukuro",
+  "jm_kumo",
+  "pf_dora",
+  "pm_alex",
+  "pm_santa",
+  "zf_xiaobei",
+  "zf_xiaoni",
+  "zf_xiaoxiao",
+  "zf_xiaoyi",
+  "zm_yunjian",
+  "zm_yunxi",
+  "zm_yunxia",
+  "zm_yunyang",
+  "em_santa",
+] as const;
+
+// The first letter of a Kokoro voice name is its language; multi-language Kokoro needs the
+// matching espeak-ng language to pronounce anything but English.
+const KOKORO_LANGUAGE_BY_PREFIX: Record<string, string> = {
+  a: "en-us",
+  b: "en-gb",
+  e: "es",
+  f: "fr-fr",
+  h: "hi",
+  i: "it",
+  j: "ja",
+  p: "pt-br",
+  z: "cmn",
+};
+
+export function kokoroLanguageForSpeaker(name: string | undefined): string {
+  return KOKORO_LANGUAGE_BY_PREFIX[name?.charAt(0) ?? "a"] ?? "en-us";
 }
 
 export const SHERPA_ONNX_MODEL_CATALOG = {
@@ -22,6 +117,9 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     requiredFiles: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"],
     description: "NVIDIA Parakeet TDT v2 (offline NeMo transducer, English).",
     defaultFor: "stt",
+    label: "Parakeet v2 (int8)",
+    languages: "English",
+    downloadSizeMb: 482,
   },
   "parakeet-tdt-0.6b-v3-int8": {
     kind: "stt-offline",
@@ -31,6 +129,9 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     requiredFiles: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"],
     description:
       "NVIDIA Parakeet TDT v3 (offline NeMo transducer, 25 European languages, auto-detected).",
+    label: "Parakeet v3 (int8)",
+    languages: "25 European languages, including Portuguese",
+    downloadSizeMb: 487,
   },
   // CUSTOM(local-speech-gpu): full-precision Parakeet for the CUDA provider. int8 kernels
   // have no CUDA implementation, so the int8 models stay on the CPU even under CUDA.
@@ -42,6 +143,9 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     extractedDir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16",
     requiredFiles: ["encoder.fp16.onnx", "decoder.fp16.onnx", "joiner.fp16.onnx", "tokens.txt"],
     description: "NVIDIA Parakeet TDT v2, fp16 (offline NeMo transducer, English, GPU).",
+    label: "Parakeet v2 (fp16, GPU)",
+    languages: "English",
+    downloadSizeMb: 1120,
   },
   "kokoro-en-v0_19": {
     kind: "tts",
@@ -51,6 +155,22 @@ export const SHERPA_ONNX_MODEL_CATALOG = {
     requiredFiles: ["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"],
     description: "Kokoro TTS (higher quality; larger).",
     defaultFor: "tts",
+    label: "Kokoro v0.19",
+    languages: "English",
+    downloadSizeMb: 319,
+    speakers: KOKORO_V0_19_SPEAKERS,
+  },
+  "kokoro-multi-lang-v1_0": {
+    kind: "tts",
+    archiveUrl:
+      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
+    extractedDir: "kokoro-multi-lang-v1_0",
+    requiredFiles: ["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"],
+    description: "Kokoro TTS v1.0 (54 voices in 9 languages).",
+    label: "Kokoro v1.0 multi-language",
+    languages: "English, Portuguese (Brazil), Spanish, French, Italian, Hindi, Japanese, Chinese",
+    downloadSizeMb: 349,
+    speakers: KOKORO_V1_0_SPEAKERS,
   },
 } as const satisfies Record<string, SherpaOnnxCatalogEntry>;
 

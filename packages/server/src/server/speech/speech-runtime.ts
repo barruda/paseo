@@ -3,7 +3,15 @@ import type { Logger } from "pino";
 import type { PaseoOpenAIConfig, PaseoSpeechConfig } from "../bootstrap.js";
 import type { LocalSpeechModelId } from "./providers/local/config.js";
 import { ensureLocalSpeechModels, listMissingLocalSpeechModels } from "./providers/local/models.js";
-import { initializeLocalSpeechServices } from "./providers/local/runtime.js";
+import {
+  initializeLocalSpeechServices,
+  resolveTtsLanguage,
+  type LocalSpeechExecutionState,
+} from "./providers/local/runtime.js";
+import type {
+  LocalSpeechWorkerClient,
+  LocalSpeechWorkerClientStatus,
+} from "./providers/local/worker-client.js";
 import {
   getOpenAiSpeechAvailability,
   initializeOpenAiSpeechServices,
@@ -292,7 +300,31 @@ function resolveEffectiveProviderIds(params: {
   };
 }
 
+// CUSTOM(voice-settings): the local engine as Settings sees it.
+export interface LocalSpeechRuntimeStatus {
+  configured: boolean;
+  execution: LocalSpeechExecutionState | null;
+  worker: LocalSpeechWorkerClientStatus | null;
+}
+
+export interface SpeechVoicePreviewRequest {
+  text: string;
+  model?: string;
+  speakerId?: number;
+  speed?: number;
+}
+
 export interface SpeechService {
+  // CUSTOM(voice-settings): apply new speech settings without restarting the daemon. Throws
+  // synchronously when they cannot apply, so the config store can roll back.
+  reconfigure: (next: {
+    speechConfig?: PaseoSpeechConfig;
+    openaiConfig?: PaseoOpenAIConfig;
+  }) => void;
+  getLocalStatus: () => Promise<LocalSpeechRuntimeStatus>;
+  previewVoice: (request: SpeechVoicePreviewRequest) => Promise<{ audio: Buffer; format: string }>;
+  resolveVoiceInstructions: () => string | undefined;
+  resolveSpeechConfig: () => PaseoSpeechConfig | null;
   resolveStt: () => SpeechToTextProvider | null;
   resolveSttLanguage: () => string;
   resolveTts: () => TextToSpeechProvider | null;
@@ -312,10 +344,11 @@ export function createSpeechService(params: {
   speechConfig?: PaseoSpeechConfig;
 }): SpeechService {
   const logger = params.logger.child({ module: "speech-runtime" });
-  const speechConfig = params.speechConfig ?? null;
-  const openaiConfig = params.openaiConfig;
-  const providers = resolveRequestedSpeechProviders(speechConfig);
-  const requestedProviders = describeRequestedProviders(providers);
+  // CUSTOM(voice-settings): mutable so reconfigure() can swap them.
+  let speechConfig = params.speechConfig ?? null;
+  let openaiConfig = params.openaiConfig;
+  let providers = resolveRequestedSpeechProviders(speechConfig);
+  let requestedProviders = describeRequestedProviders(providers);
 
   validateOpenAiCredentialRequirements({
     providers,
@@ -343,6 +376,8 @@ export function createSpeechService(params: {
   } | null = null;
   let localCleanup = () => {};
   let localVoiceTtsProvider: TextToSpeechProvider | null = null;
+  let localWorkerClient: LocalSpeechWorkerClient | null = null;
+  let localExecution: LocalSpeechExecutionState | null = null;
 
   let missingLocalModelIds: LocalSpeechModelId[] = [];
   let backgroundDownloadInProgress = false;
@@ -479,6 +514,8 @@ export function createSpeechService(params: {
     localModelConfig = nextLocalSpeech.localModelConfig;
     localVoiceTtsProvider = nextLocalSpeech.localVoiceTtsProvider;
     localCleanup = nextLocalSpeech.cleanup;
+    localWorkerClient = nextLocalSpeech.workerClient;
+    localExecution = nextLocalSpeech.execution;
     previousLocalCleanup();
 
     await refreshMissingLocalModels();
@@ -671,7 +708,71 @@ export function createSpeechService(params: {
     backgroundDownloadPromise = null;
   };
 
+  const reconfigure: SpeechService["reconfigure"] = (next) => {
+    if (stopped) return;
+    const nextSpeechConfig = next.speechConfig ?? null;
+    const nextProviders = resolveRequestedSpeechProviders(nextSpeechConfig);
+    validateOpenAiCredentialRequirements({
+      providers: nextProviders,
+      openaiConfig: next.openaiConfig,
+      logger,
+    });
+    speechConfig = nextSpeechConfig;
+    openaiConfig = next.openaiConfig;
+    providers = nextProviders;
+    requestedProviders = describeRequestedProviders(providers);
+    backgroundDownloadError = null;
+    logger.info({ requestedProviders }, "Speech settings changed; reloading the speech engine");
+    void (async () => {
+      try {
+        await runReconcile();
+        if (missingLocalModelIds.length > 0) {
+          startBackgroundDownload();
+        }
+        scheduleMonitor();
+      } catch (error) {
+        logger.error({ err: error }, "Speech engine reload failed");
+      }
+    })();
+  };
+
+  const getLocalStatus = async (): Promise<LocalSpeechRuntimeStatus> => {
+    const client = localWorkerClient;
+    return {
+      configured: Boolean(speechConfig?.local),
+      execution: localExecution,
+      worker: client ? await client.getStatus() : null,
+    };
+  };
+
+  const previewVoice: SpeechService["previewVoice"] = async (request) => {
+    const client = localWorkerClient;
+    const local = speechConfig?.local;
+    if (!client || !local) {
+      throw new Error("Local speech synthesis is not configured on this host.");
+    }
+    const model = request.model ?? local.models.voiceTts;
+    const speakerId = request.speakerId ?? local.models.voiceTtsSpeakerId;
+    const language = resolveTtsLanguage(model, speakerId);
+    const result = await client.synthesizeSpeech(request.text, {
+      voiceTtsModel: model,
+      ...(speakerId !== undefined ? { voiceTtsSpeakerId: speakerId } : {}),
+      ...(request.speed !== undefined ? { voiceTtsSpeed: request.speed } : {}),
+      ...(language ? { voiceTtsLanguage: language } : {}),
+    });
+    const chunks: Buffer[] = [];
+    for await (const chunk of result.stream) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    }
+    return { audio: Buffer.concat(chunks), format: result.format };
+  };
+
   return {
+    reconfigure,
+    getLocalStatus,
+    previewVoice,
+    resolveVoiceInstructions: () => speechConfig?.voiceInstructions,
+    resolveSpeechConfig: () => speechConfig,
     resolveTurnDetection: () => turnDetectionService,
     resolveStt: () => sttService,
     resolveSttLanguage: () => speechConfig?.sttLanguages?.voice ?? "en",

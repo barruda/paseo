@@ -544,7 +544,11 @@ export interface SessionOptions {
   resolveScriptHealth?: (hostname: string) => ScriptHealthState | null;
   voice?: {
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
+    // CUSTOM(voice-settings)
+    instructions?: () => string | undefined;
   };
+  // CUSTOM(voice-settings)
+  speechSettings?: import("./speech/speech-settings-service.js").SpeechSettingsService;
   voiceBridge?: {
     registerVoiceSpeakHandler?: (agentId: string, handler: VoiceSpeakHandler) => void;
     unregisterVoiceSpeakHandler?: (agentId: string) => void;
@@ -737,6 +741,10 @@ export class Session {
   private readonly workspaceProvisioning: WorkspaceProvisioningService;
   private readonly workspaceRecovery: WorkspaceRecoveryService;
   private readonly daemonConfigStore: DaemonConfigStore;
+  // CUSTOM(voice-settings)
+  private readonly speechSettings:
+    | import("./speech/speech-settings-service.js").SpeechSettingsService
+    | undefined;
   private readonly pushNotifications: PushNotifications;
   private readonly pluginRuntime: SessionOptions["pluginRuntime"];
   private readonly orchestrationSkills: SessionOptions["orchestrationSkills"];
@@ -1078,6 +1086,7 @@ export class Session {
         })
       : null;
     this.daemonConfigStore = daemonConfigStore;
+    this.speechSettings = options.speechSettings;
     this.terminalManager = terminalManager;
     this.terminalController = new TerminalSessionController({
       terminalManager,
@@ -2790,6 +2799,74 @@ export class Session {
     }
   }
 
+  // CUSTOM(voice-settings): Settings > Voice and dictation. Failures answer the request with
+  // an error field so the page can show it next to the control that caused it.
+  private async handleSpeechSettingsRequest(
+    msg: Extract<
+      SessionInboundMessage,
+      {
+        type:
+          | "speech.local.get_status.request"
+          | "speech.local.preview_voice.request"
+          | "speech.local.inspect_model_folder.request";
+      }
+    >,
+  ): Promise<void> {
+    const service = this.speechSettings;
+    const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+    const unavailable = "Speech is not available on this host.";
+    if (msg.type === "speech.local.get_status.request") {
+      try {
+        if (!service) throw new Error(unavailable);
+        const status = await service.getStatus({ includeLogs: msg.includeLogs === true });
+        this.emit({
+          type: "speech.local.get_status.response",
+          payload: { requestId: msg.requestId, status, error: null },
+        });
+      } catch (error) {
+        this.emit({
+          type: "speech.local.get_status.response",
+          payload: { requestId: msg.requestId, status: null, error: errorText(error) },
+        });
+      }
+      return;
+    }
+    if (msg.type === "speech.local.preview_voice.request") {
+      try {
+        if (!service) throw new Error(unavailable);
+        const result = await service.previewVoice({
+          text: msg.text,
+          ...(msg.model !== undefined ? { model: msg.model } : {}),
+          ...(msg.speakerId !== undefined ? { speakerId: msg.speakerId } : {}),
+          ...(msg.speed !== undefined ? { speed: msg.speed } : {}),
+        });
+        this.emit({
+          type: "speech.local.preview_voice.response",
+          payload: { requestId: msg.requestId, ...result, error: null },
+        });
+      } catch (error) {
+        this.emit({
+          type: "speech.local.preview_voice.response",
+          payload: { requestId: msg.requestId, audio: null, format: null, error: errorText(error) },
+        });
+      }
+      return;
+    }
+    try {
+      if (!service) throw new Error(unavailable);
+      const model = service.inspectModelFolder(msg.path);
+      this.emit({
+        type: "speech.local.inspect_model_folder.response",
+        payload: { requestId: msg.requestId, model, error: null },
+      });
+    } catch (error) {
+      this.emit({
+        type: "speech.local.inspect_model_folder.response",
+        payload: { requestId: msg.requestId, model: null, error: errorText(error) },
+      });
+    }
+  }
+
   private dispatchAgentConfigMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "set_agent_mode_request":
@@ -3110,6 +3187,12 @@ export class Session {
           type: "push.unregister.response",
           payload: { requestId: msg.requestId },
         });
+        return;
+      // CUSTOM(voice-settings)
+      case "speech.local.get_status.request":
+      case "speech.local.preview_voice.request":
+      case "speech.local.inspect_model_folder.request":
+        await this.handleSpeechSettingsRequest(msg);
         return;
     }
   }

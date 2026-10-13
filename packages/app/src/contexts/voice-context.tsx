@@ -7,6 +7,8 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
+// CUSTOM(voice-settings)
+import { useThinkingToneStore } from "@/voice/thinking-tone-settings";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { useSessionStore } from "@/stores/session-store";
 import { createAudioEngine } from "@/audio";
@@ -145,6 +147,8 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       deactivateKeepAwake: async (tag) => {
         await deactivateKeepAwake(tag);
       },
+      // CUSTOM(voice-settings)
+      getThinkingTone: () => useThinkingToneStore.getState(),
     });
 
     engineRef.current = engine;

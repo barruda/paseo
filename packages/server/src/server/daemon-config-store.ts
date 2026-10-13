@@ -31,6 +31,8 @@ interface SupportedMutableConfigPatch {
   skills?: MutableDaemonConfig["skills"];
   pluginsEnabled?: boolean;
   plugins?: MutableDaemonConfig["plugins"];
+  // CUSTOM(voice-settings)
+  speech?: NonNullable<MutableDaemonConfig["speech"]>;
 }
 
 interface LoggerLike {
@@ -189,6 +191,10 @@ const RELOADABLE_PATHS = [
   "agents.metadataGeneration",
   "agents.skills.selection",
   "pluginsEnabled",
+  // CUSTOM(voice-settings): the speech engine reloads live.
+  "features.dictation",
+  "features.voiceMode",
+  "providers.local",
 ] as const;
 
 const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
@@ -212,6 +218,10 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["agents.metadataGeneration", "metadataGeneration"],
   ["agents.skills.selection", "skills.selection"],
   ["pluginsEnabled", "pluginsEnabled"],
+  // CUSTOM(voice-settings)
+  ["features.dictation", "speech"],
+  ["features.voiceMode", "speech"],
+  ["providers.local", "speech"],
 ]);
 
 function pathBelongsTo(path: string, owner: string): boolean {
@@ -276,6 +286,7 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
     ...(patch.agentProfiles !== undefined ? { agentProfiles: patch.agentProfiles } : {}),
     ...(patch.pluginsEnabled !== undefined ? { pluginsEnabled: patch.pluginsEnabled } : {}),
     ...(patch.plugins !== undefined ? { plugins: patch.plugins } : {}),
+    ...(patch.speech !== undefined ? { speech: patch.speech } : {}),
   };
 }
 
@@ -368,6 +379,10 @@ export class DaemonConfigStore {
       merged.skills = { selection: parsedPatch.skills.selection };
     }
     if (parsedPatch.plugins !== undefined) merged.plugins = parsedPatch.plugins;
+    // CUSTOM(voice-settings): the custom model list is replaced, not merged by index.
+    if (parsedPatch.speech?.customModels !== undefined && merged.speech) {
+      merged.speech = { ...merged.speech, customModels: parsedPatch.speech.customModels };
+    }
     const next = MutableDaemonConfigSchema.parse(
       omitMetadataGenerationProvidersFromConfig(
         omitProvidersFromConfig(merged, removedProviders),
@@ -584,8 +599,10 @@ function mergeMutablePatchIntoPersistedConfig(params: {
   const { persisted, patch, removeProviders, persistRelayEnabled } = params;
   const daemon = mergeMutableDaemonPatch(persisted.daemon, patch, persistRelayEnabled);
   const agents = mergeMutableAgentPatch(persisted.agents, patch, removeProviders);
+  const speechPersisted = mergeMutableSpeechPatch(persisted, patch.speech);
   return {
     ...persisted,
+    ...speechPersisted,
     ...(patch.pluginsEnabled !== undefined ? { pluginsEnabled: patch.pluginsEnabled } : {}),
     ...(patch.plugins !== undefined ? { plugins: patch.plugins } : {}),
     ...(daemon ? { daemon } : { daemon: undefined }),
@@ -662,4 +679,67 @@ function mergeMutableDaemonPatch(
   if (patch.terminalProfiles !== undefined) next.terminalProfiles = patch.terminalProfiles;
   if (patch.agentProfiles !== undefined) next.agentProfiles = patch.agentProfiles;
   return Object.keys(next).length > 0 ? next : undefined;
+}
+
+// CUSTOM(voice-settings): Settings edits land in the same config.json fields the speech
+// engine already reads. Picking a local model also selects the local provider for that
+// feature, since an OpenAI provider would read the model id as an OpenAI model.
+function mergeMutableSpeechPatch(
+  persisted: PersistedConfig,
+  speech: SupportedMutableConfigPatch["speech"],
+): Pick<PersistedConfig, "features" | "providers"> {
+  if (!speech) {
+    return { features: persisted.features, providers: persisted.providers };
+  }
+  const features = { ...persisted.features };
+  const dictation = { ...features.dictation };
+  const voiceMode = { ...features.voiceMode };
+  if (speech.dictationSttModel !== undefined) {
+    dictation.stt = { ...dictation.stt, provider: "local", model: speech.dictationSttModel };
+  }
+  if (speech.voiceSttModel !== undefined) {
+    voiceMode.stt = { ...voiceMode.stt, provider: "local", model: speech.voiceSttModel };
+  }
+  if (
+    speech.voiceTtsModel !== undefined ||
+    speech.voiceTtsSpeakerId !== undefined ||
+    speech.voiceTtsSpeed !== undefined
+  ) {
+    voiceMode.tts = {
+      ...voiceMode.tts,
+      ...(speech.voiceTtsModel !== undefined
+        ? { provider: "local" as const, model: speech.voiceTtsModel }
+        : {}),
+      ...(speech.voiceTtsSpeakerId !== undefined ? { speakerId: speech.voiceTtsSpeakerId } : {}),
+      ...(speech.voiceTtsSpeed !== undefined ? { speed: speech.voiceTtsSpeed } : {}),
+    };
+  }
+  if (speech.voiceInstructions !== undefined) {
+    const instructions = speech.voiceInstructions.trim();
+    if (instructions) voiceMode.instructions = instructions;
+    else delete voiceMode.instructions;
+  }
+  if (Object.keys(dictation).length > 0) features.dictation = dictation;
+  if (Object.keys(voiceMode).length > 0) features.voiceMode = voiceMode;
+
+  const providers = { ...persisted.providers };
+  if (speech.executionProvider !== undefined || speech.customModels !== undefined) {
+    providers.local = {
+      ...providers.local,
+      ...(speech.executionProvider !== undefined
+        ? { executionProvider: speech.executionProvider }
+        : {}),
+      ...(speech.customModels !== undefined
+        ? {
+            customModels: speech.customModels.map((model) => ({
+              id: model.id,
+              kind: model.kind,
+              path: model.path,
+              ...(model.label ? { label: model.label } : {}),
+            })),
+          }
+        : {}),
+    };
+  }
+  return { features, providers };
 }

@@ -65,9 +65,24 @@ const OpenAiProviderSchema = z
   })
   .strict();
 
+// CUSTOM(voice-settings): a speech model folder the user registered in Settings.
+const LocalSpeechCustomModelSchema = z
+  .object({
+    id: z.string().min(1),
+    kind: z.enum(["stt", "tts"]),
+    path: z.string().min(1),
+    label: z.string().min(1).optional(),
+  })
+  .strict();
+
 const LocalSpeechProviderSchema = z
   .object({
     modelsDir: z.string().min(1).optional(),
+    // CUSTOM(voice-settings): CPU (default) or GPU, the CUDA build's folder, and model
+    // folders registered in Settings.
+    executionProvider: z.enum(["cpu", "cuda"]).optional(),
+    cudaLibDir: z.string().min(1).optional(),
+    customModels: z.array(LocalSpeechCustomModelSchema).optional(),
   })
   .strict();
 
@@ -150,6 +165,8 @@ const FeatureVoiceModeSchema = z
       })
       .strict()
       .optional(),
+    // CUSTOM(voice-settings): replaces the built-in voice-mode instructions when set.
+    instructions: z.string().min(1).optional(),
   })
   .strict();
 

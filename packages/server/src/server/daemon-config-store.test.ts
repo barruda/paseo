@@ -120,6 +120,85 @@ describe("DaemonConfigStore", () => {
     expect(loadPersistedConfig(paseoHome).daemon?.relay?.enabled).toBe(true);
   });
 
+  // CUSTOM(voice-settings)
+  test("speech patches land in config.json's speech fields and notify the speech engine", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+      speech: { executionProvider: "cpu", voiceInstructions: "" },
+    });
+    const changes: unknown[] = [];
+    store.onFieldChange("speech", (value) => changes.push(value));
+
+    store.patch({
+      speech: {
+        executionProvider: "cuda",
+        dictationSttModel: "custom-mine-abc123",
+        voiceTtsModel: "kokoro-multi-lang-v1_0",
+        voiceTtsSpeakerId: 42,
+        voiceInstructions: "Speak Portuguese.",
+        customModels: [{ id: "custom-mine-abc123", kind: "stt", path: "/models/mine" }],
+      },
+    });
+
+    const persisted = loadPersistedConfig(paseoHome);
+    expect(changes).toHaveLength(1);
+    expect(persisted.providers?.local).toEqual({
+      executionProvider: "cuda",
+      customModels: [{ id: "custom-mine-abc123", kind: "stt", path: "/models/mine" }],
+    });
+    expect(persisted.features?.dictation?.stt).toEqual({
+      provider: "local",
+      model: "custom-mine-abc123",
+    });
+    expect(persisted.features?.voiceMode?.tts).toEqual({
+      provider: "local",
+      model: "kokoro-multi-lang-v1_0",
+      speakerId: 42,
+    });
+    expect(persisted.features?.voiceMode?.instructions).toBe("Speak Portuguese.");
+
+    store.patch({ speech: { voiceInstructions: "", customModels: [] } });
+
+    const cleared = loadPersistedConfig(paseoHome);
+    expect(cleared.features?.voiceMode?.instructions).toBeUndefined();
+    expect(cleared.providers?.local?.customModels).toEqual([]);
+    expect(store.get().speech?.customModels).toEqual([]);
+  });
+
+  test("a speech engine that rejects the new settings rolls config.json back", () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+      speech: { voiceSttModel: "parakeet-tdt-0.6b-v2-int8" },
+    });
+    store.onFieldChange("speech", (value) => {
+      if ((value as { voiceSttModel?: string }).voiceSttModel === "nope") {
+        throw new Error("Unknown local speech recognition model: nope");
+      }
+    });
+
+    expect(() => store.patch({ speech: { voiceSttModel: "nope" } })).toThrow(/nope/);
+    expect(store.get().speech?.voiceSttModel).toBe("parakeet-tdt-0.6b-v2-int8");
+    expect(loadPersistedConfig(paseoHome).features?.voiceMode?.stt).toBeUndefined();
+  });
+
   test("patch round-trips agent profiles through the strictly-parsed persisted config", () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

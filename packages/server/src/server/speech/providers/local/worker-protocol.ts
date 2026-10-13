@@ -12,11 +12,25 @@ export interface LocalSpeechWorkerConfig {
   voiceTtsModel: string;
   voiceTtsSpeakerId?: number;
   voiceTtsSpeed?: number;
+  // CUSTOM(voice-settings): folders of models registered in Settings, by model id, and the
+  // espeak-ng language of the selected multi-language Kokoro voice.
+  modelDirs?: Record<string, string>;
+  voiceTtsLanguage?: string;
+}
+
+export interface LocalSpeechWorkerStatus {
+  executionProvider: "cpu" | "cuda";
+  loadedModels: string[];
+  activeSessions: number;
 }
 
 export type LocalSpeechSessionKind = "voiceStt" | "dictationStt" | "vad";
 
 export type LocalSpeechWorkerRequest =
+  | {
+      type: "status.get";
+      requestId: string;
+    }
   | {
       type: "tts.synthesize";
       requestId: string;

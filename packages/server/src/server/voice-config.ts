@@ -1,7 +1,8 @@
 const VOICE_PROMPT_BLOCK_START = "<paseo_voice_mode>";
 const VOICE_PROMPT_BLOCK_END = "</paseo_voice_mode>";
 
-const VOICE_AGENT_SYSTEM_INSTRUCTION = [
+// CUSTOM(voice-settings): exported so Settings can show it as the default.
+export const VOICE_AGENT_SYSTEM_INSTRUCTION = [
   "Paseo voice mode is now on.",
   "You are the Paseo voice assistant.",
   "The user cannot see your chat messages or tool calls.",
@@ -39,10 +40,15 @@ export function stripVoiceModeSystemPrompt(existing?: string): string | undefine
   return stripped.length > 0 ? stripped : undefined;
 }
 
-export function buildVoiceModeSystemPrompt(existing: string | undefined, enabled: boolean): string {
+export function buildVoiceModeSystemPrompt(
+  existing: string | undefined,
+  enabled: boolean,
+  // CUSTOM(voice-settings): instructions edited in Settings replace the built-in ones.
+  customInstructions?: string,
+): string {
   const basePrompt = stripVoiceModeSystemPrompt(existing);
   const voiceInstruction = enabled
-    ? VOICE_AGENT_SYSTEM_INSTRUCTION
+    ? customInstructions?.trim() || VOICE_AGENT_SYSTEM_INSTRUCTION
     : VOICE_AGENT_DISABLED_INSTRUCTION;
   const voiceBlock = [VOICE_PROMPT_BLOCK_START, voiceInstruction, VOICE_PROMPT_BLOCK_END].join(
     "\n",

@@ -13,18 +13,32 @@ import {
   type LocalSttModelId,
   type LocalTtsModelId,
 } from "./models.js";
+import { resolveCudaLibDir, type LocalSpeechExecutionProvider } from "./local-speech-gpu.js";
 
+// CUSTOM(voice-settings): model ids are catalog ids or ids of folders registered in
+// Settings (providers.local.customModels), so they are plain strings here.
 export interface LocalSpeechModelConfig {
-  dictationStt: LocalSttModelId;
-  voiceStt: LocalSttModelId;
-  voiceTts: LocalTtsModelId;
+  dictationStt: string;
+  voiceStt: string;
+  voiceTts: string;
   voiceTtsSpeakerId?: number;
   voiceTtsSpeed?: number;
+}
+
+export interface LocalSpeechCustomModel {
+  id: string;
+  kind: "stt" | "tts";
+  path: string;
+  label?: string;
 }
 
 export interface LocalSpeechProviderConfig {
   modelsDir: string;
   models: LocalSpeechModelConfig;
+  // CUSTOM(voice-settings)
+  executionProvider: LocalSpeechExecutionProvider;
+  cudaLibDir: string;
+  customModels: LocalSpeechCustomModel[];
 }
 
 export interface ResolvedLocalSpeechConfig {
@@ -56,9 +70,10 @@ const OptionalIntegerSchema = NumberLikeSchema.pipe(
 const LocalSpeechResolutionSchema = z.object({
   includeProviderConfig: z.boolean(),
   modelsDir: z.string().trim().min(1),
-  dictationLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
-  voiceLocalSttModel: LocalSttModelIdSchema.default(DEFAULT_LOCAL_STT_MODEL),
-  voiceLocalTtsModel: LocalTtsModelIdSchema.default(DEFAULT_LOCAL_TTS_MODEL),
+  // CUSTOM(voice-settings): checked against the catalog and custom models after parsing.
+  dictationLocalSttModel: z.string().trim().toLowerCase().default(DEFAULT_LOCAL_STT_MODEL),
+  voiceLocalSttModel: z.string().trim().toLowerCase().default(DEFAULT_LOCAL_STT_MODEL),
+  voiceLocalTtsModel: z.string().trim().toLowerCase().default(DEFAULT_LOCAL_TTS_MODEL),
   dictationLanguage: LanguageSchema,
   voiceLanguage: LanguageSchema,
   voiceLocalTtsSpeakerId: OptionalIntegerSchema,
@@ -189,6 +204,31 @@ function buildLocalSpeechResolutionInput(params: {
   };
 }
 
+export class UnknownLocalSpeechModelError extends Error {
+  readonly modelId: string;
+  readonly kind: "stt" | "tts";
+
+  constructor(modelId: string, kind: "stt" | "tts") {
+    super(
+      `Unknown local ${kind === "stt" ? "speech recognition" : "speech synthesis"} model: ${modelId}`,
+    );
+    this.name = "UnknownLocalSpeechModelError";
+    this.modelId = modelId;
+    this.kind = kind;
+  }
+}
+
+function assertLocalModelRef(
+  id: string,
+  kind: "stt" | "tts",
+  customModels: readonly LocalSpeechCustomModel[],
+): string {
+  const catalog = kind === "stt" ? LocalSttModelIdSchema : LocalTtsModelIdSchema;
+  if (catalog.safeParse(id).success) return id;
+  if (customModels.some((model) => model.id === id && model.kind === kind)) return id;
+  throw new UnknownLocalSpeechModelError(id, kind);
+}
+
 export function resolveLocalSpeechConfig(params: {
   paseoHome: string;
   env: NodeJS.ProcessEnv;
@@ -200,9 +240,16 @@ export function resolveLocalSpeechConfig(params: {
     buildLocalSpeechResolutionInput({ ...params, includeProviderConfig }),
   );
 
-  const resolvedVoiceTtsSpeakerId =
-    parsed.voiceLocalTtsSpeakerId ??
-    (parsed.voiceLocalTtsModel === "kokoro-en-v0_19" ? 0 : undefined);
+  // CUSTOM(voice-settings): every local synthesis model is Kokoro, whose default voice is 0.
+  const resolvedVoiceTtsSpeakerId = parsed.voiceLocalTtsSpeakerId ?? 0;
+  const localPersisted = params.persisted.providers?.local;
+  const customModels = (localPersisted?.customModels ?? []).map(
+    (model): LocalSpeechCustomModel =>
+      Object.assign({}, model, { id: model.id.trim().toLowerCase() }),
+  );
+  const dictationStt = assertLocalModelRef(parsed.dictationLocalSttModel, "stt", customModels);
+  const voiceStt = assertLocalModelRef(parsed.voiceLocalSttModel, "stt", customModels);
+  const voiceTts = assertLocalModelRef(parsed.voiceLocalTtsModel, "tts", customModels);
 
   return {
     sttLanguages: {
@@ -212,10 +259,13 @@ export function resolveLocalSpeechConfig(params: {
     local: parsed.includeProviderConfig
       ? {
           modelsDir: parsed.modelsDir,
+          executionProvider: localPersisted?.executionProvider ?? "cpu",
+          cudaLibDir: resolveCudaLibDir(params.env, localPersisted?.cudaLibDir),
+          customModels,
           models: {
-            dictationStt: parsed.dictationLocalSttModel,
-            voiceStt: parsed.voiceLocalSttModel,
-            voiceTts: parsed.voiceLocalTtsModel,
+            dictationStt,
+            voiceStt,
+            voiceTts,
             ...(resolvedVoiceTtsSpeakerId !== undefined
               ? { voiceTtsSpeakerId: resolvedVoiceTtsSpeakerId }
               : {}),

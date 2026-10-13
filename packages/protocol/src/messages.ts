@@ -17,6 +17,16 @@ export {
   type PluginSource,
 } from "./plugin-config.js";
 import { TerminalProfileSchema } from "./terminal-profile.js";
+// CUSTOM(voice-settings)
+import {
+  MutableSpeechConfigSchema,
+  SpeechLocalGetStatusRequestSchema,
+  SpeechLocalGetStatusResponseSchema,
+  SpeechLocalInspectModelFolderRequestSchema,
+  SpeechLocalInspectModelFolderResponseSchema,
+  SpeechLocalPreviewVoiceRequestSchema,
+  SpeechLocalPreviewVoiceResponseSchema,
+} from "./speech-settings.js";
 export { TerminalProfileSchema, type TerminalProfile } from "./terminal-profile.js";
 import { z } from "zod";
 import { TerminalActivitySchema } from "./terminal-activity.js";
@@ -208,6 +218,8 @@ export const MutableDaemonConfigSchema = z
     skills: z.object({ selection: AgentSkillSelectionSchema.optional() }).strict().optional(),
     pluginsEnabled: z.boolean().optional(),
     plugins: z.record(PluginIdSchema, PluginSourceSchema).optional(),
+    // CUSTOM(voice-settings)
+    speech: MutableSpeechConfigSchema.optional(),
   })
   .passthrough();
 
@@ -228,6 +240,8 @@ export const MutableDaemonConfigPatchSchema = z
     agentProfiles: z.array(AgentProfileSchema).optional(),
     pluginsEnabled: z.boolean().optional(),
     plugins: z.record(PluginIdSchema, PluginSourceSchema).optional(),
+    // CUSTOM(voice-settings)
+    speech: MutableSpeechConfigSchema.optional(),
   })
   .partial()
   .passthrough();
@@ -3234,6 +3248,10 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   DaemonGetStatusRequestSchema,
   DaemonGetPairingOfferRequestSchema,
   DaemonConfigReloadRequestSchema,
+  // CUSTOM(voice-settings)
+  SpeechLocalGetStatusRequestSchema,
+  SpeechLocalPreviewVoiceRequestSchema,
+  SpeechLocalInspectModelFolderRequestSchema,
   HubManagementDaemonConnectRequestSchema,
   HubManagementDaemonGetStatusRequestSchema,
   HubManagementDaemonDisconnectRequestSchema,
@@ -3620,6 +3638,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonStatusRpc: z.boolean().optional(),
         // COMPAT(daemonConfigReload): added in v0.4.0, remove gate after 2027-02-14.
         daemonConfigReload: z.boolean().optional(),
+        // CUSTOM(voice-settings): Settings > Voice and dictation.
+        speechSettings: z.boolean().optional(),
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         relayConfig: z.boolean().optional(),
         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.
@@ -6945,6 +6965,10 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   DaemonGetStatusResponseSchema,
   DaemonGetPairingOfferResponseSchema,
   DaemonConfigReloadResponseSchema,
+  // CUSTOM(voice-settings)
+  SpeechLocalGetStatusResponseSchema,
+  SpeechLocalPreviewVoiceResponseSchema,
+  SpeechLocalInspectModelFolderResponseSchema,
   HubManagementDaemonConnectResponseSchema,
   HubManagementDaemonGetStatusResponseSchema,
   HubManagementDaemonDisconnectResponseSchema,

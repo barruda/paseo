@@ -1,4 +1,5 @@
 import { en, type TranslationResources } from "./en";
+import { VOICE_SETTINGS_PT_BR } from "./custom-voice-settings";
 import { pluginSettings } from "./plugin-settings";
 
 export const ptBR: TranslationResources = {
@@ -2065,6 +2066,8 @@ export const ptBR: TranslationResources = {
     },
   },
   settings: {
+    // CUSTOM(voice-settings)
+    voiceSettings: VOICE_SETTINGS_PT_BR,
     title: "Configurações",
     loading: "Carregando configurações...",
     groups: {
@@ -2125,6 +2128,8 @@ export const ptBR: TranslationResources = {
       connections: "Conexões",
       agents: "Agentes",
       metadata: "Metadados",
+      // CUSTOM(voice-settings)
+      voice: "Voz e ditado",
       workspaces: "Workspaces",
       providers: "Provedores",
       usage: "Uso",

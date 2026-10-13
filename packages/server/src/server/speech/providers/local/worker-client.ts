@@ -13,8 +13,8 @@ import type {
 } from "../../speech-provider.js";
 import type { TurnDetectionProvider, TurnDetectionSession } from "../../turn-detection-provider.js";
 import {
-  applyLocalSpeechCudaLoaderEnv,
-  resolveLocalSpeechExecutionProvider,
+  applyLocalSpeechWorkerEnv,
+  type LocalSpeechExecutionProvider,
 } from "./local-speech-gpu.js";
 import { applySherpaLoaderEnv } from "./sherpa/sherpa-runtime-env.js";
 import type {
@@ -25,6 +25,7 @@ import type {
   LocalSpeechWorkerConfig,
   LocalSpeechWorkerRequest,
   LocalSpeechWorkerResponse,
+  LocalSpeechWorkerStatus,
   LocalSpeechWorkerToParentMessage,
 } from "./worker-protocol.js";
 import { bufferToWorkerBytes, workerBytesToBuffer } from "./worker-bytes.js";
@@ -62,8 +63,33 @@ interface PendingRequest {
   startedAt: number;
 }
 
+// CUSTOM(local-speech-gpu): CPU or GPU is fixed per worker process, at fork time.
+export interface LocalSpeechWorkerExecution {
+  provider: LocalSpeechExecutionProvider;
+  cudaLibDir: string;
+}
+
+// CUSTOM(voice-settings): what Settings shows about the worker.
+export interface LocalSpeechWorkerClientStatus {
+  running: boolean;
+  pid: number | null;
+  startedAt: string | null;
+  executionProvider: LocalSpeechExecutionProvider;
+  inFlightRequests: number;
+  activeSessions: number;
+  loadedModels: string[];
+}
+
+export interface LocalSpeechVoiceOverride {
+  voiceTtsModel?: string;
+  voiceTtsSpeakerId?: number;
+  voiceTtsSpeed?: number;
+  voiceTtsLanguage?: string;
+}
+
 interface LocalSpeechWorkerClientOptions {
   config: LocalSpeechWorkerConfig;
+  execution?: LocalSpeechWorkerExecution;
   logger: pino.Logger;
   requestTimeoutMs?: number;
   idleTtlMs?: number;
@@ -95,11 +121,11 @@ function resolveWorkerExecArgv(): string[] {
   ];
 }
 
-function forkLocalSpeechWorker(): LocalSpeechWorkerProcess {
+function forkLocalSpeechWorker(execution: LocalSpeechWorkerExecution): LocalSpeechWorkerProcess {
   const env = { ...process.env };
   applySherpaLoaderEnv(env);
   // CUSTOM(local-speech-gpu): the CUDA build must shadow the CPU package's libraries.
-  applyLocalSpeechCudaLoaderEnv(env);
+  applyLocalSpeechWorkerEnv(env, execution);
   return fork(fileURLToPath(resolveWorkerUrl()), [], {
     env,
     execArgv: resolveWorkerExecArgv(),
@@ -141,6 +167,8 @@ function summarizeWorkerRequest(message: LocalSpeechWorkerRequest): Record<strin
       };
     case "tts.synthesize":
       return { textLength: message.text.length };
+    case "status.get":
+      return {};
   }
 }
 
@@ -196,19 +224,41 @@ export class LocalSpeechWorkerClient {
   private inFlightRequests = 0;
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly intentionalWorkerCloses = new WeakSet<LocalSpeechWorkerProcess>();
+  private readonly execution: LocalSpeechWorkerExecution;
+  private workerStartedAt: string | null = null;
 
   constructor(options: LocalSpeechWorkerClientOptions) {
     this.config = options.config;
+    this.execution = options.execution ?? { provider: "cpu", cudaLibDir: "" };
     this.logger = options.logger.child({ component: "local-speech-worker-client" });
     this.requestTimeoutMs = options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.idleTtlMs = options.idleTtlMs ?? DEFAULT_IDLE_TTL_MS;
-    this.forkWorker = options.forkWorker ?? forkLocalSpeechWorker;
+    this.forkWorker = options.forkWorker ?? (() => forkLocalSpeechWorker(this.execution));
   }
 
-  async synthesizeSpeech(text: string): Promise<SpeechStreamResult> {
+  // CUSTOM(voice-settings): never spawns a worker just to report on it.
+  async getStatus(): Promise<LocalSpeechWorkerClientStatus> {
+    const base = {
+      pid: this.workerPid,
+      startedAt: this.workerStartedAt,
+      executionProvider: this.execution.provider,
+      inFlightRequests: this.inFlightRequests,
+      activeSessions: this.activeSessionIds.size,
+    };
+    if (!this.worker || !this.worker.connected) {
+      return { ...base, running: false, pid: null, startedAt: null, loadedModels: [] };
+    }
+    const status = await this.sendRequest<LocalSpeechWorkerStatus>({ type: "status.get" });
+    return { ...base, running: true, loadedModels: status.loadedModels };
+  }
+
+  async synthesizeSpeech(
+    text: string,
+    voice: LocalSpeechVoiceOverride = {},
+  ): Promise<SpeechStreamResult> {
     const result = await this.sendRequest<LocalSpeechTtsResult>({
       type: "tts.synthesize",
-      config: this.config,
+      config: { ...this.config, ...voice },
       text,
     });
     return {
@@ -364,6 +414,7 @@ export class LocalSpeechWorkerClient {
     const worker = this.forkWorker();
     this.worker = worker;
     this.workerPid = worker.pid ?? null;
+    this.workerStartedAt = new Date().toISOString();
     this.stderrTail = "";
     this.stderrLineBuffer = "";
     this.logger.info(
@@ -373,7 +424,7 @@ export class LocalSpeechWorkerClient {
         voiceSttModel: this.config.voiceSttModel,
         dictationSttModel: this.config.dictationSttModel,
         voiceTtsModel: this.config.voiceTtsModel,
-        executionProvider: resolveLocalSpeechExecutionProvider(),
+        executionProvider: this.execution.provider,
       },
       "Local speech worker spawned",
     );

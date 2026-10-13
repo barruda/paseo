@@ -9,6 +9,12 @@ import {
 } from "./connection/index.js";
 import { CreationClient } from "./creation/index.js";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
+// CUSTOM(voice-settings)
+import type {
+  SpeechLocalGetStatusResponse,
+  SpeechLocalInspectModelFolderResponse,
+  SpeechLocalPreviewVoiceResponse,
+} from "@getpaseo/protocol/speech-settings";
 import type { z } from "zod";
 import type { SessionEventSubscription } from "@getpaseo/protocol/messages";
 import type { ClientCapability } from "@getpaseo/protocol/client-capabilities";
@@ -5146,6 +5152,49 @@ export class DaemonClient {
     });
   }
 
+  // CUSTOM(voice-settings): Settings > Voice and dictation.
+  async getLocalSpeechStatus(
+    options: { includeLogs?: boolean; requestId?: string } = {},
+  ): Promise<SpeechLocalGetStatusResponse["payload"]> {
+    this.requireSpeechSettingsSupport();
+    return this.sendNamespacedCorrelatedSessionRequest<"speech.local.get_status.response">({
+      requestId: options.requestId,
+      message: {
+        type: "speech.local.get_status.request",
+        ...(options.includeLogs ? { includeLogs: true } : {}),
+      },
+    });
+  }
+
+  async previewLocalSpeechVoice(params: {
+    text: string;
+    model?: string;
+    speakerId?: number;
+    speed?: number;
+    requestId?: string;
+  }): Promise<SpeechLocalPreviewVoiceResponse["payload"]> {
+    this.requireSpeechSettingsSupport();
+    const { requestId, ...request } = params;
+    return this.sendNamespacedCorrelatedSessionRequest<"speech.local.preview_voice.response">({
+      requestId,
+      message: { type: "speech.local.preview_voice.request", ...request },
+      timeout: 60_000,
+    });
+  }
+
+  async inspectLocalSpeechModelFolder(
+    path: string,
+    requestId?: string,
+  ): Promise<SpeechLocalInspectModelFolderResponse["payload"]> {
+    this.requireSpeechSettingsSupport();
+    return this.sendNamespacedCorrelatedSessionRequest<"speech.local.inspect_model_folder.response">(
+      {
+        requestId,
+        message: { type: "speech.local.inspect_model_folder.request", path },
+      },
+    );
+  }
+
   async reloadDaemonConfig(requestId?: string): Promise<DaemonConfigReloadResponse["payload"]> {
     this.requireDaemonConfigReloadSupport();
     return this.sendNamespacedCorrelatedSessionRequest({
@@ -6227,6 +6276,13 @@ export class DaemonClient {
     // COMPAT(hubRelationship): added in v0.1.X, drop the gate when floor >= v0.1.X.
     if (this.lastServerInfoMessage?.features?.hubRelationship !== true) {
       throw new Error("Update the host to use Hub relationship management.");
+    }
+  }
+
+  private requireSpeechSettingsSupport(): void {
+    // CUSTOM(voice-settings)
+    if (this.lastServerInfoMessage?.features?.speechSettings !== true) {
+      throw new Error("Update the host to manage voice and dictation settings.");
     }
   }
 
