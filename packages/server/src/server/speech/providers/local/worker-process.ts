@@ -263,7 +263,8 @@ type LocalSpeechWorkerSessionRequest = Extract<
       | "session.clear"
       | "session.flush"
       | "session.reset"
-      | "session.close";
+      | "session.close"
+      | "session.assistant_speaking";
   }
 >;
 
@@ -297,6 +298,11 @@ function handleSessionRequest(message: LocalSpeechWorkerSessionRequest): void {
     case "session.reset":
       if (session && "reset" in session) {
         session.reset();
+      }
+      break;
+    case "session.assistant_speaking":
+      if (session && "setAssistantSpeaking" in session) {
+        session.setAssistantSpeaking?.(message.speaking);
       }
       break;
   }

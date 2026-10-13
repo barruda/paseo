@@ -105,6 +105,16 @@ export const VOICE_SETTINGS_EN = {
     medium: "Medium",
     high: "High",
   },
+  microphone: {
+    title: "Microphone",
+    info: "On this device only. Voice mode reopens the microphone when you change these.",
+    echoCancellation: "Echo cancellation",
+    echoCancellationHint:
+      "Turn off if you can't interrupt the agent by talking and your speaker or headset cancels echo itself (Bluetooth speakers with a mic, speakerphones, headsets). On laptop speakers, keep it on or the agent hears itself.",
+    noiseSuppression: "Noise suppression",
+    noiseSuppressionHint: "Can soften your voice while the agent talks.",
+    autoGainControl: "Automatic gain",
+  },
   logs: {
     title: "Logs",
     recent: "Recent speech activity",
@@ -220,6 +230,16 @@ export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
     medium: "Médio",
     high: "Alto",
   },
+  microphone: {
+    title: "Microfone",
+    info: "Só neste dispositivo. O modo de voz reabre o microfone quando você muda estas opções.",
+    echoCancellation: "Cancelamento de eco",
+    echoCancellationHint:
+      "Desligue se você não consegue interromper o agente falando e sua caixa de som ou headset já cancela o eco (caixas Bluetooth com microfone, viva-voz, headsets). Nos alto-falantes do notebook, deixe ligado ou o agente ouve a si mesmo.",
+    noiseSuppression: "Supressão de ruído",
+    noiseSuppressionHint: "Pode abafar sua voz enquanto o agente fala.",
+    autoGainControl: "Ganho automático",
+  },
   logs: {
     title: "Logs",
     recent: "Atividade de voz recente",
@@ -332,6 +352,16 @@ export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
     low: "Bajo",
     medium: "Medio",
     high: "Alto",
+  },
+  microphone: {
+    title: "Micrófono",
+    info: "Solo en este dispositivo. El modo de voz vuelve a abrir el micrófono cuando cambias estas opciones.",
+    echoCancellation: "Cancelación de eco",
+    echoCancellationHint:
+      "Desactívala si no puedes interrumpir al agente hablando y tu altavoz o auriculares ya cancelan el eco (altavoces Bluetooth con micrófono, manos libres, auriculares). Con los altavoces del portátil, déjala activada o el agente se oirá a sí mismo.",
+    noiseSuppression: "Supresión de ruido",
+    noiseSuppressionHint: "Puede atenuar tu voz mientras habla el agente.",
+    autoGainControl: "Ganancia automática",
   },
   logs: {
     title: "Registros",
@@ -447,6 +477,16 @@ export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
     medium: "Moyen",
     high: "Fort",
   },
+  microphone: {
+    title: "Microphone",
+    info: "Sur cet appareil uniquement. Le mode vocal rouvre le micro quand vous modifiez ces options.",
+    echoCancellation: "Annulation d'écho",
+    echoCancellationHint:
+      "Désactivez-la si vous ne pouvez pas interrompre l'agent en parlant et que votre enceinte ou casque annule déjà l'écho (enceintes Bluetooth avec micro, kits mains libres, casques). Sur les haut-parleurs d'un portable, laissez-la activée, sinon l'agent s'entend lui-même.",
+    noiseSuppression: "Réduction du bruit",
+    noiseSuppressionHint: "Peut atténuer votre voix pendant que l'agent parle.",
+    autoGainControl: "Gain automatique",
+  },
   logs: {
     title: "Journaux",
     recent: "Activité vocale récente",
@@ -559,6 +599,16 @@ export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
     low: "小",
     medium: "中",
     high: "大",
+  },
+  microphone: {
+    title: "マイク",
+    info: "このデバイスのみ。変更するとボイスモードがマイクを開き直します。",
+    echoCancellation: "エコーキャンセル",
+    echoCancellationHint:
+      "話してもエージェントを止められず、スピーカーやヘッドセット自体がエコーを除去する場合（マイク付き Bluetooth スピーカー、スピーカーフォン、ヘッドセット）はオフにしてください。ノートPCのスピーカーではオンのままにしないと、エージェントが自分の声を拾います。",
+    noiseSuppression: "ノイズ抑制",
+    noiseSuppressionHint: "エージェントの発話中にあなたの声を弱めることがあります。",
+    autoGainControl: "自動ゲイン",
   },
   logs: {
     title: "ログ",
@@ -673,6 +723,16 @@ export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
     medium: "보통",
     high: "크게",
   },
+  microphone: {
+    title: "마이크",
+    info: "이 기기에서만 적용됩니다. 변경하면 음성 모드가 마이크를 다시 엽니다.",
+    echoCancellation: "에코 제거",
+    echoCancellationHint:
+      "말해도 에이전트를 멈출 수 없고 스피커나 헤드셋이 자체적으로 에코를 제거한다면(마이크 내장 블루투스 스피커, 스피커폰, 헤드셋) 끄세요. 노트북 스피커에서는 켜 두세요. 그렇지 않으면 에이전트가 자기 목소리를 듣습니다.",
+    noiseSuppression: "노이즈 억제",
+    noiseSuppressionHint: "에이전트가 말하는 동안 목소리를 약하게 만들 수 있습니다.",
+    autoGainControl: "자동 게인",
+  },
   logs: {
     title: "로그",
     recent: "최근 음성 활동",
@@ -785,6 +845,16 @@ export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
     low: "Тихо",
     medium: "Средне",
     high: "Громко",
+  },
+  microphone: {
+    title: "Микрофон",
+    info: "Только на этом устройстве. При изменении голосовой режим заново открывает микрофон.",
+    echoCancellation: "Эхоподавление",
+    echoCancellationHint:
+      "Отключите, если не получается перебить агента голосом, а ваша колонка или гарнитура сама подавляет эхо (Bluetooth-колонки с микрофоном, спикерфоны, гарнитуры). С динамиками ноутбука оставьте включённым, иначе агент услышит сам себя.",
+    noiseSuppression: "Шумоподавление",
+    noiseSuppressionHint: "Может приглушать ваш голос, пока говорит агент.",
+    autoGainControl: "Автоусиление",
   },
   logs: {
     title: "Журнал",
@@ -899,6 +969,16 @@ export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
     medium: "中",
     high: "高",
   },
+  microphone: {
+    title: "麦克风",
+    info: "仅限此设备。更改后语音模式会重新打开麦克风。",
+    echoCancellation: "回声消除",
+    echoCancellationHint:
+      "如果说话无法打断智能体，且你的音箱或耳机自带回声消除（带麦克风的蓝牙音箱、免提设备、耳机），请关闭。使用笔记本扬声器时请保持开启，否则智能体会听到自己的声音。",
+    noiseSuppression: "降噪",
+    noiseSuppressionHint: "可能在智能体说话时削弱你的声音。",
+    autoGainControl: "自动增益",
+  },
   logs: {
     title: "日志",
     recent: "最近的语音活动",
@@ -1011,6 +1091,16 @@ export const VOICE_SETTINGS_AR: VoiceSettingsStrings = {
     low: "منخفض",
     medium: "متوسط",
     high: "مرتفع",
+  },
+  microphone: {
+    title: "الميكروفون",
+    info: "على هذا الجهاز فقط. يعيد وضع الصوت فتح الميكروفون عند تغيير هذه الخيارات.",
+    echoCancellation: "إلغاء الصدى",
+    echoCancellationHint:
+      "أوقفه إذا لم تستطع مقاطعة الوكيل بالكلام وكان مكبر الصوت أو سماعة الرأس يلغي الصدى بنفسه (مكبرات Bluetooth بميكروفون، أجهزة المكالمات، سماعات الرأس). مع مكبرات الحاسوب المحمول اتركه مفعّلًا وإلا سمع الوكيل نفسه.",
+    noiseSuppression: "كتم الضوضاء",
+    noiseSuppressionHint: "قد يخفض صوتك أثناء حديث الوكيل.",
+    autoGainControl: "الكسب التلقائي",
   },
   logs: {
     title: "السجلات",

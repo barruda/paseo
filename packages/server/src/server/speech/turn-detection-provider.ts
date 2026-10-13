@@ -12,6 +12,8 @@ export interface TurnDetectionSession {
   flush(): void;
   reset(): void;
   close(): void;
+  // CUSTOM(voice-settings): the agent's voice is playing, so speech should interrupt it sooner.
+  setAssistantSpeaking?(speaking: boolean): void;
 
   on(event: "speech_started", handler: () => void): unknown;
   on(event: "speech_stopped", handler: () => void): unknown;

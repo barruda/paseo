@@ -3,6 +3,12 @@ import { isElectronRuntime } from "@/desktop/host";
 import type { AudioEngine, AudioEngineCallbacks, AudioPlaybackSource } from "./audio-engine-types";
 
 import { createPlaybackQueue } from "./playback";
+import {
+  getVoiceMicrophoneSettings,
+  sameVoiceMicrophoneSettings,
+  useVoiceMicrophoneStore,
+  type VoiceMicrophoneSettings,
+} from "@/voice/microphone-settings";
 
 function getAudioContextCtor(): typeof AudioContext | null {
   if (typeof window === "undefined") {
@@ -57,6 +63,7 @@ export function createAudioEngine(
     gain: GainNode | null;
     started: boolean;
     muted: boolean;
+    microphone: VoiceMicrophoneSettings | null;
   } = {
     playbackContext: null,
     captureContext: null,
@@ -66,6 +73,7 @@ export function createAudioEngine(
     gain: null,
     started: false,
     muted: false,
+    microphone: null,
   };
 
   async function ensurePlaybackContext(): Promise<AudioContext> {
@@ -196,12 +204,16 @@ export function createAudioEngine(
     }
   }
 
-  return {
+  let unsubscribeMicrophone: (() => void) | null = null;
+
+  const engine: AudioEngine = {
     async initialize() {
       await ensurePlaybackContext();
     },
 
     async destroy() {
+      unsubscribeMicrophone?.();
+      unsubscribeMicrophone = null;
       playback.destroy();
       await stopCapture();
 
@@ -240,13 +252,9 @@ export function createAudioEngine(
 
       try {
         const context = await ensureCaptureContext();
+        const microphone = getVoiceMicrophoneSettings();
         const stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            channelCount: 1,
-            noiseSuppression: true,
-            echoCancellation: true,
-            autoGainControl: true,
-          },
+          audio: { channelCount: 1, ...microphone },
         });
         const source = context.createMediaStreamSource(stream);
         const processor = context.createScriptProcessor(4096, 1, 1);
@@ -281,6 +289,7 @@ export function createAudioEngine(
         gain.connect(context.destination);
 
         refs.started = true;
+        refs.microphone = microphone;
         refs.stream = stream;
         refs.source = source;
         refs.processor = processor;
@@ -314,4 +323,22 @@ export function createAudioEngine(
     clearQueue: playback.clearQueue,
     isPlaying: playback.isPlaying,
   };
+
+  // CUSTOM(voice-settings): reopen the microphone when its processing changes in Settings,
+  // so a running voice session picks it up without restarting.
+  unsubscribeMicrophone = useVoiceMicrophoneStore.subscribe((state) => {
+    if (!refs.started || !refs.microphone || sameVoiceMicrophoneSettings(state, refs.microphone)) {
+      return;
+    }
+    const muted = refs.muted;
+    const reopen = async () => {
+      await stopCapture();
+      await engine.startCapture();
+      if (muted && !refs.muted) engine.toggleMute();
+    };
+    // startCapture already reports failures through callbacks.onError.
+    reopen().catch(() => undefined);
+  });
+
+  return engine;
 }

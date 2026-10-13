@@ -82,6 +82,13 @@ export type LocalSpeechWorkerRequest =
       type: "session.close";
       requestId: string;
       sessionId: string;
+    }
+  | {
+      // CUSTOM(voice-settings): see TurnDetectionSession.setAssistantSpeaking.
+      type: "session.assistant_speaking";
+      requestId: string;
+      sessionId: string;
+      speaking: boolean;
     };
 
 export type LocalSpeechWorkerResponse =

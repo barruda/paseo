@@ -62,6 +62,7 @@ export interface VoiceTurnController {
   start(): Promise<void>;
   stop(): Promise<void>;
   appendClientChunk(input: { audioBase64: string; format: string }): Promise<void>;
+  setAssistantSpeaking(speaking: boolean): void;
 }
 
 interface TranscriptSegmentMeta {
@@ -108,6 +109,8 @@ export function createVoiceTurnController(params: {
   let inputRate = detector.requiredSampleRate;
   let sttInputRate = 0;
   let queued = Promise.resolve();
+  // CUSTOM(voice-settings): see INTERRUPT_GAIN.
+  let assistantSpeaking = false;
   let activeTranscriptSegmentId: string | null = null;
   let partialTranscriptFired = false;
   let reconnectAttemptedForTurn = false;
@@ -497,6 +500,11 @@ export function createVoiceTurnController(params: {
       });
     },
 
+    setAssistantSpeaking(speaking: boolean): void {
+      assistantSpeaking = speaking;
+      detector.setAssistantSpeaking?.(speaking);
+    },
+
     async appendClientChunk(input): Promise<void> {
       await runSerial(async () => {
         if (state.status === "idle") {
@@ -527,7 +535,9 @@ export function createVoiceTurnController(params: {
         }
 
         if (detectorPcm16.length > 0) {
-          detector.appendPcm16(detectorPcm16);
+          detector.appendPcm16(
+            assistantSpeaking ? amplifyPcm16(detectorPcm16, INTERRUPT_GAIN) : detectorPcm16,
+          );
         }
 
         if (sttPcm16 && sttPcm16.length > 0) {
@@ -540,4 +550,18 @@ export function createVoiceTurnController(params: {
       });
     },
   };
+}
+
+// CUSTOM(voice-settings): speakerphones duck their own mic while they play, so the user's
+// voice reaches the detector quiet and chopped during a reply. Amplify what the detector hears
+// then (not what STT hears); a copy, because STT may share the buffer.
+const INTERRUPT_GAIN = 4;
+
+export function amplifyPcm16(pcm: Buffer, gain: number): Buffer {
+  const out = Buffer.alloc(pcm.length - (pcm.length % 2));
+  for (let offset = 0; offset < out.length; offset += 2) {
+    const value = Math.round(pcm.readInt16LE(offset) * gain);
+    out.writeInt16LE(Math.max(-32768, Math.min(32767, value)), offset);
+  }
+  return out;
 }
