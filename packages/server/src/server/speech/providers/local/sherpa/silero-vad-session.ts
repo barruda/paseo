@@ -17,6 +17,9 @@ const SILERO_MIN_SPEECH_DURATION = 0.1;
 
 // Our boundary detection thresholds (in milliseconds).
 const DEFAULT_CONFIRM_MS = 800;
+// CUSTOM(voice-settings): while the agent speaks, a short "stop" should interrupt it. A spoken
+// word lasts about half a second, well under the normal confirmation.
+const DEFAULT_INTERRUPT_CONFIRM_MS = 300;
 const DEFAULT_SILENCE_MS = 1000;
 
 interface SherpaVadHandle {
@@ -52,6 +55,7 @@ export interface SherpaSileroVadSessionConfig {
   windowSize?: number;
   bufferSizeInSeconds?: number;
   confirmMs?: number;
+  interruptConfirmMs?: number;
   silenceMs?: number;
 }
 
@@ -69,7 +73,9 @@ export class SherpaSileroVadSession extends EventEmitter implements TurnDetectio
   private readonly windowSize: number;
   private readonly msPerWindow: number;
   private readonly confirmMs: number;
+  private readonly interruptConfirmMs: number;
   private readonly silenceMs: number;
+  private assistantSpeaking = false;
   private connected = false;
   private phase: VadPhase = { state: "idle" };
   private windowTimestamp = 0;
@@ -86,6 +92,7 @@ export class SherpaSileroVadSession extends EventEmitter implements TurnDetectio
     this.windowSize = config.windowSize ?? DEFAULT_WINDOW_SIZE;
     this.msPerWindow = (this.windowSize / this.requiredSampleRate) * 1000;
     this.confirmMs = config.confirmMs ?? DEFAULT_CONFIRM_MS;
+    this.interruptConfirmMs = config.interruptConfirmMs ?? DEFAULT_INTERRUPT_CONFIRM_MS;
     this.silenceMs = config.silenceMs ?? DEFAULT_SILENCE_MS;
 
     const threshold = config.threshold ?? DEFAULT_SILERO_THRESHOLD;
@@ -189,6 +196,10 @@ export class SherpaSileroVadSession extends EventEmitter implements TurnDetectio
     }
   }
 
+  setAssistantSpeaking(speaking: boolean): void {
+    this.assistantSpeaking = speaking;
+  }
+
   close(): void {
     this.reset();
     this.connected = false;
@@ -219,9 +230,10 @@ export class SherpaSileroVadSession extends EventEmitter implements TurnDetectio
           break;
         }
         const elapsed = now - this.phase.startedAt;
-        if (elapsed >= this.confirmMs) {
+        const confirmMs = this.assistantSpeaking ? this.interruptConfirmMs : this.confirmMs;
+        if (elapsed >= confirmMs) {
           this.logger.debug(
-            { elapsed, confirmMs: this.confirmMs },
+            { elapsed, confirmMs, assistantSpeaking: this.assistantSpeaking },
             "[VAD] confirming → speaking (speech confirmed)",
           );
           this.phase = { state: "speaking" };

@@ -1002,6 +1002,16 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   - Voice mode instructions: edit or restore the built-in text the agent gets when voice mode
     turns on (`features.voiceMode.instructions`).
   - Thinking tone, per device: on/off and volume.
+  - Microphone, per device on web and desktop: the browser's echo cancellation, noise
+    suppression and automatic gain for voice mode's capture. Changing one reopens the mic in a
+    running session. Bluetooth speakers with a mic, speakerphones and headsets cancel echo
+    themselves (the LG XG5S mutes its mic while it plays). The browser's echo canceller on top
+    of that removed the user's voice while the agent talked, so barge-in never fired even
+    though the raw mic had over a second of clear speech.
+  - Faster barge-in: while a spoken reply plays, Silero confirms speech after 300 ms instead
+    of 800 ms, so one "stop" interrupts. The voice session flags the detector around
+    `generateAndWaitForPlayback` (`setAssistantSpeaking`, forwarded to the worker as
+    `session.assistant_speaking`).
   - Logs: recent speech lines from the daemon log (JSON or the dev daemon's pretty format).
     Changes apply live: the settings ride on the daemon config patch (`MutableDaemonConfig.speech`),
     and a `speech` field-change handler in `bootstrap.ts` re-resolves the speech config and calls
@@ -1015,11 +1025,13 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   `voice-config.ts`, `session/voice/voice-session.ts`, `authorization/operation-permissions.ts`,
   `speech/speech-runtime.ts` (`reconfigure`, `getLocalStatus`, `previewVoice`),
   `speech/speech-config-resolver.ts`, `speech/providers/local/{config,runtime,worker-*}.ts`,
-  `sherpa/sherpa-tts.ts`; new `speech/speech-settings-service.ts`,
+  `sherpa/sherpa-tts.ts`, `sherpa/silero-vad-session.ts`, `speech/turn-detection-provider.ts`,
+  `session/voice/voice-turn-controller.ts`; new `speech/speech-settings-service.ts`,
   `speech/providers/local/model-files.ts`. Client: `daemon-client.ts` (three methods). App:
   `settings-screen.tsx`, `utils/host-routes.ts`, `voice/voice-runtime.ts`,
   `contexts/voice-context.tsx`, each locale file (import + two keys); new
-  `screens/settings/voice/`, `voice/thinking-tone-settings.ts`,
+  `audio/audio-engine.web.ts` (capture constraints from the store, reopen on change); new
+  `screens/settings/voice/`, `voice/thinking-tone-settings.ts`, `voice/microphone-settings.ts`,
   `i18n/resources/custom-voice-settings.ts`.
 - **Re-apply:** Re-add the `speech` field and the three `speech.local.*` RPCs to the protocol
   unions and permission maps. In the config store, map `speech` to `features.dictation`,
@@ -1027,7 +1039,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   `SpeechService.reconfigure` validating before it mutates, because the store's rollback calls
   the field handler again with the old value. Register the host page slug `voice` with its
   sidebar item and render case.
-- **Verify:** Server: `npx vitest run src/server/speech src/server/daemon-config-store.test.ts src/server/voice-config.test.ts --bail=1`.
+- **Verify:** Server: `npx vitest run src/server/speech src/server/daemon-config-store.test.ts src/server/voice-config.test.ts src/server/speech/providers/local/sherpa/silero-vad-session.test.ts --bail=1`.
   App: `npx vitest run src/screens/settings/voice src/voice/thinking-tone-settings.test.ts src/i18n --bail=1`.
   Both are in the update script. In the app, open Settings > host > Voice and dictation: the
   status fills in; switch a model and the status shows the download or the new model loaded

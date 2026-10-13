@@ -28,7 +28,7 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { useVoiceAudioEngineOptional } from "@/contexts/voice-context";
-import { getIsElectron } from "@/constants/platform";
+import { getIsElectron, isWeb } from "@/constants/platform";
 import { pickDirectory } from "@/desktop/pick-directory";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
@@ -41,6 +41,7 @@ import {
   useThinkingToneStore,
   type ThinkingToneVolume,
 } from "@/voice/thinking-tone-settings";
+import { useVoiceMicrophoneStore } from "@/voice/microphone-settings";
 import { useLocalSpeechStatus } from "./use-local-speech-status";
 import {
   deriveEngineState,
@@ -148,6 +149,7 @@ export function VoiceSettingsPage({ serverId }: { serverId: string }) {
       <VoiceSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
       <InstructionsSection status={status} speech={speech} save={saveSpeech} />
       <ThinkingToneSection />
+      {isWeb ? <MicrophoneSection /> : null}
       <LogsSection status={status} visible={showLogs} onToggle={toggleLogs} />
     </View>
   );
@@ -833,6 +835,53 @@ function ThinkingToneSection() {
             </View>
           </SettingsRow>
         ) : null}
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Microphone (this device)
+// ---------------------------------------------------------------------------
+
+// The browser's audio processing for voice mode. Native capture doesn't use these.
+function MicrophoneSection() {
+  const { t } = useTranslation();
+  const echoCancellation = useVoiceMicrophoneStore((state) => state.echoCancellation);
+  const noiseSuppression = useVoiceMicrophoneStore((state) => state.noiseSuppression);
+  const autoGainControl = useVoiceMicrophoneStore((state) => state.autoGainControl);
+  const update = useVoiceMicrophoneStore((state) => state.update);
+
+  const handleEcho = useCallback((value: boolean) => update({ echoCancellation: value }), [update]);
+  const handleNoise = useCallback(
+    (value: boolean) => update({ noiseSuppression: value }),
+    [update],
+  );
+  const handleGain = useCallback((value: boolean) => update({ autoGainControl: value }), [update]);
+
+  return (
+    <SettingsSection
+      title={t("settings.voiceSettings.microphone.title")}
+      info={t("settings.voiceSettings.microphone.info")}
+    >
+      <SettingsCard testID="voice-settings-microphone">
+        <SettingsSwitch
+          label={t("settings.voiceSettings.microphone.echoCancellation")}
+          hint={t("settings.voiceSettings.microphone.echoCancellationHint")}
+          value={echoCancellation}
+          onValueChange={handleEcho}
+        />
+        <SettingsSwitch
+          label={t("settings.voiceSettings.microphone.noiseSuppression")}
+          hint={t("settings.voiceSettings.microphone.noiseSuppressionHint")}
+          value={noiseSuppression}
+          onValueChange={handleNoise}
+        />
+        <SettingsSwitch
+          label={t("settings.voiceSettings.microphone.autoGainControl")}
+          value={autoGainControl}
+          onValueChange={handleGain}
+        />
       </SettingsCard>
     </SettingsSection>
   );

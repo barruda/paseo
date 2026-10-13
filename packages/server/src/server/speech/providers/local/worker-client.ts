@@ -159,6 +159,8 @@ function summarizeWorkerRequest(message: LocalSpeechWorkerRequest): Record<strin
     case "session.reset":
     case "session.close":
       return { sessionId: message.sessionId };
+    case "session.assistant_speaking":
+      return { sessionId: message.sessionId, speaking: message.speaking };
     case "stt.transcribe":
       return {
         model: message.model,
@@ -326,6 +328,14 @@ export class LocalSpeechWorkerClient {
     void this.sendRequest({ type: "session.flush", sessionId }).catch((err) => {
       this.emitSessionError(sessionId, err);
     });
+  }
+
+  setSessionAssistantSpeaking(sessionId: string, speaking: boolean): void {
+    void this.sendRequest({ type: "session.assistant_speaking", sessionId, speaking }).catch(
+      (err) => {
+        this.emitSessionError(sessionId, err);
+      },
+    );
   }
 
   resetSession(sessionId: string): void {
@@ -806,6 +816,13 @@ class WorkerBackedTurnDetectionSession extends EventEmitter implements TurnDetec
     const sessionId = this.connectedSessionId;
     if (sessionId) {
       this.client.resetSession(sessionId);
+    }
+  }
+
+  setAssistantSpeaking(speaking: boolean): void {
+    const sessionId = this.connectedSessionId;
+    if (sessionId) {
+      this.client.setSessionAssistantSpeaking(sessionId, speaking);
     }
   }
 

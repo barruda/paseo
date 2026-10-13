@@ -195,6 +195,33 @@ describe("voice turn controller", () => {
     expect(harness.onError).not.toHaveBeenCalled();
   });
 
+  it("amplifies what the detector hears while the assistant speaks, not what STT hears", async () => {
+    const harness = createControllerHarness();
+    const pcm = Buffer.alloc(4);
+    pcm.writeInt16LE(1000, 0);
+    pcm.writeInt16LE(-20000, 2);
+    const loud = Buffer.alloc(4);
+    loud.writeInt16LE(4000, 0);
+    loud.writeInt16LE(-32768, 2);
+
+    await harness.controller.start();
+    harness.detector.emit("speech_started");
+    await settleSerialQueue();
+    harness.controller.setAssistantSpeaking(true);
+    await harness.controller.appendClientChunk({
+      audioBase64: pcm.toString("base64"),
+      format: "audio/pcm;rate=16000;bits=16",
+    });
+    harness.controller.setAssistantSpeaking(false);
+    await harness.controller.appendClientChunk({
+      audioBase64: pcm.toString("base64"),
+      format: "audio/pcm;rate=16000;bits=16",
+    });
+
+    expect(harness.detector.appendedChunks).toEqual([loud, pcm]);
+    expect(harness.sttSessions[0]?.appendedChunks).toEqual([pcm, pcm]);
+  });
+
   it("does not barge in on silence-only chunks", async () => {
     const harness = createControllerHarness();
 
