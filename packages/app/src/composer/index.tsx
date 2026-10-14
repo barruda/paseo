@@ -530,6 +530,7 @@ interface DispatchComposerKeyboardActionArgs {
   isConnected: boolean;
   handleCancelAgent: () => void;
   focusMessageInputForKeyboardAction: () => void;
+  exitVoiceMode?: () => boolean;
 }
 
 function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs): boolean {
@@ -542,11 +543,14 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
     isConnected,
     handleCancelAgent,
     focusMessageInputForKeyboardAction,
+    exitVoiceMode,
   } = args;
   if (!isPaneFocused) return false;
 
   if (action.id === "agent.interrupt") {
     if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) return true;
+    // CUSTOM(voice-exit): Esc leaves voice mode; a second Esc interrupts the agent.
+    if (exitVoiceMode?.()) return true;
     if (!isAgentRunning || isCancellingAgent || !isConnected) return false;
     handleCancelAgent();
     return true;
@@ -573,6 +577,7 @@ function ComposerKeyboardRegistration({
   isConnected,
   handleCancelAgent,
   focusMessageInputForKeyboardAction,
+  exitVoiceMode,
   isMessageInputFocused,
   handlerId,
 }: Omit<DispatchComposerKeyboardActionArgs, "action" | "isPaneFocused"> & {
@@ -591,8 +596,10 @@ function ComposerKeyboardRegistration({
         isConnected,
         handleCancelAgent,
         focusMessageInputForKeyboardAction,
+        exitVoiceMode,
       }),
     [
+      exitVoiceMode,
       focusMessageInputForKeyboardAction,
       handleCancelAgent,
       isActiveComposer,
@@ -970,6 +977,11 @@ interface ComposerProps {
   /** Overrides the mode's default placeholder, for text only the caller can build. */
   placeholder?: string;
   onKeyPress?: (event: ComposerKeyPressEvent) => boolean;
+  /**
+   * CUSTOM(voice-new-agent): composers with no agent yet (new agent, new workspace) show the
+   * voice-mode button; pressing it calls this to create the agent and start voice mode on it.
+   */
+  onStartVoice?: () => void;
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
@@ -1115,7 +1127,6 @@ interface ComposerVoiceModeButtonProps {
 interface ComposerRightControlsSlotProps extends ComposerVoiceModeButtonProps {
   isVoiceModeForAgent: boolean;
   hasAgent: boolean;
-  isAgentRunning: boolean;
   hasSendableContent: boolean;
   isCompact: boolean;
   showVoice: boolean;
@@ -1124,15 +1135,16 @@ interface ComposerRightControlsSlotProps extends ComposerVoiceModeButtonProps {
 function ComposerRightControlsSlot({
   isVoiceModeForAgent,
   hasAgent,
-  isAgentRunning,
   hasSendableContent,
   isCompact,
   showVoice,
   ...voiceProps
 }: ComposerRightControlsSlotProps) {
   const hideVoiceForCompactInput = isCompact && hasSendableContent;
+  // CUSTOM(voice-exit): shown while the agent works too; entering voice mode no longer
+  // interrupts it.
   const showVoiceModeButton =
-    showVoice && !isVoiceModeForAgent && hasAgent && !isAgentRunning && !hideVoiceForCompactInput;
+    showVoice && !isVoiceModeForAgent && hasAgent && !hideVoiceForCompactInput;
   if (!showVoiceModeButton) return null;
   return (
     <View style={styles.rightControls}>
@@ -1239,6 +1251,7 @@ function ComposerContentImpl({
   submitLabel,
   placeholder,
   onKeyPress,
+  onStartVoice,
 }: ComposerContentProps) {
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
@@ -1884,7 +1897,21 @@ function ComposerContentImpl({
 
   const isVoiceModeForAgent = resolveIsVoiceModeForAgent(voice, serverId, agentId);
 
+  // CUSTOM(voice-exit): Esc in voice mode leaves it without interrupting the agent.
+  const exitVoiceMode = useCallback((): boolean => {
+    if (!voice || !isVoiceModeForAgent || voice.isVoiceSwitching) return false;
+    void voice.stopVoice().catch((error: unknown) => {
+      const message = resolveErrorMessage(error);
+      if (message && message.trim().length > 0) toastErrorRef.current(message);
+    });
+    return true;
+  }, [isVoiceModeForAgent, voice]);
+
   const handleToggleRealtimeVoice = useCallback(() => {
+    if (!hasAgent && onStartVoice) {
+      onStartVoice();
+      return;
+    }
     attemptStartRealtimeVoice({
       voice,
       isConnected,
@@ -1893,7 +1920,7 @@ function ComposerContentImpl({
       agentId,
       toastErrorRef,
     });
-  }, [agentId, hasAgent, isConnected, serverId, voice]);
+  }, [agentId, hasAgent, isConnected, onStartVoice, serverId, voice]);
 
   const handleEditQueuedMessage = useCallback(
     (id: string) => {
@@ -2057,8 +2084,7 @@ function ComposerContentImpl({
     () => (
       <ComposerRightControlsSlot
         isVoiceModeForAgent={isVoiceModeForAgent}
-        hasAgent={hasAgent}
-        isAgentRunning={isAgentRunning}
+        hasAgent={hasAgent || Boolean(onStartVoice)}
         hasSendableContent={hasSendableContent}
         isCompact={isCompactLayout}
         showVoice={mode.showVoice}
@@ -2076,9 +2102,9 @@ function ComposerContentImpl({
       handleToggleRealtimeVoice,
       hasAgent,
       hasSendableContent,
-      isAgentRunning,
       isConnected,
       isCompactLayout,
+      onStartVoice,
       isVoiceModeForAgent,
       isVoiceSwitching,
       mode.showVoice,
@@ -2429,6 +2455,7 @@ function ComposerContentImpl({
         isConnected={isConnected}
         handleCancelAgent={handleCancelAgent}
         focusMessageInputForKeyboardAction={focusMessageInputForKeyboardAction}
+        exitVoiceMode={exitVoiceMode}
         isMessageInputFocused={isMessageInputFocused}
       />
       <View style={animatedStaticStyles.container}>

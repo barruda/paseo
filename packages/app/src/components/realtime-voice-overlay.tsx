@@ -3,7 +3,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Mic, MicOff, Square } from "lucide-react-native";
+import { Ear, EarOff, Mic, MicOff, Square, X } from "lucide-react-native";
 import { FOOTER_HEIGHT } from "@/constants/layout";
 import { useVoiceTelemetry } from "@/contexts/voice-context";
 import { VolumeMeter } from "./volume-meter";
@@ -12,7 +12,12 @@ interface RealtimeVoiceOverlayProps {
   isMuted: boolean;
   isSwitching: boolean;
   onToggleMute: () => void;
+  // CUSTOM(voice-reply-mute): the ear silences the agent's voice; back on from its next message.
+  isReplyMuted?: boolean;
+  onToggleReplyMute?: () => void;
   onStop: () => void;
+  // CUSTOM(voice-exit): leave voice mode and let the agent keep working (Esc).
+  onExit?: () => void;
 }
 
 const OVERLAY_BUTTON_SIZE = 44;
@@ -22,7 +27,10 @@ export function RealtimeVoiceOverlay({
   isMuted,
   isSwitching,
   onToggleMute,
+  isReplyMuted = false,
+  onToggleReplyMute,
   onStop,
+  onExit,
 }: RealtimeVoiceOverlayProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -35,6 +43,19 @@ export function RealtimeVoiceOverlay({
       isSwitching ? styles.buttonDisabled : undefined,
     ],
     [isMuted, isSwitching],
+  );
+  const replyMuteButtonStyle = useMemo(
+    () => [
+      styles.actionButton,
+      styles.muteButton,
+      isReplyMuted ? styles.muteButtonMuted : undefined,
+      isSwitching ? styles.buttonDisabled : undefined,
+    ],
+    [isReplyMuted, isSwitching],
+  );
+  const exitButtonStyle = useMemo(
+    () => [styles.actionButton, styles.muteButton, isSwitching ? styles.buttonDisabled : undefined],
+    [isSwitching],
   );
   const stopButtonStyle = useMemo(
     () => [styles.actionButton, styles.stopButton, isSwitching ? styles.buttonDisabled : undefined],
@@ -67,6 +88,42 @@ export function RealtimeVoiceOverlay({
             <Mic size={theme.iconSize.lg} color={theme.colors.foreground} strokeWidth={2.5} />
           )}
         </Pressable>
+
+        {onToggleReplyMute ? (
+          <Pressable
+            onPress={onToggleReplyMute}
+            disabled={isSwitching}
+            accessibilityRole="button"
+            accessibilityLabel={
+              isReplyMuted
+                ? t("settings.voiceSettings.voiceMode.unmuteReplies")
+                : t("settings.voiceSettings.voiceMode.muteReplies")
+            }
+            style={replyMuteButtonStyle}
+          >
+            {isReplyMuted ? (
+              <EarOff
+                size={theme.iconSize.lg}
+                color={theme.colors.palette.white}
+                strokeWidth={2.5}
+              />
+            ) : (
+              <Ear size={theme.iconSize.lg} color={theme.colors.foreground} strokeWidth={2.5} />
+            )}
+          </Pressable>
+        ) : null}
+
+        {onExit ? (
+          <Pressable
+            onPress={onExit}
+            disabled={isSwitching}
+            accessibilityRole="button"
+            accessibilityLabel={t("settings.voiceSettings.voiceMode.exit")}
+            style={exitButtonStyle}
+          >
+            <X size={theme.iconSize.lg} color={theme.colors.foreground} strokeWidth={2.5} />
+          </Pressable>
+        ) : null}
 
         <Pressable
           onPress={onStop}

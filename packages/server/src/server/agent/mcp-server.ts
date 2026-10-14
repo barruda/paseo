@@ -42,6 +42,8 @@ export async function createAgentMcpServer(options: AgentMcpServerOptions): Prom
         title: tool.title,
         description: tool.description,
         inputSchema: tool.inputSchema,
+        // CUSTOM(voice-speak-eager): Claude Code reads this per tool and never defers it.
+        ...(tool.alwaysLoad ? { _meta: { "anthropic/alwaysLoad": true } } : {}),
       },
       async (args: unknown, context?: McpToolContext) =>
         toMcpToolResult(await catalog.executeTool(tool.name, args, { signal: context?.signal })),

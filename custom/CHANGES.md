@@ -941,6 +941,54 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   twice quickly and voice mode starts; double-click the empty input and voice mode starts. Type
   text and verify Enter sends and double-click selects a word.
 
+## voice-exit: leave voice mode without stopping the agent
+
+- **Added:** 2026-10-13
+- **Commit:** pending
+- **Why:** Leaving voice mode stopped the agent, and entering it while the agent worked was
+  refused. Both reloaded the agent to swap the voice instructions, and a reload cancels the run.
+- **What:**
+  - The voice overlay has an X beside the stop button: it leaves voice mode and the agent keeps
+    working. Esc does the same; a second Esc is then the normal interrupt. The stop button still
+    leaves and interrupts.
+  - The voice-mode button shows while the agent works, and entering voice mode doesn't
+    interrupt it.
+  - Daemon: while the agent runs, the system prompt change waits and applies once the run ends,
+    polled every second, one pending change per agent across sessions. Going back into voice
+    mode before a deferred exit applied cancels it with no reload.
+  - The speak tool, called after the user left voice mode, tells the agent to reply in text.
+- **Core files touched:** server `session/voice/voice-session.ts` (`pendingPromptUpdates`,
+  `updateSystemPromptWhenIdle`, enable/disable paths), `agent/tools/paseo-tools.ts` (speak error
+  text; `agent/mcp-server.test.ts` expects it). App `components/realtime-voice-overlay.tsx`
+  (`onExit`), `composer/input/input.tsx` (`handleRealtimeVoiceExit`, no "interrupt first"
+  toast), `composer/index.tsx` (`exitVoiceMode` in the `agent.interrupt` dispatch, voice button
+  no longer gated on `!isAgentRunning`). String `settings.voiceSettings.voiceMode.exit`.
+- **Re-apply:** In the voice session, before calling `reloadAgentSession` for a voice prompt
+  change, check `host.hasActiveAgentRun`; if running, keep the change pending and apply it when
+  the run ends. Add the overlay X calling `voice.stopVoice()` only, and make the composer's
+  `agent.interrupt` handler leave voice mode first when it is on for that agent.
+- **Verify:** `npx vitest run src/server/session/voice/voice-session.test.ts --bail=1` (server),
+  in the update script. In the app, ask for a long task in voice mode, press Esc: voice mode
+  ends, the agent keeps going; Esc again interrupts it.
+
+## voice-new-agent: voice mode from New agent and New workspace
+
+- **Added:** 2026-10-13
+- **Commit:** pending
+- **Why:** Those screens have no agent yet, so only dictation showed.
+- **What:** The composer takes `onStartVoice`; with no agent it shows the voice-mode button and
+  calls it. The New agent tab creates the agent from what is typed (or nothing, so it starts
+  idle) and starts voice mode when creation succeeds. New workspace creates the workspace with
+  its agent the same way and hands `startVoice` to the draft tab through the pending submission.
+- **Core files touched:** app `composer/index.tsx` (`onStartVoice`), `composer/draft/workspace-tab.tsx`,
+  `screens/new-workspace-screen.tsx` (`useNewWorkspaceVoiceStart`, `startVoice` on the chat
+  path), `stores/workspace-draft-submission-store.ts` (`startVoice`).
+- **Re-apply:** Find where each screen creates its first agent and the success callback that
+  receives the agent snapshot; call `voice.startVoice(serverId, agent.id)` there when the
+  creation came from the voice button. Allow an empty first message for that creation.
+- **Verify:** In the app, open New agent, press the voice button: an agent appears and voice
+  mode starts. Same from New workspace.
+
 ## local-speech-gpu: local speech recognition and synthesis on the GPU
 
 - **Added:** 2026-10-13
@@ -1003,7 +1051,9 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     the app's audio engine.
   - Voice mode instructions: edit or restore the built-in text the agent gets when voice mode
     turns on (`features.voiceMode.instructions`).
-  - Thinking tone, per device: on/off and volume.
+  - Thinking tone, per device: Off/Low/Medium/High, a sound picked from a file (web and
+    desktop; decoded to the tone's PCM16 16 kHz format and capped at 10 s) and the silence
+    between plays (default 10 s).
   - Microphone, per device on web and desktop: the browser's echo cancellation, noise
     suppression and automatic gain for voice mode's capture. Changing one reopens the mic in a
     running session. Bluetooth speakers with a mic, speakerphones and headsets cancel echo
@@ -1013,7 +1063,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   - Faster barge-in: while a spoken reply plays, Silero confirms speech after 300 ms instead
     of 800 ms, so one "stop" interrupts. The voice session flags the detector around
     `generateAndWaitForPlayback` (`setAssistantSpeaking`, forwarded to the worker as
-    `session.assistant_speaking`).
+    `session.assistant_speaking`). The turn controller also amplifies what the detector hears
+    4x during a reply (not what STT hears), because a speakerphone ducks its mic while it plays.
   - Logs: recent speech lines from the daemon log (JSON or the dev daemon's pretty format).
     Changes apply live: the settings ride on the daemon config patch (`MutableDaemonConfig.speech`),
     and a `speech` field-change handler in `bootstrap.ts` re-resolves the speech config and calls
@@ -1046,3 +1097,56 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   Both are in the update script. In the app, open Settings > host > Voice and dictation: the
   status fills in; switch a model and the status shows the download or the new model loaded
   after the next use; Preview plays the selected voice.
+
+## voice-speak-eager: the first spoken reply skips tool search
+
+- **Added:** 2026-10-13
+- **Commit:** pending
+- **Why:** Claude Code defers MCP tools behind tool search, so the first reply after entering
+  voice mode always ran `ToolSearch select:mcp__paseo__speak` before `speak`: one extra model
+  round trip, 1.5-2 s in the user's transcripts. Entering voice mode reloads the agent, so it
+  happened every time. Loading the whole Paseo server eagerly (`alwaysLoad` on the server)
+  would put ~60 tool schemas in every agent's context instead.
+- **What:** `speak` is listed with `_meta: { "anthropic/alwaysLoad": true }`, which Claude Code
+  reads per tool. Only agents in voice mode get `speak`, so other agents are unchanged. Other
+  providers ignore `_meta`. A conversation that started before voice mode keeps `speak` in its
+  deferred-tools list, but Claude Code also sends the full definition with it
+  (`surfacedNames`/`surfacedDefinitions` on the `deferred_tools_delta` attachment in the session
+  JSONL), so the model calls it without ToolSearch. Without the flag only the name was sent.
+- **Core files touched:** server `agent/tools/types.ts` (`alwaysLoad` on `PaseoToolConfig`),
+  `agent/tools/paseo-tools.ts` (`registerTool` copies it; `speak` sets it),
+  `agent/mcp-server.ts` (maps it to `_meta`).
+- **Re-apply:** Where the MCP server registers each catalog tool, pass
+  `_meta: { "anthropic/alwaysLoad": true }` for `speak`.
+- **Verify:** `cd packages/server && npx vitest run src/server/agent/mcp-server.test.ts -t "speak MCP tool" --bail=1`
+  (in the update script). In voice mode, the first reply's tool calls start with Speak, with
+  no Toolsearch row before it.
+
+## voice-reply-mute: the ear button silences the agent's voice
+
+- **Added:** 2026-10-13
+- **Commit:** pending
+- **Why:** To stop listening to a long spoken reply without leaving voice mode or interrupting
+  the agent.
+- **What:** The voice overlay has an ear button after the mic. Pressing it cuts the sentence
+  playing and silences every reply after it; the agent keeps working and its speak calls
+  return as usual (the app confirms the skipped audio without playing it), so the text still
+  shows in the chat. Pressing it again turns the voice back on from the agent's next message:
+  the rest of a message that was muted stays silent. The mic and the thinking tone are not
+  affected. Each voice session starts unmuted.
+  The daemon tags each `audio_output` with `utteranceId`, one per `speak` call (`groupId` is
+  one sentence of it), so the app can tell where the next message starts.
+- **Core files touched:** protocol `messages.ts` (optional `utteranceId` on `audio_output`).
+  Server `agent/tts-manager.ts` (one `utteranceId` per `generateAndWaitForPlayback`). App
+  `voice/voice-runtime.ts` (`isReplyMuted`, `toggleReplyMute`, `mutedUtteranceIds`, quiet
+  play error when muted), `contexts/voice-context.tsx`, `composer/input/input.tsx`,
+  `components/realtime-voice-overlay.tsx` (`Ear`/`EarOff`). Strings
+  `settings.voiceSettings.voiceMode.muteReplies` and `unmuteReplies`.
+- **Re-apply:** In the runtime, a new playback group gets `shouldPlay = false` when replies are
+  muted or its `utteranceId` was muted; muting also flips `shouldPlay` on the queued groups and
+  calls `engine.stop()` if one was playing (the queue loop then confirms the chunk). Add the
+  ear button to the overlay beside the mic button.
+- **Verify:** `cd packages/app && npx vitest run src/voice/voice-runtime.test.ts --bail=1` and
+  `cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts --bail=1` (both in
+  the update script). In voice mode, ask for a long answer, press the ear: the voice stops, the
+  chat keeps filling. Press it again while it still answers: silence until its next message.

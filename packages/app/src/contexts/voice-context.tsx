@@ -25,6 +25,8 @@ interface VoiceContextValue extends VoiceRuntimeSnapshot {
   stopVoice: () => Promise<void>;
   isVoiceModeForAgent: (serverId: string, agentId: string) => boolean;
   toggleMute: () => void;
+  // CUSTOM(voice-reply-mute)
+  toggleReplyMute: () => void;
 }
 
 const EMPTY_SNAPSHOT: VoiceRuntimeSnapshot = {
@@ -32,6 +34,7 @@ const EMPTY_SNAPSHOT: VoiceRuntimeSnapshot = {
   isVoiceMode: false,
   isVoiceSwitching: false,
   isMuted: false,
+  isReplyMuted: false,
   activeServerId: null,
   activeAgentId: null,
 };
@@ -79,6 +82,7 @@ export function useVoiceOptional(): VoiceContextValue | null {
       stopVoice: runtime.stopVoice,
       isVoiceModeForAgent: runtime.isVoiceModeForAgent,
       toggleMute: runtime.toggleMute,
+      toggleReplyMute: runtime.toggleReplyMute,
     };
   }, [snapshot, runtime]);
 }

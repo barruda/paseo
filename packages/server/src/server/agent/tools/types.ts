@@ -17,6 +17,8 @@ export interface PaseoToolConfig {
   description?: string;
   inputSchema?: z.ZodRawShape | z.ZodType;
   outputSchema?: z.ZodRawShape;
+  // CUSTOM(voice-speak-eager): keep the tool out of Claude's tool search.
+  alwaysLoad?: boolean;
 }
 
 export interface PaseoToolDefinition extends PaseoToolConfig {

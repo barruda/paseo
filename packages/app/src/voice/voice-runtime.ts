@@ -3,10 +3,7 @@ import type { AgentStreamEventPayload, SessionOutboundMessage } from "@getpaseo/
 import { resolveVoiceUnavailableMessage } from "@/utils/server-info-capabilities";
 import type { DaemonServerInfo } from "@/stores/session-store";
 import type { AudioEngine } from "@/audio";
-import {
-  THINKING_TONE_NATIVE_PCM_BASE64,
-  THINKING_TONE_NATIVE_PCM_DURATION_MS,
-} from "@/utils/thinking-tone.native-pcm";
+import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import {
   DEFAULT_THINKING_TONE,
   scalePcm16,
@@ -16,7 +13,6 @@ import {
 
 const PCM_MIME_TYPE = "audio/pcm;rate=16000;bits=16";
 const KEEP_AWAKE_TAG = "paseo:voice";
-const THINKING_TONE_REPEAT_GAP_MS = 350;
 /**
  * A reply is spoken as one TTS segment per sentence, and the daemon starts the next segment
  * only once the current one has finished playing, so a reply in progress is punctuated by short
@@ -48,6 +44,8 @@ export interface VoiceRuntimeSnapshot {
   isVoiceMode: boolean;
   isVoiceSwitching: boolean;
   isMuted: boolean;
+  // CUSTOM(voice-reply-mute): the agent's spoken replies are silenced (the ear button).
+  isReplyMuted: boolean;
   activeServerId: string | null;
   activeAgentId: string | null;
 }
@@ -96,6 +94,8 @@ interface RuntimeState {
   segmentDurationTimer: ReturnType<typeof setInterval> | null;
   lastDisplayVolumePublishMs: number;
   serverSpeechStartedAt: number | null;
+  // CUSTOM(voice-reply-mute): messages that stay silent to their end, even after unmuting.
+  mutedUtteranceIds: Set<string>;
 }
 
 type AudioOutputPayload = Extract<SessionOutboundMessage, { type: "audio_output" }>["payload"];
@@ -108,6 +108,7 @@ interface StreamingPlaybackChunk {
 
 interface StreamingPlaybackGroup {
   groupId: string;
+  utteranceId: string | null;
   isVoiceMode: boolean;
   shouldPlay: boolean;
   chunks: Map<number, StreamingPlaybackChunk>;
@@ -135,6 +136,7 @@ const INITIAL_SNAPSHOT: VoiceRuntimeSnapshot = {
   isVoiceMode: false,
   isVoiceSwitching: false,
   isMuted: false,
+  isReplyMuted: false,
   activeServerId: null,
   activeAgentId: null,
 };
@@ -153,6 +155,7 @@ function snapshotsEqual(left: VoiceRuntimeSnapshot, right: VoiceRuntimeSnapshot)
     left.isVoiceMode === right.isVoiceMode &&
     left.isVoiceSwitching === right.isVoiceSwitching &&
     left.isMuted === right.isMuted &&
+    left.isReplyMuted === right.isReplyMuted &&
     left.activeServerId === right.activeServerId &&
     left.activeAgentId === right.activeAgentId
   );
@@ -183,6 +186,7 @@ export interface VoiceRuntime {
   stopVoice(): Promise<void>;
   destroy(): Promise<void>;
   toggleMute(): void;
+  toggleReplyMute(): void;
   isVoiceModeForAgent(serverId: string, agentId: string): boolean;
   shouldPlayVoiceAudio(serverId: string): boolean;
   onAssistantAudioStarted(serverId: string): void;
@@ -207,6 +211,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     segmentDurationTimer: null,
     lastDisplayVolumePublishMs: 0,
     serverSpeechStartedAt: null,
+    mutedUtteranceIds: new Set(),
   };
   const playback: RuntimePlaybackState = {
     groups: new Map(),
@@ -219,14 +224,30 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     controller: null,
     timeout: null,
   };
-  const cuePcm16 = Uint8Array.from(Buffer.from(THINKING_TONE_NATIVE_PCM_BASE64, "base64"));
-  const thinkingTone = () => deps.getThinkingTone?.() ?? DEFAULT_THINKING_TONE;
+  const builtInCuePcm16 = Uint8Array.from(Buffer.from(THINKING_TONE_NATIVE_PCM_BASE64, "base64"));
+  const thinkingTone = () => ({ ...DEFAULT_THINKING_TONE, ...deps.getThinkingTone?.() });
+  // CUSTOM(voice-settings): the sound picked in Settings, decoded once per pick.
+  let customCue: { pcmBase64: string; pcm16: Uint8Array } | null = null;
+  function cuePcm16(): Uint8Array {
+    const custom = thinkingTone().customSound;
+    if (!custom) return builtInCuePcm16;
+    if (customCue?.pcmBase64 !== custom.pcmBase64) {
+      customCue = {
+        pcmBase64: custom.pcmBase64,
+        pcm16: Uint8Array.from(Buffer.from(custom.pcmBase64, "base64")),
+      };
+    }
+    return customCue.pcm16;
+  }
   const cueSource = {
-    size: cuePcm16.byteLength,
+    get size() {
+      return cuePcm16().byteLength;
+    },
     type: "audio/pcm;rate=16000;bits=16",
     async arrayBuffer() {
-      // CUSTOM(voice-settings): the volume chosen in Settings, read at each play.
-      return Uint8Array.from(scalePcm16(cuePcm16, thinkingToneGain(thinkingTone().volume))).buffer;
+      // CUSTOM(voice-settings): the sound and volume chosen in Settings, read at each play.
+      return Uint8Array.from(scalePcm16(cuePcm16(), thinkingToneGain(thinkingTone().volume)))
+        .buffer;
     },
   };
   function emit(): void {
@@ -389,7 +410,10 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
           if (generation !== playback.generation) {
             return;
           }
-          console.error(`[VoiceRuntime] play error chunk=${group.nextChunkToPlay}:`, error);
+          // CUSTOM(voice-reply-mute): muting stops the sentence playing; that's not an error.
+          if (group.shouldPlay) {
+            console.error(`[VoiceRuntime] play error chunk=${group.nextChunkToPlay}:`, error);
+          }
         }
 
         if (generation !== playback.generation) {
@@ -490,10 +514,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
           if (controller.signal.aborted) {
             return;
           }
-          cue.timeout = setTimeout(
-            playNext,
-            THINKING_TONE_NATIVE_PCM_DURATION_MS + THINKING_TONE_REPEAT_GAP_MS,
-          );
+          // CUSTOM(voice-settings): the silence between plays is set in Settings.
+          cue.timeout = setTimeout(playNext, thinkingTone().intervalSeconds * 1000);
         });
     };
 
@@ -526,6 +548,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     state.turnInProgress = false;
     state.serverSpeechDetected = false;
     state.lastDisplayVolumePublishMs = 0;
+    state.mutedUtteranceIds.clear();
     uploader.reset();
     resetCaptureTelemetry();
     patchSnapshot({ ...INITIAL_SNAPSHOT });
@@ -680,15 +703,23 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }
 
       const groupId = payload.groupId ?? payload.id;
+      const utteranceId = payload.utteranceId ?? null;
       const chunkIndex = payload.chunkIndex ?? 0;
       const decoded = decodeAudioChunk(payload.audio);
 
       let group = playback.groups.get(groupId);
       if (!group) {
+        if (state.snapshot.isReplyMuted && utteranceId) {
+          state.mutedUtteranceIds.add(utteranceId);
+        }
+        const isMutedReply =
+          state.snapshot.isReplyMuted ||
+          (utteranceId !== null && state.mutedUtteranceIds.has(utteranceId));
         group = {
           groupId,
+          utteranceId,
           isVoiceMode: payload.isVoiceMode,
-          shouldPlay: api.shouldPlayVoiceAudio(serverId),
+          shouldPlay: api.shouldPlayVoiceAudio(serverId) && !isMutedReply,
           chunks: new Map(),
           nextChunkToPlay: 0,
           finalChunkIndex: null,
@@ -843,6 +874,28 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       }
 
       patchSnapshot((prev) => ({ ...prev, isMuted: false }));
+    },
+
+    // CUSTOM(voice-reply-mute): the ear button. Muting cuts the sentence playing and lets
+    // the rest of the reply pass unplayed (still confirmed, so the speak tool returns);
+    // unmuting takes effect from the agent's next message.
+    toggleReplyMute() {
+      if (state.snapshot.isReplyMuted) {
+        patchSnapshot((prev) => ({ ...prev, isReplyMuted: false }));
+        return;
+      }
+      patchSnapshot((prev) => ({ ...prev, isReplyMuted: true }));
+      let wasPlaying = false;
+      for (const group of playback.groups.values()) {
+        if (group.utteranceId) {
+          state.mutedUtteranceIds.add(group.utteranceId);
+        }
+        wasPlaying ||= group.shouldPlay && group.started;
+        group.shouldPlay = false;
+      }
+      if (wasPlaying) {
+        deps.engine.stop();
+      }
     },
 
     isVoiceModeForAgent(serverId, agentId) {

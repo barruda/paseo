@@ -9,6 +9,7 @@ import type { AgentSnapshotPayload, CreationSnapshot } from "@getpaseo/protocol/
 import { encodeImages } from "@/utils/encode-images";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useVoiceOptional } from "@/contexts/voice-context";
 import type { ReactElement, ReactNode, RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
@@ -786,6 +787,7 @@ interface SubmitDraftInput {
   supportsForgeSearch: boolean;
   resolveClient: () => DaemonClient;
   isStillOnCreateScreen: () => boolean;
+  startVoice?: boolean;
 }
 
 type NewWorkspaceComposerState = NonNullable<
@@ -866,6 +868,8 @@ async function createMultiplicityWorkspace(input: {
 
 interface CreateChatAgentInput {
   payload: MessagePayload;
+  // CUSTOM(voice-new-agent): start voice mode on the new agent.
+  startVoice?: boolean;
   composerState: ReturnType<typeof useAgentInputDraft>["composerState"];
   forkDraftSetup?: PendingWorkspaceDraftSetup | null;
   ensureWorkspace: (input: {
@@ -1027,6 +1031,7 @@ async function createWorkspaceChatAgent(input: CreateChatAgentInput): Promise<Su
           composerState,
           supportsForgeSearch: input.supportsForgeSearch,
           agentCreation,
+          startVoice: input.startVoice,
         });
       },
     });
@@ -1165,6 +1170,7 @@ function submitWorkspaceDraft(input: SubmitDraftInput): SubmitOutcome {
     ...(submission.featureValues ? { featureValues: submission.featureValues } : {}),
     allowEmptyText: true,
     agentCreation: input.agentCreation,
+    ...(input.startVoice ? { startVoice: true } : {}),
   });
   clearDraft("sent");
   navigateToWorkspace({
@@ -1629,6 +1635,27 @@ function useNewWorkspaceFormStack(input: NewWorkspaceFormStackInput): ReactEleme
       {launchControl}
     </View>
   );
+}
+
+// CUSTOM(voice-new-agent): the voice button creates the workspace and its agent from what is
+// typed (or nothing), then voice mode starts on the agent.
+function useNewWorkspaceVoiceStart(input: {
+  chatDraft: { textSource: { getSnapshot: () => string }; attachments: ComposerAttachment[] };
+  cwd: string | null | undefined;
+  startVoiceRef: RefObject<boolean>;
+  submit: (payload: MessagePayload) => Promise<void>;
+}): (() => void) | undefined {
+  const voice = useVoiceOptional();
+  const { chatDraft, cwd, startVoiceRef, submit } = input;
+  const start = useCallback(() => {
+    startVoiceRef.current = true;
+    void submit({
+      text: chatDraft.textSource.getSnapshot(),
+      attachments: chatDraft.attachments,
+      cwd: cwd ?? "",
+    });
+  }, [chatDraft.attachments, chatDraft.textSource, cwd, startVoiceRef, submit]);
+  return voice ? start : undefined;
 }
 
 export function NewWorkspaceScreen({
@@ -2132,13 +2159,17 @@ export function NewWorkspaceScreen({
     ],
   );
 
+  const startVoiceRef = useRef(false);
   const handleSubmitNewWorkspace = useCallback(
     async (payload: MessagePayload) => {
+      // CUSTOM(voice-new-agent): set by the voice button for this one submission.
+      const startVoice = startVoiceRef.current;
+      startVoiceRef.current = false;
       try {
         setErrorMessage(null);
         await composerState?.persistFormPreferences();
         await updateFormPreferences({ launchTarget });
-        if (isEmptyWorkspaceSubmission(payload)) {
+        if (isEmptyWorkspaceSubmission(payload) && !startVoice) {
           setPendingAction("empty");
           let outcome: SubmitOutcome = "background";
           await runCreateEmptyWorkspace({
@@ -2164,6 +2195,7 @@ export function NewWorkspaceScreen({
         setPendingAction("chat");
         const outcome = await runCreateChatAgent({
           payload,
+          startVoice,
           composerState,
           forkDraftSetup,
           ensureWorkspace,
@@ -2208,6 +2240,13 @@ export function NewWorkspaceScreen({
       withConnectedClient,
     ],
   );
+
+  const handleStartVoice = useNewWorkspaceVoiceStart({
+    chatDraft,
+    cwd: selectedSourceDirectory,
+    startVoiceRef,
+    submit: handleSubmitNewWorkspace,
+  });
 
   const handleSubmitTerminalLaunch = useCallback(async () => {
     try {
@@ -2452,6 +2491,7 @@ export function NewWorkspaceScreen({
       serverId={selectedServerId}
       isPaneFocused={true}
       onSubmitMessage={handleSubmitNewWorkspace}
+      onStartVoice={handleStartVoice}
       allowEmptySubmit={true}
       submitButtonAccessibilityLabel={t("newWorkspace.create")}
       submitButtonTestID="workspace-create-submit"

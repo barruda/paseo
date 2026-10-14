@@ -52,6 +52,35 @@ describe("TTSManager", () => {
     expect(audioMessage?.payload.isLastChunk).toBe(true);
   });
 
+  it("tags every segment of one message with the same utterance id", async () => {
+    const manager = new TTSManager("s1", pino({ level: "silent" }), new FakeTts());
+    const abort = new AbortController();
+    const emitted: AudioOutputMessage[] = [];
+    const speak = (text: string) =>
+      manager.generateAndWaitForPlayback(
+        text,
+        (msg) => {
+          if (isAudioOutputMessage(msg)) {
+            emitted.push(msg);
+            manager.confirmAudioPlayed(msg.payload.id);
+          }
+        },
+        abort.signal,
+        true,
+      );
+
+    await speak("First sentence. Second sentence.");
+    await speak("Next message.");
+
+    const [first, second, next] = emitted.map((msg) => msg.payload);
+    expect(emitted).toHaveLength(3);
+    expect(first.groupId).not.toBe(second.groupId);
+    expect(first.utteranceId).toBeDefined();
+    expect(second.utteranceId).toBe(first.utteranceId);
+    expect(next.utteranceId).toBeDefined();
+    expect(next.utteranceId).not.toBe(first.utteranceId);
+  });
+
   it("splits long text into safe synthesis segments", async () => {
     const calls: string[] = [];
     const tts: TextToSpeechProvider = {

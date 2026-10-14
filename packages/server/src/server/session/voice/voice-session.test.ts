@@ -5,6 +5,7 @@ import pino from "pino";
 import { describe, expect, test, vi } from "vitest";
 
 import { VoiceSession, type VoiceSessionHost } from "./voice-session.js";
+import { buildVoiceModeSystemPrompt } from "../../voice-config.js";
 import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { SessionOutboundMessage } from "../../messages.js";
 import type {
@@ -324,5 +325,58 @@ describe("VoiceSession streaming transcription", () => {
     );
 
     await voiceSession.cleanup();
+  });
+});
+
+describe("VoiceSession voice mode changes while the agent runs", () => {
+  test("leaving voice mode waits for the run to end before reloading the agent", async () => {
+    vi.useFakeTimers();
+    const { voiceSession, host } = createVoiceSession();
+    const reloads: Array<string | undefined> = [];
+    host.reloadAgentSession = async (agentId, overrides) => {
+      reloads.push(overrides.systemPrompt);
+      return { id: agentId } as unknown as ManagedAgent;
+    };
+    try {
+      await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+      expect(reloads).toHaveLength(1);
+
+      let running = true;
+      host.hasActiveAgentRun = () => running;
+      await voiceSession.handleSetVoiceMode(false);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(reloads).toHaveLength(1);
+
+      running = false;
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(reloads).toHaveLength(2);
+      expect(reloads[1]).toBe(buildVoiceModeSystemPrompt(undefined, false));
+    } finally {
+      vi.useRealTimers();
+      await voiceSession.cleanup();
+    }
+  });
+
+  test("going back into voice mode before the run ends keeps the voice instructions", async () => {
+    vi.useFakeTimers();
+    const { voiceSession, host } = createVoiceSession();
+    let reloadCount = 0;
+    host.reloadAgentSession = async (agentId) => {
+      reloadCount += 1;
+      return { id: agentId } as unknown as ManagedAgent;
+    };
+    try {
+      await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+      let running = true;
+      host.hasActiveAgentRun = () => running;
+      await voiceSession.handleSetVoiceMode(false);
+      await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+      running = false;
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(reloadCount).toBe(1);
+    } finally {
+      vi.useRealTimers();
+      await voiceSession.cleanup();
+    }
   });
 });

@@ -561,6 +561,7 @@ function MessageInputOverlay({
   onRetryFailedRecording,
   onDiscardFailedRecording,
   onRealtimeVoiceStop,
+  onRealtimeVoiceExit,
 }: {
   showDictationOverlay: boolean;
   showRealtimeOverlay: boolean;
@@ -569,6 +570,8 @@ function MessageInputOverlay({
         isMuted: boolean;
         isVoiceSwitching: boolean;
         toggleMute: () => void;
+        isReplyMuted: boolean;
+        toggleReplyMute: () => void;
       }
     | null
     | undefined;
@@ -584,6 +587,7 @@ function MessageInputOverlay({
   onRetryFailedRecording: () => void;
   onDiscardFailedRecording: () => void;
   onRealtimeVoiceStop: () => void;
+  onRealtimeVoiceExit: () => void;
 }) {
   if (showDictationOverlay) {
     return (
@@ -608,7 +612,10 @@ function MessageInputOverlay({
         isMuted={voice.isMuted}
         isSwitching={voice.isVoiceSwitching}
         onToggleMute={voice.toggleMute}
+        isReplyMuted={voice.isReplyMuted}
+        onToggleReplyMute={voice.toggleReplyMute}
         onStop={onRealtimeVoiceStop}
+        onExit={onRealtimeVoiceExit}
       />
     );
   }
@@ -862,10 +869,8 @@ function toggleRealtimeVoiceImpl(ctx: ToggleRealtimeVoiceContext): void {
     void ctx.handleStopRealtimeVoice();
     return;
   }
-  if (ctx.isAgentRunning) {
-    ctx.toast.error(ctx.interruptBeforeVoiceMessage);
-    return;
-  }
+  // CUSTOM(voice-exit): the daemon applies the voice instructions once the run ends, so
+  // entering voice mode no longer interrupts the agent.
   void ctx.voice.startVoice(ctx.voiceServerId, ctx.voiceAgentId).catch((error) => {
     console.error("[MessageInput] Failed to start realtime voice", error);
     const message = extractErrorMessage(error);
@@ -1728,6 +1733,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       void handleStopRealtimeVoice();
     }, [handleStopRealtimeVoice]);
 
+    // CUSTOM(voice-exit): the X leaves voice mode without interrupting the agent.
+    const handleRealtimeVoiceExit = useCallback(() => {
+      void voice?.stopVoice().catch((error: unknown) => {
+        const message = extractErrorMessage(error);
+        if (message && message.trim().length > 0) toast.error(message);
+      });
+    }, [toast, voice]);
+
     const inputWrapperCombinedStyle = useMemo(
       () => [
         styles.inputWrapper,
@@ -1909,6 +1922,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             onRetryFailedRecording={handleRetryFailedRecording}
             onDiscardFailedRecording={handleDiscardFailedRecording}
             onRealtimeVoiceStop={handleRealtimeVoiceStop}
+            onRealtimeVoiceExit={handleRealtimeVoiceExit}
           />
         </View>
       </View>
