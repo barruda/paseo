@@ -5901,9 +5901,33 @@ describe("speak MCP tool", () => {
       logger,
     });
     const tool = registeredTool(server, "speak");
-    await expect(tool.handler({ text: "Hello." })).rejects.toThrow(
-      "No speak handler registered for your session",
-    );
+    await expect(tool.handler({ text: "Hello." })).rejects.toThrow("Voice mode is off");
+  });
+
+  it("lists speak as always loaded so Claude skips tool search before the first reply", async () => {
+    const { agentManager, agentStorage } = createTestDeps();
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: createOpenCodeManager().manager,
+      callerAgentId: "voice-agent-3",
+      enableVoiceTools: true,
+      resolveSpeakHandler: () => null,
+      logger,
+    });
+    const client = await connectInMemoryMcpClient(server);
+
+    try {
+      const { tools } = await client.listTools();
+      const speak = tools.find((tool) => tool.name === "speak");
+      const listAgents = tools.find((tool) => tool.name === "list_agents");
+      expect(speak?._meta).toEqual({ "anthropic/alwaysLoad": true });
+      expect(listAgents).toBeDefined();
+      expect(listAgents?._meta).toBeUndefined();
+    } finally {
+      await client.close();
+      await server.close();
+    }
   });
 
   it("does not register speak tool unless voice tools are enabled", async () => {

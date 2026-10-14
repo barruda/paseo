@@ -25,6 +25,8 @@ export interface PendingWorkspaceDraftSubmission {
   thinkingOptionId?: string;
   featureValues?: Record<string, unknown>;
   allowEmptyText?: boolean;
+  // CUSTOM(voice-new-agent): start voice mode on the agent once it exists.
+  startVoice?: boolean;
 }
 
 export interface PendingWorkspaceDraftSetup {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, ScrollView, StyleSheet as RNStyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
@@ -42,6 +42,7 @@ import {
 import type { UserMessageImageAttachment } from "@/types/stream";
 import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
+import { useVoiceOptional } from "@/contexts/voice-context";
 import {
   buildWorkspaceTabPersistenceKey,
   type WorkspaceDraftTabSetup,
@@ -405,7 +406,13 @@ export function WorkspaceDraftAgentTab({
         : {}),
     };
   }, [pendingCreateAttempt]);
-  const allowsEmptyAutoSubmit = pendingAutoSubmit?.allowEmptyText === true;
+  // CUSTOM(voice-new-agent): the voice button creates the agent with no first message, then
+  // starts voice mode on it. A new workspace started from voice arrives here the same way.
+  const voice = useVoiceOptional();
+  const [voiceStartRequested, setVoiceStartRequested] = useState(
+    () => pendingAutoSubmit?.startVoice === true,
+  );
+  const allowsEmptyAutoSubmit = pendingAutoSubmit?.allowEmptyText === true || voiceStartRequested;
   const isCompactFormFactor = useIsCompactFormFactor();
   const { onLayout: onInputAreaLayout, isBelow: isCompactComposerLayout } = useContainerWidthBelow(
     COMPACT_FORM_FACTOR_WIDTH,
@@ -510,8 +517,36 @@ export function WorkspaceDraftAgentTab({
       clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
       useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });
       onCreated(result);
+      if (voiceStartRequested) {
+        setVoiceStartRequested(false);
+        void voice?.startVoice(serverId, result.id).catch((error: unknown) => {
+          console.error("[WorkspaceDraftAgentTab] Failed to start voice mode", error);
+        });
+      }
     },
   });
+  const voiceCreateStartedRef = useRef(false);
+  useEffect(() => {
+    if (!voiceStartRequested || voiceCreateStartedRef.current || pendingAutoSubmit) return;
+    voiceCreateStartedRef.current = true;
+    // What is typed becomes the first message; with nothing typed the agent starts idle.
+    void handleCreateFromInput({
+      text: draftInput.textSource.getSnapshot(),
+      attachments: draftInput.attachments,
+      cwd: composerState.workingDir,
+    }).catch(() => {
+      voiceCreateStartedRef.current = false;
+      setVoiceStartRequested(false);
+    });
+  }, [
+    composerState.workingDir,
+    draftInput.attachments,
+    draftInput.textSource,
+    handleCreateFromInput,
+    pendingAutoSubmit,
+    voiceStartRequested,
+  ]);
+  const handleStartVoice = useCallback(() => setVoiceStartRequested(true), []);
   const turnPresentation = useMemo(
     () => resolveTurnPresentation(TURN_LIVENESS_IDLE, pendingMessageSubmissions.length > 0),
     [pendingMessageSubmissions],
@@ -686,6 +721,7 @@ export function WorkspaceDraftAgentTab({
             commandDraft={composerState.commandDraft}
             agentControls={composerAgentControls}
             isCompactLayout={isCompactComposerLayout}
+            onStartVoice={voice ? handleStartVoice : undefined}
           />
         </View>
       </ComposerDock>

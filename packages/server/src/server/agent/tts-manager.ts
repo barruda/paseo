@@ -178,6 +178,8 @@ export class TTSManager {
 
     const inflight = new Map<number, Promise<PreparedSegmentResult>>();
     let nextSegmentToSchedule = 0;
+    // CUSTOM(voice-reply-mute): lets the app keep a muted message silent to its end.
+    const utteranceId = uuidv4();
 
     const scheduleNextSegments = () => {
       while (nextSegmentToSchedule < segments.length && inflight.size < TTS_PREFETCH_SEGMENTS) {
@@ -226,6 +228,7 @@ export class TTSManager {
           emitMessage,
           abortSignal,
           isVoiceMode,
+          utteranceId,
         });
         this.logger.info(
           {
@@ -347,8 +350,9 @@ export class TTSManager {
     emitMessage: (msg: SessionOutboundMessage) => void;
     abortSignal: AbortSignal;
     isVoiceMode: boolean;
+    utteranceId: string;
   }): Promise<void> {
-    const { prepared, emitMessage, abortSignal, isVoiceMode } = params;
+    const { prepared, emitMessage, abortSignal, isVoiceMode, utteranceId } = params;
     const { stream, format, text } = prepared;
 
     const audioId = uuidv4();
@@ -408,6 +412,7 @@ export class TTSManager {
             audio: fullBuffer.toString("base64"),
             format,
             isVoiceMode,
+            utteranceId,
           },
         });
       }

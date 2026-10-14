@@ -281,8 +281,9 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/screens/new-workspace/bottom-terminal.test.ts --bail=1)
   (cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts src/file-pane/html-preview-keys.browser.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts --bail=1)
-  (cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts src/server/speech/providers/local/model-files.test.ts src/server/speech/speech-config-resolver.test.ts src/server/speech/speech-settings-service.test.ts src/server/daemon-config-store.test.ts src/server/voice-config.test.ts src/server/speech/providers/local/sherpa/silero-vad-session.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/screens/settings/voice src/voice/thinking-tone-settings.test.ts src/i18n/resources.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts src/server/speech/providers/local/model-files.test.ts src/server/speech/speech-config-resolver.test.ts src/server/speech/speech-settings-service.test.ts src/server/daemon-config-store.test.ts src/server/voice-config.test.ts src/server/speech/providers/local/sherpa/silero-vad-session.test.ts src/server/session/voice/voice-session.test.ts src/server/session/voice/voice-turn-controller.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/screens/settings/voice src/voice src/i18n/resources.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts src/server/agent/mcp-server.test.ts --bail=1)
 fi
 
 step "Building the desktop app"

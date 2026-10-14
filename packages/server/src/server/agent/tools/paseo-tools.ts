@@ -612,6 +612,7 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
       description: config.description ?? name,
       inputSchema: config.inputSchema,
       outputSchema: config.outputSchema,
+      alwaysLoad: config.alwaysLoad,
       handler: handler as PaseoToolDefinition["handler"],
     });
   };
@@ -1181,6 +1182,9 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         outputSchema: {
           ok: z.boolean(),
         },
+        // CUSTOM(voice-speak-eager): Claude defers MCP tools behind tool search, which cost
+        // a ToolSearch round trip (~1.5-2 s) before the first spoken reply of each voice session.
+        alwaysLoad: true,
       },
       async (args, context) => {
         if (!callerAgentId) {
@@ -1188,7 +1192,10 @@ export function createPaseoToolCatalog(options: PaseoToolHostDependencies): Pase
         }
         const handler = resolveSpeakHandler?.(callerAgentId) ?? null;
         if (!handler) {
-          throw new Error(`No speak handler registered for your session '${callerAgentId}'`);
+          // CUSTOM(voice-exit): the user can leave voice mode while the agent works.
+          throw new Error(
+            "Voice mode is off: the user left it and reads the chat now. Reply in text and don't call speak again.",
+          );
         }
         await handler({
           text: args.text,

@@ -1,7 +1,4 @@
 import { v4 as uuidv4 } from "uuid";
-import { mkdirSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { z } from "zod";
 import type pino from "pino";
 import { getErrorMessage } from "@getpaseo/protocol/error-utils";
@@ -39,6 +36,23 @@ type ProcessingPhase = "idle" | "transcribing";
 
 interface VoiceModeBaseConfig {
   systemPrompt?: string;
+}
+
+// CUSTOM(voice-exit): changing the voice instructions reloads the agent, and a reload cancels
+// its run. Entering or leaving voice mode must not stop the agent, so while it runs the new
+// system prompt waits here, one per agent across sessions, and applies once the run ends.
+const PROMPT_UPDATE_POLL_MS = 1000;
+const pendingPromptUpdates = new Map<
+  string,
+  { voiceEnabled: boolean; timer: ReturnType<typeof setInterval> }
+>();
+
+function cancelPendingPromptUpdate(agentId: string): boolean {
+  const pending = pendingPromptUpdates.get(agentId);
+  if (!pending) return false;
+  clearInterval(pending.timer);
+  pendingPromptUpdates.delete(agentId);
+  return true;
 }
 
 interface AudioBufferState {
@@ -188,9 +202,6 @@ export class VoiceSession {
   private voiceInputChunkCount = 0;
   private voiceInputBytes = 0;
   private voiceInputWindowStartedAt = Date.now();
-  // TEMP(barge-in-debug): voice input level, and the input heard while a reply plays.
-  private voiceInputPeakRms = 0;
-  private replyInputChunks: Buffer[] | null = null;
 
   // Audio buffering for interruption handling
   private pendingAudioSegments: Array<{ audio: Buffer; format: string }> = [];
@@ -522,6 +533,19 @@ export class VoiceSession {
       ),
     };
 
+    // CUSTOM(voice-exit): back into voice mode before a deferred exit applied; the agent still
+    // has the voice instructions, so there is nothing to reload.
+    const pending = pendingPromptUpdates.get(agentId);
+    if (pending && !pending.voiceEnabled) {
+      cancelPendingPromptUpdate(agentId);
+      return agentId;
+    }
+    if (this.host.hasActiveAgentRun(agentId)) {
+      this.updateSystemPromptWhenIdle(agentId, refreshOverrides.systemPrompt, true);
+      return agentId;
+    }
+    cancelPendingPromptUpdate(agentId);
+
     try {
       this.sessionLogger.info(
         { agentId, elapsedMs: Date.now() - startedAt },
@@ -552,15 +576,16 @@ export class VoiceSession {
 
     if (restoreAgentConfig && this.voiceModeBaseConfig) {
       const baseConfig = this.voiceModeBaseConfig;
-      try {
-        await this.host.reloadAgentSession(agentId, {
-          systemPrompt: buildVoiceModeSystemPrompt(baseConfig.systemPrompt, false),
-        });
-      } catch (error) {
-        this.sessionLogger.warn(
-          { err: error, agentId },
-          "Failed to restore agent config while disabling voice mode",
-        );
+      const restoredPrompt = buildVoiceModeSystemPrompt(baseConfig.systemPrompt, false);
+      // CUSTOM(voice-exit): leaving voice mode while the agent works lets it finish.
+      const pending = pendingPromptUpdates.get(agentId);
+      if (pending?.voiceEnabled) {
+        cancelPendingPromptUpdate(agentId);
+      } else if (this.host.hasActiveAgentRun(agentId)) {
+        this.updateSystemPromptWhenIdle(agentId, restoredPrompt, false);
+      } else {
+        cancelPendingPromptUpdate(agentId);
+        await this.reloadSystemPrompt(agentId, restoredPrompt);
       }
     }
 
@@ -568,6 +593,38 @@ export class VoiceSession {
     this.unregisterVoiceCallerContext?.(agentId);
     this.voiceModeBaseConfig = null;
     this.voiceModeAgentId = null;
+  }
+
+  private updateSystemPromptWhenIdle(
+    agentId: string,
+    systemPrompt: string | undefined,
+    voiceEnabled: boolean,
+  ): void {
+    cancelPendingPromptUpdate(agentId);
+    const host = this.host;
+    const reload = (prompt: string | undefined) => this.reloadSystemPrompt(agentId, prompt);
+    const timer = setInterval(() => {
+      if (host.hasActiveAgentRun(agentId)) return;
+      cancelPendingPromptUpdate(agentId);
+      void reload(systemPrompt);
+    }, PROMPT_UPDATE_POLL_MS);
+    timer.unref?.();
+    pendingPromptUpdates.set(agentId, { voiceEnabled, timer });
+    this.sessionLogger.info(
+      { agentId, voiceEnabled },
+      "Voice instructions change waits for the agent run to end",
+    );
+  }
+
+  private async reloadSystemPrompt(agentId: string, systemPrompt: string | undefined) {
+    try {
+      await this.host.reloadAgentSession(agentId, { systemPrompt });
+    } catch (error) {
+      this.sessionLogger.warn(
+        { err: error, agentId },
+        "Failed to restore agent config while disabling voice mode",
+      );
+    }
   }
 
   private handleDictationManagerMessage(msg: DictationStreamOutboundMessage): void {
@@ -736,21 +793,6 @@ export class VoiceSession {
     return this.audioBuffer;
   }
 
-  private saveReplyInput(): void {
-    const chunks = this.replyInputChunks;
-    this.replyInputChunks = null;
-    if (!chunks || chunks.length === 0) return;
-    try {
-      const dir = join(tmpdir(), "paseo-voice-debug");
-      mkdirSync(dir, { recursive: true });
-      const file = join(dir, `${new Date().toISOString().replace(/[:.]/g, "-")}.wav`);
-      writeFileSync(file, pcm16Wav(Buffer.concat(chunks), 16000));
-      this.sessionLogger.info({ file }, "Voice input during reply saved");
-    } catch (error) {
-      this.sessionLogger.warn({ err: error }, "Voice input during reply not saved");
-    }
-  }
-
   private async forwardAudioChunkToVoiceTurn(
     msg: Extract<SessionInboundMessage, { type: "voice_audio_chunk" }>,
     chunkFormat: string,
@@ -759,9 +801,6 @@ export class VoiceSession {
       throw new Error("Voice mode is enabled but the voice turn controller is not running");
     }
     const chunkBytes = Buffer.byteLength(msg.audio, "base64");
-    const pcm = Buffer.from(msg.audio, "base64");
-    this.voiceInputPeakRms = Math.max(this.voiceInputPeakRms, pcm16Rms(pcm));
-    this.replyInputChunks?.push(pcm);
     this.voiceInputChunkCount += 1;
     this.voiceInputBytes += chunkBytes;
     const now = Date.now();
@@ -772,12 +811,9 @@ export class VoiceSession {
           audioBytes: this.voiceInputBytes,
           windowMs: now - this.voiceInputWindowStartedAt,
           format: chunkFormat,
-          peakRms: Math.round(this.voiceInputPeakRms),
-          replyPlaying: this.replyInputChunks !== null,
         },
         "Voice input chunk summary",
       );
-      this.voiceInputPeakRms = 0;
       this.voiceInputWindowStartedAt = now;
       this.voiceInputChunkCount = 0;
       this.voiceInputBytes = 0;
@@ -1100,7 +1136,6 @@ export class VoiceSession {
         : this.abortController.signal;
       // CUSTOM(voice-settings): let the detector interrupt faster while the reply plays.
       this.voiceTurnController?.setAssistantSpeaking(true);
-      this.replyInputChunks = [];
       try {
         await this.ttsManager.generateAndWaitForPlayback(
           text,
@@ -1110,7 +1145,6 @@ export class VoiceSession {
         );
       } finally {
         this.voiceTurnController?.setAssistantSpeaking(false);
-        this.saveReplyInput();
       }
       this.sessionLogger.info(
         { agentId, textLength: text.length },
@@ -1394,34 +1428,4 @@ export class VoiceSession {
       }
     }
   }
-}
-
-// TEMP(barge-in-debug)
-function pcm16Rms(pcm: Buffer): number {
-  const samples = Math.floor(pcm.length / 2);
-  if (samples === 0) return 0;
-  let sum = 0;
-  for (let i = 0; i < samples; i += 1) {
-    const value = pcm.readInt16LE(i * 2);
-    sum += value * value;
-  }
-  return Math.sqrt(sum / samples);
-}
-
-function pcm16Wav(pcm: Buffer, sampleRate: number): Buffer {
-  const header = Buffer.alloc(44);
-  header.write("RIFF", 0);
-  header.writeUInt32LE(36 + pcm.length, 4);
-  header.write("WAVE", 8);
-  header.write("fmt ", 12);
-  header.writeUInt32LE(16, 16);
-  header.writeUInt16LE(1, 20);
-  header.writeUInt16LE(1, 22);
-  header.writeUInt32LE(sampleRate, 24);
-  header.writeUInt32LE(sampleRate * 2, 28);
-  header.writeUInt16LE(2, 32);
-  header.writeUInt16LE(16, 34);
-  header.write("data", 36);
-  header.writeUInt32LE(pcm.length, 40);
-  return Buffer.concat([header, pcm]);
 }

@@ -3459,6 +3459,8 @@ export const AudioOutputMessageSchema = z.object({
     groupId: z.string().optional(), // Logical utterance id
     chunkIndex: z.number().int().nonnegative().optional(),
     isLastChunk: z.boolean().optional(),
+    // CUSTOM(voice-reply-mute): one id per spoken message; groupId is one sentence of it.
+    utteranceId: z.string().optional(),
   }),
 });
 

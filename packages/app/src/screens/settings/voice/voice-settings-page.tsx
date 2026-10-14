@@ -9,6 +9,7 @@ import type { TFunction } from "i18next";
 import { StyleSheet } from "react-native-unistyles";
 import { Buffer } from "buffer";
 import * as Clipboard from "expo-clipboard";
+import * as DocumentPicker from "expo-document-picker";
 import type {
   MutableSpeechConfig,
   SpeechCustomModel,
@@ -37,10 +38,12 @@ import { settingsStyles } from "@/styles/settings";
 import { THINKING_TONE_NATIVE_PCM_BASE64 } from "@/utils/thinking-tone.native-pcm";
 import {
   scalePcm16,
+  THINKING_TONE_INTERVAL_SECONDS,
   thinkingToneGain,
   useThinkingToneStore,
   type ThinkingToneVolume,
 } from "@/voice/thinking-tone-settings";
+import { canPickThinkingToneFile, decodeThinkingToneFile } from "@/voice/decode-thinking-tone";
 import { useVoiceMicrophoneStore } from "@/voice/microphone-settings";
 import { useLocalSpeechStatus } from "./use-local-speech-status";
 import {
@@ -780,34 +783,77 @@ function InstructionsSection({
 // Thinking tone (this device)
 // ---------------------------------------------------------------------------
 
+type ToneLevel = "off" | ThinkingToneVolume;
+
 function ThinkingToneSection() {
   const { t } = useTranslation();
   const enabled = useThinkingToneStore((state) => state.enabled);
   const volume = useThinkingToneStore((state) => state.volume);
+  const intervalSeconds = useThinkingToneStore((state) => state.intervalSeconds);
+  const customSound = useThinkingToneStore((state) => state.customSound);
   const update = useThinkingToneStore((state) => state.update);
   const play = useAudioPlayer();
   const [error, setError] = useState<string | null>(null);
-  const volumeOptions = useMemo(
+  const [isPicking, setIsPicking] = useState(false);
+  const levelOptions = useMemo(
     () =>
-      (["low", "medium", "high"] as const).map((value) => ({
+      (["off", "low", "medium", "high"] as const).map((value) => ({
         value,
         label: t(`settings.voiceSettings.thinkingTone.${value}`),
       })),
     [t],
   );
+  const intervalOptions = useMemo(
+    () =>
+      THINKING_TONE_INTERVAL_SECONDS.map((seconds) => ({
+        value: String(seconds),
+        label: t("settings.voiceSettings.thinkingTone.seconds", { count: seconds }),
+      })),
+    [t],
+  );
 
-  const handleEnabled = useCallback((value: boolean) => update({ enabled: value }), [update]);
-  const handleVolume = useCallback(
-    (value: ThinkingToneVolume) => update({ volume: value }),
+  const handleLevel = useCallback(
+    (value: ToneLevel) =>
+      update(value === "off" ? { enabled: false } : { enabled: true, volume: value }),
+    [update],
+  );
+  const handleInterval = useCallback(
+    (value: string) => update({ intervalSeconds: Number(value) }),
     [update],
   );
   const handlePreview = useCallback(() => {
     setError(null);
-    const pcm = Uint8Array.from(Buffer.from(THINKING_TONE_NATIVE_PCM_BASE64, "base64"));
+    const pcm = customSound
+      ? Uint8Array.from(Buffer.from(customSound.pcmBase64, "base64"))
+      : Uint8Array.from(Buffer.from(THINKING_TONE_NATIVE_PCM_BASE64, "base64"));
     void play(scalePcm16(pcm, thinkingToneGain(volume)), PCM16_TONE_MIME).catch((cause: unknown) =>
       setError(errorMessage(cause)),
     );
-  }, [play, volume]);
+  }, [customSound, play, volume]);
+  const handlePick = useCallback(async () => {
+    setError(null);
+    setIsPicking(true);
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: "audio/*",
+        copyToCacheDirectory: false,
+      });
+      const asset = result.canceled ? null : result.assets[0];
+      if (!asset) return;
+      const data = asset.file
+        ? await asset.file.arrayBuffer()
+        : await (await fetch(asset.uri)).arrayBuffer();
+      const pcm = await decodeThinkingToneFile(data);
+      update({
+        customSound: { name: asset.name, pcmBase64: Buffer.from(pcm).toString("base64") },
+      });
+    } catch (cause) {
+      setError(t("settings.voiceSettings.thinkingTone.pickError", { error: errorMessage(cause) }));
+    } finally {
+      setIsPicking(false);
+    }
+  }, [t, update]);
+  const handleUseBuiltIn = useCallback(() => update({ customSound: null }), [update]);
 
   return (
     <SettingsSection
@@ -815,25 +861,46 @@ function ThinkingToneSection() {
       info={t("settings.voiceSettings.thinkingTone.info")}
     >
       <SettingsCard testID="voice-settings-thinking-tone">
-        <SettingsSwitch
-          label={t("settings.voiceSettings.thinkingTone.enabled")}
-          value={enabled}
-          onValueChange={handleEnabled}
-        />
-        {enabled ? (
-          <SettingsRow label={t("settings.voiceSettings.thinkingTone.volume")} error={error}>
-            <View style={styles.inlineControls}>
-              <SegmentedControl
-                options={volumeOptions}
-                value={volume}
-                onValueChange={handleVolume}
-                size="sm"
-              />
+        <SettingsRow label={t("settings.voiceSettings.thinkingTone.volume")} error={error}>
+          <View style={styles.inlineControls}>
+            <SegmentedControl
+              options={levelOptions}
+              value={enabled ? volume : "off"}
+              onValueChange={handleLevel}
+              size="sm"
+            />
+            {enabled ? (
               <Button variant="outline" size="sm" onPress={handlePreview}>
                 {t("settings.voiceSettings.voice.play")}
               </Button>
+            ) : null}
+          </View>
+        </SettingsRow>
+        {enabled && canPickThinkingToneFile ? (
+          <SettingsRow
+            label={t("settings.voiceSettings.thinkingTone.sound")}
+            hint={customSound?.name ?? t("settings.voiceSettings.thinkingTone.builtIn")}
+          >
+            <View style={styles.inlineControls}>
+              {customSound ? (
+                <Button variant="ghost" size="sm" onPress={handleUseBuiltIn}>
+                  {t("settings.voiceSettings.thinkingTone.useBuiltIn")}
+                </Button>
+              ) : null}
+              <Button variant="outline" size="sm" onPress={handlePick} disabled={isPicking}>
+                {t("settings.voiceSettings.thinkingTone.chooseFile")}
+              </Button>
             </View>
           </SettingsRow>
+        ) : null}
+        {enabled ? (
+          <SettingsSelect
+            label={t("settings.voiceSettings.thinkingTone.interval")}
+            hint={t("settings.voiceSettings.thinkingTone.intervalHint")}
+            value={String(intervalSeconds)}
+            options={intervalOptions}
+            onValueChange={handleInterval}
+          />
         ) : null}
       </SettingsCard>
     </SettingsSection>

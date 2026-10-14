@@ -3,6 +3,7 @@ import type { DaemonServerInfo } from "@/stores/session-store";
 import type { AudioEngine } from "@/audio";
 import { createVoiceRuntime, type VoiceSessionAdapter } from "@/voice/voice-runtime";
 import { REALTIME_VOICE_VAD_CONFIG } from "@/voice/realtime-voice-config";
+import { DEFAULT_THINKING_TONE, type ThinkingToneSettings } from "@/voice/thinking-tone-settings";
 
 const CUE_MIME_TYPE = "audio/pcm;rate=16000;bits=16";
 const THINKING_TONE_MIN_SILENCE_MS = 1500;
@@ -40,6 +41,7 @@ function createAudioPayload(args: {
   chunkIndex: number;
   isLastChunk: boolean;
   isVoiceMode?: boolean;
+  utteranceId?: string;
 }) {
   return {
     id: args.id,
@@ -47,6 +49,7 @@ function createAudioPayload(args: {
     chunkIndex: args.chunkIndex,
     isLastChunk: args.isLastChunk,
     isVoiceMode: args.isVoiceMode ?? true,
+    utteranceId: args.utteranceId,
     format: "pcm",
     audio: Buffer.from(`chunk-${args.chunkIndex}`).toString("base64"),
   } as const;
@@ -69,6 +72,7 @@ function createServerInfo(): DaemonServerInfo {
 function createRuntime(options?: {
   engine?: AudioEngine;
   getServerInfo?: (serverId: string) => DaemonServerInfo | null;
+  getThinkingTone?: () => ThinkingToneSettings;
 }) {
   const engine = options?.engine ?? createAudioEngineMock();
   const runtime = createVoiceRuntime({
@@ -76,6 +80,7 @@ function createRuntime(options?: {
     getServerInfo: options?.getServerInfo ?? (() => createServerInfo()),
     activateKeepAwake: vi.fn().mockResolvedValue(undefined),
     deactivateKeepAwake: vi.fn().mockResolvedValue(undefined),
+    getThinkingTone: options?.getThinkingTone,
   });
 
   return { runtime, engine };
@@ -276,6 +281,29 @@ describe("voice runtime", () => {
     expect(engine.play).toHaveBeenCalled();
   });
 
+  it("waits the configured silence between thinking tones, and plays none when off", async () => {
+    const adapter = createSessionAdapter();
+    let tone: ThinkingToneSettings = { ...DEFAULT_THINKING_TONE, intervalSeconds: 5 };
+    const { runtime, engine } = createRuntime({ getThinkingTone: () => tone });
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.onTurnEvent("server-1", "agent-1", "turn_started");
+    await vi.advanceTimersByTimeAsync(THINKING_TONE_MIN_SILENCE_MS);
+    expect(engine.play).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(engine.play).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(engine.play).toHaveBeenCalledTimes(2);
+
+    tone = { ...tone, enabled: false };
+    runtime.onTurnEvent("server-1", "agent-1", "turn_completed");
+    runtime.onTurnEvent("server-1", "agent-1", "turn_started");
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(engine.play).toHaveBeenCalledTimes(2);
+  });
+
   it("does not restart the thinking tone from local detection jitter while waiting", async () => {
     const adapter = createSessionAdapter();
     let resolvePlay!: (duration: number) => void;
@@ -466,6 +494,121 @@ describe("voice runtime", () => {
     expect(engine.stop).toHaveBeenCalled();
     expect(engine.clearQueue).toHaveBeenCalled();
     expect(vi.mocked(adapter.audioPlayed).mock.calls.flat()).not.toContain("chunk-1");
+  });
+
+  it("muting replies cuts the sentence playing and confirms the rest of the message unplayed", async () => {
+    const adapter = createSessionAdapter();
+    const engine = createAudioEngineMock();
+    let rejectPlay: ((error: Error) => void) | null = null;
+    vi.mocked(engine.play).mockImplementation(
+      () =>
+        new Promise<number>((_resolve, reject) => {
+          rejectPlay = reject;
+        }),
+    );
+    vi.mocked(engine.stop).mockImplementation(() => {
+      rejectPlay?.(new Error("Playback stopped"));
+    });
+    const { runtime } = createRuntime({ engine });
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.onTurnEvent("server-1", "agent-1", "turn_started");
+    vi.mocked(engine.play).mockClear();
+
+    runtime.handleAudioOutput(
+      "server-1",
+      createAudioPayload({
+        id: "s0:0",
+        groupId: "s0",
+        chunkIndex: 0,
+        isLastChunk: true,
+        utteranceId: "message-1",
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(runtime.getSnapshot().phase).toBe("playing");
+    });
+
+    runtime.toggleReplyMute();
+
+    expect(runtime.getSnapshot().isReplyMuted).toBe(true);
+    expect(engine.stop).toHaveBeenCalled();
+    await vi.waitFor(() => {
+      expect(adapter.audioPlayed).toHaveBeenCalledWith("s0:0");
+      expect(runtime.getSnapshot().phase).toBe("waiting");
+    });
+
+    runtime.handleAudioOutput(
+      "server-1",
+      createAudioPayload({
+        id: "s1:0",
+        groupId: "s1",
+        chunkIndex: 0,
+        isLastChunk: true,
+        utteranceId: "message-1",
+      }),
+    );
+    await vi.waitFor(() => {
+      expect(adapter.audioPlayed).toHaveBeenCalledWith("s1:0");
+    });
+    expect(engine.play).toHaveBeenCalledTimes(1);
+  });
+
+  it("unmuting replies speaks again from the agent's next message", async () => {
+    const adapter = createSessionAdapter();
+    const { runtime, engine } = createRuntime();
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.onTurnEvent("server-1", "agent-1", "turn_started");
+    vi.mocked(engine.play).mockClear();
+    runtime.toggleReplyMute();
+
+    const sentence = (groupId: string, utteranceId: string) =>
+      runtime.handleAudioOutput(
+        "server-1",
+        createAudioPayload({
+          id: `${groupId}:0`,
+          groupId,
+          chunkIndex: 0,
+          isLastChunk: true,
+          utteranceId,
+        }),
+      );
+
+    sentence("s0", "message-1");
+    await vi.waitFor(() => {
+      expect(adapter.audioPlayed).toHaveBeenCalledWith("s0:0");
+    });
+
+    runtime.toggleReplyMute();
+    expect(runtime.getSnapshot().isReplyMuted).toBe(false);
+
+    sentence("s1", "message-1");
+    await vi.waitFor(() => {
+      expect(adapter.audioPlayed).toHaveBeenCalledWith("s1:0");
+    });
+    expect(engine.play).not.toHaveBeenCalled();
+
+    sentence("s2", "message-2");
+    await vi.waitFor(() => {
+      expect(engine.play).toHaveBeenCalledTimes(1);
+      expect(adapter.audioPlayed).toHaveBeenCalledWith("s2:0");
+    });
+  });
+
+  it("starts each voice session with replies audible", async () => {
+    const adapter = createSessionAdapter();
+    const { runtime } = createRuntime();
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.toggleReplyMute();
+    await runtime.stopVoice();
+    await runtime.startVoice("server-1", "agent-1");
+
+    expect(runtime.getSnapshot().isReplyMuted).toBe(false);
   });
 
   it("authoritatively stops and suppresses later voice audio", async () => {
