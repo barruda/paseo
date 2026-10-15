@@ -49,6 +49,7 @@ import {
   registerNotificationHandlers,
   ensureNotificationCenterRegistration,
 } from "./features/notifications.js";
+import { createFileOpener } from "./features/file-opener.js";
 import { createExternalUrlOpener } from "./features/opener.js";
 import { createBrowserCaptureService } from "./features/browser-capture.js";
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
@@ -970,6 +971,13 @@ async function bootstrap(): Promise<void> {
   registerNotificationHandlers();
   const openExternalUrl = createExternalUrlOpener({ open: shell.openExternal });
   ipcMain.handle("paseo:opener:openUrl", (_event, value: unknown) => openExternalUrl(value));
+  // CUSTOM(open-file-externally): separate IPC preserves the HTTP(S)-only URL opener.
+  const openFile = createFileOpener({
+    openPath: (filePath) => shell.openPath(filePath),
+    browserApplication: async () =>
+      (await app.getApplicationInfoForProtocol("https://example.com")).path,
+  });
+  ipcMain.handle("paseo:opener:openFile", (_event, input: unknown) => openFile(input));
   registerEditorTargetHandlers();
   registerBrowserAutomationIpc();
 

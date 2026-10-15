@@ -804,7 +804,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     with no timestamp is never hidden for its age.
   - A trimmed project ends with "> Show N more" (N is how many it hides) / "Show less", which
     shows every row (it replaces upstream's
-    20-row Show more there). Expanded projects reset on restart.
+    20-row Show more there). Expanded projects reset on restart. The label and chevron render
+    at half size and 50% opacity, keeping the full click target so the control recedes when scanning.
   - Ctrl+1..9 number only the rows the sidebar shows.
   - Display preferences gains "Show Recent" (toggles the
     [Recent](#recent-workspaces-recent-workspaces-section-in-the-sidebar) section) and "Per
@@ -833,11 +834,14 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   and entries (project mode only), filter project-mode shortcut sections by them, and provide the
   result through `SidebarWorkspaceLimitContext`. In the project block, filter `project.workspaces`
   by the hidden keys before the 20-row limiter and swap its toggle for the limit's when the
-  project is limited. Add the menu rows and page.
+  project is limited. Add the menu rows and page. In the toggle row, when `hiddenCount` is
+  supplied, halve the density font size and scale the chevron by 0.5; apply 0.5 opacity to both
+  without shrinking the Pressable.
 - **Verify:** `(cd packages/app && npx vitest run src/sidebar-workspace-limit/model.test.ts)` (the
   update script runs it). In the app, a project with many workspaces shows its three newest from
   the last 12 hours plus Show more; Ctrl+1..9 badges are consecutive; changing "Per project" or
-  turning off "Show Recent" updates the sidebar at once.
+  turning off "Show Recent" updates the sidebar at once. Check that Show more/less has half-size,
+  faded text and chevrons while the full row remains clickable.
 
 ## new-workspace-terminal: Ctrl+J on the New Workspace screen
 
@@ -1235,3 +1239,38 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/keyboard-shortcut-unassign.spec.ts --grep 'sidebar shortcut settings|shortcut settings search' --workers=1`
   and `cd packages/app && npx vitest run src/keyboard/shortcut-help-search.test.ts --bail=1`
   (both included in the update script). Check placement, navigation, filtering, clearing, and row actions.
+
+## open-file-externally: open file tabs in the system browser or default app
+
+- **Added:** 2026-10-15
+- **Commit:** `custom: open file tabs in the system browser or default app`
+- **Why:** Open local HTML reports and other files directly from their tab menu.
+- **What:** Adds “Open in browser” and “Open with default app” after “Copy file path”.
+  Paths resolve against the workspace directory. Actions appear only for the local desktop host.
+  Browser mode selects the HTTPS handler (Linux desktop entry, macOS/Windows application);
+  default mode uses Electron's OS file association, equivalent to a terminal opener command.
+- **Core files touched:** `packages/app/src/screens/workspace/workspace-tab-menu.ts`,
+  `workspace-screen.tsx`, `workspace-desktop-tabs-row.tsx`, `explorer-sidebar.tsx`,
+  `compact-workspace-header/tab-switcher.tsx`, `packages/app/src/components/split-container.tsx`,
+  `packages/app/src/desktop/host.ts`, `packages/desktop/src/preload.ts`,
+  `packages/desktop/src/main.ts`; tests in `workspace-tab-menu.test.ts` and desktop `features/opener.test.ts`.
+  New desktop module: `packages/desktop/src/features/file-opener.ts`.
+- **Re-apply:** Add an optional file-opening callback alongside the copy-path callback through
+  the split container and both tab menus. Resolve paths and catch launch errors in the workspace.
+  Expose separate file-opening preload/IPC plumbing; preserve the existing HTTP(S)-only URL opener.
+  Route browser launches to the registered HTTPS application and default launches to `shell.openPath`.
+- **Verify:** App `src/screens/workspace/workspace-tab-menu.test.ts` and desktop
+  `src/features/opener.test.ts`. Right-click a local HTML tab, check both entries after the copy
+  actions, and verify each opens the original file with relative assets intact.
+
+## compact-desktop-enter: Enter sends in narrow desktop windows
+
+- **Added:** 2026-10-15
+- **Commit:** `custom: preserve Enter to send in compact desktop windows`
+- **Why:** Resizing Electron below the compact breakpoint made Enter insert a newline.
+- **What:** Electron keeps Enter to send at every width. Shift+Enter and mobile behavior stay unchanged.
+- **Core files touched:** `packages/app/src/composer/input/input.tsx`, `state.ts`, and `state.test.ts`.
+- **Re-apply:** Resolve the composer's submit-on-Enter policy from both platform and layout:
+  enable it on web when Electron is running or the layout is wide. Keep the existing Shift+Enter guard.
+- **Verify:** `npx vitest run packages/app/src/composer/input/state.test.ts --bail=1`.
+  Resize a desktop chat below the compact breakpoint: Enter sends, Shift+Enter inserts a newline.

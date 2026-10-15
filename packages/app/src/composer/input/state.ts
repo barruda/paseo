@@ -192,3 +192,18 @@ export async function stopRealtimeVoice(ctx: StopRealtimeVoiceContext): Promise<
 
   await ctx.voice.stopVoice();
 }
+
+interface SubmitOnEnterContext {
+  isWeb: boolean;
+  isElectron: boolean;
+  isCompact: boolean;
+}
+
+// CUSTOM(compact-desktop-enter): window width must not change desktop keyboard behavior.
+export function resolveSubmitOnEnter({
+  isWeb,
+  isElectron,
+  isCompact,
+}: SubmitOnEnterContext): boolean {
+  return isWeb && (isElectron || !isCompact);
+}

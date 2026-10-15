@@ -3,6 +3,7 @@ import {
   applyDictationTranscript,
   computeCanStartDictation,
   resolveActiveSendBehavior,
+  resolveSubmitOnEnter,
   resolveComposerSurfacePresentation,
   runAlternateSendAction,
   runDefaultSendAction,
@@ -314,5 +315,23 @@ describe("stopRealtimeVoice", () => {
     });
 
     expect(calls).toEqual(["cancel agent", "stop voice"]);
+  });
+});
+
+describe("Enter to send across window sizes", () => {
+  it.each([false, true])("keeps desktop Enter to send with compact=%s", (isCompact) => {
+    expect(resolveSubmitOnEnter({ isWeb: true, isElectron: true, isCompact })).toBe(true);
+  });
+
+  it.each([false, true])("preserves native multiline Enter with compact=%s", (isCompact) => {
+    expect(resolveSubmitOnEnter({ isWeb: false, isElectron: false, isCompact })).toBe(false);
+  });
+
+  it("preserves compact browser multiline Enter", () => {
+    expect(resolveSubmitOnEnter({ isWeb: true, isElectron: false, isCompact: true })).toBe(false);
+  });
+
+  it("preserves wide browser Enter to send", () => {
+    expect(resolveSubmitOnEnter({ isWeb: true, isElectron: false, isCompact: false })).toBe(true);
   });
 });

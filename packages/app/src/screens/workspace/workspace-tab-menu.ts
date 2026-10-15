@@ -45,6 +45,8 @@ export type WorkspaceTabMenuEntry =
       key: string;
       label: string;
       icon?:
+        | "globe"
+        | "external-link"
         | "copy"
         | "rotate-cw"
         | "arrow-left-to-line"
@@ -75,6 +77,8 @@ interface BuildWorkspaceTabMenuEntriesInput {
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   // CUSTOM(copy-full-file-path): "full" asks for the absolute path.
   onCopyFilePath: (path: string, mode?: "full") => Promise<void> | void;
+  // CUSTOM(open-file-externally): local desktop file actions.
+  onOpenFile?: (path: string, mode: "browser" | "default") => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -93,6 +97,8 @@ interface BuildWorkspaceDesktopTabActionsInput {
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   // CUSTOM(copy-full-file-path): "full" asks for the absolute path.
   onCopyFilePath: (path: string, mode?: "full") => Promise<void> | void;
+  // CUSTOM(open-file-externally): local desktop file actions.
+  onOpenFile?: (path: string, mode: "browser" | "default") => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -180,6 +186,7 @@ export function buildWorkspaceTabMenuEntries(
     onCopyAgentId,
     onCopyTerminalId,
     onCopyFilePath,
+    onOpenFile,
     onReloadAgent,
     onRenameTab,
     onCloseTab,
@@ -257,6 +264,26 @@ export function buildWorkspaceTabMenuEntries(
         void onCopyFilePath(filePath);
       },
     });
+  }
+
+  // CUSTOM(open-file-externally): immediately follow the file path copy actions.
+  if (tab.target.kind === "file" && onOpenFile) {
+    const filePath = tab.target.path;
+    for (const [mode, label, icon] of [
+      ["browser", "Open in browser", "globe"],
+      ["default", "Open with default app", "external-link"],
+    ] as const) {
+      entries.push({
+        kind: "item",
+        key: `open-file-${mode}`,
+        label,
+        icon,
+        testID: `${menuTestIDBase}-open-file-${mode}`,
+        onSelect: () => {
+          void onOpenFile(filePath, mode);
+        },
+      });
+    }
   }
 
   if (tab.target.kind === "agent" || tab.target.kind === "terminal") {
@@ -353,6 +380,7 @@ export function buildWorkspaceDesktopTabActions(
       onCopyAgentId: input.onCopyAgentId,
       onCopyTerminalId: input.onCopyTerminalId,
       onCopyFilePath: input.onCopyFilePath,
+      onOpenFile: input.onOpenFile,
       onReloadAgent: input.onReloadAgent,
       onRenameTab: input.onRenameTab,
       onCloseTab: input.onCloseTab,
