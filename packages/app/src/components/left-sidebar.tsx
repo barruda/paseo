@@ -3,6 +3,7 @@ import {
   CircleGauge,
   FolderPlus,
   GitBranch,
+  Keyboard,
   // CUSTOM(bottom-panel)
   PanelBottom,
   Server,
@@ -47,6 +48,7 @@ import { HEADER_INNER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout"
 import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import { useImportSession } from "@/hooks/use-import-session";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
+import { getIsElectron } from "@/constants/platform";
 // CUSTOM(bottom-panel)
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import {
@@ -68,7 +70,11 @@ import { usePanelStore } from "@/stores/panel-store";
 import { useOwnsWindowChromeCorner, WindowChromeSafeArea } from "@/utils/desktop-window";
 import { useCloseAgentListGesture } from "@/mobile-panels/gestures";
 import { MobilePanelOverlay } from "@/mobile-panels/presentation";
-import { buildSettingsAddHostRoute, buildSettingsRoute } from "@/utils/host-routes";
+import {
+  buildSettingsAddHostRoute,
+  buildSettingsRoute,
+  buildSettingsSectionRoute,
+} from "@/utils/host-routes";
 import { openHostOverview } from "@/navigation/settings-navigation";
 import {
   UsageSidebarItem,
@@ -455,8 +461,14 @@ function SidebarFooter({
 }) {
   const newAgentKeys = useShortcutKeys("new-agent");
   const settingsKeys = useShortcutKeys("toggle-settings");
+  const { t } = useTranslation();
+  const shortcutsAvailable = getIsElectron();
+  const handleShortcuts = useCallback(() => {
+    onBeforeNavigate?.();
+    router.push(buildSettingsSectionRoute("shortcuts"));
+  }, [onBeforeNavigate]);
 
-  // One line of icons: Add project, Usage, Hosts, Bottom panel, then Help and Settings at the end.
+  // One line of icons: Add project, Usage, Hosts, Bottom panel, then Help, Shortcuts and Settings.
   return (
     <UsageSidebarRoot>
       <View style={styles.footerContainer} testID="sidebar-footer">
@@ -479,6 +491,15 @@ function SidebarFooter({
           <BottomPanelToggleButton />
           <View style={styles.footerSpacer} />
           <SidebarHelpMenu />
+          {/* CUSTOM(sidebar-shortcut-settings): direct access to editing keyboard bindings. */}
+          {shortcutsAvailable ? (
+            <FooterIconButton
+              onPress={handleShortcuts}
+              testID="sidebar-shortcuts"
+              label={t("settings.sections.shortcuts")}
+              icon={Keyboard}
+            />
+          ) : null}
           <FooterIconButton
             onPress={handleSettings}
             testID="sidebar-settings"

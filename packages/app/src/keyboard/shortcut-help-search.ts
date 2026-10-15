@@ -1,4 +1,5 @@
 import type { KeyboardShortcutHelpSection } from "@/keyboard/keyboard-shortcuts";
+import { fuzzyPolicyForToken, scoreMatch } from "@getpaseo/protocol/search/text-match";
 import { formatShortcut, type ShortcutKey, type ShortcutOs } from "@/utils/format-shortcut";
 
 /** Resolves an i18n key to display text. The caller's `t`, injected. */
@@ -59,22 +60,32 @@ export function filterShortcutHelpSections({
   query,
   translate,
   shortcutOs,
+  loose = false,
 }: {
   sections: readonly KeyboardShortcutHelpSection[];
   query: string;
   translate: TranslateHelpKey;
   shortcutOs: ShortcutOs;
+  loose?: boolean;
 }): KeyboardShortcutHelpSection[] {
   const normalizedQuery = query.trim().toLocaleLowerCase();
   if (!normalizedQuery) return [...sections];
 
+  // CUSTOM(shortcut-settings-search): stars separate loose terms; never interpret input as regex.
+  const normalize = (text: string) =>
+    text.normalize("NFKD").replace(/\p{M}/gu, "").toLocaleLowerCase();
+  const tokens = normalize(normalizedQuery)
+    .split(/[\s*]+/u)
+    .filter(Boolean);
+
   return sections.flatMap((section) => {
-    if (translate(section.titleKey).toLocaleLowerCase().includes(normalizedQuery)) {
+    if (!loose && translate(section.titleKey).toLocaleLowerCase().includes(normalizedQuery)) {
       return [section];
     }
 
     const rows = section.rows.filter((row) => {
       const searchText = [
+        loose ? translate(section.titleKey) : null,
         translate(row.labelKey),
         row.noteKey ? translate(row.noteKey) : row.note,
         row.chord ? shortcutSearchText(row.chord, shortcutOs) : null,
@@ -82,7 +93,14 @@ export function filterShortcutHelpSections({
         .filter(Boolean)
         .join(" ")
         .toLocaleLowerCase();
-      return searchText.includes(normalizedQuery);
+      if (!loose) return searchText.includes(normalizedQuery);
+      const text = normalize(searchText);
+      return tokens.every(
+        (token) =>
+          scoreMatch(token, text, {
+            fuzzy: fuzzyPolicyForToken(token),
+          }) !== null,
+      );
     });
 
     return rows.length > 0 ? [{ ...section, rows }] : [];
