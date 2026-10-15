@@ -13,6 +13,7 @@ import {
   buildEffectiveBindings,
   getWorkspaceIndexJumpModifierKey,
 } from "@/keyboard/keyboard-shortcuts";
+import { dispatchVoiceEscape } from "@/keyboard/voice-escape";
 import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
 import {
   buildBrowserKeyboardPolicy,
@@ -251,6 +252,10 @@ export function useKeyboardShortcuts({
     browserFocusRestoreElement?: HTMLElement | null;
   }) => {
     const store = useKeyboardShortcutsStore.getState();
+    // CUSTOM(voice-exit): exit before chord matching, while preserving the second Esc.
+    const exitedVoice =
+      !store.commandCenterOpen &&
+      dispatchVoiceEscape(input.event, (action) => keyboardActionDispatcher.dispatch(action));
     const previousChordState = chordStateRef.current;
     const result = resolveKeyboardShortcut({
       event: input.event,
@@ -287,6 +292,11 @@ export function useKeyboardShortcuts({
       input.domEvent.stopPropagation();
     }
 
+    if (exitedVoice) {
+      input.domEvent?.preventDefault();
+      input.domEvent?.stopPropagation();
+      return;
+    }
     if (!result.match) {
       return;
     }

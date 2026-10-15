@@ -947,7 +947,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   refused. Both reloaded the agent to swap the voice instructions, and a reload cancels the run.
 - **What:**
   - The voice overlay has an X beside the stop button: it leaves voice mode and the agent keeps
-    working. Esc does the same; a second Esc is then the normal interrupt. The stop button still
+    working. Esc exits before shortcut resolution, including when interrupt is bound to Esc Esc;
+    the same key still advances that chord so the second Esc interrupts. The stop button still
     leaves and interrupts.
   - The voice-mode button shows while the agent works, and entering voice mode doesn't
     interrupt it.
@@ -960,11 +961,14 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   text; `agent/mcp-server.test.ts` expects it). App `components/realtime-voice-overlay.tsx`
   (`onExit`), `composer/input/input.tsx` (`handleRealtimeVoiceExit`, no "interrupt first"
   toast), `composer/index.tsx` (`exitVoiceMode` in the `agent.interrupt` dispatch, voice button
-  no longer gated on `!isAgentRunning`). String `settings.voiceSettings.voiceMode.exit`.
+  no longer gated on `!isAgentRunning`), `hooks/use-keyboard-shortcuts.ts`,
+  `keyboard/keyboard-action-dispatcher.ts`, `keyboard/voice-escape.ts`. String `settings.voiceSettings.voiceMode.exit`.
 - **Re-apply:** In the voice session, before calling `reloadAgentSession` for a voice prompt
   change, check `host.hasActiveAgentRun`; if running, keep the change pending and apply it when
   the run ends. Add the overlay X calling `voice.stopVoice()` only, and make the composer's
-  `agent.interrupt` handler leave voice mode first when it is on for that agent.
+  `agent.interrupt` handler leave voice mode first when it is on for that agent. Dispatch the
+  dedicated voice-exit action before resolving Esc shortcuts, preserving chord advancement but
+  suppressing any interrupt on that first keypress.
 - **Verify:** `npx vitest run src/server/session/voice/voice-session.test.ts --bail=1` (server),
   in the update script. In the app, ask for a long task in voice mode, press Esc: voice mode
   ends, the agent keeps going; Esc again interrupts it.
@@ -976,15 +980,24 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Why:** Those screens have no agent yet, so only dictation showed.
 - **What:** The composer takes `onStartVoice`; with no agent it shows the voice-mode button and
   calls it. The New agent tab creates the agent from what is typed (or nothing, so it starts
-  idle) and starts voice mode when creation succeeds. New workspace creates the workspace with
+  idle) and starts voice mode when creation succeeds. Empty starts do not add a pending message;
+  voice-start errors appear as a toast. Codex persistence records whether a turn has started:
+  untouched threads are recreated on reload because Codex has not saved a resumable rollout yet.
+  New workspace creates the workspace with
   its agent the same way and hands `startVoice` to the draft tab through the pending submission.
 - **Core files touched:** app `composer/index.tsx` (`onStartVoice`), `composer/draft/workspace-tab.tsx`,
   `screens/new-workspace-screen.tsx` (`useNewWorkspaceVoiceStart`, `startVoice` on the chat
-  path), `stores/workspace-draft-submission-store.ts` (`startVoice`).
+  path), `stores/workspace-draft-submission-store.ts` (`startVoice`),
+  `composer/submission/writer.ts`; server `agent/providers/codex-app-server-agent.ts`.
 - **Re-apply:** Find where each screen creates its first agent and the success callback that
   receives the agent snapshot; call `voice.startVoice(serverId, agent.id)` there when the
-  creation came from the voice button. Allow an empty first message for that creation.
-- **Verify:** In the app, open New agent, press the voice button: an agent appears and voice
+  creation came from the voice button. Allow an empty first message for that creation, without
+  registering a message acknowledgement. Preserve `hasStartedTurn` in Codex handle metadata:
+  try resume first, and recreate only an explicitly false handle rejected with "no rollout found".
+  This preserves history when a saved handle predates its first accepted turn.
+- **Verify:** `src/keyboard/voice-escape.test.ts`, `src/composer/submission/writer.test.ts` (app),
+  `src/server/agent/providers/codex-app-server-agent.test.ts` (server), in the update script.
+  In the app, open New agent, press the voice button: an agent appears and voice
   mode starts. Same from New workspace.
 
 ## local-speech-gpu: local speech recognition and synthesis on the GPU

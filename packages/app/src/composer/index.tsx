@@ -547,6 +547,8 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
   } = args;
   if (!isPaneFocused) return false;
 
+  if (action.id === "message-input.voice-exit") return exitVoiceMode?.() ?? false;
+
   if (action.id === "agent.interrupt") {
     if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) return true;
     // CUSTOM(voice-exit): Esc leaves voice mode; a second Esc interrupts the agent.
@@ -613,6 +615,7 @@ function ComposerKeyboardRegistration({
   useKeyboardActionHandler({
     handlerId,
     actions: [
+      "message-input.voice-exit",
       "agent.interrupt",
       "message-input.focus",
       "message-input.send",
@@ -1898,12 +1901,20 @@ function ComposerContentImpl({
   const isVoiceModeForAgent = resolveIsVoiceModeForAgent(voice, serverId, agentId);
 
   // CUSTOM(voice-exit): Esc in voice mode leaves it without interrupting the agent.
+  const voiceExitPendingRef = useRef(false);
   const exitVoiceMode = useCallback((): boolean => {
-    if (!voice || !isVoiceModeForAgent || voice.isVoiceSwitching) return false;
-    void voice.stopVoice().catch((error: unknown) => {
-      const message = resolveErrorMessage(error);
-      if (message && message.trim().length > 0) toastErrorRef.current(message);
-    });
+    if (!voice || !isVoiceModeForAgent || voice.isVoiceSwitching || voiceExitPendingRef.current)
+      return false;
+    voiceExitPendingRef.current = true;
+    void voice
+      .stopVoice()
+      .catch((error: unknown) => {
+        const message = resolveErrorMessage(error);
+        if (message && message.trim().length > 0) toastErrorRef.current(message);
+      })
+      .finally(() => {
+        voiceExitPendingRef.current = false;
+      });
     return true;
   }, [isVoiceModeForAgent, voice]);
 

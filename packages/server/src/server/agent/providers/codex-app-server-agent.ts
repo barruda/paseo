@@ -3439,6 +3439,8 @@ export class CodexAppServerAgentSession implements AgentSession {
   > | null = null;
   private resolvedSandboxPolicy: Record<string, unknown> | null = null;
   private currentThreadId: string | null = null;
+  // CUSTOM(voice-new-agent): Codex only saves a rollout after the first turn.
+  private hasStartedTurn = false;
   private currentTurnId: string | null = null;
   private pendingForegroundTurnIdentification: {
     foregroundTurnId: string;
@@ -3569,6 +3571,7 @@ export class CodexAppServerAgentSession implements AgentSession {
     }
 
     if (this.resumeHandle?.sessionId) {
+      this.hasStartedTurn = this.resumeHandle.metadata?.hasStartedTurn !== false;
       this.currentThreadId = this.resumeHandle.sessionId;
       this.historyPending = true;
     }
@@ -3649,7 +3652,7 @@ export class CodexAppServerAgentSession implements AgentSession {
 
       if (this.currentThreadId) {
         await this.ensureThreadLoaded();
-        await this.loadPersistedHistory(this.client);
+        if (this.hasStartedTurn) await this.loadPersistedHistory(this.client);
         await this.applyDefaultModelAndThinking();
       }
 
@@ -4079,10 +4082,19 @@ export class CodexAppServerAgentSession implements AgentSession {
         return;
       }
       const response = await this.client.request("thread/resume", params);
+      this.hasStartedTurn = true;
       this.rememberResolvedSandboxPolicy(response);
     } catch (error) {
       const threadId = this.currentThreadId;
       const message = error instanceof Error ? error.message : String(error);
+      // CUSTOM(voice-new-agent): only recreate a known untouched thread with no rollout.
+      // Try resume first in case the saved metadata predates its first accepted turn.
+      if (!this.hasStartedTurn && message.includes("no rollout found")) {
+        this.currentThreadId = null;
+        this.historyPending = false;
+        await this.ensureThread();
+        return;
+      }
       if (isArchivedCodexThreadResumeError(error, threadId)) {
         try {
           await this.client.request("thread/unarchive", { threadId });
@@ -4412,6 +4424,7 @@ export class CodexAppServerAgentSession implements AgentSession {
         throw new Error("Codex turn start was interrupted before reaching Codex");
       }
       await this.client.request("turn/start", turnStart.params, TURN_START_TIMEOUT_MS);
+      this.hasStartedTurn = true;
       return { turnId };
     } catch (error) {
       this.pendingForegroundTurnIdentification?.resolve(null);
@@ -4925,6 +4938,7 @@ export class CodexAppServerAgentSession implements AgentSession {
         cwd: this.config.cwd,
         title: this.config.title ?? null,
         threadId: this.currentThreadId,
+        hasStartedTurn: this.hasStartedTurn,
         modeId: this.config.modeId,
         model: this.config.model ?? null,
         thinkingOptionId,
@@ -6114,6 +6128,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.emitSubAgentActivityUpdate(subAgentCallId, "running", { reopen: true });
       return;
     }
+    this.hasStartedTurn = true;
     this.currentTurnId = parsed.turnId;
     const pendingIdentification = this.pendingForegroundTurnIdentification;
     if (
