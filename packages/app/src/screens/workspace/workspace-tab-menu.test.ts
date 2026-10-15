@@ -212,6 +212,8 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(labels).not.toContain("Copy resume command");
     expect(labels).not.toContain("Copy agent id");
     expect(labels).not.toContain("Copy file path");
+    expect(labels).not.toContain("Open in browser");
+    expect(labels).not.toContain("Open with default app");
     expect(labels).not.toContain("Reload agent");
 
     const copyTerminalIdEntry = entries.find(
@@ -231,59 +233,77 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(onRenameTab).toHaveBeenCalledWith(terminalTab);
   });
 
-  it("includes copy file path for file tabs", () => {
-    const onCopyFilePath = vi.fn();
-    const fileTab: WorkspaceTabDescriptor = {
-      key: "file_abc",
-      tabId: "file_abc",
-      kind: "file",
-      target: { kind: "file", path: "/some/path.ts", lineStart: 1, lineEnd: 10 },
-    };
-    const entries = buildWorkspaceTabMenuEntries({
-      surface: "desktop",
-      tab: fileTab,
-      index: 0,
-      tabCount: 1,
-      menuTestIDBase: "workspace-tab-context-file_abc",
-      onCopyResumeCommand: vi.fn(),
-      onCopyAgentId: vi.fn(),
-      onCopyTerminalId: vi.fn(),
-      onCopyFilePath,
-      onReloadAgent: vi.fn(),
-      onRenameTab: vi.fn(),
-      onCloseTab: vi.fn(),
-      onCloseTabsBefore: vi.fn(),
-      onCloseTabsAfter: vi.fn(),
-      onCloseOtherTabs: vi.fn(),
-    });
+  it.each(["desktop", "mobile"] as const)(
+    "includes file opening after copy paths on %s",
+    (surface) => {
+      const onOpenFile = vi.fn();
+      const onCopyFilePath = vi.fn();
+      const fileTab: WorkspaceTabDescriptor = {
+        key: "file_abc",
+        tabId: "file_abc",
+        kind: "file",
+        target: { kind: "file", path: "/some/path.ts", lineStart: 1, lineEnd: 10 },
+      };
+      const input = {
+        surface,
+        tab: fileTab,
+        index: 0,
+        tabCount: 1,
+        menuTestIDBase: "workspace-tab-context-file_abc",
+        onCopyResumeCommand: vi.fn(),
+        onCopyAgentId: vi.fn(),
+        onCopyTerminalId: vi.fn(),
+        onCopyFilePath,
+        onOpenFile,
+        onReloadAgent: vi.fn(),
+        onRenameTab: vi.fn(),
+        onCloseTab: vi.fn(),
+        onCloseTabsBefore: vi.fn(),
+        onCloseTabsAfter: vi.fn(),
+        onCloseOtherTabs: vi.fn(),
+      };
+      const entries = buildWorkspaceTabMenuEntries(input);
 
-    const labels = entries.filter((entry) => entry.kind === "item").map((entry) => entry.label);
-    // CUSTOM(copy-full-file-path): the full path comes first.
-    expect(labels[0]).toBe("Copy full file path");
-    expect(labels[1]).toBe("Copy file path");
-    expect(labels).not.toContain("Copy resume command");
-    expect(labels).not.toContain("Copy agent id");
-    expect(labels).not.toContain("Rename");
-    expect(labels).not.toContain("Reload agent");
+      const labels = entries.filter((entry) => entry.kind === "item").map((entry) => entry.label);
+      // CUSTOM(copy-full-file-path): the full path comes first.
+      expect(labels[0]).toBe("Copy full file path");
+      expect(labels[1]).toBe("Copy file path");
+      // CUSTOM(open-file-externally): both modes pass the selected file to the workspace owner.
+      expect(labels.slice(2, 4)).toEqual(["Open in browser", "Open with default app"]);
+      for (const mode of ["browser", "default"] as const) {
+        const entry = entries.find(
+          (item) => item.kind === "item" && item.key === `open-file-${mode}`,
+        );
+        if (!entry || entry.kind !== "item") throw new Error("Open file entry missing");
+        entry.onSelect();
+        expect(onOpenFile).toHaveBeenLastCalledWith("/some/path.ts", mode);
+      }
+      const unavailableEntries = buildWorkspaceTabMenuEntries({ ...input, onOpenFile: undefined });
+      expect(unavailableEntries.some((entry) => entry.key.startsWith("open-file-"))).toBe(false);
+      expect(labels).not.toContain("Copy resume command");
+      expect(labels).not.toContain("Copy agent id");
+      expect(labels).not.toContain("Rename");
+      expect(labels).not.toContain("Reload agent");
 
-    const copyFilePathEntry = entries.find(
-      (entry) => entry.kind === "item" && entry.key === "copy-file-path",
-    );
-    if (!copyFilePathEntry || copyFilePathEntry.kind !== "item") {
-      throw new Error("Copy file path entry missing");
-    }
-    copyFilePathEntry.onSelect();
-    expect(onCopyFilePath).toHaveBeenCalledWith("/some/path.ts");
+      const copyFilePathEntry = entries.find(
+        (entry) => entry.kind === "item" && entry.key === "copy-file-path",
+      );
+      if (!copyFilePathEntry || copyFilePathEntry.kind !== "item") {
+        throw new Error("Copy file path entry missing");
+      }
+      copyFilePathEntry.onSelect();
+      expect(onCopyFilePath).toHaveBeenCalledWith("/some/path.ts");
 
-    const copyFullFilePathEntry = entries.find(
-      (entry) => entry.kind === "item" && entry.key === "copy-full-file-path",
-    );
-    if (!copyFullFilePathEntry || copyFullFilePathEntry.kind !== "item") {
-      throw new Error("Copy full file path entry missing");
-    }
-    copyFullFilePathEntry.onSelect();
-    expect(onCopyFilePath).toHaveBeenLastCalledWith("/some/path.ts", "full");
-  });
+      const copyFullFilePathEntry = entries.find(
+        (entry) => entry.kind === "item" && entry.key === "copy-full-file-path",
+      );
+      if (!copyFullFilePathEntry || copyFullFilePathEntry.kind !== "item") {
+        throw new Error("Copy full file path entry missing");
+      }
+      copyFullFilePathEntry.onSelect();
+      expect(onCopyFilePath).toHaveBeenLastCalledWith("/some/path.ts", "full");
+    },
+  );
 
   it("uses a Changes close id for the working diff tab", () => {
     const actions = buildWorkspaceDesktopTabActions({
@@ -326,6 +346,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
     };
     const menuTestIDBase = "workspace-tab-context";
     const sharedInput = {
+      onOpenFile: vi.fn(),
       surface: "desktop" as const,
       index: 0,
       tabCount: 1,

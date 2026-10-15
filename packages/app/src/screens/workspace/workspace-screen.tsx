@@ -115,6 +115,7 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
 import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
+import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { getDesktopHost } from "@/desktop/host";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { generateDraftId } from "@/stores/draft-keys";
@@ -2114,6 +2115,37 @@ function WorkspaceScreenContent({
     [toast, t],
   );
 
+  // CUSTOM(open-file-externally): never hand a remote host's paths to the local OS.
+  const isLocalFileHost = useIsLocalDaemon(normalizedServerId);
+  const fileOpenPending = useRef(false);
+  const handleOpenFile = useMemo(() => {
+    const openFile = getDesktopHost()?.opener?.openFile;
+    if (!isLocalFileHost || !openFile) return undefined;
+    return async (path: string, mode: "browser" | "default") => {
+      if (fileOpenPending.current) return;
+      if (!workspaceDirectory && !isAbsolutePath(path)) {
+        toast.error(t("workspace.header.toasts.workspacePathUnavailable"));
+        return;
+      }
+      const absolutePath = isAbsolutePath(path)
+        ? path
+        : buildAbsoluteExplorerPath({
+            workspaceRoot: workspaceDirectory!,
+            entryPath: path,
+          });
+      fileOpenPending.current = true;
+      toast.show("Opening file…", { durationMs: null });
+      try {
+        await openFile({ path: absolutePath, mode });
+        toast.show("File opened");
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not open file");
+      } finally {
+        fileOpenPending.current = false;
+      }
+    };
+  }, [isLocalFileHost, workspaceDirectory, toast, t]);
+
   const handleCopyFilePath = useCallback(
     async (path: string, mode?: "full") => {
       if (!path) return;
@@ -3393,6 +3425,7 @@ function WorkspaceScreenContent({
             onCopyAgentId={handleCopyAgentId}
             onCopyTerminalId={handleCopyTerminalId}
             onCopyFilePath={handleCopyFilePath}
+            onOpenFile={handleOpenFile}
             onReloadAgent={handleReloadAgent}
             onRenameTab={handleRenameTab}
             onCloseTab={handleCloseTabById}
@@ -3431,6 +3464,7 @@ function WorkspaceScreenContent({
       handleCopyAgentId,
       handleCopyBranchName,
       handleCopyFilePath,
+      handleOpenFile,
       handleCopyResumeCommand,
       handleCopyTerminalId,
       handleCopyWorkspacePath,
@@ -3482,6 +3516,7 @@ function WorkspaceScreenContent({
         onCopyAgentId={handleCopyAgentId}
         onCopyTerminalId={handleCopyTerminalId}
         onCopyFilePath={handleCopyFilePath}
+        onOpenFile={handleOpenFile}
         onReloadAgent={handleReloadAgent}
         onRenameTab={handleRenameTab}
         onCloseTabsToLeft={handleCloseTabsToLeftInPane}
@@ -3518,6 +3553,7 @@ function WorkspaceScreenContent({
     handleCopyAgentId,
     handleCopyTerminalId,
     handleCopyFilePath,
+    handleOpenFile,
     handleReloadAgent,
     handleRenameTab,
     handleCloseTabsToLeftInPane,
@@ -3575,6 +3611,7 @@ function WorkspaceScreenContent({
             onCopyAgentId={handleCopyAgentId}
             onCopyTerminalId={handleCopyTerminalId}
             onCopyFilePath={handleCopyFilePath}
+            onOpenFile={handleOpenFile}
             onReloadAgent={handleReloadAgent}
             onRenameTab={handleRenameTab}
             onCloseTabsToLeft={handleCloseTabsToLeft}

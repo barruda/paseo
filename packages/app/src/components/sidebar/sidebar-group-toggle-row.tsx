@@ -58,14 +58,20 @@ export function SidebarGroupToggleRow({
     >
       {({ hovered, pressed }) => (
         <>
-          <View style={styles.iconSlot}>
+          <View style={[styles.iconSlot, hiddenCount !== undefined && styles.quietIcon]}>
             <DensityIcon
               icon={expanded ? ChevronUp : collapsedIcon}
               size="sm"
               color={hovered || pressed ? "foreground" : "foregroundMuted"}
             />
           </View>
-          <Text style={hovered || pressed ? styles.textHovered : styles.text} numberOfLines={1}>
+          <Text
+            style={[
+              hovered || pressed ? styles.textHovered : styles.text,
+              hiddenCount !== undefined && styles.quietText,
+            ]}
+            numberOfLines={1}
+          >
             {label}
           </Text>
         </>
@@ -102,6 +108,18 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     flexShrink: 0,
+  },
+  // CUSTOM(sidebar-workspace-limit): de-emphasize expansion controls when scanning workspace names.
+  quietIcon: {
+    transform: [{ scale: 0.5 }],
+    opacity: 0.5,
+  },
+  quietText: {
+    fontSize: {
+      xs: densityFontSize(theme, "base").xs * 0.5,
+      md: densityFontSize(theme, "base").md * 0.5,
+    },
+    opacity: 0.5,
   },
   text: {
     color: theme.colors.foregroundMuted,

@@ -11,6 +11,8 @@ import React, {
 } from "react";
 import { Pressable, Text, View, type LayoutChangeEvent } from "react-native";
 import {
+  Globe,
+  ExternalLink,
   CopyX,
   ArrowLeftToLine,
   ArrowRightToLine,
@@ -86,6 +88,10 @@ import {
   useHorizontalScrollBoundary,
 } from "@/components/ui/horizontal-scroll-boundary";
 import { useSessionStore } from "@/stores/session-store";
+
+// CUSTOM(open-file-externally): use the same icon rail as the existing tab actions.
+const ThemedGlobe = withUnistyles(Globe);
+const ThemedExternalLink = withUnistyles(ExternalLink);
 
 const DROPDOWN_WIDTH = 220;
 const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
@@ -416,6 +422,10 @@ function TabContextMenuItem({
 }) {
   const leading = useMemo(() => {
     switch (entry.icon) {
+      case "globe":
+        return <ThemedGlobe size={16} uniProps={mutedColorMapping} />;
+      case "external-link":
+        return <ThemedExternalLink size={16} uniProps={mutedColorMapping} />;
       case "copy":
         return <ThemedCopy size={16} uniProps={mutedColorMapping} />;
       case "rotate-cw":
@@ -529,6 +539,8 @@ export interface WorkspaceDesktopTabsRowProps {
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   // CUSTOM(copy-full-file-path): "full" asks for the absolute path.
   onCopyFilePath: (path: string, mode?: "full") => Promise<void> | void;
+  // CUSTOM(open-file-externally): local desktop file actions.
+  onOpenFile?: (path: string, mode: "browser" | "default") => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
@@ -1027,6 +1039,7 @@ function ResolvedWorkspaceDesktopTabsRow({
   onCopyAgentId,
   onCopyTerminalId,
   onCopyFilePath,
+  onOpenFile,
   onReloadAgent,
   onRenameTab,
   onCloseTabsToLeft,
@@ -1286,6 +1299,7 @@ function ResolvedWorkspaceDesktopTabsRow({
           onCopyAgentId={onCopyAgentId}
           onCopyTerminalId={onCopyTerminalId}
           onCopyFilePath={onCopyFilePath}
+          onOpenFile={onOpenFile}
           onReloadAgent={onReloadAgent}
           onRenameTab={onRenameTab}
           onCloseTabsToLeft={onCloseTabsToLeft}
@@ -1317,6 +1331,7 @@ function ResolvedWorkspaceDesktopTabsRow({
       onCopyAgentId,
       onCopyTerminalId,
       onCopyFilePath,
+      onOpenFile,
       onCopyResumeCommand,
       onNavigateTab,
       onReloadAgent,
@@ -1439,6 +1454,7 @@ function ResolvedDesktopTabChip({
   onCopyAgentId,
   onCopyTerminalId,
   onCopyFilePath,
+  onOpenFile,
   onReloadAgent,
   onRenameTab,
   onCloseTabsToLeft,
@@ -1466,6 +1482,8 @@ function ResolvedDesktopTabChip({
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
   // CUSTOM(copy-full-file-path): "full" asks for the absolute path.
   onCopyFilePath: (path: string, mode?: "full") => Promise<void> | void;
+  // CUSTOM(open-file-externally): local desktop file actions.
+  onOpenFile?: (path: string, mode: "browser" | "default") => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTabsToLeft: (tabId: string) => Promise<void> | void;
@@ -1494,6 +1512,7 @@ function ResolvedDesktopTabChip({
         onCopyAgentId,
         onCopyTerminalId,
         onCopyFilePath,
+        onOpenFile,
         onReloadAgent,
         onRenameTab,
         onCloseTab,
@@ -1512,6 +1531,7 @@ function ResolvedDesktopTabChip({
       onCopyAgentId,
       onCopyTerminalId,
       onCopyFilePath,
+      onOpenFile,
       onCopyResumeCommand,
       labels,
       onReloadAgent,
