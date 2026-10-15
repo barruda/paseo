@@ -79,6 +79,8 @@ import {
 import { SidebarAgentListSkeleton } from "./sidebar-agent-list-skeleton";
 import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
+// CUSTOM(wake-dictation): keep the desktop-only control above Workspaces.
+import { WakeDictationSidebarToggle } from "@/always-listening/sidebar-toggle";
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
@@ -794,6 +796,7 @@ function DesktopSidebar({
             <TitlebarDragRegion />
           )}
           <SidebarNavRows style={sidebarHeaderGroupStyle} />
+          <WakeDictationSidebarToggle />
         </View>
 
         {isInitialLoad && !hasActiveHostFilter ? (
