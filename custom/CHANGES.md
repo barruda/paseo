@@ -1161,3 +1161,27 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   `cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts --bail=1` (both in
   the update script). In voice mode, ask for a long answer, press the ear: the voice stops, the
   chat keeps filling. Press it again while it still answers: silence until its next message.
+
+## wake-dictation: copy hands-free dictation from the desktop sidebar
+
+- **Added:** 2026-10-15
+- **Commit:** `custom: wake dictation sidebar proof of concept`
+- **Why:** Try a wake phrase and clipboard flow while the desktop window is open, before adding a
+  background process or a dedicated keyword model.
+- **What:** The desktop sidebar gets a Wake dictation control above Workspaces. Gray means off,
+  yellow waits for "wake up", and green captures speech. After a spoken "done" at the end of a
+  phrase, the assembled transcript is copied and the control returns to yellow. The listener
+  uses energy-bounded utterances and the existing dictation STT service, so only speech segments
+  are uploaded. It stops when Paseo closes, the local host disconnects, or voice mode starts.
+- **Core files touched:** app `components/left-sidebar.tsx` (desktop row); new
+  `always-listening/{controller,sidebar-toggle}` files. The base toggle renders nothing outside
+  Electron.
+- **Re-apply:** Place `WakeDictationSidebarToggle` below the desktop `SidebarNavRows` and before
+  the workspace list. Its Electron implementation captures PCM with the existing dictation audio
+  source, sends each energy-bounded utterance through `DictationStreamSender`, detects "wake up"
+  and final "done" in transcription text, and copies with `copyToClipboard`. Keep the base
+  component empty for browser and native builds.
+- **Verify:** `cd packages/app && npx vitest run src/always-listening/controller.test.ts --bail=1`
+  (in the update script). In desktop Paseo, switch it on: yellow appears. Say "wake up" and
+  pause: it turns green. Dictate, then say "done" and pause: the text goes to the clipboard and
+  the control returns to yellow. Switch it off and confirm microphone capture ends.
