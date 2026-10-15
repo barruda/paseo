@@ -1445,7 +1445,8 @@ function resolvePayload(
   }
 }
 
-const CHORD_TIMEOUT_MS = 1500;
+// CUSTOM(sidebar-voice): the post-exit interrupt targets voice for the same chord window.
+export const CHORD_TIMEOUT_MS = 1500;
 
 function clearChordTimeout(timeoutId: ReturnType<typeof setTimeout> | null): void {
   if (timeoutId !== null) {

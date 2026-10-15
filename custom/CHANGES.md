@@ -1185,3 +1185,31 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   (in the update script). In desktop Paseo, switch it on: yellow appears. Say "wake up" and
   pause: it turns green. Dictate, then say "done" and pause: the text goes to the clipboard and
   the control returns to yellow. Switch it off and confirm microphone capture ends.
+
+## sidebar-voice: an independent voice session above Workspaces
+
+- **Added:** 2026-10-15
+- **Commit:** `custom: add independent sidebar voice session`
+- **Why:** Voice needs a permanent entry below Accounts, with its own conversation that continues
+  while you browse other workspaces and tabs.
+- **What:** Voice appears after the sidebar navigation rows on desktop and mobile. Start creates
+  or resumes a labeled assistant in a background workspace under `~/.paseo-voice`, using the
+  saved provider/model preference on first creation. The row shows status, microphone and reply
+  mute controls, exit, interrupt, and a link to its conversation. Navigation and sidebar unmounts
+  do not stop it. First Esc exits; a second within the shortcut chord window interrupts that
+  assistant, even when a different chat or terminal has focus. Startup errors remain in the row
+  with Retry. Microphone capture is never started automatically on app launch.
+- **Core files touched:** `packages/app/src/app/_layout.tsx`,
+  `components/sidebar/sidebar-nav-rows.tsx`, `keyboard/keyboard-shortcuts.ts`;
+  implementation and lifecycle tests in `voice/sidebar/`, browser coverage in
+  `e2e/browser/sidebar-workspace.spec.ts`.
+- **Re-apply:** Mount `SidebarVoiceProvider` inside the global `VoiceProvider`, above route content.
+  Add `SidebarVoiceRow` after the navigation items in their shared sidebar group. Keep the agent
+  lookup label `custom.sidebar-voice=true` and background-workspace ownership separate from the
+  selected workspace. Register Escape handling above composer priority, preserving the voice
+  target through the second keypress. Share the keyboard chord timeout.
+- **Verify:** `cd packages/app && npx vitest run src/voice/sidebar/session.test.ts --bail=1`
+  (included in the update script). Targeted browser check:
+  `npx playwright test e2e/browser/sidebar-workspace.spec.ts --project=browser --grep 'sidebar voice has' --workers=1`.
+  In desktop, start Voice, switch workspace and tab, and check that listening continues and
+  double Esc interrupts the Voice assistant rather than the selected chat.

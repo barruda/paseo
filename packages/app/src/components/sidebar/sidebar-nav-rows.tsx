@@ -3,6 +3,7 @@ import { CalendarClock, History, Plus, Search } from "lucide-react-native";
 import { memo, useCallback, useMemo, useRef, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { View, type StyleProp, type ViewStyle } from "react-native";
+import { SidebarVoiceRow } from "@/voice/sidebar/row";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 // CUSTOM(sidebar-new-workspace-in-list)
 import { Shortcut } from "@/components/ui/shortcut";
@@ -36,8 +37,7 @@ interface SidebarNavRowsProps extends SidebarNavRowProps {
 
 /**
  * Top-level sidebar navigation, ordered and filtered by the user's
- * `sidebarNavItems` preference. Renders nothing — not even the bordered group
- * wrapper — when every item is hidden.
+ * `sidebarNavItems` preference. The independent Voice session stays below these items.
  */
 export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps) {
   const { items } = useSidebarNavItems("header");
@@ -51,8 +51,6 @@ export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps)
     [items],
   );
   const groupRef = useRef<View | null>(null);
-
-  if (visibleItems.length === 0) return null;
 
   return (
     <View ref={groupRef} collapsable={false} style={style}>
@@ -71,6 +69,8 @@ export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps)
         const Row = BUILTIN_ROWS[item.id];
         return <Row key={item.key} onBeforeNavigate={onBeforeNavigate} />;
       })}
+      {/* CUSTOM(sidebar-voice): below Accounts/plugin navigation, above Workspaces. */}
+      <SidebarVoiceRow />
     </View>
   );
 }

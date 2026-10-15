@@ -1,4 +1,9 @@
 import path from "node:path";
+import { existsSync, rmdirSync } from "node:fs";
+import { homedir } from "node:os";
+import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
+import { connectDaemonClient } from "../support/helpers/daemon-client-loader";
+import { openAgentRoute } from "../support/helpers/mock-agent";
 import type { Page, TestInfo } from "@playwright/test";
 import { test, expect } from "../support/fixtures";
 import { gotoAppShell } from "../support/helpers/app";
@@ -644,4 +649,58 @@ test.describe("Half-screen desktop layout", () => {
       await workspace.cleanup();
     }
   });
+});
+
+test("sidebar voice has an independent session and exposes a retryable speech error", async ({
+  page,
+}, testInfo) => {
+  const workspace = await seedMockAgentWorkspace({
+    repoPrefix: "sidebar-voice-",
+    title: "Other conversation",
+  });
+  const voiceDirectory = path.join(homedir(), ".paseo-voice");
+  const directoryExisted = existsSync(voiceDirectory);
+  const client = await connectDaemonClient<DaemonClient>({ clientIdPrefix: "sidebar-voice-check" });
+  const before = new Set(
+    (await client.listProjects()).projects.map((project) => project.projectId),
+  );
+  try {
+    await openAgentRoute(page, workspace);
+    const voice = page.getByTestId("sidebar-voice");
+    await expect(voice).toBeVisible();
+    await expect(voice).toHaveAccessibleName(/Voice: Start/);
+    const originalUrl = page.url();
+    await page.screenshot({ path: testInfo.outputPath("sidebar-voice-entry.png") });
+    await voice.click();
+    const section = page.getByTestId("sidebar-voice-section");
+    // This isolated daemon intentionally has speech disabled; the error must stay visible.
+    await expect(section.getByRole("alert")).toBeVisible({ timeout: 30_000 });
+    await expect(voice).toHaveAccessibleName(/Voice: Retry/);
+    expect(page.url()).toBe(originalUrl);
+    const first = await client.fetchAgents({
+      filter: { labels: { "custom.sidebar-voice": "true" }, includeBackground: true },
+    });
+    expect(first.entries).toHaveLength(1);
+    expect(first.entries[0]!.agent.id).not.toBe(workspace.agentId);
+    expect(first.entries[0]!.agent.workspaceId).not.toBe(workspace.workspaceId);
+    await voice.click();
+    await expect(voice).toHaveAccessibleName(/Voice: Retry/);
+    const retried = await client.fetchAgents({
+      filter: { labels: { "custom.sidebar-voice": "true" }, includeBackground: true },
+    });
+    expect(retried.entries.map((entry) => entry.agent.id)).toEqual(
+      first.entries.map((entry) => entry.agent.id),
+    );
+    await testInfo.attach("sidebar-voice-entry", {
+      path: testInfo.outputPath("sidebar-voice-entry.png"),
+      contentType: "image/png",
+    });
+  } finally {
+    for (const project of (await client.listProjects()).projects) {
+      if (!before.has(project.projectId)) await client.removeProject(project.projectId);
+    }
+    await client.close();
+    await workspace.cleanup();
+    if (!directoryExisted && existsSync(voiceDirectory)) rmdirSync(voiceDirectory);
+  }
 });
