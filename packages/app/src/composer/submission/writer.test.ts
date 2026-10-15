@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { useSessionStore } from "@/stores/session-store";
 import type { UserMessageItem } from "@/types/stream";
-import { createMessageSubmissionWriter } from "./writer";
+import { createMessageSubmissionWriter, handoffCreatedAgentMessageSubmission } from "./writer";
 
 const CANONICAL_ONLY_SERVER_ID = "canonical-only";
 
@@ -46,4 +46,14 @@ test("tracks submissions when canonical prompts are supported", () => {
   );
 
   expect(submissionIds(CANONICAL_ONLY_SERVER_ID)).toEqual(["canonical-only-message"]);
+});
+
+// CUSTOM(voice-new-agent): no server acknowledgement exists for an empty first prompt.
+test("does not hand off an empty voice-start message", () => {
+  initializeSession(CANONICAL_ONLY_SERVER_ID, { canonicalSubmittedPrompts: true });
+  const message = { ...submittedMessage("voice-start"), text: "" };
+  expect(handoffCreatedAgentMessageSubmission(CANONICAL_ONLY_SERVER_ID, "agent-1", message)).toBe(
+    false,
+  );
+  expect(submissionIds(CANONICAL_ONLY_SERVER_ID)).toEqual([]);
 });

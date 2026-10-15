@@ -4,6 +4,8 @@ export type WorkspacePanelTarget = "changes" | "files" | "pull-request";
 export type WorkspacePanelPlacement = "supporting" | "side-pane" | "focused-pane";
 
 export type KeyboardActionId =
+  // CUSTOM(voice-exit): independent of the configurable interrupt chord.
+  | "message-input.voice-exit"
   | "agent.interrupt"
   | "message-input.focus"
   | "message-input.send"
@@ -63,6 +65,7 @@ export type KeyboardActionId =
   | "workspace.setup.show";
 
 export type KeyboardActionDefinition =
+  | { id: "message-input.voice-exit"; scope: KeyboardActionScope }
   | { id: "agent.interrupt"; scope: KeyboardActionScope }
   | { id: "message-input.focus"; scope: KeyboardActionScope }
   | { id: "message-input.send"; scope: KeyboardActionScope }

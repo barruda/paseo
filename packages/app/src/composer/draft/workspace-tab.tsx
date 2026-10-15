@@ -42,6 +42,7 @@ import {
 import type { UserMessageImageAttachment } from "@/types/stream";
 import { COMPACT_FORM_FACTOR_WIDTH, useIsCompactFormFactor } from "@/constants/layout";
 import { isWeb } from "@/constants/platform";
+import { useToast } from "@/contexts/toast-context";
 import { useVoiceOptional } from "@/contexts/voice-context";
 import {
   buildWorkspaceTabPersistenceKey,
@@ -409,6 +410,7 @@ export function WorkspaceDraftAgentTab({
   // CUSTOM(voice-new-agent): the voice button creates the agent with no first message, then
   // starts voice mode on it. A new workspace started from voice arrives here the same way.
   const voice = useVoiceOptional();
+  const toast = useToast();
   const [voiceStartRequested, setVoiceStartRequested] = useState(
     () => pendingAutoSubmit?.startVoice === true,
   );
@@ -520,7 +522,7 @@ export function WorkspaceDraftAgentTab({
       if (voiceStartRequested) {
         setVoiceStartRequested(false);
         void voice?.startVoice(serverId, result.id).catch((error: unknown) => {
-          console.error("[WorkspaceDraftAgentTab] Failed to start voice mode", error);
+          toast.error(error instanceof Error ? error.message : String(error));
         });
       }
     },

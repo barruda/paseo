@@ -68,5 +68,11 @@ export function handoffCreatedAgentMessageSubmission(
   agentId: string,
   message: UserMessageItem,
 ): boolean {
+  // CUSTOM(voice-new-agent): an idle voice start has no message to acknowledge.
+  const hasContent =
+    message.text.trim().length > 0 ||
+    Boolean(message.images?.length) ||
+    Boolean(message.attachments?.length);
+  if (!hasContent) return false;
   return useSessionStore.getState().handoffCreatedAgentUserMessage(serverId, agentId, message);
 }

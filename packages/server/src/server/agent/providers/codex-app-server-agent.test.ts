@@ -1140,6 +1140,66 @@ describe("Codex app-server provider", () => {
     }
   });
 
+  test("reloads an unstarted voice agent when Codex has not saved its rollout", async () => {
+    const firstServer = createFakeCodexAppServer();
+    const first = await createProviderWithFakeAppServer(firstServer).createSession(createConfig());
+    await first.getRuntimeInfo();
+    const handle = first.describePersistence()!;
+    expect(handle.metadata).toMatchObject({ hasStartedTurn: false });
+    await first.close();
+
+    const requests: string[] = [];
+    const secondServer = createFakeCodexAppServer({
+      "thread/resume": () => ({ __jsonRpcError: { code: -32600, message: "no rollout found" } }),
+      "thread/loaded/list": () => ({ data: ["voice-thread"] }),
+      "thread/start": () => {
+        requests.push("thread/start");
+        return { thread: { id: "voice-thread" } };
+      },
+    });
+    const resumed = await createProviderWithFakeAppServer(secondServer).resumeSession(handle, {
+      systemPrompt: "Voice instructions",
+    });
+    try {
+      await resumed.getRuntimeInfo();
+      expect(requests).toEqual(["thread/start"]);
+      expect(resumed.id).toBe("voice-thread");
+      await resumed.startTurn("first spoken prompt");
+      await secondServer.waitForTurnStart();
+      expect(resumed.describePersistence()?.metadata).toMatchObject({ hasStartedTurn: true });
+      secondServer.assertNoErrors();
+    } finally {
+      await resumed.close();
+    }
+  });
+
+  test("preserves a saved thread even if its metadata predates the first turn", async () => {
+    let resumeCount = 0;
+    const server = createFakeCodexAppServer({
+      "thread/resume": () => {
+        resumeCount++;
+        return { thread: { id: "saved-thread" } };
+      },
+      "thread/start": () => {
+        throw new Error("Must preserve saved history");
+      },
+    });
+    const resumed = await createProviderWithFakeAppServer(server).resumeSession({
+      sessionId: "saved-thread",
+      metadata: { hasStartedTurn: false },
+    });
+    try {
+      expect(resumeCount).toBe(1);
+      expect(resumed.describePersistence()).toMatchObject({
+        sessionId: "saved-thread",
+        metadata: { hasStartedTurn: true },
+      });
+      server.assertNoErrors();
+    } finally {
+      await resumed.close();
+    }
+  });
+
   test("keeps the default effort when a session without one is resumed after a restart", async () => {
     const beforeRestart = createFakeCodexAppServer();
     const firstSession = await createProviderWithFakeAppServer(beforeRestart).createSession(
