@@ -17,6 +17,7 @@ const NEW_WORKSPACE_BINDING = "workspace-new-cmd-n-mac";
  */
 const EN: Record<string, string> = {
   "settings.shortcuts.sections.projects": "Projects",
+  "settings.shortcuts.sections.workspaces": "Projects & Workspaces",
   "settings.shortcuts.help.newWorkspace": "New workspace",
   "settings.shortcuts.help.openProject": "Open project",
 };
@@ -25,17 +26,18 @@ function translate(key: string): string {
   return EN[key] ?? key;
 }
 
-function filter(query: string, overrides: ShortcutOverrides = {}) {
+function filter(query: string, overrides: ShortcutOverrides = {}, loose = false) {
   return filterShortcutHelpSections({
     sections: buildKeyboardShortcutHelpSections(MAC_DESKTOP, buildEffectiveBindings(overrides)),
     query,
+    loose,
     translate,
     shortcutOs: "mac",
   });
 }
 
-function matchedRowIds(query: string, overrides: ShortcutOverrides = {}): string[] {
-  return filter(query, overrides).flatMap((section) => section.rows.map((row) => row.id));
+function matchedRowIds(query: string, overrides: ShortcutOverrides = {}, loose = false): string[] {
+  return filter(query, overrides, loose).flatMap((section) => section.rows.map((row) => row.id));
 }
 
 describe("shortcutSearchText", () => {
@@ -109,5 +111,42 @@ describe("filterShortcutHelpSections", () => {
 
   it("drops a section whose rows all miss", () => {
     expect(filter("no shortcut spells this")).toEqual([]);
+  });
+});
+
+describe("loose shortcut settings search", () => {
+  it.each([
+    "new workspace",
+    "work",
+    "orksp",
+    "space",
+    "WORKSPACE NEW",
+    "new*space",
+    "*work*",
+    "nw wrkspc",
+    "wrokspace",
+    "workspce",
+    "néw wörkspace",
+    "projects new",
+  ])("finds New workspace for %s", (query) => {
+    expect(matchedRowIds(query, {}, true)).toContain("new-workspace");
+  });
+
+  it("keeps all rows for whitespace and wildcard-only input", () => {
+    expect(filter(" * ** ", {}, true)).toEqual(filter(""));
+  });
+
+  it("shows no rows for unrelated text or literal regex syntax", () => {
+    expect(filter("zzzzzzzzz", {}, true)).toEqual([]);
+    expect(filter("[.*](foo)", {}, true)).toEqual([]);
+  });
+
+  it("searches the effective binding, including an unassigned row's name", () => {
+    const rebound = { [NEW_WORKSPACE_BINDING]: "Cmd+Shift+K" };
+    expect(matchedRowIds("cmd+shift+k", rebound, true)).toContain("new-workspace");
+    expect(matchedRowIds("cmd+n", rebound, true)).not.toContain("new-workspace");
+    const unassigned = { [NEW_WORKSPACE_BINDING]: UNASSIGNED_COMBO };
+    expect(matchedRowIds("workspce", unassigned, true)).toContain("new-workspace");
+    expect(matchedRowIds("cmd+n", unassigned, true)).not.toContain("new-workspace");
   });
 });

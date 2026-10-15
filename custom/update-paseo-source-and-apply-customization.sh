@@ -263,6 +263,8 @@ if $VERIFY; then
   step "Typechecking"
   npm run typecheck
   step "Running customization tests"
+  (cd packages/app && npx vitest run src/keyboard/shortcut-help-search.test.ts --bail=1)
+  npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/keyboard-shortcut-unassign.spec.ts --grep 'sidebar shortcut settings|shortcut settings search' --workers=1
   (cd packages/app && npx vitest run src/voice/sidebar/session.test.ts --bail=1)
   (cd packages/app && npx vitest run src/keyboard/voice-escape.test.ts src/composer/submission/writer.test.ts src/always-listening/controller.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/codex-app-server-agent.test.ts --bail=1)

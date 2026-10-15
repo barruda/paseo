@@ -1,7 +1,13 @@
+import { buildSettingsSectionRoute } from "../../app/src/utils/host-routes";
+import { expectAppRoute } from "../../app/e2e/support/helpers/route-assertions";
 import type { Page } from "@playwright/test";
 import { test, expect } from "../../app/e2e/support/fixtures";
 import { gotoAppShell, openSettings } from "../../app/e2e/support/helpers/app";
-import { openSettingsSection } from "../../app/e2e/support/helpers/settings";
+import {
+  clickSettingsBackToWorkspace,
+  expectSettingsHeader,
+  openSettingsSection,
+} from "../../app/e2e/support/helpers/settings";
 
 // Settings > Keyboard Shortcuts is desktop-only (`desktopOnly` in
 // settings-screen.tsx), and the gate reads `getIsElectronRuntime()`, which only
@@ -213,3 +219,57 @@ for (const { platform, keys, label, firstCombo, secondCombo } of [
     await expectInterruptShortcut(page, label);
   });
 }
+
+test("sidebar shortcut settings opens the editor beside Help and Settings", async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installDesktopBridge(page);
+  await gotoAppShell(page);
+  const footer = page.locator('[data-testid="sidebar-footer-bottom-line"]:visible');
+  const shortcuts = footer.getByTestId("sidebar-shortcuts");
+  await expect(shortcuts).toHaveAccessibleName("Shortcuts");
+  const positions = await Promise.all(
+    ["sidebar-help", "sidebar-shortcuts", "sidebar-settings"].map((id) =>
+      footer.getByTestId(id).boundingBox(),
+    ),
+  );
+  const [help, keyboard, settings] = positions;
+  expect(help).not.toBeNull();
+  expect(keyboard).not.toBeNull();
+  expect(settings).not.toBeNull();
+  expect(help!.x + help!.width).toBeCloseTo(keyboard!.x, 0);
+  expect(keyboard!.x + keyboard!.width).toBeCloseTo(settings!.x, 0);
+  expect(keyboard!.y).toBeCloseTo(settings!.y, 0);
+  await shortcuts.click();
+  await expectAppRoute(page, buildSettingsSectionRoute("shortcuts"));
+  await expectSettingsHeader(page, "Shortcuts");
+  await expect(page.getByTestId("shortcut-actions-new-agent")).toBeVisible();
+  await clickSettingsBackToWorkspace(page);
+  await expect(page).not.toHaveURL(/\/settings(\/|$)/);
+});
+
+test("shortcut settings search filters loosely and keeps editing available", async ({
+  page,
+}, testInfo) => {
+  await openShortcutsSettings(page);
+  const search = page.getByTestId("shortcut-settings-search");
+  const workspace = page.getByTestId("shortcut-actions-new-workspace");
+  const project = page.getByTestId("shortcut-actions-new-agent");
+  await expect(workspace).toBeVisible();
+  await expect(project).toBeVisible();
+  for (const query of ["workspce new", "new*space", "nw wrkspc", "SPACE NEW"]) {
+    await search.fill(query);
+    await expect(workspace).toBeVisible();
+    await expect(project).toHaveCount(0);
+  }
+  await workspace.click();
+  await expect(page.getByTestId("shortcut-bind-new-workspace")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: testInfo.outputPath("shortcut-search.png") });
+  await search.fill("zzzzzzzzz");
+  await expect(page.getByText("No results found", { exact: true })).toBeVisible();
+  await expect(workspace).toHaveCount(0);
+  await page.getByTestId("shortcut-settings-search-clear").click();
+  await expect(search).toHaveValue("");
+  await expect(workspace).toBeVisible();
+  await expect(project).toBeVisible();
+});

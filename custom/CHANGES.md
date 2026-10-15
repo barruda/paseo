@@ -1213,3 +1213,25 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   `npx playwright test e2e/browser/sidebar-workspace.spec.ts --project=browser --grep 'sidebar voice has' --workers=1`.
   In desktop, start Voice, switch workspace and tab, and check that listening continues and
   double Esc interrupts the Voice assistant rather than the selected chat.
+
+## sidebar-shortcut-settings: direct access and forgiving shortcut search
+
+- **Added:** 2026-10-15
+- **Commit:** `custom: add shortcut search and sidebar access`
+- **Why:** Frequent shortcut edits need direct access and forgiving lookup from the workspace.
+- **What:** A keyboard icon between Help and Settings opens Settings → Shortcuts. It follows
+  the existing shortcut editor availability rule (desktop only). A search field above the bindings
+  filters by name, section, notes, and current keys. It ignores case and accents, accepts partial
+  words and words in any order, treats `*` as a gap, and tolerates missing letters and small typos.
+  Clear restores every row; editing and Reset all remain available while filtering.
+- **Core files touched:** `packages/app/src/components/left-sidebar.tsx`,
+  `screens/settings/keyboard-shortcuts-section.tsx`, and `keyboard/shortcut-help-search.ts` (app).
+  Tests extend `shortcut-help-search.test.ts` and desktop `e2e/keyboard-shortcut-unassign.spec.ts`.
+- **Re-apply:** Add a `FooterIconButton` with the Keyboard icon immediately after `SidebarHelpMenu`.
+  Use the existing shortcuts label, Electron gate, and `buildSettingsSectionRoute("shortcuts")`.
+  Add the shared SearchField above shortcut settings; filter effective bindings with the shared
+  help filter in loose mode, using the protocol text matcher per term. Keep default help-dialog
+  matching unchanged and Reset all outside the filtered sections.
+- **Verify:** `npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/keyboard-shortcut-unassign.spec.ts --grep 'sidebar shortcut settings|shortcut settings search' --workers=1`
+  and `cd packages/app && npx vitest run src/keyboard/shortcut-help-search.test.ts --bail=1`
+  (both included in the update script). Check placement, navigation, filtering, clearing, and row actions.
