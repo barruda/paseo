@@ -2,6 +2,8 @@ import { useCallback, type ReactNode } from "react";
 import { View, type LayoutChangeEvent, type StyleProp, type ViewStyle } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { create } from "zustand";
+// CUSTOM(task-navigation): the mode toggle belongs immediately after the shortcut hints.
+import { TaskNavigationToggle } from "@/task-navigation/toggle";
 import { HeaderShortcutsStrip } from "./strip";
 
 interface HeaderWidths {
@@ -71,6 +73,7 @@ export function HeaderShortcutsRightRow({
     <View style={styles.right}>
       <HeaderShortcutsStrip layoutKey={layoutKey} />
       <View style={style} onLayout={onButtonsLayout}>
+        <TaskNavigationToggle />
         {children}
       </View>
     </View>

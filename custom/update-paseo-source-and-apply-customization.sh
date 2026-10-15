@@ -285,6 +285,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/active-workspace-cycle/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/sidebar-workspace-limit/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/header-shortcuts/fit.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/task-navigation/model.test.ts src/task-navigation/store.test.ts --bail=1)
+  npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/task-navigation.spec.ts --workers=1
   (cd packages/app && npx vitest run src/screens/new-workspace/bottom-terminal.test.ts --bail=1)
   (cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts src/file-pane/html-preview-keys.browser.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts --bail=1)

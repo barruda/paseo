@@ -29,6 +29,8 @@ import { useSidebarWorkspaceLimit } from "@/sidebar-workspace-limit/use-sidebar-
 import { SidebarWorkspaceLimitContext } from "@/sidebar-workspace-limit/context";
 
 interface SidebarModel extends SidebarWorkspacesListResult {
+  // CUSTOM(task-navigation): independent task filters must not inherit the workspace facets.
+  allWorkspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   workspaceEntriesByKey: ReadonlyMap<string, SidebarWorkspaceEntry>;
   /**
    * Every project the sidebar could show, before any filter narrows it.
@@ -194,6 +196,7 @@ export function SidebarModelProvider({
       allProjects: list.projects,
       resolvedProjectFilters,
       hasProjectsBeforeFilter: list.projects.length > 0,
+      allWorkspaceEntriesByKey: workspaceEntriesByKey,
       workspaceEntriesByKey: filteredWorkspaceEntriesByKey,
       groupMode,
       workspaceGroups: projection.workspaceGroups,
@@ -212,6 +215,7 @@ export function SidebarModelProvider({
       projection,
       toggleProjectCollapsed,
       filteredWorkspaceEntriesByKey,
+      workspaceEntriesByKey,
     ],
   );
 

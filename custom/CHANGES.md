@@ -1276,3 +1276,31 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   enable it on web when Electron is running or the layout is wide. Keep the existing Shift+Enter guard.
 - **Verify:** `npx vitest run packages/app/src/composer/input/state.test.ts --bail=1`.
   Resize a desktop chat below the compact breakpoint: Enter sends, Shift+Enter inserts a newline.
+
+## task-navigation: switch between workspace and task sidebars
+
+- **Added:** 2026-10-15 (upstream 0.11.2)
+- **Commit:** `custom: add optional task navigation alongside workspace sidebar`
+- **Why:** Navigating several projects by workspace groups obscures which conversations have
+  finished or need input. Keep the workspace layout available while refining a task-first view.
+- **What:** A **Tasks** switch immediately after the header shortcut hints selects a global task
+  sidebar. The choice persists locally and defaults off. Search and project/status filters span
+  visible workspaces and hosts. **Your attention** separates blocked/failed tasks from unread
+  finished responses; **In progress** and **Idle** show the rest. Managed children stay under
+  their parent across workspaces. Selecting a task uses existing agent navigation and attention
+  clearing. **Browse workspaces** returns to the existing sidebar without changing its filters,
+  grouping, or saved layout. No right-side panel is added. Existing workspace cycling still works.
+- **Files:** `packages/app/src/task-navigation/` owns the projection, view, switch, and independent
+  persisted preference. Its collection subscription excludes timelines and streamed text.
+- **Core files touched:** `packages/app/src/components/left-sidebar.tsx` wraps each existing list
+  with the mode boundary; `packages/app/src/components/sidebar/sidebar-model.tsx` exposes the
+  workspace collection before project/label facets; `packages/app/src/header-shortcuts/layout.tsx`
+  inserts the switch inside the measured button group so shortcut fitting reserves its width.
+- **Re-apply:** Keep the original workspace list as the mode boundary's children, for both compact
+  and wide sidebars. Add `TaskNavigationToggle` as the first measured header button after the
+  shortcut strip. Reuse the host-scoped workspace collection before project/label facets and the app
+  navigation owner; do not add routing, attention-clearing, or panel lifecycle logic to the view.
+- **Verify:** Run `npx vitest run src/task-navigation/model.test.ts src/task-navigation/store.test.ts --bail=1` from `packages/app`.
+  Run `npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/task-navigation.spec.ts --workers=1` from the repo root.
+  The browser check covers cross-workspace selection, unread-to-idle behavior, search, reload
+  persistence, and the original workspace sidebar fallback.
