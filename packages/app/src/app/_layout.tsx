@@ -67,6 +67,7 @@ import { HorizontalScrollProvider } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
+import { SidebarVoiceProvider } from "@/voice/sidebar/provider";
 import { VoiceProvider } from "@/contexts/voice-context";
 import {
   resolveStartupBlocker,
@@ -679,11 +680,14 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
   return (
     <AppearanceProvider>
       <VoiceProvider>
-        <DesktopWindowControlsSync />
-        <OfferLinkListener />
-        <HostSessionManager />
-        <FaviconStatusSync />
-        {children}
+        {/* CUSTOM(sidebar-voice): keep its session and shortcuts alive across routes. */}
+        <SidebarVoiceProvider>
+          <DesktopWindowControlsSync />
+          <OfferLinkListener />
+          <HostSessionManager />
+          <FaviconStatusSync />
+          {children}
+        </SidebarVoiceProvider>
       </VoiceProvider>
     </AppearanceProvider>
   );
