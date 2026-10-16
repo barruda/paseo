@@ -21,6 +21,12 @@ export type MessageInputKeyboardActionKind =
   | "active-workspace-cycle";
 
 export type KeyboardActionId =
+  | "task.navigate.index"
+  | "task.desk.next"
+  | "task.desk.new"
+  | "task.draft.project"
+  | "task.draft.project.next"
+  | "task.draft.model"
   | "agent.interrupt"
   | "agent.new"
   | "workspace.tab.menu.open"

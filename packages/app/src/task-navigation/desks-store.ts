@@ -40,7 +40,7 @@ interface DesksState {
   selectTab(id: string): void;
   closeTab(id: string): void;
   keepPreview(): void;
-  updateTab(id: string, patch: Partial<Pick<DeskTab, "target" | "state">>): void;
+  updateTab(id: string, patch: Partial<Pick<DeskTab, "target" | "state" | "workspaceId">>): void;
   setProjects(keys: string[] | null): void;
   setSort(sort: TaskSort): void;
 }
@@ -96,7 +96,7 @@ export function activeDeskTab(state: Pick<DesksState, "desks" | "activeDeskId">)
 function patchDeskTab(
   desk: Desk,
   id: string,
-  patch: Partial<Pick<DeskTab, "target" | "state">>,
+  patch: Partial<Pick<DeskTab, "target" | "state" | "workspaceId">>,
 ): Desk {
   if (desk.preview?.id !== id && !desk.tabs.some((tab) => tab.id === id)) return desk;
   return {

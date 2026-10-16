@@ -1295,3 +1295,77 @@ describe("direct new-tab target shortcuts", () => {
     ).toEqual([["ctrl", "shift", "H"]]);
   });
 });
+
+describe("task mode shortcuts", () => {
+  it.each(["terminal", "browser", "other"] as const)("cycles Desks from %s focus", (focusScope) => {
+    const result = resolveShortcut({
+      event: { key: "Tab", code: "Tab", shiftKey: true },
+      context: {
+        isMac: false,
+        isDesktop: true,
+        commandCenterOpen: false,
+        tasksMode: true,
+        focusScope,
+      },
+    });
+    expect(result.match?.action).toBe("task.desk.next");
+  });
+
+  function resolve(key: string, code: string, tasksMode: boolean, modifiers = {}) {
+    return resolveKeyboardShortcut({
+      event: keyboardInput({ key, code, ...modifiers }),
+      context: {
+        isMac: false,
+        isDesktop: true,
+        focusScope: "message-input",
+        commandCenterOpen: false,
+        tasksMode,
+      },
+      chordState: { candidateIndices: [], step: 0, timeoutId: null },
+      onChordReset: () => {},
+    }).match;
+  }
+  it("switches numbered navigation and Shift+Tab with the navigation mode", () => {
+    expect(resolve("n", "KeyN", true, { ctrlKey: true })?.action).toBe("task.desk.new");
+    expect(resolve("n", "KeyN", false, { ctrlKey: true })?.action).toBe("workspace.new");
+    expect(resolve("1", "Digit1", true, { ctrlKey: true })?.action).toBe("task.navigate.index");
+    expect(resolve("1", "Digit1", false, { ctrlKey: true })?.action).toBe(
+      "workspace.navigate.index",
+    );
+    expect(resolve("Tab", "Tab", true, { shiftKey: true })?.action).toBe("task.desk.next");
+    expect(resolve("Tab", "Tab", false, { shiftKey: true })?.action).toBe("message-input.action");
+    expect(resolve("ArrowUp", "ArrowUp", true)?.action).toBe("task.draft.project");
+    expect(resolve("ArrowDown", "ArrowDown", true)?.action).toBe("task.draft.project.next");
+    expect(resolve("ArrowDown", "ArrowDown", false)).toBeNull();
+    expect(resolve("ArrowLeft", "ArrowLeft", true)?.action).toBe("task.draft.model");
+    expect(resolve("ArrowUp", "ArrowUp", false)).toBeNull();
+  });
+  it("provides a task settings section and derives badges from its configurable binding", () => {
+    const platform = { isMac: false, isDesktop: true, tasksMode: true };
+    expect(
+      buildKeyboardShortcutHelpSections(platform)
+        .find((s) => s.id === "tasks")
+        ?.rows.map((r) => r.id),
+    ).toEqual([
+      "task-new-desk",
+      "task-jump-index",
+      "task-next-desk",
+      "task-draft-project",
+      "task-draft-project-next",
+      "task-draft-model",
+    ]);
+    expect(getWorkspaceIndexJumpModifierKey(platform)).toBe("Control");
+    expect(
+      getWorkspaceIndexJumpModifierKey(
+        platform,
+        buildEffectiveBindings({ "task-jump-index": "Alt+Digit" }),
+      ),
+    ).toBe("Alt");
+    expect(
+      getWorkspaceIndexJumpModifierKey(
+        platform,
+        buildEffectiveBindings({ "task-jump-index": UNASSIGNED_COMBO }),
+      ),
+    ).toBeNull();
+  });
+});

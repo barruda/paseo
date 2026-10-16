@@ -27,6 +27,11 @@ function makeCtx(overrides: Partial<ShortcutRoutingContext> = {}): ShortcutRouti
 
 describe("routeKeyboardShortcut — dispatch passthroughs", () => {
   it.each([
+    ["task.desk.next", { id: "task.desk.next", scope: "workspace" }],
+    ["task.desk.new", { id: "task.desk.new", scope: "workspace" }],
+    ["task.draft.project", { id: "task.draft.project", scope: "message-input" }],
+    ["task.draft.project.next", { id: "task.draft.project.next", scope: "message-input" }],
+    ["task.draft.model", { id: "task.draft.model", scope: "message-input" }],
     ["agent.interrupt", { id: "agent.interrupt", scope: "global" }],
     ["workspace.tab.menu.open", { id: "workspace.tab.menu.open", scope: "workspace" }],
     ["workspace.tab.target.agent", { id: "workspace.tab.target.agent", scope: "workspace" }],
@@ -440,5 +445,14 @@ describe("routeKeyboardShortcut — unknown actions", () => {
     expect(
       routeKeyboardShortcut({ action: "totally.made.up", payload: null }, makeCtx()),
     ).toEqual<ShortcutAction>({ kind: "none" });
+  });
+});
+
+it("dispatches numbered task selection without using workspace shortcut targets", () => {
+  expect(
+    routeKeyboardShortcut({ action: "task.navigate.index", payload: { index: 2 } }, makeCtx()),
+  ).toEqual({
+    kind: "dispatch",
+    action: { id: "task.navigate.index", scope: "sidebar", index: 2 },
   });
 });

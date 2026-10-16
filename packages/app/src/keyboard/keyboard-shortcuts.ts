@@ -21,6 +21,7 @@ export interface KeyboardShortcutContext {
   isDesktop: boolean;
   focusScope: KeyboardFocusScope;
   commandCenterOpen: boolean;
+  tasksMode?: boolean;
 }
 
 export interface KeyboardShortcutInput {
@@ -50,7 +51,13 @@ export interface KeyboardShortcutHelpRow {
   noteKey?: string;
 }
 
-export type ShortcutSectionId = "general" | "workspaces" | "tabs-panes" | "layout" | "agent-input";
+export type ShortcutSectionId =
+  | "tasks"
+  | "general"
+  | "workspaces"
+  | "tabs-panes"
+  | "layout"
+  | "agent-input";
 
 export interface KeyboardShortcutHelpSection {
   id: ShortcutSectionId;
@@ -67,6 +74,7 @@ interface KeyboardShortcutPlatformContext {
 }
 
 interface ShortcutWhen {
+  tasksMode?: boolean;
   /** true = mac only, false = non-mac only */
   mac?: boolean;
   /** true = desktop only, false = web only */
@@ -128,6 +136,7 @@ export interface ChordState {
 // Sections are listed in this order, most-reached-for first.
 const SHORTCUT_HELP_SECTION_ORDER: readonly ShortcutSectionId[] = [
   "general",
+  "tasks",
   "workspaces",
   "tabs-panes",
   "layout",
@@ -135,6 +144,7 @@ const SHORTCUT_HELP_SECTION_ORDER: readonly ShortcutSectionId[] = [
 ];
 
 const SHORTCUT_HELP_SECTION_TITLES: Record<ShortcutSectionId, string> = {
+  tasks: "When in tasks mode",
   general: "General",
   workspaces: "Projects & Workspaces",
   "tabs-panes": "Tabs & Panes",
@@ -143,6 +153,7 @@ const SHORTCUT_HELP_SECTION_TITLES: Record<ShortcutSectionId, string> = {
 };
 
 const SHORTCUT_HELP_SECTION_LABEL_KEYS: Record<ShortcutSectionId, string> = {
+  tasks: "When in tasks mode",
   general: "settings.shortcuts.sections.general",
   workspaces: "settings.shortcuts.sections.workspaces",
   "tabs-panes": "settings.shortcuts.sections.tabsPanes",
@@ -154,6 +165,14 @@ const SHORTCUT_HELP_SECTION_LABEL_KEYS: Record<ShortcutSectionId, string> = {
 // this sheet to find sits at the top of its section. Every help id must appear here; the unit test
 // fails when a new shortcut is added without a place, instead of silently sinking to the bottom.
 export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[]> = {
+  tasks: [
+    "task-new-desk",
+    "task-jump-index",
+    "task-next-desk",
+    "task-draft-project",
+    "task-draft-project-next",
+    "task-draft-model",
+  ],
   general: [
     "toggle-command-center",
     "search-files",
@@ -270,6 +289,69 @@ const SHORTCUT_HELP_NOTE_KEYS: Record<string, string> = {
 // --- Binding definitions ---
 
 const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
+  // CUSTOM(task-shortcuts): independent bindings and settings for task navigation.
+  {
+    id: "task-jump-index",
+    action: "task.navigate.index",
+    combo: "Ctrl+Digit",
+    payload: { type: "index" },
+    when: { tasksMode: true, commandCenter: false, terminal: false },
+    help: {
+      id: "task-jump-index",
+      section: "tasks",
+      label: "Select task 1–9 in sidebar order",
+      defaultDisplayKeys: ["ctrl", "1-9"],
+    },
+  },
+  {
+    id: "task-new-desk",
+    action: "task.desk.new",
+    combo: "Ctrl+N",
+    repeat: false,
+    when: { tasksMode: true, commandCenter: false },
+    help: { id: "task-new-desk", section: "tasks", label: "New Desk" },
+  },
+  {
+    id: "task-next-desk",
+    action: "task.desk.next",
+    combo: "Shift+Tab",
+    repeat: false,
+    when: { tasksMode: true, commandCenter: false },
+    help: { id: "task-next-desk", section: "tasks", label: "Next Desk" },
+  },
+  {
+    id: "task-draft-project",
+    action: "task.draft.project",
+    combo: "ArrowUp",
+    when: { tasksMode: true, commandCenter: false, focusScope: "message-input" },
+    help: {
+      id: "task-draft-project",
+      section: "tasks",
+      label: "Previous project in an empty new tab",
+    },
+  },
+  {
+    id: "task-draft-project-next",
+    action: "task.draft.project.next",
+    combo: "ArrowDown",
+    when: { tasksMode: true, commandCenter: false, focusScope: "message-input" },
+    help: {
+      id: "task-draft-project-next",
+      section: "tasks",
+      label: "Next project in an empty new tab",
+    },
+  },
+  {
+    id: "task-draft-model",
+    action: "task.draft.model",
+    combo: "ArrowLeft",
+    when: { tasksMode: true, commandCenter: false, focusScope: "message-input" },
+    help: {
+      id: "task-draft-model",
+      section: "tasks",
+      label: "Cycle favorite models in an empty new tab",
+    },
+  },
   // --- Open project ---
   // Open project moved from Cmd+Shift+O to Cmd+O. The binding ids intentionally
   // keep their original "cmd-shift-o" / "ctrl-shift-o" names: user shortcut
@@ -303,7 +385,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-new-cmd-n-mac",
     action: "workspace.new",
     combo: "Cmd+N",
-    when: { mac: true, commandCenter: false },
+    when: { tasksMode: false, mac: true, commandCenter: false },
     help: {
       id: "new-workspace",
       section: "workspaces",
@@ -314,7 +396,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-new-ctrl-n-non-mac",
     action: "workspace.new",
     combo: "Ctrl+N",
-    when: { mac: false, commandCenter: false, terminal: false },
+    when: { tasksMode: false, mac: false, commandCenter: false, terminal: false },
     help: {
       id: "new-workspace",
       section: "workspaces",
@@ -565,7 +647,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-navigate-index-cmd-digit-mac",
     action: "workspace.navigate.index",
     combo: "Cmd+Digit",
-    when: { mac: true, desktop: true, commandCenter: false },
+    when: { tasksMode: false, mac: true, desktop: true, commandCenter: false },
     payload: { type: "index" },
     help: {
       id: "workspace-jump-index",
@@ -578,7 +660,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-navigate-index-ctrl-digit-non-mac",
     action: "workspace.navigate.index",
     combo: "Ctrl+Digit",
-    when: { mac: false, desktop: true, commandCenter: false, terminal: false },
+    when: { tasksMode: false, mac: false, desktop: true, commandCenter: false, terminal: false },
     payload: { type: "index" },
     help: {
       id: "workspace-jump-index",
@@ -591,7 +673,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "workspace-navigate-index-alt-digit-web",
     action: "workspace.navigate.index",
     combo: "Alt+Digit",
-    when: { desktop: false, commandCenter: false },
+    when: { tasksMode: false, desktop: false, commandCenter: false },
     payload: { type: "index" },
     help: {
       id: "workspace-jump-index",
@@ -1161,7 +1243,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     action: "message-input.action",
     combo: "Shift+Tab",
     repeat: false,
-    when: { commandCenter: false, focusScope: "message-input" },
+    when: { tasksMode: false, commandCenter: false, focusScope: "message-input" },
     payload: { type: "message-input", kind: "active-workspace-cycle" },
     help: {
       id: "cycle-active-workspaces",
@@ -1405,6 +1487,7 @@ export function matchesKeyboardShortcutContext(
   context: KeyboardShortcutContext,
 ): boolean {
   if (!when) return true;
+  if (when.tasksMode !== undefined && when.tasksMode !== Boolean(context.tasksMode)) return false;
   if (when.mac !== undefined && when.mac !== context.isMac) return false;
   if (when.desktop !== undefined && when.desktop !== context.isDesktop) return false;
   if (
@@ -1743,12 +1826,13 @@ export function resolveShortcutKeysForAction(
  * the shortcut delivers.
  */
 export function getWorkspaceIndexJumpModifierKey(
-  platform: { isMac: boolean; isDesktop: boolean },
+  platform: { isMac: boolean; isDesktop: boolean; tasksMode?: boolean },
   bindings: readonly ParsedShortcutBinding[] = DEFAULT_BINDINGS,
 ): "Alt" | "Meta" | "Control" | null {
   const binding = bindings.find(function (candidate) {
     return (
-      candidate.action === "workspace.navigate.index" &&
+      candidate.action ===
+        (platform.tasksMode ? "task.navigate.index" : "workspace.navigate.index") &&
       helpMatchesPlatform(candidate.when, platform)
     );
   });

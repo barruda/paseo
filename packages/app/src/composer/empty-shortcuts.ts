@@ -28,6 +28,13 @@ export function previousProjectId(ids: readonly string[], selected: string | nul
   return ids[(index - 1 + ids.length) % ids.length];
 }
 
+export function nextProjectId(ids: readonly string[], selected: string | null): string | null {
+  if (ids.length === 0) return null;
+  const index = selected === null ? -1 : ids.indexOf(selected);
+  if (index < 0) return ids[0];
+  return ids[(index + 1) % ids.length];
+}
+
 export function clearComposerRewindSelection(): void {
   useComposerRewindSelection.setState({ selection: null });
 }
@@ -75,4 +82,23 @@ export function handleEmptyRewindKey({ event, serverId, agentId, items }: Rewind
   }
   event.preventDefault();
   return true;
+}
+
+/** Cycle favorites in picker order, excluding models that are no longer available. */
+export function previousModelSelection(
+  providers: readonly import("@/provider-selection/provider-selection").ProviderSelectorProvider[],
+  provider: string | null,
+  modelId: string | null,
+  favoriteKeys: readonly string[],
+) {
+  const available = providers.flatMap((entry) =>
+    entry.modelSelection.kind === "models" ? entry.modelSelection.rows : [],
+  );
+  const byKey = new Map(available.map((entry) => [entry.favoriteKey, entry]));
+  const models = favoriteKeys.flatMap((key) => byKey.get(key) ?? []);
+  if (!models.length) return null;
+  const current = models.findIndex(
+    (entry) => entry.provider === provider && entry.modelId === modelId,
+  );
+  return models[current < 0 ? models.length - 1 : (current - 1 + models.length) % models.length];
 }

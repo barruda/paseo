@@ -1,3 +1,4 @@
+import { useTaskNavigationStore } from "@/task-navigation/store";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { usePathname, useRouter } from "expo-router";
 import { getIsElectronRuntime } from "@/constants/layout";
@@ -60,6 +61,7 @@ export function useKeyboardShortcuts({
   exitFocusMode: () => void;
   cycleTheme?: () => void;
 }) {
+  const tasksMode = useTaskNavigationStore((s) => s.enabled);
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const pathname = usePathname();
   const router = useRouter();
@@ -87,11 +89,12 @@ export function useKeyboardShortcuts({
               chordState,
               isMac,
               isDesktop: isDesktopApp,
+              tasksMode,
             })
           : { menuPrefixes: [], prefixes: [] };
       void getDesktopHost()?.browser?.setShortcutPolicy?.(policy);
     },
-    [bindings, enabled, isDesktopApp, isMac, shortcutsAvailable],
+    [bindings, enabled, isDesktopApp, isMac, shortcutsAvailable, tasksMode],
   );
 
   useEffect(() => {
@@ -116,7 +119,7 @@ export function useKeyboardShortcuts({
   // rebound the jump shortcut, and no `event.key` ever equals null, so the
   // badges simply never appear.
   const badgeModifierKey = getWorkspaceIndexJumpModifierKey(
-    { isMac, isDesktop: isDesktopApp },
+    { isMac, isDesktop: isDesktopApp, tasksMode },
     bindings,
   );
 
@@ -262,6 +265,7 @@ export function useKeyboardShortcuts({
       context: {
         isMac,
         isDesktop: isDesktopApp,
+        tasksMode: useTaskNavigationStore.getState().enabled,
         focusScope: input.focusScope,
         commandCenterOpen: store.commandCenterOpen,
       },

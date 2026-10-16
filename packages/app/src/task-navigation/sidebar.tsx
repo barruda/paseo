@@ -1,3 +1,5 @@
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import { FlatList, Pressable, Text, View, type ListRenderItemInfo } from "react-native";
@@ -218,6 +220,26 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     },
     [onBeforeNavigate, pathname],
   );
+  const shortcutTasks = useMemo(
+    () => rows.flatMap((row) => (row.kind === "task" ? [row.node] : [])).slice(0, 9),
+    [rows],
+  );
+  const shortcutNumbers = useMemo(
+    () => new Map(shortcutTasks.map((node, index) => [node.key, index + 1])),
+    [shortcutTasks],
+  );
+  useKeyboardActionHandler({
+    handlerId: "task-sidebar-jump",
+    actions: ["task.navigate.index"],
+    enabled: true,
+    priority: 200,
+    handle: (action) => {
+      if (action.id !== "task.navigate.index") return false;
+      const node = shortcutTasks[action.index - 1];
+      if (node) openTask(node);
+      return true;
+    },
+  });
   const toggle = useCallback(
     (key: string) =>
       setCollapsed((current) => {
@@ -239,6 +261,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         <TaskRow
           node={item.node}
           depth={item.depth}
+          shortcutNumber={shortcutNumbers.get(item.key)}
           collapsed={collapsed.has(item.key) && !query && filter === "all" && projectKeys === null}
           selected={selectedAgentKey === item.key}
           onOpen={openTask}
@@ -247,6 +270,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         />
       ),
     [
+      shortcutNumbers,
       collapsed,
       query,
       filter,
@@ -378,6 +402,7 @@ function TaskStateLabel({ state }: { state: TaskNode["state"] }) {
 }
 
 const TaskRow = memo(function TaskRow({
+  shortcutNumber,
   node,
   depth,
   selected,
@@ -387,6 +412,7 @@ const TaskRow = memo(function TaskRow({
   hostLabel,
 }: {
   node: TaskNode;
+  shortcutNumber?: number;
   depth: number;
   selected: boolean;
   collapsed: boolean;
@@ -394,6 +420,7 @@ const TaskRow = memo(function TaskRow({
   onToggle(key: string): void;
   hostLabel?: string;
 }) {
+  const showBadges = useShowShortcutBadges();
   const age = useCompactTimeAgo(node.agent.updatedAt);
   const crossWorkspace = depth > 0;
   const handleOpen = useCallback(() => onOpen(node), [node, onOpen]);
@@ -450,7 +477,13 @@ const TaskRow = memo(function TaskRow({
           >
             {node.agent.title ?? "Untitled agent"}
           </Text>
-          <Text style={styles.age}>{age}</Text>
+          {showBadges && shortcutNumber ? (
+            <Text style={styles.shortcutBadge} testID={`task-shortcut-${shortcutNumber}`}>
+              {shortcutNumber}
+            </Text>
+          ) : (
+            <Text style={styles.age}>{age}</Text>
+          )}
         </View>
         <Text numberOfLines={1} style={styles.metadata}>
           {node.workspace.projectName} · {node.workspace.name}
@@ -520,6 +553,13 @@ const styles = StyleSheet.create((theme) => ({
   taskTop: { flexDirection: "row", alignItems: "flex-start", gap: theme.spacing[2] },
   taskTitle: { flex: 1, color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   contextTitle: { color: theme.colors.foregroundMuted },
+  shortcutBadge: {
+    color: theme.colors.foreground,
+    backgroundColor: theme.colors.surface3,
+    paddingHorizontal: theme.spacing[1],
+    borderRadius: theme.borderRadius.sm,
+    fontSize: theme.fontSize.sm,
+  },
   age: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   metadata: {
     color: theme.colors.foregroundMuted,

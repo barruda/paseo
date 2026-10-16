@@ -7,6 +7,17 @@ import {
 import { buildEffectiveBindings, resolveKeyboardShortcut } from "../../keyboard/keyboard-shortcuts";
 
 describe("buildBrowserKeyboardPolicy", () => {
+  it("intercepts Desk cycling in Tasks mode only", () => {
+    const bindings = buildEffectiveBindings({});
+    const input = { bindings, isMac: false, isDesktop: true };
+    const isDeskCycle = (prefix: { code: string; shift: boolean }) =>
+      prefix.code === "Tab" && prefix.shift;
+    expect(buildBrowserKeyboardPolicy(input).prefixes.some(isDeskCycle)).toBe(false);
+    expect(
+      buildBrowserKeyboardPolicy({ ...input, tasksMode: true }).prefixes.some(isDeskCycle),
+    ).toBe(true);
+  });
+
   it("publishes only chord starts while no browser chord is pending", () => {
     const bindings = buildEffectiveBindings({
       "workspace-tab-new-ctrl-t-non-mac": "Ctrl+Y",

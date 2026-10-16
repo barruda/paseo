@@ -1,3 +1,10 @@
+import { useModelFavoritesStore } from "@/model-picker/favorites-store";
+import {
+  nextProjectId,
+  previousProjectId,
+  previousModelSelection,
+} from "@/composer/empty-shortcuts";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Keyboard, ScrollView, StyleSheet as RNStyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
@@ -648,8 +655,62 @@ export function WorkspaceDraftAgentTab({
     focusInputRef.current?.();
   }, []);
   const importPillPress = resolveImportPillPress(onOpenImportSheet, isSubmitting);
-  // CUSTOM(model-picker-project): Ctrl+M lists the project first; another project opens New Workspace.
-  const modelPickerProject = useDraftTabProjectSource(serverId, workspaceId);
+  // CUSTOM(task-shortcuts): carry the selected configuration to the draft's new source workspace.
+  const projectSetup = useMemo(
+    () =>
+      composerState.selectedProvider
+        ? {
+            provider: composerState.selectedProvider,
+            modeId: composerState.selectedMode || null,
+            model: composerState.effectiveModelId,
+            thinkingOptionId: composerState.effectiveThinkingOptionId,
+            featureValues: composerState.featureValues ?? {},
+          }
+        : undefined,
+    [
+      composerState.selectedProvider,
+      composerState.selectedMode,
+      composerState.effectiveModelId,
+      composerState.effectiveThinkingOptionId,
+      composerState.featureValues,
+    ],
+  );
+  const modelPickerProject = useDraftTabProjectSource(serverId, workspaceId, tabId, projectSetup);
+  // CUSTOM(task-shortcuts): only an untouched prompt yields arrow keys to draft selection.
+  useKeyboardActionHandler({
+    handlerId: `draft-selection:${tabId}`,
+    actions: ["task.draft.project", "task.draft.project.next", "task.draft.model"],
+    enabled: isPaneFocused,
+    priority: 200,
+    handle: (action) => {
+      if (isSubmitting || draftInput.textSource.getSnapshot().length > 0) return false;
+      if (
+        (action.id === "task.draft.project" || action.id === "task.draft.project.next") &&
+        modelPickerProject
+      ) {
+        const cycle = action.id === "task.draft.project" ? previousProjectId : nextProjectId;
+        const next = cycle(
+          modelPickerProject.options.map((option) => option.id),
+          modelPickerProject.selectedId,
+        );
+        if (next === null) return false;
+        modelPickerProject.select(next);
+        return true;
+      }
+      if (action.id === "task.draft.model") {
+        const next = previousModelSelection(
+          composerState.modelSelectorProviders,
+          composerState.selectedProvider,
+          composerState.effectiveModelId,
+          useModelFavoritesStore.getState().favoriteKeys,
+        );
+        if (!next) return false;
+        composerState.setProviderAndModelFromUser(next.provider, next.modelId);
+        return true;
+      }
+      return false;
+    },
+  });
   const composerAgentControls = useMemo(
     () => ({
       ...composerState.agentControls,

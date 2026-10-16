@@ -33,6 +33,7 @@ interface BrowserShortcutPolicyInput {
   chordState?: ChordState;
   isMac: boolean;
   isDesktop: boolean;
+  tasksMode?: boolean;
 }
 
 export function shouldPublishBrowserShortcutPolicy(input: {
@@ -109,7 +110,10 @@ function prefixFromCombo(
   if (combo.shiftedKey) {
     prefix.shiftedKey = combo.shiftedKey;
   }
-  return prefix.meta || prefix.control || prefix.alt ? prefix : null;
+  // CUSTOM(task-shortcuts): allow Desk cycling while an embedded browser has focus.
+  return prefix.meta || prefix.control || prefix.alt || (prefix.shift && prefix.code === "Tab")
+    ? prefix
+    : null;
 }
 
 function isBrowserNativeNavigationPrefix(prefix: BrowserShortcutPrefix, isMac: boolean): boolean {
@@ -150,6 +154,7 @@ function buildBrowserShortcutPrefixes(input: BrowserShortcutPolicyInput): Browse
   const context = {
     isMac: input.isMac,
     isDesktop: input.isDesktop,
+    tasksMode: input.tasksMode,
     focusScope: "browser" as const,
     commandCenterOpen: false,
   };

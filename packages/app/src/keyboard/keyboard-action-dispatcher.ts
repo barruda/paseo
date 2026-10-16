@@ -4,6 +4,12 @@ export type WorkspacePanelTarget = "changes" | "files" | "pull-request";
 export type WorkspacePanelPlacement = "supporting" | "side-pane" | "focused-pane";
 
 export type KeyboardActionId =
+  | "task.navigate.index"
+  | "task.desk.next"
+  | "task.desk.new"
+  | "task.draft.project"
+  | "task.draft.project.next"
+  | "task.draft.model"
   // CUSTOM(voice-exit): independent of the configurable interrupt chord.
   | "message-input.voice-exit"
   | "agent.interrupt"
@@ -65,6 +71,12 @@ export type KeyboardActionId =
   | "workspace.setup.show";
 
 export type KeyboardActionDefinition =
+  | { id: "task.navigate.index"; scope: KeyboardActionScope; index: number }
+  | { id: "task.desk.next"; scope: KeyboardActionScope }
+  | { id: "task.desk.new"; scope: KeyboardActionScope }
+  | { id: "task.draft.project"; scope: KeyboardActionScope }
+  | { id: "task.draft.project.next"; scope: KeyboardActionScope }
+  | { id: "task.draft.model"; scope: KeyboardActionScope }
   | { id: "message-input.voice-exit"; scope: KeyboardActionScope }
   | { id: "agent.interrupt"; scope: KeyboardActionScope }
   | { id: "message-input.focus"; scope: KeyboardActionScope }
