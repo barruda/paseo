@@ -87,8 +87,6 @@ import { SidebarCalloutSlot } from "./sidebar-callout-slot";
 // CUSTOM(task-navigation): keep the existing workspace sidebar as a one-switch fallback.
 import { SidebarNavigationMode } from "@/task-navigation/sidebar";
 import { SidebarWorkspaceList } from "./sidebar-workspace-list";
-// CUSTOM(wake-dictation): keep the desktop-only control above Workspaces.
-import { WakeDictationSidebarToggle } from "@/always-listening/sidebar-toggle";
 
 type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
@@ -821,7 +819,6 @@ function DesktopSidebar({
             <TitlebarDragRegion />
           )}
           <SidebarNavRows style={sidebarHeaderGroupStyle} />
-          <WakeDictationSidebarToggle />
         </View>
 
         {isInitialLoad && !hasActiveHostFilter ? (

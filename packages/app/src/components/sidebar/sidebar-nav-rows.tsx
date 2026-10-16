@@ -1,8 +1,9 @@
 import { router, usePathname } from "expo-router";
-import { CalendarClock, History, Plus, Search } from "lucide-react-native";
-import { memo, useCallback, useMemo, useRef, type ComponentType } from "react";
+import { CalendarClock, ChevronDown, ChevronUp, History, Plus, Search } from "lucide-react-native";
+import { memo, useCallback, useMemo, useRef, useState, type ComponentType } from "react";
 import { useTranslation } from "react-i18next";
 import { View, type StyleProp, type ViewStyle } from "react-native";
+import { WakeDictationSidebarToggle } from "@/always-listening/sidebar-toggle";
 import { SidebarVoiceRow } from "@/voice/sidebar/row";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 // CUSTOM(sidebar-new-workspace-in-list)
@@ -35,42 +36,53 @@ interface SidebarNavRowsProps extends SidebarNavRowProps {
   style?: StyleProp<ViewStyle>;
 }
 
-/**
- * Top-level sidebar navigation, ordered and filtered by the user's
- * `sidebarNavItems` preference. The independent Voice session stays below these items.
- */
+// CUSTOM(sidebar-show-more): keep daily controls fixed and disclose secondary navigation on demand.
 export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps) {
   const { items } = useSidebarNavItems("header");
-  // CUSTOM(sidebar-new-workspace-in-list): New workspace renders in the Workspaces area instead,
-  // through SidebarWorkspacesNewWorkspaceRow.
-  const visibleItems = useMemo(
+  const { t } = useTranslation();
+  const [expanded, setExpanded] = useState(false);
+  const toggleExpanded = useCallback(() => setExpanded((value) => !value), []);
+  const secondaryItems = useMemo(
     () =>
-      items.filter(
-        (item) => item.visible && !(item.kind === "builtin" && item.id === "new-workspace"),
-      ),
+      items.filter((item) => item.visible && (item.kind === "plugin" || item.id === "schedules")),
     [items],
   );
   const groupRef = useRef<View | null>(null);
 
   return (
     <View ref={groupRef} collapsable={false} style={style}>
-      {visibleItems.map((item) => {
-        if (item.kind === "plugin") {
-          return (
-            <PluginSidebarItem
-              key={item.key}
-              group={item.group}
-              section="header"
-              fallbackAnchorRef={groupRef}
-              onBeforeNavigate={onBeforeNavigate}
-            />
-          );
-        }
-        const Row = BUILTIN_ROWS[item.id];
-        return <Row key={item.key} onBeforeNavigate={onBeforeNavigate} />;
-      })}
-      {/* CUSTOM(sidebar-voice): below Accounts/plugin navigation, above Workspaces. */}
+      <SidebarHistoryRow onBeforeNavigate={onBeforeNavigate} />
+      <SidebarSearchRow onBeforeNavigate={onBeforeNavigate} />
       <SidebarVoiceRow />
+      <WakeDictationSidebarToggle />
+      {secondaryItems.length > 0 ? (
+        <SidebarHeaderRow
+          icon={expanded ? ChevronUp : ChevronDown}
+          label={t(
+            expanded ? "sidebar.workspace.actions.showLess" : "sidebar.workspace.actions.showMore",
+          )}
+          onPress={toggleExpanded}
+          variant="compact"
+          testID="sidebar-nav-show-more"
+        />
+      ) : null}
+      {expanded
+        ? secondaryItems.map((item) => {
+            if (item.kind === "plugin") {
+              return (
+                <PluginSidebarItem
+                  key={item.key}
+                  group={item.group}
+                  section="header"
+                  fallbackAnchorRef={groupRef}
+                  onBeforeNavigate={onBeforeNavigate}
+                />
+              );
+            }
+            const Row = BUILTIN_ROWS[item.id];
+            return <Row key={item.key} onBeforeNavigate={onBeforeNavigate} />;
+          })
+        : null}
     </View>
   );
 }
