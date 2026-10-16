@@ -1,3 +1,5 @@
+// CUSTOM(desks): search and external session navigation open references in the current Desk.
+import { openDeskTarget } from "@/task-navigation/open-desk-target";
 // CUSTOM(recent-workspaces): navigation origin controls duplicate row highlighting.
 import { useRecentHighlightStore } from "@/recent-workspaces/highlight";
 import AsyncStorage from "@react-native-async-storage/async-storage";
@@ -40,7 +42,7 @@ function navigateDeps(): NavigateToWorkspaceDeps {
     getSessionAgents: (serverId) =>
       useSessionStore.getState().sessions[serverId]?.agents.values() ?? [],
     isWorkspaceLayoutHydrated: () => useWorkspaceLayoutStore.persist.hasHydrated(),
-    openTab: (input) => useWorkspaceLayoutStore.getState().openTab(input),
+    openTab: (input) => openDeskTarget(input) ?? useWorkspaceLayoutStore.getState().openTab(input),
     rememberLastWorkspace: (selection) => lastWorkspaceSelectionStore.remember(selection),
     navigateToRoute: (route) => {
       navigateToHostWorkspaceRoute(route);

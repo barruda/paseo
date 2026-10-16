@@ -1,3 +1,5 @@
+// CUSTOM(desks): explicit supporting-tab launches honor the current Desk mode.
+import { openDeskTarget } from "@/task-navigation/open-desk-target";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import {
   prepareWorkspaceTab as prepareWorkspaceTabPure,
@@ -16,7 +18,7 @@ function layoutStoreDeps() {
       intent: "reveal";
       pin?: boolean;
       placement?: import("@/stores/workspace-layout-actions").WorkspaceTabPlacement;
-    }) => store.openTab(input),
+    }) => openDeskTarget(input) ?? store.openTab(input),
   };
 }
 

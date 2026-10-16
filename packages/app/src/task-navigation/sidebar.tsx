@@ -1,29 +1,34 @@
+import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
 import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
 import { FlatList, Pressable, Text, View, type ListRenderItemInfo } from "react-native";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import { ChevronDown, ChevronRight, Folder } from "lucide-react-native";
+import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 import { DensityIcon } from "@/components/ui/density-icon";
 import { SearchField } from "@/components/ui/search-field";
-import { SelectField } from "@/components/ui/select-field";
+import { SelectField, SelectFieldTrigger } from "@/components/ui/select-field";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
+import { usePathname } from "expo-router";
+import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import { activeDeskTab, useDesksStore, type TaskSort } from "./desks-store";
+import { useMiddleClick } from "./use-middle-click";
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
-import { SidebarWorkspacesNewWorkspaceRow } from "@/components/sidebar/sidebar-nav-rows";
 import { useCompactTimeAgo } from "@/hooks/use-time-ago";
 import { useSessionStore } from "@/stores/session-store";
-import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
-import {
-  collectAllTabs,
-  findPaneById,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store";
-import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useTaskNavigationStore } from "./store";
 import {
   buildTaskTree,
+  sortTaskTree,
   filterTaskTree,
   flattenTaskTree,
   matchesTaskFilter,
@@ -81,7 +86,13 @@ export function SidebarNavigationMode({
   onBeforeNavigate?: () => void;
 }) {
   const enabled = useTaskNavigationStore((state) => state.enabled);
-  return enabled ? <TaskNavigationSidebar onBeforeNavigate={onBeforeNavigate} /> : children;
+  return enabled ? (
+    <TaskProjectIconsProvider>
+      <TaskNavigationSidebar onBeforeNavigate={onBeforeNavigate} />
+    </TaskProjectIconsProvider>
+  ) : (
+    children
+  );
 }
 
 function rowKey(row: ListRow) {
@@ -94,20 +105,16 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   const agents = useStoreWithEqualityFn(useSessionStore, selectAgents, equal);
   const hosts = useHosts();
   const [query, setQuery] = useState("");
-  const [projectKey, setProjectKey] = useState("");
+  const projectKeys = useDesksStore((s) => s.projectKeys);
+  const sort = useDesksStore((s) => s.sort);
+  const setSort = useDesksStore((s) => s.setSort);
+  const openedAt = useDesksStore((s) => s.openedAt);
+  const pathname = usePathname();
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const setEnabled = useTaskNavigationStore((state) => state.setEnabled);
-  const active = useActiveWorkspaceSelection();
-  const activeKey = active ? taskKey(active.serverId, active.workspaceId) : null;
-  const selectedAgentKey = useWorkspaceLayoutStore((state) => {
-    const layout = activeKey ? state.layoutByWorkspace[activeKey] : null;
-    const pane = layout ? findPaneById(layout.root, layout.focusedPaneId) : null;
-    const target = layout
-      ? collectAllTabs(layout.root).find((tab) => tab.tabId === pane?.focusedTabId)?.target
-      : undefined;
-    return active && target?.kind === "agent" ? taskKey(active.serverId, target.agentId) : null;
-  });
+  const deskTab = useDesksStore(activeDeskTab);
+  const selectedAgentKey =
+    deskTab?.target.kind === "agent" ? taskKey(deskTab.serverId, deskTab.target.agentId) : null;
   const workspaces = useMemo(
     () =>
       [...allWorkspaceEntriesByKey.values()]
@@ -130,15 +137,9 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         .map(([value, label]) => ({ id: value, value, label })),
     [workspaces],
   );
-  // A removed or externally filtered project must not leave an invisible, un-clearable selection.
-  const effectiveProjectKey = projects.some((p) => p.value === projectKey) ? projectKey : "";
-  const projectOptions = useMemo(
-    () => [{ id: "all", value: "", label: "All projects" }, ...projects],
-    [projects],
-  );
   const scopedRoots = useMemo(
-    () => filterTaskTree(roots, { query, projectKey: effectiveProjectKey, filter: "all" }),
-    [roots, query, effectiveProjectKey],
+    () => filterTaskTree(roots, { query, projectKeys, filter: "all" }),
+    [roots, query, projectKeys],
   );
   const counts = useMemo(() => {
     const nodes = flattenTaskTree(scopedRoots)
@@ -148,8 +149,26 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       FILTERS.map((f) => [f.key, nodes.filter((n) => matchesTaskFilter(n.state, f.key)).length]),
     );
   }, [scopedRoots]);
+  const [ordering, setOrdering] = useState(() => ({
+    roots,
+    sort,
+    openedAt,
+    tree: sortTaskTree(roots, sort, openedAt),
+  }));
+  let orderedTree = ordering.tree;
+  if (ordering.roots !== roots || ordering.sort !== sort || ordering.openedAt !== openedAt) {
+    orderedTree = sortTaskTree(roots, sort, openedAt, ordering.sort === sort ? ordering.tree : []);
+    setOrdering({ roots, sort, openedAt, tree: orderedTree });
+  }
   const rows = useMemo(() => {
-    const filtered = filterTaskTree(roots, { query, projectKey: effectiveProjectKey, filter });
+    const filtered = filterTaskTree(orderedTree, { query, projectKeys, filter });
+    if (sort !== "attention")
+      return flattenTaskTree(
+        filtered,
+        query || filter !== "all" || projectKeys !== null ? EMPTY_COLLAPSED : collapsed,
+      ).map(
+        (row): ListRow => ({ kind: "task", key: row.node.key, node: row.node, depth: row.depth }),
+      );
     const result: ListRow[] = [];
     let attentionHeading = false;
     const groups = [
@@ -173,24 +192,31 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       });
       for (const row of flattenTaskTree(
         members,
-        query || filter !== "all" || effectiveProjectKey ? EMPTY_COLLAPSED : collapsed,
+        query || filter !== "all" || projectKeys !== null ? EMPTY_COLLAPSED : collapsed,
       )) {
-        result.push({ kind: "task", key: row.node.key, ...row });
+        result.push({ kind: "task", key: row.node.key, node: row.node, depth: row.depth });
       }
     }
     return result;
-  }, [roots, query, effectiveProjectKey, filter, collapsed]);
+  }, [orderedTree, query, projectKeys, filter, collapsed, sort]);
   const openTask = useCallback(
-    (node: TaskNode) => {
+    (node: TaskNode, pin = false) => {
       onBeforeNavigate?.();
-      navigateToAgent({
-        serverId: node.agent.serverId,
-        agentId: node.agent.id,
-        workspaceId: node.agent.workspaceId,
-        pin: true,
-      });
+      useDesksStore.getState().openTab(
+        {
+          serverId: node.agent.serverId,
+          workspaceId: node.workspace.workspaceId,
+          target: { kind: "agent", agentId: node.agent.id },
+        },
+        pin,
+      );
+      if (!pathname.includes("/workspace/"))
+        navigateToWorkspace({
+          serverId: node.agent.serverId,
+          workspaceId: node.workspace.workspaceId,
+        });
     },
-    [onBeforeNavigate],
+    [onBeforeNavigate, pathname],
   );
   const toggle = useCallback(
     (key: string) =>
@@ -213,7 +239,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         <TaskRow
           node={item.node}
           depth={item.depth}
-          collapsed={collapsed.has(item.key) && !query && filter === "all" && !effectiveProjectKey}
+          collapsed={collapsed.has(item.key) && !query && filter === "all" && projectKeys === null}
           selected={selectedAgentKey === item.key}
           onOpen={openTask}
           onToggle={toggle}
@@ -224,7 +250,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       collapsed,
       query,
       filter,
-      effectiveProjectKey,
+      projectKeys,
       selectedAgentKey,
       openTask,
       toggle,
@@ -232,13 +258,12 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       hostNames,
     ],
   );
-  const browseWorkspaces = useCallback(() => setEnabled(false), [setEnabled]);
   const emptyComponent = useMemo(
     () => (
       <Text style={styles.empty}>
         {isInitialLoad
           ? "Loading tasks…"
-          : "No matching tasks. Try another search or browse workspaces."}
+          : "No matching tasks. Adjust your search or project selection."}
       </Text>
     ),
     [isInitialLoad],
@@ -248,30 +273,30 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       <View style={styles.header}>
         <Text style={styles.title}>Tasks & crews</Text>
       </View>
-      <SidebarWorkspacesNewWorkspaceRow onBeforeNavigate={onBeforeNavigate} />
       <View style={styles.controls}>
-        <View style={styles.search}>
-          <SearchField
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search tasks, workspaces…"
-            clearAccessibilityLabel="Clear task search"
-            testID="task-navigation-search"
-          />
+        <View style={styles.searchRow}>
+          <View style={styles.search}>
+            <SearchField
+              value={query}
+              onChangeText={setQuery}
+              placeholder="Search tasks…"
+              clearAccessibilityLabel="Clear task search"
+              testID="task-navigation-search"
+            />
+          </View>
+          <ProjectPicker projects={projects} selected={projectKeys} />
         </View>
         <SelectField
           field={false}
-          label="Project"
-          value={effectiveProjectKey}
-          selectedDisplay={projectOptions.find((p) => p.value === effectiveProjectKey) ?? null}
-          options={projectOptions}
-          onChange={setProjectKey}
-          placeholder="All projects"
-          emptyText="No projects"
-          searchable
-          searchPlaceholder="Find a project…"
+          label="Sort tasks"
+          placeholder="Sort tasks"
+          emptyText="No sort options"
+          value={sort}
+          selectedDisplay={SORT_OPTIONS.find((s) => s.value === sort) ?? null}
+          options={SORT_OPTIONS}
+          onChange={setSort}
           size="sm"
-          triggerTestID="task-navigation-project"
+          triggerTestID="task-navigation-sort"
         />
         <View style={styles.filters}>
           {FILTERS.map((f) => (
@@ -294,17 +319,6 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         extraData={selectedAgentKey}
         ListEmptyComponent={emptyComponent}
       />
-      <View style={styles.footer}>
-        <Button
-          variant="ghost"
-          size="sm"
-          leftIcon={Folder}
-          onPress={browseWorkspaces}
-          testID="task-navigation-browse-workspaces"
-        >
-          Browse workspaces
-        </Button>
-      </View>
     </View>
   );
 }
@@ -376,13 +390,15 @@ const TaskRow = memo(function TaskRow({
   depth: number;
   selected: boolean;
   collapsed: boolean;
-  onOpen(node: TaskNode): void;
+  onOpen(node: TaskNode, pin?: boolean): void;
   onToggle(key: string): void;
   hostLabel?: string;
 }) {
   const age = useCompactTimeAgo(node.agent.updatedAt);
   const crossWorkspace = depth > 0;
   const handleOpen = useCallback(() => onOpen(node), [node, onOpen]);
+  const pin = useCallback(() => onOpen(node, true), [node, onOpen]);
+  const middleClickRef = useMiddleClick(pin);
   const handleToggle = useCallback(() => onToggle(node.key), [node.key, onToggle]);
   const expandedState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
   const selectedState = useMemo(() => ({ selected }), [selected]);
@@ -413,6 +429,7 @@ const TaskRow = memo(function TaskRow({
         <View style={styles.railSpace} />
       )}
       <Pressable
+        ref={middleClickRef}
         style={buttonStyle}
         onPress={handleOpen}
         accessibilityRole="button"
@@ -423,6 +440,10 @@ const TaskRow = memo(function TaskRow({
       >
         <View style={styles.taskTop}>
           <TaskSignal state={node.state} />
+          <TaskProjectIcon
+            serverId={node.agent.serverId}
+            workspaceId={node.workspace.workspaceId}
+          />
           <Text
             numberOfLines={2}
             style={[styles.taskTitle, node.contextOnly && styles.contextTitle]}
@@ -460,7 +481,8 @@ const styles = StyleSheet.create((theme) => ({
     fontWeight: theme.fontWeight.medium,
   },
   controls: { padding: theme.spacing[2], gap: theme.spacing[2] },
-  search: { flexDirection: "row" },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[1] },
+  search: { flex: 1, minWidth: 0, flexDirection: "row" },
   filters: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing[1] },
   list: { flex: 1, paddingHorizontal: theme.spacing[2] },
   heading: {
@@ -531,3 +553,72 @@ const styles = StyleSheet.create((theme) => ({
     padding: theme.spacing[3],
   },
 }));
+
+const SORT_OPTIONS: { id: TaskSort; value: TaskSort; label: string }[] = [
+  { id: "attention", value: "attention", label: "Attention first" },
+  { id: "activity", value: "activity", label: "Last activity" },
+  { id: "opened", value: "opened", label: "Recently opened" },
+  { id: "title", value: "title", label: "Title A–Z" },
+];
+function ProjectPicker({
+  projects,
+  selected,
+}: {
+  projects: { value: string; label: string }[];
+  selected: string[] | null;
+}) {
+  const all = useCallback(() => useDesksStore.getState().setProjects(null), []);
+  const none = useCallback(() => useDesksStore.getState().setProjects([]), []);
+  const keys = useMemo(() => projects.map((p) => p.value), [projects]);
+  const count =
+    selected === null ? projects.length : projects.filter((p) => selected.includes(p.value)).length;
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger testID="task-navigation-project">
+        <SelectFieldTrigger label={`Projects ${count}`} placeholder="Projects" size="sm" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem onSelect={all} closeOnSelect={false}>
+          Select all
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={none} closeOnSelect={false}>
+          Select none
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        {projects.map((p) => (
+          <ProjectChoice
+            key={p.value}
+            value={p.value}
+            label={p.label}
+            selected={selected === null || selected.includes(p.value)}
+            keys={keys}
+          />
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+function ProjectChoice({
+  value,
+  label,
+  selected,
+  keys,
+}: {
+  value: string;
+  label: string;
+  selected: boolean;
+  keys: string[];
+}) {
+  const toggle = useCallback(() => {
+    const store = useDesksStore.getState();
+    const current = store.projectKeys ?? keys;
+    store.setProjects(
+      current.includes(value) ? current.filter((k) => k !== value) : [...current, value],
+    );
+  }, [value, keys]);
+  return (
+    <DropdownMenuItem selected={selected} showSelectedCheck closeOnSelect={false} onSelect={toggle}>
+      {label}
+    </DropdownMenuItem>
+  );
+}

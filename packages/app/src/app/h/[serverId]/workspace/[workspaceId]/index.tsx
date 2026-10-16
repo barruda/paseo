@@ -1,3 +1,7 @@
+// CUSTOM(desks): Tasks mode renders its own tab host without rewriting workspace layouts.
+import { DeskScreen } from "@/task-navigation/desk-screen";
+import { useTaskNavigationStore } from "@/task-navigation/store";
+import { useDesksStore } from "@/task-navigation/desks-store";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigation } from "@react-navigation/native";
 import { StyleSheet, View } from "react-native";
@@ -94,6 +98,7 @@ export default function HostWorkspaceIndexRoute() {
 }
 
 function HostWorkspaceRouteContent() {
+  const desksEnabled = useTaskNavigationStore((state) => state.enabled);
   const navigation = useNavigation();
   const rootNavigationState = useRootNavigationState();
   const hasHydratedWorkspaceLayoutStore = useWorkspaceLayoutStoreHydrated();
@@ -152,7 +157,11 @@ function HostWorkspaceRouteContent() {
     }
     consumedIntentRef.current = consumptionKey;
 
-    if (openIntent) {
+    if (openIntent && useTaskNavigationStore.getState().enabled) {
+      useDesksStore
+        .getState()
+        .openTab({ serverId, workspaceId, target: getOpenIntentTarget(openIntent) });
+    } else if (openIntent) {
       prepareWorkspaceTab({
         serverId,
         workspaceId,
@@ -190,7 +199,7 @@ function HostWorkspaceRouteContent() {
     return null;
   }
 
-  return <WorkspaceDeck recoveryRequested={isAgentOpenIntent} />;
+  return desksEnabled ? <DeskScreen /> : <WorkspaceDeck recoveryRequested={isAgentOpenIntent} />;
 }
 
 function WorkspaceDeck({ recoveryRequested }: { recoveryRequested: boolean }) {

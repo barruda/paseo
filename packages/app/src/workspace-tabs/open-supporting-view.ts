@@ -1,3 +1,5 @@
+// CUSTOM(desks): supporting views belong in the current Desk while that mode is active.
+import { openDeskTarget } from "@/task-navigation/open-desk-target";
 import {
   collectAllPanes,
   collectAllTabs,
@@ -41,6 +43,11 @@ function openExplorerView(input: WorkspaceViewInput, view: ExplorerSidebarView):
 
 /** Opens the workspace Changes view according to the current layout and diff preference. */
 export function openWorkspaceChanges(input: OpenWorkspaceChangesInput): string | null {
+  const deskTabId = openDeskTarget({
+    workspaceKey: input.workspaceKey,
+    target: { kind: "working_diff" },
+  });
+  if (deskTabId) return deskTabId;
   if (usesCompactExplorerSidebar(input)) {
     openExplorerView(input, "changes");
     return null;
@@ -56,6 +63,11 @@ export function openWorkspaceChanges(input: OpenWorkspaceChangesInput): string |
 
 /** Reveals Changes from the composer, then opens its diff on a subsequent desktop action. */
 export function openComposerChanges(input: OpenWorkspaceChangesInput): string | null {
+  const deskTabId = openDeskTarget({
+    workspaceKey: input.workspaceKey,
+    target: { kind: "working_diff" },
+  });
+  if (deskTabId) return deskTabId;
   if (usesCompactExplorerSidebar(input) || isExplorerSidebarOpen(input)) {
     return openWorkspaceChanges(input);
   }
@@ -65,6 +77,11 @@ export function openComposerChanges(input: OpenWorkspaceChangesInput): string | 
 
 /** Opens the workspace pull request at its semantic destination. */
 export function openWorkspacePullRequest(input: OpenWorkspacePullRequestInput): string | null {
+  const deskTabId = openDeskTarget({
+    workspaceKey: input.workspaceKey,
+    target: { kind: "pull_request" },
+  });
+  if (deskTabId) return deskTabId;
   if (usesCompactExplorerSidebar(input) || input.destination === "explorer") {
     openExplorerView(input, "pr");
     return null;

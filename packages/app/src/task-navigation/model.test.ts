@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  deskTabLabel,
   buildTaskTree,
   filterTaskTree,
   flattenTaskTree,
   taskKey,
+  sortTaskTree,
   type TaskAgent,
   type TaskWorkspace,
 } from "./model";
@@ -191,4 +193,109 @@ describe("task navigation", () => {
     });
     expect(tree.map((n) => n.state)).toEqual(["failed", "closed"]);
   });
+});
+
+it("supports multiple selected projects and an explicitly empty selection", () => {
+  const roots = buildTaskTree({
+    workspaces,
+    agents: [agent("a"), agent("b", { workspaceId: "two" })],
+  });
+  expect(filterTaskTree(roots, { query: "", projectKeys: [], filter: "all" })).toEqual([]);
+  expect(
+    filterTaskTree(roots, { query: "", projectKeys: ["paseo", "unity"], filter: "all" }).map(
+      childKey,
+    ),
+  ).toEqual(["home:a", "home:b"]);
+  expect(
+    filterTaskTree(roots, { query: "", projectKeys: ["unity"], filter: "all" }).map(childKey),
+  ).toEqual(["home:b"]);
+});
+it("sorts by activity, recent opens, or title without breaking parent relationships", () => {
+  const roots = buildTaskTree({
+    workspaces,
+    agents: [
+      agent("z"),
+      agent("a", { updatedAt: new Date("2026-10-16") }),
+      agent("child", { parentAgentId: "z", workspaceId: "two" }),
+    ],
+  });
+  expect(sortTaskTree(roots, "activity", {}).map(childKey)).toEqual(["home:a", "home:z"]);
+  expect(sortTaskTree(roots, "opened", { "home:z": 60_000 }).map(childKey)).toEqual([
+    "home:z",
+    "home:a",
+  ]);
+  expect(sortTaskTree(roots, "title", {}).map(childKey)).toEqual(["home:a", "home:z"]);
+  expect(sortTaskTree(roots, "opened", { "home:z": 60_000 })[0]?.children.map(childKey)).toEqual([
+    "home:child",
+  ]);
+});
+
+it("keeps activity order below a minute and moves at the exact threshold", () => {
+  const tree = (a: number, b: number) =>
+    buildTaskTree({
+      workspaces,
+      agents: [agent("a", { updatedAt: new Date(a) }), agent("b", { updatedAt: new Date(b) })],
+    });
+  for (const sort of ["activity", "attention"] as const) {
+    const initial = sortTaskTree(tree(59_000, 0), sort, {});
+    const nearby = sortTaskTree(tree(59_000, 118_999), sort, {}, initial);
+    expect(nearby.map(childKey)).toEqual(["home:a", "home:b"]);
+    const moved = sortTaskTree(tree(59_000, 119_000), sort, {}, nearby);
+    expect(moved.map(childKey)).toEqual(["home:b", "home:a"]);
+    expect(sortTaskTree(tree(120_000, 119_000), sort, {}, moved).map(childKey)).toEqual([
+      "home:b",
+      "home:a",
+    ]);
+  }
+});
+it("stabilizes recent opens and nested siblings while retaining attention groups", () => {
+  const roots = buildTaskTree({ workspaces, agents: [agent("a"), agent("b")] });
+  const initial = sortTaskTree(roots, "opened", { "home:b": 60_000 });
+  expect(
+    sortTaskTree(roots, "opened", { "home:a": 119_999, "home:b": 60_000 }, initial).map(childKey),
+  ).toEqual(["home:b", "home:a"]);
+  const nested = (time: number) =>
+    buildTaskTree({
+      workspaces,
+      agents: [
+        agent("parent"),
+        agent("a", { parentAgentId: "parent", updatedAt: new Date(0) }),
+        agent("b", { parentAgentId: "parent", updatedAt: new Date(time) }),
+      ],
+    });
+  const before = sortTaskTree(nested(0), "activity", {});
+  expect(sortTaskTree(nested(59_999), "activity", {}, before)[0]?.children.map(childKey)).toEqual([
+    "home:a",
+    "home:b",
+  ]);
+  expect(sortTaskTree(nested(60_000), "activity", {}, before)[0]?.children.map(childKey)).toEqual([
+    "home:b",
+    "home:a",
+  ]);
+  const attention = buildTaskTree({
+    workspaces,
+    agents: [agent("a"), agent("b", { pendingPermissionCount: 1 })],
+  });
+  expect(sortTaskTree(attention, "attention", {}, roots).map(childKey)).toEqual([
+    "home:b",
+    "home:a",
+  ]);
+});
+it("limits Desk labels to 15 characters including ellipsis and removes line breaks", () => {
+  expect(deskTabLabel("123456789012345")).toBe("123456789012345");
+  expect(deskTabLabel("1234567890123456")).toBe("12345678901234…");
+  expect(deskTabLabel("hello\nworld")).toBe("hello world");
+  expect(Array.from(deskTabLabel("😀".repeat(16)))).toHaveLength(15);
+});
+
+it("does not jump across a near-simultaneous neighbor to reach an older task", () => {
+  const roots = buildTaskTree({
+    workspaces,
+    agents: [
+      agent("a", { updatedAt: new Date(0) }),
+      agent("b", { updatedAt: new Date(40_000) }),
+      agent("c", { updatedAt: new Date(80_000) }),
+    ],
+  });
+  expect(sortTaskTree(roots, "activity", {}).map(childKey)).toEqual(["home:a", "home:b", "home:c"]);
 });

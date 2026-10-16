@@ -1,3 +1,5 @@
+// CUSTOM(desks): shortcut hints describe the active navigation mode.
+import { useTaskNavigationStore } from "@/task-navigation/store";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -29,6 +31,7 @@ export const HEADER_SHORTCUTS: readonly { id: string; label: string }[] = [
  * Each shows its current binding, overrides included; one with no binding is left out.
  */
 export function HeaderShortcutsStrip({ layoutKey }: { layoutKey: string | null }) {
+  const desks = useTaskNavigationStore((s) => s.enabled);
   const compact = useIsCompactFormFactor();
   const available = useKeyboardShortcutsAvailable();
   const widths = useHeaderWidths(layoutKey);
@@ -37,8 +40,17 @@ export function HeaderShortcutsStrip({ layoutKey }: { layoutKey: string | null }
 
   const platform = { isMac: getShortcutOs() === "mac", isDesktop: getIsElectronRuntime() };
   const entries = HEADER_SHORTCUTS.flatMap((entry) => {
+    if (desks && entry.id === "toggle-bottom-panel") return [];
     const keys = resolveShortcutKeysForAction(entry.id, overrides, platform);
-    return keys ? [{ ...entry, keys }] : [];
+    return keys
+      ? [
+          {
+            ...entry,
+            label: desks && entry.id === "cycle-active-workspaces" ? "Next Desk" : entry.label,
+            keys,
+          },
+        ]
+      : [];
   });
   const count = countFittingShortcuts({
     headerWidth: widths.header,
