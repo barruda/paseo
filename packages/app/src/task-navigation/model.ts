@@ -85,6 +85,8 @@ function compareNodes(a: TaskNode, b: TaskNode): number {
 export function buildTaskTree(input: {
   agents: readonly TaskAgent[];
   workspaces: readonly TaskWorkspace[];
+  /** Shown state per task key; tasks missing from it use their live state. */
+  states?: ReadonlyMap<string, TaskState>;
 }): TaskNode[] {
   const workspaces = new Map(input.workspaces.map((w) => [taskKey(w.serverId, w.workspaceId), w]));
   const nodes = new Map<string, TaskNode>();
@@ -94,7 +96,7 @@ export function buildTaskTree(input: {
       : undefined;
     if (!workspace) continue;
     const key = taskKey(agent.serverId, agent.id);
-    const state = taskState(agent);
+    const state = input.states?.get(key) ?? taskState(agent);
     nodes.set(key, {
       key,
       agent,
@@ -286,4 +288,48 @@ export function markableUnreadTaskKeys(agents: readonly TaskAgent[]): Set<string
       newest.set(workspace, agent);
   }
   return new Set([...newest.values()].map((agent) => taskKey(agent.serverId, agent.id)));
+}
+
+// CUSTOM(task-state-settle): turns open and close many times a second during tool calls, so a
+// row would jump between sections. A new state shows once it has held for SETTLE_TASK_STATE_MS;
+// a new task and a request for the user (needs you, failed) show at once.
+export const SETTLE_TASK_STATE_MS = 1000;
+export interface TaskStateSettling {
+  shown: ReadonlyMap<string, TaskState>;
+  pending: ReadonlyMap<string, { state: TaskState; since: number }>;
+}
+export const EMPTY_TASK_STATE_SETTLING: TaskStateSettling = {
+  shown: new Map(),
+  pending: new Map(),
+};
+
+/** Advances `previous` to the live states at `now`; `wakeAt` is when a pending state settles. */
+export function settleTaskStates(
+  previous: TaskStateSettling,
+  live: ReadonlyMap<string, TaskState>,
+  now: number,
+  delayMs: number = SETTLE_TASK_STATE_MS,
+): { settling: TaskStateSettling; wakeAt: number | null } {
+  const shown = new Map<string, TaskState>();
+  const pending = new Map<string, { state: TaskState; since: number }>();
+  let wakeAt: number | null = null;
+  let changed = live.size !== previous.shown.size;
+  for (const [key, state] of live) {
+    const current = previous.shown.get(key);
+    const waiting = previous.pending.get(key);
+    let next = current;
+    if (current === undefined || state === "needs-you" || state === "failed") next = state;
+    else if (state !== current) {
+      const since = waiting?.state === state ? waiting.since : now;
+      if (now - since >= delayMs) next = state;
+      else {
+        pending.set(key, { state, since });
+        wakeAt = Math.min(wakeAt ?? Infinity, since + delayMs);
+      }
+    }
+    shown.set(key, next!);
+    if (next !== current) changed = true;
+  }
+  // Keep the shown map's identity when nothing visible changed, so the tree is not rebuilt.
+  return { settling: { shown: changed ? shown : previous.shown, pending }, wakeAt };
 }

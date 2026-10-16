@@ -4,10 +4,13 @@ import {
   filterTaskTree,
   flattenTaskTree,
   limitIdleTasks,
+  EMPTY_TASK_STATE_SETTLING,
+  settleTaskStates,
   markableUnreadTaskKeys,
   taskKey,
   sortTaskTree,
   type TaskAgent,
+  type TaskState,
   type TaskWorkspace,
 } from "./model";
 
@@ -348,5 +351,52 @@ describe("markable unread tasks", () => {
       }),
     ]);
     expect([...keys].sort()).toEqual([taskKey("home", "newer"), taskKey("home", "other")]);
+  });
+});
+
+describe("task state settling", () => {
+  const live = (state: TaskState) => new Map([["home:a", state]]);
+
+  it("shows a new task at once and holds a change until it lasts a second", () => {
+    let step = settleTaskStates(EMPTY_TASK_STATE_SETTLING, live("working"), 0, 1000);
+    expect(step.settling.shown.get("home:a")).toBe("working");
+    step = settleTaskStates(step.settling, live("review"), 100, 1000);
+    expect(step.settling.shown.get("home:a")).toBe("working");
+    expect(step.wakeAt).toBe(1100);
+    step = settleTaskStates(step.settling, live("review"), 1100, 1000);
+    expect(step.settling.shown.get("home:a")).toBe("review");
+    expect(step.wakeAt).toBeNull();
+  });
+
+  it("ignores a flip that reverts within the second", () => {
+    let step = settleTaskStates(EMPTY_TASK_STATE_SETTLING, live("working"), 0, 1000);
+    step = settleTaskStates(step.settling, live("idle"), 100, 1000);
+    const shown = step.settling.shown;
+    step = settleTaskStates(step.settling, live("working"), 400, 1000);
+    expect(step.settling.shown).toBe(shown);
+    expect(step.settling.pending.size).toBe(0);
+    expect(step.wakeAt).toBeNull();
+  });
+
+  it("restarts the wait when the pending state changes", () => {
+    let step = settleTaskStates(EMPTY_TASK_STATE_SETTLING, live("working"), 0, 1000);
+    step = settleTaskStates(step.settling, live("idle"), 100, 1000);
+    step = settleTaskStates(step.settling, live("review"), 600, 1000);
+    expect(step.wakeAt).toBe(1600);
+  });
+
+  it("shows a request for the user at once", () => {
+    let step = settleTaskStates(EMPTY_TASK_STATE_SETTLING, live("working"), 0, 1000);
+    step = settleTaskStates(step.settling, live("needs-you"), 100, 1000);
+    expect(step.settling.shown.get("home:a")).toBe("needs-you");
+  });
+
+  it("builds the tree from the shown states", () => {
+    const [node] = buildTaskTree({
+      agents: [agent("a", { running: false })],
+      workspaces,
+      states: live("working"),
+    });
+    expect(node?.state).toBe("working");
   });
 });

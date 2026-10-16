@@ -1613,3 +1613,20 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Verify:** `history-content-index.test.ts`, `agent-history-search.test.ts` (server) and
   `search/history-query.test.ts` (protocol) are registered in the update script. By hand: search
   History for a word only said in a conversation, then for `"at once"` and `"at once" -qa`.
+
+## task-state-settle: Tasks sidebar states hold for a second before changing
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: Tasks sidebar settles task states for a second`
+- **Why:** An agent's turn opens and closes many times a second during tool calls, so its row
+  jumped between "In progress" and the Idle or review groups and its signal flickered.
+- **What:** Each task's shown state changes only after the new live state has held for 1 s
+  (`SETTLE_TASK_STATE_MS`). A flip that reverts within the second never shows. A task seen for the
+  first time, and a change to Needs you or Failed, show at once. Sections, counts, filters, the
+  row signal and label all read the shown state.
+- **Files:** `settleTaskStates` in `task-navigation/model.ts` and the timer hook
+  `task-navigation/use-settled-task-states.ts`; `sidebar.tsx` passes the shown states to
+  `buildTaskTree` through its optional `states`. New code; no core files touched.
+- **Re-apply:** Call `useSettledTaskStates(agents)` in `TaskNavigationSidebar` and pass the result
+  as `states` to `buildTaskTree`.
+- **Verify:** `model.test.ts` covers settling and is already registered in the update script.
