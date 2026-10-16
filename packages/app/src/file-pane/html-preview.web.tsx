@@ -1,3 +1,4 @@
+import { PREVIEW_HTML_LINK_SCRIPT, parsePreviewHtmlLink } from "./html-preview-navigation";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { withPreviewCsp } from "./html-preview-csp";
@@ -35,23 +36,28 @@ export function FileHtmlPreview({
   html,
   testID,
   loadAsset,
+  onOpenHtmlLink,
 }: {
   html: string;
   testID?: string;
   loadAsset?: PreviewAssetLoader;
+  onOpenHtmlLink?: (url: string) => void;
 }) {
   const { t } = useTranslation();
   const frameRef = useRef<HTMLIFrameElement>(null);
   // CUSTOM(html-preview-assets): serve the page's sibling images through the bridge.
   const hasAssets = Boolean(loadAsset);
+  const hasHtmlLinks = Boolean(onOpenHtmlLink);
   const document = useMemo(
     () =>
       withPreviewCsp(
         html,
         // CUSTOM(html-preview-keys): forward shortcuts typed in the frame.
-        PREVIEW_KEY_BRIDGE_SCRIPT + (hasAssets ? PREVIEW_ASSET_BRIDGE_SCRIPT : ""),
+        PREVIEW_KEY_BRIDGE_SCRIPT +
+          (hasHtmlLinks ? PREVIEW_HTML_LINK_SCRIPT : "") +
+          (hasAssets ? PREVIEW_ASSET_BRIDGE_SCRIPT : ""),
       ),
-    [html, hasAssets],
+    [html, hasAssets, hasHtmlLinks],
   );
   useEffect(() => {
     if (!loadAsset) return;
@@ -79,6 +85,16 @@ export function FileHtmlPreview({
     window.addEventListener("message", receive);
     return () => window.removeEventListener("message", receive);
   }, []);
+  useEffect(() => {
+    if (!onOpenHtmlLink) return;
+    function receive(event: MessageEvent) {
+      if (event.source !== frameRef.current?.contentWindow) return;
+      const url = parsePreviewHtmlLink(event.data);
+      if (url) onOpenHtmlLink?.(url);
+    }
+    window.addEventListener("message", receive);
+    return () => window.removeEventListener("message", receive);
+  }, [onOpenHtmlLink]);
   return (
     <iframe
       ref={frameRef}
