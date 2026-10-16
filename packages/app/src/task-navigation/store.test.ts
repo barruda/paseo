@@ -127,6 +127,26 @@ describe("Desks", () => {
     store.selectDesk(primary.id);
     expect(tabs()).toEqual(deskTabs(primary));
   });
+  it("moves a tab into another Desk as a kept tab without switching Desks", () => {
+    const store = useDesksStore.getState();
+    store.createDesk("Later");
+    const later = desk().id;
+    store.selectDesk("primary");
+    store.openTab(firstTab, true);
+    store.openTab(secondTab);
+    const moving = current()!;
+    store.moveTabToDesk(moving.id, later);
+    expect(desk().id).toBe("primary");
+    expect(tabs().map((tab) => tab.target)).toEqual([firstTab.target]);
+    store.selectDesk(later);
+    expect(tabs()).toHaveLength(1);
+    expect(tabs()[0]).toMatchObject({
+      serverId: secondTab.serverId,
+      workspaceId: secondTab.workspaceId,
+      target: secondTab.target,
+    });
+    expect(desk().previewTabId).toBeNull();
+  });
   it("qualifies targets by host and keeps explicit empty project selection across reload", async () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);
