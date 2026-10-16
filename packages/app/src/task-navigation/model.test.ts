@@ -3,6 +3,8 @@ import {
   buildTaskTree,
   filterTaskTree,
   flattenTaskTree,
+  limitIdleTasks,
+  markableUnreadTaskKeys,
   taskKey,
   sortTaskTree,
   type TaskAgent,
@@ -290,4 +292,61 @@ it("does not jump across a near-simultaneous neighbor to reach an older task", (
     ],
   });
   expect(sortTaskTree(roots, "activity", {}).map(childKey)).toEqual(["home:a", "home:b", "home:c"]);
+});
+
+describe("idle task limit", () => {
+  const now = new Date("2026-10-16T12:00:00Z").getTime();
+  const hoursAgo = (hours: number) => new Date(now - hours * 60 * 60 * 1000);
+
+  it("shows the five newest idle tasks from the last day, keeping their order", () => {
+    const roots = buildTaskTree({
+      workspaces,
+      agents: [
+        ...["a", "b", "c", "d", "e", "f"].map((id, index) =>
+          agent(id, { updatedAt: hoursAgo(index + 1) }),
+        ),
+        agent("old", { updatedAt: hoursAgo(30) }),
+      ],
+    });
+    const { visible, hiddenCount } = limitIdleTasks(roots, { now });
+    expect(visible.map((node) => node.agent.id)).toEqual(["a", "b", "c", "d", "e"]);
+    expect(hiddenCount).toBe(2);
+  });
+
+  it("always shows the crew holding the selected task without spending the limit", () => {
+    const roots = buildTaskTree({
+      workspaces,
+      agents: [
+        agent("recent", { updatedAt: hoursAgo(1) }),
+        agent("old-parent", { updatedAt: hoursAgo(40) }),
+        agent("old-child", { updatedAt: hoursAgo(40), parentAgentId: "old-parent" }),
+      ],
+    });
+    const { visible, hiddenCount } = limitIdleTasks(roots, {
+      now,
+      maxCount: 1,
+      keepKey: taskKey("home", "old-child"),
+    });
+    expect(visible.map((node) => node.agent.id).sort()).toEqual(["old-parent", "recent"]);
+    expect(hiddenCount).toBe(0);
+  });
+});
+
+describe("markable unread tasks", () => {
+  it("offers only each workspace's newest finished root agent", () => {
+    const keys = markableUnreadTaskKeys([
+      agent("older", { updatedAt: new Date("2026-10-15T10:00:00Z") }),
+      agent("newer", { updatedAt: new Date("2026-10-15T11:00:00Z") }),
+      agent("child", { updatedAt: new Date("2026-10-15T13:00:00Z"), parentAgentId: "newer" }),
+      agent("busy", { updatedAt: new Date("2026-10-15T14:00:00Z"), running: true }),
+      agent("other", { workspaceId: "two" }),
+      agent("unread", {
+        workspaceId: "two",
+        updatedAt: new Date("2026-10-15T15:00:00Z"),
+        requiresAttention: true,
+        attentionReason: "finished",
+      }),
+    ]);
+    expect([...keys].sort()).toEqual([taskKey("home", "newer"), taskKey("home", "other")]);
+  });
 });

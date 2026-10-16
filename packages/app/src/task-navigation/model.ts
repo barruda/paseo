@@ -2,7 +2,7 @@
 import type { Agent } from "@/stores/session-store";
 
 export type TaskState = "needs-you" | "failed" | "review" | "working" | "idle" | "closed";
-export type TaskFilter = "all" | "needs-you" | "review" | "working" | "idle";
+export type TaskFilter = "all" | "needs-you" | "review" | "working" | "idle" | "archived";
 export interface TaskAgent {
   serverId: string;
   id: string;
@@ -68,6 +68,8 @@ export function taskState(agent: TaskAgent): TaskState {
 }
 export function matchesTaskFilter(state: TaskState, filter: TaskFilter): boolean {
   if (filter === "all") return true;
+  // Archived sessions are a separate list; no live task matches it.
+  if (filter === "archived") return false;
   if (filter === "needs-you") return state === "needs-you" || state === "failed";
   if (filter === "idle") return state === "idle" || state === "closed";
   return state === filter;
@@ -237,4 +239,51 @@ export function sortTaskTree(
     result.splice(index, 0, node);
   }
   return result;
+}
+
+// CUSTOM(task-idle-limit): the Idle group shows its newest few from the last day, like the
+// workspace sidebar's per-project limit.
+export const IDLE_TASK_LIMIT = { maxCount: 5, maxAgeMs: 24 * 60 * 60 * 1000 };
+
+function containsTask(node: TaskNode, key: string): boolean {
+  return node.key === key || node.children.some((child) => containsTask(child, key));
+}
+
+/**
+ * Keeps an idle root when it is younger than `maxAgeMs` and among the `maxCount` newest. The
+ * crew holding the selected task always shows and does not count toward the limit. Order is kept.
+ */
+export function limitIdleTasks(
+  nodes: readonly TaskNode[],
+  input: { now: number; keepKey?: string | null; maxCount?: number; maxAgeMs?: number },
+): { visible: TaskNode[]; hiddenCount: number } {
+  const maxCount = input.maxCount ?? IDLE_TASK_LIMIT.maxCount;
+  const maxAgeMs = input.maxAgeMs ?? IDLE_TASK_LIMIT.maxAgeMs;
+  const kept = new Set(
+    input.keepKey ? nodes.filter((node) => containsTask(node, input.keepKey!)) : [],
+  );
+  const newest = new Set(
+    nodes
+      .filter((node) => !kept.has(node) && input.now - node.agent.updatedAt.getTime() < maxAgeMs)
+      .sort((a, b) => b.agent.updatedAt.getTime() - a.agent.updatedAt.getTime())
+      .slice(0, maxCount),
+  );
+  const visible = nodes.filter((node) => kept.has(node) || newest.has(node));
+  return { visible, hiddenCount: nodes.length - visible.length };
+}
+
+// CUSTOM(task-context-menu): the daemon marks a workspace's newest finished root agent unread,
+// so only that task offers "Mark as unread".
+export function markableUnreadTaskKeys(agents: readonly TaskAgent[]): Set<string> {
+  const newest = new Map<string, TaskAgent>();
+  for (const agent of agents) {
+    if (!agent.workspaceId || agent.parentAgentId) continue;
+    if (agent.requiresAttention || agent.pendingPermissionCount > 0) continue;
+    if (agent.running || (agent.status !== "idle" && agent.status !== "closed")) continue;
+    const workspace = taskKey(agent.serverId, agent.workspaceId);
+    const current = newest.get(workspace);
+    if (!current || agent.updatedAt.getTime() > current.updatedAt.getTime())
+      newest.set(workspace, agent);
+  }
+  return new Set([...newest.values()].map((agent) => taskKey(agent.serverId, agent.id)));
 }

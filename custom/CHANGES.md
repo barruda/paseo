@@ -1531,3 +1531,37 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Verify:** `store.test.ts` covers `moveTabToDesk`. The second test in desktop
   `e2e/task-navigation.spec.ts` checks the split buttons, the archive button, Ctrl+Shift+T and
   moving a tab between Desks. Both are already registered in the update script.
+
+## task-sidebar-actions: idle limit, row menu and archived sessions in the Tasks sidebar
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: Tasks sidebar idle limit, row menu and archived list`
+- **Why:** Old idle sessions buried the rest of the Tasks sidebar, task rows had none of the
+  workspace row's everyday actions, and archived sessions could only be found in History.
+- **What:**
+  - Idle limit: under **Attention first**, the Idle group shows a task only if it changed in the
+    last 24 hours and is among the 5 newest; a "Show N more" / "Show less" row (the workspace
+    sidebar's toggle) reveals the rest. The crew holding the selected task is never hidden and does
+    not count. Searching or choosing the Idle filter shows every idle task. Ctrl+1..9 number only
+    visible rows.
+  - Row menu: right-clicking a task opens the workspace row's context menu for its workspace:
+    Copy path, Copy branch name (git), **Rename session**, Mark as read/unread, Labels, Open in file
+    manager and **Archive session**. Rename and archive act on the agent. Mark as unread appears only
+    on the workspace's newest finished root agent, because that is the one the daemon marks.
+    Pin to top is left out: tasks have no pinned order.
+  - Archived: an **Archived** filter loads archived sessions from agent history (all hosts, paged,
+    with Load more) plus sessions archived in this app session. Search and project selection apply.
+    Clicking one opens it in the Desk, where the archived callout offers Unarchive. The count shows
+    once loaded. Sessions whose workspace is archived or hidden are not listed.
+- **Files:** `task-navigation/task-row-menu.tsx` (actions and rename modal),
+  `task-navigation/use-archived-tasks.ts`, `limitIdleTasks` and `markableUnreadTaskKeys` in
+  `task-navigation/model.ts`, rows in `task-navigation/sidebar.tsx`.
+- **Core files touched:** `components/sidebar/sidebar-workspace-menu.tsx` gains an optional
+  `renameLabel`.
+- **Re-apply:** Wrap the task row's open button in `SidebarWorkspaceContextMenu` with the row's
+  workspace entry, passing the middle-click ref as `triggerRef`. Keep one sidebar-level actions
+  object and rename modal so rows stay memoized. Apply `limitIdleTasks` only to the attention
+  sort's idle group, before flattening. Fetch history only while the Archived filter is selected.
+- **Verify:** `model.test.ts` covers the idle limit and markable-unread rule. The second test in
+  desktop `e2e/task-navigation.spec.ts` covers the row menu, Rename session, and the Archived
+  filter after archiving. Both are already registered in the update script.

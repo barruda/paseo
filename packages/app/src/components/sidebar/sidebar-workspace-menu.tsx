@@ -89,6 +89,8 @@ export interface SidebarWorkspaceMenuProps {
   onCopyPath?: () => void;
   onCopyBranchName?: () => void;
   onRename?: () => void;
+  // CUSTOM(task-context-menu): Tasks rows rename the session, not the workspace.
+  renameLabel?: string;
   onMarkAsRead?: () => void;
   onMarkAsUnread?: () => void;
   onArchive: () => void;
@@ -137,6 +139,7 @@ function SidebarWorkspaceMenuItems({
   onCopyPath,
   onCopyBranchName,
   onRename,
+  renameLabel,
   onMarkAsRead,
   onMarkAsUnread,
   onArchive,
@@ -187,7 +190,7 @@ function SidebarWorkspaceMenuItems({
           leading={renameLeadingIcon}
           onSelect={onRename}
         >
-          {t("sidebar.workspace.actions.rename")}
+          {renameLabel ?? t("sidebar.workspace.actions.rename")}
         </WorkspaceMenuItem>
       ) : null}
       {onMarkAsRead ? (
@@ -380,6 +383,7 @@ export function SidebarWorkspaceContextMenu({
   onCopyPath,
   onCopyBranchName,
   onRename,
+  renameLabel,
   onMarkAsRead,
   onMarkAsUnread,
   onArchive,
@@ -461,6 +465,7 @@ export function SidebarWorkspaceContextMenu({
           onCopyPath={onCopyPath}
           onCopyBranchName={onCopyBranchName}
           onRename={onRename}
+          renameLabel={renameLabel}
           onMarkAsRead={onMarkAsRead}
           onMarkAsUnread={onMarkAsUnread}
           onArchive={onArchive}
