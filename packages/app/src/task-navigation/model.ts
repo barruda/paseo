@@ -146,11 +146,17 @@ export function buildTaskTree(input: {
 /** Keep the ancestor path to a match; a matching parent keeps its cross-workspace descendants. */
 export function filterTaskTree(
   roots: readonly TaskNode[],
-  input: { query: string; projectKey: string; filter: TaskFilter },
+  input: {
+    query: string;
+    projectKey?: string;
+    projectKeys?: readonly string[] | null;
+    filter: TaskFilter;
+  },
 ): TaskNode[] {
   const query = input.query.trim().toLocaleLowerCase();
   const visit = (node: TaskNode, inheritedMatch: boolean): TaskNode | null => {
     const ownScopeMatch =
+      (input.projectKeys == null || input.projectKeys.includes(node.workspace.projectKey)) &&
       (!input.projectKey || node.workspace.projectKey === input.projectKey) &&
       (!query ||
         [
@@ -193,4 +199,47 @@ export function flattenTaskTree(
   };
   for (const root of roots) visit(root, 0);
   return rows;
+}
+
+/** Preserve near-simultaneous activity order; insertion avoids a non-transitive sort comparator. */
+export function sortTaskTree(
+  roots: readonly TaskNode[],
+  sort: "attention" | "activity" | "opened" | "title",
+  openedAt: Readonly<Record<string, number>>,
+  previous: readonly TaskNode[] = [],
+): TaskNode[] {
+  const previousByKey = new Map(previous.map((node) => [node.key, node]));
+  const rank = new Map(previous.map((node, index) => [node.key, index]));
+  const nodes = roots.map((node) => ({
+    ...node,
+    children: sortTaskTree(node.children, sort, openedAt, previousByKey.get(node.key)?.children),
+  }));
+  if (sort === "title")
+    return nodes.sort(
+      (a, b) =>
+        (a.agent.title ?? "").localeCompare(b.agent.title ?? "") || a.key.localeCompare(b.key),
+    );
+  nodes.sort(
+    (a, b) =>
+      (rank.get(a.key) ?? Infinity) - (rank.get(b.key) ?? Infinity) || a.key.localeCompare(b.key),
+  );
+  const timestamp = (node: TaskNode) =>
+    sort === "opened" ? (openedAt[node.key] ?? 0) : node.agent.updatedAt.getTime();
+  const precedes = (a: TaskNode, b: TaskNode) => {
+    if (sort === "attention" && a.crewState !== b.crewState)
+      return TASK_STATE_ORDER.indexOf(a.crewState) < TASK_STATE_ORDER.indexOf(b.crewState);
+    return timestamp(a) - timestamp(b) >= 60_000;
+  };
+  const result: TaskNode[] = [];
+  for (const node of nodes) {
+    let index = result.length;
+    while (index > 0 && precedes(node, result[index - 1]!)) index -= 1;
+    result.splice(index, 0, node);
+  }
+  return result;
+}
+
+export function deskTabLabel(label: string): string {
+  const characters = Array.from(label.replace(/\s+/g, " ").trim());
+  return characters.length > 15 ? `${characters.slice(0, 14).join("")}…` : characters.join("");
 }

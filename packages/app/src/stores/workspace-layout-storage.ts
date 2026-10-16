@@ -9,7 +9,8 @@ const WorkspaceDraftTabSetupStorageSchema = z.strictObject({
   thinkingOptionId: z.string().nullable(),
   featureValues: z.record(z.string(), z.union([z.boolean(), z.string(), z.null()])),
 });
-const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
+// CUSTOM(desks): validate Desk references with the same target contract as workspace tabs.
+export const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("new_tab") }),
   z.strictObject({
     kind: z.literal("draft"),

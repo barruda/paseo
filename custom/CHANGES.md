@@ -1286,8 +1286,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   visible workspaces and hosts. **Your attention** separates blocked/failed tasks from unread
   finished responses; **In progress** and **Idle** show the rest. Managed children stay under
   their parent across workspaces. Selecting a task uses existing agent navigation and attention
-  clearing. **Browse workspaces** returns to the existing sidebar without changing its filters,
-  grouping, or saved layout. No right-side panel is added. Existing workspace cycling still works.
+  clearing. The **desks** customization below extends this mode with independent tab sets and
+  replaces the original single-project filter and Browse workspaces footer.
 - **Files:** `packages/app/src/task-navigation/` owns the projection, view, switch, and independent
   persisted preference. Its collection subscription excludes timelines and streamed text.
 - **Core files touched:** `packages/app/src/components/left-sidebar.tsx` wraps each existing list
@@ -1302,3 +1302,46 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   Run `npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/task-navigation.spec.ts --workers=1` from the repo root.
   The browser check covers cross-workspace selection, unread-to-idle behavior, search, reload
   persistence, and the original workspace sidebar fallback.
+
+## desks: personal tab sets across projects in Tasks mode
+
+- **Added:** 2026-10-16 (upstream 0.11.2)
+- **Commit:** `custom: add cross-project Desks to task navigation`
+- **Why:** Checking an agent should not replace the surrounding tabs. Group work by personal
+  purpose while preserving the original workspace model as a toggleable fallback.
+- **What:** Tasks mode hosts saved **Desks**. The selector beside the project/workspace context
+  switches Desks and offers New Desk and Rename Desk. Editor and Git header actions follow the
+  selected tab’s source workspace. A blue-outlined first slot previews task
+  selections; middle-click or Keep tab retains a tab. Each reference keeps its source host and
+  workspace. The close button and middle-click on a tab close its reference without archiving a
+  session; both protect tabs with unsaved changes. The + menu uses the standard workspace
+  launcher, scoped to the selected tab’s project.
+  Tab names stay on one line with a 15-character limit (including ellipsis), followed by the project
+  icon; task rows also show project icons. Activity and recent-open ordering preserve existing
+  sibling positions until timestamps differ by at least one minute; attention groups still update
+  immediately. Shift+Tab cycles Desks; tab navigation and closing use Desk tabs.
+  Search and checked project selection share a sidebar row, with Select all/none. Sorting offers
+  attention, last activity, recently opened, and title. New workspace and Browse workspaces rows
+  are removed from the Tasks sidebar. The top-bar Tasks switch restores the original layout.
+- **Files:** `packages/app/src/task-navigation/` owns Desk persistence, rendering, task projection,
+  and the navigation bridge. Desk state is local to this app installation, separately persisted
+  from workspace layouts. Source workspaces retain their session and filesystem ownership.
+- **Core files touched:** The host workspace route chooses DeskScreen in Tasks mode. The existing
+  workspace target storage schema is exported for validation. The navigation store and explicit
+  tab preparation bridge existing launchers into Desks. Supporting Changes/PR opens honor Desks.
+  Header shortcut hints label Desk cycling and omit the unavailable bottom-panel hint.
+  `workspace-new-tab-menu.tsx` accepts additional items so Desks can retain Files.
+- **Re-apply:** Keep the original WorkspaceDeck branch intact. Insert DeskScreen only at the host
+  workspace content boundary, after route/open-intent handling. Supply each panel its original
+  server/workspace identity and unique reference tab ID. Use the shared panel, focus, retained
+  content, timeline visibility, and floating-panel contracts. Never move sessions or replace
+  their workspace layouts to implement a Desk. Keep panel-state updates attached to their Desk
+  even while a different Desk is selected. Preserve the existing Tasks toggle storage key. Reuse
+  `WorkspaceNewTabMenuContent` through the Desk launcher and resolve project icons outside the
+  sidebar-only context. Keep prior sibling order across task updates; only cross a neighbor when
+  its timestamp is at least 60 seconds older (or its attention priority is lower).
+- **Verify:** Run the task-navigation model/store suites and the desktop task-navigation browser
+  test already registered in the update script. The browser test covers previews, retained tabs,
+  composer drafts, Desk creation/restoration, cycling, Files/agent/terminal creation, project icons,
+  truncated labels, project filters, sort persistence, and switching back to the workspace layout. Run typecheck/lint, build desktop,
+  then install into a new build folder. Do not restart the user's daemons.
