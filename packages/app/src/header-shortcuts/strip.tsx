@@ -40,7 +40,7 @@ export function HeaderShortcutsStrip({ layoutKey }: { layoutKey: string | null }
 
   const platform = { isMac: getShortcutOs() === "mac", isDesktop: getIsElectronRuntime() };
   const entries = HEADER_SHORTCUTS.flatMap((entry) => {
-    if (desks && ["toggle-bottom-panel", "new-workspace"].includes(entry.id)) return [];
+    if (desks && entry.id === "new-workspace") return [];
     const keys = resolveShortcutKeysForAction(
       desks && entry.id === "cycle-active-workspaces" ? "task-next-desk" : entry.id,
       overrides,

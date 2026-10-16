@@ -1331,7 +1331,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Core files touched:** The host workspace route chooses DeskScreen in Tasks mode. The existing
   workspace target storage schema is exported for validation. The navigation store and explicit
   tab preparation bridge existing launchers into Desks. Supporting Changes/PR opens honor Desks.
-  Header shortcut hints label Desk cycling and omit the unavailable bottom-panel hint.
+  Header shortcut hints label Desk cycling. Bottom terminals are supported by
+  [desk-bottom-panel](#desk-bottom-panel-bottom-terminals-in-tasks-mode).
   `workspace-new-tab-menu.tsx` accepts additional items so Desks can retain Files.
 - **Re-apply:** Keep the original WorkspaceDeck branch intact. Insert DeskScreen only at the host
   workspace content boundary, after route/open-intent handling. Supply each panel its original
@@ -1406,3 +1407,22 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** The preview navigation/asset unit suites and asset browser suite are in the update
   script. Click “Open prototype” in the diagram-libraries report, then switch All/Ops/Names and
   toggle the theme in the opened prototype.
+
+## desk-bottom-panel: bottom terminals in Tasks mode
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: enable bottom terminal toggle in Tasks mode`
+- **Why:** DeskScreen replaced the workspace screen but never registered its bottom-panel action,
+  leaving both the sidebar button and Ctrl+J without a handler.
+- **What:** Desks reuse the New Workspace bottom-terminal lifecycle, with an explicit source
+  workspace from the selected Desk tab. Switching projects switches the terminal scope; hiding
+  and reopening reattaches to the same running terminal. The header can show the shortcut hint.
+- **Core files touched:** `task-navigation/desk-screen.tsx`,
+  `screens/new-workspace/bottom-terminal-panel.tsx`, and `header-shortcuts/strip.tsx`.
+- **Re-apply:** Mount the shared bottom terminal under Desk content; pass the selected tab’s
+  server/workspace identity, directory, and route activity. Scope remembered terminals by workspace
+  when provided; New Workspace keeps its folder-based lookup. Register the shared action only
+  while the owning screen is active.
+- **Verify:** The existing desktop `e2e/task-navigation.spec.ts` checks both the footer button
+  and Ctrl+J, source workspace ownership, and reuse without duplicate terminals. It is already
+  registered in the update script.

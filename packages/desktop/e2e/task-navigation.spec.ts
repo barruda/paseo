@@ -8,7 +8,11 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 1600, height: 1000 });
-  await installDesktopRuntime(page, { serverId: getServerId(), manageBuiltInDaemon: false });
+  await installDesktopRuntime(page, {
+    serverId: getServerId(),
+    manageBuiltInDaemon: false,
+    platform: "linux",
+  });
   const first = await seedMockAgentWorkspace({
     repoPrefix: "task-nav-first-",
     title: "Investigate sidebar navigation",
@@ -74,6 +78,37 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     const composer = page
       .getByRole("textbox", { name: "Message agent...", exact: true })
       .filter({ visible: true });
+    // Both the footer and Ctrl+J use the Desk's selected source workspace.
+    const bottom = page.getByTestId("desk-bottom-terminal");
+    await page.getByTestId("sidebar-bottom-panel-toggle").click();
+    await expect(bottom).toBeVisible();
+    await expect
+      .poll(
+        async () =>
+          (
+            await second.client.listTerminals(second.cwd, undefined, {
+              workspaceId: second.workspaceId,
+            })
+          ).terminals.length,
+      )
+      .toBe(1);
+    await page.keyboard.press("Control+j");
+    await expect(bottom).toHaveCount(0);
+    await page.keyboard.press("Control+j");
+    await expect(bottom).toBeVisible();
+    await expect
+      .poll(
+        async () =>
+          (
+            await second.client.listTerminals(second.cwd, undefined, {
+              workspaceId: second.workspaceId,
+            })
+          ).terminals.length,
+      )
+      .toBe(1);
+    await page.getByTestId("sidebar-bottom-panel-toggle").click();
+    await expect(bottom).toHaveCount(0);
+
     await composer.fill("Draft for terrain");
     await sidebar.getByTestId(`task-agent-${first.agentId}`).click();
     await expect(composer).toHaveValue("");

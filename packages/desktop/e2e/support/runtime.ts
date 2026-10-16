@@ -54,6 +54,7 @@ export async function loadRealDaemonState(): Promise<RealDaemonState> {
 }
 
 export interface DesktopRuntimeConfig {
+  platform?: "darwin" | "linux" | "win32";
   serverId: string;
   updateAvailable?: boolean;
   latestVersion?: string;
@@ -223,7 +224,7 @@ export async function installDesktopRuntime(
         openTarget: (input: DesktopEditorOpenRecord) => Promise<void>;
       };
     } = {
-      platform: "darwin",
+      platform: cfg.platform ?? "darwin",
       invoke: async (command: string, args?: Record<string, unknown>) => {
         if (command === "check_app_update") {
           return checkAppUpdate(args?.intent);
