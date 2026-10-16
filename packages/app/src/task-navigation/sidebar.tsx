@@ -32,6 +32,7 @@ import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { TaskRowContextMenu, useTaskRowActions, type TaskRowActions } from "./task-row-menu";
 import { useArchivedTasks } from "./use-archived-tasks";
+import { useSettledTaskStates } from "./use-settled-task-states";
 import {
   buildTaskTree,
   sortTaskTree,
@@ -155,7 +156,11 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         })),
     [allWorkspaceEntriesByKey, showBackground],
   );
-  const roots = useMemo(() => buildTaskTree({ agents, workspaces }), [agents, workspaces]);
+  const states = useSettledTaskStates(agents);
+  const roots = useMemo(
+    () => buildTaskTree({ agents, workspaces, states }),
+    [agents, workspaces, states],
+  );
   const archived = useArchivedTasks(filter === "archived", workspaces);
   const projects = useMemo(
     () =>
