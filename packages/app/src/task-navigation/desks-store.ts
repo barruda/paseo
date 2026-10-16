@@ -74,6 +74,8 @@ interface DesksState {
   openTab(tab: DeskTabInput, pin?: boolean, placement?: WorkspaceTabPlacement): void;
   selectTab(id: string): void;
   closeTab(id: string): void;
+  /** Moves a tab of the active Desk into another Desk as a kept tab, leaving that Desk unselected. */
+  moveTabToDesk(id: string, deskId: string): void;
   keepPreview(): void;
   /** serverId with workspaceId gives an unowned tab (a new-tab launcher) its workspace. */
   updateTab(id: string, patch: DeskTabPatch): void;
@@ -375,6 +377,26 @@ export const useDesksStore = create<DesksState>()(
               ),
             ),
           })),
+        moveTabToDesk: (id, deskId) =>
+          set((state) => {
+            const source = activeDesk(state);
+            const tab = deskTabs(source).find((entry) => entry.id === id);
+            if (!tab || deskId === source.id) return {};
+            const layout = closeTabInLayout({
+              layout: source.layout,
+              tabId: id,
+              explorerSidebarPaneId: null,
+            });
+            const { id: _id, ...input } = tab;
+            return {
+              desks: state.desks.map((desk) => {
+                if (desk.id === source.id) return withLayout(desk, layout);
+                if (desk.id === deskId)
+                  return openInDesk(desk, input, true, FOCUSED_PANE_PLACEMENT);
+                return desk;
+              }),
+            };
+          }),
         keepPreview: () => change((desk) => ({ ...desk, previewTabId: null })),
         updateTab: (id, patch) =>
           set((state) => ({ desks: state.desks.map((desk) => updateDeskTab(desk, id, patch)) })),

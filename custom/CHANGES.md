@@ -1494,3 +1494,38 @@ focusMessageInputForKeyboardAction)`.
 - **Verify:** `(cd packages/app && npx vitest run src/chat-code-run/model.test.ts)` (the update
   script runs it). In the app, ask an agent for a ```bash block with `! echo hi`, hover the block,
 click Run: a Terminal card with `hi` appears and the agent receives nothing.
+
+## desk-pane-actions: pane toolbar buttons, Desk tab moves and launch shortcuts in Tasks mode
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: Desk pane toolbar, tab moves and launch shortcuts`
+- **Why:** Splitting a pane took three clicks through the "…" menu, archiving a session from a
+  Desk meant leaving it, tabs could not change Desk, and Ctrl+T / Ctrl+Shift+T did nothing in
+  Tasks mode because the workspace screen that handles them is not mounted there.
+- **What:**
+  - The pane toolbar shows **Split right** and **Split down** as direct buttons (the "…" menu is
+    gone) in both modes. When the pane's focused tab is an agent, an **Archive session** button
+    follows. In a workspace the archived agent's tab drops out on reconciliation; in a Desk the tab
+    reference closes too.
+  - A Desk tab's context menu ends with **Move to ›** listing the other Desks. The tab leaves the
+    current Desk and opens kept (not preview) in the target, which stays unselected.
+  - In Tasks mode Ctrl+Shift+T opens a terminal, Ctrl+T the new-tab launcher, and the agent/browser
+    launch actions open drafts/browsers, all in the Desk's focused pane with the scope workspace.
+    The handler takes both action families: the command center sends `workspace.agent.new` /
+    `workspace.browser.new`, the "New agent" / "New browser" shortcuts send
+    `workspace.tab.target.agent` / `workspace.tab.target.browser`.
+- **Core files touched:** `screens/workspace/workspace-desktop-tabs-row.tsx` (direct split buttons,
+  `PaneArchiveAgentButton`, `usePaneArchiveAgentTab`, reserved width, Move to submenu),
+  `screens/workspace/workspace-tab-owner.ts` (`WorkspaceTabMoveProvider` context). Desk side:
+  `task-navigation/desks-store.ts` (`moveTabToDesk`), `desk-screen.tsx` (provides the move menu and
+  the launch-shortcut `enabled` flag), `new-tab-menu.tsx` (launch shortcut handler).
+- **Re-apply:** Replace the split dropdown in `WorkspacePaneToolbarActions` with two
+  `ToolbarButton`s using the same test IDs and shortcut hints, and double the split actions'
+  reserved width. Add the archive button only for `host === "main"` agent tabs; archive through
+  `useArchiveAgent`, and close the tab only when a Desk owner resolver is present (closing a
+  workspace agent tab would archive it a second time). The Move to submenu reads an optional
+  context that only DeskScreen provides, so the workspace tab menu is unchanged. Register the
+  launch actions inside `DeskLauncherProvider`, gated on the Desk screen being focused.
+- **Verify:** `store.test.ts` covers `moveTabToDesk`. The second test in desktop
+  `e2e/task-navigation.spec.ts` checks the split buttons, the archive button, Ctrl+Shift+T and
+  moving a tab between Desks. Both are already registered in the update script.

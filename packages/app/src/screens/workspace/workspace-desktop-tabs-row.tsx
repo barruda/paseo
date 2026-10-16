@@ -21,7 +21,7 @@ import {
   RotateCw,
   Columns2,
   Rows2,
-  Ellipsis,
+  Archive,
   Maximize,
   Minimize,
   Plus,
@@ -43,13 +43,12 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuSubTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT, useIsCompactFormFactor } from "@/constants/layout";
 import { buttonControlHeight } from "@/components/ui/control-geometry";
 import type { ShortcutKey } from "@/utils/format-shortcut";
-import { Shortcut } from "@/components/ui/shortcut";
 import { useWorkspaceTabLayout } from "@/screens/workspace/use-workspace-tab-layout";
 import { retainWorkspaceTabMeasuredWidth } from "@/screens/workspace/workspace-tab-layout";
 import {
@@ -88,7 +87,13 @@ import {
   useHorizontalScrollBoundary,
 } from "@/components/ui/horizontal-scroll-boundary";
 import { useSessionStore } from "@/stores/session-store";
-import { useWorkspaceTabOwner } from "@/screens/workspace/workspace-tab-owner";
+import {
+  useWorkspaceTabMoveMenu,
+  useWorkspaceTabOwner,
+  useWorkspaceTabOwnerResolver,
+  type WorkspaceTabMoveMenu,
+} from "@/screens/workspace/workspace-tab-owner";
+import { useArchiveAgent } from "@/hooks/use-archive-agent";
 
 // CUSTOM(open-file-externally): use the same icon rail as the existing tab actions.
 const ThemedGlobe = withUnistyles(Globe);
@@ -99,10 +104,12 @@ const DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH = 36;
 const PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING = 2;
 const PANE_SPLIT_ACTIONS_OUTER_MARGIN =
   paneContentToolbarTrailingPadding(false, "glyph") - PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING;
+// CUSTOM(pane-toolbar-actions): Split right and Split down are two direct buttons, not a menu.
 const PANE_SPLIT_ACTIONS_RESERVED_WIDTH =
-  smallIconButtonChromeFrameSize(false) +
+  smallIconButtonChromeFrameSize(false) * 2 +
   PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING * 2 +
   PANE_SPLIT_ACTIONS_OUTER_MARGIN;
+const PANE_ARCHIVE_ACTION_RESERVED_WIDTH = smallIconButtonChromeFrameSize(false) + 1;
 const PANE_MAXIMIZE_ACTION_RESERVED_WIDTH = smallIconButtonChromeFrameSize(false) + 1;
 // Chip geometry. `layoutMetrics` measures tabs from these same numbers, so a chip that changes
 // shape without changing them mis-measures and drops the row into the overflow-scroll fallback at
@@ -134,7 +141,7 @@ const ThemedPencil = withUnistyles(Pencil);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
-const ThemedEllipsis = withUnistyles(Ellipsis);
+const ThemedArchive = withUnistyles(Archive);
 const ThemedMaximize = withUnistyles(Maximize);
 const ThemedMinimize = withUnistyles(Minimize);
 const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
@@ -279,6 +286,8 @@ function WorkspacePaneToolbarActions({
   onSplitRight,
   onSplitDown,
   onTogglePaneMaximized,
+  archiveAgentTab,
+  onCloseTab,
 }: {
   panePanelKinds: PanePanelKinds;
   host: PaneHost;
@@ -293,29 +302,16 @@ function WorkspacePaneToolbarActions({
   onSplitRight?: () => void;
   onSplitDown?: () => void;
   onTogglePaneMaximized?: () => void;
+  archiveAgentTab: { tabId: string; agentId: string; workspaceId: string } | null;
+  onCloseTab: (tabId: string) => Promise<void> | void;
 }) {
   const { t } = useTranslation();
   const splitRightKeys = useShortcutKeys("workspace-pane-split-right");
   const splitDownKeys = useShortcutKeys("workspace-pane-split-down");
   const splitActionsVisible = showSplitActions && Boolean(onSplitRight && onSplitDown);
-  const splitRightLeading = useMemo(
-    () => <ThemedColumns2 size={14} uniProps={extraMutedColorMapping} />,
-    [],
-  );
-  const splitDownLeading = useMemo(
-    () => <ThemedRows2 size={14} uniProps={extraMutedColorMapping} />,
-    [],
-  );
-  const splitRightTrailing = useMemo(
-    () => (splitRightKeys ? <Shortcut chord={splitRightKeys} /> : null),
-    [splitRightKeys],
-  );
-  const splitDownTrailing = useMemo(
-    () => (splitDownKeys ? <Shortcut chord={splitDownKeys} /> : null),
-    [splitDownKeys],
-  );
   const maximizeActionVisible = showMaximizeAction && Boolean(onTogglePaneMaximized);
-  if (!showNewTabButton && !splitActionsVisible && !maximizeActionVisible) return null;
+  if (!showNewTabButton && !splitActionsVisible && !maximizeActionVisible && !archiveAgentTab)
+    return null;
 
   return (
     <ToolbarControls style={styles.paneSplitActions}>
@@ -349,41 +345,70 @@ function WorkspacePaneToolbarActions({
         </ToolbarButton>
       ) : null}
       {splitActionsVisible && onSplitRight && onSplitDown ? (
-        <DropdownMenu>
+        <>
           <ToolbarButton
-            kind="menu"
-            label={t("workspace.git.actions.moreActions")}
-            testID="workspace-split-pane-menu"
+            label={t("workspace.tabs.actions.splitRight")}
+            shortcut={splitRightKeys}
+            testID="workspace-split-pane-right"
+            onPress={onSplitRight}
           >
-            <ThemedEllipsis size={14} uniProps={extraMutedColorMapping} />
+            <ThemedColumns2 size={14} uniProps={extraMutedColorMapping} />
           </ToolbarButton>
-          <DropdownMenuContent
-            side="bottom"
-            align="end"
-            offset={4}
-            width={220}
-            testID="workspace-split-pane-menu-content"
+          <ToolbarButton
+            label={t("workspace.tabs.actions.splitDown")}
+            shortcut={splitDownKeys}
+            testID="workspace-split-pane-down"
+            onPress={onSplitDown}
           >
-            <DropdownMenuItem
-              leading={splitRightLeading}
-              trailing={splitRightTrailing}
-              testID="workspace-split-pane-right"
-              onSelect={onSplitRight}
-            >
-              {t("workspace.tabs.actions.splitRight")}
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              leading={splitDownLeading}
-              trailing={splitDownTrailing}
-              testID="workspace-split-pane-down"
-              onSelect={onSplitDown}
-            >
-              {t("workspace.tabs.actions.splitDown")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+            <ThemedRows2 size={14} uniProps={extraMutedColorMapping} />
+          </ToolbarButton>
+        </>
+      ) : null}
+      {archiveAgentTab ? (
+        <PaneArchiveAgentButton
+          tabId={archiveAgentTab.tabId}
+          agentId={archiveAgentTab.agentId}
+          serverId={serverId}
+          workspaceId={archiveAgentTab.workspaceId}
+          onCloseTab={onCloseTab}
+        />
       ) : null}
     </ToolbarControls>
+  );
+}
+
+// CUSTOM(pane-toolbar-actions): archive the focused agent's session from its pane. A Desk tab only
+// references the session, so it is closed too; workspace tabs drop out when the agent archives.
+function PaneArchiveAgentButton({
+  tabId,
+  agentId,
+  serverId,
+  workspaceId,
+  onCloseTab,
+}: {
+  tabId: string;
+  agentId: string;
+  serverId: string;
+  workspaceId: string;
+  onCloseTab: (tabId: string) => Promise<void> | void;
+}) {
+  const { archiveAgent, isArchivingAgent } = useArchiveAgent();
+  const deskResolver = useWorkspaceTabOwnerResolver();
+  const owner = useWorkspaceTabOwner(tabId, { serverId, workspaceId });
+  const pending = isArchivingAgent({ serverId: owner.serverId, agentId });
+  const handlePress = useCallback(() => {
+    void archiveAgent({ serverId: owner.serverId, agentId }).catch(() => {});
+    if (deskResolver) void onCloseTab(tabId);
+  }, [archiveAgent, agentId, deskResolver, onCloseTab, owner.serverId, tabId]);
+  return (
+    <ToolbarButton
+      label="Archive session"
+      disabled={pending}
+      testID="workspace-archive-agent"
+      onPress={handlePress}
+    >
+      <ThemedArchive size={14} uniProps={extraMutedColorMapping} />
+    </ToolbarButton>
   );
 }
 
@@ -413,6 +438,27 @@ function WorkspaceExitFocusModeButton({
         <ThemedX size={14} uniProps={mutedColorMapping} />
       </ToolbarButton>
     </View>
+  );
+}
+
+const TAB_MOVE_PAGE_ID = "move-to";
+
+function TabMoveMenuItem({
+  tabId,
+  targetId,
+  label,
+  menu,
+}: {
+  tabId: string;
+  targetId: string;
+  label: string;
+  menu: WorkspaceTabMoveMenu;
+}) {
+  const handleSelect = useCallback(() => menu.move(tabId, targetId), [menu, tabId, targetId]);
+  return (
+    <ContextMenuItem testID={`workspace-tab-move-to-${targetId}`} onSelect={handleSelect}>
+      {label}
+    </ContextMenuItem>
   );
 }
 
@@ -786,6 +832,29 @@ function TabChip({
       owner.preview === undefined ? undefined : { deskTab: owner.preview ? "preview" : "pinned" },
     [owner.preview],
   );
+  // CUSTOM(desk-tab-move): a Desk offers its sibling Desks as a "Move to" submenu.
+  const moveMenu = useWorkspaceTabMoveMenu();
+  const movePages = useMemo(
+    () =>
+      moveMenu && moveMenu.targets.length > 0
+        ? [
+            {
+              id: TAB_MOVE_PAGE_ID,
+              title: "Move to",
+              content: moveMenu.targets.map((target) => (
+                <TabMoveMenuItem
+                  key={target.id}
+                  tabId={tab.tabId}
+                  targetId={target.id}
+                  label={target.label}
+                  menu={moveMenu}
+                />
+              )),
+            },
+          ]
+        : undefined,
+    [moveMenu, tab.tabId],
+  );
   const middleClickRef = useMiddleClickClose(
     useCallback(() => void onCloseTab(tab.tabId), [onCloseTab, tab.tabId]),
   );
@@ -969,7 +1038,12 @@ function TabChip({
           </View>
         ) : null}
 
-        <ContextMenuContent align="start" width={DROPDOWN_WIDTH} testID={contextMenuTestId}>
+        <ContextMenuContent
+          align="start"
+          width={DROPDOWN_WIDTH}
+          testID={contextMenuTestId}
+          pages={movePages}
+        >
           {menuEntries.map((entry) =>
             entry.kind === "separator" ? (
               <ContextMenuSeparator key={entry.key} />
@@ -977,6 +1051,14 @@ function TabChip({
               <TabContextMenuItem key={entry.key} entry={entry} />
             ),
           )}
+          {movePages ? (
+            <>
+              <ContextMenuSeparator />
+              <DropdownMenuSubTrigger id={TAB_MOVE_PAGE_ID} testID="workspace-tab-move-to">
+                Move to
+              </DropdownMenuSubTrigger>
+            </>
+          ) : null}
         </ContextMenuContent>
       </ContextMenu>
     </View>
@@ -1042,6 +1124,22 @@ export function WorkspaceDesktopTabsRow(props: WorkspaceDesktopTabsRowProps) {
   );
 }
 
+// CUSTOM(pane-toolbar-actions): the focused agent tab gets an archive button beside the splits.
+function usePaneArchiveAgentTab(
+  tabs: readonly WorkspaceDesktopTabRowItem[],
+  host: PaneHost,
+  workspaceId: string,
+) {
+  const activeTab = tabs.find((item) => item.isActive)?.tab ?? null;
+  const agentId =
+    host === "main" && activeTab?.target.kind === "agent" ? activeTab.target.agentId : null;
+  const tabId = agentId ? activeTab?.tabId : undefined;
+  return useMemo(
+    () => (agentId && tabId ? { tabId, agentId, workspaceId } : null),
+    [agentId, tabId, workspaceId],
+  );
+}
+
 function ResolvedWorkspaceDesktopTabsRow({
   host = "main",
   launchPurpose = "primary",
@@ -1096,6 +1194,8 @@ function ResolvedWorkspaceDesktopTabsRow({
     updateMeasuredWidth(setExitFocusModeWidth, event);
   }, []);
 
+  const archiveAgentTab = usePaneArchiveAgentTab(tabs, host, normalizedWorkspaceId);
+
   const layoutMetrics = useMemo(
     () => ({
       rowHorizontalInset: 0,
@@ -1104,6 +1204,7 @@ function ResolvedWorkspaceDesktopTabsRow({
         DEFAULT_INLINE_ADD_BUTTON_RESERVED_WIDTH +
           (focusModeEnabled ? exitFocusModeWidth : 0) +
           (showPaneSplitActions ? PANE_SPLIT_ACTIONS_RESERVED_WIDTH : 0) +
+          (archiveAgentTab ? PANE_ARCHIVE_ACTION_RESERVED_WIDTH : 0) +
           (showPaneMaximizeAction ? PANE_MAXIMIZE_ACTION_RESERVED_WIDTH : 0),
       ),
       rowPaddingHorizontal: TAB_ROW_PADDING_HORIZONTAL,
@@ -1115,7 +1216,13 @@ function ResolvedWorkspaceDesktopTabsRow({
       tabHorizontalPadding: TAB_CHIP_HORIZONTAL_PADDING,
       closeButtonWidth: TAB_CLOSE_BUTTON_RESERVED_WIDTH,
     }),
-    [exitFocusModeWidth, focusModeEnabled, showPaneMaximizeAction, showPaneSplitActions],
+    [
+      archiveAgentTab,
+      exitFocusModeWidth,
+      focusModeEnabled,
+      showPaneMaximizeAction,
+      showPaneSplitActions,
+    ],
   );
 
   const panePanelKinds = useMemo(() => tabs.map(({ tab }) => tab.kind), [tabs]);
@@ -1456,6 +1563,8 @@ function ResolvedWorkspaceDesktopTabsRow({
         onSplitRight={onSplitRight}
         onSplitDown={onSplitDown}
         onTogglePaneMaximized={onTogglePaneMaximized}
+        archiveAgentTab={archiveAgentTab}
+        onCloseTab={onCloseTab}
       />
     </View>
   );

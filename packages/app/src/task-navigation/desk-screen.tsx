@@ -52,7 +52,9 @@ import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspac
 import { buildWorkspacePaneContentModel } from "@/screens/workspace/workspace-pane-content";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
+  WorkspaceTabMoveProvider,
   WorkspaceTabOwnerProvider,
+  type WorkspaceTabMoveMenu,
   type WorkspaceTabOwnerResolver,
 } from "@/screens/workspace/workspace-tab-owner";
 import {
@@ -496,12 +498,28 @@ export function DeskScreen() {
     [headerLeft, headerRight, onRowLayout],
   );
 
+  // CUSTOM(desk-tab-move): the tab context menu moves a tab to any other Desk.
+  const moveMenu = useMemo<WorkspaceTabMoveMenu>(
+    () => ({
+      targets: desks
+        .filter((entry) => entry.id !== desk.id)
+        .map((entry) => ({ id: entry.id, label: entry.name })),
+      move: (tabId, deskId) => useDesksStore.getState().moveTabToDesk(tabId, deskId),
+    }),
+    [desks, desk.id],
+  );
+
   const store = useDesksStore.getState();
   return (
     <FloatingPanelPortalHostNameProvider hostName={portalHost}>
       <View style={styles.root} testID="desk-screen">
         {scope ? (
-          <DeskProviders resolveOwner={resolveOwner} scope={scope}>
+          <DeskProviders
+            resolveOwner={resolveOwner}
+            moveMenu={moveMenu}
+            scope={scope}
+            enabled={isFocused}
+          >
             <SplitContainer
               layout={desk.layout}
               renderMainHeader={renderHeader}
@@ -586,20 +604,26 @@ export function DeskScreen() {
 /** Desk tabs resolve their own workspace; launches use the scope workspace. */
 function DeskProviders({
   resolveOwner,
+  moveMenu,
   scope,
+  enabled,
   children,
 }: {
   resolveOwner: WorkspaceTabOwnerResolver;
+  moveMenu: WorkspaceTabMoveMenu;
   scope: DeskTabOwner;
+  enabled: boolean;
   children: ReactNode;
 }) {
   return (
     <WorkspaceTabOwnerProvider value={resolveOwner}>
-      <DeskLauncherProvider scope={scope}>
-        <DiffDocumentWorkspaceCacheProvider>
-          <View style={styles.content}>{children}</View>
-        </DiffDocumentWorkspaceCacheProvider>
-      </DeskLauncherProvider>
+      <WorkspaceTabMoveProvider value={moveMenu}>
+        <DeskLauncherProvider scope={scope} enabled={enabled}>
+          <DiffDocumentWorkspaceCacheProvider>
+            <View style={styles.content}>{children}</View>
+          </DiffDocumentWorkspaceCacheProvider>
+        </DeskLauncherProvider>
+      </WorkspaceTabMoveProvider>
     </WorkspaceTabOwnerProvider>
   );
 }

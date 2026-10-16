@@ -25,3 +25,17 @@ export function useWorkspaceTabOwner(
 ): WorkspaceTabOwner {
   return useContext(WorkspaceTabOwnerContext)?.(tabId) ?? fallback;
 }
+
+/** Other tab sets a tab can move to; the tab context menu shows a "Move to" submenu. */
+export interface WorkspaceTabMoveMenu {
+  targets: readonly { id: string; label: string }[];
+  move(tabId: string, targetId: string): void;
+}
+
+const WorkspaceTabMoveContext = createContext<WorkspaceTabMoveMenu | null>(null);
+
+export const WorkspaceTabMoveProvider = WorkspaceTabMoveContext.Provider;
+
+export function useWorkspaceTabMoveMenu(): WorkspaceTabMoveMenu | null {
+  return useContext(WorkspaceTabMoveContext);
+}

@@ -15,7 +15,8 @@ import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-ch
 import { useHasPullRequest } from "@/panels/pull-request";
 import { NewTabLauncherProvider, type NewTabLauncher } from "@/workspace-tabs/launcher";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
-import { useDesksStore, type DeskTabOwner } from "./desks-store";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import { activeDesk, useDesksStore, type DeskTabOwner } from "./desks-store";
 
 /** Opens a launched target in its pane, or turns the launching new-tab tab into it. */
 export function launchDeskTarget(
@@ -38,9 +39,12 @@ export function launchDeskTarget(
 
 export function DeskLauncherProvider({
   scope,
+  enabled,
   children,
 }: {
   scope: DeskTabOwner;
+  /** Whether this Desk owns the workspace launch shortcuts (new tab, terminal, agent, browser). */
+  enabled: boolean;
   children: ReactNode;
 }) {
   const { serverId, workspaceId } = scope;
@@ -116,6 +120,42 @@ export function DeskLauncherProvider({
     !directory ||
     terminals.createMutation.isPending ||
     terminals.pendingCreateInput !== null;
+  // CUSTOM(desk-launch-shortcuts): the workspace screen that normally handles these is not
+  // mounted in Tasks mode, so launches land in the Desk's focused pane instead.
+  useKeyboardActionHandler({
+    handlerId: `desk-launch:${serverId}:${workspaceId}`,
+    enabled,
+    priority: 150,
+    actions: [
+      "workspace.terminal.new",
+      "workspace.agent.new",
+      "workspace.browser.new",
+      "workspace.tab.target.agent",
+      "workspace.tab.target.browser",
+      "workspace.tab.menu.open",
+    ],
+    handle: (action) => {
+      const paneId = activeDesk(useDesksStore.getState()).layout.focusedPaneId ?? undefined;
+      const destination: TerminalTabDestination = { kind: "open", paneId };
+      if (action.id === "workspace.terminal.new") {
+        if (!terminalDisabled) createTerminal({ destination });
+        return true;
+      }
+      if (action.id === "workspace.agent.new" || action.id === "workspace.tab.target.agent") {
+        launch({ kind: "agent" }, destination);
+        return true;
+      }
+      if (action.id === "workspace.browser.new" || action.id === "workspace.tab.target.browser") {
+        if (getIsElectron()) launch({ kind: "browser" }, destination);
+        return true;
+      }
+      if (action.id === "workspace.tab.menu.open") {
+        useDesksStore.getState().createNewTab({ serverId, workspaceId }, paneId);
+        return true;
+      }
+      return false;
+    },
+  });
   const launcher = useMemo<NewTabLauncher>(
     () => ({
       showChanges: isGit,
