@@ -1,3 +1,4 @@
+import type { FetchAgentHistoryResponseMessage } from "@getpaseo/protocol/messages";
 import { useMemo, useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 import equal from "fast-deep-equal";
 import { useShallow } from "zustand/shallow";
@@ -6,9 +7,15 @@ import type { AgentDirectoryEntry } from "@/types/agent-directory";
 import type { Agent } from "@/stores/session-store";
 import { getHostRuntimeStore, useHosts } from "@/runtime/host-runtime";
 
+export type HistoryContentMatch = NonNullable<
+  FetchAgentHistoryResponseMessage["payload"]["entries"][number]["contentMatch"]
+>;
+
 export interface AggregatedAgent extends AgentDirectoryEntry {
   serverId: string;
   serverLabel: string;
+  // CUSTOM(history-content-search): the message that matched a History search.
+  contentMatch?: HistoryContentMatch;
 }
 
 export interface AggregatedAgentsResult {

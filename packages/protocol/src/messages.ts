@@ -4187,6 +4187,20 @@ const AgentDirectoryResponseEntrySchema = z.object({
   searchMatches: z.array(AgentSearchMatchSchema).optional(),
   // COMPAT(directorySync): sequence of this latest directory projection.
   syncSeq: z.number().int().positive().optional(),
+  // CUSTOM(history-content-search): the message that matched a History search, when the
+  // session matched by what was said rather than by its names.
+  contentMatch: z
+    .object({
+      text: z.string(),
+      ranges: z.array(
+        z.object({
+          start: z.number().int().nonnegative(),
+          length: z.number().int().positive(),
+        }),
+      ),
+      role: z.enum(["user", "assistant"]),
+    })
+    .optional(),
 });
 
 const AgentDirectoryPageInfoSchema = z.object({

@@ -15,15 +15,16 @@ import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useTimeAgo } from "@/hooks/use-time-ago";
-import { type AggregatedAgent } from "@/hooks/use-aggregated-agents";
+import { type AggregatedAgent, type HistoryContentMatch } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
-import { Archive, ChevronRight } from "lucide-react-native";
+import { Archive, Bot, ChevronRight, User } from "lucide-react-native";
 import { useProviderIcon } from "@/components/provider-icons";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { HighlightedText } from "@/components/ui/highlighted-text";
 import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { findHighlightRanges } from "@/components/ui/highlighted-text-segments";
+import { historyQueryHighlightText } from "@getpaseo/protocol/search/history-query";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -188,15 +189,16 @@ function SessionRow({
   const workspaceName = agent.projectPlacement?.workspaceName ?? "";
   const ProviderIcon = useProviderIcon(agent.provider, agent.serverId);
   const pendingPermissionCount = agent.pendingPermissionCount ?? 0;
-  const ranges = useMemo(
-    () => ({
-      workspace: findHighlightRanges(search ?? "", workspaceName),
-      title: findHighlightRanges(search ?? "", agent.title ?? ""),
-      branch: findHighlightRanges(search ?? "", branch),
-      project: findHighlightRanges(search ?? "", projectName),
-    }),
-    [search, workspaceName, agent.title, branch, projectName],
-  );
+  const ranges = useMemo(() => {
+    // CUSTOM(history-content-search): mark what the query asks for, not its operators.
+    const highlight = historyQueryHighlightText(search ?? "");
+    return {
+      workspace: findHighlightRanges(highlight, workspaceName),
+      title: findHighlightRanges(highlight, agent.title ?? ""),
+      branch: findHighlightRanges(highlight, branch),
+      project: findHighlightRanges(highlight, projectName),
+    };
+  }, [search, workspaceName, agent.title, branch, projectName]);
 
   const pressableStyle = useCallback(
     ({ pressed, hovered = false }: PressableStateCallbackType & { hovered?: boolean }) => [
@@ -264,6 +266,12 @@ function SessionRow({
           />
         </View>
         {isMobile ? agentTitle : null}
+        <HistoryContentMatchLine
+          match={agent.contentMatch}
+          iconSize={theme.iconSize.xs}
+          iconColor={theme.colors.foregroundMuted}
+          testID={`agent-row-content-match-${agent.serverId}-${agent.id}`}
+        />
         {isMobile ? (
           <View style={styles.rowMetaRow}>
             <HighlightedText
@@ -324,6 +332,34 @@ function SessionRow({
         requiresAttention={agent.requiresAttention}
       />
     </Pressable>
+  );
+}
+
+// CUSTOM(history-content-search): the message that made a History search match this session.
+function HistoryContentMatchLine({
+  match,
+  iconSize,
+  iconColor,
+  testID,
+}: {
+  match: HistoryContentMatch | undefined;
+  iconSize: number;
+  iconColor: string;
+  testID: string;
+}) {
+  if (!match) return null;
+  const SpeakerIcon = match.role === "user" ? User : Bot;
+  return (
+    <View style={styles.contentMatchRow}>
+      <SpeakerIcon size={iconSize} color={iconColor} />
+      <HighlightedText
+        text={match.text}
+        ranges={match.ranges}
+        style={styles.contentMatchText}
+        numberOfLines={1}
+        testID={testID}
+      />
+    </View>
   );
 }
 
@@ -648,6 +684,19 @@ const styles = StyleSheet.create((theme) => ({
   sessionMetaText: {
     maxWidth: "100%",
     fontSize: theme.fontSize.base,
+    color: theme.colors.foregroundMuted,
+  },
+  contentMatchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    marginTop: 2,
+    minWidth: 0,
+  },
+  contentMatchText: {
+    flexShrink: 1,
+    minWidth: 0,
+    fontSize: theme.fontSize.sm,
     color: theme.colors.foregroundMuted,
   },
   sessionMetaSeparator: {

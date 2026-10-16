@@ -1563,3 +1563,51 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Verify:** `model.test.ts` covers the idle limit and markable-unread rule. The second test in
   desktop `e2e/task-navigation.spec.ts` covers the row menu, Rename session, and the Archived
   filter after archiving. Both are already registered in the update script.
+
+## history-content-search: History search finds sessions by what was said
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: History search matches session messages`
+- **Why:** Upstream History search matches only workspace, title, branch and project names, on
+  purpose: the daemon doesn't keep every transcript loaded, so searching them would give partial
+  results. A small full-text index makes message search complete.
+- **What:**
+  - The daemon keeps `$PASEO_HOME/history-search.db`, a SQLite FTS5 index on Node's built-in
+    `node:sqlite` (no new dependency). It holds only user prompts and agent replies, not tool
+    calls or output. About 5 MB for 200 sessions.
+  - New turns are indexed from the timeline 2 s after each turn ends. 30 s after daemon start, a
+    one-time backfill reads each stored session not indexed yet from its Claude transcript or
+    Codex rollout (live and archived). Messages are keyed by content hash, so re-indexing never
+    duplicates them. Other providers are indexed only from their live turns.
+  - History search keeps the name match and also returns sessions with a message containing every
+    query word (prefixes, case and accents ignored). Those rows show the best matching excerpt
+    under the title with a user or bot icon and the words highlighted.
+  - The query takes operators, for names and messages alike: `"at once"` (adjacent whole words),
+    `relay OR tunnel` (also `|`, binds tighter than the implicit AND), and `-word` / `-"phrase"`
+    (drops the session if its names or any of its messages mention it). Lowercase `or` is a word.
+    Required terms must all land in one message; names still match on their own, with typo
+    tolerance for unquoted terms only. A collapsed "Search syntax" toggle under the search field
+    lists them (English only).
+  - If the database fails to open, the daemon logs a warning and search stays name-only.
+- **Files:** `packages/server/src/server/history-content-index.ts` (schema, search, snippet
+  ranges), `history-content-indexer.ts` (turn-end indexing, backfill, transcript parsers),
+  `packages/protocol/src/search/history-query.ts` (query operators, shared by daemon and app),
+  app `components/history-search-syntax.tsx` (the syntax toggle).
+- **Core files touched:** `server/bootstrap.ts` opens and closes the indexer;
+  `server/session.ts` `collectFetchAgentsEntries` ORs content matches into the History search;
+  `server/agent-history-search.ts` matches names against the parsed query (`matchAgentHistoryNames`);
+  `protocol/src/messages.ts` adds optional `contentMatch` to directory entries;
+  app `hooks/use-agent-history.ts`, `hooks/use-aggregated-agents.ts` and
+  `components/agent-list.tsx` carry and render it, and highlight `historyQueryHighlightText` so
+  operators and excluded words are not marked; `screens/sessions-screen.tsx` renders
+  `<HistorySearchSyntax isVisible={isSearchSupported} />` under the filter row.
+- **Re-apply:** Call `openHistoryContentIndexer` in bootstrap after agent storage initializes and
+  its stop function at shutdown. Where History filters by search, `parseHistoryQuery(search)` once
+  per request and run `getActiveHistoryContentIndex()?.search(query)`. Drop an entry when
+  `matchAgentHistoryNames` says `excluded` or its id is in `excludedAgentIds`; otherwise keep it
+  when names match or it has a content match, attaching `contentMatch`. Keep `contentMatch`
+  optional on the wire. In the app, map `entry.contentMatch` onto the row's agent and render it in
+  `SessionRow`.
+- **Verify:** `history-content-index.test.ts`, `agent-history-search.test.ts` (server) and
+  `search/history-query.test.ts` (protocol) are registered in the update script. By hand: search
+  History for a word only said in a conversation, then for `"at once"` and `"at once" -qa`.

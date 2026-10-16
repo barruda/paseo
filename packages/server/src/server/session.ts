@@ -48,7 +48,9 @@ import type { TerminalActivity } from "@getpaseo/protocol/terminal-activity";
 import type { BinaryFrame } from "@getpaseo/protocol/binary-frames/index";
 import { CursorError } from "./pagination/cursor.js";
 import { SortablePager, type SortSpec } from "./pagination/sortable-pager.js";
-import { matchesAgentHistoryQuery } from "./agent-history-search.js";
+import { matchAgentHistoryNames } from "./agent-history-search.js";
+import { parseHistoryQuery } from "@getpaseo/protocol/search/history-query";
+import { getActiveHistoryContentIndex } from "./history-content-index.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
 import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
 import {
@@ -5494,6 +5496,9 @@ export class Session {
   }): Promise<FetchAgentsResponseEntry[]> {
     const { candidates, limit, getPlacement, filter, search } = params;
     const matchedEntries: FetchAgentsResponseEntry[] = [];
+    // CUSTOM(history-content-search): sessions whose messages match count too.
+    const historyQuery = search ? parseHistoryQuery(search) : null;
+    const content = historyQuery ? getActiveHistoryContentIndex()?.search(historyQuery) : undefined;
     const batchSize = 25;
     for (
       let start = 0;
@@ -5520,8 +5525,13 @@ export class Session {
         ) {
           continue;
         }
-        if (search && !matchesAgentHistoryQuery(search, entry)) continue;
-        matchedEntries.push(entry);
+        const contentMatch = content?.matches.get(entry.agent.id);
+        if (historyQuery) {
+          const names = matchAgentHistoryNames(historyQuery, entry);
+          if (names === "excluded" || content?.excludedAgentIds.has(entry.agent.id)) continue;
+          if (names === "miss" && !contentMatch) continue;
+        }
+        matchedEntries.push(contentMatch ? { ...entry, contentMatch } : entry);
         if (matchedEntries.length > limit) {
           break;
         }
