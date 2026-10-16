@@ -1630,3 +1630,27 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Re-apply:** Call `useSettledTaskStates(agents)` in `TaskNavigationSidebar` and pass the result
   as `states` to `buildTaskTree`.
 - **Verify:** `model.test.ts` covers settling and is already registered in the update script.
+
+## media-pause: voice mode and dictation pause playing media
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: pause playing media during voice mode and dictation`
+- **Why:** Music playing while you talk gets picked up by the mic and drowns out the reply.
+- **What:** On Linux desktop, when voice mode starts (composer or sidebar voice) or dictation
+  starts recording, every MPRIS player reporting `Playing` is paused. When the last of them ends,
+  the players Paseo paused are resumed 2.5 s later (a Bluetooth headset needs that long to leave
+  its low-quality Handsfree mode; resuming sooner plays the first moment through it), unless they are no longer `Paused` (you stopped or
+  restarted one meanwhile). Wake dictation (always-listening) does not pause media, since its mic
+  stays open. A reloaded or closed window releases its hold. Players are reached with `gdbus`
+  (part of GLib, so no new dependency). Other platforms do nothing.
+- **Files:** `packages/desktop/src/features/media-pause.ts` (MPRIS bus, pause/resume holders,
+  IPC), `packages/app/src/media-pause/index.ts` (`usePauseMediaWhile`).
+- **Core files touched:** desktop `main.ts` calls `registerMediaPauseHandlers`; `preload.ts`
+  exposes `media.setCaptureActive`; app `desktop/host.ts` types it; `contexts/voice-context.tsx`
+  holds the pause while the runtime's `isVoiceMode` is true; `hooks/use-dictation.ts` holds it
+  while `status === "recording"`.
+- **Re-apply:** Re-add the IPC registration next to the file opener in `main.ts`, the preload
+  `media` bridge, and the two `usePauseMediaWhile` calls. The sidebar voice session runs on the
+  same voice runtime, so the voice-context call covers it.
+- **Verify:** `packages/desktop/src/features/media-pause.test.ts` is registered in the update
+  script. By hand: play music, start dictation, it pauses; stop, it resumes.

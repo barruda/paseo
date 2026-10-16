@@ -97,6 +97,11 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
       ipcRenderer.invoke("paseo:opener:openFile", input),
     openUrl: (url: string) => ipcRenderer.invoke("paseo:opener:openUrl", url),
   },
+  // CUSTOM(media-pause): pause playing media while voice mode or dictation holds the mic.
+  media: {
+    setCaptureActive: (active: boolean) =>
+      ipcRenderer.invoke("paseo:media:setCaptureActive", active),
+  },
   editor: {
     listTargets: () => ipcRenderer.invoke("paseo:editor:listTargets"),
     openTarget: (input: {
