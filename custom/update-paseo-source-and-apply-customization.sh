@@ -296,6 +296,8 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts src/server/agent/mcp-server.test.ts --bail=1)
   (cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/chat-code-run/model.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/history-content-index.test.ts src/server/agent-history-search.test.ts --bail=1)
+  (cd packages/protocol && npx vitest run src/search/history-query.test.ts --bail=1)
 fi
 
 step "Building the desktop app"

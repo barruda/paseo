@@ -89,6 +89,12 @@ export async function fetchAgentHistoryPage(input: {
     serverId: input.serverId,
     entries: payload.entries,
   });
+  // CUSTOM(history-content-search): keep each session's matched message for its row.
+  const contentMatches = new Map(
+    payload.entries.flatMap((entry) =>
+      entry.contentMatch ? [[entry.agent.id, entry.contentMatch] as const] : [],
+    ),
+  );
   return {
     isSearchTruncated: payload.searchTruncated === true,
     agents: Array.from(agents.values(), (agent) => ({
@@ -110,6 +116,7 @@ export async function fetchAgentHistoryPage(input: {
       createdAt: agent.createdAt,
       labels: agent.labels,
       projectPlacement: agent.projectPlacement,
+      contentMatch: contentMatches.get(agent.id),
     })),
     pageInfo: payload.pageInfo,
   };

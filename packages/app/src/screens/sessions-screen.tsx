@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { AgentList } from "@/components/agent-list";
 import { SearchField } from "@/components/ui/search-field";
+import { HistorySearchSyntax } from "@/components/history-search-syntax";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { type AgentHistoryHostError, useAgentHistory } from "@/hooks/use-agent-history";
@@ -176,6 +177,8 @@ function SessionsScreenContent() {
           ) : null}
         </View>
       ) : null}
+      {/* CUSTOM(history-content-search): the query operators, under the search field. */}
+      <HistorySearchSyntax isVisible={isSearchSupported} />
       {hostErrors.length > 0 ? <SessionHostErrorsBanner errors={hostErrors} t={t} /> : null}
       {isInitialLoad ? (
         <View style={styles.loadingContainer}>

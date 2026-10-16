@@ -1,6 +1,8 @@
+import { parseHistoryQuery } from "@getpaseo/protocol/search/history-query";
 import { describe, expect, it } from "vitest";
 import {
   type AgentHistorySearchCandidate,
+  matchAgentHistoryNames,
   matchesAgentHistoryQuery,
 } from "./agent-history-search.js";
 
@@ -95,5 +97,26 @@ describe("matchesAgentHistoryQuery", () => {
 
   it("keeps candidates for a blank query", () => {
     expect(matchesAgentHistoryQuery("   ", candidate({ title: "anything" }))).toBe(true);
+  });
+});
+
+// CUSTOM(history-content-search)
+describe("matchAgentHistoryNames", () => {
+  const entry = candidate({ title: "Run the tests at once", branch: "fix-staging-relay" });
+
+  it("matches a quoted phrase only as adjacent whole words", () => {
+    expect(matchAgentHistoryNames(parseHistoryQuery('"at once"'), entry)).toBe("match");
+    expect(matchAgentHistoryNames(parseHistoryQuery('"tests once"'), entry)).toBe("miss");
+  });
+
+  it("matches either side of OR", () => {
+    expect(matchAgentHistoryNames(parseHistoryQuery("tunnel OR relay"), entry)).toBe("match");
+    expect(matchAgentHistoryNames(parseHistoryQuery("tunnel OR socket"), entry)).toBe("miss");
+  });
+
+  it("reports an excluded name apart from a miss, without typo tolerance", () => {
+    expect(matchAgentHistoryNames(parseHistoryQuery("tests -staging"), entry)).toBe("excluded");
+    expect(matchAgentHistoryNames(parseHistoryQuery("-stagnig"), entry)).toBe("match");
+    expect(matchAgentHistoryNames(parseHistoryQuery("-ui"), entry)).toBe("match");
   });
 });
