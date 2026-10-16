@@ -93,6 +93,7 @@ import { AutocompletePopover } from "@/components/ui/autocomplete-popover";
 import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
 import { usePluginClientSlashCommands } from "@/plugins/client-slash-commands";
+import { useRegisterChatComposerFocus } from "@/chat-esc-focus/registry";
 import {
   executePluginClientSlashCommand,
   resolvePluginClientSlashCommand,
@@ -1897,6 +1898,8 @@ function ComposerContentImpl({
   const focusMessageInputForKeyboardAction = useCallback(() => {
     focusMessageInputWithPlatformStrategy(messageInputRef);
   }, []);
+  // CUSTOM(chat-esc-focus): lets this agent's chat timeline send focus back here on Esc.
+  useRegisterChatComposerFocus(serverId, agentId, focusMessageInputForKeyboardAction);
 
   const isVoiceModeForAgent = resolveIsVoiceModeForAgent(voice, serverId, agentId);
 
