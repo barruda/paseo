@@ -276,7 +276,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
         );
         if (!entry || entry.kind !== "item") throw new Error("Open file entry missing");
         entry.onSelect();
-        expect(onOpenFile).toHaveBeenLastCalledWith("/some/path.ts", mode);
+        expect(onOpenFile).toHaveBeenLastCalledWith("/some/path.ts", mode, "file_abc");
       }
       const unavailableEntries = buildWorkspaceTabMenuEntries({ ...input, onOpenFile: undefined });
       expect(unavailableEntries.some((entry) => entry.key.startsWith("open-file-"))).toBe(false);
@@ -301,7 +301,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
         throw new Error("Copy full file path entry missing");
       }
       copyFullFilePathEntry.onSelect();
-      expect(onCopyFilePath).toHaveBeenLastCalledWith("/some/path.ts", "full");
+      expect(onCopyFilePath).toHaveBeenLastCalledWith("/some/path.ts", "full", "file_abc");
     },
   );
 

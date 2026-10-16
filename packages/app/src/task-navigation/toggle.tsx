@@ -3,7 +3,7 @@ import {
   getPanelInstanceAttributes,
   subscribePanelInstanceAttributes,
 } from "@/panels/panel-instance-attributes";
-import { useDesksStore } from "./desks-store";
+import { deskTabs, useDesksStore } from "./desks-store";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Switch } from "@/components/ui/switch";
@@ -17,7 +17,7 @@ export function TaskNavigationToggle() {
   const subscribe = useCallback(
     (listener: () => void) => {
       const unsubscribe = desks
-        .flatMap((desk) => [...(desk.preview ? [desk.preview] : []), ...desk.tabs])
+        .flatMap(deskTabs)
         .map((tab) =>
           subscribePanelInstanceAttributes(
             { serverId: tab.serverId, workspaceId: tab.workspaceId, tabId: tab.id },
@@ -33,7 +33,7 @@ export function TaskNavigationToggle() {
   const snapshot = useCallback(
     () =>
       desks.some((desk) =>
-        [...(desk.preview ? [desk.preview] : []), ...desk.tabs].some(
+        deskTabs(desk).some(
           (tab) =>
             getPanelInstanceAttributes({
               serverId: tab.serverId,

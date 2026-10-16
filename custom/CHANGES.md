@@ -1308,46 +1308,60 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 ## desks: personal tab sets across projects in Tasks mode
 
 - **Added:** 2026-10-16 (upstream 0.11.2)
-- **Commit:** `custom: add cross-project Desks to task navigation`
+- **Commit:** `custom: add cross-project Desks to task navigation`, then
+  `custom: Desks reuse the workspace split layout and tab row`
 - **Why:** Checking an agent should not replace the surrounding tabs. Group work by personal
-  purpose while preserving the original workspace model as a toggleable fallback.
+  purpose while preserving the original workspace model as a toggleable fallback. Desks render the
+  workspace's own split layout and tab row, so every tab customization (Copy full file path, Open
+  in browser, the tab menu, splits) works in both modes without a second implementation.
 - **What:** Tasks mode hosts saved **Desks**. The selector beside the project/workspace context
   switches Desks and offers New Desk and Rename Desk. Editor and Git header actions follow the
-  selected tab’s source workspace. A blue-outlined first slot previews task
-  selections; middle-click or Keep tab retains a tab. Each reference keeps its source host and
-  workspace. The close button and middle-click on a tab close its reference without archiving a
-  session; both protect tabs with unsaved changes. The + menu uses the standard workspace
-  launcher, scoped to the selected tab’s project.
-  Tab names stay on one line with a 15-character limit (including ellipsis), followed by the project
-  icon; task rows also show project icons. Activity and recent-open ordering preserve existing
-  sibling positions until timestamps differ by at least one minute; attention groups still update
-  immediately. Shift+Tab cycles Desks; tab navigation and closing use Desk tabs.
-  Search and checked project selection share a sidebar row, with Select all/none. Sorting offers
-  attention, last activity, recently opened, and title. New workspace and Browse workspaces rows
-  are removed from the Tasks sidebar. The top-bar Tasks switch restores the original layout.
-- **Files:** `packages/app/src/task-navigation/` owns Desk persistence, rendering, task projection,
-  and the navigation bridge. Desk state is local to this app installation, separately persisted
-  from workspace layouts. Source workspaces retain their session and filesystem ownership.
-- **Core files touched:** The host workspace route chooses DeskScreen in Tasks mode. The existing
-  workspace target storage schema is exported for validation. The navigation store and explicit
-  tab preparation bridge existing launchers into Desks. Supporting Changes/PR opens honor Desks.
+  focused tab's source workspace. A Desk is a workspace-style split layout whose tabs each
+  remember their source host and workspace: the standard tab row, tab context menu, drag to
+  reorder or split, Split right/down, maximize, middle-click close and the + launcher all work as
+  in a workspace. Clicking a task opens it in the preview tab (italic label); middle-click or Keep
+  tab retains it. Closing a tab drops its reference without archiving a session and asks before
+  discarding unsaved changes. Links a Desk browser opens in a new tab land beside it. Activity and
+  recent-open ordering preserve existing sibling positions until timestamps differ by at least one
+  minute; attention groups still update immediately. Shift+Tab cycles Desks; tab navigation and
+  closing use the focused pane's tabs. Search and checked project selection share a sidebar row,
+  with Select all/none. Sorting offers attention, last activity, recently opened, and title. New
+  workspace and Browse workspaces rows are removed from the Tasks sidebar. The top-bar Tasks
+  switch restores the original layout.
+- **Files:** `packages/app/src/task-navigation/` owns Desk persistence (`desks-store.ts`: a
+  `WorkspaceLayout` plus `owners` per tab, migrated from the earlier flat tab list), the screen,
+  task projection, and the navigation bridge. Desk state is local to this app installation and
+  separate from workspace layouts. `screens/workspace/workspace-tab-menu-actions.ts` holds the tab
+  menu actions both screens call.
+- **Core files touched:** The host workspace route chooses DeskScreen in Tasks mode.
+  `workspace-layout-storage.ts` exports the target and layout schemas. `workspace-tab-owner.ts`
+  (new) is a context resolving a tab's workspace; `workspace-desktop-tabs-row.tsx`,
+  `split-container.tsx` and `workspace-panel-host.tsx` read it for presentation, drag checks and
+  modified-tab retention, and the tab chip gets an italic preview label and a `data-desk-tab`
+  attribute. `panel-instance-attributes.ts` accepts that resolver. `workspace-tab-menu.ts` passes
+  the tab id to the file actions. `workspace-screen.tsx` calls the shared tab menu actions.
+  `desktop/browser/new-tab-requests` hands `openUrl` its request. The navigation store and explicit
+  tab preparation bridge existing launchers into Desks; supporting Changes/PR opens honor Desks.
   Header shortcut hints label Desk cycling. Bottom terminals are supported by
   [desk-bottom-panel](#desk-bottom-panel-bottom-terminals-in-tasks-mode).
-  `workspace-new-tab-menu.tsx` accepts additional items so Desks can retain Files.
 - **Re-apply:** Keep the original WorkspaceDeck branch intact. Insert DeskScreen only at the host
-  workspace content boundary, after route/open-intent handling. Supply each panel its original
-  server/workspace identity and unique reference tab ID. Use the shared panel, focus, retained
-  content, timeline visibility, and floating-panel contracts. Never move sessions or replace
-  their workspace layouts to implement a Desk. Keep panel-state updates attached to their Desk
-  even while a different Desk is selected. Preserve the existing Tasks toggle storage key. Reuse
-  `WorkspaceNewTabMenuContent` through the Desk launcher and resolve project icons outside the
-  sidebar-only context. Keep prior sibling order across task updates; only cross a neighbor when
-  its timestamp is at least 60 seconds older (or its attention priority is lower).
-- **Verify:** Run the task-navigation model/store suites and the desktop task-navigation browser
-  test already registered in the update script. The browser test covers previews, retained tabs,
-  composer drafts, Desk creation/restoration, cycling, Files/agent/terminal creation, project icons,
-  truncated labels, project filters, sort persistence, and switching back to the workspace layout. Run typecheck/lint, build desktop,
-  then install into a new build folder. Do not restart the user's daemons.
+  workspace content boundary, after route/open-intent handling. Render `SplitContainer` with the
+  Desk's layout under a `WorkspaceTabOwnerProvider`; every place the split container, tab row or
+  panel host resolves a tab's presentation, host or panel attributes must use the owner, falling
+  back to the screen's server/workspace when there is no provider. Change Desk layouts only through
+  the pure functions in `workspace-layout-actions.ts`, never `useWorkspaceLayoutStore` (its tab ids
+  are per-target and collide across workspaces). Keep workspace-screen tab menu handlers as thin
+  calls into `workspace-tab-menu-actions.ts`. Never move sessions or replace their workspace
+  layouts to implement a Desk. Keep panel-state updates attached to their Desk even while a
+  different Desk is selected. Preserve the existing Tasks toggle and `custom-desks` storage keys.
+  Keep prior sibling order across task updates; only cross a neighbor when its timestamp is at
+  least 60 seconds older (or its attention priority is lower).
+- **Verify:** Run the task-navigation model/store suites, `workspace-tab-menu.test.ts`, and the
+  desktop task-navigation browser test already registered in the update script. The browser test
+  covers previews, retained tabs, the tab context menu, splitting and closing a split, composer
+  drafts, Desk creation/restoration, cycling, agent/terminal creation, project filters, sort
+  persistence, and switching back to the workspace layout. Run typecheck/lint, build desktop, then
+  install into a new build folder. Do not restart the user's daemons.
 
 ## sidebar-show-more: collapse secondary header navigation
 

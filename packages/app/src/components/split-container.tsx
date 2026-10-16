@@ -78,6 +78,10 @@ import {
   WorkspaceTabPresentationResolver,
   WorkspaceTabIcon,
 } from "@/screens/workspace/workspace-tab-presentation";
+import {
+  useWorkspaceTabOwner,
+  useWorkspaceTabOwnerResolver,
+} from "@/screens/workspace/workspace-tab-owner";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
   createDefaultLayout,
@@ -358,6 +362,7 @@ export function SplitContainer({
   const explorerSidebarPaneId = useWorkspaceLayoutStore(
     (state) => state.explorerSidebarPaneIdByWorkspace[workspaceKey] ?? null,
   );
+  const resolveTabOwner = useWorkspaceTabOwnerResolver();
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -520,7 +525,11 @@ export function SplitContainer({
       const destinationHost = destinationPaneId === explorerSidebarPaneId ? "explorer" : "main";
       if (
         !activeTab ||
-        !panelTargetSupportsHost(normalizedServerId, activeTab.target, destinationHost)
+        !panelTargetSupportsHost(
+          resolveTabOwner?.(activeTab.tabId)?.serverId ?? normalizedServerId,
+          activeTab.target,
+          destinationHost,
+        )
       ) {
         setDropPreview(null);
         setTabDropPreview(null);
@@ -548,7 +557,7 @@ export function SplitContainer({
 
       setDropPreview(computePaneOverDropPreview({ overData, rects }));
     },
-    [normalizedServerId, panesById, explorerSidebarPaneId, uiTabs],
+    [normalizedServerId, panesById, explorerSidebarPaneId, resolveTabOwner, uiTabs],
   );
 
   const applyTabDropEnd = useCallback(
@@ -804,6 +813,11 @@ function DragOverlayTabChipInner({
 }) {
   const { t } = useTranslation();
   const { theme } = useUnistyles();
+  // CUSTOM(desks): a Desk tab resolves against its own workspace.
+  const owner = useWorkspaceTabOwner(tab.tabId, {
+    serverId: normalizedServerId,
+    workspaceId: normalizedWorkspaceId,
+  });
 
   const chipStyle = useMemo(
     () => [
@@ -823,8 +837,8 @@ function DragOverlayTabChipInner({
   return (
     <WorkspaceTabPresentationResolver
       tab={tab}
-      serverId={normalizedServerId}
-      workspaceId={normalizedWorkspaceId}
+      serverId={owner.serverId}
+      workspaceId={owner.workspaceId}
     >
       {(presentation) => {
         const label =

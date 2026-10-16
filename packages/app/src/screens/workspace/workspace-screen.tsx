@@ -117,7 +117,14 @@ import { removeResidentBrowserWebview } from "@/desktop/browser/resident-webview
 import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { getDesktopHost } from "@/desktop/host";
-import { buildProviderCommand } from "@/utils/provider-command-templates";
+import {
+  copyTabAgentId,
+  copyTabFilePath,
+  copyTabResumeCommand,
+  copyTabTerminalId,
+  createTabFileOpener,
+  reloadTabAgent,
+} from "@/screens/workspace/workspace-tab-menu-actions";
 import { generateDraftId } from "@/stores/draft-keys";
 import { resolveWorkspaceRouteId } from "@/utils/workspace-identity";
 import { useOpenAgentTabLabels } from "@/subagents/use-open-agent-tab-labels";
@@ -201,8 +208,6 @@ import {
 } from "@/workspace/file-open";
 import { RenderProfile } from "@/utils/render-profiler";
 // CUSTOM(copy-full-file-path)
-import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
-import { isAbsolutePath } from "@/utils/path";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 import { useHasPullRequest, usePullRequestAutoAdd } from "@/panels/pull-request";
 // CUSTOM(header-shortcuts)
@@ -2089,150 +2094,39 @@ function WorkspaceScreenContent({
     ],
   );
 
+  // CUSTOM(desks): tab menu actions live in workspace-tab-menu-actions so Desks share them.
   const handleCopyAgentId = useCallback(
-    async (agentId: string) => {
-      if (!agentId) return;
-      try {
-        await Clipboard.setStringAsync(agentId);
-        toast.copied(t("workspace.tabs.toasts.agentIdCopiedLabel"));
-      } catch {
-        toast.error(t("workspace.tabs.toasts.copyFailed"));
-      }
-    },
+    (agentId: string) => copyTabAgentId(agentId, { toast, t }),
     [toast, t],
   );
 
   const handleCopyTerminalId = useCallback(
-    async (terminalId: string) => {
-      if (!terminalId) return;
-      try {
-        await Clipboard.setStringAsync(terminalId);
-        toast.copied(t("workspace.tabs.toasts.terminalIdCopiedLabel"));
-      } catch {
-        toast.error(t("workspace.tabs.toasts.copyFailed"));
-      }
-    },
+    (terminalId: string) => copyTabTerminalId(terminalId, { toast, t }),
     [toast, t],
   );
 
   // CUSTOM(open-file-externally): never hand a remote host's paths to the local OS.
   const isLocalFileHost = useIsLocalDaemon(normalizedServerId);
-  const fileOpenPending = useRef(false);
   const handleOpenFile = useMemo(() => {
-    const openFile = getDesktopHost()?.opener?.openFile;
-    if (!isLocalFileHost || !openFile) return undefined;
-    return async (path: string, mode: "browser" | "default") => {
-      if (fileOpenPending.current) return;
-      if (!workspaceDirectory && !isAbsolutePath(path)) {
-        toast.error(t("workspace.header.toasts.workspacePathUnavailable"));
-        return;
-      }
-      const absolutePath = isAbsolutePath(path)
-        ? path
-        : buildAbsoluteExplorerPath({
-            workspaceRoot: workspaceDirectory!,
-            entryPath: path,
-          });
-      fileOpenPending.current = true;
-      toast.show("Opening file…", { durationMs: null });
-      try {
-        await openFile({ path: absolutePath, mode });
-        toast.show("File opened");
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : "Could not open file");
-      } finally {
-        fileOpenPending.current = false;
-      }
-    };
+    const openFile = createTabFileOpener(isLocalFileHost);
+    if (!openFile) return undefined;
+    return (path: string, mode: "browser" | "default") =>
+      openFile({ path, mode, workspaceDirectory, toast, t });
   }, [isLocalFileHost, workspaceDirectory, toast, t]);
 
   const handleCopyFilePath = useCallback(
-    async (path: string, mode?: "full") => {
-      if (!path) return;
-      // CUSTOM(copy-full-file-path): resolve the tab's path against the workspace root.
-      let copiedPath = path;
-      if (mode === "full" && !isAbsolutePath(path)) {
-        if (!workspaceDirectory) {
-          toast.error(t("workspace.header.toasts.workspacePathUnavailable"));
-          return;
-        }
-        copiedPath = buildAbsoluteExplorerPath({
-          workspaceRoot: workspaceDirectory,
-          entryPath: path,
-        });
-      }
-      try {
-        await Clipboard.setStringAsync(copiedPath);
-        toast.copied(t("workspace.tabs.toasts.filePathCopiedLabel"));
-      } catch {
-        toast.error(t("workspace.tabs.toasts.copyFailed"));
-      }
-    },
+    (path: string, mode?: "full") => copyTabFilePath({ path, mode, workspaceDirectory, toast, t }),
     [toast, t, workspaceDirectory],
   );
 
   const handleCopyResumeCommand = useCallback(
-    async (agentId: string) => {
-      if (!agentId) return;
-      const agent =
-        useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
-      const providerSessionId =
-        agent?.runtimeInfo?.sessionId ?? agent?.persistence?.sessionId ?? null;
-      if (!agent || !providerSessionId) {
-        toast.error(t("workspace.tabs.toasts.resumeIdUnavailable"));
-        return;
-      }
-
-      const command =
-        buildProviderCommand({
-          provider: agent.provider,
-          id: "resume",
-          sessionId: providerSessionId,
-        }) ?? null;
-      if (!command) {
-        toast.error(t("workspace.tabs.toasts.resumeCommandUnavailable"));
-        return;
-      }
-      try {
-        await Clipboard.setStringAsync(command);
-        toast.copied(t("workspace.tabs.toasts.resumeCommandCopiedLabel"));
-      } catch {
-        toast.error(t("workspace.tabs.toasts.copyFailed"));
-      }
-    },
+    (agentId: string) => copyTabResumeCommand({ serverId: normalizedServerId, agentId, toast, t }),
     [normalizedServerId, toast, t],
   );
 
   const handleReloadAgent = useCallback(
-    async (agentId: string) => {
-      if (!client || !isConnected) {
-        toast.error(t("workspace.terminal.hostDisconnected"));
-        return;
-      }
-
-      toast.show(t("workspace.tabs.toasts.reloadingAgent"), { durationMs: null });
-      try {
-        await client.refreshAgent(agentId);
-        // Send the existing cursor so the server detects the new epoch and
-        // returns reset:true. Without a cursor, the server returns reset:false
-        // and the client takes the incremental path, where new-epoch rows are
-        // dropped against the stale cursor.
-        const sessionState = useSessionStore.getState().sessions[normalizedServerId];
-        const currentCursor = sessionState?.agentTimelineCursor.get(agentId);
-        await getHostRuntimeStore().fetchAgentTimeline(normalizedServerId, agentId, {
-          direction: "tail",
-          projection: "projected",
-          ...(currentCursor
-            ? { cursor: { epoch: currentCursor.epoch, seq: currentCursor.endSeq } }
-            : {}),
-        });
-        toast.show(t("workspace.tabs.toasts.reloadedAgent"), { variant: "success" });
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : t("workspace.tabs.toasts.failedToReloadAgent"),
-        );
-      }
-    },
+    (agentId: string) =>
+      reloadTabAgent({ client, isConnected, serverId: normalizedServerId, agentId, toast, t }),
     [client, isConnected, normalizedServerId, toast, t],
   );
 

@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  deskTabLabel,
   buildTaskTree,
   filterTaskTree,
   flattenTaskTree,
@@ -281,13 +280,6 @@ it("stabilizes recent opens and nested siblings while retaining attention groups
     "home:a",
   ]);
 });
-it("limits Desk labels to 15 characters including ellipsis and removes line breaks", () => {
-  expect(deskTabLabel("123456789012345")).toBe("123456789012345");
-  expect(deskTabLabel("1234567890123456")).toBe("12345678901234…");
-  expect(deskTabLabel("hello\nworld")).toBe("hello world");
-  expect(Array.from(deskTabLabel("😀".repeat(16)))).toHaveLength(15);
-});
-
 it("does not jump across a near-simultaneous neighbor to reach an older task", () => {
   const roots = buildTaskTree({
     workspaces,

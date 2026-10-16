@@ -88,6 +88,7 @@ import {
   useHorizontalScrollBoundary,
 } from "@/components/ui/horizontal-scroll-boundary";
 import { useSessionStore } from "@/stores/session-store";
+import { useWorkspaceTabOwner } from "@/screens/workspace/workspace-tab-owner";
 
 // CUSTOM(open-file-externally): use the same icon rail as the existing tab actions.
 const ThemedGlobe = withUnistyles(Globe);
@@ -580,8 +581,14 @@ function WorkspaceDesktopTabPresentationSlot({
   workspaceId,
   onResolve,
 }: WorkspaceDesktopTabPresentationSlotProps) {
+  // CUSTOM(desks): a Desk tab resolves against its own workspace.
+  const owner = useWorkspaceTabOwner(tab.tabId, { serverId, workspaceId });
   return (
-    <WorkspaceTabPresentationResolver tab={tab} serverId={serverId} workspaceId={workspaceId}>
+    <WorkspaceTabPresentationResolver
+      tab={tab}
+      serverId={owner.serverId}
+      workspaceId={owner.workspaceId}
+    >
       {(presentation) => (
         <WorkspaceDesktopTabPresentationCommit
           tabKey={tab.key}
@@ -772,6 +779,13 @@ function TabChip({
 }) {
   const { closeButtonTestId, contextMenuTestId, menuEntries } = resolvedTab;
   const { t } = useTranslation();
+  // CUSTOM(desks): Desk tabs carry their own host; a Desk preview tab reads in italics.
+  const owner = useWorkspaceTabOwner(tab.tabId, { serverId, workspaceId: "" });
+  const deskTabDataSet = useMemo(
+    () =>
+      owner.preview === undefined ? undefined : { deskTab: owner.preview ? "preview" : "pinned" },
+    [owner.preview],
+  );
   const middleClickRef = useMiddleClickClose(
     useCallback(() => void onCloseTab(tab.tabId), [onCloseTab, tab.tabId]),
   );
@@ -851,14 +865,19 @@ function TabChip({
     tab.target.kind === "new_tab" ? tab.tabId : buildDeterministicWorkspaceTabId(tab.target);
   const tabLabelSkeletonStyle = styles.tabLabelSkeleton;
   const tabLabelStyle = useMemo(
-    () => [styles.tabLabel, isHighlighted && styles.tabLabelActive],
-    [isHighlighted],
+    () => [
+      styles.tabLabel,
+      isHighlighted && styles.tabLabelActive,
+      owner.preview && styles.tabLabelPreview,
+    ],
+    [isHighlighted, owner.preview],
   );
 
   return (
     <View
       ref={middleClickRef}
       style={styles.tabHoverFrame}
+      dataSet={deskTabDataSet}
       onPointerEnter={handleTabPointerEnter}
       onPointerLeave={handleTabPointerLeave}
     >
@@ -898,7 +917,7 @@ function TabChip({
           >
             {tab.target.kind === "agent" ? (
               <AgentTabTooltipBody
-                serverId={serverId}
+                serverId={owner.serverId}
                 agentId={tab.target.agentId}
                 title={tooltipLabel}
               />
@@ -1692,6 +1711,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabDropIndicatorAfter: {
     right: -TAB_CHIP_GAP / 2 - TAB_DROP_INDICATOR_WIDTH / 2,
+  },
+  tabLabelPreview: {
+    fontStyle: "italic",
   },
   tabLabel: {
     flexShrink: 1,

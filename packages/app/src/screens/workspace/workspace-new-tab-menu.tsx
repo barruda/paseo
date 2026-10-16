@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ComponentType, type ReactElement, type ReactNode } from "react";
+import { useCallback, useMemo, type ComponentType, type ReactElement } from "react";
 import { View } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
 import {
@@ -87,15 +87,12 @@ export function WorkspaceNewTabMenuContent({
   host,
   panePanelKinds,
   paneId,
-  children,
 }: {
   serverId: string;
   purpose: WorkspaceTabLaunchPurpose;
   host: PaneHost;
   panePanelKinds: readonly WorkspaceTabTarget["kind"][];
   paneId?: string;
-  // CUSTOM(desks): retain Desk supporting views alongside the standard main-tab catalog.
-  children?: ReactNode;
 }) {
   const groups = useWorkspaceTabLaunchCatalog({
     serverId,
@@ -133,7 +130,6 @@ export function WorkspaceNewTabMenuContent({
           ) : null}
         </View>
       ))}
-      {children}
     </DropdownMenuContent>
   );
 }

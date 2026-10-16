@@ -1,8 +1,5 @@
-// CUSTOM(desks): use the standard catalog with the selected tab's source workspace.
-import { Folder } from "lucide-react-native";
-import { DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
-import { DensityIcon } from "@/components/ui/density-icon";
-import { useCallback, useMemo } from "react";
+// CUSTOM(desks): the standard new-tab catalog, launched into the Desk with the scope workspace.
+import { useCallback, useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useToast } from "@/contexts/toast-context";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
@@ -10,16 +7,42 @@ import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-stor
 import { generateDraftId } from "@/stores/draft-keys";
 import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { getIsElectron } from "@/constants/platform";
-import { WorkspaceNewTabMenuContent } from "@/screens/workspace/workspace-new-tab-menu";
-import { useWorkspaceTerminals } from "@/screens/workspace/terminals/use-workspace-terminals";
+import {
+  useWorkspaceTerminals,
+  type TerminalTabDestination,
+} from "@/screens/workspace/terminals/use-workspace-terminals";
 import { useWorkspaceCheckoutStatus } from "@/screens/workspace/use-workspace-checkout-status";
 import { useHasPullRequest } from "@/panels/pull-request";
 import { NewTabLauncherProvider, type NewTabLauncher } from "@/workspace-tabs/launcher";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
-import { useDesksStore, type DeskTabInput } from "./desks-store";
+import { useDesksStore, type DeskTabOwner } from "./desks-store";
 
-const EMPTY_KINDS: readonly WorkspaceTabTarget["kind"][] = [];
-export function DeskNewTabMenu({ scope }: { scope: DeskTabInput }) {
+/** Opens a launched target in its pane, or turns the launching new-tab tab into it. */
+export function launchDeskTarget(
+  scope: DeskTabOwner,
+  target: WorkspaceTabTarget,
+  destination: TerminalTabDestination,
+) {
+  const store = useDesksStore.getState();
+  if (destination.kind === "replace") {
+    store.updateTab(destination.tabId, { ...scope, target });
+    store.selectTab(destination.tabId);
+    return;
+  }
+  store.openTab(
+    { ...scope, target },
+    true,
+    destination.paneId ? { mode: "pane", paneId: destination.paneId } : undefined,
+  );
+}
+
+export function DeskLauncherProvider({
+  scope,
+  children,
+}: {
+  scope: DeskTabOwner;
+  children: ReactNode;
+}) {
   const { serverId, workspaceId } = scope;
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
@@ -28,22 +51,17 @@ export function DeskNewTabMenu({ scope }: { scope: DeskTabInput }) {
   const toast = useToast();
   const { t } = useTranslation();
   const open = useCallback(
-    (target: WorkspaceTabTarget) => {
-      useDesksStore.getState().openTab({ serverId, workspaceId, target }, true);
-    },
+    (target: WorkspaceTabTarget, destination: TerminalTabDestination) =>
+      launchDeskTarget({ serverId, workspaceId }, target, destination),
     [serverId, workspaceId],
   );
-  const openFiles = useCallback(() => open({ kind: "files" }), [open]);
-  const filesIcon = useMemo(
-    () => <DensityIcon icon={Folder} size="sm" color="foregroundMuted" />,
-    [],
-  );
   const terminalCreated = useCallback(
-    ({ terminalId }: { terminalId: string }) => open({ kind: "terminal", terminalId }),
+    (input: { terminalId: string; destination: TerminalTabDestination }) =>
+      open({ kind: "terminal", terminalId: input.terminalId }, input.destination),
     [open],
   );
   const terminalSelected = useCallback(
-    (terminalId: string) => open({ kind: "terminal", terminalId }),
+    (terminalId: string) => open({ kind: "terminal", terminalId }, { kind: "open" }),
     [open],
   );
   const unavailable = useCallback(
@@ -83,12 +101,13 @@ export function DeskNewTabMenu({ scope }: { scope: DeskTabInput }) {
   const hasPullRequest = useHasPullRequest({ serverId, cwd: directory, enabled: isGit });
   const createTerminal = terminals.createTerminal;
   const launch = useCallback<NewTabLauncher["launch"]>(
-    (selection) => {
-      if (selection.kind === "target") open(selection.target);
-      else if (selection.kind === "agent") open({ kind: "draft", draftId: generateDraftId() });
+    (selection, destination) => {
+      if (selection.kind === "target") open(selection.target, destination);
+      else if (selection.kind === "agent")
+        open({ kind: "draft", draftId: generateDraftId() }, destination);
       else if (selection.kind === "terminal")
-        createTerminal({ profile: selection.profile, destination: { kind: "open" } });
-      else open({ kind: "browser", browserId: createWorkspaceBrowser().browserId });
+        createTerminal({ profile: selection.profile, destination });
+      else open({ kind: "browser", browserId: createWorkspaceBrowser().browserId }, destination);
     },
     [open, createTerminal],
   );
@@ -107,23 +126,5 @@ export function DeskNewTabMenu({ scope }: { scope: DeskTabInput }) {
     }),
     [isGit, hasPullRequest, terminalDisabled, launch],
   );
-  return (
-    <NewTabLauncherProvider value={launcher}>
-      <WorkspaceNewTabMenuContent
-        serverId={serverId}
-        purpose="primary"
-        host="main"
-        panePanelKinds={EMPTY_KINDS}
-      >
-        <DropdownMenuSeparator />
-        <DropdownMenuItem
-          leading={filesIcon}
-          onSelect={openFiles}
-          testID="workspace-new-tab-menu-files"
-        >
-          {t("panels.files.label")}
-        </DropdownMenuItem>
-      </WorkspaceNewTabMenuContent>
-    </NewTabLauncherProvider>
-  );
+  return <NewTabLauncherProvider value={launcher}>{children}</NewTabLauncherProvider>;
 }

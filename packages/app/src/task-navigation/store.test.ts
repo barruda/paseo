@@ -37,10 +37,12 @@ describe("task navigation mode", () => {
 import {
   activeDesk,
   activeDeskTab,
+  deskTabs,
   initialDesks,
   useDesksStore,
   type DeskTabInput,
 } from "./desks-store";
+import { collectAllPanes, findPaneContainingTab } from "@/stores/workspace-layout-actions";
 const firstTab: DeskTabInput = {
   serverId: "home",
   workspaceId: "paseo",
@@ -51,6 +53,9 @@ const secondTab: DeskTabInput = {
   workspaceId: "unity",
   target: { kind: "agent", agentId: "two" },
 };
+const desk = () => activeDesk(useDesksStore.getState());
+const tabs = () => deskTabs(desk());
+const current = () => activeDeskTab(useDesksStore.getState());
 describe("Desks", () => {
   beforeEach(async () => {
     await useDesksStore.persist.rehydrate();
@@ -66,69 +71,132 @@ describe("Desks", () => {
   it("changes a draft's project workspace without changing its tab or Desk identity", () => {
     const store = useDesksStore.getState();
     store.openTab({ ...firstTab, target: { kind: "draft", draftId: "draft-project-cycle" } }, true);
-    const before = activeDeskTab(useDesksStore.getState())!;
-    const deskId = activeDesk(useDesksStore.getState()).id;
+    const before = current()!;
+    const deskId = desk().id;
     store.updateTab(before.id, { workspaceId: "unity" });
-    expect(activeDeskTab(useDesksStore.getState())).toEqual({ ...before, workspaceId: "unity" });
-    expect(activeDesk(useDesksStore.getState()).id).toBe(deskId);
-    expect(activeDesk(useDesksStore.getState()).tabs).toHaveLength(1);
+    expect(current()).toEqual({ ...before, workspaceId: "unity" });
+    expect(desk().id).toBe(deskId);
+    expect(tabs()).toHaveLength(1);
   });
   it("replaces the preview across projects while pinned tabs keep their source workspace", () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);
     store.openTab(secondTab);
-    const pinned = activeDesk(useDesksStore.getState()).tabs[0];
+    const pinned = tabs()[0];
     store.openTab({ ...firstTab, target: { kind: "agent", agentId: "third" } });
-    expect(activeDesk(useDesksStore.getState()).tabs).toEqual([pinned]);
-    expect(activeDeskTab(useDesksStore.getState())?.target).toEqual({
-      kind: "agent",
-      agentId: "third",
+    expect(tabs()).toHaveLength(2);
+    expect(tabs()[0]).toEqual(pinned);
+    expect(current()).toMatchObject({
+      serverId: "home",
+      workspaceId: "paseo",
+      target: { kind: "agent", agentId: "third" },
     });
+    expect(desk().previewTabId).toBe(current()!.id);
     store.openTab(firstTab);
-    expect(activeDeskTab(useDesksStore.getState())).toEqual(pinned);
+    expect(current()).toEqual(pinned);
   });
   it("promotes a preview without duplicating it and closes only its reference", () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab);
-    const preview = activeDesk(useDesksStore.getState()).preview!;
+    const preview = current()!;
+    expect(desk().previewTabId).toBe(preview.id);
     store.keepPreview();
     store.openTab(firstTab, true);
-    expect(activeDesk(useDesksStore.getState())).toMatchObject({
-      preview: null,
-      tabs: [preview],
-      activeTabId: preview.id,
-    });
+    expect(desk().previewTabId).toBeNull();
+    expect(tabs()).toEqual([preview]);
     store.closeTab(preview.id);
-    expect(activeDesk(useDesksStore.getState())).toMatchObject({ tabs: [], activeTabId: null });
+    expect(tabs()).toEqual([]);
+    expect(current()).toBeNull();
   });
   it("restores independent Desks, allowing the same agent in each", async () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);
-    const primary = activeDesk(useDesksStore.getState());
+    const primary = desk();
     store.createDesk("While waiting");
     store.openTab(firstTab, true);
     store.openTab(secondTab);
-    const waiting = activeDesk(useDesksStore.getState());
-    expect(waiting.tabs[0]?.target).toEqual(primary.tabs[0]?.target);
-    expect(waiting.tabs[0]?.id).not.toBe(primary.tabs[0]?.id);
+    const waiting = desk();
+    expect(deskTabs(waiting)[0]?.target).toEqual(deskTabs(primary)[0]?.target);
+    expect(deskTabs(waiting)[0]?.id).not.toBe(deskTabs(primary)[0]?.id);
     store.selectDesk(primary.id);
-    expect(activeDesk(useDesksStore.getState())).toEqual(primary);
+    expect(desk()).toEqual(primary);
     await useDesksStore.persist.rehydrate();
     store.selectDesk(waiting.id);
-    expect(activeDesk(useDesksStore.getState())).toEqual(waiting);
-    store.closeTab(waiting.tabs[0]!.id);
+    expect(tabs()).toEqual(deskTabs(waiting));
+    store.closeTab(deskTabs(waiting)[0]!.id);
     store.selectDesk(primary.id);
-    expect(activeDesk(useDesksStore.getState())).toEqual(primary);
+    expect(tabs()).toEqual(deskTabs(primary));
   });
   it("qualifies targets by host and keeps explicit empty project selection across reload", async () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);
     store.openTab({ ...firstTab, serverId: "work" }, true);
-    expect(activeDesk(useDesksStore.getState()).tabs).toHaveLength(2);
+    expect(tabs()).toHaveLength(2);
     store.setProjects([]);
     store.setSort("activity");
     await useDesksStore.persist.rehydrate();
     expect(useDesksStore.getState()).toMatchObject({ projectKeys: [], sort: "activity" });
+  });
+  it("splits tabs from different workspaces into panes and keeps their owners", async () => {
+    const store = useDesksStore.getState();
+    store.openTab(firstTab, true);
+    store.openTab(secondTab, true);
+    const [one, two] = tabs();
+    const mainPaneId = findPaneContainingTab(desk().layout.root, one!.id)!.id;
+    store.splitPane({ tabId: two!.id, targetPaneId: mainPaneId, position: "right" });
+    expect(collectAllPanes(desk().layout.root)).toHaveLength(2);
+    const sidePaneId = findPaneContainingTab(desk().layout.root, two!.id)!.id;
+    expect(sidePaneId).not.toBe(mainPaneId);
+    expect(current()).toEqual(two);
+    store.focusPane(mainPaneId);
+    expect(current()).toEqual(one);
+    store.openTab({ ...secondTab, target: { kind: "file", path: "README.md" } }, true, {
+      mode: "pane",
+      paneId: sidePaneId,
+    });
+    expect(findPaneContainingTab(desk().layout.root, current()!.id)!.id).toBe(sidePaneId);
+    expect(current()).toMatchObject({ workspaceId: "unity" });
+    await useDesksStore.persist.rehydrate();
+    expect(collectAllPanes(desk().layout.root)).toHaveLength(2);
+    expect(tabs().map((tab) => tab.workspaceId)).toEqual(["paseo", "unity", "unity"]);
+  });
+  it("gives an empty split the workspace it was split from", () => {
+    const store = useDesksStore.getState();
+    store.openTab(secondTab, true);
+    const paneId = desk().layout.focusedPaneId!;
+    store.splitPaneEmpty({ targetPaneId: paneId, position: "bottom" }, secondTab);
+    const launcher = current()!;
+    expect(launcher).toMatchObject({ workspaceId: "unity", target: { kind: "new_tab" } });
+    store.updateTab(launcher.id, { ...firstTab, target: { kind: "terminal", terminalId: "t1" } });
+    expect(current()).toMatchObject({ workspaceId: "paseo", target: { kind: "terminal" } });
+  });
+  it("migrates a Desk saved as a flat tab list", async () => {
+    await AsyncStorage.setItem(
+      "custom-desks",
+      JSON.stringify({
+        version: 1,
+        state: {
+          desks: [
+            {
+              id: "primary",
+              name: "Primary tasks",
+              tabs: [{ id: "pinned", ...firstTab }],
+              preview: { id: "preview", ...secondTab },
+              activeTabId: "pinned",
+            },
+          ],
+          activeDeskId: "primary",
+          initialized: true,
+          projectKeys: null,
+          sort: "attention",
+          openedAt: {},
+        },
+      }),
+    );
+    await useDesksStore.persist.rehydrate();
+    expect(tabs().map((tab) => tab.id)).toEqual(["preview", "pinned"]);
+    expect(current()).toMatchObject({ id: "pinned", workspaceId: "paseo" });
+    expect(desk().previewTabId).toBe("preview");
   });
 });
 
@@ -136,12 +204,12 @@ it("keeps state updates attached to their original Desk while another Desk is ac
   useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary" });
   const store = useDesksStore.getState();
   store.openTab({ ...firstTab, target: { kind: "file", path: "README.md" } }, true);
-  const tab = activeDeskTab(useDesksStore.getState())!;
+  const tab = current()!;
   store.createDesk("Other work");
   store.updateTab(tab.id, { state: { scrollTop: 120 } });
-  expect(activeDesk(useDesksStore.getState()).tabs).toEqual([]);
+  expect(tabs()).toEqual([]);
   store.selectDesk("primary");
-  expect(activeDeskTab(useDesksStore.getState())?.state).toEqual({ scrollTop: 120 });
+  expect(current()?.state).toEqual({ scrollTop: 120 });
 });
 
 import { useSessionStore, type WorkspaceDescriptor } from "@/stores/session-store";
