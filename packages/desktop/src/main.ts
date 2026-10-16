@@ -51,6 +51,8 @@ import {
 } from "./features/notifications.js";
 import { createFileOpener } from "./features/file-opener.js";
 import { createExternalUrlOpener } from "./features/opener.js";
+// CUSTOM(media-pause)
+import { registerMediaPauseHandlers } from "./features/media-pause.js";
 import { createBrowserCaptureService } from "./features/browser-capture.js";
 import { registerEditorTargetHandlers } from "./features/editor-targets/ipc.js";
 import { resolveAppIconPath } from "./features/stamped-icon.js";
@@ -978,6 +980,8 @@ async function bootstrap(): Promise<void> {
       (await app.getApplicationInfoForProtocol("https://example.com")).path,
   });
   ipcMain.handle("paseo:opener:openFile", (_event, input: unknown) => openFile(input));
+  // CUSTOM(media-pause): voice mode and dictation pause playing media.
+  registerMediaPauseHandlers(ipcMain);
   registerEditorTargetHandlers();
   registerBrowserAutomationIpc();
 

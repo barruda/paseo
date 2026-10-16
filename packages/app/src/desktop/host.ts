@@ -66,6 +66,11 @@ export interface DesktopOpenerBridge {
   openUrl?: (url: string) => Promise<void>;
 }
 
+// CUSTOM(media-pause)
+export interface DesktopMediaBridge {
+  setCaptureActive?: (active: boolean) => Promise<void>;
+}
+
 export interface DesktopEditorTargetDescriptor {
   id: string;
   label: string;
@@ -185,6 +190,8 @@ export interface DesktopHostBridge {
   dialog?: DesktopDialogBridge;
   notification?: DesktopNotificationBridge;
   opener?: DesktopOpenerBridge;
+  // CUSTOM(media-pause)
+  media?: DesktopMediaBridge;
   editor?: DesktopEditorBridge;
   webUtils?: DesktopWebUtilsBridge;
   menu?: DesktopMenuBridge;

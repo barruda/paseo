@@ -12,6 +12,8 @@ import { useThinkingToneStore } from "@/voice/thinking-tone-settings";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { useSessionStore } from "@/stores/session-store";
 import { createAudioEngine } from "@/audio";
+// CUSTOM(media-pause)
+import { usePauseMediaWhile } from "@/media-pause";
 import type { AudioEngine } from "@/audio";
 import {
   createVoiceRuntime,
@@ -161,6 +163,13 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
 
   const engine = engineRef.current;
   const runtime = runtimeRef.current!;
+  // CUSTOM(media-pause): music and videos pause for the whole voice session.
+  const isVoiceMode = useSyncExternalStore(
+    runtime.subscribe,
+    () => runtime.getSnapshot().isVoiceMode,
+    () => runtime.getSnapshot().isVoiceMode,
+  );
+  usePauseMediaWhile(isVoiceMode);
 
   useEffect(() => {
     return () => {

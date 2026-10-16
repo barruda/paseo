@@ -5,6 +5,8 @@ import { DictationStreamSender } from "@/dictation/dictation-stream-sender";
 import { useDictationAudioSource } from "@/hooks/use-dictation-audio-source";
 import { generateMessageId } from "@/types/stream";
 import { AttemptGuard } from "@/utils/attempt-guard";
+// CUSTOM(media-pause)
+import { usePauseMediaWhile } from "@/media-pause";
 import {
   DURATION_TICK_MS,
   PCM_DICTATION_FORMAT,
@@ -34,6 +36,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<DictationStatus>("idle");
   const latestPartialTranscriptRef = useRef("");
+  // CUSTOM(media-pause): "recording" is set before the mic opens, so media is quiet by then.
+  usePauseMediaWhile(status === "recording");
 
   const onTranscriptRef = useRef(onTranscript);
   useEffect(() => {
