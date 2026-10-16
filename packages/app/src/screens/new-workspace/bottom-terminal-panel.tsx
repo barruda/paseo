@@ -1,5 +1,5 @@
 // CUSTOM(new-workspace-terminal): the New Workspace screen's Ctrl/Cmd+J terminal panel.
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useIsFocused } from "@react-navigation/native";
@@ -39,8 +39,26 @@ export function NewWorkspaceBottomTerminal({
   serverId: string;
   cwd: string | null;
 }) {
-  const isCompact = useIsCompactFormFactor();
   const isScreenActive = useNewWorkspaceScreenPresence();
+  return <WorkspaceBottomTerminal serverId={serverId} cwd={cwd} isActive={isScreenActive} />;
+}
+
+// CUSTOM(desk-bottom-panel): share terminal creation/reconnection with the New Workspace screen.
+export function WorkspaceBottomTerminal({
+  serverId,
+  cwd,
+  workspaceId,
+  isActive,
+  testID = "new-workspace-bottom-terminal",
+}: {
+  serverId: string;
+  cwd: string | null;
+  workspaceId?: string;
+  isActive(): boolean;
+  testID?: string;
+}) {
+  const handlerId = useId();
+  const isCompact = useIsCompactFormFactor();
   const isRouteFocused = useIsFocused();
   const [visible, setVisible] = useState(false);
   const toggle = useCallback(() => {
@@ -49,11 +67,11 @@ export function NewWorkspaceBottomTerminal({
   }, []);
   const hide = useCallback(() => setVisible(false), []);
   useKeyboardActionHandler({
-    handlerId: "new-workspace-bottom-terminal",
+    handlerId: `bottom-terminal:${handlerId}`,
     actions: TOGGLE_ACTIONS,
     enabled: Boolean(serverId && cwd) && !isCompact && supportsDesktopPaneSplits(),
+    isActive,
     priority: 0,
-    isActive: isScreenActive,
     handle: toggle,
   });
 
@@ -61,19 +79,20 @@ export function NewWorkspaceBottomTerminal({
   const dispatcher = useKeyboardActionDispatcher();
   const wasVisibleRef = useRef(false);
   useEffect(() => {
-    if (wasVisibleRef.current && !visible) {
+    if (isActive() && wasVisibleRef.current && !visible) {
       dispatcher.dispatch({ id: "message-input.focus", scope: "message-input" });
     }
     wasVisibleRef.current = visible;
-  }, [dispatcher, visible]);
+  }, [dispatcher, visible, isActive]);
 
   if (!visible || !serverId || !cwd || isCompact) return null;
   return (
-    <View style={styles.panel} testID="new-workspace-bottom-terminal">
+    <View style={styles.panel} testID={testID}>
       <BottomTerminalBody
-        key={`${serverId}:${cwd}`}
+        key={`${serverId}:${workspaceId ?? cwd}`}
         serverId={serverId}
         cwd={cwd}
+        selectedWorkspaceId={workspaceId}
         isRouteFocused={isRouteFocused}
         onExited={hide}
       />
@@ -86,23 +105,27 @@ function BottomTerminalBody({
   cwd,
   isRouteFocused,
   onExited,
+  selectedWorkspaceId,
 }: {
   serverId: string;
   cwd: string;
   isRouteFocused: boolean;
   onExited(): void;
+  selectedWorkspaceId?: string;
 }) {
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const queryClient = useQueryClient();
-  const scopeKey = newWorkspaceTerminalScopeKey(serverId, cwd);
+  const scopeKey = newWorkspaceTerminalScopeKey(serverId, selectedWorkspaceId ?? cwd);
   const remembered = useNewWorkspaceTerminalStore((state) => state.terminals[scopeKey] ?? null);
   const remember = useNewWorkspaceTerminalStore((state) => state.remember);
   const forget = useNewWorkspaceTerminalStore((state) => state.forget);
   const workspaces = useSessionStore((state) => state.sessions[serverId]?.workspaces);
   const workspaceId = useMemo(
-    () => (workspaces ? (pickTerminalWorkspace(workspaces.values(), cwd)?.id ?? null) : null),
-    [cwd, workspaces],
+    () =>
+      selectedWorkspaceId ??
+      (workspaces ? (pickTerminalWorkspace(workspaces.values(), cwd)?.id ?? null) : null),
+    [cwd, workspaces, selectedWorkspaceId],
   );
 
   // The push router only keeps terminals of the route's workspace, so the list is per workspace:

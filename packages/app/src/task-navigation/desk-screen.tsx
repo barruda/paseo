@@ -1,3 +1,4 @@
+import { WorkspaceBottomTerminal } from "@/screens/new-workspace/bottom-terminal-panel";
 import { useMiddleClick } from "./use-middle-click";
 import { DeskNewTabMenu } from "./new-tab-menu";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
@@ -293,6 +294,8 @@ export function DeskScreen() {
               </View>
             ) : null}
           </View>
+          {/* CUSTOM(desk-bottom-panel): actions resolve against the selected task, not the route. */}
+          {scope ? <DeskBottomTerminal scope={scope} isActive={isFocused} /> : null}
           <FloatingPanelPortalHost name={portalHost} />
           <AdaptiveRenameModal
             visible={naming !== null}
@@ -307,6 +310,19 @@ export function DeskScreen() {
         </View>
       </FloatingPanelPortalHostNameProvider>
     </TaskProjectIconsProvider>
+  );
+}
+function DeskBottomTerminal({ scope, isActive }: { scope: DeskTabInput; isActive: boolean }) {
+  const cwd = useWorkspaceDirectory(scope.serverId, scope.workspaceId);
+  const isScreenActive = useCallback(() => isActive, [isActive]);
+  return (
+    <WorkspaceBottomTerminal
+      serverId={scope.serverId}
+      workspaceId={scope.workspaceId}
+      cwd={cwd}
+      isActive={isScreenActive}
+      testID="desk-bottom-terminal"
+    />
   );
 }
 function DeskWorkspaceActions({ tab }: { tab: DeskTab }) {
