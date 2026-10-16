@@ -63,6 +63,16 @@ describe("Desks", () => {
       openedAt: {},
     });
   });
+  it("changes a draft's project workspace without changing its tab or Desk identity", () => {
+    const store = useDesksStore.getState();
+    store.openTab({ ...firstTab, target: { kind: "draft", draftId: "draft-project-cycle" } }, true);
+    const before = activeDeskTab(useDesksStore.getState())!;
+    const deskId = activeDesk(useDesksStore.getState()).id;
+    store.updateTab(before.id, { workspaceId: "unity" });
+    expect(activeDeskTab(useDesksStore.getState())).toEqual({ ...before, workspaceId: "unity" });
+    expect(activeDesk(useDesksStore.getState()).id).toBe(deskId);
+    expect(activeDesk(useDesksStore.getState()).tabs).toHaveLength(1);
+  });
   it("replaces the preview across projects while pinned tabs keep their source workspace", () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);

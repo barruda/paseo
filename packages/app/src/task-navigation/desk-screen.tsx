@@ -120,7 +120,8 @@ export function DeskScreen() {
       "workspace.tab.close-current",
       "workspace.tab.navigate-index",
       "workspace.tab.navigate-relative",
-      "message-input.active-workspace-cycle",
+      "task.desk.next",
+      "task.desk.new",
     ],
     handle: (action) => {
       const store = useDesksStore.getState();
@@ -131,7 +132,11 @@ export function DeskScreen() {
         setTabMenuOpen(true);
         return true;
       }
-      if (action.id === "message-input.active-workspace-cycle") {
+      if (action.id === "task.desk.new") {
+        setNaming("create");
+        return true;
+      }
+      if (action.id === "task.desk.next") {
         const index = store.desks.findIndex((d) => d.id === current.id);
         store.selectDesk(store.desks[(index + 1) % store.desks.length]!.id);
         return true;
@@ -273,7 +278,11 @@ export function DeskScreen() {
             {allTabs
               .filter((tab) => mountedTabIds.has(tab.id))
               .map((tab) => (
-                <DeskPanel key={tab.id} tab={tab} visible={isFocused && tab.id === active?.id} />
+                <DeskPanel
+                  key={`${tab.id}:${tab.workspaceId}`}
+                  tab={tab}
+                  visible={isFocused && tab.id === active?.id}
+                />
               ))}
             {!active ? (
               <View style={styles.empty}>

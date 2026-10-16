@@ -95,8 +95,7 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(2);
     await expect(page.getByTestId("desk-preview-tab")).toHaveCount(0);
 
-    await page.getByTestId("desk-selector").click();
-    await page.getByTestId("desk-create").click();
+    await page.keyboard.press("Control+n");
     await page.getByTestId("desk-name-modal-input").fill("While waiting");
     await page.getByTestId("desk-name-modal-submit").click();
     await expect(page.getByTestId("desk-selector")).toContainText("While waiting");
@@ -125,6 +124,43 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
       await page.getByTestId(`workspace-new-tab-menu-${kind}`).click();
       await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(3);
       const created = page.getByTestId("desk-pinned-tab").last();
+      if (kind === "agent") {
+        const draft = page
+          .getByRole("textbox", { name: "Message agent...", exact: true })
+          .filter({ visible: true });
+        const projectIcon = page.getByTestId("composer-project-icon").filter({ visible: true });
+        await expect(projectIcon).toBeVisible();
+        const projectBefore = await projectIcon.getAttribute("aria-label");
+        await draft.focus();
+        await page.keyboard.press("ArrowUp");
+        await expect(projectIcon).not.toHaveAttribute("aria-label", projectBefore!);
+        await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(3);
+        await draft.focus();
+        const model = page.getByTestId("combined-model-selector").filter({ visible: true });
+        const modelBefore = await model.innerText();
+        await page.keyboard.press("ArrowLeft");
+        await expect(model).toHaveText(modelBefore);
+        await page.keyboard.press("Control+m");
+        const favorite = page.getByRole("button", { name: "Add to favorites", exact: true }).last();
+        await favorite.click();
+        await page.keyboard.press("Escape");
+        await draft.focus();
+        await page.keyboard.press("ArrowLeft");
+        await expect(model).not.toHaveText(modelBefore);
+        const chosenModel = await model.innerText();
+        await page.keyboard.press("ArrowUp");
+        await expect(projectIcon).toHaveAttribute("aria-label", projectBefore!);
+        await expect(model).toHaveText(chosenModel);
+        await draft.fill("hello");
+        const projectAfter = await projectIcon.getAttribute("aria-label");
+        const modelAfter = await model.innerText();
+        await page.keyboard.press("ArrowUp");
+        await page.keyboard.press("ArrowLeft");
+        await expect(projectIcon).toHaveAttribute("aria-label", projectAfter!);
+        await expect(model).toHaveText(modelAfter);
+        await expect(draft).toHaveValue("hello");
+        await draft.fill("");
+      }
       await expect(created.getByTestId("task-project-icon")).toBeVisible();
       await created.getByTestId(/^desk-tab-/).click({ button: "middle" });
       await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(2);
@@ -140,6 +176,14 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await page.getByText("Title A–Z", { exact: true }).click();
     await expect(sidebar.getByTestId("task-navigation-sort")).toContainText("Title A–Z");
 
+    await expect(page.getByTestId("header-shortcuts")).not.toContainText("New workspace");
+    await page.keyboard.down("Control");
+    await expect(sidebar.getByTestId("task-shortcut-1")).toBeVisible();
+    const firstTask = sidebar.getByTestId(/^task-agent-/).first();
+    await page.keyboard.press("1");
+    await page.keyboard.up("Control");
+    await expect(firstTask).toHaveAttribute("aria-selected", "true");
+    await expect(sidebar.getByTestId("task-shortcut-1")).toHaveCount(0);
     await page.reload();
     await expect(toggle).toHaveAttribute("aria-checked", "true");
     await expect(sidebar).toBeVisible();

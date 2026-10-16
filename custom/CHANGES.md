@@ -1361,3 +1361,27 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   and navigation callbacks. New workspace remains in its existing workspace-list location.
 - **Verify:** The existing desktop `e2e/task-navigation.spec.ts` checks visible controls and
   Schedules expansion/collapse and remains registered in the customization update script.
+
+## task-shortcuts: keyboard navigation and draft selection in Tasks mode
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: add task mode shortcuts and draft project cycling`
+- **Why:** Task navigation needs shortcuts matching its visible order, and new conversations need
+  quick project/model selection without leaving the Desk.
+- **What:** Hold Ctrl for numbered task badges; Ctrl+1–9 selects visible rows including expanded
+  children in sidebar order. Shift+Tab cycles Desks, including from terminals and embedded browsers.
+  In an empty draft, Up cycles projects on the current host that already have a workspace, and
+  Left cycles available favorite models in favorites order (no favorites means no change). Drafts show the project icon beside their controls. Settings →
+  Shortcuts has a **When in tasks mode** section with all five configurable bindings, including Ctrl+N to open New Desk. Tasks mode
+  hides the New workspace header hint; workspace-mode bindings remain separate.
+- **Core files touched:** The keyboard binding/context/dispatcher/routing modules, global keyboard
+  hook, browser shortcut policy, header shortcut strip, task sidebar/Desk store/screen, draft project source, and composer.
+- **Re-apply:** Keep mode checks in the central matcher, including modifier-hold badge derivation.
+  Dispatch task indices to the sidebar's filtered, flattened rows, never workspace targets. Keep
+  draft selection gated on the focused empty prompt and submission state. A project switch changes
+  only the draft tab's source workspace; its ID and Desk remain unchanged. Reuse project icon lookup.
+- **Verify:** Existing `composer/empty-shortcuts.test.ts`, `keyboard/keyboard-shortcuts.test.ts`,
+  `keyboard/route-shortcut.test.ts`, `desktop/browser/shortcuts.test.ts`, `task-navigation/store.test.ts`, and desktop
+  `e2e/task-navigation.spec.ts` are already in the customization update script. Browser coverage
+  checks project/model arrows, typed-text protection, draft icons, numbered badges, task selection,
+  Desk cycling, and the header hint.

@@ -4,6 +4,7 @@ import {
   handleEmptyRewindKey,
   latestSentMessage,
   previousProjectId,
+  previousModelSelection,
   useComposerRewindSelection,
 } from "./empty-shortcuts";
 import type { StreamItem } from "@/types/stream";
@@ -79,4 +80,32 @@ it("Up selects, Enter opens options, and typing or Escape clears selection", () 
   expect(press("h")).toBe(false);
   expect(useComposerRewindSelection.getState().selection).toBeNull();
   expect(prevented).toBe(3);
+});
+
+it("cycles only available favorites in favorite order and handles empty favorites", () => {
+  const row = (provider: string, modelId: string) => ({
+    provider,
+    modelId,
+    favoriteKey: `${provider}:${modelId}`,
+    providerLabel: provider,
+    modelLabel: modelId,
+  });
+  const providers: import("@/provider-selection/provider-selection").ProviderSelectorProvider[] = [
+    { id: "loading", label: "Loading", modelSelection: { kind: "loading" } },
+    {
+      id: "a",
+      label: "A",
+      modelSelection: { kind: "models", rows: [row("a", "one"), row("a", "two")] },
+    },
+    { id: "b", label: "B", modelSelection: { kind: "models", rows: [row("b", "three")] } },
+  ];
+  const favorites = ["b:three", "missing:model", "a:one"];
+  expect(previousModelSelection(providers, "a", "one", favorites)?.modelId).toBe("three");
+  expect(previousModelSelection(providers, "b", "three", favorites)?.modelId).toBe("one");
+  expect(previousModelSelection(providers, "a", "two", favorites)?.modelId).toBe("one");
+  expect(previousModelSelection(providers, null, null, favorites)?.modelId).toBe("one");
+  expect(previousModelSelection(providers, "a", "one", ["a:one"])?.modelId).toBe("one");
+  expect(previousModelSelection(providers, "a", "one", [])).toBeNull();
+  expect(previousModelSelection(providers, null, null, ["missing:model"])).toBeNull();
+  expect(previousModelSelection([], null, null, favorites)).toBeNull();
 });

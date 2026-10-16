@@ -2128,7 +2128,7 @@ function ComposerContentImpl({
   const contextWindowMeterGlyphSize = isCompactLayout ? ICON_SIZE.md : buttonIconSize;
   const beforeVoiceContent = useMemo(
     () =>
-      hasAgent ? (
+      hasAgent || workspaceId ? (
         <View style={styles.projectContextIndicators}>
           {/* CUSTOM(composer-project-icon): keep project identity next to context usage. */}
           <ComposerProjectIcon
@@ -2137,16 +2137,18 @@ function ComposerContentImpl({
             workspaceId={workspaceId}
             size={contextWindowMeterGlyphSize}
           />
-          <View style={styles.contextWindowMeterSlot}>
-            <ContextWindowMeter
-              serverId={serverId}
-              agentId={agentId}
-              maxTokens={agentState.contextWindowMaxTokens}
-              usedTokens={agentState.contextWindowUsedTokens}
-              totalCostUsd={agentState.totalCostUsd}
-              glyphSize={contextWindowMeterGlyphSize}
-            />
-          </View>
+          {hasAgent ? (
+            <View style={styles.contextWindowMeterSlot}>
+              <ContextWindowMeter
+                serverId={serverId}
+                agentId={agentId}
+                maxTokens={agentState.contextWindowMaxTokens}
+                usedTokens={agentState.contextWindowUsedTokens}
+                totalCostUsd={agentState.totalCostUsd}
+                glyphSize={contextWindowMeterGlyphSize}
+              />
+            </View>
+          ) : null}
         </View>
       ) : null,
     [
