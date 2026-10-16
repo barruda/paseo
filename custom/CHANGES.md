@@ -1385,3 +1385,22 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   `e2e/task-navigation.spec.ts` are already in the customization update script. Browser coverage
   checks project/model arrows, typed-text protection, draft icons, numbered badges, task selection,
   Desk cycling, and the header hint.
+
+## html-preview-links: open linked local HTML reports
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: open relative HTML links from file previews`
+- **Why:** “Open prototype” in a local report resolved against the app’s srcdoc base URL,
+  so the linked interactive page never opened.
+- **What:** Web/desktop previews forward relative `.html`/`.htm` link clicks to the file pane.
+  Resolve against the source file’s folder and open another isolated preview. Inline scripts,
+  modules, and blob workers keep the existing policy; external script dependencies still require
+  the Browser panel with an HTTP server.
+- **Core files touched:** `file-pane/html-preview-navigation.ts`, `html-preview-assets.ts`,
+  `html-preview.web.tsx`, `html-preview.tsx`, `pane.tsx`, `panels/file-panel.tsx`, and `SECURITY.md`.
+- **Re-apply:** Inject the link bridge into web previews with an open callback, accept messages
+  only from that iframe, resolve relative HTML paths with the shared bounded path resolver, and
+  use the pane’s `openFileInWorkspace` action. Keep image MIME filtering in the image loader.
+- **Verify:** The preview navigation/asset unit suites and asset browser suite are in the update
+  script. Click “Open prototype” in the diagram-libraries report, then switch All/Ops/Names and
+  toggle the theme in the opened prototype.

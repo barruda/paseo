@@ -1,3 +1,5 @@
+import { userEvent } from "vitest/browser";
+import { PREVIEW_HTML_LINK_SCRIPT, parsePreviewHtmlLink } from "./html-preview-navigation";
 import { afterEach, describe, expect, it } from "vitest";
 import { withPreviewCsp } from "@/file-pane/html-preview-csp";
 import {
@@ -81,5 +83,39 @@ describe("preview asset bridge", () => {
     expect(loaded.get("dynamic")?.width).toBe(1);
     expect(loaded.get("static")?.src).toMatch(/^blob:/);
     expect(loaded.has("external")).toBe(false);
+  });
+});
+
+describe("preview HTML links", () => {
+  it("captures a real click before srcdoc resolves the link against the app URL", async () => {
+    const frame = document.createElement("iframe");
+    frame.sandbox.add("allow-scripts");
+    frame.style.width = "300px";
+    frame.style.height = "200px";
+    mountedFrames.push(frame);
+    const ready = new Promise<void>((resolve) =>
+      frame.addEventListener("load", () => resolve(), { once: true }),
+    );
+    let receive: (event: MessageEvent) => void;
+    const clicked = new Promise<string>((resolve) => {
+      receive = (event) => {
+        if (event.source !== frame.contentWindow) return;
+        const url = parsePreviewHtmlLink(event.data);
+        if (url) resolve(url);
+      };
+      window.addEventListener("message", receive);
+    });
+    frame.srcdoc = withPreviewCsp(
+      '<a href="demos/prototype.html" style="position:fixed;inset:0;display:block">Open prototype →</a>',
+      PREVIEW_HTML_LINK_SCRIPT,
+    );
+    document.body.append(frame);
+    try {
+      await ready;
+      await userEvent.click(frame);
+      await expect(clicked).resolves.toBe("demos/prototype.html");
+    } finally {
+      window.removeEventListener("message", receive!);
+    }
   });
 });

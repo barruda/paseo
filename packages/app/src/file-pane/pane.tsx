@@ -56,6 +56,7 @@ interface FilePreviewBodyProps {
   navigationRevision: number;
   imagePreviewUri: string | null;
   htmlAssetLoader?: PreviewAssetLoader;
+  onOpenHtmlLink?: (url: string) => void;
 }
 
 type TextExplorerFile = ExplorerFile & { kind: "text" };
@@ -138,6 +139,7 @@ function FilePreviewBody({
   navigationRevision,
   imagePreviewUri,
   htmlAssetLoader,
+  onOpenHtmlLink,
 }: FilePreviewBodyProps) {
   const { t } = useTranslation();
   const filePath = location.path;
@@ -176,6 +178,7 @@ function FilePreviewBody({
             html={preview.content ?? ""}
             testID="file-html-preview"
             loadAsset={htmlAssetLoader}
+            onOpenHtmlLink={onOpenHtmlLink}
           />
         </View>
       );
@@ -231,7 +234,9 @@ export function FilePane({
   workspaceRoot,
   location,
   navigationRevision,
+  onOpenHtmlLink,
 }: {
+  onOpenHtmlLink?: (url: string) => void;
   serverId: string;
   workspaceRoot: string;
   location: WorkspaceFileLocation;
@@ -332,6 +337,7 @@ export function FilePane({
       navigationRevision={navigationRevision}
       imagePreviewUri={imagePreviewUri}
       htmlAssetLoader={htmlAssetLoader}
+      onOpenHtmlLink={onOpenHtmlLink}
     />
   );
 }
@@ -374,6 +380,7 @@ function FilePanePresentation({
   navigationRevision,
   imagePreviewUri,
   htmlAssetLoader,
+  onOpenHtmlLink,
 }: {
   serverId: string;
   client: DaemonClient | null;
@@ -396,6 +403,7 @@ function FilePanePresentation({
   navigationRevision: number;
   imagePreviewUri: string | null;
   htmlAssetLoader?: PreviewAssetLoader;
+  onOpenHtmlLink?: (url: string) => void;
 }) {
   if (!client && readTarget) {
     return (
@@ -426,6 +434,7 @@ function FilePanePresentation({
         location={location}
         navigationRevision={navigationRevision}
         htmlAssetLoader={htmlAssetLoader}
+        onOpenHtmlLink={onOpenHtmlLink}
       />
     );
   }
@@ -469,6 +478,7 @@ function FilePanePresentation({
         navigationRevision={navigationRevision}
         imagePreviewUri={imagePreviewUri}
         htmlAssetLoader={htmlAssetLoader}
+        onOpenHtmlLink={onOpenHtmlLink}
       />
     </View>
   );
@@ -490,6 +500,7 @@ function EditableFilePane({
   location,
   navigationRevision,
   htmlAssetLoader,
+  onOpenHtmlLink,
 }: {
   client: DaemonClient;
   cwd: string;
@@ -506,6 +517,7 @@ function EditableFilePane({
   location: WorkspaceFileLocation;
   navigationRevision: number;
   htmlAssetLoader?: PreviewAssetLoader;
+  onOpenHtmlLink?: (url: string) => void;
 }) {
   const { settings } = useAppSettings();
   const { t } = useTranslation();
@@ -645,6 +657,7 @@ function EditableFilePane({
           navigationRevision={navigationRevision}
           imagePreviewUri={null}
           htmlAssetLoader={htmlAssetLoader}
+          onOpenHtmlLink={onOpenHtmlLink}
         />
       )}
     </View>

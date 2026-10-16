@@ -52,9 +52,9 @@ function imageMimeForPath(path: string): string | null {
 /**
  * Resolves a URL from the previewed page against the HTML file's folder. Returns
  * null for anything the preview must not read: URLs with a scheme or host,
- * root-relative paths, paths that climb above the folder, and non-image files.
+ * root-relative paths, and paths that climb above the folder.
  */
-export function resolvePreviewAssetPath(htmlPath: string, url: string): string | null {
+export function resolvePreviewRelativePath(htmlPath: string, url: string): string | null {
   const trimmed = url.trim();
   if (!trimmed || /^[a-z][a-z0-9+.-]*:/i.test(trimmed) || /^[\\/#?]/.test(trimmed)) {
     return null;
@@ -81,11 +81,15 @@ export function resolvePreviewAssetPath(htmlPath: string, url: string): string |
   if (segments.length === 0) return null;
 
   const relativePath = segments.join("/");
-  if (!imageMimeForPath(relativePath)) return null;
 
   const separator = Math.max(htmlPath.lastIndexOf("/"), htmlPath.lastIndexOf("\\"));
   const folder = separator >= 0 ? htmlPath.slice(0, separator) : "";
   return folder ? `${folder}/${relativePath}` : relativePath;
+}
+
+export function resolvePreviewAssetPath(htmlPath: string, url: string): string | null {
+  const path = resolvePreviewRelativePath(htmlPath, url);
+  return path && imageMimeForPath(path) ? path : null;
 }
 
 export function createPreviewAssetLoader(input: {
