@@ -1345,3 +1345,19 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   composer drafts, Desk creation/restoration, cycling, Files/agent/terminal creation, project icons,
   truncated labels, project filters, sort persistence, and switching back to the workspace layout. Run typecheck/lint, build desktop,
   then install into a new build folder. Do not restart the user's daemons.
+
+## sidebar-show-more: collapse secondary header navigation
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: collapse secondary sidebar navigation`
+- **Why:** Plugin links crowd out the daily controls and workspace/task list.
+- **What:** History, Search, Voice, and desktop Wake dictation stay at the top, in that order.
+  Show more reveals visible Schedules and plugin links; Show less collapses them. Secondary
+  visibility preferences and ordering remain intact. Expansion resets when the sidebar remounts.
+- **Core files touched:** `components/sidebar/sidebar-nav-rows.tsx` owns the disclosure;
+  `components/left-sidebar.tsx` no longer renders a separate Wake dictation control.
+- **Re-apply:** Render the daily controls before the disclosure in the shared navigation group.
+  Keep Voice and Wake dictation mounted while expanding/collapsing; preserve plugin anchor refs
+  and navigation callbacks. New workspace remains in its existing workspace-list location.
+- **Verify:** The existing desktop `e2e/task-navigation.spec.ts` checks visible controls and
+  Schedules expansion/collapse and remains registered in the customization update script.

@@ -21,6 +21,18 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
   try {
     await second.client.waitForFinish(second.agentId, 20_000);
     await openAgentRoute(page, first);
+    await expect(page.getByTestId("sidebar-sessions")).toBeVisible();
+    await expect(page.getByTestId("sidebar-search")).toBeVisible();
+    await expect(page.getByTestId("sidebar-voice")).toBeVisible();
+    await expect(page.getByTestId("sidebar-wake-dictation")).toBeVisible();
+    await expect(page.getByTestId("sidebar-schedules")).toHaveCount(0);
+    const more = page.getByTestId("sidebar-nav-show-more");
+    await expect(more).toHaveText("Show more");
+    await more.click();
+    await expect(page.getByTestId("sidebar-schedules")).toBeVisible();
+    await expect(more).toHaveText("Show less");
+    await more.click();
+    await expect(page.getByTestId("sidebar-schedules")).toHaveCount(0);
     const toggle = page.getByTestId("task-navigation-switch").filter({ visible: true });
     await expect(toggle).toHaveAttribute("aria-checked", "false");
     await toggle.click();
