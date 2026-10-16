@@ -1,5 +1,6 @@
 import { useComposerRewindSelection } from "@/composer/empty-shortcuts";
 import { ChatFind, ChatFindExpansion } from "@/agent-stream/chat-find";
+import { ChatEscFocusSurface } from "@/chat-esc-focus/surface";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import React, {
   forwardRef,
@@ -97,7 +98,6 @@ import {
   type BottomAnchorRouteRequest,
 } from "./bottom-anchor-controller";
 import { createAssistantImageOccurrenceKey } from "@/assistant-image/acquisition-cache";
-import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
 import {
   AssistantFileLinkResolverProvider,
   normalizeInlinePathTarget,
@@ -1151,7 +1151,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         visibleMessageIds={visibleMessageIds}
       >
         <ToolCallSheetProvider>
-          <AssistantSelectionCopySurface style={stylesheet.container}>
+          {/* CUSTOM(chat-esc-focus): wraps AssistantSelectionCopySurface; Esc after selecting
+              chat text returns to the composer. */}
+          <ChatEscFocusSurface
+            serverId={resolvedServerId}
+            agentId={agentId}
+            enabled={!readOnly}
+            style={stylesheet.container}
+          >
             <MessageOuterSpacingProvider disableOuterSpacing>
               {streamRenderStrategy.render({
                 agentId,
@@ -1210,7 +1217,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 </Animated.View>
               </View>
             )}
-          </AssistantSelectionCopySurface>
+          </ChatEscFocusSurface>
         </ToolCallSheetProvider>
       </ChatFind>
     );

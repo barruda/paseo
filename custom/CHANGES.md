@@ -1440,3 +1440,30 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** The existing desktop `e2e/task-navigation.spec.ts` checks both the footer button
   and Ctrl+J, source workspace ownership, and reuse without duplicate terminals. It is already
   registered in the update script.
+
+## chat-esc-focus: Esc after selecting chat text returns to the composer
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: return to the composer with Esc after selecting chat text`
+- **Why:** After selecting text in the chat with the mouse, typing again needed a click back
+  into the composer.
+- **What:** On web and desktop, Esc with a non-empty text selection inside an agent's chat timeline
+  clears the selection and focuses that agent's composer. It does nothing when focus is in an
+  input, a menu, or a dialog, when the key has a modifier, or when a shortcut already handled Esc
+  with `preventDefault`. Esc's other jobs still run on the same press: if Interrupt agent is bound
+  to Esc and the agent is running, that Esc also interrupts it. Native has no mouse selection and
+  renders the plain surface.
+- **Files:** `packages/app/src/chat-esc-focus/`: `model.ts` (pure Esc rules), `registry.ts`
+  (composers register their focus function per server and agent), `surface.web.tsx` (window
+  keydown listener, bubble phase), `surface.tsx` (native passthrough), `types.ts`. No conflict risk.
+- **Core files touched:** `agent-stream/view.tsx` renders `ChatEscFocusSurface` in place of
+  `AssistantSelectionCopySurface` (it wraps that surface, so JSX depth stays the same);
+  `composer/index.tsx` calls `useRegisterChatComposerFocus(serverId, agentId,
+focusMessageInputForKeyboardAction)`.
+- **Re-apply:** Wrap the chat timeline's selection-copy surface in a DOM element the Esc listener
+  can test the selection against, and keep `enabled={!readOnly}`. In the composer, register the
+  same focus function the `message-input.focus` keyboard action uses, keyed by server and agent.
+  Leave the global shortcut handler and the `agent.interrupt` binding untouched.
+- **Verify:** `(cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts)` (the update
+  script runs it). In the app, select a word in an agent reply, press Esc: the selection clears
+  and the caret is in that agent's composer.
