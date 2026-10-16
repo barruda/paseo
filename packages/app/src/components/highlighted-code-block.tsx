@@ -16,6 +16,8 @@ import {
   markdownCopyDataSet,
   TRAILING_CODE_LINE_BREAKS,
 } from "@/assistant-selection-copy/markup";
+// CUSTOM(chat-code-run): Run button for shell commands in an agent's chat.
+import { CodeBlockRunButton } from "@/chat-code-run/run-button";
 
 interface HighlightedCodeBlockProps {
   code: string;
@@ -110,6 +112,7 @@ export const HighlightedCodeBlock = React.memo(function HighlightedCodeBlock({
           {renderedCode}
         </MarkdownTextSpan>
       )}
+      <CodeBlockRunButton code={code} language={language} visible={controlsVisible} />
       <CopyButton getCode={getCode} visible={controlsVisible} placement="top" />
       {showBottomCopy ? (
         <CopyButton getCode={getCode} visible={controlsVisible} placement="bottom" />

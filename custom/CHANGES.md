@@ -1465,3 +1465,32 @@ focusMessageInputForKeyboardAction)`.
 - **Verify:** `(cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts)` (the update
   script runs it). In the app, select a word in an agent reply, press Esc: the selection clears
   and the caret is in that agent's composer.
+
+## chat-code-run: Run button on suggested shell commands
+
+- **Added:** 2026-10-16
+- **Commit:** `custom: run suggested shell commands from chat code blocks`
+- **Why:** Agents often suggest a command (`! gh auth login -h github.com -p https -w`). Running it
+  meant copying it into the composer by hand.
+- **What:** In an agent's chat, code blocks get a Run (play) button left of Copy. It shows for
+  `bash`, `sh`, `shell`, `zsh`, `console`, and `shellsession` blocks of up to 12 command lines, and
+  for unlabeled blocks of one line. A leading `$ ` or `!` prompt marker is stripped; in a
+  transcript with `$ ` prompts, only the prompted lines run. Clicking it runs the command exactly
+  as typing `!<command>` in that agent's composer does: the shell-command plugin's `sh` command,
+  with output in a Terminal card. The button is hidden when the agent's host lacks the
+  shell-command plugin, in read-only subagent views, and in markdown outside a chat.
+- **Files:** `packages/app/src/chat-code-run/`: `model.ts` (which blocks are runnable, prompt
+  stripping), `context.tsx` (`ChatCodeRunProvider` resolves `!<command>` against the agent's plugin
+  slash commands and runs it), `run-button.tsx`. No conflict risk.
+- **Core files touched:** `components/highlighted-code-block.tsx` renders `CodeBlockRunButton`
+  before the top `CopyButton`; `panels/agent-panel.tsx` wraps `AgentStreamView` in
+  `AgentStreamSection` with `ChatCodeRunProvider`.
+- **Re-apply:** Provide the agent's server, workspace, and agent ids above the chat stream of the
+  agent panel. In the provider, use `usePluginClientSlashCommands` and
+  `resolvePluginClientSlashCommand({ text: "!" + command })`, then
+  `executePluginClientSlashCommand`, the same calls the composer's submit path uses. Place the
+  button absolutely, one icon slot left of the code block's top Copy button, with the same
+  hover visibility.
+- **Verify:** `(cd packages/app && npx vitest run src/chat-code-run/model.test.ts)` (the update
+  script runs it). In the app, ask an agent for a ```bash block with `! echo hi`, hover the block,
+click Run: a Terminal card with `hi` appears and the agent receives nothing.

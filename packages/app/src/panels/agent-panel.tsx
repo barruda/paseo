@@ -21,6 +21,7 @@ import invariant from "tiny-invariant";
 import { shallow, useShallow } from "zustand/shallow";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view";
+import { ChatCodeRunProvider } from "@/chat-code-run/context";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ComposerDock } from "@/composer/dock";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
@@ -1442,23 +1443,31 @@ const AgentStreamSection = memo(function AgentStreamSection({
     return new Map(pendingPermissionList.map((permission) => [permission.key, permission]));
   }, [pendingPermissionList]);
 
+  // CUSTOM(chat-code-run): code blocks in this chat can run their command via `!<command>`.
   return (
-    <AgentStreamView
-      ref={streamViewRef}
-      agentId={agent.id}
+    <ChatCodeRunProvider
       serverId={serverId}
-      context={agent}
-      streamItems={streamItems}
-      pendingPermissions={pendingPermissions}
-      routeBottomAnchorRequest={routeBottomAnchorRequest}
-      isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
-      bottomOverlayTailClearance={bottomOverlayTailClearance}
-      bottomOverlayControlClearance={bottomOverlayControlClearance}
+      workspaceId={workspaceId}
+      agentId={agentId}
       toast={toast}
-      pendingMessageSubmissions={pendingMessageSubmissions}
-      turnPresentation={turnPresentation}
-      onOpenWorkspaceFile={onOpenWorkspaceFile}
-    />
+    >
+      <AgentStreamView
+        ref={streamViewRef}
+        agentId={agent.id}
+        serverId={serverId}
+        context={agent}
+        streamItems={streamItems}
+        pendingPermissions={pendingPermissions}
+        routeBottomAnchorRequest={routeBottomAnchorRequest}
+        isAuthoritativeHistoryReady={hasAppliedAuthoritativeHistory}
+        bottomOverlayTailClearance={bottomOverlayTailClearance}
+        bottomOverlayControlClearance={bottomOverlayControlClearance}
+        toast={toast}
+        pendingMessageSubmissions={pendingMessageSubmissions}
+        turnPresentation={turnPresentation}
+        onOpenWorkspaceFile={onOpenWorkspaceFile}
+      />
+    </ChatCodeRunProvider>
   );
 });
 
