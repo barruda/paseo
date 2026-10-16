@@ -140,8 +140,7 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     // Desks split like workspaces; closing a split's only tab removes the split.
     const panes = desk.locator('[data-testid^="workspace-pane-"]');
     await expect(panes).toHaveCount(1);
-    await desk.getByTestId("workspace-split-pane-menu").click();
-    await page.getByTestId("workspace-split-pane-right").click();
+    await desk.getByTestId("workspace-split-pane-right").click();
     await expect(panes).toHaveCount(2);
     await expect(pinnedTabs).toHaveCount(3);
     await panes.nth(1).locator("[data-desk-tab]").click({ button: "middle" });
@@ -265,5 +264,91 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
   } finally {
     await first.cleanup();
     await second.cleanup();
+  }
+});
+
+test("Tasks mode row menu, pane toolbar, launch shortcuts, Desk moves and archived sessions", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await installDesktopRuntime(page, {
+    serverId: getServerId(),
+    manageBuiltInDaemon: false,
+    platform: "linux",
+  });
+  const first = await seedMockAgentWorkspace({
+    repoPrefix: "task-menu-first-",
+    title: "Row menu task",
+  });
+  try {
+    await openAgentRoute(page, first);
+    const toggle = page.getByTestId("task-navigation-switch").filter({ visible: true });
+    await toggle.click();
+    const sidebar = page.getByTestId("task-navigation-sidebar");
+    const task = sidebar.getByTestId(`task-agent-${first.agentId}`);
+    await expect(task).toBeVisible();
+
+    // Right-click offers the workspace actions; rename acts on the session.
+    await task.click({ button: "right" });
+    const menu = page.getByTestId(
+      `sidebar-workspace-context-menu-task-${getServerId()}:${first.agentId}`,
+    );
+    await expect(menu).toBeVisible();
+    await expect(menu).toContainText("Copy path");
+    await expect(menu).toContainText("Archive session");
+    await menu.getByText("Rename session", { exact: true }).click();
+    await page.getByTestId("task-rename-modal-input").fill("Renamed from the task menu");
+    await page.getByTestId("task-rename-modal-submit").click();
+    await expect(task).toContainText("Renamed from the task menu");
+
+    await task.click({ button: "middle" });
+    const desk = page.getByTestId("desk-screen");
+    const pinnedTabs = desk.locator('[data-desk-tab="pinned"]');
+    await expect(pinnedTabs).toHaveCount(1);
+
+    // Split buttons sit directly in the pane toolbar, next to archive.
+    await expect(desk.getByTestId("workspace-split-pane-menu")).toHaveCount(0);
+    await expect(desk.getByTestId("workspace-split-pane-right")).toBeVisible();
+    await expect(desk.getByTestId("workspace-archive-agent")).toBeVisible();
+    const panes = desk.locator('[data-testid^="workspace-pane-"]');
+    await desk.getByTestId("workspace-split-pane-down").click();
+    await expect(panes).toHaveCount(2);
+    await panes.nth(1).locator("[data-desk-tab]").click({ button: "middle" });
+    await expect(panes).toHaveCount(1);
+
+    // Ctrl+Shift+T opens a terminal in the Desk.
+    await desk.getByTestId(`workspace-tab-agent_${first.agentId}`).click();
+    await page.keyboard.press("Control+Shift+T");
+    await expect(pinnedTabs).toHaveCount(2);
+    await pinnedTabs.last().click({ button: "middle" });
+    await expect(pinnedTabs).toHaveCount(1);
+
+    // A tab moves to another Desk from its context menu.
+    await page.keyboard.press("Control+n");
+    await page.getByTestId("desk-name-modal-input").fill("Later");
+    await page.getByTestId("desk-name-modal-submit").click();
+    await expect(page.getByTestId("desk-selector")).toContainText("Later");
+    await page.keyboard.press("Shift+Tab");
+    await expect(page.getByTestId("desk-selector")).toContainText("Primary tasks");
+    await desk.getByTestId(`workspace-tab-agent_${first.agentId}`).click({ button: "right" });
+    await page.getByTestId("workspace-tab-move-to").click();
+    await page.locator('[data-testid^="workspace-tab-move-to-desk-"]').click();
+    // The emptied Desk falls back to its New tab launcher.
+    const agentTab = desk.getByTestId(`workspace-tab-agent_${first.agentId}`);
+    await expect(agentTab).toHaveCount(0);
+    await page.keyboard.press("Shift+Tab");
+    await expect(page.getByTestId("desk-selector")).toContainText("Later");
+    await expect(agentTab).toBeVisible();
+
+    // Archiving from the pane removes the task; the Archived filter lists it.
+    await agentTab.click();
+    await desk.getByTestId("workspace-archive-agent").click();
+    await expect(task).toHaveCount(0);
+    await expect(agentTab).toHaveCount(0);
+    await sidebar.getByTestId("task-filter-archived").click();
+    await expect(task).toBeVisible();
+    await expect(task).toContainText("Renamed from the task menu");
+  } finally {
+    await first.cleanup();
   }
 });

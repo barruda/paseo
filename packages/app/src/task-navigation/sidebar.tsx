@@ -28,11 +28,17 @@ import { useSessionStore } from "@/stores/session-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useTaskNavigationStore } from "./store";
+import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
+import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+import { TaskRowContextMenu, useTaskRowActions, type TaskRowActions } from "./task-row-menu";
+import { useArchivedTasks } from "./use-archived-tasks";
 import {
   buildTaskTree,
   sortTaskTree,
   filterTaskTree,
   flattenTaskTree,
+  limitIdleTasks,
+  markableUnreadTaskKeys,
   matchesTaskFilter,
   taskKey,
   TASK_STATE_LABELS,
@@ -43,13 +49,17 @@ import {
 
 type ListRow =
   | { key: string; kind: "heading"; label: string; subheading?: boolean }
-  | { key: string; kind: "task"; node: TaskNode; depth: number };
+  | { key: string; kind: "task"; node: TaskNode; depth: number }
+  | { key: string; kind: "idle-toggle"; hiddenCount: number }
+  | { key: string; kind: "load-more"; loading: boolean };
 const FILTERS: readonly { key: TaskFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "needs-you", label: "Needs you" },
   { key: "review", label: "Ready to review" },
   { key: "working", label: "Working" },
   { key: "idle", label: "Idle" },
+  // CUSTOM(task-archived-list): archived sessions load on demand when this filter is chosen.
+  { key: "archived", label: "Archived" },
 ];
 const EMPTY_COLLAPSED = new Set<string>();
 
@@ -114,6 +124,20 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   const pathname = usePathname();
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
+  const [idleExpanded, setIdleExpanded] = useState(false);
+  const toggleIdle = useCallback(() => setIdleExpanded((value) => !value), []);
+  const { actions: taskActions, modal: taskRenameModal } = useTaskRowActions();
+  const markableUnread = useMemo(() => markableUnreadTaskKeys(agents), [agents]);
+  const entriesByWorkspace = useMemo(
+    () =>
+      new Map(
+        [...allWorkspaceEntriesByKey.values()].map((entry) => [
+          taskKey(entry.serverId, entry.workspaceId),
+          entry,
+        ]),
+      ),
+    [allWorkspaceEntriesByKey],
+  );
   const deskTab = useDesksStore(activeDeskTab);
   const selectedAgentKey =
     deskTab?.target.kind === "agent" ? taskKey(deskTab.serverId, deskTab.target.agentId) : null;
@@ -132,6 +156,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     [allWorkspaceEntriesByKey, showBackground],
   );
   const roots = useMemo(() => buildTaskTree({ agents, workspaces }), [agents, workspaces]);
+  const archived = useArchivedTasks(filter === "archived", workspaces);
   const projects = useMemo(
     () =>
       [...new Map(workspaces.map((w) => [w.projectKey, w.projectName])).entries()]
@@ -151,6 +176,11 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       FILTERS.map((f) => [f.key, nodes.filter((n) => matchesTaskFilter(n.state, f.key)).length]),
     );
   }, [scopedRoots]);
+  const archivedRoots = useMemo(
+    () => filterTaskTree(archived.roots, { query, projectKeys, filter: "all" }),
+    [archived.roots, query, projectKeys],
+  );
+  const archivedCount = archived.loaded ? archivedRoots.length : null;
   const [ordering, setOrdering] = useState(() => ({
     roots,
     sort,
@@ -163,6 +193,17 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     setOrdering({ roots, sort, openedAt, tree: orderedTree });
   }
   const rows = useMemo(() => {
+    if (filter === "archived") {
+      const result: ListRow[] = flattenTaskTree(archivedRoots, EMPTY_COLLAPSED).map((row) => ({
+        kind: "task",
+        key: row.node.key,
+        node: row.node,
+        depth: row.depth,
+      }));
+      if (archived.hasMore)
+        result.push({ kind: "load-more", key: "load-more", loading: archived.isLoadingMore });
+      return result;
+    }
     const filtered = filterTaskTree(orderedTree, { query, projectKeys, filter });
     if (sort !== "attention")
       return flattenTaskTree(
@@ -180,8 +221,15 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       { label: "Idle · ready to resume", states: ["idle", "closed"], attention: false },
     ];
     for (const group of groups) {
-      const members = filtered.filter((node) => group.states.includes(node.crewState));
+      let members = filtered.filter((node) => group.states.includes(node.crewState));
       if (!members.length) continue;
+      // CUSTOM(task-idle-limit): searching or choosing the Idle filter shows every idle task.
+      let hiddenCount = 0;
+      if (group.states.includes("idle") && !query && filter !== "idle") {
+        const limited = limitIdleTasks(members, { now: Date.now(), keepKey: selectedAgentKey });
+        hiddenCount = limited.hiddenCount;
+        if (!idleExpanded) members = limited.visible;
+      }
       if (group.attention && !attentionHeading) {
         result.push({ kind: "heading", key: "attention", label: "Your attention" });
         attentionHeading = true;
@@ -198,9 +246,22 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       )) {
         result.push({ kind: "task", key: row.node.key, node: row.node, depth: row.depth });
       }
+      if (hiddenCount > 0) result.push({ kind: "idle-toggle", key: "idle-toggle", hiddenCount });
     }
     return result;
-  }, [orderedTree, query, projectKeys, filter, collapsed, sort]);
+  }, [
+    orderedTree,
+    query,
+    projectKeys,
+    filter,
+    collapsed,
+    sort,
+    archivedRoots,
+    archived.hasMore,
+    archived.isLoadingMore,
+    selectedAgentKey,
+    idleExpanded,
+  ]);
   const openTask = useCallback(
     (node: TaskNode, pin = false) => {
       onBeforeNavigate?.();
@@ -253,11 +314,35 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     () => new Map(hosts.map((host) => [host.serverId, host.label])),
     [hosts],
   );
+  const loadMoreArchived = archived.loadMore;
   const renderRow = useCallback(
-    ({ item }: ListRenderItemInfo<ListRow>) =>
-      item.kind === "heading" ? (
-        <Text style={item.subheading ? styles.subheading : styles.heading}>{item.label}</Text>
-      ) : (
+    ({ item }: ListRenderItemInfo<ListRow>) => {
+      if (item.kind === "heading")
+        return (
+          <Text style={item.subheading ? styles.subheading : styles.heading}>{item.label}</Text>
+        );
+      if (item.kind === "idle-toggle")
+        return (
+          <SidebarGroupToggleRow
+            expanded={idleExpanded}
+            onPress={toggleIdle}
+            hiddenCount={item.hiddenCount}
+            testID="task-idle-toggle"
+          />
+        );
+      if (item.kind === "load-more")
+        return (
+          <Button
+            variant="ghost"
+            size="xs"
+            onPress={loadMoreArchived}
+            disabled={item.loading}
+            testID="task-archived-load-more"
+          >
+            {item.loading ? "Loading…" : "Load more"}
+          </Button>
+        );
+      return (
         <TaskRow
           node={item.node}
           depth={item.depth}
@@ -267,9 +352,22 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
           onOpen={openTask}
           onToggle={toggle}
           hostLabel={hosts.length > 1 ? hostNames.get(item.node.agent.serverId) : undefined}
+          entry={entriesByWorkspace.get(
+            taskKey(item.node.agent.serverId, item.node.workspace.workspaceId),
+          )}
+          archived={filter === "archived"}
+          canMarkUnread={markableUnread.has(item.key)}
+          actions={taskActions}
         />
-      ),
+      );
+    },
     [
+      idleExpanded,
+      toggleIdle,
+      loadMoreArchived,
+      entriesByWorkspace,
+      markableUnread,
+      taskActions,
       shortcutNumbers,
       collapsed,
       query,
@@ -285,12 +383,12 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   const emptyComponent = useMemo(
     () => (
       <Text style={styles.empty}>
-        {isInitialLoad
+        {isInitialLoad || (filter === "archived" && !archived.loaded)
           ? "Loading tasks…"
           : "No matching tasks. Adjust your search or project selection."}
       </Text>
     ),
-    [isInitialLoad],
+    [isInitialLoad, filter, archived.loaded],
   );
   return (
     <View style={styles.container} testID="task-navigation-sidebar">
@@ -327,7 +425,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
             <TaskFilterButton
               key={f.key}
               entry={f}
-              count={counts[f.key] ?? 0}
+              count={f.key === "archived" ? archivedCount : (counts[f.key] ?? 0)}
               selected={filter === f.key}
               onSelect={setFilter}
             />
@@ -343,6 +441,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         extraData={selectedAgentKey}
         ListEmptyComponent={emptyComponent}
       />
+      {taskRenameModal}
     </View>
   );
 }
@@ -354,7 +453,8 @@ function TaskFilterButton({
   onSelect,
 }: {
   entry: (typeof FILTERS)[number];
-  count: number;
+  /** Null while the count is unknown (archived sessions not loaded yet). */
+  count: number | null;
   selected: boolean;
   onSelect(filter: TaskFilter): void;
 }) {
@@ -365,11 +465,11 @@ function TaskFilterButton({
       variant={selected ? "secondary" : "ghost"}
       size="xs"
       onPress={select}
-      accessibilityLabel={`${entry.label}, ${count} tasks`}
+      accessibilityLabel={count === null ? entry.label : `${entry.label}, ${count} tasks`}
       accessibilityState={accessibilityState}
       testID={`task-filter-${entry.key}`}
     >
-      {entry.label} {count}
+      {count === null ? entry.label : `${entry.label} ${count}`}
     </Button>
   );
 }
@@ -410,6 +510,10 @@ const TaskRow = memo(function TaskRow({
   onOpen,
   onToggle,
   hostLabel,
+  entry,
+  archived,
+  canMarkUnread,
+  actions,
 }: {
   node: TaskNode;
   shortcutNumber?: number;
@@ -419,6 +523,10 @@ const TaskRow = memo(function TaskRow({
   onOpen(node: TaskNode, pin?: boolean): void;
   onToggle(key: string): void;
   hostLabel?: string;
+  entry: SidebarWorkspaceEntry | undefined;
+  archived: boolean;
+  canMarkUnread: boolean;
+  actions: TaskRowActions;
 }) {
   const showBadges = useShowShortcutBadges();
   const age = useCompactTimeAgo(node.agent.updatedAt);
@@ -432,6 +540,37 @@ const TaskRow = memo(function TaskRow({
   const buttonStyle = useCallback(
     ({ hovered }: { hovered?: boolean }) => [styles.taskButton, hovered && styles.hovered],
     [],
+  );
+  const accessibilityLabel = `${node.agent.title ?? "Untitled agent"}, ${TASK_STATE_LABELS[node.state]}, ${node.workspace.projectName}, ${node.workspace.name}`;
+  const body = (
+    <>
+      <View style={styles.taskTop}>
+        <TaskSignal state={node.state} />
+        <TaskProjectIcon serverId={node.agent.serverId} workspaceId={node.workspace.workspaceId} />
+        <Text numberOfLines={2} style={[styles.taskTitle, node.contextOnly && styles.contextTitle]}>
+          {node.agent.title ?? "Untitled agent"}
+        </Text>
+        {showBadges && shortcutNumber ? (
+          <Text style={styles.shortcutBadge} testID={`task-shortcut-${shortcutNumber}`}>
+            {shortcutNumber}
+          </Text>
+        ) : (
+          <Text style={styles.age}>{age}</Text>
+        )}
+      </View>
+      <Text numberOfLines={1} style={styles.metadata}>
+        {node.workspace.projectName} · {node.workspace.name}
+        {hostLabel ? ` · ${hostLabel}` : ""}
+      </Text>
+      <TaskStateLabel state={node.state} />
+      {node.children.length || crossWorkspace ? (
+        <Text numberOfLines={1} style={styles.metadata}>
+          {node.children.length
+            ? `${node.children.length} delegated ${node.children.length === 1 ? "task" : "tasks"}`
+            : `↳ ${node.workspace.name}`}
+        </Text>
+      ) : null}
+    </>
   );
   return (
     <View
@@ -455,49 +594,39 @@ const TaskRow = memo(function TaskRow({
       ) : (
         <View style={styles.railSpace} />
       )}
-      <Pressable
-        ref={middleClickRef}
-        style={buttonStyle}
-        onPress={handleOpen}
-        accessibilityRole="button"
-        accessibilityState={selectedState}
-        aria-selected={selected}
-        accessibilityLabel={`${node.agent.title ?? "Untitled agent"}, ${TASK_STATE_LABELS[node.state]}, ${node.workspace.projectName}, ${node.workspace.name}`}
-        testID={`task-agent-${node.agent.id}`}
-      >
-        <View style={styles.taskTop}>
-          <TaskSignal state={node.state} />
-          <TaskProjectIcon
-            serverId={node.agent.serverId}
-            workspaceId={node.workspace.workspaceId}
-          />
-          <Text
-            numberOfLines={2}
-            style={[styles.taskTitle, node.contextOnly && styles.contextTitle]}
-          >
-            {node.agent.title ?? "Untitled agent"}
-          </Text>
-          {showBadges && shortcutNumber ? (
-            <Text style={styles.shortcutBadge} testID={`task-shortcut-${shortcutNumber}`}>
-              {shortcutNumber}
-            </Text>
-          ) : (
-            <Text style={styles.age}>{age}</Text>
-          )}
-        </View>
-        <Text numberOfLines={1} style={styles.metadata}>
-          {node.workspace.projectName} · {node.workspace.name}
-          {hostLabel ? ` · ${hostLabel}` : ""}
-        </Text>
-        <TaskStateLabel state={node.state} />
-        {node.children.length || crossWorkspace ? (
-          <Text numberOfLines={1} style={styles.metadata}>
-            {node.children.length
-              ? `${node.children.length} delegated ${node.children.length === 1 ? "task" : "tasks"}`
-              : `↳ ${node.workspace.name}`}
-          </Text>
-        ) : null}
-      </Pressable>
+      {entry ? (
+        <TaskRowContextMenu
+          node={node}
+          entry={entry}
+          archived={archived}
+          canMarkUnread={canMarkUnread}
+          actions={actions}
+          triggerRef={middleClickRef}
+          style={buttonStyle}
+          highlightStyle={styles.hovered}
+          onPress={handleOpen}
+          accessibilityRole="button"
+          accessibilityState={selectedState}
+          aria-selected={selected}
+          accessibilityLabel={accessibilityLabel}
+          testID={`task-agent-${node.agent.id}`}
+        >
+          {body}
+        </TaskRowContextMenu>
+      ) : (
+        <Pressable
+          ref={middleClickRef}
+          style={buttonStyle}
+          onPress={handleOpen}
+          accessibilityRole="button"
+          accessibilityState={selectedState}
+          aria-selected={selected}
+          accessibilityLabel={accessibilityLabel}
+          testID={`task-agent-${node.agent.id}`}
+        >
+          {body}
+        </Pressable>
+      )}
     </View>
   );
 });
