@@ -75,10 +75,11 @@ interface BuildWorkspaceTabMenuEntriesInput {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
-  // CUSTOM(copy-full-file-path): "full" asks for the absolute path.
-  onCopyFilePath: (path: string, mode?: "full") => Promise<void> | void;
+  // CUSTOM(copy-full-file-path): "full" asks for the absolute path. CUSTOM(desks): tabId
+  // lets a Desk resolve which workspace the path is relative to.
+  onCopyFilePath: (path: string, mode?: "full", tabId?: string) => Promise<void> | void;
   // CUSTOM(open-file-externally): local desktop file actions.
-  onOpenFile?: (path: string, mode: "browser" | "default") => Promise<void> | void;
+  onOpenFile?: (path: string, mode: "browser" | "default", tabId?: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -95,10 +96,11 @@ interface BuildWorkspaceDesktopTabActionsInput {
   onCopyResumeCommand: (agentId: string) => Promise<void> | void;
   onCopyAgentId: (agentId: string) => Promise<void> | void;
   onCopyTerminalId: (terminalId: string) => Promise<void> | void;
-  // CUSTOM(copy-full-file-path): "full" asks for the absolute path.
-  onCopyFilePath: (path: string, mode?: "full") => Promise<void> | void;
+  // CUSTOM(copy-full-file-path): "full" asks for the absolute path. CUSTOM(desks): tabId
+  // lets a Desk resolve which workspace the path is relative to.
+  onCopyFilePath: (path: string, mode?: "full", tabId?: string) => Promise<void> | void;
   // CUSTOM(open-file-externally): local desktop file actions.
-  onOpenFile?: (path: string, mode: "browser" | "default") => Promise<void> | void;
+  onOpenFile?: (path: string, mode: "browser" | "default", tabId?: string) => Promise<void> | void;
   onReloadAgent: (agentId: string) => Promise<void> | void;
   onRenameTab: (tab: WorkspaceTabDescriptor) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
@@ -251,7 +253,7 @@ export function buildWorkspaceTabMenuEntries(
       icon: "copy",
       testID: `${menuTestIDBase}-copy-full-file-path`,
       onSelect: () => {
-        void onCopyFilePath(filePath, "full");
+        void onCopyFilePath(filePath, "full", tab.tabId);
       },
     });
     entries.push({
@@ -280,7 +282,7 @@ export function buildWorkspaceTabMenuEntries(
         icon,
         testID: `${menuTestIDBase}-open-file-${mode}`,
         onSelect: () => {
-          void onOpenFile(filePath, mode);
+          void onOpenFile(filePath, mode, tab.tabId);
         },
       });
     }

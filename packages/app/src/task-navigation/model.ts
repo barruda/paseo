@@ -238,8 +238,3 @@ export function sortTaskTree(
   }
   return result;
 }
-
-export function deskTabLabel(label: string): string {
-  const characters = Array.from(label.replace(/\s+/g, " ").trim());
-  return characters.length > 15 ? `${characters.slice(0, 14).join("")}…` : characters.join("");
-}

@@ -1,18 +1,49 @@
 // CUSTOM(desks): presentation references only; workspace/session ownership stays on the daemon.
+// A Desk is a workspace-style split layout plus the workspace each of its tabs belongs to, so the
+// standard SplitContainer renders it and every layout rule is shared with workspaces.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { z } from "zod";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
-import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
+import type { WorkspaceTab, WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
-import { WorkspaceTabTargetStorageSchema } from "@/stores/workspace-layout-storage";
+import {
+  WorkspaceLayoutStorageSchema,
+  WorkspaceTabTargetStorageSchema,
+} from "@/stores/workspace-layout-storage";
+import {
+  closeTabInLayout,
+  collectAllTabs,
+  createDefaultLayout,
+  createTabInLayout,
+  DEFAULT_PANE_ID,
+  FOCUSED_PANE_PLACEMENT,
+  findPaneById,
+  findPaneContainingTab,
+  focusPaneInLayout,
+  focusTabInLayout,
+  moveTabToPaneInLayout,
+  normalizeLayout,
+  reorderPaneTabsInLayout,
+  replaceTabTargetInLayout,
+  resizeSplitInLayout,
+  selectTabInPaneInLayout,
+  setTabStateInLayout,
+  splitPaneEmptyInLayout,
+  splitPaneInLayout,
+  type WorkspaceLayout,
+  type WorkspaceTabPlacement,
+} from "@/stores/workspace-layout-actions";
+import { defaultWorkspaceLayoutIds } from "@/stores/workspace-layout-ids";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
-export interface DeskTab {
-  id: string;
+export interface DeskTabOwner {
   serverId: string;
   workspaceId: string;
+}
+export interface DeskTab extends DeskTabOwner {
+  id: string;
   target: WorkspaceTabTarget;
   state?: JsonValue;
 }
@@ -20,10 +51,13 @@ export type DeskTabInput = Omit<DeskTab, "id">;
 export interface Desk {
   id: string;
   name: string;
-  tabs: DeskTab[];
-  preview: DeskTab | null;
-  activeTabId: string | null;
+  layout: WorkspaceLayout;
+  /** Tabs without an owner (a fresh new-tab launcher) use the screen's current scope. */
+  owners: Record<string, DeskTabOwner>;
+  previewTabId: string | null;
 }
+export type DeskTabPatch = Partial<Pick<DeskTab, "target" | "state" | "serverId" | "workspaceId">>;
+export type DeskSplitPosition = "left" | "right" | "top" | "bottom";
 export type TaskSort = "attention" | "activity" | "opened" | "title";
 interface DesksState {
   desks: Desk[];
@@ -36,49 +70,101 @@ interface DesksState {
   createDesk(name: string): void;
   renameDesk(name: string): void;
   selectDesk(id: string): void;
-  openTab(tab: DeskTabInput, pin?: boolean): void;
+  /** Unpinned opens replace the Desk's preview tab; pinned opens keep their tab. */
+  openTab(tab: DeskTabInput, pin?: boolean, placement?: WorkspaceTabPlacement): void;
   selectTab(id: string): void;
   closeTab(id: string): void;
   keepPreview(): void;
-  updateTab(id: string, patch: Partial<Pick<DeskTab, "target" | "state" | "workspaceId">>): void;
+  /** serverId with workspaceId gives an unowned tab (a new-tab launcher) its workspace. */
+  updateTab(id: string, patch: DeskTabPatch): void;
+  createNewTab(owner: DeskTabOwner | null, paneId?: string): void;
+  splitPane(input: { tabId: string; targetPaneId: string; position: DeskSplitPosition }): void;
+  splitPaneEmpty(
+    input: { targetPaneId: string; position: DeskSplitPosition },
+    owner: DeskTabOwner | null,
+  ): void;
+  moveTabToPane(tabId: string, toPaneId: string): void;
+  focusPane(paneId: string): void;
+  selectTabInPane(paneId: string, tabId: string): void;
+  resizeSplit(groupId: string, sizes: number[]): void;
+  reorderTabsInPane(paneId: string, tabIds: string[]): void;
   setProjects(keys: string[] | null): void;
   setSort(sort: TaskSort): void;
 }
-const tabSchema: z.ZodType<DeskTab> = z.object({
+
+const MAX_TREE_DEPTH = 5;
+const ownerSchema = z.object({ serverId: z.string(), workspaceId: z.string() });
+const deskSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  layout: WorkspaceLayoutStorageSchema,
+  owners: z.record(z.string(), ownerSchema),
+  previewTabId: z.string().nullable(),
+});
+// COMPAT(desk-layouts): Desks before split panes kept a flat tab list; migrated on load.
+const legacyTabSchema = z.object({
   id: z.string(),
   serverId: z.string(),
   workspaceId: z.string(),
   target: WorkspaceTabTargetStorageSchema,
   state: z.json().optional(),
 });
+const legacyDeskSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  tabs: z.array(legacyTabSchema),
+  preview: legacyTabSchema.nullable(),
+  activeTabId: z.string().nullable(),
+});
+type LegacyDesk = z.infer<typeof legacyDeskSchema>;
 const schema = z.object({
-  desks: z
-    .array(
-      z.object({
-        id: z.string(),
-        name: z.string(),
-        tabs: z.array(tabSchema),
-        preview: tabSchema.nullable(),
-        activeTabId: z.string().nullable(),
-      }),
-    )
-    .min(1),
+  desks: z.array(z.union([deskSchema, legacyDeskSchema])).min(1),
   activeDeskId: z.string(),
   initialized: z.boolean(),
   projectKeys: z.array(z.string()).nullable(),
   sort: z.enum(["attention", "activity", "opened", "title"]),
   openedAt: z.record(z.string(), z.number()),
 });
+type PersistedDesks = z.infer<typeof schema>;
+
 const newId = () => `desk-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-export const initialDesks = () => [
-  {
-    id: "primary",
-    name: "Primary tasks",
-    tabs: [],
-    preview: null,
-    activeTabId: null,
-  } satisfies Desk,
-];
+const createNodeId = defaultWorkspaceLayoutIds.createNodeId;
+function createDesk(id: string, name: string): Desk {
+  return { id, name, layout: createDefaultLayout(), owners: {}, previewTabId: null };
+}
+export const initialDesks = (): Desk[] => [createDesk("primary", "Primary tasks")];
+
+function migrateLegacyDesk(desk: LegacyDesk | Desk): Desk {
+  if ("layout" in desk) return { ...desk, layout: normalizeLayout(desk.layout) };
+  const tabs = [...(desk.preview ? [desk.preview] : []), ...desk.tabs];
+  if (tabs.length === 0) return createDesk(desk.id, desk.name);
+  const createdAt = Date.now();
+  const layoutTabs: WorkspaceTab[] = tabs.map((tab) => ({
+    tabId: tab.id,
+    target: tab.target,
+    createdAt,
+    ...(tab.state !== undefined ? { state: tab.state } : {}),
+  }));
+  const tabIds = layoutTabs.map((tab) => tab.tabId);
+  const focusedTabId =
+    desk.activeTabId && tabIds.includes(desk.activeTabId) ? desk.activeTabId : tabIds[0]!;
+  return {
+    id: desk.id,
+    name: desk.name,
+    layout: normalizeLayout({
+      root: {
+        kind: "pane",
+        pane: { id: DEFAULT_PANE_ID, tabIds, focusedTabId, tabs: layoutTabs },
+      },
+      focusedPaneId: DEFAULT_PANE_ID,
+    }),
+    owners: Object.fromEntries(
+      tabs.map((tab) => [tab.id, { serverId: tab.serverId, workspaceId: tab.workspaceId }]),
+    ),
+    previewTabId: desk.preview?.id ?? null,
+  };
+}
+
 export function sameDeskTarget(a: DeskTabInput, b: DeskTabInput) {
   return (
     a.serverId === b.serverId &&
@@ -86,25 +172,153 @@ export function sameDeskTarget(a: DeskTabInput, b: DeskTabInput) {
     workspaceTabTargetsEqual(a.target, b.target)
   );
 }
+
+const tabsByDesk = new WeakMap<Desk, DeskTab[]>();
+/** The Desk's owned tabs in layout order; cached per Desk value so selectors stay stable. */
+export function deskTabs(desk: Desk): DeskTab[] {
+  const cached = tabsByDesk.get(desk);
+  if (cached) return cached;
+  const tabs = collectAllTabs(desk.layout.root).flatMap((tab) => {
+    const owner = desk.owners[tab.tabId];
+    if (!owner) return [];
+    return [
+      {
+        id: tab.tabId,
+        serverId: owner.serverId,
+        workspaceId: owner.workspaceId,
+        target: tab.target,
+        ...(tab.state !== undefined ? { state: tab.state } : {}),
+      },
+    ];
+  });
+  tabsByDesk.set(desk, tabs);
+  return tabs;
+}
 export function activeDesk(state: Pick<DesksState, "desks" | "activeDeskId">): Desk {
   return state.desks.find((desk) => desk.id === state.activeDeskId) ?? state.desks[0]!;
 }
+/** The focused pane's selected tab. */
 export function activeDeskTab(state: Pick<DesksState, "desks" | "activeDeskId">): DeskTab | null {
   const desk = activeDesk(state);
-  return [desk.preview, ...desk.tabs].find((tab) => tab?.id === desk.activeTabId) ?? null;
+  const tabId = findPaneById(desk.layout.root, desk.layout.focusedPaneId)?.focusedTabId;
+  return tabId ? (deskTabs(desk).find((tab) => tab.id === tabId) ?? null) : null;
 }
-function patchDeskTab(
+
+// Keeping the owners object stable spares every tab chip and panel a re-render on focus changes.
+function sameOwners(a: Record<string, DeskTabOwner>, b: Record<string, DeskTabOwner>): boolean {
+  const keys = Object.keys(a);
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key]);
+}
+
+/** Applies a layout change, keeping owners and the preview in step with the tabs that remain. */
+function withLayout(
   desk: Desk,
-  id: string,
-  patch: Partial<Pick<DeskTab, "target" | "state" | "workspaceId">>,
+  layout: WorkspaceLayout | null,
+  owners: Record<string, DeskTabOwner> = desk.owners,
+  fallback: DeskTabOwner | null = null,
 ): Desk {
-  if (desk.preview?.id !== id && !desk.tabs.some((tab) => tab.id === id)) return desk;
+  if (!layout) return desk;
+  const nextOwners: Record<string, DeskTabOwner> = {};
+  for (const tab of collectAllTabs(layout.root)) {
+    const owner = owners[tab.tabId] ?? fallback;
+    if (owner) nextOwners[tab.tabId] = owner;
+  }
+  const previewTabId =
+    desk.previewTabId && findPaneContainingTab(layout.root, desk.previewTabId)
+      ? desk.previewTabId
+      : null;
   return {
     ...desk,
-    preview: desk.preview?.id === id ? { ...desk.preview, ...patch } : desk.preview,
-    tabs: desk.tabs.map((tab) => (tab.id === id ? { ...tab, ...patch } : tab)),
+    layout,
+    owners: sameOwners(desk.owners, nextOwners) ? desk.owners : nextOwners,
+    previewTabId,
   };
 }
+
+function openInDesk(
+  desk: Desk,
+  input: DeskTabInput,
+  pin: boolean,
+  placement: WorkspaceTabPlacement,
+): Desk {
+  const existing = deskTabs(desk).find((tab) => sameDeskTarget(tab, input));
+  if (existing) {
+    const layout = focusTabInLayout({ layout: desk.layout, tabId: existing.id }) ?? desk.layout;
+    return {
+      ...desk,
+      layout,
+      previewTabId: pin && desk.previewTabId === existing.id ? null : desk.previewTabId,
+    };
+  }
+  const owner = { serverId: input.serverId, workspaceId: input.workspaceId };
+  if (!pin && desk.previewTabId && findPaneContainingTab(desk.layout.root, desk.previewTabId)) {
+    // The content key includes the owner, so a preview reused across workspaces still remounts.
+    const replaced = replaceTabTargetInLayout({
+      layout: desk.layout,
+      tabId: desk.previewTabId,
+      target: input.target,
+      state: input.state,
+      createTabId: newId,
+    });
+    if (replaced) {
+      const layout =
+        focusTabInLayout({ layout: replaced.layout, tabId: replaced.tabId }) ?? replaced.layout;
+      return {
+        ...withLayout(desk, layout, { ...desk.owners, [replaced.tabId]: owner }),
+        previewTabId: replaced.tabId,
+      };
+    }
+  }
+  const created = createTabInLayout({
+    layout: desk.layout,
+    target: input.target,
+    state: input.state,
+    now: Date.now(),
+    placement,
+    explorerSidebarPaneId: null,
+    createTabId: newId,
+  });
+  if (!created) return desk;
+  const next = withLayout(desk, created.layout, { ...desk.owners, [created.tabId]: owner }, owner);
+  return pin ? next : { ...next, previewTabId: created.tabId };
+}
+
+function patchOwner(owner: DeskTabOwner | undefined, patch: DeskTabPatch): DeskTabOwner | null {
+  const serverId = patch.serverId ?? owner?.serverId;
+  const workspaceId = patch.workspaceId ?? owner?.workspaceId;
+  return serverId && workspaceId ? { serverId, workspaceId } : null;
+}
+
+function updateDeskTab(desk: Desk, id: string, patch: DeskTabPatch): Desk {
+  if (!findPaneContainingTab(desk.layout.root, id)) return desk;
+  let next = desk;
+  let tabId = id;
+  const patchedOwner = patchOwner(next.owners[tabId], patch);
+  if (patchedOwner) next = { ...next, owners: { ...next.owners, [tabId]: patchedOwner } };
+  if (patch.target) {
+    const replaced = replaceTabTargetInLayout({
+      layout: next.layout,
+      tabId,
+      target: patch.target,
+      createTabId: newId,
+    });
+    if (replaced) {
+      const owner = next.owners[tabId];
+      const owners = owner ? { ...next.owners, [replaced.tabId]: owner } : next.owners;
+      const previewTabId = next.previewTabId === tabId ? replaced.tabId : next.previewTabId;
+      next = withLayout({ ...next, previewTabId }, replaced.layout, owners);
+      tabId = replaced.tabId;
+    }
+  }
+  if ("state" in patch) {
+    next = withLayout(
+      next,
+      setTabStateInLayout({ layout: next.layout, tabId, state: patch.state }),
+    );
+  }
+  return next;
+}
+
 export const useDesksStore = create<DesksState>()(
   persist(
     (set, get) => {
@@ -115,6 +329,10 @@ export const useDesksStore = create<DesksState>()(
             desks: state.desks.map((desk) => (desk.id === current.id ? update(desk) : desk)),
           };
         });
+      const changeLayout = (
+        update: (layout: WorkspaceLayout) => WorkspaceLayout | null,
+        fallback: DeskTabOwner | null = null,
+      ) => change((desk) => withLayout(desk, update(desk.layout), desk.owners, fallback));
       return {
         desks: initialDesks(),
         activeDeskId: "primary",
@@ -129,13 +347,7 @@ export const useDesksStore = create<DesksState>()(
         },
         createDesk: (name) => {
           if (!name.trim()) return;
-          const desk: Desk = {
-            id: newId(),
-            name: name.trim(),
-            tabs: [],
-            preview: null,
-            activeTabId: null,
-          };
+          const desk = createDesk(newId(), name.trim());
           set((state) => ({ desks: [...state.desks, desk], activeDeskId: desk.id }));
         },
         renameDesk: (name) => {
@@ -144,63 +356,81 @@ export const useDesksStore = create<DesksState>()(
         selectDesk: (id) => {
           if (get().desks.some((d) => d.id === id)) set({ activeDeskId: id });
         },
-        openTab: (input, pin = false) => {
+        openTab: (input, pin = false, placement = FOCUSED_PANE_PLACEMENT) => {
           if (!get().initialized) set({ initialized: true });
           if (input.target.kind === "agent") {
             const key = `${input.serverId}:${input.target.agentId}`;
             set((state) => ({ openedAt: { ...state.openedAt, [key]: Date.now() } }));
           }
-          change((desk) => {
-            const existing = desk.tabs.find((tab) => sameDeskTarget(tab, input));
-            if (existing) return { ...desk, activeTabId: existing.id };
-            const tab =
-              desk.preview && sameDeskTarget(desk.preview, input)
-                ? desk.preview
-                : { ...input, id: newId() };
-            return pin
-              ? {
-                  ...desk,
-                  tabs: [...desk.tabs, tab],
-                  preview: desk.preview?.id === tab.id ? null : desk.preview,
-                  activeTabId: tab.id,
-                }
-              : { ...desk, preview: tab, activeTabId: tab.id };
-          });
+          change((desk) => openInDesk(desk, input, pin, placement));
         },
         selectTab: (id) =>
-          change((desk) =>
-            [desk.preview, ...desk.tabs].some((t) => t?.id === id)
-              ? { ...desk, activeTabId: id }
-              : desk,
-          ),
+          change((desk) => withLayout(desk, focusTabInLayout({ layout: desk.layout, tabId: id }))),
         closeTab: (id) =>
-          change((desk) => {
-            const tabs = desk.tabs.filter((tab) => tab.id !== id);
-            const preview = desk.preview?.id === id ? null : desk.preview;
-            return {
-              ...desk,
-              tabs,
-              preview,
-              activeTabId:
-                desk.activeTabId === id
-                  ? (preview?.id ?? tabs.at(-1)?.id ?? null)
-                  : desk.activeTabId,
-            };
-          }),
-        keepPreview: () => {
-          const preview = activeDesk(get()).preview;
-          if (preview) get().openTab(preview, true);
-        },
+          set((state) => ({
+            desks: state.desks.map((desk) =>
+              withLayout(
+                desk,
+                closeTabInLayout({ layout: desk.layout, tabId: id, explorerSidebarPaneId: null }),
+              ),
+            ),
+          })),
+        keepPreview: () => change((desk) => ({ ...desk, previewTabId: null })),
         updateTab: (id, patch) =>
-          set((state) => ({ desks: state.desks.map((desk) => patchDeskTab(desk, id, patch)) })),
+          set((state) => ({ desks: state.desks.map((desk) => updateDeskTab(desk, id, patch)) })),
+        createNewTab: (owner, paneId) =>
+          changeLayout(
+            (layout) =>
+              createTabInLayout({
+                layout,
+                target: { kind: "new_tab" },
+                now: Date.now(),
+                placement: paneId ? { mode: "pane", paneId } : FOCUSED_PANE_PLACEMENT,
+                explorerSidebarPaneId: null,
+                createTabId: newId,
+              })?.layout ?? null,
+            owner,
+          ),
+        splitPane: (input) =>
+          changeLayout(
+            (layout) =>
+              splitPaneInLayout({ layout, ...input, createNodeId, maxTreeDepth: MAX_TREE_DEPTH })
+                ?.layout ?? null,
+          ),
+        splitPaneEmpty: (input, owner) =>
+          changeLayout(
+            (layout) =>
+              splitPaneEmptyInLayout({
+                layout,
+                ...input,
+                createNodeId,
+                maxTreeDepth: MAX_TREE_DEPTH,
+              })?.layout ?? null,
+            owner,
+          ),
+        moveTabToPane: (tabId, toPaneId) =>
+          changeLayout((layout) => moveTabToPaneInLayout({ layout, tabId, toPaneId })),
+        focusPane: (paneId) => changeLayout((layout) => focusPaneInLayout({ layout, paneId })),
+        selectTabInPane: (paneId, tabId) =>
+          changeLayout((layout) => selectTabInPaneInLayout({ layout, paneId, tabId })),
+        resizeSplit: (groupId, sizes) =>
+          changeLayout((layout) => resizeSplitInLayout({ layout, groupId, sizes })),
+        reorderTabsInPane: (paneId, tabIds) =>
+          changeLayout((layout) => reorderPaneTabsInLayout({ layout, paneId, tabIds })),
         setProjects: (projectKeys) => set({ projectKeys }),
         setSort: (sort) => set({ sort }),
       };
     },
     {
       name: "custom-desks",
-      version: 1,
+      version: 2,
       storage: createValidatedPersistStorage(AsyncStorage, schema),
+      migrate: (persisted) => persisted as PersistedDesks,
+      merge: (persisted, current) => {
+        const state = persisted as Partial<PersistedDesks> | undefined;
+        if (!state?.desks) return current;
+        return { ...current, ...state, desks: state.desks.map(migrateLegacyDesk) };
+      },
       partialize: ({ desks, activeDeskId, initialized, projectKeys, sort, openedAt }) => ({
         desks,
         activeDeskId,

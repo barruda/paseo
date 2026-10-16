@@ -55,16 +55,18 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await sidebar.getByTestId("task-filter-review").click();
     await expect(sidebar.getByTestId(`task-agent-${first.agentId}`)).toHaveCount(0);
     await sidebar.getByTestId(`task-agent-${second.agentId}`).click();
+    // Desks render the standard workspace tab row; the chip says whether it is the preview.
+    const desk = page.getByTestId("desk-screen");
+    const previewTab = desk.locator('[data-desk-tab="preview"]');
+    const pinnedTabs = desk.locator('[data-desk-tab="pinned"]');
+    const agentTabs = desk.locator('[data-testid^="workspace-tab-agent_"]');
     // Previewing another project keeps the Desk and its route stable.
     await expect(page).toHaveURL(new RegExp(`/workspace/${first.workspaceId}`));
-    await expect(page.getByTestId("desk-preview-tab")).toContainText("Review terrain…");
+    await expect(previewTab).toContainText("Review terrain");
     await expect(sidebar.getByTestId("task-filter-review")).toHaveText("Ready to review 0");
     await sidebar.getByTestId("task-filter-all").click();
     await expect(
       sidebar.getByTestId(`task-agent-${second.agentId}`).getByTestId("task-project-icon"),
-    ).toBeVisible();
-    await expect(
-      page.getByTestId("desk-preview-tab").getByTestId("task-project-icon"),
     ).toBeVisible();
 
     await expect(sidebar.getByTestId(`task-agent-${second.agentId}`)).toHaveAttribute(
@@ -115,50 +117,65 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await sidebar.getByTestId(`task-agent-${second.agentId}`).click();
     await expect(composer).toHaveValue("Draft for terrain");
     await composer.fill("");
-    await page
-      .getByTestId("desk-preview-tab")
-      .getByTestId(/^desk-tab-/)
-      .click({ button: "middle" });
-    await expect(page.getByTestId("desk-preview-tab")).toHaveCount(0);
+    await previewTab.click({ button: "middle" });
+    await expect(previewTab).toHaveCount(0);
+    await expect(agentTabs).toHaveCount(0);
     await expect(sidebar.getByTestId(`task-agent-${second.agentId}`)).toBeVisible();
     await sidebar.getByTestId(`task-agent-${second.agentId}`).click({ button: "middle" });
-    await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(1);
+    await expect(pinnedTabs).toHaveCount(1);
     await sidebar.getByTestId(`task-agent-${first.agentId}`).click();
-    await expect(page.getByTestId("desk-preview-tab")).toContainText("Investigate si…");
-    await expect(page.getByTestId("desk-pinned-tab")).toContainText("Review terrain…");
+    await expect(previewTab).toContainText("Investigate sidebar");
+    await expect(pinnedTabs).toContainText("Review terrain");
     await page.getByTestId("desk-keep-preview").click();
-    await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(2);
-    await expect(page.getByTestId("desk-preview-tab")).toHaveCount(0);
+    await expect(pinnedTabs).toHaveCount(2);
+    await expect(previewTab).toHaveCount(0);
+
+    // The workspace tab menu, with the customized actions, works on Desk tabs.
+    await desk.getByTestId(`workspace-tab-agent_${second.agentId}`).click({ button: "right" });
+    await expect(
+      page.locator('[data-testid^="workspace-tab-context-"][data-testid$="-copy-agent-id"]'),
+    ).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    // Desks split like workspaces; closing a split's only tab removes the split.
+    const panes = desk.locator('[data-testid^="workspace-pane-"]');
+    await expect(panes).toHaveCount(1);
+    await desk.getByTestId("workspace-split-pane-menu").click();
+    await page.getByTestId("workspace-split-pane-right").click();
+    await expect(panes).toHaveCount(2);
+    await expect(pinnedTabs).toHaveCount(3);
+    await panes.nth(1).locator("[data-desk-tab]").click({ button: "middle" });
+    await expect(panes).toHaveCount(1);
+    await expect(pinnedTabs).toHaveCount(2);
 
     await page.keyboard.press("Control+n");
     await page.getByTestId("desk-name-modal-input").fill("While waiting");
     await page.getByTestId("desk-name-modal-submit").click();
     await expect(page.getByTestId("desk-selector")).toContainText("While waiting");
-    await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(0);
+    await expect(agentTabs).toHaveCount(0);
     await sidebar.getByTestId(`task-agent-${second.agentId}`).click();
-    await expect(page.getByTestId("desk-preview-tab")).toContainText("Review terrain…");
+    await expect(previewTab).toContainText("Review terrain");
     await page.getByTestId("desk-selector").click();
     await page.getByTestId("desk-choice-primary").click();
-    await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(2);
+    await expect(pinnedTabs).toHaveCount(2);
+    await expect(previewTab).toHaveCount(0);
 
     // Desk cycling is deliberate; all pinned tabs return together.
     await page.keyboard.press("Shift+Tab");
     await expect(page.getByTestId("desk-selector")).toContainText("While waiting");
     await page.keyboard.press("Shift+Tab");
     await expect(page.getByTestId("desk-selector")).toContainText("Primary tasks");
-    await page.getByRole("button", { name: "Add tab to Desk", exact: true }).click();
+    const newTab = desk.getByTestId("workspace-new-tab-button");
+    await newTab.click();
     await expect(page.getByTestId("workspace-new-tab-menu-agent")).toBeVisible();
     await expect(page.getByTestId("workspace-new-tab-menu-terminal")).toBeVisible();
     await expect(page.getByTestId("workspace-new-tab-menu-browser")).toBeVisible();
-    await page.getByTestId("workspace-new-tab-menu-files").click();
-    await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(3);
-    await page.getByRole("button", { name: "Close Files", exact: true }).click();
-    await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(2);
+    await page.keyboard.press("Escape");
     for (const kind of ["agent", "terminal"] as const) {
-      await page.getByRole("button", { name: "Add tab to Desk", exact: true }).click();
+      await newTab.click();
       await page.getByTestId(`workspace-new-tab-menu-${kind}`).click();
-      await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(3);
-      const created = page.getByTestId("desk-pinned-tab").last();
+      await expect(pinnedTabs).toHaveCount(3);
+      const created = pinnedTabs.last();
       if (kind === "agent") {
         const draft = page
           .getByRole("textbox", { name: "Message agent...", exact: true })
@@ -169,7 +186,7 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
         await draft.focus();
         await page.keyboard.press("ArrowUp");
         await expect(projectIcon).not.toHaveAttribute("aria-label", projectBefore!);
-        await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(3);
+        await expect(pinnedTabs).toHaveCount(3);
         await draft.focus();
         const model = page.getByTestId("combined-model-selector").filter({ visible: true });
         const modelBefore = await model.innerText();
@@ -196,9 +213,8 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
         await expect(draft).toHaveValue("hello");
         await draft.fill("");
       }
-      await expect(created.getByTestId("task-project-icon")).toBeVisible();
-      await created.getByTestId(/^desk-tab-/).click({ button: "middle" });
-      await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(2);
+      await created.click({ button: "middle" });
+      await expect(pinnedTabs).toHaveCount(2);
     }
     await sidebar.getByTestId("task-navigation-project").click();
     await page.getByText("Select none", { exact: true }).click();
@@ -222,7 +238,7 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await page.reload();
     await expect(toggle).toHaveAttribute("aria-checked", "true");
     await expect(sidebar).toBeVisible();
-    await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(2);
+    await expect(pinnedTabs).toHaveCount(2);
     await expect(page.getByTestId("desk-selector")).toContainText("Primary tasks");
     await expect(sidebar.getByTestId("task-navigation-sort")).toContainText("Title A–Z");
     const search = await openCommandCenter(page);
@@ -234,7 +250,7 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
       "true",
     );
     await expect(page.getByTestId("desk-selector")).toContainText("Primary tasks");
-    await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(2);
+    await expect(pinnedTabs).toHaveCount(2);
     await page.screenshot({ path: testInfo.outputPath("task-navigation.png"), fullPage: true });
     await toggle.click();
     await expect(sidebar).toHaveCount(0);
@@ -244,7 +260,7 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     ).toBeVisible();
     await toggle.click();
     await expect(sidebar).toBeVisible();
-    await expect(page.getByTestId("desk-pinned-tab")).toHaveCount(2);
+    await expect(pinnedTabs).toHaveCount(2);
     await expect(sidebar.getByTestId("task-navigation-browse-workspaces")).toHaveCount(0);
   } finally {
     await first.cleanup();

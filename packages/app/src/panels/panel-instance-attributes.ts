@@ -51,6 +51,8 @@ export function useModifiedPanelTabIds(input: {
   serverId: string;
   workspaceId: string;
   tabIds: string[];
+  // CUSTOM(desks): a Desk pane holds tabs from several workspaces.
+  resolveOwner?: ((tabId: string) => { serverId: string; workspaceId: string } | null) | null;
 }): Set<string> {
   const revision = useSyncExternalStore(
     useCallback((listener: () => void) => {
@@ -60,19 +62,20 @@ export function useModifiedPanelTabIds(input: {
     () => attributesRevision,
     () => attributesRevision,
   );
+  const { serverId, workspaceId, tabIds, resolveOwner } = input;
   return useMemo(() => {
     void revision;
     return new Set(
-      input.tabIds.filter(
-        (tabId) =>
-          getPanelInstanceAttributes({
-            serverId: input.serverId,
-            workspaceId: input.workspaceId,
-            tabId,
-          }).modified,
-      ),
+      tabIds.filter((tabId) => {
+        const owner = resolveOwner?.(tabId) ?? { serverId, workspaceId };
+        return getPanelInstanceAttributes({
+          serverId: owner.serverId,
+          workspaceId: owner.workspaceId,
+          tabId,
+        }).modified;
+      }),
     );
-  }, [input.serverId, input.tabIds, input.workspaceId, revision]);
+  }, [serverId, tabIds, workspaceId, resolveOwner, revision]);
 }
 
 export function subscribePanelInstanceAttributes(

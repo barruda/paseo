@@ -68,7 +68,8 @@ export function resolveBrowserNewTabRequest(input: {
 export function useDesktopBrowserNewTabRequests(input: {
   enabled: boolean;
   workspaceLayout: WorkspaceLayout | null | undefined;
-  openUrl: (url: string) => void;
+  // CUSTOM(desks): the request names its source browser, so a Desk opens beside its owner.
+  openUrl: (url: string, request: BrowserNewTabRequest) => void;
 }): void {
   const handleNewTabRequest = useStableEvent((payload: unknown) => {
     const request = resolveBrowserNewTabRequest({
@@ -78,7 +79,7 @@ export function useDesktopBrowserNewTabRequests(input: {
     if (!request) {
       return;
     }
-    input.openUrl(request.url);
+    input.openUrl(request.url, request);
   });
 
   useEffect(() => {

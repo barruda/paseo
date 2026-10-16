@@ -1,22 +1,25 @@
+// CUSTOM(desks): a cross-workspace split layout rendered by the standard SplitContainer. Tabs,
+// tab menus, splits and panels are the workspace screen's; this file only says which workspace
+// each tab belongs to and routes layout changes into the Desk store.
 import { WorkspaceBottomTerminal } from "@/screens/new-workspace/bottom-terminal-panel";
-import { useMiddleClick } from "./use-middle-click";
-import { DeskNewTabMenu } from "./new-tab-menu";
-import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
-import { deskTabLabel } from "./model";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/workspace/open-in-editor/button";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
 import { useNavigateToImportedAgent } from "@/hooks/use-import-session";
-import { useHostRuntimeClient } from "@/runtime/host-runtime";
-import { useMountedTabSet } from "@/screens/workspace/use-mounted-tab-set";
-// CUSTOM(desks): a stable cross-workspace panel host, independent of workspace layouts.
-import { memo, useCallback, useEffect, useId, useMemo, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import {
+  getHostRuntimeStore,
+  isHostRuntimeConnected,
+  useHostRuntimeClient,
+} from "@/runtime/host-runtime";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
+import { useQueryClient } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
 import { StyleSheet } from "react-native-unistyles";
-import { Plus, Pin, X } from "lucide-react-native";
+import { Pin } from "lucide-react-native";
+import type { ListTerminalsResponse } from "@getpaseo/protocol/messages";
 import { SelectFieldTrigger } from "@/components/ui/select-field";
-import { DensityIcon } from "@/components/ui/density-icon";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,47 +36,71 @@ import {
   FloatingPanelPortalHost,
   FloatingPanelPortalHostNameProvider,
 } from "@/components/ui/floating-panel-portal";
-import { RetainedPanel } from "@/components/retained-panel";
+import { SplitContainer } from "@/components/split-container";
+import { useToast } from "@/contexts/toast-context";
+import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
 import {
+  collectAllPanes,
   collectAllTabs,
   findPaneById,
+  findPaneContainingTab,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
+import { buildWorkspacePaneContentModel } from "@/screens/workspace/workspace-pane-content";
+import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
-  WorkspacePaneContent,
-  buildWorkspacePaneContentModel,
-} from "@/screens/workspace/workspace-pane-content";
+  WorkspaceTabOwnerProvider,
+  type WorkspaceTabOwnerResolver,
+} from "@/screens/workspace/workspace-tab-owner";
 import {
-  WorkspaceTabPresentationResolver,
-  type WorkspaceTabPresentation,
-} from "@/screens/workspace/workspace-tab-presentation";
+  copyTabAgentId,
+  copyTabFilePath,
+  copyTabResumeCommand,
+  copyTabTerminalId,
+  createTabFileOpener,
+  reloadTabAgent,
+} from "@/screens/workspace/workspace-tab-menu-actions";
+import {
+  useWorkspaceTabRename,
+  WorkspaceTabRenameModal,
+} from "@/screens/workspace/use-workspace-tab-rename";
+import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
-import {
-  getPanelInstanceAttributes,
-  usePanelInstanceAttributes,
-} from "@/panels/panel-instance-attributes";
+import { getPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { DiffDocumentWorkspaceCacheProvider } from "@/git/diff-document/workspace-cache";
+import { useDesktopBrowserNewTabRequests } from "@/desktop/browser/new-tab-requests";
+import { createWorkspaceBrowser } from "@/desktop/browser/store";
+import { confirmDialog } from "@/utils/confirm-dialog";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
+import { DeskLauncherProvider } from "./new-tab-menu";
 import {
   useDesksStore,
   activeDesk,
   activeDeskTab,
+  deskTabs,
+  type Desk,
+  type DeskSplitPosition,
   type DeskTab,
-  type DeskTabInput,
+  type DeskTabOwner,
 } from "./desks-store";
 
-function descriptor(tab: DeskTab) {
-  return {
-    key: tab.id,
-    tabId: tab.id,
-    kind: tab.target.kind,
-    target: tab.target,
-    state: tab.state,
-  };
+const NO_CLOSING_TABS = new Set<string>();
+const noop = () => undefined;
+
+function workspaceDirectoryOf(owner: DeskTabOwner): string | null {
+  return (
+    useSessionStore.getState().sessions[owner.serverId]?.workspaces.get(owner.workspaceId)
+      ?.workspaceDirectory ?? null
+  );
 }
+
+function findDeskTab(desk: Desk, matches: (target: WorkspaceTabTarget) => boolean) {
+  return deskTabs(desk).find((tab) => matches(tab.target)) ?? null;
+}
+
 export function DeskScreen() {
   const screenId = useId();
   const portalHost = `desk-floating-panels:${screenId}`;
@@ -82,10 +109,18 @@ export function DeskScreen() {
   const active = useDesksStore(activeDeskTab);
   const selection = useActiveWorkspaceSelection();
   const isFocused = useIsFocused();
+  const toast = useToast();
+  const { t } = useTranslation();
+  const localServerId = useLocalDaemonServerId();
   const [hydrated, setHydrated] = useState(useDesksStore.persist.hasHydrated());
-  const [tabMenuOpen, setTabMenuOpen] = useState(false);
   const [naming, setNaming] = useState<"create" | "rename" | null>(null);
-  const [visited, setVisited] = useState<ReadonlySet<string>>(new Set());
+  const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<{
+    tab: WorkspaceTabDescriptor;
+    owner: DeskTabOwner;
+  } | null>(null);
+  const [importOwner, setImportOwner] = useState<DeskTabOwner | null>(null);
+  const [fileRevisions, setFileRevisions] = useState<Record<string, number>>({});
   const onRowLayout = useHeaderShortcutsRowLayout(screenId);
   useEffect(() => useDesksStore.persist.onFinishHydration(() => setHydrated(true)), []);
   useEffect(() => {
@@ -96,7 +131,7 @@ export function DeskScreen() {
       ];
     const pane = layout ? findPaneById(layout.root, layout.focusedPaneId) : null;
     const tab = layout
-      ? collectAllTabs(layout.root).find((t) => t.tabId === pane?.focusedTabId)
+      ? collectAllTabs(layout.root).find((entry) => entry.tabId === pane?.focusedTabId)
       : null;
     useDesksStore
       .getState()
@@ -106,33 +141,75 @@ export function DeskScreen() {
           : undefined,
       );
   }, [hydrated, selection]);
-  useEffect(() => {
-    if (active)
-      setVisited((previous) =>
-        previous.has(active.id) ? previous : new Set([...previous, active.id]),
-      );
-  }, [active]);
+
+  // The scope is the focused tab's workspace: launches, the bottom terminal and unowned
+  // new-tab launchers use it.
+  const scopeServerId = active?.serverId ?? selection?.serverId ?? null;
+  const scopeWorkspaceId = active?.workspaceId ?? selection?.workspaceId ?? null;
+  const scope = useMemo<DeskTabOwner | null>(
+    () =>
+      scopeServerId && scopeWorkspaceId
+        ? { serverId: scopeServerId, workspaceId: scopeWorkspaceId }
+        : null,
+    [scopeServerId, scopeWorkspaceId],
+  );
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
+  const owners = desk.owners;
+  const previewTabId = desk.previewTabId;
+  const resolveOwner = useCallback<WorkspaceTabOwnerResolver>(
+    (tabId) => {
+      const owner = owners[tabId] ?? scope;
+      return owner ? { ...owner, preview: tabId === previewTabId } : null;
+    },
+    [owners, previewTabId, scope],
+  );
+  const resolveOwnerRef = useRef(resolveOwner);
+  resolveOwnerRef.current = resolveOwner;
+  const ownerOf = useCallback((tabId: string) => resolveOwnerRef.current(tabId), []);
+
+  const closeTabs = useCallback(
+    async (tabIds: string[]) => {
+      const modified = tabIds.filter((tabId) => {
+        const owner = ownerOf(tabId);
+        return owner && getPanelInstanceAttributes({ ...owner, tabId }).modified;
+      });
+      if (modified.length > 0) {
+        const confirmed = await confirmDialog({
+          title: t("workspace.tabs.confirmations.unsavedTitle"),
+          message: t("workspace.tabs.confirmations.unsavedMessage"),
+          confirmLabel: t("workspace.tabs.confirmations.closeWithoutSaving"),
+          cancelLabel: t("workspace.tabs.confirmations.cancel"),
+          destructive: true,
+        });
+        if (!confirmed) return;
+      }
+      // Closing a Desk tab drops its reference; the agent and workspace stay untouched.
+      for (const tabId of tabIds) useDesksStore.getState().closeTab(tabId);
+    },
+    [ownerOf, t],
+  );
+  const closeTab = useCallback((tabId: string) => closeTabs([tabId]), [closeTabs]);
+
   useKeyboardActionHandler({
     handlerId: `desk-tab-actions:${screenId}`,
     enabled: isFocused,
     priority: 200,
     actions: [
-      "workspace.tab.menu.open",
       "workspace.tab.close-current",
       "workspace.tab.navigate-index",
       "workspace.tab.navigate-relative",
+      "workspace.pane.split.right",
+      "workspace.pane.split.down",
       "task.desk.next",
       "task.desk.new",
     ],
     handle: (action) => {
       const store = useDesksStore.getState();
       const current = activeDesk(store);
-      const currentTab = activeDeskTab(store);
-      const tabs = [...(current.preview ? [current.preview] : []), ...current.tabs];
-      if (action.id === "workspace.tab.menu.open") {
-        setTabMenuOpen(true);
-        return true;
-      }
+      const pane = findPaneById(current.layout.root, current.layout.focusedPaneId);
+      const tabIds = pane?.tabIds ?? [];
+      const currentTabId = pane?.focusedTabId ?? null;
       if (action.id === "task.desk.new") {
         setNaming("create");
         return true;
@@ -142,32 +219,212 @@ export function DeskScreen() {
         store.selectDesk(store.desks[(index + 1) % store.desks.length]!.id);
         return true;
       }
+      if (action.id === "workspace.pane.split.right" || action.id === "workspace.pane.split.down") {
+        if (pane) {
+          store.splitPaneEmpty(
+            {
+              targetPaneId: pane.id,
+              position: action.id === "workspace.pane.split.right" ? "right" : "bottom",
+            },
+            scopeRef.current,
+          );
+        }
+        return true;
+      }
       if (action.id === "workspace.tab.close-current") {
-        if (
-          currentTab &&
-          !getPanelInstanceAttributes({
-            serverId: currentTab.serverId,
-            workspaceId: currentTab.workspaceId,
-            tabId: currentTab.id,
-          }).modified
-        )
-          store.closeTab(currentTab.id);
+        if (currentTabId) void closeTab(currentTabId);
         return true;
       }
       if (action.id === "workspace.tab.navigate-index") {
-        const tab = tabs[action.index === 9 ? tabs.length - 1 : action.index - 1];
-        if (tab) store.selectTab(tab.id);
+        const tabId = tabIds[action.index === 9 ? tabIds.length - 1 : action.index - 1];
+        if (tabId) store.selectTab(tabId);
         return true;
       }
       if (action.id === "workspace.tab.navigate-relative") {
-        const index = tabs.findIndex((t) => t.id === currentTab?.id);
-        const tab = tabs[(index + action.delta + tabs.length) % tabs.length];
-        if (tab) store.selectTab(tab.id);
+        const index = tabIds.findIndex((tabId) => tabId === currentTabId);
+        const tabId = tabIds[(index + action.delta + tabIds.length) % tabIds.length];
+        if (tabId) store.selectTab(tabId);
         return true;
       }
       return false;
     },
   });
+
+  const closeTabsBeside = useCallback(
+    (side: "left" | "right" | "others") => (tabId: string, paneTabs: WorkspaceTabDescriptor[]) => {
+      const index = paneTabs.findIndex((tab) => tab.tabId === tabId);
+      if (index < 0) return;
+      let closing = paneTabs.filter((tab) => tab.tabId !== tabId);
+      if (side === "left") closing = paneTabs.slice(0, index);
+      if (side === "right") closing = paneTabs.slice(index + 1);
+      return closeTabs(closing.map((tab) => tab.tabId));
+    },
+    [closeTabs],
+  );
+  const closeTabsToLeft = useMemo(() => closeTabsBeside("left"), [closeTabsBeside]);
+  const closeTabsToRight = useMemo(() => closeTabsBeside("right"), [closeTabsBeside]);
+  const closeOtherTabs = useMemo(() => closeTabsBeside("others"), [closeTabsBeside]);
+
+  const agentOwner = useCallback(
+    (agentId: string): DeskTabOwner | null =>
+      findDeskTab(
+        activeDesk(useDesksStore.getState()),
+        (target) => target.kind === "agent" && target.agentId === agentId,
+      ) ?? scopeRef.current,
+    [],
+  );
+  const copyAgentId = useCallback(
+    (agentId: string) => copyTabAgentId(agentId, { toast, t }),
+    [toast, t],
+  );
+  const copyTerminalId = useCallback(
+    (terminalId: string) => copyTabTerminalId(terminalId, { toast, t }),
+    [toast, t],
+  );
+  const copyResumeCommand = useCallback(
+    (agentId: string) => {
+      const owner = agentOwner(agentId);
+      if (owner) void copyTabResumeCommand({ serverId: owner.serverId, agentId, toast, t });
+    },
+    [agentOwner, toast, t],
+  );
+  const reloadAgent = useCallback(
+    (agentId: string) => {
+      const owner = agentOwner(agentId);
+      if (!owner) return;
+      const snapshot = getHostRuntimeStore().getSnapshot(owner.serverId);
+      void reloadTabAgent({
+        client: snapshot?.client ?? null,
+        isConnected: isHostRuntimeConnected(snapshot),
+        serverId: owner.serverId,
+        agentId,
+        toast,
+        t,
+      });
+    },
+    [agentOwner, toast, t],
+  );
+  const copyFilePath = useCallback(
+    (path: string, mode?: "full", tabId?: string) => {
+      const owner = tabId ? ownerOf(tabId) : scopeRef.current;
+      void copyTabFilePath({
+        path,
+        mode,
+        workspaceDirectory: owner ? workspaceDirectoryOf(owner) : null,
+        toast,
+        t,
+      });
+    },
+    [ownerOf, toast, t],
+  );
+  // CUSTOM(open-file-externally): never hand a remote host's paths to the local OS.
+  const openFile = useMemo(() => {
+    if (!localServerId || !createTabFileOpener(true)) return undefined;
+    return (path: string, mode: "browser" | "default", tabId?: string) => {
+      const owner = tabId ? ownerOf(tabId) : scopeRef.current;
+      const opener = createTabFileOpener(owner?.serverId === localServerId);
+      if (!owner || !opener) {
+        toast.error("Files on a remote host cannot be opened locally");
+        return;
+      }
+      void opener({ path, mode, workspaceDirectory: workspaceDirectoryOf(owner), toast, t });
+    };
+  }, [localServerId, ownerOf, toast, t]);
+  const renameTab = useCallback(
+    (tab: WorkspaceTabDescriptor) => {
+      const owner = ownerOf(tab.tabId);
+      if (owner) setRenaming({ tab, owner });
+    },
+    [ownerOf],
+  );
+
+  const buildPaneContentModel = useCallback(
+    ({ paneId, tab }: { paneId: string; tab: WorkspaceTabDescriptor }) => {
+      const owner = resolveOwner(tab.tabId) ?? { serverId: "", workspaceId: "" };
+      const open = (target: WorkspaceTabTarget) => {
+        useDesksStore
+          .getState()
+          .openTab({ serverId: owner.serverId, workspaceId: owner.workspaceId, target }, true, {
+            mode: "prefer",
+            paneId,
+          });
+        const opened = activeDeskTab(useDesksStore.getState());
+        if (target.kind === "file" && opened) {
+          setFileRevisions((current) => ({
+            ...current,
+            [opened.id]: (current[opened.id] ?? 0) + 1,
+          }));
+        }
+      };
+      return buildWorkspacePaneContentModel({
+        tab,
+        normalizedServerId: owner.serverId,
+        normalizedWorkspaceId: owner.workspaceId,
+        host: "main",
+        fileNavigationRevision: fileRevisions[tab.tabId] ?? 0,
+        onOpenTab: open,
+        onOpenPreferredTarget: open,
+        onCloseCurrentTab: () => void closeTab(tab.tabId),
+        onRetargetCurrentTab: (target) =>
+          useDesksStore.getState().updateTab(tab.tabId, {
+            serverId: owner.serverId,
+            workspaceId: owner.workspaceId,
+            target,
+          }),
+        onSetCurrentTabState: (state) => useDesksStore.getState().updateTab(tab.tabId, { state }),
+        onOpenWorkspaceFile: (request) => open({ kind: "file", ...request.location }),
+        onOpenImportSheet: () =>
+          setImportOwner({ serverId: owner.serverId, workspaceId: owner.workspaceId }),
+      });
+    },
+    [resolveOwner, fileRevisions, closeTab],
+  );
+
+  const createNewTab = useCallback(
+    ({ paneId }: { paneId?: string }) =>
+      useDesksStore.getState().createNewTab(scopeRef.current, paneId),
+    [],
+  );
+  const splitPaneEmpty = useCallback(
+    (input: { targetPaneId: string; position: DeskSplitPosition }) => {
+      const layout = activeDesk(useDesksStore.getState()).layout;
+      const tabId = findPaneById(layout.root, input.targetPaneId)?.focusedTabId;
+      const owner = (tabId ? ownerOf(tabId) : null) ?? scopeRef.current;
+      useDesksStore
+        .getState()
+        .splitPaneEmpty(
+          input,
+          owner ? { serverId: owner.serverId, workspaceId: owner.workspaceId } : null,
+        );
+    },
+    [ownerOf],
+  );
+
+  useDesktopBrowserNewTabRequests({
+    enabled: isFocused,
+    workspaceLayout: desk.layout,
+    openUrl: (url, request) => {
+      const current = activeDesk(useDesksStore.getState());
+      const source = findDeskTab(
+        current,
+        (target) => target.kind === "browser" && target.browserId === request.sourceBrowserId,
+      );
+      const owner = source ?? scopeRef.current;
+      if (!owner) return;
+      const paneId = source ? findPaneContainingTab(current.layout.root, source.id)?.id : undefined;
+      const { browserId } = createWorkspaceBrowser({ initialUrl: url });
+      useDesksStore.getState().openTab(
+        {
+          serverId: owner.serverId,
+          workspaceId: owner.workspaceId,
+          target: { kind: "browser", browserId },
+        },
+        true,
+        paneId ? { mode: "pane", paneId } : undefined,
+      );
+    },
+  });
+
   const closeNaming = useCallback(() => setNaming(null), []);
   const create = useCallback(() => setNaming("create"), []);
   const rename = useCallback(() => setNaming("rename"), []);
@@ -178,27 +435,12 @@ export function DeskScreen() {
     },
     [naming],
   );
+  const closeRename = useCallback(() => setRenaming(null), []);
+  const closeImport = useCallback(() => setImportOwner(null), []);
   const keep = useDesksStore((s) => s.keepPreview);
-  const allTabs = useMemo(
-    () => desks.flatMap((d) => [...(d.preview ? [d.preview] : []), ...d.tabs]),
-    [desks],
-  );
-  const allTabIds = useMemo(() => allTabs.map((tab) => tab.id), [allTabs]);
-  const retainedToolIds = useMemo(
-    () =>
-      new Set(
-        allTabs
-          .filter((tab) => visited.has(tab.id) && tab.target.kind !== "agent")
-          .map((tab) => tab.id),
-      ),
-    [allTabs, visited],
-  );
-  const { mountedTabIds } = useMountedTabSet({
-    activeTabId: active?.id ?? null,
-    allTabIds,
-    cap: 6,
-    retainedTabIds: retainedToolIds,
-  });
+  const activeIsPreview = Boolean(active && active.id === previewTabId);
+  const uiTabs = useMemo(() => collectAllTabs(desk.layout.root), [desk.layout.root]);
+
   const headerLeft = useMemo(
     () => (
       <View style={styles.headerLeft}>
@@ -226,9 +468,20 @@ export function DeskScreen() {
             <DropdownMenuItem onSelect={rename}>Rename Desk…</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+        {activeIsPreview ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            leftIcon={Pin}
+            onPress={keep}
+            testID="desk-keep-preview"
+          >
+            Keep tab
+          </Button>
+        ) : null}
       </View>
     ),
-    [active, desk.id, desk.name, desks, create, rename],
+    [active, activeIsPreview, create, desk.id, desk.name, desks, keep, rename],
   );
   const headerRight = useMemo(
     () => (
@@ -236,83 +489,230 @@ export function DeskScreen() {
         {active ? <DeskWorkspaceActions tab={active} /> : null}
       </HeaderShortcutsRightRow>
     ),
-    [screenId, active],
+    [active, screenId],
   );
-  const scope = useMemo<DeskTabInput | null>(
-    () => active ?? (selection ? { ...selection, target: { kind: "files" } } : null),
-    [active, selection],
+  const renderHeader = useCallback(
+    () => <ScreenHeader onRowLayout={onRowLayout} left={headerLeft} right={headerRight} />,
+    [headerLeft, headerRight, onRowLayout],
   );
+
+  const store = useDesksStore.getState();
   return (
-    <TaskProjectIconsProvider>
-      <FloatingPanelPortalHostNameProvider hostName={portalHost}>
-        <View style={styles.root} testID="desk-screen">
-          <ScreenHeader onRowLayout={onRowLayout} left={headerLeft} right={headerRight} />
-          <View style={styles.tabsRow}>
-            <ScrollView horizontal style={styles.tabs} contentContainerStyle={styles.tabItems}>
-              {desk.preview ? (
-                <DeskTabButton
-                  tab={desk.preview}
-                  preview
-                  selected={active?.id === desk.preview.id}
-                />
-              ) : (
-                <Text style={styles.previewPlaceholder}>Preview · select a task</Text>
-              )}
-              {desk.tabs.map((tab) => (
-                <DeskTabButton key={tab.id} tab={tab} selected={active?.id === tab.id} />
-              ))}
-            </ScrollView>
-            {desk.preview && active?.id === desk.preview.id ? (
-              <Button
-                variant="ghost"
-                size="xs"
-                leftIcon={Pin}
-                onPress={keep}
-                testID="desk-keep-preview"
-              >
-                Keep tab
-              </Button>
-            ) : null}
-            <DeskAddTab scope={scope} open={tabMenuOpen} onOpenChange={setTabMenuOpen} />
-          </View>
-          <View style={styles.content}>
-            {allTabs
-              .filter((tab) => mountedTabIds.has(tab.id))
-              .map((tab) => (
-                <DeskPanel
-                  key={`${tab.id}:${tab.workspaceId}`}
-                  tab={tab}
-                  visible={isFocused && tab.id === active?.id}
-                />
-              ))}
-            {!active ? (
-              <View style={styles.empty}>
-                <Text style={styles.emptyTitle}>{desk.name}</Text>
-                <Text style={styles.context}>
-                  Click a task to preview it. Middle-click to keep it as a tab.
-                </Text>
-              </View>
-            ) : null}
-          </View>
-          {/* CUSTOM(desk-bottom-panel): actions resolve against the selected task, not the route. */}
-          {scope ? <DeskBottomTerminal scope={scope} isActive={isFocused} /> : null}
-          <FloatingPanelPortalHost name={portalHost} />
-          <AdaptiveRenameModal
-            visible={naming !== null}
-            title={naming === "create" ? "New Desk" : "Rename Desk"}
-            initialValue={naming === "rename" ? desk.name : ""}
-            placeholder="e.g. While waiting"
-            submitLabel={naming === "create" ? "Create Desk" : "Save"}
-            onClose={closeNaming}
-            onSubmit={submitName}
-            testID="desk-name-modal"
+    <FloatingPanelPortalHostNameProvider hostName={portalHost}>
+      <View style={styles.root} testID="desk-screen">
+        {scope ? (
+          <DeskProviders resolveOwner={resolveOwner} scope={scope}>
+            <SplitContainer
+              layout={desk.layout}
+              renderMainHeader={renderHeader}
+              workspaceKey={`desk:${desk.id}`}
+              normalizedServerId={scope.serverId}
+              normalizedWorkspaceId={scope.workspaceId}
+              isWorkspaceFocused={isFocused}
+              uiTabs={uiTabs}
+              hoveredCloseTabKey={hoveredCloseTabKey}
+              setHoveredCloseTabKey={setHoveredCloseTabKey}
+              closingTabIds={NO_CLOSING_TABS}
+              onNavigateTab={store.selectTab}
+              onCloseTab={closeTab}
+              onCopyResumeCommand={copyResumeCommand}
+              onCopyAgentId={copyAgentId}
+              onCopyTerminalId={copyTerminalId}
+              onCopyFilePath={copyFilePath}
+              onOpenFile={openFile}
+              onReloadAgent={reloadAgent}
+              onRenameTab={renameTab}
+              onCloseTabsToLeft={closeTabsToLeft}
+              onCloseTabsToRight={closeTabsToRight}
+              onCloseOtherTabs={closeOtherTabs}
+              onCreateNewTab={createNewTab}
+              buildPaneContentModel={buildPaneContentModel}
+              onFocusPane={store.focusPane}
+              onSplitPane={store.splitPane}
+              onSplitPaneEmpty={splitPaneEmpty}
+              onMoveTabToPane={store.moveTabToPane}
+              onSelectTabInPane={store.selectTabInPane}
+              onResizeSplit={store.resizeSplit}
+              onReorderTabsInPane={store.reorderTabsInPane}
+              onExitFocusMode={noop}
+            />
+          </DeskProviders>
+        ) : (
+          <>
+            {renderHeader()}
+            <View style={styles.empty}>
+              <Text style={styles.emptyTitle}>{desk.name}</Text>
+              <Text style={styles.context}>
+                Click a task to preview it. Middle-click to keep it as a tab.
+              </Text>
+            </View>
+          </>
+        )}
+        <DeskVisibleAgents desk={desk} visible={isFocused} />
+        {/* CUSTOM(desk-bottom-panel): actions resolve against the selected task, not the route. */}
+        {scope ? <DeskBottomTerminal scope={scope} isActive={isFocused} /> : null}
+        <FloatingPanelPortalHost name={portalHost} />
+        <AdaptiveRenameModal
+          visible={naming !== null}
+          title={naming === "create" ? "New Desk" : "Rename Desk"}
+          initialValue={naming === "rename" ? desk.name : ""}
+          placeholder="e.g. While waiting"
+          submitLabel={naming === "create" ? "Create Desk" : "Save"}
+          onClose={closeNaming}
+          onSubmit={submitName}
+          testID="desk-name-modal"
+        />
+        {renaming ? (
+          <DeskTabRename
+            key={renaming.tab.tabId}
+            tab={renaming.tab}
+            owner={renaming.owner}
+            onClose={closeRename}
           />
-        </View>
-      </FloatingPanelPortalHostNameProvider>
-    </TaskProjectIconsProvider>
+        ) : null}
+        {importOwner ? (
+          <DeskImportSheet
+            key={`${importOwner.serverId}:${importOwner.workspaceId}`}
+            owner={importOwner}
+            visible={isFocused}
+            onClose={closeImport}
+          />
+        ) : null}
+      </View>
+    </FloatingPanelPortalHostNameProvider>
   );
 }
-function DeskBottomTerminal({ scope, isActive }: { scope: DeskTabInput; isActive: boolean }) {
+
+/** Desk tabs resolve their own workspace; launches use the scope workspace. */
+function DeskProviders({
+  resolveOwner,
+  scope,
+  children,
+}: {
+  resolveOwner: WorkspaceTabOwnerResolver;
+  scope: DeskTabOwner;
+  children: ReactNode;
+}) {
+  return (
+    <WorkspaceTabOwnerProvider value={resolveOwner}>
+      <DeskLauncherProvider scope={scope}>
+        <DiffDocumentWorkspaceCacheProvider>
+          <View style={styles.content}>{children}</View>
+        </DiffDocumentWorkspaceCacheProvider>
+      </DeskLauncherProvider>
+    </WorkspaceTabOwnerProvider>
+  );
+}
+
+/** Marks each pane's visible agent as viewed, on whichever host it lives. */
+function DeskVisibleAgents({ desk, visible }: { desk: Desk; visible: boolean }) {
+  const syncOwner = useId();
+  // A string key, so streamed session updates do not re-run the effect.
+  const syncedServers = useSessionStore((s) =>
+    Object.keys(s.sessions)
+      .filter((serverId) => s.sessions[serverId]?.viewedTimelineSync)
+      .join("\n"),
+  );
+  useEffect(() => {
+    const owner = `desk:${syncOwner}`;
+    const byServer = new Map<string, string[]>();
+    if (visible) {
+      const tabs = new Map(deskTabs(desk).map((tab) => [tab.id, tab]));
+      for (const pane of collectAllPanes(desk.layout.root)) {
+        const tab = pane.hidden || !pane.focusedTabId ? null : tabs.get(pane.focusedTabId);
+        let agentId: string | null = null;
+        if (tab?.target.kind === "agent") agentId = tab.target.agentId;
+        if (tab?.target.kind === "provider_subagent") agentId = tab.target.parentAgentId;
+        if (tab && agentId) {
+          byServer.set(tab.serverId, [...(byServer.get(tab.serverId) ?? []), agentId]);
+        }
+      }
+    }
+    const sessions = useSessionStore.getState().sessions;
+    const syncs = syncedServers.split("\n").flatMap((serverId) => {
+      const sync = sessions[serverId]?.viewedTimelineSync;
+      return sync ? [[serverId, sync] as const] : [];
+    });
+    for (const [serverId, sync] of syncs) {
+      sync.replaceVisibleAgentIds(owner, byServer.get(serverId) ?? []);
+    }
+    return () => {
+      for (const [, sync] of syncs) sync.replaceVisibleAgentIds(owner, []);
+    };
+  }, [desk, visible, syncedServers, syncOwner]);
+  return null;
+}
+
+function DeskTabRename({
+  tab,
+  owner,
+  onClose,
+}: {
+  tab: WorkspaceTabDescriptor;
+  owner: DeskTabOwner;
+  onClose: () => void;
+}) {
+  const client = useHostRuntimeClient(owner.serverId);
+  const directory = useWorkspaceDirectory(owner.serverId, owner.workspaceId);
+  const queryClient = useQueryClient();
+  const terminalsQueryKey = useMemo(
+    () => buildTerminalsQueryKey(owner.serverId, directory, owner.workspaceId),
+    [owner.serverId, owner.workspaceId, directory],
+  );
+  const rename = useWorkspaceTabRename({
+    client,
+    normalizedServerId: owner.serverId,
+    queryClient,
+    terminalsData: queryClient.getQueryData<ListTerminalsResponse["payload"]>(terminalsQueryKey),
+    terminalsQueryKey,
+  });
+  const { handleRenameTab, handleRenameModalClose } = rename;
+  useEffect(() => handleRenameTab(tab), [handleRenameTab, tab]);
+  const close = useCallback(() => {
+    handleRenameModalClose();
+    onClose();
+  }, [handleRenameModalClose, onClose]);
+  return (
+    <WorkspaceTabRenameModal
+      renamingTab={rename.renamingTab}
+      onClose={close}
+      onSubmit={rename.handleRenameModalSubmit}
+    />
+  );
+}
+
+function DeskImportSheet({
+  owner,
+  visible,
+  onClose,
+}: {
+  owner: DeskTabOwner;
+  visible: boolean;
+  onClose: () => void;
+}) {
+  const client = useHostRuntimeClient(owner.serverId);
+  const directory = useWorkspaceDirectory(owner.serverId, owner.workspaceId);
+  const navigateToImportedAgent = useNavigateToImportedAgent(owner.serverId);
+  const importedHere = useCallback(
+    (agentId: string) =>
+      useDesksStore.getState().openTab({ ...owner, target: { kind: "agent", agentId } }, true),
+    [owner],
+  );
+  return (
+    <ImportSessionSheet
+      visible={visible}
+      client={client}
+      serverId={owner.serverId}
+      cwd={directory}
+      workspaceId={owner.workspaceId}
+      onClose={onClose}
+      onImportedAgent={importedHere}
+      onImported={navigateToImportedAgent}
+    />
+  );
+}
+
+function DeskBottomTerminal({ scope, isActive }: { scope: DeskTabOwner; isActive: boolean }) {
   const cwd = useWorkspaceDirectory(scope.serverId, scope.workspaceId);
   const isScreenActive = useCallback(() => isActive, [isActive]);
   return (
@@ -359,233 +759,10 @@ function DeskContext({ tab }: { tab: DeskTab }) {
     </>
   );
 }
-function DeskTabButton({
-  tab,
-  preview = false,
-  selected,
-}: {
-  tab: DeskTab;
-  preview?: boolean;
-  selected: boolean;
-}) {
-  const value = useMemo(() => descriptor(tab), [tab]);
-  const render = useCallback(
-    (presentation: WorkspaceTabPresentation) => (
-      <DeskTabLabel
-        tab={tab}
-        label={presentation.label || presentation.subtitle}
-        modified={presentation.modified}
-        preview={preview}
-        selected={selected}
-      />
-    ),
-    [tab, preview, selected],
-  );
-  return (
-    <WorkspaceTabPresentationResolver
-      tab={value}
-      serverId={tab.serverId}
-      workspaceId={tab.workspaceId}
-    >
-      {render}
-    </WorkspaceTabPresentationResolver>
-  );
-}
-function DeskTabLabel({
-  tab,
-  label,
-  modified,
-  preview,
-  selected,
-}: {
-  tab: DeskTab;
-  label: string;
-  modified: boolean;
-  preview: boolean;
-  selected: boolean;
-}) {
-  const select = useCallback(() => useDesksStore.getState().selectTab(tab.id), [tab.id]);
-  const close = useCallback(() => {
-    if (!modified) useDesksStore.getState().closeTab(tab.id);
-  }, [tab.id, modified]);
-  const middleClickRef = useMiddleClick(close);
-  return (
-    <View
-      ref={middleClickRef}
-      style={[styles.tab, preview && styles.preview, selected && styles.selectedTab]}
-      testID={preview ? "desk-preview-tab" : "desk-pinned-tab"}
-    >
-      <Pressable
-        accessibilityRole="button"
-        onPress={select}
-        style={styles.tabButton}
-        accessibilityLabel={`${preview ? "Preview: " : ""}${label}`}
-        testID={`desk-tab-${tab.id}`}
-      >
-        <Text numberOfLines={1} style={styles.tabLabel}>
-          {deskTabLabel(label)}
-        </Text>
-        {modified ? <Text style={styles.tabLabel}>•</Text> : null}
-      </Pressable>
-      <TaskProjectIcon serverId={tab.serverId} workspaceId={tab.workspaceId} />
-      <Button
-        variant="ghost"
-        size="xs"
-        leftIcon={X}
-        onPress={close}
-        disabled={modified}
-        accessibilityLabel={modified ? "Save changes before closing tab" : `Close ${label}`}
-      />
-    </View>
-  );
-}
-const DeskPanel = memo(function DeskPanel({ tab, visible }: { tab: DeskTab; visible: boolean }) {
-  const syncOwner = useId();
-  const [importOpen, setImportOpen] = useState(false);
-  const client = useHostRuntimeClient(tab.serverId);
-  const directory = useWorkspaceDirectory(tab.serverId, tab.workspaceId);
-  const navigateToImportedAgent = useNavigateToImportedAgent(tab.serverId);
-  const openImport = useCallback(() => setImportOpen(true), []);
-  const closeImport = useCallback(() => setImportOpen(false), []);
-  const importedHere = useCallback(
-    (agentId: string) =>
-      useDesksStore.getState().openTab(
-        {
-          serverId: tab.serverId,
-          workspaceId: tab.workspaceId,
-          target: { kind: "agent", agentId },
-        },
-        true,
-      ),
-    [tab.serverId, tab.workspaceId],
-  );
-  const sync = useSessionStore((s) => s.sessions[tab.serverId]?.viewedTimelineSync ?? null);
-  const identity = useMemo(
-    () => ({ serverId: tab.serverId, workspaceId: tab.workspaceId, tabId: tab.id }),
-    [tab.serverId, tab.workspaceId, tab.id],
-  );
-  const attributes = usePanelInstanceAttributes(identity);
-  const currentTarget = tab.target;
-  useEffect(() => {
-    if (!sync) return;
-    const owner = `desk:${syncOwner}`;
-    let agentId: string | null = null;
-    if (currentTarget.kind === "agent") agentId = currentTarget.agentId;
-    if (currentTarget.kind === "provider_subagent") agentId = currentTarget.parentAgentId;
-    sync.replaceVisibleAgentIds(owner, visible && agentId ? [agentId] : []);
-    return () => sync.replaceVisibleAgentIds(owner, []);
-  }, [sync, currentTarget, syncOwner, visible]);
-  const content = useMemo(() => {
-    const open = (target: WorkspaceTabTarget) =>
-      useDesksStore
-        .getState()
-        .openTab({ serverId: tab.serverId, workspaceId: tab.workspaceId, target }, true);
-    return buildWorkspacePaneContentModel({
-      tab: descriptor(tab),
-      normalizedServerId: tab.serverId,
-      normalizedWorkspaceId: tab.workspaceId,
-      host: "main",
-      onOpenTab: open,
-      onOpenPreferredTarget: open,
-      onOpenTargetToSide: open,
-      onCloseCurrentTab: () => {
-        if (!attributes.modified) useDesksStore.getState().closeTab(tab.id);
-      },
-      onRetargetCurrentTab: (target) => useDesksStore.getState().updateTab(tab.id, { target }),
-      onSetCurrentTabState: (state) => useDesksStore.getState().updateTab(tab.id, { state }),
-      onOpenWorkspaceFile: (request) => open({ kind: "file", ...request.location }),
-      onOpenImportSheet: openImport,
-    });
-  }, [tab, attributes.modified, openImport]);
-  return (
-    <RetainedPanel active={visible}>
-      <DiffDocumentWorkspaceCacheProvider>
-        <WorkspacePaneContent
-          content={content}
-          isWorkspaceFocused={visible}
-          isPaneFocused={visible}
-        />
-      </DiffDocumentWorkspaceCacheProvider>
-      {importOpen ? (
-        <ImportSessionSheet
-          visible={visible}
-          client={client}
-          serverId={tab.serverId}
-          cwd={directory}
-          workspaceId={tab.workspaceId}
-          onClose={closeImport}
-          onImportedAgent={importedHere}
-          onImported={navigateToImportedAgent}
-        />
-      ) : null}
-    </RetainedPanel>
-  );
-});
-function DeskAddTab({
-  scope,
-  open,
-  onOpenChange,
-}: {
-  scope: DeskTabInput | null;
-  open: boolean;
-  onOpenChange(open: boolean): void;
-}) {
-  return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger
-        accessibilityRole="button"
-        accessibilityLabel="Add tab to Desk"
-        disabled={!scope}
-        style={styles.addTab}
-      >
-        <DensityIcon icon={Plus} size="sm" color="foregroundMuted" />
-      </DropdownMenuTrigger>
-      {scope ? (
-        <DeskNewTabMenu key={`${scope.serverId}:${scope.workspaceId}`} scope={scope} />
-      ) : null}
-    </DropdownMenu>
-  );
-}
 const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface0 },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2], minWidth: 0 },
   context: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm, flexShrink: 1 },
-  tabsRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderBottomWidth: 1,
-    borderColor: theme.colors.border,
-    padding: theme.spacing[1],
-    gap: theme.spacing[1],
-  },
-  tabs: { flex: 1 },
-  tabItems: { alignItems: "center", gap: theme.spacing[1] },
-  tab: {
-    flexDirection: "row",
-    alignItems: "center",
-    borderWidth: 1,
-    borderColor: "transparent",
-    borderRadius: theme.borderRadius.md,
-    maxWidth: 280,
-  },
-  tabButton: {
-    flexShrink: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    padding: theme.spacing[2],
-  },
-  tabLabel: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm, flexShrink: 1 },
-  addTab: { padding: theme.spacing[2] },
-  preview: { borderColor: theme.colors.statusDotRunning },
-  selectedTab: { backgroundColor: theme.colors.surface3 },
-  previewPlaceholder: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    padding: theme.spacing[2],
-    borderWidth: 1,
-    borderColor: theme.colors.statusDotRunning,
-    borderRadius: theme.borderRadius.md,
-  },
   content: { flex: 1, minHeight: 0 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: theme.spacing[3] },
   emptyTitle: { color: theme.colors.foreground, fontSize: theme.fontSize.lg },
