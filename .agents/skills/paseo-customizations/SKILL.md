@@ -38,17 +38,23 @@ rules agents get wrong.
   `npx tsx packages/cli/src/index.js plugin reload <id> --home ~/.paseo` (and `~/.paseo-telus`).
 - New plugin: it must be installed on each daemon once. See "One-time setup: plugins" in
   `custom/README.md`. Plugins run unsandboxed, so ask before enabling `pluginsEnabled` on a daemon.
+- Build from this checkout as it is, including other agents' uncommitted work in the tree; the
+  user prefers that over a clean worktree or waiting. Mention in your report which uncommitted
+  files went into the build.
 - Core change: `npm run build:desktop -- --linux dir` (only the folder the install copies; the
   full build fails at rpm on Ubuntu), then
-  `custom/update-paseo-source-and-apply-customization.sh --install-only`. The user then reopens the
-  Paseo window. For daemon-side changes that is not enough: with an unchanged version the
+  `custom/update-paseo-source-and-apply-customization.sh --install-only`. Then run
+  `custom/reopen-paseo-clients.sh` yourself, without asking: it closes each Paseo window and
+  reopens it from its launcher (so it keeps its dock slot). The daemon and its agents keep running,
+  and the script skips any window whose daemon would stop on quit. For daemon-side changes that is not enough: with an unchanged version the
   `Paseo Supervisor` keeps respawning the daemon from the old build, even after Settings >
   Restart daemon. Tell the user to close Paseo, run
   `~/Applications/Paseo-builds/<newest>/resources/bin/paseo daemon stop --home ~/.paseo`, and
   reopen it (see "Updating" in `custom/README.md`).
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user
   first when the upstream version changed: reopening the app restarts the daemon, which stops its
-  running agents.
+  running agents. Only run `custom/reopen-paseo-clients.sh` after an upstream pull when the
+  version did not change, or once the user agrees.
 - Never stop or restart a running Paseo daemon yourself (ports 6767 and 6768 belong to the user's
   daemons). Never replace files under a folder a running Paseo uses; the install step already
   avoids this.
