@@ -261,6 +261,8 @@ git checkout -- package-lock.json 2>/dev/null || true
 
 if $VERIFY; then
   step "Typechecking"
+  # The app and CLI read @getpaseo/client from dist (cli-dictation adds an export there).
+  npm run build:client
   npm run typecheck
   step "Running customization tests"
   (cd packages/app && npx vitest run src/composer/input/state.test.ts --bail=1)
@@ -268,7 +270,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/keyboard/shortcut-help-search.test.ts --bail=1)
   npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/keyboard-shortcut-unassign.spec.ts --grep 'sidebar shortcut settings|shortcut settings search' --workers=1
   (cd packages/app && npx vitest run src/voice/sidebar/session.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/keyboard/voice-escape.test.ts src/composer/submission/writer.test.ts src/always-listening/controller.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/keyboard/voice-escape.test.ts src/composer/submission/writer.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/codex-app-server-agent.test.ts --bail=1)
   (cd packages/app && npx vitest run src/composer/project-icon-model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts --bail=1)
@@ -299,6 +301,8 @@ if $VERIFY; then
   (cd packages/desktop && npx vitest run src/features/media-pause.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/history-content-index.test.ts src/server/agent-history-search.test.ts --bail=1)
   (cd packages/protocol && npx vitest run src/search/history-query.test.ts --bail=1)
+  (cd packages/cli && npx vitest run src/commands/speech/shared.test.ts --bail=1)
+  (cd packages/client && npx vitest run src/wake-dictation.test.ts --bail=1)
 fi
 
 step "Building the desktop app"

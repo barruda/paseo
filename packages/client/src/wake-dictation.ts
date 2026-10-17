@@ -1,11 +1,32 @@
-// CUSTOM(wake-dictation): short utterances keep the proof of concept on the existing STT path.
+// CUSTOM(wake-dictation): shared by the app sidebar toggle and `paseo speech wake`; short utterances
+// keep it on the existing STT path.
 export type WakeDictationPhase = "armed" | "capturing" | "processing";
 
 const MIN_RMS = 0.008;
 const END_SILENCE_MS = 900;
 const MAX_UTTERANCE_MS = 12_000;
 const WAKE_PHRASE = /\bwake[\s,.!?]+up\b[\s,.!?]*/i;
-const DONE_SUFFIX = /(?:^|\s)done[.!?]*\s*$/i;
+// Any spoken "done" ends the dictation, unless the word before it makes it part of a sentence
+// ("I'm done", "get it done", "already done"). The recognizer's punctuation around a spoken
+// "done" varies ("4, done, 5", "4, done 5", "1234 done 5678"), so it can't be relied on.
+const DONE_WORD = /\bdone\b[.,!?;:]*/gi;
+const SENTENCE_BEFORE_DONE = new Set(
+  (
+    "am i'm im is isn't are aren't was wasn't were weren't be been being get gets got getting " +
+    "have has had haven't hasn't it it's that's what's we're you're they're he's she's well " +
+    "not all almost already just half nearly finally never gotta"
+  ).split(" "),
+);
+
+function findDone(text: string): RegExpExecArray | null {
+  DONE_WORD.lastIndex = 0;
+  for (let match = DONE_WORD.exec(text); match; match = DONE_WORD.exec(text)) {
+    const before = text.slice(0, match.index).trimEnd();
+    const previous = /([\w'’]+)$/.exec(before)?.[1]?.toLowerCase().replaceAll("’", "'");
+    if (!previous || !SENTENCE_BEFORE_DONE.has(previous)) return match;
+  }
+  return null;
+}
 
 export interface WakeDictationDependencies {
   transcribe(chunks: string[]): Promise<string>;
@@ -84,22 +105,8 @@ export class WakeDictationController {
       const text = (await this.deps.transcribe(chunks)).trim();
       if (this.stopped) return;
 
-      const wasArmed = this.captureStarted === false;
-      if (wasArmed) {
-        const wake = WAKE_PHRASE.exec(text);
-        if (!wake) {
-          this.setPhase("armed");
-          return;
-        }
-        this.captureStarted = true;
-        const remainder = text.slice(wake.index + wake[0].length).trim();
-        if (remainder) await this.acceptDictation(remainder);
-        if (!this.stopped && this.captureStarted) this.setPhase("capturing");
-        return;
-      }
-
-      await this.acceptDictation(text);
-      if (!this.stopped && this.captureStarted) this.setPhase("capturing");
+      await this.handleText(text);
+      if (!this.stopped) this.setPhase(this.captureStarted ? "capturing" : "armed");
     } catch (error) {
       if (!this.stopped)
         this.deps.onError(error instanceof Error ? error : new Error(String(error)));
@@ -119,21 +126,40 @@ export class WakeDictationController {
 
   private captureStarted = false;
 
-  private async acceptDictation(text: string): Promise<void> {
-    const done = DONE_SUFFIX.test(text);
-    const content = done ? text.replace(DONE_SUFFIX, "").trim() : text.trim();
-    if (content) this.transcript.push(content);
-    if (!done) return;
-
-    const complete = this.transcript.join(" ").trim();
-    if (complete) {
-      await this.deps.copy(complete);
-      if (this.stopped) return;
-      this.deps.onCopied(complete);
+  /** Text after "done" goes back to waiting, so "done, wake up, more" starts a new dictation. */
+  private async handleText(text: string): Promise<void> {
+    let rest = text;
+    while (rest && !this.stopped) {
+      if (!this.captureStarted) {
+        const wake = WAKE_PHRASE.exec(rest);
+        if (!wake) return;
+        this.captureStarted = true;
+        rest = rest.slice(wake.index + wake[0].length).trim();
+        continue;
+      }
+      const done = findDone(rest);
+      if (!done) {
+        this.transcript.push(rest);
+        return;
+      }
+      // Drop the comma of "six, done" but keep the period of "send it. Done.".
+      const content = rest
+        .slice(0, done.index)
+        .trim()
+        .replace(/[,;:]+$/, "");
+      if (content) this.transcript.push(content);
+      await this.copyTranscript();
+      rest = rest.slice(done.index + done[0].length).trim();
     }
+  }
+
+  private async copyTranscript(): Promise<void> {
+    const complete = this.transcript.join(" ").trim();
     this.transcript = [];
     this.captureStarted = false;
-    this.setPhase("armed");
+    if (!complete) return;
+    await this.deps.copy(complete);
+    if (!this.stopped) this.deps.onCopied(complete);
   }
 
   private setPhase(phase: WakeDictationPhase): void {
