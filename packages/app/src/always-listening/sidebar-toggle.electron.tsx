@@ -10,7 +10,7 @@ import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { copyToClipboard } from "@/utils/copy-to-clipboard";
 import { PCM_DICTATION_FORMAT } from "@/hooks/use-dictation.shared";
-import { WakeDictationController, type WakeDictationPhase } from "./controller";
+import { WakeDictationController, type WakeDictationPhase } from "@getpaseo/client/wake-dictation";
 
 type DisplayPhase = "off" | WakeDictationPhase | "error";
 

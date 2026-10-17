@@ -24,6 +24,10 @@
     "./internal/daemon-client-websocket-transport": {
       "types": "./dist/daemon-client-websocket-transport.d.ts",
       "default": "./dist/daemon-client-websocket-transport.js"
+    },
+    "./wake-dictation": {
+      "types": "./dist/wake-dictation.d.ts",
+      "default": "./dist/wake-dictation.js"
     }
   },
   "publishConfig": {

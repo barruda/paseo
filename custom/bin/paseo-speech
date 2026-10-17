@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Run `paseo speech dictate|wake` from this checkout, from anywhere. Symlink it as paseo-dictate
+# and paseo-wake (the name picks the command) or pass the command first. Keyboard shortcuts run
+# without a login shell, so nvm's node is not on PATH and `~` is not expanded. Arguments after
+# the command are passed through; the default is --toggle --notify against ~/.paseo. Output goes
+# to $XDG_RUNTIME_DIR/paseo-<command>.log.
+#
+# Stopping is done here in bash, and starting runs a prebuilt bundle with plain node (rebuilt when
+# the sources are newer), so a shortcut press reacts in well under a second instead of waiting
+# for tsx to load the whole CLI.
+set -euo pipefail
+
+case "$(basename "$0")" in
+  paseo-dictate) command=dictate ;;
+  paseo-wake) command=wake ;;
+  *)
+    command="${1:-}"
+    shift || true
+    ;;
+esac
+case "$command" in
+  dictate | wake) ;;
+  *)
+    echo "usage: paseo-speech dictate|wake [options]" >&2
+    exit 2
+    ;;
+esac
+
+repo="$(cd "$(dirname "$(readlink -f "$0")")/../.." && pwd)"
+runtime="${XDG_RUNTIME_DIR:-/tmp}"
+log="$runtime/paseo-$command.log"
+pid_file="$runtime/paseo-$command.pid"
+[ $# -gt 0 ] || set -- --toggle --notify --home "$HOME/.paseo"
+
+if [[ " $* " == *" --toggle "* ]] && pid="$(cat "$pid_file" 2>/dev/null)" && kill -INT "$pid" 2>/dev/null; then
+  exit 0
+fi
+
+exec 2>>"$log"
+echo "--- $(date '+%F %T') paseo-$command $*" >&2
+
+if ! command -v node >/dev/null; then
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  # shellcheck disable=SC1091
+  . "$NVM_DIR/nvm.sh"
+fi
+
+cd "$repo"
+bundle=packages/cli/dist/paseo-speech.mjs
+# Next to the CLI build, so runtime require() calls and ../package.json resolve as for the CLI.
+if [ ! -f "$bundle" ] || [ -n "$(find custom/bin/paseo-speech.entry.ts packages/cli/src \
+  packages/client/dist packages/protocol/dist packages/server/dist packages/plugin/dist \
+  -newer "$bundle" -name '*.[jt]s' -print -quit)" ]; then
+  echo "Rebuilding $bundle" >&2
+  node_modules/.bin/esbuild custom/bin/paseo-speech.entry.ts --bundle --platform=node \
+    --format=esm --target=node22 --minify --log-level=warning \
+    --external:bufferutil --external:utf-8-validate \
+    --banner:js='import { createRequire as __bundleRequire } from "node:module"; const require = __bundleRequire(import.meta.url);' \
+    --outfile="$bundle"
+fi
+
+exec node "$bundle" "$command" "$@"

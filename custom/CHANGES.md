@@ -1178,14 +1178,20 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   uses energy-bounded utterances and the existing dictation STT service, so only speech segments
   are uploaded. It stops when Paseo closes, the local host disconnects, or voice mode starts.
 - **Core files touched:** app `components/left-sidebar.tsx` (desktop row); new
-  `always-listening/{controller,sidebar-toggle}` files. The base toggle renders nothing outside
-  Electron.
+  `always-listening/sidebar-toggle` files. The base toggle renders nothing outside Electron. The
+  wake phrase and "done" logic, `WakeDictationController`, lives in
+  `packages/client/src/wake-dictation.ts` (export `@getpaseo/client/wake-dictation`) since
+  cli-dictation moved it there to share it with `paseo speech wake`. "done" ends the dictation
+  anywhere in an utterance ("four, done, five" copies up to "four"), unless the word before it
+  makes it part of a sentence ("I'm done", "get it done"; `SENTENCE_BEFORE_DONE`). Parakeet's
+  punctuation around a spoken "done" varies (`4, done, 5`, `4, done 5`, `1234 done 5678`), so the
+  rule ignores punctuation.
 - **Re-apply:** Place `WakeDictationSidebarToggle` below the desktop `SidebarNavRows` and before
   the workspace list. Its Electron implementation captures PCM with the existing dictation audio
   source, sends each energy-bounded utterance through `DictationStreamSender`, detects "wake up"
   and final "done" in transcription text, and copies with `copyToClipboard`. Keep the base
   component empty for browser and native builds.
-- **Verify:** `cd packages/app && npx vitest run src/always-listening/controller.test.ts --bail=1`
+- **Verify:** `cd packages/client && npx vitest run src/wake-dictation.test.ts --bail=1`
   (in the update script). In desktop Paseo, switch it on: yellow appears. Say "wake up" and
   pause: it turns green. Dictate, then say "done" and pause: the text goes to the clipboard and
   the control returns to yellow. Switch it off and confirm microphone capture ends.
@@ -1652,3 +1658,45 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
   same voice runtime, so the voice-context call covers it.
 - **Verify:** `packages/desktop/src/features/media-pause.test.ts` is registered in the update
   script. By hand: play music, start dictation, it pauses; stop, it resumes.
+
+## cli-dictation: `paseo speech dictate` and `paseo speech wake` outside the app
+
+- **Added:** 2026-10-17
+- **Commit:** `custom: paseo speech dictate and wake, for keyboard shortcuts`
+- **Why:** Use Paseo's dictation in any app, from a global keyboard shortcut, without copying the
+  speech code out of Paseo. The daemon already does the recognition, so the CLI is a second
+  client of the same dictation stream and picks up every improvement to it.
+- **What:** `dictate` opens the default mic with `pw-record` (16 kHz mono PCM, the app's format)
+  first and connects to the daemon while you talk, buffering the audio until then; 100 ms
+  segments stream as they are recorded. On Ctrl+C/SIGTERM it finishes the stream, prints the
+  text and copies it with `wl-copy`. `wake` listens until stopped and runs the app's
+  `WakeDictationController`: each energy-bounded utterance is transcribed, "wake up" starts
+  capturing, and a spoken "done" copies what was said before it. The wake log
+  (`$XDG_RUNTIME_DIR/paseo-wake.log`) shows each utterance as `Heard:`, to see why a phrase was
+  missed. Both take `--toggle` (stop the running
+  one, found by `$XDG_RUNTIME_DIR/paseo-<command>.pid`, or start one), `--no-copy`, `--notify`
+  (`notify-send`, for use without a terminal) and `--home`/`--host`. Media is not paused (that
+  lives in Electron). Stopping `wake` mid-capture drops the uncopied text. A daemon restart ends
+  `wake` with an error notification; start it again.
+- **Files:** `packages/cli/src/commands/speech/{shared,dictate,wake}.ts` and `shared.test.ts`.
+  `custom/bin/paseo-speech` runs them from anywhere (keyboard shortcuts have no nvm `node` on
+  PATH and no `~` expansion). Symlink it into `~/.local/bin` as `paseo-dictate` and `paseo-wake`;
+  the name picks the command. With no arguments it runs `--toggle --notify --home ~/.paseo`,
+  logging to `$XDG_RUNTIME_DIR/paseo-<command>.log`. For a fast shortcut it stops a running
+  command itself in bash, and starts by running an esbuild bundle of
+  `custom/bin/paseo-speech.entry.ts` with plain node (~0.5 s to recording, against several
+  seconds through `tsx` and the full CLI). The bundle is `packages/cli/dist/paseo-speech.mjs`,
+  rebuilt when the CLI sources or the workspace `dist` folders are newer; it must sit in
+  `packages/cli/dist` because bundled code resolves `../package.json` and `require()` relative
+  to its own file. Like the CLI, it reads `@getpaseo/client` from `packages/client/dist`, so run
+  `npm run build:client` after changing the shared controller.
+- **Core files touched:** `packages/cli/src/commands/speech/index.ts` adds both subcommands to
+  the `speech` group. `packages/client/package.json` exports `./wake-dictation`, and
+  `packages/client/src/wake-dictation.ts` (moved from the app's
+  `always-listening/controller.ts`) holds the controller the app sidebar toggle also imports.
+- **Re-apply:** Add `createDictateCommand()` and `createWakeCommand()` to the `speech` command
+  group and re-add the client export. If upstream changes the `dictation_stream_*` client calls,
+  update `DictationUpload`.
+- **Verify:** `shared.test.ts` and the client's `wake-dictation.test.ts` are in the update
+  script. By hand: `paseo-dictate`, speak, run it again; the text is on the clipboard. `paseo-wake`,
+  say "wake up", a sentence, "done"; the sentence is on the clipboard. `paseo-wake` again stops it.
