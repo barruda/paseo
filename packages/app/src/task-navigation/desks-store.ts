@@ -70,7 +70,9 @@ interface DesksState {
   openedAt: Record<string, number>;
   initialize(tab?: DeskTabInput): void;
   createDesk(name: string): void;
-  renameDesk(name: string): void;
+  renameDesk(id: string, name: string): void;
+  /** Drops a Desk; its tabs are only references, so the agents and workspaces stay. Keeps one Desk. */
+  deleteDesk(id: string): void;
   selectDesk(id: string): void;
   /** Unpinned opens replace the Desk's preview tab; pinned opens keep their tab. */
   openTab(tab: DeskTabInput, pin?: boolean, placement?: WorkspaceTabPlacement): void;
@@ -374,9 +376,23 @@ export const useDesksStore = create<DesksState>()(
           const desk = createDesk(newId(), name.trim());
           set((state) => ({ desks: [...state.desks, desk], activeDeskId: desk.id }));
         },
-        renameDesk: (name) => {
-          if (name.trim()) change((desk) => ({ ...desk, name: name.trim() }));
+        renameDesk: (id, name) => {
+          if (!name.trim()) return;
+          set((state) => ({
+            desks: state.desks.map((desk) =>
+              desk.id === id ? { ...desk, name: name.trim() } : desk,
+            ),
+          }));
         },
+        deleteDesk: (id) =>
+          set((state) => {
+            const index = state.desks.findIndex((desk) => desk.id === id);
+            if (index < 0 || state.desks.length <= 1) return {};
+            const desks = state.desks.filter((desk) => desk.id !== id);
+            const activeDeskId =
+              state.activeDeskId === id ? desks[Math.max(0, index - 1)]!.id : state.activeDeskId;
+            return { desks, activeDeskId };
+          }),
         selectDesk: (id) => {
           if (get().desks.some((d) => d.id === id)) set({ activeDeskId: id });
         },

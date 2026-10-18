@@ -1320,13 +1320,16 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 
 - **Added:** 2026-10-16 (upstream 0.11.2)
 - **Commit:** `custom: add cross-project Desks to task navigation`, then
-  `custom: Desks reuse the workspace split layout and tab row`
+  `custom: Desks reuse the workspace split layout and tab row`, then
+  `custom: Desks as header chips with rename and delete`
 - **Why:** Checking an agent should not replace the surrounding tabs. Group work by personal
   purpose while preserving the original workspace model as a toggleable fallback. Desks render the
   workspace's own split layout and tab row, so every tab customization (Copy full file path, Open
   in browser, the tab menu, splits) works in both modes without a second implementation.
-- **What:** Tasks mode hosts saved **Desks**. The selector beside the project/workspace context
-  switches Desks and offers New Desk and Rename Desk. Editor and Git header actions follow the
+- **What:** Tasks mode hosts saved **Desks**. The header shows the focused tab's project (icon and
+  name), then one chip per Desk and a **+** for New Desk. Clicking a chip switches to it;
+  right-clicking offers Rename and Delete (confirmed, never the last Desk). Deleting drops only the
+  tab references; agents and workspaces stay. Editor and Git header actions follow the
   focused tab's source workspace. A Desk is a workspace-style split layout whose tabs each
   remember their source host and workspace: the standard tab row, tab context menu, drag to
   reorder or split, Split right/down, maximize, middle-click close and the + launcher all work as

@@ -16,18 +16,19 @@ import { Text, View } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { StyleSheet } from "react-native-unistyles";
-import { Pin } from "lucide-react-native";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { Pin, Plus } from "lucide-react-native";
 import type { ListTerminalsResponse } from "@getpaseo/protocol/messages";
-import { SelectFieldTrigger } from "@/components/ui/select-field";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-} from "@/components/ui/dropdown-menu";
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
+import { buttonControlHeight } from "@/components/ui/control-geometry";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { ScreenHeader } from "@/components/headers/screen-header";
 import { SidebarMenuToggle } from "@/components/headers/sidebar-menu-toggle";
@@ -77,6 +78,7 @@ import { useDesktopBrowserNewTabRequests } from "@/desktop/browser/new-tab-reque
 import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
+import type { Theme } from "@/styles/theme";
 import {
   EXPLORER_TOGGLE_KEYS,
   WorkspaceExplorerSidebarToggle,
@@ -84,6 +86,7 @@ import {
 } from "@/screens/workspace/workspace-explorer-toggle";
 import { DeskLauncherProvider } from "./new-tab-menu";
 import { DeskExplorerDock, useDeskExplorer } from "./desk-explorer";
+import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
 import {
   useDesksStore,
   activeDesk,
@@ -97,6 +100,9 @@ import {
 
 const NO_CLOSING_TABS = new Set<string>();
 const noop = () => undefined;
+type DeskNaming = { mode: "create" } | { mode: "rename"; deskId: string };
+const ThemedPlus = withUnistyles(Plus);
+const extraMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
 
 function workspaceDirectoryOf(owner: DeskTabOwner): string | null {
   return (
@@ -121,7 +127,7 @@ export function DeskScreen() {
   const { t } = useTranslation();
   const localServerId = useLocalDaemonServerId();
   const [hydrated, setHydrated] = useState(useDesksStore.persist.hasHydrated());
-  const [naming, setNaming] = useState<"create" | "rename" | null>(null);
+  const [naming, setNaming] = useState<DeskNaming | null>(null);
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{
     tab: WorkspaceTabDescriptor;
@@ -207,6 +213,8 @@ export function DeskScreen() {
     priority: 200,
     actions: [
       "workspace.tab.close-current",
+      // CUSTOM(workspace-rename-f2)
+      "workspace.tab.rename-current",
       "workspace.tab.navigate-index",
       "workspace.tab.navigate-relative",
       "workspace.pane.split.right",
@@ -221,7 +229,7 @@ export function DeskScreen() {
       const tabIds = pane?.tabIds ?? [];
       const currentTabId = pane?.focusedTabId ?? null;
       if (action.id === "task.desk.new") {
-        setNaming("create");
+        setNaming({ mode: "create" });
         return true;
       }
       if (action.id === "task.desk.next") {
@@ -243,6 +251,20 @@ export function DeskScreen() {
       }
       if (action.id === "workspace.tab.close-current") {
         if (currentTabId) void closeTab(currentTabId);
+        return true;
+      }
+      if (action.id === "workspace.tab.rename-current") {
+        const tab = collectAllTabs(current.layout.root).find(
+          (entry) => entry.tabId === currentTabId,
+        );
+        if (tab) {
+          renameTab({
+            key: tab.tabId,
+            tabId: tab.tabId,
+            kind: tab.target.kind,
+            target: tab.target,
+          });
+        }
         return true;
       }
       if (action.id === "workspace.tab.navigate-index") {
@@ -460,12 +482,22 @@ export function DeskScreen() {
   });
 
   const closeNaming = useCallback(() => setNaming(null), []);
-  const create = useCallback(() => setNaming("create"), []);
-  const rename = useCallback(() => setNaming("rename"), []);
+  const create = useCallback(() => setNaming({ mode: "create" }), []);
+  const renameDesk = useCallback((deskId: string) => setNaming({ mode: "rename", deskId }), []);
+  const deleteDesk = useCallback(async (entry: Desk) => {
+    const confirmed = await confirmDialog({
+      title: `Delete "${entry.name}"?`,
+      message: "Its tabs leave this Desk. The agents and workspaces stay as they are.",
+      confirmLabel: "Delete",
+      cancelLabel: "Cancel",
+      destructive: true,
+    });
+    if (confirmed) useDesksStore.getState().deleteDesk(entry.id);
+  }, []);
   const submitName = useCallback(
     (name: string) => {
-      if (naming === "create") useDesksStore.getState().createDesk(name);
-      else useDesksStore.getState().renameDesk(name);
+      if (naming?.mode === "rename") useDesksStore.getState().renameDesk(naming.deskId, name);
+      else useDesksStore.getState().createDesk(name);
     },
     [naming],
   );
@@ -479,29 +511,35 @@ export function DeskScreen() {
     () => (
       <View style={styles.headerLeft}>
         <SidebarMenuToggle />
-        <Text style={styles.context} numberOfLines={1}>
-          {active ? <DeskContext tab={active} /> : "Choose a task"}
-        </Text>
-        <DropdownMenu>
-          <DropdownMenuTrigger testID="desk-selector">
-            <SelectFieldTrigger label={desk.name} placeholder="Desk" size="sm" />
-          </DropdownMenuTrigger>
-          <DropdownMenuContent>
-            {desks.map((entry) => (
-              <DeskChoice
-                key={entry.id}
-                id={entry.id}
-                name={entry.name}
-                selected={entry.id === desk.id}
-              />
-            ))}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={create} testID="desk-create">
-              New Desk…
-            </DropdownMenuItem>
-            <DropdownMenuItem onSelect={rename}>Rename Desk…</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <TaskProjectIconsProvider>
+          {active ? (
+            <DeskProject tab={active} />
+          ) : (
+            <Text style={styles.context} numberOfLines={1}>
+              Choose a task
+            </Text>
+          )}
+        </TaskProjectIconsProvider>
+        <View style={styles.deskTabs}>
+          {desks.map((entry) => (
+            <DeskTabChip
+              key={entry.id}
+              desk={entry}
+              selected={entry.id === desk.id}
+              canDelete={desks.length > 1}
+              onRename={renameDesk}
+              onDelete={deleteDesk}
+            />
+          ))}
+          <ToolbarButton
+            label="New Desk"
+            onPress={create}
+            style={styles.newDeskButton}
+            testID="desk-create"
+          >
+            <ThemedPlus size={14} uniProps={extraMutedColorMapping} />
+          </ToolbarButton>
+        </View>
         {activeIsPreview ? (
           <Button
             variant="ghost"
@@ -515,7 +553,7 @@ export function DeskScreen() {
         ) : null}
       </View>
     ),
-    [active, activeIsPreview, create, desk.id, desk.name, desks, keep, rename],
+    [active, activeIsPreview, create, deleteDesk, desk.id, desks, keep, renameDesk],
   );
   const explorerToggleProps = useMemo(
     () => ({
@@ -663,16 +701,7 @@ export function DeskScreen() {
         {/* CUSTOM(desk-bottom-panel): actions resolve against the selected task, not the route. */}
         {scope ? <DeskBottomTerminal scope={scope} isActive={isFocused} /> : null}
         <FloatingPanelPortalHost name={portalHost} />
-        <AdaptiveRenameModal
-          visible={naming !== null}
-          title={naming === "create" ? "New Desk" : "Rename Desk"}
-          initialValue={naming === "rename" ? desk.name : ""}
-          placeholder="e.g. While waiting"
-          submitLabel={naming === "create" ? "Create Desk" : "Save"}
-          onClose={closeNaming}
-          onSubmit={submitName}
-          testID="desk-name-modal"
-        />
+        <DeskNameModal naming={naming} desks={desks} onClose={closeNaming} onSubmit={submitName} />
         {renaming ? (
           <DeskTabRename
             key={renaming.tab.tabId}
@@ -857,29 +886,120 @@ function DeskWorkspaceActions({ tab }: { tab: DeskTab }) {
     </>
   );
 }
-function DeskChoice({ id, name, selected }: { id: string; name: string; selected: boolean }) {
-  const select = useCallback(() => useDesksStore.getState().selectDesk(id), [id]);
+function DeskNameModal({
+  naming,
+  desks,
+  onClose,
+  onSubmit,
+}: {
+  naming: DeskNaming | null;
+  desks: Desk[];
+  onClose: () => void;
+  onSubmit: (name: string) => void;
+}) {
+  const renaming = naming?.mode === "rename";
+  const renamingDesk =
+    naming?.mode === "rename" ? desks.find((entry) => entry.id === naming.deskId) : undefined;
   return (
-    <DropdownMenuItem selected={selected} onSelect={select} testID={`desk-choice-${id}`}>
-      {name}
-    </DropdownMenuItem>
+    <AdaptiveRenameModal
+      visible={naming !== null}
+      title={renaming ? "Rename Desk" : "New Desk"}
+      initialValue={renamingDesk?.name ?? ""}
+      placeholder="e.g. While waiting"
+      submitLabel={renaming ? "Save" : "Create Desk"}
+      onClose={onClose}
+      onSubmit={onSubmit}
+      testID="desk-name-modal"
+    />
   );
 }
-function DeskContext({ tab }: { tab: DeskTab }) {
-  const workspace = useWorkspaceFields(tab.serverId, tab.workspaceId, (w) => ({
-    name: w.title ?? w.name,
-    project: w.projectCustomName ?? w.projectDisplayName,
-  }));
+
+/** A Desk tab: selects the Desk on press; right-click renames or deletes it. */
+function DeskTabChip({
+  desk,
+  selected,
+  canDelete,
+  onRename,
+  onDelete,
+}: {
+  desk: Desk;
+  selected: boolean;
+  canDelete: boolean;
+  onRename: (deskId: string) => void;
+  onDelete: (desk: Desk) => void;
+}) {
+  const select = useCallback(() => useDesksStore.getState().selectDesk(desk.id), [desk.id]);
+  const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  const rename = useCallback(() => onRename(desk.id), [onRename, desk.id]);
+  const remove = useCallback(() => onDelete(desk), [onDelete, desk]);
   return (
-    <>
-      {workspace?.project ?? "Project"} · {workspace?.name ?? "Workspace"}
-    </>
+    <ContextMenu>
+      <ContextMenuTrigger
+        testID={`desk-choice-${desk.id}`}
+        accessibilityRole="button"
+        accessibilityLabel={desk.name}
+        accessibilityState={accessibilityState}
+        aria-selected={selected}
+        style={[styles.deskTab, selected && styles.deskTabSelected]}
+        onPress={select}
+      >
+        <Text
+          style={[styles.deskTabText, selected && styles.deskTabTextSelected]}
+          numberOfLines={1}
+        >
+          {desk.name}
+        </Text>
+      </ContextMenuTrigger>
+      <ContextMenuContent align="start">
+        <ContextMenuItem testID={`desk-rename-${desk.id}`} onSelect={rename}>
+          Rename
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem
+          testID={`desk-delete-${desk.id}`}
+          destructive
+          disabled={!canDelete}
+          onSelect={remove}
+        >
+          Delete
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+/** The project's icon and name for the focused tab's workspace. */
+function DeskProject({ tab }: { tab: DeskTab }) {
+  const project = useWorkspaceFields(
+    tab.serverId,
+    tab.workspaceId,
+    (w) => w.projectCustomName ?? w.projectDisplayName,
+  );
+  return (
+    <View style={styles.project}>
+      <TaskProjectIcon serverId={tab.serverId} workspaceId={tab.workspaceId} />
+      <Text style={styles.context} numberOfLines={1}>
+        {project ?? "Project"}
+      </Text>
+    </View>
   );
 }
 const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface0 },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2], minWidth: 0 },
   context: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm, flexShrink: 1 },
+  project: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2], flexShrink: 1 },
+  deskTabs: { flexDirection: "row", alignItems: "center", gap: theme.spacing[1], flexShrink: 1 },
+  deskTab: {
+    height: buttonControlHeight.xs,
+    maxWidth: 200,
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    justifyContent: "center",
+  },
+  deskTabSelected: { backgroundColor: theme.colors.surface2 },
+  deskTabText: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  deskTabTextSelected: { color: theme.colors.foreground },
+  newDeskButton: { width: buttonControlHeight.xs, height: buttonControlHeight.xs },
   content: { flex: 1, minHeight: 0 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: theme.spacing[3] },
   emptyTitle: { color: theme.colors.foreground, fontSize: theme.fontSize.lg },

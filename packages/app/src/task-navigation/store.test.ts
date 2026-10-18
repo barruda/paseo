@@ -143,6 +143,24 @@ describe("Desks", () => {
     store.selectDesk(primary.id);
     expect(tabs()).toEqual(deskTabs(primary));
   });
+  it("renames and deletes any Desk by id, keeping one Desk and the agents it referenced", () => {
+    const store = useDesksStore.getState();
+    store.openTab(firstTab, true);
+    store.createDesk("Later");
+    const later = desk().id;
+    store.selectDesk("primary");
+    store.renameDesk(later, "Afternoon");
+    expect(useDesksStore.getState().desks.map((entry) => entry.name)).toEqual([
+      "Primary tasks",
+      "Afternoon",
+    ]);
+    expect(desk().id).toBe("primary");
+    store.deleteDesk("primary");
+    expect(useDesksStore.getState().desks.map((entry) => entry.id)).toEqual([later]);
+    expect(desk().id).toBe(later);
+    store.deleteDesk(later);
+    expect(useDesksStore.getState().desks.map((entry) => entry.id)).toEqual([later]);
+  });
   it("moves a tab into another Desk as a kept tab without switching Desks", () => {
     const store = useDesksStore.getState();
     store.createDesk("Later");

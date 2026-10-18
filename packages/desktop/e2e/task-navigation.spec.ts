@@ -150,20 +150,25 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await page.keyboard.press("Control+n");
     await page.getByTestId("desk-name-modal-input").fill("While waiting");
     await page.getByTestId("desk-name-modal-submit").click();
-    await expect(page.getByTestId("desk-selector")).toContainText("While waiting");
+    await expect(page.locator('[data-testid^="desk-choice-"][aria-selected="true"]')).toContainText(
+      "While waiting",
+    );
     await expect(agentTabs).toHaveCount(0);
     await sidebar.getByTestId(`task-agent-${second.agentId}`).click();
     await expect(previewTab).toContainText("Review terrain");
-    await page.getByTestId("desk-selector").click();
     await page.getByTestId("desk-choice-primary").click();
     await expect(pinnedTabs).toHaveCount(2);
     await expect(previewTab).toHaveCount(0);
 
     // Desk cycling is deliberate; all pinned tabs return together.
     await page.keyboard.press("Shift+Tab");
-    await expect(page.getByTestId("desk-selector")).toContainText("While waiting");
+    await expect(page.locator('[data-testid^="desk-choice-"][aria-selected="true"]')).toContainText(
+      "While waiting",
+    );
     await page.keyboard.press("Shift+Tab");
-    await expect(page.getByTestId("desk-selector")).toContainText("Primary tasks");
+    await expect(page.locator('[data-testid^="desk-choice-"][aria-selected="true"]')).toContainText(
+      "Primary tasks",
+    );
     const newTab = desk.getByTestId("workspace-new-tab-button");
     await newTab.click();
     await expect(page.getByTestId("workspace-new-tab-menu-agent")).toBeVisible();
@@ -238,7 +243,9 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await expect(toggle).toHaveAttribute("aria-checked", "true");
     await expect(sidebar).toBeVisible();
     await expect(pinnedTabs).toHaveCount(2);
-    await expect(page.getByTestId("desk-selector")).toContainText("Primary tasks");
+    await expect(page.locator('[data-testid^="desk-choice-"][aria-selected="true"]')).toContainText(
+      "Primary tasks",
+    );
     await expect(sidebar.getByTestId("task-navigation-sort")).toContainText("Title A–Z");
     const search = await openCommandCenter(page);
     await search.getByTestId("command-center-input").fill("Review terrain changes");
@@ -248,7 +255,9 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
       "aria-selected",
       "true",
     );
-    await expect(page.getByTestId("desk-selector")).toContainText("Primary tasks");
+    await expect(page.locator('[data-testid^="desk-choice-"][aria-selected="true"]')).toContainText(
+      "Primary tasks",
+    );
     await expect(pinnedTabs).toHaveCount(2);
     await page.screenshot({ path: testInfo.outputPath("task-navigation.png"), fullPage: true });
     await toggle.click();
@@ -327,9 +336,13 @@ test("Tasks mode row menu, pane toolbar, launch shortcuts, Desk moves and archiv
     await page.keyboard.press("Control+n");
     await page.getByTestId("desk-name-modal-input").fill("Later");
     await page.getByTestId("desk-name-modal-submit").click();
-    await expect(page.getByTestId("desk-selector")).toContainText("Later");
+    await expect(page.locator('[data-testid^="desk-choice-"][aria-selected="true"]')).toContainText(
+      "Later",
+    );
     await page.keyboard.press("Shift+Tab");
-    await expect(page.getByTestId("desk-selector")).toContainText("Primary tasks");
+    await expect(page.locator('[data-testid^="desk-choice-"][aria-selected="true"]')).toContainText(
+      "Primary tasks",
+    );
     await desk.getByTestId(`workspace-tab-agent_${first.agentId}`).click({ button: "right" });
     await page.getByTestId("workspace-tab-move-to").click();
     await page.locator('[data-testid^="workspace-tab-move-to-desk-"]').click();
@@ -337,7 +350,9 @@ test("Tasks mode row menu, pane toolbar, launch shortcuts, Desk moves and archiv
     const agentTab = desk.getByTestId(`workspace-tab-agent_${first.agentId}`);
     await expect(agentTab).toHaveCount(0);
     await page.keyboard.press("Shift+Tab");
-    await expect(page.getByTestId("desk-selector")).toContainText("Later");
+    await expect(page.locator('[data-testid^="desk-choice-"][aria-selected="true"]')).toContainText(
+      "Later",
+    );
     await expect(agentTab).toBeVisible();
 
     // Archiving from the pane removes the task; the Archived filter lists it.
