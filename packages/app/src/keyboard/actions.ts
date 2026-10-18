@@ -67,6 +67,7 @@ export type KeyboardActionId =
   | "workspace.pin"
   // CUSTOM(workspace-rename-f2)
   | "workspace.rename"
+  | "workspace.tab.rename-current"
   | "view.toggle.focus"
   | "theme.cycle"
   | "message-input.action";

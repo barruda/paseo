@@ -187,8 +187,6 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "workspace-prev",
     "workspace-next",
     "pin-workspace",
-    // CUSTOM(workspace-rename-f2)
-    "rename-workspace",
     "archive-workspace",
   ],
   "tabs-panes": [
@@ -199,6 +197,8 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "workspace-tab-target-changes",
     "workspace-tab-target-files",
     "workspace-tab-close-current",
+    // CUSTOM(workspace-rename-f2)
+    "rename-current-agent",
     "workspace-tab-jump-index",
     "workspace-tab-prev",
     "workspace-tab-next",
@@ -480,18 +480,18 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
 
-  // CUSTOM(workspace-rename-f2): F2 renames the active workspace from anywhere, terminal
-  // included. WorkspaceRenameHost already handles `workspace.rename` globally.
+  // CUSTOM(workspace-rename-f2): F2 renames the focused tab's agent session. The workspace
+  // rename stays in the command center.
   {
     id: "workspace-rename-f2",
-    action: "workspace.rename",
+    action: "workspace.tab.rename-current",
     combo: "F2",
     repeat: false,
     when: { commandCenter: false },
     help: {
-      id: "rename-workspace",
-      section: "workspaces",
-      label: "Rename workspace",
+      id: "rename-current-agent",
+      section: "tabs-panes",
+      label: "Rename current agent",
     },
   },
 

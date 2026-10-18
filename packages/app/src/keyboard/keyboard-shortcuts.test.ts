@@ -337,17 +337,17 @@ describe("keyboard-shortcuts", () => {
     },
     {
       // CUSTOM(workspace-rename-f2)
-      name: "routes F2 to workspace rename from the message input",
+      name: "routes F2 to current agent rename from the message input",
       event: { key: "F2", code: "F2" },
       context: { focusScope: "message-input" },
-      action: "workspace.rename",
+      action: "workspace.tab.rename-current",
     },
     {
       // CUSTOM(workspace-rename-f2)
-      name: "routes F2 to workspace rename from the terminal",
+      name: "routes F2 to current agent rename from the terminal",
       event: { key: "F2", code: "F2" },
       context: { focusScope: "terminal" },
-      action: "workspace.rename",
+      action: "workspace.tab.rename-current",
     },
     {
       name: "routes space to voice mute toggle outside editable scopes",
@@ -741,7 +741,7 @@ describe("keyboard-shortcut help sections", () => {
         // CUSTOM(active-workspace-cycle)
         "cycle-active-workspaces": ["shift", "Tab"],
         // CUSTOM(workspace-rename-f2)
-        "rename-workspace": ["F2"],
+        "rename-current-agent": ["F2"],
       },
     },
     {

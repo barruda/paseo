@@ -55,6 +55,7 @@ const PASSTHROUGH_DISPATCH: Record<string, KeyboardActionDefinition> = {
   "workspace.archive": { id: "workspace.archive", scope: "sidebar" },
   "workspace.pin": { id: "workspace.pin", scope: "sidebar" },
   // CUSTOM(workspace-rename-f2)
+  "workspace.tab.rename-current": { id: "workspace.tab.rename-current", scope: "workspace" },
   "workspace.rename": { id: "workspace.rename", scope: "workspace" },
   "worktree.new": { id: "worktree.new", scope: "sidebar" },
   "workspace.terminal.new": { id: "workspace.terminal.new", scope: "workspace" },
