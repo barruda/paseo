@@ -1720,3 +1720,39 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
   and replace the "about 4 words" line in the title style with a hard 4-word limit.
 - **Verify:** `cd packages/server && npx vitest run src/server/session.create-agent-title.test.ts --bail=1`
   (in the update script). A new agent from a long prompt gets a tab title of four words or fewer.
+
+## desk-explorer: the Explorer sidebar in Tasks mode
+
+- **Added:** 2026-10-18
+- **Commit:** `custom: Explorer sidebar in Tasks mode`
+- **Why:** DeskScreen replaced the workspace screen without its Explorer toggle, so Tasks mode had
+  no Files or Changes sidebar and Ctrl+E did nothing.
+- **What:** The Desk header shows the Explorer toggle; it and Ctrl/Cmd+E show the focused task's
+  workspace Explorer docked at the right, with the same width, tabs and resize handle as in the
+  workspace view. Its tabs and width are the workspace's, but open or closed belongs to each Desk
+  tab: a new tab starts closed, switching a draft's project with Up keeps the tab's state, and the
+  workspace view keeps its own. Changes, folder links and plugins that reveal the workspace's
+  Explorer open it for the focused tab too. Files and diffs
+  opened from it become Desk tabs in the focused pane. Its + menu launches into the Desk. Dragging
+  tabs between the Explorer and Desk panes does nothing.
+- **Files:** `packages/app/src/task-navigation/desk-explorer.tsx` (`useDeskExplorer`,
+  `DeskExplorerDock`).
+- **Core files touched:** `components/split-container.tsx` takes an optional
+  `externalExplorerSidebar` (`{ workspaceKey, render }`) that replaces its own dock and keys the
+  dock width by that workspace. `task-navigation/desk-screen.tsx` renders the toggle, passes the
+  dock, and registers `sidebar.toggle.right`.
+- **Re-apply:** In SplitContainer, when `externalExplorerSidebar` is set, render the resize handle
+  and dock column as for its own Explorer pane but call `render()` for the content, and read and
+  write `explorerSidebarWidthByWorkspace` under the external key. The Desk dock reads the
+  workspace's layout from `useWorkspaceLayoutStore` (`selectExplorerSidebarPaneId`) and wraps
+  `ExplorerSidebarDock` in null `WorkspaceTabOwnerProvider` / `WorkspaceTabMoveProvider` so the
+  Desk's owner map and Move to Desk never apply to workspace tab ids. Keep visibility in the Desk
+  (`explorerTabIds`, pruned by `withLayout`, carried over when a retarget changes a tab id), never in
+  the workspace layout: reading the workspace's visibility made Up in a draft open the Explorer
+  whenever the next project had it open. The dock still needs the workspace's Explorer pane, so
+  create it hidden when missing. Follow the workspace's visibility only on a closed-to-open change
+  for the same workspace key. Compact layouts keep `toggleExplorerSidebar`.
+- **Verify:** `task-navigation/store.test.ts` covers the per-tab state. The third test in desktop
+  `e2e/task-navigation.spec.ts` (both already in the update script) opens the Explorer from the
+  Desk header, toggles it with Ctrl+E, checks a new tab starts closed and the task tab reopens it,
+  and checks the workspace view stays closed.

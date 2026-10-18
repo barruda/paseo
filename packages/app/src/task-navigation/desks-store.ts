@@ -55,6 +55,8 @@ export interface Desk {
   /** Tabs without an owner (a fresh new-tab launcher) use the screen's current scope. */
   owners: Record<string, DeskTabOwner>;
   previewTabId: string | null;
+  /** CUSTOM(desk-explorer): tabs that show their workspace's Explorer beside them. */
+  explorerTabIds?: string[];
 }
 export type DeskTabPatch = Partial<Pick<DeskTab, "target" | "state" | "serverId" | "workspaceId">>;
 export type DeskSplitPosition = "left" | "right" | "top" | "bottom";
@@ -90,6 +92,7 @@ interface DesksState {
   selectTabInPane(paneId: string, tabId: string): void;
   resizeSplit(groupId: string, sizes: number[]): void;
   reorderTabsInPane(paneId: string, tabIds: string[]): void;
+  setTabExplorerOpen(tabId: string, open: boolean): void;
   setProjects(keys: string[] | null): void;
   setSort(sort: TaskSort): void;
 }
@@ -102,6 +105,7 @@ const deskSchema = z.object({
   layout: WorkspaceLayoutStorageSchema,
   owners: z.record(z.string(), ownerSchema),
   previewTabId: z.string().nullable(),
+  explorerTabIds: z.array(z.string()).optional(),
 });
 // COMPAT(desk-layouts): Desks before split panes kept a flat tab list; migrated on load.
 const legacyTabSchema = z.object({
@@ -221,7 +225,9 @@ function withLayout(
 ): Desk {
   if (!layout) return desk;
   const nextOwners: Record<string, DeskTabOwner> = {};
+  const tabIds = new Set<string>();
   for (const tab of collectAllTabs(layout.root)) {
+    tabIds.add(tab.tabId);
     const owner = owners[tab.tabId] ?? fallback;
     if (owner) nextOwners[tab.tabId] = owner;
   }
@@ -229,12 +235,21 @@ function withLayout(
     desk.previewTabId && findPaneContainingTab(layout.root, desk.previewTabId)
       ? desk.previewTabId
       : null;
+  const explorerTabIds = desk.explorerTabIds?.filter((tabId) => tabIds.has(tabId));
   return {
     ...desk,
     layout,
     owners: sameOwners(desk.owners, nextOwners) ? desk.owners : nextOwners,
     previewTabId,
+    explorerTabIds:
+      explorerTabIds?.length === desk.explorerTabIds?.length ? desk.explorerTabIds : explorerTabIds,
   };
+}
+
+/** A retargeted tab can get a new id; its Explorer stays open under that id. */
+function renameExplorerTab(desk: Desk, from: string, to: string): Desk {
+  if (from === to || !desk.explorerTabIds?.includes(from)) return desk;
+  return { ...desk, explorerTabIds: desk.explorerTabIds.map((id) => (id === from ? to : id)) };
 }
 
 function openInDesk(
@@ -266,7 +281,10 @@ function openInDesk(
       const layout =
         focusTabInLayout({ layout: replaced.layout, tabId: replaced.tabId }) ?? replaced.layout;
       return {
-        ...withLayout(desk, layout, { ...desk.owners, [replaced.tabId]: owner }),
+        ...withLayout(renameExplorerTab(desk, desk.previewTabId, replaced.tabId), layout, {
+          ...desk.owners,
+          [replaced.tabId]: owner,
+        }),
         previewTabId: replaced.tabId,
       };
     }
@@ -308,7 +326,11 @@ function updateDeskTab(desk: Desk, id: string, patch: DeskTabPatch): Desk {
       const owner = next.owners[tabId];
       const owners = owner ? { ...next.owners, [replaced.tabId]: owner } : next.owners;
       const previewTabId = next.previewTabId === tabId ? replaced.tabId : next.previewTabId;
-      next = withLayout({ ...next, previewTabId }, replaced.layout, owners);
+      next = withLayout(
+        { ...renameExplorerTab(next, tabId, replaced.tabId), previewTabId },
+        replaced.layout,
+        owners,
+      );
       tabId = replaced.tabId;
     }
   }
@@ -439,6 +461,15 @@ export const useDesksStore = create<DesksState>()(
           changeLayout((layout) => resizeSplitInLayout({ layout, groupId, sizes })),
         reorderTabsInPane: (paneId, tabIds) =>
           changeLayout((layout) => reorderPaneTabsInLayout({ layout, paneId, tabIds })),
+        setTabExplorerOpen: (tabId, open) =>
+          change((desk) => {
+            const current = desk.explorerTabIds ?? [];
+            if (current.includes(tabId) === open) return desk;
+            const explorerTabIds = open
+              ? [...current, tabId]
+              : current.filter((id) => id !== tabId);
+            return { ...desk, explorerTabIds };
+          }),
         setProjects: (projectKeys) => set({ projectKeys }),
         setSort: (sort) => set({ sort }),
       };

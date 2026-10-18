@@ -78,6 +78,22 @@ describe("Desks", () => {
     expect(desk().id).toBe(deskId);
     expect(tabs()).toHaveLength(1);
   });
+  it("keeps the Explorer open per tab, across a draft's project switch, until the tab closes", () => {
+    const store = useDesksStore.getState();
+    store.openTab({ ...firstTab, target: { kind: "draft", draftId: "draft-explorer" } }, true);
+    const draft = current()!;
+    store.openTab(secondTab, true);
+    const other = current()!;
+    store.setTabExplorerOpen(draft.id, true);
+    expect(desk().explorerTabIds).toEqual([draft.id]);
+    store.updateTab(draft.id, { workspaceId: "unity" });
+    expect(desk().explorerTabIds).toEqual([draft.id]);
+    store.closeTab(draft.id);
+    expect(desk().explorerTabIds).toEqual([]);
+    store.setTabExplorerOpen(other.id, true);
+    store.setTabExplorerOpen(other.id, false);
+    expect(desk().explorerTabIds).toEqual([]);
+  });
   it("replaces the preview across projects while pinned tabs keep their source workspace", () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);

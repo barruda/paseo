@@ -352,3 +352,51 @@ test("Tasks mode row menu, pane toolbar, launch shortcuts, Desk moves and archiv
     await first.cleanup();
   }
 });
+
+test("Tasks mode docks the focused task's Explorer", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await installDesktopRuntime(page, {
+    serverId: getServerId(),
+    manageBuiltInDaemon: false,
+    platform: "linux",
+  });
+  const first = await seedMockAgentWorkspace({
+    repoPrefix: "task-explorer-",
+    title: "Explorer task",
+  });
+  try {
+    await openAgentRoute(page, first);
+    const toggle = page.getByTestId("task-navigation-switch").filter({ visible: true });
+    await toggle.click();
+    const sidebar = page.getByTestId("task-navigation-sidebar");
+    await sidebar.getByTestId(`task-agent-${first.agentId}`).click({ button: "middle" });
+    const desk = page.getByTestId("desk-screen");
+    await expect(desk.locator('[data-desk-tab="pinned"]')).toHaveCount(1);
+
+    // The header toggle opens the task workspace's Files and Changes beside the Desk.
+    const explorer = desk.getByTestId("workspace-explorer-sidebar");
+    await expect(explorer).toHaveCount(0);
+    await desk.getByTestId("workspace-explorer-toggle").click();
+    await expect(explorer).toBeVisible();
+    await expect(explorer.getByTestId("workspace-tab-files")).toBeVisible();
+    await expect(explorer.getByTestId("workspace-tab-changes_tree")).toBeVisible();
+    await page.keyboard.press("Control+E");
+    await expect(explorer).toHaveCount(0);
+    await page.keyboard.press("Control+E");
+    await expect(explorer).toBeVisible();
+
+    // Open or closed belongs to the Desk tab: a new tab of the same workspace starts closed, and
+    // the workspace view keeps its own state.
+    const taskTab = desk.locator('[data-desk-tab="pinned"]').first();
+    // The Explorer has its own + button after the Desk's.
+    await desk.getByTestId("workspace-new-tab-button").first().click();
+    await page.getByTestId("workspace-new-tab-menu-agent").click();
+    await expect(explorer).toHaveCount(0);
+    await taskTab.click();
+    await expect(explorer).toBeVisible();
+    await toggle.click();
+    await expect(page.getByTestId("workspace-explorer-sidebar")).toHaveCount(0);
+  } finally {
+    await first.cleanup();
+  }
+});

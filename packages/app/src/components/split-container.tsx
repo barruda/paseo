@@ -100,6 +100,9 @@ interface SplitContainerProps {
   layout: WorkspaceLayout;
   renderMainHeader?: () => ReactNode;
   renderExplorerSidebarHeaderAction?: () => ReactNode;
+  // CUSTOM(desk-explorer): a Desk docks another workspace's Explorer, whose tabs are not in
+  // `layout`. Its width is stored under that workspace's key.
+  externalExplorerSidebar?: { workspaceKey: string; render: () => ReactNode } | null;
   workspaceKey: string;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
@@ -312,10 +315,27 @@ const dropCollisionDetection: CollisionDetection = (args) => {
   return closestCenter(args);
 };
 
+// CUSTOM(desk-explorer)
+function resolveExplorerSidebarWidthKey(
+  external: SplitContainerProps["externalExplorerSidebar"],
+  workspaceKey: string,
+): string {
+  return external?.workspaceKey ?? workspaceKey;
+}
+
+function hasVisibleExplorerSidebar(
+  external: SplitContainerProps["externalExplorerSidebar"],
+  pane: SplitPane | null,
+): boolean {
+  if (external) return true;
+  return Boolean(pane && pane.hidden !== true);
+}
+
 export function SplitContainer({
   layout,
   renderMainHeader,
   renderExplorerSidebarHeaderAction,
+  externalExplorerSidebar,
   workspaceKey,
   normalizedServerId,
   normalizedWorkspaceId,
@@ -415,8 +435,12 @@ export function SplitContainer({
       }),
     [focusModeEnabled, layout.focusedPaneId, mainRoot],
   );
+  const explorerSidebarWidthKey = resolveExplorerSidebarWidthKey(
+    externalExplorerSidebar,
+    workspaceKey,
+  );
   const storedExplorerSidebarWidth = useWorkspaceLayoutStore(
-    (state) => state.explorerSidebarWidthByWorkspace[workspaceKey],
+    (state) => state.explorerSidebarWidthByWorkspace[explorerSidebarWidthKey],
   );
   const resizeExplorerSidebar = useWorkspaceLayoutStore((state) => state.resizeExplorerSidebar);
   const [workspaceShellWidth, setWorkspaceShellWidth] = useState(0);
@@ -436,9 +460,8 @@ export function SplitContainer({
       }),
     [requestedExplorerSidebarWidth, workspaceShellWidth],
   );
-  const renderExplorerSidebarDock = Boolean(
-    !focusModeEnabled && explorerSidebarPane && explorerSidebarPane.hidden !== true,
-  );
+  const renderExplorerSidebarDock =
+    !focusModeEnabled && hasVisibleExplorerSidebar(externalExplorerSidebar, explorerSidebarPane);
   const mainColumnWindowChromeCorners = renderExplorerSidebarDock
     ? removeWindowChromeCorner(inheritedWindowChromeCorners, "top-right")
     : inheritedWindowChromeCorners;
@@ -471,7 +494,7 @@ export function SplitContainer({
       const nextRatio = sizes[1];
       if (nextRatio !== undefined) {
         resizeExplorerSidebar(
-          workspaceKey,
+          explorerSidebarWidthKey,
           resolveExplorerSidebarWidth({
             requestedWidth: nextRatio * workspaceShellWidth,
             containerWidth: workspaceShellWidth,
@@ -479,7 +502,7 @@ export function SplitContainer({
         );
       }
     },
-    [resizeExplorerSidebar, workspaceKey, workspaceShellWidth],
+    [explorerSidebarWidthKey, resizeExplorerSidebar, workspaceShellWidth],
   );
   const renderRoot = useMemo(() => wrapRootPaneForStableMount(splitRoot.root), [splitRoot.root]);
   const handleDragStart = useCallback((event: DragStartEvent) => {
@@ -704,7 +727,7 @@ export function SplitContainer({
               ) : null}
             </View>
           </WindowChromeRegion>
-          {renderExplorerSidebarDock && explorerSidebarPane ? (
+          {renderExplorerSidebarDock ? (
             <>
               <ResizeHandle
                 testID="workspace-explorer-sidebar-resize-handle"
@@ -718,35 +741,38 @@ export function SplitContainer({
                 onResizeSplit={commitExplorerSidebarResize}
               />
               <View style={explorerSidebarDockStyle}>
-                <ExplorerSidebarDock
-                  pane={explorerSidebarPane}
-                  uiTabs={uiTabs}
-                  normalizedServerId={normalizedServerId}
-                  normalizedWorkspaceId={normalizedWorkspaceId}
-                  isWorkspaceFocused={isWorkspaceFocused}
-                  closingTabIds={closingTabIds}
-                  onSelectTab={onSelectTabInPane}
-                  onCloseTab={onCloseTab}
-                  onCreateNewTab={onCreateNewTab}
-                  hoveredCloseTabKey={hoveredCloseTabKey}
-                  setHoveredCloseTabKey={setHoveredCloseTabKey}
-                  onCopyResumeCommand={onCopyResumeCommand}
-                  onCopyAgentId={onCopyAgentId}
-                  onCopyTerminalId={onCopyTerminalId}
-                  onCopyFilePath={onCopyFilePath}
-                  onOpenFile={onOpenFile}
-                  onReloadAgent={onReloadAgent}
-                  onRenameTab={onRenameTab}
-                  onCloseTabsToLeft={onCloseTabsToLeft}
-                  onCloseTabsToRight={onCloseTabsToRight}
-                  onCloseOtherTabs={onCloseOtherTabs}
-                  onExitFocusMode={onExitFocusMode}
-                  buildPaneContentModel={buildPaneContentModel}
-                  onReorderTabsInPane={onReorderTabsInPane}
-                  activeDragTabId={activeDragTabId}
-                  tabDropPreview={tabDropPreview}
-                  headerAction={renderExplorerSidebarHeaderAction?.()}
-                />
+                {externalExplorerSidebar?.render()}
+                {!externalExplorerSidebar && explorerSidebarPane ? (
+                  <ExplorerSidebarDock
+                    pane={explorerSidebarPane}
+                    uiTabs={uiTabs}
+                    normalizedServerId={normalizedServerId}
+                    normalizedWorkspaceId={normalizedWorkspaceId}
+                    isWorkspaceFocused={isWorkspaceFocused}
+                    closingTabIds={closingTabIds}
+                    onSelectTab={onSelectTabInPane}
+                    onCloseTab={onCloseTab}
+                    onCreateNewTab={onCreateNewTab}
+                    hoveredCloseTabKey={hoveredCloseTabKey}
+                    setHoveredCloseTabKey={setHoveredCloseTabKey}
+                    onCopyResumeCommand={onCopyResumeCommand}
+                    onCopyAgentId={onCopyAgentId}
+                    onCopyTerminalId={onCopyTerminalId}
+                    onCopyFilePath={onCopyFilePath}
+                    onOpenFile={onOpenFile}
+                    onReloadAgent={onReloadAgent}
+                    onRenameTab={onRenameTab}
+                    onCloseTabsToLeft={onCloseTabsToLeft}
+                    onCloseTabsToRight={onCloseTabsToRight}
+                    onCloseOtherTabs={onCloseOtherTabs}
+                    onExitFocusMode={onExitFocusMode}
+                    buildPaneContentModel={buildPaneContentModel}
+                    onReorderTabsInPane={onReorderTabsInPane}
+                    activeDragTabId={activeDragTabId}
+                    tabDropPreview={tabDropPreview}
+                    headerAction={renderExplorerSidebarHeaderAction?.()}
+                  />
+                ) : null}
               </View>
             </>
           ) : null}

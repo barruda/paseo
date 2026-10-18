@@ -77,7 +77,13 @@ import { useDesktopBrowserNewTabRequests } from "@/desktop/browser/new-tab-reque
 import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
+import {
+  EXPLORER_TOGGLE_KEYS,
+  WorkspaceExplorerSidebarToggle,
+  WorkspaceHeaderExplorerToggle,
+} from "@/screens/workspace/workspace-explorer-toggle";
 import { DeskLauncherProvider } from "./new-tab-menu";
+import { DeskExplorerDock, useDeskExplorer } from "./desk-explorer";
 import {
   useDesksStore,
   activeDesk,
@@ -166,6 +172,8 @@ export function DeskScreen() {
     },
     [owners, previewTabId, scope],
   );
+  const focusedDeskTabId = findPaneById(desk.layout.root, desk.layout.focusedPaneId)?.focusedTabId;
+  const explorer = useDeskExplorer(scope, focusedDeskTabId ?? null);
   const resolveOwnerRef = useRef(resolveOwner);
   resolveOwnerRef.current = resolveOwner;
   const ownerOf = useCallback((tabId: string) => resolveOwnerRef.current(tabId), []);
@@ -249,6 +257,18 @@ export function DeskScreen() {
         return true;
       }
       return false;
+    },
+  });
+
+  // CUSTOM(desk-explorer): Ctrl/Cmd+E toggles the focused task's Explorer.
+  useKeyboardActionHandler({
+    handlerId: `desk-explorer-actions:${screenId}`,
+    enabled: isFocused,
+    priority: 100,
+    actions: ["sidebar.toggle.right"],
+    handle: () => {
+      explorer.toggle();
+      return true;
     },
   });
 
@@ -340,24 +360,36 @@ export function DeskScreen() {
     [ownerOf],
   );
 
+  const openInDesk = useCallback(
+    (owner: DeskTabOwner, target: WorkspaceTabTarget, paneId?: string) => {
+      useDesksStore
+        .getState()
+        .openTab(
+          { serverId: owner.serverId, workspaceId: owner.workspaceId, target },
+          true,
+          paneId ? { mode: "prefer", paneId } : undefined,
+        );
+      const opened = activeDeskTab(useDesksStore.getState());
+      if (target.kind === "file" && opened) {
+        setFileRevisions((current) => ({
+          ...current,
+          [opened.id]: (current[opened.id] ?? 0) + 1,
+        }));
+      }
+    },
+    [],
+  );
+  const openFromExplorer = useCallback(
+    (target: WorkspaceTabTarget) => {
+      if (scopeRef.current) openInDesk(scopeRef.current, target);
+    },
+    [openInDesk],
+  );
+
   const buildPaneContentModel = useCallback(
     ({ paneId, tab }: { paneId: string; tab: WorkspaceTabDescriptor }) => {
       const owner = resolveOwner(tab.tabId) ?? { serverId: "", workspaceId: "" };
-      const open = (target: WorkspaceTabTarget) => {
-        useDesksStore
-          .getState()
-          .openTab({ serverId: owner.serverId, workspaceId: owner.workspaceId, target }, true, {
-            mode: "prefer",
-            paneId,
-          });
-        const opened = activeDeskTab(useDesksStore.getState());
-        if (target.kind === "file" && opened) {
-          setFileRevisions((current) => ({
-            ...current,
-            [opened.id]: (current[opened.id] ?? 0) + 1,
-          }));
-        }
-      };
+      const open = (target: WorkspaceTabTarget) => openInDesk(owner, target, paneId);
       return buildWorkspacePaneContentModel({
         tab,
         normalizedServerId: owner.serverId,
@@ -379,7 +411,7 @@ export function DeskScreen() {
           setImportOwner({ serverId: owner.serverId, workspaceId: owner.workspaceId }),
       });
     },
-    [resolveOwner, fileRevisions, closeTab],
+    [resolveOwner, fileRevisions, closeTab, openInDesk],
   );
 
   const createNewTab = useCallback(
@@ -485,13 +517,73 @@ export function DeskScreen() {
     ),
     [active, activeIsPreview, create, desk.id, desk.name, desks, keep, rename],
   );
+  const explorerToggleProps = useMemo(
+    () => ({
+      owner: explorer.toggleOwner,
+      onPress: explorer.toggle,
+      label: explorer.isOpen
+        ? t("workspace.tabs.explorerSidebar.close")
+        : t("workspace.tabs.explorerSidebar.open"),
+      tooltipLabel: t("workspace.tabs.explorerSidebar.toggle"),
+      tooltipKeys: EXPLORER_TOGGLE_KEYS,
+      accessibilityState: { expanded: explorer.isOpen },
+    }),
+    [explorer.isOpen, explorer.toggle, explorer.toggleOwner, t],
+  );
   const headerRight = useMemo(
     () => (
       <HeaderShortcutsRightRow layoutKey={screenId} style={styles.headerLeft}>
         {active ? <DeskWorkspaceActions tab={active} /> : null}
+        {/* CUSTOM(desk-explorer) */}
+        {scope ? <WorkspaceHeaderExplorerToggle {...explorerToggleProps} /> : null}
       </HeaderShortcutsRightRow>
     ),
-    [active, screenId],
+    [active, explorerToggleProps, scope, screenId],
+  );
+  const renderExplorerHeaderToggle = useCallback(
+    () => <WorkspaceExplorerSidebarToggle {...explorerToggleProps} />,
+    [explorerToggleProps],
+  );
+  const explorerWorkspaceKey = explorer.workspaceKey;
+  const createNewTabFromExplorer = useCallback(() => createNewTab({}), [createNewTab]);
+  const externalExplorerSidebar = useMemo(
+    () =>
+      scope && explorerWorkspaceKey && explorer.isOpen
+        ? {
+            workspaceKey: explorerWorkspaceKey,
+            render: () => (
+              <DeskExplorerDock
+                scope={scope}
+                workspaceKey={explorerWorkspaceKey}
+                isFocused={isFocused}
+                renderHeaderAction={renderExplorerHeaderToggle}
+                onOpenTarget={openFromExplorer}
+                onCopyResumeCommand={copyResumeCommand}
+                onCopyAgentId={copyAgentId}
+                onCopyTerminalId={copyTerminalId}
+                onCopyFilePath={copyFilePath}
+                onOpenFile={openFile}
+                onReloadAgent={reloadAgent}
+                onCreateNewTab={createNewTabFromExplorer}
+              />
+            ),
+          }
+        : null,
+    [
+      copyAgentId,
+      copyFilePath,
+      copyResumeCommand,
+      copyTerminalId,
+      createNewTabFromExplorer,
+      explorer.isOpen,
+      renderExplorerHeaderToggle,
+      explorerWorkspaceKey,
+      isFocused,
+      openFile,
+      openFromExplorer,
+      reloadAgent,
+      scope,
+    ],
   );
   const renderHeader = useCallback(
     () => <ScreenHeader onRowLayout={onRowLayout} left={headerLeft} right={headerRight} />,
@@ -523,6 +615,7 @@ export function DeskScreen() {
             <SplitContainer
               layout={desk.layout}
               renderMainHeader={renderHeader}
+              externalExplorerSidebar={externalExplorerSidebar}
               workspaceKey={`desk:${desk.id}`}
               normalizedServerId={scope.serverId}
               normalizedWorkspaceId={scope.workspaceId}
