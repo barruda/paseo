@@ -1,9 +1,8 @@
 import { memo, useCallback, type ReactElement } from "react";
 import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
+import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { AgentTaskList } from "@/composer/task-list";
 import { ComposerTrackBar } from "@/composer/tracks";
-// CUSTOM(send-behavior-pill)
-import { SendBehaviorPill } from "@/composer/send-behavior-pill";
 import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";
 import { usePaneContext } from "@/panels/pane-context";
 import { useSettings } from "@/hooks/use-settings";
@@ -38,6 +37,7 @@ export const AgentTracks = memo(function AgentTracks({
   tasks,
   archiveFinishedStatus,
   onArchiveFinished,
+  hasPluginComposerPills,
 }: {
   serverId: string;
   workspaceId: string;
@@ -47,8 +47,10 @@ export const AgentTracks = memo(function AgentTracks({
   tasks: TodoEntry[] | undefined;
   archiveFinishedStatus: ArchiveFinishedStatus;
   onArchiveFinished: () => void;
-}): ReactElement {
+  hasPluginComposerPills: boolean;
+}): ReactElement | null {
   const { tabId, openTab } = usePaneContext();
+  const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId);
   const isCompact = useIsCompactFormFactor();
   const canSplit = supportsDesktopPaneSplits() && !isCompact;
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
@@ -110,10 +112,20 @@ export const AgentTracks = memo(function AgentTracks({
     });
   }, [cwd, isCompact, openInSidePane, serverId, workspaceKey]);
 
+  if (
+    !hasWorkspaceDiffStat &&
+    !hasAgentTracks({
+      subagentRows,
+      tasks,
+      archiveFinishedStatus,
+      hasPluginComposerPills,
+    })
+  ) {
+    return null;
+  }
+
   return (
     <ComposerTrackBar>
-      {/* CUSTOM(send-behavior-pill): always first, so the row is always shown. */}
-      <SendBehaviorPill />
       <AgentTaskList tasks={tasks} />
       <SubagentsTrack
         serverId={serverId}
