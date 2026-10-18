@@ -38,6 +38,7 @@ import {
   sortTaskTree,
   filterTaskTree,
   flattenTaskTree,
+  IDLE_TASK_LIMIT,
   limitIdleTasks,
   markableUnreadTaskKeys,
   matchesTaskFilter,
@@ -51,7 +52,13 @@ import {
 type ListRow =
   | { key: string; kind: "heading"; label: string; subheading?: boolean }
   | { key: string; kind: "task"; node: TaskNode; depth: number }
-  | { key: string; kind: "idle-toggle"; hiddenCount: number }
+  | {
+      key: string;
+      kind: "idle-toggle";
+      mode: IdleToggleMode;
+      hiddenCount: number;
+      onPress: () => void;
+    }
   | { key: string; kind: "load-more"; loading: boolean };
 const FILTERS: readonly { key: TaskFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -63,6 +70,44 @@ const FILTERS: readonly { key: TaskFilter; label: string }[] = [
   { key: "archived", label: "Archived" },
 ];
 const EMPTY_COLLAPSED = new Set<string>();
+
+type IdleToggleMode = "next" | "more" | "less";
+
+/**
+ * The row under the Idle group. "next" reveals a step, "more" shows the rest, and "less" folds back
+ * to the opening limit. `idleShown` null means the group is still at its opening limit.
+ */
+function idleToggleRow(
+  setIdleShown: (shown: number | null) => void,
+  input: { hiddenCount: number; shown: number; idleShown: number | null },
+): ListRow | null {
+  const { hiddenCount, shown, idleShown } = input;
+  if (hiddenCount === 0)
+    return idleShown === null
+      ? null
+      : {
+          kind: "idle-toggle",
+          key: "idle-toggle",
+          mode: "less",
+          hiddenCount,
+          onPress: () => setIdleShown(null),
+        };
+  if (idleShown === null)
+    return {
+      kind: "idle-toggle",
+      key: "idle-toggle",
+      mode: "next",
+      hiddenCount,
+      onPress: () => setIdleShown(shown + IDLE_TASK_LIMIT.step),
+    };
+  return {
+    kind: "idle-toggle",
+    key: "idle-toggle",
+    mode: "more",
+    hiddenCount,
+    onPress: () => setIdleShown(Number.POSITIVE_INFINITY),
+  };
+}
 
 /** One compact collection subscription; streamed messages never become task row props. */
 function selectAgents(state: ReturnType<typeof useSessionStore.getState>): TaskAgent[] {
@@ -125,8 +170,8 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   const pathname = usePathname();
   const [filter, setFilter] = useState<TaskFilter>("all");
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
-  const [idleExpanded, setIdleExpanded] = useState(false);
-  const toggleIdle = useCallback(() => setIdleExpanded((value) => !value), []);
+  // Null is the opening limit. A number is how many idle roots show; Infinity shows them all.
+  const [idleShown, setIdleShown] = useState<number | null>(null);
   const { actions: taskActions, modal: taskRenameModal } = useTaskRowActions();
   const markableUnread = useMemo(() => markableUnreadTaskKeys(agents), [agents]);
   const entriesByWorkspace = useMemo(
@@ -197,6 +242,8 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     orderedTree = sortTaskTree(roots, sort, openedAt, ordering.sort === sort ? ordering.tree : []);
     setOrdering({ roots, sort, openedAt, tree: orderedTree });
   }
+  // CUSTOM(task-idle-limit): searching or choosing the Idle filter shows every idle task.
+  const limitsIdle = !query && filter !== "idle";
   const rows = useMemo(() => {
     if (filter === "archived") {
       const result: ListRow[] = flattenTaskTree(archivedRoots, EMPTY_COLLAPSED).map((row) => ({
@@ -228,12 +275,16 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     for (const group of groups) {
       let members = filtered.filter((node) => group.states.includes(node.crewState));
       if (!members.length) continue;
-      // CUSTOM(task-idle-limit): searching or choosing the Idle filter shows every idle task.
-      let hiddenCount = 0;
-      if (group.states.includes("idle") && !query && filter !== "idle") {
-        const limited = limitIdleTasks(members, { now: Date.now(), keepKey: selectedAgentKey });
-        hiddenCount = limited.hiddenCount;
-        if (!idleExpanded) members = limited.visible;
+      const idle = limitsIdle && group.states.includes("idle");
+      let toggle: ListRow | null = null;
+      if (idle) {
+        const limited = limitIdleTasks(members, {
+          now: Date.now(),
+          keepKey: selectedAgentKey,
+          shown: idleShown,
+        });
+        members = limited.visible;
+        toggle = idleToggleRow(setIdleShown, { ...limited, idleShown });
       }
       if (group.attention && !attentionHeading) {
         result.push({ kind: "heading", key: "attention", label: "Your attention" });
@@ -251,7 +302,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       )) {
         result.push({ kind: "task", key: row.node.key, node: row.node, depth: row.depth });
       }
-      if (hiddenCount > 0) result.push({ kind: "idle-toggle", key: "idle-toggle", hiddenCount });
+      if (toggle) result.push(toggle);
     }
     return result;
   }, [
@@ -265,7 +316,8 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     archived.hasMore,
     archived.isLoadingMore,
     selectedAgentKey,
-    idleExpanded,
+    idleShown,
+    limitsIdle,
   ]);
   const openTask = useCallback(
     (node: TaskNode, pin = false) => {
@@ -329,9 +381,14 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       if (item.kind === "idle-toggle")
         return (
           <SidebarGroupToggleRow
-            expanded={idleExpanded}
-            onPress={toggleIdle}
+            expanded={item.mode === "less"}
+            onPress={item.onPress}
             hiddenCount={item.hiddenCount}
+            label={
+              item.mode === "next"
+                ? `Show next ${Math.min(IDLE_TASK_LIMIT.step, item.hiddenCount)}`
+                : undefined
+            }
             testID="task-idle-toggle"
           />
         );
@@ -367,8 +424,6 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       );
     },
     [
-      idleExpanded,
-      toggleIdle,
       loadMoreArchived,
       entriesByWorkspace,
       markableUnread,
@@ -708,7 +763,7 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: theme.spacing[1],
   },
   failedText: { color: theme.colors.statusDanger },
-  reviewText: { color: theme.colors.statusDotRunning },
+  reviewText: { color: theme.colors.statusDotSuccess },
   dot: {
     width: 6,
     height: 6,
@@ -716,10 +771,10 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: 6,
     backgroundColor: theme.colors.foregroundMuted,
   },
-  workingDot: { backgroundColor: theme.colors.statusDotSuccess },
+  workingDot: { backgroundColor: theme.colors.statusDotRunning },
   inputDot: { backgroundColor: theme.colors.statusDotWarning },
   failedDot: { backgroundColor: theme.colors.statusDotDanger },
-  reviewDot: { backgroundColor: theme.colors.statusDotRunning },
+  reviewDot: { backgroundColor: theme.colors.statusDotSuccess },
   footer: { borderTopWidth: 1, borderColor: theme.colors.border, padding: theme.spacing[2] },
   empty: {
     color: theme.colors.foregroundMuted,

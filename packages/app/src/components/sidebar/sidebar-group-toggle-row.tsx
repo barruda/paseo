@@ -23,6 +23,7 @@ export function SidebarGroupToggleRow({
   onPress,
   indented = false,
   hiddenCount,
+  label: labelOverride,
   testID,
 }: {
   expanded: boolean;
@@ -30,6 +31,8 @@ export function SidebarGroupToggleRow({
   indented?: boolean;
   /** CUSTOM(sidebar-workspace-limit): set, the collapsed row reads "> Show N more". */
   hiddenCount?: number;
+  /** CUSTOM(task-idle-limit): a step the count does not describe, such as "Show next 5". */
+  label?: string;
   testID: string;
 }) {
   const { t } = useTranslation();
@@ -37,6 +40,7 @@ export function SidebarGroupToggleRow({
     expanded ? "sidebar.workspace.actions.showLess" : "sidebar.workspace.actions.showMore",
   );
   if (!expanded && hiddenCount !== undefined) label = `Show ${hiddenCount} more`;
+  if (labelOverride !== undefined) label = labelOverride;
   const collapsedIcon = hiddenCount === undefined ? ChevronDown : ChevronRight;
   const rowStyle = useCallback(
     ({ hovered = false, pressed }: PressableStateCallbackType & { hovered?: boolean }) => [

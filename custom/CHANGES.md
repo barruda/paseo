@@ -1541,15 +1541,17 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 ## task-sidebar-actions: idle limit, row menu and archived sessions in the Tasks sidebar
 
 - **Added:** 2026-10-16
-- **Commit:** `custom: Tasks sidebar idle limit, row menu and archived list`
+- **Commit:** `custom: Tasks sidebar idle limit, row menu and archived list`, then
+  `custom: Tasks sidebar idle group opens on 30 minutes and pages by 5`
 - **Why:** Old idle sessions buried the rest of the Tasks sidebar, task rows had none of the
   workspace row's everyday actions, and archived sessions could only be found in History.
 - **What:**
-  - Idle limit: under **Attention first**, the Idle group shows a task only if it changed in the
-    last 24 hours and is among the 5 newest; a "Show N more" / "Show less" row (the workspace
-    sidebar's toggle) reveals the rest. The crew holding the selected task is never hidden and does
-    not count. Searching or choosing the Idle filter shows every idle task. Ctrl+1..9 number only
-    visible rows.
+  - Idle limit: under **Attention first**, the Idle group opens on the 5 newest tasks that changed
+    in the last 30 minutes. The toggle row below it (the workspace sidebar's toggle, with a label
+    override) pages: **Show next 5** reveals the next five whatever their age, then **Show N more**
+    reveals the rest, and **Show less** folds back to the opening limit. The crew holding the
+    selected task is never hidden and does not count. Searching or choosing the Idle filter shows
+    every idle task. Ctrl+1..9 number only visible rows.
   - Row menu: right-clicking a task opens the workspace row's context menu for its workspace:
     Copy path, Copy branch name (git), **Rename session**, Mark as read/unread, Labels, Open in file
     manager and **Archive session**. Rename and archive act on the agent. Mark as unread appears only
@@ -1563,7 +1565,7 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
   `task-navigation/use-archived-tasks.ts`, `limitIdleTasks` and `markableUnreadTaskKeys` in
   `task-navigation/model.ts`, rows in `task-navigation/sidebar.tsx`.
 - **Core files touched:** `components/sidebar/sidebar-workspace-menu.tsx` gains an optional
-  `renameLabel`.
+  `renameLabel`; `components/sidebar/sidebar-group-toggle-row.tsx` gains an optional `label`.
 - **Re-apply:** Wrap the task row's open button in `SidebarWorkspaceContextMenu` with the row's
   workspace entry, passing the middle-click ref as `triggerRef`. Keep one sidebar-level actions
   object and rename modal so rows stay memoized. Apply `limitIdleTasks` only to the attention

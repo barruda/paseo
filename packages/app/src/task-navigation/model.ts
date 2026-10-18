@@ -243,35 +243,43 @@ export function sortTaskTree(
   return result;
 }
 
-// CUSTOM(task-idle-limit): the Idle group shows its newest few from the last day, like the
-// workspace sidebar's per-project limit.
-export const IDLE_TASK_LIMIT = { maxCount: 5, maxAgeMs: 24 * 60 * 60 * 1000 };
+// CUSTOM(task-idle-limit): the Idle group opens on its newest few from the last 30 minutes. "Show
+// next" then reveals `step` more at a time, whatever their age.
+export const IDLE_TASK_LIMIT = { maxCount: 5, maxAgeMs: 30 * 60 * 1000, step: 5 };
 
 function containsTask(node: TaskNode, key: string): boolean {
   return node.key === key || node.children.some((child) => containsTask(child, key));
 }
 
 /**
- * Keeps an idle root when it is younger than `maxAgeMs` and among the `maxCount` newest. The
- * crew holding the selected task always shows and does not count toward the limit. Order is kept.
+ * Shows the `shown` newest idle roots. Without `shown`, that is up to `maxCount` roots younger than
+ * `maxAgeMs`. The crew holding the selected task always shows and does not count toward the count.
+ * Order is kept.
  */
 export function limitIdleTasks(
   nodes: readonly TaskNode[],
-  input: { now: number; keepKey?: string | null; maxCount?: number; maxAgeMs?: number },
-): { visible: TaskNode[]; hiddenCount: number } {
+  input: {
+    now: number;
+    keepKey?: string | null;
+    shown?: number | null;
+    maxCount?: number;
+    maxAgeMs?: number;
+  },
+): { visible: TaskNode[]; hiddenCount: number; shown: number } {
   const maxCount = input.maxCount ?? IDLE_TASK_LIMIT.maxCount;
   const maxAgeMs = input.maxAgeMs ?? IDLE_TASK_LIMIT.maxAgeMs;
   const kept = new Set(
     input.keepKey ? nodes.filter((node) => containsTask(node, input.keepKey!)) : [],
   );
-  const newest = new Set(
-    nodes
-      .filter((node) => !kept.has(node) && input.now - node.agent.updatedAt.getTime() < maxAgeMs)
-      .sort((a, b) => b.agent.updatedAt.getTime() - a.agent.updatedAt.getTime())
-      .slice(0, maxCount),
-  );
+  const rest = nodes
+    .filter((node) => !kept.has(node))
+    .sort((a, b) => b.agent.updatedAt.getTime() - a.agent.updatedAt.getTime());
+  // `rest` is newest first, so the young ones are a prefix of it.
+  const young = rest.filter((node) => input.now - node.agent.updatedAt.getTime() < maxAgeMs).length;
+  const shown = Math.min(input.shown ?? Math.min(maxCount, young), rest.length);
+  const newest = new Set(rest.slice(0, shown));
   const visible = nodes.filter((node) => kept.has(node) || newest.has(node));
-  return { visible, hiddenCount: nodes.length - visible.length };
+  return { visible, hiddenCount: nodes.length - visible.length, shown };
 }
 
 // CUSTOM(task-context-menu): the daemon marks a workspace's newest finished root agent unread,

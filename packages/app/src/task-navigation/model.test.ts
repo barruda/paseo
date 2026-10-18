@@ -3,6 +3,7 @@ import {
   buildTaskTree,
   filterTaskTree,
   flattenTaskTree,
+  IDLE_TASK_LIMIT,
   limitIdleTasks,
   EMPTY_TASK_STATE_SETTLING,
   settleTaskStates,
@@ -299,30 +300,47 @@ it("does not jump across a near-simultaneous neighbor to reach an older task", (
 
 describe("idle task limit", () => {
   const now = new Date("2026-10-16T12:00:00Z").getTime();
-  const hoursAgo = (hours: number) => new Date(now - hours * 60 * 60 * 1000);
+  const minutesAgo = (minutes: number) => new Date(now - minutes * 60 * 1000);
 
-  it("shows the five newest idle tasks from the last day, keeping their order", () => {
+  it("shows the five newest idle tasks from the last 30 minutes, keeping their order", () => {
     const roots = buildTaskTree({
       workspaces,
       agents: [
         ...["a", "b", "c", "d", "e", "f"].map((id, index) =>
-          agent(id, { updatedAt: hoursAgo(index + 1) }),
+          agent(id, { updatedAt: minutesAgo(index + 1) }),
         ),
-        agent("old", { updatedAt: hoursAgo(30) }),
+        agent("old", { updatedAt: minutesAgo(31) }),
       ],
     });
-    const { visible, hiddenCount } = limitIdleTasks(roots, { now });
+    const { visible, hiddenCount, shown } = limitIdleTasks(roots, { now });
     expect(visible.map((node) => node.agent.id)).toEqual(["a", "b", "c", "d", "e"]);
     expect(hiddenCount).toBe(2);
+    expect(shown).toBe(5);
+  });
+
+  it("reveals older idle tasks when asked for a count, whatever their age", () => {
+    const roots = buildTaskTree({
+      workspaces,
+      agents: [
+        agent("recent", { updatedAt: minutesAgo(1) }),
+        agent("older", { updatedAt: minutesAgo(45) }),
+        agent("oldest", { updatedAt: minutesAgo(90) }),
+      ],
+    });
+    const { visible, hiddenCount, shown } = limitIdleTasks(roots, { now, shown: 2 });
+    expect(visible.map((node) => node.agent.id)).toEqual(["recent", "older"]);
+    expect(hiddenCount).toBe(1);
+    expect(shown).toBe(2);
+    expect(IDLE_TASK_LIMIT.maxAgeMs).toBe(30 * 60 * 1000);
   });
 
   it("always shows the crew holding the selected task without spending the limit", () => {
     const roots = buildTaskTree({
       workspaces,
       agents: [
-        agent("recent", { updatedAt: hoursAgo(1) }),
-        agent("old-parent", { updatedAt: hoursAgo(40) }),
-        agent("old-child", { updatedAt: hoursAgo(40), parentAgentId: "old-parent" }),
+        agent("recent", { updatedAt: minutesAgo(1) }),
+        agent("old-parent", { updatedAt: minutesAgo(40) }),
+        agent("old-child", { updatedAt: minutesAgo(40), parentAgentId: "old-parent" }),
       ],
     });
     const { visible, hiddenCount } = limitIdleTasks(roots, {
