@@ -1702,3 +1702,26 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Verify:** `shared.test.ts` and the client's `wake-dictation.test.ts` are in the update
   script. By hand: `paseo-dictate`, speak, run it again; the text is on the clipboard. `paseo-wake`,
   say "wake up", a sentence, "done"; the sentence is on the clipboard. `paseo-wake` again stops it.
+
+## send-behavior-pill: pick the default send from the composer pill row
+
+- **Added:** 2026-10-18
+- **Commit:** `custom: pick the default send behavior from the composer pill row`
+- **Why:** Steer, the upstream default, delivers a message into the running turn without stopping
+  the agent, so a dictated send can look ignored. Switching it should not need a trip to Settings.
+- **What:** The first pill above the composer shows the current **Default send** (Steer,
+  Interrupt, Queue) with its icon; the tooltip repeats the setting's description. Picking another
+  value from its menu writes the same app setting as Settings > General > Default send, which the
+  send button, Enter and the dictation send arrow all follow. The pill row now shows in every chat.
+- **Core files touched:** `packages/app/src/panels/agent-tracks.tsx` renders `SendBehaviorPill`
+  first and no longer returns null; `packages/app/src/panels/agent-panel.tsx` sets
+  `hasVisibleAgentTracks` to true so the transcript keeps clearance for the row. New files:
+  `packages/app/src/composer/send-behavior-pill.tsx` and its browser test;
+  `packages/app/test-stubs/lucide-react-native.ts` gains the three icons.
+- **Re-apply:** Put `<SendBehaviorPill />` as the first child of `ComposerTrackBar` in
+  `AgentTracks`, drop that component's early `return null`, and make the agent panel treat the
+  track row as always visible (whatever feeds the stream's bottom clearance). Reuse the
+  `settings.general.defaultSend.*` strings; add no new ones.
+- **Verify:** `cd packages/app && npx vitest run --project browser src/composer/send-behavior-pill.browser.test.tsx --bail=1`
+  (in the update script). In a chat, the pill reads Steer by default; pick Queue, then Settings >
+  General > Default send shows Queue. With an agent running, the dictation arrow then queues.
