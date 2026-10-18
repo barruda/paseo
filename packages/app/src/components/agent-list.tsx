@@ -17,7 +17,7 @@ import { useIsCompactFormFactor } from "@/constants/layout";
 import { useTimeAgo } from "@/hooks/use-time-ago";
 import { type AggregatedAgent, type HistoryContentMatch } from "@/hooks/use-aggregated-agents";
 import { useSessionStore } from "@/stores/session-store";
-import { Archive, Bot, ChevronRight, User } from "lucide-react-native";
+import { Archive, Bot, ChevronRight, Sparkles, User } from "lucide-react-native";
 import { useProviderIcon } from "@/components/provider-icons";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
@@ -37,6 +37,8 @@ interface AgentListProps {
   showAttentionIndicator?: boolean;
   showHostColumn?: boolean;
   search?: string;
+  // CUSTOM(history-ai-search): "relevance" keeps the given order, without date sections.
+  orderBy?: "date" | "relevance";
 }
 
 type DateSectionKey = "today" | "yesterday" | "thisWeek" | "thisMonth" | "older";
@@ -272,6 +274,12 @@ function SessionRow({
           iconColor={theme.colors.foregroundMuted}
           testID={`agent-row-content-match-${agent.serverId}-${agent.id}`}
         />
+        <HistoryAiReasonLine
+          reason={agent.aiReason}
+          iconSize={theme.iconSize.xs}
+          iconColor={theme.colors.foregroundMuted}
+          testID={`agent-row-ai-reason-${agent.serverId}-${agent.id}`}
+        />
         {isMobile ? (
           <View style={styles.rowMetaRow}>
             <HighlightedText
@@ -363,6 +371,29 @@ function HistoryContentMatchLine({
   );
 }
 
+// CUSTOM(history-ai-search): why History AI search picked this session.
+function HistoryAiReasonLine({
+  reason,
+  iconSize,
+  iconColor,
+  testID,
+}: {
+  reason: string | undefined;
+  iconSize: number;
+  iconColor: string;
+  testID: string;
+}) {
+  if (!reason) return null;
+  return (
+    <View style={styles.aiReasonRow}>
+      <Sparkles size={iconSize} color={iconColor} />
+      <Text style={styles.contentMatchText} numberOfLines={3} testID={testID}>
+        {reason}
+      </Text>
+    </View>
+  );
+}
+
 function AgentActivityTime({ date, isMobile }: { date: Date; isMobile: boolean }) {
   const label = useTimeAgo(date);
   return (
@@ -382,6 +413,7 @@ export function AgentList({
   showAttentionIndicator = true,
   showHostColumn = false,
   search,
+  orderBy = "date",
 }: AgentListProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -449,6 +481,13 @@ export function AgentList({
   }, [actionAgent, actionClient, archiveAgent]);
 
   const flatItems = useMemo((): FlatListItem[] => {
+    if (orderBy === "relevance") {
+      return agents.map((agent) => ({
+        type: "agent",
+        key: `${agent.serverId}:${agent.id}`,
+        agent,
+      }));
+    }
     const buckets = new Map<DateSectionKey, AggregatedAgent[]>();
     for (const agent of agents) {
       const section = deriveDateSectionKey(agent.lastActivityAt);
@@ -469,7 +508,7 @@ export function AgentList({
       }
     }
     return result;
-  }, [agents]);
+  }, [agents, orderBy]);
 
   const renderItem: ListRenderItem<FlatListItem> = useCallback(
     ({ item }) => {
@@ -689,6 +728,13 @@ const styles = StyleSheet.create((theme) => ({
   contentMatchRow: {
     flexDirection: "row",
     alignItems: "center",
+    gap: theme.spacing[1],
+    marginTop: 2,
+    minWidth: 0,
+  },
+  aiReasonRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
     gap: theme.spacing[1],
     marginTop: 2,
     minWidth: 0,

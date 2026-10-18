@@ -12,6 +12,9 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { AgentList } from "@/components/agent-list";
 import { SearchField } from "@/components/ui/search-field";
 import { HistorySearchSyntax } from "@/components/history-search-syntax";
+// CUSTOM(history-ai-search)
+import { HistoryAiSearchPanel } from "@/components/history-ai-search";
+import { useHistoryAiSearch } from "@/hooks/use-history-ai-search";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { type AgentHistoryHostError, useAgentHistory } from "@/hooks/use-agent-history";
@@ -96,6 +99,8 @@ function SessionsScreenContent() {
     search,
   });
   const isSearching = isSearchSupported && search.length > 0;
+  // CUSTOM(history-ai-search): a submitted question replaces the list with the AI's picks.
+  const aiSearch = useHistoryAiSearch({ serverId: historyServerId });
 
   useEffect(() => {
     if (
@@ -179,49 +184,51 @@ function SessionsScreenContent() {
       ) : null}
       {/* CUSTOM(history-content-search): the query operators, under the search field. */}
       <HistorySearchSyntax isVisible={isSearchSupported} />
-      {hostErrors.length > 0 ? <SessionHostErrorsBanner errors={hostErrors} t={t} /> : null}
-      {isInitialLoad ? (
-        <View style={styles.loadingContainer}>
-          <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
-        </View>
-      ) : null}
-      {!isInitialLoad && showLoadError ? (
-        <View style={styles.emptyContainer}>
-          <Text style={styles.emptyText}>Unable to load sessions</Text>
-          <Button variant="ghost" onPress={handleRefresh}>
-            Try again
-          </Button>
-        </View>
-      ) : null}
-      {!isInitialLoad && !showLoadError && agents.length === 0 ? (
-        <View style={styles.emptyContainer} testID="sessions-empty">
-          <Text style={styles.emptyText}>{emptyText}</Text>
-          {isSearching ? (
-            <Button variant="ghost" onPress={handleClearSearch}>
-              {t("sessions.actions.clearSearch")}
+      <HistoryAiSearchPanel aiSearch={aiSearch}>
+        {hostErrors.length > 0 ? <SessionHostErrorsBanner errors={hostErrors} t={t} /> : null}
+        {isInitialLoad ? (
+          <View style={styles.loadingContainer}>
+            <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
+          </View>
+        ) : null}
+        {!isInitialLoad && showLoadError ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>Unable to load sessions</Text>
+            <Button variant="ghost" onPress={handleRefresh}>
+              Try again
             </Button>
-          ) : (
-            <Button variant="ghost" leftIcon={ChevronLeft} onPress={handleBack}>
-              Back
+          </View>
+        ) : null}
+        {!isInitialLoad && !showLoadError && agents.length === 0 ? (
+          <View style={styles.emptyContainer} testID="sessions-empty">
+            <Text style={styles.emptyText}>{emptyText}</Text>
+            {isSearching ? (
+              <Button variant="ghost" onPress={handleClearSearch}>
+                {t("sessions.actions.clearSearch")}
+              </Button>
+            ) : (
+              <Button variant="ghost" leftIcon={ChevronLeft} onPress={handleBack}>
+                Back
+              </Button>
+            )}
+            <Button variant="ghost" leftIcon={Import} onPress={importSession.open}>
+              {t("importSession.title")}
             </Button>
-          )}
-          <Button variant="ghost" leftIcon={Import} onPress={importSession.open}>
-            {t("importSession.title")}
-          </Button>
-        </View>
-      ) : null}
-      {!isInitialLoad && !showLoadError && agents.length > 0 ? (
-        <AgentList
-          agents={agents}
-          showCheckoutInfo={false}
-          isRefreshing={isManualRefresh}
-          onRefresh={handleRefresh}
-          listFooterComponent={listFooterComponent}
-          showAttentionIndicator={false}
-          showHostColumn
-          search={isSearching ? search : undefined}
-        />
-      ) : null}
+          </View>
+        ) : null}
+        {!isInitialLoad && !showLoadError && agents.length > 0 ? (
+          <AgentList
+            agents={agents}
+            showCheckoutInfo={false}
+            isRefreshing={isManualRefresh}
+            onRefresh={handleRefresh}
+            listFooterComponent={listFooterComponent}
+            showAttentionIndicator={false}
+            showHostColumn
+            search={isSearching ? search : undefined}
+          />
+        ) : null}
+      </HistoryAiSearchPanel>
       {importSession.sheet}
     </View>
   );

@@ -9,6 +9,8 @@ import {
 } from "./connection/index.js";
 import { CreationClient } from "./creation/index.js";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
+// CUSTOM(history-ai-search)
+import type { HistoryAiSearchResponse } from "@getpaseo/protocol/messages";
 // CUSTOM(voice-settings)
 import type {
   SpeechLocalGetStatusResponse,
@@ -2452,6 +2454,22 @@ export class DaemonClient {
         }
         return msg.payload;
       },
+    });
+  }
+
+  // CUSTOM(history-ai-search): ask the host's metadata model which sessions answer a question.
+  // Two model calls, so it can take a while.
+  async searchHistoryWithAi(
+    question: string,
+    requestId?: string,
+  ): Promise<HistoryAiSearchResponse["payload"]> {
+    if (this.lastServerInfoMessage?.features?.historyAiSearch !== true) {
+      throw new Error("Update the host to search History with AI.");
+    }
+    return this.sendNamespacedCorrelatedSessionRequest<"history.ai_search.response">({
+      requestId,
+      message: { type: "history.ai_search.request", question },
+      timeout: 180_000,
     });
   }
 

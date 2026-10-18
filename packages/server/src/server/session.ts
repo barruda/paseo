@@ -51,6 +51,8 @@ import { SortablePager, type SortSpec } from "./pagination/sortable-pager.js";
 import { matchAgentHistoryNames } from "./agent-history-search.js";
 import { parseHistoryQuery } from "@getpaseo/protocol/search/history-query";
 import { getActiveHistoryContentIndex } from "./history-content-index.js";
+// CUSTOM(history-ai-search)
+import { runHistoryAiSearch } from "./history-ai-search.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
 import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
 import {
@@ -2358,6 +2360,9 @@ export class Session {
       this.dispatchWorkspaceStateMessage(msg) ??
       this.dispatchWorkspaceLabelMessage(msg) ??
       this.dispatchWorkspaceSetupMessage(msg) ??
+      // CUSTOM(history-ai-search): chained here because the top-level chain is at its
+      // complexity limit.
+      this.dispatchHistoryAiSearchMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg)
     );
   }
@@ -2754,6 +2759,11 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  // CUSTOM(history-ai-search)
+  private dispatchHistoryAiSearchMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    return msg.type === "history.ai_search.request" ? this.handleHistoryAiSearch(msg) : undefined;
   }
 
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {
@@ -6369,6 +6379,72 @@ export class Session {
           requestType: request.type,
           error: message,
           code,
+        },
+      });
+    }
+  }
+
+  // CUSTOM(history-ai-search): the metadata model plans keyword searches over the History
+  // index and picks the sessions that answer the question. Failures answer with `error`.
+  private async handleHistoryAiSearch(
+    request: Extract<SessionInboundMessage, { type: "history.ai_search.request" }>,
+  ): Promise<void> {
+    const empty = { results: [], queries: [], since: null, until: null };
+    try {
+      const question = request.question.trim();
+      if (!question) throw new Error("Type a question to search History with AI.");
+      const agents = await this.listAgentPayloads({
+        includeArchived: true,
+        includeUnavailablePersisted: true,
+      });
+      const generation = createAgentStructuredTextGeneration({
+        agentManager: this.agentManager,
+        providerSnapshotManager: this.providerSnapshotManager,
+        readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
+        getFocusedSelection: () => undefined,
+      });
+      const outcome = await runHistoryAiSearch({
+        question,
+        agents,
+        index: getActiveHistoryContentIndex(),
+        now: new Date(),
+        generate: ({ prompt, schema, schemaName }) =>
+          generation.generate({
+            cwd: homedir(),
+            prompt,
+            schema,
+            schemaName,
+            agentTitle: "History AI search",
+          }),
+      });
+      const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
+      const results = [];
+      for (const result of outcome.results) {
+        const agent = agentsById.get(result.agentId);
+        const project = agent?.workspaceId
+          ? await this.buildProjectPlacementForWorkspaceId(agent.workspaceId)
+          : null;
+        if (agent && project) results.push({ entry: { agent, project }, reason: result.reason });
+      }
+      this.emit({
+        type: "history.ai_search.response",
+        payload: {
+          requestId: request.requestId,
+          results,
+          queries: outcome.queries,
+          since: outcome.since,
+          until: outcome.until,
+          error: null,
+        },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error }, "History AI search failed");
+      this.emit({
+        type: "history.ai_search.response",
+        payload: {
+          requestId: request.requestId,
+          ...empty,
+          error: error instanceof Error ? error.message : String(error),
         },
       });
     }

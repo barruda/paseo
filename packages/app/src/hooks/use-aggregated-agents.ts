@@ -16,6 +16,8 @@ export interface AggregatedAgent extends AgentDirectoryEntry {
   serverLabel: string;
   // CUSTOM(history-content-search): the message that matched a History search.
   contentMatch?: HistoryContentMatch;
+  // CUSTOM(history-ai-search): why History AI search picked this session.
+  aiReason?: string;
 }
 
 export interface AggregatedAgentsResult {

@@ -1804,3 +1804,53 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
   `e2e/browser/changes-commit-selection.spec.ts` are in the update script. The browser test checks
   folder selection, mixed state, Select all/none, a partial commit, and a dismissed then accepted
   discard. Needs a daemon from this build: restart the daemon after installing.
+
+## history-ai-search: ask History which session answers a question
+
+- **Added:** 2026-10-18
+- **Commit:** `custom: History AI search`
+- **Why:** Finding a past session by keywords means guessing the words and the day it happened.
+  An agent can do it by reading candidate sessions and judging them; this puts that in History.
+- **What:**
+  - An **Ask AI** field under History search. Enter sends the question, the list is replaced by
+    the picks, best first, each with a one-line reason under its title. Clearing the field brings
+    the History list back. A status line shows the keyword searches and the date range the model
+    chose, or the error.
+  - The daemon makes two calls to the metadata model, the same one that writes agent titles
+    (`agents.metadataGeneration.providers`, here `claude-haiku-5-5`). The first turns the question
+    into up to 6 keyword queries in the History search syntax plus an optional date range. Those
+    run against the [history-content-search](#history-content-search-history-search-finds-sessions-by-what-was-said)
+    index and session titles, and the 30 sessions found by the most queries become candidates. A
+    dated question with few hits is filled with that period's other sessions. The second call
+    reads each candidate's title, dates, opening request and matching messages, and picks at most
+    8 with a reason in the question's language.
+  - About 20 s per question. Results are cached for 5 minutes per question. With several hosts,
+    each host searches its own History and the lists are interleaved.
+  - Hidden on hosts without `features.historyAiSearch`.
+- **Files:** `packages/server/src/server/history-ai-search.ts` (prompts, candidate collection,
+  pick mapping) with `history-ai-search.test.ts`; app `hooks/use-history-ai-search.ts` and
+  `components/history-ai-search.tsx` (field, status, results panel). New files; no conflict risk.
+- **Core files touched** (each marked `CUSTOM(history-ai-search)`):
+  - Protocol `messages.ts`: `history.ai_search.request` / `.response` schemas in the session
+    unions, their types, and `features.historyAiSearch`.
+  - Server: `session.ts` `handleHistoryAiSearch` and `dispatchHistoryAiSearchMessage` (chained in
+    `dispatchWorkspaceLifecycleMessage` because the top-level dispatch chain is at the complexity
+    limit); `history-content-index.ts` `firstUserMessage`; `websocket-server.ts` advertises the
+    feature; `authorization/operation-permissions.ts` maps both messages to `workspace.read`.
+  - Client `daemon-client.ts`: `searchHistoryWithAi` (180 s timeout).
+  - App: `hooks/use-agent-history.ts` exports `toAggregatedHistoryAgents` (the entry mapping
+    `fetchAgentHistoryPage` used inline); `hooks/use-aggregated-agents.ts` adds `aiReason`;
+    `components/agent-list.tsx` adds `orderBy="relevance"` (no date sections) and
+    `HistoryAiReasonLine`; `screens/sessions-screen.tsx` calls `useHistoryAiSearch` and wraps the
+    host-error banner and the list states in `<HistoryAiSearchPanel>`, which shows them only while
+    no question is submitted.
+- **Re-apply:** Add the RPC pair with `requestId`, `question` in and `results: {entry, reason}[]`,
+  `queries`, `since`, `until`, `error` out, and gate it on a feature flag. In the session, list
+  agents like History does (`includeArchived`, `includeUnavailablePersisted`), run
+  `runHistoryAiSearch` with `createAgentStructuredTextGeneration` (no focused selection, cwd the
+  home dir), and build each pick's project placement. In the app, keep the History list as the
+  panel's children so a submitted question swaps it for the picks.
+- **Verify:** `history-ai-search.test.ts` is in the update script. By hand, on a daemon from this
+  build: open History, type a question in Ask AI (for example "relatório de melhorias para android
+  de hoje") and press Enter. After about 20 s the picks appear with reasons, and the status line
+  lists the searches and the date.

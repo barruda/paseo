@@ -93,6 +93,7 @@ export class HistoryContentIndex {
   private readonly searchMessages: SqliteStatement;
   private readonly searchAgentIds: SqliteStatement;
   private readonly selectBackfilled: SqliteStatement;
+  private readonly selectFirstUserMessage: SqliteStatement;
   private readonly insertBackfilled: SqliteStatement;
 
   constructor(dbPath: string) {
@@ -119,6 +120,9 @@ export class HistoryContentIndex {
        WHERE messages_fts MATCH ?`,
     );
     this.selectBackfilled = this.db.prepare("SELECT agent_id AS agentId FROM backfilled_agents");
+    this.selectFirstUserMessage = this.db.prepare(
+      "SELECT text, ts AS timestamp FROM messages WHERE agent_id = ? AND role = 'user' ORDER BY id LIMIT 1",
+    );
     this.insertBackfilled = this.db.prepare(
       "INSERT OR REPLACE INTO backfilled_agents (agent_id, backfilled_at) VALUES (?, ?)",
     );
@@ -178,6 +182,17 @@ export class HistoryContentIndex {
       matches.set(row.agentId, { ...parseSnippet(row.snippet), role: row.role });
     }
     return { matches, excludedAgentIds };
+  }
+
+  /** The session's opening request, which says what it was for. Used by History AI search. */
+  firstUserMessage(agentId: string): HistoryMessage | null {
+    const rows = this.selectFirstUserMessage.all(agentId) as {
+      text: string;
+      timestamp: string | null;
+    }[];
+    const row = rows[0];
+    if (!row) return null;
+    return { role: "user", text: row.text, ...(row.timestamp ? { timestamp: row.timestamp } : {}) };
   }
 
   backfilledAgentIds(): Set<string> {

@@ -1,5 +1,6 @@
 import type {
   DaemonClient,
+  FetchAgentHistoryEntry,
   FetchAgentHistoryOptions,
   FetchAgentHistoryPageInfo,
 } from "@getpaseo/client/internal/daemon-client";
@@ -71,6 +72,44 @@ interface AgentHistoryBatchPage {
 
 type AgentHistoryCursorByServerId = Record<string, string | null>;
 
+// CUSTOM(history-ai-search): shared with History AI search, whose results are the same entries.
+export function toAggregatedHistoryAgents(input: {
+  serverId: string;
+  entries: FetchAgentHistoryEntry[];
+}): AggregatedAgent[] {
+  const { agents } = buildAgentDirectoryState({
+    serverId: input.serverId,
+    entries: input.entries,
+  });
+  // CUSTOM(history-content-search): keep each session's matched message for its row.
+  const contentMatches = new Map(
+    input.entries.flatMap((entry) =>
+      entry.contentMatch ? [[entry.agent.id, entry.contentMatch] as const] : [],
+    ),
+  );
+  return Array.from(agents.values(), (agent) => ({
+    id: agent.id,
+    serverId: input.serverId,
+    serverLabel: input.serverId,
+    title: agent.title ?? null,
+    status: agent.status,
+    turn: agent.turn,
+    lastActivityAt: agent.lastActivityAt,
+    cwd: agent.cwd,
+    workspaceId: agent.workspaceId,
+    provider: agent.provider,
+    pendingPermissionCount: agent.pendingPermissions.length,
+    requiresAttention: agent.requiresAttention,
+    attentionReason: agent.attentionReason,
+    attentionTimestamp: agent.attentionTimestamp ?? null,
+    archivedAt: agent.archivedAt ?? null,
+    createdAt: agent.createdAt,
+    labels: agent.labels,
+    projectPlacement: agent.projectPlacement,
+    contentMatch: contentMatches.get(agent.id),
+  }));
+}
+
 export async function fetchAgentHistoryPage(input: {
   client: AgentHistoryClient;
   serverId: string;
@@ -85,39 +124,9 @@ export async function fetchAgentHistoryPage(input: {
       : { limit: AGENT_HISTORY_PAGE_LIMIT },
   });
 
-  const { agents } = buildAgentDirectoryState({
-    serverId: input.serverId,
-    entries: payload.entries,
-  });
-  // CUSTOM(history-content-search): keep each session's matched message for its row.
-  const contentMatches = new Map(
-    payload.entries.flatMap((entry) =>
-      entry.contentMatch ? [[entry.agent.id, entry.contentMatch] as const] : [],
-    ),
-  );
   return {
     isSearchTruncated: payload.searchTruncated === true,
-    agents: Array.from(agents.values(), (agent) => ({
-      id: agent.id,
-      serverId: input.serverId,
-      serverLabel: input.serverId,
-      title: agent.title ?? null,
-      status: agent.status,
-      turn: agent.turn,
-      lastActivityAt: agent.lastActivityAt,
-      cwd: agent.cwd,
-      workspaceId: agent.workspaceId,
-      provider: agent.provider,
-      pendingPermissionCount: agent.pendingPermissions.length,
-      requiresAttention: agent.requiresAttention,
-      attentionReason: agent.attentionReason,
-      attentionTimestamp: agent.attentionTimestamp ?? null,
-      archivedAt: agent.archivedAt ?? null,
-      createdAt: agent.createdAt,
-      labels: agent.labels,
-      projectPlacement: agent.projectPlacement,
-      contentMatch: contentMatches.get(agent.id),
-    })),
+    agents: toAggregatedHistoryAgents({ serverId: input.serverId, entries: payload.entries }),
     pageInfo: payload.pageInfo,
   };
 }

@@ -1357,6 +1357,13 @@ export const FetchAgentHistoryRequestMessageSchema = z.object({
     .optional(),
 });
 
+// CUSTOM(history-ai-search): ask the metadata model which sessions answer a question.
+export const HistoryAiSearchRequestSchema = z.object({
+  type: z.literal("history.ai_search.request"),
+  requestId: z.string(),
+  question: z.string(),
+});
+
 export const FetchRecentProviderSessionsRequestMessageSchema = z.object({
   type: z.literal("fetch_recent_provider_sessions_request"),
   requestId: z.string(),
@@ -3224,6 +3231,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   AudioPlayedMessageSchema,
   FetchAgentsRequestMessageSchema,
   FetchAgentHistoryRequestMessageSchema,
+  // CUSTOM(history-ai-search)
+  HistoryAiSearchRequestSchema,
   FetchRecentProviderSessionsRequestMessageSchema,
   FetchWorkspacesRequestMessageSchema,
   ProjectListRequestMessageSchema,
@@ -3646,6 +3655,8 @@ export const ServerInfoStatusPayloadSchema = z
         speechSettings: z.boolean().optional(),
         // CUSTOM(commit-selection): checkout_commit_request accepts `paths`.
         checkoutCommitPaths: z.boolean().optional(),
+        // CUSTOM(history-ai-search): history.ai_search.request.
+        historyAiSearch: z.boolean().optional(),
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         relayConfig: z.boolean().optional(),
         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.
@@ -4232,6 +4243,25 @@ export const FetchAgentHistoryResponseMessageSchema = z.object({
     pageInfo: AgentDirectoryPageInfoSchema,
     // Older daemons truncate relevance-ranked searches instead of returning a cursor.
     searchTruncated: z.boolean().optional(),
+  }),
+});
+
+// CUSTOM(history-ai-search): sessions best first, each with why it answers the question, plus
+// the keyword searches and date range the model chose so the app can show what was searched.
+export const HistoryAiSearchResponseSchema = z.object({
+  type: z.literal("history.ai_search.response"),
+  payload: z.object({
+    requestId: z.string(),
+    results: z.array(
+      z.object({
+        entry: AgentDirectoryResponseEntrySchema,
+        reason: z.string(),
+      }),
+    ),
+    queries: z.array(z.string()),
+    since: z.string().nullable(),
+    until: z.string().nullable(),
+    error: z.string().nullable(),
   }),
 });
 
@@ -6946,6 +6976,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentStatusMessageSchema,
   FetchAgentsResponseMessageSchema,
   FetchAgentHistoryResponseMessageSchema,
+  // CUSTOM(history-ai-search)
+  HistoryAiSearchResponseSchema,
   FetchRecentProviderSessionsResponseMessageSchema,
   FetchWorkspacesResponseMessageSchema,
   ProjectAddResponseSchema,
@@ -7297,6 +7329,9 @@ export type ActivityLogPayload = z.infer<typeof ActivityLogPayloadSchema>;
 export type VoiceAudioChunkMessage = z.infer<typeof VoiceAudioChunkMessageSchema>;
 export type FetchAgentsRequestMessage = z.infer<typeof FetchAgentsRequestMessageSchema>;
 export type FetchAgentHistoryRequestMessage = z.infer<typeof FetchAgentHistoryRequestMessageSchema>;
+// CUSTOM(history-ai-search)
+export type HistoryAiSearchRequest = z.infer<typeof HistoryAiSearchRequestSchema>;
+export type HistoryAiSearchResponse = z.infer<typeof HistoryAiSearchResponseSchema>;
 export type FetchRecentProviderSessionsRequestMessage = z.infer<
   typeof FetchRecentProviderSessionsRequestMessageSchema
 >;
