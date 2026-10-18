@@ -3513,13 +3513,44 @@ export async function getCheckoutDiff(
 
 export async function commitChanges(
   cwd: string,
-  options: { message: string; addAll?: boolean },
+  // CUSTOM(commit-selection): `paths` commits only those files.
+  options: { message: string; addAll?: boolean; paths?: string[] },
 ): Promise<void> {
   await requireGitRepo(cwd);
+  if (options.paths) {
+    await commitSelectedPaths(cwd, options.message, options.paths);
+    return;
+  }
   if (options.addAll ?? true) {
     await runGitCommand(["add", "-A"], { cwd, timeout: 120_000 });
   }
   await runGitCommand(["commit", "-m", options.message], {
+    cwd,
+    timeout: 120_000,
+  });
+}
+
+// CUSTOM(commit-selection): stages the selected files, then commits them with `--only` so
+// changes staged outside the selection stay staged. A staged rename's old path is gone from the
+// index and the worktree, so it skips `git add` (which would reject it) but still joins the
+// commit, which also matches paths in HEAD.
+async function commitSelectedPaths(cwd: string, message: string, paths: string[]): Promise<void> {
+  if (paths.length === 0) {
+    throw new Error("Select at least one file to commit");
+  }
+  const indexed = await runGitCommand(
+    ["--literal-pathspecs", "ls-files", "-z", "--cached", "--", ...paths],
+    { cwd, timeout: 120_000 },
+  );
+  const inIndex = new Set(indexed.stdout.split("\0").filter(Boolean));
+  const stageable = paths.filter((path) => inIndex.has(path) || existsSync(resolve(cwd, path)));
+  if (stageable.length > 0) {
+    await runGitCommand(["--literal-pathspecs", "add", "-A", "--", ...stageable], {
+      cwd,
+      timeout: 120_000,
+    });
+  }
+  await runGitCommand(["--literal-pathspecs", "commit", "-m", message, "--only", "--", ...paths], {
     cwd,
     timeout: 120_000,
   });

@@ -1756,3 +1756,41 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
   `e2e/task-navigation.spec.ts` (both already in the update script) opens the Explorer from the
   Desk header, toggles it with Ctrl+E, checks a new tab starts closed and the task tab reopens it,
   and checks the workspace view stays closed.
+
+## commit-selection: commit or discard the files checked in Changes
+
+- **Added:** 2026-10-18
+- **Commit:** `custom: commit and discard selected files from Changes`
+- **Why:** The Changes sidebar could only commit everything (the header Commit action runs
+  `git add -A`). Splitting work into commits, or throwing away part of it, meant leaving Paseo.
+- **What:** In the Explorer's Changes tree, on the Uncommitted comparison, every file and folder
+  row ends with a checkbox. A folder checks or clears every file under it and shows a dash when
+  only some are checked. Nothing is checked when the app starts; the selection survives switching
+  tabs and drops files that stop being changed. Below the tree, **Select all**, **Select none** and
+  **Discard selected** (after a confirm dialog) act on the selection, and a message box with a
+  **Commit N files** button commits only the checked files. Other changes, staged or not, stay as
+  they were. A rename commits and discards both its paths. Hidden on daemons without the feature.
+- **Files:** `packages/app/src/git/commit-selection/` (`model.ts` selection rules, `store.ts`,
+  `use-commit-selection.ts`, `checkbox.tsx`, `commit-box.tsx`).
+- **Core files touched:**
+  - Protocol: `CheckoutCommitRequestSchema` gets optional `paths`; `server_info.features` gets
+    `checkoutCommitPaths`.
+  - Server: `utils/checkout-git.ts` `commitChanges` takes `paths` (`commitSelectedPaths`);
+    `session/checkout/checkout-session.ts` passes `msg.paths`; `websocket-server.ts` advertises
+    the feature.
+  - Client: `daemon-client.ts` `checkoutCommit` sends `paths`.
+  - App: `git/actions-store.ts` `commit` takes `message` and `paths`; `git/file-header.tsx` and
+    `git/diff-folder-row.tsx` render `RowCommitCheckbox` after the diff stat;
+    `git/changed-files-tree.tsx` takes `commitSelection`; `git/diff-pane.tsx` builds the selection
+    for the tree presentation and renders `CommitBox` above the Commits section.
+- **Re-apply:** On the server, stage only the selected paths that exist in the worktree or the
+  index (`git add -A`), then `git commit --only -- <all selected paths>`, always with
+  `--literal-pathspecs`. A staged rename's old path is in neither the index nor the worktree, so it
+  must skip `git add` but stay in the commit pathspecs. In the app, gate on
+  `features.checkoutCommitPaths`, enable only for the tree presentation on the uncommitted
+  comparison, and keep row checkboxes as primitive props (state + stable callback) so the rows'
+  memo and the react-perf lint rules hold. Discard reuses `checkout.discard_changes`.
+- **Verify:** `commit-selection/model.test.ts`, the `commitChanges with paths` server suite and
+  `e2e/browser/changes-commit-selection.spec.ts` are in the update script. The browser test checks
+  folder selection, mixed state, Select all/none, a partial commit, and a dismissed then accepted
+  discard. Needs a daemon from this build: restart the daemon after installing.

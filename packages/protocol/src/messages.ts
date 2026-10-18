@@ -2230,6 +2230,8 @@ export const CheckoutCommitRequestSchema = z.object({
   cwd: z.string(),
   message: z.string().optional(),
   addAll: z.boolean().optional(),
+  // CUSTOM(commit-selection): commit only these files; gated on features.checkoutCommitPaths.
+  paths: z.array(z.string()).optional(),
   requestId: z.string(),
 });
 
@@ -3642,6 +3644,8 @@ export const ServerInfoStatusPayloadSchema = z
         daemonConfigReload: z.boolean().optional(),
         // CUSTOM(voice-settings): Settings > Voice and dictation.
         speechSettings: z.boolean().optional(),
+        // CUSTOM(commit-selection): checkout_commit_request accepts `paths`.
+        checkoutCommitPaths: z.boolean().optional(),
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         relayConfig: z.boolean().optional(),
         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.

@@ -1847,6 +1847,8 @@ export class VoiceAssistantWebSocketServer {
         daemonConfigReload: true,
         // CUSTOM(voice-settings)
         ...(this.speechSettings ? { speechSettings: true } : {}),
+        // CUSTOM(commit-selection)
+        checkoutCommitPaths: true,
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         ...(this.advertiseRelayConfig ? { relayConfig: true } : {}),
         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.

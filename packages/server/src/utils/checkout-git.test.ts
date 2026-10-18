@@ -20,6 +20,7 @@ import {
   __resetPullRequestStatusCacheForTests,
   __setPullRequestStatusCacheTtlForTests,
   commitAll,
+  commitChanges,
   discardChanges,
   CHECKOUT_DIFF_MAX_STRUCTURED_BYTES,
   createPullRequest,
@@ -3981,6 +3982,92 @@ describe("discardChanges", () => {
 
       expect(readTextFile(join(repoDir, "foo[ab].txt"))).toBe("literal original\n");
       expect(readTextFile(join(repoDir, "fooa.txt"))).toBe("sibling changed\n");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+});
+
+// CUSTOM(commit-selection): committing only the files picked in the Changes tree.
+describe("commitChanges with paths", () => {
+  function committedFiles(repoDir: string): string[] {
+    return execFileSync("git", ["show", "--name-status", "--format=", "HEAD"], { cwd: repoDir })
+      .toString()
+      .trim()
+      .split("\n");
+  }
+  function porcelain(repoDir: string): string {
+    return execFileSync("git", ["status", "--porcelain"], { cwd: repoDir }).toString();
+  }
+
+  it("commits only the selected modified and untracked files", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      writeFileSync(join(repoDir, "file.txt"), "changed\n");
+      writeFileSync(join(repoDir, "new.txt"), "new\n");
+      writeFileSync(join(repoDir, "other.txt"), "keep\n");
+
+      await commitChanges(repoDir, { message: "pick", paths: ["file.txt", "new.txt"] });
+
+      expect(committedFiles(repoDir)).toEqual(["M\tfile.txt", "A\tnew.txt"]);
+      expect(porcelain(repoDir)).toBe("?? other.txt\n");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("leaves other staged changes staged and uncommitted", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      writeFileSync(join(repoDir, "staged.txt"), "staged\n");
+      execFileSync("git", ["add", "staged.txt"], { cwd: repoDir });
+      writeFileSync(join(repoDir, "file.txt"), "changed\n");
+
+      await commitChanges(repoDir, { message: "pick", paths: ["file.txt"] });
+
+      expect(committedFiles(repoDir)).toEqual(["M\tfile.txt"]);
+      expect(porcelain(repoDir)).toBe("A  staged.txt\n");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("commits deletions and both sides of a staged rename", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      writeFileSync(join(repoDir, "gone.txt"), "gone\n");
+      execFileSync("git", ["add", "gone.txt"], { cwd: repoDir });
+      execFileSync("git", ["-c", "commit.gpgsign=false", "commit", "-m", "add gone"], {
+        cwd: repoDir,
+      });
+      rmSync(join(repoDir, "gone.txt"));
+      execFileSync("git", ["mv", "file.txt", "renamed.txt"], { cwd: repoDir });
+
+      await commitChanges(repoDir, {
+        message: "pick",
+        paths: ["gone.txt", "renamed.txt", "file.txt"],
+      });
+
+      expect(committedFiles(repoDir).sort()).toEqual([
+        "D\tgone.txt",
+        "R100\tfile.txt\trenamed.txt",
+      ]);
+      expect(porcelain(repoDir)).toBe("");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("treats selected filenames as literal pathspecs", async () => {
+    const { tempDir, repoDir } = initRepo();
+    try {
+      writeFileSync(join(repoDir, "foo[ab].txt"), "literal\n");
+      writeFileSync(join(repoDir, "fooa.txt"), "sibling\n");
+
+      await commitChanges(repoDir, { message: "pick", paths: ["foo[ab].txt"] });
+
+      expect(committedFiles(repoDir)).toEqual(["A\tfoo[ab].txt"]);
+      expect(porcelain(repoDir)).toBe("?? fooa.txt\n");
     } finally {
       rmSync(tempDir, { recursive: true, force: true });
     }

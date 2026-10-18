@@ -14,6 +14,8 @@ import {
 } from "@/git/diff-tree";
 import { FileHeader } from "@/git/file-header";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
+import { folderCheckState } from "@/git/commit-selection/model";
+import type { CommitSelection } from "@/git/commit-selection/use-commit-selection";
 
 export interface ChangedFilesTreeProps {
   files: ParsedDiffFile[];
@@ -21,6 +23,13 @@ export interface ChangedFilesTreeProps {
   onSelectFile: (path: string) => void;
   collapsedFolderPaths: string[];
   onCollapsedFolderPathsChange: (paths: string[]) => void;
+  // CUSTOM(commit-selection): shows commit checkboxes when set.
+  commitSelection?: CommitSelection | null;
+}
+
+function commitFileState(selection: CommitSelection | null | undefined, path: string) {
+  if (!selection) return undefined;
+  return selection.selected.has(path) ? "checked" : "unchecked";
 }
 
 /** The changed-files tree shared by the desktop Changes rail and the compact Jump to file sheet. */
@@ -30,6 +39,7 @@ export function ChangedFilesTree({
   onSelectFile,
   collapsedFolderPaths,
   onCollapsedFolderPathsChange,
+  commitSelection,
 }: ChangedFilesTreeProps) {
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const compressedTree = useMemo(() => compressSingleChildChains(buildDiffTree(files)), [files]);
@@ -92,6 +102,16 @@ export function ChangedFilesTree({
             onDuplicate={mode.onDuplicate}
             onRevert={mode.onRevert}
             testID={`diff-folder-${item.dirPath}`}
+            commitCheckState={
+              commitSelection
+                ? folderCheckState(
+                    item.dirPath,
+                    commitSelection.filePaths,
+                    commitSelection.selected,
+                  )
+                : undefined
+            }
+            onToggleCommitCheck={commitSelection?.toggleFolder}
           />
         );
       }
@@ -117,6 +137,8 @@ export function ChangedFilesTree({
           onDuplicate={mode.onDuplicate}
           onRevert={mode.onRevert}
           testID={`diff-tree-file-${item.fileIndex}`}
+          commitCheckState={commitFileState(commitSelection, item.file.path)}
+          onToggleCommitCheck={commitSelection?.toggleFile}
         />
       );
     },
@@ -126,6 +148,7 @@ export function ChangedFilesTree({
       handleSelectPath,
       handleToggleFolder,
       collapsedFolders,
+      commitSelection,
       mode,
       selectedPath,
     ],

@@ -29,6 +29,8 @@ import {
   formatDiffCount,
 } from "@/git/file-header-presentation";
 import type { ParsedDiffFile } from "@/git/use-diff-query";
+import { RowCommitCheckbox } from "@/git/commit-selection/checkbox";
+import type { CommitCheckState } from "@/git/commit-selection/model";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 
 export interface FileHeaderProps {
@@ -56,6 +58,9 @@ export interface FileHeaderProps {
   testID?: string;
   canvasRendered?: boolean;
   onActiveChange?: (active: boolean) => void;
+  // CUSTOM(commit-selection): the Changes tree's commit checkbox.
+  commitCheckState?: CommitCheckState;
+  onToggleCommitCheck?: (path: string) => void;
 }
 
 function fileHeaderAccessibilityState(input: {
@@ -197,6 +202,8 @@ export const FileHeader = memo(function FileHeader({
   testID,
   canvasRendered = false,
   onActiveChange,
+  commitCheckState,
+  onToggleCommitCheck,
   ...actions
 }: FileHeaderProps) {
   const hover = useFileHeaderHover(interactive, onActiveChange);
@@ -279,6 +286,12 @@ export const FileHeader = memo(function FileHeader({
           testID={testID ? `${testID}-stat` : undefined}
         />
         {changeIcon}
+        <RowCommitCheckbox
+          state={commitCheckState}
+          path={file.path}
+          onToggle={onToggleCommitCheck}
+          rowTestID={testID}
+        />
       </View>
     </View>
   );

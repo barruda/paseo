@@ -36,6 +36,11 @@ import { defaultChangesState } from "@/panels/changes/state";
 import { ReviewCommentSheet, ReviewFeedbackAction } from "@/review";
 import { DiffDocument, type WorkingDiffMode } from "@/git/diff-document";
 import { ChangedFilesTree } from "@/git/changed-files-tree";
+import { CommitBox } from "@/git/commit-selection/commit-box";
+import {
+  useCommitSelection,
+  type CommitSelection,
+} from "@/git/commit-selection/use-commit-selection";
 import { JUMP_TO_FILE_CLEARANCE, JumpToFile } from "@/git/jump-to-file";
 import {
   selectPrHintFromStatus,
@@ -1316,6 +1321,7 @@ function ChangesBody({
   onTreeWidthChange,
   collapsedFolderPaths,
   onCollapsedFolderPathsChange,
+  commitSelection,
 }: {
   presentation: ChangesPresentation;
   children: ReactElement;
@@ -1328,6 +1334,7 @@ function ChangesBody({
   onTreeWidthChange: (width: number) => void;
   collapsedFolderPaths: string[];
   onCollapsedFolderPathsChange: (paths: string[]) => void;
+  commitSelection: CommitSelection | null;
 }) {
   if (presentation === "tree") {
     if (files.length === 0) return children;
@@ -1338,6 +1345,7 @@ function ChangesBody({
         onSelectFile={onSelectFile}
         collapsedFolderPaths={collapsedFolderPaths}
         onCollapsedFolderPathsChange={onCollapsedFolderPathsChange}
+        commitSelection={commitSelection}
       />
     );
   }
@@ -1436,6 +1444,15 @@ function useDiffTabNavigation({
     openCommit,
     openPullRequest,
   };
+}
+
+// CUSTOM(commit-selection)
+function commitSelectionEnabled(
+  presentation: ChangesPresentation,
+  isGit: boolean,
+  diffMode: "uncommitted" | "base",
+): boolean {
+  return presentation === "tree" && isGit && diffMode === "uncommitted";
 }
 
 export function ChangesSurface({
@@ -1772,6 +1789,13 @@ export function ChangesSurface({
     () => computeCommittedDiffDescription(branchLabel, baseRefLabel),
     [baseRefLabel, branchLabel],
   );
+  // CUSTOM(commit-selection): the Changes tree commits only the checked uncommitted files.
+  const commitSelection = useCommitSelection({
+    serverId,
+    cwd,
+    files,
+    enabled: commitSelectionEnabled(presentation, isGit, diffMode),
+  });
   const emptyMessage = t("diffViewer.empty");
   const emptyAction = computeChangesEmptyAction({
     hideWhitespace: preferences.hideWhitespace,
@@ -1832,6 +1856,7 @@ export function ChangesSurface({
       onTreeWidthChange={handleChangesTreeWidth}
       collapsedFolderPaths={instanceState.collapsedFolderPaths}
       onCollapsedFolderPathsChange={updateCollapsedFolderPaths}
+      commitSelection={commitSelection}
     >
       {diffContent}
     </ChangesBody>
@@ -1953,6 +1978,8 @@ export function ChangesSurface({
           <JumpToFile files={files} mode={workingMode} onSelectFile={handleSelectTreeFile} />
         ) : null}
       </View>
+
+      <CommitBox selection={commitSelection} hasChanges={hasChanges} />
 
       <ReviewCommentSheet
         enabled={enabled}

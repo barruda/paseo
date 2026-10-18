@@ -14,6 +14,8 @@ import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { ContextMenu, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { FileActionsContextMenuContent } from "@/components/file-actions-menu";
 import { isWeb } from "@/constants/platform";
+import { RowCommitCheckbox } from "@/git/commit-selection/checkbox";
+import type { CommitCheckState } from "@/git/commit-selection/model";
 
 interface DiffFolderRowProps {
   /** full uncompressed directory path — the collapse identity */
@@ -35,6 +37,9 @@ interface DiffFolderRowProps {
   onDuplicate?: (path: string) => void;
   onRevert?: (path: string) => void;
   testID?: string;
+  // CUSTOM(commit-selection): checks every file under the folder.
+  commitCheckState?: CommitCheckState;
+  onToggleCommitCheck?: (dirPath: string) => void;
 }
 
 function folderRowPressableStyle(
@@ -66,6 +71,8 @@ export function DiffFolderRow({
   onDuplicate,
   onRevert,
   testID,
+  commitCheckState,
+  onToggleCommitCheck,
 }: DiffFolderRowProps) {
   const handleSelect = useCallback(() => {
     onSelect(dirPath);
@@ -171,6 +178,12 @@ export function DiffFolderRow({
               additions={additions}
               deletions={deletions}
               testID={testID ? `${testID}-stat` : undefined}
+            />
+            <RowCommitCheckbox
+              state={commitCheckState}
+              path={dirPath}
+              onToggle={onToggleCommitCheck}
+              rowTestID={testID}
             />
           </View>
         </ContextMenuTrigger>
