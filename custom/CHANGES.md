@@ -1725,3 +1725,21 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Verify:** `cd packages/app && npx vitest run --project browser src/composer/send-behavior-pill.browser.test.tsx --bail=1`
   (in the update script). In a chat, the pill reads Steer by default; pick Queue, then Settings >
   General > Default send shows Queue. With an agent running, the dictation arrow then queues.
+
+## title-max-four-words: agent and workspace titles stay at four words
+
+- **Added:** 2026-10-18
+- **Commit:** `custom: limit generated agent titles to four words`
+- **Why:** Long titles overflow tabs and the sidebar; four words are enough to tell tasks apart.
+- **What:** The provisional title (first line of the prompt) and the generated workspace title
+  are cut to four words. The title prompt says "at most 4 words", and the result is clamped in
+  code in case the model or a custom title style ignores it. Explicit and manually renamed titles
+  are not limited. `~/.paseo/config.json` also pins `agents.metadataGeneration.providers` to
+  `claude-haiku-5-5` (local config, not in the repo).
+- **Core files touched:** `packages/server/src/server/agent/create-agent-title.ts` (adds
+  `clampTitleWords`) and `packages/server/src/server/worktree-branch-name-generator.ts` (title
+  prompt and clamp).
+- **Re-apply:** Run `clampTitleWords` on the derived prompt title and on the generated `title`,
+  and replace the "about 4 words" line in the title style with a hard 4-word limit.
+- **Verify:** `cd packages/server && npx vitest run src/server/session.create-agent-title.test.ts --bail=1`
+  (in the update script). A new agent from a long prompt gets a tab title of four words or fewer.

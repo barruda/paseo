@@ -10,6 +10,7 @@ import {
   resolveStructuredGenerationProviders,
   type StructuredGenerationDaemonConfig,
 } from "./agent/structured-generation-providers.js";
+import { clampTitleWords } from "./agent/create-agent-title.js";
 import { buildAgentBranchNameSeed } from "./agent/prompt-attachments.js";
 import { buildMetadataPrompt } from "../utils/build-metadata-prompt.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
@@ -66,9 +67,9 @@ async function buildPrompt(
         configKey: "title",
         label: "Title style",
         default: [
-          "An actionable task label: requested operation + concrete target + strongest distinguishing anchor (sentence case, max 80 characters).",
+          "An actionable task label: requested operation + concrete target + strongest distinguishing anchor (sentence case, at most 4 words, max 80 characters).",
           "Preserve explicit identifiers such as PR or issue numbers, file paths, packages, components, commands, and quoted names when they distinguish the task.",
-          "Aim for about 4 words, but never drop a part needed to understand or distinguish the task.",
+          "The title MUST be at most 4 words. Keep the most distinguishing words and drop the rest.",
           'Example: "Refactor PR #2638 Playwright specs".',
         ].join("\n"),
       },
@@ -129,7 +130,7 @@ export async function generateBranchNameFromFirstAgentContext(
       },
     });
     return {
-      title: result.title.trim() || null,
+      title: clampTitleWords(result.title) || null,
       branch: result.branch.trim() || null,
     };
   } catch (error) {

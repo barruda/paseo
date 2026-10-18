@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import { resolveCreateAgentTitles } from "./agent/create-agent-title.js";
+import { clampTitleWords, resolveCreateAgentTitles } from "./agent/create-agent-title.js";
 
 describe("resolveCreateAgentTitles", () => {
   test("derives a provisional title from prompt when explicit title is absent", () => {
@@ -10,7 +10,7 @@ describe("resolveCreateAgentTitles", () => {
     });
 
     expect(resolved.explicitTitle).toBeNull();
-    expect(resolved.provisionalTitle).toBe("Implement auth retries with backoff");
+    expect(resolved.provisionalTitle).toBe("Implement auth retries with");
   });
 
   test("preserves explicit title and does not treat it as provisional", () => {
@@ -31,5 +31,17 @@ describe("resolveCreateAgentTitles", () => {
 
     expect(resolved.explicitTitle).toBeNull();
     expect(resolved.provisionalTitle).toBeNull();
+  });
+});
+
+describe("clampTitleWords", () => {
+  test("keeps at most four words and collapses whitespace", () => {
+    expect(clampTitleWords("  Refactor   PR #2638 Playwright specs for tabs ")).toBe(
+      "Refactor PR #2638 Playwright",
+    );
+  });
+
+  test("leaves short titles untouched", () => {
+    expect(clampTitleWords("Fix tab names")).toBe("Fix tab names");
   });
 });

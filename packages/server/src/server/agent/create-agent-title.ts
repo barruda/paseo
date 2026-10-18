@@ -2,6 +2,11 @@ import { MAX_EXPLICIT_AGENT_TITLE_CHARS } from "@getpaseo/protocol/agent-title-l
 import type { FirstAgentContext } from "@getpaseo/protocol/messages";
 
 const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS);
+export const MAX_GENERATED_TITLE_WORDS = 4;
+
+export function clampTitleWords(title: string): string {
+  return title.trim().split(/\s+/).slice(0, MAX_GENERATED_TITLE_WORDS).join(" ");
+}
 
 function deriveInitialAgentTitle(prompt: string): string | null {
   const firstContentLine = prompt
@@ -15,7 +20,7 @@ function deriveInitialAgentTitle(prompt: string): string | null {
   if (!normalized) {
     return null;
   }
-  const clamped = normalized.slice(0, MAX_INITIAL_AGENT_TITLE_CHARS).trim();
+  const clamped = clampTitleWords(normalized).slice(0, MAX_INITIAL_AGENT_TITLE_CHARS).trim();
   return clamped.length > 0 ? clamped : null;
 }
 
