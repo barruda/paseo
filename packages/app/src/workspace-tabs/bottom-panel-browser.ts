@@ -1,6 +1,7 @@
-// CUSTOM(bottom-panel-tab-keys): Ctrl+Tab and Ctrl+Shift+Tab belong to a page in the bottom
-// panel. Warp cycles its own sessions with them and leaves them unprevented for the browser, so
-// without this Paseo also switched its tabs on the same press.
+// CUSTOM(bottom-panel-tab-keys): Ctrl+Tab, Ctrl+Shift+Tab and Ctrl+W belong to a page in the
+// bottom panel. Warp cycles its own sessions with the Tab keys and closes its own session with
+// Ctrl+W, and leaves them unprevented for the browser, so without this Paseo also switched its tabs
+// or closed the panel on the same press.
 import {
   collectAllTabs,
   findPaneContainingTab,
@@ -20,6 +21,16 @@ interface TabCycleKeyInput {
 
 export function isTabCycleKey(input: TabCycleKeyInput): boolean {
   return input.key === "Tab" && input.ctrlKey === true && !input.metaKey && !input.altKey;
+}
+
+export function isCloseSessionKey(input: TabCycleKeyInput): boolean {
+  return (
+    input.key.toLowerCase() === "w" &&
+    input.ctrlKey === true &&
+    !input.shiftKey &&
+    !input.metaKey &&
+    !input.altKey
+  );
 }
 
 export function layoutHasBrowserInBottomPanel(layout: WorkspaceLayout, browserId: string): boolean {

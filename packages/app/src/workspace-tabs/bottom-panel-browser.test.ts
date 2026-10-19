@@ -8,7 +8,11 @@ import {
   type WorkspaceLayout,
 } from "@/stores/workspace-layout-actions";
 import { toggleBottomPanelInLayout } from "./bottom-panel";
-import { isTabCycleKey, layoutHasBrowserInBottomPanel } from "./bottom-panel-browser";
+import {
+  isCloseSessionKey,
+  isTabCycleKey,
+  layoutHasBrowserInBottomPanel,
+} from "./bottom-panel-browser";
 
 let counter = 0;
 const nextId = (prefix: string) => `${prefix}-${++counter}`;
@@ -51,5 +55,15 @@ describe("bottom panel browser keys", () => {
     expect(isTabCycleKey({ key: "Tab", ctrlKey: true, altKey: true })).toBe(false);
     expect(isTabCycleKey({ key: "Tab", ctrlKey: true, metaKey: true })).toBe(false);
     expect(isTabCycleKey({ key: "t", ctrlKey: true })).toBe(false);
+  });
+
+  it("matches only Ctrl+W for closing a session", () => {
+    expect(isCloseSessionKey({ key: "w", ctrlKey: true })).toBe(true);
+    expect(isCloseSessionKey({ key: "W", ctrlKey: true })).toBe(true);
+    expect(isCloseSessionKey({ key: "w" })).toBe(false);
+    expect(isCloseSessionKey({ key: "w", ctrlKey: true, shiftKey: true })).toBe(false);
+    expect(isCloseSessionKey({ key: "w", ctrlKey: true, altKey: true })).toBe(false);
+    expect(isCloseSessionKey({ key: "w", ctrlKey: true, metaKey: true })).toBe(false);
+    expect(isCloseSessionKey({ key: "t", ctrlKey: true })).toBe(false);
   });
 });
