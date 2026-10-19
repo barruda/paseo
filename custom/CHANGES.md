@@ -1494,6 +1494,37 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `(cd packages/app && npx vitest run src/desktop/browser/store/state.test.ts src/plugins/host-navigation.test.ts)`.
   In the app, open Warp: no URL bar. Put it in the bottom panel, press Ctrl+J twice and type.
 
+## browser-shortcut-preempt: Ctrl+J hides the bottom panel from inside Warp
+
+- **Added:** 2026-10-18
+- **Commit:** `custom: Ctrl+J crosses ahead of the page in browser tabs`
+- **Why:** App shortcuts reach Paseo from a browser tab only when the page leaves the key alone.
+  Warp uses Ctrl+J (newline) and calls `preventDefault`, so Ctrl+J never left a Warp tab. Ctrl+T
+  worked because Warp doesn't use it.
+- **What:** The browser keyboard policy marks the bottom panel toggle as `preempt`. The guest
+  preload's capture listener runs before the page's, so for a preempting key it forwards the
+  shortcut at once and stops the event; the page never sees it. Every other shortcut still gives
+  the page first refusal. A browser pane's focus listener also no longer focuses a pane that is
+  hidden, so a guest that keeps focus can't show the panel again.
+- **Core files touched** (marked `CUSTOM(browser-shortcut-preempt)`, the pane guard
+  `CUSTOM(browser-no-toolbar)`):
+  - `packages/app/src/desktop/browser/shortcuts.ts`: `preempt` on the prefix, `PREEMPTING_ACTIONS`,
+    and `prefixKey`.
+  - `packages/desktop/src/features/browser-keyboard/policy.ts`: parses `preempt`.
+  - `packages/desktop/src/features/browser-keyboard/guest-preload.ts`: `findPolicyPrefix` returns
+    the prefix, and a preempting one is sent from the capture phase.
+  - `packages/app/src/desktop/browser/pane/index.electron.tsx`: `handleWebviewFocus` returns
+    early while the pane isn't presented.
+  - `packages/desktop/capture-harness/main.js`: a page that claims Ctrl+J, and the check.
+- **Re-apply:** Add the optional `preempt: true` field to the prefix on both sides, set it when a
+  single-step binding's action is the bottom panel toggle, and in the preload forward it from the
+  capture listener with `preventDefault` and `stopImmediatePropagation`.
+- **Verify:** `(cd packages/app && npx vitest run src/desktop/browser/shortcuts.test.ts)`,
+  `(cd packages/desktop && npx vitest run src/features/browser-keyboard/policy.test.ts)`, and the
+  real-Electron check:
+  `ELECTRON_DISABLE_SANDBOX=1 PASEO_CAPTURE_HARNESS_GROUP=automation npm run capture-harness --workspace=@getpaseo/desktop`
+  (the sandbox variable only because the repo's `chrome-sandbox` isn't setuid root here).
+
 ## ctrl-t-terminal: Ctrl+T opens a tab from inside a terminal
 
 - **Added:** 2026-10-18

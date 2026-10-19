@@ -846,6 +846,9 @@ export function BrowserPane({
       }
     };
     const handleWebviewFocus = () => {
+      // CUSTOM(browser-no-toolbar): a hidden pane (Ctrl+J) keeps its webview mounted, and a guest
+      // that still holds focus must not show the pane again.
+      if (!isPresentedRef.current) return;
       onFocusPane?.();
       webview.focus?.();
       const focusBrowser = getDesktopHost()?.browser?.focus;

@@ -12,9 +12,9 @@ interface BrowserKeyboardPolicyPayload extends BrowserKeyboardPolicy {
   browserId: string;
 }
 
-function matchesPolicy(event: KeyboardEvent): boolean {
+function findPolicyPrefix(event: KeyboardEvent): BrowserShortcutPrefix | undefined {
   const editable = isEditableTarget(event.target);
-  return policy.some((prefix) => {
+  return policy.find((prefix) => {
     if (
       prefix.alt !== event.altKey ||
       prefix.control !== event.ctrlKey ||
@@ -58,12 +58,36 @@ function matchesCode(prefixCode: string, eventCode: string): boolean {
   return /^(?:Digit|Numpad)[1-9]$/.test(eventCode);
 }
 
+function sendShortcut(event: KeyboardEvent, shortcutBrowserId: string): void {
+  ipcRenderer.send(SHORTCUT_INPUT_CHANNEL, {
+    alt: event.altKey,
+    browserId: shortcutBrowserId,
+    code: event.code,
+    control: event.ctrlKey,
+    key: event.key,
+    meta: event.metaKey,
+    repeat: event.repeat,
+    shift: event.shiftKey,
+  });
+}
+
 function stageShortcutForward(event: KeyboardEvent): void {
-  if (!event.isTrusted || event.defaultPrevented || !browserId || !matchesPolicy(event)) {
+  if (!event.isTrusted || event.defaultPrevented || !browserId) {
+    return;
+  }
+  const prefix = findPolicyPrefix(event);
+  if (!prefix) {
     return;
   }
 
   const shortcutBrowserId = browserId;
+  // CUSTOM(browser-shortcut-preempt): this preload's capture listener runs before the page's.
+  if (prefix.preempt) {
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    sendShortcut(event, shortcutBrowserId);
+    return;
+  }
   window.addEventListener(
     "keydown",
     (completedEvent) => {
@@ -71,16 +95,7 @@ function stageShortcutForward(event: KeyboardEvent): void {
         return;
       }
       completedEvent.preventDefault();
-      ipcRenderer.send(SHORTCUT_INPUT_CHANNEL, {
-        alt: completedEvent.altKey,
-        browserId: shortcutBrowserId,
-        code: completedEvent.code,
-        control: completedEvent.ctrlKey,
-        key: completedEvent.key,
-        meta: completedEvent.metaKey,
-        repeat: completedEvent.repeat,
-        shift: completedEvent.shiftKey,
-      });
+      sendShortcut(completedEvent, shortcutBrowserId);
     },
     { once: true },
   );

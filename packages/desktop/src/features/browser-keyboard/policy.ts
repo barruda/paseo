@@ -9,6 +9,8 @@ export interface BrowserShortcutPrefix {
   repeat?: false;
   shift: boolean;
   shiftedKey?: string;
+  /** CUSTOM(browser-shortcut-preempt): crosses before the page can claim the key. */
+  preempt?: true;
 }
 
 export interface BrowserKeyboardPolicy {
@@ -50,7 +52,8 @@ function hasValidOptionalPrefixFields(value: Record<string, unknown>): boolean {
     (value.shiftedKey === undefined || typeof value.shiftedKey === "string") &&
     (value.codeFallback === undefined || value.codeFallback === true) &&
     (value.editable === undefined || value.editable === false) &&
-    (value.repeat === undefined || value.repeat === false)
+    (value.repeat === undefined || value.repeat === false) &&
+    (value.preempt === undefined || value.preempt === true)
   );
 }
 
@@ -80,6 +83,7 @@ function parsePrefix(value: unknown): BrowserShortcutPrefix | null {
     ...(value.repeat === false ? { repeat: false } : {}),
     shift: value.shift,
     ...(typeof value.shiftedKey === "string" ? { shiftedKey: value.shiftedKey.toLowerCase() } : {}),
+    ...(value.preempt === true ? { preempt: true } : {}),
   };
 }
 

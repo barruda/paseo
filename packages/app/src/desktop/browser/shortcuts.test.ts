@@ -203,6 +203,16 @@ describe("buildBrowserKeyboardPolicy", () => {
     });
   });
 
+  // CUSTOM(browser-shortcut-preempt)
+  it("lets only the bottom panel toggle cross before the page claims the key", () => {
+    const bindings = buildEffectiveBindings({});
+    const policy = buildBrowserKeyboardPolicy({ bindings, isMac: false, isDesktop: true });
+
+    expect(policy.prefixes.filter((prefix) => prefix.preempt)).toEqual([
+      expect.objectContaining({ code: "KeyJ", control: true, shift: false, alt: false }),
+    ]);
+  });
+
   it("does not publish plain browser keys", () => {
     const bindings = buildEffectiveBindings({});
     const policy = buildBrowserKeyboardPolicy({ bindings, isMac: false, isDesktop: true });

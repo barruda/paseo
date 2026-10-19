@@ -288,6 +288,9 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/sidebar-workspace-limit/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/header-shortcuts/fit.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/session.create-agent-title.test.ts --bail=1)
+  # Ctrl+J crosses ahead of the page in browser tabs.
+  (cd packages/app && npx vitest run src/desktop/browser/shortcuts.test.ts --bail=1)
+  (cd packages/desktop && npx vitest run src/features/browser-keyboard/policy.test.ts --bail=1)
   # Warp tabs without the browser toolbar.
   (cd packages/app && npx vitest run src/desktop/browser/store/state.test.ts src/plugins/host-navigation.test.ts --bail=1)
   # Tasks/Desks persistence, cross-project references, and workspace fallback.

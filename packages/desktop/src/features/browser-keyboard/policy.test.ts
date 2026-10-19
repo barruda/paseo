@@ -62,6 +62,17 @@ describe("browser keyboard policy", () => {
     ).toBeNull();
   });
 
+  // CUSTOM(browser-shortcut-preempt)
+  test("keeps a preempting prefix and rejects a malformed preempt flag", () => {
+    const prefix = { code: "KeyJ", control: true, meta: false, alt: false, shift: false };
+    expect(
+      parseBrowserKeyboardPolicy({ menuPrefixes: [], prefixes: [{ ...prefix, preempt: true }] }),
+    ).toEqual({ menuPrefixes: [], prefixes: [{ ...prefix, preempt: true }] });
+    expect(
+      parseBrowserKeyboardPolicy({ menuPrefixes: [], prefixes: [{ ...prefix, preempt: "yes" }] }),
+    ).toBeNull();
+  });
+
   test("accepts only complete modifier prefixes from the host renderer", () => {
     expect(
       parseBrowserKeyboardPolicy({

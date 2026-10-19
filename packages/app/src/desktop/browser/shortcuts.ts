@@ -17,7 +17,13 @@ export interface BrowserShortcutPrefix {
   repeat?: false;
   shift: boolean;
   shiftedKey?: string;
+  /** CUSTOM(browser-shortcut-preempt): crosses before the page can claim the key. */
+  preempt?: true;
 }
+
+// CUSTOM(browser-shortcut-preempt): the bottom panel toggle must hide a panel whose page (Warp)
+// uses the same key, like it hides a terminal's.
+const PREEMPTING_ACTIONS: ReadonlySet<string> = new Set(["workspace.bottom-panel.toggle"]);
 
 export interface BrowserShortcutInput extends KeyboardShortcutInput {
   browserId: string;
@@ -146,6 +152,7 @@ function prefixKey(prefix: BrowserShortcutPrefix): string {
     prefix.alt,
     prefix.shift,
     prefix.repeat ?? "",
+    prefix.preempt ?? "",
   ].join(":");
 }
 
@@ -183,6 +190,9 @@ function buildBrowserShortcutPrefixes(input: BrowserShortcutPolicyInput): Browse
     const prefix = prefixFromCombo(combo, input.isMac, binding.when?.editable);
     if (!prefix) {
       continue;
+    }
+    if (binding.parsedChord.length === 1 && PREEMPTING_ACTIONS.has(binding.action)) {
+      prefix.preempt = true;
     }
     prefixes.set(prefixKey(prefix), prefix);
   }

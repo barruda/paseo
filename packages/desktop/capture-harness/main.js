@@ -1241,6 +1241,13 @@ function automationFixtureUrl() {
         <script>
           window.fixtureLog = [];
           window.preventBrowserShortcut = false;
+          // CUSTOM(browser-shortcut-preempt): a page (Warp) that claims a preempting shortcut.
+          window.addEventListener("keydown", (event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "j") {
+              event.preventDefault();
+              window.fixtureLog.push({ event: "page-shortcut-j" });
+            }
+          });
           window.installLateBrowserShortcutHandler = () => {
             window.addEventListener(
               "keydown",
@@ -1826,6 +1833,28 @@ async function verifyLatePageShortcutFirstRefusal({ guest, sentinel, shortcutInp
   return { group: "automation", check: "browser-shortcut-late-page-handler", pass: true };
 }
 
+// CUSTOM(browser-shortcut-preempt)
+async function verifyPreemptingShortcut({ guest, shortcutInputs }) {
+  const before = shortcutInputs.length;
+  automationBrowserShortcut(guest, "J");
+  await waitForBrowserShortcutInput(shortcutInputs, before + 1);
+  await delay(100);
+  const log = await automationLog(guest);
+  const crossed = shortcutInputs.slice(before);
+  if (
+    crossed.length !== 1 ||
+    crossed[0]?.code !== "KeyJ" ||
+    log.some((entry) => entry.event === "page-shortcut-j")
+  ) {
+    fail(
+      `preempting shortcut did not cross ahead of the page: inputs=${JSON.stringify(crossed)} log=${JSON.stringify(log)}`,
+    );
+  }
+  shortcutInputs.splice(before);
+  pass("automation preempting shortcut crosses before the page can claim it");
+  return { group: "automation", check: "browser-shortcut-preempt", pass: true };
+}
+
 async function verifyFocusedIframeShortcut({ guest, shortcutInputs, expectedInput }) {
   const iframeFocused = await guest.executeJavaScript(
     `new Promise((resolve) => {
@@ -1917,6 +1946,7 @@ async function verifyBrowserKeyboardIsolation({ guest, win, browserId, usesMeta,
   checks.push({ group: "automation", check: "browser-shortcut-page-prevented", pass: true });
 
   checks.push(await verifyLatePageShortcutFirstRefusal({ guest, sentinel, shortcutInputs }));
+  checks.push(await verifyPreemptingShortcut({ guest, shortcutInputs }));
 
   await guest.executeJavaScript("window.preventBrowserShortcut = false", true);
   const unhandledTarget = await guest.executeJavaScript(
@@ -2168,6 +2198,16 @@ async function runAutomationGroup() {
           control: !usesMeta,
           key: "b",
           meta: usesMeta,
+          repeat: false,
+          shift: false,
+        },
+        {
+          alt: false,
+          code: "KeyJ",
+          control: !usesMeta,
+          key: "j",
+          meta: usesMeta,
+          preempt: true,
           repeat: false,
           shift: false,
         },
