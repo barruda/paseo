@@ -1854,3 +1854,25 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
   build: open History, type a question in Ask AI (for example "relatório de melhorias para android
   de hoje") and press Enter. After about 20 s the picks appear with reasons, and the status line
   lists the searches and the date.
+
+## diff-stat-uncommitted: the workspace diff stat counts what `git status` shows
+
+- **Added:** 2026-10-18
+- **Commit:** `custom: workspace diff stat counts only uncommitted changes`
+- **Why:** The composer pill and the sidebar rows counted the branch against its base
+  (`origin/main` on a main checkout), so local commits not yet pushed inflated the number and it
+  never matched the Uncommitted count in the Changes sidebar.
+- **What:** The workspace diff stat (composer pill, sidebar workspace rows) is the tracked diff
+  against HEAD plus the lines of untracked files. Committing makes it drop; pushing does not change
+  it. A repository without commits compares against the empty tree. Needs a daemon from this build.
+- **Core files touched:** `packages/server/src/utils/checkout-git.ts`
+  (`getCheckoutShortstatUncached`, marked `CUSTOM(diff-stat-uncommitted)`; the comparison-ref
+  helper it used is removed). Upstream tests that asserted the branch diff in
+  `checkout-git.test.ts` and `checkout-git-ref-derived.test.ts` now expect only uncommitted work.
+- **Re-apply:** In the uncached shortstat loader, drop the comparison-ref and merge-base lookup and
+  run `git diff --shortstat HEAD` (the empty tree when `rev-parse --verify HEAD` fails), keeping the
+  untracked-line count. Leave refresh triggers alone: a commit rewrites `.git/index`, which already
+  schedules a worktree refresh. Fix the upstream shortstat tests to the new numbers.
+- **Verify:** The shortstat tests are in the update script. By hand, after restarting the daemon:
+  on a checkout with unpushed commits and a few edits, the composer pill matches the Uncommitted
+  total in Changes, and committing brings it to zero.

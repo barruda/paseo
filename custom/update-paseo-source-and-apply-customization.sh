@@ -301,6 +301,8 @@ if $VERIFY; then
   # Commit only the files checked in the Changes tree.
   (cd packages/app && npx vitest run src/git/commit-selection/model.test.ts --bail=1)
   (cd packages/server && npx vitest run src/utils/checkout-git.test.ts -t "commitChanges with paths" --bail=1)
+  # Workspace diff stat counts uncommitted work only.
+  (cd packages/server && npx vitest run src/utils/checkout-git.test.ts -t "shortstat|git status shows|repository without commits" src/utils/checkout-git-ref-derived.test.ts --bail=1)
   (cd packages/app && npx playwright test --project=browser e2e/browser/changes-commit-selection.spec.ts)
   (cd packages/app && npx vitest run src/chat-code-run/model.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/media-pause.test.ts --bail=1)

@@ -2772,37 +2772,20 @@ async function getCheckoutShortstatUncached(
     }
   }
 
-  const facts = context?.facts;
-  const localBaseRef = facts?.isGit
-    ? facts.resolvedBaseRef
-    : await getResolvedBaseRefForCwd(cwd, context);
-  const currentBranch = facts?.isGit ? facts.currentBranch : await getCurrentBranch(cwd, context);
-  const comparisonRef = await resolveShortstatComparisonRef({
-    cwd,
-    currentBranch,
-    localBaseRef,
-    facts,
-    context,
-  });
-  if (!comparisonRef) {
-    return null;
-  }
-
+  // CUSTOM(diff-stat-uncommitted): the workspace diff stat counts what `git status` shows (tracked
+  // changes against HEAD plus untracked files), not the branch's diff against its base.
   try {
-    const { stdout: mergeBaseOut } = await getRunGitCommand(context)(
-      ["merge-base", "HEAD", comparisonRef],
-      {
-        cwd,
-        envOverlay: READ_ONLY_GIT_ENV,
-      },
+    const hasHead = await getRunGitCommand(context)(["rev-parse", "--verify", "--quiet", "HEAD"], {
+      cwd,
+      envOverlay: READ_ONLY_GIT_ENV,
+    }).then(
+      () => true,
+      () => false,
     );
-    const mergeBase = mergeBaseOut.trim();
-    if (!mergeBase) {
-      return null;
-    }
+    const base = hasHead ? "HEAD" : EMPTY_TREE_OBJECT_ID;
 
     const [{ stdout }, untrackedAdditions] = await Promise.all([
-      getRunGitCommand(context)(["diff", "--shortstat", mergeBase], {
+      getRunGitCommand(context)(["diff", "--shortstat", base], {
         cwd,
         envOverlay: READ_ONLY_GIT_ENV,
       }),
@@ -2821,32 +2804,6 @@ async function getCheckoutShortstatUncached(
   } catch (error) {
     return handleShortstatGitError(error, options?.throwOnGitError);
   }
-}
-
-async function resolveShortstatComparisonRef(input: {
-  cwd: string;
-  currentBranch: string | null;
-  localBaseRef: string | null;
-  facts?: CheckoutSnapshotFacts | null;
-  context?: CheckoutContext;
-}): Promise<string | null> {
-  const { cwd, currentBranch, localBaseRef, facts, context } = input;
-  if (!currentBranch) {
-    return null;
-  }
-
-  if (localBaseRef && currentBranch !== localBaseRef) {
-    try {
-      return facts?.isGit && facts.resolvedBaseRef === localBaseRef && facts.comparisonBaseRef
-        ? facts.comparisonBaseRef
-        : await resolveBestComparisonBaseRef(cwd, localBaseRef, context);
-    } catch {
-      return null;
-    }
-  }
-
-  const hasOrigin = await doesGitRefExist(cwd, `refs/remotes/origin/${currentBranch}`, context);
-  return hasOrigin ? `origin/${currentBranch}` : null;
 }
 
 function getOrLoadCheckoutShortstat(
