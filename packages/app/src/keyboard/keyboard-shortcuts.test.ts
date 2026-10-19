@@ -651,6 +651,15 @@ describe("keyboard-shortcuts", () => {
     });
   });
 
+  // CUSTOM(ctrl-t-terminal)
+  it("opens a new tab with Ctrl+T on non-mac desktop while a terminal is focused", () => {
+    expectShortcutResolution({
+      event: { key: "t", code: "KeyT", ctrlKey: true },
+      context: { isMac: false, isDesktop: true, focusScope: "terminal" },
+      action: "workspace.tab.menu.open",
+    });
+  });
+
   it("completes a chord whose second step carries a modifier", () => {
     const bindings = buildEffectiveBindings({
       "command-center-toggle-ctrl-k-non-mac": "Ctrl+K Ctrl+J",

@@ -1461,6 +1461,22 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   tab in the pane, source workspace ownership, reuse without duplicate terminals, and that
   closing the last tab removes the pane. Both are registered in the update script.
 
+## ctrl-t-terminal: Ctrl+T opens a tab from inside a terminal
+
+- **Added:** 2026-10-18
+- **Commit:** `custom: Ctrl+T opens a new tab from inside a terminal`
+- **Why:** In the bottom panel the terminal has focus most of the time, and upstream's Linux and
+  Windows Ctrl+T binding skips terminals, so Ctrl+T never opened a tab there.
+- **What:** Ctrl+T opens a new tab in the focused pane, also when a terminal has focus. The shell
+  no longer gets Ctrl+T (readline's transpose-chars). Rebind it in Settings → Keyboard shortcuts
+  ("New tab") to get it back. macOS uses Cmd+T and was not affected.
+- **Core files touched:** `packages/app/src/keyboard/keyboard-shortcuts.ts`: the
+  `workspace-tab-new-ctrl-t-non-mac` binding, marked `CUSTOM(ctrl-t-terminal)`.
+- **Re-apply:** Drop `terminal: false` from that binding's `when`.
+- **Verify:** `(cd packages/app && npx vitest run src/keyboard/keyboard-shortcuts.test.ts)` and
+  the desktop `e2e/task-navigation.spec.ts`, which presses Ctrl+T inside the bottom panel's
+  terminal.
+
 ## chat-esc-focus: Esc after selecting chat text returns to the composer
 
 - **Added:** 2026-10-16

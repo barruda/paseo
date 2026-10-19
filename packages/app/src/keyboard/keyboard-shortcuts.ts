@@ -507,11 +507,13 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       label: "New tab",
     },
   },
+  // CUSTOM(ctrl-t-terminal): also from inside a terminal, so the bottom panel can open a tab next
+  // to its terminal. The shell loses readline's transpose-chars.
   {
     id: "workspace-tab-new-ctrl-t-non-mac",
     action: "workspace.tab.menu.open",
     combo: "Ctrl+T",
-    when: { mac: false, commandCenter: false, terminal: false },
+    when: { mac: false, commandCenter: false },
     help: {
       id: "workspace-tab-new",
       section: "tabs-panes",

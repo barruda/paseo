@@ -93,6 +93,12 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await expect(bottom).toBeVisible();
     await expect(bottom.locator('[data-testid^="workspace-tab-terminal_"]')).toHaveCount(1);
     await expect.poll(countTerminals).toBe(1);
+    // Ctrl+T works from inside the panel's terminal and opens the new tab in the panel.
+    const launcherTab = bottom.locator('[data-testid^="workspace-tab-desk-"]');
+    await page.keyboard.press("Control+t");
+    await expect(launcherTab).toHaveCount(1);
+    await page.keyboard.press("Control+w");
+    await expect(launcherTab).toHaveCount(0);
     await page.keyboard.press("Control+j");
     await expect(bottom).not.toBeVisible();
     await page.keyboard.press("Control+j");
