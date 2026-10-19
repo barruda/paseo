@@ -288,6 +288,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/sidebar-workspace-limit/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/header-shortcuts/fit.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/session.create-agent-title.test.ts --bail=1)
+  # Ctrl+Tab stays in a page in the bottom panel.
+  (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-browser.test.ts --bail=1)
   # Ctrl+J crosses ahead of the page in browser tabs.
   (cd packages/app && npx vitest run src/desktop/browser/shortcuts.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/browser-keyboard/policy.test.ts --bail=1)

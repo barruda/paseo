@@ -5,6 +5,7 @@ import { getIsElectronRuntime } from "@/constants/layout";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { setCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import { getResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
+import { isBrowserInBottomPanel, isTabCycleKey } from "@/workspace-tabs/bottom-panel-browser";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import {
@@ -386,6 +387,10 @@ export function useKeyboardShortcuts({
   const handleBrowserShortcutInput = useStableEvent((payload: unknown) => {
     const input = parseBrowserShortcutInput(payload);
     if (!input) {
+      return;
+    }
+    // CUSTOM(bottom-panel-tab-keys): the page in the bottom panel (Warp) already used it.
+    if (isTabCycleKey(input) && isBrowserInBottomPanel(input.browserId)) {
       return;
     }
     resolveAndPerformShortcut({
