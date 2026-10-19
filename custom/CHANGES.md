@@ -1500,6 +1500,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     attached-browser registration (`desktop/host.ts`, `packages/desktop/src/preload.ts`), the
     main process parses it (`packages/desktop/src/main.ts`, `readAttachedBrowserInput`) and
     `features/browser-keyboard/index.ts` skips `classifyBrowserReservedShortcut` for that guest.
+    It also sets `setIgnoreMenuShortcuts(true)` for those keys: the app menu's Reload has the
+    same accelerator and would otherwise reload the whole Paseo window.
 - **Re-apply:** Add the fields end to end as above. Keep the toolbar JSX in place and only swap
   its style, so upstream edits to the toolbar still apply. The persisted schema is a
   `strictObject`: without the fields there, a saved record with them fails validation and every

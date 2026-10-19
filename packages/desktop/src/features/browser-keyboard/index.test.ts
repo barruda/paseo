@@ -226,6 +226,8 @@ describe("BrowserKeyboard", () => {
     expect(guest.input(electronInput({ ...command, code: "KeyL", key: "l" }))).toBe(false);
     expect(guest.reloads).toEqual([]);
     expect(host.sent).toEqual([]);
+    // The app menu's Reload shares Ctrl/Cmd+R; it must not reload the host window.
+    expect(guest.ignoredMenuShortcuts).toEqual([true, true]);
   });
 
   test("republishes the latest shortcut policy when the next guest document is ready", () => {

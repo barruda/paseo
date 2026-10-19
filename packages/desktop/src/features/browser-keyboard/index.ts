@@ -187,12 +187,18 @@ export class BrowserKeyboard {
       policy !== undefined && matchesBrowserShortcutPolicy(policy, matchInput);
     const belongsToMenuPolicy =
       policy !== undefined && matchesBrowserShortcutPrefixes(policy.menuPrefixes, matchInput);
+    const classified = classifyBrowserReservedShortcut(input, {
+      isMac: process.platform === "darwin",
+    });
+    // CUSTOM(browser-no-toolbar): the page keeps these keys, so the app menu's Reload (same
+    // accelerator) must not reload the whole window either.
+    const reservedShortcut = guest.pageOwnsReservedKeys ? null : classified;
     guest.contents.setIgnoreMenuShortcuts(
-      (!input.control && !input.meta) || belongsToBrowserPolicy || belongsToMenuPolicy,
+      (!input.control && !input.meta) ||
+        belongsToBrowserPolicy ||
+        belongsToMenuPolicy ||
+        (guest.pageOwnsReservedKeys === true && classified !== null),
     );
-    const reservedShortcut = guest.pageOwnsReservedKeys
-      ? null
-      : classifyBrowserReservedShortcut(input, { isMac: process.platform === "darwin" });
 
     switch (reservedShortcut) {
       case "force-reload":
