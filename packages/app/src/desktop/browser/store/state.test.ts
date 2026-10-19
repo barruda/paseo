@@ -161,6 +161,22 @@ describe("sanitizeBrowsersForPersist", () => {
     expect(persisted.browsersById.b1?.lastError).toBe(null);
   });
 
+  // CUSTOM(browser-no-toolbar)
+  it("keeps a hidden toolbar through persistence and validation", () => {
+    const base = createBrowserRecord({
+      browserId: "b1",
+      initialUrl: "http://127.0.0.1:3030/",
+      now: 0,
+      hideToolbar: true,
+    });
+    const restored = normalizeBrowserIndexState(
+      JSON.parse(JSON.stringify(sanitizeBrowsersForPersist(withRecords([base])))),
+    );
+    expect(restored.browsersById.b1?.hideToolbar).toBe(true);
+    const plain = createBrowserRecord({ browserId: "b2", initialUrl: "https://a.test", now: 0 });
+    expect(plain).not.toHaveProperty("hideToolbar");
+  });
+
   it("preserves viewport state", () => {
     const base = createBrowserRecord({ browserId: "b1", initialUrl: "https://a.test", now: 0 });
     const state = applyBrowserPatch(withRecords([base]), "b1", {

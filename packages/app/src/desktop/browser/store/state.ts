@@ -17,6 +17,8 @@ export interface BrowserRecord {
   lastError: string | null;
   viewport: BrowserViewport;
   createdAt: number;
+  /** CUSTOM(browser-no-toolbar): an app-like page (Warp) that shows no URL bar or buttons. */
+  hideToolbar?: boolean;
 }
 
 export type BrowserRecordPatch = Partial<Omit<BrowserRecord, "browserId" | "createdAt">>;
@@ -45,6 +47,8 @@ const BrowserRecordSchema = z.strictObject({
   lastError: z.string().nullable(),
   viewport: BrowserViewportSchema.optional().default(RESPONSIVE_BROWSER_VIEWPORT),
   createdAt: z.number(),
+  // CUSTOM(browser-no-toolbar)
+  hideToolbar: z.boolean().optional(),
 });
 
 export const BrowserIndexStateSchema: z.ZodType<BrowserIndexState> = z.strictObject({
@@ -108,6 +112,7 @@ export function createBrowserRecord(input: {
   browserId: string;
   initialUrl: string | null | undefined;
   now: number;
+  hideToolbar?: boolean;
 }): BrowserRecord {
   return {
     browserId: input.browserId,
@@ -120,6 +125,7 @@ export function createBrowserRecord(input: {
     lastError: null,
     viewport: RESPONSIVE_BROWSER_VIEWPORT,
     createdAt: input.now,
+    ...(input.hideToolbar ? { hideToolbar: true } : {}),
   };
 }
 

@@ -7,7 +7,7 @@ interface HostNavigationOwner {
   openAgent(input: { serverId: string; agentId: string }): void;
   openWorkspace(input: NavigateToWorkspaceInput): void;
   resolveWorkspace(input: { serverId: string; workspaceId: string }): string | null;
-  createBrowser(input: { initialUrl: string }): { browserId: string };
+  createBrowser(input: { initialUrl: string; hideToolbar?: boolean }): { browserId: string };
 }
 
 export function createPluginHostNavigation(
@@ -20,7 +20,7 @@ export function createPluginHostNavigation(
     openWorkspace: ({ workspaceId, serverId: targetServerId }) =>
       owner.openWorkspace({ serverId: targetServerId ?? serverId, workspaceId }),
     openBrowser: owner.browserAvailable
-      ? ({ url, workspaceId, serverId: targetServerId }) => {
+      ? ({ url, workspaceId, serverId: targetServerId, toolbar }) => {
           if (!isHttpUrl(url)) throw new Error("Only absolute HTTP(S) URLs are supported.");
           if (!workspaceId.trim()) throw new Error("workspaceId is required.");
           const destinationServerId = targetServerId ?? serverId;
@@ -30,7 +30,11 @@ export function createPluginHostNavigation(
           });
           if (!destinationWorkspaceId)
             throw new Error("Workspace is unavailable on the requested host.");
-          const { browserId } = owner.createBrowser({ initialUrl: url });
+          // CUSTOM(browser-no-toolbar)
+          const { browserId } = owner.createBrowser({
+            initialUrl: url,
+            ...(toolbar === false ? { hideToolbar: true } : {}),
+          });
           owner.openWorkspace({
             serverId: destinationServerId,
             workspaceId: destinationWorkspaceId,

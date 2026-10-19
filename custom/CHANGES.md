@@ -1466,6 +1466,34 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   tab in the pane, source workspace ownership, reuse without duplicate terminals, and that
   closing the last tab removes the pane. Both are registered in the update script.
 
+## browser-no-toolbar: Warp tabs without the browser toolbar, focused like a terminal
+
+- **Added:** 2026-10-18
+- **Commit:** `custom: Warp tabs hide the browser toolbar and take focus`
+- **Why:** Warp is the whole UI of its tab, so the URL bar and browser buttons were noise. In the
+  bottom panel, Ctrl+J showed the Warp tab again without giving it the keyboard, unlike a
+  terminal.
+- **What:** Plugins can call `navigation.openBrowser({ ..., toolbar: false })`. The browser record
+  keeps `hideToolbar: true`; its pane hides the toolbar row and focuses the page whenever the pane
+  becomes the focused one (Ctrl+J showing the bottom panel, clicking the tab). The Warp plugin
+  opens its sessions this way. Warp tabs opened before this keep their toolbar; open new ones.
+- **Core files touched** (marked `CUSTOM(browser-no-toolbar)`):
+  - `packages/plugin/src/client/contracts.ts`: the `toolbar` option of `openBrowser`.
+  - `packages/app/src/plugins/host-navigation-model.ts`: passes it as `hideToolbar`.
+  - `packages/app/src/desktop/browser/store/state.ts` and `store/index.ts`: the optional
+    `hideToolbar` field, in `BrowserRecord`, its strict persistence schema, and
+    `createBrowserRecord`/`createWorkspaceBrowser`.
+  - `packages/app/src/desktop/browser/pane/index.electron.tsx`: the toolbar row's style switches
+    to `chromeRowHidden` (`display: none`), and an effect focuses the webview while the pane is
+    interactive.
+- **Re-apply:** Add the optional field end to end as above. Keep the toolbar JSX in place and only
+  swap its style, so upstream edits to the toolbar still apply. The persisted schema is a
+  `strictObject`: without the field there, a saved record with it fails validation and every
+  browser tab is dropped on load. After changing `contracts.ts`, run
+  `npm run build --workspace=@getpaseo/plugin` before typechecking the app.
+- **Verify:** `(cd packages/app && npx vitest run src/desktop/browser/store/state.test.ts src/plugins/host-navigation.test.ts)`.
+  In the app, open Warp: no URL bar. Put it in the bottom panel, press Ctrl+J twice and type.
+
 ## ctrl-t-terminal: Ctrl+T opens a tab from inside a terminal
 
 - **Added:** 2026-10-18

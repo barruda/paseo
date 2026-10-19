@@ -63,6 +63,27 @@ describe("plugin host navigation", () => {
     expect(browsers).toEqual([]);
   });
 
+  // CUSTOM(browser-no-toolbar)
+  it("opens a browser without its toolbar when the plugin asks", () => {
+    const created: unknown[] = [];
+    const navigation = createPluginHostNavigation("selected", {
+      browserAvailable: true,
+      resolveWorkspace: ({ workspaceId }) => workspaceId,
+      openAgent: () => {},
+      openWorkspace: () => {},
+      createBrowser: (input) => {
+        created.push(input);
+        return { browserId: `browser-${created.length}` };
+      },
+    });
+    navigation.openBrowser!({ url: "http://127.0.0.1:3030/", workspaceId: "one", toolbar: false });
+    navigation.openBrowser!({ url: "https://example.com", workspaceId: "one" });
+    expect(created).toEqual([
+      { initialUrl: "http://127.0.0.1:3030/", hideToolbar: true },
+      { initialUrl: "https://example.com" },
+    ]);
+  });
+
   it("exposes no browser capability outside Electron and creates no tabs", () => {
     const { navigation, destinations, browsers } = setup(false);
     expect(navigation.openBrowser).toBeUndefined();

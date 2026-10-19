@@ -38,6 +38,8 @@ interface PluginNavigableHostProps extends PluginHostProps {
       readonly url: string;
       readonly workspaceId: string;
       readonly serverId?: string;
+      /** CUSTOM(browser-no-toolbar): false opens the page without the URL bar and buttons. */
+      readonly toolbar?: boolean;
     }) => void;
     readonly openAgent: (input: { readonly agentId: string; readonly serverId?: string }) => void;
     readonly openWorkspace: (input: {

@@ -994,6 +994,17 @@ export function BrowserPane({
     webviewRef.current?.reload?.();
   }, [browser?.isLoading, browserId, updateBrowser]);
 
+  // CUSTOM(browser-no-toolbar): an app-like page takes the keyboard when its pane gains focus,
+  // like a terminal does, e.g. when Ctrl+J shows the bottom panel again.
+  const hideToolbar = browser?.hideToolbar === true;
+  useEffect(() => {
+    if (!hideToolbar || !isInteractive) return;
+    webviewRef.current?.focus?.();
+    void getDesktopHost()
+      ?.browser?.focus?.(browserId)
+      ?.catch((error: unknown) => console.error("[browser-webview] focus failed", error));
+  }, [browserId, hideToolbar, isInteractive]);
+
   useEffect(() => {
     if (!isElectronRuntime() || !isInteractive) {
       return;
@@ -1434,7 +1445,8 @@ export function BrowserPane({
 
   return (
     <View style={styles.container}>
-      <View style={styles.chromeRow}>
+      {/* CUSTOM(browser-no-toolbar): app-like pages (Warp) fill the pane on their own. */}
+      <View style={browser?.hideToolbar ? styles.chromeRowHidden : styles.chromeRow}>
         <View style={styles.chromeLeft}>
           <ToolbarButton
             label={t("workspace.browser.controls.back")}
@@ -1688,6 +1700,7 @@ const styles = StyleSheet.create((theme) => ({
     minHeight: 0,
     backgroundColor: theme.colors.surface0,
   },
+  chromeRowHidden: { display: "none" },
   chromeRow: {
     height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
     flexDirection: "row",

@@ -26,7 +26,8 @@ export function WarpPanel({ theme, layout, workspaceId, navigation }: PluginWork
     setBusy(true);
     try {
       const { url } = await openSession({ cwd: directory });
-      if (openBrowser) openBrowser({ url, workspaceId });
+      // Warp is the whole UI; the browser's URL bar and buttons are noise there.
+      if (openBrowser) openBrowser({ url, workspaceId, toolbar: false });
       else setLinkUrl(url);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
