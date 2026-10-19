@@ -68,9 +68,12 @@ daemon, which stops its running agents.
 
 A daemon-side change with an unchanged version needs the daemon stopped by hand. The daemon runs
 under a long-lived `Paseo Supervisor` that respawns it from the build the supervisor started from,
-so neither reopening the window nor Settings > Restart daemon picks up new daemon code. Close the
-Paseo windows, run `~/Applications/Paseo-builds/<newest>/resources/bin/paseo daemon stop --home
-~/.paseo` (and `~/.paseo-telus`), then reopen Paseo. This stops the running agents.
+so neither reopening the window nor Settings > Restart daemon picks up new daemon code. Run
+`kill-paseos-and-daemons.sh` (`custom/bin/`, linked into `~/.local/bin`). It stops both daemons
+(`~/.paseo` and `~/.paseo-telus`), closes both Paseo windows, and reopens both from their
+launchers, giving each step 5 s before it kills. This stops the running agents. It detaches
+first, so it also works as `!kill-paseos-and-daemons.sh` from a Paseo chat or from a Paseo
+terminal, both of which the daemon owns. Its log is `~/.local/state/kill-paseos-and-daemons.log`.
 
 Installed builds have the auto-updater off, so they never replace themselves with upstream's
 release; updates only come from this script.

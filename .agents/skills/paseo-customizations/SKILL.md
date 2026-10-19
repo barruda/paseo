@@ -50,9 +50,9 @@ rules agents get wrong.
   reopens it from its launcher (so it keeps its dock slot). The daemon and its agents keep running,
   and the script skips any window whose daemon would stop on quit. For daemon-side changes that is not enough: with an unchanged version the
   `Paseo Supervisor` keeps respawning the daemon from the old build, even after Settings >
-  Restart daemon. Tell the user to close Paseo, run
-  `~/Applications/Paseo-builds/<newest>/resources/bin/paseo daemon stop --home ~/.paseo`, and
-  reopen it (see "Updating" in `custom/README.md`).
+  Restart daemon. Tell the user to run `kill-paseos-and-daemons.sh` (it also works as a `!`
+  command in Paseo). Don't run it yourself: it stops the daemon your own session runs under (see
+  "Updating" in `custom/README.md`).
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user
   first when the upstream version changed: reopening the app restarts the daemon, which stops its
   running agents. Only run `custom/reopen-paseo-clients.sh` after an upstream pull when the
