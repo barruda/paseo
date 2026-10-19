@@ -3,7 +3,7 @@ import {
   type DesktopAttachedBrowserRegistration,
   type DesktopBrowserBridge,
 } from "@/desktop/host";
-import type { BrowserViewport } from "@/desktop/browser/store";
+import { getBrowserRecord, type BrowserViewport } from "@/desktop/browser/store";
 import { WEB_SURFACE_PLANE } from "@/lib/overlay-root";
 
 const RESIDENT_BROWSER_HOST_ID = "paseo-browser-resident-webviews";
@@ -67,6 +67,10 @@ function registerBrowserWhenAttached(
         browserId: identity.browserId,
         workspaceId: identity.workspaceId,
         webContentsId,
+        // CUSTOM(browser-no-toolbar): no reload button or URL bar to give those keys to.
+        ...(getBrowserRecord(identity.browserId)?.hideToolbar
+          ? { pageOwnsReservedKeys: true }
+          : {}),
       })
       .catch((error) => {
         console.error("[browser-webview] attached registration failed", error);

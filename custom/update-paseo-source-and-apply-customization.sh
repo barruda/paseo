@@ -293,6 +293,7 @@ if $VERIFY; then
   (cd packages/desktop && npx vitest run src/features/browser-keyboard/policy.test.ts --bail=1)
   # Warp tabs without the browser toolbar.
   (cd packages/app && npx vitest run src/desktop/browser/store/state.test.ts src/plugins/host-navigation.test.ts --bail=1)
+  (cd packages/desktop && npx vitest run src/features/browser-keyboard/index.test.ts --bail=1)
   # Tasks/Desks persistence, cross-project references, and workspace fallback.
   (cd packages/app && npx vitest run src/task-navigation/model.test.ts src/task-navigation/store.test.ts src/workspace-tabs/open-supporting-view.test.ts --bail=1)
   npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/task-navigation.spec.ts --workers=1

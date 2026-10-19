@@ -7,6 +7,7 @@ import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { definePanel, type PanelDescriptor, type PanelIconProps } from "@/panels/panel-registry";
 import { useBrowserStore } from "@/desktop/browser/store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { findPluginIcon } from "@/plugins/icons";
 
 function getBrowserLabel(input: { title: string; url: string }): string {
   const title = input.title.trim();
@@ -41,7 +42,10 @@ function useBrowserPanelDescriptor(target: {
 }): PanelDescriptor {
   const browser = useBrowserStore((state) => state.browsersById[target.browserId] ?? null);
   const url = browser?.url ?? "https://example.com";
-  const icon = createBrowserTabIcon(browser?.faviconUrl ?? null);
+  // CUSTOM(browser-no-toolbar): a plugin-chosen icon wins over the favicon.
+  const icon =
+    (browser?.tabIcon ? findPluginIcon(browser.tabIcon) : null) ??
+    createBrowserTabIcon(browser?.faviconUrl ?? null);
   const label = getBrowserLabel({ title: browser?.title ?? "", url });
 
   return {

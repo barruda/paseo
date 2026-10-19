@@ -7,7 +7,11 @@ interface HostNavigationOwner {
   openAgent(input: { serverId: string; agentId: string }): void;
   openWorkspace(input: NavigateToWorkspaceInput): void;
   resolveWorkspace(input: { serverId: string; workspaceId: string }): string | null;
-  createBrowser(input: { initialUrl: string; hideToolbar?: boolean }): { browserId: string };
+  createBrowser(input: { initialUrl: string; hideToolbar?: boolean; tabIcon?: string }): {
+    browserId: string;
+  };
+  /** CUSTOM(browser-no-toolbar): present in a workspace panel; retargets the panel's tab. */
+  replaceCurrentTab?(target: { kind: "browser"; browserId: string }): void;
 }
 
 export function createPluginHostNavigation(
@@ -20,7 +24,7 @@ export function createPluginHostNavigation(
     openWorkspace: ({ workspaceId, serverId: targetServerId }) =>
       owner.openWorkspace({ serverId: targetServerId ?? serverId, workspaceId }),
     openBrowser: owner.browserAvailable
-      ? ({ url, workspaceId, serverId: targetServerId, toolbar }) => {
+      ? ({ url, workspaceId, serverId: targetServerId, toolbar, icon, replacePanel }) => {
           if (!isHttpUrl(url)) throw new Error("Only absolute HTTP(S) URLs are supported.");
           if (!workspaceId.trim()) throw new Error("workspaceId is required.");
           const destinationServerId = targetServerId ?? serverId;
@@ -34,7 +38,12 @@ export function createPluginHostNavigation(
           const { browserId } = owner.createBrowser({
             initialUrl: url,
             ...(toolbar === false ? { hideToolbar: true } : {}),
+            ...(icon ? { tabIcon: icon } : {}),
           });
+          if (replacePanel && owner.replaceCurrentTab) {
+            owner.replaceCurrentTab({ kind: "browser", browserId });
+            return;
+          }
           owner.openWorkspace({
             serverId: destinationServerId,
             workspaceId: destinationWorkspaceId,

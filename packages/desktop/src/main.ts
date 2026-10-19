@@ -145,6 +145,8 @@ interface AttachedBrowserInput {
   browserId: string;
   workspaceId: string;
   webContentsId: number;
+  // CUSTOM(browser-no-toolbar)
+  pageOwnsReservedKeys: boolean;
 }
 
 function readAttachedBrowserInput(input: unknown): AttachedBrowserInput | null {
@@ -169,6 +171,7 @@ function readAttachedBrowserInput(input: unknown): AttachedBrowserInput | null {
     browserId: record.browserId.trim(),
     workspaceId: record.workspaceId.trim(),
     webContentsId: record.webContentsId,
+    pageOwnsReservedKeys: record.pageOwnsReservedKeys === true,
   };
 }
 
@@ -410,7 +413,11 @@ ipcMain.handle("paseo:browser:register-attached", (event, rawInput: unknown) => 
   if (!guest) {
     throw new Error("Attached browser guest disappeared after registration");
   }
-  browserKeyboard.attach({ contents: guest, hostContents: event.sender });
+  browserKeyboard.attach({
+    contents: guest,
+    hostContents: event.sender,
+    pageOwnsReservedKeys: input.pageOwnsReservedKeys,
+  });
   log.info("[browser-webview] registered", {
     browserId: input.browserId,
     webContentsId: input.webContentsId,

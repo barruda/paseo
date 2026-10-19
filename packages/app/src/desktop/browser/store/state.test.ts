@@ -168,11 +168,13 @@ describe("sanitizeBrowsersForPersist", () => {
       initialUrl: "http://127.0.0.1:3030/",
       now: 0,
       hideToolbar: true,
+      tabIcon: "SquareTerminal",
     });
     const restored = normalizeBrowserIndexState(
       JSON.parse(JSON.stringify(sanitizeBrowsersForPersist(withRecords([base])))),
     );
     expect(restored.browsersById.b1?.hideToolbar).toBe(true);
+    expect(restored.browsersById.b1?.tabIcon).toBe("SquareTerminal");
     const plain = createBrowserRecord({ browserId: "b2", initialUrl: "https://a.test", now: 0 });
     expect(plain).not.toHaveProperty("hideToolbar");
   });

@@ -25,8 +25,15 @@ export {
   type BrowserViewport,
 } from "./state";
 
+// CUSTOM(browser-no-toolbar): hideToolbar and tabIcon.
+interface BrowserCreateInput {
+  initialUrl?: string;
+  hideToolbar?: boolean;
+  tabIcon?: string;
+}
+
 interface BrowserStoreState extends BrowserIndexState {
-  createBrowser: (input?: { initialUrl?: string; hideToolbar?: boolean }) => string;
+  createBrowser: (input?: BrowserCreateInput) => string;
   updateBrowser: (browserId: string, patch: BrowserRecordPatch) => void;
   setBrowserViewport: (browserId: string, viewport: BrowserViewport) => void;
   removeBrowser: (browserId: string) => void;
@@ -54,6 +61,7 @@ export const useBrowserStore = create<BrowserStoreState>()(
           initialUrl: input?.initialUrl,
           now: Date.now(),
           hideToolbar: input?.hideToolbar,
+          tabIcon: input?.tabIcon,
         });
 
         set((state) => ({
@@ -95,7 +103,7 @@ export function getBrowserRecord(browserId: string): BrowserRecord | null {
   return useBrowserStore.getState().browsersById[normalizedBrowserId] ?? null;
 }
 
-export function createWorkspaceBrowser(input?: { initialUrl?: string; hideToolbar?: boolean }): {
+export function createWorkspaceBrowser(input?: BrowserCreateInput): {
   browserId: string;
   url: string;
 } {

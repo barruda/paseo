@@ -11,10 +11,13 @@ import { createPluginHostNavigation } from "./host-navigation-model";
 
 export function usePluginHostNavigation(
   serverId: string,
+  // CUSTOM(browser-no-toolbar): workspace panels can turn their own tab into a browser.
+  replaceCurrentTab?: (target: { kind: "browser"; browserId: string }) => void,
 ): NonNullable<PluginSurfaceProps["navigation"]> {
   return useMemo(
     () =>
       createPluginHostNavigation(serverId, {
+        replaceCurrentTab,
         browserAvailable: getIsElectron(),
         openAgent: navigateToAgent,
         openWorkspace: navigateToWorkspace,
@@ -25,6 +28,6 @@ export function usePluginHostNavigation(
             workspaceId,
           }),
       }),
-    [serverId],
+    [replaceCurrentTab, serverId],
   );
 }

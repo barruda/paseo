@@ -26,9 +26,17 @@ export function WarpPanel({ theme, layout, workspaceId, navigation }: PluginWork
     setBusy(true);
     try {
       const { url } = await openSession({ cwd: directory });
-      // Warp is the whole UI; the browser's URL bar and buttons are noise there.
-      if (openBrowser) openBrowser({ url, workspaceId, toolbar: false });
-      else setLinkUrl(url);
+      // Warp is the whole UI; the browser's URL bar and buttons are noise there. The panel's own
+      // tab becomes the Warp tab, so "+ → Warp" leaves one tab.
+      if (openBrowser) {
+        openBrowser({
+          url,
+          workspaceId,
+          toolbar: false,
+          icon: "SquareTerminal",
+          replacePanel: true,
+        });
+      } else setLinkUrl(url);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : String(error));
     } finally {

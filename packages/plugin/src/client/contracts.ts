@@ -40,6 +40,13 @@ interface PluginNavigableHostProps extends PluginHostProps {
       readonly serverId?: string;
       /** CUSTOM(browser-no-toolbar): false opens the page without the URL bar and buttons. */
       readonly toolbar?: boolean;
+      /** CUSTOM(browser-no-toolbar): a Lucide icon for the tab, in place of the page's favicon. */
+      readonly icon?: string;
+      /**
+       * CUSTOM(browser-no-toolbar): from a workspace panel, turn the panel's own tab into the
+       * browser instead of opening another tab.
+       */
+      readonly replacePanel?: boolean;
     }) => void;
     readonly openAgent: (input: { readonly agentId: string; readonly serverId?: string }) => void;
     readonly openWorkspace: (input: {

@@ -29,7 +29,7 @@ const pluginThemeMapping = (theme: Theme) => ({
 });
 
 function PluginPanelBody({ theme }: { theme: PluginTheme }) {
-  const { serverId, workspaceId, target } = usePaneContext();
+  const { serverId, workspaceId, target, retargetCurrentTab } = usePaneContext();
   invariant(target.kind === "plugin", "PluginPanel requires plugin target");
   const plugin = useInstalledPlugin(serverId, target.pluginId);
   const contribution = resolvePluginWorkspacePanel(plugin, target);
@@ -50,7 +50,7 @@ function PluginPanelBody({ theme }: { theme: PluginTheme }) {
   const host = useMemo(() => ({ id: serverId, label: hostLabel }), [hostLabel, serverId]);
   const layout = useMemo(() => ({ compact, platform: resolvePluginPlatform() }), [compact]);
   const stateSource = useMemo(() => createPluginClientStateSource(serverId), [serverId]);
-  const navigation = usePluginHostNavigation(serverId);
+  const navigation = usePluginHostNavigation(serverId, retargetCurrentTab);
 
   if (!plugin || !contribution || !workspaceExists) {
     return <PluginPanelUnavailable />;

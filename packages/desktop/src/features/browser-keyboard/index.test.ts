@@ -150,6 +150,7 @@ function createBrowserKeyboard() {
     browserId: string;
     contents: FakeBrowserContents;
     hostContents: FakeBrowserContents;
+    pageOwnsReservedKeys?: boolean;
   }): void {
     const webContentsId = input.contents.id;
     registry.registerWebContents({
@@ -211,6 +212,20 @@ describe("BrowserKeyboard", () => {
 
     expect(wasPrevented).toBe(true);
     expect(guest.reloads).toEqual(["reload"]);
+  });
+
+  // CUSTOM(browser-no-toolbar)
+  test("leaves reload and focus-URL keys to an app-like page", () => {
+    const { attach } = createBrowserKeyboard();
+    const guest = new FakeBrowserContents(55);
+    const host = new FakeBrowserContents(56);
+    attach({ browserId: "warp", contents: guest, hostContents: host, pageOwnsReservedKeys: true });
+    const command = process.platform === "darwin" ? { meta: true } : { control: true };
+
+    expect(guest.input(electronInput({ ...command, code: "KeyR", key: "r" }))).toBe(false);
+    expect(guest.input(electronInput({ ...command, code: "KeyL", key: "l" }))).toBe(false);
+    expect(guest.reloads).toEqual([]);
+    expect(host.sent).toEqual([]);
   });
 
   test("republishes the latest shortcut policy when the next guest document is ready", () => {

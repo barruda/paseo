@@ -84,6 +84,33 @@ describe("plugin host navigation", () => {
     ]);
   });
 
+  // CUSTOM(browser-no-toolbar)
+  it("turns a panel's tab into the browser, with the plugin's icon, when asked", () => {
+    const created: unknown[] = [];
+    const replaced: unknown[] = [];
+    const opened: unknown[] = [];
+    const navigation = createPluginHostNavigation("selected", {
+      browserAvailable: true,
+      resolveWorkspace: ({ workspaceId }) => workspaceId,
+      openAgent: () => {},
+      openWorkspace: (input) => opened.push(input),
+      createBrowser: (input) => {
+        created.push(input);
+        return { browserId: "browser-1" };
+      },
+      replaceCurrentTab: (target) => replaced.push(target),
+    });
+    navigation.openBrowser!({
+      url: "http://127.0.0.1:3030/",
+      workspaceId: "one",
+      icon: "SquareTerminal",
+      replacePanel: true,
+    });
+    expect(created).toEqual([{ initialUrl: "http://127.0.0.1:3030/", tabIcon: "SquareTerminal" }]);
+    expect(replaced).toEqual([{ kind: "browser", browserId: "browser-1" }]);
+    expect(opened).toEqual([]);
+  });
+
   it("exposes no browser capability outside Electron and creates no tabs", () => {
     const { navigation, destinations, browsers } = setup(false);
     expect(navigation.openBrowser).toBeUndefined();

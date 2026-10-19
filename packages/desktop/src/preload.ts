@@ -27,6 +27,7 @@ interface AttachedBrowserRegistration {
   browserId: string;
   workspaceId: string;
   webContentsId: number;
+  pageOwnsReservedKeys?: boolean;
 }
 
 contextBridge.exposeInMainWorld("paseoDesktop", {

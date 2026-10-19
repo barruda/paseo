@@ -149,6 +149,8 @@ export interface DesktopAttachedBrowserRegistration {
   browserId: string;
   workspaceId: string;
   webContentsId: number;
+  /** CUSTOM(browser-no-toolbar): the page gets Ctrl/Cmd+R and +L instead of reload/URL bar. */
+  pageOwnsReservedKeys?: boolean;
 }
 
 export interface DesktopBrowserBridge {

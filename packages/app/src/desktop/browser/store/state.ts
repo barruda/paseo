@@ -19,6 +19,8 @@ export interface BrowserRecord {
   createdAt: number;
   /** CUSTOM(browser-no-toolbar): an app-like page (Warp) that shows no URL bar or buttons. */
   hideToolbar?: boolean;
+  /** CUSTOM(browser-no-toolbar): a Lucide icon name for the tab, in place of the favicon. */
+  tabIcon?: string;
 }
 
 export type BrowserRecordPatch = Partial<Omit<BrowserRecord, "browserId" | "createdAt">>;
@@ -49,6 +51,7 @@ const BrowserRecordSchema = z.strictObject({
   createdAt: z.number(),
   // CUSTOM(browser-no-toolbar)
   hideToolbar: z.boolean().optional(),
+  tabIcon: z.string().optional(),
 });
 
 export const BrowserIndexStateSchema: z.ZodType<BrowserIndexState> = z.strictObject({
@@ -113,6 +116,7 @@ export function createBrowserRecord(input: {
   initialUrl: string | null | undefined;
   now: number;
   hideToolbar?: boolean;
+  tabIcon?: string;
 }): BrowserRecord {
   return {
     browserId: input.browserId,
@@ -126,6 +130,7 @@ export function createBrowserRecord(input: {
     viewport: RESPONSIVE_BROWSER_VIEWPORT,
     createdAt: input.now,
     ...(input.hideToolbar ? { hideToolbar: true } : {}),
+    ...(input.tabIcon ? { tabIcon: input.tabIcon } : {}),
   };
 }
 

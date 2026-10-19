@@ -55,6 +55,8 @@ interface BrowserKeyboardHostContents extends BrowserKeyboardContentsIdentity {
 interface BrowserKeyboardGuest {
   contents: BrowserKeyboardGuestContents;
   hostContents: BrowserKeyboardHostContents;
+  /** CUSTOM(browser-no-toolbar): skip reload and focus-URL shortcuts for app-like pages (Warp). */
+  pageOwnsReservedKeys?: boolean;
 }
 
 export class BrowserKeyboard {
@@ -81,6 +83,7 @@ export class BrowserKeyboard {
   public attach(input: {
     contents: BrowserKeyboardGuestContents;
     hostContents: BrowserKeyboardHostContents;
+    pageOwnsReservedKeys?: boolean;
   }): void {
     const webContentsId = input.contents.id;
     const registration = this.browserRegistry.getRegistrationForWebContents(webContentsId);
@@ -90,7 +93,8 @@ export class BrowserKeyboard {
     const attachedGuest = this.attachedGuestsByWebContentsId.get(webContentsId);
     if (
       attachedGuest?.contents === input.contents &&
-      attachedGuest.hostContents === input.hostContents
+      attachedGuest.hostContents === input.hostContents &&
+      attachedGuest.pageOwnsReservedKeys === input.pageOwnsReservedKeys
     ) {
       return;
     }
@@ -186,9 +190,9 @@ export class BrowserKeyboard {
     guest.contents.setIgnoreMenuShortcuts(
       (!input.control && !input.meta) || belongsToBrowserPolicy || belongsToMenuPolicy,
     );
-    const reservedShortcut = classifyBrowserReservedShortcut(input, {
-      isMac: process.platform === "darwin",
-    });
+    const reservedShortcut = guest.pageOwnsReservedKeys
+      ? null
+      : classifyBrowserReservedShortcut(input, { isMac: process.platform === "darwin" });
 
     switch (reservedShortcut) {
       case "force-reload":

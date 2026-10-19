@@ -1466,33 +1466,50 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   tab in the pane, source workspace ownership, reuse without duplicate terminals, and that
   closing the last tab removes the pane. Both are registered in the update script.
 
-## browser-no-toolbar: Warp tabs without the browser toolbar, focused like a terminal
+## browser-no-toolbar: Warp opens as one app-like tab
 
 - **Added:** 2026-10-18
-- **Commit:** `custom: Warp tabs hide the browser toolbar and take focus`
-- **Why:** Warp is the whole UI of its tab, so the URL bar and browser buttons were noise. In the
-  bottom panel, Ctrl+J showed the Warp tab again without giving it the keyboard, unlike a
-  terminal.
-- **What:** Plugins can call `navigation.openBrowser({ ..., toolbar: false })`. The browser record
-  keeps `hideToolbar: true`; its pane hides the toolbar row and focuses the page whenever the pane
-  becomes the focused one (Ctrl+J showing the bottom panel, clicking the tab). The Warp plugin
-  opens its sessions this way. Warp tabs opened before this keep their toolbar; open new ones.
+- **Commits:** `custom: Warp tabs hide the browser toolbar and take focus`,
+  `custom: Warp opens in one tab and keeps Ctrl+R and Ctrl+L`
+- **Why:** Warp is the whole UI of its tab, so the URL bar and browser buttons were noise, and
+  "+ → Warp" left two tabs: the plugin's launcher and the browser tab it opened. In the bottom
+  panel, Ctrl+J showed the Warp tab again without giving it the keyboard, unlike a terminal. The
+  browser's reserved Ctrl+R (reload) and Ctrl+L (focus URL) took history search and clear screen
+  away from the shell.
+- **What:** `navigation.openBrowser` takes three more options. `toolbar: false` hides the toolbar
+  row, focuses the page whenever its pane becomes the focused one (Ctrl+J showing the bottom
+  panel, clicking the tab), and gives Ctrl/Cmd+R, Ctrl/Cmd+Shift+R and Ctrl/Cmd+L to the page.
+  `icon` is a Lucide icon name shown on the tab in place of the favicon. `replacePanel: true`,
+  from a workspace panel, retargets the panel's own tab to the browser. The Warp plugin uses all
+  three, so "+ → Warp" leaves one "Warp" tab with the terminal icon. The bridge page's title is
+  plain "Warp". Warp tabs opened before this keep their old look; open new ones.
 - **Core files touched** (marked `CUSTOM(browser-no-toolbar)`):
-  - `packages/plugin/src/client/contracts.ts`: the `toolbar` option of `openBrowser`.
-  - `packages/app/src/plugins/host-navigation-model.ts`: passes it as `hideToolbar`.
-  - `packages/app/src/desktop/browser/store/state.ts` and `store/index.ts`: the optional
-    `hideToolbar` field, in `BrowserRecord`, its strict persistence schema, and
-    `createBrowserRecord`/`createWorkspaceBrowser`.
+  - `packages/plugin/src/client/contracts.ts`: the three `openBrowser` options.
+  - `packages/app/src/plugins/host-navigation-model.ts` and `host-navigation.ts`: pass them on,
+    and the optional `replaceCurrentTab` owner hook; `plugins/workspace-panels/panel.tsx` hands it
+    the pane's `retargetCurrentTab`.
+  - `packages/app/src/desktop/browser/store/state.ts` and `store/index.ts`: optional
+    `hideToolbar` and `tabIcon` on `BrowserRecord`, its strict persistence schema,
+    `createBrowserRecord` and `createWorkspaceBrowser`.
+  - `packages/app/src/desktop/browser/panel.tsx`: the tab icon; `plugins/icons.ts` exports
+    `findPluginIcon`.
   - `packages/app/src/desktop/browser/pane/index.electron.tsx`: the toolbar row's style switches
     to `chromeRowHidden` (`display: none`), and an effect focuses the webview while the pane is
     interactive.
-- **Re-apply:** Add the optional field end to end as above. Keep the toolbar JSX in place and only
-  swap its style, so upstream edits to the toolbar still apply. The persisted schema is a
-  `strictObject`: without the field there, a saved record with it fails validation and every
+  - Reserved keys: `desktop/browser/resident-webviews.ts` sends `pageOwnsReservedKeys` with the
+    attached-browser registration (`desktop/host.ts`, `packages/desktop/src/preload.ts`), the
+    main process parses it (`packages/desktop/src/main.ts`, `readAttachedBrowserInput`) and
+    `features/browser-keyboard/index.ts` skips `classifyBrowserReservedShortcut` for that guest.
+- **Re-apply:** Add the fields end to end as above. Keep the toolbar JSX in place and only swap
+  its style, so upstream edits to the toolbar still apply. The persisted schema is a
+  `strictObject`: without the fields there, a saved record with them fails validation and every
   browser tab is dropped on load. After changing `contracts.ts`, run
-  `npm run build --workspace=@getpaseo/plugin` before typechecking the app.
-- **Verify:** `(cd packages/app && npx vitest run src/desktop/browser/store/state.test.ts src/plugins/host-navigation.test.ts)`.
-  In the app, open Warp: no URL bar. Put it in the bottom panel, press Ctrl+J twice and type.
+  `npm run build --workspace=@getpaseo/plugin` before typechecking the app. The bridge title
+  lives in `~/projetos/warp-web-custom/paseo-bridge/server.mjs`.
+- **Verify:** `(cd packages/app && npx vitest run src/desktop/browser/store/state.test.ts src/plugins/host-navigation.test.ts)`
+  and `(cd packages/desktop && npx vitest run src/features/browser-keyboard/index.test.ts)`. In
+  the app, "+ → Warp" gives one Warp tab with no URL bar; Ctrl+R searches the shell history. Put
+  it in the bottom panel, press Ctrl+J twice and type.
 
 ## browser-shortcut-preempt: Ctrl+J hides the bottom panel from inside Warp
 

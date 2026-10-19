@@ -3,7 +3,7 @@ import * as LucideIcons from "lucide-react-native";
 import type { PluginIconProps } from "@getpaseo/plugin/client";
 import type { LucideIcon } from "lucide-react-native";
 
-function findPluginIcon(name: string): LucideIcon | null {
+export function findPluginIcon(name: string): LucideIcon | null {
   const candidate = Reflect.get(LucideIcons, name);
   if (candidate === LucideIcons.Icon || candidate === LucideIcons.createLucideIcon) return null;
   const isComponent =
