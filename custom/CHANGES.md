@@ -268,6 +268,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Why:** Warp's terminal UX (blocks, input editor) inside Paseo. Warp is a native GPU app that
   can't be embedded, but its open-source client also compiles to the web, and its `remote_tty`
   build feature drives a shell over a plain WebSocket. Paseo runs that build in a browser tab.
+  The whole setup (architecture, shell, keyboard, building, debugging) is in
+  [docs/custom-warp-web-embedded.md](../docs/custom-warp-web-embedded.md).
 - **What:**
   - **Warp** in the "+" new-tab menu (and Command Center: "Open Warp") opens a Warp session in a
     workspace browser tab, in the workspace's folder. The Warp panel stays as a launcher with a

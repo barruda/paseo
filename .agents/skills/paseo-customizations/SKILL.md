@@ -31,6 +31,8 @@ rules agents get wrong.
 - Run `npm run typecheck`, `npm run lint -- <files>`, and `npm run format:files -- <files>` before
   committing, per the repo's `CLAUDE.md`.
 - After committing, back up with `git push --force-with-lease fork custom`.
+- Any Warp change (`custom/plugins/warp/`, the Warp browser tab options or keyboard routing, or
+  `~/projetos/warp-web-custom`) updates `docs/custom-warp-web-embedded.md` in the same task.
 
 ## Shipping a change to the user's running Paseo
 
