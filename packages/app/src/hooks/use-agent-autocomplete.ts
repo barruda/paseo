@@ -28,6 +28,7 @@ import {
   findActiveFileMention,
   type FileMentionRange,
 } from "@/utils/file-mention-autocomplete";
+import { useShellCommandCompletion } from "@/shell-command-composer/use-shell-command-completion";
 
 interface UseAgentAutocompleteInput {
   userInput: string;
@@ -44,6 +45,7 @@ interface UseAgentAutocompleteInput {
 
 interface AgentAutocompleteKeyPressEvent {
   key: string;
+  hasModifier?: boolean;
   preventDefault: () => void;
   input: AgentAutocompleteInputSnapshot;
 }
@@ -587,6 +589,22 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
         : undefined,
   });
 
+  // CUSTOM(shell-command-composer): `!<command>` lines get Up/Down history and a Tab-only list.
+  const shell = useShellCommandCompletion({
+    serverId,
+    agentId,
+    userInput,
+    cursorIndex,
+    setUserInput,
+    onApplied: onAutocompleteApplied,
+    pluginCommands: pluginClientSlashCommands,
+  });
+  const shellOnKeyPress = shell.onKeyPress;
+  const onKeyPressWithShell = useCallback(
+    (event: AgentAutocompleteKeyPressEvent) => shellOnKeyPress(event) || onKeyPress(event),
+    [shellOnKeyPress, onKeyPress],
+  );
+
   const isLoading = resolveAutocompleteIsLoading({
     mode,
     isCommandsLoading,
@@ -608,7 +626,7 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
       : t("agentAutocomplete.loadingCommands");
   const emptyText = resolveAutocompleteEmptyText({ mode, draft, t });
 
-  return {
+  return withShellCompletion(shell, {
     isVisible,
     options,
     selectedIndex,
@@ -617,6 +635,23 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     loadingText,
     emptyText,
     onSelectOption,
-    onKeyPress,
+    onKeyPress: onKeyPressWithShell,
+  });
+}
+
+// CUSTOM(shell-command-composer): the `!` list, while open, replaces the slash and @ lists.
+function withShellCompletion(
+  shell: ReturnType<typeof useShellCommandCompletion>,
+  result: AgentAutocompleteResult,
+): AgentAutocompleteResult {
+  if (!shell.isVisible) return result;
+  return {
+    ...result,
+    isVisible: true,
+    options: shell.options,
+    selectedIndex: shell.selectedIndex,
+    isLoading: false,
+    errorMessage: undefined,
+    onSelectOption: shell.onSelectOption,
   };
 }

@@ -18,7 +18,12 @@ export default function contribute(client: PluginClientContext) {
     context: "agent",
     async onSubmit({ args, agent, rpc }) {
       if (!args) throw new Error("Type a command: !ls or /sh ls");
-      await rpc(runShellCommandRpc, { agentId: agent.id, cwd: agent.cwd, command: args });
+      await rpc(runShellCommandRpc, {
+        agentId: agent.id,
+        cwd: agent.cwd,
+        command: args,
+        workspaceId: agent.workspaceId,
+      });
     },
   });
   const removeRenderer = client.addTimelineRenderer({

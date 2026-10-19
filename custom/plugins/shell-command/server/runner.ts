@@ -48,6 +48,7 @@ export class ShellCommandRunner {
       id,
       command: input.command,
       cwd: input.cwd,
+      ...(input.workspaceId ? { workspaceId: input.workspaceId } : {}),
       status: "running",
       exitCode: null,
       signal: null,

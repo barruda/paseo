@@ -45,7 +45,7 @@ export function mergeSlashCommandSources<
   return commands;
 }
 
-const BANG_COMMAND_NAME = "sh";
+export const BANG_COMMAND_NAME = "sh";
 
 export function resolvePluginClientSlashCommand<Command extends SlashCommandDescriptor>(input: {
   text: string;

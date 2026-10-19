@@ -45,8 +45,10 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   - Commands are killed after 30 minutes, and when the plugin stops.
   - Cards live in daemon memory. A daemon restart drops them from the chat history.
 - **Files:**
-  - `custom/plugins/shell-command/`: the plugin (slash command `sh`, RPCs `run` and `stop`, timeline
-    renderer). No conflict risk.
+  - `custom/plugins/shell-command/`: the plugin (slash command `sh`, RPCs `run`, `stop` and
+    `input`, timeline renderer; history and completion RPCs belong to
+    [shell-command-composer](#shell-command-composer-history-and-tab-completion-for-command)). No
+    conflict risk.
   - `packages/server/src/server/plugins/custom-shell-command-plugin.e2e.test.ts`: e2e test against a
     real daemon. New file; breaks only if upstream changes the test utilities.
 - **Core files touched:** `packages/app/src/plugins/client-slash-commands/model.ts`, the `!` →
@@ -2030,3 +2032,50 @@ isElectron: getIsElectron() })`. If it returns a target, retarget the launcher t
   Tasks mode) instead of creating the terminal.
 - **Verify:** `(cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-default.test.ts)`.
   In the app, close every tab in the bottom panel and press Ctrl+J: a Warp prompt opens there.
+
+## shell-command-composer: history and Tab completion for `!<command>`
+
+- **Added:** 2026-10-19
+- **Commit:** `custom: history and Tab completion for !<command>`
+- **Why:** Typing `!<command>` (see [shell-command](#shell-command-run-command-from-the-chat))
+  had no shell conveniences: every command was typed in full, and running one again meant finding
+  its card.
+- **What:** On a one-line composer text that starts with `!`:
+  - **Up / Down** walk the commands run before in this project, newest first. What is typed after
+    `!` filters them by prefix, like zsh's history-beginning-search (`!git` + Up shows only `git`
+    commands). Down past the newest restores the typed text. Up on an empty composer still selects
+    the last message for rewind.
+  - **Tab** completes. The list only opens on Tab, never while typing. With the cursor at the end,
+    past commands that extend the line come first; then files and folders for the word under the
+    cursor, resolved on the agent's host like a shell does (`src/co`, `~/`, absolute paths;
+    dotfiles only after a `.`; names with spaces come back escaped). A lone `!` lists history only.
+    A single match applies directly; several open the list (Up/Down, Tab or Enter picks, Escape
+    closes). Files get a trailing space; folders a `/`, so Tab again goes deeper. Typing a space or
+    leaving the word closes the list.
+  - History is per project, so a project's worktrees share it. An agent without a workspace falls
+    back to per-directory history. It is stored on the daemon in
+    `$PASEO_HOME/plugin-data/shell-command/history.json`, newest 500 per project, so every
+    device sees the same history. Run again on a Terminal card also counts.
+  - Desktop and browser only: the composer gets no key events on iOS/Android.
+- **Files:**
+  - `custom/plugins/shell-command/`: `server/history.ts` (store, project lookup from the
+    workspace, cached), `server/complete.ts` (path listing), the `history` and `complete-path`
+    RPCs, and an optional `workspaceId` on `run` (also kept on the timeline row for Run again).
+  - `packages/app/src/shell-command-composer/`: `model.ts` (line parsing, history stepping,
+    completions) and `use-shell-command-completion.ts` (queries, list state, keys). No conflict
+    risk.
+- **Core files touched** (marked `CUSTOM(shell-command-composer)`):
+  - `packages/app/src/hooks/use-agent-autocomplete.ts`: calls `useShellCommandCompletion`, runs
+    its `onKeyPress` before the slash/@ list's, and `withShellCompletion` swaps in its list while
+    open. `AgentAutocompleteKeyPressEvent` gains `hasModifier`.
+  - `packages/app/src/plugins/client-slash-commands/model.ts`: exports `BANG_COMMAND_NAME`.
+- **Re-apply:** In the composer's autocomplete hook (the one that owns the slash and @ lists and
+  the key handler the composer calls first), call `useShellCommandCompletion` with the agent's
+  server and id, the text, cursor, `setUserInput`, and the plugin slash commands. Try its
+  `onKeyPress` before the existing one, and while its `isVisible` is true return its options,
+  selected index, and `onSelectOption` instead of the slash/@ ones. The composer must pass
+  `hasModifier` through to that handler.
+- **Verify:** `npx vitest run custom/plugins/shell-command packages/app/src/shell-command-composer`
+  and the shell-command e2e test (the update script runs both). In the desktop app, run `!git
+status` and `!ls`, type `!g` + Up: `git status` shows. Type `!cat packages/ap` + Tab: it
+  completes to `packages/app/`.

@@ -68,7 +68,8 @@ export function ShellCommandCard({
     onError,
   });
   const { mutate: rerun, isPending: rerunning } = useMutation({
-    mutationFn: () => run({ agentId, cwd: data.cwd, command: data.command }),
+    mutationFn: () =>
+      run({ agentId, cwd: data.cwd, command: data.command, workspaceId: data.workspaceId }),
     onError,
   });
   const runningId = data.status === "running" ? data.id : null;

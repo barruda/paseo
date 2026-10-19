@@ -11,6 +11,8 @@ export const shellCommandTimelineSchema = z.object({
   id: z.string(),
   command: z.string(),
   cwd: z.string(),
+  /** Lets Run again file the command under the same project history. Older rows lack it. */
+  workspaceId: z.string().optional(),
   status: shellCommandStatusSchema,
   exitCode: z.number().nullable(),
   signal: z.string().nullable(),
@@ -35,8 +37,33 @@ export const runShellCommandRpc = defineRpc({
     agentId: z.string().min(1),
     cwd: z.string().min(1),
     command: z.string().min(1),
+    /** Files the command under its workspace's project history. Without it, under `cwd`. */
+    workspaceId: z.string().min(1).optional(),
   }),
   output: z.object({ id: z.string() }),
+});
+
+/** Commands run in the workspace's project (or `cwd` without a workspace), newest first. */
+export const shellHistoryRpc = defineRpc({
+  name: "history",
+  input: z.object({
+    cwd: z.string().min(1),
+    workspaceId: z.string().min(1).optional(),
+  }),
+  output: z.object({ commands: z.array(z.string()) }),
+});
+
+/**
+ * Files and folders whose path starts with `word`, resolved against `cwd` like a shell would
+ * (`~/`, absolute, relative). Each `value` replaces `word` as typed: shell-escaped, with a
+ * trailing `/` on folders.
+ */
+export const completePathRpc = defineRpc({
+  name: "complete-path",
+  input: z.object({ cwd: z.string().min(1), word: z.string() }),
+  output: z.object({
+    entries: z.array(z.object({ value: z.string(), kind: z.enum(["file", "directory"]) })),
+  }),
 });
 
 export const stopShellCommandRpc = defineRpc({
