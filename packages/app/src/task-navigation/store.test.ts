@@ -94,6 +94,22 @@ describe("Desks", () => {
     store.setTabExplorerOpen(other.id, false);
     expect(desk().explorerTabIds).toEqual([]);
   });
+  it("toggles a tabbed bottom pane whose launcher belongs to the given workspace", () => {
+    const store = useDesksStore.getState();
+    store.openTab(firstTab, true);
+    const created = store.toggleBottomPanel({ serverId: "home", workspaceId: "unity" });
+    expect(created?.kind).toBe("created");
+    const launcherId = created?.kind === "created" ? created.launcherTabId : "";
+    const bottom = findPaneContainingTab(desk().layout.root, launcherId)!;
+    expect(bottom.id).toBe("bottom-panel");
+    expect(desk().owners[launcherId]).toEqual({ serverId: "home", workspaceId: "unity" });
+    expect(store.toggleBottomPanel(firstTab)?.kind).toBe("hidden");
+    expect(findPaneContainingTab(desk().layout.root, launcherId)?.hidden).toBe(true);
+    expect(current()?.target).toEqual(firstTab.target);
+    expect(store.toggleBottomPanel(firstTab)?.kind).toBe("shown");
+    expect(desk().layout.focusedPaneId).toBe("bottom-panel");
+    expect(desk().owners[launcherId]).toEqual({ serverId: "home", workspaceId: "unity" });
+  });
   it("replaces the preview across projects while pinned tabs keep their source workspace", () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);

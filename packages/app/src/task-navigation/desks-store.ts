@@ -37,6 +37,10 @@ import {
 } from "@/stores/workspace-layout-actions";
 import { defaultWorkspaceLayoutIds } from "@/stores/workspace-layout-ids";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
+import {
+  toggleBottomPanelInLayout,
+  type BottomPanelToggleResult,
+} from "@/workspace-tabs/bottom-panel";
 
 export interface DeskTabOwner {
   serverId: string;
@@ -95,6 +99,11 @@ interface DesksState {
   resizeSplit(groupId: string, sizes: number[]): void;
   reorderTabsInPane(paneId: string, tabIds: string[]): void;
   setTabExplorerOpen(tabId: string, open: boolean): void;
+  /**
+   * CUSTOM(desk-bottom-panel): the workspace bottom panel, as a pane of the Desk layout. A new
+   * panel's launcher tab belongs to `owner`.
+   */
+  toggleBottomPanel(owner: DeskTabOwner): BottomPanelToggleResult | null;
   setProjects(keys: string[] | null): void;
   setSort(sort: TaskSort): void;
 }
@@ -486,6 +495,15 @@ export const useDesksStore = create<DesksState>()(
               : current.filter((id) => id !== tabId);
             return { ...desk, explorerTabIds };
           }),
+        toggleBottomPanel: (owner) => {
+          const result = toggleBottomPanelInLayout({
+            layout: activeDesk(get()).layout,
+            explorerSidebarPaneId: null,
+            createNodeId,
+          });
+          if (result) changeLayout(() => result.layout, owner);
+          return result;
+        },
         setProjects: (projectKeys) => set({ projectKeys }),
         setSort: (sort) => set({ sort }),
       };

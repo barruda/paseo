@@ -1,7 +1,6 @@
 // CUSTOM(desks): a cross-workspace split layout rendered by the standard SplitContainer. Tabs,
 // tab menus, splits and panels are the workspace screen's; this file only says which workspace
 // each tab belongs to and routes layout changes into the Desk store.
-import { WorkspaceBottomTerminal } from "@/screens/new-workspace/bottom-terminal-panel";
 import { WorkspaceActions } from "@/git/workspace-actions";
 import { WorkspaceOpenInEditorButton } from "@/workspace/open-in-editor/button";
 import { ImportSessionSheet } from "@/components/import-session-sheet";
@@ -156,7 +155,7 @@ export function DeskScreen() {
       );
   }, [hydrated, selection]);
 
-  // The scope is the focused tab's workspace: launches, the bottom terminal and unowned
+  // The scope is the focused tab's workspace: launches, the bottom panel's first terminal and unowned
   // new-tab launchers use it.
   const scopeServerId = active?.serverId ?? selection?.serverId ?? null;
   const scopeWorkspaceId = active?.workspaceId ?? selection?.workspaceId ?? null;
@@ -698,8 +697,6 @@ export function DeskScreen() {
           </>
         )}
         <DeskVisibleAgents desk={desk} visible={isFocused} />
-        {/* CUSTOM(desk-bottom-panel): actions resolve against the selected task, not the route. */}
-        {scope ? <DeskBottomTerminal scope={scope} isActive={isFocused} /> : null}
         <FloatingPanelPortalHost name={portalHost} />
         <DeskNameModal naming={naming} desks={desks} onClose={closeNaming} onSubmit={submitName} />
         {renaming ? (
@@ -858,19 +855,6 @@ function DeskImportSheet({
   );
 }
 
-function DeskBottomTerminal({ scope, isActive }: { scope: DeskTabOwner; isActive: boolean }) {
-  const cwd = useWorkspaceDirectory(scope.serverId, scope.workspaceId);
-  const isScreenActive = useCallback(() => isActive, [isActive]);
-  return (
-    <WorkspaceBottomTerminal
-      serverId={scope.serverId}
-      workspaceId={scope.workspaceId}
-      cwd={cwd}
-      isActive={isScreenActive}
-      testID="desk-bottom-terminal"
-    />
-  );
-}
 function DeskWorkspaceActions({ tab }: { tab: DeskTab }) {
   const directory = useWorkspaceDirectory(tab.serverId, tab.workspaceId);
   if (!directory) return null;

@@ -1442,18 +1442,24 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Commit:** `custom: enable bottom terminal toggle in Tasks mode`
 - **Why:** DeskScreen replaced the workspace screen but never registered its bottom-panel action,
   leaving both the sidebar button and Ctrl+J without a handler.
-- **What:** Desks reuse the New Workspace bottom-terminal lifecycle, with an explicit source
-  workspace from the selected Desk tab. Switching projects switches the terminal scope; hiding
-  and reopening reattaches to the same running terminal. The header can show the shortcut hint.
-- **Core files touched:** `task-navigation/desk-screen.tsx`,
-  `screens/new-workspace/bottom-terminal-panel.tsx`, and `header-shortcuts/strip.tsx`.
-- **Re-apply:** Mount the shared bottom terminal under Desk content; pass the selected tab’s
-  server/workspace identity, directory, and route activity. Scope remembered terminals by workspace
-  when provided; New Workspace keeps its folder-based lookup. Register the shared action only
-  while the owning screen is active.
-- **Verify:** The existing desktop `e2e/task-navigation.spec.ts` checks both the footer button
-  and Ctrl+J, source workspace ownership, and reuse without duplicate terminals. It is already
-  registered in the update script.
+- **What:** The Desk gets the same bottom panel as a workspace: a `bottom-panel` pane of the Desk
+  layout, with its own tab bar, split full-width under everything. The first toggle opens a
+  terminal of the focused task's workspace in it; later toggles hide and show the pane, and its
+  tabs (terminals of any workspace) keep running while hidden. Closing its last tab removes the
+  pane. The header can show the shortcut hint.
+- **Core files touched:** `task-navigation/desks-store.ts` (`toggleBottomPanel`),
+  `task-navigation/new-tab-menu.tsx` (the Ctrl+J handler, next to the Desk launch shortcuts, so it
+  can create the terminal), `workspace-tabs/bottom-panel.ts` (exports
+  `releaseFocusFromBottomPanel`), and `header-shortcuts/strip.tsx`.
+- **Re-apply:** Add a Desk store action that runs `toggleBottomPanelInLayout` on the active Desk
+  layout (no explorer sidebar pane) and applies it with the given owner as fallback, so the new
+  launcher tab belongs to the focused task's workspace. In `DeskLauncherProvider`, handle
+  `workspace.bottom-panel.toggle`: skip on compact layouts, release focus when it hides, and on
+  `created` call `createTerminal` with `{ kind: "replace", tabId: launcherTabId }`.
+- **Verify:** `(cd packages/app && npx vitest run src/task-navigation/store.test.ts)` and the
+  desktop `e2e/task-navigation.spec.ts`, which checks the footer button and Ctrl+J, the terminal
+  tab in the pane, source workspace ownership, reuse without duplicate terminals, and that
+  closing the last tab removes the pane. Both are registered in the update script.
 
 ## chat-esc-focus: Esc after selecting chat text returns to the composer
 

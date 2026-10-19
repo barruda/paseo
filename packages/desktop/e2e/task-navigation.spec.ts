@@ -80,35 +80,35 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     const composer = page
       .getByRole("textbox", { name: "Message agent...", exact: true })
       .filter({ visible: true });
-    // Both the footer and Ctrl+J use the Desk's selected source workspace.
-    const bottom = page.getByTestId("desk-bottom-terminal");
+    // Both the footer and Ctrl+J toggle a tabbed bottom pane of the Desk; its first terminal
+    // belongs to the selected task's workspace.
+    const bottom = desk.getByTestId("workspace-pane-bottom-panel");
+    const countTerminals = async () =>
+      (
+        await second.client.listTerminals(second.cwd, undefined, {
+          workspaceId: second.workspaceId,
+        })
+      ).terminals.length;
     await page.getByTestId("sidebar-bottom-panel-toggle").click();
     await expect(bottom).toBeVisible();
-    await expect
-      .poll(
-        async () =>
-          (
-            await second.client.listTerminals(second.cwd, undefined, {
-              workspaceId: second.workspaceId,
-            })
-          ).terminals.length,
-      )
-      .toBe(1);
+    await expect(bottom.locator('[data-testid^="workspace-tab-terminal_"]')).toHaveCount(1);
+    await expect.poll(countTerminals).toBe(1);
     await page.keyboard.press("Control+j");
-    await expect(bottom).toHaveCount(0);
+    await expect(bottom).not.toBeVisible();
     await page.keyboard.press("Control+j");
     await expect(bottom).toBeVisible();
-    await expect
-      .poll(
-        async () =>
-          (
-            await second.client.listTerminals(second.cwd, undefined, {
-              workspaceId: second.workspaceId,
-            })
-          ).terminals.length,
-      )
-      .toBe(1);
+    await expect.poll(countTerminals).toBe(1);
     await page.getByTestId("sidebar-bottom-panel-toggle").click();
+    await expect(bottom).not.toBeVisible();
+    // Closing the panel's last tab removes the pane, like in a workspace.
+    await page.keyboard.press("Control+j");
+    const terminalTab = bottom.locator('[data-testid^="workspace-tab-terminal_"]');
+    const terminalId = (await terminalTab.getAttribute("data-testid"))!.replace(
+      "workspace-tab-terminal_",
+      "",
+    );
+    await terminalTab.hover();
+    await bottom.getByTestId(`workspace-terminal-close-${terminalId}`).click();
     await expect(bottom).toHaveCount(0);
 
     await composer.fill("Draft for terrain");

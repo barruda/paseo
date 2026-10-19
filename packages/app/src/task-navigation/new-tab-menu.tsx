@@ -7,6 +7,8 @@ import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-stor
 import { generateDraftId } from "@/stores/draft-keys";
 import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { getIsElectron } from "@/constants/platform";
+import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";
+import { releaseFocusFromBottomPanel } from "@/workspace-tabs/bottom-panel";
 import {
   useWorkspaceTerminals,
   type TerminalTabDestination,
@@ -115,6 +117,7 @@ export function DeskLauncherProvider({
     },
     [open, createTerminal],
   );
+  const isCompact = useIsCompactFormFactor();
   const terminalDisabled =
     !isConnected ||
     !directory ||
@@ -133,8 +136,20 @@ export function DeskLauncherProvider({
       "workspace.tab.target.agent",
       "workspace.tab.target.browser",
       "workspace.tab.menu.open",
+      "workspace.bottom-panel.toggle",
     ],
     handle: (action) => {
+      // CUSTOM(desk-bottom-panel): the bottom panel is a pane of the Desk, with tabs like the
+      // workspace's. A new one gets a terminal of the focused task's workspace.
+      if (action.id === "workspace.bottom-panel.toggle") {
+        if (isCompact || !supportsDesktopPaneSplits()) return false;
+        const result = useDesksStore.getState().toggleBottomPanel({ serverId, workspaceId });
+        if (result?.kind === "hidden") releaseFocusFromBottomPanel();
+        if (result?.kind === "created" && !terminalDisabled) {
+          createTerminal({ destination: { kind: "replace", tabId: result.launcherTabId } });
+        }
+        return true;
+      }
       const paneId = activeDesk(useDesksStore.getState()).layout.focusedPaneId ?? undefined;
       const destination: TerminalTabDestination = { kind: "open", paneId };
       if (action.id === "workspace.terminal.new") {

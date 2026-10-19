@@ -110,7 +110,7 @@ export function toggleBottomPanel(input: {
 
 // A hidden pane stays mounted at zero size, so a terminal inside it would keep the keyboard and
 // swallow what the user types next. split-container renders each pane with this testID.
-function releaseFocusFromBottomPanel(): void {
+export function releaseFocusFromBottomPanel(): void {
   if (!isWeb) return;
   const pane = document.querySelector(`[data-testid="workspace-pane-${BOTTOM_PANEL_PANE_ID}"]`);
   const active = document.activeElement;
