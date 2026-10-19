@@ -157,6 +157,8 @@ Set up the customized Paseo first (`custom/README.md`), then:
 - **Back up Warp-side commits:** `git push fork paseo` (add `--force-with-lease` after a rebase).
   The checkout is shallow; if a push is rejected with "shallow update not allowed", run
   `git fetch --unshallow origin` first.
+  `./git-add-commit-push-paseo-and-warp.sh` in the Paseo checkout commits everything in both
+  checkouts as `wip` (Paseo's `package-lock.json` files excluded) and pushes both forks.
 - **Plugin change:** `npx tsx packages/cli/src/index.js plugin reload warp --home ~/.paseo`.
   Reloading restarts the bridge, which kills the shells in every open Warp tab. Check they're idle
   first.

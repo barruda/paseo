@@ -2139,6 +2139,8 @@ function ComposerContentImpl({
             agentId={agentId}
             workspaceId={workspaceId}
             size={contextWindowMeterGlyphSize}
+            projectSource={agentControls?.modelPickerProject ?? null}
+            onMenuClose={agentControls?.onDropdownClose}
           />
           {hasAgent ? (
             <View style={styles.contextWindowMeterSlot}>
@@ -2163,6 +2165,8 @@ function ComposerContentImpl({
       agentState.contextWindowUsedTokens,
       agentState.totalCostUsd,
       contextWindowMeterGlyphSize,
+      agentControls?.modelPickerProject,
+      agentControls?.onDropdownClose,
     ],
   );
 
