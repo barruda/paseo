@@ -285,21 +285,26 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     first open left them blank after every reboot.
     It listens on 127.0.0.1 and requires a token; the port and token are kept in
     `$PASEO_HOME/plugin-data/warp/bridge.json` so restored Warp tabs keep working after a restart.
-  - The build uses Warp's `skip_login` feature, so it starts signed in as Warp's offline test user
-    with no login screen. A second patch (`app/src/wasm_nux_dialog.rs`) hides the "Download Warp
-    Desktop?" dialog in `remote_tty` builds.
+  - No Warp login: a patch (`app/src/root_view.rs`) makes `remote_tty` builds start straight in
+    the terminal when nobody is signed in, the same loginless state as desktop's "Skip for now".
+    Without it the web client tries to import the app.warp.dev session, fails on the local origin,
+    and shows the login screen on every new tab. A second patch (`app/src/wasm_nux_dialog.rs`)
+    hides the "Download Warp Desktop?" dialog in `remote_tty` builds. Don't use Warp's
+    `skip_login` feature instead: it signs in a fake test user and fails every authenticated
+    request on purpose.
   - Limits: zsh only (Warp's remote_tty bootstrap is zsh-only), no Warp account or Warp AI
-    (app.warp.dev blocks the local origin with CORS, and `skip_login` fails every authenticated
-    request on purpose).
+    (app.warp.dev blocks the local origin with CORS).
 - **Files:** `custom/plugins/warp/` and
   `packages/server/src/server/plugins/custom-warp-plugin.e2e.test.ts`.
 - **Core files touched:** none.
 - **Re-apply:** Nothing to redo in core. If the plugin SDK changes, the plugin uses
   `addWorkspacePanel`, `addCommandCenterItem`, `navigation.openBrowser`, and one RPC.
   To rebuild Warp after pulling it:
-  `cd ~/projetos/warp-web-custom && script/wasm/bundle --channel oss --features remote_tty,skip_login`
+  `cd ~/projetos/warp-web-custom && CARGO_BUILD_JOBS=8 script/wasm/bundle --debug --channel oss --features remote_tty`
   (needs Rust from `rust-toolchain.toml`, the `wasm32-unknown-unknown` target, `wasm-bindgen-cli`
-  at the version in `Cargo.lock`, and `wasm-split` on PATH). Re-apply the
+  at the version in `Cargo.lock`, and `wasm-split` on PATH). `--debug` builds the `dev-wasm`
+  bundle in minutes; a release bundle under `release-wasm` wins over it once it has
+  `wasm/warp_bg.wasm`, so delete a half-finished one. Re-apply the
   patches if upstream Warp moved the code; they're the commits on the `paseo` branch there.
 - **Setup:** One-time plugin install per daemon. See [README.md](README.md#one-time-setup-plugins).
   Then `npm install` in `~/projetos/warp-web-custom/paseo-bridge`.
