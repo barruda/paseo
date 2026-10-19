@@ -8,6 +8,7 @@ import { getResidentBrowserWebview } from "@/desktop/browser/resident-webviews";
 import {
   isBrowserInBottomPanel,
   isCloseSessionKey,
+  isNewSessionKey,
   isTabCycleKey,
 } from "@/workspace-tabs/bottom-panel-browser";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
@@ -395,7 +396,7 @@ export function useKeyboardShortcuts({
     }
     // CUSTOM(bottom-panel-tab-keys): the page in the bottom panel (Warp) already used it.
     if (
-      (isTabCycleKey(input) || isCloseSessionKey(input)) &&
+      (isTabCycleKey(input) || isCloseSessionKey(input) || isNewSessionKey(input)) &&
       isBrowserInBottomPanel(input.browserId)
     ) {
       return;

@@ -10,6 +10,7 @@ import {
 import { toggleBottomPanelInLayout } from "./bottom-panel";
 import {
   isCloseSessionKey,
+  isNewSessionKey,
   isTabCycleKey,
   layoutHasBrowserInBottomPanel,
 } from "./bottom-panel-browser";
@@ -65,5 +66,14 @@ describe("bottom panel browser keys", () => {
     expect(isCloseSessionKey({ key: "w", ctrlKey: true, altKey: true })).toBe(false);
     expect(isCloseSessionKey({ key: "w", ctrlKey: true, metaKey: true })).toBe(false);
     expect(isCloseSessionKey({ key: "t", ctrlKey: true })).toBe(false);
+  });
+
+  it("matches only Ctrl+T and Ctrl+Shift+T for opening a session", () => {
+    expect(isNewSessionKey({ key: "t", ctrlKey: true })).toBe(true);
+    expect(isNewSessionKey({ key: "T", ctrlKey: true, shiftKey: true })).toBe(true);
+    expect(isNewSessionKey({ key: "t" })).toBe(false);
+    expect(isNewSessionKey({ key: "t", ctrlKey: true, altKey: true })).toBe(false);
+    expect(isNewSessionKey({ key: "t", ctrlKey: true, metaKey: true })).toBe(false);
+    expect(isNewSessionKey({ key: "w", ctrlKey: true })).toBe(false);
   });
 });

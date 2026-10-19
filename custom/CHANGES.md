@@ -1515,14 +1515,16 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   the app, "+ → Warp" gives one Warp tab with no URL bar; Ctrl+R searches the shell history. Put
   it in the bottom panel, press Ctrl+J twice and type.
 
-## bottom-panel-tab-keys: Ctrl+Tab and Ctrl+W stay in a page in the bottom panel
+## bottom-panel-tab-keys: Ctrl+Tab, Ctrl+W and Ctrl+T stay in a page in the bottom panel
 
-- **Added:** 2026-10-18, Ctrl+W added 2026-10-19
-- **Commit:** `custom: Ctrl+Tab stays in Warp in the bottom panel`, then `custom: Ctrl+W stays in Warp in the bottom panel`
-- **Why:** Warp cycles its sessions with Ctrl+Tab and Ctrl+Shift+Tab, and closes its own session
-  with Ctrl+W, but leaves these keys unprevented for the browser. The guest preload forwarded
-  them, so Paseo switched its tabs or closed the bottom panel on the same press.
-- **What:** A Ctrl+Tab, Ctrl+Shift+Tab or Ctrl+W forwarded from a browser tab that sits in a bottom
+- **Added:** 2026-10-18, Ctrl+W and Ctrl+T added 2026-10-19
+- **Commit:** `custom: Ctrl+Tab stays in Warp in the bottom panel`, then `custom: Ctrl+W stays in Warp in the bottom panel`,
+  then `custom: Ctrl+T stays in Warp in the bottom panel`
+- **Why:** Warp cycles its sessions with Ctrl+Tab and Ctrl+Shift+Tab, closes one with Ctrl+W and
+  opens one with Ctrl+Shift+T, but leaves these keys unprevented for the browser. The guest preload
+  forwarded them, so Paseo switched, closed or opened its own tabs on the same press.
+- **What:** A Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+W, Ctrl+T or Ctrl+Shift+T forwarded from a browser tab
+  that sits in a bottom
   panel (workspace or Desk) is dropped on the Paseo side. Everywhere else, including a Warp tab in a
   normal pane, Paseo keeps its shortcut. Ctrl+W is only the non-mac binding; macOS Cmd+W is not
   covered.
@@ -1531,10 +1533,12 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Core files touched:** `packages/app/src/hooks/use-keyboard-shortcuts.ts`,
   `handleBrowserShortcutInput`, marked `CUSTOM(bottom-panel-tab-keys)`.
 - **Re-apply:** In the handler for `browser-shortcut-input`, return before resolving the shortcut
-  when `(isTabCycleKey(input) || isCloseSessionKey(input)) && isBrowserInBottomPanel(input.browserId)`.
+  when `(isTabCycleKey(input) || isCloseSessionKey(input) || isNewSessionKey(input)) &&
+isBrowserInBottomPanel(input.browserId)`.
 - **Verify:** `(cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-browser.test.ts)`.
   In the app, open two Warp sessions in the bottom panel's Warp and press Ctrl+Tab: Warp switches,
-  the Paseo tab stays. Press Ctrl+W: Warp closes its session, the bottom panel stays open.
+  the Paseo tab stays. Press Ctrl+W: Warp closes its session, the bottom panel stays open. Press Ctrl+Shift+T: Warp opens
+  a session, and no Paseo tab opens.
 
 ## browser-shortcut-preempt: Ctrl+J hides the bottom panel from inside Warp
 

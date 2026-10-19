@@ -87,11 +87,10 @@ page leaves the key alone, with these exceptions:
   before Warp sees it, because Warp uses Ctrl+J for newline.
 - **Ctrl+R, Ctrl+Shift+R, Ctrl+L** go to Warp in tabs opened with `toolbar: false`. The app menu
   ignores them there too, or its Reload would reload the whole Paseo window.
-- **Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+W** stay in Warp when its tab is in the bottom panel: the Tab
-  keys cycle Warp sessions and Ctrl+W closes the Warp session, not the panel. In a normal pane
-  Paseo keeps them. macOS Cmd+W isn't covered.
-- **Ctrl+T** opens a Paseo tab, also from inside Warp, because Warp doesn't use it. Warp's own new
-  session key is Ctrl+Shift+T.
+- **Ctrl+Tab, Ctrl+Shift+Tab, Ctrl+W, Ctrl+T, Ctrl+Shift+T** stay in Warp when its tab is in the
+  bottom panel: the Tab keys cycle Warp sessions, Ctrl+W closes one and Ctrl+Shift+T opens one,
+  instead of acting on Paseo's tabs. In a normal pane Paseo keeps them, so Ctrl+T there opens a
+  Paseo tab even from inside Warp. macOS Cmd+W and Cmd+T aren't covered.
 
 Paseo's `browser_keypress` automation tool sends single keys without modifiers, so an agent can't
 press Warp shortcuts through it. "Control+Shift+T" arrives as a typed "T".
