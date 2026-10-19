@@ -57,6 +57,8 @@ import {
 } from "@/workspace-tabs/explorer-sidebar";
 // CUSTOM(bottom-panel)
 import { toggleBottomPanel } from "@/workspace-tabs/bottom-panel";
+import { resolveBottomPanelWarpTarget } from "@/workspace-tabs/bottom-panel-default";
+import { pluginRegistry } from "@/plugins/registry";
 import {
   openPreferredWorkspacePreview,
   openPreferredWorkspaceTarget,
@@ -2682,10 +2684,20 @@ function WorkspaceScreenContent({
   const handleBottomPanelToggle = useCallback((): boolean => {
     const result = toggleBottomPanel({ workspaceKey: persistenceKey, isCompact: isMobile });
     if (result?.kind === "created") {
-      createTerminal({ destination: { kind: "replace", tabId: result.launcherTabId } });
+      // CUSTOM(bottom-panel-warp): Warp instead of the terminal when it's available.
+      const warp = resolveBottomPanelWarpTarget({
+        serverId: normalizedServerId,
+        plugins: pluginRegistry.getSnapshot(),
+        isElectron: getIsElectron(),
+      });
+      if (warp && persistenceKey) {
+        replaceWorkspaceTabTarget(persistenceKey, result.launcherTabId, warp);
+      } else {
+        createTerminal({ destination: { kind: "replace", tabId: result.launcherTabId } });
+      }
     }
     return true;
-  }, [createTerminal, isMobile, persistenceKey]);
+  }, [createTerminal, isMobile, normalizedServerId, persistenceKey, replaceWorkspaceTabTarget]);
 
   // Shared by every handler below: these actions only exist on a focused workspace route.
   const workspaceActionsEnabled = Boolean(

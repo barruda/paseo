@@ -9,6 +9,8 @@ import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { getIsElectron } from "@/constants/platform";
 import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";
 import { releaseFocusFromBottomPanel } from "@/workspace-tabs/bottom-panel";
+import { resolveBottomPanelWarpTarget } from "@/workspace-tabs/bottom-panel-default";
+import { pluginRegistry } from "@/plugins/registry";
 import {
   useWorkspaceTerminals,
   type TerminalTabDestination,
@@ -145,8 +147,20 @@ export function DeskLauncherProvider({
         if (isCompact || !supportsDesktopPaneSplits()) return false;
         const result = useDesksStore.getState().toggleBottomPanel({ serverId, workspaceId });
         if (result?.kind === "hidden") releaseFocusFromBottomPanel();
-        if (result?.kind === "created" && !terminalDisabled) {
-          createTerminal({ destination: { kind: "replace", tabId: result.launcherTabId } });
+        if (result?.kind === "created") {
+          // CUSTOM(bottom-panel-warp): Warp instead of the terminal when it's available.
+          const warp = resolveBottomPanelWarpTarget({
+            serverId,
+            plugins: pluginRegistry.getSnapshot(),
+            isElectron: getIsElectron(),
+          });
+          if (warp) {
+            useDesksStore
+              .getState()
+              .updateTab(result.launcherTabId, { serverId, workspaceId, target: warp });
+          } else if (!terminalDisabled) {
+            createTerminal({ destination: { kind: "replace", tabId: result.launcherTabId } });
+          }
         }
         return true;
       }

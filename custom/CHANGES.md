@@ -2001,3 +2001,25 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Verify:** The shortstat tests are in the update script. By hand, after restarting the daemon:
   on a checkout with unpushed commits and a few edits, the composer pill matches the Uncommitted
   total in Changes, and committing brings it to zero.
+
+## bottom-panel-warp: a new bottom panel opens Warp
+
+- **Added:** 2026-10-19
+- **Commit:** `custom: a new bottom panel opens Warp`
+- **Why:** The bottom panel is where Warp gets used, so opening a terminal there and then switching
+  to Warp was a wasted step every time.
+- **What:** When Ctrl+J (or the sidebar button) creates the bottom panel, its launcher tab becomes
+  the Warp plugin panel, which turns itself into the Warp tab, in workspace mode and in Tasks mode.
+  It falls back to a terminal outside Electron or when the workspace's host doesn't have the Warp
+  plugin installed. A panel that already exists is only shown or hidden, as before.
+- **Files:** `packages/app/src/workspace-tabs/bottom-panel-default.ts` and its test.
+- **Core files touched** (marked `CUSTOM(bottom-panel-warp)`):
+  - `packages/app/src/screens/workspace/workspace-screen.tsx`: `handleBottomPanelToggle`.
+  - `packages/app/src/task-navigation/new-tab-menu.tsx`: the `workspace.bottom-panel.toggle` handler.
+- **Re-apply:** Where a `created` bottom panel fills its launcher tab with `createTerminal`, first
+  call `resolveBottomPanelWarpTarget({ serverId, plugins: pluginRegistry.getSnapshot(),
+isElectron: getIsElectron() })`. If it returns a target, retarget the launcher tab to it
+  (`replaceWorkspaceTabTarget` in the workspace screen, `useDesksStore.getState().updateTab` in
+  Tasks mode) instead of creating the terminal.
+- **Verify:** `(cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-default.test.ts)`.
+  In the app, close every tab in the bottom panel and press Ctrl+J: a Warp prompt opens there.
