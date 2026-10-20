@@ -13,19 +13,21 @@ type RunChatCommand = (command: string) => void;
 
 const ChatCodeRunContext = createContext<RunChatCommand | null>(null);
 
-export function ChatCodeRunProvider({
+/**
+ * Runs a command in the agent's directory as if `!<command>` was typed in its composer. Null when
+ * the shell-command plugin is not installed on the agent's daemon. Also used by commit-wip.
+ */
+export function useRunChatCommand({
   serverId,
   workspaceId,
   agentId,
   toast,
-  children,
 }: {
   serverId: string;
   workspaceId: string | null | undefined;
   agentId: string | null | undefined;
   toast?: ToastApi | null;
-  children: ReactNode;
-}) {
+}): RunChatCommand | null {
   const commands = usePluginClientSlashCommands({
     serverId,
     workspaceId: agentId ? workspaceId : null,
@@ -55,11 +57,24 @@ export function ChatCodeRunProvider({
     },
     [commands, toast],
   );
-  return (
-    <ChatCodeRunContext.Provider value={canRun ? run : null}>
-      {children}
-    </ChatCodeRunContext.Provider>
-  );
+  return canRun ? run : null;
+}
+
+export function ChatCodeRunProvider({
+  serverId,
+  workspaceId,
+  agentId,
+  toast,
+  children,
+}: {
+  serverId: string;
+  workspaceId: string | null | undefined;
+  agentId: string | null | undefined;
+  toast?: ToastApi | null;
+  children: ReactNode;
+}) {
+  const run = useRunChatCommand({ serverId, workspaceId, agentId, toast });
+  return <ChatCodeRunContext.Provider value={run}>{children}</ChatCodeRunContext.Provider>;
 }
 
 export function useChatCodeRun(): RunChatCommand | null {

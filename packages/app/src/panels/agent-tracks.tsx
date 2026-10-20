@@ -1,4 +1,5 @@
 import { memo, useCallback, type ReactElement } from "react";
+import { COMMIT_WIP_PILL_ALWAYS_SHOWN, CommitWipPill } from "@/composer/commit-wip-pill";
 import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { AgentTaskList } from "@/composer/task-list";
@@ -148,6 +149,8 @@ export const AgentTracks = memo(function AgentTracks({
         workspaceId={workspaceId}
         onPress={handleOpenChanges}
       />
+      {/* CUSTOM(commit-wip): commits everything as "wip" from beside the diff stat. */}
+      <CommitWipPill serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
     </ComposerTrackBar>
   );
 });
@@ -164,6 +167,8 @@ export function hasAgentTracks({
   hasPluginComposerPills?: boolean;
 }): boolean {
   return (
+    // CUSTOM(commit-wip): Commit: wip shows with or without changes, so the row always does.
+    COMMIT_WIP_PILL_ALWAYS_SHOWN ||
     subagentRows.length > 0 ||
     Boolean(tasks?.length) ||
     archiveFinishedStatus.kind !== "idle" ||

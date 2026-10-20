@@ -2171,3 +2171,31 @@ src/server/lean-claude.test.ts)` (the update script runs them). On a daemon from
   and status, and hovering it names `claude-haiku-5-5`; after the turn ends it updates.
   `node custom/llm-usage.mjs` lists the calls.
 
+## commit-wip: a "Commit: wip" pill beside the diff stat
+
+- **Added:** 2026-10-20 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: Commit: wip pill beside the diff stat`
+- **Why:** Saving work in progress was typing the same `!git add . && git commit -m 'wip'` again
+  and again.
+- **What:** Right of the composer's diff stat pill (`+255 -18`), a **Commit: wip** pill runs
+  `git add . && git commit -m 'wip'` in the agent's directory, as if typed after `!`
+  ([shell-command](#shell-command-run-command-from-the-chat)): the output shows in a Terminal card,
+  the command enters the `!` history, and the agent never sees it. The pill always shows, with or
+  without changes: gating it on the diff stat hid it at times while there were changes, and with
+  nothing to commit git says so in the card. Without the shell-command plugin on the daemon, a
+  press shows an error toast. Commits with no confirmation.
+- **Core files touched** (marked `CUSTOM(commit-wip)`):
+  - `packages/app/src/composer/commit-wip-pill.tsx`: the pill. New file.
+  - `packages/app/src/panels/agent-tracks.tsx`: renders it after `WorkspaceDiffStatPill`, and
+    `hasAgentTracks` returns true so the track row (and its clearance in `agent-panel.tsx`) always
+    shows.
+  - `packages/app/src/chat-code-run/context.tsx`: the `!<command>` runner moved out of
+    `ChatCodeRunProvider` into `useRunChatCommand`, which both use.
+- **Re-apply:** In the composer track bar, after the workspace diff stat pill, render a pill that
+  always shows (make the track row's "has tracks" check true) and, on press, runs the command
+  through the plugin client slash command `sh` (resolve `!<command>` with
+  `resolvePluginClientSlashCommand`, run it with `executePluginClientSlashCommand`).
+- **Verify:** Typecheck. In the app, **Commit: wip** shows under every agent's composer. Edit a
+  file and press it: a Terminal card shows the commit and the diff stat pill goes away; the button
+  stays.
+
