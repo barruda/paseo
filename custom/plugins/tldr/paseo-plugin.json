@@ -1,0 +1,5 @@
+{
+  "id": "tldr",
+  "description": "A TLDR pill in the composer that sends \"TLDR\" to the agent.",
+  "requirements": { "paseo": ">=0.11.0" }
+}

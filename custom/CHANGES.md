@@ -2079,3 +2079,25 @@ isElectron: getIsElectron() })`. If it returns a target, retarget the launcher t
   and the shell-command e2e test (the update script runs both). In the desktop app, run `!git
 status` and `!ls`, type `!g` + Up: `git status` shows. Type `!cat packages/ap` + Tab: it
   completes to `packages/app/`.
+
+## tldr: a TLDR pill that asks the agent for a TLDR
+
+- **Added:** 2026-10-19 (based on upstream 0.11.2, `0d61cca50`). Changed 2026-10-20: Haiku wrote
+  the summary into a TLDR row; dropped the same day because the summaries were poor. The pill now
+  sends the prompt to the agent.
+- **Commit:** `custom: TLDR pill in the composer`
+- **Why:** Agents often answer with two pages. One click asks for the short version without typing
+  it.
+- **What:** Each open agent's composer gets a **TLDR** pill, after the other plugin pills. Clicking
+  it sends `TLDR` to the agent as a normal message (`paseo.agents.ref(id).send`), so the agent
+  answers in the chat with its full context. While a turn runs, it behaves like any message sent
+  then.
+- **Files:** `custom/plugins/tldr/` (client only: `client/pills.ts`; the server entry is empty). No
+  conflict risk.
+- **Core files touched:** none.
+- **Re-apply:** Nothing to re-apply. If upstream changes the plugin API, register one composer pill
+  per open agent whose action sends `TLDR` to that agent.
+- **Setup:** One-time plugin install per daemon. See [README.md](README.md#one-time-setup-plugins).
+- **Verify:** `npx vitest run custom/plugins/tldr` (the update script runs it). In the app, click
+  **TLDR** under an agent's composer: `TLDR` shows as your message and the agent answers.
+
