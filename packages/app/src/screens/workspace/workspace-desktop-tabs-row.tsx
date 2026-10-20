@@ -18,6 +18,8 @@ import {
   ArrowRightToLine,
   Copy,
   Pencil,
+  Pin,
+  PinOff,
   RotateCw,
   Columns2,
   Rows2,
@@ -93,6 +95,7 @@ import {
   useWorkspaceTabOwnerResolver,
   type WorkspaceTabMoveMenu,
 } from "@/screens/workspace/workspace-tab-owner";
+import { useAgentTabPin } from "@/task-navigation/agent-tab-pin";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 
 // CUSTOM(open-file-externally): use the same icon rail as the existing tab actions.
@@ -138,6 +141,9 @@ const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
 const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
 const ThemedCopyX = withUnistyles(CopyX);
 const ThemedPencil = withUnistyles(Pencil);
+// CUSTOM(task-pins)
+const ThemedPin = withUnistyles(Pin);
+const ThemedPinOff = withUnistyles(PinOff);
 const ThemedPlus = withUnistyles(Plus);
 const ThemedColumns2 = withUnistyles(Columns2);
 const ThemedRows2 = withUnistyles(Rows2);
@@ -485,6 +491,10 @@ function TabContextMenuItem({
         return <ThemedCopyX size={16} uniProps={mutedColorMapping} />;
       case "pencil":
         return <ThemedPencil size={16} uniProps={mutedColorMapping} />;
+      case "pin":
+        return <ThemedPin size={16} uniProps={mutedColorMapping} />;
+      case "pin-off":
+        return <ThemedPinOff size={16} uniProps={mutedColorMapping} />;
       case "x":
         return <ThemedX size={16} uniProps={mutedColorMapping} />;
       default:
@@ -1630,6 +1640,7 @@ function ResolvedDesktopTabChip({
 }) {
   const { t } = useTranslation();
   const presentation = item.presentation;
+  const agentPin = useAgentTabPin(serverId, item.tab);
   const resolvedTab = useMemo(
     () =>
       buildWorkspaceDesktopTabActions({
@@ -1648,8 +1659,10 @@ function ResolvedDesktopTabChip({
         onCloseTabsToRight,
         onCloseOtherTabs,
         labels,
+        agentPin,
       }),
     [
+      agentPin,
       index,
       item.tab,
       onCloseOtherTabs,

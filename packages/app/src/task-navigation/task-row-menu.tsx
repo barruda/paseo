@@ -10,6 +10,7 @@ import { useWorkspaceClipboardActions } from "@/hooks/use-workspace-clipboard-ac
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { markWorkspaceUnread } from "@/workspace/mark-unread";
 import type { TaskNode } from "./model";
+import { usePinnedTasksStore } from "./pinned-tasks-store";
 
 export interface TaskRowActions {
   copyPath(entry: SidebarWorkspaceEntry): void;
@@ -18,6 +19,7 @@ export interface TaskRowActions {
   markAsRead(node: TaskNode): void;
   markAsUnread(node: TaskNode): void;
   archive(node: TaskNode): void;
+  togglePin(node: TaskNode): void;
 }
 
 function errorMessage(error: unknown, fallback: string) {
@@ -51,6 +53,8 @@ export function useTaskRowActions(): { actions: TaskRowActions; modal: ReactNode
           () => {},
         );
       },
+      // CUSTOM(task-pins)
+      togglePin: (node) => usePinnedTasksStore.getState().togglePin(node.key),
     }),
     [archiveAgent, clipboard, toast],
   );
@@ -93,6 +97,9 @@ type TriggerProps = Omit<
   | "onMarkAsUnread"
   | "onArchive"
   | "archiveLabel"
+  | "isPinned"
+  | "onTogglePin"
+  | "pinLabel"
   | "openInFileManagerPath"
 >;
 
@@ -101,6 +108,7 @@ export function TaskRowContextMenu({
   entry,
   archived,
   canMarkUnread,
+  pinned,
   actions,
   children,
   ...triggerProps
@@ -109,6 +117,7 @@ export function TaskRowContextMenu({
   entry: SidebarWorkspaceEntry;
   archived: boolean;
   canMarkUnread: boolean;
+  pinned: boolean;
   actions: TaskRowActions;
   children: ReactNode;
 }) {
@@ -119,6 +128,7 @@ export function TaskRowContextMenu({
   const markAsRead = useCallback(() => actions.markAsRead(node), [actions, node]);
   const markAsUnread = useCallback(() => actions.markAsUnread(node), [actions, node]);
   const archive = useCallback(() => actions.archive(node), [actions, node]);
+  const togglePin = useCallback(() => actions.togglePin(node), [actions, node]);
   return (
     <SidebarWorkspaceContextMenu
       {...triggerProps}
@@ -134,6 +144,9 @@ export function TaskRowContextMenu({
       onMarkAsUnread={!archived && canMarkUnread ? markAsUnread : undefined}
       onArchive={archived ? undefined : archive}
       archiveLabel="Archive session"
+      isPinned={pinned}
+      onTogglePin={archived ? undefined : togglePin}
+      pinLabel="Pin"
       openInFileManagerPath={entry.workspaceDirectory}
     >
       {children}

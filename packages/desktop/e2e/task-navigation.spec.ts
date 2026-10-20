@@ -316,10 +316,40 @@ test("Tasks mode row menu, pane toolbar, launch shortcuts, Desk moves and archiv
     await page.getByTestId("task-rename-modal-submit").click();
     await expect(task).toContainText("Renamed from the task menu");
 
+    // Pin repeats the session under the filters and keeps it in its usual place; Unpin removes it.
+    const pinned = sidebar.getByTestId(`task-pinned-${first.agentId}`);
+    await expect(pinned).toHaveCount(0);
+    await task.click({ button: "right" });
+    await menu.getByText("Pin", { exact: true }).click();
+    await expect(pinned).toContainText("Renamed from the task menu");
+    await expect(task).toBeVisible();
+
     await task.click({ button: "middle" });
     const desk = page.getByTestId("desk-screen");
     const pinnedTabs = desk.locator('[data-desk-tab="pinned"]');
     await expect(pinnedTabs).toHaveCount(1);
+
+    // Only the copy that was clicked shows as selected.
+    await expect(task).toHaveAttribute("aria-selected", "true");
+    await expect(pinned).toHaveAttribute("aria-selected", "false");
+    await pinned.click();
+    await expect(pinned).toHaveAttribute("aria-selected", "true");
+    await expect(task).toHaveAttribute("aria-selected", "false");
+
+    // The agent tab's context menu unpins and pins too.
+    const tabPin = page.locator('[data-testid^="workspace-tab-context-"][data-testid$="-pin"]');
+    await desk.getByTestId(`workspace-tab-agent_${first.agentId}`).click({ button: "right" });
+    await expect(tabPin).toHaveText("Unpin");
+    await tabPin.click();
+    await expect(pinned).toHaveCount(0);
+    await expect(task).toHaveAttribute("aria-selected", "true");
+    await desk.getByTestId(`workspace-tab-agent_${first.agentId}`).click({ button: "right" });
+    await expect(tabPin).toHaveText("Pin");
+    await tabPin.click();
+    await expect(pinned).toBeVisible();
+    await pinned.click({ button: "right" });
+    await menu.getByText("Unpin", { exact: true }).click();
+    await expect(pinned).toHaveCount(0);
 
     // Split buttons sit directly in the pane toolbar, next to archive.
     await expect(desk.getByTestId("workspace-split-pane-menu")).toHaveCount(0);

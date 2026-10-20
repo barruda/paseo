@@ -8,6 +8,7 @@ import {
   EMPTY_TASK_STATE_SETTLING,
   settleTaskStates,
   markableUnreadTaskKeys,
+  pinnedTaskNodes,
   taskKey,
   sortTaskTree,
   type TaskAgent,
@@ -416,5 +417,29 @@ describe("task state settling", () => {
       states: live("working"),
     });
     expect(node?.state).toBe("working");
+  });
+});
+
+describe("pinned tasks", () => {
+  it("lists pinned sessions in pin order, a crew member on its own, skipping gone sessions", () => {
+    const tree = buildTaskTree({
+      workspaces,
+      agents: [
+        agent("parent", { running: true }),
+        agent("child", { parentAgentId: "parent", pendingPermissionCount: 1 }),
+        agent("other"),
+      ],
+    });
+    const pinned = pinnedTaskNodes(tree, [
+      taskKey("home", "other"),
+      taskKey("home", "gone"),
+      taskKey("home", "child"),
+      taskKey("home", "parent"),
+    ]);
+    expect(pinned.map((n) => [n.agent.id, n.crewState, n.children.length])).toEqual([
+      ["other", "idle", 0],
+      ["child", "needs-you", 0],
+      ["parent", "working", 0],
+    ]);
   });
 });

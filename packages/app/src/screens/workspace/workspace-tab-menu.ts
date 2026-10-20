@@ -53,6 +53,9 @@ export type WorkspaceTabMenuEntry =
         | "arrow-right-to-line"
         | "copy-x"
         | "pencil"
+        // CUSTOM(task-pins)
+        | "pin"
+        | "pin-off"
         | "x";
       hint?: string;
       tooltip?: string;
@@ -87,6 +90,8 @@ interface BuildWorkspaceTabMenuEntriesInput {
   onCloseTabsAfter: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
   labels?: WorkspaceTabMenuLabels;
+  // CUSTOM(task-pins): agent tabs pin or unpin their session in the Tasks sidebar.
+  agentPin?: { pinned: boolean; toggle(): void };
 }
 
 interface BuildWorkspaceDesktopTabActionsInput {
@@ -108,6 +113,8 @@ interface BuildWorkspaceDesktopTabActionsInput {
   onCloseTabsToRight: (tabId: string) => Promise<void> | void;
   onCloseOtherTabs: (tabId: string) => Promise<void> | void;
   labels?: WorkspaceTabMenuLabels;
+  // CUSTOM(task-pins): agent tabs pin or unpin their session in the Tasks sidebar.
+  agentPin?: { pinned: boolean; toggle(): void };
 }
 
 export interface WorkspaceDesktopTabActions {
@@ -299,6 +306,18 @@ export function buildWorkspaceTabMenuEntries(
         onRenameTab(tab);
       },
     });
+    // CUSTOM(task-pins)
+    if (tab.target.kind === "agent" && input.agentPin) {
+      const { pinned, toggle } = input.agentPin;
+      entries.push({
+        kind: "item",
+        key: "pin",
+        label: pinned ? "Unpin" : "Pin",
+        icon: pinned ? "pin-off" : "pin",
+        testID: `${menuTestIDBase}-pin`,
+        onSelect: toggle,
+      });
+    }
     entries.push({
       kind: "separator",
       key: "rename-separator",
@@ -390,6 +409,7 @@ export function buildWorkspaceDesktopTabActions(
       onCloseTabsAfter: input.onCloseTabsToRight,
       onCloseOtherTabs: input.onCloseOtherTabs,
       labels: input.labels,
+      agentPin: input.agentPin,
     }),
     closeButtonTestId: getCloseButtonTestId(input.tab),
   };

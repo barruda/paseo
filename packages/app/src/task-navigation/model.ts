@@ -341,3 +341,13 @@ export function settleTaskStates(
   // Keep the shown map's identity when nothing visible changed, so the tree is not rebuilt.
   return { settling: { shown: changed ? shown : previous.shown, pending }, wakeAt };
 }
+
+// CUSTOM(task-pins): pinned sessions repeat under the filters in pin order. A pinned crew member
+// shows on its own, without its children; a pinned key with no live session is skipped.
+export function pinnedTaskNodes(roots: readonly TaskNode[], pinned: readonly string[]): TaskNode[] {
+  const byKey = new Map(flattenTaskTree(roots).map((row) => [row.node.key, row.node]));
+  return pinned.flatMap((key) => {
+    const node = byKey.get(key);
+    return node ? [{ ...node, children: [], crewState: node.state, contextOnly: false }] : [];
+  });
+}

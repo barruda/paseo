@@ -100,6 +100,8 @@ export interface SidebarWorkspaceMenuProps {
   archiveShortcutKeys?: ShortcutKey[][] | null;
   isPinned?: boolean;
   onTogglePin?: () => void;
+  // CUSTOM(task-pins): Tasks rows pin the session under the filters, not to the top.
+  pinLabel?: string;
   openInFileManagerPath?: string | null;
   /**
    * Lifted so the row that reveals the kebab can keep it mounted while its menu is up. See
@@ -149,6 +151,7 @@ function SidebarWorkspaceMenuItems({
   archiveShortcutKeys,
   isPinned,
   onTogglePin,
+  pinLabel,
   openInFileManagerPath,
 }: SidebarWorkspaceMenuItemsProps & { surface: MenuSurface }): ReactNode {
   const { t } = useTranslation();
@@ -220,7 +223,9 @@ function SidebarWorkspaceMenuItems({
           leading={isPinned ? unpinLeadingIcon : pinLeadingIcon}
           onSelect={onTogglePin}
         >
-          {isPinned ? t("sidebar.workspace.actions.unpin") : t("sidebar.workspace.actions.pin")}
+          {isPinned
+            ? t("sidebar.workspace.actions.unpin")
+            : (pinLabel ?? t("sidebar.workspace.actions.pin"))}
         </WorkspaceMenuItem>
       ) : null}
       {serverId && workspaceId ? (
@@ -393,6 +398,7 @@ export function SidebarWorkspaceContextMenu({
   archiveShortcutKeys,
   isPinned,
   onTogglePin,
+  pinLabel,
   openInFileManagerPath,
   accessibilityLabel,
   highlightStyle,
@@ -475,6 +481,7 @@ export function SidebarWorkspaceContextMenu({
           archiveShortcutKeys={archiveShortcutKeys}
           isPinned={isPinned}
           onTogglePin={onTogglePin}
+          pinLabel={pinLabel}
           openInFileManagerPath={openInFileManagerPath}
         />
       </ContextMenuContent>

@@ -33,6 +33,7 @@ import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list"
 import { TaskRowContextMenu, useTaskRowActions, type TaskRowActions } from "./task-row-menu";
 import { useArchivedTasks } from "./use-archived-tasks";
 import { useSettledTaskStates } from "./use-settled-task-states";
+import { usePinnedTasksStore } from "./pinned-tasks-store";
 import {
   buildTaskTree,
   sortTaskTree,
@@ -42,6 +43,7 @@ import {
   limitIdleTasks,
   markableUnreadTaskKeys,
   matchesTaskFilter,
+  pinnedTaskNodes,
   taskKey,
   TASK_STATE_LABELS,
   type TaskAgent,
@@ -207,6 +209,12 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     [agents, workspaces, states],
   );
   const archived = useArchivedTasks(filter === "archived", workspaces);
+  // CUSTOM(task-pins): pinned sessions show under the filters whatever the search, project or filter.
+  const pinnedKeys = usePinnedTasksStore((s) => s.keys);
+  const pinnedSet = useMemo(() => new Set(pinnedKeys), [pinnedKeys]);
+  const pinnedNodes = useMemo(() => pinnedTaskNodes(roots, pinnedKeys), [roots, pinnedKeys]);
+  // The pinned task last opened from its pinned copy. Only the copy that was clicked highlights.
+  const [openedFromPinned, setOpenedFromPinned] = useState<string | null>(null);
   const projects = useMemo(
     () =>
       [...new Map(workspaces.map((w) => [w.projectKey, w.projectName])).entries()]
@@ -338,6 +346,27 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     },
     [onBeforeNavigate, pathname],
   );
+  const openListTask = useCallback(
+    (node: TaskNode, pin = false) => {
+      setOpenedFromPinned(null);
+      openTask(node, pin);
+    },
+    [openTask],
+  );
+  const openPinnedTask = useCallback(
+    (node: TaskNode, pin = false) => {
+      setOpenedFromPinned(node.key);
+      openTask(node, pin);
+    },
+    [openTask],
+  );
+  const selectedKeyInPinned =
+    selectedAgentKey !== null &&
+    selectedAgentKey === openedFromPinned &&
+    pinnedSet.has(selectedAgentKey)
+      ? selectedAgentKey
+      : null;
+  const selectedKeyInList = selectedKeyInPinned === null ? selectedAgentKey : null;
   const shortcutTasks = useMemo(
     () => rows.flatMap((row) => (row.kind === "task" ? [row.node] : [])).slice(0, 9),
     [rows],
@@ -354,7 +383,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     handle: (action) => {
       if (action.id !== "task.navigate.index") return false;
       const node = shortcutTasks[action.index - 1];
-      if (node) openTask(node);
+      if (node) openListTask(node);
       return true;
     },
   });
@@ -410,8 +439,8 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
           depth={item.depth}
           shortcutNumber={shortcutNumbers.get(item.key)}
           collapsed={collapsed.has(item.key) && !query && filter === "all" && projectKeys === null}
-          selected={selectedAgentKey === item.key}
-          onOpen={openTask}
+          selected={selectedKeyInList === item.key}
+          onOpen={openListTask}
           onToggle={toggle}
           hostLabel={hosts.length > 1 ? hostNames.get(item.node.agent.serverId) : undefined}
           entry={entriesByWorkspace.get(
@@ -419,12 +448,14 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
           )}
           archived={filter === "archived"}
           canMarkUnread={markableUnread.has(item.key)}
+          pinned={pinnedSet.has(item.key)}
           actions={taskActions}
         />
       );
     },
     [
       loadMoreArchived,
+      pinnedSet,
       entriesByWorkspace,
       markableUnread,
       taskActions,
@@ -433,11 +464,49 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       query,
       filter,
       projectKeys,
-      selectedAgentKey,
-      openTask,
+      selectedKeyInList,
+      openListTask,
       toggle,
       hosts.length,
       hostNames,
+    ],
+  );
+  const pinnedHeader = useMemo(
+    () =>
+      pinnedNodes.length ? (
+        <View style={styles.pinned} testID="task-pinned">
+          {pinnedNodes.map((node) => (
+            <TaskRow
+              key={node.key}
+              node={node}
+              depth={0}
+              collapsed={false}
+              selected={selectedKeyInPinned === node.key}
+              onOpen={openPinnedTask}
+              onToggle={toggle}
+              hostLabel={hosts.length > 1 ? hostNames.get(node.agent.serverId) : undefined}
+              entry={entriesByWorkspace.get(
+                taskKey(node.agent.serverId, node.workspace.workspaceId),
+              )}
+              archived={false}
+              canMarkUnread={markableUnread.has(node.key)}
+              pinned
+              actions={taskActions}
+              testIDPrefix="task-pinned"
+            />
+          ))}
+        </View>
+      ) : null,
+    [
+      pinnedNodes,
+      selectedKeyInPinned,
+      openPinnedTask,
+      toggle,
+      hosts.length,
+      hostNames,
+      entriesByWorkspace,
+      markableUnread,
+      taskActions,
     ],
   );
   const emptyComponent = useMemo(
@@ -498,7 +567,8 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         keyExtractor={rowKey}
         renderItem={renderRow}
         keyboardShouldPersistTaps="handled"
-        extraData={selectedAgentKey}
+        extraData={selectedKeyInList}
+        ListHeaderComponent={pinnedHeader}
         ListEmptyComponent={emptyComponent}
       />
       {taskRenameModal}
@@ -573,7 +643,9 @@ const TaskRow = memo(function TaskRow({
   entry,
   archived,
   canMarkUnread,
+  pinned,
   actions,
+  testIDPrefix = "task-agent",
 }: {
   node: TaskNode;
   shortcutNumber?: number;
@@ -586,7 +658,10 @@ const TaskRow = memo(function TaskRow({
   entry: SidebarWorkspaceEntry | undefined;
   archived: boolean;
   canMarkUnread: boolean;
+  pinned: boolean;
   actions: TaskRowActions;
+  /** Pinned copies use their own test ids so the original row stays unique. */
+  testIDPrefix?: string;
 }) {
   const showBadges = useShowShortcutBadges();
   const age = useCompactTimeAgo(node.agent.updatedAt);
@@ -660,6 +735,7 @@ const TaskRow = memo(function TaskRow({
           entry={entry}
           archived={archived}
           canMarkUnread={canMarkUnread}
+          pinned={pinned}
           actions={actions}
           triggerRef={middleClickRef}
           style={buttonStyle}
@@ -669,7 +745,7 @@ const TaskRow = memo(function TaskRow({
           accessibilityState={selectedState}
           aria-selected={selected}
           accessibilityLabel={accessibilityLabel}
-          testID={`task-agent-${node.agent.id}`}
+          testID={`${testIDPrefix}-${node.agent.id}`}
         >
           {body}
         </TaskRowContextMenu>
@@ -682,7 +758,7 @@ const TaskRow = memo(function TaskRow({
           accessibilityState={selectedState}
           aria-selected={selected}
           accessibilityLabel={accessibilityLabel}
-          testID={`task-agent-${node.agent.id}`}
+          testID={`${testIDPrefix}-${node.agent.id}`}
         >
           {body}
         </Pressable>
@@ -707,6 +783,12 @@ const styles = StyleSheet.create((theme) => ({
   search: { flex: 1, minWidth: 0, flexDirection: "row" },
   filters: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing[1] },
   list: { flex: 1, paddingHorizontal: theme.spacing[2] },
+  pinned: {
+    borderBottomWidth: 1,
+    borderColor: theme.colors.border,
+    paddingBottom: theme.spacing[1],
+    marginBottom: theme.spacing[1],
+  },
   heading: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,

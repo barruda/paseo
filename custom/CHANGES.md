@@ -1712,7 +1712,7 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
     Copy path, Copy branch name (git), **Rename session**, Mark as read/unread, Labels, Open in file
     manager and **Archive session**. Rename and archive act on the agent. Mark as unread appears only
     on the workspace's newest finished root agent, because that is the one the daemon marks.
-    Pin to top is left out: tasks have no pinned order.
+    Pin is the session pin from [task-pins](#task-pins-pinned-sessions-under-the-tasks-filters).
   - Archived: an **Archived** filter loads archived sessions from agent history (all hosts, paged,
     with Load more) plus sessions archived in this app session. Search and project selection apply.
     Clicking one opens it in the Desk, where the archived callout offers Unarchive. The count shows
@@ -2199,3 +2199,35 @@ src/server/lean-claude.test.ts)` (the update script runs them). On a daemon from
   file and press it: a Terminal card shows the commit and the diff stat pill goes away; the button
   stays.
 
+## task-pins: pinned sessions under the Tasks filters
+
+- **Added:** 2026-10-20
+- **Commit:** `custom: pinned sessions under the Tasks filters`
+- **Why:** A few sessions the user keeps going back to drift around the Tasks sidebar as their state
+  changes. Pinning keeps them in one place.
+- **What:** Right-clicking a task, or an agent tab, offers **Pin**; a pinned one offers **Unpin**
+  (archived sessions offer neither). Pinned sessions show right under the filter buttons, in pin order, with no
+  heading and a divider below, whatever the search, project selection or filter. They also stay
+  in their usual place in the list. Only the copy you clicked shows as selected; a session
+  opened another way (a tab, Ctrl+1..9) selects its list row. A pinned crew member shows on its own, without its children.
+  Pins are task keys (`serverId:agentId`) kept in this app's storage (`custom-task-pins`); the
+  daemon knows nothing about them. A pin whose session is archived or gone is skipped.
+- **Files:** `task-navigation/pinned-tasks-store.ts`, `pinnedTaskNodes` in
+  `task-navigation/model.ts`, `togglePin` in `task-navigation/task-row-menu.tsx`, the
+  `ListHeaderComponent` in `task-navigation/sidebar.tsx`, `task-navigation/agent-tab-pin.ts`.
+- **Core files touched:** `components/sidebar/sidebar-workspace-menu.tsx` gains an optional
+  `pinLabel`, because upstream's workspace pin reads "Pin to top".
+  `screens/workspace/workspace-tab-menu.ts` gains an optional `agentPin` input and `pin`/`pin-off`
+  icons; `screens/workspace/workspace-desktop-tabs-row.tsx` passes `useAgentTabPin` into it and
+  renders the icons (all marked `CUSTOM(task-pins)`).
+- **Re-apply:** Pass `isPinned`, `onTogglePin` and `pinLabel="Pin"` from `TaskRowContextMenu` to
+  `SidebarWorkspaceContextMenu` (upstream's workspace menu already renders the item). Build the
+  pinned nodes from the unfiltered task tree and render them as `TaskRow`s in the list's
+  `ListHeaderComponent`, with their own `task-pinned-<agentId>` test ids so the original row's
+  `task-agent-<agentId>` stays unique. Remember which copy opened the task and highlight only
+  that one. In the tab menu, add the Pin/Unpin entry after Rename for agent tabs, keyed by the
+  tab owner's host.
+- **Verify:** `model.test.ts` covers `pinnedTaskNodes`. The row menu test in desktop
+  `e2e/task-navigation.spec.ts` pins and unpins from the task and the tab menus and checks that
+  only the clicked copy is selected. Both are already registered in the update
+  script.
