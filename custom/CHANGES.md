@@ -2231,3 +2231,22 @@ src/server/lean-claude.test.ts)` (the update script runs them). On a daemon from
   `e2e/task-navigation.spec.ts` pins and unpins from the task and the tab menus and checks that
   only the clicked copy is selected. Both are already registered in the update
   script.
+
+## agent-tab-project-icon: agent tabs show the project icon
+
+- **Added:** 2026-10-20
+- **Commit:** `custom: agent tabs show the project icon`
+- **Why:** With every tab showing the same provider icon, tabs from different projects looked
+  alike.
+- **What:** Agent tabs (tab strip, tab switcher, drag chip, subagents track) show the icon of the
+  agent's project: the uploaded or discovered image, or the colored initial. The status ring and
+  dots still sit on top. Until the project resolves, the tab keeps the provider icon.
+- **Files:** `panels/agent-project-tab-icon.tsx`. It reuses `resolveComposerProjectIdentity` from
+  [composer-project-icon](#composer-project-icon-identify-the-project-beside-context-usage).
+- **Core files touched:** `panels/agent-panel.tsx`, in `useAgentPanelDescriptor` (marked
+  `CUSTOM(agent-tab-project-icon)`).
+- **Re-apply:** In the agent panel descriptor, set `icon` to `useAgentProjectTabIcon(serverId,
+agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionally. The hook
+  returns a memoized component, so the tab presentation only changes when the project icon does.
+- **Verify:** The row menu test in desktop `e2e/task-navigation.spec.ts` checks the
+  `agent-tab-project-icon` inside the agent's Desk tab (already registered in the update script).

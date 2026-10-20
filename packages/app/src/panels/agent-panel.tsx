@@ -36,6 +36,7 @@ import {
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import { useProviderIcon } from "@/components/provider-icons";
+import { useAgentProjectTabIcon } from "./agent-project-tab-icon";
 import { useToastHost, type ToastApi, type ToastState } from "@/components/toast-host";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import { useWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -345,7 +346,10 @@ function useAgentPanelDescriptor(
   );
   const provider = descriptorState.provider;
   const label = resolveWorkspaceAgentTabLabel(descriptorState.title);
-  const icon = useProviderIcon(provider, context.serverId);
+  const providerIcon = useProviderIcon(provider, context.serverId);
+  // CUSTOM(agent-tab-project-icon): the project's icon, falling back to the provider's.
+  const projectIcon = useAgentProjectTabIcon(context.serverId, target.agentId);
+  const icon = projectIcon ?? providerIcon;
 
   return {
     label: label ?? "",

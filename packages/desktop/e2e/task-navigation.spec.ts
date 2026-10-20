@@ -328,6 +328,13 @@ test("Tasks mode row menu, pane toolbar, launch shortcuts, Desk moves and archiv
     const desk = page.getByTestId("desk-screen");
     const pinnedTabs = desk.locator('[data-desk-tab="pinned"]');
     await expect(pinnedTabs).toHaveCount(1);
+    // Agent tabs show the project's icon instead of the provider's.
+    await expect(
+      desk
+        .getByTestId(`workspace-tab-agent_${first.agentId}`)
+        .getByTestId("agent-tab-project-icon"),
+    ).toBeVisible();
+    await page.screenshot({ path: test.info().outputPath("agent-tab-project-icon.png") });
 
     // Only the copy that was clicked shows as selected.
     await expect(task).toHaveAttribute("aria-selected", "true");
