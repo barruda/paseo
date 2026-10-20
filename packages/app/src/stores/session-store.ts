@@ -34,6 +34,7 @@ import type {
   AgentPersistenceHandle,
 } from "@getpaseo/protocol/agent-types";
 import type {
+  AgentStatusSummaryPayload,
   ServerInfoStatusPayload,
   ProjectPlacementPayload,
   ServerCapabilities,
@@ -100,6 +101,8 @@ export interface Agent {
   parentAgentId: string | null;
   labels: Record<string, string>;
   projectPlacement?: ProjectPlacementPayload | null;
+  // CUSTOM(agent-status-summary): what was asked and where the work stands.
+  statusSummary?: AgentStatusSummaryPayload;
 }
 
 export interface WorkspaceDescriptor {

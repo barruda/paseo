@@ -59,6 +59,7 @@ import { usePaneContext, usePaneFocus } from "@/panels/pane-context";
 import { definePanel, type PanelDescriptor } from "@/panels/panel-registry";
 import { RenderProfile } from "@/utils/render-profiler";
 import { useHasPluginComposerPills } from "@/plugins";
+import { AgentStatusLine } from "@/composer/agent-status-line"; // CUSTOM(agent-status-summary)
 import { buildDraftPanelDescriptor } from "@/panels/draft-panel-descriptor";
 import {
   type HostRuntimeConnectionStatus,
@@ -1648,6 +1649,7 @@ function ActiveAgentComposer({
         onClientSlashCommand={handleClientSlashCommand}
         isCompactLayout={isCompactComposerLayout}
       />
+      <AgentStatusLine serverId={serverId} agentId={agentId} />
     </View>
   );
 }

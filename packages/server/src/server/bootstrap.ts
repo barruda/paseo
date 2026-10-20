@@ -213,6 +213,8 @@ import {
 import { deleteLocalCredential, writeLocalCredential } from "./local-credential.js";
 import { createWebUiMiddleware } from "./web-ui.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
+// CUSTOM(agent-status-summary)
+import { AgentStatusSummaries, createLeanClaudeStatusGenerate } from "./agent-status-summary.js";
 import { createGitMutationService } from "./session/git-mutation/git-mutation-service.js";
 import { workspaceIdsOnCheckout } from "./workspace-directory.js";
 import { configureGitProcessPolicy } from "../utils/run-git-command.js";
@@ -1159,6 +1161,13 @@ export async function createPaseoDaemon(
     },
     logger,
   });
+  // CUSTOM(agent-status-summary): the per-agent status line above the composer.
+  const agentStatusSummaries = new AgentStatusSummaries({
+    agentManager,
+    generate: createLeanClaudeStatusGenerate(config.paseoHome),
+    logger,
+  });
+  agentStatusSummaries.start();
 
   setupAutoArchiveOnMerge({
     paseoHome: config.paseoHome,
@@ -1878,6 +1887,7 @@ export async function createPaseoDaemon(
     await hubRelationships.stop();
     workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();
+    agentStatusSummaries.stop(); // CUSTOM(agent-status-summary)
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
     agentManager.prepareForShutdown();

@@ -2101,3 +2101,59 @@ status` and `!ls`, type `!g` + Up: `git status` shows. Type `!cat packages/ap` +
 - **Verify:** `npx vitest run custom/plugins/tldr` (the update script runs it). In the app, click
   **TLDR** under an agent's composer: `TLDR` shows as your message and the agent answers.
 
+## agent-status-summary: what each agent was asked and where it stands, under the composer
+
+- **Added:** 2026-10-20 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: agent status line under the composer`
+- **Why:** With many tabs open, coming back to one meant scrolling up to remember what it was
+  about.
+- **What:**
+  - A line of small, soft text under the composer box (12 px, muted) with the session's topic,
+    at most 6 words, like a tab title ("Resumo de sessão em uma frase"). It is plain text, not a
+    pill, so it doesn't compete for attention or squeeze the pills; the box moves up about 12 px
+    to make room. Hover it (press it on mobile) for the current request and status in full, plus
+    when, by which model and at what cost the summary was written. It appears once the agent has
+    a summary; summaries from before the topic existed show the request instead.
+  - The daemon writes the summary with Haiku through a lean `claude -p` call
+    (`lean-claude.ts`: no tools, settings, MCP servers, CLAUDE.md or saved session), about 1-2k
+    tokens and $0.0003-0.0007 at list price per call. Not the metadata model: that path starts a
+    full Claude Code session per call, 20k-40k tokens of context, and reports no model or cost.
+    It runs 4 s after a turn starts, 2 s after it ends, and at most every 3 minutes while a long
+    turn keeps producing output. It skips the call when the messages and state are the same as
+    last time, runs at most 2 at a time, and never for internal agents.
+  - The panel's last line names the model and cost of the call that wrote the summary.
+  - **Usage:** every call adds a line to
+    `$PASEO_HOME/custom-llm-usage.jsonl` with model, tokens, list-price cost, duration and
+    errors. `node custom/llm-usage.mjs` totals calls, tokens and cost per day and feature for
+    `~/.paseo` and `~/.paseo-telus` (`--home`, `--days`). The calls are billed to the Claude
+    subscription, so the cost is what the API would charge, not money spent.
+  - The input is the first user message, the last three, and the activity after the last one
+    (about 3k characters), plus the previous summary. "Request" follows the latest messages, so it
+    changes when the session changes goal.
+  - The summary is in daemon memory: a daemon restart or an agent reload clears it until the next
+    turn.
+- **Files:** `packages/server/src/server/agent-status-summary.ts` (triggers, prompt, queue) and
+  `lean-claude.ts` (the `claude -p` runner and usage file), each with a test;
+  `packages/app/src/composer/agent-status-line.tsx`; `custom/llm-usage.mjs`. New files; no
+  conflict risk.
+- **Core files touched** (each marked `CUSTOM(agent-status-summary)`):
+  - Protocol `messages.ts`: `AgentStatusSummaryPayloadSchema` (with optional `topic`, `model`
+    and `costUsd`) and an optional `statusSummary` on `AgentSnapshotPayloadSchema`.
+  - Server: `agent/agent-manager.ts` (`statusSummary` on `ManagedAgentBase`,
+    `setStatusSummary`/`getStatusSummary`, which emit state without touching `updatedAt`);
+    `agent/agent-projections.ts` (`toAgentPayload` copies it); `bootstrap.ts` (starts and stops
+    `AgentStatusSummaries`).
+  - App: `stores/session-store.ts` (`Agent.statusSummary`); `utils/agent-snapshots.ts` (both
+    mappers copy it); `panels/agent-panel.tsx` (renders `AgentStatusLine` after `<Composer>` in
+    `ActiveAgentComposer`).
+- **Re-apply:** Add the optional `statusSummary` to the agent snapshot and copy it from the managed
+  agent in the payload projection. Start `AgentStatusSummaries` in bootstrap with
+  `createLeanClaudeStatusGenerate(config.paseoHome)`. In the app, carry the field through snapshot
+  normalization and render `AgentStatusLine` right after the agent composer; its negative top
+  margin tucks it into the composer's bottom padding.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent-status-summary.test.ts
+src/server/lean-claude.test.ts)` (the update script runs them). On a daemon from this build,
+  send an agent a message: a few seconds later the line under the composer box shows the request
+  and status, and hovering it names `claude-haiku-5-5`; after the turn ends it updates.
+  `node custom/llm-usage.mjs` lists the calls.
+

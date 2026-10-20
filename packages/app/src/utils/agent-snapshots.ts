@@ -85,6 +85,7 @@ export function projectAgentSnapshot(agent: Agent): AgentSnapshotPayload {
     attentionReason: agent.attentionReason ?? null,
     attentionTimestamp: agent.attentionTimestamp?.toISOString() ?? null,
     archivedAt: agent.archivedAt?.toISOString() ?? null,
+    ...(agent.statusSummary ? { statusSummary: agent.statusSummary } : {}), // CUSTOM(agent-status-summary)
   };
 }
 
@@ -134,5 +135,6 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     archivedAt,
     parentAgentId,
     labels: snapshot.labels,
+    ...(snapshot.statusSummary ? { statusSummary: snapshot.statusSummary } : {}), // CUSTOM(agent-status-summary)
   };
 }

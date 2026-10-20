@@ -18,6 +18,7 @@ import {
 } from "@getpaseo/protocol/agent-labels";
 import type { Logger } from "pino";
 import type { ToolPolicy } from "@getpaseo/protocol/agent-types";
+import type { AgentStatusSummaryPayload } from "@getpaseo/protocol/messages";
 import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-config";
 import { z } from "zod";
 import type { TerminalManager } from "../../terminal/terminal-manager.js";
@@ -443,6 +444,8 @@ interface ManagedAgentBase {
    * User-defined labels for categorizing agents (e.g., { surface: "workspace" }).
    */
   labels: Record<string, string>;
+  // CUSTOM(agent-status-summary): what was asked and where the work stands. In memory only.
+  statusSummary?: AgentStatusSummaryPayload;
 }
 
 type ManagedAgentWithSession = ManagedAgentBase & {
@@ -2118,6 +2121,19 @@ export class AgentManager {
     this.touchUpdatedAt(agent);
     await this.persistSnapshot(agent, { title: normalizedTitle });
     this.emitState(agent, { persist: false });
+  }
+
+  // CUSTOM(agent-status-summary): set by AgentStatusSummaries. Leaves updatedAt alone so a new
+  // summary does not reorder agent lists.
+  setStatusSummary(agentId: string, summary: AgentStatusSummaryPayload): void {
+    const agent = this.agents.get(agentId);
+    if (!agent) return;
+    agent.statusSummary = summary;
+    this.emitState(agent, { persist: false });
+  }
+
+  getStatusSummary(agentId: string): AgentStatusSummaryPayload | null {
+    return this.agents.get(agentId)?.statusSummary ?? null;
   }
 
   async setLabels(agentId: string, labels: Record<string, string>): Promise<void> {

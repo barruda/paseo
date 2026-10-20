@@ -140,6 +140,8 @@ export function toAgentPayload(
     title: options?.title ?? null,
     labels: agent.labels,
     ...(agent.internal ? { internal: true } : {}),
+    // CUSTOM(agent-status-summary)
+    ...(agent.statusSummary ? { statusSummary: agent.statusSummary } : {}),
   };
 
   const usage = sanitizeUsage(agent.lastUsage);

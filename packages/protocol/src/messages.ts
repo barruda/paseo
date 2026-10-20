@@ -824,6 +824,21 @@ const AgentActiveTurnPayloadSchema = z.object({
   startedAt: z.string().nullable(),
 });
 
+// CUSTOM(agent-status-summary): what was asked and where the work stands, one line each.
+export const AgentStatusSummaryPayloadSchema = z.object({
+  /** What the session is about, at most 6 words. The line under the composer shows only this. */
+  topic: z.string().optional(),
+  request: z.string(),
+  status: z.string(),
+  updatedAt: z.string(),
+  /** The model that wrote it, e.g. `claude-haiku-5-5`. */
+  model: z.string().optional(),
+  /** List-price cost of the call that wrote it. */
+  costUsd: z.number().optional(),
+});
+
+export type AgentStatusSummaryPayload = z.infer<typeof AgentStatusSummaryPayloadSchema>;
+
 export const AgentSnapshotPayloadSchema = z.object({
   id: z.string(),
   provider: AgentProviderSchema,
@@ -855,6 +870,8 @@ export const AgentSnapshotPayloadSchema = z.object({
   providerUnavailable: z.boolean().optional(),
   // Private helper marker, retained for exact-ID snapshots and older wire messages.
   internal: z.boolean().optional(),
+  // CUSTOM(agent-status-summary)
+  statusSummary: AgentStatusSummaryPayloadSchema.optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
