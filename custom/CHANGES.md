@@ -415,8 +415,10 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 
 ## copy-full-file-path: "Copy full file path" in the file tab menu
 
-- **Added:** 2026-10-09 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
-- **Commit:** `custom: Copy full file path in the file tab menu`
+- **Added:** 2026-10-09 (based on upstream 0.11.0-beta.2, `b5b43edd6`). Changed 2026-10-20: `~`
+  paths expand to the host's home.
+- **Commit:** `custom: Copy full file path in the file tab menu`, then
+  `custom: Copy full file path expands ~ to the host home`
 - **Why:** Upstream's "Copy file path" copies the tab's path as stored, which is relative to the
   workspace for files opened from the explorer. Pasting a path into another tool or terminal needs
   the absolute one.
@@ -424,6 +426,11 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   resolved against the workspace root (`/home/bruno/uprojects/teste.html`). A path that is already
   absolute is copied as is. "Copy file path" is unchanged. Same menu on desktop and mobile. The
   label is English only.
+  - Tabs opened from chat links to files outside the workspace store `~/…` paths. Those expand to
+    the daemon host's home (`/home/bruno/telus/reports/x.html`), not to the workspace. The app
+    learns the home by listing `~` from the workspace, which explorer-outside-workspace answers
+    with the absolute path, and caches it per host. Open in browser / default app
+    (open-file-externally) resolves the same way.
 - **Core files touched** (each marked `CUSTOM(copy-full-file-path)`):
   - `packages/app/src/screens/workspace/workspace-tab-menu.ts`: the entry, and an optional
     `copyFullFilePath` label.
@@ -434,14 +441,21 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     (two places), and `components/split-container.tsx`. The props
     pass the handler through unchanged, so the second argument reaches it.
   - `workspace-tab-menu.test.ts`: expects the new entry first.
+  - `screens/workspace/workspace-tab-menu-actions.ts` (`copyTabFilePath`, `createTabFileOpener`,
+    shared by the workspace screen and Desks): resolve through `tab-file-path.ts` (new file, with
+    a test) and take an optional `serverId`, which `workspace-screen.tsx` and
+    `task-navigation/desk-screen.tsx` pass.
 - **Re-apply:** In the file-tab branch of `buildWorkspaceTabMenuEntries`, push an entry before
   "Copy file path" that calls `onCopyFilePath(path, "full")`. In the workspace screen's copy
-  handler, when the mode is `"full"` and the path is relative, join it to `workspaceDirectory`.
+  handler, when the mode is `"full"` and the path is relative, join it to `workspaceDirectory`;
+  when it starts with `~`, get the home from `client.listDirectory(workspaceDirectory, "~")`
+  (its `path`) and join to that.
   Widen every `onCopyFilePath` prop type the handler passes through. If upstream wraps the prop in
   a lambda somewhere on the way, forward the second argument there too.
-- **Verify:** `(cd packages/app && npx vitest run src/screens/workspace/workspace-tab-menu.test.ts)`
+- **Verify:** `(cd packages/app && npx vitest run src/screens/workspace/workspace-tab-menu.test.ts src/screens/workspace/tab-file-path.test.ts)`
   (the update script runs it). In the app, right-click a file tab, pick **Copy full file path**,
-  and paste.
+  and paste. Do the same on a tab opened from a `~/…` link outside the workspace: the paste starts
+  with `/home/`.
 
 ## html-preview-keys: app shortcuts work inside the HTML preview
 

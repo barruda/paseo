@@ -353,6 +353,7 @@ export function DeskScreen() {
       void copyTabFilePath({
         path,
         mode,
+        serverId: owner?.serverId,
         workspaceDirectory: owner ? workspaceDirectoryOf(owner) : null,
         toast,
         t,
@@ -370,7 +371,14 @@ export function DeskScreen() {
         toast.error("Files on a remote host cannot be opened locally");
         return;
       }
-      void opener({ path, mode, workspaceDirectory: workspaceDirectoryOf(owner), toast, t });
+      void opener({
+        path,
+        mode,
+        serverId: owner.serverId,
+        workspaceDirectory: workspaceDirectoryOf(owner),
+        toast,
+        t,
+      });
     };
   }, [localServerId, ownerOf, toast, t]);
   const renameTab = useCallback(

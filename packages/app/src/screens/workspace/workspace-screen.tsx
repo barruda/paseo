@@ -2113,12 +2113,13 @@ function WorkspaceScreenContent({
     const openFile = createTabFileOpener(isLocalFileHost);
     if (!openFile) return undefined;
     return (path: string, mode: "browser" | "default") =>
-      openFile({ path, mode, workspaceDirectory, toast, t });
-  }, [isLocalFileHost, workspaceDirectory, toast, t]);
+      openFile({ path, mode, serverId: normalizedServerId, workspaceDirectory, toast, t });
+  }, [isLocalFileHost, normalizedServerId, workspaceDirectory, toast, t]);
 
   const handleCopyFilePath = useCallback(
-    (path: string, mode?: "full") => copyTabFilePath({ path, mode, workspaceDirectory, toast, t }),
-    [toast, t, workspaceDirectory],
+    (path: string, mode?: "full") =>
+      copyTabFilePath({ path, mode, serverId: normalizedServerId, workspaceDirectory, toast, t }),
+    [normalizedServerId, toast, t, workspaceDirectory],
   );
 
   const handleCopyResumeCommand = useCallback(

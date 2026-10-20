@@ -8,8 +8,8 @@ import { getDesktopHost } from "@/desktop/host";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
-import { buildAbsoluteExplorerPath } from "@/utils/explorer-paths";
 import { isAbsolutePath } from "@/utils/path";
+import { homeFromListedPath, isHomeRelativePath, resolveTabFilePath } from "./tab-file-path";
 
 interface Feedback {
   toast: ToastApi;
@@ -35,21 +35,55 @@ export async function copyTabTerminalId(terminalId: string, feedback: Feedback) 
   await copy(terminalId, feedback.t("workspace.tabs.toasts.terminalIdCopiedLabel"), feedback);
 }
 
+const hostHomes = new Map<string, string>();
+
+/** The daemon host's home directory, cached per host. Null when the daemon can't tell. */
+async function getHostHome(serverId: string, workspaceDirectory: string): Promise<string | null> {
+  const cached = hostHomes.get(serverId);
+  if (cached) return cached;
+  const client = getHostRuntimeStore().getClient(serverId);
+  if (!client) return null;
+  try {
+    const listing = await client.listDirectory(workspaceDirectory, "~");
+    const home = homeFromListedPath(listing.path, workspaceDirectory);
+    if (home) hostHomes.set(serverId, home);
+    return home;
+  } catch {
+    return null;
+  }
+}
+
+/** The tab's absolute path on its host; null (after a toast) when it can't be resolved. */
+async function resolveFullTabFilePath(
+  input: { path: string; serverId?: string; workspaceDirectory: string | null } & Feedback,
+): Promise<string | null> {
+  const { path, serverId, workspaceDirectory, toast, t } = input;
+  if (isAbsolutePath(path)) return path;
+  if (!workspaceDirectory) {
+    toast.error(t("workspace.header.toasts.workspacePathUnavailable"));
+    return null;
+  }
+  const home =
+    isHomeRelativePath(path) && serverId ? await getHostHome(serverId, workspaceDirectory) : null;
+  const resolved = resolveTabFilePath({ path, workspaceDirectory, home });
+  if (!resolved) toast.error("Could not resolve ~ on this host");
+  return resolved;
+}
+
 /** "full" resolves the tab's path against the workspace root (copy-full-file-path). */
 export async function copyTabFilePath(
-  input: { path: string; mode?: "full"; workspaceDirectory: string | null } & Feedback,
+  input: {
+    path: string;
+    mode?: "full";
+    serverId?: string;
+    workspaceDirectory: string | null;
+  } & Feedback,
 ) {
-  const { path, mode, workspaceDirectory, toast, t } = input;
+  const { path, mode } = input;
   if (!path) return;
-  let copiedPath = path;
-  if (mode === "full" && !isAbsolutePath(path)) {
-    if (!workspaceDirectory) {
-      toast.error(t("workspace.header.toasts.workspacePathUnavailable"));
-      return;
-    }
-    copiedPath = buildAbsoluteExplorerPath({ workspaceRoot: workspaceDirectory, entryPath: path });
-  }
-  await copy(copiedPath, t("workspace.tabs.toasts.filePathCopiedLabel"), input);
+  const copiedPath = mode === "full" ? await resolveFullTabFilePath(input) : path;
+  if (!copiedPath) return;
+  await copy(copiedPath, input.t("workspace.tabs.toasts.filePathCopiedLabel"), input);
 }
 
 let fileOpenPending = false;
@@ -62,18 +96,14 @@ export function createTabFileOpener(isLocalFileHost: boolean) {
     input: {
       path: string;
       mode: "browser" | "default";
+      serverId?: string;
       workspaceDirectory: string | null;
     } & Feedback,
   ) => {
-    const { path, mode, workspaceDirectory, toast, t } = input;
+    const { mode, toast } = input;
     if (fileOpenPending) return;
-    if (!workspaceDirectory && !isAbsolutePath(path)) {
-      toast.error(t("workspace.header.toasts.workspacePathUnavailable"));
-      return;
-    }
-    const absolutePath = isAbsolutePath(path)
-      ? path
-      : buildAbsoluteExplorerPath({ workspaceRoot: workspaceDirectory!, entryPath: path });
+    const absolutePath = await resolveFullTabFilePath(input);
+    if (!absolutePath) return;
     fileOpenPending = true;
     toast.show("Opening file…", { durationMs: null });
     try {
