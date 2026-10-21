@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AgentStatusSummaryPayload } from "@getpaseo/protocol/messages";
 import type { AgentTimelineItem } from "./agent/agent-sdk-types.js";
 import type { AgentManagerEvent, AgentSubscriber, ManagedAgent } from "./agent/agent-manager.js";
+import type { AgentStorage } from "./agent/agent-storage.js";
 import {
   AgentStatusSummaries,
   buildStatusSummaryPrompt,
@@ -90,6 +91,10 @@ class FakeManager {
   getStatusSummary(agentId: string) {
     return this.summaries.get(agentId) ?? null;
   }
+  title: string | null = "fix the login";
+  async setTitle(_agentId: string, title: string) {
+    this.title = title;
+  }
   emit(type: "turn_started" | "turn_completed" | "timeline") {
     const event =
       type === "timeline"
@@ -111,6 +116,9 @@ describe("AgentStatusSummaries", () => {
     generate = vi.fn(async () => ({ request: "Fix the login", status: "Reading the auth module" }));
     service = new AgentStatusSummaries({
       agentManager: manager,
+      agentStorage: {
+        get: async () => ({ title: manager.title }) as Awaited<ReturnType<AgentStorage["get"]>>,
+      },
       generate,
       logger: pino({ level: "silent" }),
     });
@@ -154,6 +162,37 @@ describe("AgentStatusSummaries", () => {
     manager.emit("timeline");
     await vi.advanceTimersByTimeAsync(1_000);
     expect(generate).toHaveBeenCalledTimes(2);
+  });
+
+  describe("auto-rename", () => {
+    const threeMessages = [user("fix the login"), assistant("done"), user("now"), user("and")];
+
+    beforeEach(() => {
+      generate.mockResolvedValue({ title: "Login fix", request: "Fix login", status: "Done" });
+    });
+
+    it("renames the session from the summary at the third user message", async () => {
+      manager.timeline = threeMessages;
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(manager.title).toBe("Login fix");
+    });
+
+    it("waits for the third user message", async () => {
+      manager.timeline = threeMessages.slice(0, 3);
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(manager.summaries.get("a1")?.title).toBe("Login fix");
+      expect(manager.title).toBe("fix the login");
+    });
+
+    it("keeps a title set by hand", async () => {
+      manager.title = "My name";
+      manager.timeline = threeMessages;
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(manager.title).toBe("My name");
+    });
   });
 
   it("ignores internal agents", async () => {

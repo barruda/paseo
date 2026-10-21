@@ -826,6 +826,8 @@ const AgentActiveTurnPayloadSchema = z.object({
 
 // CUSTOM(agent-status-summary): what was asked and where the work stands, one line each.
 export const AgentStatusSummaryPayloadSchema = z.object({
+  /** CUSTOM(session-auto-rename): a session name, at most 4 words, for renaming the agent. */
+  title: z.string().optional(),
   /** What the session is about, at most 6 words. The line under the composer shows only this. */
   topic: z.string().optional(),
   request: z.string(),

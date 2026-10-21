@@ -5,6 +5,8 @@ import type { AgentStatusSummaryPayload } from "@getpaseo/protocol/messages";
 import type { AgentTimelineItem } from "./agent/agent-sdk-types.js";
 import { curateAgentActivity } from "./agent/activity-curator.js";
 import type { AgentManager, AgentManagerEvent } from "./agent/agent-manager.js";
+import type { AgentStorage } from "./agent/agent-storage.js";
+import { clampTitleWords, resolveCreateAgentTitles } from "./agent/create-agent-title.js";
 import { recordLlmUsage, runLeanClaude } from "./lean-claude.js";
 
 // CUSTOM(agent-status-summary): one line per agent saying what was asked and where the work is,
@@ -24,10 +26,16 @@ const RUNNING_REFRESH_MS = 3 * 60_000;
 /** Each summary starts a `claude` process, so a burst of turn ends waits its turn. */
 const MAX_CONCURRENT = 2;
 const SUMMARY_MODEL = "haiku";
+/**
+ * CUSTOM(session-auto-rename): from this many user messages on, the summary's title renames the
+ * session, unless the title was set by hand.
+ */
+export const AUTO_RENAME_USER_MESSAGES = 3;
 const SYSTEM_PROMPT =
-  'You write status cards for coding agent sessions. Reply with JSON only: {"topic": "...", "request": "...", "status": "..."}.';
+  'You write status cards for coding agent sessions. Reply with JSON only: {"title": "...", "topic": "...", "request": "...", "status": "..."}.';
 
 const SummarySchema = z.object({
+  title: z.string().optional(),
   topic: z.string().optional(),
   request: z.string(),
   status: z.string(),
@@ -72,6 +80,7 @@ export function createLeanClaudeStatusGenerate(paseoHome: string): AgentStatusSu
       });
       const summary = parseStatusSummaryReply(result.text);
       return {
+        ...(summary.title?.trim() ? { title: clampTitleWords(summary.title) } : {}),
         ...(summary.topic?.trim() ? { topic: summary.topic.trim() } : {}),
         request: summary.request,
         status: summary.status,
@@ -128,14 +137,15 @@ export function buildStatusSummaryPrompt(input: {
     "You keep a status card for a coding agent session. The user glances at it when switching",
     "back to this tab and needs to remember what the session is about.",
     "",
+    "- title: a name for the session, in at most 4 words, used as its tab title.",
     "- topic: what the session is about right now, in at most 6 words, like a tab title. It is",
     "  the only part shown without hovering, so it must read at a glance.",
     "- request: what the user is asking for right now, as a short phrase (at most 12 words).",
     "  When the latest messages change the goal, describe the new goal, not the first one.",
     "- status: where the work stands, as one short sentence (at most 18 words): what the agent",
     "  is doing or did, and what is pending or what it needs from the user.",
-    "Write all three in the language of the user's messages. No markdown inside the values.",
-    'Reply with JSON only: {"topic": "...", "request": "...", "status": "..."}',
+    "Write them all in the language of the user's messages. No markdown inside the values.",
+    'Reply with JSON only: {"title": "...", "topic": "...", "request": "...", "status": "..."}',
     "",
     `Agent state: ${lifecycle}.`,
   ];
@@ -143,6 +153,7 @@ export function buildStatusSummaryPrompt(input: {
     lines.push(
       "",
       "Previous card (update it; keep what still holds):",
+      ...(previous.title ? [`title: ${clip(previous.title, PREVIOUS_FIELD_CHARS)}`] : []),
       ...(previous.topic ? [`topic: ${clip(previous.topic, PREVIOUS_FIELD_CHARS)}`] : []),
       `request: ${clip(previous.request, PREVIOUS_FIELD_CHARS)}`,
       `status: ${clip(previous.status, PREVIOUS_FIELD_CHARS)}`,
@@ -172,8 +183,9 @@ interface AgentState {
 export interface AgentStatusSummariesOptions {
   agentManager: Pick<
     AgentManager,
-    "subscribe" | "getAgent" | "getTimeline" | "setStatusSummary" | "getStatusSummary"
+    "subscribe" | "getAgent" | "getTimeline" | "setStatusSummary" | "getStatusSummary" | "setTitle"
   >;
+  agentStorage: Pick<AgentStorage, "get">;
   generate: AgentStatusSummaryGenerate;
   logger: pino.Logger;
   now?: () => Date;
@@ -320,9 +332,28 @@ export class AgentStatusSummaries {
         status,
         updatedAt: this.now().toISOString(),
       });
+      if (result.title) await this.maybeAutoRename(agentId, result.title);
     } catch (error) {
       logger.warn({ err: error, agentId }, "agent status summary failed");
     }
+  }
+
+  // CUSTOM(session-auto-rename): once the session has a few user messages, the summary knows
+  // what it is about better than its first line does. Only a title still equal to the first
+  // message's provisional title gets replaced, so a rename by hand or an earlier auto-rename
+  // stays, across daemon restarts too.
+  private async maybeAutoRename(agentId: string, title: string): Promise<void> {
+    const { agentManager, agentStorage } = this.options;
+    const timeline = agentManager.getTimeline(agentId);
+    const userTexts = timeline.flatMap((item) =>
+      item.type === "user_message" && item.text.trim() ? [item.text] : [],
+    );
+    if (userTexts.length < AUTO_RENAME_USER_MESSAGES) return;
+    const current = (await agentStorage.get(agentId))?.title?.trim() || null;
+    const { provisionalTitle } = resolveCreateAgentTitles({ initialPrompt: userTexts[0] });
+    if (current && current !== provisionalTitle) return;
+    if (current === title) return;
+    await agentManager.setTitle(agentId, title);
   }
 }
 

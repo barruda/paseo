@@ -2306,3 +2306,38 @@ agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionall
   "New agent flyout" test in desktop `e2e/task-navigation.spec.ts` (both in the update script). In
   the app, open **+**, hover **Agent**, click another project: a new agent tab opens with that
   project's icon in the composer.
+
+## session-auto-rename: the status summary names the session
+
+- **Added:** 2026-10-21 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: the status summary renames the session`
+- **Why:** A session's tab title is the first line of its first message, which rarely says what
+  the session turned out to be about. The status summary under the composer already knows.
+- **What:**
+  - The [agent-status-summary](#agent-status-summary-what-each-agent-was-asked-and-where-it-stands-under-the-composer)
+    call also asks Haiku for a `title` of at most 4 words (clamped in code like
+    [title-max-four-words](#title-max-four-words-agent-and-workspace-titles-stay-at-four-words)).
+    Same call, no extra cost beyond a few tokens.
+  - From the third user message on, the daemon renames the session to that title, once. It only
+    replaces a title still equal to the provisional title derived from the first message, so a
+    rename by hand (or an explicit title from the CLI/MCP) is kept, and the session is not renamed
+    again after the first time, daemon restarts included.
+  - A **Rename session** pill right of **Commit: wip** renames the session to the current summary
+    title at any time (falling back to the topic for older summaries). With no summary yet, it
+    shows an error toast.
+- **Core files touched** (marked `CUSTOM(session-auto-rename)`):
+  - Protocol `messages.ts`: optional `title` on `AgentStatusSummaryPayloadSchema`.
+  - Server `agent-status-summary.ts`: the `title` field in the prompt and reply, and
+    `maybeAutoRename`; `bootstrap.ts` passes `agentStorage` to `AgentStatusSummaries`.
+  - App `composer/rename-session-pill.tsx` (new) and `panels/agent-tracks.tsx` (renders it after
+    `CommitWipPill`).
+- **Re-apply:** Depends on agent-status-summary and commit-wip. Add `title` to the summary prompt,
+  schema and payload. After storing a summary, when the timeline has 3+ user messages and the
+  stored title is empty or equals `resolveCreateAgentTitles({ initialPrompt: firstUserMessage })`,
+  call `agentManager.setTitle`. In the app, a pill after Commit: wip calls
+  `client.updateAgent(agentId, { name: summary.title })`.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent-status-summary.test.ts)`
+  (already in the update script) covers the rename, the wait for the third message and the kept
+  manual title. In the app, send a fresh agent three messages: a few seconds after the third its
+  tab title changes to a 4-word name. Rename it by hand and press **Rename session**: it goes back
+  to the summary's title.

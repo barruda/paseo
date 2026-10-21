@@ -1164,6 +1164,7 @@ export async function createPaseoDaemon(
   // CUSTOM(agent-status-summary): the per-agent status line above the composer.
   const agentStatusSummaries = new AgentStatusSummaries({
     agentManager,
+    agentStorage,
     generate: createLeanClaudeStatusGenerate(config.paseoHome),
     logger,
   });
