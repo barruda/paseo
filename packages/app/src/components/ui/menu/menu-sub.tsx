@@ -9,6 +9,7 @@ import {
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronRight } from "lucide-react-native";
+import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
 import { useMenuContext, useMenuDepth } from "./menu-context";
 import { isSubPageOpen } from "./menu-navigation";
@@ -34,6 +35,8 @@ export function MenuSubTrigger({
   leading,
   disabled,
   testID,
+  onSelect,
+  accessory,
   children,
 }: PropsWithChildren<{
   /** Matches the `id` of a `MenuPageDefinition` passed to the surface. */
@@ -50,6 +53,13 @@ export function MenuSubTrigger({
   leading?: ReactElement | null;
   disabled?: boolean;
   testID?: string;
+  /**
+   * CUSTOM(new-agent-projects): makes the row an action of its own. Where hover opens the flyout
+   * (web popovers), pressing runs this and closes the menu; elsewhere pressing still opens the page.
+   */
+  onSelect?: () => void;
+  /** CUSTOM(new-agent-projects): shown before the chevron, e.g. the row's shortcut. */
+  accessory?: ReactElement | null;
 }>): ReactElement {
   const menu = useMenuContext("MenuSubTrigger");
   const depth = useMenuDepth();
@@ -64,9 +74,11 @@ export function MenuSubTrigger({
   const isOpen = isSubPageOpen(menu.path, { id, depth });
   const isPopover = menu.presentation === "popover";
 
+  const actsOnPress = Boolean(onSelect) && isPopover && isWeb;
   const handleSelect = useCallback(() => {
-    menu.openSub({ id, depth });
-  }, [menu, id, depth]);
+    if (actsOnPress && onSelect) onSelect();
+    else menu.openSub({ id, depth });
+  }, [actsOnPress, onSelect, menu, id, depth]);
 
   const handlePointerEnter = useCallback(() => {
     cancelHoverClose();
@@ -78,8 +90,8 @@ export function MenuSubTrigger({
   }, [hoverClose, depth]);
 
   const trailing = useMemo(
-    () => <MenuSubTrailing value={value} indicator={indicator} />,
-    [value, indicator],
+    () => <MenuSubTrailing value={value} indicator={indicator} accessory={accessory} />,
+    [value, indicator, accessory],
   );
 
   return (
@@ -91,7 +103,7 @@ export function MenuSubTrigger({
     >
       <MenuItem
         active={isOpen}
-        closeOnSelect={false}
+        closeOnSelect={actsOnPress}
         disabled={disabled}
         onSelect={handleSelect}
         leading={leading}
@@ -107,9 +119,11 @@ export function MenuSubTrigger({
 function MenuSubTrailing({
   value,
   indicator,
+  accessory,
 }: {
   value?: string;
   indicator: boolean;
+  accessory?: ReactElement | null;
 }): ReactElement {
   return (
     <View style={styles.trailing}>
@@ -119,6 +133,7 @@ function MenuSubTrailing({
         </Text>
       ) : null}
       {indicator ? <View style={styles.indicator} testID="menu-sub-indicator" /> : null}
+      {accessory}
       <ThemedChevronRight size={14} uniProps={mutedIconMapping} />
     </View>
   );

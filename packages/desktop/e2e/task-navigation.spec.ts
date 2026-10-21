@@ -1,3 +1,4 @@
+import path from "node:path";
 import { test, expect } from "../../app/e2e/support/fixtures";
 import { openAgentRoute, seedMockAgentWorkspace } from "../../app/e2e/support/helpers/mock-agent";
 import { openCommandCenter } from "../../app/e2e/support/helpers/command-center";
@@ -466,5 +467,60 @@ test("Tasks mode docks the focused task's Explorer", async ({ page }) => {
     await expect(page.getByTestId("workspace-explorer-sidebar")).toHaveCount(0);
   } finally {
     await first.cleanup();
+  }
+});
+
+// CUSTOM(new-agent-projects): hovering the + menu's Agent row lists projects; one click starts a
+// draft in the picked project, in the workspace view and in a Desk.
+test("New agent flyout starts a draft in the picked project", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await installDesktopRuntime(page, {
+    serverId: getServerId(),
+    manageBuiltInDaemon: false,
+    platform: "linux",
+  });
+  const first = await seedMockAgentWorkspace({
+    repoPrefix: "new-agent-first-",
+    title: "First project task",
+  });
+  const second = await seedMockAgentWorkspace({
+    repoPrefix: "new-agent-second-",
+    title: "Second project task",
+  });
+  try {
+    await openAgentRoute(page, first);
+    const secondName = path.basename(second.cwd);
+    const projectIcon = page.getByTestId("composer-project-icon").filter({ visible: true });
+    const pickSecondProject = async () => {
+      await page.getByTestId("workspace-new-tab-button").filter({ visible: true }).first().click();
+      await page.getByTestId("workspace-new-tab-menu-agent").hover();
+      await page
+        .locator('[data-testid^="new-agent-project-"]')
+        .filter({ hasText: secondName })
+        .click();
+      await expect(projectIcon).toHaveAttribute("aria-label", secondName);
+    };
+
+    // Workspace view: the draft opens in the second project's workspace.
+    await pickSecondProject();
+    await expect(page).toHaveURL(new RegExp(second.workspaceId));
+
+    // A click on the row itself still opens the default agent, without the flyout.
+    await page.getByTestId("workspace-new-tab-button").filter({ visible: true }).first().click();
+    await page.getByTestId("workspace-new-tab-menu-agent").click();
+    await expect(page.getByTestId("workspace-new-tab-menu")).toHaveCount(0);
+
+    // Tasks mode: the draft lands in the Desk, owned by the second project.
+    await page.getByTestId("task-navigation-switch").filter({ visible: true }).click();
+    const sidebar = page.getByTestId("task-navigation-sidebar");
+    await sidebar.getByTestId(`task-agent-${first.agentId}`).click({ button: "middle" });
+    const desk = page.getByTestId("desk-screen");
+    const pinnedTabs = desk.locator('[data-desk-tab="pinned"]');
+    const before = await pinnedTabs.count();
+    await pickSecondProject();
+    await expect(pinnedTabs).toHaveCount(before + 1);
+  } finally {
+    await first.cleanup();
+    await second.cleanup();
   }
 });

@@ -6,7 +6,10 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
+// CUSTOM(new-agent-projects)
+import { buildNewAgentProjectsPage, NEW_AGENT_PROJECTS_PAGE_ID } from "@/new-agent-projects/menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { TerminalProfileIcon } from "@/components/terminal-profile-icon";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
@@ -63,6 +66,22 @@ function WorkspaceNewTabMenuItem({
   );
   const handleSelect = useCallback(() => item.launch({ kind: "open", paneId }), [item, paneId]);
 
+  // CUSTOM(new-agent-projects): hover opens the project flyout; a click still opens the default.
+  if (item.id === "agent") {
+    return (
+      <DropdownMenuSubTrigger
+        id={NEW_AGENT_PROJECTS_PAGE_ID}
+        testID={`workspace-new-tab-menu-${item.id}`}
+        leading={leading}
+        accessory={trailing}
+        disabled={item.disabled}
+        onSelect={handleSelect}
+      >
+        {item.label}
+      </DropdownMenuSubTrigger>
+    );
+  }
+
   return (
     <DropdownMenuItem
       testID={`workspace-new-tab-menu-${item.id}`}
@@ -101,6 +120,21 @@ export function WorkspaceNewTabMenuContent({
     surface: "menu",
     panePanelKinds,
   });
+  // CUSTOM(new-agent-projects)
+  const agentItem = groups.flatMap((group) => group.items).find((item) => item.id === "agent");
+  const pages = useMemo(
+    () =>
+      agentItem
+        ? [
+            buildNewAgentProjectsPage({
+              serverId,
+              paneId,
+              launchDefault: () => agentItem.launch({ kind: "open", paneId }),
+            }),
+          ]
+        : undefined,
+    [agentItem, serverId, paneId],
+  );
 
   return (
     <DropdownMenuContent
@@ -109,6 +143,7 @@ export function WorkspaceNewTabMenuContent({
       offset={4}
       minWidth={200}
       testID="workspace-new-tab-menu"
+      pages={pages}
     >
       {groups.map((group, index) => (
         <View key={group.id}>

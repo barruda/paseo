@@ -2276,3 +2276,33 @@ agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionall
   desktop `e2e/task-navigation.spec.ts`, which kills the bottom panel's terminal through the daemon
   and expects the pane to go. Both are already registered in the update script. In the app,
   open a terminal in a Desk, type `exit`: the tab closes. After a reboot, no blank terminal tabs.
+
+## new-agent-projects: the + menu's Agent row lists projects on hover
+
+- **Added:** 2026-10-21
+- **Commit:** `custom: + menu Agent row opens a project flyout`
+- **Why:** Starting an agent in another project meant opening a default agent, then switching its
+  project (Ctrl+M, the composer's project icon, or Up). One click from the **+** menu is faster.
+- **What:** In the **+** (new tab) menu, a click on **Agent** still opens a default agent where it
+  did. Hovering it opens a flyout with every project that has a workspace on that host (icon and
+  name, sorted). A click on a project opens a new agent tab in that project: its main checkout, or
+  a worktree when it has none. The current project uses the default launch, so a worktree stays
+  in its worktree. Workspace mode navigates to that workspace; Tasks mode opens the tab in the
+  focused pane of the Desk. Where there is no hover (native, sheets), pressing the row opens the
+  project list as before for submenus.
+- **Files:** `packages/app/src/new-agent-projects/` (`model.ts` picks one workspace per project,
+  `menu.tsx` builds the page and launches), with `model.test.ts`.
+- **Core files touched** (marked `CUSTOM(new-agent-projects)`):
+  - `packages/app/src/components/ui/menu/menu-sub.tsx`: `MenuSubTrigger` takes `onSelect` (a press
+    runs it and closes the menu where hover opens the flyout) and `accessory` (shown before the
+    chevron, used for the shortcut).
+  - `packages/app/src/screens/workspace/workspace-new-tab-menu.tsx`: the `agent` launch item renders
+    as a `DropdownMenuSubTrigger`, and the content passes the projects page.
+- **Re-apply:** Give the menu engine's sub-trigger an optional press action that applies only on web
+  popovers, keeping hover-to-open. In the new-tab menu, render the `agent` launch item through it
+  with `buildNewAgentProjectsPage`, passing the item's own launch as `launchDefault`. Keep the page
+  content a component so closed menus don't subscribe to projects or icons.
+- **Verify:** `(cd packages/app && npx vitest run src/new-agent-projects/model.test.ts)` and the
+  "New agent flyout" test in desktop `e2e/task-navigation.spec.ts` (both in the update script). In
+  the app, open **+**, hover **Agent**, click another project: a new agent tab opens with that
+  project's icon in the composer.

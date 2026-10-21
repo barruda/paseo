@@ -322,6 +322,8 @@ if $VERIFY; then
   (cd packages/protocol && npx vitest run src/search/history-query.test.ts --bail=1)
   (cd packages/cli && npx vitest run src/commands/speech/shared.test.ts --bail=1)
   (cd packages/client && npx vitest run src/wake-dictation.test.ts --bail=1)
+  # The + menu's Agent flyout (its browser check is in e2e/task-navigation.spec.ts).
+  (cd packages/app && npx vitest run src/new-agent-projects/model.test.ts --bail=1)
 fi
 
 step "Building the desktop app"
