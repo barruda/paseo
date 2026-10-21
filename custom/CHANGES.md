@@ -2438,3 +2438,35 @@ packages/server/src` finds new upstream sites that join a root and a slug.
 src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (the first two are in
   the update script). In the app, start a new worktree session in any project: `git worktree list`
   shows it as `<parent>/worktrees/<project>-<slug>`. Archive its workspace: the folder goes away.
+
+## worktree-pill: a "Worktree: <branch>" pill that copies the path or merges back
+
+- **Added:** 2026-10-21 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: Worktree pill copies the path or merges back`
+- **Why:** With sessions starting in worktrees ([draft-worktree](#draft-worktree-a-new-session-in-tasks-mode-can-start-in-a-new-worktree)),
+  nothing under the composer said the agent was in one, and bringing the work home meant
+  committing in the worktree, `cd` to the main checkout and `git merge <branch>` by hand.
+- **What:** When the agent's workspace is a worktree (`workspaceKind === "worktree"`), a
+  **Worktree: &lt;branch&gt;** pill shows right of **Commit: wip**. The branch comes from
+  `gitRuntime.currentBranch`, falling back to the workspace name. Pressing it opens a menu:
+  - **Copy worktree full path** copies the workspace directory.
+  - **Merge back to main project** runs, as a `!<command>`
+    ([shell-command](#shell-command-run-command-from-the-chat)), `git add -A`, a `wip` commit when
+    something is staged, then `cd` to the main checkout and `git merge --no-edit <branch>`. The main
+    checkout is the parent of `git rev-parse --git-common-dir`, so it also works for worktrees
+    Paseo did not create. A conflict or a dirty main checkout stops the merge, and git says so in
+    the Terminal card. No confirmation.
+- **Files:** `packages/app/src/composer/worktree-pill.tsx` (the pill and menu),
+  `packages/app/src/composer/worktree-pill-model.ts` (the command and label), with
+  `worktree-pill-model.test.ts` (runs the command against a real repo and worktree).
+- **Core files touched** (marked `CUSTOM(worktree-pill)`):
+  - `packages/app/src/panels/agent-tracks.tsx`: renders `WorktreePill` after `CommitWipPill`.
+- **Re-apply:** In the composer track bar, after the Commit: wip pill, render a dropdown menu pill
+  that shows only for `workspaceKind === "worktree"` workspaces. One item copies
+  `workspace.workspaceDirectory` with `expo-clipboard`; the other runs `MERGE_WORKTREE_COMMAND`
+  through `useRunChatCommand`.
+- **Verify:** `(cd packages/app && npx vitest run src/composer/worktree-pill-model.test.ts)` (in
+  the update script). In the app, open an agent in a worktree workspace: the pill reads
+  `Worktree: <branch>`; an agent in a normal checkout has no pill. Copy the path and paste it. Edit
+  a file and pick **Merge back to main project**: the Terminal card shows the `wip` commit and the
+  merge, and `git log` in the main checkout has it.

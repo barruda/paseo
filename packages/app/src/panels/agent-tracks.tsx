@@ -2,6 +2,7 @@ import { memo, useCallback, type ReactElement } from "react";
 import { COMMIT_WIP_PILL_ALWAYS_SHOWN, CommitWipPill } from "@/composer/commit-wip-pill";
 import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { RenameSessionPill } from "@/composer/rename-session-pill";
+import { WorktreePill } from "@/composer/worktree-pill";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { AgentTaskList } from "@/composer/task-list";
 import { ComposerTrackBar } from "@/composer/tracks";
@@ -152,6 +153,8 @@ export const AgentTracks = memo(function AgentTracks({
       />
       {/* CUSTOM(commit-wip): commits everything as "wip" from beside the diff stat. */}
       <CommitWipPill serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
+      {/* CUSTOM(worktree-pill): copies the worktree path or merges it into the main checkout. */}
+      <WorktreePill serverId={serverId} workspaceId={workspaceId} agentId={agentId} cwd={cwd} />
       {/* CUSTOM(session-auto-rename): names the session from its status summary. */}
       <RenameSessionPill serverId={serverId} agentId={agentId} />
     </ComposerTrackBar>
