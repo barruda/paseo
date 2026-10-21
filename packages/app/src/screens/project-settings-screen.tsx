@@ -35,6 +35,7 @@ import { useProjects } from "@/hooks/use-projects";
 import type { ProjectEditFormSnapshot } from "@/projects/edit-form";
 import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
+import { RemoveProjectSection } from "@/projects/remove-project-section";
 import { useHostRuntimeClient, useHostRuntimeSnapshot } from "@/runtime/host-runtime";
 import { useHostFeature } from "@/runtime/host-features";
 import { useToast } from "@/contexts/toast-context";
@@ -318,6 +319,13 @@ function ProjectSettingsBody({
         onBackToProjects,
         showBackToProjects,
       })}
+
+      {/* CUSTOM(project-settings-remove): Remove project, reachable without the Projects sidebar. */}
+      <RemoveProjectSection
+        project={project}
+        projectName={selectedHost.projectName}
+        onRemoved={onBackToProjects}
+      />
     </View>
   );
 }

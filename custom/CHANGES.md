@@ -2470,3 +2470,29 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   `Worktree: <branch>`; an agent in a normal checkout has no pill. Copy the path and paste it. Edit
   a file and pick **Merge back to main project**: the Terminal card shows the `wip` commit and the
   merge, and `git log` in the main checkout has it.
+
+## project-settings-remove: Remove project from the project settings page
+
+- **Added:** 2026-10-21 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: Remove project from the project settings page`
+- **Why:** Upstream only offers **Remove project** from the project row's menu in the Projects
+  sidebar. Tasks mode lists sessions, not projects, so there was no way to remove one from the UI.
+- **What:** Settings → Projects → (a project) ends with a **Danger zone** section holding a
+  **Remove** button. It asks for confirmation, then runs the same removal as the sidebar menu:
+  archives the project's workspaces and drops the project on each host it lives on. Files on disk
+  are not touched. When it succeeds the page goes back to the project list. A host without the
+  `projectRemove` feature gets the upstream "Update the host to remove projects." toast.
+- **Files:** `packages/app/src/projects/remove-project-section.tsx`, with
+  `remove-project-section.test.tsx`.
+- **Core files touched** (marked `CUSTOM(project-settings-remove)`):
+  - `packages/app/src/screens/project-settings-screen.tsx`: renders `RemoveProjectSection` after
+    the config form in `ProjectSettingsBody`, with `onRemoved={onBackToProjects}`.
+- **Re-apply:** At the bottom of the project settings body (outside the config form, so it still
+  shows when `paseo.json` fails to load or the folder is gone), render `RemoveProjectSection` with
+  the project summary and its name. It reuses `getCurrentProjectRemoveReadiness` and
+  `removeProjectFromHosts` from `packages/app/src/projects/project-remove.ts` and the
+  `sidebar.project.*` strings, the same pieces the sidebar's `handleRemoveProject` uses.
+- **Verify:** `(cd packages/app && npx vitest run src/projects/remove-project-section.test.tsx)`
+  (in the update script). In the app, open Settings → Projects → a throwaway project, press
+  **Remove** and confirm: the page goes back to the list, the project is gone from it and from the
+  - menu's project list, and its folder is still on disk.
