@@ -1,6 +1,4 @@
-import { join } from "node:path";
-
-import { getPaseoWorktreesRoot, isPaseoOwnedWorktreeCwd } from "../../utils/worktree.js";
+import { computeWorktreePath, isPaseoOwnedWorktreeCwd } from "../../utils/worktree.js";
 import {
   archiveByScope,
   resolveWorkspaceIdAtPath,
@@ -208,10 +206,11 @@ async function resolveWorktreeSlugPath(
   repoRoot: string,
   worktreeSlug: string,
 ): Promise<string> {
-  const worktreesRoot = await getPaseoWorktreesRoot(
+  // CUSTOM(project-worktrees-root): computeWorktreePath adds the `<project>-` folder prefix.
+  return computeWorktreePath(
     repoRoot,
+    worktreeSlug,
     dependencies.paseoHome,
     dependencies.paseoWorktreesBaseRoot,
   );
-  return join(worktreesRoot, worktreeSlug);
 }

@@ -113,7 +113,6 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
     });
 
     it("creates a worktree for the current branch (main)", async () => {
-      const projectHash = await deriveWorktreeProjectHash(repoDir);
       const result = await createLegacyWorktreeForTest({
         branchName: "main",
         cwd: repoDir,
@@ -122,7 +121,8 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
         paseoHome,
       });
 
-      expect(result.worktreePath).toBe(join(paseoHome, "worktrees", projectHash, "hello-world"));
+      // CUSTOM(project-worktrees-root): worktrees go beside the project.
+      expect(result.worktreePath).toBe(join(tempDir, "worktrees", "test-repo-hello-world"));
       expect(existsSync(result.worktreePath)).toBe(true);
       expect(existsSync(join(result.worktreePath, "file.txt"))).toBe(true);
       const metadataPath = getPaseoWorktreeMetadataPath(result.worktreePath);
@@ -234,7 +234,6 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
     });
 
     it("creates a worktree with a new branch", async () => {
-      const projectHash = await deriveWorktreeProjectHash(repoDir);
       const result = await createLegacyWorktreeForTest({
         cwd: repoDir,
         worktreeSlug: "my-feature",
@@ -243,7 +242,8 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
         paseoHome,
       });
 
-      expect(result.worktreePath).toBe(join(paseoHome, "worktrees", projectHash, "my-feature"));
+      // CUSTOM(project-worktrees-root): worktrees go beside the project.
+      expect(result.worktreePath).toBe(join(tempDir, "worktrees", "test-repo-my-feature"));
       expect(existsSync(result.worktreePath)).toBe(true);
 
       const currentBranch = execFileSync("git", ["branch", "--show-current"], {
@@ -785,7 +785,6 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
     });
 
     it("handles branch name collision by adding suffix", async () => {
-      const projectHash = await deriveWorktreeProjectHash(repoDir);
       // Create a branch named "hello" first
       execFileSync("git", ["branch", "hello"], { cwd: repoDir });
 
@@ -798,7 +797,8 @@ describe.skipIf(isPlatform("win32"))("worktree POSIX-only", () => {
       });
 
       // Should create branch "hello-1" since "hello" exists
-      expect(result.worktreePath).toBe(join(paseoHome, "worktrees", projectHash, "hello"));
+      // CUSTOM(project-worktrees-root): worktrees go beside the project.
+      expect(result.worktreePath).toBe(join(tempDir, "worktrees", "test-repo-hello"));
       expect(existsSync(result.worktreePath)).toBe(true);
 
       const branches = execFileSync("git", ["branch"], { cwd: repoDir }).toString();

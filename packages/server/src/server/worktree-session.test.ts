@@ -1589,7 +1589,8 @@ describe("handleCreatePaseoWorktreeRequest", () => {
       },
     );
 
-    expect(path.basename(result.sessionConfig.cwd)).toBe("feature-x");
+    // CUSTOM(project-worktrees-root): the folder carries the project name.
+    expect(path.basename(result.sessionConfig.cwd)).toBe("repo-feature-x");
   });
 
   test("buildAgentSessionConfig passes prompt and attachment context into worktree creation", async () => {

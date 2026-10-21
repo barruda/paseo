@@ -32,6 +32,7 @@ import { parseGitRevParsePath, resolveGitRevParsePath } from "./git-rev-parse-pa
 import { runGitCommand, type RunGitCommand } from "./run-git-command.js";
 import { readGitFileContents } from "./git-file-contents.js";
 import { isPaseoOwnedWorktreeCwd, resolvePaseoWorktreesBaseRoot } from "./worktree.js";
+import { matchProjectSiblingWorktree } from "./project-worktrees-root.js";
 import {
   branchNameFromRef,
   getPaseoWorktreeChangeRequestHintForBranch,
@@ -1117,6 +1118,8 @@ export function isPaseoWorktreePath(
   p: string,
   options?: { paseoHome?: string; worktreesRoot?: string },
 ): boolean {
+  // CUSTOM(project-worktrees-root): `<parent>/worktrees/<project>-<slug>` is Paseo's too.
+  if (matchProjectSiblingWorktree(p)) return true;
   if (options?.worktreesRoot || options?.paseoHome) {
     return isDescendantPath(p, resolvePaseoWorktreesBaseRoot(options));
   }

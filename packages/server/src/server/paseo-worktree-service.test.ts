@@ -20,7 +20,11 @@ import {
   type CreatePaseoWorktreeDeps,
 } from "./paseo-worktree-service.js";
 import { readPaseoWorktreeMetadata } from "../utils/worktree-metadata.js";
-import { createWorktree, getPaseoWorktreesRoot } from "../utils/worktree.js";
+import {
+  createWorktree,
+  getPaseoWorktreesRoot,
+  isPaseoOwnedWorktreeCwd,
+} from "../utils/worktree.js";
 import { isPlatform } from "../test-utils/platform.js";
 import { areEquivalentPaths, createRealpathAwarePathMatcher } from "../utils/path.js";
 import { deriveProjectKey } from "./project-key.js";
@@ -526,7 +530,8 @@ test.skipIf(isPlatform("win32"))(
 
     expect(second.created).toBe(true);
     expect(second.worktree.worktreePath).not.toBe(first.worktree.worktreePath);
-    expect(path.basename(second.worktree.worktreePath)).toBe("reuse-me-1");
+    // CUSTOM(project-worktrees-root): the folder carries the project name.
+    expect(path.basename(second.worktree.worktreePath)).toBe("repo-reuse-me-1");
     expect(events).toContain(`workspace:${second.workspace.workspaceId}`);
     expect(second.workspace.workspaceId).not.toBe(first.workspace.workspaceId);
   },
@@ -768,6 +773,29 @@ test("leaves the branch alone when generated branch text is invalid", async () =
       status: "attempted",
       placeholderBranchName: "dazzling-yak",
     },
+  });
+});
+
+// CUSTOM(project-worktrees-root)
+test("puts the worktree in a worktrees folder beside the project and owns it", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+
+  const created = await createPaseoWorktree(
+    {
+      cwd: repoDir,
+      worktreeSlug: "teste-novo",
+      branchName: "teste-novo",
+      runSetup: false,
+      paseoHome: path.join(tempDir, ".paseo"),
+    },
+    createDeps(),
+  );
+
+  expect(created.worktree.worktreePath).toBe(path.join(tempDir, "worktrees", "repo-teste-novo"));
+  await expect(isPaseoOwnedWorktreeCwd(created.worktree.worktreePath)).resolves.toMatchObject({
+    allowed: true,
+    worktreePath: created.worktree.worktreePath,
   });
 });
 

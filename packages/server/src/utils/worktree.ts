@@ -18,6 +18,12 @@ import {
   createStringCommandShellEnv,
 } from "./string-command-shell.js";
 import { readPaseoConfigJson, resolvePaseoConfigPath } from "./paseo-config-file.js";
+import {
+  matchProjectSiblingWorktree,
+  projectSiblingWorktreeName,
+  resolveProjectSiblingWorktrees,
+  type ProjectSiblingWorktrees,
+} from "./project-worktrees-root.js";
 export {
   PaseoConfigRawSchema,
   PaseoLifecycleCommandRawSchema,
@@ -878,9 +884,26 @@ export async function getPaseoWorktreesRoot(
   paseoHome?: string,
   worktreesRoot?: string,
 ): Promise<string> {
+  // CUSTOM(project-worktrees-root): the `worktrees` folder beside the project wins, unless the
+  // daemon config names a worktrees root.
+  if (!worktreesRoot) {
+    const sibling = await resolveProjectSiblingWorktreesForCwd(cwd);
+    if (sibling) return sibling.root;
+  }
   const baseRoot = resolvePaseoWorktreesBaseRoot({ paseoHome, worktreesRoot });
   const projectHash = await deriveWorktreeProjectHash(cwd);
   return join(baseRoot, projectHash);
+}
+
+async function resolveProjectSiblingWorktreesForCwd(
+  cwd: string,
+): Promise<ProjectSiblingWorktrees | null> {
+  try {
+    const repoRoot = resolveRepoRootFromGitCommonDir(await getGitCommonDir(cwd));
+    return resolveProjectSiblingWorktrees(repoRoot);
+  } catch {
+    return null;
+  }
 }
 
 export async function computeWorktreePath(
@@ -889,6 +912,11 @@ export async function computeWorktreePath(
   paseoHome?: string,
   worktreesRoot?: string,
 ): Promise<string> {
+  // CUSTOM(project-worktrees-root): beside the project, the folder is `<project>-<slug>`.
+  if (!worktreesRoot) {
+    const sibling = await resolveProjectSiblingWorktreesForCwd(cwd);
+    if (sibling) return join(sibling.root, projectSiblingWorktreeName(sibling.prefix, slug));
+  }
   const projectWorktreesRoot = await getPaseoWorktreesRoot(cwd, paseoHome, worktreesRoot);
   return join(projectWorktreesRoot, slug);
 }
@@ -967,6 +995,11 @@ export async function isPaseoOwnedWorktreeCwd(
   // path shape alone is sufficient proof of ownership, even when git has already
   // forgotten about the worktree.
   if (relativePath === null) {
+    // CUSTOM(project-worktrees-root): also own `<parent>/worktrees/<project>-<slug>`.
+    const sibling = matchProjectSiblingWorktree(resolvedCwd, repoRoot);
+    if (sibling) {
+      return { allowed: true, ...(repoRoot !== undefined ? { repoRoot } : {}), ...sibling };
+    }
     return {
       allowed: false,
       ...(repoRoot !== undefined ? { repoRoot } : {}),
@@ -1053,6 +1086,11 @@ export async function listPaseoWorktrees({
   worktreesRoot?: string;
 }): Promise<PaseoWorktreeInfo[]> {
   const projectWorktreesRoot = await getPaseoWorktreesRoot(cwd, paseoHome, worktreesRoot);
+  // CUSTOM(project-worktrees-root): worktrees made before the sibling folder existed stay listed.
+  const projectHashRoot = join(
+    resolvePaseoWorktreesBaseRoot({ paseoHome, worktreesRoot }),
+    await deriveWorktreeProjectHash(cwd),
+  );
   const { stdout } = await runGitCommand(["worktree", "list", "--porcelain"], {
     cwd,
     envOverlay: READ_ONLY_GIT_ENV,
@@ -1060,7 +1098,11 @@ export async function listPaseoWorktrees({
 
   return parseWorktreeList(stdout)
     .map((entry) => Object.assign({}, entry, { path: normalizePathForOwnership(entry.path) }))
-    .filter((entry) => getRealpathAwareRelativePath(projectWorktreesRoot, entry.path) !== null)
+    .filter(
+      (entry) =>
+        getRealpathAwareRelativePath(projectWorktreesRoot, entry.path) !== null ||
+        getRealpathAwareRelativePath(projectHashRoot, entry.path) !== null,
+    )
     .map((entry) =>
       Object.assign({}, entry, { createdAt: resolveWorktreeCreatedAtIso(entry.path) }),
     );
@@ -1101,7 +1143,12 @@ export async function deletePaseoWorktree({
     throw new Error("cwd or worktreesRoot is required to delete a Paseo worktree");
   }
 
-  const requestedPath = worktreePath ?? join(resolvedWorktreesRoot, worktreeSlug!);
+  // CUSTOM(project-worktrees-root): computeWorktreePath adds the `<project>-` folder prefix.
+  const requestedPath =
+    worktreePath ??
+    (worktreesRoot || !cwd
+      ? join(resolvedWorktreesRoot, worktreeSlug!)
+      : await computeWorktreePath(cwd, worktreeSlug!, paseoHome, worktreesBaseRoot));
   const resolvedRequested = normalizePathForOwnership(requestedPath);
   const ownership = await isPaseoOwnedWorktreeCwd(requestedPath, {
     paseoHome,
@@ -1226,7 +1273,8 @@ export const createWorktree = async ({
   worktreesRoot,
 }: CreateWorktreeOptions): Promise<CreatedWorktree> => {
   const sourcePlan = await resolveWorktreeSourcePlan({ cwd, source, desiredSlug: worktreeSlug });
-  let worktreePath = join(await getPaseoWorktreesRoot(cwd, paseoHome, worktreesRoot), worktreeSlug);
+  // CUSTOM(project-worktrees-root): computeWorktreePath adds the `<project>-` folder prefix.
+  let worktreePath = await computeWorktreePath(cwd, worktreeSlug, paseoHome, worktreesRoot);
   mkdirSync(dirname(worktreePath), { recursive: true });
 
   // Also handle worktree path collision

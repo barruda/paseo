@@ -2393,3 +2393,48 @@ agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionall
   in the name field (from shows the checkout's branch) and send. The tab becomes the agent, its header offers **Archive workspace**,
   and `git worktree list` shows a `login-fix` worktree on branch `login-fix`. Repeat with **New
   worktree** and no name: the branch gets a name from the message.
+
+## project-worktrees-root: worktrees go in a worktrees folder beside the project
+
+- **Added:** 2026-10-21 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: worktrees go in a worktrees folder beside the project`
+- **Why:** Worktrees under `~/.paseo/worktrees/<hash>/` are hard to find and open from a file
+  manager or editor. One `worktrees` folder per projects folder keeps them next to the projects,
+  and the project name in the folder name tells them apart.
+- **What:** Paseo creates a project's new worktrees in `<parent>/worktrees/<project>-<slug>`,
+  creating `<parent>/worktrees` on the first one: `~/projetos/paseo` gets
+  `~/projetos/worktrees/paseo-teste-novo`, `/mnt/linux-adicional2/pipeline` gets
+  `/mnt/linux-adicional2/worktrees/pipeline-<slug>`. The branch name stays the plain slug. A
+  `worktrees.root` in the daemon config still wins, and a repo at the filesystem root (`/foo`)
+  keeps `$PASEO_HOME/worktrees/<hash>/<slug>`. Paseo treats worktrees beside the project as its
+  own: archiving removes them, and they carry the same metadata (base branch, first-message branch
+  name).
+  - Worktrees made earlier under `$PASEO_HOME/worktrees/<hash>/` stay where they are and stay listed.
+  - A slug that already starts with `<project>-` (read back from a folder name, as workspace
+    recovery does) is not prefixed again.
+- **Files:** `packages/server/src/utils/project-worktrees-root.ts` (the root, the folder name and
+  the ownership match), with `project-worktrees-root.test.ts`.
+- **Core files touched** (marked `CUSTOM(project-worktrees-root)`):
+  - `packages/server/src/utils/worktree.ts`: `getPaseoWorktreesRoot` returns `<parent>/worktrees`
+    when no root is configured; `computeWorktreePath` adds the `<project>-` prefix, and
+    `createWorktree` and `deletePaseoWorktree` (slug only) go through it instead of joining the root
+    and the slug; `isPaseoOwnedWorktreeCwd` also owns the sibling shape; `listPaseoWorktrees` lists
+    both roots.
+  - `packages/server/src/server/worktree/commands.ts`: `resolveWorktreeSlugPath` uses
+    `computeWorktreePath`.
+  - `packages/server/src/utils/checkout-git.ts`: `isPaseoWorktreePath` also matches the sibling
+    shape.
+  - Upstream tests that expected the slug as the folder name or a path under `paseo-home`:
+    `worktree.posix.test.ts` (3), `paseo-worktree-service.test.ts` (suffixed slug),
+    `worktree-session.test.ts` (branch-name slug fallback).
+- **Re-apply:** Every place that turns a slug into a path must go through `computeWorktreePath`,
+  which returns `<dirname(repo)>/worktrees/<basename(repo)>-<slug>` when no worktrees root is
+  configured. `getPaseoWorktreesRoot` returns `<dirname(repo)>/worktrees` in that case. In the
+  ownership check, accept `<parent>/worktrees/<project>-<slug>[/...]` when `<parent>/<project>` is
+  the worktree's repository (or, when git no longer knows the worktree, any git checkout at
+  `<parent>/<prefix>` for a `-`-separated prefix of the folder name). `rg "join\(.*Root.*[Ss]lug"
+packages/server/src` finds new upstream sites that join a root and a slug.
+- **Verify:** `(cd packages/server && npx vitest run src/utils/project-worktrees-root.test.ts
+src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (the first two are in
+  the update script). In the app, start a new worktree session in any project: `git worktree list`
+  shows it as `<parent>/worktrees/<project>-<slug>`. Archive its workspace: the folder goes away.
