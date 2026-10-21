@@ -85,6 +85,7 @@ import {
 } from "@/screens/workspace/workspace-explorer-toggle";
 import { DeskLauncherProvider } from "./new-tab-menu";
 import { DeskExplorerDock, useDeskExplorer } from "./desk-explorer";
+import { DeskTerminalTabs } from "./desk-terminal-tabs";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
 import {
   useDesksStore,
@@ -705,6 +706,7 @@ export function DeskScreen() {
           </>
         )}
         <DeskVisibleAgents desk={desk} visible={isFocused} />
+        <DeskTerminalTabs />
         <FloatingPanelPortalHost name={portalHost} />
         <DeskNameModal naming={naming} desks={desks} onClose={closeNaming} onSubmit={submitName} />
         {renaming ? (

@@ -82,6 +82,11 @@ interface DesksState {
   openTab(tab: DeskTabInput, pin?: boolean, placement?: WorkspaceTabPlacement): void;
   selectTab(id: string): void;
   closeTab(id: string): void;
+  /**
+   * CUSTOM(desk-dead-terminals): closes, in every Desk, the workspace's terminal tabs whose
+   * terminal the daemon no longer runs (the shell exited, or the daemon restarted on boot).
+   */
+  closeDeadTerminalTabs(owner: DeskTabOwner, liveTerminalIds: ReadonlySet<string>): void;
   /** Moves a tab of the active Desk into another Desk as a kept tab, leaving that Desk unselected. */
   moveTabToDesk(id: string, deskId: string): void;
   keepPreview(): void;
@@ -424,6 +429,27 @@ export const useDesksStore = create<DesksState>()(
               ),
             ),
           })),
+        closeDeadTerminalTabs: (owner, liveTerminalIds) =>
+          set((state) => {
+            let changed = false;
+            const desks = state.desks.map((desk) => {
+              let layout = desk.layout;
+              for (const tab of deskTabs(desk)) {
+                if (tab.target.kind !== "terminal") continue;
+                if (liveTerminalIds.has(tab.target.terminalId)) continue;
+                if (tab.serverId !== owner.serverId || tab.workspaceId !== owner.workspaceId) {
+                  continue;
+                }
+                layout =
+                  closeTabInLayout({ layout, tabId: tab.id, explorerSidebarPaneId: null }) ??
+                  layout;
+              }
+              if (layout === desk.layout) return desk;
+              changed = true;
+              return withLayout(desk, layout);
+            });
+            return changed ? { desks } : {};
+          }),
         moveTabToDesk: (id, deskId) =>
           set((state) => {
             const source = activeDesk(state);

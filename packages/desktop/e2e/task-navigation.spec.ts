@@ -116,6 +116,16 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await terminalTab.hover();
     await bottom.getByTestId(`workspace-terminal-close-${terminalId}`).click();
     await expect(bottom).toHaveCount(0);
+    // A terminal the daemon no longer runs (its shell exited, or the daemon restarted) loses its
+    // Desk tab instead of leaving a blank one.
+    await page.keyboard.press("Control+j");
+    const deadTab = bottom.locator('[data-testid^="workspace-tab-terminal_"]');
+    const deadTerminalId = (await deadTab.getAttribute("data-testid"))!.replace(
+      "workspace-tab-terminal_",
+      "",
+    );
+    await second.client.killTerminal(deadTerminalId);
+    await expect(bottom).toHaveCount(0);
 
     await composer.fill("Draft for terrain");
     await sidebar.getByTestId(`task-agent-${first.agentId}`).click();

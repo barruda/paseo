@@ -40,6 +40,7 @@ import {
   deskTabs,
   initialDesks,
   useDesksStore,
+  type Desk,
   type DeskTabInput,
 } from "./desks-store";
 import { collectAllPanes, findPaneContainingTab } from "@/stores/workspace-layout-actions";
@@ -109,6 +110,35 @@ describe("Desks", () => {
     expect(store.toggleBottomPanel(firstTab)?.kind).toBe("shown");
     expect(desk().layout.focusedPaneId).toBe("bottom-panel");
     expect(desk().owners[launcherId]).toEqual({ serverId: "home", workspaceId: "unity" });
+  });
+  it("closes a workspace's terminal tabs, in every Desk, once its terminal is gone", () => {
+    const store = useDesksStore.getState();
+    const terminal = (terminalId: string, workspaceId = "paseo"): DeskTabInput => ({
+      serverId: "home",
+      workspaceId,
+      target: { kind: "terminal", terminalId },
+    });
+    store.openTab(firstTab, true);
+    store.openTab(terminal("dead"), true);
+    store.openTab(terminal("live"), true);
+    store.openTab(terminal("other-workspace", "unity"), true);
+    store.createDesk("Second");
+    useDesksStore.getState().openTab(terminal("dead"), true);
+    const live = new Set(["live"]);
+    useDesksStore
+      .getState()
+      .closeDeadTerminalTabs({ serverId: "home", workspaceId: "paseo" }, live);
+    const targetsOf = (entry: Desk) => deskTabs(entry).map((tab) => tab.target);
+    const targets = useDesksStore.getState().desks.map(targetsOf);
+    expect(targets).toEqual([
+      [firstTab.target, terminal("live").target, terminal("other-workspace").target],
+      [],
+    ]);
+    const before = useDesksStore.getState().desks;
+    useDesksStore
+      .getState()
+      .closeDeadTerminalTabs({ serverId: "home", workspaceId: "paseo" }, live);
+    expect(useDesksStore.getState().desks).toBe(before);
   });
   it("replaces the preview across projects while pinned tabs keep their source workspace", () => {
     const store = useDesksStore.getState();

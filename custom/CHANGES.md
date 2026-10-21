@@ -2250,3 +2250,29 @@ agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionall
   returns a memoized component, so the tab presentation only changes when the project icon does.
 - **Verify:** The row menu test in desktop `e2e/task-navigation.spec.ts` checks the
   `agent-tab-project-icon` inside the agent's Desk tab (already registered in the update script).
+
+## desk-dead-terminals: Desks close tabs of terminals that are gone
+
+- **Added:** 2026-10-21
+- **Commit:** `custom: Desks close tabs of terminals that are gone`
+- **Why:** Desks persist their tabs locally, but the daemon's terminals die with it. After every
+  reboot the Desk restored its terminal tabs (bottom panel included) as blank panes with only a
+  cursor. A shell that exited left the same blank tab. The workspace screen already closes those
+  tabs (`collapseStaleEntityTabs`); Desks never did.
+- **What:** For each workspace that owns a terminal tab in any Desk, the Desk screen keeps that
+  workspace's terminal list (the same replica query and push route as the workspace screen). Each
+  list fetched or pushed after it mounts closes, in every Desk, that workspace's terminal tabs
+  whose terminal isn't in it. A list cached before it mounted is refetched instead of trusted, so
+  a script terminal opened a moment before isn't closed.
+- **Files:** `packages/app/src/task-navigation/desk-terminal-tabs.tsx`.
+- **Core files touched:** none. In the Desk files: `task-navigation/desks-store.ts`
+  (`closeDeadTerminalTabs`, marked `CUSTOM(desk-dead-terminals)`) and
+  `task-navigation/desk-screen.tsx` (mounts `<DeskTerminalTabs />` next to `DeskVisibleAgents`).
+- **Re-apply:** Keep the query key `buildTerminalsQueryKey(serverId, directory, workspaceId)` and
+  `workspaceTerminalsPushRoute`, as `useWorkspaceTerminals` uses them: a terminal created from a
+  Desk is upserted into that cache before its tab opens. Close tabs only through the store action,
+  matching the tab's owner workspace, never all terminal tabs of a host.
+- **Verify:** `(cd packages/app && npx vitest run src/task-navigation/store.test.ts)` and the
+  desktop `e2e/task-navigation.spec.ts`, which kills the bottom panel's terminal through the daemon
+  and expects the pane to go. Both are already registered in the update script. In the app,
+  open a terminal in a Desk, type `exit`: the tab closes. After a reboot, no blank terminal tabs.
