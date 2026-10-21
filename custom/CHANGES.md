@@ -2341,3 +2341,55 @@ agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionall
   manual title. In the app, send a fresh agent three messages: a few seconds after the third its
   tab title changes to a 4-word name. Rename it by hand and press **Rename session**: it goes back
   to the summary's title.
+
+## draft-worktree: a new session in Tasks mode can start in a new worktree
+
+- **Added:** 2026-10-21 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: new sessions pick Local or a new worktree in Tasks mode`
+- **Why:** Tasks mode treats a session as the unit of work, with no New workspace step, so there
+  was no way to start a session isolated in its own worktree.
+- **What:** In Tasks mode, an empty session in a git project shows **Local** / **New worktree**
+  in the middle of the chat area, with a **Worktree name** field and a **from** branch field
+  below. Local is the default. Typing in either field picks New worktree without a click; Enter
+  moves to the message box. The hint line says what will happen ("Starts in a new worktree on
+  teste-novo, from custom.").
+  On send, a new worktree session creates the worktree, its workspace and the agent in one
+  `createWorkspace` request (as New workspace does) and the Desk tab moves to the new workspace.
+  - A typed name is slugged (`Login Fix` → `login-fix`) and used for both the worktree folder and
+    the branch, and the daemon keeps it.
+  - A blank name gets a random folder slug, and the daemon renames the branch from the first
+    message, the same as upstream worktrees.
+  - **from** shows the branch the draft's checkout is on (`gitRuntime.currentBranch`) and is
+    sent as the worktree's `refName`, so it branches off that branch, not the repository's
+    default branch. Edit it to start from another branch. When the checkout's branch is unknown
+    and the field is untouched, the daemon uses the default branch.
+  - Where the worktree folder goes is
+    [project-worktrees-root](#project-worktrees-root-worktrees-go-in-a-worktrees-folder-beside-the-project).
+  - The choice lives in app memory per draft: it survives switching tabs, not a reload.
+  - Workspace mode is unchanged; it keeps the New workspace screen.
+- **Files:** `packages/app/src/draft-worktree/` (`model.ts` store and naming, `picker.tsx`,
+  `create.ts`), with `model.test.ts`.
+- **Core files touched** (marked `CUSTOM(draft-worktree)`):
+  - `packages/app/src/composer/draft/workspace-tab.tsx`: renders the picker in the empty draft
+    area (the scroll content and config section grow so it can center), and
+    `submitDraftCreateRequest` calls `createDraftAgentInWorktree` when a worktree is picked.
+  - `packages/app/src/panels/agent-panel.tsx`: `DraftPanel`'s `handleCreated` moves the Desk tab
+    to the agent's new workspace instead of retargeting it in the old one.
+  - `packages/server/src/server/paseo-worktree-service.ts`: a worktree created with an explicit
+    `branchName` is not marked for the first-agent branch auto-name. This also applies to other
+    callers that pass a branch name (CLI `--new-branch`, MCP).
+- **Re-apply:** In the draft agent tab, when Tasks mode is on, the host supports workspace
+  multiplicity and the workspace's project is git, show a Local / New worktree choice. On submit
+  with a worktree, call `client.createWorkspace` with a `worktree` source (`cwd` = the draft's
+  workspace directory, `projectId`, `worktreeSlug`, `branchName` only when typed, and `refName`
+  = the from branch, defaulting to the workspace's current branch) plus the
+  agent options the draft would send to `createAgent`, then accept the workspace snapshot. When
+  the created agent's `workspaceId` differs from the tab's, update the Desk tab's owner and target
+  together. In the daemon, skip `writePaseoWorktreeFirstAgentBranchAutoNameMetadata` when the
+  input had a `branchName`.
+- **Verify:** `(cd packages/app && npx vitest run src/draft-worktree/model.test.ts)` and
+  `(cd packages/server && npx vitest run src/server/paseo-worktree-service.test.ts)` (both in the
+  update script). In the app, Tasks mode, open a new Agent tab in a git project: type `Login Fix`
+  in the name field (from shows the checkout's branch) and send. The tab becomes the agent, its header offers **Archive workspace**,
+  and `git worktree list` shows a `login-fix` worktree on branch `login-fix`. Repeat with **New
+  worktree** and no name: the branch gets a name from the message.

@@ -59,6 +59,14 @@ import { openWorkspaceChanges } from "@/workspace-tabs/open-supporting-view";
 import { useSettings } from "@/hooks/use-settings";
 // CUSTOM(model-picker-project)
 import { useDraftTabProjectSource } from "@/model-picker/use-draft-tab-project-source";
+// CUSTOM(draft-worktree)
+import { createDraftAgentInWorktree } from "@/draft-worktree/create";
+import {
+  type DraftWorktreeRequest,
+  resolveDraftWorktreeRequest,
+  useDraftWorktreeStore,
+} from "@/draft-worktree/model";
+import { DraftWorktreePicker, useDraftWorktreeSource } from "@/draft-worktree/picker";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
@@ -143,6 +151,7 @@ function resolveDraftModeId(input: {
 
 async function submitDraftCreateRequest(input: {
   draftId: string;
+  serverId: string;
   attempt: { clientMessageId: string };
   text: string;
   images?: UserMessageImageAttachment[];
@@ -162,6 +171,8 @@ async function submitDraftCreateRequest(input: {
   };
   hostDisconnectedMessage: string;
   selectModelMessage: string;
+  /** CUSTOM(draft-worktree): set when the session starts in a new worktree. */
+  worktree: DraftWorktreeRequest | null;
 }): Promise<{ agentId: string | null; result: AgentSnapshotPayload }> {
   const {
     attempt,
@@ -212,6 +223,19 @@ async function submitDraftCreateRequest(input: {
     ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
     ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
   };
+  // CUSTOM(draft-worktree): a new worktree gets its own workspace, created with the agent.
+  if (input.worktree) {
+    const { workspaceId: _sourceWorkspaceId, idempotencyKey: _key, ...agent } = options;
+    const result = await createDraftAgentInWorktree({
+      client,
+      serverId: input.serverId,
+      draftId: input.draftId,
+      sourceDirectory: workspaceDirectory,
+      worktree: input.worktree,
+      agent,
+    });
+    return { agentId: result.id, result };
+  }
   const creation = useWorkspaceDraftSubmissionStore.getState().creationByDraftId[input.draftId];
   const result = creation ? await creation.retry(options) : await client.createAgent(options);
 
@@ -456,6 +480,9 @@ export function WorkspaceDraftAgentTab({
     [composerState.workingDir, isCompactFormFactor, openInSidePane, serverId, workspaceId],
   );
 
+  // CUSTOM(draft-worktree): Tasks mode has no New workspace step, so the draft offers the worktree.
+  const worktreeSource = useDraftWorktreeSource(serverId, workspaceId, !pendingAutoSubmit);
+
   const {
     formErrorMessage,
     isSubmitting,
@@ -507,6 +534,7 @@ export function WorkspaceDraftAgentTab({
       }
       return submitDraftCreateRequest({
         draftId,
+        serverId,
         attempt,
         text,
         images,
@@ -519,9 +547,11 @@ export function WorkspaceDraftAgentTab({
         composerState,
         hostDisconnectedMessage: t("workspace.terminal.hostDisconnected"),
         selectModelMessage: t("workspaceSetup.errors.selectModel"),
+        worktree: resolveDraftWorktreeRequest(draftId, worktreeSource),
       });
     },
     onCreateSuccess: ({ result }) => {
+      useDraftWorktreeStore.getState().clear(draftId); // CUSTOM(draft-worktree)
       clearDraftInput("sent");
       clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
       useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });
@@ -738,6 +768,12 @@ export function WorkspaceDraftAgentTab({
       ) : (
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.configScrollContent}>
           <View style={styles.configSection}>
+            {/* CUSTOM(draft-worktree) */}
+            <DraftWorktreePicker
+              draftId={draftId}
+              source={worktreeSource}
+              onSubmitName={handleDropdownCloseFocus}
+            />
             {formErrorMessage ? (
               <View style={styles.errorContainer}>
                 <Text style={styles.errorText}>{formErrorMessage}</Text>
@@ -818,9 +854,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[4],
     paddingTop: theme.spacing[4],
     paddingBottom: theme.spacing[6],
+    flexGrow: 1, // CUSTOM(draft-worktree)
   },
   configSection: {
     gap: theme.spacing[3],
+    // CUSTOM(draft-worktree): room to center the worktree picker in the empty session.
+    flexGrow: 1,
   },
   importPillRow: {
     width: "100%",

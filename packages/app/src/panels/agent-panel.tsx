@@ -96,6 +96,7 @@ import { useArchiveFinishedSubagents, useSubagentsForParent } from "@/subagents"
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
+import { moveDeskTabToWorkspace } from "@/draft-worktree/create"; // CUSTOM(draft-worktree)
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { deriveSidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
@@ -404,9 +405,18 @@ function DraftPanel() {
       const normalized = normalizeAgentSnapshot(agentSnapshot, serverId);
       const agent = applyLegacyDaemonWorkspaceOwnership({ serverId, agent: normalized });
       getHostRuntimeStore().acceptAgentSnapshot(serverId, agent);
-      retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
+      const agentTarget = { kind: "agent", agentId: agentSnapshot.id } as const;
+      // CUSTOM(draft-worktree): an agent started in a new worktree belongs to its new workspace.
+      if (
+        agent.workspaceId &&
+        agent.workspaceId !== workspaceId &&
+        moveDeskTabToWorkspace(tabId, agent.workspaceId, agentTarget)
+      ) {
+        return;
+      }
+      retargetCurrentTab(agentTarget);
     },
-    [retargetCurrentTab, serverId],
+    [retargetCurrentTab, serverId, tabId, workspaceId],
   );
 
   return (

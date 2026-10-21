@@ -77,7 +77,10 @@ async function createPaseoWorktreeWithPriority(
   const workspaceCwdPlan = await planWorkspaceCwdForWorktree(input.cwd, deps.workspaceGitService);
   const createdWorktree = await createWorktreeCore(input, deps);
   try {
-    maybeMarkFirstAgentBranchAutoNameEligible({ createdWorktree });
+    maybeMarkFirstAgentBranchAutoNameEligible({
+      createdWorktree,
+      hasExplicitBranchName: Boolean(input.branchName?.trim()),
+    });
     const workspaceCwd = mapWorkspaceRelativeCwdToWorktree({
       relativeWorkspaceCwd: workspaceCwdPlan.relativeWorkspaceCwd,
       targetWorktreePath: createdWorktree.worktree.worktreePath,
@@ -266,11 +269,15 @@ async function findAvailableBranchName(options: {
 
 function maybeMarkFirstAgentBranchAutoNameEligible(options: {
   createdWorktree: Awaited<ReturnType<typeof createWorktreeCore>>;
+  hasExplicitBranchName: boolean;
 }): void {
   const { createdWorktree } = options;
   if (!createdWorktree.created || createdWorktree.intent.kind !== "branch-off") {
     return;
   }
+  // CUSTOM(draft-worktree): a branch name the user typed is kept; only a placeholder gets renamed
+  // from the first message.
+  if (options.hasExplicitBranchName) return;
 
   writePaseoWorktreeFirstAgentBranchAutoNameMetadata(createdWorktree.worktree.worktreePath, {
     placeholderBranchName: createdWorktree.worktree.branchName,

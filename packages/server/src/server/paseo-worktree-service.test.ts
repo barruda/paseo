@@ -771,6 +771,32 @@ test("leaves the branch alone when generated branch text is invalid", async () =
   });
 });
 
+// CUSTOM(draft-worktree)
+test("keeps a branch name the caller typed instead of renaming it on first agent context", async () => {
+  const { repoDir, tempDir } = createGitRepo();
+  cleanupPaths.push(tempDir);
+
+  const created = await createPaseoWorktree(
+    {
+      cwd: repoDir,
+      worktreeSlug: "login-fix",
+      branchName: "login-fix",
+      runSetup: false,
+      paseoHome: path.join(tempDir, ".paseo"),
+    },
+    createDeps(),
+  );
+
+  expect(created.worktree.branchName).toBe("login-fix");
+  await expect(
+    attemptFirstAgentBranchAutoName({
+      cwd: created.worktree.worktreePath,
+      firstAgentContext: { prompt: "Fix the login" },
+      generateBranchNameFromContext: async () => "must-not-rename",
+    }),
+  ).resolves.toEqual({ attempted: false, renamed: false, branchName: null });
+});
+
 test("does not mark checkout branch worktrees as eligible for first-agent rename", async () => {
   const { repoDir, tempDir } = createGitRepo();
   cleanupPaths.push(tempDir);
