@@ -81,7 +81,7 @@ import type { Theme } from "@/styles/theme";
 import {
   EXPLORER_TOGGLE_KEYS,
   WorkspaceExplorerSidebarToggle,
-  WorkspaceHeaderExplorerToggle,
+  WorkspaceTabRowExplorerToggle,
 } from "@/screens/workspace/workspace-explorer-toggle";
 import { DeskLauncherProvider } from "./new-tab-menu";
 import { DeskExplorerDock, useDeskExplorer } from "./desk-explorer";
@@ -602,11 +602,14 @@ export function DeskScreen() {
     () => (
       <HeaderShortcutsRightRow layoutKey={screenId} style={styles.headerLeft}>
         {contextTab ? <DeskWorkspaceActions tab={contextTab} focused={active} /> : null}
-        {/* CUSTOM(desk-explorer) */}
-        {explorerScope ? <WorkspaceHeaderExplorerToggle {...explorerToggleProps} /> : null}
       </HeaderShortcutsRightRow>
     ),
-    [active, contextTab, explorerToggleProps, explorerScope, screenId],
+    [active, contextTab, screenId],
+  );
+  // CUSTOM(explorer-toggle-tab-row): the Explorer toggle sits in the top-right pane's tab row.
+  const renderTabRowExplorerToggle = useCallback(
+    () => (explorerScope ? <WorkspaceTabRowExplorerToggle {...explorerToggleProps} /> : null),
+    [explorerToggleProps, explorerScope],
   );
   const renderExplorerHeaderToggle = useCallback(
     () => <WorkspaceExplorerSidebarToggle {...explorerToggleProps} />,
@@ -684,6 +687,7 @@ export function DeskScreen() {
               layout={desk.layout}
               renderMainHeader={renderHeader}
               externalExplorerSidebar={externalExplorerSidebar}
+              renderTopRightTabRowAction={renderTabRowExplorerToggle}
               workspaceKey={`desk:${desk.id}`}
               normalizedServerId={scope.serverId}
               normalizedWorkspaceId={scope.workspaceId}

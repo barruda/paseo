@@ -1,4 +1,4 @@
-import { PanelRight } from "lucide-react-native";
+import { ChevronsLeft, ChevronsRight, PanelRight } from "lucide-react-native";
 import { type StyleProp, type ViewStyle } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
 import { HeaderToggleButton } from "@/components/headers/header-toggle-button";
@@ -7,9 +7,12 @@ import {
   iconButtonChromeGlyphSize,
   mutedIconColorMapping,
 } from "@/components/ui/icon-button-chrome";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 
 const ThemedPanelRight = withUnistyles(PanelRight);
+const ThemedChevronsLeft = withUnistyles(ChevronsLeft);
+const ThemedChevronsRight = withUnistyles(ChevronsRight);
 
 export const EXPLORER_TOGGLE_KEYS: ShortcutKey[] = ["mod", "E"];
 
@@ -71,27 +74,34 @@ interface DesktopWorkspaceExplorerToggleProps extends Omit<WorkspaceExplorerTogg
   owner: WorkspaceExplorerToggleOwner;
 }
 
-export function WorkspaceHeaderExplorerToggle({
-  owner,
-  accessibilityState,
-  style,
-  ...toggleProps
-}: DesktopWorkspaceExplorerToggleProps) {
-  if (owner === "mobile" || (owner === "window" && accessibilityState.expanded)) return null;
-  return (
-    <WorkspaceExplorerToggle
-      {...toggleProps}
-      accessibilityState={accessibilityState}
-      mobile={false}
-      style={style}
-    />
-  );
-}
-
 export function WorkspaceExplorerSidebarToggle({
   owner,
   ...toggleProps
 }: DesktopWorkspaceExplorerToggleProps) {
   if (owner !== "window") return null;
   return <WorkspaceExplorerToggle {...toggleProps} mobile={false} />;
+}
+
+// CUSTOM(explorer-toggle-tab-row): on desktop the toggle sits at the right end of the top-right
+// pane's tab row instead of the crowded header. << opens the Explorer, >> closes it.
+export function WorkspaceTabRowExplorerToggle({
+  owner,
+  onPress,
+  label,
+  tooltipKeys,
+  accessibilityState,
+}: DesktopWorkspaceExplorerToggleProps) {
+  if (owner === "mobile" || (owner === "window" && accessibilityState.expanded)) return null;
+  const Icon = accessibilityState.expanded ? ThemedChevronsRight : ThemedChevronsLeft;
+  return (
+    <ToolbarButton
+      label={label}
+      shortcut={[tooltipKeys]}
+      tooltipSide="left"
+      testID="workspace-explorer-toggle"
+      onPress={onPress}
+    >
+      <Icon size={21} uniProps={mutedIconColorMapping} />
+    </ToolbarButton>
+  );
 }

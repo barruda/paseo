@@ -114,6 +114,13 @@ const PANE_SPLIT_ACTIONS_RESERVED_WIDTH =
   PANE_SPLIT_ACTIONS_OUTER_MARGIN;
 const PANE_ARCHIVE_ACTION_RESERVED_WIDTH = smallIconButtonChromeFrameSize(false) + 1;
 const PANE_MAXIMIZE_ACTION_RESERVED_WIDTH = smallIconButtonChromeFrameSize(false) + 1;
+// CUSTOM(explorer-toggle-tab-row): the Explorer toggle keeps a 50px gap from the pane buttons so it
+// reads as its own control.
+const TRAILING_ACTION_GAP = 50;
+const TRAILING_ACTION_RESERVED_WIDTH =
+  TRAILING_ACTION_GAP +
+  smallIconButtonChromeFrameSize(false) +
+  PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING;
 // Chip geometry. `layoutMetrics` measures tabs from these same numbers, so a chip that changes
 // shape without changing them mis-measures and drops the row into the overflow-scroll fallback at
 // the wrong width. Keep them together.
@@ -616,6 +623,8 @@ export interface WorkspaceDesktopTabsRowProps {
   onSplitDown?: () => void;
   focusModeEnabled: boolean;
   onExitFocusMode: () => void;
+  // CUSTOM(explorer-toggle-tab-row): rendered after the pane buttons, at the row's right end.
+  trailingAction?: React.ReactNode;
 }
 
 interface ResolvedWorkspaceDesktopTabsRowProps extends Omit<WorkspaceDesktopTabsRowProps, "tabs"> {
@@ -1185,6 +1194,7 @@ function ResolvedWorkspaceDesktopTabsRow({
   onSplitDown,
   focusModeEnabled,
   onExitFocusMode,
+  trailingAction,
 }: ResolvedWorkspaceDesktopTabsRowProps) {
   const { t } = useTranslation();
   const newTabKeys = useShortcutKeys("workspace-tab-new");
@@ -1215,7 +1225,8 @@ function ResolvedWorkspaceDesktopTabsRow({
           (focusModeEnabled ? exitFocusModeWidth : 0) +
           (showPaneSplitActions ? PANE_SPLIT_ACTIONS_RESERVED_WIDTH : 0) +
           (archiveAgentTab ? PANE_ARCHIVE_ACTION_RESERVED_WIDTH : 0) +
-          (showPaneMaximizeAction ? PANE_MAXIMIZE_ACTION_RESERVED_WIDTH : 0),
+          (showPaneMaximizeAction ? PANE_MAXIMIZE_ACTION_RESERVED_WIDTH : 0) +
+          (trailingAction ? TRAILING_ACTION_RESERVED_WIDTH : 0),
       ),
       rowPaddingHorizontal: TAB_ROW_PADDING_HORIZONTAL,
       tabGap: TAB_CHIP_GAP,
@@ -1232,6 +1243,7 @@ function ResolvedWorkspaceDesktopTabsRow({
       focusModeEnabled,
       showPaneMaximizeAction,
       showPaneSplitActions,
+      trailingAction,
     ],
   );
 
@@ -1576,6 +1588,7 @@ function ResolvedWorkspaceDesktopTabsRow({
         archiveAgentTab={archiveAgentTab}
         onCloseTab={onCloseTab}
       />
+      {trailingAction ? <View style={styles.trailingAction}>{trailingAction}</View> : null}
     </View>
   );
 
@@ -1773,6 +1786,13 @@ const styles = StyleSheet.create((theme) => ({
   },
   paneSplitActions: {
     paddingHorizontal: PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING,
+    marginRight: PANE_SPLIT_ACTIONS_OUTER_MARGIN,
+  },
+  trailingAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginLeft: TRAILING_ACTION_GAP - PANE_SPLIT_ACTIONS_OUTER_MARGIN,
+    paddingRight: PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING,
     marginRight: PANE_SPLIT_ACTIONS_OUTER_MARGIN,
   },
   tab: {

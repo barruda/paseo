@@ -442,10 +442,19 @@ test("Tasks mode docks the focused task's Explorer", async ({ page }) => {
     const desk = page.getByTestId("desk-screen");
     await expect(desk.locator('[data-desk-tab="pinned"]')).toHaveCount(1);
 
-    // The header toggle opens the task workspace's Files and Changes beside the Desk.
+    // The tab row's toggle, 50px right of the pane buttons, opens the task workspace's Files and
+    // Changes beside the Desk.
     const explorer = desk.getByTestId("workspace-explorer-sidebar");
     await expect(explorer).toHaveCount(0);
-    await desk.getByTestId("workspace-explorer-toggle").click();
+    const explorerToggle = desk.getByTestId("workspace-explorer-toggle");
+    const toggleBox = await explorerToggle.boundingBox();
+    const archiveBox = await desk.getByTestId("workspace-archive-agent").boundingBox();
+    expect(toggleBox && archiveBox).toBeTruthy();
+    if (toggleBox && archiveBox) {
+      expect(toggleBox.x - (archiveBox.x + archiveBox.width)).toBeCloseTo(50, -1);
+      expect(toggleBox.y).toBeCloseTo(archiveBox.y, -1);
+    }
+    await explorerToggle.click();
     await expect(explorer).toBeVisible();
     await expect(explorer.getByTestId("workspace-tab-files")).toBeVisible();
     await expect(explorer.getByTestId("workspace-tab-changes_tree")).toBeVisible();

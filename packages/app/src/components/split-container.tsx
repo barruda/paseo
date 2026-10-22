@@ -46,6 +46,7 @@ import {
   splitNodeContainsPane,
 } from "@/components/split-container-focus";
 import { shouldFocusPaneFromEventTarget } from "@/components/split-container-pane-focus";
+import { resolveTopRightPaneId } from "@/components/split-container-top-right";
 import {
   removeWindowChromeCorner,
   WindowChromeRegion,
@@ -103,6 +104,8 @@ interface SplitContainerProps {
   // CUSTOM(desk-explorer): a Desk docks another workspace's Explorer, whose tabs are not in
   // `layout`. Its width is stored under that workspace's key.
   externalExplorerSidebar?: { workspaceKey: string; render: () => ReactNode } | null;
+  // CUSTOM(explorer-toggle-tab-row): rendered at the right end of the top-right pane's tab row.
+  renderTopRightTabRowAction?: () => ReactNode;
   workspaceKey: string;
   normalizedServerId: string;
   normalizedWorkspaceId: string;
@@ -198,6 +201,7 @@ interface SplitNodeViewProps extends Omit<
   maximizedPaneId: string | null;
   workspaceHasMultiplePanes: boolean;
   onTogglePaneMaximized: (paneId: string) => void;
+  topRightPaneId: string | null;
 }
 
 interface SplitPaneViewProps extends Omit<
@@ -336,6 +340,7 @@ export function SplitContainer({
   renderMainHeader,
   renderExplorerSidebarHeaderAction,
   externalExplorerSidebar,
+  renderTopRightTabRowAction,
   workspaceKey,
   normalizedServerId,
   normalizedWorkspaceId,
@@ -505,6 +510,10 @@ export function SplitContainer({
     [explorerSidebarWidthKey, resizeExplorerSidebar, workspaceShellWidth],
   );
   const renderRoot = useMemo(() => wrapRootPaneForStableMount(splitRoot.root), [splitRoot.root]);
+  const topRightPaneId = useMemo(
+    () => resolveTopRightPaneId(splitRoot.root, maximizedPaneId),
+    [maximizedPaneId, splitRoot.root],
+  );
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = asWorkspaceTabDragData(event.active.data.current);
     if (!data) {
@@ -723,6 +732,8 @@ export function SplitContainer({
                   onTogglePaneMaximized={handleTogglePaneMaximized}
                   focusModeEnabled={focusModeEnabled}
                   onExitFocusMode={onExitFocusMode}
+                  renderTopRightTabRowAction={renderTopRightTabRowAction}
+                  topRightPaneId={topRightPaneId}
                 />
               ) : null}
             </View>
@@ -1006,6 +1017,8 @@ function SplitNodeView({
   onTogglePaneMaximized,
   focusModeEnabled,
   onExitFocusMode,
+  renderTopRightTabRowAction,
+  topRightPaneId,
 }: SplitNodeViewProps) {
   const [groupContainerSize, setGroupContainerSize] = useState(0);
   const groupId = node.kind === "group" ? node.group.id : null;
@@ -1093,6 +1106,8 @@ function SplitNodeView({
             onTogglePaneMaximized={onTogglePaneMaximized}
             focusModeEnabled={focusModeEnabled}
             onExitFocusMode={onExitFocusMode}
+            renderTopRightTabRowAction={renderTopRightTabRowAction}
+            topRightPaneId={topRightPaneId}
           />
         </WindowChromeRegion>
       </RetainedPanel>
@@ -1148,6 +1163,8 @@ function SplitNodeView({
               onTogglePaneMaximized={onTogglePaneMaximized}
               focusModeEnabled={focusModeEnabled}
               onExitFocusMode={onExitFocusMode}
+              renderTopRightTabRowAction={renderTopRightTabRowAction}
+              topRightPaneId={topRightPaneId}
             />
           </SplitGroupChild>
           {index < node.group.children.length - 1 &&
@@ -1207,6 +1224,8 @@ function SplitPaneView({
   onTogglePaneMaximized,
   focusModeEnabled,
   onExitFocusMode,
+  renderTopRightTabRowAction,
+  topRightPaneId,
 }: SplitPaneViewProps) {
   const paneRef = useRef<View | null>(null);
   const stableOnFocusPane = useStableEvent(onFocusPane);
@@ -1343,6 +1362,7 @@ function SplitPaneView({
             onSplitDown={handleSplitDown}
             focusModeEnabled={Boolean(focusModeEnabled)}
             onExitFocusMode={onExitFocusMode}
+            trailingAction={pane.id === topRightPaneId ? renderTopRightTabRowAction?.() : null}
           />
         </WindowChromeSafeArea>
 

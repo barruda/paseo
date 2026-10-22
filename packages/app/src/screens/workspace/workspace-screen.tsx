@@ -145,7 +145,7 @@ import {
   resolveWorkspaceExplorerToggleOwner,
   EXPLORER_TOGGLE_KEYS,
   WorkspaceExplorerSidebarToggle,
-  WorkspaceHeaderExplorerToggle,
+  WorkspaceTabRowExplorerToggle,
 } from "@/screens/workspace/workspace-explorer-toggle";
 import { useHasWindowChromeObstruction } from "@/utils/desktop-window";
 import {
@@ -3171,18 +3171,7 @@ function WorkspaceScreenContent({
           />
         ) : null}
         {workspaceDirectory ? (
-          <>
-            <WorkspaceActions serverId={normalizedServerId} cwd={workspaceDirectory} />
-            <WorkspaceHeaderExplorerToggle
-              owner={explorerToggleOwner}
-              onPress={handleToggleExplorerSidebar}
-              label={explorerSidebarToggleLabel}
-              tooltipLabel={t("workspace.tabs.explorerSidebar.toggle")}
-              tooltipKeys={EXPLORER_TOGGLE_KEYS}
-              style={styles.compactHeaderActionButton}
-              accessibilityState={explorerSidebarToggleAccessibilityState}
-            />
-          </>
+          <WorkspaceActions serverId={normalizedServerId} cwd={workspaceDirectory} />
         ) : null}
       </HeaderShortcutsRightRow>
     ),
@@ -3197,11 +3186,28 @@ function WorkspaceScreenContent({
       handleScriptTerminalStarted,
       handleViewScriptTerminal,
       handleOpenUrlInBrowserTab,
-      handleToggleExplorerSidebar,
-      explorerSidebarToggleLabel,
+    ],
+  );
+  // CUSTOM(explorer-toggle-tab-row): the Explorer toggle moved from the header to the tab row.
+  const renderTabRowExplorerToggle = useCallback(
+    () =>
+      workspaceDirectory ? (
+        <WorkspaceTabRowExplorerToggle
+          owner={explorerToggleOwner}
+          onPress={handleToggleExplorerSidebar}
+          label={explorerSidebarToggleLabel}
+          tooltipLabel={t("workspace.tabs.explorerSidebar.toggle")}
+          tooltipKeys={EXPLORER_TOGGLE_KEYS}
+          accessibilityState={explorerSidebarToggleAccessibilityState}
+        />
+      ) : null,
+    [
       explorerSidebarToggleAccessibilityState,
+      explorerSidebarToggleLabel,
       explorerToggleOwner,
+      handleToggleExplorerSidebar,
       t,
+      workspaceDirectory,
     ],
   );
 
@@ -3407,6 +3413,9 @@ function WorkspaceScreenContent({
         layout={workspaceLayout}
         renderMainHeader={renderWorkspaceScreenHeader}
         renderExplorerSidebarHeaderAction={renderExplorerSidebarHeaderAction}
+        renderTopRightTabRowAction={
+          desktopFocusModeEnabled ? undefined : renderTabRowExplorerToggle
+        }
         focusModeEnabled={desktopFocusModeEnabled}
         onExitFocusMode={toggleFocusMode}
         workspaceKey={persistenceKey}
@@ -3445,6 +3454,7 @@ function WorkspaceScreenContent({
     workspaceLayout,
     renderWorkspaceScreenHeader,
     renderExplorerSidebarHeaderAction,
+    renderTabRowExplorerToggle,
     persistenceKey,
     desktopFocusModeEnabled,
     toggleFocusMode,
@@ -3646,12 +3656,6 @@ const styles = StyleSheet.create((theme) => ({
     gap: {
       xs: theme.spacing[1],
       md: theme.spacing[2],
-    },
-  },
-  compactHeaderActionButton: {
-    marginRight: {
-      xs: 0,
-      md: -theme.spacing[2],
     },
   },
   compactHeaderMenuCluster: {

@@ -330,6 +330,9 @@ if $VERIFY; then
   (cd packages/client && npx vitest run src/wake-dictation.test.ts --bail=1)
   # The + menu's Agent flyout (its browser check is in e2e/task-navigation.spec.ts).
   (cd packages/app && npx vitest run src/new-agent-projects/model.test.ts --bail=1)
+  # The Explorer toggle sits in the top-right pane's tab row (its e2e check is in
+  # e2e/task-navigation.spec.ts).
+  (cd packages/app && npx vitest run src/components/split-container-top-right.test.ts --bail=1)
 fi
 
 step "Building the desktop app"

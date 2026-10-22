@@ -2563,3 +2563,33 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   while a bottom panel tab has focus", already in the update script). In the app, Tasks mode: open
   an agent of project A with Changes showing, open the bottom panel from a tab of project B, click
   into the bottom panel: the header and Changes stay on A.
+
+## explorer-toggle-tab-row: the Explorer toggle sits at the right end of the tab row
+
+- **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: Explorer toggle in the tab row`
+- **Why:** The Explorer (Files, Changes) toggle was the last of many buttons in the header and
+  hard to spot.
+- **What:** On desktop, in the workspace view and in Tasks mode, the toggle sits at the right end of
+  the top-right pane's tab row, 50px right of the pane buttons (maximize, splits, archive). It
+  shows `<<` while the Explorer is closed and `>>` while it is open. The header no longer has it.
+  Focus mode hides it, as it hid the header. Phones keep the old header toggle; on macOS the
+  Explorer's own header still holds it while the Explorer is open.
+- **Files:** `packages/app/src/components/split-container-top-right.ts` (`resolveTopRightPaneId`:
+  rightmost column, top row, skipping hidden panes; the maximized pane wins).
+- **Core files touched** (marked `CUSTOM(explorer-toggle-tab-row)`):
+  - `screens/workspace/workspace-explorer-toggle.tsx`: `WorkspaceTabRowExplorerToggle` (a
+    `ToolbarButton` with `ChevronsLeft`/`ChevronsRight`) replaces `WorkspaceHeaderExplorerToggle`.
+  - `components/split-container.tsx`: `renderTopRightTabRowAction` prop; passes it and
+    `topRightPaneId` down to the pane whose tab row gets it.
+  - `screens/workspace/workspace-desktop-tabs-row.tsx`: `trailingAction` prop, rendered after the
+    pane buttons with a 50px gap and counted in the reserved actions width.
+  - `screens/workspace/workspace-screen.tsx` and `task-navigation/desk-screen.tsx`: drop the toggle
+    from the header and pass it to `SplitContainer`.
+- **Re-apply:** Wherever the header renders the desktop Explorer toggle, render it through
+  `SplitContainer`'s `renderTopRightTabRowAction` instead (workspace view: not in focus mode). In
+  the tab row, put it after `WorkspacePaneToolbarActions` with `marginLeft` making a 50px gap and add
+  that width to `actionsReservedWidth`, or the tabs overlap it.
+- **Verify:** `components/split-container-top-right.test.ts`. The third test in desktop
+  `e2e/task-navigation.spec.ts` clicks the toggle and checks it sits 50px right of the archive
+  button. Both are in the update script.
