@@ -700,6 +700,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       });
     }, [agentId, handleTimelineHistoryLoadError, isTimelineDetached, resolvedServerId]);
 
+    // CUSTOM(empty-composer-shortcuts): leaving a keyboard-selected message returns to the bottom.
+    const rewindBottomRequest = useComposerRewindSelection((state) => state.bottomRequest);
+    const scrollToBottomRef = useRef(scrollToBottom);
+    scrollToBottomRef.current = scrollToBottom;
+    useEffect(() => {
+      if (
+        rewindBottomRequest?.serverId === resolvedServerId &&
+        rewindBottomRequest.agentId === agentId
+      ) {
+        scrollToBottomRef.current();
+      }
+    }, [rewindBottomRequest, resolvedServerId, agentId]);
+
     const setInlineDetailsExpanded = useCallback(
       (itemId: string, expanded: boolean) => {
         if (!streamRenderStrategy.shouldDisableParentScrollOnInlineDetailsExpansion()) {

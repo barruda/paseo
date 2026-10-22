@@ -1,5 +1,5 @@
 import {
-  clearComposerRewindSelection,
+  leaveComposerRewindSelection,
   useMessageKeyboardSelection,
 } from "@/composer/empty-shortcuts";
 import type { AgentMessage } from "@getpaseo/protocol/agent-message";
@@ -364,6 +364,13 @@ const userMessageStylesheet = StyleSheet.create((theme) => ({
     minWidth: 0,
     flexShrink: 1,
   },
+  // CUSTOM(empty-composer-shortcuts): a quiet accent ring on the keyboard-selected message.
+  bubbleKeyboardSelected: {
+    outlineWidth: 1,
+    outlineStyle: "solid",
+    outlineColor: theme.colors.accent,
+    outlineOffset: 2,
+  },
   text: {
     color: theme.colors.foreground,
     fontSize: theme.fontSize.content,
@@ -528,10 +535,7 @@ export const UserMessage = memo(function UserMessage({
         <View
           style={[
             userMessageStylesheet.bubble,
-            isKeyboardSelected && {
-              outlineWidth: 2,
-              outlineColor: userMessageStylesheet.text.color,
-            },
+            isKeyboardSelected && userMessageStylesheet.bubbleKeyboardSelected,
           ]}
         >
           {hasImages ? (
@@ -583,7 +587,7 @@ export const UserMessage = memo(function UserMessage({
               <RewindMenu
                 capabilities={capabilities}
                 keyboardOpen={keyboardSelection.open}
-                onKeyboardClose={clearComposerRewindSelection}
+                onKeyboardClose={leaveComposerRewindSelection}
                 isPending={rewindMutation.isPending}
                 rewoundText={message}
                 onRewind={handleRewind}

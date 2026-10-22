@@ -1,5 +1,6 @@
 // CUSTOM(empty-composer-shortcuts): share keyboard selection with the transcript.
 import { create } from "zustand";
+import { focusChatComposer } from "@/chat-esc-focus/registry";
 import type { StreamItem } from "@/types/stream";
 
 interface RewindSelection {
@@ -9,8 +10,19 @@ interface RewindSelection {
   open: boolean;
 }
 
-export const useComposerRewindSelection = create<{ selection: RewindSelection | null }>(() => ({
+interface BottomRequest {
+  serverId: string;
+  agentId: string;
+  nonce: number;
+}
+
+export const useComposerRewindSelection = create<{
+  selection: RewindSelection | null;
+  /** Leaving a selection asks that agent's transcript to jump back to the bottom. */
+  bottomRequest: BottomRequest | null;
+}>(() => ({
   selection: null,
+  bottomRequest: null,
 }));
 
 export function latestSentMessage(items: readonly StreamItem[]): string | null {
@@ -53,6 +65,18 @@ export function clearComposerRewindSelection(): void {
   useComposerRewindSelection.setState({ selection: null });
 }
 
+/** Esc, Down past the latest, or closing the rewind menu: back to the bottom and the composer. */
+export function leaveComposerRewindSelection(): void {
+  const { selection, bottomRequest } = useComposerRewindSelection.getState();
+  if (!selection) return;
+  const { serverId, agentId } = selection;
+  useComposerRewindSelection.setState({
+    selection: null,
+    bottomRequest: { serverId, agentId, nonce: (bottomRequest?.nonce ?? 0) + 1 },
+  });
+  focusChatComposer(serverId, agentId);
+}
+
 export function useMessageKeyboardSelection(
   serverId: string | undefined,
   agentId: string | undefined,
@@ -78,7 +102,12 @@ export function handleEmptyRewindKey({ event, serverId, agentId, items }: Rewind
   const selection = useComposerRewindSelection.getState().selection;
   const isSelected = selection?.serverId === serverId && selection.agentId === agentId;
   if (event.hasModifier) return false;
-  if (event.input.text.length > 0 || event.key === "Escape") {
+  if (event.key === "Escape" && isSelected) {
+    leaveComposerRewindSelection();
+    event.preventDefault();
+    return true;
+  }
+  if (event.input.text.length > 0) {
     if (isSelected) clearComposerRewindSelection();
     return false;
   }
@@ -99,7 +128,7 @@ export function handleEmptyRewindKey({ event, serverId, agentId, items }: Rewind
         selection: { serverId, agentId, messageId, open: false },
       });
     } else {
-      clearComposerRewindSelection();
+      leaveComposerRewindSelection();
     }
   } else if (event.key === "Enter" && isSelected) {
     useComposerRewindSelection.setState({ selection: { ...selection, open: true } });

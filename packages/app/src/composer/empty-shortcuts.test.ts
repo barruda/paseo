@@ -90,12 +90,17 @@ it("Up selects, Enter opens options, and typing or Escape clears selection", () 
   });
   expect(press("Enter")).toBe(true);
   expect(useComposerRewindSelection.getState().selection?.open).toBe(true);
-  expect(press("Escape")).toBe(false);
+  expect(press("Escape")).toBe(true);
   expect(useComposerRewindSelection.getState().selection).toBeNull();
+  expect(useComposerRewindSelection.getState().bottomRequest).toMatchObject({
+    serverId: "host",
+    agentId: "agent",
+  });
+  expect(press("Escape")).toBe(false);
   expect(press("ArrowUp")).toBe(true);
   expect(press("h")).toBe(false);
   expect(useComposerRewindSelection.getState().selection).toBeNull();
-  expect(prevented).toBe(3);
+  expect(prevented).toBe(4);
 });
 
 it("Up and Down walk through sent messages, and Down past the latest clears", () => {

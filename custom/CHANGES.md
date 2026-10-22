@@ -913,8 +913,9 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Why:** Choose a project and reach rewind actions directly from an empty composer.
 - **What:** Left cycles projects backwards with wraparound on New Workspace. In an ongoing
   chat, Up selects the latest sent message and scrolls it into view; more Up presses walk to
-  older sent messages and Down walks back, clearing the selection past the latest. Enter opens
-  the selected message's existing rewind menu. Escape or typing clears selection. Modified keys and autocomplete retain priority.
+  older sent messages and Down walks back. A quiet accent ring marks the selected message. Enter
+  opens its existing rewind menu. Esc, Down past the latest, or closing that menu clears the
+  selection, jumps the transcript to the bottom, and focuses the composer. Escape or typing clears selection. Modified keys and autocomplete retain priority.
   Web and desktop placeholders show the appropriate hints, translated in every supported locale.
 - **Core files touched:** `screens/new-workspace-screen.tsx`, `composer/index.tsx`,
   `composer/input/input.tsx`, `agent-stream/view.tsx`, `components/message.tsx`,
@@ -922,7 +923,9 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Re-apply:** Forward an optional key callback through Composer after autocomplete. New
   Workspace uses the existing project selection callback. Running chat composers select from
   stream tail/head through `composer/empty-shortcuts.ts`; the transcript observes that selection
-  to scroll, highlight the message, and open RewindMenu on Enter. Keep IME and modified keys out
+  to scroll, highlight the message (`bubbleKeyboardSelected`; web needs `outlineStyle` or the ring
+  is invisible), and open RewindMenu on Enter. Leaving the selection bumps `bottomRequest`, which
+  the transcript answers with its scroll-to-bottom. Keep IME and modified keys out
   of the shortcut path. Add translated placeholder hints and the focused test to the update script.
 - **Verify:** `cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts --bail=1`.
   In desktop, cycle past the first project with an empty prompt; type text and verify Left edits
