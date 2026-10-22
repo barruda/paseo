@@ -145,7 +145,8 @@ export function runMessageInputKeyboardAction(
   }
   if (action === "send" || action === "dictation-confirm") {
     if (actions.isDictationRecording()) {
-      actions.markTranscriptForSend();
+      // CUSTOM(dictation-enter-inserts): Enter acts like the pencil button, putting the
+      // transcript in the composer to review instead of sending it.
       void actions.confirmDictation();
       return true;
     }

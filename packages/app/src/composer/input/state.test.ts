@@ -20,25 +20,29 @@ function createDictationKeyboard({ startsRecording }: { startsRecording: boolean
 
   return {
     actions,
-    pressDictationShortcut: () =>
-      runMessageInputKeyboardAction("dictation-toggle", {
-        focusInput: () => undefined,
-        isDictationRecording: () => isRecording,
-        markTranscriptForSend: () => actions.push("send transcript"),
-        startDictation: () => {
-          actions.push("start");
-          isRecording = startsRecording;
-        },
-        confirmDictation: () => {
-          actions.push("confirm");
-          isRecording = false;
-        },
-        cancelDictation: () => undefined,
-        toggleRealtimeVoice: () => undefined,
-        isRealtimeVoiceActive: false,
-        toggleRealtimeVoiceMute: () => undefined,
-      }),
+    pressDictationShortcut: () => press("dictation-toggle"),
+    pressEnter: () => press("dictation-confirm"),
   };
+
+  function press(action: "dictation-toggle" | "dictation-confirm") {
+    return runMessageInputKeyboardAction(action, {
+      focusInput: () => undefined,
+      isDictationRecording: () => isRecording,
+      markTranscriptForSend: () => actions.push("send transcript"),
+      startDictation: () => {
+        actions.push("start");
+        isRecording = startsRecording;
+      },
+      confirmDictation: () => {
+        actions.push("confirm");
+        isRecording = false;
+      },
+      cancelDictation: () => undefined,
+      toggleRealtimeVoice: () => undefined,
+      isRealtimeVoiceActive: false,
+      toggleRealtimeVoiceMute: () => undefined,
+    });
+  }
 }
 
 describe("composer surface presentation", () => {
@@ -163,6 +167,15 @@ describe("dictation keyboard behavior", () => {
     keyboard.pressDictationShortcut();
 
     expect(keyboard.actions).toEqual(["start", "start"]);
+  });
+
+  it("Enter puts the transcript in the composer without sending it", () => {
+    const keyboard = createDictationKeyboard({ startsRecording: true });
+
+    keyboard.pressDictationShortcut();
+    expect(keyboard.pressEnter()).toBe(true);
+
+    expect(keyboard.actions).toEqual(["start", "confirm"]);
   });
 });
 

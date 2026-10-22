@@ -2594,3 +2594,21 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Verify:** `components/split-container-top-right.test.ts`. The third test in desktop
   `e2e/task-navigation.spec.ts` clicks the toggle and checks it sits 50px right of the archive
   button. Both are in the update script.
+
+## dictation-enter-inserts: Enter during dictation inserts the transcript instead of sending it
+
+- **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: Enter during dictation inserts the transcript instead of sending`
+- **Why:** You want to read and fix the transcript before it goes to the agent.
+- **What:** While dictation is recording, Enter does what the pencil button does: it stops
+  recording and puts the transcript in the composer, unsent. The send button still sends right
+  away, and the dictation shortcut (start/stop dictation) still stops and sends.
+- **Core files touched:** `packages/app/src/composer/input/state.ts`
+  (`runMessageInputKeyboardAction`, marked `CUSTOM(dictation-enter-inserts)`): the
+  `send`/`dictation-confirm` branch no longer calls `markTranscriptForSend`.
+- **Re-apply:** Find where the Enter key (`message-input-dictation-confirm-enter` in
+  `keyboard/keyboard-shortcuts.ts`, kind `dictation-confirm`) confirms a recording, and confirm it
+  without setting the composer's `sendAfterTranscriptRef`.
+- **Verify:** "Enter puts the transcript in the composer without sending it" in
+  `composer/input/state.test.ts` (in the update script). By hand: start dictation, speak, press
+  Enter; the text lands in the composer and nothing is sent.
