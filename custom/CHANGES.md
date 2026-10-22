@@ -2496,3 +2496,34 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   (in the update script). In the app, open Settings → Projects → a throwaway project, press
   **Remove** and confirm: the page goes back to the list, the project is gone from it and from the
   - menu's project list, and its folder is still on disk.
+
+## changes-diff-tab: Changes file clicks reuse the open diff tab
+
+- **Added:** 2026-10-21 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: Changes file clicks reuse the open diff tab`
+- **Why:** In Tasks mode every click on a file in the Changes tree opened another Diff tab, because
+  Desks match tabs by their full target and each click carries a new `focusRequestId`. The tabs
+  piled up.
+- **What:** The Changes tree toolbar (desktop only) shows an **Open in different tabs** checkbox,
+  off by default and remembered across restarts. Off: clicking a file retargets the diff tab that
+  is already open for that workspace, focuses it and scrolls it to the file; a new tab opens only
+  when none is open. On: every click opens its own diff tab, in Tasks mode and in the workspace
+  layout (where upstream would otherwise keep a single diff tab).
+- **Files:** `packages/app/src/git/diff-tabs/` (`store.ts` the persisted checkbox, `model.ts` which
+  tab to reuse, `toggle.tsx` the checkbox), `packages/app/e2e/browser/changes-diff-tab.spec.ts`.
+- **Core files touched** (marked `CUSTOM(changes-diff-tab)`):
+  - `packages/app/src/git/diff-pane.tsx`: `ChangesToolbarActions` renders `OpenInNewTabsToggle`
+    before the refresh button in the tree mode, unless compact.
+  - `packages/app/src/workspace-tabs/open-beside.ts`: `openPreferredWorkspacePreview` retargets
+    the diff tab `findDiffTabToReuse` returns, opens with `intent: "new"` when the checkbox is on,
+    and `canReplacePreview` no longer replaces a focused diff tab.
+  - `packages/app/src/task-navigation/desk-screen.tsx` (custom file): the `openInDesk` callback
+    retargets the Desk's diff tab of the same workspace (`updateTab` + `selectTab`) before opening
+    a new one.
+- **Re-apply:** Wherever a Changes tree click (`working_diff` target with `focusPath`) turns into a
+  tab, first look for an open `working_diff` tab of the same workspace and replace its target
+  instead; a same-kind replacement keeps the tab id, and the diff surface scrolls when
+  `focusRequestId` changes. Skip that when the checkbox is on and force a new tab instead.
+- **Verify:** `src/git/diff-tabs/model.test.ts` and `e2e/browser/changes-diff-tab.spec.ts` are in
+  the update script. The browser test covers both layouts; its Tasks mode case fails without the
+  `desk-screen.tsx` change (two diff tabs instead of one).

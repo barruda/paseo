@@ -11,6 +11,8 @@ import {
 import { getPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
+import { findDiffTabToReuse } from "@/git/diff-tabs/model";
+import { useDiffTabsStore } from "@/git/diff-tabs/store";
 
 export type OpenInSidePaneSource = keyof OpenInSidePanePreferences;
 export type WorkspaceTargetOpenLocation = "main" | "side";
@@ -68,7 +70,9 @@ function canReplacePreview(input: {
   nextTarget: WorkspaceTabTarget;
 }): boolean {
   if (input.nextTarget.kind === "working_diff") {
-    return input.currentTarget.kind === "working_diff";
+    // CUSTOM(changes-diff-tab): reusing a diff tab is decided before this; with "Open in
+    // different tabs" on, every file gets its own tab.
+    return false;
   }
   return (
     input.nextTarget.kind === "file" &&
@@ -136,6 +140,16 @@ export function openPreferredWorkspacePreview(
     workspaceTabTargetsEqual(tab.target, input.target),
   );
   if (existing) return openPreferredWorkspaceTarget(input);
+  // CUSTOM(changes-diff-tab): a Changes file click scrolls the open diff tab to the file, or with
+  // "Open in different tabs" gets a tab of its own.
+  const openInNewTabs = useDiffTabsStore.getState().openInNewTabs;
+  const diffTab = findDiffTabToReuse({
+    tabs: collectAllTabs(layout.root),
+    target: input.target,
+    openInNewTabs,
+  });
+  if (diffTab) return store.replaceTab(input.workspaceKey, diffTab.tabId, input.target);
+  const newDiffTab = openInNewTabs && input.target.kind === "working_diff";
 
   const mainPane = resolveMainPane({
     workspaceKey: input.workspaceKey,
@@ -167,7 +181,7 @@ export function openPreferredWorkspacePreview(
   return store.openTab({
     workspaceKey: input.workspaceKey,
     target: input.target,
-    intent: "reveal",
+    intent: newDiffTab ? "new" : "reveal",
     placement: { mode: "pane", paneId: destinationPaneId },
     parentTabId: input.parentTabId ?? activeTab?.tabId ?? undefined,
   });

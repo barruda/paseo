@@ -85,6 +85,8 @@ import {
 } from "@/screens/workspace/workspace-explorer-toggle";
 import { DeskLauncherProvider } from "./new-tab-menu";
 import { DeskExplorerDock, useDeskExplorer } from "./desk-explorer";
+import { findDiffTabToReuse } from "@/git/diff-tabs/model";
+import { useDiffTabsStore } from "@/git/diff-tabs/store";
 import { DeskTerminalTabs } from "./desk-terminal-tabs";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
 import {
@@ -392,6 +394,19 @@ export function DeskScreen() {
 
   const openInDesk = useCallback(
     (owner: DeskTabOwner, target: WorkspaceTabTarget, paneId?: string) => {
+      // CUSTOM(changes-diff-tab): a Changes file click scrolls this workspace's open diff tab.
+      const diffTab = findDiffTabToReuse({
+        tabs: deskTabs(activeDesk(useDesksStore.getState())).filter(
+          (tab) => tab.serverId === owner.serverId && tab.workspaceId === owner.workspaceId,
+        ),
+        target,
+        openInNewTabs: useDiffTabsStore.getState().openInNewTabs,
+      });
+      if (diffTab) {
+        useDesksStore.getState().updateTab(diffTab.id, { target });
+        useDesksStore.getState().selectTab(diffTab.id);
+        return;
+      }
       useDesksStore
         .getState()
         .openTab(

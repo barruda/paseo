@@ -37,6 +37,7 @@ import { ReviewCommentSheet, ReviewFeedbackAction } from "@/review";
 import { DiffDocument, type WorkingDiffMode } from "@/git/diff-document";
 import { ChangedFilesTree } from "@/git/changed-files-tree";
 import { CommitBox } from "@/git/commit-selection/commit-box";
+import { OpenInNewTabsToggle } from "@/git/diff-tabs/toggle";
 import {
   useCommitSelection,
   type CommitSelection,
@@ -762,6 +763,8 @@ function ChangesToolbarActions({ mode, compact }: { mode: ChangesToolbarMode; co
   if (mode.kind === "tree") {
     return (
       <>
+        {/* CUSTOM(changes-diff-tab) */}
+        {compact ? null : <OpenInNewTabsToggle />}
         {mode.refresh ? <ChangesRefreshButton refresh={mode.refresh} compact={compact} /> : null}
         <ChangesOptionsMenu mode={mode} compact={compact} />
       </>

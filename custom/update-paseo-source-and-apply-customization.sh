@@ -319,6 +319,9 @@ if $VERIFY; then
   # Workspace diff stat counts uncommitted work only.
   (cd packages/server && npx vitest run src/utils/checkout-git.test.ts -t "shortstat|git status shows|repository without commits" src/utils/checkout-git-ref-derived.test.ts --bail=1)
   (cd packages/app && npx playwright test --project=browser e2e/browser/changes-commit-selection.spec.ts)
+  # Changes file clicks reuse the open diff tab unless "Open in different tabs" is checked.
+  (cd packages/app && npx vitest run src/git/diff-tabs/model.test.ts --bail=1)
+  (cd packages/app && npx playwright test --project=browser e2e/browser/changes-diff-tab.spec.ts)
   (cd packages/app && npx vitest run src/chat-code-run/model.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/media-pause.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/history-content-index.test.ts src/server/agent-history-search.test.ts src/server/history-ai-search.test.ts --bail=1)
