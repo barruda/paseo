@@ -2198,7 +2198,8 @@ src/server/lean-claude.test.ts)` (the update script runs them). On a daemon from
   press shows an error toast. Commits with no confirmation.
 - **Core files touched** (marked `CUSTOM(commit-wip)`):
   - `packages/app/src/composer/commit-wip-pill.tsx`: the pill. New file.
-  - `packages/app/src/panels/agent-tracks.tsx`: renders it after `WorkspaceDiffStatPill`, and
+  - `packages/app/src/panels/agent-tracks.tsx`: renders it (now second in the row, see
+    [pill-order](#pill-order-tldr-commit-wip-and-rename-session-lead-the-pill-row)), and
     `hasAgentTracks` returns true so the track row (and its clearance in `agent-panel.tsx`) always
     shows.
   - `packages/app/src/chat-code-run/context.tsx`: the `!<command>` runner moved out of
@@ -2644,3 +2645,22 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Verify:** `src/git/working-diff-comparison/state.test.ts`, `src/git/checkout-status-cache.test.ts`
   and three tests in `e2e/browser/changes-pane.spec.ts` are in the update script. In the app, open
   Changes on a clean checkout: the dropdown reads Uncommitted.
+
+## pill-order: TLDR, Commit: wip and Rename session lead the pill row
+
+- **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: TLDR, Commit: wip and Rename session lead the composer pill row`
+- **Why:** The three pills used most sat at the far right, after Skills, Tell agent, the cost
+  pill and the diff stat.
+- **What:** The row under the composer reads TLDR, Commit: wip, Rename session, then the other
+  plugin pills (Skills, Tell agent, cost), the diff stat and the worktree pill. Tasks and
+  subagents stay ahead of all of them.
+- **Core files touched** (marked `CUSTOM(pill-order)`):
+  - `packages/app/src/plugins/buttons/view.tsx`: `PluginComposerPills` takes `leading`; `true`
+    renders only the pill ids in `LEADING_COMPOSER_PILL_IDS` (`tldr`), `false` the rest.
+  - `packages/app/src/panels/agent-tracks.tsx`: renders the leading plugin pills, Commit: wip,
+    Rename session, the other plugin pills, the diff stat, then the worktree pill.
+- **Re-apply:** Split the composer's plugin pills into the TLDR pill and the rest, and order the
+  track bar as above.
+- **Verify:** Typecheck. In the app, the row under any agent's composer starts with TLDR,
+  Commit: wip, Rename session.

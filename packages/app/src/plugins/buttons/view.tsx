@@ -533,18 +533,28 @@ export function useHasPluginComposerPills(
   return useButtons(serverId, workspaceId, agentId).length > 0;
 }
 
+// CUSTOM(pill-order): these pills lead the composer row, ahead of Commit: wip and Rename session.
+const LEADING_COMPOSER_PILL_IDS: ReadonlySet<string> = new Set(["tldr"]);
+
 export function PluginComposerPills({
   serverId,
   workspaceId,
   agentId,
   compact,
+  leading,
 }: {
   serverId: string;
   workspaceId: string;
   agentId: string;
   compact: boolean;
+  /** true: only the leading pills; false: all but them; omitted: every pill. */
+  leading?: boolean;
 }) {
-  const entries = useButtons(serverId, workspaceId, agentId);
+  const allEntries = useButtons(serverId, workspaceId, agentId);
+  const entries =
+    leading === undefined
+      ? allEntries
+      : allEntries.filter((entry) => LEADING_COMPOSER_PILL_IDS.has(entry.id) === leading);
   const hosts = useHosts();
   const hostLabel = hosts.find((host) => host.serverId === serverId)?.label ?? serverId;
   return entries.map((entry) => (

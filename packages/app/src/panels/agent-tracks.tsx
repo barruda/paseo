@@ -140,23 +140,32 @@ export const AgentTracks = memo(function AgentTracks({
         archiveFinishedStatus={archiveFinishedStatus}
         onDetachSubagent={canDetachSubagents ? detachSubagent : undefined}
       />
+      {/* CUSTOM(pill-order): TLDR, Commit: wip and Rename session lead the row. */}
       <PluginComposerPills
         serverId={serverId}
         workspaceId={workspaceId}
         agentId={agentId}
         compact={isCompact}
+        leading
+      />
+      {/* CUSTOM(commit-wip): commits everything as "wip". */}
+      <CommitWipPill serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
+      {/* CUSTOM(session-auto-rename): names the session from its status summary. */}
+      <RenameSessionPill serverId={serverId} agentId={agentId} />
+      <PluginComposerPills
+        serverId={serverId}
+        workspaceId={workspaceId}
+        agentId={agentId}
+        compact={isCompact}
+        leading={false}
       />
       <WorkspaceDiffStatPill
         serverId={serverId}
         workspaceId={workspaceId}
         onPress={handleOpenChanges}
       />
-      {/* CUSTOM(commit-wip): commits everything as "wip" from beside the diff stat. */}
-      <CommitWipPill serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
       {/* CUSTOM(worktree-pill): copies the worktree path or merges it into the main checkout. */}
       <WorktreePill serverId={serverId} workspaceId={workspaceId} agentId={agentId} cwd={cwd} />
-      {/* CUSTOM(session-auto-rename): names the session from its status summary. */}
-      <RenameSessionPill serverId={serverId} agentId={agentId} />
     </ComposerTrackBar>
   );
 });
