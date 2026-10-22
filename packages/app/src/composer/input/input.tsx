@@ -512,6 +512,20 @@ function usePasteImagesEffect(args: PasteImagesEffectArgs): void {
   ]);
 }
 
+function focusTextInputOnWeb(
+  textInputRef: React.MutableRefObject<ComposerTextInputHandle | null>,
+): () => void {
+  return focusWithRetries({
+    focus: () => textInputRef.current?.focus(),
+    isFocused: () => {
+      const element = getTextInputNativeElement(textInputRef.current);
+      const active = typeof document !== "undefined" ? document.activeElement : null;
+      return Boolean(element) && active === element;
+    },
+    deferInitialAttempt: true,
+  });
+}
+
 function useAutoFocusOnWebEffect(
   textInputRef: React.MutableRefObject<ComposerTextInputHandle | null>,
   autoFocus: boolean,
@@ -519,15 +533,7 @@ function useAutoFocusOnWebEffect(
 ): void {
   useEffect(() => {
     if (!isWeb || !autoFocus) return;
-    return focusWithRetries({
-      focus: () => textInputRef.current?.focus(),
-      isFocused: () => {
-        const element = getTextInputNativeElement(textInputRef.current);
-        const active = typeof document !== "undefined" ? document.activeElement : null;
-        return Boolean(element) && active === element;
-      },
-      deferInitialAttempt: true,
-    });
+    return focusTextInputOnWeb(textInputRef);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoFocus, autoFocusKey]);
 }
@@ -1339,6 +1345,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           cwd,
           autoSend,
         });
+        // CUSTOM(dictation-enter-inserts): an inserted transcript returns focus to the text box,
+        // so you can edit it or press Enter to send. Otherwise focus stays on the mic button.
+        if (!autoSend && isWeb) {
+          focusTextInputOnWeb(textInputRef);
+        }
       },
       [replaceText, onSubmit, onQueue, attachments, cwd, isAgentRunning, defaultSendBehavior],
     );

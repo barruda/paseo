@@ -2602,13 +2602,19 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Why:** You want to read and fix the transcript before it goes to the agent.
 - **What:** While dictation is recording, Enter does what the pencil button does: it stops
   recording and puts the transcript in the composer, unsent. The send button still sends right
-  away, and the dictation shortcut (start/stop dictation) still stops and sends.
-- **Core files touched:** `packages/app/src/composer/input/state.ts`
-  (`runMessageInputKeyboardAction`, marked `CUSTOM(dictation-enter-inserts)`): the
-  `send`/`dictation-confirm` branch no longer calls `markTranscriptForSend`.
+  away, and the dictation shortcut (start/stop dictation) still stops and sends. On web and
+  desktop, any inserted transcript (Enter or pencil) puts focus back in the text box. Without that,
+  focus stays on the mic button you clicked to start: the composer stays mounted under the
+  dictation bar, so nothing moves focus away from it.
+- **Core files touched** (marked `CUSTOM(dictation-enter-inserts)`):
+  - `packages/app/src/composer/input/state.ts` (`runMessageInputKeyboardAction`): the
+    `send`/`dictation-confirm` branch no longer calls `markTranscriptForSend`.
+  - `packages/app/src/composer/input/input.tsx` (`handleDictationTranscript`): calls
+    `focusTextInputOnWeb` when the transcript isn't auto-sent. `focusTextInputOnWeb` is the focus
+    retry pulled out of `useAutoFocusOnWebEffect`.
 - **Re-apply:** Find where the Enter key (`message-input-dictation-confirm-enter` in
   `keyboard/keyboard-shortcuts.ts`, kind `dictation-confirm`) confirms a recording, and confirm it
   without setting the composer's `sendAfterTranscriptRef`.
 - **Verify:** "Enter puts the transcript in the composer without sending it" in
   `composer/input/state.test.ts` (in the update script). By hand: start dictation, speak, press
-  Enter; the text lands in the composer and nothing is sent.
+  Enter; the text lands in the composer, nothing is sent, and the cursor is in the text box.
