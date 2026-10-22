@@ -336,6 +336,9 @@ if $VERIFY; then
   # The Explorer toggle sits in the top-right pane's tab row (its e2e check is in
   # e2e/task-navigation.spec.ts).
   (cd packages/app && npx vitest run src/components/split-container-top-right.test.ts --bail=1)
+  # No "finished" notification while a Monitor or background subagent will wake the agent.
+  (cd packages/server && npx vitest run src/server/agent/providers/claude/wake-tasks.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "waiting on a Monitor" --bail=1)
 fi
 
 step "Building the desktop app"

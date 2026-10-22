@@ -694,6 +694,11 @@ export interface AgentSession {
   /** Release live runtime resources without archiving or deleting the durable native session. */
   close(): Promise<void>;
   listCommands?(): Promise<AgentSlashCommand[]>;
+  /**
+   * CUSTOM(monitor-quiet-finish): true while background work that will wake the agent back up
+   * (a Monitor, a background subagent) is still running, so an ended turn is not "finished".
+   */
+  hasPendingWakeWork?(): boolean;
   setModel?(modelId: string | null): Promise<void>;
   setThinkingOption?(thinkingOptionId: string | null): Promise<void | AgentProviderNotice>;
   setFeature?(featureId: string, value: unknown): Promise<void>;

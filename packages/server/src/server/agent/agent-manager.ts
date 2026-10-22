@@ -5007,6 +5007,11 @@ export class AgentManager {
 
     // Check if agent transitioned from running to idle (finished)
     if (previousStatus === "running" && currentStatus === "idle") {
+      // CUSTOM(monitor-quiet-finish): a turn that ends waiting on a Monitor or a background
+      // subagent is not finished; the turn that ends once it settles is.
+      if (agent.session.hasPendingWakeWork?.()) {
+        return;
+      }
       agent.attention = {
         requiresAttention: true,
         attentionReason: "finished",

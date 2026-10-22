@@ -8141,6 +8141,46 @@ test("onAgentAttention is not called for internal agents", async () => {
   expect(attentionCalls).toHaveLength(0);
 });
 
+// CUSTOM(monitor-quiet-finish)
+test("a turn that ends waiting on a Monitor does not count as finished", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  let pendingWakeWork = true;
+  class WakeWorkSession extends TestAgentSession {
+    hasPendingWakeWork(): boolean {
+      return pendingWakeWork;
+    }
+  }
+  class WakeWorkClient extends TestAgentClient {
+    override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new WakeWorkSession(config);
+    }
+  }
+  const attentionReasons: string[] = [];
+  const manager = new AgentManager({
+    clients: { codex: new WakeWorkClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000113",
+    onAgentAttention: ({ reason }) => {
+      attentionReasons.push(reason);
+    },
+  });
+  const agent = await manager.createAgent(
+    { provider: "codex", cwd: workdir, title: "Monitor agent" },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await manager.runAgent(agent.id, "watch the import");
+  expect(attentionReasons).toEqual([]);
+  expect(manager.getAgent(agent.id)?.attention.requiresAttention).toBe(false);
+
+  pendingWakeWork = false;
+  await manager.runAgent(agent.id, "the import finished");
+  expect(attentionReasons).toEqual(["finished"]);
+});
+
 test("onAgentAttention is not called for delegated child agents", async () => {
   const childAgentId = "00000000-0000-4000-8000-000000000112";
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));

@@ -2669,3 +2669,38 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   track bar as above.
 - **Verify:** Typecheck. In the app, the row under any agent's composer starts with TLDR,
   Commit: wip, Rename session.
+
+## monitor-quiet-finish: no "finished" notification while a Monitor still runs
+
+- **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: no finished notification while a Monitor will wake the agent`
+- **Why:** A Claude agent that starts a Monitor ends its turn with "I'll tell you when it's
+  done". Paseo read that as finished and sent an OS notification for a message that asks nothing.
+- **What:** While a Claude agent has a background task that will wake it back up, a turn that
+  ends does not count as finished: no OS notification, push or unread dot. The turn that ends
+  once the task settles notifies as usual. Tasks that count: Monitors (`local_bash` with
+  `shell_kind: "monitor"`, `monitor_mcp`, `monitor_ws`, not `ambient`), background subagents
+  (`local_agent`) and workflows (`local_workflow`). Plain background shells don't count: a dev
+  server never ends, so the agent would never notify. Other providers are unchanged.
+- **How:** Claude Code sends `system`/`background_tasks_changed` with the full set of live
+  background tasks on every change. The Claude session keeps the count of tasks that wake it
+  (reset when its process starts or dies) and exposes it as `hasPendingWakeWork()`.
+- **Files:** `packages/server/src/server/agent/providers/claude/wake-tasks.ts` (which tasks count)
+  and `wake-tasks.test.ts`.
+- **Core files touched** (marked `CUSTOM(monitor-quiet-finish)`):
+  - `agent/agent-sdk-types.ts`: optional `hasPendingWakeWork?()` on `AgentSession`.
+  - `agent/provider-registry.ts`: `wrapSessionProvider` forwards it (profile-wrapped sessions
+    drop any method not forwarded there).
+  - `agent/providers/claude/agent.ts`: `wakeTaskCount`, set in `appendSystemMessageEvents`, reset
+    in `onChildProcess` and `handleRuntimeExit`.
+  - `agent/agent-manager.ts` (`checkAndSetAttention`): returns before marking "finished" when
+    `agent.session.hasPendingWakeWork?.()` is true.
+  - `agent/agent-manager.test.ts`: "a turn that ends waiting on a Monitor does not count as
+    finished".
+- **Re-apply:** Track `background_tasks_changed` in the Claude session as above and skip the
+  running-to-idle "finished" attention in the agent manager while the count is above zero. Skip
+  the attention mark too, not only the broadcast: a set `requiresAttention` makes the next
+  finish return early and its notification is lost.
+- **Verify:** Both tests are in the update script. In the app: ask a Claude agent to watch
+  something with Monitor; no notification when its turn ends, one when the watch ends and the
+  agent reports.

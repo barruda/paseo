@@ -86,6 +86,7 @@ import {
 } from "./rewind.js";
 import { normalizeProviderReplayTimestamp } from "../../provider-history-timestamps.js";
 import { claudeConfigDir, claudeProjectDirSync, claudeTranscriptPathSync } from "./project-dir.js";
+import { countClaudeWakeTasks } from "./wake-tasks.js";
 import { THINKING_APPLIES_NEXT_TURN_NOTICE } from "../../provider-notices.js";
 import {
   isProviderImageMarkdown,
@@ -2138,6 +2139,8 @@ class ClaudeAgentSession implements AgentSession {
   private readonly subscribers = new Set<(event: AgentStreamEvent) => void>();
   private readonly timelineAssembler = new TimelineAssembler();
   private readonly taskState = new ClaudeTaskState();
+  // CUSTOM(monitor-quiet-finish): live background tasks that will wake this agent back up.
+  private wakeTaskCount = 0;
   private readonly taskProtocolSource = new ClaudeTaskProtocolSource({
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
     readWorkflowResult: readClaudeWorkflowResultFile,
@@ -3256,6 +3259,8 @@ class ClaudeAgentSession implements AgentSession {
         queryFactory: this.queryFactory,
         onChildProcess: (child) => {
           this.childProcess = child;
+          // CUSTOM(monitor-quiet-finish): the task set is per process.
+          this.wakeTaskCount = 0;
           child.once("exit", (code, signal) => this.handleRuntimeExit(child, code, signal));
         },
       },
@@ -3809,6 +3814,8 @@ class ClaudeAgentSession implements AgentSession {
       return;
     }
     this.childProcess = null;
+    // CUSTOM(monitor-quiet-finish): its background tasks died with it.
+    this.wakeTaskCount = 0;
     this.logger.warn(
       { agentId: this.agentId, pid: child.pid, code, signal },
       "Claude runtime exited unexpectedly",
@@ -4510,6 +4517,16 @@ class ClaudeAgentSession implements AgentSession {
     if (message.subtype === "task_progress") {
       return;
     }
+    // CUSTOM(monitor-quiet-finish): a level signal; replace the count with each payload.
+    if (message.subtype === "background_tasks_changed") {
+      this.wakeTaskCount = countClaudeWakeTasks(message);
+      return;
+    }
+  }
+
+  // CUSTOM(monitor-quiet-finish)
+  hasPendingWakeWork(): boolean {
+    return this.wakeTaskCount > 0;
   }
 
   private appendTaskNotificationEvents(
