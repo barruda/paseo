@@ -1,89 +1,76 @@
 import { describe, expect, it } from "vitest";
-import { createMediaDucker, type AudioStreams } from "./media-pause";
+import { createMediaPauser, type MprisBus } from "./media-pause";
 
-interface FakeStream {
-  own?: boolean;
-  volume: number | null;
-}
-
-function fakeStreams(initial: Record<number, FakeStream>) {
-  const streams = new Map(Object.entries(initial).map(([id, stream]) => [Number(id), stream]));
+function fakeBus(initial: Record<string, string>) {
+  const status = new Map(Object.entries(initial));
   const calls: string[] = [];
-  const audio: AudioStreams = {
-    listPlaying: async () => [...streams].map(([id, { own }]) => ({ id, own: own === true })),
-    getVolume: async (id) => streams.get(id)?.volume ?? null,
-    setVolume: async (id, volume) => {
-      calls.push(`${id}=${volume.toFixed(2)}`);
-      streams.get(id)!.volume = volume;
+  const bus: MprisBus = {
+    listPlayers: async () => [...status.keys()],
+    playbackStatus: async (player) => status.get(player) ?? null,
+    call: async (player, method) => {
+      calls.push(`${player}.${method}`);
+      status.set(player, method === "Pause" ? "Paused" : "Playing");
     },
   };
-  return { audio, streams, calls };
+  return { bus, status, calls };
 }
 
-describe("media ducking", () => {
-  it("turns other apps down by 20 dB and restores them, leaving Paseo and muted streams", async () => {
-    const { audio, streams, calls } = fakeStreams({
-      1: { volume: 0.8 },
-      2: { own: true, volume: 1 },
-      3: { volume: null },
-    });
-    const ducker = createMediaDucker(audio, 0);
-    await ducker.setActive(1, true);
-    expect(calls).toEqual(["1=0.37"]);
-    await ducker.setActive(1, false);
-    expect(calls).toEqual(["1=0.37", "1=0.80"]);
-    expect(streams.get(2)!.volume).toBe(1);
+describe("media pause", () => {
+  it("pauses only playing players and resumes only those", async () => {
+    const { bus, calls } = fakeBus({ spotify: "Playing", vlc: "Paused", mpv: "Stopped" });
+    const pauser = createMediaPauser(bus, 0);
+    await pauser.setActive(1, true);
+    expect(calls).toEqual(["spotify.Pause"]);
+    await pauser.setActive(1, false);
+    expect(calls).toEqual(["spotify.Pause", "spotify.Play"]);
   });
 
-  it("waits for the last holder before restoring", async () => {
-    const { audio, calls } = fakeStreams({ 1: { volume: 1 } });
-    const ducker = createMediaDucker(audio, 0);
-    await ducker.setActive(1, true);
-    await ducker.setActive(2, true);
-    await ducker.setActive(1, false);
-    expect(calls).toEqual(["1=0.46"]);
-    await ducker.setActive(2, false);
-    expect(calls).toEqual(["1=0.46", "1=1.00"]);
+  it("waits for the last holder before resuming", async () => {
+    const { bus, calls } = fakeBus({ spotify: "Playing" });
+    const pauser = createMediaPauser(bus, 0);
+    await pauser.setActive(1, true);
+    await pauser.setActive(2, true);
+    await pauser.setActive(1, false);
+    expect(calls).toEqual(["spotify.Pause"]);
+    await pauser.setActive(2, false);
+    expect(calls).toEqual(["spotify.Pause", "spotify.Play"]);
   });
 
-  it("keeps the volume the user set meanwhile", async () => {
-    const { audio, streams, calls } = fakeStreams({ 1: { volume: 1 } });
-    const ducker = createMediaDucker(audio, 0);
-    await ducker.setActive(1, true);
-    streams.get(1)!.volume = 0.5;
-    await ducker.setActive(1, false);
-    expect(calls).toEqual(["1=0.46"]);
+  it("leaves a player alone when the user changed it meanwhile", async () => {
+    const { bus, status, calls } = fakeBus({ spotify: "Playing" });
+    const pauser = createMediaPauser(bus, 0);
+    await pauser.setActive(1, true);
+    status.set("spotify", "Stopped");
+    await pauser.setActive(1, false);
+    expect(calls).toEqual(["spotify.Pause"]);
   });
 
-  it("keeps media ducked when a new holder arrives during the restore delay", async () => {
-    const { audio, calls } = fakeStreams({ 1: { volume: 1 } });
-    const ducker = createMediaDucker(audio, 20);
-    await ducker.setActive(1, true);
-    const restoring = ducker.setActive(1, false);
-    await ducker.setActive(2, true);
-    await restoring;
-    expect(calls).toEqual(["1=0.46"]);
-    await ducker.setActive(2, false);
-    expect(calls).toEqual(["1=0.46", "1=1.00"]);
+  it("keeps media paused when a new holder arrives during the resume delay", async () => {
+    const { bus, calls } = fakeBus({ spotify: "Playing" });
+    const pauser = createMediaPauser(bus, 20);
+    await pauser.setActive(1, true);
+    const resuming = pauser.setActive(1, false);
+    await pauser.setActive(2, true);
+    await resuming;
+    expect(calls).toEqual(["spotify.Pause"]);
+    await pauser.setActive(2, false);
+    expect(calls).toEqual(["spotify.Pause", "spotify.Play"]);
   });
 
-  it("keeps ducking other streams when one fails", async () => {
-    const { audio, calls } = fakeStreams({
-      1: { volume: 1 },
-      2: { volume: 1 },
-    });
-    const ducker = createMediaDucker(
+  it("keeps toggling other players when one fails", async () => {
+    const { bus, calls } = fakeBus({ broken: "Playing", spotify: "Playing" });
+    const pauser = createMediaPauser(
       {
-        ...audio,
-        setVolume: async (id, volume) => {
-          if (id === 1) throw new Error("gone");
-          await audio.setVolume(id, volume);
+        ...bus,
+        call: async (player, method) => {
+          if (player === "broken") throw new Error("gone");
+          await bus.call(player, method);
         },
       },
       0,
     );
-    await ducker.setActive(1, true);
-    await ducker.setActive(1, false);
-    expect(calls).toEqual(["2=0.46", "2=1.00"]);
+    await pauser.setActive(1, true);
+    await pauser.setActive(1, false);
+    expect(calls).toEqual(["spotify.Pause", "spotify.Play"]);
   });
 });

@@ -987,7 +987,7 @@ async function bootstrap(): Promise<void> {
       (await app.getApplicationInfoForProtocol("https://example.com")).path,
   });
   ipcMain.handle("paseo:opener:openFile", (_event, input: unknown) => openFile(input));
-  // CUSTOM(media-pause): voice mode and dictation turn playing media down.
+  // CUSTOM(media-pause): voice mode and dictation pause playing media.
   registerMediaPauseHandlers(ipcMain);
   registerEditorTargetHandlers();
   registerBrowserAutomationIpc();

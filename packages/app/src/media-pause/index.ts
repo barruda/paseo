@@ -1,5 +1,5 @@
-// CUSTOM(media-pause): voice mode and dictation turn playing media down through the desktop host,
-// which restores it once nothing holds the pause.
+// CUSTOM(media-pause): voice mode and dictation pause playing media through the desktop host,
+// which resumes it once nothing holds the pause.
 import { useEffect } from "react";
 import { getDesktopHost } from "@/desktop/host";
 
