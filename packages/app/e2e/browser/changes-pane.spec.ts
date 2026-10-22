@@ -8,7 +8,11 @@ import { daemonWsRoutePattern } from "../support/helpers/daemon-port";
 import { getServerId } from "../support/helpers/server-id";
 import { connectSeedClient } from "../support/helpers/seed-client";
 import { createTempGitRepo } from "../support/helpers/workspace";
-import { openChangesPanel, waitForWorkspaceTabsVisible } from "../support/helpers/workspace-tabs";
+import {
+  openChangesPanel,
+  openChangesTreePanel,
+  waitForWorkspaceTabsVisible,
+} from "../support/helpers/workspace-tabs";
 
 interface DirtyWorkspace {
   id: string;
@@ -262,15 +266,19 @@ test.afterEach(async () => {
   }
 });
 
-test("Changes opens the populated committed comparison for a clean checkout", async ({ page }) => {
+// CUSTOM(changes-uncommitted-default): upstream opens a clean checkout on Committed.
+test("Changes opens on Uncommitted for a clean checkout", async ({ page }) => {
   const workspace = await createWorkspaceWithCommittedDiff();
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.id));
+  await waitForWorkspaceTabsVisible(page);
+  await openChangesTreePanel(page);
 
-  await openWorkspaceChangesSurface(page, workspace, 90_000);
-
-  const panel = page.getByTestId("working-diff-panel").filter({ visible: true });
   const tree = page.getByTestId("changes-tree-panel").filter({ visible: true });
-  await expect(tree.getByTestId("changes-diff-status-trigger")).toContainText("Committed");
-  await expect(panel.getByTestId("diff-file-0")).toHaveAccessibleName("committed-only.ts, +1, -0");
+  await expect(tree.getByTestId("changes-diff-status-trigger")).toContainText("Uncommitted", {
+    timeout: 90_000,
+  });
+  await expect(tree.getByRole("button", { name: "See committed changes" })).toBeVisible();
 });
 
 test("Changes expires a manual comparison when checkout dirtiness changes", async ({ page }) => {
@@ -288,11 +296,13 @@ test("Changes expires a manual comparison when checkout dirtiness changes", asyn
 
   execFileSync("git", ["add", "--all"], { cwd: workspace.repoPath });
   execFileSync("git", ["commit", "-m", "Commit working changes"], { cwd: workspace.repoPath });
-  await expect(mode).toContainText("Committed");
-  await expect(tree.getByRole("button", { name: "See uncommitted changes" })).toHaveCount(0, {
-    timeout: 30_000,
-  });
+  // CUSTOM(changes-uncommitted-default): the expired pick falls back to Uncommitted, not Committed.
+  await expect(mode).toContainText("Uncommitted", { timeout: 30_000 });
+  await expect(tree.getByRole("button", { name: "See uncommitted changes" })).toHaveCount(0);
 
+  await mode.click();
+  await page.getByTestId("changes-diff-mode-committed").click();
+  await expect(mode).toContainText("Committed");
   await writeFile(path.join(workspace.repoPath, "new-working-change.txt"), "uncommitted\n");
   await expect(mode).toContainText("Uncommitted", { timeout: 30_000 });
 });
@@ -1730,7 +1740,21 @@ async function openWorkspaceChangesSurface(
   await page.setViewportSize({ width: 1400, height: 900 });
   await page.goto(buildHostWorkspaceRoute(getServerId(), workspace.id));
   await waitForWorkspaceTabsVisible(page);
+  await showCommittedWhenClean(page, timeout);
   await openChangesPanel(page, timeout);
+}
+
+/**
+ * CUSTOM(changes-uncommitted-default): a clean checkout opens on an empty Uncommitted comparison;
+ * these tests start from the Committed one, which upstream shows by default.
+ */
+async function showCommittedWhenClean(page: Page, timeout = 30_000): Promise<void> {
+  await openChangesTreePanel(page);
+  const tree = page.getByTestId("changes-tree-panel").filter({ visible: true });
+  const seeCommitted = tree.getByRole("button", { name: "See committed changes" });
+  const changedFile = tree.locator('[data-testid^="diff-tree-file-"][data-testid$="-toggle"]');
+  await expect(changedFile.first().or(seeCommitted)).toBeVisible({ timeout });
+  if (await seeCommitted.isVisible()) await seeCommitted.click();
 }
 
 async function openSelectionWorkspaceChanges(page: Page, workspace: DirtyWorkspace): Promise<void> {

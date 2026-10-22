@@ -322,6 +322,9 @@ if $VERIFY; then
   # Changes file clicks reuse the open diff tab unless "Open in different tabs" is checked.
   (cd packages/app && npx vitest run src/git/diff-tabs/model.test.ts --bail=1)
   (cd packages/app && npx playwright test --project=browser e2e/browser/changes-diff-tab.spec.ts)
+  # Changes opens on Uncommitted even on a clean checkout.
+  (cd packages/app && npx vitest run src/git/working-diff-comparison/state.test.ts src/git/checkout-status-cache.test.ts --bail=1)
+  (cd packages/app && npx playwright test --project=browser e2e/browser/changes-pane.spec.ts -g "Uncommitted for a clean checkout|expires a manual comparison|empty Changes comparison")
   (cd packages/app && npx vitest run src/chat-code-run/model.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/media-pause.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/history-content-index.test.ts src/server/agent-history-search.test.ts src/server/history-ai-search.test.ts --bail=1)

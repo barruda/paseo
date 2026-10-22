@@ -60,7 +60,9 @@ export function resolveWorkingDiffComparisonFromState(
   if (override?.isDirtyAtSelection === input.isDirty) {
     return override.comparison;
   }
-  return input.isDirty ? "uncommitted" : "base";
+  // CUSTOM(changes-uncommitted-default): Changes opens on Uncommitted even on a clean checkout;
+  // Committed (the branch against its base) is one pick away in the dropdown.
+  return "uncommitted";
 }
 
 export function expireWorkingDiffComparisonsInState(

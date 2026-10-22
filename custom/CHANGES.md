@@ -2621,3 +2621,26 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Verify:** "Enter puts the transcript in the composer without sending it" in
   `composer/input/state.test.ts` (in the update script). By hand: start dictation, speak, press
   Enter; the text lands in the composer, nothing is sent, and the cursor is in the text box.
+
+## changes-uncommitted-default: Changes opens on Uncommitted
+
+- **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: Changes opens on Uncommitted even on a clean checkout`
+- **Why:** On a clean checkout upstream opens Changes on Committed, the branch against its base.
+  On `custom` that is every customization (100+ commits), which reads as if `git status` were
+  full of changes.
+- **What:** The Changes comparison opens on **Uncommitted** whether or not the checkout has
+  changes. On a clean checkout it shows "No changes to display" with a **See committed changes**
+  button. Picking Committed in the dropdown still holds until the checkout goes clean to dirty or
+  back, as upstream.
+- **Core files touched** (marked `CUSTOM(changes-uncommitted-default)`):
+  - `packages/app/src/git/working-diff-comparison/state.ts`:
+    `resolveWorkingDiffComparisonFromState` returns `"uncommitted"` when no matching pick exists.
+  - Tests that expected Committed on a clean checkout: `working-diff-comparison/state.test.ts`,
+    `git/checkout-status-cache.test.ts`, and `e2e/browser/changes-pane.spec.ts`
+    (`showCommittedWhenClean` clicks "See committed changes" before the helper opens a file).
+- **Re-apply:** Make the default comparison `"uncommitted"` wherever upstream derives it from the
+  checkout's dirty state, and update the tests that assert Committed for a clean checkout.
+- **Verify:** `src/git/working-diff-comparison/state.test.ts`, `src/git/checkout-status-cache.test.ts`
+  and three tests in `e2e/browser/changes-pane.spec.ts` are in the update script. In the app, open
+  Changes on a clean checkout: the dropdown reads Uncommitted.

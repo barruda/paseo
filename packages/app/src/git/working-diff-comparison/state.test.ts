@@ -26,13 +26,13 @@ describe("working diff comparison", () => {
     );
   });
 
-  it("defaults from checkout dirtiness and honors a matching manual selection", () => {
+  it("defaults to Uncommitted and honors a matching manual selection", () => {
     expect(
       resolveWorkingDiffComparisonFromState(emptyState(), { ...checkout, isDirty: true }),
     ).toBe("uncommitted");
     expect(
       resolveWorkingDiffComparisonFromState(emptyState(), { ...checkout, isDirty: false }),
-    ).toBe("base");
+    ).toBe("uncommitted");
 
     const selected = selectWorkingDiffComparisonInState(emptyState(), {
       ...checkout,
@@ -65,7 +65,7 @@ describe("working diff comparison", () => {
     });
 
     expect(resolveWorkingDiffComparisonFromState(state, { ...checkout, isDirty: false })).toBe(
-      "base",
+      "uncommitted",
     );
     const expired = expireWorkingDiffComparisonsInState(state, {
       serverId: checkout.serverId,

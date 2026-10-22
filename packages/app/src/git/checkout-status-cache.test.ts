@@ -126,7 +126,8 @@ describe("fetchCheckoutStatus", () => {
 
     await fetchCheckoutStatus({ client, serverId, cwd });
 
-    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: false })).toBe("base");
+    // CUSTOM(changes-uncommitted-default): the expired selection falls back to Uncommitted.
+    expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: false })).toBe("uncommitted");
     expect(resolveWorkingDiffComparison({ serverId, cwd, isDirty: true })).toBe("uncommitted");
   });
 });
