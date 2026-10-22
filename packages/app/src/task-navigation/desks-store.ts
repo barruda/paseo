@@ -14,6 +14,7 @@ import {
 } from "@/stores/workspace-layout-storage";
 import {
   closeTabInLayout,
+  collectAllPanes,
   collectAllTabs,
   createDefaultLayout,
   createTabInLayout,
@@ -61,6 +62,11 @@ export interface Desk {
   previewTabId: string | null;
   /** CUSTOM(desk-explorer): tabs that show their workspace's Explorer beside them. */
   explorerTabIds?: string[];
+  /**
+   * CUSTOM(desk-context-tab): the last focused agent or draft tab. The Explorer and the header's
+   * project and Git actions follow it, so focusing a terminal or browser keeps the agent's project.
+   */
+  agentTabId?: string;
 }
 export type DeskTabPatch = Partial<Pick<DeskTab, "target" | "state" | "serverId" | "workspaceId">>;
 export type DeskSplitPosition = "left" | "right" | "top" | "bottom";
@@ -122,6 +128,7 @@ const deskSchema = z.object({
   owners: z.record(z.string(), ownerSchema),
   previewTabId: z.string().nullable(),
   explorerTabIds: z.array(z.string()).optional(),
+  agentTabId: z.string().optional(),
 });
 // COMPAT(desk-layouts): Desks before split panes kept a flat tab list; migrated on load.
 const legacyTabSchema = z.object({
@@ -226,6 +233,24 @@ export function activeDeskTab(state: Pick<DesksState, "desks" | "activeDeskId">)
   return tabId ? (deskTabs(desk).find((tab) => tab.id === tabId) ?? null) : null;
 }
 
+const isAgentTabKind = (kind: WorkspaceTabTarget["kind"] | undefined) =>
+  kind === "agent" || kind === "draft";
+
+/**
+ * CUSTOM(desk-context-tab): the tab whose project the Explorer and header show: the last focused
+ * agent or draft tab, else an agent tab shown in any pane, else the focused tab.
+ */
+export function deskContextTab(state: Pick<DesksState, "desks" | "activeDeskId">): DeskTab | null {
+  const desk = activeDesk(state);
+  const tabs = deskTabs(desk);
+  const remembered = desk.agentTabId ? tabs.find((tab) => tab.id === desk.agentTabId) : undefined;
+  if (remembered) return remembered;
+  const shown = new Set(collectAllPanes(desk.layout.root).map((pane) => pane.focusedTabId));
+  return (
+    tabs.find((tab) => shown.has(tab.id) && isAgentTabKind(tab.target.kind)) ?? activeDeskTab(state)
+  );
+}
+
 // Keeping the owners object stable spares every tab chip and panel a re-render on focus changes.
 function sameOwners(a: Record<string, DeskTabOwner>, b: Record<string, DeskTabOwner>): boolean {
   const keys = Object.keys(a);
@@ -242,11 +267,17 @@ function withLayout(
   if (!layout) return desk;
   const nextOwners: Record<string, DeskTabOwner> = {};
   const tabIds = new Set<string>();
+  const agentTabIds = new Set<string>();
   for (const tab of collectAllTabs(layout.root)) {
     tabIds.add(tab.tabId);
+    if (isAgentTabKind(tab.target.kind)) agentTabIds.add(tab.tabId);
     const owner = owners[tab.tabId] ?? fallback;
     if (owner) nextOwners[tab.tabId] = owner;
   }
+  const focusedTabId = findPaneById(layout.root, layout.focusedPaneId)?.focusedTabId;
+  let agentTabId =
+    desk.agentTabId && agentTabIds.has(desk.agentTabId) ? desk.agentTabId : undefined;
+  if (focusedTabId && agentTabIds.has(focusedTabId)) agentTabId = focusedTabId;
   const previewTabId =
     desk.previewTabId && findPaneContainingTab(layout.root, desk.previewTabId)
       ? desk.previewTabId
@@ -259,13 +290,20 @@ function withLayout(
     previewTabId,
     explorerTabIds:
       explorerTabIds?.length === desk.explorerTabIds?.length ? desk.explorerTabIds : explorerTabIds,
+    agentTabId,
   };
 }
 
-/** A retargeted tab can get a new id; its Explorer stays open under that id. */
+/** A retargeted tab can get a new id; its Explorer and agent-tab memory follow that id. */
 function renameExplorerTab(desk: Desk, from: string, to: string): Desk {
-  if (from === to || !desk.explorerTabIds?.includes(from)) return desk;
-  return { ...desk, explorerTabIds: desk.explorerTabIds.map((id) => (id === from ? to : id)) };
+  if (from === to) return desk;
+  const agentTabId = desk.agentTabId === from ? to : desk.agentTabId;
+  if (!desk.explorerTabIds?.includes(from)) return { ...desk, agentTabId };
+  return {
+    ...desk,
+    agentTabId,
+    explorerTabIds: desk.explorerTabIds.map((id) => (id === from ? to : id)),
+  };
 }
 
 function openInDesk(

@@ -37,6 +37,7 @@ describe("task navigation mode", () => {
 import {
   activeDesk,
   activeDeskTab,
+  deskContextTab,
   deskTabs,
   initialDesks,
   useDesksStore,
@@ -94,6 +95,25 @@ describe("Desks", () => {
     store.setTabExplorerOpen(other.id, true);
     store.setTabExplorerOpen(other.id, false);
     expect(desk().explorerTabIds).toEqual([]);
+  });
+  it("keeps the last focused agent tab as the context while a bottom panel tab has focus", () => {
+    const store = useDesksStore.getState();
+    const context = () => deskContextTab(useDesksStore.getState());
+    store.openTab(firstTab, true);
+    const agent = current()!;
+    store.toggleBottomPanel({ serverId: "home", workspaceId: "unity" });
+    expect(current()?.workspaceId).toBe("unity");
+    expect(context()?.id).toBe(agent.id);
+    store.openTab({ ...secondTab, target: { kind: "draft", draftId: "draft-context" } }, true);
+    const draft = current()!;
+    expect(context()?.id).toBe(draft.id);
+    store.updateTab(draft.id, { target: { kind: "agent", agentId: "from-draft" } });
+    expect(context()?.target).toEqual({ kind: "agent", agentId: "from-draft" });
+    store.closeTab(context()!.id);
+    store.openTab({ ...secondTab, target: { kind: "file", path: "/tmp/notes.md" } }, true);
+    expect(context()?.id).toBe(agent.id);
+    store.closeTab(agent.id);
+    expect(context()?.target.kind).toBe("file");
   });
   it("toggles a tabbed bottom pane whose launcher belongs to the given workspace", () => {
     const store = useDesksStore.getState();

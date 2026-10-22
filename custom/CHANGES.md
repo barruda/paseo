@@ -2527,3 +2527,31 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Verify:** `src/git/diff-tabs/model.test.ts` and `e2e/browser/changes-diff-tab.spec.ts` are in
   the update script. The browser test covers both layouts; its Tasks mode case fails without the
   `desk-screen.tsx` change (two diff tabs instead of one).
+
+## desk-context-tab: the Explorer follows the last focused agent tab
+
+- **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: Desk Explorer follows the last focused agent tab`
+- **Why:** In Tasks mode the Explorer (Files, Changes), the header's project and its Git/Editor
+  actions followed whichever tab had focus. A bottom panel's tabs keep the workspace that was in
+  scope when the panel opened, so clicking into a Warp terminal switched Changes to another
+  project while the agent above stayed in view.
+- **What:** Each Desk remembers its last focused agent or draft tab. The Explorer, the header's
+  project name and icon, and the header's Commit/Editor actions show that tab's workspace while a
+  terminal, browser, file or diff tab has focus. The Explorer's open or closed state is that agent
+  tab's too. With no agent tab in the Desk they follow the focused tab as before. Launches (new
+  terminals, the + menu) still use the focused tab's workspace.
+- **Core files touched** (marked `CUSTOM(desk-context-tab)`), all custom files:
+  - `packages/app/src/task-navigation/desks-store.ts`: `Desk.agentTabId` (optional, persisted),
+    kept by `withLayout` and renamed with the tab on a retarget; `deskContextTab` selector.
+  - `packages/app/src/task-navigation/desk-screen.tsx`: `useDeskExplorerTarget` feeds
+    `useDeskExplorer` and `DeskExplorerDock`; `DeskProject` and `DeskWorkspaceActions` take the
+    context tab (the Editor button still opens the focused file when it is in that workspace).
+- **Re-apply:** In `withLayout`, set `agentTabId` to the focused tab when its target is `agent` or
+  `draft`, otherwise keep the previous one while it is still an agent/draft tab in the layout.
+  `deskContextTab` returns that tab, else an agent tab focused in any pane, else the focused tab.
+  The Desk screen passes its owner and id to the Explorer instead of the focused tab's.
+- **Verify:** `task-navigation/store.test.ts` ("keeps the last focused agent tab as the context
+  while a bottom panel tab has focus", already in the update script). In the app, Tasks mode: open
+  an agent of project A with Changes showing, open the bottom panel from a tab of project B, click
+  into the bottom panel: the header and Changes stay on A.

@@ -93,6 +93,7 @@ import {
   useDesksStore,
   activeDesk,
   activeDeskTab,
+  deskContextTab,
   deskTabs,
   type Desk,
   type DeskSplitPosition,
@@ -123,6 +124,7 @@ export function DeskScreen() {
   const desks = useDesksStore((s) => s.desks);
   const desk = useDesksStore(activeDesk);
   const active = useDesksStore(activeDeskTab);
+  const contextTab = useDesksStore(deskContextTab);
   const selection = useActiveWorkspaceSelection();
   const isFocused = useIsFocused();
   const toast = useToast();
@@ -181,7 +183,12 @@ export function DeskScreen() {
     [owners, previewTabId, scope],
   );
   const focusedDeskTabId = findPaneById(desk.layout.root, desk.layout.focusedPaneId)?.focusedTabId;
-  const explorer = useDeskExplorer(scope, focusedDeskTabId ?? null);
+  const { explorerScope, explorerTabId } = useDeskExplorerTarget(
+    contextTab,
+    scope,
+    focusedDeskTabId,
+  );
+  const explorer = useDeskExplorer(explorerScope, explorerTabId);
   const resolveOwnerRef = useRef(resolveOwner);
   resolveOwnerRef.current = resolveOwner;
   const ownerOf = useCallback((tabId: string) => resolveOwnerRef.current(tabId), []);
@@ -535,8 +542,8 @@ export function DeskScreen() {
       <View style={styles.headerLeft}>
         <SidebarMenuToggle />
         <TaskProjectIconsProvider>
-          {active ? (
-            <DeskProject tab={active} />
+          {contextTab ? (
+            <DeskProject tab={contextTab} />
           ) : (
             <Text style={styles.context} numberOfLines={1}>
               Choose a task
@@ -576,7 +583,7 @@ export function DeskScreen() {
         ) : null}
       </View>
     ),
-    [active, activeIsPreview, create, deleteDesk, desk.id, desks, keep, renameDesk],
+    [activeIsPreview, contextTab, create, deleteDesk, desk.id, desks, keep, renameDesk],
   );
   const explorerToggleProps = useMemo(
     () => ({
@@ -594,12 +601,12 @@ export function DeskScreen() {
   const headerRight = useMemo(
     () => (
       <HeaderShortcutsRightRow layoutKey={screenId} style={styles.headerLeft}>
-        {active ? <DeskWorkspaceActions tab={active} /> : null}
+        {contextTab ? <DeskWorkspaceActions tab={contextTab} focused={active} /> : null}
         {/* CUSTOM(desk-explorer) */}
-        {scope ? <WorkspaceHeaderExplorerToggle {...explorerToggleProps} /> : null}
+        {explorerScope ? <WorkspaceHeaderExplorerToggle {...explorerToggleProps} /> : null}
       </HeaderShortcutsRightRow>
     ),
-    [active, explorerToggleProps, scope, screenId],
+    [active, contextTab, explorerToggleProps, explorerScope, screenId],
   );
   const renderExplorerHeaderToggle = useCallback(
     () => <WorkspaceExplorerSidebarToggle {...explorerToggleProps} />,
@@ -609,12 +616,12 @@ export function DeskScreen() {
   const createNewTabFromExplorer = useCallback(() => createNewTab({}), [createNewTab]);
   const externalExplorerSidebar = useMemo(
     () =>
-      scope && explorerWorkspaceKey && explorer.isOpen
+      explorerScope && explorerWorkspaceKey && explorer.isOpen
         ? {
             workspaceKey: explorerWorkspaceKey,
             render: () => (
               <DeskExplorerDock
-                scope={scope}
+                scope={explorerScope}
                 workspaceKey={explorerWorkspaceKey}
                 isFocused={isFocused}
                 renderHeaderAction={renderExplorerHeaderToggle}
@@ -638,12 +645,12 @@ export function DeskScreen() {
       createNewTabFromExplorer,
       explorer.isOpen,
       renderExplorerHeaderToggle,
+      explorerScope,
       explorerWorkspaceKey,
       isFocused,
       openFile,
       openFromExplorer,
       reloadAgent,
-      scope,
     ],
   );
   const renderHeader = useCallback(
@@ -880,15 +887,35 @@ function DeskImportSheet({
   );
 }
 
-function DeskWorkspaceActions({ tab }: { tab: DeskTab }) {
+/**
+ * CUSTOM(desk-context-tab): the Explorer follows the last focused agent tab, not a terminal or
+ * browser that happens to have focus (a bottom panel's tabs can belong to another project).
+ */
+function useDeskExplorerTarget(
+  contextTab: DeskTab | null,
+  scope: DeskTabOwner | null,
+  focusedTabId: string | null | undefined,
+): { explorerScope: DeskTabOwner | null; explorerTabId: string | null } {
+  const serverId = contextTab?.serverId ?? scope?.serverId;
+  const workspaceId = contextTab?.workspaceId ?? scope?.workspaceId;
+  const explorerScope = useMemo<DeskTabOwner | null>(
+    () => (serverId && workspaceId ? { serverId, workspaceId } : null),
+    [serverId, workspaceId],
+  );
+  return { explorerScope, explorerTabId: contextTab?.id ?? focusedTabId ?? null };
+}
+/** `tab` is the context tab; the focused tab's file opens in the editor when it is in that workspace. */
+function DeskWorkspaceActions({ tab, focused }: { tab: DeskTab; focused: DeskTab | null }) {
   const directory = useWorkspaceDirectory(tab.serverId, tab.workspaceId);
   if (!directory) return null;
+  const sameWorkspace =
+    focused?.serverId === tab.serverId && focused.workspaceId === tab.workspaceId;
   return (
     <>
       <WorkspaceOpenInEditorButton
         serverId={tab.serverId}
         cwd={directory}
-        activeFile={tab.target.kind === "file" ? tab.target : null}
+        activeFile={sameWorkspace && focused.target.kind === "file" ? focused.target : null}
         hideLabels
       />
       <WorkspaceActions serverId={tab.serverId} cwd={directory} />
@@ -976,7 +1003,7 @@ function DeskTabChip({
     </ContextMenu>
   );
 }
-/** The project's icon and name for the focused tab's workspace. */
+/** The project's icon and name for the context tab's workspace. */
 function DeskProject({ tab }: { tab: DeskTab }) {
   const project = useWorkspaceFields(
     tab.serverId,
