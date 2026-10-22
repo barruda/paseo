@@ -118,7 +118,7 @@ export const ar: TranslationResources = {
   composer: {
     placeholders: {
       projectHint: "← تبديل المشروع",
-      rewindHint: "↑ تحديد آخر رسالة؛ Enter لخيارات التراجع",
+      rewindHint: "↑↓ تحديد رسائلك؛ Enter لخيارات التراجع",
       desktop: "أرسل رسالة إلى الوكيل أو ضع علامة على @files أو استخدم /commands و /skills",
       mobile: "الرسالة، @files ، /commands",
       fallback: "رسالة...",

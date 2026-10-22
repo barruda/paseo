@@ -21,6 +21,20 @@ export function latestSentMessage(items: readonly StreamItem[]): string | null {
   return null;
 }
 
+/** The sent message one step older (-1) or newer (+1) than `current`; null past either end. */
+export function adjacentSentMessage(
+  items: readonly StreamItem[],
+  current: string,
+  step: -1 | 1,
+): string | null {
+  const ids = items.flatMap((item) =>
+    item.kind === "user_message" && item.messageId ? [item.messageId] : [],
+  );
+  const index = ids.lastIndexOf(current);
+  if (index < 0) return null;
+  return ids[index + step] ?? null;
+}
+
 export function previousProjectId(ids: readonly string[], selected: string | null): string | null {
   if (ids.length === 0) return null;
   const index = selected === null ? -1 : ids.indexOf(selected);
@@ -69,11 +83,24 @@ export function handleEmptyRewindKey({ event, serverId, agentId, items }: Rewind
     return false;
   }
   if (event.key === "ArrowUp") {
-    const messageId = latestSentMessage(items);
+    // Up walks to older sent messages; it stays on the oldest loaded one.
+    const messageId = isSelected
+      ? (adjacentSentMessage(items, selection.messageId, -1) ?? selection.messageId)
+      : latestSentMessage(items);
     if (!messageId) return false;
     useComposerRewindSelection.setState({
       selection: { serverId, agentId, messageId, open: false },
     });
+  } else if (event.key === "ArrowDown" && isSelected) {
+    // Down walks back to newer messages; past the latest it clears the selection.
+    const messageId = adjacentSentMessage(items, selection.messageId, 1);
+    if (messageId) {
+      useComposerRewindSelection.setState({
+        selection: { serverId, agentId, messageId, open: false },
+      });
+    } else {
+      clearComposerRewindSelection();
+    }
   } else if (event.key === "Enter" && isSelected) {
     useComposerRewindSelection.setState({ selection: { ...selection, open: true } });
   } else {

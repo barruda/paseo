@@ -2016,7 +2016,7 @@ function ComposerContentImpl({
       if (commandDraft || inputMode !== "chat" || event.hasModifier) return false;
       const session = useSessionStore.getState().sessions[serverId];
       const items =
-        event.key === "ArrowUp"
+        event.key === "ArrowUp" || event.key === "ArrowDown"
           ? [
               ...(session?.agentStreamTail.get(agentId) ?? []),
               ...(session?.agentStreamHead.get(agentId) ?? []),

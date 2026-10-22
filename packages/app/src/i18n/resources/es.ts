@@ -119,7 +119,7 @@ export const es: TranslationResources = {
   composer: {
     placeholders: {
       projectHint: "← cambiar proyecto",
-      rewindHint: "↑ seleccionar último mensaje; Enter para opciones de rebobinado",
+      rewindHint: "↑↓ seleccionar tus mensajes; Enter para opciones de rebobinado",
       desktop: "Envíe un mensaje al agente, etiquete@fileso use/commandsy/skills",
       mobile: "Mensaje,@files,/commands",
       fallback: "Mensaje...",

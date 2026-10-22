@@ -118,7 +118,7 @@ export const ko: TranslationResources = {
   composer: {
     placeholders: {
       projectHint: "← 프로젝트 전환",
-      rewindHint: "↑ 마지막 메시지 선택; Enter로 되돌리기 옵션",
+      rewindHint: "↑↓ 내 메시지 선택; Enter로 되돌리기 옵션",
       desktop: "에이전트에게 메시지를 보내거나 @files 태그, /commands, /skills를 사용하세요",
       mobile: "메시지, @files, /commands",
       fallback: "메시지...",

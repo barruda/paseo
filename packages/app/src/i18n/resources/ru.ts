@@ -119,7 +119,7 @@ export const ru: TranslationResources = {
   composer: {
     placeholders: {
       projectHint: "← сменить проект",
-      rewindHint: "↑ выбрать последнее сообщение; Enter — варианты отката",
+      rewindHint: "↑↓ выбрать свои сообщения; Enter — варианты отката",
       desktop: "Напишите агенту сообщение, отметьте @files или используйте /commands и /skills.",
       mobile: "Сообщение,@files,/commands",
       fallback: "Сообщение...",

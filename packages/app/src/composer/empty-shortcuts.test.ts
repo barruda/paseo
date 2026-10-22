@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  adjacentSentMessage,
   clearComposerRewindSelection,
   handleEmptyRewindKey,
   latestSentMessage,
@@ -95,6 +96,39 @@ it("Up selects, Enter opens options, and typing or Escape clears selection", () 
   expect(press("h")).toBe(false);
   expect(useComposerRewindSelection.getState().selection).toBeNull();
   expect(prevented).toBe(3);
+});
+
+it("Up and Down walk through sent messages, and Down past the latest clears", () => {
+  clearComposerRewindSelection();
+  const items = [message("first"), message("middle"), message(), message("last")];
+  const press = (key: string) =>
+    handleEmptyRewindKey({
+      serverId: "host",
+      agentId: "agent",
+      items,
+      event: {
+        key,
+        hasModifier: false,
+        input: { text: "", selection: { start: 0, end: 0 } },
+        preventDefault: () => {},
+      },
+    });
+  const selected = () => useComposerRewindSelection.getState().selection?.messageId ?? null;
+  expect(press("ArrowDown")).toBe(false);
+  press("ArrowUp");
+  expect(selected()).toBe("last");
+  press("ArrowUp");
+  expect(selected()).toBe("middle");
+  press("ArrowUp");
+  press("ArrowUp");
+  expect(selected()).toBe("first");
+  press("ArrowDown");
+  expect(selected()).toBe("middle");
+  press("ArrowDown");
+  expect(selected()).toBe("last");
+  expect(press("ArrowDown")).toBe(true);
+  expect(selected()).toBeNull();
+  expect(adjacentSentMessage(items, "removed", -1)).toBeNull();
 });
 
 it("cycles only available favorites in favorite order and handles empty favorites", () => {

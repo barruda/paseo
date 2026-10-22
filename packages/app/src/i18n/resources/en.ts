@@ -115,7 +115,7 @@ export const en = {
   composer: {
     placeholders: {
       projectHint: "← switch project",
-      rewindHint: "↑ select last message; Enter for rewind options",
+      rewindHint: "↑↓ select your messages; Enter for rewind options",
       desktop: "Message the agent, tag @files, or use /commands and /skills",
       mobile: "Message, @files, /commands",
       fallback: "Message...",
