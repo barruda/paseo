@@ -62,6 +62,23 @@ describe("highlightCode", () => {
     expect(stringToken?.style).toBe("string");
   });
 
+  // CUSTOM(ruby-highlight)
+  it("highlights Ruby code", () => {
+    const code = 'class Greeter\n  def hello = puts("world")\nend';
+    const result = highlightCode(code, "app/models/greeter.rb");
+
+    expect(result).toHaveLength(3);
+
+    const classToken = result[0].find((t) => t.text === "class");
+    expect(classToken?.style).toBe("keyword");
+
+    const defToken = result[1].find((t) => t.text === "def");
+    expect(defToken?.style).toBe("keyword");
+
+    const stringToken = result[1].find((t) => t.text.includes("world"));
+    expect(stringToken?.style).toBe("string");
+  });
+
   it("highlights C# code", () => {
     const code = 'class Greeter {\n    string message = "hello";\n}';
     const result = highlightCode(code, "test.cs");

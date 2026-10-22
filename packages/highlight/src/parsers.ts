@@ -1,5 +1,6 @@
 import { defineLanguageFacet, Language, StreamLanguage } from "@codemirror/language";
 import { dart } from "@codemirror/legacy-modes/mode/clike";
+import { ruby } from "@codemirror/legacy-modes/mode/ruby";
 import { swift } from "@codemirror/legacy-modes/mode/swift";
 import { parser as jsParser } from "@lezer/javascript";
 import { parser as jsonParser } from "@lezer/json";
@@ -26,6 +27,8 @@ import { configureNesting, defaultNesting } from "./svelte/nesting.js";
 function language(parser: Parser): Language {
   return new Language(defineLanguageFacet(), parser);
 }
+
+const rubyLanguage = StreamLanguage.define(ruby);
 
 const languagesByExtension: Record<string, Language> = {
   // JavaScript/TypeScript
@@ -78,6 +81,11 @@ const languagesByExtension: Record<string, Language> = {
   swift: StreamLanguage.define(swift),
   // Dart
   dart: StreamLanguage.define(dart),
+  // CUSTOM(ruby-highlight): Ruby through the legacy CodeMirror mode; upstream has no Ruby parser.
+  rb: rubyLanguage,
+  rake: rubyLanguage,
+  gemspec: rubyLanguage,
+  ru: rubyLanguage,
   // C#
   cs: csharpLanguage,
   // Nix
@@ -90,7 +98,18 @@ const languagesByExtension: Record<string, Language> = {
   mdx: language(markdownParser),
 };
 
+// CUSTOM(ruby-highlight): extensionless Ruby files, matched by basename.
+const languagesByFilename: Record<string, Language> = {
+  Gemfile: rubyLanguage,
+  Rakefile: rubyLanguage,
+  Guardfile: rubyLanguage,
+  Podfile: rubyLanguage,
+  Brewfile: rubyLanguage,
+};
+
 export function getLanguageForFile(filename: string): Language | null {
+  const byName = languagesByFilename[filename.split(/[\\/]/).pop() ?? ""];
+  if (byName) return byName;
   const ext = filename.split(".").pop()?.toLowerCase();
   if (!ext) return null;
   return languagesByExtension[ext] ?? null;

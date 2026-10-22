@@ -26,6 +26,13 @@ describe("isLanguageSupported", () => {
     expect(isLanguageSupported("Counter.svelte")).toBe(true);
     expect(isLanguageSupported("Page.astro")).toBe(true);
     expect(isLanguageSupported("App.vue")).toBe(true);
+    // CUSTOM(ruby-highlight)
+    expect(isLanguageSupported("test.rb")).toBe(true);
+    expect(isLanguageSupported("lib/tasks/db.rake")).toBe(true);
+    expect(isLanguageSupported("paseo.gemspec")).toBe(true);
+    expect(isLanguageSupported("config.ru")).toBe(true);
+    expect(isLanguageSupported("Gemfile")).toBe(true);
+    expect(isLanguageSupported("app/Rakefile")).toBe(true);
   });
 
   it("returns false for unsupported file extensions", () => {

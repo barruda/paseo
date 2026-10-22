@@ -266,6 +266,8 @@ if $VERIFY; then
   npm run typecheck
   step "Running customization tests"
   (cd packages/app && npx vitest run src/composer/input/state.test.ts --bail=1)
+  # Ruby syntax highlighting.
+  (cd packages/highlight && npx vitest run src/__tests__/parsers.test.ts src/__tests__/highlighter.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/opener.test.ts --bail=1)
   (cd packages/app && npx vitest run src/keyboard/shortcut-help-search.test.ts --bail=1)
   npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/keyboard-shortcut-unassign.spec.ts --grep 'sidebar shortcut settings|shortcut settings search' --workers=1

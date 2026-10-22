@@ -2770,3 +2770,28 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   "bottom panel" tests fail without the fix: the diff lands in the bottom panel) and the
   `changes-pane.spec.ts` test above are in the update script. In the app: pick Committed in
   Changes, focus a bottom panel terminal, click a file; the diff opens above, on Committed.
+
+## ruby-highlight: syntax highlighting for Ruby
+
+- **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: syntax highlighting for Ruby`
+- **Why:** Ruby files, diffs and ` ```ruby ` code blocks rendered as plain text; upstream has no
+  Ruby grammar.
+- **What:** `.rb`, `.rake`, `.gemspec`, `.ru`, and the extensionless `Gemfile`, `Rakefile`,
+  `Guardfile`, `Podfile` and `Brewfile` highlight in the file pane, the editor, diffs and tool-call
+  blocks. ` ```ruby ` and ` ```rb ` chat fences highlight too. It uses the Ruby mode from
+  `@codemirror/legacy-modes`, which the highlighter already depends on (Swift and Dart use it the
+  same way), so no new dependency.
+- **Core files touched** (marked `CUSTOM(ruby-highlight)`):
+  - `packages/highlight/src/parsers.ts`: `rubyLanguage` in `languagesByExtension`, plus a
+    `languagesByFilename` map checked first in `getLanguageForFile`.
+  - `packages/app/src/components/highlighted-code-block.tsx`: `ruby: "rb"` in `LANGUAGE_ALIASES`.
+  - `packages/highlight/src/__tests__/highlighter.test.ts`, `parsers.test.ts`: Ruby cases.
+- **Re-apply:** Import `ruby` from `@codemirror/legacy-modes/mode/ruby`, wrap it in
+  `StreamLanguage.define`, and register it for the extensions above wherever the highlighter maps
+  extensions to languages. Match the basenames before the extension lookup. Map the `ruby` fence
+  name to `rb`. If upstream ships its own Ruby support, drop this change.
+- **Verify:** `packages/highlight` `parsers.test.ts` and `highlighter.test.ts` (in the update
+  script). In the app, open a `.rb` file or a `Gemfile`: keywords, strings and symbols are colored.
+  The client-side diff path (`app/src/utils/diff-highlight.ts`) goes by extension only, so a
+  `Gemfile` diff highlights only when the daemon highlights it.
