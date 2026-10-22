@@ -85,7 +85,11 @@ import {
 } from "@/screens/workspace/workspace-explorer-toggle";
 import { DeskLauncherProvider } from "./new-tab-menu";
 import { DeskExplorerDock, useDeskExplorer } from "./desk-explorer";
-import { findDiffTabToReuse } from "@/git/diff-tabs/model";
+import {
+  findDiffTabToReuse,
+  isInBottomPanel,
+  resolveMainContentPaneId,
+} from "@/git/diff-tabs/model";
 import { useDiffTabsStore } from "@/git/diff-tabs/store";
 import { DeskTerminalTabs } from "./desk-terminal-tabs";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
@@ -402,9 +406,14 @@ export function DeskScreen() {
   const openInDesk = useCallback(
     (owner: DeskTabOwner, target: WorkspaceTabTarget, paneId?: string) => {
       // CUSTOM(changes-diff-tab): a Changes file click scrolls this workspace's open diff tab.
+      const deskNow = activeDesk(useDesksStore.getState());
       const diffTab = findDiffTabToReuse({
-        tabs: deskTabs(activeDesk(useDesksStore.getState())).filter(
-          (tab) => tab.serverId === owner.serverId && tab.workspaceId === owner.workspaceId,
+        tabs: deskTabs(deskNow).filter(
+          (tab) =>
+            tab.serverId === owner.serverId &&
+            tab.workspaceId === owner.workspaceId &&
+            // CUSTOM(changes-main-content): a diff tab in the bottom panel is not reused.
+            !isInBottomPanel(deskNow.layout.root, tab.id),
         ),
         target,
         openInNewTabs: useDiffTabsStore.getState().openInNewTabs,
@@ -431,9 +440,19 @@ export function DeskScreen() {
     },
     [],
   );
+  // CUSTOM(changes-main-content): Explorer clicks open in the Explorer's workspace (the context
+  // agent tab's, not a focused bottom panel terminal's) and in its pane, never the bottom panel.
+  const explorerTargetRef = useRef({ explorerScope, explorerTabId });
+  explorerTargetRef.current = { explorerScope, explorerTabId };
   const openFromExplorer = useCallback(
     (target: WorkspaceTabTarget) => {
-      if (scopeRef.current) openInDesk(scopeRef.current, target);
+      const owner = explorerTargetRef.current.explorerScope ?? scopeRef.current;
+      if (!owner) return;
+      const paneId = resolveMainContentPaneId(
+        activeDesk(useDesksStore.getState()).layout,
+        explorerTargetRef.current.explorerTabId,
+      );
+      openInDesk(owner, target, paneId);
     },
     [openInDesk],
   );

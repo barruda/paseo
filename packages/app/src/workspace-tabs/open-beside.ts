@@ -11,7 +11,8 @@ import {
 import { getPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
-import { findDiffTabToReuse } from "@/git/diff-tabs/model";
+import { findDiffTabToReuse, isInBottomPanel } from "@/git/diff-tabs/model";
+import { BOTTOM_PANEL_PANE_ID } from "@/workspace-tabs/bottom-panel";
 import { useDiffTabsStore } from "@/git/diff-tabs/store";
 
 export type OpenInSidePaneSource = keyof OpenInSidePanePreferences;
@@ -48,7 +49,9 @@ function resolveMainPane(input: {
 }) {
   const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[input.workspaceKey];
   if (!layout) return null;
-  const panes = collectAllPanes(layout.root);
+  // CUSTOM(changes-main-content): Explorer clicks never land in the bottom panel, even when it
+  // had focus last.
+  const panes = collectAllPanes(layout.root).filter((pane) => pane.id !== BOTTOM_PANEL_PANE_ID);
   return (
     panes.find(
       (pane) =>
@@ -144,7 +147,8 @@ export function openPreferredWorkspacePreview(
   // "Open in different tabs" gets a tab of its own.
   const openInNewTabs = useDiffTabsStore.getState().openInNewTabs;
   const diffTab = findDiffTabToReuse({
-    tabs: collectAllTabs(layout.root),
+    // CUSTOM(changes-main-content): a diff tab in the bottom panel is not reused.
+    tabs: collectAllTabs(layout.root).filter((tab) => !isInBottomPanel(layout.root, tab.tabId)),
     target: input.target,
     openInNewTabs,
   });

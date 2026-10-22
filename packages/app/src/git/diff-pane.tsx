@@ -536,10 +536,12 @@ function buildChangesHeaderModel(input: BuildChangesHeaderModelInput): {
 // never infer which host or Changes presentation produced them.
 function ChangesHeader({ compact, repository, comparison, sidebarSurface }: ChangesHeaderProps) {
   if (comparison.mode.kind === "diff") {
+    // CUSTOM(changes-main-content): the diff tab picks Uncommitted or Committed like Changes does;
+    // both read the workspace's one comparison, so a Changes click opens the diff it showed.
     return (
-      <ChangesDiffOnlyToolbar
+      <ChangesComparisonToolbar
         compact={compact}
-        mode={comparison.mode}
+        model={comparison}
         sidebarSurface={sidebarSurface}
       />
     );
@@ -557,30 +559,6 @@ function ChangesHeader({ compact, repository, comparison, sidebarSurface }: Chan
         sidebarSurface={sidebarSurface}
       />
     </View>
-  );
-}
-
-function ChangesDiffOnlyToolbar({
-  compact,
-  mode,
-  sidebarSurface,
-}: {
-  compact: boolean;
-  mode: Extract<ChangesToolbarMode, { kind: "diff" }>;
-  sidebarSurface: boolean;
-}) {
-  return (
-    <ChangesToolbarRow
-      compact={compact}
-      sidebarSurface={sidebarSurface}
-      testID="changes-header"
-      trailing="glyph"
-    >
-      <ChangesToolbarLeading />
-      <ChangesToolbarTrailing>
-        <ChangesToolbarActions mode={mode} compact={compact} />
-      </ChangesToolbarTrailing>
-    </ChangesToolbarRow>
   );
 }
 

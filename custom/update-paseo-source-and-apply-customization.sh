@@ -325,6 +325,8 @@ if $VERIFY; then
   # Changes opens on Uncommitted even on a clean checkout.
   (cd packages/app && npx vitest run src/git/working-diff-comparison/state.test.ts src/git/checkout-status-cache.test.ts --bail=1)
   (cd packages/app && npx playwright test --project=browser e2e/browser/changes-pane.spec.ts -g "Uncommitted for a clean checkout|expires a manual comparison|empty Changes comparison")
+  # Changes clicks open the diff in the main content, with the comparison menu.
+  (cd packages/app && npx playwright test --project=browser e2e/browser/changes-pane.spec.ts -g "keeps review navigation and controls")
   (cd packages/app && npx vitest run src/chat-code-run/model.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/media-pause.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/history-content-index.test.ts src/server/agent-history-search.test.ts src/server/history-ai-search.test.ts --bail=1)

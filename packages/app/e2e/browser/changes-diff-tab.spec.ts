@@ -101,3 +101,34 @@ test("Changes file clicks reuse the open diff tab until Open in different tabs i
 test("in Tasks mode, Changes file clicks reuse the Desk's diff tab", async ({ page }) => {
   await expectDiffTabReuse(page, true);
 });
+
+// CUSTOM(changes-main-content): a Changes click opens the diff in the main content, with the
+// comparison menu, even while the bottom panel has focus.
+async function expectDiffInMainContent(page: Page, tasksMode: boolean) {
+  const workspaceId = await createDirtyWorkspace();
+  const explorer = await openChangesTree(page, workspaceId, tasksMode);
+  const bottom = page.getByTestId("workspace-pane-bottom-panel").filter({ visible: true });
+  await page.getByTestId("sidebar-bottom-panel-toggle").click();
+  await expect(bottom.locator('[data-testid^="workspace-tab-terminal_"]')).toHaveCount(1, {
+    timeout: 30_000,
+  });
+  await bottom.locator('[data-testid^="workspace-tab-terminal_"]').click();
+
+  await showChanges(page, explorer);
+  await explorer.getByTestId("changes-file-tree").getByText("a.ts", { exact: true }).click();
+  const diffPanel = page.getByTestId("working-diff-panel").filter({ visible: true });
+  await expect(diffPanel).toBeVisible({ timeout: 30_000 });
+  await expect(bottom.getByTestId("workspace-tab-working_diff")).toHaveCount(0);
+  await expect(diffPanel.getByTestId("changes-diff-status-trigger")).toContainText("Uncommitted");
+  await expect(diffPanel.getByTestId("diff-file-0")).toBeVisible();
+}
+
+test("a Changes click opens the diff in the main content while the bottom panel has focus", async ({
+  page,
+}) => {
+  await expectDiffInMainContent(page, false);
+});
+
+test("in Tasks mode, a Changes click opens the diff above the bottom panel", async ({ page }) => {
+  await expectDiffInMainContent(page, true);
+});

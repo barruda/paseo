@@ -2725,3 +2725,41 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   pane and reserve its width, or the tabs overlap it.
 - **Verify:** The first test in desktop `e2e/task-navigation.spec.ts` (in the update script). In
   the app, Ctrl+J, then click `⌄⌄`: the panel hides and Ctrl+J brings it back with the same tabs.
+
+## changes-main-content: Changes clicks open the diff in the main content, in the same comparison
+
+- **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: Changes clicks open the diff in the main content, in the same comparison`
+- **Why:** With the bottom panel focused, clicking a file in Changes opened its diff in the bottom
+  panel. In Tasks mode the diff also belonged to the focused tab's workspace (a bottom panel
+  terminal can be another project's), so Changes showed Committed against `develop` while the diff
+  said "No changes to display". The diff tab had no comparison menu to fix it from there.
+- **What:**
+  - A Changes (or Files) click in the Explorer never opens in, or reuses a diff tab of, the bottom
+    panel. Workspace view: the last focused main pane. Tasks mode: the pane of the Explorer's agent
+    tab, else the focused pane, else the first visible one.
+  - In Tasks mode, Explorer clicks open in the Explorer's workspace
+    ([desk-context-tab](#desk-context-tab-the-explorer-follows-the-last-focused-agent-tab)), not
+    the focused tab's.
+  - The diff tab's header shows the **Uncommitted / Committed** menu and the diff stat, like
+    Changes. Both read the workspace's one comparison, so the diff opens on what Changes showed,
+    and switching in either switches both.
+- **Files:** `packages/app/src/git/diff-tabs/model.ts` (`isInBottomPanel`,
+  `resolveMainContentPaneId`).
+- **Core files touched** (marked `CUSTOM(changes-main-content)`):
+  - `workspace-tabs/open-beside.ts`: `resolveMainPane` skips the `bottom-panel` pane;
+    `openPreferredWorkspacePreview` skips its diff tabs for reuse.
+  - `task-navigation/desk-screen.tsx` (custom file): `openFromExplorer` uses the Explorer's scope
+    and `resolveMainContentPaneId`; `openInDesk` skips bottom panel diff tabs for reuse.
+  - `git/diff-pane.tsx`: `ChangesHeader` renders `ChangesComparisonToolbar` for the `diff` mode
+    (the diff-only toolbar is gone).
+  - `e2e/browser/changes-pane.spec.ts`: "keeps review navigation and controls" expects the
+    comparison menu in the diff tab.
+- **Re-apply:** Wherever an Explorer click picks its destination pane, leave out the pane with id
+  `bottom-panel`, and leave its tabs out of diff-tab reuse. In the Desk, open Explorer targets with
+  the Explorer's owner. For the menu, give the diff-only Changes header the same comparison row as
+  the tree (`DiffModeMenu` plus the diff stat, then the diff actions).
+- **Verify:** `src/git/diff-tabs/model.test.ts`, `e2e/browser/changes-diff-tab.spec.ts` (the two
+  "bottom panel" tests fail without the fix: the diff lands in the bottom panel) and the
+  `changes-pane.spec.ts` test above are in the update script. In the app: pick Committed in
+  Changes, focus a bottom panel terminal, click a file; the diff opens above, on Committed.
