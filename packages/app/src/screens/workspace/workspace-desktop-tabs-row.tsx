@@ -84,6 +84,8 @@ import {
   ToolbarControls,
 } from "@/components/ui/pane-content-toolbar";
 import { smallIconButtonChromeFrameSize } from "@/components/ui/icon-button-chrome";
+import { BOTTOM_PANEL_PANE_ID } from "@/workspace-tabs/bottom-panel";
+import { BottomPanelCollapseButton } from "@/workspace-tabs/bottom-panel-collapse-button";
 import {
   HorizontalScrollBoundaryShades,
   useHorizontalScrollBoundary,
@@ -121,6 +123,9 @@ const TRAILING_ACTION_RESERVED_WIDTH =
   TRAILING_ACTION_GAP +
   smallIconButtonChromeFrameSize(false) +
   PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING;
+// CUSTOM(bottom-panel-collapse): the bottom panel's ⌄⌄ button sits before its tabs.
+const BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH =
+  smallIconButtonChromeFrameSize(false) + PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING;
 // Chip geometry. `layoutMetrics` measures tabs from these same numbers, so a chip that changes
 // shape without changing them mis-measures and drops the row into the overflow-scroll fallback at
 // the wrong width. Keep them together.
@@ -1215,6 +1220,8 @@ function ResolvedWorkspaceDesktopTabsRow({
   }, []);
 
   const archiveAgentTab = usePaneArchiveAgentTab(tabs, host, normalizedWorkspaceId);
+  // CUSTOM(bottom-panel-collapse)
+  const isBottomPanel = paneId === BOTTOM_PANEL_PANE_ID;
 
   const layoutMetrics = useMemo(
     () => ({
@@ -1226,7 +1233,8 @@ function ResolvedWorkspaceDesktopTabsRow({
           (showPaneSplitActions ? PANE_SPLIT_ACTIONS_RESERVED_WIDTH : 0) +
           (archiveAgentTab ? PANE_ARCHIVE_ACTION_RESERVED_WIDTH : 0) +
           (showPaneMaximizeAction ? PANE_MAXIMIZE_ACTION_RESERVED_WIDTH : 0) +
-          (trailingAction ? TRAILING_ACTION_RESERVED_WIDTH : 0),
+          (trailingAction ? TRAILING_ACTION_RESERVED_WIDTH : 0) +
+          (isBottomPanel ? BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH : 0),
       ),
       rowPaddingHorizontal: TAB_ROW_PADDING_HORIZONTAL,
       tabGap: TAB_CHIP_GAP,
@@ -1241,6 +1249,7 @@ function ResolvedWorkspaceDesktopTabsRow({
       archiveAgentTab,
       exitFocusModeWidth,
       focusModeEnabled,
+      isBottomPanel,
       showPaneMaximizeAction,
       showPaneSplitActions,
       trailingAction,
@@ -1527,6 +1536,11 @@ function ResolvedWorkspaceDesktopTabsRow({
         onPress={onExitFocusMode}
         onLayout={handleExitFocusModeLayout}
       />
+      {isBottomPanel ? (
+        <View style={styles.leadingAction}>
+          <BottomPanelCollapseButton />
+        </View>
+      ) : null}
       <View style={styles.tabsScrollContainer}>
         <Animated.ScrollView
           horizontal
@@ -1787,6 +1801,11 @@ const styles = StyleSheet.create((theme) => ({
   paneSplitActions: {
     paddingHorizontal: PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING,
     marginRight: PANE_SPLIT_ACTIONS_OUTER_MARGIN,
+  },
+  leadingAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingLeft: PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING,
   },
   trailingAction: {
     flexDirection: "row",

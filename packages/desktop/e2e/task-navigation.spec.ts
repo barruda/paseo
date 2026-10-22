@@ -105,7 +105,13 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await page.keyboard.press("Control+j");
     await expect(bottom).toBeVisible();
     await expect.poll(countTerminals).toBe(1);
-    await page.getByTestId("sidebar-bottom-panel-toggle").click();
+    // CUSTOM(bottom-panel-collapse): the ⌄⌄ button before the panel's tabs hides it.
+    const collapse = bottom.getByTestId("bottom-panel-collapse");
+    const firstTabBox = await bottom
+      .locator('[data-testid^="workspace-tab-terminal_"]')
+      .boundingBox();
+    expect((await collapse.boundingBox())!.x).toBeLessThan(firstTabBox!.x);
+    await collapse.click();
     await expect(bottom).not.toBeVisible();
     // Closing the panel's last tab removes the pane, like in a workspace.
     await page.keyboard.press("Control+j");

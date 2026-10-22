@@ -2704,3 +2704,24 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Verify:** Both tests are in the update script. In the app: ask a Claude agent to watch
   something with Monitor; no notification when its turn ends, one when the watch ends and the
   agent reports.
+
+## bottom-panel-collapse: a ⌄⌄ button before the bottom panel's tabs hides it
+
+- **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
+- **Commit:** `custom: a collapse button before the bottom panel's tabs`
+- **Why:** Like the Explorer toggle in the tab row ([explorer-toggle-tab-row](#explorer-toggle-tab-row-the-explorer-toggle-sits-at-the-right-end-of-the-tab-row)),
+  a button on the panel itself to hide it with the mouse.
+- **What:** The bottom panel's tab row starts with a `⌄⌄` button (tooltip "Hide bottom panel" with
+  the Ctrl+J binding). It dispatches the `workspace.bottom-panel.toggle` action, so it works in the
+  workspace view and in Tasks mode, and follows a rebound shortcut.
+- **Files:** `packages/app/src/workspace-tabs/bottom-panel-collapse-button.tsx`.
+- **Core files touched** (marked `CUSTOM(bottom-panel-collapse)`):
+  - `screens/workspace/workspace-desktop-tabs-row.tsx`: renders the button before
+    `tabsScrollContainer` when `paneId === BOTTOM_PANEL_PANE_ID`, and adds its width to
+    `actionsReservedWidth`.
+  - `packages/desktop/e2e/task-navigation.spec.ts`: hides the Desk's bottom panel with the button
+    and checks it sits left of the first tab.
+- **Re-apply:** In the desktop tab row, render the button before the tabs for the `bottom-panel`
+  pane and reserve its width, or the tabs overlap it.
+- **Verify:** The first test in desktop `e2e/task-navigation.spec.ts` (in the update script). In
+  the app, Ctrl+J, then click `⌄⌄`: the panel hides and Ctrl+J brings it back with the same tabs.

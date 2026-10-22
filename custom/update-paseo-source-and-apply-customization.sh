@@ -339,6 +339,7 @@ if $VERIFY; then
   # No "finished" notification while a Monitor or background subagent will wake the agent.
   (cd packages/server && npx vitest run src/server/agent/providers/claude/wake-tasks.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "waiting on a Monitor" --bail=1)
+  # The bottom panel's ⌄⌄ button is checked in e2e/task-navigation.spec.ts.
 fi
 
 step "Building the desktop app"
