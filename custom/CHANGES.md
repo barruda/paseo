@@ -2308,6 +2308,11 @@ agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionall
   in its worktree. Workspace mode navigates to that workspace; Tasks mode opens the tab in the
   focused pane of the Desk. Where there is no hover (native, sheets), pressing the row opens the
   project list as before for submenus.
+  - Projects with no workspace are listed too (2026-10-22). Adding a project only registers it,
+    so a folder added from the Projects page, such as a git worktree added as its own project,
+    had no workspace and never showed. Picking one creates a workspace in the project's root
+    (`createWorkspace` with a `directory` source and the `projectId`; a worktree gets
+    `kind: worktree`), then opens the agent there.
 - **Files:** `packages/app/src/new-agent-projects/` (`model.ts` picks one workspace per project,
   `menu.tsx` builds the page and launches), with `model.test.ts`.
 - **Core files touched** (marked `CUSTOM(new-agent-projects)`):
@@ -2319,7 +2324,9 @@ agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionall
 - **Re-apply:** Give the menu engine's sub-trigger an optional press action that applies only on web
   popovers, keeping hover-to-open. In the new-tab menu, render the `agent` launch item through it
   with `buildNewAgentProjectsPage`, passing the item's own launch as `launchDefault`. Keep the page
-  content a component so closed menus don't subscribe to projects or icons.
+  content a component so closed menus don't subscribe to projects or icons. Feed the model the
+  session's `projects` as well as its workspaces, and create a workspace before launching when a
+  project has none.
 - **Verify:** `(cd packages/app && npx vitest run src/new-agent-projects/model.test.ts)` and the
   "New agent flyout" test in desktop `e2e/task-navigation.spec.ts` (both in the update script). In
   the app, open **+**, hover **Agent**, click another project: a new agent tab opens with that

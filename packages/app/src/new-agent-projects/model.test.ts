@@ -32,8 +32,8 @@ describe("listNewAgentProjects", () => {
         workspace("w3", "alpha", { workspaceDirectory: "/wt/alpha-1" }),
       ]),
     ).toEqual([
-      { projectId: "alpha", label: "alpha", workspaceId: "w2" },
-      { projectId: "zeta", label: "zeta", workspaceId: "w1" },
+      { projectId: "alpha", label: "alpha", workspaceId: "w2", rootPath: "/src/alpha" },
+      { projectId: "zeta", label: "zeta", workspaceId: "w1", rootPath: "/src/zeta" },
     ]);
   });
 
@@ -58,7 +58,37 @@ describe("listNewAgentProjects", () => {
         workspace("w1", "app", { projectCustomName: "My App" }),
         workspace("w2", "gone", { archivingAt: "2026-10-21T00:00:00Z" }),
       ]),
-    ).toEqual([{ projectId: "app", label: "My App", workspaceId: "w1" }]);
+    ).toEqual([{ projectId: "app", label: "My App", workspaceId: "w1", rootPath: "/src/app" }]);
+  });
+
+  it("lists a project with no workspace, such as a worktree added as a project", () => {
+    expect(
+      listNewAgentProjects(
+        [workspace("w1", "app")],
+        [
+          {
+            projectId: "app",
+            projectDisplayName: "app",
+            projectCustomName: null,
+            projectRootPath: "/src/app",
+          },
+          {
+            projectId: "app-wt",
+            projectDisplayName: "app-surface",
+            projectCustomName: null,
+            projectRootPath: "/src/app-surface",
+          },
+        ],
+      ),
+    ).toEqual([
+      { projectId: "app", label: "app", workspaceId: "w1", rootPath: "/src/app" },
+      {
+        projectId: "app-wt",
+        label: "app-surface",
+        workspaceId: null,
+        rootPath: "/src/app-surface",
+      },
+    ]);
   });
 
   it("handles a host with no workspaces", () => {
