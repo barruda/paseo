@@ -912,8 +912,9 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Commit:** pending
 - **Why:** Choose a project and reach rewind actions directly from an empty composer.
 - **What:** Left cycles projects backwards with wraparound on New Workspace. In an ongoing
-  chat, Up selects the latest sent message and scrolls it into view; Enter opens its existing
-  rewind menu. Escape or typing clears selection. Modified keys and autocomplete retain priority.
+  chat, Up selects the latest sent message and scrolls it into view; more Up presses walk to
+  older sent messages and Down walks back, clearing the selection past the latest. Enter opens
+  the selected message's existing rewind menu. Escape or typing clears selection. Modified keys and autocomplete retain priority.
   Web and desktop placeholders show the appropriate hints, translated in every supported locale.
 - **Core files touched:** `screens/new-workspace-screen.tsx`, `composer/index.tsx`,
   `composer/input/input.tsx`, `agent-stream/view.tsx`, `components/message.tsx`,
@@ -925,7 +926,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   of the shortcut path. Add translated placeholder hints and the focused test to the update script.
 - **Verify:** `cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts --bail=1`.
   In desktop, cycle past the first project with an empty prompt; type text and verify Left edits
-  normally. In an ongoing chat, press Up then Enter and verify rewind options appear without
+  normally. In an ongoing chat, press Up a few times and Down back, then Enter and verify rewind options appear without
   executing a rewind; dismiss with Escape and verify typing resumes normally.
 
 ## composer-project-icon: identify the project beside context usage
@@ -1607,28 +1608,34 @@ isBrowserInBottomPanel(input.browserId)`.
 
 - **Added:** 2026-10-16
 - **Commit:** `custom: return to the composer with Esc after selecting chat text`
-- **Why:** After selecting text in the chat with the mouse, typing again needed a click back
-  into the composer.
+- **Why:** After selecting text in the chat with the mouse, or after scrolling up to read,
+  typing again needed a click back into the composer.
 - **What:** On web and desktop, Esc with a non-empty text selection inside an agent's chat timeline
   clears the selection and focuses that agent's composer. It does nothing when focus is in an
   input, a menu, or a dialog, when the key has a modifier, or when a shortcut already handled Esc
   with `preventDefault`. Esc's other jobs still run on the same press: if Interrupt agent is bound
   to Esc and the agent is running, that Esc also interrupts it. Native has no mouse selection and
   renders the plain surface.
+  Enter also focuses the composer when focus sits in the chat (not on a button or link inside it)
+  or nowhere, and scrolling the chat back to the bottom does the same unless chat text is
+  selected. With several chats on screen (Desk panes), only the chat last clicked or scrolled
+  reacts when nothing is focused.
 - **Files:** `packages/app/src/chat-esc-focus/`: `model.ts` (pure Esc rules), `registry.ts`
   (composers register their focus function per server and agent), `surface.web.tsx` (window
   keydown listener, bubble phase), `surface.tsx` (native passthrough), `types.ts`. No conflict risk.
 - **Core files touched:** `agent-stream/view.tsx` renders `ChatEscFocusSurface` in place of
   `AssistantSelectionCopySurface` (it wraps that surface, so JSX depth stays the same);
   `composer/index.tsx` calls `useRegisterChatComposerFocus(serverId, agentId,
-focusMessageInputForKeyboardAction)`.
+focusMessageInputForKeyboardAction)`; `agent-stream/view.tsx` passes its `isNearBottom` state
+  to the surface.
 - **Re-apply:** Wrap the chat timeline's selection-copy surface in a DOM element the Esc listener
   can test the selection against, and keep `enabled={!readOnly}`. In the composer, register the
   same focus function the `message-input.focus` keyboard action uses, keyed by server and agent.
   Leave the global shortcut handler and the `agent.interrupt` binding untouched.
 - **Verify:** `(cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts)` (the update
   script runs it). In the app, select a word in an agent reply, press Esc: the selection clears
-  and the caret is in that agent's composer.
+  and the caret is in that agent's composer. Click the chat background and press Enter: the
+  caret is back in the composer. Scroll up, then scroll back down: the caret returns.
 
 ## chat-code-run: Run button on suggested shell commands
 

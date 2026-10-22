@@ -40,3 +40,40 @@ export function shouldReturnToComposer(input: {
   if (!input.hasTimelineSelection) return false;
   return input.focus === "body" || input.focus === "timeline" || input.focus === "ancestor";
 }
+
+// Enter and scrolling back to the bottom also return to the composer, so a chat that lost focus
+// (no caret) takes typing again without a click. Several chats can be on screen at once (Desk
+// panes), so with nothing focused only the chat the user last pointed at or scrolled reacts.
+
+export function isPlainEnter(event: EscapeKeyInput & { isComposing: boolean }): boolean {
+  return (
+    event.key === "Enter" &&
+    !event.isComposing &&
+    !event.repeat &&
+    !event.ctrlKey &&
+    !event.metaKey &&
+    !event.altKey &&
+    !event.shiftKey &&
+    !event.defaultPrevented
+  );
+}
+
+export function shouldEnterFocusComposer(input: {
+  focus: ChatEscapeFocusKind;
+  isLastInteracted: boolean;
+}): boolean {
+  if (input.focus === "timeline") return true;
+  return (input.focus === "body" || input.focus === "ancestor") && input.isLastInteracted;
+}
+
+export function shouldReachBottomFocusComposer(input: {
+  wasNearBottom: boolean;
+  isNearBottom: boolean;
+  hasTimelineSelection: boolean;
+  focus: ChatEscapeFocusKind;
+  isLastInteracted: boolean;
+}): boolean {
+  if (input.wasNearBottom || !input.isNearBottom || input.hasTimelineSelection) return false;
+  if (!input.isLastInteracted) return false;
+  return input.focus === "body" || input.focus === "timeline" || input.focus === "ancestor";
+}

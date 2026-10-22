@@ -1157,6 +1157,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             serverId={resolvedServerId}
             agentId={agentId}
             enabled={!readOnly}
+            isNearBottom={isNearBottom}
             style={stylesheet.container}
           >
             <MessageOuterSpacingProvider disableOuterSpacing>
