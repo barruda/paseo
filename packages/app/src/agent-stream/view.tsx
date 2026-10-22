@@ -386,12 +386,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // Get serverId (fallback to agent's serverId if not provided)
     const resolvedServerId = serverId ?? context.serverId ?? "";
     // CUSTOM(empty-composer-shortcuts): bring keyboard-selected messages into view.
-    const rewindSelection = useComposerRewindSelection((state) => state.selection);
+    // Keyed on the message only: re-scrolling when Enter opens the rewind menu moves its anchor
+    // and the menu loses keyboard focus.
+    const rewindMessageId = useComposerRewindSelection((state) =>
+      state.selection?.serverId === resolvedServerId && state.selection.agentId === agentId
+        ? state.selection.messageId
+        : null,
+    );
     useEffect(() => {
-      if (rewindSelection?.serverId === resolvedServerId && rewindSelection.agentId === agentId) {
-        viewportRef.current?.scrollToMessage?.(rewindSelection.messageId);
-      }
-    }, [rewindSelection, resolvedServerId, agentId]);
+      if (rewindMessageId) viewportRef.current?.scrollToMessage?.(rewindMessageId);
+    }, [rewindMessageId]);
     const transformTimelineItem = useInstalledTimelineTransform(resolvedServerId);
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);

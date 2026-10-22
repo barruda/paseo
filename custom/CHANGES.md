@@ -919,17 +919,22 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   Web and desktop placeholders show the appropriate hints, translated in every supported locale.
 - **Core files touched:** `screens/new-workspace-screen.tsx`, `composer/index.tsx`,
   `composer/input/input.tsx`, `agent-stream/view.tsx`, `components/message.tsx`,
-  `components/rewind/rewind-menu.tsx`, and `i18n/resources/*.ts` under `packages/app/src/`.
+  `components/rewind/rewind-menu.tsx`, `components/ui/menu/menu-overlay.tsx`, and `i18n/resources/*.ts` under `packages/app/src/`.
 - **Re-apply:** Forward an optional key callback through Composer after autocomplete. New
   Workspace uses the existing project selection callback. Running chat composers select from
   stream tail/head through `composer/empty-shortcuts.ts`; the transcript observes that selection
   to scroll, highlight the message (`bubbleKeyboardSelected`; web needs `outlineStyle` or the ring
-  is invisible), and open RewindMenu on Enter. Leaving the selection bumps `bottomRequest`, which
+  is invisible), and open RewindMenu on Enter. Scroll on a change of message only, not when
+  the menu opens. In `components/ui/menu/menu-overlay.tsx`, the focus-first-item effect retries
+  each frame until the item takes focus: Reanimated's web entering animation keeps the surface
+  `visibility: hidden` for a few frames, and without the retry a menu opened from the keyboard
+  loses focus and its arrow keys. Leaving the selection bumps `bottomRequest`, which
   the transcript answers with its scroll-to-bottom. Keep IME and modified keys out
   of the shortcut path. Add translated placeholder hints and the focused test to the update script.
 - **Verify:** `cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts --bail=1`.
   In desktop, cycle past the first project with an empty prompt; type text and verify Left edits
-  normally. In an ongoing chat, press Up a few times and Down back, then Enter and verify rewind options appear without
+  normally. In an ongoing chat, press Up a few times and Down back, then Enter; arrow keys move
+  through the rewind options and Esc returns to the composer. Verify rewind options appear without
   executing a rewind; dismiss with Escape and verify typing resumes normally.
 
 ## composer-project-icon: identify the project beside context usage

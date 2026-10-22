@@ -302,12 +302,21 @@ export function AnchoredSurface({
 
   useEffect(() => {
     if (!isWeb || !open || !placed || typeof document === "undefined") return undefined;
-    const frame = requestAnimationFrame(() => {
-      document
+    // CUSTOM(empty-composer-shortcuts): Reanimated's web entering animation keeps the remounted
+    // surface `visibility: hidden` for a few frames, and focus() on a hidden item does nothing.
+    // Retry until the item takes focus, so a menu opened from the keyboard keeps arrow keys.
+    let frame = 0;
+    let attempts = 0;
+    const focusFirstItem = () => {
+      const item = document
         .getElementById(surfaceNativeID)
-        ?.querySelector<HTMLElement>('[data-menu-item="true"]:not([data-menu-disabled="true"])')
-        ?.focus();
-    });
+        ?.querySelector<HTMLElement>('[data-menu-item="true"]:not([data-menu-disabled="true"])');
+      item?.focus();
+      if (item && document.activeElement !== item && ++attempts < 30) {
+        frame = requestAnimationFrame(focusFirstItem);
+      }
+    };
+    frame = requestAnimationFrame(focusFirstItem);
     return () => cancelAnimationFrame(frame);
   }, [open, placed, surfaceNativeID]);
 
