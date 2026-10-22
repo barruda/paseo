@@ -19,8 +19,8 @@ rules agents get wrong.
   as the work account.
 - Prefer a plugin in `custom/plugins/<id>/` over editing core files (`docs/plugins.md`). A core edit
   stays small and carries a `// CUSTOM(<name>): <why>` comment.
-- One commit per customization, subject `custom: <what>`. Fold fixes into it with
-  `git commit --fixup <sha>` and `git rebase --autosquash "$(git merge-base HEAD origin/main)"`.
+- Commit with a `custom: <what>` subject. A follow-up change to a customization is its own commit;
+  never use `git commit --fixup` or `git rebase --autosquash` unless the user asks.
 - Stage files by name. Never `git commit -a` or `git add -A`: `package-lock.json` carries npm noise
   that must not be committed.
 - Every customization gets a `custom/CHANGES.md` entry with: Added, Commit, Why, What, Core files

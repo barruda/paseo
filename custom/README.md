@@ -101,10 +101,8 @@ The script runs from that copy in `.git/` because mid-rebase the working tree ma
 2. When you must touch a core file, keep the edit small and mark it with a `CUSTOM(<name>)`
    comment. `rg "CUSTOM\("` then lists every patched spot.
 3. Add tests and list them in the script's "Running customization tests" step.
-4. Commit with a `custom: ` subject prefix, one commit per customization. Stage files by name:
-   `git commit -a` would also pick up npm's `package-lock.json` noise. Fold follow-up fixes into
-   their customization: `git commit --fixup <sha>`, then
-   `git rebase --autosquash "$(git merge-base HEAD origin/main)"`.
+4. Commit with a `custom: ` subject prefix. A follow-up change is its own commit. Stage files by
+   name: `git commit -a` would also pick up npm's `package-lock.json` noise.
 5. Add an entry to `CHANGES.md`.
 6. Back up: `git push --force-with-lease fork custom`.
 
