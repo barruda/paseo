@@ -82,8 +82,13 @@ export const wpctlAudioStreams: AudioStreams = {
 // A Bluetooth headset leaves its low-quality Handsfree mode a moment after the mic closes; music
 // turned back up before that plays loud through Handsfree.
 const RESTORE_DELAY_MS = 2500;
-/** Ducked streams play at this fraction of the volume they had. */
-const DUCK_FACTOR = 0.1;
+/**
+ * Ducked streams play at this fraction of their amplitude (-20 dB). wpctl volumes are cubic, like
+ * volume sliders, so the slider moves by its cube root: 0.1 on the slider is -60 dB, which sounds
+ * the same as a pause.
+ */
+const DUCK_GAIN = 0.1;
+const DUCK_FACTOR = Math.cbrt(DUCK_GAIN);
 const VOLUME_TOLERANCE = 0.01;
 
 interface Ducked {

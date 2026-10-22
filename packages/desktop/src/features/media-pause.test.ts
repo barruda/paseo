@@ -21,7 +21,7 @@ function fakeStreams(initial: Record<number, FakeStream>) {
 }
 
 describe("media ducking", () => {
-  it("turns other apps down to a tenth and restores them, leaving Paseo and muted streams", async () => {
+  it("turns other apps down by 20 dB and restores them, leaving Paseo and muted streams", async () => {
     const { audio, streams, calls } = fakeStreams({
       1: { volume: 0.8 },
       2: { own: true, volume: 1 },
@@ -29,9 +29,9 @@ describe("media ducking", () => {
     });
     const ducker = createMediaDucker(audio, 0);
     await ducker.setActive(1, true);
-    expect(calls).toEqual(["1=0.08"]);
+    expect(calls).toEqual(["1=0.37"]);
     await ducker.setActive(1, false);
-    expect(calls).toEqual(["1=0.08", "1=0.80"]);
+    expect(calls).toEqual(["1=0.37", "1=0.80"]);
     expect(streams.get(2)!.volume).toBe(1);
   });
 
@@ -41,9 +41,9 @@ describe("media ducking", () => {
     await ducker.setActive(1, true);
     await ducker.setActive(2, true);
     await ducker.setActive(1, false);
-    expect(calls).toEqual(["1=0.10"]);
+    expect(calls).toEqual(["1=0.46"]);
     await ducker.setActive(2, false);
-    expect(calls).toEqual(["1=0.10", "1=1.00"]);
+    expect(calls).toEqual(["1=0.46", "1=1.00"]);
   });
 
   it("keeps the volume the user set meanwhile", async () => {
@@ -52,7 +52,7 @@ describe("media ducking", () => {
     await ducker.setActive(1, true);
     streams.get(1)!.volume = 0.5;
     await ducker.setActive(1, false);
-    expect(calls).toEqual(["1=0.10"]);
+    expect(calls).toEqual(["1=0.46"]);
   });
 
   it("keeps media ducked when a new holder arrives during the restore delay", async () => {
@@ -62,9 +62,9 @@ describe("media ducking", () => {
     const restoring = ducker.setActive(1, false);
     await ducker.setActive(2, true);
     await restoring;
-    expect(calls).toEqual(["1=0.10"]);
+    expect(calls).toEqual(["1=0.46"]);
     await ducker.setActive(2, false);
-    expect(calls).toEqual(["1=0.10", "1=1.00"]);
+    expect(calls).toEqual(["1=0.46", "1=1.00"]);
   });
 
   it("keeps ducking other streams when one fails", async () => {
@@ -84,6 +84,6 @@ describe("media ducking", () => {
     );
     await ducker.setActive(1, true);
     await ducker.setActive(1, false);
-    expect(calls).toEqual(["2=0.10", "2=1.00"]);
+    expect(calls).toEqual(["2=0.46", "2=1.00"]);
   });
 });

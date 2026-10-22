@@ -1798,12 +1798,14 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 ## media-pause: voice mode and dictation turn playing media down
 
 - **Added:** 2026-10-16; ducking instead of pausing since 2026-10-22
-- **Commit:** `custom: pause playing media during voice mode and dictation`
+- **Commit:** `custom: pause playing media during voice mode and dictation`, then
+  `custom: voice mode and dictation turn media down instead of pausing`, then
+  `custom: media ducking drops 20 dB instead of to a tenth of the slider`
 - **Why:** Music playing while you talk gets picked up by the mic and drowns out the reply.
   Pausing it outright broke the mood, so it now plays on quietly.
 - **What:** On Linux desktop, when voice mode starts (composer or sidebar voice) or dictation
-  starts recording, every playing PipeWire output stream of another app goes to 10% of its volume
-  (the volume-slider scale; `DUCK_FACTOR`). Paseo's own streams (voice replies) are left alone. When
+  starts recording, every playing PipeWire output stream of another app drops by 20 dB (a tenth of its
+  amplitude; `DUCK_GAIN`). Paseo's own streams (voice replies) are left alone. When
   the last holder ends, the ducked streams go back to their volume 2.5 s later (a Bluetooth headset
   needs that long to leave its low-quality Handsfree mode), unless you changed a stream's volume
   meanwhile. Wake dictation (always-listening) does not duck, since its mic stays open. A reloaded
@@ -1818,7 +1820,8 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Re-apply:** Re-add the IPC registration next to the file opener in `main.ts`, the preload
   `media` bridge, and the two `usePauseMediaWhile` calls. The sidebar voice session runs on the
   same voice runtime, so the voice-context call covers it.
-- **Gotchas:** MPRIS can't do this: Chromium-based players (YouTube Music Desktop, browsers) report
+- **Gotchas:** `wpctl` volumes are on the slider's cubic scale: 0.1 there is -60 dB, which sounds
+  like a pause. The slider moves by the cube root of the gain. MPRIS can't do this: Chromium-based players (YouTube Music Desktop, browsers) report
   a fixed, read-only MPRIS `Volume`. A stream is Paseo's own when its
   `application.process.binary` is this executable (`Paseo.bin` in installed builds) or its pid
   descends from the main process; Flatpak apps report pids from their own namespace, so a stream
