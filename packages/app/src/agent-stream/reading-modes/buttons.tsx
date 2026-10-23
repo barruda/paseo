@@ -1,6 +1,6 @@
-// CUSTOM(reading-modes): Compact, Newspaper and Cards toggles, after the tab row's "+" while an
+// CUSTOM(reading-modes): Compact, Columns, Newspaper and Cards toggles, after the tab row's "+" while an
 // agent tab is active. Pressing the lit one returns to the normal chat.
-import { LayoutGrid, ListCollapse, Newspaper } from "lucide-react-native";
+import { Columns3, LayoutGrid, ListCollapse, Newspaper } from "lucide-react-native";
 import { useCallback } from "react";
 import { type StyleProp, View, type ViewStyle } from "react-native";
 import { withUnistyles } from "react-native-unistyles";
@@ -14,9 +14,12 @@ import { useReadingMode, useReadingModeStore } from "./store";
 const ThemedListCollapse = withUnistyles(ListCollapse);
 const ThemedNewspaper = withUnistyles(Newspaper);
 const ThemedLayoutGrid = withUnistyles(LayoutGrid);
+const ThemedColumns3 = withUnistyles(Columns3);
 const selectedIconColorMapping = (theme: Theme) => ({ color: theme.colors.foreground });
 
-export const READING_MODE_BUTTONS_RESERVED_WIDTH = smallIconButtonChromeFrameSize(false) * 3 + 4;
+const BUTTON_COUNT = 4;
+export const READING_MODE_BUTTONS_RESERVED_WIDTH =
+  smallIconButtonChromeFrameSize(false) * BUTTON_COUNT + 4;
 
 const BUTTONS: {
   mode: Exclude<ReadingMode, "chat">;
@@ -24,7 +27,16 @@ const BUTTONS: {
   Icon: typeof ThemedNewspaper;
 }[] = [
   { mode: "compact", label: "Compact: prompts and final answers", Icon: ThemedListCollapse },
-  { mode: "newspaper", label: "Newspaper: the chat in columns", Icon: ThemedNewspaper },
+  {
+    mode: "columns",
+    label: "Columns: the whole chat in up to three columns",
+    Icon: ThemedColumns3,
+  },
+  {
+    mode: "newspaper",
+    label: "Newspaper: prompts and final answers in columns",
+    Icon: ThemedNewspaper,
+  },
   { mode: "cards", label: "Cards: one card per turn", Icon: ThemedLayoutGrid },
 ];
 

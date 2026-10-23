@@ -2813,40 +2813,50 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Verify:** Dictate, say a last word and press send immediately: the last word is transcribed.
   No automated test (the hook has no test suite).
 
-## reading-modes: Compact, Newspaper and Cards buttons beside the tab row's "+"
+## reading-modes: Compact, Columns, Newspaper and Cards buttons beside the tab row's "+"
 
 - **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
-- **Commit:** `custom: Compact, Newspaper and Cards reading modes for wide screens`
+- **Commits:** `custom: Compact, Newspaper and Cards reading modes for wide screens`, then
+  `custom: Columns reading mode, and reading modes keep answers followed by plugin rows`
 - **Why:** With the window maximized, the chat stays a narrow column and a long conversation takes
-  a lot of scrolling. Three ways to see more of it at once, each behind its own button so they
-  can be compared.
-- **What:** While an agent tab is active, three toggles follow the tab row's `+` (or sit before
+  a lot of scrolling. Ways to see more of it at once, each behind its own button so they can be
+  compared.
+- **What:** While an agent tab is active, four toggles follow the tab row's `+` (or sit before
   the pane buttons when the tabs overflow). Pressing the lit one returns to the chat. The mode is
   per agent and in memory only.
   - **Compact** filters the live chat to prompts, the text after each response's last step,
-    notifications and compaction markers. A response still working keeps its last step.
-  - **Newspaper** draws prompts and final answers over the chat in 460px columns. With CSS
-    `column-wrap` (Chromium 145+), a screen-tall row of columns is followed by the next row below,
-    one scroll for the whole grid, with proximity snap points at each row. Without it, the columns
-    run sideways.
+    notifications, compaction markers and plugin rows. A response still working keeps its last
+    step. Plugin rows are not steps: plugins add one after each answer (the usage line), and
+    counting them hid every answer.
+  - **Columns** draws the chat itself, every row through the chat's own `renderStreamItem`, in up
+    to three columns (420px minimum), with pending permissions and the turn footer at the end. It
+    pages the same history window as the chat and follows new output while scrolled to the end.
+  - **Newspaper** draws prompts and final answers in 460px columns.
   - **Cards** draws one card per turn in a grid: the prompt, the final answer capped at 340px with
     Expand, and the hidden step count.
-  - Both overviews cover the chat, which stays mounted. "Open in chat" (or a click on the prompt)
-    returns to the chat at that turn. They show the whole loaded transcript and keep the composer's
-    space clear at the bottom. Web only; native renders nothing.
-- **Files:** `packages/app/src/agent-stream/reading-modes/` (`model.ts` turn grouping and the
-  Compact filter, `store.ts`, `buttons.tsx`, `agent-overview.tsx`, `overview.tsx`/`.web.tsx`).
+  - Columns and Newspaper share `column-scroller.web.tsx`. With CSS `column-wrap` (Chromium 145+),
+    a screen-tall row of columns is followed by the next row below, one scroll for the whole grid,
+    with proximity snap points at each row. Without it, the columns run sideways.
+  - Columns, Newspaper and Cards cover the chat, which stays mounted, and keep the composer's
+    space clear at the bottom. In Newspaper and Cards, "Open in chat" (or a click on the prompt)
+    returns to the chat at that turn. Web only; native renders nothing.
+- **Files:** `packages/app/src/agent-stream/reading-modes/`: `model.ts` (turn grouping and the
+  Compact filter), `store.ts`, `buttons.tsx`, `agent-overview.tsx`, `overview.tsx`/`.web.tsx`,
+  `reading-columns.tsx`/`.web.tsx`, `column-scroller.web.tsx`.
 - **Core files touched** (marked `CUSTOM(reading-modes)`):
   - `agent-stream/view.tsx`: the presentation reads `useReadingModeStream` instead of the raw
-    stream, and `AgentReadingOverview` renders last inside `ChatEscFocusSurface`, with the
-    daemon's older-history pagination and `bottomOverlayTailClearance`.
+    stream. `ReadingColumns` (layout rows, `renderStreamItem`, the auxiliary nodes and the history
+    window's `hasOlder`/`loadOlder`) and `AgentReadingOverview` (the daemon's older-history
+    pagination) render last inside `ChatEscFocusSurface`, both with `bottomOverlayTailClearance`.
   - `screens/workspace/workspace-desktop-tabs-row.tsx`: `ReadingModeButtons` after the inline
     `+`, or before `WorkspacePaneToolbarActions` in the overflow layout, for the
     `usePaneArchiveAgentTab` agent; its width joins `actionsReservedWidth`.
-- **Re-apply:** Filter the stream the agent stream view presents through `useReadingModeStream`,
-  and render `AgentReadingOverview` over the stream, always mounted (it returns null outside the
-  overviews, but the jump back to the chat needs it alive). Put the three buttons next to the tab
-  row's new-tab button for the active agent tab and reserve their width.
+- **Re-apply:** Filter the stream the agent stream view presents through `useReadingModeStream`.
+  Render `ReadingColumns` with the rows and row renderer the chat strategy gets, and
+  `AgentReadingOverview` over the stream, always mounted (it returns null outside the overviews,
+  but the jump back to the chat needs it alive). Put the four buttons next to the tab row's
+  new-tab button for the active agent tab and reserve their width.
 - **Verify:** `src/agent-stream/reading-modes/model.test.ts` (in the update script). In the app,
-  on a long chat: Compact hides tool rows; Newspaper shows columns that end above the composer;
-  Cards shows one card per turn; "Open in chat" on the first turn scrolls the chat to its prompt.
+  on a long chat: Compact hides tool rows and keeps every answer; Columns shows the whole chat in
+  three columns; Newspaper shows columns that end above the composer; Cards shows one card per
+  turn; "Open in chat" on the first turn scrolls the chat to its prompt.

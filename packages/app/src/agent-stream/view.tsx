@@ -84,6 +84,7 @@ import { ChatImagesRail } from "@/agent-stream/chat-images/rail";
 // CUSTOM(reading-modes)
 import { AgentReadingOverview } from "@/agent-stream/reading-modes/agent-overview";
 import { useReadingModeStream } from "@/agent-stream/reading-modes/store";
+import { ReadingColumns } from "@/agent-stream/reading-modes/reading-columns";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import {
@@ -322,6 +323,7 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 ];
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
+const EMPTY_READING_ROWS: StreamLayoutItem[] = []; // CUSTOM(reading-modes)
 
 function useRetainedValue<T>(value: T, active: boolean): T {
   const retainedRef = useRef(value);
@@ -1164,6 +1166,18 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       }),
       [loadRemoteOlder, remoteHasOlder, remoteIsLoadingOlder],
     );
+    // Columns draws the same rows as the chat, so it pages through the same history window.
+    const readingColumnsHistory = useMemo(
+      () => ({ hasOlder, isLoadingOlder, loadOlder }),
+      [hasOlder, isLoadingOlder, loadOlder],
+    );
+    const readingColumnsRows = useMemo(
+      () =>
+        presentedStream.mode === "columns"
+          ? [...streamLayout.history, ...streamLayout.liveHead]
+          : EMPTY_READING_ROWS,
+      [presentedStream.mode, streamLayout.history, streamLayout.liveHead],
+    );
 
     const findItems = useMemo(
       () => [...effectiveStreamItems, ...(effectiveStreamHead ?? [])],
@@ -1247,7 +1261,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 </Animated.View>
               </View>
             )}
-            {/* CUSTOM(reading-modes): Newspaper and Cards cover the chat, which stays mounted. */}
+            {/* CUSTOM(reading-modes): Columns, Newspaper and Cards cover the chat, which stays
+                mounted. */}
+            <ReadingColumns
+              mode={presentedStream.mode}
+              rows={readingColumnsRows}
+              renderRow={renderStreamItem}
+              pendingPermissions={auxiliary.pendingPermissions}
+              turnFooter={auxiliary.turnFooter}
+              history={readingColumnsHistory}
+              bottomInset={bottomOverlayTailClearance}
+            />
             <AgentReadingOverview
               mode={presentedStream.mode}
               agentId={agentId}

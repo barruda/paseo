@@ -33,6 +33,19 @@ function tool(id: string): StreamItem {
   };
 }
 
+function plugin(id: string): StreamItem {
+  return {
+    kind: "plugin",
+    id,
+    timestamp,
+    pluginId: "usage",
+    pluginItemId: id,
+    itemKind: "usage",
+    version: 1,
+    data: null,
+  };
+}
+
 function notification(id: string): StreamItem {
   return {
     kind: "notification",
@@ -69,6 +82,16 @@ describe("selectCompactItemIds", () => {
   it("keeps notifications wherever they fall", () => {
     const items = [user("u1"), tool("t1"), notification("n1"), tool("t2"), assistant("a1")];
     expect([...selectCompactItemIds(items)]).toEqual(["u1", "n1", "a1"]);
+  });
+});
+
+describe("plugin rows after the answer", () => {
+  it("keeps the answer and the plugin row", () => {
+    const items = [user("u1"), tool("t1"), assistant("a1"), plugin("p1")];
+    expect([...selectCompactItemIds(items)]).toEqual(["u1", "a1", "p1"]);
+    expect(buildReadingTurns(items).map(summarizeTurn)).toEqual([
+      { prompt: "u1", answer: ["a1"], hidden: 1, jump: "u1" },
+    ]);
   });
 });
 

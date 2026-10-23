@@ -3,7 +3,7 @@
 // Cards are overviews drawn over it.
 import type { AssistantMessageItem, StreamItem, UserMessageItem } from "@/types/stream";
 
-export type ReadingMode = "chat" | "compact" | "newspaper" | "cards";
+export type ReadingMode = "chat" | "compact" | "newspaper" | "cards" | "columns";
 
 export interface ReadingTurn {
   id: string;
@@ -16,15 +16,11 @@ export interface ReadingTurn {
   jumpMessageId: string;
 }
 
-// Work the agent did on the way to its answer. Notifications and compaction markers stay: they
-// are short and say something about the turn.
+// Work the agent did on the way to its answer. Notifications, compaction markers and plugin rows
+// stay: they are short, and plugins add rows after the answer (a turn's usage line), which must
+// not read as a step that hides the answer.
 function isStep(item: StreamItem): boolean {
-  return (
-    item.kind === "tool_call" ||
-    item.kind === "thought" ||
-    item.kind === "todo_list" ||
-    item.kind === "plugin"
-  );
+  return item.kind === "tool_call" || item.kind === "thought" || item.kind === "todo_list";
 }
 
 // Every prompt starts a response, like the chat outline: system-injected turns have no prompt in
