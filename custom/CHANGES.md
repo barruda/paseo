@@ -2818,7 +2818,8 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
 - **Commits:** `custom: Compact, Newspaper and Cards reading modes for wide screens`, then
   `custom: Columns reading mode, and reading modes keep answers followed by plugin rows`, then
-  `custom: Columns and Newspaper open full and load older messages while scrolling up`
+  `custom: Columns and Newspaper open full and load older messages while scrolling up`, then
+  `custom: Columns shows numbered pages and turns one screen per scroll`
 - **Why:** With the window maximized, the chat stays a narrow column and a long conversation takes
   a lot of scrolling. Ways to see more of it at once, each behind its own button so they can be
   compared.
@@ -2832,6 +2833,10 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   - **Columns** draws the chat itself, every row through the chat's own `renderStreamItem`, in up
     to three columns (420px minimum), with pending permissions and the turn footer at the end. It
     pages the same history window as the chat and follows new output while scrolled to the end.
+    Each column is a page: a thin rounded frame just outside it and its number in the bottom-right
+    corner, counted from the oldest loaded page (`flowPages`), so loading older messages
+    renumbers. Scrolling snaps to whole screens, and one wheel gesture (events under 250 ms apart)
+    turns exactly one screen.
   - **Newspaper** draws prompts and final answers in 460px columns.
   - **Cards** draws one card per turn in a grid: the prompt, the final answer capped at 340px with
     Expand, and the hidden step count.
@@ -2863,6 +2868,6 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   new-tab button for the active agent tab and reserve their width.
 - **Verify:** `src/agent-stream/reading-modes/model.test.ts` and `column-flow.test.ts` (in the
   update script). In the app,
-  on a long chat: Compact hides tool rows and keeps every answer; Columns opens with three full
-  columns and loads older messages as you scroll up; Newspaper shows columns that end above the composer; Cards shows one card per
+  on a long chat: Compact hides tool rows and keeps every answer; Columns opens with three full,
+  numbered pages, one wheel flick shows the three before, and older messages load as you go up; Newspaper shows columns that end above the composer; Cards shows one card per
   turn; "Open in chat" on the first turn scrolls the chat to its prompt.
