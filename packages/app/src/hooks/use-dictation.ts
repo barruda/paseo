@@ -16,6 +16,9 @@ import {
   type UseDictationResult,
 } from "./use-dictation.shared";
 
+// CUSTOM(dictation-tail): users press send right as they finish speaking
+const DICTATION_CONFIRM_TAIL_MS = 500;
+
 export function useDictation(options: UseDictationOptions): UseDictationResult {
   const { t } = useTranslation();
   const {
@@ -361,6 +364,9 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     const attemptId = attemptGuardRef.current.next();
 
     try {
+      // CUSTOM(dictation-tail): keep the mic open briefly so the last words reach the model
+      await new Promise((resolve) => setTimeout(resolve, DICTATION_CONFIRM_TAIL_MS));
+      attemptGuardRef.current.assertCurrent(attemptId);
       await audio.stop();
       attemptGuardRef.current.assertCurrent(attemptId);
 

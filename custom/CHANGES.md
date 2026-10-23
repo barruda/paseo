@@ -2795,3 +2795,20 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   script). In the app, open a `.rb` file or a `Gemfile`: keywords, strings and symbols are colored.
   The client-side diff path (`app/src/utils/diff-highlight.ts`) goes by extension only, so a
   `Gemfile` diff highlights only when the daemon highlights it.
+
+## dictation-tail: keep recording 500 ms after send
+
+- **Added:** 2026-10-23 (based on upstream 0.11.2)
+- **Commit:** `custom: keep dictation recording 500 ms after send`
+- **Why:** Pressing send (or Enter) right as you finish speaking cut the last word, and the end of
+  the transcript came out wrong.
+- **What:** Confirming dictation waits `DICTATION_CONFIRM_TAIL_MS` (500 ms) with the mic still open
+  before stopping the audio and asking for the final transcript. Cancel during that wait still wins
+  (the attempt guard is checked after it).
+- **Core files touched** (marked `CUSTOM(dictation-tail)`):
+  - `packages/app/src/hooks/use-dictation.ts`: the constant and the wait at the top of the `try` in
+    `confirmDictation`, before `audio.stop()`.
+- **Re-apply:** In the dictation confirm path, sleep 500 ms before stopping the audio source, then
+  re-check that the attempt is still current.
+- **Verify:** Dictate, say a last word and press send immediately: the last word is transcribed.
+  No automated test (the hook has no test suite).
