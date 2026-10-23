@@ -30,39 +30,17 @@ export function resolveBottomPanelWarpTarget(input: {
     : null;
 }
 
-// CUSTOM(desk-bottom-panel-warp): in Tasks mode the bottom panel is shared by every task, so
-// showing it again opens a Warp session (a tab inside Warp) in the focused task's workspace. The
-// panel's Warp tab remembers the folder of the last session Paseo opened there, so hiding and
-// showing the panel for the same task doesn't open another.
-export type DeskBottomPanelShowAction =
-  | { kind: "keep" }
-  | { kind: "select"; tabId: string }
-  | { kind: "new-session"; tabId: string; browserId: string }
-  | { kind: "open" };
-
-export function resolveDeskBottomPanelShow(input: {
-  /** The bottom panel's tabs, in order. */
-  tabs: readonly { id: string; target: WorkspaceTabTarget }[];
-  focusedTabId: string | null;
-  directory: string;
-  isWarpBrowser: (browserId: string) => boolean;
-  /** The folder of the last Warp session Paseo opened in that browser tab. */
-  sessionDirectory: (browserId: string) => string | null;
-}): DeskBottomPanelShowAction {
-  const warpTabs = input.tabs.filter(
-    (tab) =>
-      (tab.target.kind === "plugin" && tab.target.pluginId === WARP_PLUGIN_ID) ||
-      (tab.target.kind === "browser" && input.isWarpBrowser(tab.target.browserId)),
+// CUSTOM(bottom-panel-warp-tab-button): the bottom panel's Warp tab that the "new Warp tab in this
+// project" button opens a session in: the selected tab when it's Warp, else the first Warp tab.
+export function pickBottomPanelWarpTab(
+  tabs: readonly { tabId: string; target: WorkspaceTabTarget; isActive: boolean }[],
+  isWarpBrowser: (browserId: string) => boolean,
+): { tabId: string; browserId: string } | null {
+  const warpTabs = tabs.flatMap((tab) =>
+    tab.target.kind === "browser" && isWarpBrowser(tab.target.browserId)
+      ? [{ tabId: tab.tabId, browserId: tab.target.browserId, isActive: tab.isActive }]
+      : [],
   );
-  const tab = warpTabs.find((entry) => entry.id === input.focusedTabId) ?? warpTabs[0];
-  if (!tab) return { kind: "open" };
-  const focused = tab.id === input.focusedTabId;
-  // A Warp panel still turning into its browser tab starts in its own workspace.
-  if (tab.target.kind !== "browser")
-    return focused ? { kind: "keep" } : { kind: "select", tabId: tab.id };
-  const { browserId } = tab.target;
-  if (input.sessionDirectory(browserId) !== input.directory) {
-    return { kind: "new-session", tabId: tab.id, browserId };
-  }
-  return focused ? { kind: "keep" } : { kind: "select", tabId: tab.id };
+  const tab = warpTabs.find((entry) => entry.isActive) ?? warpTabs[0];
+  return tab ? { tabId: tab.tabId, browserId: tab.browserId } : null;
 }

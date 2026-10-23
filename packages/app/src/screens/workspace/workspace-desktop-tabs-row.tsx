@@ -86,6 +86,7 @@ import {
 import { smallIconButtonChromeFrameSize } from "@/components/ui/icon-button-chrome";
 import { BOTTOM_PANEL_PANE_ID } from "@/workspace-tabs/bottom-panel";
 import { BottomPanelCollapseButton } from "@/workspace-tabs/bottom-panel-collapse-button";
+import { BottomPanelWarpTabButton } from "@/workspace-tabs/bottom-panel-warp-tab-button";
 import {
   HorizontalScrollBoundaryShades,
   useHorizontalScrollBoundary,
@@ -127,6 +128,8 @@ const TRAILING_ACTION_RESERVED_WIDTH =
 // CUSTOM(bottom-panel-collapse): the bottom panel's ⌄⌄ button sits before its tabs.
 const BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH =
   smallIconButtonChromeFrameSize(false) + PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING;
+// CUSTOM(bottom-panel-warp-tab-button): the "new Warp tab in this project" button after its tabs.
+const BOTTOM_PANEL_WARP_TAB_RESERVED_WIDTH = smallIconButtonChromeFrameSize(false);
 // Chip geometry. `layoutMetrics` measures tabs from these same numbers, so a chip that changes
 // shape without changing them mis-measures and drops the row into the overflow-scroll fallback at
 // the wrong width. Keep them together.
@@ -1267,7 +1270,9 @@ function ResolvedWorkspaceDesktopTabsRow({
           (archiveAgentTab ? PANE_ARCHIVE_ACTION_RESERVED_WIDTH : 0) +
           (showPaneMaximizeAction ? PANE_MAXIMIZE_ACTION_RESERVED_WIDTH : 0) +
           (trailingAction ? TRAILING_ACTION_RESERVED_WIDTH : 0) +
-          (isBottomPanel ? BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH : 0),
+          (isBottomPanel
+            ? BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH + BOTTOM_PANEL_WARP_TAB_RESERVED_WIDTH
+            : 0),
       ),
       rowPaddingHorizontal: TAB_ROW_PADDING_HORIZONTAL,
       tabGap: TAB_CHIP_GAP,
@@ -1602,6 +1607,15 @@ function ResolvedWorkspaceDesktopTabsRow({
             getItemData={getTabDragData}
             renderItem={renderTab}
           />
+          {/* CUSTOM(bottom-panel-warp-tab-button) */}
+          {isBottomPanel ? (
+            <BottomPanelWarpTabButton
+              tabs={tabs}
+              serverId={normalizedServerId}
+              workspaceId={normalizedWorkspaceId}
+              onNavigateTab={onNavigateTab}
+            />
+          ) : null}
           {!layout.requiresHorizontalScrollFallback ? (
             <WorkspaceNewTabButton
               panePanelKinds={panePanelKinds}

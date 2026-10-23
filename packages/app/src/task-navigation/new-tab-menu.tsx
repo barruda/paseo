@@ -5,18 +5,11 @@ import { useToast } from "@/contexts/toast-context";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
 import { generateDraftId } from "@/stores/draft-keys";
-import { createWorkspaceBrowser, useBrowserStore } from "@/desktop/browser/store";
+import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { getIsElectron } from "@/constants/platform";
 import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";
-import {
-  BOTTOM_PANEL_PANE_ID,
-  releaseFocusFromBottomPanel,
-  type BottomPanelToggleResult,
-} from "@/workspace-tabs/bottom-panel";
-import {
-  resolveBottomPanelWarpTarget,
-  resolveDeskBottomPanelShow,
-} from "@/workspace-tabs/bottom-panel-default";
+import { releaseFocusFromBottomPanel } from "@/workspace-tabs/bottom-panel";
+import { resolveBottomPanelWarpTarget } from "@/workspace-tabs/bottom-panel-default";
 import { pluginRegistry } from "@/plugins/registry";
 import {
   useWorkspaceTerminals,
@@ -27,10 +20,7 @@ import { useHasPullRequest } from "@/panels/pull-request";
 import { NewTabLauncherProvider, type NewTabLauncher } from "@/workspace-tabs/launcher";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
-import { activeDesk, deskTabs, useDesksStore, type DeskTabOwner } from "./desks-store";
-import { findPaneById } from "@/stores/workspace-layout-actions";
-import { useSessionStore } from "@/stores/session-store";
-import { getWarpSessionDirectory, openWarpSession } from "@/workspace-tabs/warp-session";
+import { activeDesk, useDesksStore, type DeskTabOwner } from "./desks-store";
 
 /** Opens a launched target in its pane, or turns the launching new-tab tab into it. */
 export function launchDeskTarget(
@@ -49,43 +39,6 @@ export function launchDeskTarget(
     true,
     destination.paneId ? { mode: "pane", paneId: destination.paneId } : undefined,
   );
-}
-
-// CUSTOM(desk-bottom-panel-warp): showing the shared bottom panel opens a Warp session in the
-// focused task's workspace folder, inside the panel's Warp tab (or a new Warp tab if it has none).
-function afterDeskBottomPanelToggle(kind: BottomPanelToggleResult["kind"], owner: DeskTabOwner) {
-  if (kind === "hidden") releaseFocusFromBottomPanel();
-  if (kind === "shown") showDeskBottomPanelWarp(owner);
-}
-
-function showDeskBottomPanelWarp(owner: DeskTabOwner) {
-  const warp = resolveBottomPanelWarpTarget({
-    serverId: owner.serverId,
-    plugins: pluginRegistry.getSnapshot(),
-    isElectron: getIsElectron(),
-  });
-  if (!warp) return;
-  const store = useDesksStore.getState();
-  const desk = activeDesk(store);
-  const pane = findPaneById(desk.layout.root, BOTTOM_PANEL_PANE_ID);
-  if (!pane) return;
-  const directory = useSessionStore
-    .getState()
-    .sessions[owner.serverId]?.workspaces.get(owner.workspaceId)?.workspaceDirectory;
-  if (!directory) return;
-  const paneTabIds = new Set(pane.tabIds);
-  const browsers = useBrowserStore.getState().browsersById;
-  const action = resolveDeskBottomPanelShow({
-    tabs: deskTabs(desk).filter((tab) => paneTabIds.has(tab.id)),
-    focusedTabId: pane.focusedTabId,
-    directory,
-    isWarpBrowser: (browserId) => browsers[browserId]?.hideToolbar === true,
-    sessionDirectory: getWarpSessionDirectory,
-  });
-  if (action.kind === "select" || action.kind === "new-session") store.selectTab(action.tabId);
-  if (action.kind === "new-session") void openWarpSession(action.browserId, directory);
-  if (action.kind === "open")
-    store.openTab({ ...owner, target: warp }, true, { mode: "pane", paneId: BOTTOM_PANEL_PANE_ID });
 }
 
 export function DeskLauncherProvider({
@@ -193,7 +146,7 @@ export function DeskLauncherProvider({
       if (action.id === "workspace.bottom-panel.toggle") {
         if (isCompact || !supportsDesktopPaneSplits()) return false;
         const result = useDesksStore.getState().toggleBottomPanel({ serverId, workspaceId });
-        if (result) afterDeskBottomPanelToggle(result.kind, { serverId, workspaceId });
+        if (result?.kind === "hidden") releaseFocusFromBottomPanel();
         if (result?.kind === "created") {
           // CUSTOM(bottom-panel-warp): Warp instead of the terminal when it's available.
           const warp = resolveBottomPanelWarpTarget({

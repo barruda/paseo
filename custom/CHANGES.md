@@ -3010,37 +3010,36 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   it first), all in the update script. In the app, pin the third tab: it moves first and darkens;
   pin another: it sits second.
 
-## desk-bottom-panel-warp: showing the bottom panel in Tasks mode opens a Warp session in the task's project
+## bottom-panel-warp-tab-button: a button beside the bottom panel's tabs opens a Warp tab in the agent's project
 
 - **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
-- **Commits:** `custom: showing the Tasks bottom panel opens Warp in the task's workspace`, then
-  `custom: showing the Tasks bottom panel opens a session inside Warp in the task's folder`
-- **Why:** In Tasks mode one bottom panel serves every task, so after switching to a task in another
-  project, showing the panel left you in the previous project's shell.
-- **What:** When Ctrl+J, `⌃⌃` or the sidebar button shows a hidden Desk bottom panel, it selects
-  the panel's Warp tab (the selected one, else the first) and, if the last Warp session Paseo
-  opened there is in another folder, opens a new session inside Warp (like Ctrl+Shift+T) in the
-  focused task's workspace folder. Hiding and showing again for the same task opens nothing. A
-  panel with no Warp tab gets one for that workspace. Paseo remembers each Warp tab's last folder
-  while the app runs; before that it's the folder the tab's page started in (`cwd` in its URL).
-  Only in Electron with the Warp plugin on the host, like
-  [bottom-panel-warp](#bottom-panel-warp-a-new-bottom-panel-opens-warp). Workspace mode is
-  unchanged: its panel belongs to one workspace.
-- **How the session opens:** Warp's web build reads `window.PASEO_WARP_PTY_URL` for every new
-  session, so Paseo sets its `cwd` with `executeJavaScript` on the webview and then presses
-  Ctrl+Shift+T with the webview's `sendInputEvent`. Warp ignores synthetic DOM key events, so the
-  press has to be trusted input. The app already leaves Ctrl+Shift+T to a bottom-panel Warp tab
-  ([bottom-panel-tab-keys](#bottom-panel-tab-keys-ctrltab-ctrlw-and-ctrlt-stay-in-a-page-in-the-bottom-panel)). Sessions the user opens there afterwards also start in that folder.
-- **Files:** `packages/app/src/workspace-tabs/warp-session.ts`, and `resolveDeskBottomPanelShow` in
+- **Commit:** `custom: a bottom panel button opens a tab inside Warp in the agent's project`.
+  It replaces `desk-bottom-panel-warp` (commits `custom: showing the Tasks bottom panel opens Warp
+in the task's workspace` and `custom: showing the Tasks bottom panel opens a session inside Warp
+in the task's folder`), which tried to do this on every show of the panel and never opened the
+  Warp tab: the Ctrl+Shift+T it sent through `sendInputEvent` didn't reach Warp.
+- **Why:** In Tasks mode one bottom panel serves every task, so its Warp shells sit in whatever
+  folder they started in. The button gives a shell in the current agent's project in one click.
+- **What:** When the bottom panel has a Warp tab, a terminal icon sits right after its tabs (before
+  `+`). Clicking it selects the Warp tab (the selected one, else the first) and opens a new tab
+  inside Warp in the agent's project folder: in Tasks mode the workspace of the last focused agent
+  tab ([desk-context-tab](#desk-context-tab-the-explorer-follows-the-last-focused-agent-tab)), in a
+  workspace the workspace itself. The tooltip shows the folder.
+- **How the Warp tab opens:** the Warp patch `PASEO: the host page opens a terminal tab with a
+paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJavaScript` on the
+  webview to set the `cwd` of `window.PASEO_WARP_PTY_URL`, which Warp reads for every new session,
+  and dispatch the event. Warp tabs whose page loaded before that Warp build ignore the event until
+  reloaded.
+- **Files:** `packages/app/src/workspace-tabs/bottom-panel-warp-tab-button.tsx`,
+  `packages/app/src/workspace-tabs/warp-session.ts`, and `pickBottomPanelWarpTab` in
   `packages/app/src/workspace-tabs/bottom-panel-default.ts` with its test.
-- **Core files touched** (marked `CUSTOM(desk-bottom-panel-warp)`):
-  - `packages/app/src/task-navigation/new-tab-menu.tsx`: `afterDeskBottomPanelToggle` and
-    `showDeskBottomPanelWarp`, called from the `workspace.bottom-panel.toggle` handler.
-- **Re-apply:** Where the Desk handles `workspace.bottom-panel.toggle`, on a `shown` result read the
-  `bottom-panel` pane's tabs and the scope workspace's directory, ask `resolveDeskBottomPanelShow`,
-  then `selectTab` the returned tab, call `openWarpSession` for `new-session`, or `openTab` the Warp
-  plugin target pinned into `{ mode: "pane", paneId: BOTTOM_PANEL_PANE_ID }` for `open`.
+- **Core files touched** (marked `CUSTOM(bottom-panel-warp-tab-button)`):
+  - `screens/workspace/workspace-desktop-tabs-row.tsx`: renders the button after the
+    `SortableInlineList` when `paneId === BOTTOM_PANEL_PANE_ID`, and reserves its width.
+- **Re-apply:** In the desktop tab row of the `bottom-panel` pane, render `BottomPanelWarpTabButton`
+  right after the tab list with the row's `tabs`, server and workspace ids and `onNavigateTab`, and
+  add its width to `actionsReservedWidth`.
 - **Verify:** `(cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-default.test.ts)`
-  (in the update script). In the app, in Tasks mode, with a Warp tab in the bottom panel, hide the
-  panel, focus a task of another project and show it: a new Warp session opens in that project's
-  folder (`pwd`). Hide and show again: no new session.
+  (in the update script). In the app, with a Warp tab in the bottom panel, focus an agent of
+  another project and click the terminal icon after the tabs: a new tab opens inside Warp, and
+  `pwd` prints that project's folder.

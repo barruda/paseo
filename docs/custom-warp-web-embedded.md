@@ -8,7 +8,7 @@ Electron browser tab, backed by a small PTY bridge.
 This doc covers how the pieces fit, how to build and run them, and the gotchas. The per-commit
 details (core files touched, how to re-apply after an upstream update, how to verify) are in
 `custom/CHANGES.md`, in the entries `warp`, `browser-no-toolbar`, `browser-shortcut-preempt`,
-`bottom-panel-tab-keys`, `bottom-panel-warp` and `desk-bottom-panel-warp`.
+`bottom-panel-tab-keys`, `bottom-panel-warp` and `bottom-panel-warp-tab-button`.
 
 ## Pieces
 
@@ -26,6 +26,8 @@ the Warp checkout):
 - `app/src/terminal/remote_tty/event_loop.rs`: reads the PTY URL from `window.PASEO_WARP_PTY_URL`
   instead of the hard-coded `ws://127.0.0.1:3030/create`, and the shell from
   `window.PASEO_WARP_SHELL` (bash or zsh; `remote_tty/terminal_manager.rs` uses the same value).
+- `app/src/workspace/view.rs`: opens a terminal tab on a `paseo-warp-new-tab` window event (see
+  "Warp tabs opened by Paseo").
 - `app/src/root_view.rs`: `remote_tty` builds start loginless, like desktop's "Skip for now".
 - `app/src/wasm_nux_dialog.rs`: hides the "Download Warp Desktop?" dialog in `remote_tty` builds.
 - `paseo-bridge/`: the bridge itself, with the page title set to plain "Warp".
@@ -35,8 +37,8 @@ the Warp checkout):
 1. "+ → Warp" mounts the plugin panel, which calls `warp.session.open` with the workspace folder.
    A newly created bottom panel (Ctrl+J) mounts the same panel in its first tab, so Warp is the
    bottom panel's default. It falls back to a terminal outside Electron or when the host lacks the
-   plugin. In Tasks mode, showing the hidden bottom panel opens a session inside the panel's Warp
-   tab in the focused task's folder (see "Sessions opened by Paseo").
+   plugin. A button after the bottom panel's tabs opens a tab inside its Warp tab in the agent's
+   project (see "Warp tabs opened by Paseo").
 2. The plugin server has already started the bridge with system `node` when the plugin loaded
    (it starts it again if it died), waits for `WARP_BRIDGE_READY <port>` on stdout, and returns
    `http://127.0.0.1:<port>/?token=…&cwd=…`.
@@ -64,18 +66,22 @@ Why it's shaped this way:
 - **Electron only.** Browser tabs exist only in the desktop app. In a web browser or on the phone
   the panel shows a link to the bridge page, which works only on the machine running Paseo.
 
-## Sessions opened by Paseo
+## Warp tabs opened by Paseo
 
-Warp's web build reads `window.PASEO_WARP_PTY_URL` again for every new session (Ctrl+Shift+T), so
-the host can pick the next session's folder by changing its `cwd` parameter. Paseo does this in
-Tasks mode when the bottom panel is shown for a task in another folder
-(`packages/app/src/workspace-tabs/warp-session.ts`): `executeJavaScript` on the webview sets the
-`cwd`, then the webview's `sendInputEvent` presses Ctrl+Shift+T.
+Paseo opens a tab inside a running Warp page in a folder of its choice: the bottom panel's
+terminal-icon button does it for the agent's project
+(`packages/app/src/workspace-tabs/warp-session.ts`). It runs `executeJavaScript` on the webview to
+set the `cwd` of `window.PASEO_WARP_PTY_URL`, which Warp reads for every new session, then
+dispatches a `paseo-warp-new-tab` event on `window`. The Warp patch in `app/src/workspace/view.rs`
+listens for that event and opens a terminal tab.
 
-- **The key press must be trusted input.** Warp ignores a `KeyboardEvent` dispatched from page
-  JavaScript, even on its focused canvas. `sendInputEvent` (or a real key) works.
-- **The new `cwd` sticks.** Sessions opened afterwards in that tab, by hand too, start in the same
-  folder until Paseo changes it again or the page reloads.
+- **Key presses don't work for this.** Warp ignores a `KeyboardEvent` dispatched from page
+  JavaScript, and Ctrl+Shift+T sent through the webview's `sendInputEvent` didn't open a tab
+  either (tested in a bare Electron window). A real key press does.
+- **The new `cwd` sticks.** Tabs opened afterwards in that Warp page, with Ctrl+Shift+T too, start
+  in the same folder until Paseo changes it again or the page reloads.
+- **Old pages ignore the event.** A Warp tab whose page loaded before the patched build does
+  nothing until you reload it.
 
 ## The shell
 
