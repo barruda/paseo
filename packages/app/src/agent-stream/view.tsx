@@ -83,7 +83,9 @@ import { collectChatImages } from "@/agent-stream/chat-images/model";
 import { ChatImagesRail } from "@/agent-stream/chat-images/rail";
 // CUSTOM(reading-modes)
 import { AgentReadingOverview } from "@/agent-stream/reading-modes/agent-overview";
-import { useReadingModeStream } from "@/agent-stream/reading-modes/store";
+import type { ReadingMode } from "@/agent-stream/reading-modes/model";
+import { useReadingRows } from "@/agent-stream/reading-modes/rows";
+import { useReadingMode } from "@/agent-stream/reading-modes/store";
 import { ReadingColumns } from "@/agent-stream/reading-modes/reading-columns";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
@@ -323,7 +325,6 @@ const AGENT_CAPABILITY_FLAG_KEYS: (keyof AgentCapabilityFlags)[] = [
 ];
 
 const EMPTY_STREAM_HEAD: StreamItem[] = [];
-const EMPTY_READING_ROWS: StreamLayoutItem[] = []; // CUSTOM(reading-modes)
 
 function useRetainedValue<T>(value: T, active: boolean): T {
   const retainedRef = useRef(value);
@@ -334,6 +335,17 @@ function useRetainedValue<T>(value: T, active: boolean): T {
 }
 const EMPTY_PENDING_MESSAGE_SUBMISSIONS: readonly PendingMessageSubmission[] = [];
 const GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT = 200;
+
+// CUSTOM(reading-modes): the reading modes drive the button while they cover the chat.
+function shouldShowScrollToBottom(input: {
+  readingMode: ReadingMode;
+  isReadingAtEnd: boolean;
+  isNearBottom: boolean;
+  isTimelineDetached: boolean;
+}): boolean {
+  if (input.readingMode !== "chat") return !input.isReadingAtEnd;
+  return !input.isNearBottom || input.isTimelineDetached;
+}
 
 function resolveBottomOverlayControlOffset(clearance: number | undefined): number {
   return Math.max(16, clearance ?? 0);
@@ -579,23 +591,24 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamHead = useRetainedValue(streamHead, isActive);
     const effectiveTurnPresentation = useRetainedValue(turnPresentation, isActive);
     const isTurnActive = effectiveTurnPresentation.isActive;
-    // CUSTOM(reading-modes): Compact shows only prompts and final answers in the live chat.
-    const presentedStream = useReadingModeStream(
-      agentId,
-      effectiveStreamItems,
-      effectiveStreamHead,
-    );
     const presentStream = useMemo(() => createStreamPresentation(), []);
     const presentation = useMemo(
       () =>
         presentStream({
-          tail: presentedStream.tail,
-          head: presentedStream.head ?? EMPTY_STREAM_HEAD,
+          tail: effectiveStreamItems,
+          head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
           transform: transformTimelineItem,
           level: toolCallDetailLevel,
           isTurnActive,
         }),
-      [presentStream, presentedStream, transformTimelineItem, toolCallDetailLevel, isTurnActive],
+      [
+        presentStream,
+        effectiveStreamItems,
+        effectiveStreamHead,
+        transformTimelineItem,
+        toolCallDetailLevel,
+        isTurnActive,
+      ],
     );
     const {
       start: historyWindowStart,
@@ -680,14 +693,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const [chatImagesReadingPosition] = useState(createActivePromptPublisher);
 
-    // CUSTOM(reading-modes): Columns goes to its end whenever the chat is sent to the bottom.
-    const [readingColumnsFollowRequest, setReadingColumnsFollowRequest] = useState(0);
+    // CUSTOM(reading-modes): the reading modes go to their end whenever the chat is sent to the
+    // bottom, and report whether they are there for the scroll-to-bottom button.
+    const readingMode = useReadingMode(agentId);
+    const [readingFollowRequest, setReadingFollowRequest] = useState(0);
+    const [isReadingAtEnd, setIsReadingAtEnd] = useState(true);
     useImperativeHandle(
       ref,
       () => ({
         scrollToBottom(reason = "jump-to-bottom") {
           viewportRef.current?.scrollToBottom(reason);
-          setReadingColumnsFollowRequest((request) => request + 1);
+          setReadingFollowRequest((request) => request + 1);
         },
         prepareForViewportChange() {
           viewportRef.current?.prepareForViewportChange();
@@ -697,6 +713,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
 
     const scrollToBottom = useCallback(() => {
+      // CUSTOM(reading-modes)
+      if (readingMode !== "chat") {
+        setReadingFollowRequest((request) => request + 1);
+        return;
+      }
       if (!isTimelineDetached) {
         viewportRef.current?.scrollToBottom("jump-to-bottom");
         return;
@@ -709,7 +730,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         scrollToBottom: () => viewportRef.current?.scrollToBottom("jump-to-bottom"),
         onError: handleTimelineHistoryLoadError,
       });
-    }, [agentId, handleTimelineHistoryLoadError, isTimelineDetached, resolvedServerId]);
+    }, [
+      agentId,
+      handleTimelineHistoryLoadError,
+      isTimelineDetached,
+      readingMode,
+      resolvedServerId,
+    ]);
 
     // CUSTOM(empty-composer-shortcuts): leaving a keyboard-selected message returns to the bottom.
     const rewindBottomRequest = useComposerRewindSelection((state) => state.bottomRequest);
@@ -1049,7 +1076,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const scrollToBottomContainerStyle = useMemo(
       () => [
         stylesheet.scrollToBottomContainer,
-        { bottom: resolveBottomOverlayControlOffset(bottomOverlayControlClearance) },
+        {
+          bottom: resolveBottomOverlayControlOffset(bottomOverlayControlClearance),
+          // CUSTOM(reading-modes): above the reading modes, which cover the chat.
+          zIndex: 30,
+        },
       ],
       [bottomOverlayControlClearance],
     );
@@ -1179,39 +1210,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         remoteProgressKey,
       ],
     );
-    const readingColumnsRows = useMemo(() => {
-      if (presentedStream.mode !== "columns") return EMPTY_READING_ROWS;
-      const whole =
-        historyWindowStart === 0
-          ? baseRenderModel
-          : buildAgentStreamRenderModel({
-              isTurnActive,
-              activeTurnStartedAt: effectiveTurnPresentation.startedAt,
-              tail: presentation.tail,
-              head: presentation.head,
-              platform: isWeb ? "web" : "native",
-              isMobileBreakpoint: isMobile,
-              historyStart: 0,
-            });
-      const layout = layoutStream({
-        strategy: streamRenderStrategy,
-        isTurnActive,
-        history: whole.history,
-        liveHead: whole.segments.liveHead,
-        timingByAssistantId: whole.turnTiming.byAssistantId,
-      });
-      return [...layout.history, ...layout.liveHead];
-    }, [
-      baseRenderModel,
-      effectiveTurnPresentation.startedAt,
-      historyWindowStart,
-      isMobile,
+    const readingColumnsRows = useReadingRows({
+      mode: readingMode,
+      chatRenderModel: baseRenderModel,
+      chatHistoryStart: historyWindowStart,
+      tail: presentation.tail,
+      head: presentation.head,
       isTurnActive,
-      presentation.head,
-      presentation.tail,
-      presentedStream.mode,
-      streamRenderStrategy,
-    ]);
+      activeTurnStartedAt: effectiveTurnPresentation.startedAt,
+      isMobileBreakpoint: isMobile,
+      strategy: streamRenderStrategy,
+    });
 
     const findItems = useMemo(
       () => [...effectiveStreamItems, ...(effectiveStreamHead ?? [])],
@@ -1280,7 +1289,12 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               visibleMessageIds={visibleMessageIds}
               revealLoadedMessage={revealLoadedHistory}
             />
-            {(!isNearBottom || isTimelineDetached) && (
+            {shouldShowScrollToBottom({
+              readingMode,
+              isReadingAtEnd,
+              isNearBottom,
+              isTimelineDetached,
+            }) && (
               <View style={scrollToBottomContainerStyle} pointerEvents="box-none">
                 <Animated.View entering={scrollIndicatorFadeIn} exiting={scrollIndicatorFadeOut}>
                   <Pressable
@@ -1295,20 +1309,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 </Animated.View>
               </View>
             )}
-            {/* CUSTOM(reading-modes): Columns, Newspaper and Cards cover the chat, which stays
-                mounted. */}
+            {/* CUSTOM(reading-modes): the reading modes cover the chat, which stays mounted. */}
             <ReadingColumns
-              mode={presentedStream.mode}
+              mode={readingMode}
               rows={readingColumnsRows}
               renderRow={renderStreamItem}
               pendingPermissions={auxiliary.pendingPermissions}
               turnFooter={auxiliary.turnFooter}
               history={readingOlderHistory}
-              followRequest={readingColumnsFollowRequest}
+              followRequest={readingFollowRequest}
+              onAtEndChange={setIsReadingAtEnd}
               bottomInset={bottomOverlayTailClearance}
             />
             <AgentReadingOverview
-              mode={presentedStream.mode}
+              mode={readingMode}
               agentId={agentId}
               serverId={resolvedServerId}
               client={client}
@@ -1320,7 +1334,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               viewportRef={viewportRef}
               visibleMessageIds={visibleMessageIds}
               revealLoadedMessage={revealLoadedHistory}
-              olderHistory={readingOlderHistory}
+              history={readingOlderHistory}
+              followRequest={readingFollowRequest}
+              onAtEndChange={setIsReadingAtEnd}
               bottomInset={bottomOverlayTailClearance}
             />
           </ChatEscFocusSurface>

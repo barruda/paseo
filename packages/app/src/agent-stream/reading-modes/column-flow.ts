@@ -1,7 +1,5 @@
 // CUSTOM(reading-modes): geometry of a wrapped multi-column flow (CSS `column-wrap`). Content
-// fills the columns of a row left to right, then the next row below. To end-align it, so the
-// newest content closes the last row and the screen opens full, a spacer at the start of the
-// flow takes up whatever the last row leaves empty.
+// fills the columns of a row left to right, then the next row below. Each column is a page.
 
 export interface ColumnFlowGeometry {
   /** Width of the multi-column box. */
@@ -25,17 +23,14 @@ export function columnsPerRow(geometry: ColumnFlowGeometry): number {
   return geometry.maxColumns ? Math.min(fit, geometry.maxColumns) : fit;
 }
 
-interface FlowPosition {
-  row: number;
-  column: number;
-  topInColumn: number;
-}
-
-// Where a point of the flow falls: `endLeft`/`endTop` relative to the multi-column box.
-function flowPosition(
+/**
+ * The 0-based page (column, in reading order) a point of the flow falls in. `endLeft` and
+ * `endTop` are relative to the multi-column box.
+ */
+export function pageIndexOfEnd(
   geometry: ColumnFlowGeometry,
   end: { endLeft: number; endTop: number },
-): FlowPosition {
+): number {
   const columns = columnsPerRow(geometry);
   const columnWidth = (geometry.width - geometry.columnGap * (columns - 1)) / columns;
   const column = Math.min(
@@ -46,30 +41,7 @@ function flowPosition(
     ),
   );
   const row = Math.max(0, Math.floor(end.endTop / geometry.rowPitch));
-  const topInColumn = Math.min(geometry.columnHeight, end.endTop - row * geometry.rowPitch);
-  return { row, column, topInColumn };
-}
-
-/**
- * The flow height left empty after the content's end, in the row the end falls in. `endLeft` and
- * `endTop` are the end marker's position relative to the multi-column box.
- */
-export function unusedFlowAfterEnd(
-  geometry: ColumnFlowGeometry,
-  end: { endLeft: number; endTop: number },
-): number {
-  const columns = columnsPerRow(geometry);
-  const { column, topInColumn } = flowPosition(geometry, end);
-  return (columns - 1 - column) * geometry.columnHeight + (geometry.columnHeight - topInColumn);
-}
-
-/** The 0-based page (column, in reading order) the content's end falls in. */
-export function pageIndexOfEnd(
-  geometry: ColumnFlowGeometry,
-  end: { endLeft: number; endTop: number },
-): number {
-  const { row, column } = flowPosition(geometry, end);
-  return row * columnsPerRow(geometry) + column;
+  return row * columns + column;
 }
 
 /**
@@ -101,18 +73,6 @@ export function turnPages(input: {
   }
   if (endPage <= current.lastPage) return current;
   return { ...current, lastPage: endPage };
-}
-
-/** The spacer height that would close the last row, kept below one full row. */
-export function nextLeadSpace(
-  geometry: ColumnFlowGeometry,
-  currentLead: number,
-  unused: number,
-): number {
-  const rowCapacity = columnsPerRow(geometry) * geometry.columnHeight;
-  if (rowCapacity <= 0) return 0;
-  const lead = (currentLead + unused) % rowCapacity;
-  return lead < 0 ? lead + rowCapacity : lead;
 }
 
 export interface FlowPage {

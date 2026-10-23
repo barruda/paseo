@@ -1,9 +1,7 @@
 // CUSTOM(reading-modes): which reading mode each agent's chat is in. In memory only: a reload
 // returns every chat to the normal view.
-import { useMemo } from "react";
 import { create } from "zustand";
-import type { StreamItem } from "@/types/stream";
-import { filterCompactStream, type ReadingMode } from "./model";
+import type { ReadingMode } from "./model";
 
 interface ReadingModeState {
   modeByAgentId: Record<string, Exclude<ReadingMode, "chat">>;
@@ -28,18 +26,4 @@ export const useReadingModeStore = create<ReadingModeState>((set) => ({
 
 export function useReadingMode(agentId: string): ReadingMode {
   return useReadingModeStore((state) => state.modeByAgentId[agentId] ?? "chat");
-}
-
-/** The stream the chat renders: Compact filters it, the other modes pass it through. */
-export function useReadingModeStream(
-  agentId: string,
-  tail: StreamItem[],
-  head: StreamItem[] | undefined,
-): { mode: ReadingMode; tail: StreamItem[]; head: StreamItem[] | undefined } {
-  const mode = useReadingMode(agentId);
-  return useMemo(
-    () =>
-      mode === "compact" ? { mode, ...filterCompactStream(tail, head) } : { mode, tail, head },
-    [mode, tail, head],
-  );
 }

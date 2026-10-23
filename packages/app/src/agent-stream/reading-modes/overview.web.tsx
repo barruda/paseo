@@ -1,6 +1,6 @@
-// CUSTOM(reading-modes): Newspaper and Cards, drawn over the chat. The chat stays mounted
-// underneath, so opening a turn scrolls the real transcript instead of rebuilding it.
-// Newspaper flows prompts and final answers through the shared column scroller.
+// CUSTOM(reading-modes): Newspaper and Cards, drawn over the chat as numbered pages. The chat
+// stays mounted underneath, so opening a turn scrolls the real transcript instead of rebuilding
+// it. Newspaper flows prompts and final answers down the pages; Cards flows one card per turn.
 import {
   type CSSProperties,
   type KeyboardEvent,
@@ -8,28 +8,20 @@ import {
   type RefObject,
   useCallback,
   useLayoutEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
-import {
-  ColumnScroller,
-  LoadingOlder,
-  color,
-  overlayScrollerStyle,
-  useFollowEnd,
-  useNearStartLoader,
-  useScrollerStyle,
-} from "./column-scroller.web";
+import { color, PagedColumnScroller } from "./column-scroller.web";
 import type { ReadingTurn } from "./model";
 import type { ReadingOverviewProps } from "./overview";
+import { WholeConversation } from "./whole-conversation.web";
 
 // About 65 characters of chat text per line.
 const COLUMN_WIDTH = 460;
+const CARD_COLUMN_WIDTH = 380;
 const CARD_BODY_MAX_HEIGHT = 340;
 const PROMPT_LINES_NEWSPAPER = 8;
 const PROMPT_LINES_CARD = 4;
-const cardsScrollerStyle: CSSProperties = { ...overlayScrollerStyle, overflowY: "auto" };
 
 const promptStyle: CSSProperties = {
   breakInside: "avoid",
@@ -62,20 +54,11 @@ const linkButtonStyle: CSSProperties = {
   textDecoration: "underline",
   textUnderlineOffset: 2,
 };
-const olderHistoryStyle: CSSProperties = {
-  fontSize: 12,
-  color: color.extraMuted,
-  marginBottom: 16,
-  breakInside: "avoid",
-};
 const newspaperTurnStyle: CSSProperties = { marginBottom: 28 };
-const cardsGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))",
-  gap: 16,
-  alignItems: "start",
-};
 const cardStyle: CSSProperties = {
+  breakInside: "avoid",
+  marginBottom: 16,
+  boxSizing: "border-box",
   border: `1px solid ${color.border}`,
   borderRadius: 12,
   background: color.surface1,
@@ -192,23 +175,6 @@ function Answer({
   );
 }
 
-function OlderHistory({
-  hasOlder,
-  isLoadingOlder,
-  onLoadOlder,
-}: Pick<ReadingOverviewProps, "hasOlder" | "isLoadingOlder" | "onLoadOlder">) {
-  if (!hasOlder) return null;
-  return (
-    <div style={olderHistoryStyle}>
-      {isLoadingOlder ? (
-        "Loading earlier turns…"
-      ) : (
-        <LinkButton onPress={onLoadOlder}>Load earlier turns</LinkButton>
-      )}
-    </div>
-  );
-}
-
 function NewspaperTurn({
   turn,
   onOpenTurn,
@@ -221,38 +187,6 @@ function NewspaperTurn({
       <Answer turn={turn} renderAnswer={renderAnswer} />
       <TurnMeta turn={turn} onOpen={open} />
     </section>
-  );
-}
-
-function Newspaper(props: ReadingOverviewProps) {
-  const older = useMemo(
-    () => ({
-      hasOlder: props.hasOlder,
-      isLoadingOlder: props.isLoadingOlder,
-      loadOlder: props.onLoadOlder,
-    }),
-    [props.hasOlder, props.isLoadingOlder, props.onLoadOlder],
-  );
-  const startKey = props.turns[0]?.id ?? null;
-  const handleNearStart = useNearStartLoader(older, startKey);
-  return (
-    <ColumnScroller
-      testID="reading-overview-newspaper"
-      bottomInset={props.bottomInset}
-      columnMinWidth={COLUMN_WIDTH}
-      startKey={startKey}
-      onNearStart={handleNearStart}
-    >
-      <LoadingOlder visible={props.isLoadingOlder} />
-      {props.turns.map((turn) => (
-        <NewspaperTurn
-          key={turn.id}
-          turn={turn}
-          onOpenTurn={props.onOpenTurn}
-          renderAnswer={props.renderAnswer}
-        />
-      ))}
-    </ColumnScroller>
   );
 }
 
@@ -300,31 +234,56 @@ function Card({
   );
 }
 
-function Cards(props: ReadingOverviewProps) {
-  const scrollerRef = useRef<HTMLDivElement>(null);
-  useFollowEnd(scrollerRef, true, 0);
-  const scrollerStyleWithInset = useScrollerStyle(cardsScrollerStyle, props.bottomInset);
+function OverviewPages({
+  props,
+  columnMinWidth,
+  children,
+}: {
+  props: ReadingOverviewProps;
+  columnMinWidth: number;
+  children: ReactNode;
+}) {
   return (
-    <div ref={scrollerRef} data-testid="reading-overview-cards" style={scrollerStyleWithInset}>
-      <OlderHistory
-        hasOlder={props.hasOlder}
-        isLoadingOlder={props.isLoadingOlder}
-        onLoadOlder={props.onLoadOlder}
-      />
-      <div style={cardsGridStyle}>
-        {props.turns.map((turn) => (
-          <Card
-            key={turn.id}
-            turn={turn}
-            renderAnswer={props.renderAnswer}
-            onOpenTurn={props.onOpenTurn}
-          />
-        ))}
-      </div>
-    </div>
+    <WholeConversation history={props.history}>
+      <PagedColumnScroller
+        testID={`reading-overview-${props.mode}`}
+        bottomInset={props.bottomInset}
+        columnMinWidth={columnMinWidth}
+        startKey={props.turns[0]?.id ?? null}
+        followRequest={props.followRequest}
+        onAtEndChange={props.onAtEndChange}
+      >
+        {children}
+      </PagedColumnScroller>
+    </WholeConversation>
   );
 }
 
 export function ReadingOverview(props: ReadingOverviewProps) {
-  return props.mode === "newspaper" ? <Newspaper {...props} /> : <Cards {...props} />;
+  if (props.mode === "newspaper") {
+    return (
+      <OverviewPages key="newspaper" props={props} columnMinWidth={COLUMN_WIDTH}>
+        {props.turns.map((turn) => (
+          <NewspaperTurn
+            key={turn.id}
+            turn={turn}
+            onOpenTurn={props.onOpenTurn}
+            renderAnswer={props.renderAnswer}
+          />
+        ))}
+      </OverviewPages>
+    );
+  }
+  return (
+    <OverviewPages key="cards" props={props} columnMinWidth={CARD_COLUMN_WIDTH}>
+      {props.turns.map((turn) => (
+        <Card
+          key={turn.id}
+          turn={turn}
+          renderAnswer={props.renderAnswer}
+          onOpenTurn={props.onOpenTurn}
+        />
+      ))}
+    </OverviewPages>
+  );
 }

@@ -1,15 +1,16 @@
 import type { ReactNode } from "react";
 import type { AssistantMessageItem } from "@/types/stream";
-import type { ReadingTurn } from "./model";
+import type { ReadingHistory, ReadingTurn } from "./model";
 
 export interface ReadingOverviewProps {
   mode: "newspaper" | "cards";
   turns: ReadingTurn[];
   renderAnswer: (item: AssistantMessageItem) => ReactNode;
   onOpenTurn: (turn: ReadingTurn) => void;
-  hasOlder: boolean;
-  isLoadingOlder: boolean;
-  onLoadOlder: () => void;
+  history: ReadingHistory;
+  /** Changes when the chat is sent to the bottom (a message was sent); the pages go to the end. */
+  followRequest: number;
+  onAtEndChange: (atEnd: boolean) => void;
   /** Kept clear for the composer, which floats over the bottom of the chat. */
   bottomInset: number;
 }

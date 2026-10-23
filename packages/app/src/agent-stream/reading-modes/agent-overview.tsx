@@ -11,7 +11,12 @@ import type { ToastApi } from "@/components/toast-host";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import type { AssistantMessageItem, StreamItem } from "@/types/stream";
 import type { StreamViewportHandle } from "../strategy";
-import { buildReadingTurns, type ReadingMode, type ReadingTurn } from "./model";
+import {
+  buildReadingTurns,
+  type ReadingHistory,
+  type ReadingMode,
+  type ReadingTurn,
+} from "./model";
 import { ReadingOverview } from "./overview";
 import { useReadingModeStore } from "./store";
 
@@ -30,8 +35,11 @@ export interface AgentReadingOverviewProps {
   viewportRef: RefObject<StreamViewportHandle | null>;
   visibleMessageIds: ReadonlySet<string>;
   revealLoadedMessage: (messageId: string) => boolean;
-  /** The daemon's older history: the overview already shows everything loaded. */
-  olderHistory: { hasOlder: boolean; isLoadingOlder: boolean; loadOlder: () => unknown };
+  /** The daemon's older history: the overview loads all of it before it lays out pages. */
+  history: ReadingHistory;
+  /** Changes when the chat is sent to the bottom (a message was sent); the pages go to the end. */
+  followRequest: number;
+  onAtEndChange: (atEnd: boolean) => void;
   /** Height of the composer floating over the bottom of the chat. */
   bottomInset: number;
 }
@@ -51,7 +59,9 @@ export function AgentReadingOverview({
   viewportRef,
   visibleMessageIds,
   revealLoadedMessage,
-  olderHistory,
+  history,
+  followRequest,
+  onAtEndChange,
   bottomInset,
 }: AgentReadingOverviewProps) {
   const isOverview = mode === "newspaper" || mode === "cards";
@@ -79,10 +89,6 @@ export function AgentReadingOverview({
       viewportRef.current?.scrollToMessage?.(messageId);
     };
     requestAnimationFrame(poll);
-  });
-
-  const loadOlder = useStableEvent(() => {
-    void olderHistory.loadOlder();
   });
 
   const renderAnswer = useCallback(
@@ -119,9 +125,9 @@ export function AgentReadingOverview({
       turns={turns}
       renderAnswer={renderAnswer}
       onOpenTurn={openTurn}
-      hasOlder={olderHistory.hasOlder}
-      isLoadingOlder={olderHistory.isLoadingOlder}
-      onLoadOlder={loadOlder}
+      history={history}
+      followRequest={followRequest}
+      onAtEndChange={onAtEndChange}
       bottomInset={bottomInset}
     />
   );

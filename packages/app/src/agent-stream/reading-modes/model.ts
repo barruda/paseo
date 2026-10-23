@@ -1,9 +1,23 @@
-// CUSTOM(reading-modes): three ways to read a long chat on a wide screen, each behind its own
-// button in the tab row so they can be compared. Compact filters the live chat; Newspaper and
-// Cards are overviews drawn over it.
+// CUSTOM(reading-modes): four ways to read a long chat on a wide screen, each behind its own
+// button in the tab row so they can be compared. All of them draw numbered pages over the chat:
+// Columns every chat row, Compact the rows of prompts and final answers, Newspaper and Cards a
+// summary of each turn.
 import type { AssistantMessageItem, StreamItem, UserMessageItem } from "@/types/stream";
+import type { StreamLayoutItem } from "../layout";
+import { getStreamItemMessageId } from "../presentation";
 
 export type ReadingMode = "chat" | "compact" | "newspaper" | "cards" | "columns";
+
+/** The daemon's older history, which every reading mode loads in full before it lays out pages. */
+export interface ReadingHistory {
+  /** The daemon's history has been applied; before that, `hasOlder` means nothing yet. */
+  isSynced: boolean;
+  hasOlder: boolean;
+  isLoadingOlder: boolean;
+  loadOlder: () => unknown;
+  /** Names how far back the loaded history reaches; it moves when an older page arrives. */
+  progressKey: string | null;
+}
 
 export interface ReadingTurn {
   id: string;
@@ -74,15 +88,17 @@ export function selectCompactItemIds(items: readonly StreamItem[]): Set<string> 
   return kept;
 }
 
-export function filterCompactStream(
-  tail: StreamItem[],
-  head: StreamItem[] | undefined,
-): { tail: StreamItem[]; head: StreamItem[] | undefined } {
-  const kept = selectCompactItemIds(head ? [...tail, ...head] : tail);
-  return {
-    tail: tail.filter((item) => kept.has(item.id)),
-    head: head?.filter((item) => kept.has(item.id)),
-  };
+/**
+ * The laid-out chat rows Compact keeps. An assistant message lays out as several block rows;
+ * `items` may hold either the blocks or the whole message, so a row is kept by its own id or by
+ * the message it belongs to.
+ */
+export function selectCompactRows(
+  rows: StreamLayoutItem[],
+  items: readonly StreamItem[],
+): StreamLayoutItem[] {
+  const kept = selectCompactItemIds(items);
+  return rows.filter((row) => kept.has(row.item.id) || kept.has(getStreamItemMessageId(row.item)));
 }
 
 export function buildReadingTurns(items: readonly StreamItem[]): ReadingTurn[] {
