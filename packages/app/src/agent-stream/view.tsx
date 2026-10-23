@@ -81,6 +81,9 @@ import { useChatOutline } from "@/agent-stream/chat-outline/use-chat-outline";
 import { createActivePromptPublisher } from "@/agent-stream/chat-outline/model";
 import { collectChatImages } from "@/agent-stream/chat-images/model";
 import { ChatImagesRail } from "@/agent-stream/chat-images/rail";
+// CUSTOM(reading-modes)
+import { AgentReadingOverview } from "@/agent-stream/reading-modes/agent-overview";
+import { useReadingModeStream } from "@/agent-stream/reading-modes/store";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import {
@@ -574,24 +577,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const effectiveStreamHead = useRetainedValue(streamHead, isActive);
     const effectiveTurnPresentation = useRetainedValue(turnPresentation, isActive);
     const isTurnActive = effectiveTurnPresentation.isActive;
+    // CUSTOM(reading-modes): Compact shows only prompts and final answers in the live chat.
+    const presentedStream = useReadingModeStream(
+      agentId,
+      effectiveStreamItems,
+      effectiveStreamHead,
+    );
     const presentStream = useMemo(() => createStreamPresentation(), []);
     const presentation = useMemo(
       () =>
         presentStream({
-          tail: effectiveStreamItems,
-          head: effectiveStreamHead ?? EMPTY_STREAM_HEAD,
+          tail: presentedStream.tail,
+          head: presentedStream.head ?? EMPTY_STREAM_HEAD,
           transform: transformTimelineItem,
           level: toolCallDetailLevel,
           isTurnActive,
         }),
-      [
-        presentStream,
-        effectiveStreamItems,
-        effectiveStreamHead,
-        transformTimelineItem,
-        toolCallDetailLevel,
-        isTurnActive,
-      ],
+      [presentStream, presentedStream, transformTimelineItem, toolCallDetailLevel, isTurnActive],
     );
     const {
       start: historyWindowStart,
@@ -1153,6 +1155,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [expandedToolCallGroupIds, isMobile, presentation.historyGroupUpdatesByHostId],
     );
 
+    // CUSTOM(reading-modes)
+    const readingOlderHistory = useMemo(
+      () => ({
+        hasOlder: remoteHasOlder,
+        isLoadingOlder: remoteIsLoadingOlder,
+        loadOlder: loadRemoteOlder,
+      }),
+      [loadRemoteOlder, remoteHasOlder, remoteIsLoadingOlder],
+    );
+
     const findItems = useMemo(
       () => [...effectiveStreamItems, ...(effectiveStreamHead ?? [])],
       [effectiveStreamItems, effectiveStreamHead],
@@ -1235,6 +1247,23 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 </Animated.View>
               </View>
             )}
+            {/* CUSTOM(reading-modes): Newspaper and Cards cover the chat, which stays mounted. */}
+            <AgentReadingOverview
+              mode={presentedStream.mode}
+              agentId={agentId}
+              serverId={resolvedServerId}
+              client={client}
+              workspaceRoot={workspaceRoot}
+              toast={toast}
+              onOpenWorkspaceFile={handleInlinePathPress}
+              tail={effectiveStreamItems}
+              head={effectiveStreamHead}
+              viewportRef={viewportRef}
+              visibleMessageIds={visibleMessageIds}
+              revealLoadedMessage={revealLoadedHistory}
+              olderHistory={readingOlderHistory}
+              bottomInset={bottomOverlayTailClearance}
+            />
           </ChatEscFocusSurface>
         </ToolCallSheetProvider>
       </ChatFind>
