@@ -57,6 +57,8 @@ import {
 } from "@/workspace-tabs/explorer-sidebar";
 // CUSTOM(bottom-panel)
 import { toggleBottomPanel } from "@/workspace-tabs/bottom-panel";
+// CUSTOM(bottom-panel-expand)
+import { BottomPanelExpandButton } from "@/workspace-tabs/bottom-panel-expand-button";
 import { resolveBottomPanelWarpTarget } from "@/workspace-tabs/bottom-panel-default";
 import { pluginRegistry } from "@/plugins/registry";
 import {
@@ -3544,6 +3546,8 @@ function WorkspaceScreenContent({
       ) : null}
 
       <View style={styles.centerContent}>{workspacePanelContent}</View>
+      {/* CUSTOM(bottom-panel-expand): ⌃⌃ while the bottom panel is closed. */}
+      <BottomPanelExpandButton workspaceKey={persistenceKey} />
     </View>
   );
 

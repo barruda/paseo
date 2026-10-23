@@ -2735,6 +2735,28 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Verify:** The first test in desktop `e2e/task-navigation.spec.ts` (in the update script). In
   the app, Ctrl+J, then click `⌄⌄`: the panel hides and Ctrl+J brings it back with the same tabs.
 
+## bottom-panel-expand: a ⌃⌃ button floats beside the sidebar while the bottom panel is closed
+
+- **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: a floating ⌃⌃ button shows the closed bottom panel`
+- **Why:** The reverse of [bottom-panel-collapse](#bottom-panel-collapse-a--button-before-the-bottom-panels-tabs-hides-it):
+  once the panel is hidden, a mouse way to bring it back.
+- **What:** While the workspace's bottom panel is hidden or not created yet, a `⌃⌃` button
+  (tooltip "Show bottom panel" with the Ctrl+J binding) floats at the bottom of the workspace,
+  100px right of the left sidebar, level with the sidebar's footer icons. It dispatches the
+  `workspace.bottom-panel.toggle` action, so it shows a hidden panel or creates one with a
+  terminal (or Warp). Desktop and wide web only.
+- **Files:** `packages/app/src/workspace-tabs/bottom-panel-expand-button.tsx`.
+- **Core files touched** (marked `CUSTOM(bottom-panel-expand)`):
+  - `screens/workspace/workspace-screen.tsx`: `BottomPanelExpandButton` with the workspace's
+    `persistenceKey`, last inside the desktop center column (after `centerContent`).
+- **Re-apply:** Render the button as the last child of the workspace screen's desktop center
+  column; it positions itself absolutely and reads the layout store to know when the
+  `bottom-panel` pane is missing or hidden.
+- **Verify:** In the app, in a workspace with no bottom panel, `⌃⌃` sits 100px right of the
+  sidebar, level with its footer icons; clicking it opens the panel and the button goes away;
+  `⌄⌄` on the panel hides it and the button comes back.
+
 ## changes-main-content: Changes clicks open the diff in the main content, in the same comparison
 
 - **Added:** 2026-10-22 (based on upstream 0.11.2, `0d61cca50`)
