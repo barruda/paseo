@@ -279,9 +279,9 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/composer/empty-voice-trigger.test.ts --bail=1)
   npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/shell-command-composer/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
   (cd packages/server && npx vitest run src/server/agent-status-summary.test.ts src/server/lean-claude.test.ts --bail=1)
-  # The status summary survives daemon restarts; New Agent tab names.
+  # The status summary survives daemon restarts; New Agent tab names; pinned tabs.
   (cd packages/server && npx vitest run src/server/agent/agent-storage.test.ts -t "keeps the status summary" --bail=1)
-  (cd packages/app && npx vitest run src/panels/agent-panel-descriptor.test.tsx --bail=1)
+  (cd packages/app && npx vitest run src/panels/agent-panel-descriptor.test.tsx src/tab-pins/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/draft-worktree/model.test.ts src/composer/worktree-pill-model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/projects/remove-project-section.test.tsx --bail=1)
   (cd packages/server && npx vitest run src/server/paseo-worktree-service.test.ts -t "keeps a branch name the caller typed|worktrees folder beside the project" src/utils/project-worktrees-root.test.ts --bail=1)

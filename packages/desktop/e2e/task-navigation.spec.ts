@@ -282,6 +282,17 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
       "Primary tasks",
     );
     await expect(pinnedTabs).toHaveCount(2);
+    // CUSTOM(tab-pins): "Pin tab" moves the tab to the left of the row and marks it pinned.
+    const lastAgentTab = agentTabs.last();
+    const lastAgentTabId = await lastAgentTab.getAttribute("data-testid");
+    await lastAgentTab.click({ button: "right" });
+    await page.locator('[data-testid^="workspace-tab-context-"][data-testid$="-pin-tab"]').click();
+    await expect(agentTabs.first()).toHaveAttribute("data-testid", lastAgentTabId ?? "");
+    await expect(desk.locator('[data-tab-pin="pinned"]')).toHaveCount(1);
+    await page.mouse.move(800, 600);
+    await desk.locator('[data-tab-pin="pinned"]').screenshot({
+      path: testInfo.outputPath("tab-pin.png"),
+    });
     await page.screenshot({ path: testInfo.outputPath("task-navigation.png"), fullPage: true });
     await toggle.click();
     await expect(sidebar).toHaveCount(0);
@@ -363,12 +374,12 @@ test("Tasks mode row menu, pane toolbar, launch shortcuts, Desk moves and archiv
     // The agent tab's context menu unpins and pins too.
     const tabPin = page.locator('[data-testid^="workspace-tab-context-"][data-testid$="-pin"]');
     await desk.getByTestId(`workspace-tab-agent_${first.agentId}`).click({ button: "right" });
-    await expect(tabPin).toHaveText("Unpin");
+    await expect(tabPin).toHaveText("Unpin from Tasks");
     await tabPin.click();
     await expect(pinned).toHaveCount(0);
     await expect(task).toHaveAttribute("aria-selected", "true");
     await desk.getByTestId(`workspace-tab-agent_${first.agentId}`).click({ button: "right" });
-    await expect(tabPin).toHaveText("Pin");
+    await expect(tabPin).toHaveText("Pin to Tasks");
     await tabPin.click();
     await expect(pinned).toBeVisible();
     await pinned.click({ button: "right" });

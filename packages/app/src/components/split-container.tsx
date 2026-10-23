@@ -1070,6 +1070,7 @@ function SplitNodeView({
       >
         <WindowChromeRegion corners={windowChromeCorners}>
           <SplitPaneView
+            pinScope={workspaceKey} // CUSTOM(tab-pins)
             pane={node.pane}
             uiTabs={uiTabs}
             isFocused={node.pane.id === focusedPaneId}
@@ -1226,7 +1227,8 @@ function SplitPaneView({
   onExitFocusMode,
   renderTopRightTabRowAction,
   topRightPaneId,
-}: SplitPaneViewProps) {
+  pinScope, // CUSTOM(tab-pins): the layout's workspace key
+}: SplitPaneViewProps & { pinScope: string }) {
   const paneRef = useRef<View | null>(null);
   const stableOnFocusPane = useStableEvent(onFocusPane);
   const paneState = useMemo(
@@ -1329,6 +1331,7 @@ function SplitPaneView({
         <WindowChromeSafeArea placement="inline" style={styles.paneTabs}>
           <TitlebarDragRegion />
           <WorkspaceDesktopTabsRow
+            pinScope={pinScope} // CUSTOM(tab-pins)
             paneId={pane.id}
             isFocused={isFocused && isWorkspaceFocused}
             tabs={desktopTabRowItems}

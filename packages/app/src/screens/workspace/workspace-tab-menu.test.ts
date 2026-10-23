@@ -121,6 +121,37 @@ describe("buildWorkspaceTabMenuEntries", () => {
     expect(entries.some((entry) => entry.kind === "item" && entry.label === "Rename")).toBe(true);
   });
 
+  // CUSTOM(tab-pins)
+  it("leads with Pin tab, or Unpin tab for a pinned tab", () => {
+    const toggle = vi.fn();
+    const build = (pinned: boolean) =>
+      buildWorkspaceTabMenuEntries({
+        surface: "desktop",
+        tab: createAgentTab(),
+        index: 0,
+        tabCount: 1,
+        menuTestIDBase: "workspace-tab-context-agent_123",
+        onCopyResumeCommand: vi.fn(),
+        onCopyAgentId: vi.fn(),
+        onCopyTerminalId: vi.fn(),
+        onCopyFilePath: vi.fn(),
+        onReloadAgent: vi.fn(),
+        onRenameTab: vi.fn(),
+        onCloseTab: vi.fn(),
+        onCloseTabsBefore: vi.fn(),
+        onCloseTabsAfter: vi.fn(),
+        onCloseOtherTabs: vi.fn(),
+        tabPin: { pinned, toggle },
+      });
+
+    const [first, second] = build(false);
+    expect(first).toMatchObject({ kind: "item", label: "Pin tab", icon: "pin" });
+    expect(second?.kind).toBe("separator");
+    expect(build(true)[0]).toMatchObject({ label: "Unpin tab", icon: "pin-off" });
+    if (first?.kind === "item") first.onSelect();
+    expect(toggle).toHaveBeenCalledTimes(1);
+  });
+
   it("adds reload tooltip copy for agent tabs", () => {
     const entries = buildWorkspaceTabMenuEntries({
       surface: "desktop",

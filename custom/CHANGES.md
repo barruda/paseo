@@ -2224,8 +2224,9 @@ src/server/lean-claude.test.ts)` (the update script runs them). On a daemon from
 - **Commit:** `custom: pinned sessions under the Tasks filters`
 - **Why:** A few sessions the user keeps going back to drift around the Tasks sidebar as their state
   changes. Pinning keeps them in one place.
-- **What:** Right-clicking a task, or an agent tab, offers **Pin**; a pinned one offers **Unpin**
-  (archived sessions offer neither). Pinned sessions show right under the filter buttons, in pin order, with no
+- **What:** Right-clicking a task offers **Pin**, an agent tab **Pin to Tasks** (named apart
+  from [tab-pins](#tab-pins-pin-tab-keeps-a-tab-at-the-left-of-its-row)' **Pin tab**); a pinned one
+  offers **Unpin** / **Unpin from Tasks** (archived sessions offer neither). Pinned sessions show right under the filter buttons, in pin order, with no
   heading and a divider below, whatever the search, project selection or filter. They also stay
   in their usual place in the list. Only the copy you clicked shows as selected; a session
   opened another way (a tab, Ctrl+1..9) selects its list row. A pinned crew member shows on its own, without its children.
@@ -2931,3 +2932,34 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Verify:** `(cd packages/app && npx vitest run src/panels/agent-panel-descriptor.test.tsx src/screens/workspace/workspace-tab-menu.test.ts)`
   (in the update script). In the app, open a New Agent tab: it shows the project icon. Right-click
   it, Rename to "Auth fix", send a prompt: the agent tab stays "Auth fix" after three messages.
+
+## tab-pins: "Pin tab" keeps a tab at the left of its row
+
+- **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: Pin tab in the tab context menu`
+- **Why:** The tabs the user keeps going back to drift around the row as others open and close.
+- **What:** Right-clicking any tab offers **Pin tab** first (**Unpin tab** when pinned). Pinning
+  moves the tab right after the pinned tabs already at the left; unpinning moves it to the start of
+  the unpinned ones. At rest (not active, not hovered) a pinned tab is a shade darker than the row:
+  black at 32% in dark themes, 7% in light ones. Pins are per workspace and per Desk (the split
+  layout's `workspaceKey`), kept in this app's storage (`custom-tab-pins`), and work in every pane
+  and the bottom panel. Dragging still moves pinned tabs freely; only pin and unpin reorder.
+- **Files:** `packages/app/src/tab-pins/` (`model.ts` reorders, `store.ts`, `use-tab-pins.ts`),
+  with `model.test.ts`.
+- **Core files touched** (marked `CUSTOM(tab-pins)`):
+  - `components/split-container.tsx`: `SplitPaneView` takes `pinScope={workspaceKey}` and passes
+    it to its tab row.
+  - `screens/workspace/workspace-screen.tsx`: the fallback tab row gets `pinScope={persistenceKey}`.
+  - `screens/workspace/workspace-tab-menu.ts`: optional `tabPin` input and the first menu entry;
+    the task pin entry reads **Pin to Tasks**.
+  - `screens/workspace/workspace-desktop-tabs-row.tsx`: the optional `pinScope` prop;
+    `WorkspaceDesktopTabsRow` builds the toggle over all its tabs and reorders through
+    `onReorderTabs`; the chip gets the `tabPinned` style and `data-tab-pin="pinned"`.
+- **Re-apply:** Pass the split layout's workspace key to its tab rows as `pinScope` (a row without
+  one offers no pin). In the tab row, pass `{ pinned, toggle }` into the tab menu builder; the
+  toggle updates the store and calls the row's `onReorderTabs` with `reorderForPinToggle`. Add the
+  darker style to the chip when pinned and neither active nor hovered.
+- **Verify:** `(cd packages/app && npx vitest run src/tab-pins/model.test.ts src/screens/workspace/workspace-tab-menu.test.ts)`
+  and the first test of desktop `e2e/task-navigation.spec.ts` (pins the last Desk tab and expects
+  it first), all in the update script. In the app, pin the third tab: it moves first and darkens;
+  pin another: it sits second.

@@ -92,6 +92,8 @@ interface BuildWorkspaceTabMenuEntriesInput {
   labels?: WorkspaceTabMenuLabels;
   // CUSTOM(task-pins): agent tabs pin or unpin their session in the Tasks sidebar.
   agentPin?: { pinned: boolean; toggle(): void };
+  // CUSTOM(tab-pins): any tab pins or unpins itself at the left of its tab row.
+  tabPin?: { pinned: boolean; toggle(): void };
 }
 
 interface BuildWorkspaceDesktopTabActionsInput {
@@ -115,6 +117,8 @@ interface BuildWorkspaceDesktopTabActionsInput {
   labels?: WorkspaceTabMenuLabels;
   // CUSTOM(task-pins): agent tabs pin or unpin their session in the Tasks sidebar.
   agentPin?: { pinned: boolean; toggle(): void };
+  // CUSTOM(tab-pins): any tab pins or unpins itself at the left of its tab row.
+  tabPin?: { pinned: boolean; toggle(): void };
 }
 
 export interface WorkspaceDesktopTabActions {
@@ -208,6 +212,20 @@ export function buildWorkspaceTabMenuEntries(
   const isLastTab = index === tabCount - 1;
   const isOnlyTab = tabCount <= 1;
   const entries: WorkspaceTabMenuEntry[] = [];
+
+  // CUSTOM(tab-pins): first in the menu.
+  if (input.tabPin) {
+    const { pinned, toggle } = input.tabPin;
+    entries.push({
+      kind: "item",
+      key: "pin-tab",
+      label: pinned ? "Unpin tab" : "Pin tab",
+      icon: pinned ? "pin-off" : "pin",
+      testID: `${menuTestIDBase}-pin-tab`,
+      onSelect: toggle,
+    });
+    entries.push({ kind: "separator", key: "pin-tab-separator" });
+  }
 
   if (tab.target.kind === "agent") {
     const { agentId } = tab.target;
@@ -317,7 +335,8 @@ export function buildWorkspaceTabMenuEntries(
       entries.push({
         kind: "item",
         key: "pin",
-        label: pinned ? "Unpin" : "Pin",
+        // CUSTOM(tab-pins): named apart from "Pin tab".
+        label: pinned ? "Unpin from Tasks" : "Pin to Tasks",
         icon: pinned ? "pin-off" : "pin",
         testID: `${menuTestIDBase}-pin`,
         onSelect: toggle,
@@ -415,6 +434,7 @@ export function buildWorkspaceDesktopTabActions(
       onCloseOtherTabs: input.onCloseOtherTabs,
       labels: input.labels,
       agentPin: input.agentPin,
+      tabPin: input.tabPin,
     }),
     closeButtonTestId: getCloseButtonTestId(input.tab),
   };

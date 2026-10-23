@@ -3516,6 +3516,7 @@ function WorkspaceScreenContent({
       {shouldRenderDesktopPaneFallback ? (
         <NewTabLauncherProvider value={newTabLauncher}>
           <WorkspaceDesktopTabsRow
+            pinScope={persistenceKey} // CUSTOM(tab-pins)
             paneId={focusedPaneIdOrUndefined}
             isFocused={isRouteFocused}
             tabs={desktopTabRowItems}

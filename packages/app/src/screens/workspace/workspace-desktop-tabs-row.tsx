@@ -98,6 +98,7 @@ import {
   type WorkspaceTabMoveMenu,
 } from "@/screens/workspace/workspace-tab-owner";
 import { useAgentTabPin } from "@/task-navigation/agent-tab-pin";
+import { useTabPins, type TabPins } from "@/tab-pins/use-tab-pins";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 // CUSTOM(reading-modes)
 import {
@@ -635,10 +636,15 @@ export interface WorkspaceDesktopTabsRowProps {
   onExitFocusMode: () => void;
   // CUSTOM(explorer-toggle-tab-row): rendered after the pane buttons, at the row's right end.
   trailingAction?: React.ReactNode;
+  // CUSTOM(tab-pins): who owns this row's pins (a workspace or Desk key); no pins without one.
+  pinScope?: string | null;
 }
 
 interface ResolvedWorkspaceDesktopTabsRowProps extends Omit<WorkspaceDesktopTabsRowProps, "tabs"> {
   tabs: ResolvedWorkspaceDesktopTabRowItem[];
+  // CUSTOM(tab-pins)
+  tabPins: TabPins | null;
+  onToggleTabPin: (tabId: string) => void;
 }
 
 interface WorkspaceDesktopTabPresentationSlotProps {
@@ -832,6 +838,7 @@ function TabChip({
   onNavigateTab,
   onCloseTab,
   dragHandleProps,
+  isPinned,
 }: {
   serverId: string;
   tab: WorkspaceTabDescriptor;
@@ -851,15 +858,19 @@ function TabChip({
   onNavigateTab: (tabId: string) => void;
   onCloseTab: (tabId: string) => Promise<void> | void;
   dragHandleProps: DraggableListDragHandleProps | undefined;
+  isPinned: boolean;
 }) {
   const { closeButtonTestId, contextMenuTestId, menuEntries } = resolvedTab;
   const { t } = useTranslation();
   // CUSTOM(desks): Desk tabs carry their own host; a Desk preview tab reads in italics.
   const owner = useWorkspaceTabOwner(tab.tabId, { serverId, workspaceId: "" });
   const deskTabDataSet = useMemo(
-    () =>
-      owner.preview === undefined ? undefined : { deskTab: owner.preview ? "preview" : "pinned" },
-    [owner.preview],
+    () => ({
+      ...(owner.preview === undefined ? {} : { deskTab: owner.preview ? "preview" : "pinned" }),
+      // CUSTOM(tab-pins)
+      ...(isPinned ? { tabPin: "pinned" } : {}),
+    }),
+    [owner.preview, isPinned],
   );
   // CUSTOM(desk-tab-move): a Desk offers its sibling Desks as a "Move to" submenu.
   const moveMenu = useWorkspaceTabMoveMenu();
@@ -916,6 +927,8 @@ function TabChip({
       isActiveFocused && styles.tabActive,
       isActive && !isFocused && styles.tabActiveUnfocused,
       !isActive && isHovered && styles.tabHovered,
+      // CUSTOM(tab-pins): a pinned tab at rest reads a shade darker than the row.
+      isPinned && !isActive && !isHovered && styles.tabPinned,
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
       {
         minWidth: resolvedTabWidth,
@@ -923,7 +936,7 @@ function TabChip({
         maxWidth: resolvedTabWidth,
       },
     ],
-    [isActive, isActiveFocused, isDragging, isFocused, isHovered, resolvedTabWidth],
+    [isActive, isActiveFocused, isDragging, isFocused, isHovered, isPinned, resolvedTabWidth],
   );
 
   const handleTabPointerEnter = useCallback(() => {
@@ -1137,9 +1150,27 @@ export function WorkspaceDesktopTabsRow(props: WorkspaceDesktopTabsRowProps) {
     [presentations, props.tabs],
   );
 
+  // CUSTOM(tab-pins): reorders over every tab of the row, resolved or not.
+  const tabPins = useTabPins(props.pinScope ?? null);
+  const { tabs: rowTabs, onReorderTabs } = props;
+  const handleToggleTabPin = useCallback(
+    (tabId: string) => {
+      if (!tabPins) return;
+      const byId = new Map(rowTabs.map((item) => [item.tab.tabId, item.tab]));
+      const order = tabPins.toggle(tabId, [...byId.keys()]);
+      onReorderTabs(order.flatMap((id) => byId.get(id) ?? []));
+    },
+    [onReorderTabs, rowTabs, tabPins],
+  );
+
   return (
     <>
-      <ResolvedWorkspaceDesktopTabsRow {...props} tabs={resolvedTabs} />
+      <ResolvedWorkspaceDesktopTabsRow
+        {...props}
+        tabs={resolvedTabs}
+        tabPins={tabPins}
+        onToggleTabPin={handleToggleTabPin}
+      />
       {props.tabs.map(({ tab }) => (
         <WorkspaceDesktopTabPresentationSlot
           key={`${tab.key}:${tab.kind}`}
@@ -1205,6 +1236,8 @@ function ResolvedWorkspaceDesktopTabsRow({
   focusModeEnabled,
   onExitFocusMode,
   trailingAction,
+  tabPins,
+  onToggleTabPin,
 }: ResolvedWorkspaceDesktopTabsRowProps) {
   const { t } = useTranslation();
   const newTabKeys = useShortcutKeys("workspace-tab-new");
@@ -1479,10 +1512,14 @@ function ResolvedWorkspaceDesktopTabsRow({
           dragHandleProps={dragHandleProps}
           showDropIndicatorBefore={showDropIndicatorBefore}
           showDropIndicatorAfter={showDropIndicatorAfter}
+          isPinned={tabPins?.isPinned(item.tab.tabId) ?? false}
+          onTogglePin={tabPins ? onToggleTabPin : undefined}
         />
       );
     },
     [
+      tabPins,
+      onToggleTabPin,
       activeDragTabId,
       isFocused,
       layout.closeButtonPolicy,
@@ -1653,6 +1690,8 @@ function ResolvedDesktopTabChip({
   dragHandleProps,
   showDropIndicatorBefore,
   showDropIndicatorAfter,
+  isPinned,
+  onTogglePin,
 }: {
   serverId: string;
   item: ResolvedWorkspaceDesktopTabRowItem;
@@ -1682,10 +1721,18 @@ function ResolvedDesktopTabChip({
   dragHandleProps: DraggableListDragHandleProps | undefined;
   showDropIndicatorBefore: boolean;
   showDropIndicatorAfter: boolean;
+  // CUSTOM(tab-pins)
+  isPinned: boolean;
+  onTogglePin?: (tabId: string) => void;
 }) {
   const { t } = useTranslation();
   const presentation = item.presentation;
   const agentPin = useAgentTabPin(serverId, item.tab);
+  const tabId = item.tab.tabId;
+  const tabPin = useMemo(
+    () => (onTogglePin ? { pinned: isPinned, toggle: () => onTogglePin(tabId) } : undefined),
+    [isPinned, onTogglePin, tabId],
+  );
   const resolvedTab = useMemo(
     () =>
       buildWorkspaceDesktopTabActions({
@@ -1705,9 +1752,11 @@ function ResolvedDesktopTabChip({
         onCloseOtherTabs,
         labels,
         agentPin,
+        tabPin,
       }),
     [
       agentPin,
+      tabPin,
       index,
       item.tab,
       onCloseOtherTabs,
@@ -1761,6 +1810,7 @@ function ResolvedDesktopTabChip({
         onNavigateTab={onNavigateTab}
         onCloseTab={onCloseTab}
         dragHandleProps={dragHandleProps}
+        isPinned={isPinned}
       />
       {showDropIndicatorAfter ? (
         <View style={[styles.tabDropIndicator, styles.tabDropIndicatorAfter]} />
@@ -1848,6 +1898,10 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabHovered: {
     backgroundColor: theme.colors.surface1,
+  },
+  // CUSTOM(tab-pins)
+  tabPinned: {
+    backgroundColor: theme.colorScheme === "dark" ? "rgba(0, 0, 0, 0.32)" : "rgba(0, 0, 0, 0.07)",
   },
   tabActive: {
     backgroundColor: theme.colors.surface2,
