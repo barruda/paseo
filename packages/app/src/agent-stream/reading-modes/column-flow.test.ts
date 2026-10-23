@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { columnsPerRow, nextLeadSpace, unusedFlowAfterEnd } from "./column-flow";
+import { columnsPerRow, flowPages, nextLeadSpace, unusedFlowAfterEnd } from "./column-flow";
 
 // Three 400px columns with 50px gaps: 1300px wide. Columns are 600px tall, rows 800px apart.
 const geometry = {
@@ -34,5 +34,22 @@ describe("nextLeadSpace", () => {
     expect(nextLeadSpace(geometry, 0, 700)).toBe(700);
     expect(nextLeadSpace(geometry, 1500, 500)).toBe(200);
     expect(nextLeadSpace(geometry, 300, 0)).toBe(300);
+  });
+});
+
+describe("flowPages", () => {
+  it("numbers the columns that hold content, skipping the ones the spacer fills", () => {
+    // Three rows; the spacer fills the first column and part of the second.
+    const pages = flowPages(geometry, 2200, 900);
+    expect(pages.map((page) => [page.row, page.column, page.number])).toEqual([
+      [0, 1, 1],
+      [0, 2, 2],
+      [1, 0, 3],
+      [1, 1, 4],
+      [1, 2, 5],
+      [2, 0, 6],
+      [2, 1, 7],
+      [2, 2, 8],
+    ]);
   });
 });

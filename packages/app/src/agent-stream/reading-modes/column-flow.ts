@@ -58,3 +58,34 @@ export function nextLeadSpace(
   const lead = (currentLead + unused) % rowCapacity;
   return lead < 0 ? lead + rowCapacity : lead;
 }
+
+export interface FlowPage {
+  row: number;
+  column: number;
+  /** 1 is the oldest loaded page. */
+  number: number;
+}
+
+/**
+ * Every column of the flow that holds content, numbered in reading order. Columns the leading
+ * spacer fills entirely are blank and get no page.
+ */
+export function flowPages(
+  geometry: ColumnFlowGeometry,
+  contentHeight: number,
+  leadSpace: number,
+): FlowPage[] {
+  if (geometry.columnHeight <= 0 || geometry.rowPitch <= 0 || contentHeight <= 0) return [];
+  const columns = columnsPerRow(geometry);
+  const rows = Math.max(1, Math.ceil(contentHeight / geometry.rowPitch));
+  const blank = Math.floor(leadSpace / geometry.columnHeight);
+  const pages: FlowPage[] = [];
+  for (let index = blank; index < rows * columns; index += 1) {
+    pages.push({
+      row: Math.floor(index / columns),
+      column: index % columns,
+      number: index - blank + 1,
+    });
+  }
+  return pages;
+}

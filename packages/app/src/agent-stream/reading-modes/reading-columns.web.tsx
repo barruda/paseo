@@ -63,6 +63,7 @@ function ActiveReadingColumns({
       maxColumns={MAX_COLUMNS}
       startKey={startKey}
       onNearStart={handleNearStart}
+      pages
     >
       <MessageOuterSpacingProvider disableOuterSpacing>
         <LoadingOlder visible={history.isLoadingOlder} />
