@@ -24,7 +24,8 @@ The Warp-side patches are the `PASEO:` commits on the `paseo` branch (`git log m
 the Warp checkout):
 
 - `app/src/terminal/remote_tty/event_loop.rs`: reads the PTY URL from `window.PASEO_WARP_PTY_URL`
-  instead of the hard-coded `ws://127.0.0.1:3030/create`.
+  instead of the hard-coded `ws://127.0.0.1:3030/create`, and the shell from
+  `window.PASEO_WARP_SHELL` (bash or zsh; `remote_tty/terminal_manager.rs` uses the same value).
 - `app/src/root_view.rs`: `remote_tty` builds start loginless, like desktop's "Skip for now".
 - `app/src/wasm_nux_dialog.rs`: hides the "Download Warp Desktop?" dialog in `remote_tty` builds.
 - `paseo-bridge/`: the bridge itself, with the page title set to plain "Warp".
@@ -42,10 +43,12 @@ the Warp checkout):
    `http://127.0.0.1:<port>/?token=…&cwd=…`.
 3. The panel calls `openBrowser({ toolbar: false, icon: "SquareTerminal", replacePanel: true })`,
    so its own tab becomes the Warp tab.
-4. The bridge's index page copies `token` and `cwd` into `window.PASEO_WARP_PTY_URL`, then loads
-   Warp's wasm.
-5. Warp opens `ws://…/create?token=…&cwd=…&num_rows=…&num_cols=…`. The bridge checks the token,
-   spawns zsh in that folder, and Warp types its zsh bootstrap into the PTY.
+4. The bridge's index page copies `token` and `cwd` into `window.PASEO_WARP_PTY_URL` and sets
+   `window.PASEO_WARP_SHELL`, then loads Warp's wasm.
+5. Warp opens `ws://…/create?token=…&cwd=…&num_rows=…&num_cols=…`, plus
+   `shell=bash&session_id=…&honor_ps1=…` for bash. The bridge checks the token and spawns the
+   shell in that folder (see "The shell"). Its init script sends Warp the InitShell hook, and Warp
+   types the full bootstrap into the PTY.
 
 Why it's shaped this way:
 
@@ -64,21 +67,29 @@ Why it's shaped this way:
 
 ## The shell
 
-The bridge starts zsh the way desktop Warp does: `exec -a -zsh zsh -g --no-rcs`. Warp's zsh
-bootstrap then sources `~/.zshenv`, `~/.zprofile` and `~/.zshrc` itself. Bash isn't supported:
-the web build sends the zsh bootstrap, and bash would need a different launch and bootstrap.
+Warp tabs run bash by default. The bridge starts each shell the way desktop Warp does
+(`crates/warp_terminal/src/local_tty/shell.rs`):
 
-- **`~/.bashrc` never runs.** Aliases and functions you need in Warp tabs go in `~/.zshrc`.
-- **History needs `~/.zshrc`.** Without `HISTFILE` and `SAVEHIST`, zsh keeps history in memory
-  only, so Ctrl+R starts empty in every new tab. `~/.zshrc` sets `HISTFILE=~/.zsh_history` and
-  `SAVEHIST`.
-- **Checking which rc files ran:** `$options[norcs]` reads `on` in these tabs because of
-  `--no-rcs`, even though the bootstrap sourced `~/.zshrc`. Check what the file defines instead:
-  `echo $HISTFILE`, or `alias claudep`.
-- Desktop Warp's own tabs run `bash --rcfile …` and load `~/.bashrc` through `~/.bash_profile`.
-  An error that starts with `zsh:` means you're in a Paseo Warp tab.
+| Shell          | Launch                              | Init script                                                  | rc files the bootstrap sources                         |
+| -------------- | ----------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------ |
+| bash (default) | `exec -a bash bash --rcfile <init>` | the bridge writes Warp's `bash_init_shell.sh` to a temp file | `/etc/profile`, then `~/.bash_profile` (→ `~/.bashrc`) |
+| zsh            | `exec -a -zsh zsh -g --no-rcs`      | Warp types `zsh_init_shell.sh` into the PTY                  | `~/.zshenv`, `~/.zprofile`, `~/.zshrc`                 |
 
-Override the zsh binary with `WARP_ZSH` in the plugin's environment.
+- **Why bash needs a session id in the URL.** Warp only accepts an InitShell hook carrying a
+  session id it registered. Zsh gets its init script typed by Warp, so Warp fills the id in itself;
+  bash reads its init script as an rcfile before Warp types anything, so Warp sends the id to the
+  bridge and the bridge fills in the script (it reads it from the Warp checkout's
+  `app/assets/bundled/bootstrap/`). A wasm build from before bash support sends no id and always
+  gets zsh, whatever the bridge's default.
+- **Picking the shell:** `WARP_SHELL_TYPE=zsh` in the plugin's environment switches the default;
+  `?shell=zsh` on a page URL switches one tab. Override the binaries with `WARP_BASH` and
+  `WARP_ZSH`.
+- **History:** bash starts with desktop Warp's history sentinels (`HISTSIZE`, `HISTFILESIZE`), so
+  it loads all of `~/.bash_history`. In zsh tabs, history needs `HISTFILE` and `SAVEHIST` in
+  `~/.zshrc`, or Ctrl+R starts empty in every tab.
+- **Telling them apart:** `echo $0` prints `bash` or `-zsh`. An error that starts with `zsh:` means
+  a zsh tab. In zsh tabs `$options[norcs]` reads `on` because of `--no-rcs`, even though the
+  bootstrap sourced `~/.zshrc`.
 
 ## Keyboard
 
@@ -148,7 +159,8 @@ Set up the customized Paseo first (`custom/README.md`), then:
 5. **Install the plugin** on each daemon, per "One-time setup: plugins" in `custom/README.md`.
    The plugin runs `node` from the daemon's PATH. If Paseo is launched from a desktop entry that
    doesn't see your nvm Node, set `PASEO_WARP_NODE` to the full path of `node`.
-6. **Create `~/.zshrc`** with your aliases and `HISTFILE`/`SAVEHIST` (see "The shell").
+6. **Only for zsh tabs:** create `~/.zshrc` with your aliases and `HISTFILE`/`SAVEHIST` (see
+   "The shell"). Bash tabs use your `~/.bash_profile` and `~/.bashrc` as they are.
 7. **Check it:** in the desktop app, "+ → Warp" should open a prompt in the workspace folder with
    no login screen.
 
@@ -181,7 +193,7 @@ Set up the customized Paseo first (`custom/README.md`), then:
 
 ## Limits
 
-- zsh only.
+- bash and zsh only; fish and PowerShell aren't wired up.
 - No Warp account or Warp AI: app.warp.dev rejects the local origin with CORS.
 - The bridge listens on 127.0.0.1 only, so Warp tabs don't work from the phone or another
   machine. Reaching them would need the daemon to serve the bundle and the PTY endpoint through
