@@ -35,9 +35,8 @@ the Warp checkout):
 1. "+ → Warp" mounts the plugin panel, which calls `warp.session.open` with the workspace folder.
    A newly created bottom panel (Ctrl+J) mounts the same panel in its first tab, so Warp is the
    bottom panel's default. It falls back to a terminal outside Electron or when the host lacks the
-   plugin. In Tasks mode, showing the hidden bottom panel also mounts it for the focused task's
-   workspace when that workspace has no Warp tab in the panel yet (otherwise its Warp tab is
-   selected), since one panel serves every task there.
+   plugin. In Tasks mode, showing the hidden bottom panel opens a session inside the panel's Warp
+   tab in the focused task's folder (see "Sessions opened by Paseo").
 2. The plugin server has already started the bridge with system `node` when the plugin loaded
    (it starts it again if it died), waits for `WARP_BRIDGE_READY <port>` on stdout, and returns
    `http://127.0.0.1:<port>/?token=…&cwd=…`.
@@ -64,6 +63,19 @@ Why it's shaped this way:
   so Rust can't read it from `location`.
 - **Electron only.** Browser tabs exist only in the desktop app. In a web browser or on the phone
   the panel shows a link to the bridge page, which works only on the machine running Paseo.
+
+## Sessions opened by Paseo
+
+Warp's web build reads `window.PASEO_WARP_PTY_URL` again for every new session (Ctrl+Shift+T), so
+the host can pick the next session's folder by changing its `cwd` parameter. Paseo does this in
+Tasks mode when the bottom panel is shown for a task in another folder
+(`packages/app/src/workspace-tabs/warp-session.ts`): `executeJavaScript` on the webview sets the
+`cwd`, then the webview's `sendInputEvent` presses Ctrl+Shift+T.
+
+- **The key press must be trusted input.** Warp ignores a `KeyboardEvent` dispatched from page
+  JavaScript, even on its focused canvas. `sendInputEvent` (or a real key) works.
+- **The new `cwd` sticks.** Sessions opened afterwards in that tab, by hand too, start in the same
+  folder until Paseo changes it again or the page reloads.
 
 ## The shell
 

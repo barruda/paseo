@@ -1,6 +1,7 @@
 // CUSTOM(bottom-panel-warp)
 import { describe, expect, it } from "vitest";
 import { resolveBottomPanelWarpTarget, resolveDeskBottomPanelShow } from "./bottom-panel-default";
+import type { WorkspaceTabTarget } from "./model";
 
 const warp = {
   id: "warp",
@@ -43,37 +44,57 @@ describe("resolveDeskBottomPanelShow", () => {
     panelId: "warp",
     context: "workspace" as const,
   };
-  const warpBrowsers = new Set(["warp-browser"]);
-  const isWarpBrowser = (id: string) => warpBrowsers.has(id);
-  const tabs = [
-    { id: "t1", workspaceId: "api", target: { kind: "terminal" as const, terminalId: "x" } },
-    {
-      id: "t2",
-      workspaceId: "api",
-      target: { kind: "browser" as const, browserId: "warp-browser" },
-    },
-    { id: "t3", workspaceId: "web", target: { kind: "browser" as const, browserId: "docs" } },
-    { id: "t4", workspaceId: "app", target: warpPanel },
+  const isWarpBrowser = (id: string) => id.startsWith("warp");
+  const sessions: Record<string, string> = { "warp-1": "/src/api", "warp-2": "/src/web" };
+  const sessionDirectory = (id: string) => sessions[id] ?? null;
+  const tabs: { id: string; target: WorkspaceTabTarget }[] = [
+    { id: "t1", target: { kind: "terminal", terminalId: "x" } },
+    { id: "t2", target: { kind: "browser", browserId: "warp-1" } },
+    { id: "t3", target: { kind: "browser", browserId: "docs" } },
+    { id: "t4", target: { kind: "browser", browserId: "warp-2" } },
   ];
+  const show = (focusedTabId: string, directory: string, panelTabs = tabs) =>
+    resolveDeskBottomPanelShow({
+      tabs: panelTabs,
+      focusedTabId,
+      directory,
+      isWarpBrowser,
+      sessionDirectory,
+    });
 
-  it("opens a Warp tab when the workspace has none in the panel", () => {
-    expect(
-      resolveDeskBottomPanelShow({ tabs, focusedTabId: "t2", workspaceId: "web", isWarpBrowser }),
-    ).toEqual({ kind: "open" });
+  it("opens a Warp session in the selected Warp tab when it's in another folder", () => {
+    expect(show("t2", "/src/app")).toEqual({
+      kind: "new-session",
+      tabId: "t2",
+      browserId: "warp-1",
+    });
+    expect(show("t4", "/src/api")).toEqual({
+      kind: "new-session",
+      tabId: "t4",
+      browserId: "warp-2",
+    });
   });
 
-  it("selects the workspace's Warp tab instead of opening another", () => {
-    expect(
-      resolveDeskBottomPanelShow({ tabs, focusedTabId: "t3", workspaceId: "api", isWarpBrowser }),
-    ).toEqual({ kind: "select", tabId: "t2" });
-    expect(
-      resolveDeskBottomPanelShow({ tabs, focusedTabId: "t1", workspaceId: "app", isWarpBrowser }),
-    ).toEqual({ kind: "select", tabId: "t4" });
+  it("leaves the panel alone when its Warp tab is already in the folder", () => {
+    expect(show("t2", "/src/api")).toEqual({ kind: "keep" });
   });
 
-  it("keeps the panel as it is when its Warp tab is already selected", () => {
-    expect(
-      resolveDeskBottomPanelShow({ tabs, focusedTabId: "t2", workspaceId: "api", isWarpBrowser }),
-    ).toEqual({ kind: "keep" });
+  it("uses the first Warp tab when the selected tab isn't Warp", () => {
+    expect(show("t3", "/src/api")).toEqual({ kind: "select", tabId: "t2" });
+    expect(show("t1", "/src/app")).toEqual({
+      kind: "new-session",
+      tabId: "t2",
+      browserId: "warp-1",
+    });
+  });
+
+  it("opens a Warp tab when the panel has none", () => {
+    expect(show("t1", "/src/api", [tabs[0]!, tabs[2]!])).toEqual({ kind: "open" });
+  });
+
+  it("only selects a Warp panel that hasn't become its browser tab yet", () => {
+    const starting = [tabs[0]!, { id: "t5", target: warpPanel }];
+    expect(show("t1", "/src/api", starting)).toEqual({ kind: "select", tabId: "t5" });
+    expect(show("t5", "/src/api", starting)).toEqual({ kind: "keep" });
   });
 });
