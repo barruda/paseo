@@ -8,14 +8,17 @@ import {
   type RefObject,
   useCallback,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
 import {
   ColumnScroller,
+  LoadingOlder,
   color,
   overlayScrollerStyle,
   useFollowEnd,
+  useNearStartLoader,
   useScrollerStyle,
 } from "./column-scroller.web";
 import type { ReadingTurn } from "./model";
@@ -222,17 +225,25 @@ function NewspaperTurn({
 }
 
 function Newspaper(props: ReadingOverviewProps) {
+  const older = useMemo(
+    () => ({
+      hasOlder: props.hasOlder,
+      isLoadingOlder: props.isLoadingOlder,
+      loadOlder: props.onLoadOlder,
+    }),
+    [props.hasOlder, props.isLoadingOlder, props.onLoadOlder],
+  );
+  const startKey = props.turns[0]?.id ?? null;
+  const handleNearStart = useNearStartLoader(older, startKey);
   return (
     <ColumnScroller
       testID="reading-overview-newspaper"
       bottomInset={props.bottomInset}
       columnMinWidth={COLUMN_WIDTH}
+      startKey={startKey}
+      onNearStart={handleNearStart}
     >
-      <OlderHistory
-        hasOlder={props.hasOlder}
-        isLoadingOlder={props.isLoadingOlder}
-        onLoadOlder={props.onLoadOlder}
-      />
+      <LoadingOlder visible={props.isLoadingOlder} />
       {props.turns.map((turn) => (
         <NewspaperTurn
           key={turn.id}

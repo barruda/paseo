@@ -2817,7 +2817,8 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 
 - **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
 - **Commits:** `custom: Compact, Newspaper and Cards reading modes for wide screens`, then
-  `custom: Columns reading mode, and reading modes keep answers followed by plugin rows`
+  `custom: Columns reading mode, and reading modes keep answers followed by plugin rows`, then
+  `custom: Columns and Newspaper open full and load older messages while scrolling up`
 - **Why:** With the window maximized, the chat stays a narrow column and a long conversation takes
   a lot of scrolling. Ways to see more of it at once, each behind its own button so they can be
   compared.
@@ -2836,7 +2837,11 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
     Expand, and the hidden step count.
   - Columns and Newspaper share `column-scroller.web.tsx`. With CSS `column-wrap` (Chromium 145+),
     a screen-tall row of columns is followed by the next row below, one scroll for the whole grid,
-    with proximity snap points at each row. Without it, the columns run sideways.
+    with proximity snap points at each row. Without it, the columns run sideways. The flow is
+    end-aligned: a spacer at its start takes up what the last row leaves empty
+    (`column-flow.ts` measures an end marker), so the screen opens full on the newest content.
+    Near the top, older messages load on their own, and the reader keeps their distance from the
+    end, which end alignment holds steady.
   - Columns, Newspaper and Cards cover the chat, which stays mounted, and keep the composer's
     space clear at the bottom. In Newspaper and Cards, "Open in chat" (or a click on the prompt)
     returns to the chat at that turn. Web only; native renders nothing.
@@ -2856,7 +2861,8 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   `AgentReadingOverview` over the stream, always mounted (it returns null outside the overviews,
   but the jump back to the chat needs it alive). Put the four buttons next to the tab row's
   new-tab button for the active agent tab and reserve their width.
-- **Verify:** `src/agent-stream/reading-modes/model.test.ts` (in the update script). In the app,
-  on a long chat: Compact hides tool rows and keeps every answer; Columns shows the whole chat in
-  three columns; Newspaper shows columns that end above the composer; Cards shows one card per
+- **Verify:** `src/agent-stream/reading-modes/model.test.ts` and `column-flow.test.ts` (in the
+  update script). In the app,
+  on a long chat: Compact hides tool rows and keeps every answer; Columns opens with three full
+  columns and loads older messages as you scroll up; Newspaper shows columns that end above the composer; Cards shows one card per
   turn; "Open in chat" on the first turn scrolls the chat to its prompt.
