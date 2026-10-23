@@ -1,12 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { StreamItem } from "@/types/stream";
 import type { StreamLayoutItem } from "../layout";
-import {
-  buildReadingTurns,
-  selectCompactRows,
-  type ReadingTurn,
-  selectCompactItemIds,
-} from "./model";
+import { selectCompactItemIds, selectCompactRows } from "./model";
 
 const timestamp = new Date(0);
 
@@ -90,9 +85,6 @@ describe("plugin rows after the answer", () => {
   it("keeps the answer and the plugin row", () => {
     const items = [user("u1"), tool("t1"), assistant("a1"), plugin("p1")];
     expect([...selectCompactItemIds(items)]).toEqual(["u1", "a1", "p1"]);
-    expect(buildReadingTurns(items).map(summarizeTurn)).toEqual([
-      { prompt: "u1", answer: ["a1"], hidden: 1, jump: "u1" },
-    ]);
   });
 });
 
@@ -120,33 +112,5 @@ describe("selectCompactRows", () => {
     const items = [user("u1"), blocks[0], tool("t1"), blocks[1]];
     const rows = items.map((item) => ({ item }) as StreamLayoutItem);
     expect(selectCompactRows(rows, items).map((row) => row.item.id)).toEqual(["u1", "a2:0"]);
-  });
-});
-
-function summarizeTurn(turn: ReadingTurn) {
-  return {
-    prompt: turn.prompt?.id ?? null,
-    answer: turn.answer.map((item) => item.id),
-    hidden: turn.hiddenStepCount,
-    jump: turn.jumpMessageId,
-  };
-}
-
-describe("buildReadingTurns", () => {
-  it("pairs each prompt with its final answer and counts what was left out", () => {
-    const turns = buildReadingTurns([
-      assistant("a0"),
-      user("u1"),
-      assistant("a1"),
-      tool("t1"),
-      assistant("a2"),
-      user("u2"),
-      tool("t2"),
-    ]);
-    expect(turns.map(summarizeTurn)).toEqual([
-      { prompt: null, answer: ["a0"], hidden: 0, jump: "a0" },
-      { prompt: "u1", answer: ["a2"], hidden: 2, jump: "u1" },
-      { prompt: "u2", answer: [], hidden: 1, jump: "u2" },
-    ]);
   });
 });

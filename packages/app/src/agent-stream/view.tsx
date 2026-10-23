@@ -82,7 +82,6 @@ import { createActivePromptPublisher } from "@/agent-stream/chat-outline/model";
 import { collectChatImages } from "@/agent-stream/chat-images/model";
 import { ChatImagesRail } from "@/agent-stream/chat-images/rail";
 // CUSTOM(reading-modes)
-import { AgentReadingOverview } from "@/agent-stream/reading-modes/agent-overview";
 import type { ReadingMode } from "@/agent-stream/reading-modes/model";
 import { useReadingRows } from "@/agent-stream/reading-modes/rows";
 import { useReadingMode } from "@/agent-stream/reading-modes/store";
@@ -1316,24 +1315,6 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               renderRow={renderStreamItem}
               pendingPermissions={auxiliary.pendingPermissions}
               turnFooter={auxiliary.turnFooter}
-              history={readingOlderHistory}
-              followRequest={readingFollowRequest}
-              onAtEndChange={setIsReadingAtEnd}
-              bottomInset={bottomOverlayTailClearance}
-            />
-            <AgentReadingOverview
-              mode={readingMode}
-              agentId={agentId}
-              serverId={resolvedServerId}
-              client={client}
-              workspaceRoot={workspaceRoot}
-              toast={toast}
-              onOpenWorkspaceFile={handleInlinePathPress}
-              tail={effectiveStreamItems}
-              head={effectiveStreamHead}
-              viewportRef={viewportRef}
-              visibleMessageIds={visibleMessageIds}
-              revealLoadedMessage={revealLoadedHistory}
               history={readingOlderHistory}
               followRequest={readingFollowRequest}
               onAtEndChange={setIsReadingAtEnd}

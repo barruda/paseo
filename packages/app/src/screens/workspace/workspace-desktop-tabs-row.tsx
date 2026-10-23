@@ -100,11 +100,6 @@ import {
 import { useAgentTabPin } from "@/task-navigation/agent-tab-pin";
 import { useTabPins, type TabPins } from "@/tab-pins/use-tab-pins";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
-// CUSTOM(reading-modes)
-import {
-  READING_MODE_BUTTONS_RESERVED_WIDTH,
-  ReadingModeButtons,
-} from "@/agent-stream/reading-modes/buttons";
 
 // CUSTOM(open-file-externally): use the same icon rail as the existing tab actions.
 const ThemedGlobe = withUnistyles(Globe);
@@ -1272,8 +1267,6 @@ function ResolvedWorkspaceDesktopTabsRow({
           (archiveAgentTab ? PANE_ARCHIVE_ACTION_RESERVED_WIDTH : 0) +
           (showPaneMaximizeAction ? PANE_MAXIMIZE_ACTION_RESERVED_WIDTH : 0) +
           (trailingAction ? TRAILING_ACTION_RESERVED_WIDTH : 0) +
-          // CUSTOM(reading-modes)
-          (archiveAgentTab ? READING_MODE_BUTTONS_RESERVED_WIDTH : 0) +
           (isBottomPanel ? BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH : 0),
       ),
       rowPaddingHorizontal: TAB_ROW_PADDING_HORIZONTAL,
@@ -1620,12 +1613,6 @@ function ResolvedWorkspaceDesktopTabsRow({
               shortcutKeys={newTabKeys}
             />
           ) : null}
-          {/* CUSTOM(reading-modes): beside the "+"; with the row overflowing, the "+" moves to
-              the pane buttons and these sit before them. */}
-          <ReadingModeButtons
-            agentTab={layout.requiresHorizontalScrollFallback ? null : archiveAgentTab}
-            wrapperStyle={styles.readingModeButtons}
-          />
         </Animated.ScrollView>
         <HorizontalScrollBoundaryShades
           visible={layout.requiresHorizontalScrollFallback}
@@ -1635,11 +1622,6 @@ function ResolvedWorkspaceDesktopTabsRow({
           rightStyle={tabScrollBoundary.rightShadeStyle}
         />
       </View>
-      {/* CUSTOM(reading-modes) */}
-      <ReadingModeButtons
-        agentTab={layout.requiresHorizontalScrollFallback ? archiveAgentTab : null}
-        wrapperStyle={styles.readingModeButtons}
-      />
       <WorkspacePaneToolbarActions
         panePanelKinds={panePanelKinds}
         host={host}
@@ -1861,11 +1843,6 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: theme.spacing[1],
-  },
-  // CUSTOM(reading-modes)
-  readingModeButtons: {
-    flexDirection: "row",
-    alignItems: "center",
   },
   inlineNewTabButton: {
     width: buttonControlHeight.xs,

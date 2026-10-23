@@ -2,6 +2,7 @@ import { memo, useCallback, type ReactElement } from "react";
 import { COMMIT_WIP_PILL_ALWAYS_SHOWN, CommitWipPill } from "@/composer/commit-wip-pill";
 import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { RenameSessionPill } from "@/composer/rename-session-pill";
+import { ReadingModePill } from "@/agent-stream/reading-modes/pill";
 import { WorktreePill } from "@/composer/worktree-pill";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { AgentTaskList } from "@/composer/task-list";
@@ -166,6 +167,8 @@ export const AgentTracks = memo(function AgentTracks({
       />
       {/* CUSTOM(worktree-pill): copies the worktree path or merges it into the main checkout. */}
       <WorktreePill serverId={serverId} workspaceId={workspaceId} agentId={agentId} cwd={cwd} />
+      {/* CUSTOM(reading-modes): Columns and Compact, at the right end. */}
+      <ReadingModePill agentId={agentId} />
     </ComposerTrackBar>
   );
 });

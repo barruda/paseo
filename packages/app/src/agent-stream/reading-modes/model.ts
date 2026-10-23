@@ -1,12 +1,10 @@
-// CUSTOM(reading-modes): four ways to read a long chat on a wide screen, each behind its own
-// button in the tab row so they can be compared. All of them draw numbered pages over the chat:
-// Columns every chat row, Compact the rows of prompts and final answers, Newspaper and Cards a
-// summary of each turn.
-import type { AssistantMessageItem, StreamItem, UserMessageItem } from "@/types/stream";
+// CUSTOM(reading-modes): two ways to read a long chat on a wide screen, as numbered pages drawn
+// over the chat: Columns every chat row, Compact only prompts and final answers.
+import type { AssistantMessageItem, StreamItem } from "@/types/stream";
 import type { StreamLayoutItem } from "../layout";
 import { getStreamItemMessageId } from "../presentation";
 
-export type ReadingMode = "chat" | "compact" | "newspaper" | "cards" | "columns";
+export type ReadingMode = "chat" | "columns" | "compact";
 
 /** The daemon's older history, which every reading mode loads in full before it lays out pages. */
 export interface ReadingHistory {
@@ -17,17 +15,6 @@ export interface ReadingHistory {
   loadOlder: () => unknown;
   /** Names how far back the loaded history reaches; it moves when an older page arrives. */
   progressKey: string | null;
-}
-
-export interface ReadingTurn {
-  id: string;
-  prompt: UserMessageItem | null;
-  /** The assistant text after the turn's last step: what the agent ended up saying. */
-  answer: AssistantMessageItem[];
-  /** Tool calls, thoughts, task lists and intermediate text left out of `answer`. */
-  hiddenStepCount: number;
-  /** The message to scroll to when the reader opens this turn in the chat. */
-  jumpMessageId: string;
 }
 
 // Work the agent did on the way to its answer. Notifications, compaction markers and plugin rows
@@ -99,26 +86,4 @@ export function selectCompactRows(
 ): StreamLayoutItem[] {
   const kept = selectCompactItemIds(items);
   return rows.filter((row) => kept.has(row.item.id) || kept.has(getStreamItemMessageId(row.item)));
-}
-
-export function buildReadingTurns(items: readonly StreamItem[]): ReadingTurn[] {
-  const turns: ReadingTurn[] = [];
-  for (const response of splitResponses(items)) {
-    const first = response[0];
-    const prompt = first.kind === "user_message" ? first : null;
-    const lastStep = findLastStepIndex(response);
-    const answer = response.slice(lastStep + 1).filter(isAssistantMessage);
-    const hiddenStepCount = response.filter(
-      (item, index) => isStep(item) || (isAssistantMessage(item) && index < lastStep),
-    ).length;
-    if (!prompt && answer.length === 0 && hiddenStepCount === 0) continue;
-    turns.push({
-      id: first.id,
-      prompt,
-      answer,
-      hiddenStepCount,
-      jumpMessageId: prompt?.id ?? answer[0]?.id ?? first.id,
-    });
-  }
-  return turns;
 }
