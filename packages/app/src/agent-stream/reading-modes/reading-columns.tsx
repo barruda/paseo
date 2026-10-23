@@ -3,6 +3,8 @@ import type { StreamLayoutItem } from "../layout";
 import type { ReadingMode } from "./model";
 
 export interface ReadingColumnsHistory {
+  /** The daemon's history has been applied; before that, `hasOlder` means nothing yet. */
+  isSynced: boolean;
   hasOlder: boolean;
   isLoadingOlder: boolean;
   loadOlder: () => unknown;

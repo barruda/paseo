@@ -2822,7 +2822,8 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   `custom: Columns reading mode, and reading modes keep answers followed by plugin rows`, then
   `custom: Columns and Newspaper open full and load older messages while scrolling up`, then
   `custom: Columns shows numbered pages and turns one screen per scroll`, then
-  `custom: Columns lays out the whole conversation, follows sent messages and never turns back`
+  `custom: Columns lays out the whole conversation, follows sent messages and never turns back`, then
+  `custom: Columns shows only when every page is laid out, and turns pages twice as fast`
 - **Why:** With the window maximized, the chat stays a narrow column and a long conversation takes
   a lot of scrolling. Ways to see more of it at once, each behind its own button so they can be
   compared.
@@ -2835,9 +2836,11 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
     counting them hid every answer.
   - **Columns** draws the chat itself, every row through the chat's own `renderStreamItem`, in up
     to three columns (420px minimum), with pending permissions and the turn footer at the end.
-    It lays out the whole conversation, not the chat's mounted window: on open it fetches every
-    older page from the daemon ("Loading the whole conversation…"), then mounts all rows once
-    (memoized, so streaming re-renders only the tail). Page 1 is the conversation's first page,
+    It lays out the whole conversation, not the chat's mounted window: on open it waits for the
+    daemon's history to sync, fetches every older page ("Loading the whole conversation…"), then
+    mounts all rows once (memoized, so streaming re-renders only the tail), hidden until the
+    pages are laid out and late blocks settled. A fetch that leaves the start unmoved for 2 s
+    failed, and Columns shows what arrived. Page 1 is the conversation's first page,
     so numbers and the total (`n / total`) hold still. Each column is a page in a thin rounded
     frame. On open, whole blank columns before page 1 make the last page close its row, so the
     screen opens full; they stay put after that, so pages never reflow (`TurnedPages` in
@@ -2845,7 +2848,9 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
     enough). A page, once turned to, stays: while the tail streams, the view only moves forward,
     even if the tail shrinks back into the page before. Sending a message (any chat
     `scrollToBottom`) returns to the end. Scrolling snaps to whole screens, and one wheel gesture
-    (events under 250 ms apart) turns exactly one screen.
+    (events under 250 ms apart) turns exactly one screen in 225 ms, animated by hand (the
+    browser's smooth scroll takes about 450 ms and has no duration setting; snapping is off
+    while it runs).
   - **Newspaper** draws prompts and final answers in 460px columns.
   - **Cards** draws one card per turn in a grid: the prompt, the final answer capped at 340px with
     Expand, and the hidden step count.

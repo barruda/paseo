@@ -5,11 +5,12 @@
 //
 // Unlike the chat, it lays out the whole conversation: page numbers and the page count only hold
 // still when page 1 is the conversation's first page. It first fetches every older page from the
-// daemon, then mounts all rows once. Rows are memoized, so streaming re-renders only the tail.
+// daemon, then mounts all rows once, hidden until the pages are laid out. Rows are memoized, so
+// streaming re-renders only the tail.
 import { type CSSProperties, memo, type ReactNode, useEffect, useState } from "react";
 import { MessageOuterSpacingProvider } from "@/components/message";
 import type { StreamLayoutItem } from "../layout";
-import { color, overlayScrollerStyle, PagedColumnScroller } from "./column-scroller.web";
+import { LoadingConversation, PagedColumnScroller } from "./column-scroller.web";
 import type { ReadingColumnsHistory, ReadingColumnsProps } from "./reading-columns";
 
 const COLUMN_MIN_WIDTH = 420;
@@ -51,31 +52,33 @@ export function ReadingColumns({
   );
 }
 
+// A fetch that ends with the start unmoved this long failed; Columns then shows what arrived.
+const STALLED_FETCH_MS = 2000;
+
 /**
- * Fetches older history until the daemon has none left. A fetch that ends without moving the
- * start (it failed) stops the loop, and Columns shows what arrived.
+ * Fetches older history until the daemon has none left. Done only once the timeline is synced
+ * (before that, "no older pages" means nothing yet) and no older page is left or the loop stalled.
  */
 function useWholeHistory(history: ReadingColumnsHistory): boolean {
   const [askedFor, setAskedFor] = useState<string | null | undefined>(undefined);
+  const [stalledAt, setStalledAt] = useState<string | null | undefined>(undefined);
   const [fetching, setFetching] = useState(false);
-  const { hasOlder, isLoadingOlder, loadOlder, progressKey } = history;
+  const { isSynced, hasOlder, isLoadingOlder, loadOlder, progressKey } = history;
+  const idle = isSynced && hasOlder && !isLoadingOlder && !fetching;
   useEffect(() => {
-    if (!hasOlder || isLoadingOlder || fetching || askedFor === progressKey) return;
+    if (!idle || askedFor === progressKey) return;
     setAskedFor(progressKey);
     setFetching(true);
     void Promise.resolve(loadOlder()).finally(() => setFetching(false));
-  }, [askedFor, fetching, hasOlder, isLoadingOlder, loadOlder, progressKey]);
-  return !hasOlder || (!fetching && !isLoadingOlder && askedFor === progressKey);
+  }, [askedFor, idle, loadOlder, progressKey]);
+  useEffect(() => {
+    if (!idle || askedFor !== progressKey) return;
+    const timer = setTimeout(() => setStalledAt(progressKey), STALLED_FETCH_MS);
+    return () => clearTimeout(timer);
+  }, [askedFor, idle, progressKey]);
+  if (!isSynced) return false;
+  return !hasOlder || (idle && stalledAt === progressKey);
 }
-
-const loadingStyle: CSSProperties = {
-  ...overlayScrollerStyle,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 13,
-  color: color.extraMuted,
-};
 
 function ActiveReadingColumns({
   rows,
@@ -88,11 +91,7 @@ function ActiveReadingColumns({
 }: Omit<ReadingColumnsProps, "mode">) {
   const complete = useWholeHistory(history);
   if (!complete) {
-    return (
-      <div data-testid="reading-columns-loading" style={loadingStyle}>
-        Loading the whole conversation…
-      </div>
-    );
+    return <LoadingConversation />;
   }
   return (
     <PagedColumnScroller

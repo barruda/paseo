@@ -1165,12 +1165,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // and skips the chat's mounted window.
     const readingOlderHistory = useMemo(
       () => ({
+        isSynced: isAuthoritativeHistoryReady,
         hasOlder: remoteHasOlder,
         isLoadingOlder: remoteIsLoadingOlder,
         loadOlder: loadRemoteOlder,
         progressKey: remoteProgressKey,
       }),
-      [loadRemoteOlder, remoteHasOlder, remoteIsLoadingOlder, remoteProgressKey],
+      [
+        isAuthoritativeHistoryReady,
+        loadRemoteOlder,
+        remoteHasOlder,
+        remoteIsLoadingOlder,
+        remoteProgressKey,
+      ],
     );
     const readingColumnsRows = useMemo(() => {
       if (presentedStream.mode !== "columns") return EMPTY_READING_ROWS;

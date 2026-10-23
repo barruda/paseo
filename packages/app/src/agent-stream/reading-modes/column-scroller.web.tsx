@@ -241,8 +241,42 @@ function usePageFrames(
 // Wheel events closer together than this belong to one gesture: a flick of the wheel or a
 // trackpad swipe, momentum included, turns one screen of pages.
 const WHEEL_GESTURE_GAP_MS = 250;
-const PAGE_TURN_MS = 700;
+// Twice as fast as the browser's smooth scroll, which takes about 450 ms for one screen.
+const PAGE_TURN_ANIMATION_MS = 225;
+const PAGE_TURN_MS = PAGE_TURN_ANIMATION_MS + 100;
 const PREPEND_ANCHOR_MS = 800;
+
+function easeOutCubic(progress: number): number {
+  return 1 - (1 - progress) ** 3;
+}
+
+// The browser's smooth scroll has no duration setting, so the turn animates by hand. Mandatory
+// snapping would pull every intermediate position back to a row, so it is off while it runs.
+function animateScrollTop(element: HTMLElement, top: number): () => void {
+  const from = element.scrollTop;
+  const snapType = element.style.scrollSnapType;
+  const startedAt = performance.now();
+  element.style.scrollSnapType = "none";
+  let frame = 0;
+  const finish = () => {
+    element.scrollTop = top;
+    element.style.scrollSnapType = snapType;
+  };
+  const step = (now: number) => {
+    const progress = Math.min(1, (now - startedAt) / PAGE_TURN_ANIMATION_MS);
+    if (progress >= 1) {
+      finish();
+      return;
+    }
+    element.scrollTop = from + (top - from) * easeOutCubic(progress);
+    frame = requestAnimationFrame(step);
+  };
+  frame = requestAnimationFrame(step);
+  return () => {
+    cancelAnimationFrame(frame);
+    element.style.scrollSnapType = snapType;
+  };
+}
 
 function useWheelPaging(
   scrollerRef: RefObject<HTMLDivElement | null>,
@@ -253,6 +287,7 @@ function useWheelPaging(
     const scroller = scrollerRef.current;
     if (!supportsColumnWrap || !scroller || pageHeight <= 0) return;
     let lastWheelAt = 0;
+    let cancelTurn: (() => void) | null = null;
     const handleWheel = (event: WheelEvent) => {
       if (event.ctrlKey || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
       event.preventDefault();
@@ -266,10 +301,14 @@ function useWheelPaging(
         Math.min(scroller.scrollHeight - scroller.clientHeight, screen * pageHeight),
       );
       onTarget(top);
-      scroller.scrollTo({ top, behavior: "smooth" });
+      cancelTurn?.();
+      cancelTurn = animateScrollTop(scroller, top);
     };
     scroller.addEventListener("wheel", handleWheel, { passive: false });
-    return () => scroller.removeEventListener("wheel", handleWheel);
+    return () => {
+      cancelTurn?.();
+      scroller.removeEventListener("wheel", handleWheel);
+    };
   }, [onTarget, pageHeight, scrollerRef]);
 }
 
@@ -492,6 +531,9 @@ export function PagedColumnScroller({
   const pageFrames = usePageFrames(geometry, contentHeight, blankPages, lastFlowIndex);
   const rowSnapStyles = useRowSnapStyles(height, contentHeight, turnedRows);
   const pageCount = lastPage === null ? 0 : lastPage + 1;
+  // Shown only once the pages are laid out and late blocks settled, so the reader never sees
+  // the pages move into place.
+  const ready = lastPage !== null && settleTick > 0;
 
   // While a page turn animates, the reader's place is where it lands, not where it passes.
   const pageTurnUntil = useRef(0);
@@ -572,29 +614,54 @@ export function PagedColumnScroller({
   );
 
   return (
-    <div
-      ref={scrollerRef}
-      data-testid={testID}
-      data-settle={settleTick}
-      data-page-count={pageCount}
-      style={scrollerStyle}
-      onScroll={handleScroll}
-    >
-      {rowSnapStyles.map((style) => (
-        <div key={String(style.top)} style={style} />
-      ))}
-      {pageFrames.map((frame) => (
-        <div key={frame.key} style={frame.style}>
-          <span style={pageNumberStyle}>
-            {frame.number} / {pageCount}
-          </span>
+    <>
+      {ready ? null : <LoadingConversation />}
+      <div
+        ref={scrollerRef}
+        data-testid={testID}
+        data-settle={settleTick}
+        data-page-count={pageCount}
+        data-ready={ready}
+        style={ready ? scrollerStyle : hiddenStyle(scrollerStyle)}
+        onScroll={handleScroll}
+      >
+        {rowSnapStyles.map((style) => (
+          <div key={String(style.top)} style={style} />
+        ))}
+        {pageFrames.map((frame) => (
+          <div key={frame.key} style={frame.style}>
+            <span style={pageNumberStyle}>
+              {frame.number} / {pageCount}
+            </span>
+          </div>
+        ))}
+        <div ref={columnsRef} style={columnsStyle}>
+          <div style={blankStyle} />
+          {children}
+          <div ref={endMarkerRef} />
         </div>
-      ))}
-      <div ref={columnsRef} style={columnsStyle}>
-        <div style={blankStyle} />
-        {children}
-        <div ref={endMarkerRef} />
       </div>
+    </>
+  );
+}
+
+function hiddenStyle(style: CSSProperties): CSSProperties {
+  return { ...style, visibility: "hidden" };
+}
+
+const loadingConversationStyle: CSSProperties = {
+  ...overlayScrollerStyle,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  fontSize: 13,
+  color: color.extraMuted,
+};
+
+export function LoadingConversation() {
+  return (
+    <div data-testid="reading-columns-loading" style={loadingConversationStyle}>
+      Loading the whole conversation…
     </div>
   );
 }
