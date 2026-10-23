@@ -86,7 +86,11 @@ import {
 import { smallIconButtonChromeFrameSize } from "@/components/ui/icon-button-chrome";
 import { BOTTOM_PANEL_PANE_ID } from "@/workspace-tabs/bottom-panel";
 import { BottomPanelCollapseButton } from "@/workspace-tabs/bottom-panel-collapse-button";
-import { BottomPanelWarpTabButton } from "@/workspace-tabs/bottom-panel-warp-tab-button";
+import {
+  WARP_CHIP_NEW_TAB_WIDTH,
+  WarpChipNewTabButton,
+} from "@/workspace-tabs/bottom-panel-warp-tab-button";
+import { useBrowserStore } from "@/desktop/browser/store";
 import {
   HorizontalScrollBoundaryShades,
   useHorizontalScrollBoundary,
@@ -128,8 +132,6 @@ const TRAILING_ACTION_RESERVED_WIDTH =
 // CUSTOM(bottom-panel-collapse): the bottom panel's ⌄⌄ button sits before its tabs.
 const BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH =
   smallIconButtonChromeFrameSize(false) + PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING;
-// CUSTOM(bottom-panel-warp-tab-button): the "new Warp tab in this project" button after its tabs.
-const BOTTOM_PANEL_WARP_TAB_RESERVED_WIDTH = smallIconButtonChromeFrameSize(false);
 // Chip geometry. `layoutMetrics` measures tabs from these same numbers, so a chip that changes
 // shape without changing them mis-measures and drops the row into the overflow-scroll fallback at
 // the wrong width. Keep them together.
@@ -555,6 +557,8 @@ interface WorkspaceTabLabel {
   key: string;
   label: string;
   modified: boolean;
+  /** CUSTOM(bottom-panel-warp-tab-button): width of a button inside the chip, after the label. */
+  actionWidth: number;
 }
 
 interface WorkspaceTabLabelMeasurement {
@@ -578,7 +582,7 @@ function completeWorkspaceTabLabelWidths(
   measurements: Map<string, WorkspaceTabLabelMeasurement>,
 ): number[] | null {
   const widths: number[] = [];
-  for (const { key, label, modified } of labels) {
+  for (const { key, label, modified, actionWidth } of labels) {
     const measurement = measurements.get(key);
     if (!measurement || measurement.label !== label || measurement.width <= 0) {
       return null;
@@ -586,7 +590,7 @@ function completeWorkspaceTabLabelWidths(
     // The modified dot sits in the content row, so a modified tab needs that much more width
     // before its label starts truncating.
     const modifiedAllowance = modified ? TAB_CONTENT_GAP + TAB_MODIFIED_DOT_SIZE : 0;
-    widths.push(measurement.width + TAB_LABEL_LAYOUT_ALLOWANCE + modifiedAllowance);
+    widths.push(measurement.width + TAB_LABEL_LAYOUT_ALLOWANCE + modifiedAllowance + actionWidth);
   }
   return widths;
 }
@@ -837,6 +841,7 @@ function TabChip({
   onCloseTab,
   dragHandleProps,
   isPinned,
+  warpNewTabWorkspaceId,
 }: {
   serverId: string;
   tab: WorkspaceTabDescriptor;
@@ -857,6 +862,7 @@ function TabChip({
   onCloseTab: (tabId: string) => Promise<void> | void;
   dragHandleProps: DraggableListDragHandleProps | undefined;
   isPinned: boolean;
+  warpNewTabWorkspaceId?: string;
 }) {
   const { closeButtonTestId, contextMenuTestId, menuEntries } = resolvedTab;
   const { t } = useTranslation();
@@ -1077,6 +1083,15 @@ function TabChip({
             </Pressable>
           </View>
         ) : null}
+        {/* CUSTOM(bottom-panel-warp-tab-button) */}
+        <WarpChipNewTabButton
+          tabId={tab.tabId}
+          target={tab.target}
+          serverId={serverId}
+          workspaceId={warpNewTabWorkspaceId}
+          closeShown={showCloseControl}
+          onNavigateTab={onNavigateTab}
+        />
 
         <ContextMenuContent
           align="start"
@@ -1270,9 +1285,7 @@ function ResolvedWorkspaceDesktopTabsRow({
           (archiveAgentTab ? PANE_ARCHIVE_ACTION_RESERVED_WIDTH : 0) +
           (showPaneMaximizeAction ? PANE_MAXIMIZE_ACTION_RESERVED_WIDTH : 0) +
           (trailingAction ? TRAILING_ACTION_RESERVED_WIDTH : 0) +
-          (isBottomPanel
-            ? BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH + BOTTOM_PANEL_WARP_TAB_RESERVED_WIDTH
-            : 0),
+          (isBottomPanel ? BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH : 0),
       ),
       rowPaddingHorizontal: TAB_ROW_PADDING_HORIZONTAL,
       tabGap: TAB_CHIP_GAP,
@@ -1327,6 +1340,24 @@ function ResolvedWorkspaceDesktopTabsRow({
     }),
     [t],
   );
+  // CUSTOM(bottom-panel-warp-tab-button): Warp tabs in the bottom panel get a + in their chip. A
+  // string, so the selector result stays stable between browser store updates.
+  const warpTabKeysText = useBrowserStore((state) =>
+    isBottomPanel
+      ? tabs
+          .filter(
+            ({ tab }) =>
+              tab.target.kind === "browser" &&
+              state.browsersById[tab.target.browserId]?.hideToolbar === true,
+          )
+          .map(({ tab }) => tab.key)
+          .join("\n")
+      : "",
+  );
+  const warpTabKeys = useMemo(
+    () => new Set(warpTabKeysText ? warpTabKeysText.split("\n") : []),
+    [warpTabKeysText],
+  );
   const tabLabels = useMemo(
     () =>
       tabs.map((tab) => {
@@ -1334,9 +1365,14 @@ function ResolvedWorkspaceDesktopTabsRow({
           tab.presentation.titleState === "loading"
             ? getFallbackTabLabel(tab.tab, fallbackTabLabels)
             : tab.presentation.label;
-        return { key: tab.tab.key, label, modified: tab.presentation.modified };
+        return {
+          key: tab.tab.key,
+          label,
+          modified: tab.presentation.modified,
+          actionWidth: warpTabKeys.has(tab.tab.key) ? WARP_CHIP_NEW_TAB_WIDTH : 0,
+        };
       }),
-    [fallbackTabLabels, tabs],
+    [fallbackTabLabels, tabs, warpTabKeys],
   );
   const tabLabelSignature = useMemo(() => workspaceTabLabelSignature(tabLabels), [tabLabels]);
   const currentTabLabelKeys = useMemo(() => new Set(tabLabels.map(({ key }) => key)), [tabLabels]);
@@ -1512,10 +1548,13 @@ function ResolvedWorkspaceDesktopTabsRow({
           showDropIndicatorAfter={showDropIndicatorAfter}
           isPinned={tabPins?.isPinned(item.tab.tabId) ?? false}
           onTogglePin={tabPins ? onToggleTabPin : undefined}
+          warpNewTabWorkspaceId={warpTabKeys.has(item.tab.key) ? normalizedWorkspaceId : undefined}
         />
       );
     },
     [
+      warpTabKeys,
+      normalizedWorkspaceId,
       tabPins,
       onToggleTabPin,
       activeDragTabId,
@@ -1607,15 +1646,6 @@ function ResolvedWorkspaceDesktopTabsRow({
             getItemData={getTabDragData}
             renderItem={renderTab}
           />
-          {/* CUSTOM(bottom-panel-warp-tab-button) */}
-          {isBottomPanel ? (
-            <BottomPanelWarpTabButton
-              tabs={tabs}
-              serverId={normalizedServerId}
-              workspaceId={normalizedWorkspaceId}
-              onNavigateTab={onNavigateTab}
-            />
-          ) : null}
           {!layout.requiresHorizontalScrollFallback ? (
             <WorkspaceNewTabButton
               panePanelKinds={panePanelKinds}
@@ -1688,6 +1718,7 @@ function ResolvedDesktopTabChip({
   showDropIndicatorAfter,
   isPinned,
   onTogglePin,
+  warpNewTabWorkspaceId,
 }: {
   serverId: string;
   item: ResolvedWorkspaceDesktopTabRowItem;
@@ -1720,6 +1751,8 @@ function ResolvedDesktopTabChip({
   // CUSTOM(tab-pins)
   isPinned: boolean;
   onTogglePin?: (tabId: string) => void;
+  /** CUSTOM(bottom-panel-warp-tab-button): set on a bottom-panel Warp tab, whose chip gets a +. */
+  warpNewTabWorkspaceId?: string;
 }) {
   const { t } = useTranslation();
   const presentation = item.presentation;
@@ -1807,6 +1840,7 @@ function ResolvedDesktopTabChip({
         onCloseTab={onCloseTab}
         dragHandleProps={dragHandleProps}
         isPinned={isPinned}
+        warpNewTabWorkspaceId={warpNewTabWorkspaceId}
       />
       {showDropIndicatorAfter ? (
         <View style={[styles.tabDropIndicator, styles.tabDropIndicatorAfter]} />

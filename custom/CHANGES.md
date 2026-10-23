@@ -3010,36 +3010,40 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   it first), all in the update script. In the app, pin the third tab: it moves first and darkens;
   pin another: it sits second.
 
-## bottom-panel-warp-tab-button: a button beside the bottom panel's tabs opens a Warp tab in the agent's project
+## bottom-panel-warp-tab-button: a + in the bottom panel's Warp chip opens a Warp tab in the agent's project
 
 - **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
-- **Commit:** `custom: a bottom panel button opens a tab inside Warp in the agent's project`.
-  It replaces `desk-bottom-panel-warp` (commits `custom: showing the Tasks bottom panel opens Warp
-in the task's workspace` and `custom: showing the Tasks bottom panel opens a session inside Warp
-in the task's folder`), which tried to do this on every show of the panel and never opened the
-  Warp tab: the Ctrl+Shift+T it sent through `sendInputEvent` didn't reach Warp.
+- **Commits:** `custom: a bottom panel button opens a tab inside Warp in the agent's project`, then
+  `custom: the new Warp tab button moves into the Warp tab chip as a +`. It replaces
+  `desk-bottom-panel-warp` (commits `custom: showing the Tasks bottom panel opens Warp in the
+task's workspace` and `custom: showing the Tasks bottom panel opens a session inside Warp in the
+task's folder`), which did this on every show of the panel and never opened the Warp tab: the
+  Ctrl+Shift+T it sent through `sendInputEvent` didn't reach Warp. Showing the panel only shows it
+  again.
 - **Why:** In Tasks mode one bottom panel serves every task, so its Warp shells sit in whatever
-  folder they started in. The button gives a shell in the current agent's project in one click.
-- **What:** When the bottom panel has a Warp tab, a terminal icon sits right after its tabs (before
-  `+`). Clicking it selects the Warp tab (the selected one, else the first) and opens a new tab
-  inside Warp in the agent's project folder: in Tasks mode the workspace of the last focused agent
-  tab ([desk-context-tab](#desk-context-tab-the-explorer-follows-the-last-focused-agent-tab)), in a
-  workspace the workspace itself. The tooltip shows the folder.
+  folder they started in. The + gives a shell in the current agent's project in one click.
+- **What:** Every Warp tab chip in the bottom panel has a `+` at its right edge (left of the `×`
+  while that shows). Clicking it selects that Warp tab and opens a new tab inside Warp in the
+  agent's project folder: in Tasks mode the workspace of the last focused agent tab
+  ([desk-context-tab](#desk-context-tab-the-explorer-follows-the-last-focused-agent-tab)), in a
+  workspace the workspace itself. Its accessibility label names the folder.
 - **How the Warp tab opens:** the Warp patch `PASEO: the host page opens a terminal tab with a
 paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJavaScript` on the
   webview to set the `cwd` of `window.PASEO_WARP_PTY_URL`, which Warp reads for every new session,
   and dispatch the event. Warp tabs whose page loaded before that Warp build ignore the event until
   reloaded.
-- **Files:** `packages/app/src/workspace-tabs/bottom-panel-warp-tab-button.tsx`,
-  `packages/app/src/workspace-tabs/warp-session.ts`, and `pickBottomPanelWarpTab` in
-  `packages/app/src/workspace-tabs/bottom-panel-default.ts` with its test.
+- **Files:** `packages/app/src/workspace-tabs/bottom-panel-warp-tab-button.tsx` (the `+`) and
+  `packages/app/src/workspace-tabs/warp-session.ts`.
 - **Core files touched** (marked `CUSTOM(bottom-panel-warp-tab-button)`):
-  - `screens/workspace/workspace-desktop-tabs-row.tsx`: renders the button after the
-    `SortableInlineList` when `paneId === BOTTOM_PANEL_PANE_ID`, and reserves its width.
-- **Re-apply:** In the desktop tab row of the `bottom-panel` pane, render `BottomPanelWarpTabButton`
-  right after the tab list with the row's `tabs`, server and workspace ids and `onNavigateTab`, and
-  add its width to `actionsReservedWidth`.
-- **Verify:** `(cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-default.test.ts)`
-  (in the update script). In the app, with a Warp tab in the bottom panel, focus an agent of
-  another project and click the terminal icon after the tabs: a new tab opens inside Warp, and
-  `pwd` prints that project's folder.
+  - `screens/workspace/workspace-desktop-tabs-row.tsx`: in the `bottom-panel` pane the row finds
+    its Warp tabs (browser tabs with `hideToolbar`), adds `WARP_CHIP_NEW_TAB_WIDTH` to their label
+    width (`actionWidth` on `WorkspaceTabLabel`) so the label ends before the `+`, and passes
+    `warpNewTabWorkspaceId` through `ResolvedDesktopTabChip` to `TabChip`, which renders
+    `WarpChipNewTabButton` after the close overlay.
+- **Re-apply:** Give the bottom panel's Warp tab chips an absolutely positioned `+` that opens a
+  session with `openWarpSession`, and widen those chips by its width in the row's tab measurement,
+  or the label runs under it.
+- **Verify:** No unit test: the logic is the chip wiring and the Warp page call. In the app, with
+  a Warp tab in the bottom panel, focus an agent of another project and click the `+` in the Warp
+  chip: a new tab opens inside Warp, and `pwd` prints that project's folder. Hover the chip: the
+  `+` sits left of the `×`.

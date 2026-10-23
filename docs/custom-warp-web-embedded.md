@@ -37,7 +37,7 @@ the Warp checkout):
 1. "+ → Warp" mounts the plugin panel, which calls `warp.session.open` with the workspace folder.
    A newly created bottom panel (Ctrl+J) mounts the same panel in its first tab, so Warp is the
    bottom panel's default. It falls back to a terminal outside Electron or when the host lacks the
-   plugin. A button after the bottom panel's tabs opens a tab inside its Warp tab in the agent's
+   plugin. A `+` in the bottom panel's Warp tab chip opens a tab inside Warp in the agent's
    project (see "Warp tabs opened by Paseo").
 2. The plugin server has already started the bridge with system `node` when the plugin loaded
    (it starts it again if it died), waits for `WARP_BRIDGE_READY <port>` on stdout, and returns
@@ -68,8 +68,8 @@ Why it's shaped this way:
 
 ## Warp tabs opened by Paseo
 
-Paseo opens a tab inside a running Warp page in a folder of its choice: the bottom panel's
-terminal-icon button does it for the agent's project
+Paseo opens a tab inside a running Warp page in a folder of its choice: the `+` in the bottom panel's
+Warp tab chip does it for the agent's project
 (`packages/app/src/workspace-tabs/warp-session.ts`). It runs `executeJavaScript` on the webview to
 set the `cwd` of `window.PASEO_WARP_PTY_URL`, which Warp reads for every new session, then
 dispatches a `paseo-warp-new-tab` event on `window`. The Warp patch in `app/src/workspace/view.rs`
