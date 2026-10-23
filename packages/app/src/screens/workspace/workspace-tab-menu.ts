@@ -212,9 +212,9 @@ export function buildWorkspaceTabMenuEntries(
   const isLastTab = index === tabCount - 1;
   const isOnlyTab = tabCount <= 1;
   const entries: WorkspaceTabMenuEntry[] = [];
-
-  // CUSTOM(tab-pins): first in the menu.
-  if (input.tabPin) {
+  // CUSTOM(tab-pins): right before Pin to Tasks, or before the close actions.
+  const pushTabPin = () => {
+    if (!input.tabPin) return;
     const { pinned, toggle } = input.tabPin;
     entries.push({
       kind: "item",
@@ -224,8 +224,7 @@ export function buildWorkspaceTabMenuEntries(
       testID: `${menuTestIDBase}-pin-tab`,
       onSelect: toggle,
     });
-    entries.push({ kind: "separator", key: "pin-tab-separator" });
-  }
+  };
 
   if (tab.target.kind === "agent") {
     const { agentId } = tab.target;
@@ -329,6 +328,7 @@ export function buildWorkspaceTabMenuEntries(
         onRenameTab(tab);
       },
     });
+    pushTabPin(); // CUSTOM(tab-pins)
     // CUSTOM(task-pins)
     if (tab.target.kind === "agent" && input.agentPin) {
       const { pinned, toggle } = input.agentPin;
@@ -346,6 +346,10 @@ export function buildWorkspaceTabMenuEntries(
       kind: "separator",
       key: "rename-separator",
     });
+  } else if (input.tabPin) {
+    // CUSTOM(tab-pins)
+    pushTabPin();
+    entries.push({ kind: "separator", key: "pin-tab-separator" });
   }
 
   entries.push({

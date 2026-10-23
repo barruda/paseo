@@ -2938,7 +2938,8 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
 - **Commit:** `custom: Pin tab in the tab context menu`
 - **Why:** The tabs the user keeps going back to drift around the row as others open and close.
-- **What:** Right-clicking any tab offers **Pin tab** first (**Unpin tab** when pinned). Pinning
+- **What:** Right-clicking any tab offers **Pin tab** (**Unpin tab** when pinned): after Rename,
+  right before **Pin to Tasks** on agent tabs; before the close actions on tabs without Rename. Pinning
   moves the tab right after the pinned tabs already at the left; unpinning moves it to the start of
   the unpinned ones. At rest (not active, not hovered) a pinned tab is a shade darker than the row:
   black at 32% in dark themes, 7% in light ones. Pins are per workspace and per Desk (the split
@@ -2950,7 +2951,7 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   - `components/split-container.tsx`: `SplitPaneView` takes `pinScope={workspaceKey}` and passes
     it to its tab row.
   - `screens/workspace/workspace-screen.tsx`: the fallback tab row gets `pinScope={persistenceKey}`.
-  - `screens/workspace/workspace-tab-menu.ts`: optional `tabPin` input and the first menu entry;
+  - `screens/workspace/workspace-tab-menu.ts`: optional `tabPin` input and its entry after Rename;
     the task pin entry reads **Pin to Tasks**.
   - `screens/workspace/workspace-desktop-tabs-row.tsx`: the optional `pinScope` prop;
     `WorkspaceDesktopTabsRow` builds the toggle over all its tabs and reorders through

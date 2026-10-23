@@ -122,7 +122,7 @@ describe("buildWorkspaceTabMenuEntries", () => {
   });
 
   // CUSTOM(tab-pins)
-  it("leads with Pin tab, or Unpin tab for a pinned tab", () => {
+  it("offers Pin tab right before Pin to Tasks, or Unpin tab for a pinned tab", () => {
     const toggle = vi.fn();
     const build = (pinned: boolean) =>
       buildWorkspaceTabMenuEntries({
@@ -144,11 +144,16 @@ describe("buildWorkspaceTabMenuEntries", () => {
         tabPin: { pinned, toggle },
       });
 
-    const [first, second] = build(false);
-    expect(first).toMatchObject({ kind: "item", label: "Pin tab", icon: "pin" });
-    expect(second?.kind).toBe("separator");
-    expect(build(true)[0]).toMatchObject({ label: "Unpin tab", icon: "pin-off" });
-    if (first?.kind === "item") first.onSelect();
+    const entries = build(false);
+    const index = entries.findIndex((entry) => entry.key === "pin-tab");
+    const pinTab = entries[index];
+    expect(pinTab).toMatchObject({ kind: "item", label: "Pin tab", icon: "pin" });
+    expect(entries[index - 1]?.key).toBe("rename");
+    expect(build(true).find((entry) => entry.key === "pin-tab")).toMatchObject({
+      label: "Unpin tab",
+      icon: "pin-off",
+    });
+    if (pinTab?.kind === "item") pinTab.onSelect();
     expect(toggle).toHaveBeenCalledTimes(1);
   });
 
