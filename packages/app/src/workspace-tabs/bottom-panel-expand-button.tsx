@@ -1,7 +1,7 @@
 // CUSTOM(bottom-panel-expand): the reverse of the ⌄⌄ collapse button. While the bottom panel is
-// closed (hidden, or not created yet), a ⌃⌃ button floats at the bottom of the workspace, 100px
-// right of the left sidebar, level with the sidebar's footer icons. It dispatches the same
-// keyboard action as Ctrl+J, so it shows a hidden panel or creates one.
+// closed (hidden, or not created yet), a ⌃⌃ button floats at the bottom of the workspace or the
+// Desk, 100px right of the left sidebar, level with the sidebar's footer icons. It dispatches the
+// same keyboard action as Ctrl+J, which each screen handles for its own layout.
 import { ChevronsUp } from "lucide-react-native";
 import { useCallback } from "react";
 import { View } from "react-native";
@@ -11,23 +11,16 @@ import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
-import { findPaneById, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { findPaneById, type WorkspaceLayout } from "@/stores/workspace-layout-store";
 import { BOTTOM_PANEL_PANE_ID } from "./bottom-panel";
 
 const ThemedChevronsUp = withUnistyles(ChevronsUp);
 const SIDEBAR_GAP = 100;
 
-function useIsBottomPanelClosed(workspaceKey: string | null): boolean {
-  return useWorkspaceLayoutStore((state) => {
-    if (!workspaceKey) return false;
-    const layout = state.layoutByWorkspace[workspaceKey];
-    const pane = layout ? findPaneById(layout.root, BOTTOM_PANEL_PANE_ID) : null;
-    return !pane || pane.hidden === true;
-  });
-}
-
-export function BottomPanelExpandButton({ workspaceKey }: { workspaceKey: string | null }) {
-  const isClosed = useIsBottomPanelClosed(workspaceKey);
+/** `layout` is the screen's pane layout, the workspace's or the Desk's. */
+export function BottomPanelExpandButton({ layout }: { layout: WorkspaceLayout | null }) {
+  const pane = layout ? findPaneById(layout.root, BOTTOM_PANEL_PANE_ID) : null;
+  const isClosed = layout !== null && (!pane || pane.hidden === true);
   const isCompact = useIsCompactFormFactor();
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const shortcutKeys = useShortcutKeys("toggle-bottom-panel");

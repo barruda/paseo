@@ -3547,7 +3547,7 @@ function WorkspaceScreenContent({
 
       <View style={styles.centerContent}>{workspacePanelContent}</View>
       {/* CUSTOM(bottom-panel-expand): ⌃⌃ while the bottom panel is closed. */}
-      <BottomPanelExpandButton workspaceKey={persistenceKey} />
+      <BottomPanelExpandButton layout={workspaceLayout} />
     </View>
   );
 

@@ -104,6 +104,8 @@ import {
   type DeskTab,
   type DeskTabOwner,
 } from "./desks-store";
+// CUSTOM(bottom-panel-expand)
+import { BottomPanelExpandButton } from "@/workspace-tabs/bottom-panel-expand-button";
 
 const NO_CLOSING_TABS = new Set<string>();
 const noop = () => undefined;
@@ -750,6 +752,9 @@ export function DeskScreen() {
             </View>
           </>
         )}
+        {/* CUSTOM(bottom-panel-expand): ⌃⌃ while the Desk's bottom panel is closed; the toggle
+            needs a scope. */}
+        {scope ? <BottomPanelExpandButton layout={desk.layout} /> : null}
         <DeskVisibleAgents desk={desk} visible={isFocused} />
         <DeskTerminalTabs />
         <FloatingPanelPortalHost name={portalHost} />
