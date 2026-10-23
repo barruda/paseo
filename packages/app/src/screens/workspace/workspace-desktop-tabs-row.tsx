@@ -1089,7 +1089,6 @@ function TabChip({
           target={tab.target}
           serverId={serverId}
           workspaceId={warpNewTabWorkspaceId}
-          closeShown={showCloseControl}
           onNavigateTab={onNavigateTab}
         />
 

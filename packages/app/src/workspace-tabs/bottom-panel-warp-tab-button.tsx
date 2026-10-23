@@ -1,4 +1,5 @@
-// CUSTOM(bottom-panel-warp-tab-button): a + inside the bottom panel's Warp tab chip opens a new tab
+// CUSTOM(bottom-panel-warp-tab-button): a + inside the bottom panel's Warp tab chip, a space after
+// its label and clear of its ×, opens a new tab
 // inside Warp, in the folder of the agent's project: in Tasks mode the last focused agent tab's
 // workspace, in a workspace the workspace itself.
 import { Plus } from "lucide-react-native";
@@ -18,9 +19,14 @@ const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foregrou
 const mutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 const BUTTON_SIZE = 18;
-const CLOSE_BUTTON_SPAN = 22;
-/** The width a Warp chip adds so its label ends before the +. */
-export const WARP_CHIP_NEW_TAB_WIDTH = BUTTON_SIZE + 4;
+// The chip's × spans its last 22px; the + keeps 20px clear of it.
+const BUTTON_RIGHT = 22 + 20;
+// About a space between the label and the +.
+const LABEL_GAP = 5;
+// The chip's horizontal padding, which the label already ends before.
+const CHIP_PADDING = 8;
+/** The width a Warp chip adds so its label ends a space before the +. */
+export const WARP_CHIP_NEW_TAB_WIDTH = BUTTON_RIGHT + BUTTON_SIZE + LABEL_GAP - CHIP_PADDING;
 
 // The chip is a drag handle; a press on the + must not start a drag.
 const dragBlockers = isWeb
@@ -36,15 +42,12 @@ export function WarpChipNewTabButton({
   target,
   serverId,
   workspaceId,
-  closeShown,
   onNavigateTab,
 }: {
   tabId: string;
   target: WorkspaceTabTarget;
   serverId: string;
   workspaceId: string | undefined;
-  /** The chip's × is showing at its right edge, so the + moves left of it. */
-  closeShown: boolean;
   onNavigateTab: (tabId: string) => void;
 }) {
   const tasksMode = useTaskNavigationStore((state) => state.enabled);
@@ -70,7 +73,7 @@ export function WarpChipNewTabButton({
       accessibilityRole="button"
       accessibilityLabel={`New Warp tab in ${directory}`}
       onPress={handlePress}
-      style={closeShown ? styles.buttonBesideClose : styles.button}
+      style={styles.button}
     >
       {({ hovered, pressed }) => (
         <ThemedPlus
@@ -82,22 +85,17 @@ export function WarpChipNewTabButton({
   );
 }
 
-const button = {
-  position: "absolute" as const,
-  top: "50%" as const,
-  marginTop: -BUTTON_SIZE / 2,
-  width: BUTTON_SIZE,
-  height: BUTTON_SIZE,
-  alignItems: "center" as const,
-  justifyContent: "center" as const,
-  zIndex: 3,
-};
-
 const styles = StyleSheet.create((theme) => ({
-  button: { ...button, right: 4, borderRadius: theme.borderRadius.sm },
-  buttonBesideClose: {
-    ...button,
-    right: 4 + CLOSE_BUTTON_SPAN,
+  button: {
+    position: "absolute",
+    top: "50%",
+    marginTop: -BUTTON_SIZE / 2,
+    right: BUTTON_RIGHT,
+    width: BUTTON_SIZE,
+    height: BUTTON_SIZE,
     borderRadius: theme.borderRadius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 3,
   },
 }));

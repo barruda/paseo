@@ -3013,8 +3013,9 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 ## bottom-panel-warp-tab-button: a + in the bottom panel's Warp chip opens a Warp tab in the agent's project
 
 - **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
-- **Commits:** `custom: a bottom panel button opens a tab inside Warp in the agent's project`, then
-  `custom: the new Warp tab button moves into the Warp tab chip as a +`. It replaces
+- **Commits:** `custom: a bottom panel button opens a tab inside Warp in the agent's project`,
+  `custom: the new Warp tab button moves into the Warp tab chip as a +`, then
+  `custom: the Warp chip's + sits a space after the label, clear of the ×`. It replaces
   `desk-bottom-panel-warp` (commits `custom: showing the Tasks bottom panel opens Warp in the
 task's workspace` and `custom: showing the Tasks bottom panel opens a session inside Warp in the
 task's folder`), which did this on every show of the panel and never opened the Warp tab: the
@@ -3022,8 +3023,8 @@ task's folder`), which did this on every show of the panel and never opened the 
   again.
 - **Why:** In Tasks mode one bottom panel serves every task, so its Warp shells sit in whatever
   folder they started in. The + gives a shell in the current agent's project in one click.
-- **What:** Every Warp tab chip in the bottom panel has a `+` at its right edge (left of the `×`
-  while that shows). Clicking it selects that Warp tab and opens a new tab inside Warp in the
+- **What:** Every Warp tab chip in the bottom panel has a `+` about a space after its label, with
+  20px clear before the `×`, so hovering the chip never covers it. Clicking it selects that Warp tab and opens a new tab inside Warp in the
   agent's project folder: in Tasks mode the workspace of the last focused agent tab
   ([desk-context-tab](#desk-context-tab-the-explorer-follows-the-last-focused-agent-tab)), in a
   workspace the workspace itself. Its accessibility label names the folder.
@@ -3046,4 +3047,4 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
 - **Verify:** No unit test: the logic is the chip wiring and the Warp page call. In the app, with
   a Warp tab in the bottom panel, focus an agent of another project and click the `+` in the Warp
   chip: a new tab opens inside Warp, and `pwd` prints that project's folder. Hover the chip: the
-  `+` sits left of the `×`.
+  `+` stays put, 20px left of the `×`.
