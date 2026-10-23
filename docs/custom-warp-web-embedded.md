@@ -8,7 +8,7 @@ Electron browser tab, backed by a small PTY bridge.
 This doc covers how the pieces fit, how to build and run them, and the gotchas. The per-commit
 details (core files touched, how to re-apply after an upstream update, how to verify) are in
 `custom/CHANGES.md`, in the entries `warp`, `browser-no-toolbar`, `browser-shortcut-preempt`,
-`bottom-panel-tab-keys` and `bottom-panel-warp`.
+`bottom-panel-tab-keys`, `bottom-panel-warp` and `desk-bottom-panel-warp`.
 
 ## Pieces
 
@@ -34,7 +34,9 @@ the Warp checkout):
 1. "+ → Warp" mounts the plugin panel, which calls `warp.session.open` with the workspace folder.
    A newly created bottom panel (Ctrl+J) mounts the same panel in its first tab, so Warp is the
    bottom panel's default. It falls back to a terminal outside Electron or when the host lacks the
-   plugin.
+   plugin. In Tasks mode, showing the hidden bottom panel also mounts it for the focused task's
+   workspace when that workspace has no Warp tab in the panel yet (otherwise its Warp tab is
+   selected), since one panel serves every task there.
 2. The plugin server has already started the bridge with system `node` when the plugin loaded
    (it starts it again if it died), waits for `WARP_BRIDGE_READY <port>` on stdout, and returns
    `http://127.0.0.1:<port>/?token=…&cwd=…`.

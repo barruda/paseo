@@ -3009,3 +3009,30 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   and the first test of desktop `e2e/task-navigation.spec.ts` (pins the last Desk tab and expects
   it first), all in the update script. In the app, pin the third tab: it moves first and darkens;
   pin another: it sits second.
+
+## desk-bottom-panel-warp: showing the bottom panel in Tasks mode opens Warp in the task's project
+
+- **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: showing the Tasks bottom panel opens Warp in the task's workspace`
+- **Why:** In Tasks mode one bottom panel serves every task, so after switching to a task in another
+  project, showing the panel left you in the previous project's shell.
+- **What:** When Ctrl+J, `⌃⌃` or the sidebar button shows a hidden Desk bottom panel, it brings up a
+  Warp tab in the focused task's workspace: the Warp tab that workspace already has in the panel
+  (selected), or a new one. If the panel's selected tab is already that workspace's Warp tab,
+  nothing changes, so hiding and showing again never opens another tab. A Warp tab is the Warp
+  plugin panel or a browser tab with no toolbar (only Warp opens those). Only in Electron with the
+  Warp plugin on the host, like [bottom-panel-warp](#bottom-panel-warp-a-new-bottom-panel-opens-warp).
+  Workspace mode is unchanged: its panel belongs to one workspace.
+- **Files:** `resolveDeskBottomPanelShow` in `packages/app/src/workspace-tabs/bottom-panel-default.ts`
+  and its test.
+- **Core files touched** (marked `CUSTOM(desk-bottom-panel-warp)`):
+  - `packages/app/src/task-navigation/new-tab-menu.tsx`: `afterDeskBottomPanelToggle` and
+    `showDeskBottomPanelWarp`, called from the `workspace.bottom-panel.toggle` handler.
+- **Re-apply:** Where the Desk handles `workspace.bottom-panel.toggle`, on a `shown` result read the
+  `bottom-panel` pane's tabs, ask `resolveDeskBottomPanelShow` with the scope's workspace, then
+  `selectTab` the returned tab or `openTab` the Warp plugin target pinned into
+  `{ mode: "pane", paneId: BOTTOM_PANEL_PANE_ID }`.
+- **Verify:** `(cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-default.test.ts)`
+  (in the update script). In the app, in Tasks mode, open the bottom panel on a task of project A,
+  hide it, focus a task of project B and show it: a Warp tab opens in B's folder. Hide and show
+  again: no new tab. Back on A's task, showing selects A's Warp tab.
