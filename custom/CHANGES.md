@@ -2821,7 +2821,8 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Commits:** `custom: Compact, Newspaper and Cards reading modes for wide screens`, then
   `custom: Columns reading mode, and reading modes keep answers followed by plugin rows`, then
   `custom: Columns and Newspaper open full and load older messages while scrolling up`, then
-  `custom: Columns shows numbered pages and turns one screen per scroll`
+  `custom: Columns shows numbered pages and turns one screen per scroll`, then
+  `custom: Columns lays out the whole conversation, follows sent messages and never turns back`
 - **Why:** With the window maximized, the chat stays a narrow column and a long conversation takes
   a lot of scrolling. Ways to see more of it at once, each behind its own button so they can be
   compared.
@@ -2833,19 +2834,25 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
     step. Plugin rows are not steps: plugins add one after each answer (the usage line), and
     counting them hid every answer.
   - **Columns** draws the chat itself, every row through the chat's own `renderStreamItem`, in up
-    to three columns (420px minimum), with pending permissions and the turn footer at the end. It
-    pages the same history window as the chat and follows new output while scrolled to the end.
-    Each column is a page: a thin rounded frame just outside it and its number in the bottom-right
-    corner, counted from the oldest loaded page (`flowPages`), so loading older messages
-    renumbers. Scrolling snaps to whole screens, and one wheel gesture (events under 250 ms apart)
-    turns exactly one screen.
+    to three columns (420px minimum), with pending permissions and the turn footer at the end.
+    It lays out the whole conversation, not the chat's mounted window: on open it fetches every
+    older page from the daemon ("Loading the whole conversation…"), then mounts all rows once
+    (memoized, so streaming re-renders only the tail). Page 1 is the conversation's first page,
+    so numbers and the total (`n / total`) hold still. Each column is a page in a thin rounded
+    frame. On open, whole blank columns before page 1 make the last page close its row, so the
+    screen opens full; they stay put after that, so pages never reflow (`TurnedPages` in
+    `column-flow.ts`; whole columns don't change where text breaks, so one measurement is
+    enough). A page, once turned to, stays: while the tail streams, the view only moves forward,
+    even if the tail shrinks back into the page before. Sending a message (any chat
+    `scrollToBottom`) returns to the end. Scrolling snaps to whole screens, and one wheel gesture
+    (events under 250 ms apart) turns exactly one screen.
   - **Newspaper** draws prompts and final answers in 460px columns.
   - **Cards** draws one card per turn in a grid: the prompt, the final answer capped at 340px with
     Expand, and the hidden step count.
-  - Columns and Newspaper share `column-scroller.web.tsx`. With CSS `column-wrap` (Chromium 145+),
-    a screen-tall row of columns is followed by the next row below, one scroll for the whole grid,
-    with proximity snap points at each row. Without it, the columns run sideways. The flow is
-    end-aligned: a spacer at its start takes up what the last row leaves empty
+  - Columns (`PagedColumnScroller`) and Newspaper (`ColumnScroller`) share
+    `column-scroller.web.tsx`. With CSS `column-wrap` (Chromium 145+), a screen-tall row of
+    columns is followed by the next row below, one scroll for the whole grid, with snap points at
+    each row. Without it, the columns run sideways. Newspaper's flow is end-aligned: a spacer at its start takes up what the last row leaves empty
     (`column-flow.ts` measures an end marker), so the screen opens full on the newest content.
     Near the top, older messages load on their own, and the reader keeps their distance from the
     end, which end alignment holds steady.
@@ -2857,21 +2864,27 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   `reading-columns.tsx`/`.web.tsx`, `column-scroller.web.tsx`.
 - **Core files touched** (marked `CUSTOM(reading-modes)`):
   - `agent-stream/view.tsx`: the presentation reads `useReadingModeStream` instead of the raw
-    stream. `ReadingColumns` (layout rows, `renderStreamItem`, the auxiliary nodes and the history
-    window's `hasOlder`/`loadOlder`) and `AgentReadingOverview` (the daemon's older-history
-    pagination) render last inside `ChatEscFocusSurface`, both with `bottomOverlayTailClearance`.
+    stream. `ReadingColumns` (the whole conversation's layout rows, built with `historyStart: 0`
+    instead of the chat's window, `renderStreamItem`, the auxiliary nodes, the daemon's
+    older-history pagination with its `progressKey`, and a follow request the imperative
+    `scrollToBottom` bumps) and `AgentReadingOverview` (the same pagination) render last inside
+    `ChatEscFocusSurface`, both with `bottomOverlayTailClearance`.
   - `screens/workspace/workspace-desktop-tabs-row.tsx`: `ReadingModeButtons` after the inline
     `+`, or before `WorkspacePaneToolbarActions` in the overflow layout, for the
     `usePaneArchiveAgentTab` agent; its width joins `actionsReservedWidth`.
 - **Re-apply:** Filter the stream the agent stream view presents through `useReadingModeStream`.
-  Render `ReadingColumns` with the rows and row renderer the chat strategy gets, and
+  Render `ReadingColumns` with the row renderer the chat strategy gets, rows laid out from the
+  whole tail (`buildAgentStreamRenderModel` with `historyStart: 0`, then `layoutStream`), the
+  remote older-history pagination, and a counter the view's `scrollToBottom` handle bumps; and
   `AgentReadingOverview` over the stream, always mounted (it returns null outside the overviews,
   but the jump back to the chat needs it alive). Put the four buttons next to the tab row's
   new-tab button for the active agent tab and reserve their width.
 - **Verify:** `src/agent-stream/reading-modes/model.test.ts` and `column-flow.test.ts` (in the
   update script). In the app,
-  on a long chat: Compact hides tool rows and keeps every answer; Columns opens with three full,
-  numbered pages, one wheel flick shows the three before, and older messages load as you go up; Newspaper shows columns that end above the composer; Cards shows one card per
+  on a long chat: Compact hides tool rows and keeps every answer; Columns opens with three full
+  pages numbered `n / total`, the top shows `1 / total` at the first prompt, one wheel flick shows
+  the three before; scrolled up, sending a message jumps to the end, and while the answer streams
+  the view only moves forward; Newspaper shows columns that end above the composer; Cards shows one card per
   turn; "Open in chat" on the first turn scrolls the chat to its prompt.
 
 ## agent-status-summary-persist: the line under the composer survives restarts

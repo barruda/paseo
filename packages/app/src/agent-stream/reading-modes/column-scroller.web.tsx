@@ -2,6 +2,8 @@
 // CSS columns. With `column-wrap` (Chromium 145+), a screen-tall row of columns is followed by
 // the next row below it, so one vertical scroll moves the whole grid; a proximity snap point at
 // each row lets a scroll settle on a row. Without it, the columns run sideways in one row.
+// Newspaper uses `ColumnScroller`, end-aligned over a window of history; Columns uses
+// `PagedColumnScroller`, which lays out the whole conversation from its first page.
 import {
   type CSSProperties,
   type ReactNode,
@@ -17,6 +19,9 @@ import {
   columnsPerRow,
   flowPages,
   nextLeadSpace,
+  pageIndexOfEnd,
+  type TurnedPages,
+  turnPages,
   unusedFlowAfterEnd,
 } from "./column-flow";
 
@@ -99,6 +104,13 @@ function scrollToEnd(element: HTMLElement) {
   element.scrollLeft = element.scrollWidth;
 }
 
+function isScrolledToEnd(element: HTMLElement): boolean {
+  return (
+    element.scrollTop + element.clientHeight >= element.scrollHeight - END_TOLERANCE_PX &&
+    element.scrollLeft + element.clientWidth >= element.scrollWidth - END_TOLERANCE_PX
+  );
+}
+
 // Opens on the latest content, like the chat, and keeps following it while the reader stays at
 // the end. Markdown blocks settle over a couple of frames, so the first jump repeats.
 export function useFollowEnd(
@@ -122,18 +134,21 @@ export function useFollowEnd(
   return useCallback(() => {
     const element = ref.current;
     if (!element) return;
-    atEnd.current =
-      element.scrollTop + element.clientHeight >= element.scrollHeight - END_TOLERANCE_PX &&
-      element.scrollLeft + element.clientWidth >= element.scrollWidth - END_TOLERANCE_PX;
+    atEnd.current = isScrolledToEnd(element);
   }, [ref]);
 }
 
 // One snap point per row of columns. Each row plus the gap below it is one screen.
-function useRowSnapStyles(rowPitch: number, contentHeight: number): CSSProperties[] {
+function useRowSnapStyles(
+  rowPitch: number,
+  contentHeight: number,
+  /** Rows known before the content's size is observed, so a scroll to a new row can snap. */
+  minRows = 0,
+): CSSProperties[] {
   return useMemo(() => {
     if (!supportsColumnWrap || rowPitch <= 0) return [];
     // The content is every row plus the gaps between them, so it ends a gap short of a pitch.
-    const rows = Math.max(1, Math.ceil(contentHeight / rowPitch));
+    const rows = Math.max(1, minRows, Math.ceil(contentHeight / rowPitch));
     return Array.from({ length: rows }, (_, row) => ({
       position: "absolute",
       top: row * rowPitch,
@@ -142,7 +157,7 @@ function useRowSnapStyles(rowPitch: number, contentHeight: number): CSSPropertie
       height: 1,
       scrollSnapAlign: "start",
     }));
-  }, [contentHeight, rowPitch]);
+  }, [contentHeight, minRows, rowPitch]);
 }
 
 export interface ColumnScrollerProps {
@@ -157,10 +172,6 @@ export interface ColumnScrollerProps {
   startKey: string | null;
   /** The reader is near the oldest content shown; load more if there is any. */
   onNearStart: () => void;
-  /**
-   * Frame each column as a numbered page, and turn one screen of pages per scroll gesture.
-   */
-  pages?: boolean;
   children: ReactNode;
 }
 
@@ -192,18 +203,18 @@ interface PageFrame {
 }
 
 function usePageFrames(
-  enabled: boolean,
   geometry: ColumnFlowGeometry,
   contentHeight: number,
-  leadSpace: number,
+  blankPages: number,
+  lastFlowIndex: number | null,
 ): PageFrame[] {
   const { width, columnMinWidth, maxColumns, columnGap, columnHeight, rowPitch } = geometry;
   return useMemo(() => {
-    if (!enabled || !supportsColumnWrap || width <= 0) return [];
+    if (!supportsColumnWrap || width <= 0 || lastFlowIndex === null) return [];
     const flow = { width, columnMinWidth, maxColumns, columnGap, columnHeight, rowPitch };
     const perRow = columnsPerRow(flow);
     const columnWidth = (width - columnGap * (perRow - 1)) / perRow;
-    return flowPages(flow, contentHeight, leadSpace).map((page) => ({
+    return flowPages(flow, contentHeight, blankPages * columnHeight, lastFlowIndex).map((page) => ({
       key: `${page.row}:${page.column}`,
       number: page.number,
       style: {
@@ -215,12 +226,12 @@ function usePageFrames(
       },
     }));
   }, [
+    blankPages,
     columnGap,
     columnHeight,
     columnMinWidth,
     contentHeight,
-    enabled,
-    leadSpace,
+    lastFlowIndex,
     maxColumns,
     rowPitch,
     width,
@@ -234,14 +245,13 @@ const PAGE_TURN_MS = 700;
 const PREPEND_ANCHOR_MS = 800;
 
 function useWheelPaging(
-  enabled: boolean,
   scrollerRef: RefObject<HTMLDivElement | null>,
   pageHeight: number,
   onTarget: (top: number) => void,
 ) {
   useLayoutEffect(() => {
     const scroller = scrollerRef.current;
-    if (!enabled || !supportsColumnWrap || !scroller || pageHeight <= 0) return;
+    if (!supportsColumnWrap || !scroller || pageHeight <= 0) return;
     let lastWheelAt = 0;
     const handleWheel = (event: WheelEvent) => {
       if (event.ctrlKey || Math.abs(event.deltaY) < Math.abs(event.deltaX)) return;
@@ -260,7 +270,7 @@ function useWheelPaging(
     };
     scroller.addEventListener("wheel", handleWheel, { passive: false });
     return () => scroller.removeEventListener("wheel", handleWheel);
-  }, [enabled, onTarget, pageHeight, scrollerRef]);
+  }, [onTarget, pageHeight, scrollerRef]);
 }
 
 // The spacer can shift an unbreakable block into the next column, so alignment is a few rounds
@@ -288,7 +298,6 @@ export function ColumnScroller({
   maxColumns,
   startKey,
   onNearStart,
-  pages = false,
   children,
 }: ColumnScrollerProps) {
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -296,12 +305,8 @@ export function ColumnScroller({
   const endMarkerRef = useRef<HTMLDivElement>(null);
   const height = useElementHeight(scrollerRef);
   const contentHeight = useElementHeight(columnsRef);
-  const contentWidth = useElementWidth(columnsRef);
   const columnHeight = Math.max(0, height - PAGE_PADDING * 2 - bottomInset);
-  const scrollerStyle = useScrollerStyle(
-    pages ? pagedScrollerStyle : columnScrollerStyle,
-    bottomInset,
-  );
+  const scrollerStyle = useScrollerStyle(columnScrollerStyle, bottomInset);
   const rowSnapStyles = useRowSnapStyles(height, contentHeight);
   const [leadSpace, setLeadSpace] = useState(0);
   // Markdown and code blocks settle a frame or two after mount; one late pass catches them.
@@ -312,31 +317,6 @@ export function ColumnScroller({
   const lastStartKey = useRef(startKey);
   const anchorUntil = useRef(0);
   const lastRevision = useRef({ children, settleTick });
-  const pageFrames = usePageFrames(
-    pages,
-    {
-      width: contentWidth,
-      columnMinWidth,
-      maxColumns,
-      columnGap: COLUMN_GAP,
-      columnHeight,
-      rowPitch: height,
-    },
-    contentHeight,
-    leadSpace,
-  );
-  // While a page turn animates, the reader's place is where it lands, not where it passes: older
-  // content loading mid-turn must restore the destination.
-  const pageTurnUntil = useRef(0);
-  const handlePageTarget = useCallback((top: number) => {
-    const scroller = scrollerRef.current;
-    if (!scroller) return;
-    pageTurnUntil.current = performance.now() + PAGE_TURN_MS;
-    distanceFromEnd.current = scroller.scrollHeight - top;
-    atEnd.current = top >= scroller.scrollHeight - scroller.clientHeight - END_TOLERANCE_PX;
-  }, []);
-  useWheelPaging(pages, scrollerRef, height, handlePageTarget);
-
   useLayoutEffect(() => afterTwoFrames(() => setSettleTick((tick) => tick + 1)), []);
 
   // New rows re-render this scroller with new children, and each may move the end.
@@ -407,12 +387,8 @@ export function ColumnScroller({
   const handleScroll = useCallback(() => {
     const scroller = scrollerRef.current;
     if (!scroller) return;
-    if (performance.now() >= pageTurnUntil.current) {
-      atEnd.current =
-        scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - END_TOLERANCE_PX &&
-        scroller.scrollLeft + scroller.clientWidth >= scroller.scrollWidth - END_TOLERANCE_PX;
-      distanceFromEnd.current = scroller.scrollHeight - scroller.scrollTop;
-    }
+    atEnd.current = isScrolledToEnd(scroller);
+    distanceFromEnd.current = scroller.scrollHeight - scroller.scrollTop;
     if (scroller.scrollTop < scroller.clientHeight / 2) onNearStart();
   }, [onNearStart]);
 
@@ -421,7 +397,7 @@ export function ColumnScroller({
       columnWidth: columnMinWidth,
       columnCount: maxColumns,
       columnGap: COLUMN_GAP,
-      columnRule: pages ? "none" : `1px solid ${color.border}`,
+      columnRule: `1px solid ${color.border}`,
       columnFill: "auto",
     };
     if (supportsColumnWrap) {
@@ -432,7 +408,7 @@ export function ColumnScroller({
       style.height = columnHeight;
     }
     return style;
-  }, [bottomInset, columnHeight, columnMinWidth, maxColumns, pages]);
+  }, [bottomInset, columnHeight, columnMinWidth, maxColumns]);
   const leadStyle = useMemo<CSSProperties>(() => ({ height: leadSpace }), [leadSpace]);
 
   return (
@@ -446,13 +422,176 @@ export function ColumnScroller({
       {rowSnapStyles.map((style) => (
         <div key={String(style.top)} style={style} />
       ))}
+      <div ref={columnsRef} style={columnsStyle}>
+        <div style={leadStyle} />
+        {children}
+        <div ref={endMarkerRef} />
+      </div>
+    </div>
+  );
+}
+
+export interface PagedColumnScrollerProps {
+  testID: string;
+  /** Kept clear for the composer, which floats over the bottom of the chat. */
+  bottomInset: number;
+  /** Narrowest a column may get; the browser fits as many as the width allows. */
+  columnMinWidth: number;
+  /** At most this many columns side by side. */
+  maxColumns?: number;
+  /** Identifies the first item: page 1 starts there, so a new start lays the pages out anew. */
+  startKey: string | null;
+  /** Changes when the reader asks for the end, as sending a message does in the chat. */
+  followRequest: number;
+  children: ReactNode;
+}
+
+// The flow starts at the conversation's first page and only ever grows at its end, so pages
+// already laid out never reflow (see `TurnedPages`). Each column is a numbered page framed just
+// outside its text. The reader follows the end while at it; a page, once turned to, stays: the
+// scroll area keeps its rows even if the streaming tail shrinks back into the page before.
+export function PagedColumnScroller({
+  testID,
+  bottomInset,
+  columnMinWidth,
+  maxColumns,
+  startKey,
+  followRequest,
+  children,
+}: PagedColumnScrollerProps) {
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const columnsRef = useRef<HTMLDivElement>(null);
+  const endMarkerRef = useRef<HTMLDivElement>(null);
+  const height = useElementHeight(scrollerRef);
+  const contentHeight = useElementHeight(columnsRef);
+  const contentWidth = useElementWidth(columnsRef);
+  const columnHeight = Math.max(0, height - PAGE_PADDING * 2 - bottomInset);
+  const scrollerStyle = useScrollerStyle(pagedScrollerStyle, bottomInset);
+  const geometry = useMemo<ColumnFlowGeometry>(
+    () => ({
+      width: contentWidth,
+      columnMinWidth,
+      maxColumns,
+      columnGap: COLUMN_GAP,
+      columnHeight,
+      rowPitch: height,
+    }),
+    [columnHeight, columnMinWidth, contentWidth, height, maxColumns],
+  );
+  // Markdown and code blocks settle a frame or two after mount; one late pass catches them.
+  const [settleTick, setSettleTick] = useState(0);
+  const [turned, setTurned] = useState<TurnedPages | null>(null);
+  const layoutKey = `${startKey}:${contentWidth}:${height}:${bottomInset}`;
+  const perRow = columnsPerRow(geometry);
+  // The blank columns stay rendered while a new layout measures, which subtracts them.
+  const blankPages = turned?.blankPages ?? 0;
+  const lastPage = turned?.key === layoutKey ? turned.lastPage : null;
+  const lastFlowIndex = lastPage === null ? null : blankPages + lastPage;
+  const turnedRows = lastFlowIndex === null ? 0 : Math.floor(lastFlowIndex / perRow) + 1;
+  const atEnd = useRef(true);
+  const pageFrames = usePageFrames(geometry, contentHeight, blankPages, lastFlowIndex);
+  const rowSnapStyles = useRowSnapStyles(height, contentHeight, turnedRows);
+  const pageCount = lastPage === null ? 0 : lastPage + 1;
+
+  // While a page turn animates, the reader's place is where it lands, not where it passes.
+  const pageTurnUntil = useRef(0);
+  const handlePageTarget = useCallback((top: number) => {
+    const scroller = scrollerRef.current;
+    if (!scroller) return;
+    pageTurnUntil.current = performance.now() + PAGE_TURN_MS;
+    atEnd.current = top >= scroller.scrollHeight - scroller.clientHeight - END_TOLERANCE_PX;
+  }, []);
+  useWheelPaging(scrollerRef, height, handlePageTarget);
+
+  useLayoutEffect(() => afterTwoFrames(() => setSettleTick((tick) => tick + 1)), []);
+
+  // Every change to the rows may move the end into a later page.
+  useLayoutEffect(() => {
+    const columns = columnsRef.current;
+    const marker = endMarkerRef.current;
+    if (!supportsColumnWrap || !columns || !marker || columnHeight <= 0 || contentWidth <= 0) {
+      return;
+    }
+    const endFlowIndex = pageIndexOfEnd(geometry, measureEnd(columns, marker));
+    setTurned((current) =>
+      turnPages({ current, key: layoutKey, endFlowIndex, columnsPerRow: perRow }),
+    );
+  }, [
+    children,
+    columnHeight,
+    contentHeight,
+    contentWidth,
+    geometry,
+    layoutKey,
+    perRow,
+    settleTick,
+  ]);
+
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (scroller && atEnd.current) scrollToEnd(scroller);
+  }, [children, contentHeight, height, lastPage, settleTick]);
+
+  const lastFollowRequest = useRef(followRequest);
+  useLayoutEffect(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || followRequest === lastFollowRequest.current) return;
+    lastFollowRequest.current = followRequest;
+    atEnd.current = true;
+    pageTurnUntil.current = 0;
+    scrollToEnd(scroller);
+  }, [followRequest]);
+
+  const handleScroll = useCallback(() => {
+    const scroller = scrollerRef.current;
+    if (!scroller || performance.now() < pageTurnUntil.current) return;
+    atEnd.current = isScrolledToEnd(scroller);
+  }, []);
+
+  const columnsStyle = useMemo(() => {
+    const style: CSSProperties & Record<string, unknown> = {
+      columnWidth: columnMinWidth,
+      columnCount: maxColumns,
+      columnGap: COLUMN_GAP,
+      columnFill: "auto",
+    };
+    if (supportsColumnWrap) {
+      style.columnHeight = `${columnHeight}px`;
+      style.columnWrap = "wrap";
+      style.rowGap = `${PAGE_PADDING * 2 + bottomInset}px`;
+      // Rows already turned to stay scrollable while the tail shrinks back.
+      if (turnedRows > 0) style.minHeight = (turnedRows - 1) * height + columnHeight;
+    } else {
+      style.height = columnHeight;
+    }
+    return style;
+  }, [bottomInset, columnHeight, columnMinWidth, height, maxColumns, turnedRows]);
+  const blankStyle = useMemo<CSSProperties>(
+    () => ({ height: blankPages * columnHeight }),
+    [blankPages, columnHeight],
+  );
+
+  return (
+    <div
+      ref={scrollerRef}
+      data-testid={testID}
+      data-settle={settleTick}
+      data-page-count={pageCount}
+      style={scrollerStyle}
+      onScroll={handleScroll}
+    >
+      {rowSnapStyles.map((style) => (
+        <div key={String(style.top)} style={style} />
+      ))}
       {pageFrames.map((frame) => (
         <div key={frame.key} style={frame.style}>
-          <span style={pageNumberStyle}>{frame.number}</span>
+          <span style={pageNumberStyle}>
+            {frame.number} / {pageCount}
+          </span>
         </div>
       ))}
       <div ref={columnsRef} style={columnsStyle}>
-        <div style={leadStyle} />
+        <div style={blankStyle} />
         {children}
         <div ref={endMarkerRef} />
       </div>

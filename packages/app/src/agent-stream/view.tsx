@@ -680,11 +680,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const [chatImagesReadingPosition] = useState(createActivePromptPublisher);
 
+    // CUSTOM(reading-modes): Columns goes to its end whenever the chat is sent to the bottom.
+    const [readingColumnsFollowRequest, setReadingColumnsFollowRequest] = useState(0);
     useImperativeHandle(
       ref,
       () => ({
         scrollToBottom(reason = "jump-to-bottom") {
           viewportRef.current?.scrollToBottom(reason);
+          setReadingColumnsFollowRequest((request) => request + 1);
         },
         prepareForViewportChange() {
           viewportRef.current?.prepareForViewportChange();
@@ -1157,27 +1160,51 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [expandedToolCallGroupIds, isMobile, presentation.historyGroupUpdatesByHostId],
     );
 
-    // CUSTOM(reading-modes)
+    // CUSTOM(reading-modes): the daemon's older history. Columns lays out the whole
+    // conversation, so its numbered pages start at the first message: it loads every older page
+    // and skips the chat's mounted window.
     const readingOlderHistory = useMemo(
       () => ({
         hasOlder: remoteHasOlder,
         isLoadingOlder: remoteIsLoadingOlder,
         loadOlder: loadRemoteOlder,
+        progressKey: remoteProgressKey,
       }),
-      [loadRemoteOlder, remoteHasOlder, remoteIsLoadingOlder],
+      [loadRemoteOlder, remoteHasOlder, remoteIsLoadingOlder, remoteProgressKey],
     );
-    // Columns draws the same rows as the chat, so it pages through the same history window.
-    const readingColumnsHistory = useMemo(
-      () => ({ hasOlder, isLoadingOlder, loadOlder }),
-      [hasOlder, isLoadingOlder, loadOlder],
-    );
-    const readingColumnsRows = useMemo(
-      () =>
-        presentedStream.mode === "columns"
-          ? [...streamLayout.history, ...streamLayout.liveHead]
-          : EMPTY_READING_ROWS,
-      [presentedStream.mode, streamLayout.history, streamLayout.liveHead],
-    );
+    const readingColumnsRows = useMemo(() => {
+      if (presentedStream.mode !== "columns") return EMPTY_READING_ROWS;
+      const whole =
+        historyWindowStart === 0
+          ? baseRenderModel
+          : buildAgentStreamRenderModel({
+              isTurnActive,
+              activeTurnStartedAt: effectiveTurnPresentation.startedAt,
+              tail: presentation.tail,
+              head: presentation.head,
+              platform: isWeb ? "web" : "native",
+              isMobileBreakpoint: isMobile,
+              historyStart: 0,
+            });
+      const layout = layoutStream({
+        strategy: streamRenderStrategy,
+        isTurnActive,
+        history: whole.history,
+        liveHead: whole.segments.liveHead,
+        timingByAssistantId: whole.turnTiming.byAssistantId,
+      });
+      return [...layout.history, ...layout.liveHead];
+    }, [
+      baseRenderModel,
+      effectiveTurnPresentation.startedAt,
+      historyWindowStart,
+      isMobile,
+      isTurnActive,
+      presentation.head,
+      presentation.tail,
+      presentedStream.mode,
+      streamRenderStrategy,
+    ]);
 
     const findItems = useMemo(
       () => [...effectiveStreamItems, ...(effectiveStreamHead ?? [])],
@@ -1269,7 +1296,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               renderRow={renderStreamItem}
               pendingPermissions={auxiliary.pendingPermissions}
               turnFooter={auxiliary.turnFooter}
-              history={readingColumnsHistory}
+              history={readingOlderHistory}
+              followRequest={readingColumnsFollowRequest}
               bottomInset={bottomOverlayTailClearance}
             />
             <AgentReadingOverview
