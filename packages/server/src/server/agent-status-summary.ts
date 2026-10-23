@@ -308,7 +308,11 @@ export class AgentStatusSummaries {
     }
     const summaryInput = collectStatusSummaryInput(agentManager.getTimeline(agentId));
     if (!summaryInput) return;
-    const previous = agentManager.getStatusSummary(agentId);
+    // CUSTOM(agent-status-summary-persist): after a restart, the stored summary is the previous one.
+    const previous =
+      agentManager.getStatusSummary(agentId) ??
+      (await this.options.agentStorage.get(agentId))?.statusSummary ??
+      null;
     const prompt = buildStatusSummaryPrompt({
       summaryInput,
       lifecycle: agent.lifecycle,

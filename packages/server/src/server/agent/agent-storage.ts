@@ -4,7 +4,12 @@ import { z } from "zod";
 import type { Logger } from "pino";
 
 import { writeJsonFileAtomic } from "../atomic-file.js";
-import { AgentFeatureSchema, AgentStatusSchema } from "../messages.js";
+import {
+  AgentFeatureSchema,
+  AgentStatusSchema,
+  AgentStatusSummaryPayloadSchema,
+  type AgentStatusSummaryPayload,
+} from "../messages.js";
 import { toStoredAgentRecord } from "./agent-projections.js";
 import type { ManagedAgent } from "./agent-manager.js";
 import type { AgentSessionConfig } from "./agent-sdk-types.js";
@@ -75,6 +80,8 @@ const STORED_AGENT_SCHEMA = z.object({
   internal: z.boolean().optional(),
   archivedAt: z.string().nullable().optional(),
   owner: AgentOwnerSchema.optional(),
+  // CUSTOM(agent-status-summary-persist): the line under the composer survives daemon restarts.
+  statusSummary: AgentStatusSummaryPayloadSchema.optional(),
 });
 
 export type SerializableAgentConfig = Pick<
@@ -259,6 +266,10 @@ export class AgentStorage {
       if (existing && existing.archivedAt !== undefined) {
         record.archivedAt = existing.archivedAt;
       }
+      // CUSTOM(agent-status-summary-persist): written only by setStatusSummary.
+      if (existing?.statusSummary) {
+        record.statusSummary = existing.statusSummary;
+      }
       return record;
     });
   }
@@ -271,6 +282,17 @@ export class AgentStorage {
       throw new Error(`Agent ${agentId} not found`);
     }
     await this.upsert({ ...record, title });
+  }
+
+  // CUSTOM(agent-status-summary-persist)
+  async setStatusSummary(agentId: string, statusSummary: AgentStatusSummaryPayload): Promise<void> {
+    await this.load();
+    await this.queueRecordMutation(agentId, (existing) => {
+      if (!existing) {
+        throw new Error(`Agent ${agentId} not found`);
+      }
+      return { ...existing, statusSummary };
+    });
   }
 
   async flush(): Promise<void> {

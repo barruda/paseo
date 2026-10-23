@@ -317,6 +317,25 @@ describe("AgentStorage", () => {
     expect(persisted?.title).toBe("Fix Login Bug");
   });
 
+  // CUSTOM(agent-status-summary-persist)
+  test("keeps the status summary across snapshots and reloads", async () => {
+    const agentId = "agent-summary";
+    await storage.applySnapshot(createManagedAgent({ id: agentId, lifecycle: "running" }));
+    const summary = {
+      topic: "Persist the status summary",
+      request: "Keep the summary after a restart",
+      status: "Writing the storage test",
+      updatedAt: "2026-10-23T00:00:00.000Z",
+    };
+    await storage.setStatusSummary(agentId, summary);
+    await storage.applySnapshot(createManagedAgent({ id: agentId, lifecycle: "idle" }));
+
+    const reloaded = new AgentStorage(storagePath, logger);
+    const persisted = await reloaded.get(agentId);
+    expect(persisted?.statusSummary).toEqual(summary);
+    expect(persisted?.lastStatus).toBe("idle");
+  });
+
   test("setTitle throws when the agent record does not exist", async () => {
     await expect(storage.setTitle("missing-agent", "Impossible")).rejects.toThrow(
       "Agent missing-agent not found",

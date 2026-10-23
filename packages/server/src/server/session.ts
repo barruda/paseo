@@ -2079,6 +2079,10 @@ export class Session {
     const storedRecord = await this.agentStorage.get(payload.id);
     payload.title = storedRecord?.title ?? null;
     payload.archivedAt = storedRecord?.archivedAt ?? null;
+    // CUSTOM(agent-status-summary-persist): a reloaded agent has no summary in memory yet.
+    if (!payload.statusSummary && storedRecord?.statusSummary) {
+      payload.statusSummary = storedRecord.statusSummary;
+    }
     return payload;
   }
 

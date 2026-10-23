@@ -2130,6 +2130,13 @@ export class AgentManager {
     if (!agent) return;
     agent.statusSummary = summary;
     this.emitState(agent, { persist: false });
+    // CUSTOM(agent-status-summary-persist): kept in the agent record so a daemon restart or an
+    // agent reload shows the last summary instead of none.
+    if (this.registry && !agent.internal) {
+      this.registry.setStatusSummary(agentId, summary).catch((error: unknown) => {
+        this.logger.warn({ err: error, agentId }, "Failed to persist agent status summary");
+      });
+    }
   }
 
   getStatusSummary(agentId: string): AgentStatusSummaryPayload | null {

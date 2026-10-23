@@ -2161,8 +2161,9 @@ status` and `!ls`, type `!g` + Up: `git status` shows. Type `!cat packages/ap` +
   - The input is the first user message, the last three, and the activity after the last one
     (about 3k characters), plus the previous summary. "Request" follows the latest messages, so it
     changes when the session changes goal.
-  - The summary is in daemon memory: a daemon restart or an agent reload clears it until the next
-    turn.
+  - The summary is also saved in the agent's record, so a daemon restart or an agent reload
+    shows the last one (see
+    [agent-status-summary-persist](#agent-status-summary-persist-the-line-under-the-composer-survives-restarts)).
 - **Files:** `packages/server/src/server/agent-status-summary.ts` (triggers, prompt, queue) and
   `lean-claude.ts` (the `claude -p` runner and usage file), each with a test;
   `packages/app/src/composer/agent-status-line.tsx`; `custom/llm-usage.mjs`. New files; no
@@ -2871,3 +2872,28 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
   on a long chat: Compact hides tool rows and keeps every answer; Columns opens with three full,
   numbered pages, one wheel flick shows the three before, and older messages load as you go up; Newspaper shows columns that end above the composer; Cards shows one card per
   turn; "Open in chat" on the first turn scrolls the chat to its prompt.
+
+## agent-status-summary-persist: the line under the composer survives restarts
+
+- **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: the status summary survives daemon restarts`
+- **Why:** The [agent-status-summary](#agent-status-summary-what-each-agent-was-asked-and-where-it-stands-under-the-composer)
+  line lived only in daemon memory. Whenever the daemon restarted (closing Paseo, an update,
+  `kill-paseos-and-daemons.sh`), every tab came back without its line until the agent's next turn.
+- **What:** Each new summary is also written to the agent's JSON record (`statusSummary`). Agent
+  payloads built from a record, or from a loaded agent that has no summary in memory yet, carry
+  the stored one. The next summary call gets it as the previous summary.
+- **Core files touched** (marked `CUSTOM(agent-status-summary-persist)`):
+  - Server `agent/agent-storage.ts`: optional `statusSummary` in the stored schema,
+    `setStatusSummary`, and `applySnapshot` keeps the existing one (snapshots don't carry it).
+  - `agent/agent-manager.ts`: `setStatusSummary` also persists it (not for internal agents).
+  - `agent/agent-projections.ts`: `buildStoredAgentPayload` copies it.
+  - `session.ts`: `enrichAgentPayload` fills it from the record when the live agent has none.
+  - `agent-status-summary.ts`: the previous summary falls back to the stored one.
+- **Re-apply:** Add `statusSummary` (the protocol's `AgentStatusSummaryPayloadSchema`, optional)
+  to the stored agent record. Write it from `AgentManager.setStatusSummary` through a storage
+  mutation on the existing record, keep it across `applySnapshot`, and read it wherever a payload
+  comes from a record or is enriched from one. No protocol change.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent/agent-storage.test.ts -t "keeps the status summary")`
+  (in the update script). In the app: wait for a summary line, run `kill-paseos-and-daemons.sh`;
+  after the restart the line is back before the agent does anything.

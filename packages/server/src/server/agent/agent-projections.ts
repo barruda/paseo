@@ -198,6 +198,13 @@ function buildStoredPersistenceHandle(
   return toAgentPersistenceHandle(validProviders, record.persistence);
 }
 
+// CUSTOM(agent-status-summary-persist)
+function storedStatusSummary(
+  record: StoredAgentRecord,
+): Pick<AgentSnapshotPayload, "statusSummary"> {
+  return record.statusSummary ? { statusSummary: record.statusSummary } : {};
+}
+
 export function buildStoredAgentPayload(
   record: StoredAgentRecord,
   validProviders: Iterable<AgentProvider>,
@@ -254,6 +261,7 @@ export function buildStoredAgentPayload(
     labels: normalizeLabels(record.labels),
     ...(typeof record.lastError === "string" ? { lastError: record.lastError } : {}),
     ...(providerAvailable ? {} : { providerUnavailable: true }),
+    ...storedStatusSummary(record), // CUSTOM(agent-status-summary-persist)
   };
 }
 
