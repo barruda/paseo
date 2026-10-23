@@ -8,6 +8,8 @@ export interface NewAgentProject {
    * when the project has no workspace yet; launching creates one in `rootPath`. */
   workspaceId: string | null;
   rootPath: string;
+  /** The workspace's checked-out branch, shown faintly beside the name. */
+  branch: string | null;
 }
 
 type ProjectWorkspace = Pick<
@@ -19,6 +21,7 @@ type ProjectWorkspace = Pick<
   | "projectRootPath"
   | "workspaceDirectory"
   | "archivingAt"
+  | "gitRuntime"
 >;
 
 type HostProject = Pick<
@@ -46,6 +49,7 @@ export function listNewAgentProjects(
         label: workspace.projectCustomName?.trim() || workspace.projectDisplayName,
         workspaceId: workspace.id,
         rootPath: workspace.projectRootPath,
+        branch: workspace.gitRuntime?.currentBranch?.trim() || null,
       },
     });
   }
@@ -58,6 +62,7 @@ export function listNewAgentProjects(
         label: project.projectCustomName?.trim() || project.projectDisplayName,
         workspaceId: null,
         rootPath: project.projectRootPath,
+        branch: null,
       },
     });
   }

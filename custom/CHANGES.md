@@ -2315,6 +2315,9 @@ agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionall
     had no workspace and never showed. Picking one creates a workspace in the project's root
     (`createWorkspace` with a `directory` source and the `projectId`; a worktree gets
     `kind: worktree`), then opens the agent there.
+  - Each project shows its main workspace's current branch, small and faint at the right of the
+    row (2026-10-23, commit `custom: the new agent project flyout shows each project's branch`).
+    Projects with no workspace show none.
 - **Files:** `packages/app/src/new-agent-projects/` (`model.ts` picks one workspace per project,
   `menu.tsx` builds the page and launches), with `model.test.ts`.
 - **Core files touched** (marked `CUSTOM(new-agent-projects)`):

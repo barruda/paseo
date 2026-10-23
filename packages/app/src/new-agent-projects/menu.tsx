@@ -1,6 +1,7 @@
 // CUSTOM(new-agent-projects): the + menu's Agent row opens a project flyout on hover, so a new
 // agent starts in another project in one click. Pressing the row still launches the default agent.
 import { useCallback, useMemo } from "react";
+import { Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { useToast } from "@/contexts/toast-context";
@@ -180,10 +181,20 @@ function NewAgentProjectItem({
     ),
     [iconDataUri, initial, projectViewKey],
   );
+  const trailing = useMemo(
+    () =>
+      project.branch ? (
+        <Text style={styles.branch} numberOfLines={1}>
+          {project.branch}
+        </Text>
+      ) : null,
+    [project.branch],
+  );
   const handleSelect = useCallback(() => onLaunch(project), [onLaunch, project]);
   return (
     <DropdownMenuItem
       leading={leading}
+      trailing={trailing}
       onSelect={handleSelect}
       testID={`new-agent-project-${project.projectId}`}
     >
@@ -207,4 +218,11 @@ function useCurrentProjectId(serverId: string): string | null {
 
 const styles = StyleSheet.create((theme) => ({
   initial: { fontSize: 9, fontWeight: theme.fontWeight.medium },
+  branch: {
+    maxWidth: 140,
+    marginLeft: theme.spacing[3],
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
+    opacity: 0.7,
+  },
 }));
