@@ -1,0 +1,5 @@
+{
+  "id": "btw",
+  "description": "/btw asks about the agent's session without interrupting it or adding to its history.",
+  "requirements": { "paseo": ">=0.11.0" }
+}

@@ -2838,6 +2838,26 @@ class ClaudeAgentSession implements AgentSession {
     );
   }
 
+  // CUSTOM(btw): Claude Code's /btw. The CLI answers from a fork of the live context, with no
+  // tools and outside the transcript, so it reuses the session's prompt cache and works mid-turn.
+  // The SDK ships `askSideQuestion` on Query without declaring it.
+  async askSideQuestion(
+    question: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<string | null> {
+    const q: Query & {
+      askSideQuestion?: (
+        question: string,
+        options?: { signal?: AbortSignal },
+      ) => Promise<{ response: string } | null>;
+    } = await this.ensureQuery();
+    if (typeof q.askSideQuestion !== "function") {
+      throw new Error("This Claude Agent SDK does not support side questions.");
+    }
+    const result = await q.askSideQuestion(question, options);
+    return result?.response ?? null;
+  }
+
   async listCommands(): Promise<AgentSlashCommand[]> {
     const q = await this.ensureQuery();
     const commands = await q.supportedCommands();

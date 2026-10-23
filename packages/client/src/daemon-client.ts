@@ -11,6 +11,8 @@ import { CreationClient } from "./creation/index.js";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
 // CUSTOM(history-ai-search)
 import type { HistoryAiSearchResponse } from "@getpaseo/protocol/messages";
+// CUSTOM(btw)
+import type { AgentSideQuestionResponse } from "@getpaseo/protocol/messages";
 // CUSTOM(voice-settings)
 import type {
   SpeechLocalGetStatusResponse,
@@ -2454,6 +2456,22 @@ export class DaemonClient {
         }
         return msg.payload;
       },
+    });
+  }
+
+  // CUSTOM(btw): ask about an agent's session without adding to its history.
+  async askAgentSideQuestion(
+    agentId: string,
+    question: string,
+    requestId?: string,
+  ): Promise<AgentSideQuestionResponse["payload"]> {
+    if (this.lastServerInfoMessage?.features?.agentSideQuestion !== true) {
+      throw new Error("Update the host to use /btw.");
+    }
+    return this.sendNamespacedCorrelatedSessionRequest<"agent.side_question.response">({
+      requestId,
+      message: { type: "agent.side_question.request", agentId, question },
+      timeout: 180_000,
     });
   }
 

@@ -1851,6 +1851,8 @@ export class VoiceAssistantWebSocketServer {
         checkoutCommitPaths: true,
         // CUSTOM(history-ai-search)
         historyAiSearch: true,
+        // CUSTOM(btw)
+        agentSideQuestion: true,
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
         ...(this.advertiseRelayConfig ? { relayConfig: true } : {}),
         // COMPAT(pushTokenRevocation): added in v0.3.2, remove gate after 2027-02-10.

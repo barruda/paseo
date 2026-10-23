@@ -903,6 +903,11 @@ class FakeAgentSession implements AgentSession {
     await this.closeSession?.();
   }
 
+  // CUSTOM(btw): echoes the question so tests can tell which one was answered.
+  async askSideQuestion(question: string): Promise<string | null> {
+    return `side answer: ${question}`;
+  }
+
   async listCommands(): Promise<AgentSlashCommand[]> {
     if (this.providerName === "codex") {
       const codexHome = process.env.CODEX_HOME ?? path.join(process.env.HOME ?? "/tmp", ".codex");

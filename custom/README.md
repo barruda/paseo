@@ -136,6 +136,7 @@ paseo plugin install "$PWD/custom/plugins/warp" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/beautiful-chat" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/workboard" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/tldr" --home ~/.paseo
+paseo plugin install "$PWD/custom/plugins/btw" --home ~/.paseo
 ```
 
 After editing a plugin's source: `paseo plugin reload <id> --home ~/.paseo`.

@@ -3048,3 +3048,45 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
   a Warp tab in the bottom panel, focus an agent of another project and click the `+` in the Warp
   chip: a new tab opens inside Warp, and `pwd` prints that project's folder. Hover the chip: the
   `+` stays put, 20px left of the `×`.
+
+## btw: `/btw` asks about the session without interrupting the agent
+
+- **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: /btw asks about the session from a fork of its live context`
+- **Why:** Claude Code's `/btw`: ask "what did you change so far?" while the agent works, without
+  queueing a message, stopping the turn or adding the question to its history.
+- **What:** `/btw <question>` in a Claude agent's composer adds a **BTW** card to the chat with the
+  question; about a second later the answer fills it in (plain text, selectable, Copy). It works
+  while a turn runs. The agent never sees the question or the answer.
+  - The daemon calls `askSideQuestion` on the agent's live Claude Agent SDK `Query`: the
+    `side_question` control request Claude Code's own `/btw` uses. The CLI answers from a fork of
+    the live context, with no tools and outside the transcript. Same process, model, system prompt
+    and tools as the main session, so the request reuses its prompt cache. The SDK ships the method
+    without declaring it in `sdk.d.ts`; the provider types it locally.
+  - An idle agent with no running CLI gets one started (resume), as `listCommands` does.
+  - Other providers answer with an error in the card.
+  - Cards live in daemon memory, like other plugin rows: a daemon restart drops them.
+- **Files:** `custom/plugins/btw/` (slash command `btw`, RPC `ask`, card renderer, `answeredData`
+  test); `packages/server/src/server/plugins/custom-btw-plugin.e2e.test.ts`. New files.
+- **Core files touched** (each marked `CUSTOM(btw)`):
+  - Protocol `messages.ts`: `agent.side_question.request` / `.response` (`answer`, `error`) in the
+    session unions, `AgentSideQuestionResponse`, and `features.agentSideQuestion`.
+  - Server: `agent/agent-sdk-types.ts` (optional `AgentSession.askSideQuestion`),
+    `agent/provider-registry.ts` (binds it), `agent/providers/claude/agent.ts` (calls
+    `query.askSideQuestion`), `session.ts` (`handleAgentSideQuestion`, chained in
+    `dispatchWorkspaceLifecycleMessage` next to History AI search), `websocket-server.ts`
+    (advertises the feature), `authorization/operation-permissions.ts` (same permissions as
+    `send_agent_message`), `test-utils/fake-agent-client.ts` (echo answer for tests).
+  - Client: `daemon-client.ts` `askAgentSideQuestion`; `index.ts` `PaseoAgentHandle.askSideQuestion`,
+    which the plugin's server handler calls.
+- **Re-apply:** Add the RPC pair gated on a feature flag. In the session, load the unarchived agent
+  and call the optional `askSideQuestion` on its session; the Claude session gets it from
+  `ensureQuery()` and the SDK's `query.askSideQuestion(question)` (`{ response } | null`). Expose it
+  on the SDK agent handle for the plugin. If a newer SDK declares `askSideQuestion` on `Query`, drop
+  the local type.
+- **Setup:** One-time plugin install per daemon. See [README.md](README.md#one-time-setup-plugins).
+  Needs a daemon from this build (otherwise the card says "Update the host to use /btw.").
+- **Verify:** `npx vitest run custom/plugins/btw` and
+  `(cd packages/server && npx vitest run src/server/plugins/custom-btw-plugin.e2e.test.ts)` (the
+  update script runs both). In the app, while a Claude agent runs a long command, send
+  `/btw what are you doing right now?`: a BTW card answers in about a second and the turn goes on.

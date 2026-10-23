@@ -2367,6 +2367,8 @@ export class Session {
       // CUSTOM(history-ai-search): chained here because the top-level chain is at its
       // complexity limit.
       this.dispatchHistoryAiSearchMessage(msg) ??
+      // CUSTOM(btw)
+      this.dispatchAgentSideQuestionMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg)
     );
   }
@@ -2763,6 +2765,13 @@ export class Session {
       default:
         return undefined;
     }
+  }
+
+  // CUSTOM(btw)
+  private dispatchAgentSideQuestionMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    return msg.type === "agent.side_question.request"
+      ? this.handleAgentSideQuestion(msg)
+      : undefined;
   }
 
   // CUSTOM(history-ai-search)
@@ -6384,6 +6393,37 @@ export class Session {
           error: message,
           code,
         },
+      });
+    }
+  }
+
+  // CUSTOM(btw): the provider answers from a fork of the agent's live context. Failures answer
+  // with `error`.
+  private async handleAgentSideQuestion(
+    request: Extract<SessionInboundMessage, { type: "agent.side_question.request" }>,
+  ): Promise<void> {
+    const { requestId, agentId } = request;
+    try {
+      const question = request.question.trim();
+      if (!question) throw new Error("Type a question after /btw.");
+      const agent = await ensureUnarchivedAgentLoaded(agentId, {
+        agentManager: this.agentManager,
+        agentStorage: this.agentStorage,
+        logger: this.sessionLogger,
+      });
+      if (!agent.session?.askSideQuestion) {
+        throw new Error(`${agent.provider} agents do not answer side questions.`);
+      }
+      const answer = await agent.session.askSideQuestion(question);
+      this.emit({
+        type: "agent.side_question.response",
+        payload: { requestId, agentId, answer, error: null },
+      });
+    } catch (error) {
+      this.sessionLogger.error({ err: error, agentId }, "Side question failed");
+      this.emit({
+        type: "agent.side_question.response",
+        payload: { requestId, agentId, answer: null, error: getErrorMessage(error) },
       });
     }
   }
