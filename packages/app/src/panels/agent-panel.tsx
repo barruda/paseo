@@ -36,7 +36,8 @@ import {
 import { getActiveMessageSubmissions } from "@/composer/submission/model";
 import { RewindComposerRestoreProvider } from "@/components/rewind/composer-restore";
 import { useProviderIcon } from "@/components/provider-icons";
-import { useAgentProjectTabIcon } from "./agent-project-tab-icon";
+import { useAgentProjectTabIcon, useWorkspaceProjectTabIcon } from "./agent-project-tab-icon";
+import { useDraftAgentTitle } from "@/draft-agent-title/store";
 import { useToastHost, type ToastApi, type ToastState } from "@/components/toast-host";
 import type { WorkspaceComposerAttachment } from "@/attachments/types";
 import { useWorkspaceAttachmentScopeKey } from "@/attachments/workspace-attachments-store";
@@ -452,8 +453,11 @@ export const agentPanelRegistration = definePanel("agent", {
 
 export function useDraftPanelDescriptor(
   target: { kind: "draft"; draftId: string },
-  context: { serverId: string },
+  context: { serverId: string; workspaceId: string },
 ) {
+  // CUSTOM(draft-agent-title): the project's icon and the name given before creating the agent.
+  const projectIcon = useWorkspaceProjectTabIcon(context.serverId, context.workspaceId || null);
+  const title = useDraftAgentTitle(target.draftId);
   const createDescriptorState = useCreateFlowStore(
     useShallow((state) => {
       const pending = state.pendingByDraftId[target.draftId];
@@ -472,7 +476,8 @@ export function useDraftPanelDescriptor(
 
   return buildDraftPanelDescriptor({
     ...createDescriptorState,
-    icon: SquarePen,
+    title,
+    icon: projectIcon ?? SquarePen,
   });
 }
 

@@ -43,6 +43,24 @@ describe("buildDraftPanelDescriptor", () => {
     });
   });
 
+  // CUSTOM(draft-agent-title)
+  it("shows the name given to the draft, before and during create", () => {
+    const idle = buildDraftPanelDescriptor({
+      isCreating: false,
+      title: "Auth fix",
+      icon: TestIcon,
+    });
+    const creating = buildDraftPanelDescriptor({
+      isCreating: true,
+      title: "Auth fix",
+      pendingPrompt: "Fix the login redirect",
+      icon: TestIcon,
+    });
+
+    expect(idle).toMatchObject({ label: "Auth fix", tooltip: "Auth fix", subtitle: "New Agent" });
+    expect(creating.label).toBe("Auth fix");
+  });
+
   it("uses the active language for draft descriptor chrome", async () => {
     await i18n.changeLanguage("zh-CN");
     const idleDescriptor = buildDraftPanelDescriptor({

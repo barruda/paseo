@@ -6,9 +6,11 @@ import { useTranslation } from "react-i18next";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
+import { useDraftAgentTitleStore } from "@/draft-agent-title/store";
 
 interface RenamingTabState {
-  kind: "terminal" | "agent";
+  // CUSTOM(draft-agent-title): "draft" names a New Agent tab before its agent exists.
+  kind: "terminal" | "agent" | "draft";
   id: string;
   currentTitle: string;
 }
@@ -50,6 +52,13 @@ export function useWorkspaceTabRename(
           useSessionStore.getState().sessions[normalizedServerId]?.agents?.get(agentId) ?? null;
         const currentTitle = agent?.title ?? "";
         setRenamingTab({ kind: "agent", id: agentId, currentTitle });
+        return;
+      }
+      // CUSTOM(draft-agent-title)
+      if (tab.target.kind === "draft") {
+        const { draftId } = tab.target;
+        const currentTitle = useDraftAgentTitleStore.getState().byDraftId[draftId] ?? "";
+        setRenamingTab({ kind: "draft", id: draftId, currentTitle });
       }
     },
     [normalizedServerId, terminalsData],
@@ -58,6 +67,11 @@ export function useWorkspaceTabRename(
   const handleRenameModalSubmit = useCallback(
     async (nextTitle: string) => {
       if (!renamingTab) return;
+      // CUSTOM(draft-agent-title): local until the agent is created with it.
+      if (renamingTab.kind === "draft") {
+        useDraftAgentTitleStore.getState().setTitle(renamingTab.id, nextTitle);
+        return;
+      }
       if (!client) {
         throw new Error(t("workspace.terminal.hostDisconnected"));
       }

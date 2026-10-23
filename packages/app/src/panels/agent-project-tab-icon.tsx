@@ -15,12 +15,28 @@ export function useAgentProjectTabIcon(
   serverId: string,
   agentId: string,
 ): ComponentType<PanelIconProps> | null {
-  const projectId = useSessionStore((state) => {
+  const workspaceId = useSessionStore((state) => {
     const session = state.sessions[serverId];
-    const workspaceId =
-      session?.agents.get(agentId)?.workspaceId ?? session?.agentDetails?.get(agentId)?.workspaceId;
-    return workspaceId ? (session?.workspaces.get(workspaceId)?.projectId ?? null) : null;
+    return (
+      session?.agents.get(agentId)?.workspaceId ??
+      session?.agentDetails?.get(agentId)?.workspaceId ??
+      null
+    );
   });
+  return useWorkspaceProjectTabIcon(serverId, workspaceId);
+}
+
+/**
+ * CUSTOM(draft-agent-title): the same icon for a tab that only knows its workspace, such as a New
+ * Agent tab. It follows the workspace, so a Desk draft moved to another project updates.
+ */
+export function useWorkspaceProjectTabIcon(
+  serverId: string,
+  workspaceId: string | null,
+): ComponentType<PanelIconProps> | null {
+  const projectId = useSessionStore((state) =>
+    workspaceId ? (state.sessions[serverId]?.workspaces.get(workspaceId)?.projectId ?? null) : null,
+  );
   const serverIds = useMemo(() => [serverId], [serverId]);
   const projects = useHostProjects(serverIds);
   const identity = useMemo(

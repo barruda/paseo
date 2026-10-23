@@ -2897,3 +2897,37 @@ src/server/paseo-worktree-service.test.ts src/utils/worktree.posix.test.ts)` (th
 - **Verify:** `(cd packages/server && npx vitest run src/server/agent/agent-storage.test.ts -t "keeps the status summary")`
   (in the update script). In the app: wait for a summary line, run `kill-paseos-and-daemons.sh`;
   after the restart the line is back before the agent does anything.
+
+## draft-agent-title: New Agent tabs show the project icon and can be named
+
+- **Added:** 2026-10-23 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: New Agent tabs show the project icon and take a name`
+- **Why:** A New Agent tab showed a generic pencil, so several drafts in different projects looked
+  the same; and naming a session meant waiting for the agent to exist.
+- **What:**
+  - The New Agent tab shows its workspace's project icon (the same as
+    [agent-tab-project-icon](#agent-tab-project-icon-agent-tabs-show-the-project-icon)), falling
+    back to the pencil. A Desk draft moved to another project (Ctrl+M, the composer's project
+    icon) switches icon with it; a new project icon shows as soon as it is set.
+  - Its context menu has **Rename**, and F2 renames it too. The name shows as the tab label and is
+    kept in this app's storage (`custom-draft-agent-titles`) until the agent is created.
+  - The agent is created with the name as its explicit `config.title`. The daemon keeps an
+    explicit title instead of deriving one from the prompt, and
+    [session-auto-rename](#session-auto-rename-the-status-summary-names-the-session) never
+    replaces a title that differs from the prompt-derived one, so the LLM never renames it.
+- **Files:** `packages/app/src/draft-agent-title/store.ts` (`withDraftAgentTitle`).
+- **Core files touched** (marked `CUSTOM(draft-agent-title)`):
+  - `panels/agent-panel.tsx` (`useDraftPanelDescriptor`: icon and title) and
+    `panels/draft-panel-descriptor.ts` (optional `title`).
+  - `panels/agent-project-tab-icon.tsx`: `useWorkspaceProjectTabIcon`, which the agent hook now
+    calls.
+  - `screens/workspace/use-workspace-tab-rename.tsx`: a `draft` rename kind that writes the store.
+  - `screens/workspace/workspace-tab-menu.ts`: Rename for draft tabs.
+  - `composer/draft/workspace-tab.tsx`: `withDraftAgentTitle` on the create config; clears the
+    name after creation.
+- **Re-apply:** In the draft panel descriptor, resolve the project icon from the descriptor
+  context's `workspaceId` and use the stored name as label. Let the tab rename hook handle draft
+  targets locally. Pass the name as `config.title` when the draft creates its agent.
+- **Verify:** `(cd packages/app && npx vitest run src/panels/agent-panel-descriptor.test.tsx src/screens/workspace/workspace-tab-menu.test.ts)`
+  (in the update script). In the app, open a New Agent tab: it shows the project icon. Right-click
+  it, Rename to "Auth fix", send a prompt: the agent tab stays "Auth fix" after three messages.

@@ -67,6 +67,7 @@ import {
   useDraftWorktreeStore,
 } from "@/draft-worktree/model";
 import { DraftWorktreePicker, useDraftWorktreeSource } from "@/draft-worktree/picker";
+import { useDraftAgentTitleStore, withDraftAgentTitle } from "@/draft-agent-title/store";
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
@@ -216,7 +217,7 @@ async function submitDraftCreateRequest(input: {
   const imagesData = await encodeImages(images);
   const options = {
     idempotencyKey: input.draftId,
-    config,
+    config: withDraftAgentTitle(input.draftId, config), // CUSTOM(draft-agent-title)
     workspaceId,
     initialPrompt: text,
     clientMessageId: attempt.clientMessageId,
@@ -552,6 +553,7 @@ export function WorkspaceDraftAgentTab({
     },
     onCreateSuccess: ({ result }) => {
       useDraftWorktreeStore.getState().clear(draftId); // CUSTOM(draft-worktree)
+      useDraftAgentTitleStore.getState().clear(draftId); // CUSTOM(draft-agent-title)
       clearDraftInput("sent");
       clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
       useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });

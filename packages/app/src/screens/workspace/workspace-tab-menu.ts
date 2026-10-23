@@ -295,7 +295,12 @@ export function buildWorkspaceTabMenuEntries(
     }
   }
 
-  if (tab.target.kind === "agent" || tab.target.kind === "terminal") {
+  // CUSTOM(draft-agent-title): a New Agent tab can be named before its agent exists.
+  if (
+    tab.target.kind === "agent" ||
+    tab.target.kind === "terminal" ||
+    tab.target.kind === "draft"
+  ) {
     entries.push({
       kind: "item",
       key: "rename",
