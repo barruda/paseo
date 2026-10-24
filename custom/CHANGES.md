@@ -3090,3 +3090,24 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
   `(cd packages/server && npx vitest run src/server/plugins/custom-btw-plugin.e2e.test.ts)` (the
   update script runs both). In the app, while a Claude agent runs a long command, send
   `/btw what are you doing right now?`: a BTW card answers in about a second and the turn goes on.
+
+## attachment-thumbnail-zoom: hovering an image thumbnail shows it magnified
+
+- **Added:** 2026-10-24 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: hovering an image attachment thumbnail shows it magnified`
+- **Why:** A pasted screenshot shows as a 48px square crop, too small to tell what was pasted
+  without opening the lightbox.
+- **What:** On web and desktop, hovering an image thumbnail (composer and sent messages) opens a
+  card above it with the whole image, uncropped: the short side at 3× the thumbnail (144px), the
+  long side up to 3× that (432px), shrinking both past that ratio. It uses the app's `HoverCard`,
+  so it closes when the pointer leaves and never shows on native.
+- **Files:** `packages/app/src/attachments/attachment-thumbnail-zoom.tsx` (the hover card) and
+  `attachment-thumbnail-zoom-size.ts` (+ test). New files.
+- **Core files touched** (marked `CUSTOM(attachment-thumbnail-zoom)`):
+  - `components/attachment-pill.tsx`: `AttachmentThumbnail` wraps its `Image` in
+    `AttachmentThumbnailZoom`.
+- **Re-apply:** Wrap the image of the attachment thumbnail component in a `HoverCard` whose
+  content is the same URI at `computeAttachmentZoomSize`, placed on top.
+- **Verify:** `(cd packages/app && npx vitest run src/attachments/attachment-thumbnail-zoom-size.test.ts)`
+  (the update script runs it). In the app, paste a screenshot in the composer and hover its
+  thumbnail: the whole image shows above it, and leaving the thumbnail closes it.

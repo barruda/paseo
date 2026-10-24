@@ -6,6 +6,7 @@ import { isNative } from "@/constants/platform";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import type { AttachmentMetadata } from "@/attachments/types";
 import { useAttachmentPreviewUrl } from "@/attachments/use-attachment-preview-url";
+import { AttachmentThumbnailZoom } from "@/attachments/attachment-thumbnail-zoom";
 import type { Theme } from "@/styles/theme";
 
 // Every attachment pill body — image thumbnail or labelled — renders at this
@@ -138,7 +139,12 @@ export function AttachmentThumbnail({ metadata }: { metadata: AttachmentMetadata
   if (!uri) {
     return <View style={styles.thumbnailPlaceholder} />;
   }
-  return <Image source={source} style={styles.thumbnail} />;
+  // CUSTOM(attachment-thumbnail-zoom): hovering the thumbnail shows the image magnified.
+  return (
+    <AttachmentThumbnailZoom uri={uri} thumbnailSize={ATTACHMENT_CONTENT_HEIGHT}>
+      <Image source={source} style={styles.thumbnail} />
+    </AttachmentThumbnailZoom>
+  );
 }
 
 const ThemedX = withUnistyles(X);
