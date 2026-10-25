@@ -3176,7 +3176,8 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
     relative path, or a full path ending in `/<link>`. Only then the workspace and the daemon's
     suffix lookup, as upstream does. This finds files outside the workspace too.
   - **Hover card.** On web and desktop, resting the pointer on a file link for 400 ms opens a card
-    with icons first (closest to the pointer) and the full path after them: **Copiar caminho completo** and **Abrir em aba** (what clicking
+    with icons first and the full path after them. The card opens with its first icon right above
+    the pointer (`pointerAnchorOffset`), shifting left only when the screen's right edge is near: **Copiar caminho completo** and **Abrir em aba** (what clicking
     the link does) for every file; for a `.sh`, **Executar aqui** (the shell-command plugin, as
     `!cd <folder> && bash ./<script>`) and **Executar no Warp** (a new tab inside the bottom
     panel's Warp, in the script's folder, running `bash ./<script>`); for `.html`,
@@ -3211,7 +3212,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     `FileLinkHoverActions` instead of the path tooltip.
   - `agent-stream/view.tsx`: `useSessionFilePaths` over the stream, passed to the provider.
   - `components/ui/hover-card.tsx`: `openDelayMs` on `HoverCard`, `style` on `HoverCardTrigger`,
-    and `useHoverCardClose()`.
+    `useHoverCardClose()`, and `pointerAnchorOffset` on `HoverCardContent` (the trigger tracks the
+    pointer's x until the card opens).
   - `chat-code-run/context.tsx`: `ChatCodeRunProvider` also provides `useChatWorkspace()`.
   - `screens/workspace/workspace-tab-menu-actions.ts`: exports `resolveFullTabFilePath`.
   - `workspace-tabs/warp-session.ts`: `openWarpSession` takes an optional command.

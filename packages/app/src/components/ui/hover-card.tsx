@@ -43,9 +43,16 @@ interface HoverCardContextValue {
   openNow: () => void;
   scheduleClose: () => void;
   /** CUSTOM(chat-file-actions): what the trigger's pointer events call, honoring `openDelayMs`. */
-  enterTrigger: () => void;
+  enterTrigger: (event?: PointerLike) => void;
   leaveTrigger: () => void;
   close: () => void;
+  /** CUSTOM(chat-file-actions): where the pointer was on the trigger when the card opened. */
+  pointerXRef: RefObject<number | null>;
+  trackPointer: (event?: PointerLike) => void;
+}
+
+interface PointerLike {
+  nativeEvent?: { clientX?: number };
 }
 
 const HoverCardContext = createContext<HoverCardContextValue | null>(null);
@@ -260,24 +267,37 @@ function WebHoverCard({
 
   // CUSTOM(chat-file-actions): a delayed open, so sweeping the pointer across text doesn't flash it.
   const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerXRef = useRef<number | null>(null);
+  // Follows the pointer until the card opens; an open card stays where it opened.
+  const trackPointer = useCallback(
+    (event?: PointerLike) => {
+      const x = event?.nativeEvent?.clientX;
+      if (!open && typeof x === "number") pointerXRef.current = x;
+    },
+    [open],
+  );
   const clearOpenTimer = useCallback(() => {
     if (openTimerRef.current) {
       clearTimeout(openTimerRef.current);
       openTimerRef.current = null;
     }
   }, []);
-  const enterTrigger = useCallback(() => {
-    if (openDelayMs <= 0 || open) {
-      openNow();
-      return;
-    }
-    clearGraceTimer();
-    clearOpenTimer();
-    openTimerRef.current = setTimeout(() => {
-      openTimerRef.current = null;
-      openNow();
-    }, openDelayMs);
-  }, [clearGraceTimer, clearOpenTimer, open, openDelayMs, openNow]);
+  const enterTrigger = useCallback(
+    (event?: PointerLike) => {
+      trackPointer(event);
+      if (openDelayMs <= 0 || open) {
+        openNow();
+        return;
+      }
+      clearGraceTimer();
+      clearOpenTimer();
+      openTimerRef.current = setTimeout(() => {
+        openTimerRef.current = null;
+        openNow();
+      }, openDelayMs);
+    },
+    [clearGraceTimer, clearOpenTimer, open, openDelayMs, openNow, trackPointer],
+  );
   const leaveTrigger = useCallback(() => {
     clearOpenTimer();
     scheduleClose();
@@ -301,8 +321,20 @@ function WebHoverCard({
       enterTrigger,
       leaveTrigger,
       close,
+      pointerXRef,
+      trackPointer,
     }),
-    [open, layer, setTriggerRef, openNow, scheduleClose, enterTrigger, leaveTrigger, close],
+    [
+      open,
+      layer,
+      setTriggerRef,
+      openNow,
+      scheduleClose,
+      enterTrigger,
+      leaveTrigger,
+      close,
+      trackPointer,
+    ],
   );
 
   return (
@@ -347,6 +379,7 @@ export function HoverCardTrigger({
       collapsable={false}
       style={style}
       onPointerEnter={ctx.enterTrigger}
+      onPointerMove={ctx.trackPointer}
       onPointerLeave={ctx.leaveTrigger}
     >
       {children}
@@ -363,6 +396,12 @@ interface HoverCardContentProps {
   role?: Role;
   accessibilityLabel?: string;
   testID?: string;
+  /**
+   * CUSTOM(chat-file-actions): anchor the card's left edge this many px left of the pointer
+   * instead of at the trigger, so what sits there in the card is right above the pointer. Still
+   * kept on screen.
+   */
+  pointerAnchorOffset?: number;
   /** Mounted only while the card is open, so whatever it fetches runs only then. */
   children: ReactNode;
 }
@@ -376,6 +415,7 @@ export function HoverCardContent(props: HoverCardContentProps): ReactElement | n
       layer={ctx.layer}
       triggerRef={ctx.triggerRef}
       contentRef={ctx.contentRef}
+      pointerX={ctx.pointerXRef.current}
     />
   );
 }
@@ -391,11 +431,14 @@ function HoverCardSurface({
   role,
   accessibilityLabel,
   testID,
+  pointerAnchorOffset,
+  pointerX,
   children,
 }: HoverCardContentProps & {
   layer: number;
   triggerRef: RefObject<View | null>;
   contentRef: RefObject<View | null>;
+  pointerX: number | null;
 }): ReactElement {
   const bottomSheetInternal = useBottomSheetModalInternal(true);
   const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
@@ -406,13 +449,19 @@ function HoverCardSurface({
     if (!triggerRef.current) return;
     let cancelled = false;
     void measureElement(triggerRef.current).then((rect) => {
-      if (!cancelled) setTriggerRect(rect);
+      if (cancelled) return undefined;
+      // CUSTOM(chat-file-actions): a zero-width anchor at the pointer, with start alignment.
+      if (pointerAnchorOffset !== undefined && pointerX !== null) {
+        setTriggerRect({ ...rect, x: pointerX - pointerAnchorOffset, width: 0 });
+      } else {
+        setTriggerRect(rect);
+      }
       return undefined;
     });
     return () => {
       cancelled = true;
     };
-  }, [triggerRef]);
+  }, [pointerAnchorOffset, pointerX, triggerRef]);
 
   useEffect(() => {
     if (!triggerRect || !contentSize) return;

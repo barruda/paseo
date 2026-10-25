@@ -66,6 +66,9 @@ import {
 const OPEN_DELAY_MS = 400;
 const ICON_SIZE = 14;
 const MAX_CANDIDATES = 5;
+// From the card's left edge to the middle of its first icon: card padding, button padding, half
+// the icon. The card opens with that point right above the pointer.
+const FIRST_ICON_CENTER = 8 + 4 + ICON_SIZE / 2;
 
 const TRIGGER_STYLE: ViewStyle = {
   // RN doesn't type "inline-flex" but RN-web honors it, which keeps the link in the text's flow.
@@ -160,6 +163,7 @@ function FileLinkHoverCardBody({
         placement="top"
         alignment="start"
         offset={6}
+        pointerAnchorOffset={FIRST_ICON_CENTER}
         style={styles.card}
         testID="file-link-hover-actions"
       >
@@ -463,6 +467,7 @@ function UrlHoverCardBody({
         placement="top"
         alignment="start"
         offset={6}
+        pointerAnchorOffset={FIRST_ICON_CENTER}
         style={styles.card}
         testID="url-hover-actions"
       >
