@@ -138,6 +138,11 @@ const BOTTOM_PANEL_COLLAPSE_RESERVED_WIDTH =
 // Tabs and the adjacent New Tab trigger are one control family. Keep their outer box and corner
 // token identical; only their horizontal sizing differs (content-width chip versus square icon).
 const TAB_CHIP_HORIZONTAL_PADDING = 8;
+// CUSTOM(tab-pins): the pinned bar sits 6px into the chip, 6px before the icon, half the chip tall.
+const TAB_PINNED_BAR_LEFT = 6;
+const TAB_PINNED_BAR_WIDTH = 2;
+const TAB_PINNED_BAR_GAP = 6;
+const TAB_PINNED_BAR_HEIGHT = 14;
 const TAB_CHIP_GAP = 4;
 const TAB_ROW_PADDING_HORIZONTAL = 4;
 const TAB_ICON_WIDTH = 14;
@@ -821,6 +826,14 @@ function TabHandleContent({
   );
 }
 
+// CUSTOM(tab-pins): a short muted-green bar left of the icon marks a pinned tab in every state.
+function TabPinnedBar({ isPinned }: { isPinned: boolean }) {
+  if (!isPinned) {
+    return null;
+  }
+  return <View pointerEvents="none" style={styles.tabPinnedBar} />;
+}
+
 function TabChip({
   serverId,
   tab,
@@ -931,7 +944,8 @@ function TabChip({
       isActiveFocused && styles.tabActive,
       isActive && !isFocused && styles.tabActiveUnfocused,
       !isActive && isHovered && styles.tabHovered,
-      // CUSTOM(tab-pins): a pinned tab at rest reads a shade darker than the row.
+      // CUSTOM(tab-pins): a pinned tab makes room for its bar, and at rest gets a faint fill.
+      isPinned && styles.tabPinnedInset,
       isPinned && !isActive && !isHovered && styles.tabPinned,
       isWeb && isDragging && ({ cursor: "grabbing" } as object),
       {
@@ -1041,6 +1055,8 @@ function TabChip({
             )}
           </TooltipContent>
         </Tooltip>
+        {/* CUSTOM(tab-pins) */}
+        <TabPinnedBar isPinned={isPinned} />
 
         {showCloseButton ? (
           <View
@@ -1925,7 +1941,21 @@ const styles = StyleSheet.create((theme) => ({
   },
   // CUSTOM(tab-pins)
   tabPinned: {
-    backgroundColor: theme.colorScheme === "dark" ? "rgba(0, 0, 0, 0.32)" : "rgba(0, 0, 0, 0.07)",
+    backgroundColor:
+      theme.colorScheme === "dark" ? "rgba(255, 255, 255, 0.035)" : "rgba(0, 0, 0, 0.035)",
+  },
+  tabPinnedInset: {
+    paddingLeft: TAB_PINNED_BAR_LEFT + TAB_PINNED_BAR_WIDTH + TAB_PINNED_BAR_GAP,
+  },
+  tabPinnedBar: {
+    position: "absolute",
+    left: TAB_PINNED_BAR_LEFT,
+    top: "50%",
+    width: TAB_PINNED_BAR_WIDTH,
+    height: TAB_PINNED_BAR_HEIGHT,
+    marginTop: -TAB_PINNED_BAR_HEIGHT / 2,
+    borderRadius: TAB_PINNED_BAR_WIDTH / 2,
+    backgroundColor: theme.colorScheme === "dark" ? "#4f7563" : "#8fb5a1",
   },
   tabActive: {
     backgroundColor: theme.colors.surface2,
