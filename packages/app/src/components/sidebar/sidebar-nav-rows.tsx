@@ -16,6 +16,7 @@ import {
   builtinSidebarNavLabelKey,
   builtinSidebarNavShortcutAction,
   type BuiltinSidebarNavId,
+  type SidebarNavItem,
 } from "@/sidebar-nav/model";
 import { useSidebarNavItems } from "@/sidebar-nav/use-sidebar-nav-items";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
@@ -42,9 +43,19 @@ export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps)
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const toggleExpanded = useCallback(() => setExpanded((value) => !value), []);
+  // CUSTOM(sidebar-pinned-plugins): these plugins stay visible above the Show more toggle.
+  const pinnedItems = useMemo(
+    () => items.filter((item) => item.visible && isPinnedPluginItem(item)),
+    [items],
+  );
   const secondaryItems = useMemo(
     () =>
-      items.filter((item) => item.visible && (item.kind === "plugin" || item.id === "schedules")),
+      items.filter(
+        (item) =>
+          item.visible &&
+          !isPinnedPluginItem(item) &&
+          (item.kind === "plugin" || item.id === "schedules"),
+      ),
     [items],
   );
   const groupRef = useRef<View | null>(null);
@@ -55,6 +66,17 @@ export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps)
       <SidebarSearchRow onBeforeNavigate={onBeforeNavigate} />
       <SidebarVoiceRow />
       <WakeDictationSidebarToggle />
+      {pinnedItems.map((item) =>
+        item.kind === "plugin" ? (
+          <PluginSidebarItem
+            key={item.key}
+            group={item.group}
+            section="header"
+            fallbackAnchorRef={groupRef}
+            onBeforeNavigate={onBeforeNavigate}
+          />
+        ) : null,
+      )}
       {secondaryItems.length > 0 ? (
         <SidebarHeaderRow
           icon={expanded ? ChevronUp : ChevronDown}
@@ -85,6 +107,12 @@ export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps)
         : null}
     </View>
   );
+}
+
+// CUSTOM(sidebar-pinned-plugins)
+const PINNED_SIDEBAR_PLUGIN_IDS = new Set(["power-workboard"]);
+function isPinnedPluginItem(item: SidebarNavItem<"header">): boolean {
+  return item.kind === "plugin" && PINNED_SIDEBAR_PLUGIN_IDS.has(item.group.pluginId);
 }
 
 /**

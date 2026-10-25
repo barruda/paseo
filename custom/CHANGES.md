@@ -528,61 +528,16 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Verify:** `npx vitest run custom/plugins/beautiful-chat` (the update script runs it). In the app,
   close a thinking card, then send a prompt: new thinking cards in any chat start closed.
 
-## workboard: Workboard as a tab, and images in task descriptions
-
-- **Added:** 2026-10-10 (based on upstream 0.11.2; plugin vendored from
-  [fxbing/paseo-workboard](https://github.com/fxbing/paseo-workboard) `e8cba65`, release 0.2.0)
-- **Commit:** `custom: Workboard opens as a tab and takes pasted images`
-- **Why:** The board only opened as a full-screen sidebar screen, which hides the workspace you're
-  in. Task descriptions were plain text, with no way to keep a screenshot with a task.
-- **What:**
-  - **Tab:** Workboard is also a workspace panel. Open it from the "+" new-tab menu or with
-    "Open Workboard tab" in the Command Center. The tab shows the whole board, like the sidebar
-    screen, which stays.
-  - **Images:** In the task editor (new or edit), pasting an image into the description uploads it
-    to the daemon, saved under `$PASEO_HOME/plugin-data/paseo-workboard/images/`. The description
-    gets `![image](<absolute path>)` at the cursor, so the text stays readable and an agent given
-    the description can open the file. Thumbnails show under the field: press one to enlarge it,
-    × removes its reference. PNG, JPEG, GIF, and WebP up to 10 MB; the file type comes from the
-    bytes. Save waits for uploads. Web and desktop only: native text fields never receive pasted
-    images. Removing a reference leaves the file on disk.
-  - The read RPC serves only files directly inside that image folder, so a description can't make
-    it read anything else.
-- **Files:** `custom/plugins/workboard/`, a copy of upstream without `docs/`, `images/`,
-  `scripts/`, `.github/`, and the integration fixture. Ours, marked `CUSTOM(workboard-tab)` or
-  `CUSTOM(workboard-images)`: `shared/images.ts`, `server/images.ts`, `client/image-paste.ts`,
-  `client/DescriptionImages.tsx`, `tests/images.test.ts`, and additions in `index.client.tsx`
-  (panel and command), `index.server.ts` (RPC handlers), `shared/rpc.ts` (two RPCs),
-  `client/strings.ts` (labels), and `client/WorkboardScreen.tsx` (`TaskModal`).
-- **Core files touched:** `.oxlintrc.json` and `.oxfmtrc.json` skip `custom/plugins/workboard/**`.
-  The plugin keeps upstream's style (Prettier, 80 columns) and is checked with its own `tsc`,
-  `vitest`, and `prettier` instead. `lefthook.yml` (marked `CUSTOM(vendored-plugins)`) passes
-  `--no-error-on-unmatched-pattern` to lint and format, so a commit that stages only ignored files
-  still passes the hook. JSON has no comments; on conflict, re-add the patterns and the flag.
-- **Re-apply:** To take a newer upstream, copy its files over the plugin folder, keeping ours. Then
-  redo the additions: register the panel and command in `index.client.tsx`; handle
-  `saveImageRpc`/`readImageRpc` with an `ImageStore` in `index.server.ts`; in `TaskModal`, pass
-  `useImagePaste`'s ref to the description `TextInput`, render `DescriptionImages` under it with
-  the paste hint, and disable Save while uploads run. Keep the plugin id `paseo-workboard`: the
-  plugin calls its own RPCs by that id.
-- **Setup:** One-time plugin install per daemon. **Don't `plugin remove` the registry copy
-  without saving the board first:** removing a plugin deletes `$PASEO_HOME/plugin-settings/<id>/`,
-  which holds the board. Disable it, copy that folder aside, remove, copy it back, then install.
-  The 2026-10-10 copies are in `$PASEO_HOME/plugin-settings.bak-workboard-20261010/`.
-- **Verify:** `(cd custom/plugins/workboard && npx tsc --noEmit && npx vitest run)` (the update
-  script runs it). In the app, open a workspace, pick Workboard from "+", edit a task, and paste a
-  screenshot into the description.
-
 ## done-task-archive: one-click archive for done tasks in the sidebar
 
 - **Added:** 2026-10-11 (based on upstream `7f9b65d46`)
 - **Commit:** `custom: archive button under the kebab for done tasks`
 - **Why:** Workspaces whose Workboard task is done pile up in the sidebar. Archiving each through
   the kebab menu takes two clicks and a precise aim.
-- **What:** A sidebar workspace row with the `task:done` label shows an archive icon under its
-  kebab, wherever the kebab shows (hover on desktop, always on touch). Pressing it runs the row's
-  normal archive action, with the same worktree warning. A renamed Done label in Workboard isn't
-  picked up; the label is a constant in `done-task-archive.ts`.
+- **What:** A sidebar workspace row with the `task:done` or `pwb:done` label (Power Workboard's
+  Done) shows an archive icon under its kebab, wherever the kebab shows (hover on desktop, always
+  on touch). Pressing it runs the row's normal archive action, with the same worktree warning. A
+  renamed Done label isn't picked up; the labels are constants in `done-task-archive.ts`.
 - **Files:** `packages/app/src/components/sidebar/done-task-archive.ts` and its test.
 - **Core files touched:** `packages/app/src/components/sidebar/sidebar-workspace-menu.tsx`, marked
   `CUSTOM(done-task-archive)`. Upstream's `SidebarWorkspaceMenu` is renamed
@@ -3250,3 +3205,110 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **Verify:** `(cd packages/app && npx vitest run src/task-navigation/store.test.ts)` (the update
   script runs it). In Tasks mode, from an agent tab with other tabs to its right, click a file in
   the chat, then close the file tab: the agent tab gets focus.
+
+## power-workboard: a board of registered tasks with an agent orchestrator
+
+- **Added:** 2026-10-25 (based on upstream 0.11.2). It started as a copy of our patched
+  [fxbing/paseo-workboard](https://github.com/fxbing/paseo-workboard) 0.2.0 (`custom/plugins/workboard`,
+  plugin id `paseo-workboard`), which was then removed from the repo and from both daemons. The
+  old board is saved in `<home>/plugin-settings.bak-workboard-20261025/`.
+- **Commit:** `custom: Power Workboard replaces Workboard, with a review step and a tab beside the Desks`
+- **Why:** Workboard imports every Paseo workspace as a task (280+ cards) and watches all of them.
+  We want a board that only holds tasks created on it, and an orchestrator that hands them to
+  agents and brings their work back for review.
+- **What:**
+  - Plugin id `power-workboard` (folder `custom/plugins/power-workboard`), its own storage
+    (`plugin-settings/power-workboard`, images in `plugin-data/power-workboard/images/`).
+  - **On by default:** the update script installs it on every daemon home with plugins enabled
+    that has no entry for it. A daemon where the user disabled it keeps it disabled.
+  - **No import:** a workspace enters the board only when one of its tasks starts work on it
+    (Start work, or the orchestrator). The host inventory, conversation reads, provider-child
+    listings and pins only cover those workspaces; changes and agent streams elsewhere are ignored.
+  - **Groups:** Backlog, Ready to start, In progress, Ready to review, Done, on labels `pwb:*`, so
+    the original Workboard never saw them as its own (Ready to start is a new draft kind, `ready`;
+    a board saved without it gets it after Backlog on load). Inbox and Canceled are no longer
+    required (a Canceled group can still be added; archiving a draft needs one).
+  - **Refinement:** a draft's **Refine** button opens a real agent chat in the task's project
+    folder (mode `default`, so it asks before any edit), primed with the title and description.
+    `/write-ticket [focus]` in that chat (a plugin slash command) asks the agent for the final
+    ticket between `<ticket>` tags; when its turn ends the plugin replaces the draft's title and
+    description with it. The card shows the refinement state; moving it to Ready to start is
+    still the user's call. Reopening uses the same chat while its agent is not archived.
+  - **Orchestrator:** a Play/Pause button in the board toolbar, showing `running/limit`. While
+    playing, it takes Ready to start tasks from the top of the column (drag to reorder), creates a
+    workspace in the task's project (a worktree for git projects), moves the task to In progress
+    and starts an agent whose first message is the title and description. When the agent's turn
+    ends, the task moves to Ready to review with the agent's last reply, and the next Ready to
+    start task starts. Defaults: 2 at a time, `claude/claude-opus-5-5`, mode `bypassPermissions`,
+    thinking `medium` (stored in `orchestrator`, no UI yet). A task without a project, or whose
+    start fails, shows the error on its card and is retried after it is edited. Pause only stops
+    new starts. Start work on a card still works by hand, from any draft group.
+  - **Review:** a Ready to review card asks like an agent's question: the agent's last reply
+    (Show more past six lines), then **Done** and **Continue task**. Done moves it to the first
+    Done group. Continue task opens a feedback field; **Send back** moves the task, workspace and
+    all, to the first Ready to start group with status `queued` and the feedback. The
+    orchestrator's next pass (right away when it is playing; otherwise the first pass after Play)
+    sends the feedback to the same agent, or starts a new one in the workspace with the task and
+    the feedback when the agent is gone, and moves the task to In progress. A queued task takes a
+    slot like a new one, in column order.
+  - **Tab and images** (from the patched Workboard): the board is also a workspace panel ("+"
+    new-tab menu, or "Open Power Workboard tab" in the Command Center). Pasting an image into a
+    task description uploads it to the daemon and inserts `![image](<absolute path>)`; thumbnails
+    show under the field. Web and desktop only; PNG, JPEG, GIF and WebP up to 10 MB. The read RPC
+    serves only files directly inside the image folder.
+- **Core files touched:**
+  - `packages/app/src/components/sidebar/sidebar-nav-rows.tsx` (`CUSTOM(sidebar-pinned-plugins)`):
+    plugins in `PINNED_SIDEBAR_PLUGIN_IDS` render right under Wake dictation, above the Show more
+    toggle, instead of inside it.
+  - `.oxlintrc.json` and `.oxfmtrc.json` skip `custom/plugins/power-workboard/**`. The plugin keeps
+    upstream Workboard's style (Prettier, 80 columns) and is checked with its own `tsc`, `vitest`
+    and `prettier`. `lefthook.yml` (`CUSTOM(vendored-plugins)`) passes
+    `--no-error-on-unmatched-pattern` to lint and format, so a commit that stages only ignored
+    files still passes the hook. JSON has no comments; on conflict, re-add the patterns and flag.
+- **Re-apply:** Plugin: none. Sidebar: in the header rows, split the visible plugin items with
+  those ids out of the Show more list and render them before the toggle.
+- **Tests:** `tests/power-workboard.test.ts` (no import, tracking, Ready to start migration,
+  orchestrator, pause, project retry, refinement and `/write-ticket`, review Done, Continue while
+  playing and while paused). The upstream Workboard suites that assume import and the old groups
+  were moved to `tests/upstream-workboard/` and are not run. The update script runs
+  `tsc` and `vitest` in the plugin folder.
+- **Setup:** automatic (see On by default). By hand:
+  `paseo plugin install "$PWD/custom/plugins/power-workboard" --home <home>`. **Don't
+  `plugin remove` it without saving the board first:** removing a plugin deletes
+  `$PASEO_HOME/plugin-settings/<id>/`, which holds the board.
+- **Verify:** `(cd custom/plugins/power-workboard && npm run check)`. In the app, Power Workboard
+  sits under Wake dictation; create a task with a project, move it to Ready to start, press Play,
+  and watch it go to In progress and then Ready to review with the agent's summary. Press
+  Continue task, write feedback and Send back: the same agent chat gets it and the card returns
+  to In progress.
+
+## desk-workboard: Power Workboard as a tab beside the Desks
+
+- **Added:** 2026-10-25 (based on upstream 0.11.2)
+- **Commit:** `custom: Power Workboard replaces Workboard, with a review step and a tab beside the Desks`
+- **Why:** The board is where tasks get handed out and reviewed; it should be one click away in
+  Tasks mode, next to the Desks, without leaving them.
+- **What:** In Tasks mode the header shows a **Power Workboard** chip before the Desk chips
+  whenever a connected host has the plugin (the local daemon's copy first). Clicking it shows the
+  plugin's board under the Desk header; the Desk stays mounted underneath, hidden, so its tabs
+  keep their state. Clicking a Desk chip, switching Desks or opening another tab (a task in the
+  sidebar, or a workspace/agent the board opens) returns to the Desk. The chip's × or
+  right-click > Close removes it; then **+** opens a menu with **New Desk** and **Power
+  Workboard**, which brings it back. Open/closed and selected are kept in this app's storage
+  (`custom-desk-workboard`).
+- **Files:** `packages/app/src/task-navigation/desk-workboard.tsx` (store, the installation
+  lookup, the cover that swaps the board in, and the surface renderer modeled on
+  `plugins/surface-screen.tsx`).
+- **Core files touched:** `packages/app/src/task-navigation/desk-screen.tsx`
+  (`CUSTOM(desk-workboard)`): the chip and the + menu in the header, Desk chips unselected while
+  the board shows, the Desk content wrapped in `DeskWorkboardCover`, and `DeskVisibleAgents`
+  stops marking agents visible while covered.
+- **Re-apply:** In `DeskScreen`, call `useDeskWorkboard(desk.id, active)`. In the header, render
+  `DeskWorkboardChip` before the Desk chips when `open`, and `DeskCreateMenu` instead of the New
+  Desk button when the plugin exists but its tab is closed. Wrap everything inside the root view
+  up to the bottom-panel expand button in `DeskWorkboardCover` with `plugin` set only while
+  `selected`. If upstream changes how plugin screens render, follow `SurfaceRenderer` in
+  `plugins/surface-screen.tsx`.
+- **Verify:** Typecheck and lint. In Tasks mode with the plugin installed: the chip shows and opens
+  the board; clicking a task in the sidebar returns to the Desk; × hides it and + > Power
+  Workboard brings it back.

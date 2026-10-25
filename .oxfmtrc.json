@@ -17,6 +17,6 @@
     "**/*.gen.tsx",
     "custom/plugins/beautiful-chat/**",
     "!custom/plugins/beautiful-chat/client/expand-memory*.ts",
-    "custom/plugins/workboard/**"
+    "custom/plugins/power-workboard/**"
   ]
 }

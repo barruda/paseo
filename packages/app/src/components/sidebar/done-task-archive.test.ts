@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 import { isDoneTaskWorkspace } from "./done-task-archive";
 
 describe("isDoneTaskWorkspace", () => {
-  it("matches the Workboard done label", () => {
+  it("matches the Workboard and Power Workboard done labels", () => {
     expect(isDoneTaskWorkspace(["task:done"])).toBe(true);
+    expect(isDoneTaskWorkspace(["pwb:done"])).toBe(true);
     expect(isDoneTaskWorkspace(["bug", " Task:Done "])).toBe(true);
   });
 

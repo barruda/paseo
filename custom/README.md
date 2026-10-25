@@ -134,7 +134,7 @@ paseo plugin install "$PWD/custom/plugins/shell-command" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/workspace-tasks" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/warp" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/beautiful-chat" --home ~/.paseo
-paseo plugin install "$PWD/custom/plugins/workboard" --home ~/.paseo
+paseo plugin install "$PWD/custom/plugins/power-workboard" --home ~/.paseo  # the update script also does this
 paseo plugin install "$PWD/custom/plugins/tldr" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/btw" --home ~/.paseo
 ```

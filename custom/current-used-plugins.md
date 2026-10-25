@@ -35,8 +35,10 @@ Registry sources (`owner/slug`) come from `paseo.sh/plugins/<owner>/<slug>`. The
 Source lives in `custom/plugins/<id>/` and is described in [CHANGES.md](CHANGES.md). Installed from
 the directory, so edits need `paseo plugin reload <id> --home <home>`, not a reinstall.
 
-`paseo-workboard` (folder `workboard`) is a patched copy of `fxbing/workboard` 0.2.0: it also
-opens as a workspace tab, and task descriptions take pasted images.
+`power-workboard` (folder `power-workboard`) started as a patched copy of `fxbing/workboard` 0.2.0
+(our former `paseo-workboard`, now removed). It only tracks tasks created on it, hands them to
+agents and brings their work back for review. It is on by default: the update script installs it
+on any daemon with plugins enabled that lacks it. See [CHANGES.md](CHANGES.md#power-workboard-a-board-of-registered-tasks-with-an-agent-orchestrator).
 
 `beautiful-chat` is a patched copy of `aborakati/beautiful-chat` (`42b61d8`). It restyles the chat
 timeline for every agent (tool calls, thinking, todos, messages), and its cards remember open or
@@ -48,4 +50,4 @@ closed per kind. Don't install the registry version on top of it; both use the i
 | `workspace-tasks` | yes      | yes   |
 | `warp`            | yes      | no    |
 | `beautiful-chat`  | yes      | yes   |
-| `paseo-workboard` | yes      | yes   |
+| `power-workboard` | yes      | yes   |

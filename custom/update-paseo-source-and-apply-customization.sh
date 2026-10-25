@@ -286,7 +286,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/projects/remove-project-section.test.tsx --bail=1)
   (cd packages/server && npx vitest run src/server/paseo-worktree-service.test.ts -t "keeps a branch name the caller typed|worktrees folder beside the project" src/utils/project-worktrees-root.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts src/server/plugins/custom-btw-plugin.e2e.test.ts --bail=1)
-  (cd custom/plugins/workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
+  (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts --bail=1)
   (cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/file-pane/html-preview-assets.test.ts src/file-pane/html-preview-navigation.test.ts --bail=1)
@@ -388,6 +388,39 @@ for plugin in shell-command workspace-tasks warp btw; do
       warn "$home: $plugin plugin not set up. See 'One-time setup' in custom/README.md."
     fi
   done
+done
+
+# Power Workboard is on by default: a home with plugins enabled and no entry for it gets it
+# installed. An entry the user disabled stays as it is.
+workboard_dir="$ROOT/custom/plugins/power-workboard"
+for home in $HOMES; do
+  config="$home/config.json"
+  [[ -f "$config" ]] || continue
+  state="$(node -e '
+    const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const p = c.plugins?.["power-workboard"];
+    console.log(c.pluginsEnabled !== true ? "plugins-off" : !p ? "missing" : p.enabled === false ? "disabled" : "ok");
+  ' "$config")"
+  case "$state" in
+    ok) echo "  $home: power-workboard installed" ;;
+    disabled) echo "  $home: power-workboard disabled by the user; left off" ;;
+    plugins-off) warn "$home: plugins are off, so Power Workboard is not available there." ;;
+    missing)
+      if npx tsx packages/cli/src/index.js plugin ls --home "$home" >/dev/null 2>&1; then
+        npx tsx packages/cli/src/index.js plugin install "$workboard_dir" --home "$home" >/dev/null &&
+          echo "  $home: power-workboard installed" ||
+          warn "$home: installing power-workboard failed. See 'One-time setup' in custom/README.md."
+      else
+        # A stopped daemon reads its plugin sources from config.json when it starts.
+        node -e '
+          const fs = require("fs");
+          const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+          c.plugins = { ...c.plugins, "power-workboard": { source: "directory", path: process.argv[2], enabled: true } };
+          fs.writeFileSync(process.argv[1], JSON.stringify(c, null, 2) + "\n");
+        ' "$config" "$workboard_dir" && echo "  $home: power-workboard added; it starts with the daemon"
+      fi
+      ;;
+  esac
 done
 
 # The CUDA libraries must match the sherpa-onnx-node version the app bundles.

@@ -16,9 +16,15 @@ import { useIsFocused } from "@react-navigation/native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Pin, Plus } from "lucide-react-native";
+import { Pin, Plus, X } from "lucide-react-native";
 import type { ListTerminalsResponse } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -104,6 +110,13 @@ import {
   type DeskTab,
   type DeskTabOwner,
 } from "./desks-store";
+// CUSTOM(desk-workboard)
+import {
+  DESK_WORKBOARD_LABEL,
+  DeskWorkboardCover,
+  useDeskWorkboard,
+  useDeskWorkboardStore,
+} from "./desk-workboard";
 // CUSTOM(bottom-panel-expand)
 import { BottomPanelExpandButton } from "@/workspace-tabs/bottom-panel-expand-button";
 
@@ -111,6 +124,7 @@ const NO_CLOSING_TABS = new Set<string>();
 const noop = () => undefined;
 type DeskNaming = { mode: "create" } | { mode: "rename"; deskId: string };
 const ThemedPlus = withUnistyles(Plus);
+const ThemedX = withUnistyles(X);
 const extraMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
 
 function workspaceDirectoryOf(owner: DeskTabOwner): string | null {
@@ -138,6 +152,12 @@ export function DeskScreen() {
   const localServerId = useLocalDaemonServerId();
   const [hydrated, setHydrated] = useState(useDesksStore.persist.hasHydrated());
   const [naming, setNaming] = useState<DeskNaming | null>(null);
+  // CUSTOM(desk-workboard)
+  const {
+    plugin: workboard,
+    open: workboardOpen,
+    selected: workboardSelected,
+  } = useDeskWorkboard(desk.id, active);
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{
     tab: WorkspaceTabDescriptor;
@@ -572,26 +592,31 @@ export function DeskScreen() {
           )}
         </TaskProjectIconsProvider>
         <View style={styles.deskTabs}>
+          {workboardOpen ? <DeskWorkboardChip selected={workboardSelected} /> : null}
           {desks.map((entry) => (
             <DeskTabChip
               key={entry.id}
               desk={entry}
-              selected={entry.id === desk.id}
+              selected={entry.id === desk.id && !workboardSelected}
               canDelete={desks.length > 1}
               onRename={renameDesk}
               onDelete={deleteDesk}
             />
           ))}
-          <ToolbarButton
-            label="New Desk"
-            onPress={create}
-            style={styles.newDeskButton}
-            testID="desk-create"
-          >
-            <ThemedPlus size={14} uniProps={extraMutedColorMapping} />
-          </ToolbarButton>
+          {workboard && !workboardOpen ? (
+            <DeskCreateMenu onCreateDesk={create} />
+          ) : (
+            <ToolbarButton
+              label="New Desk"
+              onPress={create}
+              style={styles.newDeskButton}
+              testID="desk-create"
+            >
+              <ThemedPlus size={14} uniProps={extraMutedColorMapping} />
+            </ToolbarButton>
+          )}
         </View>
-        {activeIsPreview ? (
+        {activeIsPreview && !workboardSelected ? (
           <Button
             variant="ghost"
             size="xs"
@@ -604,7 +629,19 @@ export function DeskScreen() {
         ) : null}
       </View>
     ),
-    [activeIsPreview, contextTab, create, deleteDesk, desk.id, desks, keep, renameDesk],
+    [
+      activeIsPreview,
+      contextTab,
+      create,
+      deleteDesk,
+      desk.id,
+      desks,
+      keep,
+      renameDesk,
+      workboard,
+      workboardOpen,
+      workboardSelected,
+    ],
   );
   const explorerToggleProps = useMemo(
     () => ({
@@ -697,65 +734,68 @@ export function DeskScreen() {
   return (
     <FloatingPanelPortalHostNameProvider hostName={portalHost}>
       <View style={styles.root} testID="desk-screen">
-        {scope ? (
-          <DeskProviders
-            resolveOwner={resolveOwner}
-            moveMenu={moveMenu}
-            scope={scope}
-            enabled={isFocused}
-          >
-            <SplitContainer
-              layout={desk.layout}
-              renderMainHeader={renderHeader}
-              externalExplorerSidebar={externalExplorerSidebar}
-              renderTopRightTabRowAction={renderTabRowExplorerToggle}
-              workspaceKey={`desk:${desk.id}`}
-              normalizedServerId={scope.serverId}
-              normalizedWorkspaceId={scope.workspaceId}
-              isWorkspaceFocused={isFocused}
-              uiTabs={uiTabs}
-              hoveredCloseTabKey={hoveredCloseTabKey}
-              setHoveredCloseTabKey={setHoveredCloseTabKey}
-              closingTabIds={NO_CLOSING_TABS}
-              onNavigateTab={store.selectTab}
-              onCloseTab={closeTab}
-              onCopyResumeCommand={copyResumeCommand}
-              onCopyAgentId={copyAgentId}
-              onCopyTerminalId={copyTerminalId}
-              onCopyFilePath={copyFilePath}
-              onOpenFile={openFile}
-              onReloadAgent={reloadAgent}
-              onRenameTab={renameTab}
-              onCloseTabsToLeft={closeTabsToLeft}
-              onCloseTabsToRight={closeTabsToRight}
-              onCloseOtherTabs={closeOtherTabs}
-              onCreateNewTab={createNewTab}
-              buildPaneContentModel={buildPaneContentModel}
-              onFocusPane={store.focusPane}
-              onSplitPane={store.splitPane}
-              onSplitPaneEmpty={splitPaneEmpty}
-              onMoveTabToPane={store.moveTabToPane}
-              onSelectTabInPane={store.selectTabInPane}
-              onResizeSplit={store.resizeSplit}
-              onReorderTabsInPane={store.reorderTabsInPane}
-              onExitFocusMode={noop}
-            />
-          </DeskProviders>
-        ) : (
-          <>
-            {renderHeader()}
-            <View style={styles.empty}>
-              <Text style={styles.emptyTitle}>{desk.name}</Text>
-              <Text style={styles.context}>
-                Click a task to preview it. Middle-click to keep it as a tab.
-              </Text>
-            </View>
-          </>
-        )}
-        {/* CUSTOM(bottom-panel-expand): ⌃⌃ while the Desk's bottom panel is closed; the toggle
+        {/* CUSTOM(desk-workboard): the board covers the Desk, which stays mounted underneath. */}
+        <DeskWorkboardCover plugin={workboardSelected ? workboard : null} headerLeft={headerLeft}>
+          {scope ? (
+            <DeskProviders
+              resolveOwner={resolveOwner}
+              moveMenu={moveMenu}
+              scope={scope}
+              enabled={isFocused}
+            >
+              <SplitContainer
+                layout={desk.layout}
+                renderMainHeader={renderHeader}
+                externalExplorerSidebar={externalExplorerSidebar}
+                renderTopRightTabRowAction={renderTabRowExplorerToggle}
+                workspaceKey={`desk:${desk.id}`}
+                normalizedServerId={scope.serverId}
+                normalizedWorkspaceId={scope.workspaceId}
+                isWorkspaceFocused={isFocused}
+                uiTabs={uiTabs}
+                hoveredCloseTabKey={hoveredCloseTabKey}
+                setHoveredCloseTabKey={setHoveredCloseTabKey}
+                closingTabIds={NO_CLOSING_TABS}
+                onNavigateTab={store.selectTab}
+                onCloseTab={closeTab}
+                onCopyResumeCommand={copyResumeCommand}
+                onCopyAgentId={copyAgentId}
+                onCopyTerminalId={copyTerminalId}
+                onCopyFilePath={copyFilePath}
+                onOpenFile={openFile}
+                onReloadAgent={reloadAgent}
+                onRenameTab={renameTab}
+                onCloseTabsToLeft={closeTabsToLeft}
+                onCloseTabsToRight={closeTabsToRight}
+                onCloseOtherTabs={closeOtherTabs}
+                onCreateNewTab={createNewTab}
+                buildPaneContentModel={buildPaneContentModel}
+                onFocusPane={store.focusPane}
+                onSplitPane={store.splitPane}
+                onSplitPaneEmpty={splitPaneEmpty}
+                onMoveTabToPane={store.moveTabToPane}
+                onSelectTabInPane={store.selectTabInPane}
+                onResizeSplit={store.resizeSplit}
+                onReorderTabsInPane={store.reorderTabsInPane}
+                onExitFocusMode={noop}
+              />
+            </DeskProviders>
+          ) : (
+            <>
+              {renderHeader()}
+              <View style={styles.empty}>
+                <Text style={styles.emptyTitle}>{desk.name}</Text>
+                <Text style={styles.context}>
+                  Click a task to preview it. Middle-click to keep it as a tab.
+                </Text>
+              </View>
+            </>
+          )}
+          {/* CUSTOM(bottom-panel-expand): ⌃⌃ while the Desk's bottom panel is closed; the toggle
             needs a scope. */}
-        {scope ? <BottomPanelExpandButton layout={desk.layout} /> : null}
-        <DeskVisibleAgents desk={desk} visible={isFocused} />
+          {scope ? <BottomPanelExpandButton layout={desk.layout} /> : null}
+        </DeskWorkboardCover>
+        <DeskVisibleAgents desk={desk} visible={isFocused} covered={workboardSelected} />
         <DeskTerminalTabs />
         <FloatingPanelPortalHost name={portalHost} />
         <DeskNameModal naming={naming} desks={desks} onClose={closeNaming} onSubmit={submitName} />
@@ -808,7 +848,17 @@ function DeskProviders({
 }
 
 /** Marks each pane's visible agent as viewed, on whichever host it lives. */
-function DeskVisibleAgents({ desk, visible }: { desk: Desk; visible: boolean }) {
+function DeskVisibleAgents({
+  desk,
+  visible: focused,
+  covered,
+}: {
+  desk: Desk;
+  visible: boolean;
+  /** CUSTOM(desk-workboard): the board covers the Desk. */
+  covered: boolean;
+}) {
+  const visible = focused && !covered;
   const syncOwner = useId();
   // A string key, so streamed session updates do not re-run the effect.
   const syncedServers = useSessionStore((s) =>
@@ -992,7 +1042,10 @@ function DeskTabChip({
   onRename: (deskId: string) => void;
   onDelete: (desk: Desk) => void;
 }) {
-  const select = useCallback(() => useDesksStore.getState().selectDesk(desk.id), [desk.id]);
+  const select = useCallback(() => {
+    useDeskWorkboardStore.getState().deselect(); // CUSTOM(desk-workboard)
+    useDesksStore.getState().selectDesk(desk.id);
+  }, [desk.id]);
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   const rename = useCallback(() => onRename(desk.id), [onRename, desk.id]);
   const remove = useCallback(() => onDelete(desk), [onDelete, desk]);
@@ -1031,6 +1084,73 @@ function DeskTabChip({
     </ContextMenu>
   );
 }
+/** CUSTOM(desk-workboard): the board's tab; × or right-click > Close moves it into +. */
+function DeskWorkboardChip({ selected }: { selected: boolean }) {
+  const select = useCallback(() => useDeskWorkboardStore.getState().select(), []);
+  const close = useCallback(() => useDeskWorkboardStore.getState().close(), []);
+  const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  return (
+    <ContextMenu>
+      <View style={[styles.workboardTab, selected && styles.deskTabSelected]}>
+        <ContextMenuTrigger
+          testID="desk-workboard-choice"
+          accessibilityRole="button"
+          accessibilityLabel={DESK_WORKBOARD_LABEL}
+          accessibilityState={accessibilityState}
+          aria-selected={selected}
+          style={styles.workboardTabLabel}
+          onPress={select}
+        >
+          <Text
+            style={[styles.deskTabText, selected && styles.deskTabTextSelected]}
+            numberOfLines={1}
+          >
+            {DESK_WORKBOARD_LABEL}
+          </Text>
+        </ContextMenuTrigger>
+        <ToolbarButton
+          label={`Close ${DESK_WORKBOARD_LABEL}`}
+          onPress={close}
+          style={styles.workboardClose}
+          testID="desk-workboard-close"
+        >
+          <ThemedX size={12} uniProps={extraMutedColorMapping} />
+        </ToolbarButton>
+      </View>
+      <ContextMenuContent align="start">
+        <ContextMenuItem testID="desk-workboard-close-menu" onSelect={close}>
+          Close
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+}
+
+/** CUSTOM(desk-workboard): + while the board is closed: a new Desk or the board again. */
+function DeskCreateMenu({ onCreateDesk }: { onCreateDesk: () => void }) {
+  const reopen = useCallback(() => useDeskWorkboardStore.getState().reopen(), []);
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger
+        testID="desk-create"
+        accessibilityRole="button"
+        accessibilityLabel="New Desk or Power Workboard"
+        style={styles.newDeskMenuTrigger}
+      >
+        <ThemedPlus size={14} uniProps={extraMutedColorMapping} />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="bottom" align="start" width={200} testID="desk-create-menu">
+        <DropdownMenuItem testID="desk-create-desk" onSelect={onCreateDesk}>
+          New Desk
+        </DropdownMenuItem>
+        <DropdownMenuItem testID="desk-create-workboard" onSelect={reopen}>
+          {DESK_WORKBOARD_LABEL}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /** The project's icon and name for the context tab's workspace. */
 function DeskProject({ tab }: { tab: DeskTab }) {
   const project = useWorkspaceFields(
@@ -1064,6 +1184,23 @@ const styles = StyleSheet.create((theme) => ({
   deskTabText: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   deskTabTextSelected: { color: theme.colors.foreground },
   newDeskButton: { width: buttonControlHeight.xs, height: buttonControlHeight.xs },
+  // CUSTOM(desk-workboard)
+  newDeskMenuTrigger: {
+    width: buttonControlHeight.xs,
+    height: buttonControlHeight.xs,
+    borderRadius: theme.borderRadius.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  workboardTab: {
+    height: buttonControlHeight.xs,
+    flexDirection: "row",
+    alignItems: "center",
+    borderRadius: theme.borderRadius.md,
+    paddingLeft: theme.spacing[2],
+  },
+  workboardTabLabel: { height: "100%", justifyContent: "center" },
+  workboardClose: { width: 20, height: 20 },
   content: { flex: 1, minHeight: 0 },
   empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: theme.spacing[3] },
   emptyTitle: { color: theme.colors.foreground, fontSize: theme.fontSize.lg },

@@ -1,0 +1,5 @@
+{
+  "id": "power-workboard",
+  "description": "Power Workboard: a kanban of registered tasks with an agent orchestrator",
+  "requirements": { "paseo": ">=0.9.1" }
+}
