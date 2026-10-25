@@ -3176,10 +3176,11 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
     relative path, or a full path ending in `/<link>`. Only then the workspace and the daemon's
     suffix lookup, as upstream does. This finds files outside the workspace too.
   - **Hover card.** On web and desktop, resting the pointer on a file link for 400 ms opens a card
-    with the full path and icons: **Copiar caminho completo** for every file; for a `.sh`,
-    **Executar aqui** (the shell-command plugin, as `!cd <folder> && bash ./<script>`) and
-    **Executar no Warp** (a new tab inside the bottom panel's Warp, in the script's folder, running
-    `bash ./<script>`); for `.html`, **Abrir em aba** and **Abrir no navegador**; for anything else,
+    with the full path and icons: **Copiar caminho completo** and **Abrir em aba** (what clicking
+    the link does) for every file; for a `.sh`, **Executar aqui** (the shell-command plugin, as
+    `!cd <folder> && bash ./<script>`) and **Executar no Warp** (a new tab inside the bottom
+    panel's Warp, in the script's folder, running `bash ./<script>`); for `.html`,
+    **Abrir no navegador**; for anything else,
     **Abrir no gerenciador de arquivos** (Electron's `shell.showItemInFolder`). Browser and file
     manager only show for the local desktop host; Warp only in Electron with the Warp plugin.
   - When the daemon's suffix lookup finds a `.sh` (it wasn't a session file) and more than one file

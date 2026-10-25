@@ -1,7 +1,7 @@
 // CUSTOM(chat-file-actions): hovering a file link in the chat shows a card with its full path and
-// icons for what to do with it: copy the full path; for a `.sh`, run it here (as `!<command>`) or
-// in a new Warp tab, in the script's own folder; for an `.html`, open it in a tab or in the system
-// browser; for anything else, show it in the system file manager. Web and desktop only: hover
+// icons for what to do with it: copy the full path and open it in a tab, for every file; for a
+// `.sh`, run it here (as `!<command>`) or in a new Warp tab, in the script's own folder; for an
+// `.html`, open it in the system browser; for anything else, show it in the system file manager. Web and desktop only: hover
 // doesn't exist on native, where the link keeps opening on tap.
 import * as Clipboard from "expo-clipboard";
 import {
@@ -302,9 +302,7 @@ function FileLinkActionRow({
         {kind === "script" && canRunInWarp ? (
           <ActionButton label="Executar no Warp" icon={ThemedWarp} onPress={runInWarpNow} />
         ) : null}
-        {kind === "html" ? (
-          <ActionButton label="Abrir em aba" icon={ThemedTab} onPress={openInTab} />
-        ) : null}
+        <ActionButton label="Abrir em aba" icon={ThemedTab} onPress={openInTab} />
         {kind === "html" && openFile ? (
           <ActionButton label="Abrir no navegador" icon={ThemedBrowser} onPress={openInBrowser} />
         ) : null}
