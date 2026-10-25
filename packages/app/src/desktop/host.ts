@@ -62,7 +62,7 @@ export interface DesktopNotificationBridge {
 
 export interface DesktopOpenerBridge {
   // CUSTOM(open-file-externally): file paths stay separate from the HTTP(S) URL opener.
-  openFile?: (input: { path: string; mode: "browser" | "default" }) => Promise<void>;
+  openFile?: (input: { path: string; mode: "browser" | "default" | "reveal" }) => Promise<void>;
   openUrl?: (url: string) => Promise<void>;
 }
 

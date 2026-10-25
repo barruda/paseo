@@ -21,6 +21,8 @@ export interface AssistantFileLinkResolverConfig {
   client?: AssistantFileLinkDaemonClient | null;
   serverId?: string;
   workspaceRoot?: string;
+  /** CUSTOM(session-file-paths): full paths the agent's tool calls touched, newest first. */
+  sessionPaths?: readonly string[];
   onOpenWorkspaceFile?: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
   toast?: ToastApi | null;
 }
@@ -32,6 +34,8 @@ export interface AssistantFileLinkResolverProviderProps extends AssistantFileLin
 export interface AssistantFileLinkResolverContextValue {
   configRef: MutableRefObject<AssistantFileLinkResolverConfig>;
   getDirectorySuggestions: GetDirectorySuggestions;
+  /** CUSTOM(session-file-paths): in the value too, so links re-resolve when it changes. */
+  sessionPaths?: readonly string[];
 }
 
 const AssistantFileLinkResolverContext =
@@ -41,6 +45,7 @@ export function AssistantFileLinkResolverProvider({
   client,
   serverId,
   workspaceRoot,
+  sessionPaths,
   onOpenWorkspaceFile,
   toast,
   children,
@@ -49,10 +54,11 @@ export function AssistantFileLinkResolverProvider({
     client,
     serverId,
     workspaceRoot,
+    sessionPaths,
     onOpenWorkspaceFile,
     toast,
   });
-  configRef.current = { client, serverId, workspaceRoot, onOpenWorkspaceFile, toast };
+  configRef.current = { client, serverId, workspaceRoot, sessionPaths, onOpenWorkspaceFile, toast };
 
   const getDirectorySuggestions = useCallback<GetDirectorySuggestions>(async (input) => {
     const activeClient = configRef.current.client;
@@ -65,8 +71,8 @@ export function AssistantFileLinkResolverProvider({
   }, []);
 
   const value = useMemo<AssistantFileLinkResolverContextValue>(
-    () => ({ configRef, getDirectorySuggestions }),
-    [getDirectorySuggestions],
+    () => ({ configRef, getDirectorySuggestions, sessionPaths }),
+    [getDirectorySuggestions, sessionPaths],
   );
 
   return (

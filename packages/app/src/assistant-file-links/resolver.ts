@@ -4,6 +4,7 @@ import {
   type AssistantFileLinkClassification,
   type InlinePathTarget,
 } from "./parse";
+import { matchSessionFilePath } from "./session-paths";
 import { i18n } from "@/i18n/i18next";
 
 export interface AssistantFileLinkSource {
@@ -17,6 +18,8 @@ export interface AssistantFileLinkSource {
 
 export interface AssistantFileLinkContext {
   workspaceRoot?: string;
+  /** CUSTOM(session-file-paths): full paths the agent's tool calls touched, newest first. */
+  sessionPaths?: readonly string[];
 }
 
 export interface DirectorySuggestionEntry {
@@ -124,6 +127,17 @@ export function classifyForResolution(
   if (classification.kind === "external") {
     return { kind: "resolved", value: { kind: "external", url: classification.raw } };
   }
+  // CUSTOM(session-file-paths): a file the agent touched this session wins over the workspace guess.
+  const sessionPath = matchSessionFilePath(
+    stripLineSuffix(tokenInfo.fromHref ? safeDecode(token) : token, classification.target),
+    context.sessionPaths,
+  );
+  if (sessionPath) {
+    return {
+      kind: "resolved",
+      value: { kind: "file", target: { ...classification.target, path: sessionPath } },
+    };
+  }
   if (
     classification.kind === "directFile" &&
     !shouldResolveDirectFileThroughSuggestions({
@@ -217,6 +231,20 @@ function isAbsoluteInlineCodeToken(token: string): boolean {
     token.toLowerCase().startsWith("file://") ||
     /^[A-Za-z]:[\\/]/.test(token)
   );
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+// `deploy.sh:12` and `deploy.sh#L12` name deploy.sh; the parsed target already carries the lines.
+function stripLineSuffix(token: string, target: InlinePathTarget): string {
+  if (target.lineStart === undefined) return token;
+  return token.replace(/(?::\d+(?:[-:]\d+)?|#L\d+(?:C\d+)?(?:-L?\d+(?:C\d+)?)?)$/i, "");
 }
 
 function isLinkifiedSource(source: AssistantFileLinkSource): boolean {

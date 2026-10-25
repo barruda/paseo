@@ -94,7 +94,7 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
   },
   opener: {
     // CUSTOM(open-file-externally): user-selected local files.
-    openFile: (input: { path: string; mode: "browser" | "default" }) =>
+    openFile: (input: { path: string; mode: "browser" | "default" | "reveal" }) =>
       ipcRenderer.invoke("paseo:opener:openFile", input),
     openUrl: (url: string) => ipcRenderer.invoke("paseo:opener:openUrl", url),
   },

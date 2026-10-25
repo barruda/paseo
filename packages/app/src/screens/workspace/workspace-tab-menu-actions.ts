@@ -53,8 +53,11 @@ async function getHostHome(serverId: string, workspaceDirectory: string): Promis
   }
 }
 
-/** The tab's absolute path on its host; null (after a toast) when it can't be resolved. */
-async function resolveFullTabFilePath(
+/**
+ * The tab's absolute path on its host; null (after a toast) when it can't be resolved. Also used
+ * by the chat's file link actions (chat-file-actions).
+ */
+export async function resolveFullTabFilePath(
   input: { path: string; serverId?: string; workspaceDirectory: string | null } & Feedback,
 ): Promise<string | null> {
   const { path, serverId, workspaceDirectory, toast, t } = input;

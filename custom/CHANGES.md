@@ -3162,3 +3162,60 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
 - **Verify:** `(cd packages/app && npx vitest run src/attachments/attachment-thumbnail-zoom-size.test.ts)`
   (the update script runs it). In the app, paste a screenshot in the composer and hover its
   thumbnail: the whole image shows above it, and leaving the thumbnail closes it.
+
+## chat-file-actions: file links in the chat resolve to full paths and get a hover card of actions
+
+- **Added:** 2026-10-25 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: chat file links resolve against the session's files and get hover actions`
+- **Why:** Agents name files by basename or by a path relative to wherever they were working
+  (`deploy.sh`, `out/report.html`), so a link could open the wrong file or nothing, and a script
+  could only be run by typing its path by hand.
+- **What:**
+  - **Session file paths.** A chat file link first matches the files the agent's tool calls touched
+    in this session (Read, Edit and Write `filePath`, Search `filePaths`), newest first: the same
+    relative path, or a full path ending in `/<link>`. Only then the workspace and the daemon's
+    suffix lookup, as upstream does. This finds files outside the workspace too.
+  - **Hover card.** On web and desktop, resting the pointer on a file link for 400 ms opens a card
+    with the full path and icons: **Copiar caminho completo** for every file; for a `.sh`,
+    **Executar aqui** (the shell-command plugin, as `!cd <folder> && bash ./<script>`) and
+    **Executar no Warp** (a new tab inside the bottom panel's Warp, in the script's folder, running
+    `bash ./<script>`); for `.html`, **Abrir em aba** and **Abrir no navegador**; for anything else,
+    **Abrir no gerenciador de arquivos** (Electron's `shell.showItemInFolder`). Browser and file
+    manager only show for the local desktop host; Warp only in Electron with the Warp plugin.
+  - When the daemon's suffix lookup finds a `.sh` (it wasn't a session file) and more than one file
+    matches, the card lists each match with its own actions instead of guessing.
+  - **Executar no Warp** shows the bottom panel and selects its Warp tab. Without a bottom panel it
+    runs Ctrl+J's action, which opens Warp there, and waits up to 20 s for the page. A bottom panel
+    without a Warp tab gets a toast instead.
+  - Labels are Portuguese only.
+- **How the command reaches Warp:** `openWarpSession` adds `run` and a fresh `run_id` to
+  `window.PASEO_WARP_PTY_URL`. The Warp bridge (`paseo-bridge/server.mjs`, commit `PASEO: the
+bridge types a command into a new session after Warp bootstraps it`) types the command into
+  that session once per `run_id`. See `docs/custom-warp-web-embedded.md`.
+- **Files:** `packages/app/src/assistant-file-links/session-paths.ts` (+ test),
+  `hover-actions.tsx`, `hover-actions-model.ts` (+ test), and
+  `packages/app/src/workspace-tabs/warp-run.ts`. New files.
+- **Core files touched** (marked `CUSTOM(session-file-paths)` or `CUSTOM(chat-file-actions)`):
+  - `assistant-file-links/resolver.ts`: `classifyForResolution` checks `context.sessionPaths`
+    right after the external-link case.
+  - `assistant-file-links/provider.tsx` and `use-file-link.ts`: carry `sessionPaths` (also in the
+    context value, so links re-resolve) and return `lookupQuery`.
+  - `assistant-file-links/link.tsx`: web links with a file target or lookup render
+    `FileLinkHoverActions` instead of the path tooltip.
+  - `agent-stream/view.tsx`: `useSessionFilePaths` over the stream, passed to the provider.
+  - `components/ui/hover-card.tsx`: `openDelayMs` on `HoverCard` and `style` on `HoverCardTrigger`.
+  - `chat-code-run/context.tsx`: `ChatCodeRunProvider` also provides `useChatWorkspace()`.
+  - `screens/workspace/workspace-tab-menu-actions.ts`: exports `resolveFullTabFilePath`.
+  - `workspace-tabs/warp-session.ts`: `openWarpSession` takes an optional command.
+  - Desktop: `features/file-opener.ts` gains mode `reveal` (+ test in `opener.test.ts`),
+    `main.ts` passes `shell.showItemInFolder`, and the mode type in `preload.ts` and the app's
+    `desktop/host.ts`.
+- **Re-apply:** Pass the agent's tool-call file paths to the chat's file link resolver and match
+  them before the workspace lookup. Wrap web file links in a `HoverCard` whose content gets the
+  chat's contexts as props: the card renders in a portal, outside the chat's providers (resolver,
+  run command, keyboard dispatcher, query client), and throws if it reads them itself.
+- **Verify:** `(cd packages/app && npx vitest run src/assistant-file-links/session-paths.test.ts src/assistant-file-links/hover-actions-model.test.ts)`
+  and the desktop opener test (the update script runs both). In the app, have an agent read a
+  `.sh` outside the workspace and name it by basename in backticks; hover it: the card shows its
+  full path, and **Executar aqui** prints the script's folder for `pwd`. **Executar no Warp** opens
+  a Warp tab in that folder with the script running as its first block.

@@ -21,6 +21,8 @@ export interface UseFileLinkResult {
   onHoverIn: () => void;
   onPress: () => void;
   open: (source: AssistantFileLinkSource, disposition: OpenFileDisposition) => void;
+  /** CUSTOM(chat-file-actions): the daemon suffix query when the link needs one, else null. */
+  lookupQuery: string | null;
 }
 
 export interface AssistantFileLinkActions {
@@ -53,12 +55,14 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
   const activeConfig = context.configRef.current;
   const workspaceRoot = activeConfig.workspaceRoot;
   const serverId = activeConfig.serverId;
+  const sessionPaths = context.sessionPaths;
   const resolution = useMemo(
     () =>
       classifyForResolution(stableSource, {
         workspaceRoot,
+        sessionPaths,
       }),
-    [stableSource, workspaceRoot],
+    [stableSource, workspaceRoot, sessionPaths],
   );
   const queryKey = useMemo(
     () =>
@@ -134,7 +138,11 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
     return query.data ?? null;
   }, [query.data, resolution]);
 
-  return useMemo(() => ({ target, onHoverIn, onPress, open }), [target, onHoverIn, onPress, open]);
+  const lookupQuery = resolution.kind === "needsLookup" ? resolution.ambiguousQuery : null;
+  return useMemo(
+    () => ({ target, onHoverIn, onPress, open, lookupQuery }),
+    [target, onHoverIn, onPress, open, lookupQuery],
+  );
 }
 
 export function useAssistantFileLinkActions(): AssistantFileLinkActions {
@@ -170,6 +178,7 @@ function openAssistantFileLink(input: {
   const capturedConfig = input.context.configRef.current;
   const capturedResolution = classifyForResolution(input.source, {
     workspaceRoot: capturedConfig.workspaceRoot,
+    sessionPaths: capturedConfig.sessionPaths,
   });
 
   if (capturedResolution.kind === "resolved") {

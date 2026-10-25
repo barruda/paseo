@@ -113,6 +113,23 @@ require('node:fs').writeFileSync(process.env.PASEO_TEST_BROWSER_ARGS, JSON.strin
     }
   });
 
+  // CUSTOM(chat-file-actions)
+  it("reveals a file in the system file manager", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "paseo-open-file-"));
+    const filePath = path.join(directory, "run.sh");
+    await writeFile(filePath, "echo hi");
+    const openPath = vi.fn();
+    const showItemInFolder = vi.fn();
+    const open = createFileOpener({ openPath, browserApplication: vi.fn(), showItemInFolder });
+    try {
+      await open({ path: filePath, mode: "reveal" });
+      expect(showItemInFolder).toHaveBeenCalledWith(filePath);
+      expect(openPath).not.toHaveBeenCalled();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
   it("refuses malformed inputs and missing files before launching anything", async () => {
     const openPath = vi.fn();
     const openBrowser = vi.fn();

@@ -42,6 +42,9 @@ interface HoverCardContextValue {
   contentRef: RefObject<View | null>;
   openNow: () => void;
   scheduleClose: () => void;
+  /** CUSTOM(chat-file-actions): what the trigger's pointer events call, honoring `openDelayMs`. */
+  enterTrigger: () => void;
+  leaveTrigger: () => void;
 }
 
 const HoverCardContext = createContext<HoverCardContextValue | null>(null);
@@ -60,21 +63,30 @@ const HoverCardContext = createContext<HoverCardContextValue | null>(null);
  */
 export function HoverCard({
   disabled = false,
+  openDelayMs = 0,
   children,
 }: {
   /** Closes the card and keeps it closed, e.g. while its trigger is dragged. */
   disabled?: boolean;
+  /** CUSTOM(chat-file-actions): how long the pointer rests on the trigger before it opens. */
+  openDelayMs?: number;
   children: ReactNode;
 }): ReactNode {
   if (!isWeb) return children;
-  return <WebHoverCard disabled={disabled}>{children}</WebHoverCard>;
+  return (
+    <WebHoverCard disabled={disabled} openDelayMs={openDelayMs}>
+      {children}
+    </WebHoverCard>
+  );
 }
 
 function WebHoverCard({
   disabled,
+  openDelayMs,
   children,
 }: {
   disabled: boolean;
+  openDelayMs: number;
   children: ReactNode;
 }): ReactElement {
   const layer = useOverlayLayer("floating");
@@ -245,9 +257,45 @@ function WebHoverCard({
 
   useEffect(() => clearGraceTimer, [clearGraceTimer]);
 
+  // CUSTOM(chat-file-actions): a delayed open, so sweeping the pointer across text doesn't flash it.
+  const openTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearOpenTimer = useCallback(() => {
+    if (openTimerRef.current) {
+      clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
+    }
+  }, []);
+  const enterTrigger = useCallback(() => {
+    if (openDelayMs <= 0 || open) {
+      openNow();
+      return;
+    }
+    clearGraceTimer();
+    clearOpenTimer();
+    openTimerRef.current = setTimeout(() => {
+      openTimerRef.current = null;
+      openNow();
+    }, openDelayMs);
+  }, [clearGraceTimer, clearOpenTimer, open, openDelayMs, openNow]);
+  const leaveTrigger = useCallback(() => {
+    clearOpenTimer();
+    scheduleClose();
+  }, [clearOpenTimer, scheduleClose]);
+  useEffect(() => clearOpenTimer, [clearOpenTimer]);
+
   const value = useMemo<HoverCardContextValue>(
-    () => ({ open, layer, setTriggerRef, triggerRef, contentRef, openNow, scheduleClose }),
-    [open, layer, setTriggerRef, openNow, scheduleClose],
+    () => ({
+      open,
+      layer,
+      setTriggerRef,
+      triggerRef,
+      contentRef,
+      openNow,
+      scheduleClose,
+      enterTrigger,
+      leaveTrigger,
+    }),
+    [open, layer, setTriggerRef, openNow, scheduleClose, enterTrigger, leaveTrigger],
   );
 
   return (
@@ -261,10 +309,13 @@ export function HoverCardTrigger({
   children,
   focusable = false,
   accessibilityLabel,
+  style,
 }: {
   children: ReactNode;
   focusable?: boolean;
   accessibilityLabel?: string;
+  /** CUSTOM(chat-file-actions): e.g. inline-flex, for a trigger inside running text. */
+  style?: StyleProp<ViewStyle>;
 }): ReactNode {
   const ctx = useContext(HoverCardContext);
   if (!ctx) return children;
@@ -275,8 +326,9 @@ export function HoverCardTrigger({
       accessibilityRole={focusable ? "button" : undefined}
       accessibilityLabel={accessibilityLabel}
       collapsable={false}
-      onPointerEnter={ctx.openNow}
-      onPointerLeave={ctx.scheduleClose}
+      style={style}
+      onPointerEnter={ctx.enterTrigger}
+      onPointerLeave={ctx.leaveTrigger}
     >
       {children}
     </View>

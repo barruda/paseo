@@ -13,12 +13,14 @@ const FileOpenInput = z.object({
     .string()
     .min(1)
     .refine((value) => path.isAbsolute(value) && !value.includes("\0")),
-  mode: z.enum(["browser", "default"]),
+  // CUSTOM(chat-file-actions): "reveal" shows the file in the system file manager.
+  mode: z.enum(["browser", "default", "reveal"]),
 });
 
 interface FileOpenerOwner {
   openPath(filePath: string): Promise<string>;
   browserApplication(): Promise<string>;
+  showItemInFolder?(filePath: string): void;
 }
 
 export function createFileOpener(owner: FileOpenerOwner, openBrowser = openFileInSystemBrowser) {
@@ -27,6 +29,11 @@ export function createFileOpener(owner: FileOpenerOwner, openBrowser = openFileI
     await access(candidate.path);
     if (candidate.mode === "browser") {
       await openBrowser(candidate.path, owner.browserApplication);
+      return;
+    }
+    if (candidate.mode === "reveal") {
+      if (!owner.showItemInFolder) throw new Error("This desktop can't show files in a folder");
+      owner.showItemInFolder(candidate.path);
       return;
     }
     const error = await owner.openPath(candidate.path);

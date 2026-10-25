@@ -983,6 +983,7 @@ async function bootstrap(): Promise<void> {
   // CUSTOM(open-file-externally): separate IPC preserves the HTTP(S)-only URL opener.
   const openFile = createFileOpener({
     openPath: (filePath) => shell.openPath(filePath),
+    showItemInFolder: (filePath) => shell.showItemInFolder(filePath),
     browserApplication: async () =>
       (await app.getApplicationInfoForProtocol("https://example.com")).path,
   });

@@ -11,6 +11,7 @@ import { markdownCopyDataSet } from "@/assistant-selection-copy/markup";
 import { useAssistantFileLinkResolverContext } from "./provider";
 import type { AssistantFileLinkSource } from "./resolver";
 import { formatFileLinkTooltipPath } from "./tooltip-path";
+import { FileLinkHoverActions } from "./hover-actions";
 import { useFileLink } from "./use-file-link";
 
 interface AssistantMarkdownLinkProps {
@@ -31,7 +32,7 @@ export function AssistantMarkdownLink({
   monoSurface,
   children,
 }: AssistantMarkdownLinkProps) {
-  const { target, onHoverIn, onPress } = useFileLink(source);
+  const { target, onHoverIn, onPress, open, lookupQuery } = useFileLink(source);
   const { configRef } = useAssistantFileLinkResolverContext();
   const workspaceRoot = configRef.current.workspaceRoot;
   const tooltipPath = useMemo(
@@ -99,6 +100,15 @@ export function AssistantMarkdownLink({
     </a>
   );
 
+  // CUSTOM(chat-file-actions): file links get a hover card with the full path and actions instead
+  // of the path tooltip. External links have neither a target nor a lookup and stay bare.
+  if (target || lookupQuery) {
+    return (
+      <FileLinkHoverActions source={source} target={target} lookupQuery={lookupQuery} open={open}>
+        {anchor}
+      </FileLinkHoverActions>
+    );
+  }
   return <FileLinkHoverTooltip filePath={tooltipPath}>{anchor}</FileLinkHoverTooltip>;
 }
 

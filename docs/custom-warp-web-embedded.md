@@ -8,7 +8,8 @@ Electron browser tab, backed by a small PTY bridge.
 This doc covers how the pieces fit, how to build and run them, and the gotchas. The per-commit
 details (core files touched, how to re-apply after an upstream update, how to verify) are in
 `custom/CHANGES.md`, in the entries `warp`, `browser-no-toolbar`, `browser-shortcut-preempt`,
-`bottom-panel-tab-keys`, `bottom-panel-warp` and `bottom-panel-warp-tab-button`.
+`bottom-panel-tab-keys`, `bottom-panel-warp`, `bottom-panel-warp-tab-button` and
+`chat-file-actions`.
 
 ## Pieces
 
@@ -30,7 +31,8 @@ the Warp checkout):
   "Warp tabs opened by Paseo").
 - `app/src/root_view.rs`: `remote_tty` builds start loginless, like desktop's "Skip for now".
 - `app/src/wasm_nux_dialog.rs`: hides the "Download Warp Desktop?" dialog in `remote_tty` builds.
-- `paseo-bridge/`: the bridge itself, with the page title set to plain "Warp".
+- `paseo-bridge/`: the bridge itself, with the page title set to plain "Warp", and the `run` URL
+  parameter that types a command into a new session (see "Warp tabs opened by Paseo").
 
 ## How a session starts
 
@@ -69,8 +71,9 @@ Why it's shaped this way:
 ## Warp tabs opened by Paseo
 
 Paseo opens a tab inside a running Warp page in a folder of its choice: the `+` in the bottom panel's
-Warp tab chip does it for the agent's project
-(`packages/app/src/workspace-tabs/warp-session.ts`). It runs `executeJavaScript` on the webview to
+Warp tab chip does it for the agent's project, and **Executar no Warp** on a chat `.sh` link does it
+in the script's folder, running the script
+(`packages/app/src/workspace-tabs/warp-session.ts`, `warp-run.ts`). It runs `executeJavaScript` on the webview to
 set the `cwd` of `window.PASEO_WARP_PTY_URL`, which Warp reads for every new session, then
 dispatches a `paseo-warp-new-tab` event on `window`. The Warp patch in `app/src/workspace/view.rs`
 listens for that event and opens a terminal tab.
@@ -82,6 +85,14 @@ listens for that event and opens a terminal tab.
   in the same folder until Paseo changes it again or the page reloads.
 - **Old pages ignore the event.** A Warp tab whose page loaded before the patched build does
   nothing until you reload it.
+- **Running a command.** Paseo also sets `run` and a fresh `run_id` on the URL. Warp passes the
+  URL's query through to `/create` untouched, so this needs no Warp rebuild: the bridge types the
+  command into that session. It waits for the Bootstrapped hook in the shell's output (hex-encoded,
+  like every Warp hook) and then for 700 ms of quiet, because Warp types its own completion
+  generator commands right after the bootstrap, and a command typed during one gets mixed into it
+  (it showed as a raw `warp_run_generator_command` block). Each `run_id` runs once, since later
+  tabs reuse the URL. A new bridge only takes effect when the plugin reloads, which restarts the
+  bridge and ends the shells of every open Warp tab.
 
 ## The shell
 

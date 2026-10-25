@@ -13,6 +13,19 @@ type RunChatCommand = (command: string) => void;
 
 const ChatCodeRunContext = createContext<RunChatCommand | null>(null);
 
+// CUSTOM(chat-file-actions): the chat's host and workspace, for the file link actions that open a
+// Warp tab. Null outside an agent panel.
+export interface ChatWorkspace {
+  serverId: string;
+  workspaceId: string;
+}
+
+const ChatWorkspaceContext = createContext<ChatWorkspace | null>(null);
+
+export function useChatWorkspace(): ChatWorkspace | null {
+  return useContext(ChatWorkspaceContext);
+}
+
 /**
  * Runs a command in the agent's directory as if `!<command>` was typed in its composer. Null when
  * the shell-command plugin is not installed on the agent's daemon. Also used by commit-wip.
@@ -74,7 +87,15 @@ export function ChatCodeRunProvider({
   children: ReactNode;
 }) {
   const run = useRunChatCommand({ serverId, workspaceId, agentId, toast });
-  return <ChatCodeRunContext.Provider value={run}>{children}</ChatCodeRunContext.Provider>;
+  const workspace = useMemo(
+    () => (workspaceId ? { serverId, workspaceId } : null),
+    [serverId, workspaceId],
+  );
+  return (
+    <ChatWorkspaceContext.Provider value={workspace}>
+      <ChatCodeRunContext.Provider value={run}>{children}</ChatCodeRunContext.Provider>
+    </ChatWorkspaceContext.Provider>
+  );
 }
 
 export function useChatCodeRun(): RunChatCommand | null {
