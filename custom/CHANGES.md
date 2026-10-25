@@ -3175,7 +3175,7 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
     in this session (Read, Edit and Write `filePath`, Search `filePaths`), newest first: the same
     relative path, or a full path ending in `/<link>`. Only then the workspace and the daemon's
     suffix lookup, as upstream does. This finds files outside the workspace too.
-  - **Hover card.** On web and desktop, resting the pointer on a file link for 400 ms opens a card
+  - **Hover card.** On web and desktop, resting the pointer on a file link for 200 ms opens a card
     with icons first and the full path after them. The card opens with its first icon right above
     the pointer (`pointerAnchorOffset`), shifting left only when the screen's right edge is near: **Copiar caminho completo** and **Abrir em aba** (what clicking
     the link does) for every file; for a `.sh`, **Executar aqui** (the shell-command plugin, as

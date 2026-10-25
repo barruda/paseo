@@ -63,7 +63,7 @@ import {
   splitFileLinkPath,
 } from "./hover-actions-model";
 
-const OPEN_DELAY_MS = 400;
+const OPEN_DELAY_MS = 200;
 const ICON_SIZE = 14;
 const MAX_CANDIDATES = 5;
 // From the card's left edge to the middle of its first icon: card padding, button padding, half
