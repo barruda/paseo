@@ -115,6 +115,19 @@ describe("Desks", () => {
     store.closeTab(agent.id);
     expect(context()?.target.kind).toBe("file");
   });
+  // CUSTOM(desk-close-returns)
+  it("closing a tab returns to the tab it was opened from, not to its neighbor", () => {
+    const store = useDesksStore.getState();
+    store.openTab(firstTab, true);
+    store.openTab(secondTab, true);
+    store.openTab({ ...secondTab, target: { kind: "draft", draftId: "draft-close" } }, true);
+    store.selectTab(tabs()[0]!.id);
+    const origin = current()!;
+    store.openTab({ ...firstTab, target: { kind: "file", path: "/tmp/notes.md" } }, true);
+    expect(current()?.target.kind).toBe("file");
+    store.closeTab(current()!.id);
+    expect(current()?.id).toBe(origin.id);
+  });
   it("toggles a tabbed bottom pane whose launcher belongs to the given workspace", () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);

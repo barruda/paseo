@@ -306,7 +306,30 @@ function renameExplorerTab(desk: Desk, from: string, to: string): Desk {
   };
 }
 
+// CUSTOM(desk-close-returns): a tab opened from another remembers it as its parent, so closing it
+// returns to the tab the user was on (closeTabInLayout prefers an open parent) instead of its
+// neighbor. The workspace screen passes parents itself; Desks open tabs without one.
 function openInDesk(
+  desk: Desk,
+  input: DeskTabInput,
+  pin: boolean,
+  placement: WorkspaceTabPlacement,
+): Desk {
+  const previousTabId = findPaneById(desk.layout.root, desk.layout.focusedPaneId)?.focusedTabId;
+  const next = openInDeskWithoutParent(desk, input, pin, placement);
+  const openedTabId = findPaneById(next.layout.root, next.layout.focusedPaneId)?.focusedTabId;
+  if (!previousTabId || !openedTabId || previousTabId === openedTabId) return next;
+  if (!findPaneContainingTab(next.layout.root, previousTabId)) return next;
+  return {
+    ...next,
+    layout: {
+      ...next.layout,
+      parentTabIdByTabId: { ...next.layout.parentTabIdByTabId, [openedTabId]: previousTabId },
+    },
+  };
+}
+
+function openInDeskWithoutParent(
   desk: Desk,
   input: DeskTabInput,
   pin: boolean,
