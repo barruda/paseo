@@ -1,13 +1,16 @@
 // CUSTOM(chat-file-actions): hovering a file link in the chat shows a card with its full path and
 // icons for what to do with it: copy the full path and open it in a tab, for every file; for a
 // `.sh`, run it here (as `!<command>`) or in a new Warp tab, in the script's own folder; for an
-// `.html`, open it in the system browser; for anything else, show it in the system file manager. Web and desktop only: hover
-// doesn't exist on native, where the link keeps opening on tap.
+// `.html`, open it in the system browser; for anything else, show it in the system file manager.
+// Web links get the same card: copy, open in a Paseo browser tab, open in the system browser. Web
+// and desktop only: hover doesn't exist on native, where the link keeps opening on tap.
 import * as Clipboard from "expo-clipboard";
 import {
   Copy,
   ExternalLink,
   FolderOpen,
+  Globe,
+  Link,
   PanelTop,
   Play,
   SquareTerminal,
@@ -23,6 +26,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import type { ToastApi } from "@/components/toast-host";
 import { useChatCodeRun, useChatWorkspace, type ChatWorkspace } from "@/chat-code-run/context";
 import {
   HoverCard,
@@ -33,6 +37,11 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getIsElectron } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
+import { createWorkspaceBrowser } from "@/desktop/browser/store";
+import { useDesksStore } from "@/task-navigation/desks-store";
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
+import { openExternalUrl } from "@/utils/open-external-url";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import { pluginRegistry } from "@/plugins/registry";
@@ -72,6 +81,8 @@ const ThemedWarp = themed(SquareTerminal);
 const ThemedTab = themed(PanelTop);
 const ThemedBrowser = themed(ExternalLink);
 const ThemedFolder = themed(FolderOpen);
+const ThemedLink = themed(Link);
+const ThemedGlobe = themed(Globe);
 
 // The card renders in a portal, outside the chat's providers, so the link reads them here and
 // hands them down.
@@ -418,6 +429,114 @@ function ActionButton({
         <Text style={styles.tooltip}>{label}</Text>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+export function UrlHoverActions({ url, children }: { url: string; children: ReactNode }) {
+  const { configRef } = useAssistantFileLinkResolverContext();
+  const workspace = useChatWorkspace();
+  return (
+    <HoverCard openDelayMs={OPEN_DELAY_MS}>
+      <UrlHoverCardBody url={url} workspace={workspace} toast={configRef.current.toast ?? null}>
+        {children}
+      </UrlHoverCardBody>
+    </HoverCard>
+  );
+}
+
+function UrlHoverCardBody({
+  url,
+  workspace,
+  toast,
+  children,
+}: {
+  url: string;
+  workspace: ChatWorkspace | null;
+  toast: ToastApi | null;
+  children: ReactNode;
+}) {
+  const closeCard = useHoverCardClose();
+  return (
+    <>
+      <HoverCardTrigger style={TRIGGER_STYLE}>{children}</HoverCardTrigger>
+      <HoverCardContent
+        placement="top"
+        alignment="start"
+        offset={6}
+        style={styles.card}
+        testID="url-hover-actions"
+      >
+        <UrlActionRow url={url} workspace={workspace} toast={toast} closeCard={closeCard} />
+      </HoverCardContent>
+    </>
+  );
+}
+
+function UrlActionRow({
+  url,
+  workspace,
+  toast,
+  closeCard,
+}: {
+  url: string;
+  workspace: ChatWorkspace | null;
+  toast: ToastApi | null;
+  closeCard: () => void;
+}) {
+  const tasksMode = useTaskNavigationStore((state) => state.enabled);
+  const copyUrl = useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(url);
+      toast?.copied("Link");
+    } catch {
+      toast?.error("Não foi possível copiar o link");
+    }
+  }, [toast, url]);
+  // A browser tab of the chat's workspace, opened next to the chat like Ctrl+T's browser tabs.
+  const openInTab = useCallback(() => {
+    if (!workspace) return;
+    const { browserId } = createWorkspaceBrowser({ initialUrl: url });
+    const target = { kind: "browser" as const, browserId };
+    if (tasksMode) {
+      useDesksStore.getState().openTab({ ...workspace, target }, true);
+      return;
+    }
+    const workspaceKey = buildWorkspaceTabPersistenceKey(workspace);
+    if (workspaceKey)
+      useWorkspaceLayoutStore.getState().openTab({ workspaceKey, target, intent: "reveal" });
+  }, [tasksMode, url, workspace]);
+  const openInBrowser = useCallback(() => {
+    void openExternalUrl(url);
+  }, [url]);
+
+  return (
+    <View style={styles.row}>
+      <View style={styles.actions}>
+        <ActionButton
+          label="Copiar link"
+          icon={ThemedLink}
+          onPress={copyUrl}
+          closeCard={closeCard}
+        />
+        {getIsElectron() && workspace ? (
+          <ActionButton
+            label="Abrir em aba"
+            icon={ThemedTab}
+            onPress={openInTab}
+            closeCard={closeCard}
+          />
+        ) : null}
+        <ActionButton
+          label="Abrir no navegador"
+          icon={ThemedGlobe}
+          onPress={openInBrowser}
+          closeCard={closeCard}
+        />
+      </View>
+      <Text selectable style={styles.path} numberOfLines={2}>
+        {url}
+      </Text>
+    </View>
   );
 }
 

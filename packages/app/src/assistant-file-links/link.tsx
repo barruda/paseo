@@ -11,7 +11,7 @@ import { markdownCopyDataSet } from "@/assistant-selection-copy/markup";
 import { useAssistantFileLinkResolverContext } from "./provider";
 import type { AssistantFileLinkSource } from "./resolver";
 import { formatFileLinkTooltipPath } from "./tooltip-path";
-import { FileLinkHoverActions } from "./hover-actions";
+import { FileLinkHoverActions, UrlHoverActions } from "./hover-actions";
 import { useFileLink } from "./use-file-link";
 
 interface AssistantMarkdownLinkProps {
@@ -32,7 +32,7 @@ export function AssistantMarkdownLink({
   monoSurface,
   children,
 }: AssistantMarkdownLinkProps) {
-  const { target, onHoverIn, onPress, open, lookupQuery } = useFileLink(source);
+  const { target, onHoverIn, onPress, open, lookupQuery, externalUrl } = useFileLink(source);
   const { configRef } = useAssistantFileLinkResolverContext();
   const workspaceRoot = configRef.current.workspaceRoot;
   const tooltipPath = useMemo(
@@ -108,6 +108,9 @@ export function AssistantMarkdownLink({
         {anchor}
       </FileLinkHoverActions>
     );
+  }
+  if (externalUrl) {
+    return <UrlHoverActions url={externalUrl}>{anchor}</UrlHoverActions>;
   }
   return <FileLinkHoverTooltip filePath={tooltipPath}>{anchor}</FileLinkHoverTooltip>;
 }

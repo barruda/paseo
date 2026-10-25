@@ -3183,6 +3183,10 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
     **Abrir no navegador**; for anything else,
     **Abrir no gerenciador de arquivos** (Electron's `shell.showItemInFolder`). Browser and file
     manager only show for the local desktop host; Warp only in Electron with the Warp plugin.
+  - **Web links** get the same card (`UrlHoverActions`): the URL (a markdown link shows its
+    target), **Copiar link**, **Abrir em aba** (a Paseo browser tab of the chat's workspace,
+    Electron only) and **Abrir no navegador** (what clicking does). `useFileLink` returns
+    `externalUrl` for them.
   - Every action closes the card (`useHoverCardClose`): after **Abrir em aba** the link is hidden
     behind the new tab, the pointer never "leaves" it, and the card stayed up over the new tab.
   - When the daemon's suffix lookup finds a `.sh` (it wasn't a session file) and more than one file
