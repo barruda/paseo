@@ -45,6 +45,7 @@ interface HoverCardContextValue {
   /** CUSTOM(chat-file-actions): what the trigger's pointer events call, honoring `openDelayMs`. */
   enterTrigger: () => void;
   leaveTrigger: () => void;
+  close: () => void;
 }
 
 const HoverCardContext = createContext<HoverCardContextValue | null>(null);
@@ -282,6 +283,11 @@ function WebHoverCard({
     scheduleClose();
   }, [clearOpenTimer, scheduleClose]);
   useEffect(() => clearOpenTimer, [clearOpenTimer]);
+  const close = useCallback(() => {
+    clearOpenTimer();
+    clearGraceTimer();
+    setOpen(false);
+  }, [clearGraceTimer, clearOpenTimer]);
 
   const value = useMemo<HoverCardContextValue>(
     () => ({
@@ -294,8 +300,9 @@ function WebHoverCard({
       scheduleClose,
       enterTrigger,
       leaveTrigger,
+      close,
     }),
-    [open, layer, setTriggerRef, openNow, scheduleClose, enterTrigger, leaveTrigger],
+    [open, layer, setTriggerRef, openNow, scheduleClose, enterTrigger, leaveTrigger, close],
   );
 
   return (
@@ -304,6 +311,18 @@ function WebHoverCard({
     </OverlayLayerProvider>
   );
 }
+
+/**
+ * CUSTOM(chat-file-actions): closes the enclosing card now, e.g. after an action in it opened a
+ * tab: the pointer never "leaves" a card whose trigger got hidden, so it would stay up. Call it
+ * from a component under `HoverCard` (the content renders in a portal, outside the context).
+ */
+export function useHoverCardClose(): () => void {
+  const ctx = useContext(HoverCardContext);
+  return ctx?.close ?? noop;
+}
+
+function noop() {}
 
 export function HoverCardTrigger({
   children,

@@ -24,7 +24,12 @@ import { useTranslation } from "react-i18next";
 import { Pressable, Text, View, type ViewStyle } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useChatCodeRun, useChatWorkspace, type ChatWorkspace } from "@/chat-code-run/context";
-import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+  useHoverCardClose,
+} from "@/components/ui/hover-card";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getIsElectron } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
@@ -75,6 +80,8 @@ interface ChatContexts {
   runHere: ReturnType<typeof useChatCodeRun>;
   workspace: ChatWorkspace | null;
   dispatcher: ReturnType<typeof useKeyboardActionDispatcher>;
+  /** Every action closes the card: one that opens a tab hides the link, and the card would stay. */
+  closeCard: () => void;
 }
 
 export function FileLinkHoverActions({
@@ -95,12 +102,48 @@ export function FileLinkHoverActions({
   const runHere = useChatCodeRun();
   const workspace = useChatWorkspace();
   const dispatcher = useKeyboardActionDispatcher();
-  const chat = useMemo<ChatContexts>(
+  const chat = useMemo<Omit<ChatContexts, "closeCard">>(
     () => ({ resolver, runHere, workspace, dispatcher }),
     [resolver, runHere, workspace, dispatcher],
   );
   return (
     <HoverCard openDelayMs={OPEN_DELAY_MS}>
+      <FileLinkHoverCardBody
+        chat={chat}
+        source={source}
+        target={target}
+        lookupQuery={lookupQuery}
+        open={open}
+      >
+        {children}
+      </FileLinkHoverCardBody>
+    </HoverCard>
+  );
+}
+
+// Under HoverCard, so it can read the card's close; the content below renders in a portal.
+function FileLinkHoverCardBody({
+  chat: chatWithoutClose,
+  source,
+  target,
+  lookupQuery,
+  open,
+  children,
+}: {
+  chat: Omit<ChatContexts, "closeCard">;
+  source: AssistantFileLinkSource;
+  target: InlinePathTarget | null;
+  lookupQuery: string | null;
+  open: (source: AssistantFileLinkSource, disposition: "preferred") => void;
+  children: ReactNode;
+}) {
+  const closeCard = useHoverCardClose();
+  const chat = useMemo<ChatContexts>(
+    () => ({ ...chatWithoutClose, closeCard }),
+    [chatWithoutClose, closeCard],
+  );
+  return (
+    <>
       <HoverCardTrigger style={TRIGGER_STYLE}>{children}</HoverCardTrigger>
       <HoverCardContent
         placement="top"
@@ -117,7 +160,7 @@ export function FileLinkHoverActions({
           open={open}
         />
       </HoverCardContent>
-    </HoverCard>
+    </>
   );
 }
 
@@ -291,29 +334,55 @@ function FileLinkActionRow({
 
   return (
     <View style={styles.row}>
-      <Text selectable style={styles.path} numberOfLines={2}>
-        {path}
-      </Text>
       <View style={styles.actions}>
-        <ActionButton label="Copiar caminho completo" icon={ThemedCopy} onPress={copyPath} />
+        <ActionButton
+          label="Copiar caminho completo"
+          closeCard={chat.closeCard}
+          icon={ThemedCopy}
+          onPress={copyPath}
+        />
         {kind === "script" && runHere ? (
-          <ActionButton label="Executar aqui" icon={ThemedPlay} onPress={runHereNow} />
+          <ActionButton
+            label="Executar aqui"
+            closeCard={chat.closeCard}
+            icon={ThemedPlay}
+            onPress={runHereNow}
+          />
         ) : null}
         {kind === "script" && canRunInWarp ? (
-          <ActionButton label="Executar no Warp" icon={ThemedWarp} onPress={runInWarpNow} />
+          <ActionButton
+            label="Executar no Warp"
+            closeCard={chat.closeCard}
+            icon={ThemedWarp}
+            onPress={runInWarpNow}
+          />
         ) : null}
-        <ActionButton label="Abrir em aba" icon={ThemedTab} onPress={openInTab} />
+        <ActionButton
+          label="Abrir em aba"
+          closeCard={chat.closeCard}
+          icon={ThemedTab}
+          onPress={openInTab}
+        />
         {kind === "html" && openFile ? (
-          <ActionButton label="Abrir no navegador" icon={ThemedBrowser} onPress={openInBrowser} />
+          <ActionButton
+            label="Abrir no navegador"
+            closeCard={chat.closeCard}
+            icon={ThemedBrowser}
+            onPress={openInBrowser}
+          />
         ) : null}
         {kind === "other" && openFile ? (
           <ActionButton
             label="Abrir no gerenciador de arquivos"
+            closeCard={chat.closeCard}
             icon={ThemedFolder}
             onPress={revealInFolder}
           />
         ) : null}
       </View>
+      <Text selectable style={styles.path} numberOfLines={2}>
+        {path}
+      </Text>
     </View>
   );
 }
@@ -322,18 +391,24 @@ function ActionButton({
   label,
   icon: IconComponent,
   onPress,
+  closeCard,
 }: {
   label: string;
   icon: Icon;
   onPress: () => void;
+  closeCard: () => void;
 }) {
+  const handlePress = useCallback(() => {
+    closeCard();
+    onPress();
+  }, [closeCard, onPress]);
   return (
     <Tooltip delayDuration={300}>
       <TooltipTrigger asChild>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={label}
-          onPress={onPress}
+          onPress={handlePress}
           style={actionButtonStyle}
         >
           <IconComponent size={ICON_SIZE} />

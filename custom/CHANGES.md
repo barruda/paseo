@@ -3176,13 +3176,15 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
     relative path, or a full path ending in `/<link>`. Only then the workspace and the daemon's
     suffix lookup, as upstream does. This finds files outside the workspace too.
   - **Hover card.** On web and desktop, resting the pointer on a file link for 400 ms opens a card
-    with the full path and icons: **Copiar caminho completo** and **Abrir em aba** (what clicking
+    with icons first (closest to the pointer) and the full path after them: **Copiar caminho completo** and **Abrir em aba** (what clicking
     the link does) for every file; for a `.sh`, **Executar aqui** (the shell-command plugin, as
     `!cd <folder> && bash ./<script>`) and **Executar no Warp** (a new tab inside the bottom
     panel's Warp, in the script's folder, running `bash ./<script>`); for `.html`,
     **Abrir no navegador**; for anything else,
     **Abrir no gerenciador de arquivos** (Electron's `shell.showItemInFolder`). Browser and file
     manager only show for the local desktop host; Warp only in Electron with the Warp plugin.
+  - Every action closes the card (`useHoverCardClose`): after **Abrir em aba** the link is hidden
+    behind the new tab, the pointer never "leaves" it, and the card stayed up over the new tab.
   - When the daemon's suffix lookup finds a `.sh` (it wasn't a session file) and more than one file
     matches, the card lists each match with its own actions instead of guessing.
   - **Executar no Warp** shows the bottom panel and selects its Warp tab. Without a bottom panel it
@@ -3204,7 +3206,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   - `assistant-file-links/link.tsx`: web links with a file target or lookup render
     `FileLinkHoverActions` instead of the path tooltip.
   - `agent-stream/view.tsx`: `useSessionFilePaths` over the stream, passed to the provider.
-  - `components/ui/hover-card.tsx`: `openDelayMs` on `HoverCard` and `style` on `HoverCardTrigger`.
+  - `components/ui/hover-card.tsx`: `openDelayMs` on `HoverCard`, `style` on `HoverCardTrigger`,
+    and `useHoverCardClose()`.
   - `chat-code-run/context.tsx`: `ChatCodeRunProvider` also provides `useChatWorkspace()`.
   - `screens/workspace/workspace-tab-menu-actions.ts`: exports `resolveFullTabFilePath`.
   - `workspace-tabs/warp-session.ts`: `openWarpSession` takes an optional command.
@@ -3220,3 +3223,24 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   `.sh` outside the workspace and name it by basename in backticks; hover it: the card shows its
   full path, and **Executar aqui** prints the script's folder for `pwd`. **Executar no Warp** opens
   a Warp tab in that folder with the script running as its first block.
+
+## desk-close-returns: closing a tab in Tasks mode returns to the tab it was opened from
+
+- **Added:** 2026-10-25 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: closing a Desk tab returns to the tab it was opened from`
+- **Why:** Opening a file from the chat in Tasks mode and closing it landed on the tab next to it,
+  not on the agent the user came from.
+- **What:** In Tasks mode, a tab opened while another had focus (a file from the chat, an agent from
+  the sidebar, a new terminal) records that tab as its parent. Closing it focuses the parent while
+  it is still open, else the neighbor as before. Workspace mode already did this for chat files:
+  the workspace screen passes `parentTabId` when it opens them.
+- **Core files touched** (marked `CUSTOM(desk-close-returns)`):
+  - `packages/app/src/task-navigation/desks-store.ts`: `openInDesk` wraps the old body
+    (`openInDeskWithoutParent`) and sets `layout.parentTabIdByTabId[opened] = previous`.
+  - `task-navigation/store.test.ts`: a test for it.
+- **Re-apply:** Where Desks open a tab, remember the focused tab before and record it in the
+  layout's `parentTabIdByTabId` for the tab focused after. `closeTabInLayout` already prefers an
+  open parent.
+- **Verify:** `(cd packages/app && npx vitest run src/task-navigation/store.test.ts)` (the update
+  script runs it). In Tasks mode, from an agent tab with other tabs to its right, click a file in
+  the chat, then close the file tab: the agent tab gets focus.
