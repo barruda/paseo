@@ -6414,7 +6414,7 @@ export class Session {
       if (!agent.session?.askSideQuestion) {
         throw new Error(`${agent.provider} agents do not answer side questions.`);
       }
-      const answer = await agent.session.askSideQuestion(question);
+      const answer = await agent.session.askSideQuestion(question, { history: request.history });
       this.emit({
         type: "agent.side_question.response",
         payload: { requestId, agentId, answer, error: null },

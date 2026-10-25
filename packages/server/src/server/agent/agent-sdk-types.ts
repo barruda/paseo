@@ -698,7 +698,10 @@ export interface AgentSession {
    * CUSTOM(btw): answer a question about the session from a fork of its live context, without
    * tools and outside its history, while a turn may still be running. Null when it declines.
    */
-  askSideQuestion?(question: string, options?: { signal?: AbortSignal }): Promise<string | null>;
+  askSideQuestion?(
+    question: string,
+    options?: { signal?: AbortSignal; history?: { question: string; answer: string }[] },
+  ): Promise<string | null>;
   /**
    * CUSTOM(monitor-quiet-finish): true while background work that will wake the agent back up
    * (a Monitor, a background subagent) is still running, so an ended turn is not "finished".

@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Text, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { Split } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import {
@@ -11,6 +11,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
+// CUSTOM(btw-actions)
+import { useTaskNavigationStore } from "@/task-navigation/store";
 
 export type AssistantForkTarget = "tab" | "workspace";
 
@@ -32,6 +34,12 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
   const [isOpen, setIsOpen] = useState(false);
   const [pendingTarget, setPendingTarget] = useState<AssistantForkTarget | null>(null);
   const isLocked = pendingTarget !== null;
+  // CUSTOM(btw-actions): Tasks mode has no workspace to branch into, so the button opens the
+  // branch in a tab right away instead of asking.
+  const isTasksMode = useTaskNavigationStore((state) => state.enabled);
+  const [isHovered, setIsHovered] = useState(false);
+  const handleHoverIn = useCallback(() => setIsHovered(true), []);
+  const handleHoverOut = useCallback(() => setIsHovered(false), []);
 
   const handleOpenChange = useCallback(
     (next: boolean) => {
@@ -73,6 +81,35 @@ export const AssistantForkMenu = memo(function AssistantForkMenu({
     () => <ThemedSplit size={ICON_SIZE.sm} uniProps={foregroundColorMapping} />,
     [],
   );
+
+  if (isTasksMode) {
+    return (
+      <Tooltip delayDuration={250} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild>
+          <View style={styles.triggerSlot} collapsable={false}>
+            <Pressable
+              accessibilityLabel={t("message.actions.forkInNewTab")}
+              accessibilityRole="button"
+              disabled={isLocked}
+              onPress={handleSelect("tab")}
+              style={triggerStyle}
+              testID={`${testID}-trigger`}
+              onHoverIn={handleHoverIn}
+              onHoverOut={handleHoverOut}
+            >
+              <ThemedSplit
+                size={ICON_SIZE.sm}
+                uniProps={isHovered ? foregroundColorMapping : foregroundMutedColorMapping}
+              />
+            </Pressable>
+          </View>
+        </TooltipTrigger>
+        <TooltipContent side="top" align="center" offset={8}>
+          <Text style={styles.tooltipText}>{t("message.actions.forkInNewTab")}</Text>
+        </TooltipContent>
+      </Tooltip>
+    );
+  }
 
   return (
     <DropdownMenu open={isOpen} onOpenChange={handleOpenChange}>

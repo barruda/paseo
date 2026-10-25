@@ -57,6 +57,8 @@ export interface ForkAgentRequest {
   workspaceId?: string;
   target: AssistantForkTarget;
   boundary?: ForkAgentBoundary;
+  /** CUSTOM(btw): text the fork gets after the chat history, such as a /btw thread. */
+  extraContext?: string;
 }
 
 export interface UseForkAgentInput {
@@ -132,7 +134,7 @@ export function useForkAgent(
   const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const supportsAgentForkContext = useHostFeature(serverId, "agentForkContext") && !readOnly;
 
-  return useStableEvent(async ({ agentId, agent, workspaceId, target, boundary }) => {
+  return useStableEvent(async ({ agentId, agent, workspaceId, target, boundary, extraContext }) => {
     try {
       if (!supportsAgentForkContext) {
         toast?.error(t("message.actions.forkUnavailable"));
@@ -145,6 +147,13 @@ export function useForkAgent(
       const prepareForkDraft = async () => {
         const draftId = generateDraftId();
         const payload = await client.buildAgentForkContext(agentId, boundary);
+        // CUSTOM(btw)
+        if (extraContext && payload.attachment) {
+          payload.attachment = {
+            ...payload.attachment,
+            text: `${payload.attachment.text}\n\n${extraContext}`,
+          };
+        }
         const attachment = buildChatHistoryAttachment({
           draftId,
           serverId,

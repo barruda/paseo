@@ -380,7 +380,10 @@ export interface PaseoAgentHandle {
    * CUSTOM(btw): asks about the session from a fork of its live context, like Claude Code's
    * /btw. The question and answer never enter the agent's history; works while a turn runs.
    */
-  askSideQuestion(question: string): Promise<{ answer: string | null; error: string | null }>;
+  askSideQuestion(
+    question: string,
+    options?: { history?: { question: string; answer: string }[] },
+  ): Promise<{ answer: string | null; error: string | null }>;
   archive(): Promise<{ archivedAt: string }>;
   detach(): Promise<void>;
   subscribe(handler: (update: PaseoAgentUpdate) => void): () => void;
@@ -977,7 +980,8 @@ function createAgentHandleFactory(
       },
       commands: (options) => daemonClient.listCommands({ agentId: id, ...options }),
       // CUSTOM(btw)
-      askSideQuestion: (question) => daemonClient.askAgentSideQuestion(id, question),
+      askSideQuestion: (question, options) =>
+        daemonClient.askAgentSideQuestion(id, question, { history: options?.history }),
       archive: async () => {
         const result = await daemonClient.archiveAgent(id);
         if (current) {

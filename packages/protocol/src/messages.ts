@@ -1383,6 +1383,9 @@ export const AgentSideQuestionRequestSchema = z.object({
   requestId: z.string(),
   agentId: z.string(),
   question: z.string(),
+  // Earlier questions and answers of the same /btw thread, oldest first. Older daemons ignore it
+  // and answer without them.
+  history: z.array(z.object({ question: z.string(), answer: z.string() })).optional(),
 });
 
 // CUSTOM(history-ai-search): ask the metadata model which sessions answer a question.

@@ -2843,18 +2843,25 @@ class ClaudeAgentSession implements AgentSession {
   // The SDK ships `askSideQuestion` on Query without declaring it.
   async askSideQuestion(
     question: string,
-    options?: { signal?: AbortSignal },
+    options?: { signal?: AbortSignal; history?: { question: string; answer: string }[] },
   ): Promise<string | null> {
     const q: Query & {
       askSideQuestion?: (
         question: string,
-        options?: { signal?: AbortSignal },
+        options?: { signal?: AbortSignal; history?: { question: string; response: string }[] },
       ) => Promise<{ response: string } | null>;
     } = await this.ensureQuery();
     if (typeof q.askSideQuestion !== "function") {
       throw new Error("This Claude Agent SDK does not support side questions.");
     }
-    const result = await q.askSideQuestion(question, options);
+    // Follow-ups pass the thread so far; the CLI replays it after the forked context.
+    const result = await q.askSideQuestion(question, {
+      signal: options?.signal,
+      history: options?.history?.map((turn) => ({
+        question: turn.question,
+        response: turn.answer,
+      })),
+    });
     return result?.response ?? null;
   }
 

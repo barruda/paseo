@@ -2463,14 +2463,19 @@ export class DaemonClient {
   async askAgentSideQuestion(
     agentId: string,
     question: string,
-    requestId?: string,
+    options?: { requestId?: string; history?: { question: string; answer: string }[] },
   ): Promise<AgentSideQuestionResponse["payload"]> {
     if (this.lastServerInfoMessage?.features?.agentSideQuestion !== true) {
       throw new Error("Update the host to use /btw.");
     }
     return this.sendNamespacedCorrelatedSessionRequest<"agent.side_question.response">({
-      requestId,
-      message: { type: "agent.side_question.request", agentId, question },
+      requestId: options?.requestId,
+      message: {
+        type: "agent.side_question.request",
+        agentId,
+        question,
+        ...(options?.history?.length ? { history: options.history } : {}),
+      },
       timeout: 180_000,
     });
   }

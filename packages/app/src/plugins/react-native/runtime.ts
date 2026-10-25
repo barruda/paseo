@@ -4,6 +4,8 @@ import { ScrollView, FlatList } from "./scroll-view";
 import { TextInput } from "./text-input";
 import { copyText } from "./clipboard";
 import { useToast } from "./toast";
+// CUSTOM(btw-actions)
+import { AgentForkMenu, FollowUpComposer } from "./host-components";
 import { useRevealedText } from "@/hooks/use-revealed-text";
 
 export const pluginReactNativeRuntime = {
@@ -15,4 +17,7 @@ export const pluginReactNativeRuntime = {
   copyText,
   useRevealedText,
   useToast,
+  // CUSTOM(btw-actions)
+  FollowUpComposer,
+  AgentForkMenu,
 };

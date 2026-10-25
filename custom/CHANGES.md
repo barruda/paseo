@@ -3091,6 +3091,57 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
   update script runs both). In the app, while a Claude agent runs a long command, send
   `/btw what are you doing right now?`: a BTW card answers in about a second and the turn goes on.
 
+## btw-actions: follow-ups, TLDR, branch and copy icons in the BTW card
+
+- **Added:** 2026-10-25 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: the BTW card asks follow-ups, TLDRs and branches into a tab`
+- **Why:** A /btw answer often needs one more question, a shorter version, or turns into real work
+  worth its own session.
+- **What:** Under the answer of a [btw](#btw-btw-asks-about-the-session-without-interrupting-the-agent)
+  card:
+  - Right side, left to right: **TLDR** (list icon), **branch** (the chat's fork icon), then 25px
+    later **copy** (the latest answer).
+  - **TLDR** asks the side thread for the gist of its last answer; it shows in the same card.
+  - **Ask follow up** on the left opens, under it, a half-width composer: dictation, **+** to
+    upload files, send, Esc closes. The answer lands in the same card. Side questions take text
+    only, so the daemon inlines attached text files into the question (64 KiB each); images and
+    binary files go in as a note that they were left out.
+  - Follow-ups and TLDR pass the card's earlier answered questions as `history` of Claude Code's
+    `side_question`, so the fork answers in the thread.
+  - **Branch** forks the whole chat (no boundary, so it includes a running turn) and appends the
+    card as text: every question, follow-up, attached file name and answer.
+  - In Tasks mode every fork button (this one and the one on assistant replies) opens the branch in
+    a tab right away, without the "new tab or new workspace" menu.
+  - Cards from before this change have no `id` in their data and show no actions.
+- **Files:** `custom/plugins/btw/` (`follow-up` RPC in `server/ask.ts`, thread helpers in
+  `shared/btw.ts`, card in `client/btw-card.tsx`). New in the app:
+  `packages/app/src/plugins/react-native/host-components.tsx`, `follow-up-composer.impl.tsx`,
+  `agent-fork-menu.impl.tsx`.
+- **Core files touched** (marked `CUSTOM(btw-actions)` or `CUSTOM(btw)`):
+  - Protocol `messages.ts`: optional `history` on `agent.side_question.request`. Client
+    `daemon-client.ts` `askAgentSideQuestion(agentId, question, { requestId, history })` and
+    `index.ts` `askSideQuestion(question, { history })`. Server `session.ts`,
+    `agent-sdk-types.ts`, `providers/claude/agent.ts` (maps `answer` to the SDK's `response`),
+    `test-utils/fake-agent-client.ts` (echoes how many history turns it got).
+  - Plugin SDK `packages/plugin/src/client/react-native.ts`: declares `FollowUpComposer` and
+    `AgentForkMenu`; `packages/app/src/plugins/react-native/runtime.ts` supplies them.
+  - `hooks/use-fork-agent.ts`: optional `extraContext`, appended to the chat history attachment.
+  - `components/assistant-fork-menu.tsx`: in Tasks mode, a plain button that forks into a tab.
+- **Re-apply:** Add the optional `history` array to the side question request and thread it to
+  `query.askSideQuestion(question, { history: [{ question, response }] })`. Lend the plugin two app
+  components through the plugin react-native runtime: the chat `MessageInput` with a file-only
+  attachment menu, and `AssistantForkMenu` driving `useForkAgent` with `extraContext`. In
+  `AssistantForkMenu`, when `useTaskNavigationStore` is enabled, render a button that calls
+  `onFork("tab")`.
+- **Setup:** `plugin reload btw` on each daemon, and a daemon from this build for the follow-up
+  history (an older daemon answers each follow-up without the thread).
+- **Verify:** `npx vitest run custom/plugins/btw` and
+  `(cd packages/server && npx vitest run src/server/plugins/custom-btw-plugin.e2e.test.ts)` (the
+  update script runs both). In the app, `/btw what changed?`, then **Ask follow up** "and why?"
+  with a text file attached, then the TLDR icon: both answers land in the card. Branch: a new tab
+  whose draft carries the chat history ending with the BTW thread. Turn on Tasks and press a fork
+  icon on an assistant reply: it opens a tab with no menu.
+
 ## attachment-thumbnail-zoom: hovering an image thumbnail shows it magnified
 
 - **Added:** 2026-10-24 (based on upstream 0.11.2, `7f9b65d46`)

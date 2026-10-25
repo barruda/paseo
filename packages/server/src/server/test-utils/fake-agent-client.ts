@@ -904,8 +904,12 @@ class FakeAgentSession implements AgentSession {
   }
 
   // CUSTOM(btw): echoes the question so tests can tell which one was answered.
-  async askSideQuestion(question: string): Promise<string | null> {
-    return `side answer: ${question}`;
+  async askSideQuestion(
+    question: string,
+    options?: { history?: { question: string; answer: string }[] },
+  ): Promise<string | null> {
+    const history = options?.history?.length ? ` (after ${options.history.length})` : "";
+    return `side answer: ${question}${history}`;
   }
 
   async listCommands(): Promise<AgentSlashCommand[]> {

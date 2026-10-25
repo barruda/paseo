@@ -1,5 +1,5 @@
 // CUSTOM(btw): exercises custom/plugins/btw against a real daemon.
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,10 +17,20 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
+interface BtwRow {
+  status: string;
+  followUps?: { status: string }[];
+}
+
+function isSettled(row: BtwRow): boolean {
+  return [row, ...(row.followUps ?? [])].every((turn) => turn.status !== "asking");
+}
+
 async function waitForBtwRow(
   client: DaemonClient,
   agentId: string,
   id: string,
+  followUps = 0,
 ): Promise<Record<string, unknown>> {
   const deadline = Date.now() + 15_000;
   let last: Record<string, unknown> | undefined;
@@ -31,7 +41,8 @@ async function waitForBtwRow(
       .find((item) => item.type === "plugin" && item.kind === "btw" && item.id === id);
     if (row?.type === "plugin") {
       last = row.data as Record<string, unknown>;
-      if (last.status !== "asking") return last;
+      const data = last as unknown as BtwRow;
+      if (isSettled(data) && (data.followUps?.length ?? 0) >= followUps) return last;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
@@ -65,6 +76,43 @@ test("answers a side question in a plugin row and leaves the agent's history alo
       status: "answered",
       answer: "side answer: which files?",
       error: null,
+    });
+
+    // CUSTOM(btw-actions): follow-ups land in the same row and carry the thread as history.
+    const cardId = (asked as { id: string }).id;
+    const notes = path.join(workspace, "notes.txt");
+    await writeFile(notes, "line from the file");
+    await client.invokePluginRpc("btw", "follow-up", {
+      agentId: agent.id,
+      cardId,
+      card: row,
+      kind: "question",
+      question: "and why?",
+      files: [{ fileName: "notes.txt", mimeType: "text/plain", path: notes }],
+    });
+    const followed = await waitForBtwRow(client, agent.id, cardId, 1);
+    expect(followed.followUps).toEqual([
+      expect.objectContaining({
+        kind: "question",
+        question: "and why?",
+        fileNames: ["notes.txt"],
+        status: "answered",
+        answer: expect.stringMatching(/and why\?[\s\S]*line from the file[\s\S]*\(after 1\)$/),
+      }),
+    ]);
+
+    await client.invokePluginRpc("btw", "follow-up", {
+      agentId: agent.id,
+      cardId,
+      card: followed,
+      kind: "tldr",
+      question: "",
+      files: [],
+    });
+    const tldr = await waitForBtwRow(client, agent.id, cardId, 2);
+    expect((tldr.followUps as { question: string; answer: string }[])[1]).toMatchObject({
+      question: "TLDR",
+      answer: expect.stringMatching(/^side answer: TLDR of your last answer.*\(after 2\)$/),
     });
 
     const timeline = await client.fetchAgentTimeline(agent.id, { projection: "projected" });
