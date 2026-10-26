@@ -288,6 +288,27 @@ const StreamRowContent = React.memo(function StreamRowContent({
   return render(item, index, items);
 });
 
+// CUSTOM(scroll-arrows): an upward move counts only with input behind it, so layout corrections
+// don't flash the top arrow.
+function reportWebScrollActivity(
+  onScrollActivity: StreamRenderInput["onScrollActivity"],
+  input: {
+    scrolledUp: boolean;
+    scrolledDown: boolean;
+    hasUpwardInputEvidence: boolean;
+    scrollTop: number;
+    hasOlderHistory: boolean;
+  },
+): void {
+  if (!onScrollActivity) return;
+  const atTop = input.scrollTop <= USER_SCROLL_DELTA_EPSILON && !input.hasOlderHistory;
+  if (input.scrolledUp && input.hasUpwardInputEvidence) {
+    onScrollActivity({ direction: "up", atTop });
+  } else if (input.scrolledDown) {
+    onScrollActivity({ direction: "down", atTop });
+  }
+}
+
 function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: boolean }) {
   const {
     segments: inputSegments,
@@ -300,6 +321,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     routeBottomAnchorRequest,
     isAuthoritativeHistoryReady,
     onNearBottomChange,
+    onScrollActivity,
     onReadingPositionChange,
     onNearHistoryStart,
     isLoadingOlderHistory,
@@ -809,11 +831,21 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     if (!followOutputRef.current && !isJumpSettling() && (scrolledUp || scrolledDown)) {
       readingAnchor.scroll(currentScrollTop);
     }
+    // CUSTOM(scroll-arrows)
+    reportWebScrollActivity(onScrollActivity, {
+      scrolledUp,
+      scrolledDown,
+      hasUpwardInputEvidence,
+      scrollTop: currentScrollTop,
+      hasOlderHistory,
+    });
     updateScrollMetrics();
     evaluateHistoryStart();
   }, [
     evaluateHistoryStart,
+    hasOlderHistory,
     isJumpSettling,
+    onScrollActivity,
     readingAnchor,
     stopFollowingOutputFromUserIntent,
     updateScrollMetrics,
@@ -1164,6 +1196,18 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
         scheduleStickToBottom();
       },
       scrollToMessage,
+      // CUSTOM(scroll-arrows): leaves the bottom like an upward scroll, so older pages load.
+      scrollToTop: () => {
+        const scrollContainer = scrollContainerRef.current;
+        if (!scrollContainer) {
+          return;
+        }
+        cancelPendingStickToBottom();
+        setFollowOutput(false);
+        markUpwardInputEvidence();
+        rearmHistoryStartFromUserIntent();
+        scrollContainer.scrollTop = 0;
+      },
     };
     viewportRef.current = handle;
     return () => {
@@ -1175,6 +1219,8 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
   }, [
     cancelPendingStickToBottom,
     forceStickToBottom,
+    markUpwardInputEvidence,
+    rearmHistoryStartFromUserIntent,
     scheduleStickToBottom,
     scrollToMessage,
     viewportRef,

@@ -273,6 +273,8 @@ if $VERIFY; then
   npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/keyboard-shortcut-unassign.spec.ts --grep 'sidebar shortcut settings|shortcut settings search' --workers=1
   (cd packages/app && npx vitest run src/voice/sidebar/session.test.ts --bail=1)
   (cd packages/app && npx vitest run src/content-width-boost/store.test.ts --bail=1)
+  # The chat's scroll arrows fade after 3 s without scrolling; scrolling up shows a top arrow.
+  (cd packages/app && npx vitest run src/agent-stream/scroll-arrows.test.ts --bail=1)
   (cd packages/app && npx vitest run src/keyboard/voice-escape.test.ts src/composer/submission/writer.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/codex-app-server-agent.test.ts --bail=1)
   (cd packages/app && npx vitest run src/composer/project-icon-model.test.ts --bail=1)

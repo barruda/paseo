@@ -82,6 +82,7 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
     routeBottomAnchorRequest,
     isAuthoritativeHistoryReady,
     onNearBottomChange,
+    onScrollActivity,
     onNearHistoryStart,
     isLoadingOlderHistory,
     hasOlderHistory,
@@ -353,6 +354,10 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
         bottomAnchorController.prepareForStickyViewportChange();
         markNativeViewportSettling();
       },
+      // CUSTOM(scroll-arrows): the list is inverted, so its end is the visual top.
+      scrollToTop: () => {
+        flatListRef.current?.scrollToEnd({ animated: true });
+      },
     };
     viewportRef.current = handle;
     return () => {
@@ -393,6 +398,16 @@ function NativeStreamViewport(props: StreamRenderInput & { strategy: StreamStrat
 
     const nearBottom = isScrollEventNearBottom(event);
     onNearBottomChange(nearBottom);
+
+    // CUSTOM(scroll-arrows): only drags count; content arriving also moves the inverted list.
+    const scrollDelta = contentOffset.y - previousOffsetY;
+    if (isUserScrollActiveRef.current && Math.abs(scrollDelta) > 1) {
+      onScrollActivity?.({
+        direction: scrollDelta > 0 ? "up" : "down",
+        atTop:
+          !hasOlderHistory && contentOffset.y + layoutMeasurement.height >= contentSize.height - 8,
+      });
+    }
 
     evaluateHistoryStart();
 

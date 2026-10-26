@@ -4,6 +4,7 @@ import type { StyleProp, ViewStyle } from "react-native";
 import type { StreamItem } from "@/types/stream";
 import { continuesResponse } from "./turn-membership";
 import type { StreamHistoryBoundary, StreamRenderSegments } from "./model";
+import type { StreamScrollActivity } from "./scroll-arrows";
 import type {
   BottomAnchorLocalRequest,
   BottomAnchorRouteRequest,
@@ -55,6 +56,8 @@ export interface StreamViewportHandle {
   scrollToBottom: (reason?: BottomAnchorLocalRequest["reason"]) => void;
   prepareForViewportChange: () => void;
   scrollToMessage?: (messageId: string, occurrence?: ScrollToMessageOccurrence) => void;
+  /** CUSTOM(scroll-arrows): jumps to the start of the loaded history. */
+  scrollToTop?: () => void;
 }
 
 export interface StreamSegmentRenderers {
@@ -82,6 +85,8 @@ export interface StreamRenderInput {
   routeBottomAnchorRequest: BottomAnchorRouteRequest | null;
   isAuthoritativeHistoryReady: boolean;
   onNearBottomChange: (value: boolean) => void;
+  /** CUSTOM(scroll-arrows): scrolls the reader made, for the arrows that fade when idle. */
+  onScrollActivity?: (activity: StreamScrollActivity) => void;
   // The history row under the top of the viewport, for surfaces that mark where the reader
   // is in the transcript. Only the web viewport measures it today.
   onReadingPositionChange?: (rowId: string | null) => void;

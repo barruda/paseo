@@ -2989,3 +2989,36 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   worktree session, let the agent finish a task: a few seconds after the turn ends, the Worktree
   pill is green and first in the row; send a new request and it goes back once the next summary
   says work is pending.
+
+## scroll-arrows: the chat's scroll arrows fade when idle, and a top arrow joins the bottom one
+
+- **Added:** 2026-10-26
+- **Commit:** `custom: scroll-to-top arrow, and both scroll arrows fade after 3 s without scrolling`
+- **Why:** Going back to the start of a long chat meant dragging or spinning the wheel, and the
+  scroll-to-bottom button sat over the messages for as long as the chat was not at the bottom.
+- **What:** Scrolling up in the chat shows an up arrow at the top center, the mirror of the
+  scroll-to-bottom button. It jumps to the start of the loaded history; older pages load from
+  there as on a manual scroll, so pressing it again goes further back. Both arrows show only
+  while scrolling and fade 3 s after the last scroll. The top arrow needs upward input behind the
+  move (wheel, keys, scrollbar, touch drag), so layout corrections and history loading don't flash
+  it, and it hides once the start of the conversation is on screen. The reading modes (Columns,
+  Compact) keep their bottom arrow as before, without the fade.
+- **Files:** `packages/app/src/agent-stream/scroll-arrows.ts` (+ test).
+- **Core files touched** (marked `CUSTOM(scroll-arrows)`):
+  - `agent-stream/strategy.ts`: `onScrollActivity` on `StreamRenderInput`, `scrollToTop` on
+    `StreamViewportHandle`.
+  - `agent-stream/strategy-web.tsx`: `handleDomScroll` reports through `reportWebScrollActivity`;
+    the handle's `scrollToTop` stops following output, marks upward input and rearms history
+    loading.
+  - `agent-stream/strategy-native.tsx`: `handleScroll` reports drags (the list is inverted, so a
+    growing offset is up); `scrollToTop` is `scrollToEnd`.
+  - `agent-stream/view.tsx`: `useScrollArrows`, `ScrollToTopArrow`, and `isScrollAwake` in
+    `shouldShowScrollToBottom`.
+- **Re-apply:** Have each stream viewport call `onScrollActivity({ direction, atTop })` on user
+  scrolls and expose `scrollToTop`. In the stream view, feed `useScrollArrows(agentId)` from it,
+  gate the scroll-to-bottom button on `awake` in chat mode, and render a ChevronUp copy of it at
+  the top while `showTop`.
+- **Verify:** `(cd packages/app && npx vitest run src/agent-stream/scroll-arrows.test.ts)` (in the
+  update script). In the app, scroll up in a long chat: the up arrow appears at the top and the
+  down arrow at the bottom; stop scrolling and both fade after 3 s; press the up arrow and the
+  chat jumps to the start of what is loaded.

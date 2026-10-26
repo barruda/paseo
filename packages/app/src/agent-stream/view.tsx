@@ -13,6 +13,7 @@ import React, {
   useRef,
   useState,
   type ComponentProps,
+  type ReactElement,
   type ReactNode,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -29,7 +30,7 @@ import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useMutation } from "@tanstack/react-query";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
-import { Check, ChevronDown, X } from "lucide-react-native";
+import { Check, ChevronDown, ChevronUp, X } from "lucide-react-native";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
 import {
@@ -87,6 +88,8 @@ import type { ReadingMode } from "@/agent-stream/reading-modes/model";
 import { useReadingRows } from "@/agent-stream/reading-modes/rows";
 import { useReadingMode } from "@/agent-stream/reading-modes/store";
 import { ReadingColumns } from "@/agent-stream/reading-modes/reading-columns";
+import { useScrollArrows } from "@/agent-stream/scroll-arrows"; // CUSTOM(scroll-arrows)
+import { useStreamTopOverlayInset } from "@/agent-stream/top-overlay";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import {
@@ -338,14 +341,59 @@ const EMPTY_PENDING_MESSAGE_SUBMISSIONS: readonly PendingMessageSubmission[] = [
 const GROUPED_TOOL_CALL_DETAIL_MAX_HEIGHT = 200;
 
 // CUSTOM(reading-modes): the reading modes drive the button while they cover the chat.
+// CUSTOM(scroll-arrows): in the chat it shows only while scrolling (`isScrollAwake`); the reading
+// modes keep it without the fade.
 function shouldShowScrollToBottom(input: {
   readingMode: ReadingMode;
   isReadingAtEnd: boolean;
   isNearBottom: boolean;
   isTimelineDetached: boolean;
+  isScrollAwake: boolean;
 }): boolean {
   if (input.readingMode !== "chat") return !input.isReadingAtEnd;
+  if (!input.isScrollAwake) return false;
   return !input.isNearBottom || input.isTimelineDetached;
+}
+
+// CUSTOM(scroll-arrows): space between the top arrow and the top of the chat.
+const SCROLL_TO_TOP_OFFSET = 16;
+
+// CUSTOM(scroll-arrows): the arrow at the top, shown while scrolling up in the chat.
+function ScrollToTopArrow({
+  visible,
+  onPress,
+  entering,
+  exiting,
+}: {
+  visible: boolean;
+  onPress: () => void;
+  entering: ComponentProps<typeof Animated.View>["entering"];
+  exiting: ComponentProps<typeof Animated.View>["exiting"];
+}): ReactElement | null {
+  const topOverlayInset = useStreamTopOverlayInset();
+  const containerStyle = useMemo(
+    () => [
+      stylesheet.scrollToBottomContainer,
+      { top: topOverlayInset + SCROLL_TO_TOP_OFFSET, zIndex: 30 },
+    ],
+    [topOverlayInset],
+  );
+  if (!visible) return null;
+  return (
+    <View style={containerStyle} pointerEvents="box-none">
+      <Animated.View entering={entering} exiting={exiting}>
+        <Pressable
+          style={stylesheet.scrollToBottomButton}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel="Scroll to top"
+          testID="scroll-to-top-button"
+        >
+          <ChevronUp size={24} color={stylesheet.scrollToBottomIcon.color} />
+        </Pressable>
+      </Animated.View>
+    </View>
+  );
 }
 
 function resolveBottomOverlayControlOffset(clearance: number | undefined): number {
@@ -395,6 +443,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [isMobile],
     );
     const [isNearBottom, setIsNearBottom] = useState(true);
+    // CUSTOM(scroll-arrows)
+    const scrollArrows = useScrollArrows(agentId);
     const [expandedInlineToolCallIds, setExpandedInlineToolCallIds] = useState<Set<string>>(
       new Set(),
     );
@@ -719,6 +769,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       }),
       [],
     );
+
+    // CUSTOM(scroll-arrows)
+    const { hideTop: hideScrollToTop } = scrollArrows;
+    const scrollToTop = useCallback(() => {
+      hideScrollToTop();
+      viewportRef.current?.scrollToTop?.();
+    }, [hideScrollToTop]);
 
     const scrollToBottom = useCallback(() => {
       // CUSTOM(reading-modes)
@@ -1131,6 +1188,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       ],
       [bottomOverlayControlClearance],
     );
+
     const listEmptyComponent = useMemo(
       () =>
         renderListEmptyComponent({
@@ -1306,6 +1364,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
                 routeBottomAnchorRequest,
                 isAuthoritativeHistoryReady,
                 onNearBottomChange: setIsNearBottom,
+                onScrollActivity: scrollArrows.onScrollActivity, // CUSTOM(scroll-arrows)
                 onReadingPositionChange: handleReadingPositionChange,
                 onNearHistoryStart: loadOlder,
                 isLoadingOlderHistory: isLoadingOlder,
@@ -1336,11 +1395,19 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               visibleMessageIds={visibleMessageIds}
               revealLoadedMessage={revealLoadedHistory}
             />
+            {/* CUSTOM(scroll-arrows) */}
+            <ScrollToTopArrow
+              visible={readingMode === "chat" && scrollArrows.showTop}
+              onPress={scrollToTop}
+              entering={scrollIndicatorFadeIn}
+              exiting={scrollIndicatorFadeOut}
+            />
             {shouldShowScrollToBottom({
               readingMode,
               isReadingAtEnd,
               isNearBottom,
               isTimelineDetached,
+              isScrollAwake: scrollArrows.awake,
             }) && (
               <View style={scrollToBottomContainerStyle} pointerEvents="box-none">
                 <Animated.View entering={scrollIndicatorFadeIn} exiting={scrollIndicatorFadeOut}>
