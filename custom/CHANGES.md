@@ -2936,7 +2936,8 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **What:** While the desktop window is maximized, the top left of the agent panel (below the
   tabs) shows `-`, `+` and the maximize-pane icon. They step the content width through 1x (the
   configured width), 1.5x, 2x and full pane width: `+`/`-` move one step, maximize jumps to full
-  and back to 1x. The step is per window and not persisted. Unmaximizing the window restores the
+  and back to 1x. The step is saved in app storage, so it holds for every agent and across
+  restarts. Unmaximizing the window restores the
   configured width. Web and desktop only.
 - **Files:** `packages/app/src/content-width-boost/store.ts` (+ test) and `controls.tsx`.
 - **Core files touched** (marked `CUSTOM(content-width-boost)`):
@@ -3022,3 +3023,26 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   update script). In the app, scroll up in a long chat: the up arrow appears at the top and the
   down arrow at the bottom; stop scrolling and both fade after 3 s; press the up arrow and the
   chat jumps to the start of what is loaded.
+
+## effort-favorites: star effort levels; → cycles only the starred ones
+
+- **Added:** 2026-10-26
+- **Commit:** `custom: star effort levels in the effort menu; → cycles only the starred ones`
+- **Why:** → in an empty composer
+  ([task-shortcuts](#task-shortcuts-keyboard-navigation-and-draft-selection-in-tasks-mode)) walked every effort level; the user only uses a few.
+- **What:** Each row of the effort menu has a star at the right. Clicking it stars the level
+  (yellow) without selecting it or closing the menu. When any level offered by the current model
+  is starred, → cycles only through starred levels; with none starred it cycles all of them.
+  Stars are keyed by effort id (`high`, `max`), so they apply to every provider, and are saved
+  in app storage.
+- **Files:** `packages/app/src/composer/effort-favorites-store.ts`.
+- **Core files touched** (marked `CUSTOM(effort-favorites)`):
+  - `composer/empty-shortcuts.ts`: `nextEffortId` takes `favoriteIds` (+ test).
+  - `composer/agent-controls/index.tsx`: `ThinkingComboboxOption` passes a star `trailingSlot`
+    to `ComboboxItem`; the agent → handler passes the favorites.
+  - `composer/draft/workspace-tab.tsx`: the draft → handler passes the favorites.
+- **Re-apply:** Give the effort menu rows a star toggle bound to the store and pass the store's ids
+  into whatever picks the next effort level for →.
+- **Verify:** `(cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts)` (in the
+  update script). In the app, star Medium and Max, empty the composer, press →: it goes
+  Medium → Max → Medium.

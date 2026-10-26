@@ -1,8 +1,13 @@
 // CUSTOM(content-width-boost): per-window multiplier on the chat content width, driven by the
 // -, + and maximize buttons in the agent panel. Only applies while the desktop window is
-// maximized; the configured width (Settings > Appearance) is the 1x step.
+// maximized; the configured width (Settings > Appearance) is the 1x step. The step is saved, so it
+// holds for every agent and across restarts.
 import { useMemo } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
+import { persist } from "zustand/middleware";
+import { z } from "zod";
+import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
 export const CONTENT_WIDTH_BOOST_STEPS = [1, 1.5, 2, "full"] as const;
 export type ContentWidthBoost = (typeof CONTENT_WIDTH_BOOST_STEPS)[number];
@@ -24,16 +29,29 @@ interface ContentWidthBoostState {
 
 const lastIndex = CONTENT_WIDTH_BOOST_STEPS.length - 1;
 
-export const useContentWidthBoostStore = create<ContentWidthBoostState>()((set) => ({
-  stepIndex: 0,
-  windowMaximized: false,
-  appliedWidth: null,
-  setAppliedWidth: (appliedWidth) => set({ appliedWidth }),
-  grow: () => set((s) => ({ stepIndex: Math.min(lastIndex, s.stepIndex + 1) })),
-  shrink: () => set((s) => ({ stepIndex: Math.max(0, s.stepIndex - 1) })),
-  toggleFull: () => set((s) => ({ stepIndex: s.stepIndex === lastIndex ? 0 : lastIndex })),
-  setWindowMaximized: (windowMaximized) => set({ windowMaximized }),
-}));
+export const useContentWidthBoostStore = create<ContentWidthBoostState>()(
+  persist(
+    (set) => ({
+      stepIndex: 0,
+      windowMaximized: false,
+      appliedWidth: null,
+      setAppliedWidth: (appliedWidth) => set({ appliedWidth }),
+      grow: () => set((s) => ({ stepIndex: Math.min(lastIndex, s.stepIndex + 1) })),
+      shrink: () => set((s) => ({ stepIndex: Math.max(0, s.stepIndex - 1) })),
+      toggleFull: () => set((s) => ({ stepIndex: s.stepIndex === lastIndex ? 0 : lastIndex })),
+      setWindowMaximized: (windowMaximized) => set({ windowMaximized }),
+    }),
+    {
+      name: "custom-content-width-boost",
+      version: 1,
+      storage: createValidatedPersistStorage(
+        AsyncStorage,
+        z.object({ stepIndex: z.number().int().min(0).max(lastIndex) }),
+      ),
+      partialize: (state) => ({ stepIndex: state.stepIndex }),
+    },
+  ),
+);
 
 export function boostContentMaxWidth(
   baseWidth: number,
