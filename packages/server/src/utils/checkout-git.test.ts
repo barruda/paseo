@@ -4107,4 +4107,30 @@ describe("commitChanges with paths", () => {
       rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("concludes a merge in progress, which git can't commit with --only", async () => {
+    const { tempDir, repoDir } = initRepo();
+    const git = (args: string[]) =>
+      execFileSync("git", ["-c", "commit.gpgsign=false", ...args], { cwd: repoDir }).toString();
+    try {
+      git(["checkout", "-b", "side"]);
+      writeFileSync(join(repoDir, "file.txt"), "side\n");
+      git(["commit", "-am", "side"]);
+      git(["checkout", "main"]);
+      writeFileSync(join(repoDir, "file.txt"), "main\n");
+      git(["commit", "-am", "main"]);
+      expect(() => git(["merge", "side"])).toThrow();
+      writeFileSync(join(repoDir, "file.txt"), "resolved\n");
+      writeFileSync(join(repoDir, "new.txt"), "new\n");
+
+      await commitChanges(repoDir, { message: "merge side", paths: ["file.txt", "new.txt"] });
+
+      expect(git(["rev-list", "--parents", "-n", "1", "HEAD"]).trim().split(" ")).toHaveLength(3);
+      expect(git(["show", "HEAD:file.txt"])).toBe("resolved\n");
+      expect(git(["show", "HEAD:new.txt"])).toBe("new\n");
+      expect(porcelain(repoDir)).toBe("");
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

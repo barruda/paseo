@@ -15,7 +15,7 @@ import { useCheckoutGitActionsStore } from "@/git/actions-store";
 import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { CommitSelection } from "./use-commit-selection";
-import { useCommitMessageFocusStore } from "./focus-request";
+import { isCommitMessageFocusRequested, useCommitMessageFocusStore } from "./focus-request";
 
 function filesLabel(count: number): string {
   return count === 1 ? "1 file" : `${count} files`;
@@ -62,9 +62,7 @@ function CommitBoxContent({
   const [message, setMessage] = useState("");
   const focusRequestedAt = useCommitMessageFocusStore((state) => state.requestedAt);
   useEffect(() => {
-    if (focusRequestedAt !== null && useCommitMessageFocusStore.getState().claim()) {
-      inputRef.current?.focus();
-    }
+    if (isCommitMessageFocusRequested(focusRequestedAt)) inputRef.current?.focus();
   }, [focusRequestedAt]);
   const commit = useCheckoutGitActionsStore((state) => state.commit);
   const push = useCheckoutGitActionsStore((state) => state.push);
@@ -104,6 +102,8 @@ function CommitBoxContent({
       inputRef.current?.reset();
       setMessage("");
       selectNone();
+      // Back to the message, so the next Ctrl+Enter pushes.
+      useCommitMessageFocusStore.getState().request();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Commit failed");
     }

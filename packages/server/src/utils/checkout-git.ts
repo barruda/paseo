@@ -3494,6 +3494,8 @@ export async function commitChanges(
 // changes staged outside the selection stay staged. A staged rename's old path is gone from the
 // index and the worktree, so it skips `git add` (which would reject it) but still joins the
 // commit, which also matches paths in HEAD.
+// Mid merge, cherry-pick or revert git refuses `--only` ("cannot do a partial commit"), so the
+// selection is staged and the whole index committed, which concludes the operation.
 async function commitSelectedPaths(cwd: string, message: string, paths: string[]): Promise<void> {
   if (paths.length === 0) {
     throw new Error("Select at least one file to commit");
@@ -3510,10 +3512,18 @@ async function commitSelectedPaths(cwd: string, message: string, paths: string[]
       timeout: 120_000,
     });
   }
-  await runGitCommand(["--literal-pathspecs", "commit", "-m", message, "--only", "--", ...paths], {
-    cwd,
-    timeout: 120_000,
-  });
+  const commitArgs = (await isSequencerCommitPending(cwd))
+    ? ["commit", "-m", message]
+    : ["--literal-pathspecs", "commit", "-m", message, "--only", "--", ...paths];
+  await runGitCommand(commitArgs, { cwd, timeout: 120_000 });
+}
+
+async function isSequencerCommitPending(cwd: string): Promise<boolean> {
+  const gitDir = await resolveAbsoluteGitDir(cwd);
+  if (!gitDir) return false;
+  return ["MERGE_HEAD", "CHERRY_PICK_HEAD", "REVERT_HEAD"].some((head) =>
+    existsSync(resolve(gitDir, head)),
+  );
 }
 
 export async function commitAll(cwd: string, message: string): Promise<void> {

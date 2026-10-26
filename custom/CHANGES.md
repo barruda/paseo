@@ -1919,7 +1919,10 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Re-apply:** On the server, stage only the selected paths that exist in the worktree or the
   index (`git add -A`), then `git commit --only -- <all selected paths>`, always with
   `--literal-pathspecs`. A staged rename's old path is in neither the index nor the worktree, so it
-  must skip `git add` but stay in the commit pathspecs. In the app, gate on
+  must skip `git add` but stay in the commit pathspecs. While a merge, cherry-pick or revert is
+  pending (`MERGE_HEAD`, `CHERRY_PICK_HEAD`, `REVERT_HEAD`), git refuses `--only` ("cannot do a
+  partial commit during a merge"): stage the selection and commit the whole index, which
+  concludes the operation. In the app, gate on
   `features.checkoutCommitPaths`, enable only for the tree presentation on the uncommitted
   comparison, and keep row checkboxes as primitive props (state + stable callback) so the rows'
   memo and the react-perf lint rules hold. Discard reuses `checkout.discard_changes`.
@@ -3139,7 +3142,8 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **What:** Follow-up to [commit-selection](#commit-selection-commit-or-discard-the-files-checked-in-changes).
   - Ctrl/⌘+Enter in the commit message presses the primary button.
   - With no uncommitted changes left and commits ahead of origin, the button reads **Push** and
-    Ctrl+Enter pushes. The box stays mounted so the message keeps focus.
+    Ctrl+Enter pushes. After a commit the message takes focus again, so commit then push is
+    Ctrl+Enter twice.
   - An empty message commits as `wip` (the placeholder says so); the Commit button is never
     disabled for a missing message.
   - Committing with nothing checked asks "Nothing is selected, do you want to select all?"
@@ -3150,8 +3154,9 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   - Ctrl+E (upstream's Explorer toggle; ⌘+E on macOS) focuses the commit message when it opens
     the Explorer on the Changes tab. Closing is unchanged.
 - **Files:** `git/commit-selection/use-commit-guard.ts` (the stale-list check),
-  `git/commit-selection/focus-request.ts` (a focus request that expires after 2 s, so a later
-  switch to Changes doesn't steal focus), `model.ts` `changesDifferFromList` (+ test).
+  `git/commit-selection/focus-request.ts` (a focus request, from Ctrl+E or a finished commit,
+  that any commit box mounted in the next 2 s honors; the box can remount while the status
+  catches up after a commit, and the expiry keeps a later switch to Changes from stealing focus), `model.ts` `changesDifferFromList` (+ test).
 - **Core files touched:**
   - `git/diff-pane.tsx`: passes `status` and `beforeCommit` (`useCommitGuard`) to `CommitBox`.
   - `screens/workspace/workspace-screen.tsx` and, for Tasks mode,
