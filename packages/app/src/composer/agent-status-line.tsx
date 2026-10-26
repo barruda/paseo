@@ -80,9 +80,20 @@ function NativeTrigger({ text }: { text: string }) {
   );
 }
 
-function StatusDetails({ summary }: { summary: AgentStatusSummaryPayload }) {
+/**
+ * The request, status and call line. CUSTOM(task-summary-hover): the Tasks sidebar's hover card
+ * reuses it with the topic on top, since its row shows the title instead.
+ */
+export function StatusDetails({
+  summary,
+  showTopic = false,
+}: {
+  summary: AgentStatusSummaryPayload;
+  showTopic?: boolean;
+}) {
   return (
     <View style={styles.details}>
+      {showTopic && summary.topic ? <Text style={styles.detailsTopic}>{summary.topic}</Text> : null}
       <View style={styles.detailsBlock}>
         <Text style={styles.detailsLabel}>Request</Text>
         <Text style={styles.detailsText}>{summary.request}</Text>
@@ -129,6 +140,11 @@ const styles = StyleSheet.create((theme) => ({
   },
   detailsText: {
     fontSize: theme.fontSize.base,
+    color: theme.colors.foreground,
+  },
+  detailsTopic: {
+    fontSize: theme.fontSize.base,
+    fontWeight: theme.fontWeight.medium,
     color: theme.colors.foreground,
   },
 }));

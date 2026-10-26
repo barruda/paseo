@@ -2836,3 +2836,24 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **Verify:** Typecheck and lint. In Tasks mode with the plugin installed: the chip shows and opens
   the board; clicking a task in the sidebar returns to the Desk; × hides it and + > Power
   Workboard brings it back.
+
+## task-summary-hover: hovering a Tasks sidebar row shows the agent's status summary
+
+- **Added:** 2026-10-25 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: hovering a Tasks sidebar row shows the agent's status summary`
+- **Why:** The sidebar shows a title and the workspace name, which often isn't enough to tell
+  sessions apart; the summary under each agent's composer is.
+- **What:** Resting the pointer on a row of the Tasks sidebar for 400 ms opens a card to its right
+  with the [agent-status-summary](#agent-status-summary-what-each-agent-was-asked-and-where-it-stands-under-the-composer):
+  the topic, the request, the status, and when, by which model and at what cost it was written.
+  Rows without a summary, compact layouts and native get no card. The delay keeps a sweep down
+  the list from flashing a card per row.
+- **Files:** `packages/app/src/task-navigation/task-summary-hover-card.tsx`.
+- **Core files touched** (marked `CUSTOM(task-summary-hover)`):
+  - `task-navigation/sidebar.tsx`: `TaskRow` wraps its row in `TaskSummaryHoverCard`.
+  - `composer/agent-status-line.tsx`: exports `StatusDetails`, with an optional topic on top.
+- **Re-apply:** Wrap each task row of the Tasks sidebar in a `HoverCard` (`openDelayMs`,
+  placement `right`) whose content renders `StatusDetails` for the row's agent.
+- **Verify:** No unit test: the logic is the hover wiring. In the app, in Tasks mode, rest the
+  pointer on a session that has a line under its composer: the card shows that line's topic,
+  request and status.

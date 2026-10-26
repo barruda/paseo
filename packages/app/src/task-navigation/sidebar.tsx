@@ -34,6 +34,7 @@ import { TaskRowContextMenu, useTaskRowActions, type TaskRowActions } from "./ta
 import { useArchivedTasks } from "./use-archived-tasks";
 import { useSettledTaskStates } from "./use-settled-task-states";
 import { usePinnedTasksStore } from "./pinned-tasks-store";
+import { TaskSummaryHoverCard } from "./task-summary-hover-card";
 import {
   buildTaskTree,
   sortTaskTree,
@@ -708,62 +709,65 @@ const TaskRow = memo(function TaskRow({
     </>
   );
   return (
-    <View
-      style={[styles.task, selected && styles.selected, { marginLeft: Math.min(depth, 5) * 12 }]}
-    >
-      {node.children.length ? (
-        <Pressable
-          style={styles.expand}
-          onPress={handleToggle}
-          accessibilityRole="button"
-          accessibilityLabel={`${collapsed ? "Expand" : "Collapse"} ${node.agent.title ?? "crew"}`}
-          accessibilityState={expandedState}
-          testID={`task-expand-${node.agent.id}`}
-        >
-          <DensityIcon
-            icon={collapsed ? ChevronRight : ChevronDown}
-            size="sm"
-            color="foregroundMuted"
-          />
-        </Pressable>
-      ) : (
-        <View style={styles.railSpace} />
-      )}
-      {entry ? (
-        <TaskRowContextMenu
-          node={node}
-          entry={entry}
-          archived={archived}
-          canMarkUnread={canMarkUnread}
-          pinned={pinned}
-          actions={actions}
-          triggerRef={middleClickRef}
-          style={buttonStyle}
-          highlightStyle={styles.hovered}
-          onPress={handleOpen}
-          accessibilityRole="button"
-          accessibilityState={selectedState}
-          aria-selected={selected}
-          accessibilityLabel={accessibilityLabel}
-          testID={`${testIDPrefix}-${node.agent.id}`}
-        >
-          {body}
-        </TaskRowContextMenu>
-      ) : (
-        <Pressable
-          ref={middleClickRef}
-          style={buttonStyle}
-          onPress={handleOpen}
-          accessibilityRole="button"
-          accessibilityState={selectedState}
-          aria-selected={selected}
-          accessibilityLabel={accessibilityLabel}
-          testID={`${testIDPrefix}-${node.agent.id}`}
-        >
-          {body}
-        </Pressable>
-      )}
-    </View>
+    // CUSTOM(task-summary-hover): hovering the row shows the agent's status summary.
+    <TaskSummaryHoverCard serverId={node.agent.serverId} agentId={node.agent.id}>
+      <View
+        style={[styles.task, selected && styles.selected, { marginLeft: Math.min(depth, 5) * 12 }]}
+      >
+        {node.children.length ? (
+          <Pressable
+            style={styles.expand}
+            onPress={handleToggle}
+            accessibilityRole="button"
+            accessibilityLabel={`${collapsed ? "Expand" : "Collapse"} ${node.agent.title ?? "crew"}`}
+            accessibilityState={expandedState}
+            testID={`task-expand-${node.agent.id}`}
+          >
+            <DensityIcon
+              icon={collapsed ? ChevronRight : ChevronDown}
+              size="sm"
+              color="foregroundMuted"
+            />
+          </Pressable>
+        ) : (
+          <View style={styles.railSpace} />
+        )}
+        {entry ? (
+          <TaskRowContextMenu
+            node={node}
+            entry={entry}
+            archived={archived}
+            canMarkUnread={canMarkUnread}
+            pinned={pinned}
+            actions={actions}
+            triggerRef={middleClickRef}
+            style={buttonStyle}
+            highlightStyle={styles.hovered}
+            onPress={handleOpen}
+            accessibilityRole="button"
+            accessibilityState={selectedState}
+            aria-selected={selected}
+            accessibilityLabel={accessibilityLabel}
+            testID={`${testIDPrefix}-${node.agent.id}`}
+          >
+            {body}
+          </TaskRowContextMenu>
+        ) : (
+          <Pressable
+            ref={middleClickRef}
+            style={buttonStyle}
+            onPress={handleOpen}
+            accessibilityRole="button"
+            accessibilityState={selectedState}
+            aria-selected={selected}
+            accessibilityLabel={accessibilityLabel}
+            testID={`${testIDPrefix}-${node.agent.id}`}
+          >
+            {body}
+          </Pressable>
+        )}
+      </View>
+    </TaskSummaryHoverCard>
   );
 });
 const styles = StyleSheet.create((theme) => ({
