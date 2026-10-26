@@ -611,6 +611,8 @@ interface AssistantTurnFooterProps {
   completedAt?: Date;
   durationMs?: number | null;
   onFork?: (target: AssistantForkTarget) => Promise<void> | void;
+  /** CUSTOM(turn-usage-inline): drawn after the duration, on the same line. */
+  trailing?: ReactNode;
 }
 
 const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
@@ -655,6 +657,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
   completedAt,
   durationMs,
   onFork,
+  trailing,
 }: AssistantTurnFooterProps) {
   const { t } = useTranslation();
   const [hovered, setHovered] = useState(false);
@@ -732,6 +735,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
           </View>
         </Pressable>
       ) : null}
+      {trailing}
     </View>
   );
 });
