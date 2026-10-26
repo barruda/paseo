@@ -21,6 +21,8 @@ function filesLabel(count: number): string {
   return count === 1 ? "1 file" : `${count} files`;
 }
 
+const DEFAULT_COMMIT_MESSAGE = "wip";
+
 function commitLabel(count: number): string {
   return count === 0 ? "Commit" : `Commit ${filesLabel(count)}`;
 }
@@ -79,9 +81,8 @@ function CommitBoxContent({
       state.getStatus({ serverId, cwd, actionId: "discard-changes" }),
     ) === "pending";
   const count = selectedPaths.length;
-  const trimmed = message.trim();
-  // With nothing checked the button stays live: pressing it offers to select all.
-  const commitDisabled = isCommitting || (count > 0 && trimmed.length === 0);
+  // An empty message commits as "wip".
+  const commitMessage = message.trim() || DEFAULT_COMMIT_MESSAGE;
 
   const handleCommit = useCallback(async () => {
     if (isCommitting) return;
@@ -96,18 +97,10 @@ function CommitBoxContent({
         });
         if (!confirmed) return;
         selectAll();
-        if (trimmed.length === 0) {
-          inputRef.current?.focus();
-          return;
-        }
-        await commit({ serverId, cwd, message: trimmed, paths: pathspecs(filePaths) });
-      } else {
-        if (trimmed.length === 0) {
-          inputRef.current?.focus();
-          return;
-        }
-        await commit({ serverId, cwd, message: trimmed, paths: pathspecs() });
       }
+      // The selection state may not have re-rendered yet after Select All, so pass the paths.
+      const paths = count === 0 ? pathspecs(filePaths) : pathspecs();
+      await commit({ serverId, cwd, message: commitMessage, paths });
       inputRef.current?.reset();
       setMessage("");
       selectNone();
@@ -117,6 +110,7 @@ function CommitBoxContent({
   }, [
     beforeCommit,
     commit,
+    commitMessage,
     count,
     cwd,
     filePaths,
@@ -126,7 +120,6 @@ function CommitBoxContent({
     selectNone,
     serverId,
     toast,
-    trimmed,
   ]);
 
   const handlePush = useCallback(async () => {
@@ -216,7 +209,9 @@ function CommitBoxContent({
         ref={inputRef}
         accessibilityLabel="Commit message"
         testID="commit-message-input"
-        placeholder={hasChanges ? "Commit message (Ctrl+Enter to commit)" : "Ctrl+Enter to push"}
+        placeholder={
+          hasChanges ? "Commit message (empty commits as wip, Ctrl+Enter)" : "Ctrl+Enter to push"
+        }
         placeholderTextColor={styles.placeholder.color}
         multiline
         initialValue=""
@@ -228,7 +223,7 @@ function CommitBoxContent({
         variant="default"
         size="sm"
         onPress={pressPrimary}
-        disabled={hasChanges ? commitDisabled : isPushing}
+        disabled={hasChanges ? isCommitting : isPushing}
         loading={hasChanges ? isCommitting : isPushing}
         testID={hasChanges ? "commit-selected" : "push-branch"}
       >

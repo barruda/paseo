@@ -95,7 +95,6 @@ test("Changes commits only the checked files and discards the checked files", as
   // Commit a.ts and the new notes.txt only.
   await fileCheck(explorer, "a.ts").click();
   await fileCheck(explorer, "notes.txt").click();
-  await expect(commitButton).toBeDisabled();
   await explorer.getByTestId("commit-message-input").fill("Pick two files");
   await commitButton.click();
   await expect
@@ -135,7 +134,7 @@ test("Changes commits only the checked files and discards the checked files", as
   expect(git(workspace.repoPath, ["status", "--porcelain"])).toBe(" M src/components/b.ts\n");
 });
 
-test("Ctrl+E focuses the commit message and Ctrl+Enter with nothing checked offers to select all", async ({
+test("Ctrl+E focuses the commit message; Ctrl+Enter with nothing checked and no message commits all as wip", async ({
   page,
 }) => {
   const workspace = await createDirtyWorkspace();
@@ -148,7 +147,6 @@ test("Ctrl+E focuses the commit message and Ctrl+Enter with nothing checked offe
   await page.keyboard.press("ControlOrMeta+e");
   await expect(input).toBeFocused({ timeout: 10_000 });
 
-  await input.fill("Everything");
   const prompt = new Promise<string>((resolve) => {
     page.once("dialog", async (dialog) => {
       resolve(dialog.message());
@@ -159,6 +157,6 @@ test("Ctrl+E focuses the commit message and Ctrl+Enter with nothing checked offe
   expect(await prompt).toContain("Nothing is selected");
   await expect
     .poll(() => git(workspace.repoPath, ["log", "-1", "--format=%s"]).trim(), { timeout: 30_000 })
-    .toBe("Everything");
+    .toBe("wip");
   expect(git(workspace.repoPath, ["status", "--porcelain"])).toBe("");
 });

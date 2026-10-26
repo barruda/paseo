@@ -3140,10 +3140,10 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   - Ctrl/⌘+Enter in the commit message presses the primary button.
   - With no uncommitted changes left and commits ahead of origin, the button reads **Push** and
     Ctrl+Enter pushes. The box stays mounted so the message keeps focus.
+  - An empty message commits as `wip` (the placeholder says so); the Commit button is never
+    disabled for a missing message.
   - Committing with nothing checked asks "Nothing is selected, do you want to select all?"
-    (**Select All** is the default). Select All checks every file and commits; with an empty
-    message it focuses the message instead. With files checked, an empty message keeps the
-    button disabled.
+    (**Select All** is the default). Select All checks every file and commits them.
   - Before committing, the app fetches the current uncommitted diff and compares paths and line
     counts with the list on screen. If they differ it alerts, refreshes the list, and doesn't
     commit.
@@ -3164,5 +3164,5 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   from firing later.
 - **Verify:** `commit-selection/model.test.ts` and `e2e/browser/changes-commit-selection.spec.ts`
   (both already in the update script). The second browser test closes and reopens the Explorer
-  with Ctrl+E, checks the message is focused, and commits with Ctrl+Enter through the Select All
-  prompt.
+  with Ctrl+E, checks the message is focused, and with no message commits everything as `wip`
+  with Ctrl+Enter through the Select All prompt.
