@@ -159,12 +159,18 @@ export function previousModelSelection(
   return models[current < 0 ? models.length - 1 : (current - 1 + models.length) % models.length];
 }
 
-/** The next effort level, wrapping from the last back to the first. */
+/**
+ * The next effort level, wrapping from the last back to the first. CUSTOM(effort-favorites): when
+ * any of the options are favorites, only those are cycled.
+ */
 export function nextEffortId(
   options: readonly { id: string }[] | null | undefined,
   selectedId: string | null | undefined,
+  favoriteIds: readonly string[] = [],
 ): string | null {
   if (!options?.length) return null;
-  const current = options.findIndex((option) => option.id === selectedId);
-  return options[(current + 1) % options.length].id;
+  const favorites = options.filter((option) => favoriteIds.includes(option.id));
+  const cycle = favorites.length ? favorites : options;
+  const current = cycle.findIndex((option) => option.id === selectedId);
+  return cycle[(current + 1) % cycle.length].id;
 }

@@ -172,3 +172,11 @@ it("cycles effort levels forward with wraparound", () => {
   expect(nextEffortId(options, null)).toBe("low");
   expect(nextEffortId([], "low")).toBeNull();
 });
+
+it("cycles only favorite effort levels when any are present", () => {
+  const options = [{ id: "low" }, { id: "medium" }, { id: "high" }, { id: "max" }];
+  expect(nextEffortId(options, "medium", ["max", "medium"])).toBe("max");
+  expect(nextEffortId(options, "max", ["max", "medium"])).toBe("medium");
+  expect(nextEffortId(options, "low", ["max", "medium"])).toBe("medium");
+  expect(nextEffortId(options, "low", ["ultra"])).toBe("medium");
+});

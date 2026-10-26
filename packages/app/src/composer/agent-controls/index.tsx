@@ -22,9 +22,9 @@ import {
   type StyleProp,
   type ViewStyle,
 } from "react-native";
-import { StyleSheet, useUnistyles } from "react-native-unistyles";
+import { StyleSheet, useUnistyles, withUnistyles } from "react-native-unistyles";
 import { useShallow } from "zustand/shallow";
-import { Settings2 } from "lucide-react-native";
+import { Settings2, Star } from "lucide-react-native";
 import { getAgentFeatureIcon, ThinkingIcon } from "@/agent-controls/icons";
 import { formatThinkingOptionLabel } from "@/agent-controls/labels";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
@@ -77,6 +77,7 @@ import { useModelPickerStore } from "@/model-picker/store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useModelFavoritesStore } from "@/model-picker/favorites-store";
 import { nextEffortId, previousModelSelection } from "@/composer/empty-shortcuts";
+import { useEffortFavoritesStore } from "@/composer/effort-favorites-store";
 import type { ModelPickerProjectSource } from "@/model-picker/project";
 import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
 import { isNative } from "@/constants/platform";
@@ -224,7 +225,11 @@ function AgentControlCommandCenterRegistration({
         return true;
       }
       if (action.id === "task.draft.effort") {
-        const next = nextEffortId(controls.thinking.options, controls.thinking.selectedId);
+        const next = nextEffortId(
+          controls.thinking.options,
+          controls.thinking.selectedId,
+          useEffortFavoritesStore.getState().ids,
+        );
         if (!next) return false;
         void controls.thinking.select(next);
         return true;
@@ -1580,6 +1585,13 @@ function SheetFeatureItem({
   return null;
 }
 
+// CUSTOM(effort-favorites)
+const ThemedStar = withUnistyles(Star, (theme) => ({ color: theme.colors.foregroundExtraMuted }));
+const ThemedFavoriteStar = withUnistyles(Star, (theme) => ({
+  color: theme.colors.palette.yellow[400],
+  fill: theme.colors.palette.yellow[400],
+}));
+
 function ThinkingComboboxOption({
   option,
   selected,
@@ -1594,6 +1606,28 @@ function ThinkingComboboxOption({
   iconColor: string;
 }) {
   const leadingSlot = useMemo(() => <ThinkingIcon size={16} color={iconColor} />, [iconColor]);
+  // CUSTOM(effort-favorites): the star picks which levels → cycles through.
+  const favorite = useEffortFavoritesStore((state) => state.ids.includes(option.id));
+  const toggleFavorite = useEffortFavoritesStore((state) => state.toggle);
+  const handleToggleFavorite = useCallback(
+    () => toggleFavorite(option.id),
+    [option.id, toggleFavorite],
+  );
+  const trailingSlot = useMemo(
+    () => (
+      <Pressable
+        focusable={false}
+        hitSlop={6}
+        onPress={handleToggleFavorite}
+        accessibilityRole="button"
+        accessibilityLabel={favorite ? "Remove from favorites" : "Add to favorites"}
+        testID={`effort-favorite-${option.id}`}
+      >
+        {favorite ? <ThemedFavoriteStar size={14} /> : <ThemedStar size={14} />}
+      </Pressable>
+    ),
+    [favorite, handleToggleFavorite, option.id],
+  );
   return (
     <ComboboxItem
       label={option.label}
@@ -1601,6 +1635,7 @@ function ThinkingComboboxOption({
       active={active}
       onPress={onPress}
       leadingSlot={leadingSlot}
+      trailingSlot={trailingSlot}
     />
   );
 }

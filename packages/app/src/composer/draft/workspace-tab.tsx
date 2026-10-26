@@ -1,4 +1,5 @@
 import { useModelFavoritesStore } from "@/model-picker/favorites-store";
+import { useEffortFavoritesStore } from "@/composer/effort-favorites-store";
 import {
   nextProjectId,
   previousProjectId,
@@ -751,6 +752,7 @@ export function WorkspaceDraftAgentTab({
         const next = nextEffortId(
           controls.thinkingOptions,
           composerState.effectiveThinkingOptionId,
+          useEffortFavoritesStore.getState().ids, // CUSTOM(effort-favorites)
         );
         if (!next) return false;
         controls.onSelectThinkingOption(next);
