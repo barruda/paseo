@@ -1,4 +1,5 @@
 import React, { memo, useCallback, useMemo, type ReactNode } from "react";
+import { useContentWidthBoostRerender } from "@/content-width-boost/store";
 import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { SPACING, type Theme } from "@/styles/theme";
@@ -207,6 +208,7 @@ function CompletedTurnFooter({
 }
 
 function TurnFooterRow({ children }: { children: ReactNode }) {
+  useContentWidthBoostRerender(); // CUSTOM(content-width-boost)
   const rowStyle = useMemo(() => [stylesheet.streamItemWrapper, stylesheet.turnFooterRow], []);
   return <View style={rowStyle}>{children}</View>;
 }

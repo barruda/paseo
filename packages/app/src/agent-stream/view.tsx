@@ -1,4 +1,5 @@
 import { useComposerRewindSelection } from "@/composer/empty-shortcuts";
+import { useAppliedContentMaxWidth } from "@/content-width-boost/store";
 import { ChatFind, ChatFindExpansion } from "@/agent-stream/chat-find";
 import { ChatEscFocusSurface } from "@/chat-esc-focus/surface";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -377,7 +378,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     const autoExpandReasoning = useSettings((settings) => settings.autoExpandReasoning);
     const toolCallDetailLevel = useSettings((settings) => settings.toolCallDetailLevel);
     const chatOutlineEnabled = useSettings((settings) => settings.chatOutlineEnabled);
-    const contentMaxWidth = useSettings(resolveContentMaxWidth);
+    // CUSTOM(content-width-boost)
+    const contentMaxWidth = useAppliedContentMaxWidth(useSettings(resolveContentMaxWidth));
     const viewportRef = useRef<StreamViewportHandle | null>(null);
     const pendingClientMessageIds = useMemo(
       () => new Set(pendingMessageSubmissions.map((submission) => submission.clientMessageId)),

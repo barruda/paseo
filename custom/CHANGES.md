@@ -2939,6 +2939,12 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Core files touched** (marked `CUSTOM(content-width-boost)`):
   - `appearance/provider.tsx`: wraps the resolved `contentMaxWidth` in `boostContentMaxWidth`.
   - `panels/agent-panel.tsx`: renders `ContentWidthBoostControls` in `dockContent`.
+  - `agent-stream/view.tsx`, `agent-stream/turn-footer.tsx`, `composer/index.tsx`,
+    `composer/dock/index.tsx`: subscribe to the applied width. Unistyles patches
+    `theme.contentMaxWidth` without re-rendering memoized components, so without this the stream
+    and composer kept the old width until something else re-rendered them (focus, a new message).
+    The provider publishes `appliedWidth` after patching the theme, so they never render a step
+    behind.
 - **Re-apply:** Where the appearance provider passes `contentMaxWidth` to `applyAppearance`, pass
   `boostContentMaxWidth(width, store state)` and re-run on store changes; mount the controls
   (absolute, top left) inside the agent panel content container.

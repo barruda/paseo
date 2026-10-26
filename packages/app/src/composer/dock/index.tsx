@@ -1,4 +1,5 @@
 export { ComposerDockBackground } from "./internal/background";
+import { useContentWidthBoostRerender } from "@/content-width-boost/store";
 import { ScrollView } from "@/components/ui/scroll-view";
 import type { ReactNode } from "react";
 import { View } from "react-native";
@@ -14,6 +15,7 @@ export function ComposerDock({
   children: [content, composer, overlay],
   centered = false,
 }: ComposerDockProps) {
+  useContentWidthBoostRerender(); // CUSTOM(content-width-boost)
   if (centered) {
     return (
       <View style={styles.centered}>

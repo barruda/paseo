@@ -12,6 +12,9 @@ const FULL_WIDTH = 100_000;
 interface ContentWidthBoostState {
   stepIndex: number;
   windowMaximized: boolean;
+  /** Width last patched into the theme by the appearance provider. */
+  appliedWidth: number | null;
+  setAppliedWidth(width: number): void;
   grow(): void;
   shrink(): void;
   toggleFull(): void;
@@ -23,6 +26,8 @@ const lastIndex = CONTENT_WIDTH_BOOST_STEPS.length - 1;
 export const useContentWidthBoostStore = create<ContentWidthBoostState>()((set) => ({
   stepIndex: 0,
   windowMaximized: false,
+  appliedWidth: null,
+  setAppliedWidth: (appliedWidth) => set({ appliedWidth }),
   grow: () => set((s) => ({ stepIndex: Math.min(lastIndex, s.stepIndex + 1) })),
   shrink: () => set((s) => ({ stepIndex: Math.max(0, s.stepIndex - 1) })),
   toggleFull: () => set((s) => ({ stepIndex: s.stepIndex === lastIndex ? 0 : lastIndex })),
@@ -36,4 +41,17 @@ export function boostContentMaxWidth(
   if (!state.windowMaximized) return baseWidth;
   const step = CONTENT_WIDTH_BOOST_STEPS[state.stepIndex] ?? 1;
   return step === "full" ? FULL_WIDTH : Math.round(baseWidth * step);
+}
+
+/**
+ * Unistyles patches `theme.contentMaxWidth` without re-rendering memoized components, so a
+ * component whose style reads it subscribes here. The appearance provider publishes the width
+ * after patching the theme, so subscribers never render against the old theme.
+ */
+export function useContentWidthBoostRerender(): void {
+  useContentWidthBoostStore((s) => s.appliedWidth);
+}
+
+export function useAppliedContentMaxWidth(fallback: number): number {
+  return useContentWidthBoostStore((s) => s.appliedWidth) ?? fallback;
 }

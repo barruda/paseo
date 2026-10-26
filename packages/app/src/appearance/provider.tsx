@@ -72,20 +72,22 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (isLoading) return;
     applyTheme({ preference: settings.theme, contributedTheme: selected });
+    // CUSTOM(content-width-boost): the panel's -/+/maximize buttons scale the configured width.
+    const contentMaxWidth = boostContentMaxWidth(
+      resolveContentMaxWidth({ contentMaxWidth: settings.contentMaxWidth }),
+      widthBoost,
+    );
     applyAppearance({
       uiFontFamily: settings.uiFontFamily,
       monoFontFamily: settings.monoFontFamily,
       uiBaseFontSize: settings.uiBaseFontSize,
       contentFontSize: settings.contentFontSize,
       codeFontSize: settings.codeFontSize,
-      // CUSTOM(content-width-boost): the panel's -/+/maximize buttons scale the configured width.
-      contentMaxWidth: boostContentMaxWidth(
-        resolveContentMaxWidth({ contentMaxWidth: settings.contentMaxWidth }),
-        widthBoost,
-      ),
+      contentMaxWidth,
       syntaxTheme: settings.syntaxTheme,
     });
     setHasAppliedAppearance(true);
+    useContentWidthBoostStore.getState().setAppliedWidth(contentMaxWidth);
   }, [
     isLoading,
     selected,

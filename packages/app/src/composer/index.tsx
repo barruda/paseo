@@ -1,4 +1,5 @@
 import { ComposerProjectIcon } from "./project-icon";
+import { useContentWidthBoostRerender } from "@/content-width-boost/store";
 import { handleEmptyRewindKey } from "./empty-shortcuts";
 import { createDoubleTrigger } from "./empty-voice-trigger";
 import type { ComposerTextSource } from "./text-source";
@@ -1257,6 +1258,7 @@ function ComposerContentImpl({
   onKeyPress,
   onStartVoice,
 }: ComposerContentProps) {
+  useContentWidthBoostRerender(); // CUSTOM(content-width-boost)
   const mode = resolveComposerInputMode(inputMode);
   const { t } = useTranslation();
   const buttonIconSize = resolveComposerButtonIconSize();
