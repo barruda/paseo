@@ -3100,3 +3100,32 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   toggle is mounted; render the inline toggle at the start of the status line.
 - **Verify:** In the app, open an agent with a summary line: ⌃⌃ left of it opens the bottom panel
   and turns into ⌄⌄, which closes it.
+
+## chip-cycle: clicking the model or effort chip cycles favorites, its chevron opens the menu
+
+- **Added:** 2026-10-26
+- **Commit:** `custom: model and effort chips cycle favorites on click, their chevron opens the menu`
+- **Why:** The user switches between a few models and effort levels all the time; one click on
+  the chip is faster than opening a menu.
+- **What:** In the composer toolbar (agents and drafts, desktop layout):
+  - A click on the model chip outside its ⌄ moves to the next favorite model (the ★ ones in the
+    Ctrl+M picker, in picker order, wrapping). With no favorite to move to, it opens the picker.
+  - A click on the effort chip outside its ⌄ moves to the next effort level, only through starred
+    ones when any are starred ([effort-favorites](#effort-favorites-star-effort-levels--cycles-only-the-starred-ones)).
+  - The ⌄ is its own button and opens the menu the chip opened before (the Ctrl+M picker for the
+    model, the effort menu for effort).
+- **Files:** none new.
+- **Core files touched** (marked `CUSTOM(chip-cycle)`):
+  - `components/ui/combobox-trigger.tsx`: `onChevronPress` makes the chevron a nested button.
+  - `components/combined-model-selector.tsx`: `onBodyPress` (returns false to fall back to
+    opening) and `splitTriggerPress`.
+  - `composer/agent-controls/index.tsx`: `cycleFavoriteModel` / `cycleFavoriteEffort` /
+    `useChipCycle`; `ControlledAgentControls` takes `cycleControls` (the agent's
+    `commandCenterControls`, the draft's `pickerControls`) and the desktop content wires the
+    chips.
+  - `composer/empty-shortcuts.ts`: `nextModelSelection` (+ test).
+- **Re-apply:** Split the toolbar chip triggers so the chevron opens the menu and the body calls a
+  cycle function built from the same controls the ←/→ shortcuts use.
+- **Verify:** `(cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts)` (in the
+  update script). In the app, star two models in Ctrl+M and two effort levels; clicking each chip
+  alternates between them, and its ⌄ opens the menu.

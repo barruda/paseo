@@ -43,10 +43,13 @@ interface ComboboxTriggerProps extends Omit<PressableProps, "style" | "children"
   // the trailing edge. Default (false) keeps the content-width pill used by the
   // composer triggers.
   block?: boolean;
+  // CUSTOM(chip-cycle): when set, the chevron is its own button and a press on the rest of the
+  // trigger goes to `onPress`.
+  onChevronPress?: () => void;
 }
 
 export const ComboboxTrigger = forwardRef<View, ComboboxTriggerProps>(function ComboboxTrigger(
-  { children, chevron, style, block = false, onFocus, onBlur, ...props },
+  { children, chevron, style, block = false, onFocus, onBlur, onChevronPress, ...props },
   ref,
 ): ReactElement {
   const [focused, setFocused] = useState(false);
@@ -87,7 +90,21 @@ export const ComboboxTrigger = forwardRef<View, ComboboxTriggerProps>(function C
     >
       <View style={rowStyle}>
         {children}
+        {chevron !== null && onChevronPress ? (
+          <Pressable
+            focusable={false}
+            hitSlop={6}
+            onPress={onChevronPress}
+            style={styles.chevronButton}
+            accessibilityRole="button"
+            accessibilityLabel="Open menu"
+            testID={props.testID ? `${props.testID}-chevron` : undefined}
+          >
+            {chevron ?? <ThemedChevronDown size={ICON_SIZE.sm} uniProps={chevronColorMapping} />}
+          </Pressable>
+        ) : null}
         {chevron !== null &&
+          !onChevronPress &&
           (chevron ?? (
             <View style={styles.chevronContainer}>
               <ThemedChevronDown size={ICON_SIZE.sm} uniProps={chevronColorMapping} />
@@ -114,5 +131,11 @@ const styles = StyleSheet.create((theme) => ({
   chevronContainer: {
     flexShrink: 0,
     transform: [{ translateY: 1 }],
+  },
+  chevronButton: {
+    flexShrink: 0,
+    transform: [{ translateY: 1 }],
+    marginHorizontal: -theme.spacing[1],
+    paddingHorizontal: theme.spacing[1],
   },
 }));

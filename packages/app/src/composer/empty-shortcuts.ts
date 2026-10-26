@@ -159,6 +159,16 @@ export function previousModelSelection(
   return models[current < 0 ? models.length - 1 : (current - 1 + models.length) % models.length];
 }
 
+/** CUSTOM(chip-cycle): the favorite after the current one, wrapping; clicking the model chip. */
+export function nextModelSelection(
+  providers: readonly import("@/provider-selection/provider-selection").ProviderSelectorProvider[],
+  provider: string | null,
+  modelId: string | null,
+  favoriteKeys: readonly string[],
+) {
+  return previousModelSelection(providers, provider, modelId, favoriteKeys.toReversed());
+}
+
 /**
  * The next effort level, wrapping from the last back to the first. CUSTOM(effort-favorites): when
  * any of the options are favorites, only those are cycled.

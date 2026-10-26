@@ -76,7 +76,11 @@ import { useModelPickerSource } from "@/model-picker/use-model-picker-source";
 import { useModelPickerStore } from "@/model-picker/store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useModelFavoritesStore } from "@/model-picker/favorites-store";
-import { nextEffortId, previousModelSelection } from "@/composer/empty-shortcuts";
+import {
+  nextEffortId,
+  nextModelSelection,
+  previousModelSelection,
+} from "@/composer/empty-shortcuts";
 import { useEffortFavoritesStore } from "@/composer/effort-favorites-store";
 import type { ModelPickerProjectSource } from "@/model-picker/project";
 import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
@@ -138,6 +142,8 @@ interface ControlledAgentControlsProps {
   onModelSelectorOpen?: () => void;
   // CUSTOM(model-picker): clicking the model chip opens the Ctrl+M picker.
   onOpenModelPicker?: () => void;
+  // CUSTOM(chip-cycle): clicking the model or effort chip outside its chevron cycles favorites.
+  cycleControls?: AgentControlCommandCenterSource;
   onRetryModelProvider?: (provider: AgentProvider) => void;
   isRetryingModelProvider?: boolean;
   modeControl?: AgentModeControlValue | null;
@@ -185,6 +191,42 @@ interface AgentControlsProps {
 }
 
 const EMPTY_COMPOSER_CYCLE_ACTIONS = ["task.draft.model", "task.draft.effort"] as const;
+
+// CUSTOM(chip-cycle): a click on the model chip moves to the next favorite model, and one on the
+// effort chip to the next effort level (only starred ones when any are starred).
+function cycleFavoriteModel(controls: AgentControlCommandCenterSource): boolean {
+  const next = nextModelSelection(
+    controls.models.providers,
+    controls.models.selectedProvider ?? null,
+    controls.models.selectedModelId ?? null,
+    useModelFavoritesStore.getState().favoriteKeys,
+  );
+  if (!next) return false;
+  controls.models.select(next.provider, next.modelId);
+  return true;
+}
+
+function cycleFavoriteEffort(controls: AgentControlCommandCenterSource): void {
+  const next = nextEffortId(
+    controls.thinking.options,
+    controls.thinking.selectedId,
+    useEffortFavoritesStore.getState().ids,
+  );
+  if (next) void controls.thinking.select(next);
+}
+
+function useChipCycle(controls: AgentControlCommandCenterSource | undefined) {
+  return useMemo(
+    () =>
+      controls
+        ? {
+            onCycleModel: () => cycleFavoriteModel(controls),
+            onCycleEffort: () => cycleFavoriteEffort(controls),
+          }
+        : { onCycleModel: undefined, onCycleEffort: undefined },
+    [controls],
+  );
+}
 
 function AgentControlCommandCenterRegistration({
   sourceId,
@@ -552,12 +594,14 @@ function ControlledAgentControls({
   onDropdownClose,
   onModelSelectorOpen,
   onOpenModelPicker,
+  cycleControls,
   onRetryModelProvider,
   isRetryingModelProvider = false,
   modeControl,
   modelSelectorServerId = null,
   isCompactLayout,
 }: ControlledAgentControlsProps) {
+  const chipCycle = useChipCycle(cycleControls); // CUSTOM(chip-cycle)
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const isCompactFormFactor = useIsCompactFormFactor();
@@ -807,6 +851,8 @@ function ControlledAgentControls({
             onDropdownClose={onDropdownClose}
             onModelSelectorOpen={onModelSelectorOpen}
             onOpenModelPicker={onOpenModelPicker}
+            onCycleModel={chipCycle.onCycleModel}
+            onCycleEffort={chipCycle.onCycleEffort}
             onRetryModelProvider={onRetryModelProvider}
             isRetryingModelProvider={isRetryingModelProvider}
             agentProfiles={agentProfiles}
@@ -905,6 +951,8 @@ interface DesktopAgentControlsContentProps {
   onDropdownClose?: () => void;
   onModelSelectorOpen?: () => void;
   onOpenModelPicker?: () => void;
+  onCycleModel?: () => boolean;
+  onCycleEffort?: () => void;
   onRetryModelProvider?: (provider: AgentProvider) => void;
   isRetryingModelProvider: boolean;
   agentProfiles: AgentProfilePicker | null;
@@ -968,6 +1016,8 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     onDropdownClose,
     onModelSelectorOpen,
     onOpenModelPicker,
+    onCycleModel,
+    onCycleEffort,
     onRetryModelProvider,
     isRetryingModelProvider,
     agentProfiles,
@@ -1060,6 +1110,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 disabled={modelDisabled}
                 onOpen={onModelSelectorOpen}
                 onTriggerPress={onOpenModelPicker}
+                onBodyPress={onCycleModel}
                 onClose={onDropdownClose}
                 onRetryProvider={onRetryModelProvider}
                 isRetryingProvider={isRetryingModelProvider}
@@ -1090,7 +1141,8 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 showCaret={presentation.showCarets}
                 open={openSelector === "thinking"}
                 disabled={disabled || !canSelectThinking}
-                onPress={handleThinkingPress}
+                onPress={onCycleEffort ?? handleThinkingPress}
+                onChevronPress={onCycleEffort ? handleThinkingPress : undefined}
                 accessibilityLabel={t("agentControls.thinking.selectWithValue", {
                   value: displayThinking,
                 })}
@@ -1913,6 +1965,7 @@ export const AgentControls = memo(function AgentControls({
         isModelLoading={snapshotIsLoading || selectedProviderIsLoading}
         onModelSelectorOpen={handleModelSelectorOpen}
         onOpenModelPicker={openModelPicker}
+        cycleControls={commandCenterControls}
         onRetryModelProvider={handleRetryModelProvider}
         isRetryingModelProvider={snapshotIsRefreshing}
         onDropdownClose={onDropdownClose}
@@ -2085,6 +2138,7 @@ export function DraftAgentControls({
         onDropdownClose={onDropdownClose}
         onModelSelectorOpen={onModelSelectorOpen}
         onOpenModelPicker={openModelPicker}
+        cycleControls={pickerControls}
         onRetryModelProvider={onRetryModelProvider}
         isRetryingModelProvider={isRetryingModelProvider}
         disabled={disabled}

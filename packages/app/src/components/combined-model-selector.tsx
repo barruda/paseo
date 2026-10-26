@@ -46,6 +46,9 @@ interface CombinedModelSelectorProps {
   onClose?: () => void;
   // CUSTOM(model-picker): the trigger opens this instead of the dropdown.
   onTriggerPress?: () => void;
+  // CUSTOM(chip-cycle): a press outside the chevron runs this; the chevron opens the selector, and
+  // so does the body when this returns false (nothing to cycle).
+  onBodyPress?: () => boolean;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider?: boolean;
   disabled?: boolean;
@@ -67,6 +70,17 @@ interface CombinedModelSelectorProps {
   };
 }
 
+// CUSTOM(chip-cycle): with `onBodyPress`, the chevron opens the selector and the rest runs it.
+function splitTriggerPress(onBodyPress: (() => boolean) | undefined, openSelector: () => void) {
+  if (!onBodyPress) return { onPress: openSelector };
+  return {
+    onPress: () => {
+      if (!onBodyPress()) openSelector();
+    },
+    onChevronPress: openSelector,
+  };
+}
+
 export function CombinedModelSelector({
   providers,
   selectedProvider,
@@ -81,6 +95,7 @@ export function CombinedModelSelector({
   renderTrigger,
   onOpen,
   onTriggerPress,
+  onBodyPress,
   onClose,
   onRetryProvider,
   isRetryingProvider = false,
@@ -249,7 +264,7 @@ export function CombinedModelSelector({
           ref={anchorRef}
           collapsable={false}
           disabled={disabled}
-          onPress={handleTriggerPress}
+          {...splitTriggerPress(onBodyPress, handleTriggerPress)}
           style={triggerStyle}
           accessibilityRole="button"
           accessibilityLabel={t("modelSelector.selectedModel", {

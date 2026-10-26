@@ -7,6 +7,7 @@ import {
   nextProjectId,
   previousProjectId,
   nextEffortId,
+  nextModelSelection,
   previousModelSelection,
   useComposerRewindSelection,
 } from "./empty-shortcuts";
@@ -163,6 +164,10 @@ it("cycles only available favorites in favorite order and handles empty favorite
   expect(previousModelSelection(providers, "a", "one", [])).toBeNull();
   expect(previousModelSelection(providers, null, null, ["missing:model"])).toBeNull();
   expect(previousModelSelection([], null, null, favorites)).toBeNull();
+  // CUSTOM(chip-cycle)
+  expect(nextModelSelection(providers, "b", "three", favorites)?.modelId).toBe("one");
+  expect(nextModelSelection(providers, "a", "one", favorites)?.modelId).toBe("three");
+  expect(nextModelSelection(providers, null, null, favorites)?.modelId).toBe("three");
 });
 
 it("cycles effort levels forward with wraparound", () => {
