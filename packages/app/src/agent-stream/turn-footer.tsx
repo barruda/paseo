@@ -4,11 +4,12 @@ import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { SPACING, type Theme } from "@/styles/theme";
 import type { TurnTiming } from "@/timeline/turn-time";
-import type { StreamItem } from "@/types/stream";
+import type { PluginTimelineStreamItem, StreamItem } from "@/types/stream";
 import {
   collectAssistantResponseContentForStreamRenderStrategy,
   type StreamStrategy,
 } from "./strategy";
+import { findTurnUsageItem } from "./turn-usage"; // CUSTOM(turn-usage-inline)
 import { resolveAssistantTurnForkBoundary, type AssistantTurnForkBoundary } from "./turn-boundary";
 import {
   AssistantTurnFooter,
@@ -26,6 +27,8 @@ const workingIndicatorColorMapping = (theme: Theme) => ({ color: theme.colors.fo
 export const TURN_FOOTER_BOTTOM_SPACING = SPACING[8];
 
 export type TurnContentStrategy = StreamStrategy;
+// CUSTOM(turn-usage-inline)
+export type TurnUsageRenderer = (item: PluginTimelineStreamItem) => ReactNode;
 export type AssistantTurnForkHandler = (input: {
   target: AssistantForkTarget;
   boundary: AssistantTurnForkBoundary;
@@ -50,6 +53,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor,
   onForkAssistantTurn,
   onForkInFlightTurn,
+  renderTurnUsage,
 }: {
   isRunning: boolean;
   inFlightTurnStartedAt: Date | null;
@@ -58,6 +62,7 @@ export const TurnFooter = memo(function TurnFooter({
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
   onForkInFlightTurn?: InFlightTurnForkHandler;
+  renderTurnUsage?: TurnUsageRenderer;
 }) {
   if (isRunning) {
     return (
@@ -80,6 +85,7 @@ export const TurnFooter = memo(function TurnFooter({
       startIndex={host.startIndex}
       supportsTimelineCursor={supportsTimelineCursor}
       onForkAssistantTurn={onForkAssistantTurn}
+      renderTurnUsage={renderTurnUsage}
     />
   );
 });
@@ -91,6 +97,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  renderTurnUsage,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -98,6 +105,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  renderTurnUsage?: TurnUsageRenderer;
 }) {
   return (
     <TurnFooterRow>
@@ -108,6 +116,7 @@ export const CompletedTurnFooterRow = memo(function CompletedTurnFooterRow({
         startIndex={startIndex}
         supportsTimelineCursor={supportsTimelineCursor}
         onForkAssistantTurn={onForkAssistantTurn}
+        renderTurnUsage={renderTurnUsage}
       />
     </TurnFooterRow>
   );
@@ -164,6 +173,7 @@ function CompletedTurnFooter({
   startIndex,
   supportsTimelineCursor,
   onForkAssistantTurn,
+  renderTurnUsage,
 }: {
   strategy: TurnContentStrategy;
   items: StreamItem[];
@@ -171,7 +181,9 @@ function CompletedTurnFooter({
   startIndex: number;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  renderTurnUsage?: TurnUsageRenderer;
 }) {
+  const usageItem = findTurnUsageItem({ strategy, items, startIndex }); // CUSTOM(turn-usage-inline)
   const getContent = useCallback(
     () =>
       collectAssistantResponseContentForStreamRenderStrategy({
@@ -202,6 +214,7 @@ function CompletedTurnFooter({
         completedAt={timing?.completedAt}
         durationMs={timing?.durationMs}
         onFork={boundary && onForkAssistantTurn ? handleFork : undefined}
+        trailing={usageItem && renderTurnUsage ? renderTurnUsage(usageItem) : undefined}
       />
     </View>
   );

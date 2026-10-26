@@ -99,6 +99,7 @@ import {
   type AssistantTurnForkHandler,
   type InFlightTurnForkHandler,
   type TurnContentStrategy,
+  type TurnUsageRenderer,
 } from "./turn-footer";
 import { resolveBottomOverlayTailInset } from "./bottom-overlay-inset";
 import { layoutStream, type StreamLayoutItem } from "./layout";
@@ -127,6 +128,7 @@ import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView, useInstalledTimelineTransform } from "@/plugins/timeline";
+import { findTurnUsageItem, isTurnUsageItem } from "./turn-usage"; // CUSTOM(turn-usage-inline)
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -178,6 +180,7 @@ function renderStreamItemWithTurnFooter(input: {
   strategy: TurnContentStrategy;
   supportsTimelineCursor: boolean;
   onForkAssistantTurn?: AssistantTurnForkHandler;
+  renderTurnUsage?: TurnUsageRenderer; // CUSTOM(turn-usage-inline)
 }): ReactNode {
   if (!input.content) {
     return null;
@@ -192,6 +195,7 @@ function renderStreamItemWithTurnFooter(input: {
       startIndex={footerHost.startIndex}
       supportsTimelineCursor={input.supportsTimelineCursor}
       onForkAssistantTurn={input.onForkAssistantTurn}
+      renderTurnUsage={input.renderTurnUsage}
     />
   ) : null;
   const content = (
@@ -1051,6 +1055,30 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       ],
     );
 
+    // CUSTOM(turn-usage-inline)
+    const renderTurnUsage = useCallback<TurnUsageRenderer>(
+      (item) => (
+        <PluginTimelineItemView agentId={agentId} item={item} serverId={resolvedServerId} />
+      ),
+      [agentId, resolvedServerId],
+    );
+    // CUSTOM(turn-usage-inline): the usage row is the item its own footer hangs off, so only
+    // that row's footer and the bottom footer can be showing it.
+    const auxiliaryTurnFooter = streamLayout.auxiliaryTurnFooter;
+    const isTurnUsageShownInFooter = useCallback(
+      (layoutItem: StreamLayoutItem, usageItemId: string) =>
+        [layoutItem.completedFooter, auxiliaryTurnFooter].some(
+          (host) =>
+            host !== null &&
+            findTurnUsageItem({
+              strategy: streamRenderStrategy,
+              items: host.items,
+              startIndex: host.startIndex,
+            })?.id === usageItemId,
+        ),
+      [auxiliaryTurnFooter, streamRenderStrategy],
+    );
+
     const renderStreamItemContent = useCallback(
       (layoutItem: StreamLayoutItem) => {
         const item = layoutItem.item;
@@ -1083,6 +1111,10 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             );
 
           case "plugin":
+            // CUSTOM(turn-usage-inline): a footer that shows this usage row inline replaces it.
+            if (isTurnUsageItem(item) && isTurnUsageShownInFooter(layoutItem, item.id)) {
+              return null;
+            }
             return (
               <PluginTimelineItemView agentId={agentId} item={item} serverId={resolvedServerId} />
             );
@@ -1098,6 +1130,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         renderThoughtItem,
         renderToolCallItem,
         resolvedServerId,
+        isTurnUsageShownInFooter,
       ],
     );
 
@@ -1112,11 +1145,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           strategy: streamRenderStrategy,
           supportsTimelineCursor: supportsAgentForkContextCursor,
           onForkAssistantTurn: readOnly ? undefined : handleForkAssistantTurn,
+          renderTurnUsage,
         });
       },
       [
         handleForkAssistantTurn,
         readOnly,
+        renderTurnUsage,
         renderStreamItemContent,
         streamRenderStrategy,
         supportsAgentForkContextCursor,
@@ -1147,11 +1182,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             supportsTimelineCursor={supportsAgentForkContextCursor}
             onForkAssistantTurn={readOnly ? undefined : handleForkAssistantTurn}
             onForkInFlightTurn={readOnly ? undefined : handleForkInFlightTurn}
+            renderTurnUsage={renderTurnUsage}
           />
         ) : null,
       [
         handleForkAssistantTurn,
         handleForkInFlightTurn,
+        renderTurnUsage,
         readOnly,
         isTurnActive,
         baseRenderModel.turnTiming.runningStartedAt,

@@ -3164,3 +3164,22 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   (both already in the update script). The second browser test closes and reopens the Explorer
   with Ctrl+E, checks the message is focused, and commits with Ctrl+Enter through the Select All
   prompt.
+
+## turn-usage-inline: the token-ledger usage row joins the turn footer line
+
+- **Added:** 2026-10-26
+- **Why:** The token-ledger plugin appends a usage row (`in 10 · cache 1.18M · out 2.2k · $0.32 · 45s`)
+  after each finished turn. It sat on its own line between the reply and the footer icons, pushing
+  the copy and fork icons away from the message.
+- **What:** The stream no longer draws that row on its own. The turn footer draws it on the same
+  line, after the icons and "Worked for ...". A turn with no footer (no assistant message) keeps
+  the standalone row.
+- **Files:** `packages/app/src/agent-stream/turn-usage.ts` (+ test).
+- **Core files touched** (marked `CUSTOM(turn-usage-inline)`): `agent-stream/view.tsx` (skips the row
+  when a footer shows it, passes `renderTurnUsage`), `agent-stream/turn-footer.tsx` (finds the row,
+  passes `trailing`), `components/message.tsx` (`AssistantTurnFooter` renders `trailing`).
+- **Re-apply:** Find the plugin's `turn-usage` timeline item newer than the footer's assistant
+  message in the same response, render it through `PluginTimelineItemView` after the footer's
+  duration label, and return `null` for that item in the list.
+- **Verify:** `(cd packages/app && npx vitest run src/agent-stream/turn-usage.test.ts)`. In the app,
+  finish a turn: one line with copy, fork, "Worked for", then the dot and token figures.
