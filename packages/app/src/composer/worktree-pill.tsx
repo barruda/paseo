@@ -68,17 +68,21 @@ export const WorktreePill = memo(function WorktreePill({
 }): ReactElement | null {
   const toast = useToast();
   const run = useRunChatCommand({ serverId, workspaceId, agentId, toast });
-  const worktree = useWorkspaceFields(serverId, workspaceId, (workspace) =>
-    workspace.workspaceKind === "worktree"
-      ? {
-          label: resolveWorktreePillLabel({
-            currentBranch: workspace.gitRuntime?.currentBranch,
-            workspaceName: workspace.name,
-          }),
-          directory: workspace.workspaceDirectory || cwd,
-        }
-      : null,
-  );
+  const worktree = useWorkspaceFields(serverId, workspaceId, (workspace) => {
+    // The main checkout also reports kind "worktree" (its main repo root is itself), so compare
+    // the directory with the project root to tell it apart.
+    const directory = workspace.workspaceDirectory || cwd;
+    if (workspace.workspaceKind !== "worktree" || directory === workspace.projectRootPath) {
+      return null;
+    }
+    return {
+      label: resolveWorktreePillLabel({
+        currentBranch: workspace.gitRuntime?.currentBranch,
+        workspaceName: workspace.name,
+      }),
+      directory,
+    };
+  });
   const directory = worktree?.directory ?? cwd;
   const handleCopyPath = useCallback(() => {
     Clipboard.setStringAsync(directory)
