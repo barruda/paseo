@@ -52,9 +52,16 @@ rules agents get wrong.
   restarts with the window and its running agents stop. The user asked for that; say in your
   report that the telus daemon restarted. For daemon-side changes that is not enough: with an unchanged version the
   `Paseo Supervisor` keeps respawning the daemon from the old build, even after Settings >
-  Restart daemon. Tell the user to run `kill-paseos-and-daemons.sh` (it also works as a `!`
-  command in Paseo). Don't run it yourself: it stops the daemon your own session runs under (see
-  "Updating" in `custom/README.md`).
+  Restart daemon. Don't run the restart script yourself: it stops the daemon your own session
+  runs under (see "Updating" in `custom/README.md`).
+- Whenever the user's daemons need a restart (a daemon-side change, a protocol or server change, a
+  customization whose **Verify** says so), end your final report with the command, in its own code
+  block, so the user can copy it:
+  ```bash
+  kill-paseos-and-daemons.sh
+  ```
+  It stops both daemons, closes both Paseo windows and reopens them; their running agents stop.
+  From a Paseo chat or terminal, run it as `!kill-paseos-and-daemons.sh`.
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user
   first when the upstream version changed: reopening the app restarts the daemon, which stops its
   running agents. Only run `custom/reopen-paseo-clients.sh` after an upstream pull when the
