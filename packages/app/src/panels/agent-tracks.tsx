@@ -57,7 +57,10 @@ export const AgentTracks = memo(function AgentTracks({
   const { tabId, openTab } = usePaneContext();
   const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId);
   // CUSTOM(worktree-pill-done): a done worktree session leads the row with a green Worktree pill.
-  const isDone = useAgentStatusSummary(serverId, agentId)?.done === true;
+  const statusSummary = useAgentStatusSummary(serverId, agentId);
+  const isDone = statusSummary?.done === true;
+  // CUSTOM(worktree-pill-merged): done and already merged into the main checkout.
+  const isMerged = isDone && statusSummary?.merged === true;
   const isCompact = useIsCompactFormFactor();
   const canSplit = supportsDesktopPaneSplits() && !isCompact;
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
@@ -141,6 +144,7 @@ export const AgentTracks = memo(function AgentTracks({
           agentId={agentId}
           cwd={cwd}
           done
+          merged={isMerged}
         />
       ) : null}
       <AgentTaskList tasks={tasks} />

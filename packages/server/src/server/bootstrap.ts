@@ -215,6 +215,7 @@ import { createWebUiMiddleware } from "./web-ui.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
 // CUSTOM(agent-status-summary)
 import { AgentStatusSummaries, createLeanClaudeStatusGenerate } from "./agent-status-summary.js";
+import { WorktreeMergeStatus } from "./worktree-merge-status.js"; // CUSTOM(worktree-pill-merged)
 import { createGitMutationService } from "./session/git-mutation/git-mutation-service.js";
 import { workspaceIdsOnCheckout } from "./workspace-directory.js";
 import { configureGitProcessPolicy } from "../utils/run-git-command.js";
@@ -1169,6 +1170,9 @@ export async function createPaseoDaemon(
     logger,
   });
   agentStatusSummaries.start();
+  // CUSTOM(worktree-pill-merged): marks done worktree sessions already merged into the main checkout.
+  const worktreeMergeStatus = new WorktreeMergeStatus({ agentManager, logger });
+  worktreeMergeStatus.start();
 
   setupAutoArchiveOnMerge({
     paseoHome: config.paseoHome,
@@ -1889,6 +1893,7 @@ export async function createPaseoDaemon(
     workspaceReconciliation.dispose();
     scriptHealthMonitor.stop();
     agentStatusSummaries.stop(); // CUSTOM(agent-status-summary)
+    worktreeMergeStatus.stop(); // CUSTOM(worktree-pill-merged)
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
     agentManager.prepareForShutdown();

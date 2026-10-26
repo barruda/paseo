@@ -282,6 +282,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/composer/empty-voice-trigger.test.ts --bail=1)
   npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr custom/plugins/btw packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/shell-command-composer/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
   (cd packages/server && npx vitest run src/server/agent-status-summary.test.ts src/server/lean-claude.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/worktree-merge-status.test.ts --bail=1)
   # The status summary survives daemon restarts; New Agent tab names; pinned tabs.
   (cd packages/server && npx vitest run src/server/agent/agent-storage.test.ts -t "keeps the status summary" --bail=1)
   (cd packages/app && npx vitest run src/panels/agent-panel-descriptor.test.tsx src/tab-pins/model.test.ts --bail=1)

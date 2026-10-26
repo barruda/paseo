@@ -837,6 +837,11 @@ export const AgentStatusSummaryPayloadSchema = z.object({
    * (only review, a commit or a merge left). The Worktree pill turns green and moves first.
    */
   done: z.boolean().optional(),
+  /**
+   * CUSTOM(worktree-pill-merged): with `done`, the agent's worktree is clean and already merged
+   * into the main checkout. The Worktree pill fills green and shows a check.
+   */
+  merged: z.boolean().optional(),
   updatedAt: z.string(),
   /** The model that wrote it, e.g. `claude-haiku-5-5`. */
   model: z.string().optional(),

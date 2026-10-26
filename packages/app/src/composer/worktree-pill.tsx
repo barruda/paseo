@@ -4,8 +4,11 @@
 // (shell-command plugin), so the output lands in a Terminal card in the chat.
 // CUSTOM(worktree-pill-done): `done` (the agent's status summary says the request is done or
 // nearly done) gives it a green border; AgentTracks also moves it to the front of the row.
+// CUSTOM(worktree-pill-merged): `merged` (done, and the worktree is already merged into the main
+// checkout) fills it green and puts a check before the label. New changes in the worktree clear it.
 import * as Clipboard from "expo-clipboard";
 import { memo, useCallback, type ReactElement } from "react";
+import { Check } from "lucide-react-native";
 import { Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useRunChatCommand } from "@/chat-code-run/context";
@@ -32,18 +35,36 @@ const doneTriggerStyle: DropdownMenuTriggerProps["style"] = ({ hovered, open }) 
   styles.done,
 ];
 
+const mergedTriggerStyle: DropdownMenuTriggerProps["style"] = () => [
+  composerPillStyles.body,
+  styles.done,
+  styles.merged,
+];
+
+function resolveTriggerStyle(done: boolean, merged: boolean): DropdownMenuTriggerProps["style"] {
+  if (merged) return mergedTriggerStyle;
+  return done ? doneTriggerStyle : triggerStyle;
+}
+
+function resolveAccessibilityLabel(label: string, done: boolean, merged: boolean): string {
+  if (merged) return `${label}, merged`;
+  return done ? `${label}, done` : label;
+}
+
 export const WorktreePill = memo(function WorktreePill({
   serverId,
   workspaceId,
   agentId,
   cwd,
   done = false,
+  merged = false,
 }: {
   serverId: string;
   workspaceId: string;
   agentId: string;
   cwd: string;
   done?: boolean;
+  merged?: boolean;
 }): ReactElement | null {
   const toast = useToast();
   const run = useRunChatCommand({ serverId, workspaceId, agentId, toast });
@@ -76,15 +97,22 @@ export const WorktreePill = memo(function WorktreePill({
       <DropdownMenuTrigger
         testID="composer-worktree-pill"
         accessibilityRole="button"
-        accessibilityLabel={done ? `${worktree.label}, done` : worktree.label}
-        style={done ? doneTriggerStyle : triggerStyle}
+        accessibilityLabel={resolveAccessibilityLabel(worktree.label, done, merged)}
+        style={resolveTriggerStyle(done, merged)}
       >
         {({ hovered, open }) => (
-          <Text
-            style={[composerPillStyles.label, (hovered || open) && composerPillStyles.labelActive]}
-          >
-            {worktree.label}
-          </Text>
+          <>
+            {merged ? <Check size={14} color={styles.mergedIcon.color} /> : null}
+            <Text
+              style={[
+                composerPillStyles.label,
+                (hovered || open) && composerPillStyles.labelActive,
+                merged && styles.mergedLabel,
+              ]}
+            >
+              {worktree.label}
+            </Text>
+          </>
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" minWidth={240} side="top" testID="composer-worktree-menu">
@@ -102,5 +130,14 @@ export const WorktreePill = memo(function WorktreePill({
 const styles = StyleSheet.create((theme) => ({
   done: {
     borderColor: theme.colors.statusSuccess,
+  },
+  merged: {
+    backgroundColor: theme.colors.statusSuccessTint,
+  },
+  mergedLabel: {
+    color: theme.colors.statusSuccess,
+  },
+  mergedIcon: {
+    color: theme.colors.statusSuccess,
   },
 }));

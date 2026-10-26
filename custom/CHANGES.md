@@ -3046,3 +3046,35 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Verify:** `(cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts)` (in the
   update script). In the app, star Medium and Max, empty the composer, press →: it goes
   Medium → Max → Medium.
+
+## worktree-pill-merged: a done worktree session already merged gets a filled pill with a check
+
+- **Added:** 2026-10-26
+- **Commit:** `custom: the Worktree pill fills green with a check once the worktree is merged`
+- **Why:** After merging a finished worktree session, the user wants to see it is merged, and to
+  see when the agent changed it again and it needs another merge.
+- **What:** On top of
+  [worktree-pill-done](#worktree-pill-done-a-done-worktree-session-gets-a-green-worktree-pill-at-the-front),
+  every 10 s the daemon checks each agent whose status summary is `done`: its worktree is merged
+  when it is clean and its HEAD is contained in the main checkout's HEAD (the branch the pill's
+  Merge action merges into, not the repo's default branch). The result is a `merged` flag on the
+  summary. A done and merged pill gets a green tint background, green label and a check before
+  the label. Uncommitted changes, or commits the main checkout lacks, clear the flag within 10 s,
+  leaving the green border of a done session that needs merging again. A new turn that clears
+  `done` also clears the look. Agents outside linked worktrees cost one `git rev-parse` per poll
+  while done; others four git calls, with `GIT_OPTIONAL_LOCKS=0` so status never takes the index
+  lock.
+- **Files:** `packages/server/src/server/worktree-merge-status.ts` (+ test, on real git repos).
+- **Core files touched** (marked `CUSTOM(worktree-pill-merged)`):
+  - Protocol `messages.ts`: optional `merged` on `AgentStatusSummaryPayloadSchema`.
+  - Server `bootstrap.ts`: starts and stops `WorktreeMergeStatus`.
+  - App `composer/worktree-pill.tsx`: `merged` prop (tint, label color, `Check` icon).
+  - App `panels/agent-tracks.tsx`: passes `merged` when the summary is done and merged.
+- **Re-apply:** Start a poller in bootstrap that, for agents with a `done` summary, runs
+  `readWorktreeMerged(agent.cwd)` and writes `merged` into the summary with `setStatusSummary`
+  when it changes. In the pill, fill it with `statusSuccessTint` and prepend a `Check` when the
+  summary is done and merged.
+- **Verify:** `(cd packages/server && npx vitest run src/server/worktree-merge-status.test.ts)` (in
+  the update script). Needs the daemon from this build. In a done worktree session, use the pill's
+  **Merge back to main project**: within 10 s it fills green with a check. Have the agent change a
+  file: the fill and check go away, the green border stays.
