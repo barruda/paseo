@@ -37,6 +37,7 @@ import { ReviewCommentSheet, ReviewFeedbackAction } from "@/review";
 import { DiffDocument, type WorkingDiffMode } from "@/git/diff-document";
 import { ChangedFilesTree } from "@/git/changed-files-tree";
 import { CommitBox } from "@/git/commit-selection/commit-box";
+import { useCommitGuard } from "@/git/commit-selection/use-commit-guard";
 import { OpenInNewTabsToggle } from "@/git/diff-tabs/toggle";
 import {
   useCommitSelection,
@@ -1777,6 +1778,14 @@ export function ChangesSurface({
     files,
     enabled: commitSelectionEnabled(presentation, isGit, diffMode),
   });
+  // The commit sends only the checked paths, but the list may trail the working tree.
+  const beforeCommit = useCommitGuard({
+    serverId,
+    cwd,
+    files,
+    ignoreWhitespace: preferences.hideWhitespace,
+    onRefresh: handleRefresh,
+  });
   const emptyMessage = t("diffViewer.empty");
   const emptyAction = computeChangesEmptyAction({
     hideWhitespace: preferences.hideWhitespace,
@@ -1960,7 +1969,12 @@ export function ChangesSurface({
         ) : null}
       </View>
 
-      <CommitBox selection={commitSelection} hasChanges={hasChanges} />
+      <CommitBox
+        selection={commitSelection}
+        hasChanges={hasChanges}
+        status={status}
+        beforeCommit={beforeCommit}
+      />
 
       <ReviewCommentSheet
         enabled={enabled}

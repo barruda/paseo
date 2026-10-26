@@ -17,7 +17,7 @@ export interface CommitSelection {
   selectedPaths: readonly string[];
   selected: ReadonlySet<string>;
   /** Git pathspecs for the checked files, including renames' old paths. */
-  pathspecs: () => string[];
+  pathspecs: (paths?: readonly string[]) => string[];
   toggleFile: (path: string) => void;
   toggleFolder: (dirPath: string) => void;
   selectAll: () => void;
@@ -62,7 +62,7 @@ export function useCommitSelection(input: {
   );
   const selectNone = useCallback(() => setSelection(checkoutKey, []), [checkoutKey, setSelection]);
   const pathspecs = useCallback(
-    () => selectionPathspecs(files, selectedPaths),
+    (paths: readonly string[] = selectedPaths) => selectionPathspecs(files, paths),
     [files, selectedPaths],
   );
 

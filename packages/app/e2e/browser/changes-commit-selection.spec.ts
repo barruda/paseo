@@ -134,3 +134,31 @@ test("Changes commits only the checked files and discards the checked files", as
   });
   expect(git(workspace.repoPath, ["status", "--porcelain"])).toBe(" M src/components/b.ts\n");
 });
+
+test("Ctrl+E focuses the commit message and Ctrl+Enter with nothing checked offers to select all", async ({
+  page,
+}) => {
+  const workspace = await createDirtyWorkspace();
+  const explorer = await openChangesTree(page, workspace.id);
+  const input = explorer.getByTestId("commit-message-input");
+
+  // Ctrl+E toggles the Explorer; opening it focuses the commit message.
+  await page.keyboard.press("ControlOrMeta+e");
+  await expect(explorer).toBeHidden();
+  await page.keyboard.press("ControlOrMeta+e");
+  await expect(input).toBeFocused({ timeout: 10_000 });
+
+  await input.fill("Everything");
+  const prompt = new Promise<string>((resolve) => {
+    page.once("dialog", async (dialog) => {
+      resolve(dialog.message());
+      await dialog.accept();
+    });
+  });
+  await input.press("ControlOrMeta+Enter");
+  expect(await prompt).toContain("Nothing is selected");
+  await expect
+    .poll(() => git(workspace.repoPath, ["log", "-1", "--format=%s"]).trim(), { timeout: 30_000 })
+    .toBe("Everything");
+  expect(git(workspace.repoPath, ["status", "--porcelain"])).toBe("");
+});

@@ -57,6 +57,7 @@ import {
 } from "@/workspace-tabs/explorer-sidebar";
 // CUSTOM(bottom-panel)
 import { toggleBottomPanel } from "@/workspace-tabs/bottom-panel";
+import { useCommitMessageFocusStore } from "@/git/commit-selection/focus-request";
 // CUSTOM(bottom-panel-expand)
 import { BottomPanelExpandButton } from "@/workspace-tabs/bottom-panel-expand-button";
 import { showBottomPanelWarpProject } from "@/workspace-tabs/bottom-panel-warp-project";
@@ -2581,6 +2582,10 @@ function WorkspaceScreenContent({
   const handleWorkspaceSidebarAction = useCallback(
     (action: KeyboardActionDefinition): boolean => {
       if (action.id === "sidebar.toggle.right") {
+        // CUSTOM(commit-selection): opening the Explorer also focuses the Changes commit message.
+        if (!isExplorerSidebarOpen({ isCompact: isMobile, workspaceKey: persistenceKey })) {
+          useCommitMessageFocusStore.getState().request();
+        }
         handleToggleExplorerSidebar();
         return true;
       }

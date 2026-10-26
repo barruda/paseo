@@ -3129,3 +3129,38 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Verify:** `(cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts)` (in the
   update script). In the app, star two models in Ctrl+M and two effort levels; clicking each chip
   alternates between them, and its ⌄ opens the menu.
+
+## commit-box-keys: Ctrl+Enter commits then pushes, Ctrl+E focuses the message, stale lists stop
+
+- **Added:** 2026-10-26
+- **Commit:** `custom: Changes commit box: Ctrl+Enter commits then pushes, Ctrl+E focuses it, stale lists refresh`
+- **Why:** Committing from the Changes sidebar needed the mouse, and a list that trailed the
+  working tree let the user commit without seeing the latest changes.
+- **What:** Follow-up to [commit-selection](#commit-selection-commit-or-discard-the-files-checked-in-changes).
+  - Ctrl/⌘+Enter in the commit message presses the primary button.
+  - With no uncommitted changes left and commits ahead of origin, the button reads **Push** and
+    Ctrl+Enter pushes. The box stays mounted so the message keeps focus.
+  - Committing with nothing checked asks "Nothing is selected, do you want to select all?"
+    (**Select All** is the default). Select All checks every file and commits; with an empty
+    message it focuses the message instead. With files checked, an empty message keeps the
+    button disabled.
+  - Before committing, the app fetches the current uncommitted diff and compares paths and line
+    counts with the list on screen. If they differ it alerts, refreshes the list, and doesn't
+    commit.
+  - Ctrl+E (upstream's Explorer toggle; ⌘+E on macOS) focuses the commit message when it opens
+    the Explorer on the Changes tab. Closing is unchanged.
+- **Files:** `git/commit-selection/use-commit-guard.ts` (the stale-list check),
+  `git/commit-selection/focus-request.ts` (a focus request that expires after 2 s, so a later
+  switch to Changes doesn't steal focus), `model.ts` `changesDifferFromList` (+ test).
+- **Core files touched:**
+  - `git/diff-pane.tsx`: passes `status` and `beforeCommit` (`useCommitGuard`) to `CommitBox`.
+  - `screens/workspace/workspace-screen.tsx` (`CUSTOM(commit-selection)`): the
+    `sidebar.toggle.right` handler requests commit focus when the Explorer was closed.
+- **Re-apply:** Keep Ctrl+E on upstream's `sidebar.toggle.right`; a second Ctrl+E binding never
+  fires because that one matches first. The request has to outlive the toggle because the commit
+  box mounts only after the Explorer opens, and a claim-once request with a short TTL keeps it
+  from firing later.
+- **Verify:** `commit-selection/model.test.ts` and `e2e/browser/changes-commit-selection.spec.ts`
+  (both already in the update script). The second browser test closes and reopens the Explorer
+  with Ctrl+E, checks the message is focused, and commits with Ctrl+Enter through the Select All
+  prompt.

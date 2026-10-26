@@ -64,3 +64,22 @@ export function selectionPathspecs(
     return file.oldPath && file.oldPath !== file.path ? [file.path, file.oldPath] : [file.path];
   });
 }
+
+interface ComparableFile {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
+/** True when the daemon's current changes differ from the list on screen. */
+export function changesDifferFromList(
+  listed: readonly ComparableFile[],
+  current: readonly ComparableFile[],
+): boolean {
+  if (listed.length !== current.length) return true;
+  const byPath = new Map(listed.map((file) => [file.path, file]));
+  return current.some((file) => {
+    const shown = byPath.get(file.path);
+    return !shown || shown.additions !== file.additions || shown.deletions !== file.deletions;
+  });
+}

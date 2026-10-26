@@ -1,6 +1,7 @@
 // CUSTOM(commit-selection): under the Changes tree, bulk selection, discard of the checked
 // files, and a message box that commits only them.
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { NativeSyntheticEvent, TextInputKeyPressEventData } from "react-native";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Trash2 } from "lucide-react-native";
@@ -11,54 +12,148 @@ import {
 } from "@/components/ui/text-input";
 import { useToast } from "@/contexts/toast-context";
 import { useCheckoutGitActionsStore } from "@/git/actions-store";
+import type { CheckoutStatusPayload } from "@/git/use-status-query";
 import { confirmDialog } from "@/utils/confirm-dialog";
 import type { CommitSelection } from "./use-commit-selection";
+import { useCommitMessageFocusStore } from "./focus-request";
 
 function filesLabel(count: number): string {
   return count === 1 ? "1 file" : `${count} files`;
 }
 
+function commitLabel(count: number): string {
+  return count === 0 ? "Commit" : `Commit ${filesLabel(count)}`;
+}
+
+// With no uncommitted changes left, the same button pushes the commits ahead of origin.
 export function CommitBox({
   selection,
   hasChanges,
+  status,
+  beforeCommit,
 }: {
   selection: CommitSelection | null;
   hasChanges: boolean;
+  status: CheckoutStatusPayload | null;
+  /** Resolves false when the commit must wait for the user to review a refreshed list. */
+  beforeCommit: () => Promise<boolean>;
 }) {
-  if (!selection || !hasChanges) return null;
-  return <CommitBoxContent selection={selection} />;
+  const canPush = (status?.aheadOfOrigin ?? 0) > 0;
+  if (!selection || (!hasChanges && !canPush)) return null;
+  return (
+    <CommitBoxContent selection={selection} hasChanges={hasChanges} beforeCommit={beforeCommit} />
+  );
 }
 
-function CommitBoxContent({ selection }: { selection: CommitSelection }) {
+function CommitBoxContent({
+  selection,
+  hasChanges,
+  beforeCommit,
+}: {
+  selection: CommitSelection;
+  hasChanges: boolean;
+  beforeCommit: () => Promise<boolean>;
+}) {
   const { serverId, cwd, selectedPaths, filePaths, pathspecs, selectAll, selectNone } = selection;
   const toast = useToast();
   const inputRef = useRef<EditingTextInputHandle>(null);
   const [message, setMessage] = useState("");
+  const focusRequestedAt = useCommitMessageFocusStore((state) => state.requestedAt);
+  useEffect(() => {
+    if (focusRequestedAt !== null && useCommitMessageFocusStore.getState().claim()) {
+      inputRef.current?.focus();
+    }
+  }, [focusRequestedAt]);
   const commit = useCheckoutGitActionsStore((state) => state.commit);
+  const push = useCheckoutGitActionsStore((state) => state.push);
   const discardChanges = useCheckoutGitActionsStore((state) => state.discardChanges);
   const isCommitting =
     useCheckoutGitActionsStore((state) =>
       state.getStatus({ serverId, cwd, actionId: "commit" }),
     ) === "pending";
+  const isPushing =
+    useCheckoutGitActionsStore((state) => state.getStatus({ serverId, cwd, actionId: "push" })) ===
+    "pending";
   const isDiscarding =
     useCheckoutGitActionsStore((state) =>
       state.getStatus({ serverId, cwd, actionId: "discard-changes" }),
     ) === "pending";
   const count = selectedPaths.length;
   const trimmed = message.trim();
-  const canCommit = count > 0 && trimmed.length > 0 && !isCommitting;
+  // With nothing checked the button stays live: pressing it offers to select all.
+  const commitDisabled = isCommitting || (count > 0 && trimmed.length === 0);
 
   const handleCommit = useCallback(async () => {
-    if (!canCommit) return;
+    if (isCommitting) return;
     try {
-      await commit({ serverId, cwd, message: trimmed, paths: pathspecs() });
+      if (!(await beforeCommit())) return;
+      if (count === 0) {
+        const confirmed = await confirmDialog({
+          title: "Nothing is selected, do you want to select all?",
+          message: "Select all changed files to commit them.",
+          confirmLabel: "Select All",
+          cancelLabel: "Cancel",
+        });
+        if (!confirmed) return;
+        selectAll();
+        if (trimmed.length === 0) {
+          inputRef.current?.focus();
+          return;
+        }
+        await commit({ serverId, cwd, message: trimmed, paths: pathspecs(filePaths) });
+      } else {
+        if (trimmed.length === 0) {
+          inputRef.current?.focus();
+          return;
+        }
+        await commit({ serverId, cwd, message: trimmed, paths: pathspecs() });
+      }
       inputRef.current?.reset();
       setMessage("");
       selectNone();
     } catch (cause) {
       toast.error(cause instanceof Error ? cause.message : "Commit failed");
     }
-  }, [canCommit, commit, cwd, pathspecs, selectNone, serverId, toast, trimmed]);
+  }, [
+    beforeCommit,
+    commit,
+    count,
+    cwd,
+    filePaths,
+    isCommitting,
+    pathspecs,
+    selectAll,
+    selectNone,
+    serverId,
+    toast,
+    trimmed,
+  ]);
+
+  const handlePush = useCallback(async () => {
+    try {
+      await push({ serverId, cwd });
+    } catch (cause) {
+      toast.error(cause instanceof Error ? cause.message : "Push failed");
+    }
+  }, [cwd, push, serverId, toast]);
+
+  const pressPrimary = useCallback(
+    () => void (hasChanges ? handleCommit() : handlePush()),
+    [handleCommit, handlePush, hasChanges],
+  );
+  // Ctrl/⌘+Enter acts on the primary button; the newline it would type is suppressed.
+  const handleKeyPress = useCallback(
+    (event: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+      const native = event.nativeEvent as TextInputKeyPressEventData & {
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+      };
+      if (native.key !== "Enter" || !(native.ctrlKey || native.metaKey)) return;
+      event.preventDefault();
+      pressPrimary();
+    },
+    [pressPrimary],
+  );
 
   const handleDiscard = useCallback(async () => {
     if (count === 0) return;
@@ -78,63 +173,66 @@ function CommitBoxContent({ selection }: { selection: CommitSelection }) {
       toast.error(cause instanceof Error ? cause.message : "Discard failed");
     }
   }, [count, cwd, discardChanges, pathspecs, selectNone, serverId, toast]);
-  const pressCommit = useCallback(() => void handleCommit(), [handleCommit]);
   const pressDiscard = useCallback(() => void handleDiscard(), [handleDiscard]);
+  const primaryLabel = hasChanges ? commitLabel(count) : "Push";
 
   return (
     <View style={styles.box} testID="commit-box">
-      <View style={styles.actions}>
-        <Button
-          variant="ghost"
-          size="xs"
-          onPress={selectAll}
-          disabled={count === filePaths.length}
-          testID="commit-select-all"
-        >
-          Select all
-        </Button>
-        <Button
-          variant="ghost"
-          size="xs"
-          onPress={selectNone}
-          disabled={count === 0}
-          testID="commit-select-none"
-        >
-          Select none
-        </Button>
-        <View style={styles.spacer} />
-        <Button
-          variant="ghost"
-          size="xs"
-          leftIcon={Trash2}
-          onPress={pressDiscard}
-          disabled={count === 0}
-          loading={isDiscarding}
-          testID="commit-discard-selected"
-        >
-          Discard selected
-        </Button>
-      </View>
+      {hasChanges ? (
+        <View style={styles.actions}>
+          <Button
+            variant="ghost"
+            size="xs"
+            onPress={selectAll}
+            disabled={count === filePaths.length}
+            testID="commit-select-all"
+          >
+            Select all
+          </Button>
+          <Button
+            variant="ghost"
+            size="xs"
+            onPress={selectNone}
+            disabled={count === 0}
+            testID="commit-select-none"
+          >
+            Select none
+          </Button>
+          <View style={styles.spacer} />
+          <Button
+            variant="ghost"
+            size="xs"
+            leftIcon={Trash2}
+            onPress={pressDiscard}
+            disabled={count === 0}
+            loading={isDiscarding}
+            testID="commit-discard-selected"
+          >
+            Discard selected
+          </Button>
+        </View>
+      ) : null}
       <TextInput
         ref={inputRef}
         accessibilityLabel="Commit message"
         testID="commit-message-input"
-        placeholder="Commit message"
+        placeholder={hasChanges ? "Commit message (Ctrl+Enter to commit)" : "Ctrl+Enter to push"}
         placeholderTextColor={styles.placeholder.color}
         multiline
         initialValue=""
         onChangeText={setMessage}
+        onKeyPress={handleKeyPress}
         style={styles.input}
       />
       <Button
         variant="default"
         size="sm"
-        onPress={pressCommit}
-        disabled={!canCommit}
-        loading={isCommitting}
-        testID="commit-selected"
+        onPress={pressPrimary}
+        disabled={hasChanges ? commitDisabled : isPushing}
+        loading={hasChanges ? isCommitting : isPushing}
+        testID={hasChanges ? "commit-selected" : "push-branch"}
       >
-        {count === 0 ? "Commit" : `Commit ${filesLabel(count)}`}
+        {primaryLabel}
       </Button>
     </View>
   );

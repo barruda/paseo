@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  changesDifferFromList,
   folderCheckState,
   pruneSelection,
   selectionPathspecs,
@@ -74,5 +75,22 @@ describe("commit selection", () => {
         ["new.ts", "README.md"],
       ),
     ).toEqual(["new.ts", "old.ts", "README.md"]);
+  });
+});
+
+describe("changesDifferFromList", () => {
+  const listed = [
+    { path: "a.ts", additions: 1, deletions: 0 },
+    { path: "b.ts", additions: 2, deletions: 2 },
+  ];
+
+  it("matches the list regardless of order", () => {
+    expect(changesDifferFromList(listed, [listed[1], listed[0]])).toBe(false);
+  });
+
+  it("flags a new, removed, or changed file", () => {
+    expect(changesDifferFromList(listed, [listed[0]])).toBe(true);
+    expect(changesDifferFromList(listed, [listed[0], { ...listed[1], path: "c.ts" }])).toBe(true);
+    expect(changesDifferFromList(listed, [listed[0], { ...listed[1], additions: 3 }])).toBe(true);
   });
 });
