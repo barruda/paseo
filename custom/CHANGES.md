@@ -3169,12 +3169,8 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   from firing later.
 - **Verify:** `commit-selection/model.test.ts` and `e2e/browser/changes-commit-selection.spec.ts`
   (both already in the update script). The second browser test closes and reopens the Explorer
-  <<<<<<< HEAD
   with Ctrl+E, checks the message is focused, and with no message commits everything as `wip`
   with Ctrl+Enter through the Select All prompt.
-  =======
-  with Ctrl+E, checks the message is focused, and commits with Ctrl+Enter through the Select All
-  prompt.
 
 ## turn-usage-inline: the token-ledger usage row joins the turn footer line
 
@@ -3194,4 +3190,3 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   duration label, and return `null` for that item in the list.
 - **Verify:** `(cd packages/app && npx vitest run src/agent-stream/turn-usage.test.ts)`. In the app,
   finish a turn: one line with copy, fork, "Worked for", then the dot and token figures.
-  > > > > > > > agent-response-copy-md
