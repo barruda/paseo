@@ -1,5 +1,8 @@
 import { useComposerRewindSelection } from "@/composer/empty-shortcuts";
-import { useAppliedContentMaxWidth } from "@/content-width-boost/store";
+import {
+  useAppliedContentMaxWidth,
+  useContentWidthBoostRerender,
+} from "@/content-width-boost/store";
 import { ChatFind, ChatFindExpansion } from "@/agent-stream/chat-find";
 import { ChatEscFocusSurface } from "@/chat-esc-focus/surface";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -1114,7 +1117,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       };
     }, [baseRenderModel, pendingPermissionsNode, turnFooterNode]);
 
-    const emptyStateStyle = useMemo(() => [stylesheet.emptyState, stylesheet.contentWrapper], []);
+    const emptyStateStyle = useMemo(
+      () => [stylesheet.emptyState, stylesheet.contentWrapper],
+      // oxlint-disable-next-line react-hooks/exhaustive-deps -- CUSTOM(content-width-boost): stylesheet entry changes with the width
+      [contentMaxWidth],
+    );
     const scrollToBottomContainerStyle = useMemo(
       () => [
         stylesheet.scrollToBottomContainer,
@@ -1990,9 +1997,11 @@ interface StreamItemWrapperProps {
 }
 
 function StreamItemWrapper({ gapBelow, children }: StreamItemWrapperProps) {
+  const boostedWidth = useContentWidthBoostRerender(); // CUSTOM(content-width-boost)
   const wrapperStyle = useMemo(
     () => [stylesheet.streamItemWrapper, { marginBottom: gapBelow }],
-    [gapBelow],
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- CUSTOM(content-width-boost): stylesheet entry changes with the width
+    [gapBelow, boostedWidth],
   );
   return <View style={wrapperStyle}>{children}</View>;
 }

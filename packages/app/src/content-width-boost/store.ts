@@ -46,10 +46,11 @@ export function boostContentMaxWidth(
 /**
  * Unistyles patches `theme.contentMaxWidth` without re-rendering memoized components, so a
  * component whose style reads it subscribes here. The appearance provider publishes the width
- * after patching the theme, so subscribers never render against the old theme.
+ * after patching the theme, so subscribers never render against the old theme. Use the returned
+ * width as a dependency of any `useMemo` that holds a stylesheet entry reading the width.
  */
-export function useContentWidthBoostRerender(): void {
-  useContentWidthBoostStore((s) => s.appliedWidth);
+export function useContentWidthBoostRerender(): number | null {
+  return useContentWidthBoostStore((s) => s.appliedWidth);
 }
 
 export function useAppliedContentMaxWidth(fallback: number): number {

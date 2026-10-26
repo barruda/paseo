@@ -2948,6 +2948,8 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
     and composer kept the old width until something else re-rendered them (focus, a new message).
     The provider publishes `appliedWidth` after patching the theme, so they never render a step
     behind.
+    The message rows (`StreamItemWrapper`), turn footers and empty state also memoize style arrays
+    holding the width's stylesheet entry, so the applied width is a dependency of those `useMemo`s.
 - **Re-apply:** Where the appearance provider passes `contentMaxWidth` to `applyAppearance`, pass
   `boostContentMaxWidth(width, store state)` and re-run on store changes; mount the controls
   (absolute, top left) inside the agent panel content container.

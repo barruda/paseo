@@ -208,8 +208,12 @@ function CompletedTurnFooter({
 }
 
 function TurnFooterRow({ children }: { children: ReactNode }) {
-  useContentWidthBoostRerender(); // CUSTOM(content-width-boost)
-  const rowStyle = useMemo(() => [stylesheet.streamItemWrapper, stylesheet.turnFooterRow], []);
+  const boostedWidth = useContentWidthBoostRerender(); // CUSTOM(content-width-boost)
+  const rowStyle = useMemo(
+    () => [stylesheet.streamItemWrapper, stylesheet.turnFooterRow],
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- CUSTOM(content-width-boost): stylesheet entry changes with the width
+    [boostedWidth],
+  );
   return <View style={rowStyle}>{children}</View>;
 }
 
