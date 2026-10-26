@@ -3078,3 +3078,25 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   the update script). Needs the daemon from this build. In a done worktree session, use the pill's
   **Merge back to main project**: within 10 s it fills green with a check. Have the agent change a
   file: the fill and check go away, the green border stays.
+
+## bottom-panel-toggle-inline: the bottom panel toggle sits left of the agent summary
+
+- **Added:** 2026-10-26
+- **Commit:** `custom: bottom panel toggle left of the agent summary, ⌃⌃ to show and ⌄⌄ to hide`
+- **Why:** The floating ⌃⌃ button
+  (`bottom-panel-expand-button.tsx`, part of [bottom-panel](#bottom-panel-ctrlj-toggles-a-bottom-panel)) sat far from the chat; the user wants it next to
+  the summary under the composer, and usable to hide the panel as well.
+- **What:** While an agent status line
+  ([agent-status-summary](#agent-status-summary-what-each-agent-was-asked-and-where-it-stands-under-the-composer))
+  is on screen, a toggle sits left of its summary: ⌃⌃ shows the bottom panel, ⌄⌄ hides it. The
+  floating ⌃⌃ button hides meanwhile, and comes back where no status line shows. The ⌄⌄ in the
+  bottom panel's own tab row stays.
+- **Files:** `packages/app/src/workspace-tabs/bottom-panel-expand-button.tsx` (a small store: the
+  floating button publishes whether the panel is open, and the inline toggles count themselves).
+- **Core files touched** (marked `CUSTOM(bottom-panel-toggle-inline)`):
+  - `composer/agent-status-line.tsx`: renders `BottomPanelInlineToggle` first in the row, which
+    is now a row.
+- **Re-apply:** Have `BottomPanelExpandButton` publish the panel state and hide while an inline
+  toggle is mounted; render the inline toggle at the start of the status line.
+- **Verify:** In the app, open an agent with a summary line: ⌃⌃ left of it opens the bottom panel
+  and turns into ⌄⌄, which closes it.

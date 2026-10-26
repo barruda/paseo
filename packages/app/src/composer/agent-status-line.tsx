@@ -1,4 +1,5 @@
 import { useMemo, type ReactElement } from "react";
+import { BottomPanelInlineToggle } from "@/workspace-tabs/bottom-panel-expand-button";
 import { useContentMaxWidthStyle } from "@/content-width-boost/store";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -38,6 +39,8 @@ export function AgentStatusLine({
   const text = summary.topic ?? summary.request;
   return (
     <View style={[styles.row, widthStyle]} testID="agent-status-line">
+      {/* CUSTOM(bottom-panel-toggle-inline) */}
+      <BottomPanelInlineToggle />
       {isWeb ? (
         <HoverCard>
           <HoverCardTrigger accessibilityLabel={text}>
@@ -119,6 +122,10 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: -10,
     paddingHorizontal: theme.spacing[4] + theme.spacing[2],
     paddingBottom: theme.spacing[2],
+    // CUSTOM(bottom-panel-toggle-inline): the bottom panel toggle sits left of the summary.
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
   },
   line: {
     fontSize: LINE_FONT_SIZE,
