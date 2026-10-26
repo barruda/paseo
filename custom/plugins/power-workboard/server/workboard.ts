@@ -13,6 +13,7 @@ import {
   isDraftGroup,
   isTerminalGroup,
   labelKey,
+  orchestratorConfigSchema,
   orchestratorSchema,
   newTask,
   orderedGroups,
@@ -25,6 +26,9 @@ import {
   type Card,
   type Data,
   type Orchestration,
+  type OrchestratorConfig,
+  type OrchestratorRuntime,
+  ORCHESTRATOR_LOG_LIMIT,
   type Refinement,
   type ConversationAgent,
   type ConversationDisplay,
@@ -34,6 +38,7 @@ import {
   type Stage,
   type Task,
 } from "../shared/model";
+import { dueTrigger, nextRunAt, windowOpen } from "../shared/schedule";
 import { CANCEL_BINDING_BUSY_ERROR_CODE, type Mutation } from "../shared/rpc";
 import {
   continuationPrompt,
@@ -318,6 +323,12 @@ export class Workboard {
       orchestrator: data.orchestrator,
       orchestrations: data.orchestrations,
       refinements: data.refinements,
+      orchestrators: data.orchestrators,
+      orchestratorRuntime: data.orchestratorRuntime,
+      orchestratorLogs: data.orchestratorLogs,
+      orchestratorStatus: Object.fromEntries(
+        data.orchestrators.map((o) => [o.id, this.orchestratorStatus(o, data)]),
+      ),
       projects: this.inventory.projects,
       cards: data.tasks.map((task) => {
         const workspace = this.inventory.workspaces.find(
@@ -939,6 +950,7 @@ export class Workboard {
             );
             task.description = input.description;
             task.projectId = input.projectId;
+            task.orchestratorId = input.orchestratorId ?? null;
             task.projectName =
               this.inventory.projects.find((p) => p.id === input.projectId)
                 ?.name ?? "";
@@ -948,14 +960,61 @@ export class Workboard {
           await this.refine(input.taskId);
         } else if (input.action === "review") {
           await this.review(input.taskId, input.outcome, input.feedback);
-        } else if (input.action === "orchestrator") {
+        } else if (input.action === "orchestrator-defaults") {
           await this.store.update((data) => {
             data.orchestrator = orchestratorSchema.parse({
               ...data.orchestrator,
               ...input.orchestrator,
             });
           });
+        } else if (input.action === "orchestrator-save") {
+          const id = input.orchestrator.id ?? randomUUID();
+          const next = orchestratorConfigSchema.parse({
+            ...input.orchestrator,
+            id,
+          });
+          const created = !this.store.current.orchestrators.some(
+            (o) => o.id === id,
+          );
+          await this.store.update((data) => {
+            data.orchestrators = created
+              ? [...data.orchestrators, next]
+              : data.orchestrators.map((o) => (o.id === id ? next : o));
+          });
+          await this.log(id, "info", created ? "Created" : "Settings saved");
           await this.orchestrate();
+        } else if (input.action === "orchestrator-delete") {
+          this.orchestratorConfig(input.id);
+          await this.store.update((data) => {
+            data.orchestrators = data.orchestrators.filter(
+              (o) => o.id !== input.id,
+            );
+            delete data.orchestratorRuntime[input.id];
+            delete data.orchestratorLogs[input.id];
+            for (const task of data.tasks)
+              if (task.orchestratorId === input.id) task.orchestratorId = null;
+          });
+        } else if (input.action === "orchestrator-run") {
+          const config = this.orchestratorConfig(input.id);
+          await this.setRuntime(input.id, {
+            quota: config.batchSize,
+            started: 0,
+            runStartedAt: this.stamp(),
+          });
+          await this.log(
+            input.id,
+            "info",
+            `Run now: up to ${config.batchSize} tasks, ${config.maxConcurrent} at a time`,
+          );
+          await this.orchestrate();
+        } else if (input.action === "orchestrator-stop") {
+          this.orchestratorConfig(input.id);
+          await this.setRuntime(input.id, { quota: 0, runStartedAt: null });
+          await this.log(
+            input.id,
+            "info",
+            "Stopped: no new tasks start; running agents keep going",
+          );
         } else if (input.action === "settings") {
           await this.saveSettings(
             input.settings,
@@ -1016,8 +1075,11 @@ export class Workboard {
                     ?.name ?? "";
               }
               current.description = input.description;
+              if (input.orchestratorId !== undefined)
+                current.orchestratorId = input.orchestratorId;
               current.updatedAt = this.stamp(current.updatedAt);
             });
+            await this.orchestrate();
           } else if (input.action === "start") {
             if (!task.binding && task.workspaceId)
               throw new Error("Task already has a workspace");
@@ -1106,6 +1168,8 @@ export class Workboard {
                 current.lastStage = input.stage;
                 current.updatedAt = this.stamp(current.updatedAt);
               });
+              // A draft moved to Ready to start may be taken right away.
+              await this.orchestrate();
             }
           } else if (input.action === "archive-draft") {
             if (
@@ -1398,10 +1462,15 @@ export class Workboard {
       (p) => p.id === task.projectId,
     );
     if (!project) throw new Error("Choose a project for this task");
-    const settings = this.store.current.orchestrator;
+    const defaults = this.store.current.orchestrator;
+    // The chat uses the agent of the task's orchestrator, but always in the refinement mode.
+    const settings =
+      this.store.current.orchestrators.find(
+        (o) => o.id === task.orchestratorId,
+      ) ?? defaults;
     const agentId = await this.host.startAgentIn(project.directory, {
       provider: settings.provider,
-      modeId: settings.refineModeId,
+      modeId: defaults.refineModeId,
       thinkingOptionId: settings.thinkingOptionId,
       title: `Refine: ${task.title}`.slice(0, 200),
       prompt: refinementPrompt(task, settings.instructions),
@@ -1560,8 +1629,9 @@ export class Workboard {
     });
   }
   /**
-   * Follow the agents the orchestrator started, move finished tasks to review, and while
-   * playing start the next Backlog tasks up to the concurrency limit. Runs inside `serial`.
+   * Follow the agents the orchestrators started and move finished tasks to review. Then each
+   * orchestrator whose window is open, or whose run (Run now or a daily time) still has tasks to
+   * start, takes its Ready to start tasks up to its concurrency limit. Runs inside `serial`.
    */
   private async orchestrate(): Promise<void> {
     if (this.stopped || !this.connected) return;
@@ -1583,12 +1653,20 @@ export class Workboard {
       const agent = this.inventory.agents.find((a) => a.id === record.agentId);
       const elapsed = this.now() - Date.parse(record.startedAt);
       if (!agent) {
-        if (elapsed > 120_000)
+        if (elapsed > 120_000) {
           await this.setOrchestration(taskId, {
             status: "failed",
             finishedAt: this.stamp(),
             error: "The agent is gone",
           });
+          await this.log(
+            record.orchestratorId,
+            "error",
+            `"${task.title}": the agent is gone`,
+            taskId,
+            record.agentId,
+          );
+        }
         continue;
       }
       if (agent.activity === "running" || agent.activity === "waiting") {
@@ -1602,6 +1680,13 @@ export class Workboard {
           finishedAt: this.stamp(),
           error: "The agent stopped with an error",
         });
+        await this.log(
+          record.orchestratorId,
+          "error",
+          `"${task.title}": the agent stopped with an error`,
+          taskId,
+          record.agentId,
+        );
         continue;
       }
       // Idle before it was ever seen running means it may not have started yet.
@@ -1615,6 +1700,13 @@ export class Workboard {
       );
       const summary = await this.host.lastReply(record.agentId);
       if (summary) await this.setOrchestration(taskId, { summary });
+      await this.log(
+        record.orchestratorId,
+        "info",
+        `Finished "${task.title}"; ready to review`,
+        taskId,
+        record.agentId,
+      );
       if (
         review &&
         workspace &&
@@ -1627,119 +1719,293 @@ export class Workboard {
         }
       }
     }
-    const settings = this.store.current.orchestrator;
-    if (!settings.running) return;
-    const busy = Object.values(this.store.current.orchestrations).filter(
-      (record) => record.status === "starting" || record.status === "running",
-    ).length;
-    let slots = settings.maxConcurrent - busy;
-    if (slots <= 0) return;
     const stage = defaultStartWorkGroup(
       groups,
       this.store.current.settings.defaultStartWorkGroup,
     );
     if (!stage) return;
     const board = this.snapshot();
-    const candidates = orderedGroups(this.store.current.settings)
+    const ready = orderedGroups(this.store.current.settings)
       .filter((group) => group.kind === "ready")
       .flatMap((group) =>
         cardsForStage(board.cards, group.id, board.cardOrderByStage),
       )
-      .filter((card) => {
-        const record = this.store.current.orchestrations[card.id];
-        if (card.binding || card.archived) return false;
-        // A task sent back from review keeps its workspace and waits here.
-        if (card.workspaceId)
-          return (
-            record?.status === "queued" ||
-            (record?.status === "failed" &&
-              record.feedback !== null &&
-              Date.parse(card.updatedAt) > Date.parse(record.finishedAt ?? ""))
-          );
-        // A failed start is retried only after the task was edited.
-        return (
-          !record ||
-          (record.status === "failed" &&
-            !record.workspaceId &&
-            Date.parse(card.updatedAt) > Date.parse(record.finishedAt ?? ""))
-        );
-      });
+      .filter((card) => this.eligible(card));
+    const taken = new Set<string>();
     let started = false;
-    for (const card of candidates) {
-      if (slots <= 0 || this.stopped) break;
-      if (card.workspaceId) {
+    for (const config of [...this.store.current.orchestrators]) {
+      if (this.stopped) break;
+      if (config.enabled) {
+        const due = dueTrigger(
+          config.schedule,
+          this.runtime(config.id).lastTriggerAt,
+          this.now(),
+        );
+        if (due !== null) {
+          await this.setRuntime(config.id, {
+            quota: config.batchSize,
+            started: 0,
+            runStartedAt: this.stamp(),
+            lastTriggerAt: new Date(due).toISOString(),
+          });
+          await this.log(
+            config.id,
+            "info",
+            `Scheduled run: up to ${config.batchSize} tasks`,
+          );
+        }
+      }
+      const open = config.enabled && windowOpen(config.schedule, this.now());
+      const quota = this.runtime(config.id).quota;
+      if (quota <= 0 && !open) continue;
+      const mine = ready.filter(
+        (card) => !taken.has(card.id) && this.owns(config, card),
+      );
+      if (!mine.length) {
+        if (quota > 0)
+          await this.endRun(config.id, "nothing left in Ready to start");
+        continue;
+      }
+      let slots = config.maxConcurrent - this.runningFor(config.id);
+      for (const card of mine) {
+        if (slots <= 0 || this.stopped) break;
+        const runtime = this.runtime(config.id);
+        if (!open && runtime.quota <= 0) break;
+        taken.add(card.id);
+        const outcome = await this.startCard(config, card, stage);
+        if (outcome === "skipped") continue;
         slots--;
         started = true;
-        await this.continueTask(card.id, stage);
-        continue;
-      }
-      const project = this.inventory.projects.find(
-        (p) => p.id === card.projectId,
-      );
-      if (!project) {
-        await this.setOrchestration(card.id, {
-          status: "failed",
-          startedAt: this.stamp(),
-          finishedAt: this.stamp(),
-          error: "Choose a project for this task",
-        });
-        continue;
-      }
-      slots--;
-      started = true;
-      await this.store.update((data) => {
-        delete data.orchestrations[card.id];
-      });
-      await this.setOrchestration(card.id, { status: "starting" });
-      try {
-        const source =
-          project.isGit && settings.useWorktree
-            ? ({ kind: "worktree", projectId: project.id } as const)
-            : ({
-                kind: "directory",
-                path: project.directory,
-                projectId: project.id,
-              } as const);
-        await this.store.update((data) => {
-          data.tasks.find((t) => t.id === card.id)!.binding = {
-            operationId: randomUUID(),
-            target: { kind: "new", source },
-            workspaceId: null,
-            stage,
-          };
-        });
-        await this.bind(card.id);
-        const task = this.task(card.id);
-        if (!task.workspaceId) throw new Error("No workspace was created");
-        await this.setOrchestration(card.id, {
-          workspaceId: task.workspaceId,
-        });
-        const agentId = await this.host.startAgent(task.workspaceId, {
-          provider: settings.provider,
-          modeId: settings.modeId,
-          thinkingOptionId: settings.thinkingOptionId,
-          title: task.title,
-          prompt: orchestratorPrompt(task, settings.instructions),
-        });
-        await this.setOrchestration(card.id, {
-          status: "running",
-          agentId,
-          startedAt: this.stamp(),
-        });
-      } catch (error) {
-        await this.setOrchestration(card.id, {
-          status: "failed",
-          finishedAt: this.stamp(),
-          error: message(error),
-        });
+        if (runtime.quota > 0) {
+          await this.setRuntime(config.id, {
+            quota: runtime.quota - 1,
+            started: runtime.started + 1,
+          });
+          if (runtime.quota === 1) await this.endRun(config.id, "batch done");
+        }
       }
     }
     if (started) await this.reconcile();
   }
+  /** Whether a Ready to start card may be started (or continued) now. */
+  private eligible(card: Card): boolean {
+    const record = this.store.current.orchestrations[card.id];
+    if (card.binding || card.archived) return false;
+    // A task sent back from review keeps its workspace and waits here.
+    if (card.workspaceId)
+      return (
+        record?.status === "queued" ||
+        (record?.status === "failed" &&
+          record.feedback !== null &&
+          Date.parse(card.updatedAt) > Date.parse(record.finishedAt ?? ""))
+      );
+    // A failed start is retried only after the task was edited.
+    return (
+      !record ||
+      (record.status === "failed" &&
+        !record.workspaceId &&
+        Date.parse(card.updatedAt) > Date.parse(record.finishedAt ?? ""))
+    );
+  }
+  /**
+   * A task chosen for an orchestrator belongs to it; one sent back from review stays with the
+   * orchestrator that ran it; any other task goes to the first orchestrator of its project.
+   */
+  private owns(
+    config: OrchestratorConfig,
+    task: Pick<Task, "id" | "orchestratorId" | "projectId">,
+    data: Data = this.store.current,
+  ): boolean {
+    const exists = (id: string | null | undefined): id is string =>
+      !!id && data.orchestrators.some((o) => o.id === id);
+    if (exists(task.orchestratorId)) return task.orchestratorId === config.id;
+    const ran = data.orchestrations[task.id]?.orchestratorId;
+    if (exists(ran)) return ran === config.id;
+    return config.projectId === null || config.projectId === task.projectId;
+  }
+  private runningFor(id: string, data: Data = this.store.current): number {
+    return Object.values(data.orchestrations).filter(
+      (record) =>
+        record.orchestratorId === id &&
+        (record.status === "starting" || record.status === "running"),
+    ).length;
+  }
+  private orchestratorConfig(id: string): OrchestratorConfig {
+    const config = this.store.current.orchestrators.find((o) => o.id === id);
+    if (!config) throw new Error("Orchestrator no longer exists");
+    return config;
+  }
+  private runtime(
+    id: string,
+    data: Data = this.store.current,
+  ): OrchestratorRuntime {
+    return (
+      data.orchestratorRuntime[id] ?? {
+        quota: 0,
+        started: 0,
+        runStartedAt: null,
+        lastTriggerAt: null,
+      }
+    );
+  }
+  private setRuntime(
+    id: string,
+    change: Partial<OrchestratorRuntime>,
+  ): Promise<void> {
+    return this.store.update((data) => {
+      data.orchestratorRuntime[id] = { ...this.runtime(id, data), ...change };
+    });
+  }
+  private async endRun(id: string, why: string): Promise<void> {
+    const runtime = this.runtime(id);
+    await this.setRuntime(id, { quota: 0, runStartedAt: null });
+    await this.log(
+      id,
+      "info",
+      `Run finished (${why}): ${runtime.started} started`,
+    );
+  }
+  private log(
+    id: string | null | undefined,
+    level: "info" | "warn" | "error",
+    text: string,
+    taskId: string | null = null,
+    agentId: string | null = null,
+  ): Promise<void> {
+    if (!id) return Promise.resolve();
+    return this.store.update((data) => {
+      if (!data.orchestrators.some((o) => o.id === id)) return;
+      const entries = data.orchestratorLogs[id] ?? [];
+      entries.push({ at: this.stamp(), level, text, taskId, agentId });
+      data.orchestratorLogs[id] = entries.slice(-ORCHESTRATOR_LOG_LIMIT);
+    });
+  }
+  private orchestratorStatus(config: OrchestratorConfig, data: Data) {
+    const readyStages = new Set(
+      data.settings.groups
+        .filter((group) => group.kind === "ready")
+        .map((group) => group.id),
+    );
+    const waiting = data.tasks.filter(
+      (task) =>
+        !task.archived &&
+        readyStages.has(task.workspaceId ? task.lastStage : task.draftStage) &&
+        this.owns(config, task, data),
+    ).length;
+    const next = config.enabled ? nextRunAt(config.schedule, this.now()) : null;
+    return {
+      active:
+        this.runtime(config.id, data).quota > 0 ||
+        (config.enabled && windowOpen(config.schedule, this.now())),
+      running: this.runningFor(config.id, data),
+      waiting,
+      nextRunAt: next === null ? null : new Date(next).toISOString(),
+    };
+  }
+  /** Start one Ready to start card for an orchestrator. "skipped" leaves its slot free. */
+  private async startCard(
+    config: OrchestratorConfig,
+    card: Card,
+    stage: Stage,
+  ): Promise<"started" | "failed" | "skipped"> {
+    if (card.workspaceId) return this.continueTask(card.id, stage, config);
+    const project = this.inventory.projects.find(
+      (p) => p.id === (card.projectId ?? config.projectId),
+    );
+    if (!project) {
+      await this.setOrchestration(card.id, {
+        status: "failed",
+        startedAt: this.stamp(),
+        finishedAt: this.stamp(),
+        error: "Choose a project for this task",
+        orchestratorId: config.id,
+      });
+      await this.log(
+        config.id,
+        "warn",
+        `Skipped "${card.title}": choose a project for it`,
+        card.id,
+      );
+      return "skipped";
+    }
+    await this.store.update((data) => {
+      delete data.orchestrations[card.id];
+    });
+    await this.setOrchestration(card.id, {
+      status: "starting",
+      orchestratorId: config.id,
+    });
+    try {
+      const source =
+        project.isGit && config.useWorktree
+          ? ({ kind: "worktree", projectId: project.id } as const)
+          : ({
+              kind: "directory",
+              path: project.directory,
+              projectId: project.id,
+            } as const);
+      await this.store.update((data) => {
+        const task = data.tasks.find((t) => t.id === card.id)!;
+        task.binding = {
+          operationId: randomUUID(),
+          target: { kind: "new", source },
+          workspaceId: null,
+          stage,
+        };
+        // A task without a project takes the orchestrator's.
+        if (!task.projectId) {
+          task.projectId = project.id;
+          task.projectName = project.name;
+        }
+      });
+      await this.bind(card.id);
+      const task = this.task(card.id);
+      if (!task.workspaceId) throw new Error("No workspace was created");
+      await this.setOrchestration(card.id, {
+        workspaceId: task.workspaceId,
+      });
+      const agentId = await this.host.startAgent(task.workspaceId, {
+        provider: config.provider,
+        modeId: config.modeId,
+        thinkingOptionId: config.thinkingOptionId,
+        title: task.title,
+        prompt: orchestratorPrompt(task, config.instructions),
+      });
+      await this.setOrchestration(card.id, {
+        status: "running",
+        agentId,
+        startedAt: this.stamp(),
+      });
+      await this.log(
+        config.id,
+        "info",
+        `Started "${task.title}"`,
+        card.id,
+        agentId,
+      );
+      return "started";
+    } catch (error) {
+      await this.setOrchestration(card.id, {
+        status: "failed",
+        finishedAt: this.stamp(),
+        error: message(error),
+      });
+      await this.log(
+        config.id,
+        "error",
+        `Could not start "${card.title}": ${message(error)}`,
+        card.id,
+      );
+      return "failed";
+    }
+  }
   /** Hand the reviewer's feedback to the task's agent, or to a new one when it is gone. */
-  private async continueTask(taskId: string, stage: Stage): Promise<void> {
+  private async continueTask(
+    taskId: string,
+    stage: Stage,
+    settings: OrchestratorConfig,
+  ): Promise<"started" | "failed"> {
     const record = this.store.current.orchestrations[taskId]!;
-    const settings = this.store.current.orchestrator;
     const feedback = record.feedback ?? "";
     try {
       await this.moveBound(taskId, stage);
@@ -1767,13 +2033,29 @@ export class Workboard {
         summary: null,
         feedback: null,
         error: null,
+        orchestratorId: settings.id,
       });
+      await this.log(
+        settings.id,
+        "info",
+        `Continued "${task.title}" with the review feedback`,
+        taskId,
+        agentId,
+      );
+      return "started";
     } catch (error) {
       await this.setOrchestration(taskId, {
         status: "failed",
         finishedAt: this.stamp(),
         error: message(error),
       });
+      await this.log(
+        settings.id,
+        "error",
+        `Could not continue the task: ${message(error)}`,
+        taskId,
+      );
+      return "failed";
     }
   }
   private issue(id: string, issue: string | null): Promise<void> {

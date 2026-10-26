@@ -3234,20 +3234,39 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     ticket between `<ticket>` tags; when its turn ends the plugin replaces the draft's title and
     description with it. The card shows the refinement state; moving it to Ready to start is
     still the user's call. Reopening uses the same chat while its agent is not archived.
-  - **Orchestrator:** a Play/Pause button in the board toolbar, showing `running/limit`. While
-    playing, it takes Ready to start tasks from the top of the column (drag to reorder), creates a
-    workspace in the task's project (a worktree for git projects), moves the task to In progress
-    and starts an agent whose first message is the title and description. When the agent's turn
-    ends, the task moves to Ready to review with the agent's last reply, and the next Ready to
-    start task starts. Defaults: 2 at a time, `claude/claude-opus-5-5`, mode `bypassPermissions`,
-    thinking `medium` (stored in `orchestrator`, no UI yet). A task without a project, or whose
-    start fails, shows the error on its card and is retried after it is edited. Pause only stops
-    new starts. Start work on a card still works by hand, from any draft group.
+  - **Orchestrators:** the board screen has tabs: **Board**, **Orchestrators** (the admin
+    panel), and one closable tab per opened orchestrator. Create as many as needed. Each one has a
+    name, a project (or all projects), a schedule, how many tasks at a time, how many tasks per
+    run, the agent (`provider/model`, mode, thinking), worktree or project folder, and
+    instructions prepended to every task prompt. Schedules (daemon host's local time):
+    **Manual** (only **Run now**), **Time window** (days plus from/to; keeps taking tasks while
+    open, an end before the start crosses midnight), **Daily times** (days plus `HH:MM` list; each
+    time starts one run, a trigger missed by more than an hour is skipped). A run (Run now or a
+    daily time) takes up to its batch, as many at a time as its limit allows, and ends when the
+    batch is used or Ready to start has nothing for it; **Stop** ends it. Disabling an orchestrator
+    stops its schedule; Run now still works. There is no global Play any more.
+  - **Which orchestrator takes a task:** the one chosen in the task editor (a chip row under the
+    projects); a task sent back from review stays with the one that ran it; otherwise the first
+    orchestrator in the list whose project matches (or that covers all projects). Tasks are taken
+    from the top of Ready to start. Moving a task there, or editing it, triggers a pass at once;
+    otherwise passes run with the minute refresh. A task without a project takes its
+    orchestrator's. A task with no project at all, or whose start fails, shows the error on its
+    card and is retried after it is edited. Deleting an orchestrator sets its tasks back to
+    automatic.
+  - **Starting a task:** a workspace in the task's project (a worktree for git projects), the
+    task moves to In progress, and an agent starts whose first message is the title and
+    description. When the agent's turn ends the task moves to Ready to review with the agent's
+    last reply. The card names the orchestrator and has an **Open agent** link that opens the
+    agent's chat, like clicking it in the sidebar.
+  - **Orchestrator tab:** the settings form (Save), Run now / Stop, Delete, the tasks it runs now
+    with Open agent links, and its log (newest first, last 100 entries: runs, starts, finishes,
+    skips and errors, each with an Open agent link when it has an agent). Start work on a card
+    still works by hand, from any draft group.
   - **Review:** a Ready to review card asks like an agent's question: the agent's last reply
     (Show more past six lines), then **Done** and **Continue task**. Done moves it to the first
     Done group. Continue task opens a feedback field; **Send back** moves the task, workspace and
-    all, to the first Ready to start group with status `queued` and the feedback. The
-    orchestrator's next pass (right away when it is playing; otherwise the first pass after Play)
+    all, to the first Ready to start group with status `queued` and the feedback. The next pass of
+    the orchestrator that ran it (right away when it is active; otherwise its next run or window)
     sends the feedback to the same agent, or starts a new one in the workspace with the task and
     the feedback when the agent is gone, and moves the task to In progress. A queued task takes a
     slot like a new one, in column order.
@@ -3268,8 +3287,10 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **Re-apply:** Plugin: none. Sidebar: in the header rows, split the visible plugin items with
   those ids out of the Show more list and render them before the toggle.
 - **Tests:** `tests/power-workboard.test.ts` (no import, tracking, Ready to start migration,
-  orchestrator, pause, project retry, refinement and `/write-ticket`, review Done, Continue while
-  playing and while paused). The upstream Workboard suites that assume import and the old groups
+  orchestrator limits, disable, project retry, Run now batches, daily time and Stop, task
+  assignment and delete, refinement and `/write-ticket`, review Done, Continue while active and
+  while disabled) and `tests/schedule.test.ts` (windows across midnight, daily triggers, next
+  run). The upstream Workboard suites that assume import and the old groups
   were moved to `tests/upstream-workboard/` and are not run. The update script runs
   `tsc` and `vitest` in the plugin folder.
 - **Setup:** automatic (see On by default). By hand:

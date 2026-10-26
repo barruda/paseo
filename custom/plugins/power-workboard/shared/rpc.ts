@@ -2,6 +2,7 @@ import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 import {
   boardSchema,
+  orchestratorConfigSchema,
   orchestratorSchema,
   groupOrderSchema,
   groupsSchema,
@@ -23,6 +24,7 @@ export const mutationSchema = z.discriminatedUnion("action", [
     title: z.string().trim().min(1).max(1000),
     description: z.string().max(50000).default(""),
     projectId: z.string().nullable().default(null),
+    orchestratorId: z.string().nullable().optional(),
     stage: stageSchema.optional(),
   }),
   z.object({
@@ -32,6 +34,7 @@ export const mutationSchema = z.discriminatedUnion("action", [
     title: z.string().trim().min(1).max(1000),
     description: z.string().max(50000),
     projectId: z.string().nullable(),
+    orchestratorId: z.string().nullable().optional(),
   }),
   z.object({ action: z.literal("start"), ...startSchema.shape }),
   z.object({
@@ -89,9 +92,19 @@ export const mutationSchema = z.discriminatedUnion("action", [
     feedback: z.string().max(50000).default(""),
   }),
   z.object({
-    action: z.literal("orchestrator"),
+    action: z.literal("orchestrator-defaults"),
     orchestrator: orchestratorSchema.partial(),
   }),
+  z.object({
+    action: z.literal("orchestrator-save"),
+    // No id creates a new orchestrator.
+    orchestrator: orchestratorConfigSchema.extend({
+      id: z.string().min(1).optional(),
+    }),
+  }),
+  z.object({ action: z.literal("orchestrator-delete"), id: z.string() }),
+  z.object({ action: z.literal("orchestrator-run"), id: z.string() }),
+  z.object({ action: z.literal("orchestrator-stop"), id: z.string() }),
   z.object({
     action: z.literal("settings"),
     revision: z.number(),

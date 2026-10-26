@@ -64,6 +64,12 @@ import {
   type BoardFilters,
 } from "./filters";
 import { FilterPanel } from "./FilterPanel";
+import {
+  newOrchestrator,
+  OrchestratorsPanel,
+  OrchestratorTab,
+  WorkboardTabs,
+} from "./Orchestrators";
 import { QuickCreate } from "./QuickCreate";
 import { HintButton, HintProvider } from "./Hint";
 import { usePaseoLanguage } from "./paseo-language";
@@ -83,6 +89,7 @@ type DraftForm = {
   title: string;
   description: string;
   projectId: string | null;
+  orchestratorId?: string | null;
 } | null;
 type StartForm = { card: Card; stage?: Stage } | null;
 type MoveUndo = {
@@ -119,6 +126,9 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const cache = useQueryClient();
   const toast = useToast();
   const [page, setPage] = useState<Page>(props.initialPage ?? "board");
+  // "board", "orchestrators", or the id of an orchestrator opened in its own tab.
+  const [tab, setTab] = useState("board");
+  const [openOrchestrators, setOpenOrchestrators] = useState<string[]>([]);
   const [filters, setFilters] = useState(() => loadBoardFilters(props.host.id));
   const [filtersOpen, setFiltersOpen] = useState(false);
   const storageWarned = useRef(false);
@@ -310,6 +320,78 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   );
   const startPending =
     !!starting && pendingMutationIds.has(`start:${starting.card.id}`);
+  const openAgent = (agentId: string) => {
+    if (!props.navigation) {
+      toast.error(t.navigationUnavailable);
+      return;
+    }
+    props.navigation.openAgent({ agentId, serverId: board.serverId });
+  };
+  const openOrchestrator = (id: string) => {
+    setOpenOrchestrators((open) => (open.includes(id) ? open : [...open, id]));
+    setTab(id);
+  };
+  const closeOrchestrator = (id: string) => {
+    setOpenOrchestrators((open) => open.filter((item) => item !== id));
+    if (tab === id) setTab("orchestrators");
+  };
+  const tabs = (
+    <WorkboardTabs
+      board={board}
+      t={t}
+      theme={props.theme}
+      tab={tab}
+      open={openOrchestrators.filter((id) =>
+        board.orchestrators.some((o) => o.id === id),
+      )}
+      onSelect={setTab}
+      onClose={closeOrchestrator}
+    />
+  );
+  if (page === "board" && tab !== "board") {
+    const shared = {
+      board,
+      t,
+      theme: props.theme,
+      disabled: writesDisabled,
+      mutate,
+      onOpenAgent: openAgent,
+    };
+    return (
+      <View
+        style={[
+          styles.screen,
+          { backgroundColor: props.theme.colors.surface0 },
+        ]}
+      >
+        {tabs}
+        {tab === "orchestrators" ? (
+          <OrchestratorsPanel
+            {...shared}
+            onOpen={openOrchestrator}
+            onCreate={async () => {
+              const before = new Set(board.orchestrators.map((o) => o.id));
+              const next = await mutate({
+                action: "orchestrator-save",
+                orchestrator: newOrchestrator(board, t),
+              });
+              const created = next?.orchestrators.find(
+                (o) => !before.has(o.id),
+              );
+              if (created) openOrchestrator(created.id);
+            }}
+          />
+        ) : (
+          <OrchestratorTab
+            key={tab}
+            {...shared}
+            id={tab}
+            onDeleted={() => closeOrchestrator(tab)}
+          />
+        )}
+      </View>
+    );
+  }
   if (page === "archive")
     return (
       <ArchivePage
@@ -504,6 +586,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     <View
       style={[styles.screen, { backgroundColor: props.theme.colors.surface0 }]}
     >
+      {tabs}
       <View
         style={[styles.toolbar, { borderColor: props.theme.colors.border }]}
       >
@@ -546,18 +629,6 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             t={t}
             theme={props.theme}
             compact={props.layout.compact}
-          />
-          <OrchestratorButton
-            board={board}
-            t={t}
-            theme={props.theme}
-            disabled={writesDisabled || pendingMutationIds.has("orchestrator")}
-            onToggle={() =>
-              void mutate({
-                action: "orchestrator",
-                orchestrator: { running: !board.orchestrator.running },
-              })
-            }
           />
         </View>
         <View
@@ -978,9 +1049,11 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                 title: card.title,
                 description: card.description,
                 projectId: card.projectId,
+                orchestratorId: card.orchestratorId,
               })
             }
             onStart={() => setStarting({ card })}
+            onOpenAgent={openAgent}
             onRefine={async () => {
               const next = await mutate({ action: "refine", taskId: card.id });
               const agentId = next?.refinements[card.id]?.agentId;
@@ -1001,7 +1074,11 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                 outcome,
                 feedback,
               });
-              if (next && outcome === "continue" && !next.orchestrator.running)
+              if (
+                next &&
+                outcome === "continue" &&
+                next.orchestrations[card.id]?.status === "queued"
+              )
                 toast.show(t.review.queued);
               return !!next;
             }}
@@ -1054,11 +1131,13 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                   title: form.title,
                   description: form.description,
                   projectId: form.projectId,
+                  orchestratorId: form.orchestratorId ?? null,
                 })
               : mutate({
                   action: "create",
                   title: form.title,
                   description: form.description,
+                  orchestratorId: form.orchestratorId ?? null,
                   projectId: form.projectId,
                 })
           ).then((next) => {
@@ -1417,81 +1496,19 @@ function ProjectPicker({
     </View>
   );
 }
-/** Play/Pause for the orchestrator, with how many tasks it is running. */
-function OrchestratorButton({
-  board,
-  t,
-  theme,
-  disabled,
-  onToggle,
-}: {
-  board: Board;
-  t: ReturnType<typeof strings>;
-  theme: PluginSurfaceProps["theme"];
-  disabled: boolean;
-  onToggle(): void;
-}) {
-  const running = board.orchestrator.running;
-  const active = Object.values(board.orchestrations).filter(
-    (record) => record.status === "starting" || record.status === "running",
-  ).length;
-  const label = `${t.orchestrator} ${active}/${board.orchestrator.maxConcurrent}`;
-  return (
-    <HintButton
-      hint={running ? t.orchestratorPause : t.orchestratorPlay}
-      accessibilityRole="button"
-      accessibilityLabel={`${label} · ${running ? t.orchestratorPause : t.orchestratorPlay}`}
-      {...toggleButtonState(running)}
-      disabled={disabled}
-      onPress={onToggle}
-      style={({ pressed }) => [
-        styles.toolbarButton,
-        {
-          borderWidth: 1,
-          borderColor: running ? theme.colors.accent : theme.colors.border,
-          backgroundColor: running
-            ? theme.colors.accent
-            : pressed
-              ? theme.colors.surface2
-              : theme.colors.surface1,
-          opacity: disabled ? 0.5 : 1,
-        },
-      ]}
-    >
-      <Icon
-        name={running ? "Pause" : "Play"}
-        size={16}
-        color={
-          running ? theme.colors.accentForeground : theme.colors.foreground
-        }
-      />
-      <Text
-        style={[
-          styles.controlText,
-          {
-            color: running
-              ? theme.colors.accentForeground
-              : theme.colors.foreground,
-          },
-        ]}
-      >
-        {label}
-      </Text>
-    </HintButton>
-  );
-}
-
 /** What the orchestrator is doing with this card, if it touched it. */
 function OrchestrationLine({
   card,
   board,
   t,
   theme,
+  onOpenAgent,
 }: {
   card: Card;
   board: Board;
   t: ReturnType<typeof strings>;
   theme: PluginSurfaceProps["theme"];
+  onOpenAgent(agentId: string): void;
 }) {
   const record = board.orchestrations[card.id];
   const refinement = board.refinements[card.id];
@@ -1519,15 +1536,40 @@ function OrchestrationLine({
       : record.status === "finished"
         ? theme.colors.foregroundMuted
         : theme.colors.accent;
-  const text = `${t.orchestrator}: ${t.orchestrationStatus[record.status]}${
+  const owner =
+    board.orchestrators.find((o) => o.id === record.orchestratorId)?.name ??
+    t.orchestrator;
+  const text = `${owner}: ${t.orchestrationStatus[record.status]}${
     record.error ? ` · ${record.error}` : ""
   }`;
+  const agentId = record.agentId;
   return (
     <View style={styles.cardFooter}>
       <Icon name="Bot" size={13} color={color} />
-      <Text style={[styles.cardMeta, { color }]} numberOfLines={2}>
+      <Text style={[styles.cardMeta, { color, flex: 1 }]} numberOfLines={2}>
         {text}
       </Text>
+      {agentId && (
+        <HintButton
+          hint={t.openAgentHint}
+          accessibilityRole="link"
+          accessibilityLabel={t.openAgent}
+          onPress={() => onOpenAgent(agentId)}
+          style={({ pressed }) => [
+            styles.iconAction,
+            pressed && { backgroundColor: theme.colors.surface2 },
+          ]}
+        >
+          <Text
+            style={[
+              styles.cardMeta,
+              { color: theme.colors.accent, textDecorationLine: "underline" },
+            ]}
+          >
+            {t.openAgent}
+          </Text>
+        </HintButton>
+      )}
     </View>
   );
 }
@@ -1747,6 +1789,7 @@ export function TaskCard({
   onOpen,
   onEdit,
   onStart,
+  onOpenAgent,
   onRefine,
   onReview,
   onStatus,
@@ -1766,6 +1809,7 @@ export function TaskCard({
   onOpen(): void;
   onEdit(): void;
   onStart(): void;
+  onOpenAgent(agentId: string): void;
   onRefine(): void;
   onReview(outcome: "done" | "continue", feedback: string): Promise<boolean>;
   onStatus(): void;
@@ -1976,7 +2020,13 @@ export function TaskCard({
           onReview={onReview}
         />
       ) : (
-        <OrchestrationLine card={card} board={board} t={t} theme={theme} />
+        <OrchestrationLine
+          card={card}
+          board={board}
+          t={t}
+          theme={theme}
+          onOpenAgent={onOpenAgent}
+        />
       )}
       <View style={styles.cardBottom}>
         {isDraft ? (
@@ -2349,6 +2399,7 @@ function TaskModal({
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
+  const [orchestratorId, setOrchestratorId] = useState<string | null>(null);
   // CUSTOM(workboard-images): pasted images upload to the daemon and land in the description as
   // Markdown references. Saving waits for uploads so a reference is never lost.
   const [uploads, setUploads] = useState(0);
@@ -2389,6 +2440,7 @@ function TaskModal({
       setTitle(form.title);
       setDescription(form.description);
       setProjectId(form.projectId);
+      setOrchestratorId(form.orchestratorId ?? null);
       setImageError(null);
     }
   }, [form]);
@@ -2500,6 +2552,43 @@ function TaskModal({
             </Pressable>
           ))}
         </ScrollView>
+        {board.orchestrators.length > 0 && (
+          <ScrollView
+            horizontal
+            style={styles.tabScroll}
+            contentContainerStyle={styles.projectChoices}
+          >
+            {[
+              { id: null, name: t.orchestratorAutomatic },
+              ...board.orchestrators,
+            ].map((item) => (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${t.orchestrator}: ${item.name}`}
+                {...toggleButtonState(orchestratorId === item.id)}
+                key={item.id ?? "automatic"}
+                disabled={disabled}
+                onPress={() => setOrchestratorId(item.id)}
+                style={[
+                  styles.chip,
+                  disabled && styles.disabledControl,
+                  orchestratorId === item.id && {
+                    backgroundColor: theme.colors.surface2,
+                  },
+                ]}
+              >
+                <Icon
+                  name={item.id ? "Bot" : "Shuffle"}
+                  size={13}
+                  color={theme.colors.foregroundMuted}
+                />
+                <Text style={{ color: theme.colors.foreground }}>
+                  {item.name}
+                </Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        )}
         <View style={styles.modalActions}>
           <Pressable
             accessibilityRole="button"
@@ -2525,6 +2614,7 @@ function TaskModal({
                 title: linked ? form.task!.title : title.trim(),
                 description,
                 projectId,
+                orchestratorId,
               })
             }
           >

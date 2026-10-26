@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { scheduleSchema } from "./schedule";
 
 export const STAGES = [
   "inbox",
@@ -91,7 +92,7 @@ export function nextGroupColor(groups: readonly Group[]): GroupColor {
     counts.get(color)! < counts.get(least)! ? color : least,
   );
 }
-/** Backlog feeds the orchestrator; it moves a task to In progress and then to Ready to review. */
+/** Ready to start feeds the orchestrators; they move a task to In progress and then to Ready to review. */
 const DEFAULT_GROUP_NAMES: Partial<Record<StageKind, string>> = {
   todo: "Backlog",
   ready: "Ready to start",
@@ -384,6 +385,8 @@ export const taskSchema = z.object({
     .default([]),
   issue: z.string().nullable(),
   archived: archiveSchema.nullable(),
+  /** The orchestrator that should run this task; null lets any one for its project take it. */
+  orchestratorId: z.string().nullable().default(null),
   binding: z
     .object({
       operationId: z.string(),
@@ -408,11 +411,12 @@ export const orchestrationSchema = z.object({
   summary: z.string().nullable().default(null),
   /** What the reviewer asked for when they sent the task back to Ready to start. */
   feedback: z.string().nullable().default(null),
+  /** The orchestrator that started it; its log and limits own this run. */
+  orchestratorId: z.string().nullable().default(null),
 });
 export type Orchestration = z.infer<typeof orchestrationSchema>;
+/** Agent settings new orchestrators start from; refinement chats use them too. */
 export const orchestratorSchema = z.object({
-  running: z.boolean().default(false),
-  maxConcurrent: z.number().int().min(1).max(10).default(2),
   /** Provider and model in `provider/model` format. */
   provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
   modeId: z.string().trim().min(1).nullable().default("bypassPermissions"),
@@ -424,6 +428,49 @@ export const orchestratorSchema = z.object({
   refineModeId: z.string().trim().min(1).nullable().default("default"),
 });
 export type Orchestrator = z.infer<typeof orchestratorSchema>;
+/** One orchestrator: which tasks it takes, when, how many, and with which agent. */
+export const orchestratorConfigSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).max(80),
+  /** null takes unassigned tasks of any project. */
+  projectId: z.string().nullable().default(null),
+  /** Off: its schedule does not fire; Run now still works. */
+  enabled: z.boolean().default(true),
+  schedule: scheduleSchema.default({ kind: "manual" }),
+  maxConcurrent: z.number().int().min(1).max(10).default(2),
+  /** Tasks one run (Run now or a daily time) takes in all. */
+  batchSize: z.number().int().min(1).max(50).default(5),
+  provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
+  modeId: z.string().trim().min(1).nullable().default("bypassPermissions"),
+  thinkingOptionId: z.string().trim().min(1).nullable().default("medium"),
+  useWorktree: z.boolean().default(true),
+  instructions: z.string().max(20000).default(""),
+});
+export type OrchestratorConfig = z.infer<typeof orchestratorConfigSchema>;
+/** What a run still may start, and when the schedule last fired. */
+export const orchestratorRuntimeSchema = z.object({
+  quota: z.number().int().min(0).default(0),
+  started: z.number().int().min(0).default(0),
+  runStartedAt: z.string().nullable().default(null),
+  lastTriggerAt: z.string().nullable().default(null),
+});
+export type OrchestratorRuntime = z.infer<typeof orchestratorRuntimeSchema>;
+export const ORCHESTRATOR_LOG_LIMIT = 100;
+export const orchestratorLogEntrySchema = z.object({
+  at: z.string(),
+  level: z.enum(["info", "warn", "error"]),
+  text: z.string(),
+  taskId: z.string().nullable().default(null),
+  agentId: z.string().nullable().default(null),
+});
+export type OrchestratorLogEntry = z.infer<typeof orchestratorLogEntrySchema>;
+/** Computed on each snapshot for the panel. */
+export const orchestratorStatusSchema = z.object({
+  active: z.boolean(),
+  running: z.number(),
+  waiting: z.number(),
+  nextRunAt: z.string().nullable(),
+});
 /** A chat with an agent that refines a draft before it is ready to start. */
 export const refinementSchema = z.object({
   agentId: z.string(),
@@ -451,6 +498,13 @@ export const dataSchema = z
     ),
     orchestrations: z.record(z.string(), orchestrationSchema).default({}),
     refinements: z.record(z.string(), refinementSchema).default({}),
+    orchestrators: z.array(orchestratorConfigSchema).default([]),
+    orchestratorRuntime: z
+      .record(z.string(), orchestratorRuntimeSchema)
+      .default({}),
+    orchestratorLogs: z
+      .record(z.string(), z.array(orchestratorLogEntrySchema))
+      .default({}),
   })
   .superRefine((data, context) => {
     const ids = new Set<string>();
@@ -533,6 +587,16 @@ export const boardSchema = z.object({
   orchestrator: orchestratorSchema.default(() => orchestratorSchema.parse({})),
   orchestrations: z.record(z.string(), orchestrationSchema).default({}),
   refinements: z.record(z.string(), refinementSchema).default({}),
+  orchestrators: z.array(orchestratorConfigSchema).default([]),
+  orchestratorRuntime: z
+    .record(z.string(), orchestratorRuntimeSchema)
+    .default({}),
+  orchestratorLogs: z
+    .record(z.string(), z.array(orchestratorLogEntrySchema))
+    .default({}),
+  orchestratorStatus: z
+    .record(z.string(), orchestratorStatusSchema)
+    .default({}),
   projects: z.array(
     z.object({
       id: z.string(),
@@ -571,6 +635,7 @@ export function newTask(
     mergedDrafts: [],
     issue: null,
     archived: null,
+    orchestratorId: null,
     binding: null,
   };
 }

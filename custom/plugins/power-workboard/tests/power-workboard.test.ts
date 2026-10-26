@@ -1,6 +1,10 @@
 import { expect, it } from "vitest";
 import { Workboard } from "../server/workboard";
-import { DEFAULT_GROUPS, settingsSchema } from "../shared/model";
+import {
+  DEFAULT_GROUPS,
+  orchestratorConfigSchema,
+  settingsSchema,
+} from "../shared/model";
 import { fixture, workspace } from "./fixtures";
 
 const project = {
@@ -21,6 +25,31 @@ const stageOf = (board: Workboard, title: string) =>
   board.snapshot().cards.find((card) => card.title === title)?.stage;
 const byTitle = (board: Workboard, title: string) =>
   board.snapshot().cards.find((card) => card.title === title)!;
+/** An orchestrator whose window never closes, so it takes tasks as soon as they are ready. */
+async function addOrchestrator(
+  board: Workboard,
+  overrides: Record<string, unknown> = {},
+): Promise<string> {
+  const before = new Set(board.snapshot().orchestrators.map((o) => o.id));
+  await board.mutate({
+    action: "orchestrator-save",
+    orchestrator: orchestratorConfigSchema.omit({ id: true }).parse({
+      name: "Always",
+      schedule: { kind: "window", start: "00:00", end: "00:00" },
+      ...overrides,
+    }),
+  });
+  return board.snapshot().orchestrators.find((o) => !before.has(o.id))!.id;
+}
+async function setEnabled(board: Workboard, id: string, enabled: boolean) {
+  const config = board.snapshot().orchestrators.find((o) => o.id === id)!;
+  await board.mutate({
+    action: "orchestrator-save",
+    orchestrator: { ...config, enabled },
+  });
+}
+const logText = (board: Workboard, id: string) =>
+  (board.snapshot().orchestratorLogs[id] ?? []).map((entry) => entry.text);
 const toReady = (board: Workboard, title: string) =>
   board.mutate({
     action: "stage",
@@ -128,10 +157,7 @@ it("orchestrates Ready to start tasks up to the limit and moves finished ones to
       advance(1000);
       await toReady(board, title);
     }
-    await board.mutate({
-      action: "orchestrator",
-      orchestrator: { running: true, maxConcurrent: 2 },
-    });
+    await addOrchestrator(board, { maxConcurrent: 2 });
     expect(host.startAgent).toHaveBeenCalledTimes(2);
     const prompt = (host.startAgent as any).mock.calls[0][1].prompt as string;
     expect(prompt).toContain("# Top\n\nDo Top");
@@ -163,7 +189,7 @@ it("orchestrates Ready to start tasks up to the limit and moves finished ones to
   }
 });
 
-it("pausing stops new starts and a task without a project waits for an edit", async () => {
+it("disabling stops new starts and a task without a project waits for an edit", async () => {
   const { board, host } = orchestrated();
   await board.start();
   try {
@@ -174,10 +200,7 @@ it("pausing stops new starts and a task without a project waits for an edit", as
       projectId: null,
     });
     await toReady(board, "Loose");
-    await board.mutate({
-      action: "orchestrator",
-      orchestrator: { running: true },
-    });
+    const id = await addOrchestrator(board);
     const task = view.cards[0];
     expect(board.snapshot().orchestrations[task.id]).toMatchObject({
       status: "failed",
@@ -185,10 +208,7 @@ it("pausing stops new starts and a task without a project waits for an edit", as
     });
     expect(host.startAgent).not.toHaveBeenCalled();
 
-    await board.mutate({
-      action: "orchestrator",
-      orchestrator: { running: false },
-    });
+    await setEnabled(board, id, false);
     const edited = board.snapshot().cards[0];
     await board.mutate({
       action: "edit",
@@ -201,10 +221,7 @@ it("pausing stops new starts and a task without a project waits for an edit", as
     await board.refresh();
     expect(host.startAgent).not.toHaveBeenCalled();
 
-    await board.mutate({
-      action: "orchestrator",
-      orchestrator: { running: true },
-    });
+    await setEnabled(board, id, true);
     expect(host.startAgent).toHaveBeenCalledTimes(1);
     expect(stageOf(board, "Loose")).toBe("in-progress");
   } finally {
@@ -290,10 +307,7 @@ async function reviewed() {
     projectId: "p",
   });
   await toReady(setup.board, "Task");
-  await setup.board.mutate({
-    action: "orchestrator",
-    orchestrator: { running: true },
-  });
+  const orchestratorId = await addOrchestrator(setup.board);
   const task = byTitle(setup.board, "Task");
   const agent = setup.inventory.agents.find(
     (a) => a.workspaceId === task.workspaceId,
@@ -302,7 +316,7 @@ async function reviewed() {
   agent.activity = "idle";
   setup.advance(1000);
   await setup.board.refresh();
-  return { ...setup, task, agent };
+  return { ...setup, task, agent, orchestratorId };
 }
 
 it("a finished task shows the agent's last reply and Done moves it to Done", async () => {
@@ -325,7 +339,7 @@ it("a finished task shows the agent's last reply and Done moves it to Done", asy
   }
 });
 
-it("Continue sends the feedback to the same agent, right away while playing", async () => {
+it("Continue sends the feedback to the same agent, right away while its window is open", async () => {
   const { board, task, agent, host, advance } = await reviewed();
   try {
     await board.mutate({
@@ -357,13 +371,10 @@ it("Continue sends the feedback to the same agent, right away while playing", as
   }
 });
 
-it("while paused, a task sent back waits in Ready to start for the next pass", async () => {
-  const { board, task, host } = await reviewed();
+it("while disabled, a task sent back waits in Ready to start for the next pass", async () => {
+  const { board, task, host, orchestratorId } = await reviewed();
   try {
-    await board.mutate({
-      action: "orchestrator",
-      orchestrator: { running: false },
-    });
+    await setEnabled(board, orchestratorId, false);
     await board.mutate({
       action: "review",
       taskId: task.id,
@@ -378,12 +389,146 @@ it("while paused, a task sent back waits in Ready to start for the next pass", a
     await board.refresh();
     expect(host.sendAgent).not.toHaveBeenCalled();
 
-    await board.mutate({
-      action: "orchestrator",
-      orchestrator: { running: true },
-    });
+    await setEnabled(board, orchestratorId, true);
     expect(host.sendAgent).toHaveBeenCalledTimes(1);
     expect(stageOf(board, "Task")).toBe("in-progress");
+  } finally {
+    board.dispose();
+  }
+});
+
+async function readyTasks(
+  board: Workboard,
+  advance: (ms: number) => number,
+  titles: string[],
+  extra: Record<string, unknown> = {},
+) {
+  for (const title of titles) {
+    advance(1000);
+    await board.mutate({
+      action: "create",
+      title,
+      description: "",
+      projectId: "p",
+      ...extra,
+    });
+    await toReady(board, title);
+  }
+}
+const finish = async (
+  board: Workboard,
+  inventory: ReturnType<typeof orchestrated>["inventory"],
+  advance: (ms: number) => number,
+  title: string,
+) => {
+  const card = byTitle(board, title);
+  await board.refresh();
+  inventory.agents.find((a) => a.workspaceId === card.workspaceId)!.activity =
+    "idle";
+  advance(1000);
+  await board.refresh();
+};
+
+it("Run now takes one batch, as many at a time as its limit allows, and then stops", async () => {
+  const { board, host, inventory, advance } = orchestrated();
+  await board.start();
+  try {
+    const id = await addOrchestrator(board, {
+      name: "Manual",
+      schedule: { kind: "manual" },
+      maxConcurrent: 1,
+      batchSize: 2,
+    });
+    await readyTasks(board, advance, ["C", "B", "A"]);
+    expect(host.startAgent).not.toHaveBeenCalled();
+    expect(board.snapshot().orchestratorStatus[id]).toMatchObject({
+      active: false,
+      waiting: 3,
+      nextRunAt: null,
+    });
+
+    await board.mutate({ action: "orchestrator-run", id });
+    expect(host.startAgent).toHaveBeenCalledTimes(1);
+    expect(stageOf(board, "A")).toBe("in-progress");
+    await finish(board, inventory, advance, "A");
+    expect(host.startAgent).toHaveBeenCalledTimes(2);
+    expect(stageOf(board, "B")).toBe("in-progress");
+    await finish(board, inventory, advance, "B");
+    // The batch was two: C waits for the next run.
+    expect(host.startAgent).toHaveBeenCalledTimes(2);
+    expect(stageOf(board, "C")).toBe("ready");
+    expect(board.snapshot().orchestratorStatus[id].active).toBe(false);
+    expect(logText(board, id)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Run now"),
+        'Started "A"',
+        'Finished "A"; ready to review',
+        "Run finished (batch done): 2 started",
+      ]),
+    );
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a daily time starts a run once, and Stop ends it", async () => {
+  const { board, host, advance, now } = (() => {
+    const setup = orchestrated();
+    return { ...setup, now: () => setup.advance(0) };
+  })();
+  await board.start();
+  try {
+    const at = new Date(now() + 2 * 60_000);
+    const time = `${String(at.getHours()).padStart(2, "0")}:${String(at.getMinutes()).padStart(2, "0")}`;
+    const id = await addOrchestrator(board, {
+      name: "Nightly",
+      schedule: { kind: "daily", times: [time] },
+      maxConcurrent: 1,
+      batchSize: 5,
+    });
+    await readyTasks(board, advance, ["Two", "One"]);
+    expect(host.startAgent).not.toHaveBeenCalled();
+    expect(board.snapshot().orchestratorStatus[id].nextRunAt).not.toBeNull();
+
+    advance(3 * 60_000);
+    await board.refresh();
+    expect(host.startAgent).toHaveBeenCalledTimes(1);
+    expect(logText(board, id)).toContain("Scheduled run: up to 5 tasks");
+    await board.refresh();
+    expect(
+      logText(board, id).filter((t) => t.startsWith("Scheduled")),
+    ).toHaveLength(1);
+
+    await board.mutate({ action: "orchestrator-stop", id });
+    expect(board.snapshot().orchestratorStatus[id].active).toBe(false);
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a task chosen for an orchestrator goes to it; others go to their project's orchestrator", async () => {
+  const { board, advance } = orchestrated();
+  await board.start();
+  try {
+    const project = await addOrchestrator(board, {
+      name: "Project p",
+      projectId: "p",
+    });
+    const other = await addOrchestrator(board, {
+      name: "Other",
+      projectId: "elsewhere",
+    });
+    await readyTasks(board, advance, ["Chosen"], { orchestratorId: other });
+    await readyTasks(board, advance, ["Unassigned"]);
+    const records = board.snapshot().orchestrations;
+    expect(records[byTitle(board, "Chosen").id].orchestratorId).toBe(other);
+    expect(records[byTitle(board, "Unassigned").id].orchestratorId).toBe(
+      project,
+    );
+
+    await board.mutate({ action: "orchestrator-delete", id: other });
+    expect(byTitle(board, "Chosen").orchestratorId).toBeNull();
+    expect(board.snapshot().orchestratorLogs[other]).toBeUndefined();
   } finally {
     board.dispose();
   }
