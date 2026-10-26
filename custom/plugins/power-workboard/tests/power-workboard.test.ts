@@ -14,8 +14,9 @@ const project = {
   isGit: false,
 };
 
+/** No default orchestrator: each test adds the ones it needs. */
 function orchestrated() {
-  const setup = fixture();
+  const setup = fixture({ defaultOrchestratorSeeded: true });
   setup.inventory.projects.push(project);
   let now = Date.parse("2026-09-23T00:00:00Z");
   const board = new Workboard(setup.host, setup.store, () => now);
@@ -529,6 +530,109 @@ it("a task chosen for an orchestrator goes to it; others go to their project's o
     await board.mutate({ action: "orchestrator-delete", id: other });
     expect(byTitle(board, "Chosen").orchestratorId).toBeNull();
     expect(board.snapshot().orchestratorLogs[other]).toBeUndefined();
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a new board gets an always-on default orchestrator once", async () => {
+  const setup = fixture();
+  setup.inventory.projects.push(project);
+  await setup.board.start();
+  try {
+    const [first] = setup.board.snapshot().orchestrators;
+    expect(first).toMatchObject({
+      name: "Default",
+      projectId: null,
+      enabled: true,
+      provider: "claude/claude-opus-5-5",
+      schedule: { kind: "window", start: "00:00", end: "00:00" },
+    });
+    await setup.board.mutate({ action: "orchestrator-delete", id: first.id });
+    setup.board.dispose();
+    const again = new Workboard(setup.host, setup.store, setup.now);
+    await again.start();
+    expect(again.snapshot().orchestrators).toEqual([]);
+    again.dispose();
+  } finally {
+    setup.board.dispose();
+  }
+});
+
+/** A reviewed task accepted as Done, in a git project. */
+async function done() {
+  const setup = await reviewed();
+  setup.inventory.workspaces.find(
+    (w) => w.id === setup.task.workspaceId,
+  )!.projectKind = "git";
+  await setup.board.mutate({
+    action: "review",
+    taskId: setup.task.id,
+    outcome: "done",
+    feedback: "",
+  });
+  return setup;
+}
+const settle = async (board: Workboard) => {
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await board.refresh();
+};
+
+it("Commit commits a Done task's changes, and refuses a clean checkout", async () => {
+  const { board, task, host } = await done();
+  try {
+    const view = await board.mutate({
+      action: "finish",
+      taskId: task.id,
+      step: "commit",
+    });
+    expect(view.finishes[task.id].running).toBe("commit");
+    await settle(board);
+    expect(host.commit).toHaveBeenCalledWith("/fixture");
+    expect(board.snapshot().finishes[task.id]).toMatchObject({
+      running: null,
+      committedAt: expect.any(String),
+      error: null,
+    });
+
+    (host.gitDirty as any).mockResolvedValueOnce(false);
+    await board.mutate({ action: "finish", taskId: task.id, step: "commit" });
+    await settle(board);
+    expect(board.snapshot().finishes[task.id].error).toBe("Nothing to commit");
+  } finally {
+    board.dispose();
+  }
+});
+
+it("Merge commits what is left and merges into the project; PR asks the agent", async () => {
+  const { board, task, host, agent } = await done();
+  try {
+    await board.mutate({ action: "finish", taskId: task.id, step: "merge" });
+    await settle(board);
+    expect(host.commit).toHaveBeenCalledTimes(1);
+    expect(host.mergeToBase).toHaveBeenCalledWith("/fixture");
+    expect(board.snapshot().finishes[task.id].mergedAt).toEqual(
+      expect.any(String),
+    );
+
+    await board.mutate({ action: "finish", taskId: task.id, step: "pr" });
+    await settle(board);
+    expect((host.askAgent as any).mock.calls[0][0]).toBe(agent.id);
+    expect(board.snapshot().finishes[task.id]).toMatchObject({
+      prTitle: "Add X",
+      prBody: "What changed.",
+    });
+  } finally {
+    board.dispose();
+  }
+});
+
+it("only a Done task in a git project can be finished", async () => {
+  const { board, task } = await reviewed();
+  try {
+    await expect(
+      board.mutate({ action: "finish", taskId: task.id, step: "commit" }),
+    ).rejects.toThrow("Only a Done task");
   } finally {
     board.dispose();
   }

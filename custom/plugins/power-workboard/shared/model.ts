@@ -471,6 +471,18 @@ export const orchestratorStatusSchema = z.object({
   waiting: z.number(),
   nextRunAt: z.string().nullable(),
 });
+/** What the reviewer did with a Done task's work: commit, a PR description, a merge. */
+export const finishSchema = z.object({
+  running: z.enum(["commit", "pr", "merge"]).nullable().default(null),
+  committedAt: z.string().nullable().default(null),
+  mergedAt: z.string().nullable().default(null),
+  prTitle: z.string().nullable().default(null),
+  prBody: z.string().nullable().default(null),
+  error: z.string().nullable().default(null),
+});
+export type Finish = z.infer<typeof finishSchema>;
+export const FINISH_STEPS = ["commit", "pr", "merge"] as const;
+export type FinishStep = (typeof FINISH_STEPS)[number];
 /** A chat with an agent that refines a draft before it is ready to start. */
 export const refinementSchema = z.object({
   agentId: z.string(),
@@ -505,6 +517,9 @@ export const dataSchema = z
     orchestratorLogs: z
       .record(z.string(), z.array(orchestratorLogEntrySchema))
       .default({}),
+    /** Set once the default orchestrator was created, so deleting it sticks. */
+    defaultOrchestratorSeeded: z.boolean().default(false),
+    finishes: z.record(z.string(), finishSchema).default({}),
   })
   .superRefine((data, context) => {
     const ids = new Set<string>();
@@ -597,6 +612,7 @@ export const boardSchema = z.object({
   orchestratorStatus: z
     .record(z.string(), orchestratorStatusSchema)
     .default({}),
+  finishes: z.record(z.string(), finishSchema).default({}),
   projects: z.array(
     z.object({
       id: z.string(),

@@ -1,6 +1,7 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 import {
+  FINISH_STEPS,
   boardSchema,
   orchestratorConfigSchema,
   orchestratorSchema,
@@ -103,6 +104,12 @@ export const mutationSchema = z.discriminatedUnion("action", [
     }),
   }),
   z.object({ action: z.literal("orchestrator-delete"), id: z.string() }),
+  // A Done task's work: commit it, write a PR description, or merge it into the project.
+  z.object({
+    action: z.literal("finish"),
+    taskId: z.string(),
+    step: z.enum(FINISH_STEPS),
+  }),
   z.object({ action: z.literal("orchestrator-run"), id: z.string() }),
   z.object({ action: z.literal("orchestrator-stop"), id: z.string() }),
   z.object({

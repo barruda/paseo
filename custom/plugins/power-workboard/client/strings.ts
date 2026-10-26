@@ -98,6 +98,24 @@ const zh = {
     failed: "失败",
     queued: "等待编排器继续",
   },
+  finish: {
+    labels: { commit: "提交", pr: "PR 描述", merge: "合并到项目" },
+    hints: {
+      commit: "提交 worktree 里所有未提交的改动（自动生成提交信息）",
+      pr: "让任务的 Agent 写一份 PR 描述，不会创建 PR",
+      merge: "提交剩余改动，并把分支合并到项目的主分支",
+    },
+    running: {
+      commit: "正在提交…",
+      pr: "Agent 正在撰写 PR 描述…",
+      merge: "正在合并…",
+    },
+    committed: "已提交",
+    merged: "已合并到项目",
+    copy: "复制描述",
+    copied: "PR 描述已复制。",
+    copyFailed: "无法复制。",
+  },
   review: {
     title: "等待验收",
     noSummary: "Agent 没有留下总结。打开 workspace 查看它做了什么。",
@@ -383,6 +401,19 @@ const zh = {
     "Only a draft can be refined": "只有草稿可以完善。",
     "Orchestrator no longer exists": "编排器已不存在，请刷新。",
     "Add a Done group first": "请先添加 Done 分组。",
+    "Only a Done task with a workspace can be finished":
+      "只有带 workspace 的 Done 任务可以收尾。",
+    "This task's project is not a git repository":
+      "该任务的项目不是 git 仓库。",
+    "A git action is already running for this task":
+      "该任务已有 git 操作在运行。",
+    "No agent of this task can write the description":
+      "该任务没有可撰写描述的 Agent。",
+    "Nothing to commit": "没有可提交的改动。",
+    "This Paseo cannot ask an agent side questions":
+      "此 Paseo 版本不支持向 Agent 提侧问。",
+    "The agent gave no answer": "Agent 没有回答。",
+    "The git action failed": "git 操作失败。",
     "Add a Ready to start group first": "请先添加 Ready to start 分组。",
     "Choose a project for this task": "请先为任务选择项目。",
     "This chat is not a Power Workboard refinement":
@@ -604,6 +635,30 @@ const en: typeof zh = {
     finished: "finished",
     failed: "failed",
     queued: "waiting to continue",
+  },
+  finish: {
+    labels: {
+      commit: "Commit",
+      pr: "PR description",
+      merge: "Merge into project",
+    },
+    hints: {
+      commit:
+        "Commit everything uncommitted in the worktree, with a generated message",
+      pr: "Ask the task's agent for a pull request description; no PR is created",
+      merge:
+        "Commit what is left and merge the branch into the project's main branch",
+    },
+    running: {
+      commit: "Committing…",
+      pr: "The agent is writing the PR description…",
+      merge: "Merging…",
+    },
+    committed: "Committed",
+    merged: "Merged into the project",
+    copy: "Copy description",
+    copied: "PR description copied.",
+    copyFailed: "Could not copy.",
   },
   review: {
     title: "Ready to review",
@@ -914,6 +969,19 @@ const en: typeof zh = {
     "Orchestrator no longer exists":
       "The orchestrator no longer exists. Refresh.",
     "Add a Done group first": "Add a Done group first.",
+    "Only a Done task with a workspace can be finished":
+      "Only a Done task with a workspace can be finished.",
+    "This task's project is not a git repository":
+      "This task's project is not a git repository.",
+    "A git action is already running for this task":
+      "A git action is already running for this task.",
+    "No agent of this task can write the description":
+      "No agent of this task can write the description.",
+    "Nothing to commit": "Nothing to commit.",
+    "This Paseo cannot ask an agent side questions":
+      "This Paseo cannot ask an agent side questions.",
+    "The agent gave no answer": "The agent gave no answer.",
+    "The git action failed": "The git action failed.",
     "Add a Ready to start group first": "Add a Ready to start group first.",
     "Choose a project for this task": "Choose a project for this task first.",
     "This chat is not a Power Workboard refinement":

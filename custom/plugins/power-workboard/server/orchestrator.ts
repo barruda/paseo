@@ -49,12 +49,23 @@ export function writeTicketPrompt(focus: string): string {
     .join("\n\n");
 }
 
+/** The side question that asks a task's agent for a pull request description of its work. */
+export function pullRequestPrompt(task: Task): string {
+  return [
+    `Write a pull request description for the work you did on this task: "${task.title}".`,
+    "Reply with only the description between <pr> and </pr>. Its first line is `# <short title>`, then the body in Markdown: what changed and why, how to test it, and anything a reviewer should look at. Use the language of the task.",
+  ].join("\n\n");
+}
+
 /** Read the ticket out of the agent's reply; without markers the whole reply is the body. */
-export function parseTicket(reply: string): {
+export function parseTicket(
+  reply: string,
+  tag = "ticket",
+): {
   title: string | null;
   description: string;
 } {
-  const marked = /<ticket>([\s\S]*?)<\/ticket>/i.exec(reply);
+  const marked = new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`, "i").exec(reply);
   const body = (marked ? marked[1] : reply).trim();
   const heading = /^#\s+(.+)\n?/.exec(body);
   if (!heading) return { title: null, description: body };

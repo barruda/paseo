@@ -3270,6 +3270,18 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     sends the feedback to the same agent, or starts a new one in the workspace with the task and
     the feedback when the agent is gone, and moves the task to In progress. A queued task takes a
     slot like a new one, in column order.
+  - **Done:** marking a task Done changes only its group; its work stays in the worktree. A Done
+    card in a git project shows three buttons, each the user's call: **Commit** (everything
+    uncommitted, with a generated message), **PR description** (asks the task's agent through a
+    side question, which stays out of its history, and shows the title and body with **Copy
+    description**; no PR is created), and **Merge into project** (commits what is left, then merges
+    the branch into the project's base branch in the main checkout). The card shows the step
+    running, Committed or Merged, or the git error. Commit and merge are the daemon's own
+    `checkout_commit` and `checkout_merge` requests, the same as the app's Git menu; results are in
+    `finishes`. The workspace is not archived.
+  - **Default orchestrator:** a board with no orchestrators gets one named Default when it loads:
+    all projects, always on (a window from 00:00 to 00:00 every day), 2 at a time, with the agent
+    defaults. `defaultOrchestratorSeeded` keeps it from coming back after it is deleted.
   - **Tab and images** (from the patched Workboard): the board is also a workspace panel ("+"
     new-tab menu, or "Open Power Workboard tab" in the Command Center). Pasting an image into a
     task description uploads it to the daemon and inserts `![image](<absolute path>)`; thumbnails
@@ -3289,7 +3301,7 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **Tests:** `tests/power-workboard.test.ts` (no import, tracking, Ready to start migration,
   orchestrator limits, disable, project retry, Run now batches, daily time and Stop, task
   assignment and delete, refinement and `/write-ticket`, review Done, Continue while active and
-  while disabled) and `tests/schedule.test.ts` (windows across midnight, daily triggers, next
+  while disabled, the default orchestrator, Commit, Merge and PR description) and `tests/schedule.test.ts` (windows across midnight, daily triggers, next
   run). The upstream Workboard suites that assume import and the old groups
   were moved to `tests/upstream-workboard/` and are not run. The update script runs
   `tsc` and `vitest` in the plugin folder.

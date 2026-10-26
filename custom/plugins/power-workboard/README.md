@@ -18,6 +18,8 @@ this repo) with these differences:
 - **Review.** A Ready to review card shows the agent's last reply with **Done** and **Continue
   task**. Continue takes optional feedback and sends the task back to Ready to start; the
   orchestrator's next pass gives the feedback to the same agent.
+- **Done.** A Done card in a git project has **Commit**, **PR description** (written by the
+  task's agent, to copy; no PR is created) and **Merge into project**.
 
 Groups: Backlog, Ready to start, In progress, Ready to review, Done, on `pwb:*` workspace labels.
 

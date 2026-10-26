@@ -19,6 +19,7 @@ import {
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
 import {
+  copyText,
   Icon,
   Modal,
   ScrollView,
@@ -37,6 +38,7 @@ import {
   type Group,
   type Settings,
   type Stage,
+  type FinishStep,
 } from "../shared/model";
 import {
   CANCEL_BINDING_BUSY_ERROR_CODE,
@@ -1082,6 +1084,9 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                 toast.show(t.review.queued);
               return !!next;
             }}
+            onFinish={(step) =>
+              void mutate({ action: "finish", taskId: card.id, step })
+            }
             onStatus={() => setStatusCard(card)}
             onArchive={() => setArchivingDraft(card)}
             onCancelBinding={() => setCancelingBinding(card)}
@@ -1754,6 +1759,162 @@ function ReviewPrompt({
   );
 }
 
+/**
+ * A Done task's work is still in its worktree: Commit it, get a PR description from its agent, or
+ * merge it into the project. Each is the user's call; the task is already Done.
+ */
+function FinishActions({
+  card,
+  board,
+  t,
+  theme,
+  disabled,
+  onFinish,
+}: {
+  card: Card;
+  board: Board;
+  t: ReturnType<typeof strings>;
+  theme: PluginSurfaceProps["theme"];
+  disabled: boolean;
+  onFinish(step: FinishStep): void;
+}) {
+  const toast = useToast();
+  const isGit = board.projects.find((p) => p.id === card.projectId)?.isGit;
+  if (!isGit) return null;
+  const finish = board.finishes[card.id];
+  const running = finish?.running ?? null;
+  const busy = disabled || running !== null;
+  const status = running
+    ? t.finish.running[running]
+    : (finish?.error ??
+      (finish?.mergedAt
+        ? t.finish.merged
+        : finish?.committedAt
+          ? t.finish.committed
+          : null));
+  const pr =
+    finish?.prBody !== null && finish?.prBody !== undefined
+      ? `${finish.prTitle ? `# ${finish.prTitle}\n\n` : ""}${finish.prBody}`
+      : null;
+  const button = (step: FinishStep, icon: string, primary = false) => (
+    <CardAction
+      key={step}
+      theme={theme}
+      hint={t.finish.hints[step]}
+      accessibilityRole="button"
+      accessibilityLabel={t.finish.labels[step]}
+      testID={`workboard-finish-${step}-${card.id}`}
+      disabled={busy}
+      onPress={() => onFinish(step)}
+      style={[
+        styles.reviewButton,
+        {
+          borderColor: primary ? theme.colors.accent : theme.colors.border,
+          backgroundColor: primary
+            ? theme.colors.accent
+            : theme.colors.surface1,
+          opacity: busy ? 0.5 : 1,
+        },
+      ]}
+    >
+      <Icon
+        name={running === step ? "LoaderCircle" : icon}
+        size={14}
+        color={
+          primary ? theme.colors.accentForeground : theme.colors.foreground
+        }
+      />
+      <Text
+        style={[
+          styles.cardMeta,
+          {
+            color: primary
+              ? theme.colors.accentForeground
+              : theme.colors.foreground,
+          },
+        ]}
+      >
+        {t.finish.labels[step]}
+      </Text>
+    </CardAction>
+  );
+  return (
+    <View
+      testID={`workboard-finish-${card.id}`}
+      style={[
+        styles.review,
+        {
+          borderColor: theme.colors.border,
+          backgroundColor: theme.colors.surface1,
+        },
+      ]}
+    >
+      {status && (
+        <View style={styles.cardFooter}>
+          <Icon
+            name={
+              finish?.error && !running
+                ? "TriangleAlert"
+                : running
+                  ? "LoaderCircle"
+                  : "GitMerge"
+            }
+            size={13}
+            color={
+              finish?.error && !running
+                ? theme.colors.statusWarning
+                : theme.colors.foregroundMuted
+            }
+          />
+          <Text
+            style={[
+              styles.cardMeta,
+              {
+                color:
+                  finish?.error && !running
+                    ? theme.colors.statusWarning
+                    : theme.colors.foregroundMuted,
+                flexShrink: 1,
+              },
+            ]}
+          >
+            {status}
+          </Text>
+        </View>
+      )}
+      {pr && (
+        <View style={styles.prBox}>
+          <Text
+            selectable
+            numberOfLines={8}
+            style={[styles.cardMeta, { color: theme.colors.foreground }]}
+          >
+            {pr}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() =>
+              void copyText(pr).then(
+                () => toast.show(t.finish.copied),
+                () => toast.error(t.finish.copyFailed),
+              )
+            }
+          >
+            <Text style={[styles.cardMeta, { color: theme.colors.accent }]}>
+              {t.finish.copy}
+            </Text>
+          </Pressable>
+        </View>
+      )}
+      <View style={styles.reviewActions}>
+        {button("commit", "GitCommitHorizontal")}
+        {button("pr", "FileText")}
+        {button("merge", "GitMerge", true)}
+      </View>
+    </View>
+  );
+}
+
 function CardAction({
   theme,
   style,
@@ -1792,6 +1953,7 @@ export function TaskCard({
   onOpenAgent,
   onRefine,
   onReview,
+  onFinish,
   onStatus,
   onArchive,
   onCancelBinding,
@@ -1812,6 +1974,7 @@ export function TaskCard({
   onOpenAgent(agentId: string): void;
   onRefine(): void;
   onReview(outcome: "done" | "continue", feedback: string): Promise<boolean>;
+  onFinish(step: FinishStep): void;
   onStatus(): void;
   onArchive(): void;
   onCancelBinding(): void;
@@ -2009,6 +2172,16 @@ export function TaskCard({
         <Text style={[styles.cardMeta, { color: theme.colors.statusWarning }]}>
           {t.changeRequestUnavailable}
         </Text>
+      )}
+      {!isDraft && !card.binding && group?.kind === "done" && (
+        <FinishActions
+          card={card}
+          board={board}
+          t={t}
+          theme={theme}
+          disabled={disabled}
+          onFinish={onFinish}
+        />
       )}
       {!isDraft && !card.binding && group?.kind === "review" ? (
         <ReviewPrompt
@@ -3872,6 +4045,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   reviewTitle: { fontSize: 13, fontWeight: "600" },
+  prBox: { gap: 4 },
   reviewInput: { minHeight: 64, textAlignVertical: "top" },
   reviewActions: {
     flexDirection: "row",

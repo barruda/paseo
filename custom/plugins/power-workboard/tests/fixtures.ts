@@ -117,6 +117,13 @@ export function fixture(initial: Partial<Data> = {}) {
       if (agent) agent.activity = "running";
     }),
     lastReply: vi.fn(async (_id: string) => "Changed X. Check Y."),
+    askAgent: vi.fn(
+      async (_id: string, _question: string) =>
+        "<pr>\n# Add X\n\nWhat changed.\n</pr>",
+    ),
+    gitDirty: vi.fn(async (_directory: string) => true),
+    commit: vi.fn(async (_directory: string) => {}),
+    mergeToBase: vi.fn(async (_directory: string) => {}),
     setLabel: vi.fn(async (id, name, _color, assigned) => {
       const w = inventory.workspaces.find((w) => w.id === id)!;
       w.labels = w.labels.filter((label) => label !== name);

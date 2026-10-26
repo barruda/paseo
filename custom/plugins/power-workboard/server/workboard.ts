@@ -13,6 +13,7 @@ import {
   isDraftGroup,
   isTerminalGroup,
   labelKey,
+  finishSchema,
   orchestratorConfigSchema,
   orchestratorSchema,
   newTask,
@@ -25,6 +26,8 @@ import {
   type Board,
   type Card,
   type Data,
+  type Finish,
+  type FinishStep,
   type Orchestration,
   type OrchestratorConfig,
   type OrchestratorRuntime,
@@ -44,6 +47,7 @@ import {
   continuationPrompt,
   orchestratorPrompt,
   parseTicket,
+  pullRequestPrompt,
   refinementPrompt,
   writeTicketPrompt,
 } from "./orchestrator";
@@ -217,6 +221,26 @@ export class Workboard {
       await this.store.update((data) => {
         data.serverId = this.host.identity.serverId;
       });
+    // A new board gets one orchestrator that is always on, so Ready to start just works.
+    if (!this.store.current.defaultOrchestratorSeeded)
+      await this.store.update((data) => {
+        data.defaultOrchestratorSeeded = true;
+        if (data.orchestrators.length) return;
+        data.orchestrators.push(
+          orchestratorConfigSchema.parse({
+            ...data.orchestrator,
+            id: randomUUID(),
+            name: "Default",
+            projectId: null,
+            schedule: {
+              kind: "window",
+              days: [0, 1, 2, 3, 4, 5, 6],
+              start: "00:00",
+              end: "00:00",
+            },
+          }),
+        );
+      });
     // Boards saved before Ready to start existed get it right after their first To do group.
     const ready = DEFAULT_GROUPS.find((group) => group.kind === "ready")!;
     const groups = this.store.current.settings.groups;
@@ -323,6 +347,7 @@ export class Workboard {
       orchestrator: data.orchestrator,
       orchestrations: data.orchestrations,
       refinements: data.refinements,
+      finishes: data.finishes,
       orchestrators: data.orchestrators,
       orchestratorRuntime: data.orchestratorRuntime,
       orchestratorLogs: data.orchestratorLogs,
@@ -983,6 +1008,8 @@ export class Workboard {
           });
           await this.log(id, "info", created ? "Created" : "Settings saved");
           await this.orchestrate();
+        } else if (input.action === "finish") {
+          await this.startFinish(input.taskId, input.step);
         } else if (input.action === "orchestrator-delete") {
           this.orchestratorConfig(input.id);
           await this.store.update((data) => {
@@ -1497,6 +1524,72 @@ export class Workboard {
         ...change,
         updatedAt: this.stamp(),
       } as Refinement;
+    });
+  }
+  /**
+   * A Done task's Commit, PR description or Merge button. Marks the step as running and
+   * returns; the git work runs outside `serial` and records its outcome when it ends.
+   */
+  private async startFinish(taskId: string, step: FinishStep): Promise<void> {
+    const task = this.task(taskId);
+    const groups = this.store.current.settings.groups;
+    if (!task.workspaceId || groupKind(task.lastStage, groups) !== "done")
+      throw new Error("Only a Done task with a workspace can be finished");
+    const workspace = this.inventory.workspaces.find(
+      (w) => w.id === task.workspaceId,
+    );
+    if (!workspace) throw new Error("Workspace is unavailable or archiving");
+    if (workspace.projectKind !== "git")
+      throw new Error("This task's project is not a git repository");
+    if (this.store.current.finishes[taskId]?.running)
+      throw new Error("A git action is already running for this task");
+    const agentId =
+      this.store.current.orchestrations[taskId]?.agentId ??
+      this.inventory.agents.find(
+        (a) => a.workspaceId === task.workspaceId && !a.archivedAt,
+      )?.id ??
+      null;
+    if (step === "pr" && !agentId)
+      throw new Error("No agent of this task can write the description");
+    const directory = workspace.workspaceDirectory;
+    await this.setFinish(taskId, { running: step, error: null });
+    const run = async (): Promise<Partial<Finish>> => {
+      if (step === "pr") {
+        const reply = await this.host.askAgent(
+          agentId!,
+          pullRequestPrompt(task),
+        );
+        const text = parseTicket(reply, "pr");
+        return { prTitle: text.title, prBody: text.description };
+      }
+      const dirty = await this.host.gitDirty(directory);
+      if (step === "commit" && !dirty) throw new Error("Nothing to commit");
+      const done: Partial<Finish> = {};
+      if (dirty) {
+        await this.host.commit(directory);
+        done.committedAt = this.stamp();
+      }
+      if (step === "merge") {
+        await this.host.mergeToBase(directory);
+        done.mergedAt = this.stamp();
+      }
+      return done;
+    };
+    void run()
+      .then((done) => this.serial(() => this.setFinish(taskId, done)))
+      .catch((error) =>
+        this.serial(() => this.setFinish(taskId, { error: message(error) })),
+      )
+      .catch(() => undefined)
+      .finally(() => this.changed(task.workspaceId!));
+  }
+  private setFinish(taskId: string, change: Partial<Finish>): Promise<void> {
+    return this.store.update((data) => {
+      data.finishes[taskId] = finishSchema.parse({
+        ...data.finishes[taskId],
+        running: null,
+        ...change,
+      });
     });
   }
   /**

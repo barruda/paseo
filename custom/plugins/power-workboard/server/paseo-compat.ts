@@ -110,7 +110,12 @@ export class PaseoCompat {
   private notify(type: string, payload?: Reply): void {
     for (const listener of this.listeners) listener(type, payload);
   }
-  request(type: string, fields: Reply, responseType: string): Promise<Reply> {
+  request(
+    type: string,
+    fields: Reply,
+    responseType: string,
+    timeout = this.timeout,
+  ): Promise<Reply> {
     if (this.closed)
       return Promise.reject(new Error("Workboard bridge closed"));
     const requestId = `workboard:${randomUUID()}`;
@@ -124,7 +129,7 @@ export class PaseoCompat {
       };
       const timer = setTimeout(
         () => fail(new Error(`Paseo request timed out: ${type}`)),
-        this.timeout,
+        timeout,
       );
       this.pending.set(requestId, {
         type: responseType,
