@@ -1,5 +1,6 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { ShellCommandCard } from "./client/shell-command-card";
+import { addShortcutCommands } from "./client/shortcut-commands";
 import {
   runShellCommandRpc,
   SHELL_COMMAND_TIMELINE_KIND,
@@ -26,6 +27,7 @@ export default function contribute(client: PluginClientContext) {
       });
     },
   });
+  const removeShortcuts = addShortcutCommands(client);
   const removeRenderer = client.addTimelineRenderer({
     kind: SHELL_COMMAND_TIMELINE_KIND,
     version: SHELL_COMMAND_TIMELINE_VERSION,
@@ -34,6 +36,7 @@ export default function contribute(client: PluginClientContext) {
   });
   return () => {
     removeCommand();
+    for (const remove of removeShortcuts) void remove();
     removeRenderer();
   };
 }

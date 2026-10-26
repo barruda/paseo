@@ -3190,3 +3190,27 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   duration label, and return `null` for that item in the list.
 - **Verify:** `(cd packages/app && npx vitest run src/agent-stream/turn-usage.test.ts)`. In the app,
   finish a turn: one line with copy, fork, "Worked for", then the dot and token figures.
+
+## shell-shortcuts: `/wip` and `/status` slash commands
+
+- **Added:** 2026-10-26 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: /wip and /status slash commands`
+- **Why:** To commit work in progress or check `git status` from the composer without reaching for
+  the pill or typing the `!` command.
+- **What:** In an agent's composer, `/wip` does what the **Commit: wip** pill does
+  ([commit-wip](#commit-wip-a-commit-wip-pill-beside-the-diff-stat)): runs
+  `git add . && git commit -m 'wip'` as if typed after `!`. `/status` runs `!git status`. Both go
+  through the shell-command plugin's `run` RPC, so the output lands in a Terminal card, the
+  command enters the `!` history, and the agent never sees it. Arguments are ignored. As plugin
+  commands they win over a provider's command of the same name, so Claude Code's own `/status`
+  is hidden in Paseo.
+- **Files:** `custom/plugins/shell-command/client/shortcut-commands.ts` (+ test), registered in
+  `custom/plugins/shell-command/index.client.tsx`. No conflict risk.
+- **Core files touched:** none. `packages/app/src/composer/commit-wip-pill.tsx` only gains a comment
+  pointing at `/wip`; keep the two commands in step.
+- **Re-apply:** In the shell-command plugin's client, add agent slash commands `wip` and `status`
+  whose `onSubmit` calls `runShellCommandRpc` with the fixed command, the agent's id, cwd and
+  workspace id.
+- **Verify:** `npx vitest run custom/plugins/shell-command/client` (in the update script through
+  `custom/plugins/shell-command`). Plugin-only: reload `shell-command` on each daemon, then type
+  `/wip` and `/status` in an agent's composer: each shows a Terminal card.

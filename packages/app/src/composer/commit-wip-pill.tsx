@@ -8,6 +8,7 @@ import { useRunChatCommand } from "@/chat-code-run/context";
 import { composerPillStyles } from "@/composer/pill-styles";
 import { useToast } from "@/contexts/toast-context";
 
+/** The shell-command plugin's `/wip` runs the same command (custom/plugins/shell-command/client/shortcut-commands.ts). */
 export const COMMIT_WIP_COMMAND = "git add . && git commit -m 'wip'";
 /** Keeps the composer track row up even when it has nothing else to show. */
 export const COMMIT_WIP_PILL_ALWAYS_SHOWN = true;
