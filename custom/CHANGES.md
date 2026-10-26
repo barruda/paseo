@@ -2857,3 +2857,36 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **Verify:** No unit test: the logic is the hover wiring. In the app, in Tasks mode, rest the
   pointer on a session that has a line under its composer: the card shows that line's topic,
   request and status.
+
+## bottom-panel-warp-project-tab: showing the bottom panel puts Warp on the project's tab
+
+- **Added:** 2026-10-25 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: showing the bottom panel switches Warp to the project's tab`
+- **Why:** One bottom panel serves every task in Tasks mode (and every visit to a workspace), so
+  Warp kept showing whatever tab was last used, often another project's. The
+  [+ in the Warp chip](#bottom-panel-warp-tab-button-a--in-the-bottom-panels-warp-chip-opens-a-warp-tab-in-the-agents-project)
+  opened a new tab every time, piling up tabs.
+- **What:** When Ctrl+J or the sidebar button shows a hidden bottom panel whose selected tab is
+  Warp, Warp switches to the tab whose shell is in the agent's project (in Tasks mode the last
+  focused agent tab's workspace, in a workspace the workspace itself), or opens one there when no
+  tab is. The active tab stays when it is already in the project or below it. A panel whose
+  selected tab is a terminal or another page is left alone. How Warp picks the tab is in
+  [docs/custom-warp-web-embedded.md](../docs/custom-warp-web-embedded.md#warp-tabs-opened-by-paseo).
+- **Warp side:** the commit `PASEO: the host page shows the tab of a folder with a
+paseo-warp-show-cwd event` on the `paseo` branch of `~/projetos/warp-web-custom`
+  (`app/src/workspace/view.rs`). Needs a Warp rebuild; Warp pages loaded before it ignore the
+  event until reloaded.
+- **Files:** `packages/app/src/workspace-tabs/bottom-panel-warp-project.ts`;
+  `bottomPanelWarpBrowserId` in `bottom-panel-default.ts` (+ test) and `showWarpSessionIn` in
+  `warp-session.ts`.
+- **Core files touched** (marked `CUSTOM(bottom-panel-warp-project-tab)`):
+  - `screens/workspace/workspace-screen.tsx`: `handleBottomPanelToggle` on a `shown` result.
+  - `task-navigation/new-tab-menu.tsx`: the `workspace.bottom-panel.toggle` handler, through
+    `showDeskBottomPanelWarpProject`.
+- **Re-apply:** Where Ctrl+J's toggle returns `kind: "shown"`, call `showBottomPanelWarpProject`
+  with the returned layout and the agent's server and workspace.
+- **Verify:** `(cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-default.test.ts)`
+  (already in the update script). In the app, in Tasks mode with Warp in the bottom panel, hide it,
+  focus an agent of another project and press Ctrl+J: Warp shows a tab in that project (`pwd`
+  prints its folder). Hide and show again from an agent of the first project: Warp goes back to
+  its tab instead of opening another.

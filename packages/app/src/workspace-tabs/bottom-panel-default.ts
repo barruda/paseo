@@ -2,6 +2,12 @@
 // becomes the Warp plugin panel, which turns itself into the Warp browser tab. Warp tabs are
 // browser tabs, so this needs Electron and the Warp plugin installed on the workspace's host;
 // without either the panel keeps opening a terminal.
+import {
+  collectAllTabs,
+  findPaneById,
+  type WorkspaceLayout,
+} from "@/stores/workspace-layout-actions";
+import { BOTTOM_PANEL_PANE_ID } from "./bottom-panel";
 import type { PluginWorkspaceTabTarget } from "./model";
 
 const WARP_PLUGIN_ID = "warp";
@@ -28,4 +34,17 @@ export function resolveBottomPanelWarpTarget(input: {
   return hasPanel
     ? { kind: "plugin", pluginId: WARP_PLUGIN_ID, panelId: WARP_PANEL_ID, context: "workspace" }
     : null;
+}
+
+/**
+ * CUSTOM(bottom-panel-warp-project-tab): the Warp page the bottom panel shows, when its selected
+ * tab is a Warp tab (a browser tab without a toolbar).
+ */
+export function bottomPanelWarpBrowserId(
+  layout: WorkspaceLayout,
+  isWarpBrowser: (browserId: string) => boolean,
+): string | null {
+  const tabId = findPaneById(layout.root, BOTTOM_PANEL_PANE_ID)?.focusedTabId;
+  const target = collectAllTabs(layout.root).find((tab) => tab.tabId === tabId)?.target;
+  return target?.kind === "browser" && isWarpBrowser(target.browserId) ? target.browserId : null;
 }

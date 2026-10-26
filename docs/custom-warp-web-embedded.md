@@ -8,8 +8,8 @@ Electron browser tab, backed by a small PTY bridge.
 This doc covers how the pieces fit, how to build and run them, and the gotchas. The per-commit
 details (core files touched, how to re-apply after an upstream update, how to verify) are in
 `custom/CHANGES.md`, in the entries `warp`, `browser-no-toolbar`, `browser-shortcut-preempt`,
-`bottom-panel-tab-keys`, `bottom-panel-warp`, `bottom-panel-warp-tab-button` and
-`chat-file-actions`.
+`bottom-panel-tab-keys`, `bottom-panel-warp`, `bottom-panel-warp-tab-button`,
+`bottom-panel-warp-project-tab` and `chat-file-actions`.
 
 ## Pieces
 
@@ -27,8 +27,9 @@ the Warp checkout):
 - `app/src/terminal/remote_tty/event_loop.rs`: reads the PTY URL from `window.PASEO_WARP_PTY_URL`
   instead of the hard-coded `ws://127.0.0.1:3030/create`, and the shell from
   `window.PASEO_WARP_SHELL` (bash or zsh; `remote_tty/terminal_manager.rs` uses the same value).
-- `app/src/workspace/view.rs`: opens a terminal tab on a `paseo-warp-new-tab` window event (see
-  "Warp tabs opened by Paseo").
+- `app/src/workspace/view.rs`: opens a terminal tab on a `paseo-warp-new-tab` window event, and
+  selects (or opens) the tab of a folder on a `paseo-warp-show-cwd` event (see "Warp tabs opened
+  by Paseo").
 - `app/src/root_view.rs`: `remote_tty` builds start loginless, like desktop's "Skip for now".
 - `app/src/wasm_nux_dialog.rs`: hides the "Download Warp Desktop?" dialog in `remote_tty` builds.
 - `paseo-bridge/`: the bridge itself, with the page title set to plain "Warp", and the `run` URL
@@ -40,7 +41,8 @@ the Warp checkout):
    A newly created bottom panel (Ctrl+J) mounts the same panel in its first tab, so Warp is the
    bottom panel's default. It falls back to a terminal outside Electron or when the host lacks the
    plugin. A `+` in the bottom panel's Warp tab chip opens a tab inside Warp in the agent's
-   project (see "Warp tabs opened by Paseo").
+   project, and showing a hidden bottom panel on its Warp tab selects the agent's project tab
+   inside Warp (see "Warp tabs opened by Paseo").
 2. The plugin server has already started the bridge with system `node` when the plugin loaded
    (it starts it again if it died), waits for `WARP_BRIDGE_READY <port>` on stdout, and returns
    `http://127.0.0.1:<port>/?token=…&cwd=…`.
@@ -85,6 +87,15 @@ listens for that event and opens a terminal tab.
   in the same folder until Paseo changes it again or the page reloads.
 - **Old pages ignore the event.** A Warp tab whose page loaded before the patched build does
   nothing until you reload it.
+- **Showing the project's tab.** When Ctrl+J (or the sidebar button) shows a hidden bottom panel
+  whose selected tab is Warp, Paseo sets `window.PASEO_WARP_SHOW_CWD` and the PTY URL's `cwd` to
+  the agent's project folder and dispatches `paseo-warp-show-cwd`
+  (`packages/app/src/workspace-tabs/bottom-panel-warp-project.ts`). The Warp patch keeps the
+  active tab when its shell is in that folder or below it, otherwise selects the first tab whose
+  shell is in the folder itself, then one below it, and opens a new tab there when none is. It
+  matches the shell's current directory (the `pwd` Warp's hooks report), so a tab you `cd`'d out
+  of the project no longer counts, and a tab whose shell hasn't bootstrapped yet doesn't either.
+  Creating the bottom panel needs none of this: the new Warp page already starts in the project.
 - **Running a command.** Paseo also sets `run` and a fresh `run_id` on the URL. Warp passes the
   URL's query through to `/create` untouched, so this needs no Warp rebuild: the bridge types the
   command into that session. It waits for the Bootstrapped hook in the shell's output (hex-encoded,

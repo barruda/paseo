@@ -59,6 +59,7 @@ import {
 import { toggleBottomPanel } from "@/workspace-tabs/bottom-panel";
 // CUSTOM(bottom-panel-expand)
 import { BottomPanelExpandButton } from "@/workspace-tabs/bottom-panel-expand-button";
+import { showBottomPanelWarpProject } from "@/workspace-tabs/bottom-panel-warp-project";
 import { resolveBottomPanelWarpTarget } from "@/workspace-tabs/bottom-panel-default";
 import { pluginRegistry } from "@/plugins/registry";
 import {
@@ -2699,8 +2700,23 @@ function WorkspaceScreenContent({
         createTerminal({ destination: { kind: "replace", tabId: result.launcherTabId } });
       }
     }
+    // CUSTOM(bottom-panel-warp-project-tab): Warp switches to this workspace's tab.
+    if (result?.kind === "shown") {
+      showBottomPanelWarpProject({
+        layout: result.layout,
+        serverId: normalizedServerId,
+        workspaceId: normalizedWorkspaceId,
+      });
+    }
     return true;
-  }, [createTerminal, isMobile, normalizedServerId, persistenceKey, replaceWorkspaceTabTarget]);
+  }, [
+    createTerminal,
+    isMobile,
+    normalizedServerId,
+    normalizedWorkspaceId,
+    persistenceKey,
+    replaceWorkspaceTabTarget,
+  ]);
 
   // Shared by every handler below: these actions only exist on a focused workspace route.
   const workspaceActionsEnabled = Boolean(

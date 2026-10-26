@@ -9,6 +9,8 @@ import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { getIsElectron } from "@/constants/platform";
 import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";
 import { releaseFocusFromBottomPanel } from "@/workspace-tabs/bottom-panel";
+import type { BottomPanelToggleResult } from "@/workspace-tabs/bottom-panel";
+import { showBottomPanelWarpProject } from "@/workspace-tabs/bottom-panel-warp-project";
 import { resolveBottomPanelWarpTarget } from "@/workspace-tabs/bottom-panel-default";
 import { pluginRegistry } from "@/plugins/registry";
 import {
@@ -20,7 +22,7 @@ import { useHasPullRequest } from "@/panels/pull-request";
 import { NewTabLauncherProvider, type NewTabLauncher } from "@/workspace-tabs/launcher";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
-import { activeDesk, useDesksStore, type DeskTabOwner } from "./desks-store";
+import { activeDesk, deskContextTab, useDesksStore, type DeskTabOwner } from "./desks-store";
 
 /** Opens a launched target in its pane, or turns the launching new-tab tab into it. */
 export function launchDeskTarget(
@@ -162,6 +164,7 @@ export function DeskLauncherProvider({
             createTerminal({ destination: { kind: "replace", tabId: result.launcherTabId } });
           }
         }
+        showDeskBottomPanelWarpProject(result, { serverId, workspaceId });
         return true;
       }
       const paneId = activeDesk(useDesksStore.getState()).layout.focusedPaneId ?? undefined;
@@ -196,4 +199,18 @@ export function DeskLauncherProvider({
     [isGit, hasPullRequest, terminalDisabled, launch],
   );
   return <NewTabLauncherProvider value={launcher}>{children}</NewTabLauncherProvider>;
+}
+
+/** CUSTOM(bottom-panel-warp-project-tab): showing the panel puts Warp on the agent's project tab. */
+function showDeskBottomPanelWarpProject(
+  result: BottomPanelToggleResult | null,
+  fallback: DeskTabOwner,
+): void {
+  if (result?.kind !== "shown") return;
+  const owner = deskContextTab(useDesksStore.getState()) ?? fallback;
+  showBottomPanelWarpProject({
+    layout: result.layout,
+    serverId: owner.serverId,
+    workspaceId: owner.workspaceId,
+  });
 }
