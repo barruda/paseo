@@ -1,3 +1,5 @@
+import { useShallow } from "zustand/shallow";
+import { boostContentMaxWidth, useContentWidthBoostStore } from "@/content-width-boost/store";
 import {
   createContext,
   type ReactNode,
@@ -58,6 +60,9 @@ function applyTheme({ preference, contributedTheme }: ApplyThemeInput): void {
 export function AppearanceProvider({ children }: { children: ReactNode }) {
   const { settings, updateSettings, isLoading } = useAppSettings();
   const [hasAppliedAppearance, setHasAppliedAppearance] = useState(false);
+  const widthBoost = useContentWidthBoostStore(
+    useShallow((s) => ({ stepIndex: s.stepIndex, windowMaximized: s.windowMaximized })),
+  );
   const options = usePluginThemeCatalog();
   const selected = useMemo(() => {
     if (settings.theme !== PLUGIN_THEME_PREFERENCE) return null;
@@ -73,7 +78,11 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
       uiBaseFontSize: settings.uiBaseFontSize,
       contentFontSize: settings.contentFontSize,
       codeFontSize: settings.codeFontSize,
-      contentMaxWidth: resolveContentMaxWidth({ contentMaxWidth: settings.contentMaxWidth }),
+      // CUSTOM(content-width-boost): the panel's -/+/maximize buttons scale the configured width.
+      contentMaxWidth: boostContentMaxWidth(
+        resolveContentMaxWidth({ contentMaxWidth: settings.contentMaxWidth }),
+        widthBoost,
+      ),
       syntaxTheme: settings.syntaxTheme,
     });
     setHasAppliedAppearance(true);
@@ -88,6 +97,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     settings.codeFontSize,
     settings.contentMaxWidth,
     settings.syntaxTheme,
+    widthBoost,
   ]);
 
   const select = useCallback(

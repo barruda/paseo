@@ -2923,3 +2923,25 @@ paseo-warp-show-cwd event` on the `paseo` branch of `~/projetos/warp-web-custom`
 - **Verify:** `(cd packages/app && npx vitest run src/components/shell-output-files.test.ts)` (in
   the update script). In the app, have an agent run `S=/tmp/x; mkdir -p $S; ls / > $S/out.txt;
 head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full listing.
+
+## content-width-boost: -, + and maximize buttons widen the chat content on a maximized window
+
+- **Added:** 2026-10-26
+- **Commit:** `custom: content width buttons in the agent panel on a maximized window`
+- **Why:** On a maximized window the chat column (Settings > Appearance > content width) leaves
+  most of the screen empty; the user wants to widen it on the spot.
+- **What:** While the desktop window is maximized, the top left of the agent panel (below the
+  tabs) shows `-`, `+` and the maximize-pane icon. They step the content width through 1x (the
+  configured width), 1.5x, 2x and full pane width: `+`/`-` move one step, maximize jumps to full
+  and back to 1x. The step is per window and not persisted. Unmaximizing the window restores the
+  configured width. Web and desktop only.
+- **Files:** `packages/app/src/content-width-boost/store.ts` (+ test) and `controls.tsx`.
+- **Core files touched** (marked `CUSTOM(content-width-boost)`):
+  - `appearance/provider.tsx`: wraps the resolved `contentMaxWidth` in `boostContentMaxWidth`.
+  - `panels/agent-panel.tsx`: renders `ContentWidthBoostControls` in `dockContent`.
+- **Re-apply:** Where the appearance provider passes `contentMaxWidth` to `applyAppearance`, pass
+  `boostContentMaxWidth(width, store state)` and re-run on store changes; mount the controls
+  (absolute, top left) inside the agent panel content container.
+- **Verify:** `(cd packages/app && npx vitest run src/content-width-boost/store.test.ts)` (in the
+  update script). In the app, maximize the window, press `+` twice: the chat column doubles;
+  maximize icon: it fills the pane.
