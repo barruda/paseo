@@ -2942,17 +2942,18 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Core files touched** (marked `CUSTOM(content-width-boost)`):
   - `appearance/provider.tsx`: wraps the resolved `contentMaxWidth` in `boostContentMaxWidth`.
   - `panels/agent-panel.tsx`: renders `ContentWidthBoostControls` in `dockContent`.
-  - `agent-stream/view.tsx`, `agent-stream/turn-footer.tsx`, `composer/index.tsx`,
-    `composer/dock/index.tsx`: subscribe to the applied width. Unistyles patches
-    `theme.contentMaxWidth` without re-rendering memoized components, so without this the stream
-    and composer kept the old width until something else re-rendered them (focus, a new message).
-    The provider publishes `appliedWidth` after patching the theme, so they never render a step
-    behind.
-    The message rows (`StreamItemWrapper`), turn footers and empty state also memoize style arrays
-    holding the width's stylesheet entry, so the applied width is a dependency of those `useMemo`s.
+  - `agent-stream/view.tsx` (`StreamItemWrapper`, empty state), `agent-stream/turn-footer.tsx`,
+    `composer/tracks.tsx`, `composer/agent-status-line.tsx`: add `useContentMaxWidthStyle()` after
+    the stylesheet entry. Unistyles patches `theme.contentMaxWidth`, but these stylesheet entries
+    kept handing the re-rendered rows the old width (checked in the browser), so the width is
+    passed inline. The provider publishes `appliedWidth` after patching the theme.
+  - `composer/index.tsx`, `composer/dock/index.tsx`: `useContentWidthBoostRerender()`; a re-render
+    is enough for their styles.
+  - `agent-stream/view.tsx`: the list's `contentMaxWidth` (height estimates, image rail) is the
+    applied width.
 - **Re-apply:** Where the appearance provider passes `contentMaxWidth` to `applyAppearance`, pass
   `boostContentMaxWidth(width, store state)` and re-run on store changes; mount the controls
   (absolute, top left) inside the agent panel content container.
 - **Verify:** `(cd packages/app && npx vitest run src/content-width-boost/store.test.ts)` (in the
-  update script). In the app, maximize the window, press `+` twice: the chat column doubles;
-  maximize icon: it fills the pane.
+  update script). In the app, maximize the window, press `+` twice: the messages, pill row and
+  composer double at once; maximize icon: they fill the pane.

@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState, type ReactElement, type ReactNode } from "react";
+import { useContentMaxWidthStyle } from "@/content-width-boost/store";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import {
@@ -30,9 +31,10 @@ import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
  * the final footer clear without turning the overlay into a layout band.
  */
 export function ComposerTrackBar({ children }: { children: ReactNode }): ReactElement {
+  const widthStyle = useContentMaxWidthStyle(); // CUSTOM(content-width-boost)
   return (
     <View style={styles.bar} pointerEvents="box-none">
-      <View style={styles.track} pointerEvents="box-none">
+      <View style={[styles.track, widthStyle]} pointerEvents="box-none">
         {children}
       </View>
     </View>

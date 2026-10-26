@@ -1,8 +1,5 @@
 import { useComposerRewindSelection } from "@/composer/empty-shortcuts";
-import {
-  useAppliedContentMaxWidth,
-  useContentWidthBoostRerender,
-} from "@/content-width-boost/store";
+import { useAppliedContentMaxWidth, useContentMaxWidthStyle } from "@/content-width-boost/store";
 import { ChatFind, ChatFindExpansion } from "@/agent-stream/chat-find";
 import { ChatEscFocusSurface } from "@/chat-esc-focus/surface";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -1117,10 +1114,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       };
     }, [baseRenderModel, pendingPermissionsNode, turnFooterNode]);
 
+    // CUSTOM(content-width-boost)
+    const widthStyle = useContentMaxWidthStyle();
     const emptyStateStyle = useMemo(
-      () => [stylesheet.emptyState, stylesheet.contentWrapper],
-      // oxlint-disable-next-line react-hooks/exhaustive-deps -- CUSTOM(content-width-boost): stylesheet entry changes with the width
-      [contentMaxWidth],
+      () => [stylesheet.emptyState, stylesheet.contentWrapper, widthStyle],
+      [widthStyle],
     );
     const scrollToBottomContainerStyle = useMemo(
       () => [
@@ -1997,11 +1995,10 @@ interface StreamItemWrapperProps {
 }
 
 function StreamItemWrapper({ gapBelow, children }: StreamItemWrapperProps) {
-  const boostedWidth = useContentWidthBoostRerender(); // CUSTOM(content-width-boost)
+  const widthStyle = useContentMaxWidthStyle(); // CUSTOM(content-width-boost)
   const wrapperStyle = useMemo(
-    () => [stylesheet.streamItemWrapper, { marginBottom: gapBelow }],
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- CUSTOM(content-width-boost): stylesheet entry changes with the width
-    [gapBelow, boostedWidth],
+    () => [stylesheet.streamItemWrapper, widthStyle, { marginBottom: gapBelow }],
+    [gapBelow, widthStyle],
   );
   return <View style={wrapperStyle}>{children}</View>;
 }

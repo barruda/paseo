@@ -1,6 +1,7 @@
 // CUSTOM(content-width-boost): per-window multiplier on the chat content width, driven by the
 // -, + and maximize buttons in the agent panel. Only applies while the desktop window is
 // maximized; the configured width (Settings > Appearance) is the 1x step.
+import { useMemo } from "react";
 import { create } from "zustand";
 
 export const CONTENT_WIDTH_BOOST_STEPS = [1, 1.5, 2, "full"] as const;
@@ -44,13 +45,19 @@ export function boostContentMaxWidth(
 }
 
 /**
- * Unistyles patches `theme.contentMaxWidth` without re-rendering memoized components, so a
- * component whose style reads it subscribes here. The appearance provider publishes the width
- * after patching the theme, so subscribers never render against the old theme. Use the returned
- * width as a dependency of any `useMemo` that holds a stylesheet entry reading the width.
+ * Unistyles patches `theme.contentMaxWidth`, but a memoized stylesheet entry can keep handing a
+ * re-rendered component the old value (the chat rows did). Components that must follow the
+ * buttons at once add this style after their stylesheet entry. The appearance provider publishes
+ * the width after patching the theme.
  */
-export function useContentWidthBoostRerender(): number | null {
-  return useContentWidthBoostStore((s) => s.appliedWidth);
+export function useContentMaxWidthStyle(): { maxWidth: number } | null {
+  const appliedWidth = useContentWidthBoostStore((s) => s.appliedWidth);
+  return useMemo(() => (appliedWidth === null ? null : { maxWidth: appliedWidth }), [appliedWidth]);
+}
+
+/** Re-render a component whose stylesheet reads `theme.contentMaxWidth` when the width changes. */
+export function useContentWidthBoostRerender(): void {
+  useContentWidthBoostStore((s) => s.appliedWidth);
 }
 
 export function useAppliedContentMaxWidth(fallback: number): number {

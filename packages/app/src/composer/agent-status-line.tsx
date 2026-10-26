@@ -1,4 +1,5 @@
 import { useMemo, type ReactElement } from "react";
+import { useContentMaxWidthStyle } from "@/content-width-boost/store";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { AgentStatusSummaryPayload } from "@getpaseo/protocol/messages";
@@ -30,12 +31,13 @@ export function AgentStatusLine({
   agentId: string;
 }): ReactElement | null {
   const summary = useAgentStatusSummary(serverId, agentId);
+  const widthStyle = useContentMaxWidthStyle(); // CUSTOM(content-width-boost)
   if (!summary) return null;
   // Only the topic shows; the request and status wait for a hover. Summaries written before
   // the topic existed fall back to the request.
   const text = summary.topic ?? summary.request;
   return (
-    <View style={styles.row} testID="agent-status-line">
+    <View style={[styles.row, widthStyle]} testID="agent-status-line">
       {isWeb ? (
         <HoverCard>
           <HoverCardTrigger accessibilityLabel={text}>

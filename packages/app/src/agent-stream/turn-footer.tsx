@@ -1,5 +1,5 @@
 import React, { memo, useCallback, useMemo, type ReactNode } from "react";
-import { useContentWidthBoostRerender } from "@/content-width-boost/store";
+import { useContentMaxWidthStyle } from "@/content-width-boost/store";
 import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { SPACING, type Theme } from "@/styles/theme";
@@ -208,11 +208,10 @@ function CompletedTurnFooter({
 }
 
 function TurnFooterRow({ children }: { children: ReactNode }) {
-  const boostedWidth = useContentWidthBoostRerender(); // CUSTOM(content-width-boost)
+  const widthStyle = useContentMaxWidthStyle(); // CUSTOM(content-width-boost)
   const rowStyle = useMemo(
-    () => [stylesheet.streamItemWrapper, stylesheet.turnFooterRow],
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- CUSTOM(content-width-boost): stylesheet entry changes with the width
-    [boostedWidth],
+    () => [stylesheet.streamItemWrapper, stylesheet.turnFooterRow, widthStyle],
+    [widthStyle],
   );
   return <View style={rowStyle}>{children}</View>;
 }
