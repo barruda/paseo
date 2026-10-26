@@ -27,10 +27,15 @@ const RUNNING_REFRESH_MS = 3 * 60_000;
 const MAX_CONCURRENT = 2;
 const SUMMARY_MODEL = "haiku";
 /**
- * CUSTOM(session-auto-rename): from this many user messages on, the summary's title renames the
- * session, unless the title was set by hand.
+ * CUSTOM(session-auto-rename): words a clamped title must not end on, so "Pesquisa de modelos low
+ * poly" doesn't become "Pesquisa de modelos low" and "Abas do World e Árvores" not "Abas do World e".
  */
-export const AUTO_RENAME_USER_MESSAGES = 3;
+const TITLE_TRAILING_WORDS = new Set(
+  (
+    "a o as os e ou de do da dos das em no na nos nas por para pra com sem ao aos à às um uma " +
+    "the a an and or of for to in on at by with from"
+  ).split(" "),
+);
 const SYSTEM_PROMPT =
   'You write status cards for coding agent sessions. Reply with JSON only: {"title": "...", "topic": "...", "request": "...", "status": "..."}.';
 
@@ -79,8 +84,9 @@ export function createLeanClaudeStatusGenerate(paseoHome: string): AgentStatusSu
         durationMs: Date.now() - startedAt,
       });
       const summary = parseStatusSummaryReply(result.text);
+      const title = tidyGeneratedTitle(summary.title);
       return {
-        ...(summary.title?.trim() ? { title: clampTitleWords(summary.title) } : {}),
+        ...(title ? { title } : {}),
         ...(summary.topic?.trim() ? { topic: summary.topic.trim() } : {}),
         request: summary.request,
         status: summary.status,
@@ -137,7 +143,9 @@ export function buildStatusSummaryPrompt(input: {
     "You keep a status card for a coding agent session. The user glances at it when switching",
     "back to this tab and needs to remember what the session is about.",
     "",
-    "- title: a name for the session, in at most 4 words, used as its tab title.",
+    "- title: a name for the session, 2 to 4 words, used as its tab title. A complete name, never",
+    '  a phrase cut short: no trailing "de", "e", "para", "and", "of". Name the subject',
+    "  (feature, bug, tool), not the activity. Keep the previous title unless the subject changed.",
     "- topic: what the session is about right now, in at most 6 words, like a tab title. It is",
     "  the only part shown without hovering, so it must read at a glance.",
     "- request: what the user is asking for right now, as a short phrase (at most 12 words).",
@@ -336,29 +344,51 @@ export class AgentStatusSummaries {
         status,
         updatedAt: this.now().toISOString(),
       });
-      if (result.title) await this.maybeAutoRename(agentId, result.title);
+      if (result.title) await this.maybeAutoRename(agentId, result.title, previous?.title ?? null);
     } catch (error) {
       logger.warn({ err: error, agentId }, "agent status summary failed");
     }
   }
 
-  // CUSTOM(session-auto-rename): once the session has a few user messages, the summary knows
-  // what it is about better than its first line does. Only a title still equal to the first
-  // message's provisional title gets replaced, so a rename by hand or an earlier auto-rename
-  // stays, across daemon restarts too.
-  private async maybeAutoRename(agentId: string, title: string): Promise<void> {
+  // CUSTOM(session-auto-rename): the summary's title names the session from its first summary on,
+  // and follows it while the title is still one this feature wrote: the first message's
+  // provisional title or the previous summary's title. A rename by hand (or an explicit title from
+  // the CLI/MCP) matches neither, so it stays, across daemon restarts too.
+  private async maybeAutoRename(
+    agentId: string,
+    title: string,
+    previousTitle: string | null,
+  ): Promise<void> {
     const { agentManager, agentStorage } = this.options;
-    const timeline = agentManager.getTimeline(agentId);
-    const userTexts = timeline.flatMap((item) =>
-      item.type === "user_message" && item.text.trim() ? [item.text] : [],
-    );
-    if (userTexts.length < AUTO_RENAME_USER_MESSAGES) return;
     const current = (await agentStorage.get(agentId))?.title?.trim() || null;
-    const { provisionalTitle } = resolveCreateAgentTitles({ initialPrompt: userTexts[0] });
-    if (current && current !== provisionalTitle) return;
     if (current === title) return;
+    if (current && current !== previousTitle) {
+      const firstUserText = agentManager
+        .getTimeline(agentId)
+        .find((item) => item.type === "user_message" && item.text.trim());
+      const { provisionalTitle } = resolveCreateAgentTitles({
+        initialPrompt: firstUserText?.type === "user_message" ? firstUserText.text : null,
+      });
+      if (current !== provisionalTitle) return;
+    }
     await agentManager.setTitle(agentId, title);
   }
+}
+
+/**
+ * CUSTOM(session-auto-rename): clamps a generated title to four words, then drops connector words
+ * the cut left at the end.
+ */
+export function tidyGeneratedTitle(title: string | undefined): string | undefined {
+  const words = clampTitleWords(title ?? "").split(" ");
+  while (words.length > 1 && TITLE_TRAILING_WORDS.has(words[words.length - 1].toLowerCase())) {
+    words.pop();
+  }
+  const tidy = words
+    .join(" ")
+    .replace(/[\s,;:.\-–—]+$/u, "")
+    .trim();
+  return tidy || undefined;
 }
 
 function clip(text: string, max: number): string {

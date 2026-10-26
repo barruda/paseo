@@ -9,6 +9,7 @@ import {
   buildStatusSummaryPrompt,
   collectStatusSummaryInput,
   parseStatusSummaryReply,
+  tidyGeneratedTitle,
 } from "./agent-status-summary.js";
 
 const user = (text: string): AgentTimelineItem => ({ type: "user_message", text });
@@ -46,6 +47,22 @@ describe("buildStatusSummaryPrompt", () => {
     expect(prompt).toContain("request: old goal");
     expect(prompt).toContain("<user>\nfix the login\n</user>");
     expect(prompt).toContain("(nothing yet)");
+  });
+});
+
+describe("tidyGeneratedTitle", () => {
+  it("drops connector words a four-word cut leaves at the end", () => {
+    expect(tidyGeneratedTitle("Pesquisa de modelos low poly")).toBe("Pesquisa de modelos low");
+    expect(tidyGeneratedTitle("Abas do World e Árvores")).toBe("Abas do World");
+    expect(tidyGeneratedTitle("PowerEditor: Seguir seleção por aba")).toBe(
+      "PowerEditor: Seguir seleção",
+    );
+    expect(tidyGeneratedTitle("Fix of the")).toBe("Fix");
+  });
+
+  it("keeps a complete title and drops trailing punctuation", () => {
+    expect(tidyGeneratedTitle("Login fix.")).toBe("Login fix");
+    expect(tidyGeneratedTitle("  ")).toBeUndefined();
   });
 });
 
@@ -165,30 +182,39 @@ describe("AgentStatusSummaries", () => {
   });
 
   describe("auto-rename", () => {
-    const threeMessages = [user("fix the login"), assistant("done"), user("now"), user("and")];
-
     beforeEach(() => {
       generate.mockResolvedValue({ title: "Login fix", request: "Fix login", status: "Done" });
     });
 
-    it("renames the session from the summary at the third user message", async () => {
-      manager.timeline = threeMessages;
+    it("renames the session from its first summary", async () => {
       manager.emit("turn_completed");
       await vi.advanceTimersByTimeAsync(3_000);
       expect(manager.title).toBe("Login fix");
     });
 
-    it("waits for the third user message", async () => {
-      manager.timeline = threeMessages.slice(0, 3);
+    it("follows the summary while the title is the one it wrote", async () => {
       manager.emit("turn_completed");
       await vi.advanceTimersByTimeAsync(3_000);
-      expect(manager.summaries.get("a1")?.title).toBe("Login fix");
-      expect(manager.title).toBe("fix the login");
+      generate.mockResolvedValue({ title: "Signup flow", request: "Signup", status: "Done" });
+      manager.timeline = [...manager.timeline, user("now the signup")];
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(manager.title).toBe("Signup flow");
     });
 
     it("keeps a title set by hand", async () => {
       manager.title = "My name";
-      manager.timeline = threeMessages;
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(manager.title).toBe("My name");
+    });
+
+    it("keeps a title renamed by hand after an auto-rename", async () => {
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      manager.title = "My name";
+      generate.mockResolvedValue({ title: "Signup flow", request: "Signup", status: "Done" });
+      manager.timeline = [...manager.timeline, user("now the signup")];
       manager.emit("turn_completed");
       await vi.advanceTimersByTimeAsync(3_000);
       expect(manager.title).toBe("My name");

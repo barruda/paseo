@@ -1,6 +1,6 @@
 // CUSTOM(session-auto-rename): a "Rename session" pill right of Commit: wip. It names the session
 // with the title from the agent's status summary (agent-status-summary.ts on the daemon), the same
-// title the daemon applies by itself at the third user message.
+// title the daemon applies by itself while the session keeps the title it gave it.
 import { memo, useCallback, useMemo, useState, type ReactElement } from "react";
 import { Pressable, Text } from "react-native";
 import { useAgentStatusSummary } from "@/composer/agent-status-line";
