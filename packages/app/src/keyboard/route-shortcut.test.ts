@@ -32,6 +32,7 @@ describe("routeKeyboardShortcut — dispatch passthroughs", () => {
     ["task.draft.project", { id: "task.draft.project", scope: "message-input" }],
     ["task.draft.project.next", { id: "task.draft.project.next", scope: "message-input" }],
     ["task.draft.model", { id: "task.draft.model", scope: "message-input" }],
+    ["task.draft.effort", { id: "task.draft.effort", scope: "message-input" }],
     ["agent.interrupt", { id: "agent.interrupt", scope: "global" }],
     ["workspace.tab.menu.open", { id: "workspace.tab.menu.open", scope: "workspace" }],
     ["workspace.tab.target.agent", { id: "workspace.tab.target.agent", scope: "workspace" }],

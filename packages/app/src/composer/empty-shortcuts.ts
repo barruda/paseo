@@ -158,3 +158,13 @@ export function previousModelSelection(
   );
   return models[current < 0 ? models.length - 1 : (current - 1 + models.length) % models.length];
 }
+
+/** The next effort level, wrapping from the last back to the first. */
+export function nextEffortId(
+  options: readonly { id: string }[] | null | undefined,
+  selectedId: string | null | undefined,
+): string | null {
+  if (!options?.length) return null;
+  const current = options.findIndex((option) => option.id === selectedId);
+  return options[(current + 1) % options.length].id;
+}

@@ -290,6 +290,7 @@ interface RenderLeftContentArgs {
   focusInput: () => void;
   isCompactLayout: boolean;
   showAgentControls: boolean;
+  isInputEmpty: () => boolean;
 }
 
 function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
@@ -304,6 +305,7 @@ function renderLeftContent(args: RenderLeftContentArgs): ReactElement | null {
       serverId={serverId}
       onDropdownClose={focusInput}
       isCompactLayout={isCompactLayout}
+      isInputEmpty={args.isInputEmpty}
     />
   );
 }
@@ -2288,6 +2290,8 @@ function ComposerContentImpl({
     [attachments, setSelectedAttachments, setGithubSearchQuery, setIsGithubPickerOpen],
   );
 
+  // CUSTOM(task-shortcuts): ←/→ in an ongoing chat cycle the model and effort only when empty.
+  const isInputEmpty = useCallback(() => textSource.getSnapshot().length === 0, [textSource]);
   const leftContent = useMemo(
     () =>
       renderLeftContent({
@@ -2297,8 +2301,17 @@ function ComposerContentImpl({
         focusInput,
         isCompactLayout,
         showAgentControls: mode.showAgentControls,
+        isInputEmpty,
       }),
-    [agentControls, agentId, focusInput, isCompactLayout, mode.showAgentControls, serverId],
+    [
+      agentControls,
+      agentId,
+      focusInput,
+      isCompactLayout,
+      isInputEmpty,
+      mode.showAgentControls,
+      serverId,
+    ],
   );
 
   const handleAttachButtonRef = useCallback((node: View | null) => {

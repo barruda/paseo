@@ -172,6 +172,7 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "task-draft-project",
     "task-draft-project-next",
     "task-draft-model",
+    "task-draft-effort",
   ],
   general: [
     "toggle-command-center",
@@ -345,11 +346,23 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     id: "task-draft-model",
     action: "task.draft.model",
     combo: "ArrowLeft",
-    when: { tasksMode: true, commandCenter: false, focusScope: "message-input" },
+    // CUSTOM(task-shortcuts): also cycles in an ongoing chat's empty composer, outside Tasks too.
+    when: { commandCenter: false, focusScope: "message-input" },
     help: {
       id: "task-draft-model",
       section: "tasks",
-      label: "Cycle favorite models in an empty new tab",
+      label: "Cycle favorite models in an empty composer",
+    },
+  },
+  {
+    id: "task-draft-effort",
+    action: "task.draft.effort",
+    combo: "ArrowRight",
+    when: { commandCenter: false, focusScope: "message-input" },
+    help: {
+      id: "task-draft-effort",
+      section: "tasks",
+      label: "Cycle the effort level in an empty composer",
     },
   },
   // --- Open project ---

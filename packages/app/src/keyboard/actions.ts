@@ -27,6 +27,7 @@ export type KeyboardActionId =
   | "task.draft.project"
   | "task.draft.project.next"
   | "task.draft.model"
+  | "task.draft.effort"
   | "agent.interrupt"
   | "agent.new"
   | "workspace.tab.menu.open"

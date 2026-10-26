@@ -1,4 +1,4 @@
-export const ATTACHMENT_ZOOM_FACTOR = 3;
+export const ATTACHMENT_ZOOM_FACTOR = 6;
 // Past this aspect ratio the long side stops growing and the whole zoom shrinks to fit.
 const MAX_LONG_SIDE_RATIO = 3;
 

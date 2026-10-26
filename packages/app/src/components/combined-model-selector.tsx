@@ -44,6 +44,8 @@ interface CombinedModelSelectorProps {
   }) => React.ReactNode;
   onOpen?: () => void;
   onClose?: () => void;
+  // CUSTOM(model-picker): the trigger opens this instead of the dropdown.
+  onTriggerPress?: () => void;
   onRetryProvider?: (provider: AgentProvider) => void;
   isRetryingProvider?: boolean;
   disabled?: boolean;
@@ -78,6 +80,7 @@ export function CombinedModelSelector({
   onEditProfile,
   renderTrigger,
   onOpen,
+  onTriggerPress,
   onClose,
   onRetryProvider,
   isRetryingProvider = false,
@@ -139,8 +142,12 @@ export function CombinedModelSelector({
   }, [isOpen]);
 
   const handleTriggerPress = useCallback(() => {
+    if (onTriggerPress) {
+      onTriggerPress();
+      return;
+    }
     handleOpenChange(!isOpen);
-  }, [handleOpenChange, isOpen]);
+  }, [handleOpenChange, isOpen, onTriggerPress]);
 
   const triggerStyle = useCallback(
     ({ pressed, hovered }: PressableStateCallbackType & { hovered?: boolean }) => {

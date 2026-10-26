@@ -73,6 +73,10 @@ import {
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 // CUSTOM(model-picker)
 import { useModelPickerSource } from "@/model-picker/use-model-picker-source";
+import { useModelPickerStore } from "@/model-picker/store";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import { useModelFavoritesStore } from "@/model-picker/favorites-store";
+import { nextEffortId, previousModelSelection } from "@/composer/empty-shortcuts";
 import type { ModelPickerProjectSource } from "@/model-picker/project";
 import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
 import { isNative } from "@/constants/platform";
@@ -131,6 +135,8 @@ interface ControlledAgentControlsProps {
   onSetFeature?: (featureId: string, value: unknown) => void;
   onDropdownClose?: () => void;
   onModelSelectorOpen?: () => void;
+  // CUSTOM(model-picker): clicking the model chip opens the Ctrl+M picker.
+  onOpenModelPicker?: () => void;
   onRetryModelProvider?: (provider: AgentProvider) => void;
   isRetryingModelProvider?: boolean;
   modeControl?: AgentModeControlValue | null;
@@ -171,18 +177,24 @@ export interface DraftAgentControlsProps {
 interface AgentControlsProps {
   agentId: string;
   serverId: string;
+  // CUSTOM(task-shortcuts): ←/→ cycle the model and effort only while the composer is empty.
+  isInputEmpty?: () => boolean;
   onDropdownClose?: () => void;
   isCompactLayout?: boolean;
 }
+
+const EMPTY_COMPOSER_CYCLE_ACTIONS = ["task.draft.model", "task.draft.effort"] as const;
 
 function AgentControlCommandCenterRegistration({
   sourceId,
   enabled,
   controls,
+  isInputEmpty,
 }: {
   sourceId: string;
   enabled: boolean;
   controls: AgentControlCommandCenterSource;
+  isInputEmpty?: () => boolean;
 }) {
   const { isActiveComposer } = useComposerKeyboardScope();
   useAgentControlCommandCenterActions({
@@ -192,6 +204,34 @@ function AgentControlCommandCenterRegistration({
   });
   // CUSTOM(model-picker)
   useModelPickerSource({ sourceId, enabled: enabled && isActiveComposer, controls });
+  // CUSTOM(task-shortcuts): ← cycles favorite models and → the effort in an ongoing chat.
+  useKeyboardActionHandler({
+    handlerId: `empty-composer-cycle:${sourceId}`,
+    actions: EMPTY_COMPOSER_CYCLE_ACTIONS,
+    enabled: enabled && isActiveComposer && Boolean(isInputEmpty),
+    priority: 200,
+    handle: (action) => {
+      if (!isInputEmpty?.()) return false;
+      if (action.id === "task.draft.model") {
+        const next = previousModelSelection(
+          controls.models.providers,
+          controls.models.selectedProvider ?? null,
+          controls.models.selectedModelId ?? null,
+          useModelFavoritesStore.getState().favoriteKeys,
+        );
+        if (!next) return false;
+        controls.models.select(next.provider, next.modelId);
+        return true;
+      }
+      if (action.id === "task.draft.effort") {
+        const next = nextEffortId(controls.thinking.options, controls.thinking.selectedId);
+        if (!next) return false;
+        void controls.thinking.select(next);
+        return true;
+      }
+      return false;
+    },
+  });
   return null;
 }
 
@@ -506,6 +546,7 @@ function ControlledAgentControls({
   onSetFeature,
   onDropdownClose,
   onModelSelectorOpen,
+  onOpenModelPicker,
   onRetryModelProvider,
   isRetryingModelProvider = false,
   modeControl,
@@ -760,6 +801,7 @@ function ControlledAgentControls({
             onEditAgentProfile={onEditAgentProfile}
             onDropdownClose={onDropdownClose}
             onModelSelectorOpen={onModelSelectorOpen}
+            onOpenModelPicker={onOpenModelPicker}
             onRetryModelProvider={onRetryModelProvider}
             isRetryingModelProvider={isRetryingModelProvider}
             agentProfiles={agentProfiles}
@@ -857,6 +899,7 @@ interface DesktopAgentControlsContentProps {
   onEditAgentProfile?: (profileId: string) => void;
   onDropdownClose?: () => void;
   onModelSelectorOpen?: () => void;
+  onOpenModelPicker?: () => void;
   onRetryModelProvider?: (provider: AgentProvider) => void;
   isRetryingModelProvider: boolean;
   agentProfiles: AgentProfilePicker | null;
@@ -919,6 +962,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     onEditAgentProfile,
     onDropdownClose,
     onModelSelectorOpen,
+    onOpenModelPicker,
     onRetryModelProvider,
     isRetryingModelProvider,
     agentProfiles,
@@ -1010,6 +1054,7 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
                 isLoading={isModelLoading}
                 disabled={modelDisabled}
                 onOpen={onModelSelectorOpen}
+                onTriggerPress={onOpenModelPicker}
                 onClose={onDropdownClose}
                 onRetryProvider={onRetryModelProvider}
                 isRetryingProvider={isRetryingModelProvider}
@@ -1565,6 +1610,7 @@ export const AgentControls = memo(function AgentControls({
   serverId,
   onDropdownClose,
   isCompactLayout,
+  isInputEmpty,
 }: AgentControlsProps) {
   const { updatePreferences } = useFormPreferences();
   const agent = useSessionStore(
@@ -1782,8 +1828,17 @@ export const AgentControls = memo(function AgentControls({
       sourceId={`agent:${serverId}:${agentId}`}
       enabled={Boolean(client)}
       controls={commandCenterControls}
+      isInputEmpty={isInputEmpty}
     />
   );
+
+  // CUSTOM(model-picker): the model chip opens the Ctrl+M picker on this agent.
+  const openModelPicker = useCallback(() => {
+    refetchSnapshotIfStale(agentProvider);
+    useModelPickerStore
+      .getState()
+      .open(`agent:${serverId}:${agentId}`, commandCenterControls, null);
+  }, [agentId, agentProvider, commandCenterControls, refetchSnapshotIfStale, serverId]);
 
   const handleModelSelectorOpen = useCallback(() => {
     refetchSnapshotIfStale(agentProvider);
@@ -1822,6 +1877,7 @@ export const AgentControls = memo(function AgentControls({
         onSetFeature={handleSetFeature}
         isModelLoading={snapshotIsLoading || selectedProviderIsLoading}
         onModelSelectorOpen={handleModelSelectorOpen}
+        onOpenModelPicker={openModelPicker}
         onRetryModelProvider={handleRetryModelProvider}
         isRetryingModelProvider={snapshotIsRefreshing}
         onDropdownClose={onDropdownClose}
@@ -1963,7 +2019,7 @@ export function DraftAgentControls({
       thinkingOptions,
     ],
   );
-  useModelPickerSource({
+  const openModelPicker = useModelPickerSource({
     sourceId: pickerSourceId,
     enabled: isActiveComposer && !disabled,
     controls: pickerControls,
@@ -1993,6 +2049,7 @@ export function DraftAgentControls({
         onSetFeature={onSetFeature}
         onDropdownClose={onDropdownClose}
         onModelSelectorOpen={onModelSelectorOpen}
+        onOpenModelPicker={openModelPicker}
         onRetryModelProvider={onRetryModelProvider}
         isRetryingModelProvider={isRetryingModelProvider}
         disabled={disabled}

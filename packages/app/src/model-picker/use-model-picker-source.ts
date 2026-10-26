@@ -17,7 +17,7 @@ export function useModelPickerSource(input: {
   enabled: boolean;
   controls: AgentControlCommandCenterSource;
   project?: ModelPickerProjectSource | null;
-}): void {
+}): () => void {
   const { sourceId, enabled, controls } = input;
   const project = input.project ?? null;
   const controlsRef = useRef(controls);
@@ -25,13 +25,16 @@ export function useModelPickerSource(input: {
   const projectRef = useRef(project);
   projectRef.current = project;
 
+  const open = useCallback(() => {
+    useModelPickerStore.getState().open(sourceId, controlsRef.current, projectRef.current);
+  }, [sourceId]);
   const handle = useCallback(
     (action: KeyboardActionDefinition) => {
       if (action.id !== "message-input.model-picker") return false;
-      useModelPickerStore.getState().open(sourceId, controlsRef.current, projectRef.current);
+      open();
       return true;
     },
-    [sourceId],
+    [open],
   );
   useKeyboardActionHandler({
     handlerId: `model-picker:${sourceId}`,
@@ -63,4 +66,5 @@ export function useModelPickerSource(input: {
     store.setPendingEffort(null);
     if (selectedThinkingId !== pending.effortId) void select(pending.effortId);
   }, [pending, select, selectedModelId, selectedProvider, selectedThinkingId, thinkingOptions]);
+  return open;
 }

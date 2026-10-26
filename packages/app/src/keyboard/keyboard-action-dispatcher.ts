@@ -10,6 +10,7 @@ export type KeyboardActionId =
   | "task.draft.project"
   | "task.draft.project.next"
   | "task.draft.model"
+  | "task.draft.effort"
   // CUSTOM(voice-exit): independent of the configurable interrupt chord.
   | "message-input.voice-exit"
   | "agent.interrupt"
@@ -77,6 +78,7 @@ export type KeyboardActionDefinition =
   | { id: "task.draft.project"; scope: KeyboardActionScope }
   | { id: "task.draft.project.next"; scope: KeyboardActionScope }
   | { id: "task.draft.model"; scope: KeyboardActionScope }
+  | { id: "task.draft.effort"; scope: KeyboardActionScope }
   | { id: "message-input.voice-exit"; scope: KeyboardActionScope }
   | { id: "agent.interrupt"; scope: KeyboardActionScope }
   | { id: "message-input.focus"; scope: KeyboardActionScope }

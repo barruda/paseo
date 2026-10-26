@@ -1347,6 +1347,8 @@ describe("task mode shortcuts", () => {
     expect(resolve("ArrowDown", "ArrowDown", true)?.action).toBe("task.draft.project.next");
     expect(resolve("ArrowDown", "ArrowDown", false)).toBeNull();
     expect(resolve("ArrowLeft", "ArrowLeft", true)?.action).toBe("task.draft.model");
+    expect(resolve("ArrowLeft", "ArrowLeft", false)?.action).toBe("task.draft.model");
+    expect(resolve("ArrowRight", "ArrowRight", false)?.action).toBe("task.draft.effort");
     expect(resolve("ArrowUp", "ArrowUp", false)).toBeNull();
   });
   it("provides a task settings section and derives badges from its configurable binding", () => {
@@ -1362,6 +1364,7 @@ describe("task mode shortcuts", () => {
       "task-draft-project",
       "task-draft-project-next",
       "task-draft-model",
+      "task-draft-effort",
     ]);
     expect(getWorkspaceIndexJumpModifierKey(platform)).toBe("Control");
     expect(

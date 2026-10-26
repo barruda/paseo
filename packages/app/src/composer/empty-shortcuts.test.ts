@@ -6,6 +6,7 @@ import {
   latestSentMessage,
   nextProjectId,
   previousProjectId,
+  nextEffortId,
   previousModelSelection,
   useComposerRewindSelection,
 } from "./empty-shortcuts";
@@ -162,4 +163,12 @@ it("cycles only available favorites in favorite order and handles empty favorite
   expect(previousModelSelection(providers, "a", "one", [])).toBeNull();
   expect(previousModelSelection(providers, null, null, ["missing:model"])).toBeNull();
   expect(previousModelSelection([], null, null, favorites)).toBeNull();
+});
+
+it("cycles effort levels forward with wraparound", () => {
+  const options = [{ id: "low" }, { id: "medium" }, { id: "high" }];
+  expect(nextEffortId(options, "low")).toBe("medium");
+  expect(nextEffortId(options, "high")).toBe("low");
+  expect(nextEffortId(options, null)).toBe("low");
+  expect(nextEffortId([], "low")).toBeNull();
 });

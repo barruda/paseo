@@ -2,6 +2,7 @@ import { useModelFavoritesStore } from "@/model-picker/favorites-store";
 import {
   nextProjectId,
   previousProjectId,
+  nextEffortId,
   previousModelSelection,
 } from "@/composer/empty-shortcuts";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
@@ -711,7 +712,12 @@ export function WorkspaceDraftAgentTab({
   // CUSTOM(task-shortcuts): only an untouched prompt yields arrow keys to draft selection.
   useKeyboardActionHandler({
     handlerId: `draft-selection:${tabId}`,
-    actions: ["task.draft.project", "task.draft.project.next", "task.draft.model"],
+    actions: [
+      "task.draft.project",
+      "task.draft.project.next",
+      "task.draft.model",
+      "task.draft.effort",
+    ],
     enabled: isPaneFocused,
     priority: 200,
     handle: (action) => {
@@ -738,6 +744,16 @@ export function WorkspaceDraftAgentTab({
         );
         if (!next) return false;
         composerState.setProviderAndModelFromUser(next.provider, next.modelId);
+        return true;
+      }
+      if (action.id === "task.draft.effort") {
+        const controls = composerState.agentControls;
+        const next = nextEffortId(
+          controls.thinkingOptions,
+          composerState.effectiveThinkingOptionId,
+        );
+        if (!next) return false;
+        controls.onSelectThinkingOption(next);
         return true;
       }
       return false;

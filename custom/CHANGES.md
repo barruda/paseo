@@ -384,6 +384,9 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     ([active-workspace-cycle](#active-workspace-cycle-shifttab-cycles-recently-active-workspaces)),
     and mode cycling is unbound; assign it a key in Settings → Shortcuts ("Cycle agent mode") to
     get it back.
+  - Clicking the composer's model chip (desktop layout) opens this picker instead of the model
+    dropdown: `CombinedModelSelector` takes `onTriggerPress`, and `AgentControls` /
+    `DraftAgentControls` pass an opener (`useModelPickerSource` returns one).
 - **Files:** `packages/app/src/model-picker/` (`model.ts` list/effort/favorite logic with
   `model.test.ts`, `store.ts`, `favorites-store.ts`, `use-model-picker-source.ts`,
   `model-picker.tsx`). New files; no conflict risk.
@@ -1389,7 +1392,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **What:** Hold Ctrl for numbered task badges; Ctrl+1–9 selects visible rows including expanded
   children in sidebar order. Shift+Tab cycles Desks, including from terminals and embedded browsers.
   In an empty draft, Up moves to the previous project on the current host that already has a
-  workspace and Down to the next one (both wrap), and Left cycles available favorite models in favorites order (no favorites means no change). Drafts show the project icon beside their controls. Settings →
+  workspace and Down to the next one (both wrap), and Left cycles available favorite models in favorites order (no favorites means no change). Right cycles the effort level forward with wraparound. Left and Right also work in an ongoing chat's empty composer and outside Tasks mode: `AgentControlCommandCenterRegistration` handles `task.draft.model`/`task.draft.effort` when the composer passes `isInputEmpty` (`composer/index.tsx` → `AgentControls`); the bindings no longer require `tasksMode`. The New Workspace screen keeps Left for its project cycle, since nothing handles the model action there. Drafts show the project icon beside their controls. Settings →
   Shortcuts has a **When in tasks mode** section with all six configurable bindings, including Ctrl+N to open New Desk. Tasks mode
   hides the New workspace header hint; workspace-mode bindings remain separate.
 - **Core files touched:** The keyboard binding/context/dispatcher/routing modules, global keyboard
@@ -2567,8 +2570,8 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
 - **Why:** A pasted screenshot shows as a 48px square crop, too small to tell what was pasted
   without opening the lightbox.
 - **What:** On web and desktop, hovering an image thumbnail (composer and sent messages) opens a
-  card above it with the whole image, uncropped: the short side at 3× the thumbnail (144px), the
-  long side up to 3× that (432px), shrinking both past that ratio. It uses the app's `HoverCard`,
+  card above it with the whole image, uncropped: the short side at 6× the thumbnail (288px), the
+  long side up to 3× that (864px), shrinking both past that ratio. It uses the app's `HoverCard`,
   so it closes when the pointer leaves and never shows on native.
 - **Files:** `packages/app/src/attachments/attachment-thumbnail-zoom.tsx` (the hover card) and
   `attachment-thumbnail-zoom-size.ts` (+ test). New files.
