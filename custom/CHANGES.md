@@ -2890,3 +2890,36 @@ paseo-warp-show-cwd event` on the `paseo` branch of `~/projetos/warp-web-custom`
   focus an agent of another project and press Ctrl+J: Warp shows a tab in that project (`pwd`
   prints its folder). Hide and show again from an agent of the first project: Warp goes back to
   its tab instead of opening another.
+
+## shell-output-files: shell tool calls link the files their command writes or reads back
+
+- **Added:** 2026-10-25 (based on upstream 0.11.2, `7f9b65d46`)
+- **Commit:** `custom: shell tool calls link the log files their command writes or reads back`
+- **Why:** Agents often send a command's output to a file and print only part of it
+  (`... > $S/out.txt; head -150 $S/out.txt`), or poll a file a tool writes. The chat then shows a
+  fraction of the log, and the file sits in a scratchpad folder nobody opens.
+- **What:** A **Logs:** row above the command in an expanded shell tool call lists those files by
+  name. Each is a chat file link
+  ([chat-file-actions](#chat-file-actions-file-links-in-the-chat-resolve-to-full-paths-and-get-a-hover-card-of-actions)):
+  clicking opens the file in a tab, hovering shows the full path and the usual actions. The files
+  are the targets of `>`, `>>`, `&>` and `N>` redirects and of `tee`, and the files given to
+  `cat`, `head`, `tail`, `less` and `more`. Variables assigned in the same command
+  (`S=/tmp/x; ... $S/out.txt`) and `cd` are followed; paths that depend on what the shell
+  computes at run time (`$(...)`, unknown variables, `~`, globs) are left out, as are
+  `/dev/null`, descriptor copies like `2>&1` and heredoc bodies. Relative paths need the tool
+  call's `cwd` or an absolute `cd`. Web and desktop only.
+- **Files:** `packages/app/src/components/shell-output-files.ts` (+ test) and
+  `shell-output-file-links.tsx`.
+- **Core files touched** (marked `CUSTOM(shell-output-files)`):
+  - `components/tool-call-details.tsx`: `ShellDetailSection` renders `ShellOutputFileLinks` and
+    takes the detail's `cwd`.
+  - `agent-stream/view.tsx`: shell tool calls get an `AssistantFileLinkResolverProvider`, like
+    assistant messages, so their links resolve.
+  - `assistant-file-links/provider.tsx`: `useHasAssistantFileLinkResolver`, since tool call details
+    also render outside the stream (the native tool call sheet).
+- **Re-apply:** Run `shellOutputFiles(command, cwd)` in the shell tool call detail and render each
+  path as an `AssistantMarkdownCodeLink`, only where a file link resolver provider is mounted; in
+  the agent stream, wrap shell tool calls in that provider.
+- **Verify:** `(cd packages/app && npx vitest run src/components/shell-output-files.test.ts)` (in
+  the update script). In the app, have an agent run `S=/tmp/x; mkdir -p $S; ls / > $S/out.txt;
+head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full listing.

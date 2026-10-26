@@ -890,7 +890,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             );
           }
 
-          return (
+          const slot = (
             <ToolCallSlot
               itemId={item.id}
               onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
@@ -905,6 +905,21 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               onOpenFilePath={handleToolCallOpenFile}
               maxDetailHeight={maxDetailHeight}
             />
+          );
+          // CUSTOM(shell-output-files): shell details link the files their command writes or
+          // reads back, with the same file links as assistant messages.
+          if (data.detail.type !== "shell") return slot;
+          return (
+            <AssistantFileLinkResolverProvider
+              client={client}
+              serverId={resolvedServerId}
+              workspaceRoot={workspaceRoot}
+              sessionPaths={sessionFilePaths}
+              onOpenWorkspaceFile={handleInlinePathPress}
+              toast={toast}
+            >
+              {slot}
+            </AssistantFileLinkResolverProvider>
           );
         }
 
@@ -923,7 +938,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           />
         );
       },
-      [context.cwd, setInlineDetailsExpanded, handleToolCallOpenFile],
+      [
+        client,
+        context.cwd,
+        handleInlinePathPress,
+        handleToolCallOpenFile,
+        resolvedServerId,
+        sessionFilePaths,
+        setInlineDetailsExpanded,
+        toast,
+        workspaceRoot,
+      ],
     );
 
     // Read through a stable event so live group updates do not change the renderer identity

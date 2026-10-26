@@ -300,7 +300,7 @@ if $VERIFY; then
   # Hovering an image thumbnail shows it magnified.
   (cd packages/app && npx vitest run src/attachments/attachment-thumbnail-zoom-size.test.ts --bail=1)
   # Chat file links resolve against the session's files and get a hover card of actions.
-  (cd packages/app && npx vitest run src/assistant-file-links/session-paths.test.ts src/assistant-file-links/hover-actions-model.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/assistant-file-links/session-paths.test.ts src/assistant-file-links/hover-actions-model.test.ts src/components/shell-output-files.test.ts --bail=1)
   # Ctrl+Tab stays in a page in the bottom panel.
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-browser.test.ts --bail=1)
   # A new bottom panel opens Warp.

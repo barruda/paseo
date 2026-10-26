@@ -90,4 +90,12 @@ export function useAssistantFileLinkResolverContext(): AssistantFileLinkResolver
   return context;
 }
 
+/**
+ * CUSTOM(shell-output-files): whether file links can resolve here. Tool call details also render
+ * outside the chat stream's provider (the native tool call sheet), where a link would throw.
+ */
+export function useHasAssistantFileLinkResolver(): boolean {
+  return useContext(AssistantFileLinkResolverContext) !== null;
+}
+
 export type { AssistantFileLinkContext };

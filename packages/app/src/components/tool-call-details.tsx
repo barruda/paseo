@@ -24,6 +24,7 @@ import { extensionFromPath, highlightToKeyedLines } from "@/utils/highlight-cach
 import { HighlightedLines } from "./highlighted-content";
 import { DiffViewer } from "./diff-viewer";
 import { getCodeInsets } from "./code-insets";
+import { ShellOutputFileLinks } from "./shell-output-file-links";
 import { isWeb } from "@/constants/platform";
 
 const ScrollView = isWeb ? RNScrollView : GHScrollView;
@@ -149,16 +150,19 @@ function useDiffLines(detail: ToolCallDetail | undefined): DiffLine[] | undefine
 
 interface ShellDetailProps {
   command: string;
+  cwd?: string;
   output: string | null | undefined;
   ds: DetailStyles;
 }
 
-function ShellDetailSection({ command, output, ds }: ShellDetailProps) {
+function ShellDetailSection({ command, cwd, output, ds }: ShellDetailProps) {
   const normalizedCommand = command.replace(/\n+$/, "");
   const commandOutput = (output ?? "").replace(/^\n+/, "");
   const hasOutput = commandOutput.length > 0;
   return (
     <View style={ds.sectionFillStyle}>
+      {/* CUSTOM(shell-output-files): links to the files the command writes or reads back. */}
+      <ShellOutputFileLinks command={normalizedCommand} cwd={cwd} />
       <View style={ds.codeBlockFillStyle}>
         <ScrollView
           style={ds.codeVerticalScrollStyle}
@@ -675,7 +679,13 @@ function buildDetailSections(
   if (!detail) return [];
   if (detail.type === "shell") {
     return [
-      <ShellDetailSection key="shell" command={detail.command} output={detail.output} ds={ds} />,
+      <ShellDetailSection
+        key="shell"
+        command={detail.command}
+        cwd={detail.cwd}
+        output={detail.output}
+        ds={ds}
+      />,
     ];
   }
   if (detail.type === "worktree_setup") {
