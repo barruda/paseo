@@ -36,6 +36,13 @@ rules agents get wrong.
 
 ## Shipping a change to the user's running Paseo
 
+- Only the main checkout (`/home/bruno/projetos/paseo`) ships. In a git worktree (any other
+  `git rev-parse --show-toplevel`, such as `~/projetos/worktrees/paseo-*`), don't build, install,
+  reload plugins, run `custom/reopen-paseo-clients.sh`, or start `npm run dev`, `dev:app`, or
+  `dev:desktop`. Stop at typecheck, lint, and targeted tests, and end your report by offering to
+  build. A second build or dev stack from a worktree runs next to the main checkout's, and the
+  user can't tell which version they are using. Do it only once the user asks, and then say which
+  checkout the build came from.
 - Plugin-only change: no rebuild. Reload it on each daemon:
   `npx tsx packages/cli/src/index.js plugin reload <id> --home ~/.paseo` (and `~/.paseo-telus`).
 - New plugin: it must be installed on each daemon once. See "One-time setup: plugins" in
