@@ -3279,6 +3279,14 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     running, Committed or Merged, or the git error. Commit and merge are the daemon's own
     `checkout_commit` and `checkout_merge` requests, the same as the app's Git menu; results are in
     `finishes`. The workspace is not archived.
+  - **Task editor:** New task and Edit open at 80% of the window (see
+    [plugin-modal-size](#plugin-modal-size-plugin-modals-at-80-of-the-window)), with a bold title,
+    a description that takes the free height, and Ctrl+Enter to save. A **+** under the
+    description inserts an image from a file (web and desktop, same upload as pasting), a
+    checklist item, an Acceptance criteria section or an Out of scope section at the cursor.
+    Project and orchestrator chips wrap instead of scrolling sideways; each project has its own
+    color (from its id, `projectColor` in `client/colors.ts`). A new task picks **Create in**:
+    its To do group or Ready to start, where an active orchestrator takes it at once.
   - **Default orchestrator:** a board with no orchestrators gets one named Default when it loads:
     all projects, always on (a window from 00:00 to 00:00 every day), 2 at a time, with the agent
     defaults. `defaultOrchestratorSeeded` keeps it from coming back after it is deleted.
@@ -3301,7 +3309,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **Tests:** `tests/power-workboard.test.ts` (no import, tracking, Ready to start migration,
   orchestrator limits, disable, project retry, Run now batches, daily time and Stop, task
   assignment and delete, refinement and `/write-ticket`, review Done, Continue while active and
-  while disabled, the default orchestrator, Commit, Merge and PR description) and `tests/schedule.test.ts` (windows across midnight, daily triggers, next
+  while disabled, the default orchestrator, Commit, Merge and PR description, creating in Ready to
+  start) and `tests/schedule.test.ts` (windows across midnight, daily triggers, next
   run). The upstream Workboard suites that assume import and the old groups
   were moved to `tests/upstream-workboard/` and are not run. The update script runs
   `tsc` and `vitest` in the plugin folder.
@@ -3314,6 +3323,25 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   and watch it go to In progress and then Ready to review with the agent's summary. Press
   Continue task, write feedback and Send back: the same agent chat gets it and the card returns
   to In progress.
+
+## plugin-modal-size: plugin modals at 80% of the window
+
+- **Added:** 2026-10-25 (based on upstream 0.11.2)
+- **Commit:** `custom: Power Workboard task editor at 80% of the window, colored projects and an insert menu`
+- **Why:** Plugin modals are capped at 520 px; Power Workboard's task editor needs room for a
+  long ticket.
+- **What:** `Modal.Content` takes `size: "large"`: on desktop the card is 80% of the window's
+  width (`desktopMaxWidth`) and 80% of its height. Phone sheets are unchanged. A plugin passes it
+  untyped (`{ size: "large" } as object`) because published plugin types lack it; an older Paseo
+  ignores it.
+- **Core files touched** (marked `CUSTOM(plugin-modal-size)`):
+  `packages/plugin/src/client/react-native.ts` (the prop) and
+  `packages/app/src/plugins/react-native/modal.tsx` (width from `useWindowDimensions`, height
+  `"80%"`).
+- **Re-apply:** Add the optional prop to `ModalContentProps`; in the app's `ModalContent`, pass
+  `desktopMaxWidth` and `desktopHeight` to `AdaptiveModalSheet` when it is `"large"`. Rebuild
+  `@getpaseo/plugin` (`npm run build:plugin`) before typechecking the app.
+- **Verify:** In Power Workboard, New task opens at 80% of the window.
 
 ## desk-workboard: Power Workboard as a tab beside the Desks
 

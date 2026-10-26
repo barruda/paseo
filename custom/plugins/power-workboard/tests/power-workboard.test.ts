@@ -637,3 +637,31 @@ it("only a Done task in a git project can be finished", async () => {
     board.dispose();
   }
 });
+
+it("a task created in Ready to start goes straight to an active orchestrator", async () => {
+  const { board, host } = orchestrated();
+  await board.start();
+  try {
+    await addOrchestrator(board);
+    await board.mutate({
+      action: "create",
+      title: "Now",
+      description: "",
+      projectId: "p",
+      stage: "ready",
+    });
+    expect(host.startAgent).toHaveBeenCalledTimes(1);
+    expect(stageOf(board, "Now")).toBe("in-progress");
+    await expect(
+      board.mutate({
+        action: "create",
+        title: "Bad",
+        description: "",
+        projectId: "p",
+        stage: "in-progress",
+      }),
+    ).rejects.toThrow("Choose a To do group");
+  } finally {
+    board.dispose();
+  }
+});

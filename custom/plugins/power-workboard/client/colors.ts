@@ -1,5 +1,10 @@
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { groupColorKey, type Group, type GroupColor } from "../shared/model";
+import {
+  GROUP_COLORS,
+  groupColorKey,
+  type Group,
+  type GroupColor,
+} from "../shared/model";
 
 type Theme = PluginSurfaceProps["theme"];
 const PALETTE: Record<GroupColor, readonly [string, string]> = {
@@ -60,4 +65,12 @@ export function supplementalColor(
   if (!rgb) return light;
   const brightness = rgb[0] * 0.2126 + rgb[1] * 0.7152 + rgb[2] * 0.0722;
   return brightness < 128 ? dark : light;
+}
+
+/** A stable color per project, from its id, so its chip looks the same everywhere. */
+export function projectColor(id: string, theme: Theme): string {
+  const colors = GROUP_COLORS.filter((color) => color !== "gray");
+  let hash = 0;
+  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return groupColorValue(colors[hash % colors.length], theme);
 }

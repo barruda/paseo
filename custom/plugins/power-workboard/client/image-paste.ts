@@ -107,3 +107,34 @@ export async function blobToBase64(
   }
   return btoa(binary);
 }
+
+/** Web only: open the file chooser for images. Resolves with none when it is closed or on native. */
+export function pickImages(): Promise<Blob[]> {
+  // No DOM types in this plugin: describe the little of `document` this uses.
+  const doc = (
+    globalThis as {
+      document?: {
+        createElement(tag: "input"): {
+          type: string;
+          accept: string;
+          multiple: boolean;
+          files: ArrayLike<Blob> | null;
+          addEventListener(type: string, listener: () => void): void;
+          click(): void;
+        };
+      };
+    }
+  ).document;
+  if (!doc) return Promise.resolve([]);
+  return new Promise((resolve) => {
+    const input = doc.createElement("input");
+    input.type = "file";
+    input.accept = "image/png,image/jpeg,image/gif,image/webp";
+    input.multiple = true;
+    input.addEventListener("change", () =>
+      resolve(input.files ? Array.from(input.files) : []),
+    );
+    input.addEventListener("cancel", () => resolve([]));
+    input.click();
+  });
+}

@@ -35,6 +35,11 @@ export interface ModalContentProps {
   contentContainerStyle?: StyleProp<ViewStyle>;
   /** Default true. Set false for a bounded body with your own ScrollView or FlatList. */
   scrollable?: boolean;
+  /**
+   * CUSTOM(plugin-modal-size): "large" takes 80% of the window's width and height on desktop.
+   * Sheets on phones are unchanged.
+   */
+  size?: "default" | "large";
 }
 
 export interface ModalComponent extends FunctionComponent<ModalProps> {

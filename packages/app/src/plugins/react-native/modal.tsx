@@ -6,6 +6,7 @@ import type {
 } from "@getpaseo/plugin/client/react-native";
 import { usePluginRuntimeContextBridge } from "@getpaseo/plugin/client/host";
 import { createContext, useCallback, useContext, useMemo, useRef, type ReactNode } from "react";
+import { useWindowDimensions, type DimensionValue } from "react-native";
 import { ToastApiProvider, useToast as useAppToast } from "@/contexts/toast-api-context";
 
 interface ModalContextValue {
@@ -39,8 +40,14 @@ function ModalContent({
   style,
   contentContainerStyle,
   scrollable = true,
+  size = "default",
 }: ModalContentProps) {
   const modal = useModalContext();
+  // CUSTOM(plugin-modal-size)
+  const { width } = useWindowDimensions();
+  const large = size === "large";
+  let desktopHeight: DimensionValue | undefined = scrollable ? undefined : "85%";
+  if (large) desktopHeight = "80%";
   const queryClient = useQueryClient();
   const toast = useAppToast();
   const bridgePluginRuntime = usePluginRuntimeContextBridge();
@@ -64,7 +71,8 @@ function ModalContent({
       bodyStyle={style}
       contentStyle={contentContainerStyle}
       scrollable={scrollable}
-      desktopHeight={scrollable ? undefined : "85%"}
+      desktopHeight={desktopHeight}
+      desktopMaxWidth={large ? Math.round(width * 0.8) : undefined}
     >
       {children}
     </AdaptiveModalSheet>

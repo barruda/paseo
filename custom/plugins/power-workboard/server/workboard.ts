@@ -964,7 +964,9 @@ export class Workboard {
               this.store.current.settings.groups,
               this.store.current.settings.defaultDraftGroup,
             );
-          if (groupKind(stage, this.store.current.settings.groups) !== "todo")
+          // A new task can also go straight to Ready to start, where an orchestrator takes it.
+          const kind = groupKind(stage, this.store.current.settings.groups);
+          if (kind !== "todo" && kind !== "ready")
             throw new Error("Choose a To do group for a new draft");
           await this.store.update((data) => {
             const task = newTask(
@@ -981,6 +983,7 @@ export class Workboard {
                 ?.name ?? "";
             data.tasks.push(task);
           });
+          if (kind === "ready") await this.orchestrate();
         } else if (input.action === "refine") {
           await this.refine(input.taskId);
         } else if (input.action === "review") {

@@ -58,7 +58,7 @@ import {
 import { groupTitle, stageTitle, strings } from "./strings";
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { BoardView } from "./BoardView";
-import { groupColor, supplementalColor } from "./colors";
+import { groupColor, projectColor, supplementalColor } from "./colors";
 import { loadBoardFilters, saveBoardFilters, toggleButtonState } from "./web";
 import {
   activeFilterCount,
@@ -78,7 +78,12 @@ import { usePaseoLanguage } from "./paseo-language";
 import { ConfirmationModal } from "./ConfirmationModal";
 // CUSTOM(workboard-images)
 import { DescriptionImages } from "./DescriptionImages";
-import { blobToBase64, useImagePaste, type PastedImages } from "./image-paste";
+import {
+  blobToBase64,
+  pickImages,
+  useImagePaste,
+  type PastedImages,
+} from "./image-paste";
 import {
   IMAGE_MAX_BYTES,
   insertImageRefs,
@@ -86,12 +91,16 @@ import {
 } from "../shared/images";
 
 type Page = "board" | "archive" | "settings";
+// CUSTOM(plugin-modal-size): our Paseo sizes it to 80% of the window; the published types lack it.
+const LARGE_MODAL = { size: "large" } as object;
 type DraftForm = {
   task?: Card;
   title: string;
   description: string;
   projectId: string | null;
   orchestratorId?: string | null;
+  /** Where a new task goes: a To do group or Ready to start. */
+  stage?: Stage;
 } | null;
 type StartForm = { card: Card; stage?: Stage } | null;
 type MoveUndo = {
@@ -1144,6 +1153,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                   description: form.description,
                   orchestratorId: form.orchestratorId ?? null,
                   projectId: form.projectId,
+                  ...(form.stage ? { stage: form.stage } : {}),
                 })
           ).then((next) => {
             if (!next) return;
@@ -2573,6 +2583,9 @@ function TaskModal({
   const [description, setDescription] = useState("");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [orchestratorId, setOrchestratorId] = useState<string | null>(null);
+  const [stage, setStage] = useState<Stage | null>(null);
+  const [inserting, setInserting] = useState(false);
+  const selection = useRef<{ start: number; end: number } | null>(null);
   // CUSTOM(workboard-images): pasted images upload to the daemon and land in the description as
   // Markdown references. Saving waits for uploads so a reference is never lost.
   const [uploads, setUploads] = useState(0);
@@ -2614,6 +2627,9 @@ function TaskModal({
       setDescription(form.description);
       setProjectId(form.projectId);
       setOrchestratorId(form.orchestratorId ?? null);
+      setStage(form.stage ?? null);
+      setInserting(false);
+      selection.current = null;
       setImageError(null);
     }
   }, [form]);
@@ -2621,23 +2637,97 @@ function TaskModal({
   const linked = form.task?.workspaceId !== null && form.task !== undefined;
   const saveDisabled =
     disabled || pending || uploads > 0 || (!linked && !title.trim());
+  const groups = orderedGroups(board.settings);
+  const draftGroup =
+    groups.find((group) => group.id === form.stage) ??
+    groups.find((group) => group.kind === "todo");
+  const readyGroup = groups.find((group) => group.kind === "ready");
+  const submit = () => {
+    if (saveDisabled) return;
+    onSave({
+      ...form,
+      title: linked ? form.task!.title : title.trim(),
+      description,
+      projectId,
+      orchestratorId,
+      stage: stage ?? undefined,
+    });
+  };
+  const submitOnCtrlEnter = (event: { nativeEvent: unknown }) => {
+    const key = event.nativeEvent as {
+      key?: string;
+      ctrlKey?: boolean;
+      metaKey?: boolean;
+    };
+    if (key.key === "Enter" && (key.ctrlKey || key.metaKey)) submit();
+  };
+  const insertText = (text: string) =>
+    setDescription((current) => {
+      const { start, end } = selection.current ?? {
+        start: current.length,
+        end: current.length,
+      };
+      const before = current.slice(0, start);
+      const lead = before.length === 0 || before.endsWith("\n") ? "" : "\n";
+      return `${before}${lead}${text}${current.slice(end)}`;
+    });
+  const insertOptions = [
+    ...(Platform.OS === "web"
+      ? [
+          {
+            label: t.taskModal.insertImage,
+            icon: "ImagePlus",
+            run: () =>
+              void pickImages().then((images) => {
+                if (images.length === 0) return;
+                const at = selection.current ?? {
+                  start: description.length,
+                  end: description.length,
+                };
+                void attachImages({ images, selection: at });
+              }),
+          },
+        ]
+      : []),
+    {
+      label: t.taskModal.insertChecklist,
+      icon: "ListChecks",
+      run: () => insertText("- [ ] "),
+    },
+    {
+      label: t.taskModal.insertCriteria,
+      icon: "CircleCheck",
+      run: () => insertText(`## ${t.taskModal.criteriaHeading}\n\n- [ ] `),
+    },
+    {
+      label: t.taskModal.insertOutOfScope,
+      icon: "Ban",
+      run: () => insertText(`## ${t.taskModal.outOfScopeHeading}\n\n- `),
+    },
+  ];
   return (
     <Modal
       open
       title={form.task ? t.edit : t.addTask}
       onOpenChange={(open) => !open && !pending && onClose()}
     >
-      <Modal.Content>
+      <Modal.Content
+        scrollable={false}
+        {...LARGE_MODAL}
+        contentContainerStyle={styles.taskModalBody}
+      >
         <TextInput
           accessibilityLabel={t.titleField}
           autoFocus={!linked}
           editable={!linked && !disabled}
           value={linked ? form.task!.title : title}
           onChangeText={setTitle}
+          onKeyPress={submitOnCtrlEnter}
           placeholder={t.titleField}
           placeholderTextColor={theme.colors.foregroundMuted}
           style={[
             styles.input,
+            styles.taskTitleInput,
             {
               color: theme.colors.foreground,
               borderColor: theme.colors.border,
@@ -2650,18 +2740,87 @@ function TaskModal({
           accessibilityLabel={t.description}
           value={description}
           onChangeText={setDescription}
+          onSelectionChange={(event) =>
+            (selection.current = event.nativeEvent.selection)
+          }
+          onKeyPress={submitOnCtrlEnter}
           multiline
           placeholder={t.description}
           placeholderTextColor={theme.colors.foregroundMuted}
           style={[
             styles.input,
-            styles.textarea,
+            styles.taskDescription,
             {
               color: theme.colors.foreground,
               borderColor: theme.colors.border,
             },
           ]}
         />
+        <View style={styles.insertRow}>
+          <HintButton
+            hint={t.taskModal.insert}
+            accessibilityRole="button"
+            accessibilityLabel={t.taskModal.insert}
+            accessibilityState={{ expanded: inserting }}
+            disabled={disabled}
+            onPress={() => setInserting((value) => !value)}
+            style={[
+              styles.insertButton,
+              {
+                borderColor: theme.colors.border,
+                backgroundColor: inserting
+                  ? theme.colors.surface2
+                  : theme.colors.surface1,
+              },
+            ]}
+          >
+            <Icon
+              name={inserting ? "X" : "Plus"}
+              size={15}
+              color={theme.colors.foreground}
+            />
+          </HintButton>
+          {inserting &&
+            insertOptions.map((option) => (
+              <Pressable
+                key={option.label}
+                accessibilityRole="button"
+                onPress={() => {
+                  setInserting(false);
+                  option.run();
+                }}
+                style={[styles.chip, styles.insertChip]}
+              >
+                <Icon
+                  name={option.icon}
+                  size={13}
+                  color={theme.colors.foregroundMuted}
+                />
+                <Text style={{ color: theme.colors.foreground }}>
+                  {option.label}
+                </Text>
+              </Pressable>
+            ))}
+          <Text
+            numberOfLines={1}
+            style={[
+              styles.imageHint,
+              styles.insertHint,
+              {
+                color: imageError
+                  ? theme.colors.statusDanger
+                  : theme.colors.foregroundMuted,
+              },
+            ]}
+          >
+            {imageError ??
+              (uploads > 0
+                ? t.uploadingImage
+                : Platform.OS === "web"
+                  ? `${t.pasteImageHint} · ${t.taskModal.saveHint}`
+                  : "")}
+          </Text>
+        </View>
         {/* CUSTOM(workboard-images) */}
         <DescriptionImages
           text={description}
@@ -2670,140 +2829,200 @@ function TaskModal({
           labels={{ remove: t.removeImage, missing: t.imageMissing }}
           onRemove={(ref) => setDescription(removeImageRef(description, ref))}
         />
-        {Platform.OS === "web" && !disabled ? (
+        <ScrollView
+          style={styles.taskChoices}
+          contentContainerStyle={styles.taskChoicesContent}
+        >
           <Text
             style={[
-              styles.imageHint,
-              {
-                color: imageError
-                  ? theme.colors.statusDanger
-                  : theme.colors.foregroundMuted,
-              },
+              styles.choiceLabel,
+              { color: theme.colors.foregroundMuted },
             ]}
           >
-            {imageError ?? (uploads > 0 ? t.uploadingImage : t.pasteImageHint)}
+            {t.taskModal.project}
           </Text>
-        ) : null}
-        <ScrollView
-          horizontal
-          style={styles.tabScroll}
-          contentContainerStyle={styles.projectChoices}
-        >
-          <Pressable
-            accessibilityRole="button"
-            {...toggleButtonState(projectId === null)}
-            disabled={disabled || linked}
-            onPress={() => setProjectId(null)}
-            style={[
-              styles.chip,
-              (disabled || linked) && styles.disabledControl,
-              projectId === null && { backgroundColor: theme.colors.surface2 },
-            ]}
-          >
-            <Text style={{ color: theme.colors.foreground }}>
-              {t.unassigned}
-            </Text>
-          </Pressable>
-          {board.projects.map((project) => (
+          <View style={styles.wrapChoices}>
+            {[{ id: null, name: t.unassigned }, ...board.projects].map(
+              (project) => {
+                const selected = projectId === project.id;
+                const color = project.id
+                  ? projectColor(project.id, theme)
+                  : theme.colors.foregroundMuted;
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    {...toggleButtonState(selected)}
+                    key={project.id ?? "none"}
+                    disabled={disabled || linked}
+                    onPress={() => setProjectId(project.id)}
+                    style={[
+                      styles.chip,
+                      styles.colorChip,
+                      (disabled || linked) && styles.disabledControl,
+                      {
+                        borderColor: selected ? color : theme.colors.border,
+                        backgroundColor: selected
+                          ? `${color}2e`
+                          : "transparent",
+                      },
+                    ]}
+                  >
+                    <View
+                      style={[styles.colorDot, { backgroundColor: color }]}
+                    />
+                    <Text
+                      style={{
+                        color: theme.colors.foreground,
+                        fontWeight: selected ? "600" : "400",
+                      }}
+                    >
+                      {project.name}
+                    </Text>
+                  </Pressable>
+                );
+              },
+            )}
+          </View>
+          {board.orchestrators.length > 0 && (
+            <>
+              <Text
+                style={[
+                  styles.choiceLabel,
+                  { color: theme.colors.foregroundMuted },
+                ]}
+              >
+                {t.taskModal.orchestrator}
+              </Text>
+              <View style={styles.wrapChoices}>
+                {[
+                  { id: null, name: t.orchestratorAutomatic },
+                  ...board.orchestrators,
+                ].map((item) => {
+                  const selected = orchestratorId === item.id;
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`${t.orchestrator}: ${item.name}`}
+                      {...toggleButtonState(selected)}
+                      key={item.id ?? "automatic"}
+                      disabled={disabled}
+                      onPress={() => setOrchestratorId(item.id)}
+                      style={[
+                        styles.chip,
+                        styles.colorChip,
+                        disabled && styles.disabledControl,
+                        {
+                          borderColor: selected
+                            ? theme.colors.accent
+                            : theme.colors.border,
+                          backgroundColor: selected
+                            ? theme.colors.surface2
+                            : "transparent",
+                        },
+                      ]}
+                    >
+                      <Icon
+                        name={item.id ? "Bot" : "Shuffle"}
+                        size={13}
+                        color={theme.colors.foregroundMuted}
+                      />
+                      <Text style={{ color: theme.colors.foreground }}>
+                        {item.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </>
+          )}
+        </ScrollView>
+        <View style={styles.taskFooter}>
+          {!form.task && readyGroup ? (
+            <View style={styles.wrapChoices}>
+              <Text
+                style={[
+                  styles.choiceLabel,
+                  { color: theme.colors.foregroundMuted },
+                ]}
+              >
+                {t.taskModal.createIn}
+              </Text>
+              {[draftGroup, readyGroup].map((group) =>
+                group ? (
+                  <Pressable
+                    key={group.id}
+                    accessibilityRole="button"
+                    {...toggleButtonState(
+                      (stage ?? draftGroup?.id) === group.id,
+                    )}
+                    disabled={disabled}
+                    onPress={() => setStage(group.id)}
+                    style={[
+                      styles.chip,
+                      styles.colorChip,
+                      {
+                        borderColor:
+                          (stage ?? draftGroup?.id) === group.id
+                            ? groupColor(group, theme)
+                            : theme.colors.border,
+                        backgroundColor:
+                          (stage ?? draftGroup?.id) === group.id
+                            ? `${groupColor(group, theme)}2e`
+                            : "transparent",
+                      },
+                    ]}
+                  >
+                    <Text style={{ color: theme.colors.foreground }}>
+                      {groupTitle(group, t)}
+                    </Text>
+                  </Pressable>
+                ) : null,
+              )}
+            </View>
+          ) : (
+            <View />
+          )}
+          <View style={styles.modalActions}>
             <Pressable
               accessibilityRole="button"
-              {...toggleButtonState(projectId === project.id)}
-              key={project.id}
-              disabled={disabled || linked}
-              onPress={() => setProjectId(project.id)}
-              style={[
-                styles.chip,
-                (disabled || linked) && styles.disabledControl,
-                projectId === project.id && {
-                  backgroundColor: theme.colors.surface2,
-                },
-              ]}
+              disabled={pending}
+              onPress={onClose}
+              style={[styles.toolbarButton, pending && styles.disabledControl]}
             >
-              <Text style={{ color: theme.colors.foreground }}>
-                {project.name}
+              <Text style={{ color: theme.colors.foregroundMuted }}>
+                {t.cancel}
               </Text>
             </Pressable>
-          ))}
-        </ScrollView>
-        {board.orchestrators.length > 0 && (
-          <ScrollView
-            horizontal
-            style={styles.tabScroll}
-            contentContainerStyle={styles.projectChoices}
-          >
-            {[
-              { id: null, name: t.orchestratorAutomatic },
-              ...board.orchestrators,
-            ].map((item) => (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`${t.orchestrator}: ${item.name}`}
-                {...toggleButtonState(orchestratorId === item.id)}
-                key={item.id ?? "automatic"}
-                disabled={disabled}
-                onPress={() => setOrchestratorId(item.id)}
+            <Pressable
+              accessibilityRole="button"
+              accessibilityState={{ busy: pending }}
+              disabled={saveDisabled}
+              style={[
+                styles.toolbarButton,
+                styles.saveButton,
+                {
+                  backgroundColor: saveDisabled
+                    ? theme.colors.surface2
+                    : theme.colors.accent,
+                },
+                saveDisabled && styles.disabledControl,
+              ]}
+              onPress={submit}
+            >
+              <Text
                 style={[
-                  styles.chip,
-                  disabled && styles.disabledControl,
-                  orchestratorId === item.id && {
-                    backgroundColor: theme.colors.surface2,
+                  styles.primary,
+                  {
+                    color: saveDisabled
+                      ? theme.colors.foregroundMuted
+                      : theme.colors.accentForeground,
                   },
                 ]}
               >
-                <Icon
-                  name={item.id ? "Bot" : "Shuffle"}
-                  size={13}
-                  color={theme.colors.foregroundMuted}
-                />
-                <Text style={{ color: theme.colors.foreground }}>
-                  {item.name}
-                </Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        )}
-        <View style={styles.modalActions}>
-          <Pressable
-            accessibilityRole="button"
-            disabled={pending}
-            onPress={onClose}
-            style={[styles.toolbarButton, pending && styles.disabledControl]}
-          >
-            <Text style={{ color: theme.colors.foregroundMuted }}>
-              {t.cancel}
-            </Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityState={{ busy: pending }}
-            disabled={saveDisabled}
-            style={[
-              styles.toolbarButton,
-              saveDisabled && styles.disabledControl,
-            ]}
-            onPress={() =>
-              onSave({
-                ...form,
-                title: linked ? form.task!.title : title.trim(),
-                description,
-                projectId,
-                orchestratorId,
-              })
-            }
-          >
-            <Text
-              style={[
-                styles.primary,
-                {
-                  color: saveDisabled
-                    ? theme.colors.foregroundMuted
-                    : theme.colors.foreground,
-                },
-              ]}
-            >
-              {pending ? t.working : form.task ? t.update : t.create}
-            </Text>
-          </Pressable>
+                {pending ? t.working : form.task ? t.update : t.create}
+              </Text>
+            </Pressable>
+          </View>
         </View>
       </Modal.Content>
     </Modal>
@@ -4046,6 +4265,57 @@ const styles = StyleSheet.create({
   },
   reviewTitle: { fontSize: 13, fontWeight: "600" },
   prBox: { gap: 4 },
+  taskModalBody: { flex: 1, minHeight: 0, gap: 12 },
+  taskTitleInput: { fontSize: 16, fontWeight: "600" },
+  taskDescription: {
+    flex: 1,
+    minHeight: 160,
+    textAlignVertical: "top",
+    lineHeight: 20,
+  },
+  insertRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+  },
+  insertButton: {
+    width: 32,
+    height: 32,
+    borderWidth: 1,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  insertChip: { flexDirection: "row", alignItems: "center", gap: 5 },
+  insertHint: { flexShrink: 1, marginLeft: 4 },
+  taskChoices: { flexGrow: 0, flexShrink: 1, maxHeight: 220 },
+  taskChoicesContent: { gap: 8 },
+  choiceLabel: { fontSize: 12, fontWeight: "600" },
+  wrapChoices: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    gap: 6,
+  },
+  colorChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    minHeight: 32,
+    borderRadius: 16,
+    paddingHorizontal: 11,
+  },
+  colorDot: { width: 8, height: 8, borderRadius: 4 },
+  taskFooter: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
+  saveButton: { borderRadius: 8, paddingHorizontal: 14 },
   reviewInput: { minHeight: 64, textAlignVertical: "top" },
   reviewActions: {
     flexDirection: "row",
