@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Close each running Paseo window and reopen it from its launcher, so it runs the newest install and
-# keeps its dock slot. Only clients set to keep their daemon running after quit are touched:
-# quitting the others would stop their daemon and its agents.
+# keeps its dock slot. A client set to keep its daemon running after quit leaves the daemon and its
+# agents alone. The others (paseo-telus) stop their daemon on quit, so their daemon restarts with
+# the window and its running agents stop; the user asked for those to be reopened too.
 set -euo pipefail
 
 declare -A LAUNCHERS=([Paseo]=paseo-personal [Paseo-telus]=paseo-telus)
@@ -15,10 +16,8 @@ for dir in "${!LAUNCHERS[@]}"; do
   [[ "$(ps -o args= -p "$pid" 2>/dev/null)" == *Paseo.bin* ]] || continue
 
   keep="$(node -e 'try { const s = require(process.argv[1]); console.log(s.settings?.daemon?.keepRunningAfterQuit === true) } catch { console.log(false) }' "$config/desktop-settings.json")"
-  if [[ "$keep" != true ]]; then
-    echo "Skipped $launcher: quitting it would stop its daemon (keepRunningAfterQuit is off). Reopen it by hand."
-    continue
-  fi
+  daemon_note=""
+  [[ "$keep" == true ]] || daemon_note=" (its daemon restarted with it: keepRunningAfterQuit is off)"
 
   kill -TERM "$pid"
   for _ in $(seq 75); do
@@ -30,5 +29,5 @@ for dir in "${!LAUNCHERS[@]}"; do
     continue
   fi
   setsid gtk-launch "$launcher" >/dev/null 2>&1 < /dev/null &
-  echo "Reopened $launcher"
+  echo "Reopened $launcher$daemon_note"
 done

@@ -47,8 +47,10 @@ rules agents get wrong.
   full build fails at rpm on Ubuntu), then
   `custom/update-paseo-source-and-apply-customization.sh --install-only`. Then run
   `custom/reopen-paseo-clients.sh` yourself, without asking: it closes each Paseo window and
-  reopens it from its launcher (so it keeps its dock slot). The daemon and its agents keep running,
-  and the script skips any window whose daemon would stop on quit. For daemon-side changes that is not enough: with an unchanged version the
+  reopens it from its launcher (so it keeps its dock slot), `paseo-telus` included. `paseo-personal`
+  keeps its daemon and agents running; `paseo-telus` has `keepRunningAfterQuit` off, so its daemon
+  restarts with the window and its running agents stop. The user asked for that; say in your
+  report that the telus daemon restarted. For daemon-side changes that is not enough: with an unchanged version the
   `Paseo Supervisor` keeps respawning the daemon from the old build, even after Settings >
   Restart daemon. Tell the user to run `kill-paseos-and-daemons.sh` (it also works as a `!`
   command in Paseo). Don't run it yourself: it stops the daemon your own session runs under (see

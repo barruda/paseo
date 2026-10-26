@@ -56,8 +56,9 @@ custom/update-paseo-source-and-apply-customization.sh --install
 ```
 
 Then run `custom/reopen-paseo-clients.sh` to close and reopen the Paseo windows from their
-launchers. It only touches a window whose daemon keeps running after quit (Settings >
-`keepRunningAfterQuit`); quitting the others would stop their daemon, so it skips them. Use `--ref v0.11.0` to follow a release tag instead of
+launchers, all of them. A window whose daemon keeps running after quit (Settings >
+`keepRunningAfterQuit`) leaves its daemon and agents running; for the others (`paseo-telus`) the
+daemon restarts with the window and its running agents stop. Use `--ref v0.11.0` to follow a release tag instead of
 `main`. `--no-build` only rebases. `--install-only` installs the last build.
 
 Each install goes to a new folder under `~/Applications/Paseo-builds/`, and the script repoints the
