@@ -3154,10 +3154,12 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   switch to Changes doesn't steal focus), `model.ts` `changesDifferFromList` (+ test).
 - **Core files touched:**
   - `git/diff-pane.tsx`: passes `status` and `beforeCommit` (`useCommitGuard`) to `CommitBox`.
-  - `screens/workspace/workspace-screen.tsx` (`CUSTOM(commit-selection)`): the
-    `sidebar.toggle.right` handler requests commit focus when the Explorer was closed.
+  - `screens/workspace/workspace-screen.tsx` and, for Tasks mode,
+    `task-navigation/desk-screen.tsx` (`CUSTOM(commit-selection)`): each `sidebar.toggle.right`
+    handler requests commit focus when the Explorer was closed.
 - **Re-apply:** Keep Ctrl+E on upstream's `sidebar.toggle.right`; a second Ctrl+E binding never
-  fires because that one matches first. The request has to outlive the toggle because the commit
+  fires because that one matches first. Tasks mode has its own handler for that action (the
+  desk Explorer); request focus in both, or Ctrl+E in Tasks mode leaves focus in the chat. The request has to outlive the toggle because the commit
   box mounts only after the Explorer opens, and a claim-once request with a short TTL keeps it
   from firing later.
 - **Verify:** `commit-selection/model.test.ts` and `e2e/browser/changes-commit-selection.spec.ts`

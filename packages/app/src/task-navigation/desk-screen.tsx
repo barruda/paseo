@@ -91,6 +91,7 @@ import {
 } from "@/screens/workspace/workspace-explorer-toggle";
 import { DeskLauncherProvider } from "./new-tab-menu";
 import { DeskExplorerDock, useDeskExplorer } from "./desk-explorer";
+import { useCommitMessageFocusStore } from "@/git/commit-selection/focus-request";
 import {
   findDiffTabToReuse,
   isInBottomPanel,
@@ -324,6 +325,8 @@ export function DeskScreen() {
     priority: 100,
     actions: ["sidebar.toggle.right"],
     handle: () => {
+      // CUSTOM(commit-selection): opening the Explorer also focuses the Changes commit message.
+      if (!explorer.isOpen) useCommitMessageFocusStore.getState().request();
       explorer.toggle();
       return true;
     },
