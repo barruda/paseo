@@ -832,6 +832,11 @@ export const AgentStatusSummaryPayloadSchema = z.object({
   topic: z.string().optional(),
   request: z.string(),
   status: z.string(),
+  /**
+   * CUSTOM(worktree-pill-done): true when the agent says the request is done or nearly done
+   * (only review, a commit or a merge left). The Worktree pill turns green and moves first.
+   */
+  done: z.boolean().optional(),
   updatedAt: z.string(),
   /** The model that wrote it, e.g. `claude-haiku-5-5`. */
   model: z.string().optional(),

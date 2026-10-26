@@ -37,13 +37,15 @@ const TITLE_TRAILING_WORDS = new Set(
   ).split(" "),
 );
 const SYSTEM_PROMPT =
-  'You write status cards for coding agent sessions. Reply with JSON only: {"title": "...", "topic": "...", "request": "...", "status": "..."}.';
+  'You write status cards for coding agent sessions. Reply with JSON only: {"title": "...", "topic": "...", "request": "...", "status": "...", "done": false}.';
 
 const SummarySchema = z.object({
   title: z.string().optional(),
   topic: z.string().optional(),
   request: z.string(),
   status: z.string(),
+  /** A bad `done` ("yes", "true") must not cost the whole summary, so it is read loosely. */
+  done: z.unknown().optional(),
 });
 
 export type AgentStatusSummaryGenerate = (input: {
@@ -90,6 +92,7 @@ export function createLeanClaudeStatusGenerate(paseoHome: string): AgentStatusSu
         ...(summary.topic?.trim() ? { topic: summary.topic.trim() } : {}),
         request: summary.request,
         status: summary.status,
+        ...(summary.done !== undefined ? { done: readDoneFlag(summary.done) } : {}),
         ...(result.model ? { model: result.model } : {}),
         ...(result.costUsd !== null ? { costUsd: result.costUsd } : {}),
       };
@@ -152,8 +155,12 @@ export function buildStatusSummaryPrompt(input: {
     "  When the latest messages change the goal, describe the new goal, not the first one.",
     "- status: where the work stands, as one short sentence (at most 18 words): what the agent",
     "  is doing or did, and what is pending or what it needs from the user.",
+    // CUSTOM(worktree-pill-done)
+    "- done: true when the agent says the current request is done or nearly done, so that only",
+    "  the user's review, a commit or a merge is left. false while work, a question or a failure",
+    "  is pending.",
     "Write them all in the language of the user's messages. No markdown inside the values.",
-    'Reply with JSON only: {"title": "...", "topic": "...", "request": "...", "status": "..."}',
+    'Reply with JSON only: {"title": "...", "topic": "...", "request": "...", "status": "...", "done": false}',
     "",
     `Agent state: ${lifecycle}.`,
   ];
@@ -165,6 +172,7 @@ export function buildStatusSummaryPrompt(input: {
       ...(previous.topic ? [`topic: ${clip(previous.topic, PREVIOUS_FIELD_CHARS)}`] : []),
       `request: ${clip(previous.request, PREVIOUS_FIELD_CHARS)}`,
       `status: ${clip(previous.status, PREVIOUS_FIELD_CHARS)}`,
+      ...(previous.done !== undefined ? [`done: ${previous.done}`] : []),
     );
   }
   lines.push("", "User messages, oldest first:");
@@ -389,6 +397,11 @@ export function tidyGeneratedTitle(title: string | undefined): string | undefine
     .replace(/[\s,;:.\-–—]+$/u, "")
     .trim();
   return tidy || undefined;
+}
+
+/** CUSTOM(worktree-pill-done): `true` or `"true"`; anything else is not done. */
+export function readDoneFlag(value: unknown): boolean {
+  return value === true || (typeof value === "string" && value.trim().toLowerCase() === "true");
 }
 
 function clip(text: string, max: number): string {

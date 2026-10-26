@@ -9,6 +9,7 @@ import {
   buildStatusSummaryPrompt,
   collectStatusSummaryInput,
   parseStatusSummaryReply,
+  readDoneFlag,
   tidyGeneratedTitle,
 } from "./agent-status-summary.js";
 
@@ -66,6 +67,17 @@ describe("tidyGeneratedTitle", () => {
   });
 });
 
+// CUSTOM(worktree-pill-done)
+describe("readDoneFlag", () => {
+  it("accepts true and the string true only", () => {
+    expect(readDoneFlag(true)).toBe(true);
+    expect(readDoneFlag(" True ")).toBe(true);
+    expect(readDoneFlag(false)).toBe(false);
+    expect(readDoneFlag("yes")).toBe(false);
+    expect(readDoneFlag(1)).toBe(false);
+  });
+});
+
 describe("parseStatusSummaryReply", () => {
   it("reads the JSON object even inside a code fence", () => {
     expect(
@@ -77,6 +89,13 @@ describe("parseStatusSummaryReply", () => {
     expect(
       parseStatusSummaryReply('{"topic":"Login fix","request":"Fix login","status":"Done"}'),
     ).toEqual({ topic: "Login fix", request: "Fix login", status: "Done" });
+  });
+
+  // CUSTOM(worktree-pill-done)
+  it("keeps the done flag", () => {
+    expect(
+      parseStatusSummaryReply('{"request":"Fix login","status":"Merged","done":true}'),
+    ).toEqual({ request: "Fix login", status: "Merged", done: true });
   });
 
   it("throws when there is no JSON", () => {

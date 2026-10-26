@@ -4,6 +4,7 @@ import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { RenameSessionPill } from "@/composer/rename-session-pill";
 import { ReadingModePill } from "@/agent-stream/reading-modes/pill";
 import { WorktreePill } from "@/composer/worktree-pill";
+import { useAgentStatusSummary } from "@/composer/agent-status-line";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { AgentTaskList } from "@/composer/task-list";
 import { ComposerTrackBar } from "@/composer/tracks";
@@ -55,6 +56,8 @@ export const AgentTracks = memo(function AgentTracks({
 }): ReactElement | null {
   const { tabId, openTab } = usePaneContext();
   const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId);
+  // CUSTOM(worktree-pill-done): a done worktree session leads the row with a green Worktree pill.
+  const isDone = useAgentStatusSummary(serverId, agentId)?.done === true;
   const isCompact = useIsCompactFormFactor();
   const canSplit = supportsDesktopPaneSplits() && !isCompact;
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
@@ -130,6 +133,16 @@ export const AgentTracks = memo(function AgentTracks({
 
   return (
     <ComposerTrackBar>
+      {/* CUSTOM(worktree-pill-done) */}
+      {isDone ? (
+        <WorktreePill
+          serverId={serverId}
+          workspaceId={workspaceId}
+          agentId={agentId}
+          cwd={cwd}
+          done
+        />
+      ) : null}
       <AgentTaskList tasks={tasks} />
       <SubagentsTrack
         serverId={serverId}
@@ -166,7 +179,9 @@ export const AgentTracks = memo(function AgentTracks({
         onPress={handleOpenChanges}
       />
       {/* CUSTOM(worktree-pill): copies the worktree path or merges it into the main checkout. */}
-      <WorktreePill serverId={serverId} workspaceId={workspaceId} agentId={agentId} cwd={cwd} />
+      {isDone ? null : (
+        <WorktreePill serverId={serverId} workspaceId={workspaceId} agentId={agentId} cwd={cwd} />
+      )}
       {/* CUSTOM(reading-modes): Columns and Compact, at the right end. */}
       <ReadingModePill agentId={agentId} />
     </ComposerTrackBar>

@@ -2957,3 +2957,35 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Verify:** `(cd packages/app && npx vitest run src/content-width-boost/store.test.ts)` (in the
   update script). In the app, maximize the window, press `+` twice: the messages, pill row and
   composer double at once; maximize icon: they fill the pane.
+
+## worktree-pill-done: a done worktree session gets a green Worktree pill at the front
+
+- **Added:** 2026-10-26
+- **Commit:** `custom: the Worktree pill turns green and leads the row when the agent is done`
+- **Why:** With several worktree sessions open, the user wants to see at a glance which ones are
+  ready to review and merge back.
+- **What:** The
+  [status summary](#agent-status-summary-what-each-agent-was-asked-and-where-it-stands-under-the-composer)
+  gets a `done` flag: Haiku sets it when the agent says the current request is done or nearly
+  done (only review, a commit or a merge left), and clears it while work, a question or a failure
+  is pending. While it is set, the **Worktree: <branch>** pill has a green border
+  (`statusSuccess`) and moves to the first slot of the pill row. A loose `done` from the model
+  ("true" as a string) still counts; anything else is not done, and never costs the rest of the
+  summary. Summaries written before this change have no flag, so the pill stays as it was until
+  the next summary.
+- **Files:** `readDoneFlag` in `packages/server/src/server/agent-status-summary.ts` (+ test).
+- **Core files touched** (marked `CUSTOM(worktree-pill-done)`):
+  - Protocol `messages.ts`: optional `done` on `AgentStatusSummaryPayloadSchema`.
+  - Server `agent-status-summary.ts`: the prompt asks for `done` and shows the previous one;
+    `SummarySchema` reads it loosely.
+  - App `composer/worktree-pill.tsx`: `done` prop, green border.
+  - App `panels/agent-tracks.tsx`: renders the pill first when `done`, in its usual slot
+    otherwise.
+- **Re-apply:** Add `done` to the status summary JSON the Haiku prompt asks for and pass it into
+  the payload. In the pill row, read `useAgentStatusSummary(serverId, agentId)?.done` and render
+  `WorktreePill` with a `statusSuccess` border as the row's first child when it is true.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent-status-summary.test.ts)` (in
+  the update script). Needs the daemon from this build (`kill-paseos-and-daemons.sh`). In a
+  worktree session, let the agent finish a task: a few seconds after the turn ends, the Worktree
+  pill is green and first in the row; send a new request and it goes back once the next summary
+  says work is pending.

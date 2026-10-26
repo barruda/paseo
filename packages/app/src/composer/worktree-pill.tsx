@@ -2,9 +2,12 @@
 // agent's workspace is a git worktree. Its menu copies the worktree's full path, or commits the
 // worktree as "wip" and merges its branch into the main checkout as a `!<command>`
 // (shell-command plugin), so the output lands in a Terminal card in the chat.
+// CUSTOM(worktree-pill-done): `done` (the agent's status summary says the request is done or
+// nearly done) gives it a green border; AgentTracks also moves it to the front of the row.
 import * as Clipboard from "expo-clipboard";
 import { memo, useCallback, type ReactElement } from "react";
 import { Text } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { useRunChatCommand } from "@/chat-code-run/context";
 import {
   DropdownMenu,
@@ -23,16 +26,24 @@ const triggerStyle: DropdownMenuTriggerProps["style"] = ({ hovered, open }) => [
   (hovered || open) && composerPillStyles.bodyActive,
 ];
 
+const doneTriggerStyle: DropdownMenuTriggerProps["style"] = ({ hovered, open }) => [
+  composerPillStyles.body,
+  (hovered || open) && composerPillStyles.bodyActive,
+  styles.done,
+];
+
 export const WorktreePill = memo(function WorktreePill({
   serverId,
   workspaceId,
   agentId,
   cwd,
+  done = false,
 }: {
   serverId: string;
   workspaceId: string;
   agentId: string;
   cwd: string;
+  done?: boolean;
 }): ReactElement | null {
   const toast = useToast();
   const run = useRunChatCommand({ serverId, workspaceId, agentId, toast });
@@ -65,8 +76,8 @@ export const WorktreePill = memo(function WorktreePill({
       <DropdownMenuTrigger
         testID="composer-worktree-pill"
         accessibilityRole="button"
-        accessibilityLabel={worktree.label}
-        style={triggerStyle}
+        accessibilityLabel={done ? `${worktree.label}, done` : worktree.label}
+        style={done ? doneTriggerStyle : triggerStyle}
       >
         {({ hovered, open }) => (
           <Text
@@ -87,3 +98,9 @@ export const WorktreePill = memo(function WorktreePill({
     </DropdownMenu>
   );
 });
+
+const styles = StyleSheet.create((theme) => ({
+  done: {
+    borderColor: theme.colors.statusSuccess,
+  },
+}));
