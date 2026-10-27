@@ -98,7 +98,7 @@ describe("dropOnLanes", () => {
     expect(layout.positions.b).toEqual({ row: 1, x: 0 });
   });
 
-  it("moves only the tabs it lands on", () => {
+  it("fits a tab into a wide enough gap without moving its neighbors", () => {
     const layout = dropOnLanes({
       tabs: tabs("a", "b", "c", "d"),
       positions: {
@@ -116,9 +116,78 @@ describe("dropOnLanes", () => {
     });
     expect(layout.positions).toEqual({
       a: { row: 0, x: 0 },
-      b: { row: 0, x: 246 },
+      b: { row: 0, x: 300 },
       c: { row: 0, x: 600 },
-      d: { row: 0, x: 350 },
+      d: { row: 0, x: 404 },
+    });
+  });
+
+  it("doesn't shove the tabs to its right while dragged a little", () => {
+    const layout = dropOnLanes({
+      tabs: tabs("a", "b", "c"),
+      positions: packed,
+      width: 1000,
+      gap: GAP,
+      tabId: "a",
+      tabWidth: 100,
+      row: 0,
+      x: 40,
+    });
+    expect(layout.positions).toEqual(packed);
+  });
+
+  it("moved right past a neighbor, swaps with it like a reorder", () => {
+    const layout = dropOnLanes({
+      tabs: tabs("a", "b", "c"),
+      positions: packed,
+      width: 1000,
+      gap: GAP,
+      tabId: "a",
+      tabWidth: 100,
+      row: 0,
+      x: 120,
+    });
+    expect(layout.positions).toEqual({
+      a: { row: 0, x: 104 },
+      b: { row: 0, x: 0 },
+      c: { row: 0, x: 208 },
+    });
+  });
+
+  it("moved left past a neighbor, swaps with it like a reorder", () => {
+    const layout = dropOnLanes({
+      tabs: tabs("a", "b", "c"),
+      positions: packed,
+      width: 1000,
+      gap: GAP,
+      tabId: "c",
+      tabWidth: 100,
+      row: 0,
+      x: 90,
+    });
+    expect(layout.positions).toEqual({
+      a: { row: 0, x: 0 },
+      b: { row: 0, x: 208 },
+      c: { row: 0, x: 104 },
+    });
+  });
+
+  it("dropped between two packed tabs of another row, pushes only the right ones", () => {
+    const layout = dropOnLanes({
+      tabs: tabs("a", "b", "c", "z"),
+      positions: { ...packed, z: { row: 1, x: 0 } },
+      width: 1000,
+      gap: GAP,
+      tabId: "z",
+      tabWidth: 100,
+      row: 0,
+      x: 60,
+    });
+    expect(layout.positions).toEqual({
+      a: { row: 0, x: 0 },
+      b: { row: 0, x: 208 },
+      c: { row: 0, x: 312 },
+      z: { row: 0, x: 104 },
     });
   });
 

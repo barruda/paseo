@@ -38,23 +38,40 @@ function rowItems(items: Item[], row: number): Item[] {
   return items.filter((item) => item.row === row);
 }
 
-/** Slides the tabs that overlap `fixed` out of its way, left or right by their centers. */
-function clearAround(items: Item[], fixed: Item, gap: number) {
+/**
+ * Fits `fixed` into the gap between the tabs left and right of its center. If the gap is wide
+ * enough, nothing else moves and `fixed` only slides inside it; a tab over a neighbor's edge snaps
+ * beside it instead of shoving it. Otherwise the gap opens up just enough: from the left first when
+ * `prefer` is "left" (a tab dragged rightward leaves room there), then from the right.
+ */
+function insertInto(items: Item[], fixed: Item, gap: number, prefer: "left" | "right") {
   const center = fixed.x + fixed.width / 2;
   const others = items.filter((item) => item !== fixed);
   const right = others
     .filter((item) => item.x + item.width / 2 >= center)
     .sort((a, b) => a.x - b.x);
   const left = others.filter((item) => item.x + item.width / 2 < center).sort((a, b) => b.x - a.x);
+  let slotStart = left[0] ? left[0].x + left[0].width + gap : 0;
+  const slotEnd = right[0] ? right[0].x - gap : Number.POSITIVE_INFINITY;
+  if (slotEnd - slotStart >= fixed.width) {
+    fixed.x = Math.max(slotStart, Math.min(fixed.x, slotEnd - fixed.width));
+    return;
+  }
+  if (prefer === "left") {
+    const packedEnd = left.reduce((end, item) => end + item.width + gap, 0);
+    const take = Math.min(fixed.width - (slotEnd - slotStart), Math.max(0, slotStart - packedEnd));
+    slotStart -= take;
+    let cursor = slotStart - gap;
+    for (const item of left) {
+      item.x = Math.min(item.x, cursor - item.width);
+      cursor = item.x - gap;
+    }
+  }
+  fixed.x = slotStart;
   let cursor = fixed.x + fixed.width + gap;
   for (const item of right) {
     item.x = Math.max(item.x, cursor);
     cursor = item.x + item.width + gap;
-  }
-  cursor = fixed.x - gap;
-  for (const item of left) {
-    item.x = Math.min(item.x, cursor - item.width);
-    cursor = item.x - gap;
   }
 }
 
@@ -111,7 +128,7 @@ function tryPlace(items: Item[], item: Item, row: number, x: number, width: numb
   item.row = row;
   item.x = x;
   const tabs = rowItems(items, row);
-  clearAround(tabs, item, gap);
+  insertInto(tabs, item, gap, "right");
   if (fitRow(tabs, width, gap)) return true;
   for (const [other, savedX] of saved) other.x = savedX;
   return false;
@@ -171,10 +188,13 @@ export function dropOnLanes(
   settle(items, input.width, input.gap);
   const moving = items.find((item) => item.id === input.tabId)!;
   const row = Math.max(0, Math.min(input.row, maxRow(items.filter((i) => i !== moving)) + 1));
+  const x = Math.max(0, Math.min(input.x, input.width - moving.width));
+  // Moving rightward along its own row, the tab left room on the left: close that up first.
+  const fromSameRow = tabs === input.tabs && moving.row === row;
+  const prefer = fromSameRow && moving.x < x ? "left" : "right";
   moving.row = row;
-  moving.x = Math.max(0, Math.min(input.x, input.width - moving.width));
-  const tabsInRow = rowItems(items, row);
-  clearAround(tabsInRow, moving, input.gap);
+  moving.x = x;
+  insertInto(rowItems(items, row), moving, input.gap, prefer);
   settle(items, input.width, input.gap);
   return toLayout(items);
 }

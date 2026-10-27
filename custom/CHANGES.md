@@ -3298,9 +3298,12 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **What:** In Tasks mode every Desk pane's tab row (not the bottom panel, not the Explorer) holds
   its tabs at free positions. It is one row by default. While any tab is dragged, an extra row
   shows below the tab bar, over the pane content; dropping a tab there starts a second row (and so
-  on). A dropped tab stays exactly where it lands; only the tabs it overlaps slide aside, just far
-  enough, and the row it left keeps the gap. A new tab opens right after the tab before it in the
-  pane's list (next to the tab you were on), nudging its neighbors; with no room it goes to the end
+  on). A tab dropped in empty space stays exactly where it lands. A tab dropped over others fits
+  into the gap between the tabs left and right of its center: if the gap is wide enough nothing
+  else moves; if not, the gap opens just enough, taking room first from the side the tab came from
+  (so moving a tab past its neighbor in a packed row swaps them, like a reorder), then pushing the
+  tabs on the right. Dragging never shoves the neighbors along. A new tab opens right after the
+  tab before it in the pane's list (next to the tab you were on), nudging its neighbors; with no room it goes to the end
   of the next row with room, or a new row. Closing a tab leaves its gap. A row that gets too narrow
   (window resize, a title that grows) slides its tabs back left and hands its rightmost tabs to the
   row below; empty rows disappear. Tabs keep their natural width (no squeezing, no scrolling). The
