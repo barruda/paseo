@@ -76,6 +76,8 @@ export interface DesktopRuntimeConfig {
   hangDaemonStart?: boolean;
   /** Delay the desktop settings IPC response to exercise startup ordering. */
   desktopSettingsDelayMs?: number;
+  /** CUSTOM(flexible-tabs): initial "Flexible tab movement" desktop setting. Defaults to off. */
+  flexibleTabMovement?: boolean;
   /**
    * Controls what dialog.ask returns when the daemon management confirm dialog
    * fires. True = confirm (proceed with the action), false = cancel. Defaults to
@@ -141,6 +143,12 @@ export async function installDesktopRuntime(
   await page.addInitScript((cfg) => {
     // Mutable state shared across IPC calls within this page
     let manageDaemon = cfg.manageBuiltInDaemon ?? false;
+    let flexibleMovement = cfg.flexibleTabMovement ?? false; // CUSTOM(flexible-tabs)
+    // CUSTOM(flexible-tabs): defined inside the init script, which runs in the page.
+    const patchedFlexibleMovement = (tabs: unknown, current: boolean) =>
+      tabs !== null && typeof tabs === "object" && "flexibleMovement" in tabs
+        ? tabs.flexibleMovement === true
+        : current;
     let daemonRunning = true;
     let currentPid: number | null = cfg.daemonPid ?? null;
     let ownedByDesktop = cfg.ownedByDesktop ?? false;
@@ -254,6 +262,7 @@ export async function installDesktopRuntime(
           return {
             releaseChannel: "stable",
             daemon: { manageBuiltInDaemon: manageDaemon, keepRunningAfterQuit: true },
+            tabs: { flexibleMovement }, // CUSTOM(flexible-tabs)
           };
         }
 
@@ -267,9 +276,11 @@ export async function installDesktopRuntime(
           ) {
             manageDaemon = daemon.manageBuiltInDaemon;
           }
+          flexibleMovement = patchedFlexibleMovement(args?.tabs, flexibleMovement); // CUSTOM(flexible-tabs)
           return {
             releaseChannel: "stable",
             daemon: { manageBuiltInDaemon: manageDaemon, keepRunningAfterQuit: true },
+            tabs: { flexibleMovement }, // CUSTOM(flexible-tabs)
           };
         }
 

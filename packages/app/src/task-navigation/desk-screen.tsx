@@ -78,6 +78,7 @@ import {
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useTabLanesStore } from "@/tab-lanes/store";
+import { useFlexibleTabMovement } from "@/tab-lanes/settings";
 import { getPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { DiffDocumentWorkspaceCacheProvider } from "@/git/diff-document/workspace-cache";
 import { useDesktopBrowserNewTabRequests } from "@/desktop/browser/new-tab-requests";
@@ -580,6 +581,7 @@ export function DeskScreen() {
   const keep = useDesksStore((s) => s.keepPreview);
   const activeIsPreview = Boolean(active && active.id === previewTabId);
   const uiTabs = useMemo(() => collectAllTabs(desk.layout.root), [desk.layout.root]);
+  const flexibleTabs = useFlexibleTabMovement().enabled; // CUSTOM(flexible-tabs)
   // CUSTOM(tab-lanes): forget the spots of closed tabs.
   useEffect(() => {
     if (uiTabs.length === 0) return;
@@ -745,7 +747,7 @@ export function DeskScreen() {
               enabled={isFocused}
             >
               <SplitContainer
-                tabLanes // CUSTOM(tab-lanes)
+                tabLanes={flexibleTabs} // CUSTOM(tab-lanes), CUSTOM(flexible-tabs)
                 layout={desk.layout}
                 renderMainHeader={renderHeader}
                 externalExplorerSidebar={externalExplorerSidebar}

@@ -15,12 +15,18 @@ export interface DesktopSettings {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
   };
+  // CUSTOM(flexible-tabs): Desk tabs in free rows. Per install, so each launcher profile chooses.
+  // Absent until first saved (off), so documents and results without it keep their shape.
+  tabs?: {
+    flexibleMovement: boolean;
+  };
 }
 
 interface DesktopSettingsPatch {
   releaseChannel?: AppReleaseChannel;
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
+  tabs?: Partial<NonNullable<DesktopSettings["tabs"]>>; // CUSTOM(flexible-tabs)
 }
 
 export interface DesktopSettingsStore {
@@ -57,11 +63,18 @@ const DaemonSchema = z
   })
   .catch(() => ({ ...DEFAULT_DESKTOP_SETTINGS.daemon }));
 
+// CUSTOM(flexible-tabs)
+const TabsSchema = z
+  .looseObject({ flexibleMovement: z.boolean().catch(false) })
+  .optional()
+  .catch(undefined);
+
 const DesktopSettingsSchema = z
   .looseObject({
     releaseChannel: ReleaseChannelSchema.catch(DEFAULT_DESKTOP_SETTINGS.releaseChannel),
     notifications: NotificationsSchema,
     daemon: DaemonSchema,
+    tabs: TabsSchema, // CUSTOM(flexible-tabs)
   })
   .catch(() => buildDefaultSettings());
 
@@ -130,6 +143,8 @@ function toDesktopSettings(stored: StoredDesktopSettings): DesktopSettings {
       manageBuiltInDaemon: stored.daemon.manageBuiltInDaemon,
       keepRunningAfterQuit: stored.daemon.keepRunningAfterQuit,
     },
+    // CUSTOM(flexible-tabs)
+    ...(stored.tabs ? { tabs: { flexibleMovement: stored.tabs.flexibleMovement } } : {}),
   };
 }
 
@@ -166,6 +181,14 @@ function coerceDesktopSettingsPatch(input: unknown): DesktopSettingsPatch {
     }
   }
 
+  // CUSTOM(flexible-tabs)
+  if (isRecord(input.tabs)) {
+    const flexibleMovement = coerceBoolean(input.tabs.flexibleMovement);
+    if (flexibleMovement !== null) {
+      patch.tabs = { flexibleMovement };
+    }
+  }
+
   return patch;
 }
 
@@ -199,6 +222,8 @@ function mergeDesktopSettings(
     releaseChannel: patch.releaseChannel ?? current.releaseChannel,
     notifications: { ...current.notifications, ...patch.notifications },
     daemon: { ...current.daemon, ...patch.daemon },
+    // CUSTOM(flexible-tabs)
+    ...(patch.tabs ? { tabs: { flexibleMovement: false, ...current.tabs, ...patch.tabs } } : {}),
   };
 }
 

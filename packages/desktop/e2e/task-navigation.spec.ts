@@ -13,6 +13,7 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     serverId: getServerId(),
     manageBuiltInDaemon: false,
     platform: "linux",
+    flexibleTabMovement: true, // CUSTOM(flexible-tabs)
   });
   const first = await seedMockAgentWorkspace({
     repoPrefix: "task-nav-first-",
@@ -188,6 +189,13 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await page.mouse.move(800, 600);
     await page.screenshot({ path: testInfo.outputPath("tab-lanes.png") });
     await dragLaneTab(-400, -32);
+    await expect.poll(async () => (await tabsRow.boundingBox())!.height).toBe(oneRowHeight);
+    // CUSTOM(flexible-tabs): the leading refresh button packs every tab back into one row.
+    await dragLaneTab(400, 32);
+    await expect
+      .poll(async () => (await tabsRow.boundingBox())!.height)
+      .toBeGreaterThan(oneRowHeight + 20);
+    await desk.getByTestId("tab-lanes-tidy").click();
     await expect.poll(async () => (await tabsRow.boundingBox())!.height).toBe(oneRowHeight);
 
     // Desks split like workspaces; closing a split's only tab removes the split.

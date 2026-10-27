@@ -3295,8 +3295,9 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Why:** With many tabs the single row scrolled and hid tabs past the right edge. The user wanted
   a second row they can use whenever they like, not only once the first is full, and to put a tab
   anywhere in it (alone in the middle, gaps included) with nothing re-packing around it.
-- **What:** In Tasks mode every Desk pane's tab row (not the bottom panel, not the Explorer) holds
-  its tabs at free positions. It is one row by default. While any tab is dragged, an extra row
+- **What:** With [flexible-tabs](#flexible-tabs-the-flexible-tab-movement-setting-and-the-tidy-button)
+  on, every Desk pane's tab row in Tasks mode (not the bottom panel, not the Explorer) holds its
+  tabs at free positions. It is one row by default. While any tab is dragged, an extra row
   shows below the tab bar, over the pane content; dropping a tab there starts a second row (and so
   on). A tab dropped in empty space stays exactly where it lands. A tab dropped over others fits
   into the gap between the tabs left and right of its center: if the gap is wide enough nothing
@@ -3335,3 +3336,37 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   of desktop `e2e/task-navigation.spec.ts` (drags a tab into the second row and back), both in
   the update script. In the app, Tasks mode: drag a tab down and to the middle; it stays there on
   a second row, and the first row keeps the gap.
+
+## flexible-tabs: the "Flexible tab movement" setting and the tidy button
+
+- **Added:** 2026-10-27 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: Flexible tab movement setting (off by default) and a button that tidies Desk tabs`
+- **Why:** [tab-lanes](#tab-lanes-desk-tabs-sit-in-free-rows-drop-a-tab-anywhere) should be a
+  choice per install: the user wants it in `paseo-personal` but not forced everywhere. And after
+  moving tabs around freely, they wanted one click to line them all up again.
+- **What:** Settings > Editor has a **Flexible tab movement** switch (desktop app only). Off, the
+  default, Desks use the original single scrolling tab row. On, they use the free rows of
+  tab-lanes, and each row starts with a refresh button (**Tidy tabs**) before the pinned tabs that
+  packs every tab to the left in the order they show, wrapping to more rows only when one is full.
+  The switch is a desktop setting (`tabs.flexibleMovement` in `<userData>/desktop-settings.json`),
+  so each launcher profile has its own: on in `~/.config/Paseo` (paseo-personal), off in
+  `~/.config/Paseo-telus`. The key is absent until first saved, and absent means off.
+- **Files:** `packages/app/src/tab-lanes/settings.ts` (`useFlexibleTabMovement`); `packLanes` in
+  `tab-lanes/store.ts`.
+- **Core files touched** (marked `CUSTOM(flexible-tabs)`):
+  - `packages/desktop/src/settings/desktop-settings.ts`: optional `tabs` in the settings, schema,
+    patch coercion and merge (+ a test in `desktop-settings.test.ts`).
+  - `packages/app/src/desktop/settings/desktop-settings.ts`: the same optional field in the
+    renderer's parse, merge and patch.
+  - `screens/settings/editor-section.tsx`: the switch row.
+  - `task-navigation/desk-screen.tsx`: `tabLanes={flexibleTabs}`.
+  - `screens/workspace/workspace-desktop-tabs-row.tsx`: the Tidy tabs button in `LaneTabsArea`.
+  - `packages/desktop/e2e/support/runtime.ts`: a `flexibleTabMovement` option for the fake
+    desktop bridge.
+- **Re-apply:** Add an optional boolean desktop setting, read it where the Desk renders its
+  `SplitContainer`, and show its switch in the Editor settings. Put a button before the lane
+  chips that clears the pane's stored positions in row order.
+- **Verify:** `(cd packages/desktop && npx vitest run src/settings/desktop-settings.test.ts)` and
+  the first test of desktop `e2e/task-navigation.spec.ts` (turns the setting on, drags a tab to a
+  second row, tidies it back), both in the update script; the other tests there run with it off.
+  In the app, Settings > Editor: turn the switch off and the Desk shows one scrolling row.

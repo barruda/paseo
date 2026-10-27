@@ -28,6 +28,7 @@ import {
   Minimize,
   Plus,
   X,
+  RefreshCw,
 } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import Animated from "react-native-reanimated";
@@ -106,7 +107,7 @@ import { useAgentTabPin } from "@/task-navigation/agent-tab-pin";
 import { useTabPins, type TabPins } from "@/tab-pins/use-tab-pins";
 import { TabLanes, type LaneEntry } from "@/tab-lanes/lanes";
 import type { LaneDropPreview } from "@/tab-lanes/geometry";
-import { commitLanePin } from "@/tab-lanes/store";
+import { commitLanePin, packLanes } from "@/tab-lanes/store";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 
 // CUSTOM(open-file-externally): use the same icon rail as the existing tab actions.
@@ -166,6 +167,7 @@ const ThemedX = withUnistyles(X);
 const ThemedCopy = withUnistyles(Copy);
 
 const ThemedRotateCw = withUnistyles(RotateCw);
+const ThemedRefreshCw = withUnistyles(RefreshCw); // CUSTOM(flexible-tabs)
 const ThemedArrowLeftToLine = withUnistyles(ArrowLeftToLine);
 const ThemedArrowRightToLine = withUnistyles(ArrowRightToLine);
 const ThemedCopyX = withUnistyles(CopyX);
@@ -1259,6 +1261,7 @@ function LaneTabsArea({
   launchPurpose,
   serverId,
   newTabKeys,
+  onReorderTabs,
 }: {
   scope: string;
   paneId: string;
@@ -1271,6 +1274,7 @@ function LaneTabsArea({
   drop: LaneDropPreview | null | undefined;
 } & Pick<WorkspaceNewTabButtonProps, "panePanelKinds" | "host" | "launchPurpose" | "serverId"> & {
     newTabKeys: WorkspaceNewTabButtonProps["shortcutKeys"];
+    onReorderTabs: (tabs: WorkspaceTabDescriptor[]) => void;
   }) {
   const entries = useMemo<LaneEntry[]>(
     () =>
@@ -1298,15 +1302,29 @@ function LaneTabsArea({
     ),
     [host, launchPurpose, newTabKeys, paneId, panePanelKinds, serverId],
   );
+  // CUSTOM(flexible-tabs): the leading button packs every tab back to the left.
+  const tidy = useCallback(() => {
+    const order = packLanes(scope, paneId);
+    if (!order) return;
+    const byId = new Map(tabs.map((item) => [item.tab.tabId, item.tab]));
+    onReorderTabs(order.flatMap((id) => byId.get(id) ?? []));
+  }, [onReorderTabs, paneId, scope, tabs]);
   return (
-    <TabLanes
-      scope={scope}
-      paneId={paneId}
-      entries={entries}
-      dragging={dragging}
-      drop={drop?.paneId === paneId ? drop : null}
-      newTabButton={newTabButton}
-    />
+    <>
+      <View style={styles.tidyAction}>
+        <ToolbarButton label="Tidy tabs" onPress={tidy} testID="tab-lanes-tidy">
+          <ThemedRefreshCw size={13} uniProps={extraMutedColorMapping} />
+        </ToolbarButton>
+      </View>
+      <TabLanes
+        scope={scope}
+        paneId={paneId}
+        entries={entries}
+        dragging={dragging}
+        drop={drop?.paneId === paneId ? drop : null}
+        newTabButton={newTabButton}
+      />
+    </>
   );
 }
 
@@ -1778,6 +1796,7 @@ function ResolvedWorkspaceDesktopTabsRow({
           launchPurpose={launchPurpose}
           serverId={normalizedServerId}
           newTabKeys={newTabKeys}
+          onReorderTabs={onReorderTabs}
         />
       ) : (
         <View style={styles.tabsScrollContainer}>
@@ -2015,6 +2034,12 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     alignSelf: "stretch",
+  },
+  tidyAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
+    paddingLeft: PANE_SPLIT_ACTIONS_HORIZONTAL_PADDING,
   },
   laneActions: {
     flexDirection: "row",

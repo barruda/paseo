@@ -20,12 +20,17 @@ export interface DesktopSettings {
     manageBuiltInDaemon: boolean;
     keepRunningAfterQuit: boolean;
   };
+  // CUSTOM(flexible-tabs): Desk tabs in free rows; optional so older fakes and fixtures still fit.
+  tabs?: {
+    flexibleMovement: boolean;
+  };
 }
 
 export interface DesktopSettingsPatch {
   releaseChannel?: ReleaseChannel;
   notifications?: Partial<DesktopSettings["notifications"]>;
   daemon?: Partial<DesktopSettings["daemon"]>;
+  tabs?: Partial<NonNullable<DesktopSettings["tabs"]>>; // CUSTOM(flexible-tabs)
 }
 
 export const DEFAULT_DESKTOP_SETTINGS: DesktopSettings = {
@@ -153,6 +158,7 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
   const record = isRecord(raw) ? raw : {};
   const notifications = isRecord(record.notifications) ? record.notifications : {};
   const daemon = isRecord(record.daemon) ? record.daemon : {};
+  const tabs = isRecord(record.tabs) ? record.tabs : {}; // CUSTOM(flexible-tabs)
 
   return {
     releaseChannel: record.releaseChannel === "beta" ? "beta" : "stable",
@@ -172,6 +178,7 @@ function parseDesktopSettings(raw: unknown): DesktopSettings {
           ? daemon.keepRunningAfterQuit
           : DEFAULT_DESKTOP_SETTINGS.daemon.keepRunningAfterQuit,
     },
+    tabs: { flexibleMovement: tabs.flexibleMovement === true }, // CUSTOM(flexible-tabs)
   };
 }
 
@@ -189,6 +196,7 @@ function mergeDesktopSettings(
       ...current.daemon,
       ...updates.daemon,
     },
+    tabs: { flexibleMovement: false, ...current.tabs, ...updates.tabs }, // CUSTOM(flexible-tabs)
   };
 }
 
@@ -197,6 +205,7 @@ function normalizePatch(updates: DesktopSettingsPatch): Record<string, unknown> 
     ...(updates.releaseChannel ? { releaseChannel: updates.releaseChannel } : {}),
     ...(updates.notifications ? { notifications: updates.notifications } : {}),
     ...(updates.daemon ? { daemon: updates.daemon } : {}),
+    ...(updates.tabs ? { tabs: updates.tabs } : {}), // CUSTOM(flexible-tabs)
   };
 }
 

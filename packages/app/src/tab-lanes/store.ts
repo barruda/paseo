@@ -8,6 +8,7 @@ import { createValidatedPersistStorage } from "@/storage/validated-persist-stora
 import {
   dropOnLanes,
   laneOrder,
+  layoutLanes,
   type LanePosition,
   type LanePositions,
   type LaneTab,
@@ -125,4 +126,28 @@ export function commitLanePin(input: {
     tabId: input.tabId,
     target: { row: 0, x },
   });
+}
+
+/**
+ * Packs the pane's tabs to the left, row after row, in the order they show now: the tab bar
+ * before free rows, with overflow wrapping to the next row. Returns that order, or null when the
+ * pane isn't mounted.
+ */
+export function packLanes(scope: string, paneId: string): string[] | null {
+  const metrics = metricsByPane.get(paneKey(scope, paneId));
+  if (!metrics) return null;
+  const store = useTabLanesStore.getState();
+  const now = layoutLanes({ ...metrics, positions: store.byScope[scope] ?? {} });
+  const order = laneOrder(
+    now.positions,
+    metrics.tabs.map((tab) => tab.id),
+  );
+  const byId = new Map(metrics.tabs.map((tab) => [tab.id, tab]));
+  const packed = layoutLanes({
+    ...metrics,
+    tabs: order.flatMap((id) => byId.get(id) ?? []),
+    positions: {},
+  });
+  store.setPositions(scope, packed.positions);
+  return order;
 }

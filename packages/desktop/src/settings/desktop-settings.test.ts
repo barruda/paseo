@@ -279,6 +279,23 @@ describe("desktop-settings", () => {
     expect(ignoredSecondMigration).toEqual(migrated);
   });
 
+  // CUSTOM(flexible-tabs)
+  it("saves flexible tab movement, absent until first set", async () => {
+    const userDataPath = await createTempUserDataDir();
+    directories.add(userDataPath);
+    const store = createDesktopSettingsStore({ userDataPath });
+
+    expect((await store.get()).tabs).toBeUndefined();
+    const next = await store.patch({ tabs: { flexibleMovement: true } });
+    const reopened = createDesktopSettingsStore({ userDataPath });
+
+    expect(next.tabs).toEqual({ flexibleMovement: true });
+    expect((await reopened.get()).tabs).toEqual({ flexibleMovement: true });
+    expect((await reopened.patch({ notifications: { playSound: false } })).tabs).toEqual({
+      flexibleMovement: true,
+    });
+  });
+
   it("keeps keys written by another build across a patch", async () => {
     const userDataPath = await createTempUserDataDir();
     directories.add(userDataPath);
