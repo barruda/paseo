@@ -46,7 +46,7 @@ import { SplitContainer } from "@/components/split-container";
 import { useToast } from "@/contexts/toast-context";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { useSessionStore } from "@/stores/session-store";
-import { useWorkspaceDirectory, useWorkspaceFields } from "@/stores/session-store-hooks";
+import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import {
   collectAllPanes,
   collectAllTabs,
@@ -77,6 +77,7 @@ import {
 } from "@/screens/workspace/use-workspace-tab-rename";
 import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import { useTabLanesStore } from "@/tab-lanes/store";
 import { getPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { DiffDocumentWorkspaceCacheProvider } from "@/git/diff-document/workspace-cache";
 import { useDesktopBrowserNewTabRequests } from "@/desktop/browser/new-tab-requests";
@@ -99,7 +100,6 @@ import {
 } from "@/git/diff-tabs/model";
 import { useDiffTabsStore } from "@/git/diff-tabs/store";
 import { DeskTerminalTabs } from "./desk-terminal-tabs";
-import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
 import {
   useDesksStore,
   activeDesk,
@@ -580,32 +580,19 @@ export function DeskScreen() {
   const keep = useDesksStore((s) => s.keepPreview);
   const activeIsPreview = Boolean(active && active.id === previewTabId);
   const uiTabs = useMemo(() => collectAllTabs(desk.layout.root), [desk.layout.root]);
+  // CUSTOM(tab-lanes): forget the spots of closed tabs.
+  useEffect(() => {
+    if (uiTabs.length === 0) return;
+    useTabLanesStore.getState().retain(`desk:${desk.id}`, new Set(uiTabs.map((tab) => tab.tabId)));
+  }, [desk.id, uiTabs]);
 
   const headerLeft = useMemo(
     () => (
       <View style={styles.headerLeft}>
         <SidebarMenuToggle />
-        <TaskProjectIconsProvider>
-          {contextTab ? (
-            <DeskProject tab={contextTab} />
-          ) : (
-            <Text style={styles.context} numberOfLines={1}>
-              Choose a task
-            </Text>
-          )}
-        </TaskProjectIconsProvider>
+        {/* CUSTOM(desk-header): no project name (every tab shows its project's icon), and the
+          New Desk + sits before the Desks so it isn't mistaken for the tab row's +. */}
         <View style={styles.deskTabs}>
-          {workboardOpen ? <DeskWorkboardChip selected={workboardSelected} /> : null}
-          {desks.map((entry) => (
-            <DeskTabChip
-              key={entry.id}
-              desk={entry}
-              selected={entry.id === desk.id && !workboardSelected}
-              canDelete={desks.length > 1}
-              onRename={renameDesk}
-              onDelete={deleteDesk}
-            />
-          ))}
           {workboard && !workboardOpen ? (
             <DeskCreateMenu onCreateDesk={create} />
           ) : (
@@ -618,6 +605,18 @@ export function DeskScreen() {
               <ThemedPlus size={14} uniProps={extraMutedColorMapping} />
             </ToolbarButton>
           )}
+          <View style={styles.newDeskDivider} />
+          {workboardOpen ? <DeskWorkboardChip selected={workboardSelected} /> : null}
+          {desks.map((entry) => (
+            <DeskTabChip
+              key={entry.id}
+              desk={entry}
+              selected={entry.id === desk.id && !workboardSelected}
+              canDelete={desks.length > 1}
+              onRename={renameDesk}
+              onDelete={deleteDesk}
+            />
+          ))}
         </View>
         {activeIsPreview && !workboardSelected ? (
           <Button
@@ -634,7 +633,6 @@ export function DeskScreen() {
     ),
     [
       activeIsPreview,
-      contextTab,
       create,
       deleteDesk,
       desk.id,
@@ -747,6 +745,7 @@ export function DeskScreen() {
               enabled={isFocused}
             >
               <SplitContainer
+                tabLanes // CUSTOM(tab-lanes)
                 layout={desk.layout}
                 renderMainHeader={renderHeader}
                 externalExplorerSidebar={externalExplorerSidebar}
@@ -1154,27 +1153,10 @@ function DeskCreateMenu({ onCreateDesk }: { onCreateDesk: () => void }) {
   );
 }
 
-/** The project's icon and name for the context tab's workspace. */
-function DeskProject({ tab }: { tab: DeskTab }) {
-  const project = useWorkspaceFields(
-    tab.serverId,
-    tab.workspaceId,
-    (w) => w.projectCustomName ?? w.projectDisplayName,
-  );
-  return (
-    <View style={styles.project}>
-      <TaskProjectIcon serverId={tab.serverId} workspaceId={tab.workspaceId} />
-      <Text style={styles.context} numberOfLines={1}>
-        {project ?? "Project"}
-      </Text>
-    </View>
-  );
-}
 const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface0 },
   headerLeft: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2], minWidth: 0 },
   context: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm, flexShrink: 1 },
-  project: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2], flexShrink: 1 },
   deskTabs: { flexDirection: "row", alignItems: "center", gap: theme.spacing[1], flexShrink: 1 },
   deskTab: {
     height: buttonControlHeight.xs,
@@ -1183,9 +1165,19 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     justifyContent: "center",
   },
-  deskTabSelected: { backgroundColor: theme.colors.surface2 },
-  deskTabText: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
-  deskTabTextSelected: { color: theme.colors.foreground },
+  // CUSTOM(desk-header): a soft green, so the selected Desk doesn't read as a selected tab.
+  deskTabSelected: {
+    backgroundColor:
+      theme.colorScheme === "dark" ? "rgba(32, 116, 74, 0.2)" : "rgba(32, 116, 74, 0.12)",
+  },
+  deskTabText: { color: theme.colors.foregroundExtraMuted, fontSize: theme.fontSize.sm },
+  deskTabTextSelected: { color: theme.colorScheme === "dark" ? "#c3e3cf" : "#1d5e3d" },
+  newDeskDivider: {
+    width: 1,
+    height: 16,
+    marginHorizontal: theme.spacing[1],
+    backgroundColor: theme.colors.border,
+  },
   newDeskButton: { width: buttonControlHeight.xs, height: buttonControlHeight.xs },
   // CUSTOM(desk-workboard)
   newDeskMenuTrigger: {

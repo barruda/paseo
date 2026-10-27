@@ -1316,8 +1316,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   purpose while preserving the original workspace model as a toggleable fallback. Desks render the
   workspace's own split layout and tab row, so every tab customization (Copy full file path, Open
   in browser, the tab menu, splits) works in both modes without a second implementation.
-- **What:** Tasks mode hosts saved **Desks**. The header shows the focused tab's project (icon and
-  name), then one chip per Desk and a **+** for New Desk. Clicking a chip switches to it;
+- **What:** Tasks mode hosts saved **Desks**. The header shows a **+** for New Desk, then one chip per Desk
+  ([desk-header](#desk-header-new-desk--before-the-desks-a-soft-green-selected-desk-no-project-name)). Clicking a chip switches to it;
   right-clicking offers Rename and Delete (confirmed, never the last Desk). Deleting drops only the
   tab references; agents and workspaces stay. Editor and Git header actions follow the
   focused tab's source workspace. A Desk is a workspace-style split layout whose tabs each
@@ -3268,3 +3268,67 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Verify:** `(cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts)` (in the
   update script). In the app, star two projects in the composer's project menu, empty the
   composer of a draft, press ↑: it alternates between the two.
+
+## desk-header: New Desk + before the Desks, a soft green selected Desk, no project name
+
+- **Added:** 2026-10-27 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: Desk tabs sit in free rows; the Desk header loses the project name`
+- **Why:** The user never looked at the project name at the start of the header (every tab shows
+  its project's icon), kept clicking the New Desk + when they meant the tab row's +, and couldn't
+  tell the selected Desk from the selected tab because both used the same grey fill.
+- **What:** The Desk header starts with the sidebar toggle, then the New Desk **+** (or the
+  New Desk / Power Workboard menu while the board is closed), a thin divider, and the Desk chips.
+  The project icon and name (or "Choose a task") are gone. The selected Desk has a soft green fill
+  (green at 20% in dark themes, 12% in light) with light green text; the others use the extra-muted
+  text color.
+- **Core files touched** (marked `CUSTOM(desk-header)`): `task-navigation/desk-screen.tsx` only
+  (`DeskProject` removed; `newDeskDivider`, `deskTabSelected`, `deskTabText*` styles).
+- **Re-apply:** In the Desk `headerLeft`, drop the project element and render the create button
+  before the Desk chips, followed by a 1px divider. Recolor the selected Desk chip.
+- **Verify:** In the app, Tasks mode: the header reads `[sidebar] + | Primary tasks …`, and the
+  selected Desk is green, not grey.
+
+## tab-lanes: Desk tabs sit in free rows; drop a tab anywhere
+
+- **Added:** 2026-10-27 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: Desk tabs sit in free rows; the Desk header loses the project name`
+- **Why:** With many tabs the single row scrolled and hid tabs past the right edge. The user wanted
+  a second row they can use whenever they like, not only once the first is full, and to put a tab
+  anywhere in it (alone in the middle, gaps included) with nothing re-packing around it.
+- **What:** In Tasks mode every Desk pane's tab row (not the bottom panel, not the Explorer) holds
+  its tabs at free positions. It is one row by default. While any tab is dragged, an extra row
+  shows below the tab bar, over the pane content; dropping a tab there starts a second row (and so
+  on). A dropped tab stays exactly where it lands; only the tabs it overlaps slide aside, just far
+  enough, and the row it left keeps the gap. A new tab opens right after the tab before it in the
+  pane's list (next to the tab you were on), nudging its neighbors; with no room it goes to the end
+  of the next row with room, or a new row. Closing a tab leaves its gap. A row that gets too narrow
+  (window resize, a title that grows) slides its tabs back left and hands its rightmost tabs to the
+  row below; empty rows disappear. Tabs keep their natural width (no squeezing, no scrolling). The
+  inline + sits after the rightmost tab of the first row; the split/maximize/Explorer buttons stay
+  on the first row. **Pin tab** also moves the tab to the start of the first row, after the other
+  pinned ones. After a drop, the pane's tab list is reordered by row then x, so Ctrl+1…9 and
+  Ctrl+Tab follow what you see. Dragging to another pane's rows moves the tab there. Positions are
+  per Desk, kept in this app's storage (`custom-tab-lanes`); closed tabs are forgotten.
+- **Files:** `packages/app/src/tab-lanes/` (`model.ts` the placement rules, `store.ts` storage and
+  drop/pin commits, `geometry.ts`, `lanes.tsx` the rows, `dnd.web.tsx`/`dnd.native.tsx` the dnd-kit
+  draggable chip and drop area), with `model.test.ts`.
+- **Core files touched** (marked `CUSTOM(tab-lanes)`):
+  - `components/split-container.tsx`: `tabLanes` prop, passed to panes as `laneScope`
+    (`workspaceKey`); a `tab-lanes` drop kind that wins collision detection; `laneDropPreview`
+    from the dragged chip's rect; `applyLaneDropEnd` commits, moves the tab between panes and
+    reorders the pane; `paneTabs` gets `zIndex: 1` so the drag row paints over the pane content.
+  - `screens/workspace/workspace-desktop-tabs-row.tsx`: `laneScope`/`laneDrop` props;
+    `resolveLaneRow` and `LaneTabsArea` replace the scrolling row with `TabLanes`, measure tabs
+    unbounded, and put the pane buttons in a one-row-tall box; the pin toggle calls
+    `commitLanePin`.
+  - `task-navigation/desk-screen.tsx`: `tabLanes` on the Desk's `SplitContainer`; an effect
+    forgets the positions of closed tabs.
+- **Re-apply:** Give the tab row an alternative to the sortable scroll list: absolutely
+  positioned chips (dnd-kit `useDraggable` with the same `workspace-tab` data) at stored
+  `{row, x}` per tab id, plus a `useDroppable` area covering the rows and one more. In the split
+  container's drag handlers, treat that area like a tab drop: compute row/x from the overlay
+  chip's rect, show it as a preview, and on drop save positions through `dropOnLanes`.
+- **Verify:** `(cd packages/app && npx vitest run src/tab-lanes/model.test.ts)` and the first test
+  of desktop `e2e/task-navigation.spec.ts` (drags a tab into the second row and back), both in
+  the update script. In the app, Tasks mode: drag a tab down and to the middle; it stays there on
+  a second row, and the first row keeps the gap.

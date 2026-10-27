@@ -104,6 +104,9 @@ import {
 } from "@/screens/workspace/workspace-tab-owner";
 import { useAgentTabPin } from "@/task-navigation/agent-tab-pin";
 import { useTabPins, type TabPins } from "@/tab-pins/use-tab-pins";
+import { TabLanes, type LaneEntry } from "@/tab-lanes/lanes";
+import type { LaneDropPreview } from "@/tab-lanes/geometry";
+import { commitLanePin } from "@/tab-lanes/store";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
 
 // CUSTOM(open-file-externally): use the same icon rail as the existing tab actions.
@@ -154,6 +157,9 @@ const TAB_MAX_WIDTH = 160;
 const TAB_CLOSE_BUTTON_RESERVED_WIDTH = 0;
 const TAB_LABEL_LAYOUT_ALLOWANCE = 4;
 const AGENT_TOOLTIP_TITLE_MAX_LENGTH = 80;
+// CUSTOM(tab-lanes): measure tabs at their natural width.
+const LANES_UNBOUNDED_WIDTH = 1_000_000;
+const noopDrag = () => {};
 
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner);
 const ThemedX = withUnistyles(X);
@@ -645,6 +651,9 @@ export interface WorkspaceDesktopTabsRowProps {
   trailingAction?: React.ReactNode;
   // CUSTOM(tab-pins): who owns this row's pins (a workspace or Desk key); no pins without one.
   pinScope?: string | null;
+  // CUSTOM(tab-lanes): set on a Desk pane; its tabs sit in free rows instead of one scrolling row.
+  laneScope?: string | null;
+  laneDrop?: LaneDropPreview | null;
 }
 
 interface ResolvedWorkspaceDesktopTabsRowProps extends Omit<WorkspaceDesktopTabsRowProps, "tabs"> {
@@ -1180,15 +1189,21 @@ export function WorkspaceDesktopTabsRow(props: WorkspaceDesktopTabsRowProps) {
 
   // CUSTOM(tab-pins): reorders over every tab of the row, resolved or not.
   const tabPins = useTabPins(props.pinScope ?? null);
-  const { tabs: rowTabs, onReorderTabs } = props;
+  const { tabs: rowTabs, onReorderTabs, laneScope, paneId } = props;
   const handleToggleTabPin = useCallback(
     (tabId: string) => {
       if (!tabPins) return;
+      const pinning = !tabPins.isPinned(tabId);
       const byId = new Map(rowTabs.map((item) => [item.tab.tabId, item.tab]));
       const order = tabPins.toggle(tabId, [...byId.keys()]);
+      // CUSTOM(tab-lanes): in free rows, pinning also moves the tab to the start of the first row.
+      if (pinning && laneScope && paneId) {
+        const pinnedIds = [...byId.keys()].filter((id) => tabPins.isPinned(id));
+        commitLanePin({ scope: laneScope, paneId, tabId, pinnedIds });
+      }
       onReorderTabs(order.flatMap((id) => byId.get(id) ?? []));
     },
-    [onReorderTabs, rowTabs, tabPins],
+    [laneScope, onReorderTabs, paneId, rowTabs, tabPins],
   );
 
   return (
@@ -1209,6 +1224,89 @@ export function WorkspaceDesktopTabsRow(props: WorkspaceDesktopTabsRowProps) {
         />
       ))}
     </>
+  );
+}
+
+// CUSTOM(tab-lanes): a Desk pane's row puts its tabs in free rows; the bottom panel never does.
+// With lanes, tabs keep their natural width and the pane buttons sit in a box one row tall.
+function resolveLaneRow(
+  laneScope: string | null | undefined,
+  paneId: string | undefined,
+  isBottomPanel: boolean,
+) {
+  const scope = laneScope && paneId && !isBottomPanel ? { key: laneScope, paneId } : null;
+  return {
+    scope,
+    viewportWidth: scope ? LANES_UNBOUNDED_WIDTH : null,
+    containerStyle: scope
+      ? [styles.tabsContainer, styles.tabsContainerLanes]
+      : styles.tabsContainer,
+    actionsStyle: scope ? styles.laneActions : styles.rowActions,
+    showsOverflowNewTab: (overflowing: boolean) => !scope && overflowing,
+  };
+}
+
+function LaneTabsArea({
+  scope,
+  paneId,
+  tabs,
+  layoutItems,
+  renderTab,
+  dragging,
+  drop,
+  panePanelKinds,
+  host,
+  launchPurpose,
+  serverId,
+  newTabKeys,
+}: {
+  scope: string;
+  paneId: string;
+  tabs: ResolvedWorkspaceDesktopTabRowItem[];
+  layoutItems: readonly { width: number }[];
+  renderTab: (
+    info: DraggableRenderItemInfo<ResolvedWorkspaceDesktopTabRowItem>,
+  ) => React.ReactElement;
+  dragging: boolean;
+  drop: LaneDropPreview | null | undefined;
+} & Pick<WorkspaceNewTabButtonProps, "panePanelKinds" | "host" | "launchPurpose" | "serverId"> & {
+    newTabKeys: WorkspaceNewTabButtonProps["shortcutKeys"];
+  }) {
+  const entries = useMemo<LaneEntry[]>(
+    () =>
+      tabs.map((item, index) => ({
+        tabId: item.tab.tabId,
+        dragId: tabKeyExtractor(item),
+        dragData: { kind: "workspace-tab", paneId, tabId: item.tab.tabId },
+        width: (layoutItems[index]?.width ?? 150) + TAB_CHIP_GAP,
+        render: (dragHandleProps, isDragging) =>
+          renderTab({ item, index, drag: noopDrag, isActive: isDragging, dragHandleProps }),
+      })),
+    [layoutItems, paneId, renderTab, tabs],
+  );
+  const newTabButton = useMemo(
+    () => (
+      <WorkspaceNewTabButton
+        panePanelKinds={panePanelKinds}
+        host={host}
+        launchPurpose={launchPurpose}
+        placement="inline"
+        serverId={serverId}
+        paneId={paneId}
+        shortcutKeys={newTabKeys}
+      />
+    ),
+    [host, launchPurpose, newTabKeys, paneId, panePanelKinds, serverId],
+  );
+  return (
+    <TabLanes
+      scope={scope}
+      paneId={paneId}
+      entries={entries}
+      dragging={dragging}
+      drop={drop?.paneId === paneId ? drop : null}
+      newTabButton={newTabButton}
+    />
   );
 }
 
@@ -1266,6 +1364,8 @@ function ResolvedWorkspaceDesktopTabsRow({
   trailingAction,
   tabPins,
   onToggleTabPin,
+  laneScope,
+  laneDrop,
 }: ResolvedWorkspaceDesktopTabsRowProps) {
   const { t } = useTranslation();
   const newTabKeys = useShortcutKeys("workspace-tab-new");
@@ -1288,6 +1388,8 @@ function ResolvedWorkspaceDesktopTabsRow({
   const archiveAgentTab = usePaneArchiveAgentTab(tabs, host, normalizedWorkspaceId);
   // CUSTOM(bottom-panel-collapse)
   const isBottomPanel = paneId === BOTTOM_PANEL_PANE_ID;
+  // CUSTOM(tab-lanes)
+  const lanes = resolveLaneRow(laneScope, paneId, isBottomPanel);
 
   const layoutMetrics = useMemo(
     () => ({
@@ -1467,7 +1569,9 @@ function ResolvedWorkspaceDesktopTabsRow({
 
   const { layout } = useWorkspaceTabLayout({
     tabLabelWidths: trackSnapshot?.labelWidths ?? [],
-    viewportWidthOverride: tabsContainerWidth > 0 ? tabsContainerWidth : null,
+    // CUSTOM(tab-lanes): lanes never squeeze tabs; a full row hands tabs to the next one.
+    viewportWidthOverride:
+      lanes.viewportWidth ?? (tabsContainerWidth > 0 ? tabsContainerWidth : null),
     metrics: layoutMetrics,
   });
 
@@ -1606,9 +1710,32 @@ function ResolvedWorkspaceDesktopTabsRow({
     [layout.requiresHorizontalScrollFallback],
   );
 
+  const paneActions = (
+    <>
+      <WorkspacePaneToolbarActions
+        panePanelKinds={panePanelKinds}
+        host={host}
+        launchPurpose={launchPurpose}
+        showNewTabButton={lanes.showsOverflowNewTab(layout.requiresHorizontalScrollFallback)}
+        showSplitActions={showPaneSplitActions}
+        showMaximizeAction={showPaneMaximizeAction}
+        paneMaximized={paneMaximized}
+        serverId={normalizedServerId}
+        paneId={paneId}
+        newTabShortcutKeys={newTabKeys}
+        onSplitRight={onSplitRight}
+        onSplitDown={onSplitDown}
+        onTogglePaneMaximized={onTogglePaneMaximized}
+        archiveAgentTab={archiveAgentTab}
+        onCloseTab={onCloseTab}
+      />
+      {trailingAction ? <View style={styles.trailingAction}>{trailingAction}</View> : null}
+    </>
+  );
+
   const row = (
     <View
-      style={styles.tabsContainer}
+      style={lanes.containerStyle}
       testID="workspace-tabs-row"
       onLayout={handleTabsContainerLayout}
     >
@@ -1637,68 +1764,68 @@ function ResolvedWorkspaceDesktopTabsRow({
           <BottomPanelCollapseButton />
         </View>
       ) : null}
-      <View style={styles.tabsScrollContainer}>
-        <Animated.ScrollView
-          horizontal
-          scrollEnabled={layout.requiresHorizontalScrollFallback}
-          testID="workspace-tabs-scroll"
-          style={tabsScrollStyle}
-          contentContainerStyle={styles.tabsContent}
-          showsHorizontalScrollIndicator={false}
-          onLayout={tabScrollBoundary.onLayout}
-          onContentSizeChange={tabScrollBoundary.onContentSizeChange}
-          onScroll={tabScrollBoundary.onScroll}
-          scrollEventThrottle={16}
-        >
-          <SortableInlineList
-            data={displayedTabs}
-            keyExtractor={tabKeyExtractor}
-            useDragHandle
-            disabled={!externalDndContext && displayedTabs.length < 2}
-            onDragEnd={handleDragEnd}
-            externalDndContext={externalDndContext}
-            activeId={activeDragTabId}
-            getItemData={getTabDragData}
-            renderItem={renderTab}
-          />
-          {!layout.requiresHorizontalScrollFallback ? (
-            <WorkspaceNewTabButton
-              panePanelKinds={panePanelKinds}
-              host={host}
-              launchPurpose={launchPurpose}
-              placement="inline"
-              serverId={normalizedServerId}
-              paneId={paneId}
-              shortcutKeys={newTabKeys}
-            />
-          ) : null}
-        </Animated.ScrollView>
-        <HorizontalScrollBoundaryShades
-          visible={layout.requiresHorizontalScrollFallback}
-          backdrop="surface"
-          testIDPrefix="workspace-tabs-scroll-shade"
-          leftStyle={tabScrollBoundary.leftShadeStyle}
-          rightStyle={tabScrollBoundary.rightShadeStyle}
+      {lanes.scope ? (
+        <LaneTabsArea
+          scope={lanes.scope.key}
+          paneId={lanes.scope.paneId}
+          tabs={displayedTabs}
+          layoutItems={layout.items}
+          renderTab={renderTab}
+          dragging={activeDragTabId !== null}
+          drop={laneDrop}
+          panePanelKinds={panePanelKinds}
+          host={host}
+          launchPurpose={launchPurpose}
+          serverId={normalizedServerId}
+          newTabKeys={newTabKeys}
         />
-      </View>
-      <WorkspacePaneToolbarActions
-        panePanelKinds={panePanelKinds}
-        host={host}
-        launchPurpose={launchPurpose}
-        showNewTabButton={layout.requiresHorizontalScrollFallback}
-        showSplitActions={showPaneSplitActions}
-        showMaximizeAction={showPaneMaximizeAction}
-        paneMaximized={paneMaximized}
-        serverId={normalizedServerId}
-        paneId={paneId}
-        newTabShortcutKeys={newTabKeys}
-        onSplitRight={onSplitRight}
-        onSplitDown={onSplitDown}
-        onTogglePaneMaximized={onTogglePaneMaximized}
-        archiveAgentTab={archiveAgentTab}
-        onCloseTab={onCloseTab}
-      />
-      {trailingAction ? <View style={styles.trailingAction}>{trailingAction}</View> : null}
+      ) : (
+        <View style={styles.tabsScrollContainer}>
+          <Animated.ScrollView
+            horizontal
+            scrollEnabled={layout.requiresHorizontalScrollFallback}
+            testID="workspace-tabs-scroll"
+            style={tabsScrollStyle}
+            contentContainerStyle={styles.tabsContent}
+            showsHorizontalScrollIndicator={false}
+            onLayout={tabScrollBoundary.onLayout}
+            onContentSizeChange={tabScrollBoundary.onContentSizeChange}
+            onScroll={tabScrollBoundary.onScroll}
+            scrollEventThrottle={16}
+          >
+            <SortableInlineList
+              data={displayedTabs}
+              keyExtractor={tabKeyExtractor}
+              useDragHandle
+              disabled={!externalDndContext && displayedTabs.length < 2}
+              onDragEnd={handleDragEnd}
+              externalDndContext={externalDndContext}
+              activeId={activeDragTabId}
+              getItemData={getTabDragData}
+              renderItem={renderTab}
+            />
+            {!layout.requiresHorizontalScrollFallback ? (
+              <WorkspaceNewTabButton
+                panePanelKinds={panePanelKinds}
+                host={host}
+                launchPurpose={launchPurpose}
+                placement="inline"
+                serverId={normalizedServerId}
+                paneId={paneId}
+                shortcutKeys={newTabKeys}
+              />
+            ) : null}
+          </Animated.ScrollView>
+          <HorizontalScrollBoundaryShades
+            visible={layout.requiresHorizontalScrollFallback}
+            backdrop="surface"
+            testIDPrefix="workspace-tabs-scroll-shade"
+            leftStyle={tabScrollBoundary.leftShadeStyle}
+            rightStyle={tabScrollBoundary.rightShadeStyle}
+          />
+        </View>
+      )}
+      <View style={lanes.actionsStyle}>{paneActions}</View>
     </View>
   );
 
@@ -1877,6 +2004,22 @@ const styles = StyleSheet.create((theme) => ({
   },
   tabsScroll: {
     minWidth: 0,
+  },
+  // CUSTOM(tab-lanes): the rows set the height; the pane buttons stay on the first row.
+  tabsContainerLanes: {
+    height: "auto",
+    minHeight: WORKSPACE_SECONDARY_HEADER_HEIGHT,
+    alignItems: "flex-start",
+  },
+  rowActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "stretch",
+  },
+  laneActions: {
+    flexDirection: "row",
+    alignItems: "center",
+    height: WORKSPACE_SECONDARY_HEADER_HEIGHT,
   },
   tabsScrollContainer: {
     minWidth: 0,

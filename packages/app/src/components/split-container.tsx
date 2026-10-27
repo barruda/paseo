@@ -96,6 +96,8 @@ import type { WorkspaceTab } from "@/workspace-tabs/model";
 import { RenderProfile } from "@/utils/render-profiler";
 import { isNative } from "@/constants/platform";
 import { panelTargetSupportsHost } from "@/plugins/workspace-panels/locations";
+import { TAB_LANES_DROP_KIND, laneDropSpot, type LaneDropPreview } from "@/tab-lanes/geometry";
+import { commitLaneDrop } from "@/tab-lanes/store";
 
 interface SplitContainerProps {
   layout: WorkspaceLayout;
@@ -149,6 +151,8 @@ interface SplitContainerProps {
   onReorderTabsInPane: (paneId: string, tabIds: string[]) => void;
   focusModeEnabled?: boolean;
   onExitFocusMode: () => void;
+  // CUSTOM(tab-lanes): pane tabs sit in free rows (Desks), saved under `workspaceKey`.
+  tabLanes?: boolean;
 }
 
 interface WorkspaceTabDragData {
@@ -159,6 +163,12 @@ interface WorkspaceTabDragData {
 
 interface SplitPaneDropData {
   kind: "split-pane-drop";
+  paneId: string;
+}
+
+// CUSTOM(tab-lanes)
+interface TabLanesDropData {
+  kind: typeof TAB_LANES_DROP_KIND;
   paneId: string;
 }
 
@@ -180,9 +190,18 @@ function asWorkspaceTabDragData(data: unknown): WorkspaceTabDragData | undefined
   return isWorkspaceTabDragData(data) ? data : undefined;
 }
 
-function asDragOverData(data: unknown): WorkspaceTabDragData | SplitPaneDropData | undefined {
+function isTabLanesDropData(data: unknown): data is TabLanesDropData {
+  return (
+    typeof data === "object" && data !== null && Reflect.get(data, "kind") === TAB_LANES_DROP_KIND
+  );
+}
+
+function asDragOverData(
+  data: unknown,
+): WorkspaceTabDragData | SplitPaneDropData | TabLanesDropData | undefined {
   if (isWorkspaceTabDragData(data)) return data;
   if (isSplitPaneDropData(data)) return data;
+  if (isTabLanesDropData(data)) return data; // CUSTOM(tab-lanes)
   return undefined;
 }
 
@@ -197,6 +216,7 @@ interface SplitNodeViewProps extends Omit<
   showDropZones: boolean;
   dropPreview: SplitDropZoneHover | null;
   tabDropPreview: TabDropPreview | null;
+  laneDropPreview: LaneDropPreview | null; // CUSTOM(tab-lanes)
   windowChromeCorners: WindowChromeCorners;
   maximizedPaneId: string | null;
   workspaceHasMultiplePanes: boolean;
@@ -302,6 +322,13 @@ function computePaneOverDropPreview(input: {
 
 const dropCollisionDetection: CollisionDetection = (args) => {
   const pointerHits = pointerWithin(args);
+  // CUSTOM(tab-lanes): a pane's rows win over the tabs and pane under them.
+  const laneHits = pointerHits.filter(
+    (entry) => entry.data?.droppableContainer.data.current?.kind === TAB_LANES_DROP_KIND,
+  );
+  if (laneHits.length > 0) {
+    return laneHits;
+  }
   const tabHits = pointerHits.filter(
     (entry) => entry.data?.droppableContainer.data.current?.kind === "workspace-tab",
   );
@@ -372,12 +399,14 @@ export function SplitContainer({
   onReorderTabsInPane,
   focusModeEnabled,
   onExitFocusMode,
+  tabLanes = false,
 }: SplitContainerProps) {
   const inheritedWindowChromeCorners = useWindowChromeCorners();
   const windowChromeCorners = focusModeEnabled ? inheritedWindowChromeCorners : "none";
   const [activeDragTabId, setActiveDragTabId] = useState<string | null>(null);
   const [dropPreview, setDropPreview] = useState<SplitDropZoneHover | null>(null);
   const [tabDropPreview, setTabDropPreview] = useState<TabDropPreview | null>(null);
+  const [laneDropPreview, setLaneDropPreview] = useState<LaneDropPreview | null>(null);
   const [maximizedPane, setMaximizedPane] = useState<{
     workspaceKey: string;
     paneId: string;
@@ -516,6 +545,7 @@ export function SplitContainer({
   );
   const handleDragStart = useCallback((event: DragStartEvent) => {
     const data = asWorkspaceTabDragData(event.active.data.current);
+    setLaneDropPreview(null);
     if (!data) {
       setActiveDragTabId(null);
       setDropPreview(null);
@@ -529,6 +559,7 @@ export function SplitContainer({
     setActiveDragTabId(null);
     setDropPreview(null);
     setTabDropPreview(null);
+    setLaneDropPreview(null);
   }, []);
 
   const updateDropPreview = useCallback(
@@ -539,6 +570,7 @@ export function SplitContainer({
       if (activeData?.kind !== "workspace-tab") {
         setDropPreview(null);
         setTabDropPreview(null);
+        setLaneDropPreview(null);
         return;
       }
 
@@ -546,14 +578,12 @@ export function SplitContainer({
       if (!rects) {
         setDropPreview(null);
         setTabDropPreview(null);
+        setLaneDropPreview(null);
         return;
       }
 
       const activeTab = uiTabs.find((tab) => tab.tabId === activeData.tabId) ?? null;
-      const destinationPaneId =
-        overData?.kind === "workspace-tab" || overData?.kind === "split-pane-drop"
-          ? overData.paneId
-          : null;
+      const destinationPaneId = overData ? overData.paneId : null;
       const destinationHost = destinationPaneId === explorerSidebarPaneId ? "explorer" : "main";
       if (
         !activeTab ||
@@ -565,8 +595,26 @@ export function SplitContainer({
       ) {
         setDropPreview(null);
         setTabDropPreview(null);
+        setLaneDropPreview(null);
         return;
       }
+
+      // CUSTOM(tab-lanes): over a pane's rows, the tab lands where the dragged chip is.
+      if (overData?.kind === TAB_LANES_DROP_KIND) {
+        const spot = laneDropSpot(rects.overRect, rects.translatedRect);
+        setDropPreview(null);
+        setTabDropPreview(null);
+        setLaneDropPreview((current) =>
+          current?.paneId === overData.paneId &&
+          current.tabId === activeData.tabId &&
+          current.row === spot.row &&
+          current.x === spot.x
+            ? current
+            : { paneId: overData.paneId, tabId: activeData.tabId, ...spot },
+        );
+        return;
+      }
+      setLaneDropPreview(null);
 
       if (overData?.kind === "workspace-tab") {
         const preview = computeTabOverDropPreview({
@@ -654,6 +702,31 @@ export function SplitContainer({
     [dropPreview, onMoveTabToPane, onSplitPane],
   );
 
+  // CUSTOM(tab-lanes): save the dropped spot, move the tab in if it came from another pane, and
+  // keep the pane's tab order in row order for keyboard navigation.
+  const applyLaneDropEnd = useCallback(
+    (input: { activeData: WorkspaceTabDragData; overData: TabLanesDropData }): void => {
+      const { activeData, overData } = input;
+      if (
+        laneDropPreview?.paneId !== overData.paneId ||
+        laneDropPreview.tabId !== activeData.tabId
+      ) {
+        return;
+      }
+      const order = commitLaneDrop({
+        scope: workspaceKey,
+        paneId: overData.paneId,
+        tabId: activeData.tabId,
+        target: laneDropPreview,
+      });
+      if (activeData.paneId !== overData.paneId) {
+        onMoveTabToPane(activeData.tabId, overData.paneId);
+      }
+      if (order) onReorderTabsInPane(overData.paneId, order);
+    },
+    [laneDropPreview, onMoveTabToPane, onReorderTabsInPane, workspaceKey],
+  );
+
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
       const activeData = asWorkspaceTabDragData(event.active.data.current);
@@ -666,13 +739,16 @@ export function SplitContainer({
           applyTabDropEnd({ activeData, overData });
         } else if (overData?.kind === "split-pane-drop") {
           applyPaneDropEnd({ activeData, overData });
+        } else if (overData?.kind === TAB_LANES_DROP_KIND) {
+          applyLaneDropEnd({ activeData, overData });
         }
       }
 
       setDropPreview(null);
       setTabDropPreview(null);
+      setLaneDropPreview(null);
     },
-    [applyTabDropEnd, applyPaneDropEnd],
+    [applyTabDropEnd, applyPaneDropEnd, applyLaneDropEnd],
   );
 
   return (
@@ -726,6 +802,8 @@ export function SplitContainer({
                   showDropZones={activeDragTabId !== null}
                   dropPreview={dropPreview}
                   tabDropPreview={tabDropPreview}
+                  laneDropPreview={laneDropPreview}
+                  tabLanes={tabLanes}
                   windowChromeCorners={splitRoot.usesFallbackStrip ? "none" : windowChromeCorners}
                   maximizedPaneId={maximizedPaneId}
                   workspaceHasMultiplePanes={workspaceHasMultiplePanes}
@@ -1011,6 +1089,8 @@ function SplitNodeView({
   showDropZones,
   dropPreview,
   tabDropPreview,
+  laneDropPreview,
+  tabLanes,
   windowChromeCorners,
   maximizedPaneId,
   workspaceHasMultiplePanes,
@@ -1071,6 +1151,8 @@ function SplitNodeView({
         <WindowChromeRegion corners={windowChromeCorners}>
           <SplitPaneView
             pinScope={workspaceKey} // CUSTOM(tab-pins)
+            laneScope={tabLanes ? workspaceKey : null} // CUSTOM(tab-lanes)
+            laneDropPreview={laneDropPreview}
             pane={node.pane}
             uiTabs={uiTabs}
             isFocused={node.pane.id === focusedPaneId}
@@ -1158,6 +1240,8 @@ function SplitNodeView({
               showDropZones={showDropZones}
               dropPreview={dropPreview}
               tabDropPreview={tabDropPreview}
+              laneDropPreview={laneDropPreview}
+              tabLanes={tabLanes}
               windowChromeCorners={windowChromeCorners}
               maximizedPaneId={maximizedPaneId}
               workspaceHasMultiplePanes={workspaceHasMultiplePanes}
@@ -1228,7 +1312,9 @@ function SplitPaneView({
   renderTopRightTabRowAction,
   topRightPaneId,
   pinScope, // CUSTOM(tab-pins): the layout's workspace key
-}: SplitPaneViewProps & { pinScope: string }) {
+  laneScope, // CUSTOM(tab-lanes)
+  laneDropPreview,
+}: SplitPaneViewProps & { pinScope: string; laneScope: string | null }) {
   const paneRef = useRef<View | null>(null);
   const stableOnFocusPane = useStableEvent(onFocusPane);
   const paneState = useMemo(
@@ -1332,6 +1418,8 @@ function SplitPaneView({
           <TitlebarDragRegion />
           <WorkspaceDesktopTabsRow
             pinScope={pinScope} // CUSTOM(tab-pins)
+            laneScope={laneScope} // CUSTOM(tab-lanes)
+            laneDrop={laneDropPreview}
             paneId={pane.id}
             isFocused={isFocused && isWorkspaceFocused}
             tabs={desktopTabRowItems}
@@ -1500,6 +1588,8 @@ const styles = StyleSheet.create((theme) => ({
   paneTabs: {
     position: "relative",
     minWidth: 0,
+    // CUSTOM(tab-lanes): the drop row shown while dragging a tab overlaps the pane content.
+    zIndex: 1,
   },
   paneContent: {
     position: "relative",

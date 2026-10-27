@@ -160,6 +160,36 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     ).toBeVisible();
     await page.keyboard.press("Escape");
 
+    // CUSTOM(tab-lanes): Desk tabs sit in free rows. Dragging shows a row below the tab bar; a tab
+    // dropped there stays where it was dropped, and dragging it back makes one row again.
+    const tabsRow = desk.getByTestId("workspace-tabs-row");
+    const oneRowHeight = (await tabsRow.boundingBox())!.height;
+    const laneTab = desk.getByTestId(`workspace-tab-agent_${second.agentId}`).first();
+    const dragLaneTab = async (dx: number, dy: number) => {
+      const box = (await laneTab.boundingBox())!;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      await page.mouse.move(x + 12, y + 4, { steps: 4 });
+      await expect(desk.getByTestId("tab-lanes-extra-row")).toBeVisible();
+      await page.mouse.move(x + dx, y + dy, { steps: 12 });
+      await page.mouse.up();
+      await expect(desk.getByTestId("tab-lanes-extra-row")).toHaveCount(0);
+      return box;
+    };
+    const before = await dragLaneTab(400, 32);
+    await expect
+      .poll(async () => (await tabsRow.boundingBox())!.height)
+      .toBeGreaterThan(oneRowHeight + 20);
+    const dropped = (await laneTab.boundingBox())!;
+    expect(dropped.y).toBeGreaterThan(before.y + 20);
+    expect(dropped.x).toBeGreaterThan(before.x + 300);
+    await page.mouse.move(800, 600);
+    await page.screenshot({ path: testInfo.outputPath("tab-lanes.png") });
+    await dragLaneTab(-400, -32);
+    await expect.poll(async () => (await tabsRow.boundingBox())!.height).toBe(oneRowHeight);
+
     // Desks split like workspaces; closing a split's only tab removes the split.
     const panes = desk.locator('[data-testid^="workspace-pane-"]');
     await expect(panes).toHaveCount(1);
