@@ -3214,3 +3214,30 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Verify:** `npx vitest run custom/plugins/shell-command/client` (in the update script through
   `custom/plugins/shell-command`). Plugin-only: reload `shell-command` on each daemon, then type
   `/wip` and `/status` in an agent's composer: each shows a Terminal card.
+
+## project-icon-text: your own text in a project's generated icon
+
+- **Added:** 2026-10-26 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: click a project's generated icon in Edit project to put your own text in it`
+- **Why:** The generated icon only showed the project's first letter, so projects starting with
+  the same letter (DreamMMO, DreamMMO-wt1) looked alike.
+- **What:** In Settings > project > Edit project, the colored icon is a button. Clicking it shows
+  an "Icon text" field (up to 8 characters, emoji too); the preview follows as you type, and Save
+  changes keeps it. Everywhere the project's generated icon shows (sidebar, tabs, composer,
+  menus), the text replaces the initial and shrinks to fit on one line. Empty text goes back to
+  the initial. An uploaded image still wins: the icon is only clickable while no image is set
+  (Use automatic first). The text is saved in this app's storage (`custom-project-icon-text`),
+  keyed by project view key, so each install and launcher profile keeps its own; the phone
+  doesn't see it.
+- **Files:** `packages/app/src/projects/icon-text-store.ts`.
+- **Core files touched** (marked `CUSTOM(project-icon-text)`):
+  - `components/project-icon-view.tsx`: optional `text` prop, the store lookup by
+    `projectViewKey`, and `projectIconTextFontSize`.
+  - `components/project-edit-sheet.tsx`: the icon `Pressable`, the text field, and Save writing
+    the store (Save is enabled when only the text changed).
+- **Re-apply:** Have `ProjectIconView` render the stored text for its `projectViewKey` instead of
+  `initial`, sized down for longer text. In the edit sheet, make the preview icon open a text
+  input whose value previews in the icon and is written to the store on save.
+- **Verify:** In the app, open a project's settings, Edit project, click the "D" icon, type `wt1`,
+  Save: the sidebar and composer show `wt1` in that project's icon. Clear it and Save: back to
+  "D".

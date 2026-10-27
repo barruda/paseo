@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { type StyleProp, Text, type TextStyle, View } from "react-native";
 import { ProjectIconImage } from "@/components/project-icon-image";
 import { deriveIdentityColorName, identityColor } from "@/styles/identity-colors";
+import { useProjectIconTextStore } from "@/projects/icon-text-store";
 
 const WHITE_TEXT = { color: "#ffffff" } as const;
 const FALLBACK_LAYOUT = { alignItems: "center", justifyContent: "center" } as const;
@@ -23,6 +24,16 @@ export function projectIconRadius(size: number): number {
 }
 
 /**
+ * CUSTOM(project-icon-text): font size for text longer than one character, shrinking as it grows
+ * so it stays on one line inside the box.
+ */
+export function projectIconTextFontSize(text: string, size: number): number | null {
+  const length = Array.from(text).length;
+  if (length <= 1) return null;
+  return Math.max(6, Math.min(size * 0.55, (size * 1.5) / length));
+}
+
+/**
  * A project's icon: its chosen image, or a colored square carrying its initial.
  *
  * Geometry lives here, not at the call site. It used to be five copies of the same
@@ -36,13 +47,22 @@ export function ProjectIconView({
   projectViewKey,
   size,
   textStyle,
+  text,
 }: {
   iconDataUri: string | null;
   initial: string;
   projectViewKey: string;
   size: number;
   textStyle: StyleProp<TextStyle>;
+  /**
+   * CUSTOM(project-icon-text): text shown instead of the initial. Omitted, the text saved in
+   * Edit project is used; null forces the initial.
+   */
+  text?: string | null;
 }) {
+  const savedText = useProjectIconTextStore((state) => state.texts[projectViewKey] ?? null);
+  const label = (text === undefined ? savedText : text) || initial;
+  const labelFontSize = projectIconTextFontSize(label, size);
   // The uploaded image is sized but never clipped — see projectIconRadius.
   const box = useMemo(() => ({ width: size, height: size }), [size]);
   const fallbackStyles = useMemo(
@@ -54,15 +74,20 @@ export function ProjectIconView({
     ],
     [box, size, projectViewKey],
   );
-  const textStyles = useMemo(() => [textStyle, WHITE_TEXT], [textStyle]);
+  const textStyles = useMemo(
+    () => [textStyle, WHITE_TEXT, labelFontSize ? { fontSize: labelFontSize } : null],
+    [textStyle, labelFontSize],
+  );
 
   const fallback = useMemo(
     () => (
       <View style={fallbackStyles}>
-        <Text style={textStyles}>{initial}</Text>
+        <Text numberOfLines={1} style={textStyles}>
+          {label}
+        </Text>
       </View>
     ),
-    [fallbackStyles, initial, textStyles],
+    [fallbackStyles, label, textStyles],
   );
 
   return iconDataUri ? (

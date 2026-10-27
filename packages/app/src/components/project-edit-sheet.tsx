@@ -1,7 +1,7 @@
 import { Buffer } from "buffer";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
-import { View } from "react-native";
+import { Pressable, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -22,6 +22,7 @@ import {
   type ProjectIconIntent,
 } from "@/projects/edit-form";
 import { importProjectIconFromUrl } from "@/projects/import-project-icon";
+import { useProjectIconTextStore } from "@/projects/icon-text-store";
 import { toErrorMessage } from "@/utils/error-messages";
 
 export interface ProjectEditSheetProps {
@@ -65,6 +66,13 @@ export function ProjectEditSheet({
     onError: (error) => form.setError(toFormError(error)),
   });
   const isSaving = mutation.isPending;
+  // CUSTOM(project-icon-text): clicking the generated icon edits the text it shows; saved locally
+  // with Save changes.
+  const savedIconText = useProjectIconTextStore((s) => s.texts[projectViewKey] ?? "");
+  const [iconText, setIconText] = useState(savedIconText);
+  const [isEditingIconText, setIsEditingIconText] = useState(false);
+  const iconTextChanged = iconText.trim() !== savedIconText;
+  const handleEditIconText = useCallback(() => setIsEditingIconText(true), []);
 
   const handleClose = useCallback(() => {
     if (isSaving) return;
@@ -72,8 +80,11 @@ export function ProjectEditSheet({
   }, [isSaving, onClose]);
 
   const handleSubmit = useCallback(() => {
-    mutation.mutate(state.submission);
-  }, [mutation, state.submission]);
+    // CUSTOM(project-icon-text)
+    if (iconTextChanged) useProjectIconTextStore.getState().setText(projectViewKey, iconText);
+    if (state.canSubmit) mutation.mutate(state.submission);
+    else onClose();
+  }, [iconText, iconTextChanged, mutation, onClose, projectViewKey, state]);
 
   const chooseImage = useCallback(async () => {
     const file = (await pickFiles())?.[0];
@@ -108,7 +119,7 @@ export function ProjectEditSheet({
           size="md"
           style={styles.footerButton}
           onPress={handleSubmit}
-          disabled={!state.canSubmit}
+          disabled={!state.canSubmit && !iconTextChanged}
           loading={isSaving}
           testID="project-edit-save"
         >
@@ -116,7 +127,7 @@ export function ProjectEditSheet({
         </Button>
       </View>
     ),
-    [handleClose, handleSubmit, isSaving, state.canSubmit, t],
+    [handleClose, handleSubmit, iconTextChanged, isSaving, state.canSubmit, t],
   );
 
   return (
@@ -153,13 +164,23 @@ export function ProjectEditSheet({
         >
           <View style={styles.iconField}>
             <View style={styles.iconRow}>
-              <ProjectIconView
-                iconDataUri={state.previewDataUri}
-                initial={projectInitial(snapshot.projectName)}
-                projectViewKey={projectViewKey}
-                size={40}
-                textStyle={styles.previewText}
-              />
+              {/* CUSTOM(project-icon-text): the generated icon is a button that edits its text. */}
+              <Pressable
+                onPress={handleEditIconText}
+                disabled={isSaving || state.previewDataUri !== null}
+                accessibilityRole="button"
+                accessibilityLabel="Icon text"
+                testID="project-edit-icon-text-toggle"
+              >
+                <ProjectIconView
+                  iconDataUri={state.previewDataUri}
+                  initial={projectInitial(snapshot.projectName)}
+                  projectViewKey={projectViewKey}
+                  size={40}
+                  textStyle={styles.previewText}
+                  text={iconText}
+                />
+              </Pressable>
               <Button
                 variant="outline"
                 size={size}
@@ -181,6 +202,21 @@ export function ProjectEditSheet({
                 </Button>
               ) : null}
             </View>
+            {isEditingIconText && state.previewDataUri === null ? (
+              <FormTextInput
+                size={size}
+                testID="project-edit-icon-text"
+                accessibilityLabel="Icon text"
+                initialValue={iconText}
+                onChangeText={setIconText}
+                placeholder={`Icon text (empty: ${projectInitial(snapshot.projectName)})`}
+                editable={!isSaving}
+                autoFocus
+                autoCapitalize="none"
+                autoCorrect={false}
+                maxLength={8}
+              />
+            ) : null}
             <FormTextInput
               size={size}
               testID="project-edit-image-url"
