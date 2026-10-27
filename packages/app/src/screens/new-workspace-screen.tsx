@@ -1,5 +1,6 @@
 import { isWeb } from "@/constants/platform";
-import { previousProjectId } from "@/composer/empty-shortcuts";
+import { previousProjectId, projectCycleIds } from "@/composer/empty-shortcuts";
+import { useProjectFavoritesStore } from "@/composer/project-favorites-store";
 import type { ComposerKeyPressEvent } from "@/composer/input/input";
 import type {
   CreateAgentRequestOptions,
@@ -2012,7 +2013,14 @@ export function NewWorkspaceScreen({
       )
         return false;
       const nextId = previousProjectId(
-        projectPickerOptions.map((option) => option.id),
+        // CUSTOM(project-favorites): only starred projects when any are starred.
+        projectCycleIds(
+          projectPickerOptions.map((option) => ({
+            id: option.id,
+            favoriteKey: projectByOptionId.get(option.id)?.viewKey,
+          })),
+          useProjectFavoritesStore.getState().keys,
+        ),
         selectedProjectOptionId,
       );
       if (nextId === null) return false;
@@ -2020,7 +2028,13 @@ export function NewWorkspaceScreen({
       handleSelectProjectOption(nextId);
       return true;
     },
-    [projectPickerOptions, selectedProjectOptionId, isPending, handleSelectProjectOption],
+    [
+      projectPickerOptions,
+      projectByOptionId,
+      selectedProjectOptionId,
+      isPending,
+      handleSelectProjectOption,
+    ],
   );
 
   const openIsolationPicker = useCallback(() => {
@@ -2366,11 +2380,12 @@ export function NewWorkspaceScreen({
             options: projectPickerOptions.map((option) => ({
               id: option.id,
               label: option.label,
+              favoriteKey: projectByOptionId.get(option.id)?.viewKey, // CUSTOM(project-favorites)
             })),
             select: handleSelectProjectOption,
           }
         : null,
-    [handleSelectProjectOption, projectPickerOptions, selectedProjectOptionId],
+    [handleSelectProjectOption, projectByOptionId, projectPickerOptions, selectedProjectOptionId],
   );
 
   const agentControlsWithDisabled = useMemo(

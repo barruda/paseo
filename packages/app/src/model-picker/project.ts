@@ -3,6 +3,8 @@ import { compareMatchScores, scoreTextFields } from "@getpaseo/protocol/search/t
 export interface ModelPickerProjectOption {
   id: string;
   label: string;
+  /** CUSTOM(project-favorites): the project view key the star is saved under; defaults to id. */
+  favoriteKey?: string;
 }
 
 /**

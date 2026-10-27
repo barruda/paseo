@@ -1,8 +1,10 @@
 import { useModelFavoritesStore } from "@/model-picker/favorites-store";
 import { useEffortFavoritesStore } from "@/composer/effort-favorites-store";
+import { useProjectFavoritesStore } from "@/composer/project-favorites-store";
 import {
   nextProjectId,
   previousProjectId,
+  projectCycleIds,
   nextEffortId,
   previousModelSelection,
 } from "@/composer/empty-shortcuts";
@@ -729,7 +731,8 @@ export function WorkspaceDraftAgentTab({
       ) {
         const cycle = action.id === "task.draft.project" ? previousProjectId : nextProjectId;
         const next = cycle(
-          modelPickerProject.options.map((option) => option.id),
+          // CUSTOM(project-favorites): only starred projects when any are starred.
+          projectCycleIds(modelPickerProject.options, useProjectFavoritesStore.getState().keys),
           modelPickerProject.selectedId,
         );
         if (next === null) return false;

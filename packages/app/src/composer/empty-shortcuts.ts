@@ -61,6 +61,20 @@ export function nextProjectId(ids: readonly string[], selected: string | null): 
   return ids[(index + 1) % ids.length];
 }
 
+/**
+ * CUSTOM(project-favorites): the project ids ↑/↓ cycle through: the starred ones when any of the
+ * options are starred, otherwise all of them. `favoriteKey` defaults to the option id.
+ */
+export function projectCycleIds(
+  options: readonly { id: string; favoriteKey?: string }[],
+  favoriteKeys: readonly string[],
+): string[] {
+  const favorites = options.filter((option) =>
+    favoriteKeys.includes(option.favoriteKey ?? option.id),
+  );
+  return (favorites.length ? favorites : options).map((option) => option.id);
+}
+
 export function clearComposerRewindSelection(): void {
   useComposerRewindSelection.setState({ selection: null });
 }

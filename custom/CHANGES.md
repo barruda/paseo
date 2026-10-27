@@ -3241,3 +3241,30 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Verify:** In the app, open a project's settings, Edit project, click the "D" icon, type `wt1`,
   Save: the sidebar and composer show `wt1` in that project's icon. Clear it and Save: back to
   "D".
+
+## project-favorites: star projects; ↑/↓ cycle only the starred ones
+
+- **Added:** 2026-10-26 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: star projects in the composer's project menu; ↑/↓ cycle only the starred ones`
+- **Why:** Like [effort-favorites](#effort-favorites-star-effort-levels--cycles-only-the-starred-ones):
+  ↑/↓ in an empty draft ([task-shortcuts](#task-shortcuts-keyboard-navigation-and-draft-selection-in-tasks-mode))
+  walked every project; the user only switches between a few.
+- **What:** Each row of the project menu opened by the composer's project icon
+  ([composer-project-icon](#composer-project-icon-identify-the-project-beside-context-usage)) has a
+  star at the right. Clicking it stars the project (yellow) without picking it or closing the
+  menu. When any listed project is starred, ↑/↓ in an empty draft and ← on New Workspace cycle
+  only through starred ones; with none starred they cycle all of them. Stars are keyed by project
+  view key and saved in app storage (`custom-project-favorites`).
+- **Files:** `packages/app/src/composer/project-favorites-store.ts`.
+- **Core files touched** (marked `CUSTOM(project-favorites)`):
+  - `composer/empty-shortcuts.ts`: `projectCycleIds` (+ test).
+  - `model-picker/project.ts`: optional `favoriteKey` on `ModelPickerProjectOption`.
+  - `composer/project-icon.tsx`: star `trailing` on `ProjectMenuItem`.
+  - `composer/draft/workspace-tab.tsx`: the ↑/↓ handler cycles `projectCycleIds(...)`.
+  - `screens/new-workspace-screen.tsx`: ← cycles `projectCycleIds(...)`; the Ctrl+M project
+    options carry `favoriteKey` (the option ids there are prefixed, the view key is not).
+- **Re-apply:** Give the composer project menu rows a star toggle bound to the store and filter
+  the ids the project cycle walks to the starred ones when any are starred.
+- **Verify:** `(cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts)` (in the
+  update script). In the app, star two projects in the composer's project menu, empty the
+  composer of a draft, press ↑: it alternates between the two.

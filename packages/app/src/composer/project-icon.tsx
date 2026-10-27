@@ -1,8 +1,9 @@
 // CUSTOM(composer-project-icon): identify the current project beside the context meter.
 // When the composer can switch projects, the icon opens the same list as the up-arrow cycle.
 import { useCallback, useMemo, type ReactNode } from "react";
-import { Text, View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { Pressable, Text, View } from "react-native";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { Star } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
 import {
   DropdownMenu,
@@ -16,6 +17,7 @@ import { useHostProjects } from "@/projects/host-projects";
 import { useProjectIcons } from "@/projects/icons";
 import { useSessionStore } from "@/stores/session-store";
 import { resolveComposerProjectIdentity } from "./project-icon-model";
+import { useProjectFavoritesStore } from "./project-favorites-store";
 
 interface ComposerProjectIconProps {
   serverId: string;
@@ -140,16 +142,47 @@ interface ProjectMenuItemProps {
   onPick: (id: string) => void;
 }
 
+// CUSTOM(project-favorites)
+const ThemedStar = withUnistyles(Star, (theme) => ({ color: theme.colors.foregroundExtraMuted }));
+const ThemedFavoriteStar = withUnistyles(Star, (theme) => ({
+  color: theme.colors.palette.yellow[400],
+  fill: theme.colors.palette.yellow[400],
+}));
+
 function ProjectMenuItem({ option, selected, onPick }: ProjectMenuItemProps) {
   const handleSelect = useCallback(() => {
     if (!selected) onPick(option.id);
   }, [option.id, onPick, selected]);
+  // CUSTOM(project-favorites): the star picks which projects ↑/↓ cycle through.
+  const favoriteKey = option.favoriteKey ?? option.id;
+  const favorite = useProjectFavoritesStore((state) => state.keys.includes(favoriteKey));
+  const toggleFavorite = useProjectFavoritesStore((state) => state.toggle);
+  const handleToggleFavorite = useCallback(
+    () => toggleFavorite(favoriteKey),
+    [favoriteKey, toggleFavorite],
+  );
+  const trailing = useMemo(
+    () => (
+      <Pressable
+        focusable={false}
+        hitSlop={6}
+        onPress={handleToggleFavorite}
+        accessibilityRole="button"
+        accessibilityLabel={favorite ? "Remove from favorites" : "Add to favorites"}
+        testID={`composer-project-favorite-${option.id}`}
+      >
+        {favorite ? <ThemedFavoriteStar size={14} /> : <ThemedStar size={14} />}
+      </Pressable>
+    ),
+    [favorite, handleToggleFavorite, option.id],
+  );
 
   return (
     <DropdownMenuItem
       selected={selected}
       showSelectedCheck
       onSelect={handleSelect}
+      trailing={trailing}
       testID={`composer-project-menu-item-${option.id}`}
     >
       {option.label}

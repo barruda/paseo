@@ -6,6 +6,7 @@ import {
   latestSentMessage,
   nextProjectId,
   previousProjectId,
+  projectCycleIds,
   nextEffortId,
   nextModelSelection,
   previousModelSelection,
@@ -184,4 +185,18 @@ it("cycles only favorite effort levels when any are present", () => {
   expect(nextEffortId(options, "max", ["max", "medium"])).toBe("medium");
   expect(nextEffortId(options, "low", ["max", "medium"])).toBe("medium");
   expect(nextEffortId(options, "low", ["ultra"])).toBe("medium");
+});
+
+it("cycles only favorite projects when any are present", () => {
+  const options = [
+    { id: "project:a", favoriteKey: "a" },
+    { id: "project:b", favoriteKey: "b" },
+    { id: "project:c", favoriteKey: "c" },
+  ];
+  expect(projectCycleIds(options, ["c", "a"])).toEqual(["project:a", "project:c"]);
+  expect(projectCycleIds(options, ["gone"])).toEqual(["project:a", "project:b", "project:c"]);
+  expect(projectCycleIds([{ id: "a" }, { id: "b" }], ["b"])).toEqual(["b"]);
+  const ids = projectCycleIds(options, ["a", "c"]);
+  expect(previousProjectId(ids, "project:b")).toBe("project:c");
+  expect(nextProjectId(ids, "project:c")).toBe("project:a");
 });
