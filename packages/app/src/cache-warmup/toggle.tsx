@@ -15,7 +15,7 @@ import { useCacheWarmupStore } from "./store";
 
 const TOOLTIP_TICK_MS = 15_000;
 // A desaturated red, so the filled flame stays quiet next to the gray toolbar icons in both themes.
-const WARM_ICON_COLOR = "#a8736e";
+const WARM_ICON_COLOR = "#7d5652";
 
 function FilledFlame({ size, color }: AgentControlIconProps) {
   return <Flame size={size} color={color} fill={color} />;
