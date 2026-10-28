@@ -3505,3 +3505,24 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   sticky tabs, a closed untouched tab and drops. In the app, Tasks mode with Flexible tab movement
   on: close a tab you never moved; the tabs to its right slide left. Drag one tab to the middle;
   close another; the dragged one stays.
+
+## task-double-click: double-clicking a task opens it in a new tab
+
+- **Added:** 2026-10-28 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: double-clicking a task opens it in a new tab`
+- **Why:** A click on a task in the Tasks sidebar swaps the Desk's preview tab to it. The user
+  wants that, but also a quick way to open a task beside the current one without losing it.
+- **What:** Double-clicking a task row (web and desktop) opens it in a new kept tab and leaves
+  the preview tab showing what it showed before. The double click's first click already swapped
+  the preview tab, so the row saves the Desks before each click and the double click restores
+  them, then opens the task pinned. The snapshot only counts for 1 s.
+- **Files:** `packages/app/src/task-navigation/sidebar.tsx` (`TaskRow`: `beforeClick`,
+  `openInNewTab`, `DOUBLE_CLICK_MS`), `use-middle-click.ts` (optional `onDoubleClick`, a
+  `dblclick` listener). Marked `CUSTOM(task-double-click)`. No core files.
+- **Re-apply:** In the task row, before opening on a click, keep `desks` and `activeDeskId` from
+  `useDesksStore` unless a snapshot from the last second exists. On the row's DOM `dblclick`, put
+  them back with `useDesksStore.setState` and open the task with `pin = true`.
+- **Verify:** `e2e/task-navigation.spec.ts` (already in the update script), "Desks preview and
+  pin": double-clicking a task leaves the preview on the other task and adds one kept tab. In the
+  app, Tasks mode: click task A (preview), double-click task B; A stays in the italic tab and B
+  opens in a new upright tab.

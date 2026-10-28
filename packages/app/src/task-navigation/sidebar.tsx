@@ -1,7 +1,7 @@
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
-import { memo, useCallback, useMemo, useState, type ReactNode } from "react";
+import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
 import { FlatList, Pressable, Text, View, type ListRenderItemInfo } from "react-native";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
@@ -632,6 +632,12 @@ function TaskStateLabel({ state }: { state: TaskNode["state"] }) {
   );
 }
 
+// CUSTOM(task-double-click): how long a click's Desks snapshot can still be undone by a double click.
+const DOUBLE_CLICK_MS = 1000;
+type DesksBeforeClick = { at: number } & Pick<
+  ReturnType<typeof useDesksStore.getState>,
+  "desks" | "activeDeskId"
+>;
 const TaskRow = memo(function TaskRow({
   shortcutNumber,
   node,
@@ -667,9 +673,27 @@ const TaskRow = memo(function TaskRow({
   const showBadges = useShowShortcutBadges();
   const age = useCompactTimeAgo(node.agent.updatedAt);
   const crossWorkspace = depth > 0;
-  const handleOpen = useCallback(() => onOpen(node), [node, onOpen]);
+  // CUSTOM(task-double-click): a double click opens the task in a new tab. Its first click already
+  // turned the preview tab into this task, so the double click puts the Desks back first.
+  const beforeClick = useRef<DesksBeforeClick | null>(null);
+  const handleOpen = useCallback(() => {
+    const last = beforeClick.current;
+    if (!last || Date.now() - last.at > DOUBLE_CLICK_MS) {
+      const { desks, activeDeskId } = useDesksStore.getState();
+      beforeClick.current = { at: Date.now(), desks, activeDeskId };
+    }
+    onOpen(node);
+  }, [node, onOpen]);
+  const openInNewTab = useCallback(() => {
+    const before = beforeClick.current;
+    beforeClick.current = null;
+    if (before && Date.now() - before.at <= DOUBLE_CLICK_MS) {
+      useDesksStore.setState({ desks: before.desks, activeDeskId: before.activeDeskId });
+    }
+    onOpen(node, true);
+  }, [node, onOpen]);
   const pin = useCallback(() => onOpen(node, true), [node, onOpen]);
-  const middleClickRef = useMiddleClick(pin);
+  const middleClickRef = useMiddleClick(pin, openInNewTab);
   const handleToggle = useCallback(() => onToggle(node.key), [node.key, onToggle]);
   const expandedState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
   const selectedState = useMemo(() => ({ selected }), [selected]);

@@ -145,11 +145,14 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await expect(previewTab).toHaveCount(0);
     await expect(agentTabs).toHaveCount(0);
     await expect(sidebar.getByTestId(`task-agent-${second.agentId}`)).toBeVisible();
-    await sidebar.getByTestId(`task-agent-${second.agentId}`).click({ button: "middle" });
-    await expect(pinnedTabs).toHaveCount(1);
     await sidebar.getByTestId(`task-agent-${first.agentId}`).click();
     await expect(previewTab).toContainText("Investigate sidebar");
+    // CUSTOM(task-double-click): a double click opens the task in a new tab and keeps the preview.
+    await sidebar.getByTestId(`task-agent-${second.agentId}`).dblclick();
+    await expect(pinnedTabs).toHaveCount(1);
     await expect(pinnedTabs).toContainText("Review terrain");
+    await expect(previewTab).toContainText("Investigate sidebar");
+    await previewTab.click();
     await page.getByTestId("desk-keep-preview").click();
     await expect(pinnedTabs).toHaveCount(2);
     await expect(previewTab).toHaveCount(0);
