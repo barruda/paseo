@@ -18,7 +18,7 @@ import { Copy, MessageSquarePlus } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { createAssistantSelectionClipboardContent } from "@/assistant-selection-copy/content.web";
 import { Button } from "@/components/ui/button";
-import { EditingTextInput } from "@/components/ui/text-input";
+import { EditingTextInput, type EditingTextInputHandle } from "@/components/ui/text-input";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -41,6 +41,7 @@ const BOX_WIDTH = 360;
 const BOX_MARGIN = 12;
 /** Rough height of the box, used only to keep it on screen near the bottom edge. */
 const BOX_HEIGHT_ESTIMATE = 200;
+const FOCUS_DELAY_MS = 50;
 
 interface CommentRequest {
   excerpt: string;
@@ -99,6 +100,13 @@ function CommentBox({
 }): ReactElement {
   const [comment, setComment] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const inputRef = useRef<EditingTextInputHandle>(null);
+
+  useEffect(() => {
+    // The closing menu hands focus back to where it came from; take it after that.
+    const timer = setTimeout(() => inputRef.current?.focus(), FOCUS_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
@@ -139,6 +147,7 @@ function CommentBox({
         </Text>
         <ThemedTextInput
           testID="chat-comment-input"
+          ref={inputRef}
           initialValue=""
           onChangeText={setComment}
           onKeyPress={handleKeyPress}
