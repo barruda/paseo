@@ -27,6 +27,8 @@ export interface SearchFieldProps {
   clearAccessibilityLabel: string;
   testID?: string;
   clearTestID?: string;
+  /** CUSTOM(history-search-tabs): Enter in the field. */
+  onSubmit?: () => void;
 }
 
 /**
@@ -44,6 +46,7 @@ export function SearchField({
   clearAccessibilityLabel,
   testID,
   clearTestID,
+  onSubmit,
 }: SearchFieldProps): ReactElement {
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<EditingTextInputHandle>(null);
@@ -69,6 +72,7 @@ export function SearchField({
         autoCapitalize="none"
         autoCorrect={false}
         returnKeyType="search"
+        onSubmitEditing={onSubmit}
         style={styles.input}
       />
       {value.length > 0 ? (

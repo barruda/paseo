@@ -67,6 +67,14 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
       const sha = trimNonEmpty(value.sha);
       return sha ? { kind: "commit_diff", sha } : null;
     }
+    // CUSTOM(history-search-tabs)
+    case "history_search": {
+      const query = trimNonEmpty(value.query);
+      if (!query) return null;
+      return value.ai === true
+        ? { kind: "history_search", query, ai: true }
+        : { kind: "history_search", query };
+    }
     default:
       return null;
   }
@@ -155,7 +163,16 @@ function secondaryWorkspaceTabTargetsEqual(
   if (left.kind === "commit_diff" && right.kind === "commit_diff") {
     return left.sha === right.sha;
   }
-  return false;
+  return historySearchTabTargetsEqual(left, right);
+}
+
+// CUSTOM(history-search-tabs)
+function historySearchTabTargetsEqual(
+  left: WorkspaceTabTarget,
+  right: WorkspaceTabTarget,
+): boolean {
+  if (left.kind !== "history_search" || right.kind !== "history_search") return false;
+  return left.query === right.query && (left.ai === true) === (right.ai === true);
 }
 
 function workspaceDraftTabSetupsEqual(
@@ -215,6 +232,10 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
   }
   if (target.kind === "commit_diff") {
     return `commit_diff_${target.sha}`;
+  }
+  // CUSTOM(history-search-tabs)
+  if (target.kind === "history_search") {
+    return `history_search_${target.ai === true ? "ai" : "keywords"}_${target.query}`;
   }
   if (target.kind === "working_diff") {
     return "working_diff";

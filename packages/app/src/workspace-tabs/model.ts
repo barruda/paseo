@@ -32,6 +32,13 @@ export type PluginWorkspaceTabTarget =
       agentId: string;
     };
 
+// CUSTOM(history-search-tabs): `ai` marks an Ask AI question instead of a keyword search.
+export interface HistorySearchTabTarget {
+  kind: "history_search";
+  query: string;
+  ai?: boolean;
+}
+
 export type WorkspaceTabTarget =
   | { kind: "new_tab" }
   | { kind: "draft"; draftId: string; setup?: WorkspaceDraftTabSetup }
@@ -46,7 +53,9 @@ export type WorkspaceTabTarget =
   | WorkspaceWorkingDiffTabTarget
   | PluginWorkspaceTabTarget
   | { kind: "setup"; workspaceId: string }
-  | { kind: "commit_diff"; sha: string };
+  | { kind: "commit_diff"; sha: string }
+  // CUSTOM(history-search-tabs): a History search kept as a tab.
+  | HistorySearchTabTarget;
 
 export interface WorkspaceTab {
   tabId: string;

@@ -196,3 +196,21 @@ describe("plugin panel tab identity", () => {
     expect(agent).toBe("plugin_agent_6_review_7_details_7_agent-1");
   });
 });
+
+// CUSTOM(history-search-tabs)
+describe("History search tab identity", () => {
+  it("keeps keyword and AI searches of the same text apart", () => {
+    const keywords = normalizeWorkspaceTabTarget({ kind: "history_search", query: "  relay  " });
+    const ai = normalizeWorkspaceTabTarget({ kind: "history_search", query: "relay", ai: true });
+
+    expect(keywords).toEqual({ kind: "history_search", query: "relay" });
+    expect(ai).toEqual({ kind: "history_search", query: "relay", ai: true });
+    expect(workspaceTabTargetsEqual(keywords!, ai!)).toBe(false);
+    expect(buildDeterministicWorkspaceTabId(keywords!)).toBe("history_search_keywords_relay");
+    expect(buildDeterministicWorkspaceTabId(ai!)).toBe("history_search_ai_relay");
+  });
+
+  it("drops an empty query", () => {
+    expect(normalizeWorkspaceTabTarget({ kind: "history_search", query: "  " })).toBeNull();
+  });
+});

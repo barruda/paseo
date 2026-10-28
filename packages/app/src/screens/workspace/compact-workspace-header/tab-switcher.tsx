@@ -118,6 +118,10 @@ function getFallbackTabOptionDescription(
   if (tab.target.kind === "plugin") {
     return tab.target.panelId;
   }
+  // CUSTOM(history-search-tabs)
+  if (tab.target.kind === "history_search") {
+    return tab.target.query;
+  }
   return tab.target.path;
 }
 

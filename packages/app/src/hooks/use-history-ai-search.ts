@@ -103,8 +103,12 @@ async function searchHosts(
   return { status: "done", agents: interleave(lists), hosts: outcomes };
 }
 
-export function useHistoryAiSearch(options: { serverId: string | null }): HistoryAiSearchResult {
-  const [submitted, setSubmitted] = useState("");
+export function useHistoryAiSearch(options: {
+  serverId: string | null;
+  /** CUSTOM(history-search-tabs): an AI History search tab starts with its question submitted. */
+  initialQuestion?: string;
+}): HistoryAiSearchResult {
+  const [submitted, setSubmitted] = useState(options.initialQuestion ?? "");
   const clear = useCallback(() => setSubmitted(""), []);
   const daemons = useHosts();
   const runtime = getHostRuntimeStore();

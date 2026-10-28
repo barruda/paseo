@@ -3377,3 +3377,38 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   the first test of desktop `e2e/task-navigation.spec.ts` (turns the setting on, drags a tab to a
   second row, tidies it back), both in the update script; the other tests there run with it off.
   In the app, Settings > Editor: turn the switch off and the Desk shows one scrolling row.
+
+## history-search-tabs: a History search becomes a tab
+
+- **Added:** 2026-10-28 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: History searches open as tabs`
+- **Why:** The user wanted each History search kept, like a browser tab, instead of losing it when
+  they leave History.
+- **What:** Enter in the History search field, or in its Ask AI field, opens a **History search**
+  tab in the last workspace (or the current Desk in Tasks mode) and goes there. The tab shows the
+  History list filtered by the search, without the screen header; its label is the search, its icon
+  is History (Sparkles for an Ask AI question). Typing in the tab filters live; Enter on another
+  search opens another tab. The same search reveals its existing tab. With no workspace opened
+  yet, History searches in place as before. Tabs persist with the layout.
+- **Files:** `packages/app/src/history-search-tabs/` (`open.ts` opens the tab from History,
+  `use-history-search-tabs.ts` routes Enter in both fields, `panel.tsx` the panel).
+- **Core files touched** (marked `CUSTOM(history-search-tabs)`):
+  - `workspace-tabs/model.ts`: `HistorySearchTabTarget` (`kind: "history_search"`, `query`, `ai?`).
+  - `workspace-tabs/identity.ts`: normalize, equality (`historySearchTabTargetsEqual`) and the
+    deterministic id `history_search_<ai|keywords>_<query>`.
+  - `stores/workspace-layout-storage.ts`: the storage schema entry.
+  - `panels/panel-manifest.ts` and `panels/register-panels.ts`: manifest and registration.
+  - `screens/sessions-screen.tsx`: `SessionsScreenContent` is exported and takes an optional
+    `tab` binding; the header is hidden in a tab; `useHistorySearchTabs` supplies the AI search
+    and the Enter handler.
+  - `components/ui/search-field.tsx`: optional `onSubmit`. `components/history-ai-search.tsx`
+    and `hooks/use-history-ai-search.ts`: an optional initial question.
+  - `compact-workspace-header/tab-switcher.tsx` and `workspace-tab-menu.ts`: the label and the
+    close-button test id for the new kind.
+- **Re-apply:** Add the tab kind everywhere a kind is enumerated (model, identity, storage schema,
+  manifest, register). Render the History screen's content in the panel with the tab's query, and
+  route Enter in both History fields through `openHistorySearchTab` (History screen) or the pane's
+  `openTab` (inside a tab).
+- **Verify:** `workspace-tabs/identity.test.ts` is in the update script. By hand: open History,
+  type a word and press Enter: the app goes to the last workspace with a tab named after the word.
+  Ask AI a question and press Enter: another tab, with the Sparkles icon, shows the picks.

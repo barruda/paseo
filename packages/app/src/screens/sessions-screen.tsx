@@ -14,7 +14,6 @@ import { SearchField } from "@/components/ui/search-field";
 import { HistorySearchSyntax } from "@/components/history-search-syntax";
 // CUSTOM(history-ai-search)
 import { HistoryAiSearchPanel } from "@/components/history-ai-search";
-import { useHistoryAiSearch } from "@/hooks/use-history-ai-search";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
 import { type AgentHistoryHostError, useAgentHistory } from "@/hooks/use-agent-history";
@@ -22,6 +21,12 @@ import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useImportSession } from "@/hooks/use-import-session";
 import { useHosts } from "@/runtime/host-runtime";
 import { buildOpenProjectRoute } from "@/utils/host-routes";
+// CUSTOM(history-search-tabs)
+import {
+  initialHistorySearchInput,
+  useHistorySearchTabs,
+  type HistorySearchTabBinding,
+} from "@/history-search-tabs/use-history-search-tabs";
 
 /** Long enough that a typed word is one request, short enough to feel live. */
 const SEARCH_DEBOUNCE_MS = 200;
@@ -74,13 +79,18 @@ export function SessionsScreen() {
   return <SessionsScreenContent />;
 }
 
-function SessionsScreenContent() {
+/** CUSTOM(history-search-tabs): a History search tab sits under the tab row, without a header. */
+function SessionsHeader({ isTab, title }: { isTab: boolean; title: string }): ReactElement | null {
+  return isTab ? null : <MenuHeader title={title} />;
+}
+
+export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const importSession = useImportSession();
   const hosts = useHosts();
   const [selectedHost, setSelectedHost] = useState(ALL_HOSTS_OPTION_ID);
-  const [searchInput, setSearchInput] = useState("");
+  const [searchInput, setSearchInput] = useState(() => initialHistorySearchInput(tab));
   const search = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS).trim();
   const historyServerId = selectedHost === ALL_HOSTS_OPTION_ID ? null : selectedHost;
   const {
@@ -100,7 +110,12 @@ function SessionsScreenContent() {
   });
   const isSearching = isSearchSupported && search.length > 0;
   // CUSTOM(history-ai-search): a submitted question replaces the list with the AI's picks.
-  const aiSearch = useHistoryAiSearch({ serverId: historyServerId });
+  // CUSTOM(history-search-tabs): and Enter in either field keeps the search as a tab.
+  const { aiSearch, initialAiQuestion, submitSearch } = useHistorySearchTabs({
+    tab,
+    searchInput,
+    serverId: historyServerId,
+  });
 
   useEffect(() => {
     if (
@@ -158,7 +173,7 @@ function SessionsScreenContent() {
 
   return (
     <View style={styles.container}>
-      <MenuHeader title={t("sessions.title")} />
+      <SessionsHeader isTab={tab !== undefined} title={t("sessions.title")} />
       {showFilterRow ? (
         <View style={styles.filterContainer}>
           {isSearchSupported ? (
@@ -169,6 +184,7 @@ function SessionsScreenContent() {
               clearAccessibilityLabel={t("sessions.actions.clearSearch")}
               testID="sessions-search-input"
               clearTestID="sessions-search-clear"
+              onSubmit={submitSearch}
             />
           ) : null}
           {showHostFilter ? (
@@ -184,7 +200,7 @@ function SessionsScreenContent() {
       ) : null}
       {/* CUSTOM(history-content-search): the query operators, under the search field. */}
       <HistorySearchSyntax isVisible={isSearchSupported} />
-      <HistoryAiSearchPanel aiSearch={aiSearch}>
+      <HistoryAiSearchPanel aiSearch={aiSearch} initialQuestion={initialAiQuestion}>
         {hostErrors.length > 0 ? <SessionHostErrorsBanner errors={hostErrors} t={t} /> : null}
         {isInitialLoad ? (
           <View style={styles.loadingContainer}>

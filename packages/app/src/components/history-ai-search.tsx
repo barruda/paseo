@@ -26,15 +26,17 @@ const ThemedSpinner = withUnistyles(LoadingSpinner, mutedColorMapping);
 
 /** Enter submits; editing the text after a search keeps the results until the next Enter. */
 function HistoryAiSearchField({
+  initialQuestion = "",
   onSubmit,
   onClear,
   isSearching,
 }: {
+  initialQuestion?: string;
   onSubmit: (question: string) => void;
   onClear: () => void;
   isSearching: boolean;
 }): ReactElement {
-  const [value, setValue] = useState("");
+  const [value, setValue] = useState(initialQuestion);
   const [isFocused, setIsFocused] = useState(false);
   const inputRef = useRef<EditingTextInputHandle>(null);
   const handleFocus = useCallback(() => setIsFocused(true), []);
@@ -150,9 +152,12 @@ function HistoryAiSearchStatus({
 /** The field, what was searched, and the picks best first. Renders nothing on older hosts. */
 export function HistoryAiSearchPanel({
   aiSearch,
+  initialQuestion,
   children,
 }: {
   aiSearch: HistoryAiSearchResult;
+  /** CUSTOM(history-search-tabs): the question an AI History search tab was opened with. */
+  initialQuestion?: string;
   /** The regular History list, shown while no question is submitted. */
   children: ReactNode;
 }): ReactElement {
@@ -161,6 +166,7 @@ export function HistoryAiSearchPanel({
     <>
       {aiSearch.isSupported ? (
         <HistoryAiSearchField
+          initialQuestion={initialQuestion}
           onSubmit={aiSearch.submit}
           onClear={aiSearch.clear}
           isSearching={state.status === "searching"}

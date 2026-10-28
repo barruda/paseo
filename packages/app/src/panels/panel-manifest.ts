@@ -117,6 +117,14 @@ const manifests = {
     singleton: false,
     resourceKey: (target) => target.sha,
   },
+  // CUSTOM(history-search-tabs)
+  history_search: {
+    kind: "history_search",
+    supportedHosts: ["main"],
+    showCloseButton: true,
+    singleton: false,
+    resourceKey: (target) => `${target.ai === true ? "ai" : "keywords"}:${target.query}`,
+  },
 } satisfies PanelManifestByKind;
 
 export function getPanelManifest<K extends WorkspaceTabTarget["kind"]>(kind: K): PanelManifest<K> {

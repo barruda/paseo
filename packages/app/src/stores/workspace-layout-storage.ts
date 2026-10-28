@@ -45,6 +45,12 @@ export const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   }),
   z.strictObject({ kind: z.literal("setup"), workspaceId: z.string() }),
   z.strictObject({ kind: z.literal("commit_diff"), sha: z.string() }),
+  // CUSTOM(history-search-tabs)
+  z.strictObject({
+    kind: z.literal("history_search"),
+    query: z.string(),
+    ai: z.boolean().optional(),
+  }),
   z.discriminatedUnion("context", [
     z.strictObject({
       kind: z.literal("plugin"),
