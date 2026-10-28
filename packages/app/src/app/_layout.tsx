@@ -46,6 +46,8 @@ import { CompactExplorerSidebarHost } from "@/components/compact-explorer-sideba
 import { ProviderSettingsHost } from "@/components/provider-settings-host";
 import { WorkspaceSetupDialog } from "@/components/workspace-setup-dialog";
 import { WorkspaceShortcutTargetsSubscriber } from "@/components/workspace-shortcut-targets-subscriber";
+// CUSTOM(cache-warmup)
+import { CacheWarmup } from "@/cache-warmup/cache-warmup";
 // CUSTOM(active-workspace-cycle)
 import { ActiveWorkspaceCycleHandler } from "@/active-workspace-cycle/cycle-handler";
 import { FloatingPanelPortalHost } from "@/components/ui/floating-panel-portal";
@@ -685,6 +687,8 @@ function ProvidersWrapper({ children }: { children: ReactNode }) {
           <DesktopWindowControlsSync />
           <OfferLinkListener />
           <HostSessionManager />
+          {/* CUSTOM(cache-warmup): pings big idle Claude sessions before their cache expires. */}
+          <CacheWarmup />
           <FaviconStatusSync />
           {children}
         </SidebarVoiceProvider>

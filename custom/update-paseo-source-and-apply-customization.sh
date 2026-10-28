@@ -326,6 +326,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/screens/settings/voice src/voice src/i18n/resources.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts src/server/agent/mcp-server.test.ts --bail=1)
   (cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts --bail=1)
+  # Big idle Claude sessions get a keep-alive ping before their prompt cache expires.
+  (cd packages/app && npx vitest run src/cache-warmup/model.test.ts --bail=1)
   # History searches become tabs.
   (cd packages/app && npx vitest run src/workspace-tabs/identity.test.ts --bail=1)
   # A comment on response text lands in the composer.

@@ -3439,3 +3439,27 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   agent, beside the chat-esc-focus focus registration.
 - **Verify:** `chat-comments/model.test.ts` is in the update script. By hand: select part of a
   response, right-click, Comment, type and press Enter: the composer gets the quote and the comment.
+
+## cache-warmup: big idle Claude sessions get a ping before their cache expires
+
+- **Added:** 2026-10-28 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: keep the prompt cache of big idle Claude sessions warm`
+- **Why:** Anthropic's prompt cache lives an hour after its last use. A session over 100k tokens
+  left idle loses it, and the next message pays to write the whole context again.
+- **What:** Every 30 s the app looks for Claude sessions that are idle, over 100k context tokens
+  (the composer's context meter), open in a tab of any workspace or Desk, and whose last activity
+  was 57 to 60 minutes ago. Each gets the message "Keep-alive ping to keep the prompt cache warm.
+  Reply with just: pong", once per idle stretch; the reply starts the next 57 minutes. Past the
+  hour the cache is already gone, so the session is left alone; that also keeps tabs left open for
+  days from being pinged. A session stays warm for as long as its tab stays open, with one ping
+  every 57 minutes. Another window or device showing the same agent sees its activity move after
+  the first ping and skips it. Only the app pings, so with every Paseo window closed nothing does.
+- **Files:** `packages/app/src/cache-warmup/` (`model.ts` the rule, `cache-warmup.tsx` the timer).
+- **Core files touched:** `app/_layout.tsx` renders `<CacheWarmup />` in `ProvidersWrapper`
+  (marked `CUSTOM(cache-warmup)`).
+- **Re-apply:** Mount a root component that, every 30 s, reads the session store (agent status,
+  `lastUsage.contextWindowUsedTokens`, the later of `lastActivityAt` and `agentLastActivity`), the
+  workspace layouts and the Desks, and sends `client.sendAgentMessage` to what `pickAgentsToWarm`
+  returns.
+- **Verify:** `cache-warmup/model.test.ts` is in the update script. By hand: leave a Claude session
+  over 100k tokens idle with its tab open; 57 minutes later the ping and a short reply appear.
