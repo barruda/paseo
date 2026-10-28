@@ -84,6 +84,7 @@ import {
 import { useEffortFavoritesStore } from "@/composer/effort-favorites-store";
 import type { ModelPickerProjectSource } from "@/model-picker/project";
 import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
+import { CacheWarmupToggle } from "@/cache-warmup/toggle"; // CUSTOM(cache-warmup)
 import { isNative } from "@/constants/platform";
 import {
   resolveComposerControlDensity,
@@ -144,6 +145,8 @@ interface ControlledAgentControlsProps {
   onOpenModelPicker?: () => void;
   // CUSTOM(chip-cycle): clicking the model or effort chip outside its chevron cycles favorites.
   cycleControls?: AgentControlCommandCenterSource;
+  // CUSTOM(cache-warmup): the running agent, for the keep-cache-warm toggle after the Ctrl+M chip.
+  cacheWarmupAgentId?: string;
   onRetryModelProvider?: (provider: AgentProvider) => void;
   isRetryingModelProvider?: boolean;
   modeControl?: AgentModeControlValue | null;
@@ -595,6 +598,7 @@ function ControlledAgentControls({
   onModelSelectorOpen,
   onOpenModelPicker,
   cycleControls,
+  cacheWarmupAgentId,
   onRetryModelProvider,
   isRetryingModelProvider = false,
   modeControl,
@@ -929,6 +933,12 @@ function ControlledAgentControls({
         )}
         {/* CUSTOM(model-picker) */}
         {!isCompact ? <ModelPickerShortcutChip /> : null}
+        {/* CUSTOM(cache-warmup) */}
+        <CacheWarmupToggle
+          provider={provider}
+          serverId={modelSelectorServerId}
+          agentId={cacheWarmupAgentId}
+        />
       </View>
     </ComposerControlLayoutProvider>
   );
@@ -1966,6 +1976,7 @@ export const AgentControls = memo(function AgentControls({
         onModelSelectorOpen={handleModelSelectorOpen}
         onOpenModelPicker={openModelPicker}
         cycleControls={commandCenterControls}
+        cacheWarmupAgentId={agentId}
         onRetryModelProvider={handleRetryModelProvider}
         isRetryingModelProvider={snapshotIsRefreshing}
         onDropdownClose={onDropdownClose}

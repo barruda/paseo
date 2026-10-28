@@ -3445,9 +3445,11 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 ## cache-warmup: big idle Claude sessions get a ping before their cache expires
 
 - **Added:** 2026-10-28 (based on upstream v0.13.0, `7f9b65d46`)
-- **Commit:** `custom: keep the prompt cache of big idle Claude sessions warm`
+- **Commit:** `custom: keep the prompt cache of big idle Claude sessions warm`, then
+  `custom: hide cache keep-alive pings and add a toggle for them`
 - **Why:** Anthropic's prompt cache lives an hour after its last use. A session over 100k tokens
-  left idle loses it, and the next message pays to write the whole context again.
+  left idle loses it, and the next message pays to write the whole context again. The pings and
+  their "pong" replies cluttered the chat, and some sessions are not worth keeping warm.
 - **What:** Every 30 s the app looks for Claude sessions that are idle, over 100k context tokens
   (the composer's context meter), open in a tab of any workspace or Desk, and whose last activity
   was 57 to 60 minutes ago. Each gets the message "Keep-alive ping to keep the prompt cache warm.
@@ -3456,15 +3458,28 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   days from being pinged. A session stays warm for as long as its tab stays open, with one ping
   every 57 minutes. Another window or device showing the same agent sees its activity move after
   the first ping and skips it. Only the app pings, so with every Paseo window closed nothing does.
-- **Files:** `packages/app/src/cache-warmup/` (`model.ts` the rule, `cache-warmup.tsx` the timer).
-- **Core files touched:** `app/_layout.tsx` renders `<CacheWarmup />` in `ProvidersWrapper`
-  (marked `CUSTOM(cache-warmup)`).
+  The chat hides each ping and everything after it up to the next user message. A flame toggle
+  after the Ctrl+M chip in a Claude session's composer turns pings off for that session (on by
+  default, faint red while on, saved per session in app storage); its tooltip says whether it is
+  on and how many minutes until the cache goes cold.
+- **Files:** `packages/app/src/cache-warmup/` (`model.ts` the rule, the tooltip text and the chat
+  filter, `cache-warmup.tsx` the timer, `store.ts` the sessions turned off, `toggle.tsx` the
+  toggle).
+- **Core files touched:** `app/_layout.tsx` renders `<CacheWarmup />` in `ProvidersWrapper`;
+  `agent-stream/view.tsx` runs `hideCacheWarmupTurns` on the stream tail and head before
+  `useRetainedValue`; `composer/agent-controls/index.tsx` passes `cacheWarmupAgentId` from
+  `AgentControls` to `ControlledAgentControls`, which renders `<CacheWarmupToggle>` after
+  `ModelPickerShortcutChip` (all marked `CUSTOM(cache-warmup)`).
 - **Re-apply:** Mount a root component that, every 30 s, reads the session store (agent status,
   `lastUsage.contextWindowUsedTokens`, the later of `lastActivityAt` and `agentLastActivity`), the
   workspace layouts and the Desks, and sends `client.sendAgentMessage` to what `pickAgentsToWarm`
-  returns.
+  returns, skipping the keys in `useCacheWarmupStore`. Filter the items the agent stream view
+  renders through `hideCacheWarmupTurns`, and render `CacheWarmupToggle` at the end of the
+  composer's agent control row.
 - **Verify:** `cache-warmup/model.test.ts` is in the update script. By hand: leave a Claude session
-  over 100k tokens idle with its tab open; 57 minutes later the ping and a short reply appear.
+  over 100k tokens idle with its tab open; 57 minutes later the session's activity moves but no
+  ping or "pong" shows in the chat. Hover the flame: "Cold in N min". Click it: the flame turns
+  gray and that session is no longer pinged.
 
 ## tab-lanes-sticky: only tabs you moved keep their spot
 

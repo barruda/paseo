@@ -129,6 +129,7 @@ import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView, useInstalledTimelineTransform } from "@/plugins/timeline";
 import { findTurnUsageItem, isTurnUsageItem } from "./turn-usage"; // CUSTOM(turn-usage-inline)
+import { hideCacheWarmupTurns } from "@/cache-warmup/model"; // CUSTOM(cache-warmup)
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -643,8 +644,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // When isActive flips back to true, the context change triggers a re-render and
     // the component reads the current (fresh) streamItems/streamHead from props.
     const isActive = useRetainedPanelActive();
-    const effectiveStreamItems = useRetainedValue(streamItems, isActive);
-    const effectiveStreamHead = useRetainedValue(streamHead, isActive);
+    // CUSTOM(cache-warmup): keep-alive pings and their replies stay out of the chat.
+    const visibleStream = useMemo(
+      () => hideCacheWarmupTurns(streamItems, streamHead ?? EMPTY_STREAM_HEAD),
+      [streamItems, streamHead],
+    );
+    const effectiveStreamItems = useRetainedValue(visibleStream.tail, isActive);
+    const effectiveStreamHead = useRetainedValue(visibleStream.head, isActive);
     // CUSTOM(session-file-paths): chat file links resolve against the files the agent touched.
     const sessionFilePaths = useSessionFilePaths(
       effectiveStreamItems,

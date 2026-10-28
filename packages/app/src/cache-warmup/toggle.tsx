@@ -1,0 +1,103 @@
+import { useCallback, useEffect, useState } from "react";
+import { Text } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
+import { Flame } from "lucide-react-native";
+import { AgentControlTrigger } from "@/composer/agent-controls/control";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { useSessionStore } from "@/stores/session-store";
+import { baseColors } from "@/styles/theme";
+import { CACHE_WARMUP_PROVIDER, cacheWarmupAgentKey, describeCacheWarmup } from "./model";
+import { useCacheWarmupStore } from "./store";
+
+// CUSTOM(cache-warmup): the composer toggle beside the Ctrl+M chip. On (the default) the flame is
+// faintly red; the tooltip says how long until the session's prompt cache goes cold.
+
+const TOOLTIP_TICK_MS = 15_000;
+// Half-transparent red reads as a faint warm tint in both themes.
+const WARM_ICON_COLOR = `${baseColors.red[500]}80`;
+
+function useCacheWarmupAgent(serverId: string, agentId: string) {
+  const status = useSessionStore(
+    (state) => state.sessions[serverId]?.agents.get(agentId)?.status ?? "idle",
+  );
+  const contextTokens = useSessionStore(
+    (state) =>
+      state.sessions[serverId]?.agents.get(agentId)?.lastUsage?.contextWindowUsedTokens ?? null,
+  );
+  // Same "last activity" the pinger uses: the later of the snapshot and the live stream.
+  const lastActivityAt = useSessionStore((state) =>
+    Math.max(
+      state.sessions[serverId]?.agents.get(agentId)?.lastActivityAt.getTime() ?? 0,
+      state.agentLastActivity.get(agentId)?.getTime() ?? 0,
+    ),
+  );
+  return { status, contextTokens, lastActivityAt };
+}
+
+function CacheWarmupTooltipText({
+  serverId,
+  agentId,
+  enabled,
+}: {
+  serverId: string;
+  agentId: string;
+  enabled: boolean;
+}) {
+  const agent = useCacheWarmupAgent(serverId, agentId);
+  const [now, setNow] = useState(Date.now);
+  useEffect(() => {
+    const interval = setInterval(() => setNow(Date.now()), TOOLTIP_TICK_MS);
+    return () => clearInterval(interval);
+  }, []);
+  const lines = describeCacheWarmup({ enabled, ...agent, now });
+  return <Text style={styles.tooltipText}>{lines.join("\n")}</Text>;
+}
+
+/** Renders only for a running Claude agent; drafts and other providers get nothing. */
+export function CacheWarmupToggle({
+  provider,
+  serverId,
+  agentId,
+}: {
+  provider: string;
+  serverId: string | null;
+  agentId: string | undefined;
+}) {
+  if (provider !== CACHE_WARMUP_PROVIDER || !serverId || !agentId) return null;
+  return <AgentCacheWarmupToggle serverId={serverId} agentId={agentId} />;
+}
+
+function AgentCacheWarmupToggle({ serverId, agentId }: { serverId: string; agentId: string }) {
+  const agentKey = cacheWarmupAgentKey(serverId, agentId);
+  const enabled = useCacheWarmupStore((state) => !state.disabledAgentKeys.includes(agentKey));
+  const handlePress = useCallback(() => {
+    useCacheWarmupStore.getState().setEnabled(agentKey, !enabled);
+  }, [agentKey, enabled]);
+  return (
+    <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+      <TooltipTrigger asChild triggerRefProp="ref">
+        <AgentControlTrigger
+          icon={Flame}
+          iconColor={enabled ? WARM_ICON_COLOR : undefined}
+          surface="toolbar"
+          label="Keep cache warm"
+          showToolbarLabel={false}
+          onPress={handlePress}
+          accessibilityLabel={enabled ? "Keep cache warm: on" : "Keep cache warm: off"}
+          testID="cache-warmup-toggle"
+        />
+      </TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        <CacheWarmupTooltipText serverId={serverId} agentId={agentId} enabled={enabled} />
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+const styles = StyleSheet.create((theme) => ({
+  tooltipText: {
+    color: theme.colors.foreground,
+    fontSize: theme.fontSize.base,
+    lineHeight: theme.fontSize.base * 1.4,
+  },
+}));

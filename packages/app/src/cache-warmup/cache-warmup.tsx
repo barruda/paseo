@@ -4,7 +4,13 @@ import { useSessionStore } from "@/stores/session-store";
 import { collectAllTabs, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import type { WorkspaceLayout } from "@/stores/workspace-layout-actions";
 import { generateMessageId } from "@/types/stream";
-import { CACHE_WARMUP_MESSAGE, pickAgentsToWarm, type CacheWarmupCandidate } from "./model";
+import {
+  CACHE_WARMUP_MESSAGE,
+  cacheWarmupAgentKey,
+  pickAgentsToWarm,
+  type CacheWarmupCandidate,
+} from "./model";
+import { useCacheWarmupStore } from "./store";
 
 // CUSTOM(cache-warmup): checks every 30 s and pings the sessions `pickAgentsToWarm` returns. A tab
 // in any workspace or Desk counts as open. Other windows or devices showing the same agent see its
@@ -54,10 +60,11 @@ function warmIdleSessions(): void {
   const due = pickAgentsToWarm({
     candidates: collectCandidates(),
     openAgentIds: collectOpenAgentIds(),
+    disabledAgentKeys: new Set(useCacheWarmupStore.getState().disabledAgentKeys),
     now: Date.now(),
   });
   for (const agent of due) {
-    const key = `${agent.serverId}\u0000${agent.agentId}`;
+    const key = cacheWarmupAgentKey(agent.serverId, agent.agentId);
     if (pingedAt.get(key) === agent.lastActivityAt) continue;
     const client = useSessionStore.getState().sessions[agent.serverId]?.client;
     if (!client) continue;
