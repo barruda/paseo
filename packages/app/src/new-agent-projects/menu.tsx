@@ -7,6 +7,7 @@ import { ProjectIconView } from "@/components/project-icon-view";
 import { useToast } from "@/contexts/toast-context";
 import { DropdownMenuHint, DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import type { MenuPageDefinition } from "@/components/ui/menu";
+import { useProjectFavoritesStore } from "@/composer/project-favorites-store";
 import { resolveComposerProjectIdentity } from "@/composer/project-icon-model";
 import { useHostProjects } from "@/projects/host-projects";
 import { useProjectIcons } from "@/projects/icons";
@@ -20,7 +21,7 @@ import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-
 import { activeDeskTab, useDesksStore } from "@/task-navigation/desks-store";
 import { launchDeskTarget } from "@/task-navigation/new-tab-menu";
 import { useTaskNavigationStore } from "@/task-navigation/store";
-import { listNewAgentProjects, type NewAgentProject } from "./model";
+import { favoritesFirst, listNewAgentProjects, type NewAgentProject } from "./model";
 
 export const NEW_AGENT_PROJECTS_PAGE_ID = "new-agent-projects";
 
@@ -76,6 +77,15 @@ function NewAgentProjectList({
     [identities],
   );
   const icons = useProjectIcons({ projects: iconTargets });
+  const favoriteKeys = useProjectFavoritesStore((state) => state.keys);
+  const sortedProjects = useMemo(
+    () =>
+      favoritesFirst(projects, (project) => {
+        const key = identities.get(project.projectId)?.target.projectViewKey;
+        return key !== undefined && favoriteKeys.includes(key);
+      }),
+    [projects, identities, favoriteKeys],
+  );
 
   const openIn = useCallback(
     (workspaceId: string) => {
@@ -124,7 +134,7 @@ function NewAgentProjectList({
   if (projects.length === 0) {
     return <DropdownMenuHint>No projects</DropdownMenuHint>;
   }
-  return projects.map((project) => {
+  return sortedProjects.map((project) => {
     const identity = identities.get(project.projectId) ?? null;
     return (
       <NewAgentProjectItem

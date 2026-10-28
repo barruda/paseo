@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { listNewAgentProjects } from "./model";
+import { favoritesFirst, listNewAgentProjects } from "./model";
 
 function workspace(
   id: string,
@@ -110,5 +110,16 @@ describe("listNewAgentProjects", () => {
 
   it("handles a host with no workspaces", () => {
     expect(listNewAgentProjects(null)).toEqual([]);
+  });
+});
+
+describe("favoritesFirst", () => {
+  it("puts starred projects first and keeps name order in each group", () => {
+    expect(favoritesFirst(["alpha", "beta", "gamma", "zeta"], (name) => name >= "g")).toEqual([
+      "gamma",
+      "zeta",
+      "alpha",
+      "beta",
+    ]);
   });
 });

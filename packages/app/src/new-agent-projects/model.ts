@@ -70,3 +70,11 @@ export function listNewAgentProjects(
     .map((entry) => entry.project)
     .sort((a, b) => a.label.localeCompare(b.label));
 }
+
+/** CUSTOM(project-favorites): starred projects first, each group keeping its name order. */
+export function favoritesFirst<T>(
+  projects: readonly T[],
+  isFavorite: (project: T) => boolean,
+): T[] {
+  return [...projects.filter(isFavorite), ...projects.filter((project) => !isFavorite(project))];
+}

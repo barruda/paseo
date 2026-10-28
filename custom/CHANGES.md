@@ -3254,7 +3254,10 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   star at the right. Clicking it stars the project (yellow) without picking it or closing the
   menu. When any listed project is starred, ↑/↓ in an empty draft and ← on New Workspace cycle
   only through starred ones; with none starred they cycle all of them. Stars are keyed by project
-  view key and saved in app storage (`custom-project-favorites`).
+  view key and saved in app storage (`custom-project-favorites`). The + menu's Agent flyout
+  ([new-agent-projects](#new-agent-projects-the--menus-agent-row-lists-projects-on-hover)) lists
+  starred projects first, then the rest; each group stays sorted by name (added 2026-10-28,
+  commit `custom: the + menu's Agent flyout lists starred projects first`).
 - **Files:** `packages/app/src/composer/project-favorites-store.ts`.
 - **Core files touched** (marked `CUSTOM(project-favorites)`):
   - `composer/empty-shortcuts.ts`: `projectCycleIds` (+ test).
@@ -3263,11 +3266,15 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   - `composer/draft/workspace-tab.tsx`: the ↑/↓ handler cycles `projectCycleIds(...)`.
   - `screens/new-workspace-screen.tsx`: ← cycles `projectCycleIds(...)`; the Ctrl+M project
     options carry `favoriteKey` (the option ids there are prefixed, the view key is not).
+  - `new-agent-projects/model.ts`: `favoritesFirst` (+ test); `new-agent-projects/menu.tsx` sorts
+    the flyout with it, matching stars by the identity's `target.projectViewKey`.
 - **Re-apply:** Give the composer project menu rows a star toggle bound to the store and filter
-  the ids the project cycle walks to the starred ones when any are starred.
-- **Verify:** `(cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts)` (in the
-  update script). In the app, star two projects in the composer's project menu, empty the
-  composer of a draft, press ↑: it alternates between the two.
+  the ids the project cycle walks to the starred ones when any are starred. In the Agent flyout,
+  move the rows whose project view key is starred to the top with a stable partition.
+- **Verify:** `(cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts)` and
+  `src/new-agent-projects/model.test.ts` (both in the update script). In the app, star two
+  projects in the composer's project menu, empty the composer of a draft, press ↑: it alternates
+  between the two. Hover + > Agent: the two starred projects come first.
 
 ## desk-header: New Desk + before the Desks, a soft green selected Desk, no project name
 
