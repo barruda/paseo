@@ -3460,8 +3460,8 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   the first ping and skips it. Only the app pings, so with every Paseo window closed nothing does.
   The chat hides each ping and everything after it up to the next user message. A flame toggle
   after the Ctrl+M chip in a Claude session's composer turns pings off for that session (on by
-  default, faint red while on, saved per session in app storage); its tooltip says whether it is
-  on and how many minutes until the cache goes cold.
+  default, saved per session in app storage). On, the flame is filled in a muted red; off, it is a
+  gray outline. Its tooltip says whether it is on and how many minutes until the cache goes cold.
 - **Files:** `packages/app/src/cache-warmup/` (`model.ts` the rule, the tooltip text and the chat
   filter, `cache-warmup.tsx` the timer, `store.ts` the sessions turned off, `toggle.tsx` the
   toggle).
@@ -3479,7 +3479,7 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Verify:** `cache-warmup/model.test.ts` is in the update script. By hand: leave a Claude session
   over 100k tokens idle with its tab open; 57 minutes later the session's activity moves but no
   ping or "pong" shows in the chat. Hover the flame: "Cold in N min". Click it: the flame turns
-  gray and that session is no longer pinged.
+  to a gray outline and that session is no longer pinged.
 
 ## tab-lanes-sticky: only tabs you moved keep their spot
 

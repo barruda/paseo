@@ -5,16 +5,21 @@ import { Flame } from "lucide-react-native";
 import { AgentControlTrigger } from "@/composer/agent-controls/control";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSessionStore } from "@/stores/session-store";
-import { baseColors } from "@/styles/theme";
+import type { AgentControlIconProps } from "@/agent-controls/icons";
 import { CACHE_WARMUP_PROVIDER, cacheWarmupAgentKey, describeCacheWarmup } from "./model";
 import { useCacheWarmupStore } from "./store";
 
 // CUSTOM(cache-warmup): the composer toggle beside the Ctrl+M chip. On (the default) the flame is
-// faintly red; the tooltip says how long until the session's prompt cache goes cold.
+// filled in a muted red; off it is an outline like the other toolbar icons. The tooltip says how
+// long until the session's prompt cache goes cold.
 
 const TOOLTIP_TICK_MS = 15_000;
-// Half-transparent red reads as a faint warm tint in both themes.
-const WARM_ICON_COLOR = `${baseColors.red[500]}80`;
+// A desaturated red, so the filled flame stays quiet next to the gray toolbar icons in both themes.
+const WARM_ICON_COLOR = "#a8736e";
+
+function FilledFlame({ size, color }: AgentControlIconProps) {
+  return <Flame size={size} color={color} fill={color} />;
+}
 
 function useCacheWarmupAgent(serverId: string, agentId: string) {
   const status = useSessionStore(
@@ -77,7 +82,7 @@ function AgentCacheWarmupToggle({ serverId, agentId }: { serverId: string; agent
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild triggerRefProp="ref">
         <AgentControlTrigger
-          icon={Flame}
+          icon={enabled ? FilledFlame : Flame}
           iconColor={enabled ? WARM_ICON_COLOR : undefined}
           surface="toolbar"
           label="Keep cache warm"
