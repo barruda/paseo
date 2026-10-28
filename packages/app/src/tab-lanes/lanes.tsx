@@ -71,12 +71,6 @@ export function TabLanes({
     [laneTabs, roomWidth, stored],
   );
 
-  // A tab without a spot gets the one it was just given, so closing a neighbor leaves a gap.
-  useEffect(() => {
-    if (!layout || laneTabs.every((tab) => stored[tab.id])) return;
-    useTabLanesStore.getState().setPositions(scope, layout.positions);
-  }, [layout, laneTabs, scope, stored]);
-
   useEffect(() => {
     if (roomWidth > 0)
       setLanePaneMetrics(scope, paneId, { tabs: laneTabs, width: roomWidth, gap: 0 });
@@ -87,7 +81,7 @@ export function TabLanes({
     if (!drop || !layout) return null;
     return dropOnLanes({
       tabs: laneTabs,
-      positions: layout.positions,
+      positions: stored,
       width: roomWidth,
       gap: 0,
       tabId: drop.tabId,
@@ -95,7 +89,7 @@ export function TabLanes({
       row: drop.row,
       x: drop.x,
     });
-  }, [drop, laneTabs, layout, roomWidth, scope]);
+  }, [drop, laneTabs, layout, roomWidth, scope, stored]);
 
   const rowCount = layout?.rowCount ?? 1;
   const shown = preview?.positions ?? layout?.positions ?? NO_POSITIONS;

@@ -1,5 +1,8 @@
 // CUSTOM(tab-lanes): a Desk pane's tabs sit in rows at free x positions instead of one packed,
 // scrolling row. A tab stays where it was dropped; only the tabs it lands on move aside.
+// CUSTOM(tab-lanes-sticky): only tabs the user dropped (or pinned) have a stored spot and stay
+// put. Every other tab packs to the left in list order, around them, so closing an untouched tab
+// leaves no gap.
 
 export interface LanePosition {
   row: number;
@@ -14,8 +17,9 @@ export interface LaneTab {
 export type LanePositions = Record<string, LanePosition>;
 
 interface LaneInput {
-  /** The pane's tabs in list order. A tab without a position opens right after the one before it. */
+  /** The pane's tabs in list order. Tabs without a stored spot pack left in this order. */
   tabs: readonly LaneTab[];
+  /** The sticky tabs' spots. */
   positions: Readonly<LanePositions>;
   /** Room for tabs in each row. */
   width: number;
@@ -31,8 +35,13 @@ interface Item {
 
 export interface LaneLayout {
   positions: LanePositions;
+  /** The sticky tabs' spots after this layout: what to store. */
+  sticky: LanePositions;
   rowCount: number;
 }
+
+/** A dropped tab this close to the tab on its left snaps against it instead of leaving a sliver. */
+const SNAP_DISTANCE = 48;
 
 function rowItems(items: Item[], row: number): Item[] {
   return items.filter((item) => item.row === row);
@@ -115,6 +124,10 @@ function settle(items: Item[], width: number, gap: number) {
       last.row = row + 1;
     }
   }
+}
+
+/** Drops empty rows and rounds positions. */
+function compactRows(items: Item[]) {
   const used = [...new Set(items.map((item) => item.row))].sort((a, b) => a - b);
   for (const item of items) {
     item.row = used.indexOf(item.row);
@@ -122,81 +135,117 @@ function settle(items: Item[], width: number, gap: number) {
   }
 }
 
-/** Tries `item` at (row, x); on success the row's other tabs have moved aside. */
-function tryPlace(items: Item[], item: Item, row: number, x: number, width: number, gap: number) {
-  const saved = rowItems(items, row).map((other) => [other, other.x] as const);
-  item.row = row;
-  item.x = x;
-  const tabs = rowItems(items, row);
-  insertInto(tabs, item, gap, "right");
-  if (fitRow(tabs, width, gap)) return true;
-  for (const [other, savedX] of saved) other.x = savedX;
-  return false;
-}
-
-/** Opens `item` right after `after`, or at the end of the first row with room, or on a new row. */
-function placeNew(items: Item[], item: Item, after: Item | null, width: number, gap: number) {
-  const rows = maxRow(items);
-  if (after && tryPlace(items, item, after.row, after.x + after.width + gap, width, gap)) return;
-  if (!after && tryPlace(items, item, 0, 0, width, gap)) return;
-  for (let row = 0; row <= rows; row += 1) {
-    if (tryPlace(items, item, row, rowEnd(items, row, gap), width, gap)) return;
+/** The first x at or after `from` in `row` where `width` fits between the sticky tabs. */
+function firstFit(
+  fixed: Item[],
+  row: number,
+  from: number,
+  width: number,
+  rowWidth: number,
+  gap: number,
+): number | null {
+  const blockers = rowItems(fixed, row).sort((a, b) => a.x - b.x);
+  // A tab wider than an empty row still has to go somewhere.
+  if (blockers.length === 0 && from === 0) return 0;
+  let start = from;
+  for (const blocker of blockers) {
+    if (blocker.x + blocker.width + gap <= start) continue;
+    if (start + width + gap <= blocker.x) break;
+    start = Math.max(start, blocker.x + blocker.width + gap);
   }
-  item.row = rows + 1;
-  item.x = 0;
+  return start + width <= rowWidth ? start : null;
 }
 
-function toLayout(items: Item[]): LaneLayout {
+/** Packs the loose tabs left to right, row after row, in list order, around the sticky ones. */
+function flow(fixed: Item[], loose: Item[], width: number, gap: number) {
+  let row = 0;
+  let cursor = 0;
+  for (const item of loose) {
+    for (;;) {
+      const x = firstFit(fixed, row, cursor, item.width, width, gap);
+      if (x !== null) {
+        item.row = row;
+        item.x = x;
+        cursor = x + item.width + gap;
+        break;
+      }
+      row += 1;
+      cursor = 0;
+    }
+  }
+}
+
+function toLayout(fixed: Item[], loose: Item[]): LaneLayout {
+  const items = [...fixed, ...loose];
+  compactRows(items);
   const positions: LanePositions = {};
   for (const item of items) positions[item.id] = { row: item.row, x: item.x };
-  return { positions, rowCount: Math.max(1, maxRow(items) + 1) };
+  const sticky: LanePositions = {};
+  for (const item of fixed) sticky[item.id] = { row: item.row, x: item.x };
+  return { positions, sticky, rowCount: Math.max(1, maxRow(items) + 1) };
 }
 
-function build(input: LaneInput): Item[] {
-  const placed: Item[] = [];
-  let previous: Item | null = null;
-  const pending: Array<{ item: Item; after: Item | null }> = [];
+function split(input: LaneInput): { fixed: Item[]; loose: Item[] } {
+  const fixed: Item[] = [];
+  const loose: Item[] = [];
   for (const tab of input.tabs) {
     const stored = input.positions[tab.id];
     const item: Item = { id: tab.id, width: tab.width, row: stored?.row ?? 0, x: stored?.x ?? 0 };
-    if (stored) placed.push(item);
-    else pending.push({ item, after: previous });
-    previous = item;
+    (stored ? fixed : loose).push(item);
   }
-  for (const { item, after } of pending) {
-    placeNew(placed, item, after, input.width, input.gap);
-    placed.push(item);
-  }
-  return placed;
+  return { fixed, loose };
 }
 
-/** Where every tab sits now: stored spots, new tabs beside their neighbor, nothing overlapping. */
+/** Where every tab sits now: sticky tabs at their spots, the rest packed left around them. */
 export function layoutLanes(input: LaneInput): LaneLayout {
-  const items = build(input);
-  settle(items, input.width, input.gap);
-  return toLayout(items);
+  const { fixed, loose } = split(input);
+  settle(fixed, input.width, input.gap);
+  flow(fixed, loose, input.width, input.gap);
+  return toLayout(fixed, loose);
 }
 
-/** The layout after dropping `tabId` at (row, x). `row` may be one past the last row. */
+/** The right edge of the tabs left of `item` in its row, `gap` included; 0 when there are none. */
+function leftEdge(items: Item[], item: Item, gap: number): number {
+  return rowItems(items, item.row)
+    .filter((other) => other !== item && other.x < item.x)
+    .reduce((edge, other) => Math.max(edge, other.x + other.width + gap), 0);
+}
+
+/**
+ * The layout after dropping `tabId` at (row, x); the tab becomes sticky. `row` may be one past the
+ * last row.
+ */
 export function dropOnLanes(
   input: LaneInput & { tabId: string; tabWidth: number; row: number; x: number },
 ): LaneLayout {
-  const tabs = input.tabs.some((tab) => tab.id === input.tabId)
-    ? input.tabs
-    : [...input.tabs, { id: input.tabId, width: input.tabWidth }];
-  const items = build({ ...input, tabs });
-  settle(items, input.width, input.gap);
-  const moving = items.find((item) => item.id === input.tabId)!;
-  const row = Math.max(0, Math.min(input.row, maxRow(items.filter((i) => i !== moving)) + 1));
+  const isOwnTab = input.tabs.some((tab) => tab.id === input.tabId);
+  const tabs = isOwnTab ? input.tabs : [...input.tabs, { id: input.tabId, width: input.tabWidth }];
+  const before = layoutLanes({ ...input, tabs });
+  const { fixed, loose } = split({ ...input, tabs });
+  const moving = [...fixed, ...loose].find((item) => item.id === input.tabId)!;
+  const others = loose.filter((item) => item !== moving);
+  const sticky = fixed.includes(moving) ? fixed : [...fixed, moving];
+  settle(
+    sticky.filter((item) => item !== moving),
+    input.width,
+    input.gap,
+  );
+  const now = before.positions[input.tabId]!;
+  const row = Math.max(0, Math.min(input.row, before.rowCount));
   const x = Math.max(0, Math.min(input.x, input.width - moving.width));
   // Moving rightward along its own row, the tab left room on the left: close that up first.
-  const fromSameRow = tabs === input.tabs && moving.row === row;
-  const prefer = fromSameRow && moving.x < x ? "left" : "right";
+  const prefer = isOwnTab && now.row === row && now.x < x ? "left" : "right";
   moving.row = row;
   moving.x = x;
-  insertInto(rowItems(items, row), moving, input.gap, prefer);
-  settle(items, input.width, input.gap);
-  return toLayout(items);
+  insertInto(rowItems(sticky, row), moving, input.gap, prefer);
+  settle(sticky, input.width, input.gap);
+  flow(sticky, others, input.width, input.gap);
+  const edge = leftEdge([...sticky, ...others], moving, input.gap);
+  if (moving.x > edge && moving.x - edge < SNAP_DISTANCE) {
+    moving.x = edge;
+    flow(sticky, others, input.width, input.gap);
+  }
+  return toLayout(sticky, others);
 }
 
 /** Tab ids by row, then left to right: the order keyboard navigation walks. */

@@ -25,15 +25,25 @@ describe("layoutLanes", () => {
     expect(layout.positions.b).toEqual({ row: 0, x: 500 });
   });
 
-  it("opens a new tab right after the tab before it, nudging its neighbor", () => {
+  it("packs tabs without a spot around the sticky ones, in list order", () => {
     const layout = layoutLanes({
-      tabs: tabs("a", "new", "b"),
-      positions: { a: { row: 0, x: 0 }, b: { row: 0, x: 120 } },
+      tabs: tabs("a", "b", "s", "c"),
+      positions: { s: { row: 0, x: 150 } },
       width: 1000,
       gap: GAP,
     });
-    expect(layout.positions.new).toEqual({ row: 0, x: 104 });
-    expect(layout.positions.b).toEqual({ row: 0, x: 208 });
+    expect(layout.positions).toEqual({
+      a: { row: 0, x: 0 },
+      s: { row: 0, x: 150 },
+      b: { row: 0, x: 254 },
+      c: { row: 0, x: 358 },
+    });
+    expect(layout.sticky).toEqual({ s: { row: 0, x: 150 } });
+  });
+
+  it("closes the gap of a closed tab nobody moved", () => {
+    const layout = layoutLanes({ tabs: tabs("a", "c"), positions: {}, width: 1000, gap: GAP });
+    expect(layout.positions.c).toEqual({ row: 0, x: 104 });
   });
 
   it("opens a new tab on a second row when the first is full", () => {
@@ -203,6 +213,45 @@ describe("dropOnLanes", () => {
       x: 300,
     });
     expect(layout.positions.z).toEqual({ row: 0, x: 300 });
+  });
+});
+
+describe("dropOnLanes with tabs nobody moved", () => {
+  it("moved right past a neighbor, snaps beside it and only the moved tab sticks", () => {
+    const layout = dropOnLanes({
+      tabs: tabs("a", "b", "c"),
+      positions: {},
+      width: 1000,
+      gap: GAP,
+      tabId: "a",
+      tabWidth: 100,
+      row: 0,
+      x: 120,
+    });
+    expect(layout.positions).toEqual({
+      a: { row: 0, x: 104 },
+      b: { row: 0, x: 0 },
+      c: { row: 0, x: 208 },
+    });
+    expect(layout.sticky).toEqual({ a: { row: 0, x: 104 } });
+  });
+
+  it("dropped far from its neighbors, stays there and the rest packs around it", () => {
+    const layout = dropOnLanes({
+      tabs: tabs("a", "b", "c"),
+      positions: {},
+      width: 1000,
+      gap: GAP,
+      tabId: "a",
+      tabWidth: 100,
+      row: 0,
+      x: 600,
+    });
+    expect(layout.positions).toEqual({
+      a: { row: 0, x: 600 },
+      b: { row: 0, x: 0 },
+      c: { row: 0, x: 104 },
+    });
   });
 });
 

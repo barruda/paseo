@@ -3312,7 +3312,9 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   (so moving a tab past its neighbor in a packed row swaps them, like a reorder), then pushing the
   tabs on the right. Dragging never shoves the neighbors along. A new tab opens right after the
   tab before it in the pane's list (next to the tab you were on), nudging its neighbors; with no room it goes to the end
-  of the next row with room, or a new row. Closing a tab leaves its gap. A row that gets too narrow
+  of the next row with room, or a new row. Closing a tab leaves its gap. (Since
+  [tab-lanes-sticky](#tab-lanes-sticky-only-tabs-you-moved-keep-their-spot), only tabs you dragged
+  keep their spot; the rest pack left.) A row that gets too narrow
   (window resize, a title that grows) slides its tabs back left and hands its rightmost tabs to the
   row below; empty rows disappear. Tabs keep their natural width (no squeezing, no scrolling). The
   inline + sits after the rightmost tab of the first row; the split/maximize/Explorer buttons stay
@@ -3463,3 +3465,28 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   returns.
 - **Verify:** `cache-warmup/model.test.ts` is in the update script. By hand: leave a Claude session
   over 100k tokens idle with its tab open; 57 minutes later the ping and a short reply appear.
+
+## tab-lanes-sticky: only tabs you moved keep their spot
+
+- **Added:** 2026-10-28 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: Desk tabs pack left unless you moved them`
+- **Why:** With [tab-lanes](#tab-lanes-desk-tabs-sit-in-free-rows-drop-a-tab-anywhere) every tab
+  kept its spot, so closing a tab the user never touched left a hole. They want tabs tidy by
+  default, with only the ones they placed by hand staying put.
+- **What:** A tab is **sticky** once you drag it to a spot (or pin it); only sticky tabs have a
+  stored position. Every other tab packs to the left, row after row, in the pane's list order,
+  flowing around the sticky ones, so closing or opening an untouched tab never leaves a gap. A
+  dropped tab that lands less than 48 px from the tab on its left snaps against it, so a drag that
+  reorders leaves no sliver. **Tidy tabs** makes every tab of the pane loose again. Moving to this
+  version clears the stored positions once (store `custom-tab-lanes` version 2), since version 1
+  stored a spot for every tab.
+- **Files:** `packages/app/src/tab-lanes/model.ts` (`flow`, `firstFit`, the snap in
+  `dropOnLanes`, `sticky` in `LaneLayout`), `store.ts` (stores only sticky spots, per pane; the
+  version 2 migration), `lanes.tsx` (no longer stores a spot for new tabs; the drop preview starts
+  from the sticky spots). Marked `CUSTOM(tab-lanes-sticky)`. No core files.
+- **Re-apply:** Keep positions only for dropped or pinned tabs. When laying out, settle those, then
+  place the rest in list order at the first spot from a running cursor that fits between them.
+- **Verify:** `tab-lanes/model.test.ts` (already in the update script) covers packing around
+  sticky tabs, a closed untouched tab and drops. In the app, Tasks mode with Flexible tab movement
+  on: close a tab you never moved; the tabs to its right slide left. Drag one tab to the middle;
+  close another; the dragged one stays.

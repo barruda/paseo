@@ -15,9 +15,13 @@ import {
 } from "./model";
 
 interface TabLanesState {
-  /** Positions by scope (the split layout's workspace key, `desk:<id>`), then tab id. */
+  /**
+   * Sticky tabs' spots by scope (the split layout's workspace key, `desk:<id>`), then tab id.
+   * CUSTOM(tab-lanes-sticky): a tab without a spot packs left.
+   */
   byScope: Record<string, LanePositions>;
-  setPositions(scope: string, positions: LanePositions): void;
+  /** Replaces the sticky spots of one pane's tabs; other panes of the scope keep theirs. */
+  setPositions(scope: string, paneTabIds: readonly string[], positions: LanePositions): void;
   /** Forgets closed tabs, so their spot stays empty instead of coming back. */
   retain(scope: string, tabIds: ReadonlySet<string>): void;
 }
@@ -28,10 +32,14 @@ export const useTabLanesStore = create<TabLanesState>()(
   persist(
     (set) => ({
       byScope: {},
-      setPositions: (scope, positions) =>
-        set((state) => ({
-          byScope: { ...state.byScope, [scope]: { ...state.byScope[scope], ...positions } },
-        })),
+      setPositions: (scope, paneTabIds, positions) =>
+        set((state) => {
+          const pane = new Set(paneTabIds);
+          const kept = Object.entries(state.byScope[scope] ?? {}).filter(([id]) => !pane.has(id));
+          return {
+            byScope: { ...state.byScope, [scope]: { ...Object.fromEntries(kept), ...positions } },
+          };
+        }),
       retain: (scope, tabIds) =>
         set((state) => {
           const current = state.byScope[scope];
@@ -43,7 +51,10 @@ export const useTabLanesStore = create<TabLanesState>()(
     }),
     {
       name: "custom-tab-lanes",
-      version: 1,
+      // CUSTOM(tab-lanes-sticky): version 1 stored a spot for every tab, so every tab was sticky.
+      // Start over packed.
+      version: 2,
+      migrate: () => ({ byScope: {} }),
       storage: createValidatedPersistStorage(
         AsyncStorage,
         z.object({ byScope: z.record(z.string(), z.record(z.string(), positionSchema)) }),
@@ -101,7 +112,11 @@ export function commitLaneDrop(input: {
     row: input.target.row,
     x: input.target.x,
   });
-  store.setPositions(input.scope, layout.positions);
+  store.setPositions(
+    input.scope,
+    [...metrics.tabs.map((tab) => tab.id), input.tabId],
+    layout.sticky,
+  );
   return laneOrder(layout.positions, Object.keys(layout.positions));
 }
 
@@ -130,8 +145,8 @@ export function commitLanePin(input: {
 
 /**
  * Packs the pane's tabs to the left, row after row, in the order they show now: the tab bar
- * before free rows, with overflow wrapping to the next row. Returns that order, or null when the
- * pane isn't mounted.
+ * before free rows, with overflow wrapping to the next row. No tab stays sticky. Returns that
+ * order, which the caller makes the pane's list order, or null when the pane isn't mounted.
  */
 export function packLanes(scope: string, paneId: string): string[] | null {
   const metrics = metricsByPane.get(paneKey(scope, paneId));
@@ -142,12 +157,10 @@ export function packLanes(scope: string, paneId: string): string[] | null {
     now.positions,
     metrics.tabs.map((tab) => tab.id),
   );
-  const byId = new Map(metrics.tabs.map((tab) => [tab.id, tab]));
-  const packed = layoutLanes({
-    ...metrics,
-    tabs: order.flatMap((id) => byId.get(id) ?? []),
-    positions: {},
-  });
-  store.setPositions(scope, packed.positions);
+  store.setPositions(
+    scope,
+    metrics.tabs.map((tab) => tab.id),
+    {},
+  );
   return order;
 }
