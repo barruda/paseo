@@ -3412,3 +3412,30 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Verify:** `workspace-tabs/identity.test.ts` is in the update script. By hand: open History,
   type a word and press Enter: the app goes to the last workspace with a tab named after the word.
   Ask AI a question and press Enter: another tab, with the Sparkles icon, shows the picks.
+
+## chat-comments: right-click selected response text to comment on it
+
+- **Added:** 2026-10-28 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: comment on parts of a response`
+- **Why:** Reviewing a long answer means replying to several parts of it. Quoting each one by hand
+  is slow.
+- **What:** On desktop and web, right-clicking text selected inside a response opens a menu with
+  **Comment** and **Copy** in place of the browser menu. Comment opens a small box at the click
+  showing the excerpt; Enter (Shift+Enter for a new line) adds the excerpt as a `>` quote and the
+  comment under it to the end of that agent's composer, and focuses the composer. Several comments
+  pile up there and go with the next message. Text comments only for now: no highlight stays on the
+  commented text, and selections outside responses (tool calls, user messages) keep the browser
+  menu. Native has no right click, so it has no comments.
+- **Files:** `packages/app/src/chat-comments/` (`model.ts` formats the quote, `registry.ts` lets
+  a chat reach its composer, `surface.web.tsx` the menu and the box, `surface.tsx` the native
+  pass-through).
+- **Core files touched** (marked `CUSTOM(chat-comments)`):
+  - `chat-esc-focus/surface.web.tsx`: wraps `AssistantSelectionCopySurface` in
+    `ChatCommentSurface`.
+  - `composer/index.tsx`: `useRegisterChatComposerAppend` appends the comment to the input.
+- **Re-apply:** Listen for `contextmenu` around the chat timeline; when
+  `createAssistantSelectionClipboardContent` returns text for the selection, prevent the default
+  menu and open a `ContextMenu` at the click. Each composer registers an append function for its
+  agent, beside the chat-esc-focus focus registration.
+- **Verify:** `chat-comments/model.test.ts` is in the update script. By hand: select part of a
+  response, right-click, Comment, type and press Enter: the composer gets the quote and the comment.

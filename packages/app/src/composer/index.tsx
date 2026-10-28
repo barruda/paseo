@@ -95,6 +95,9 @@ import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
 import { usePluginClientSlashCommands } from "@/plugins/client-slash-commands";
 import { useRegisterChatComposerFocus } from "@/chat-esc-focus/registry";
+// CUSTOM(chat-comments)
+import { useRegisterChatComposerAppend } from "@/chat-comments/registry";
+import { appendChatComment } from "@/chat-comments/model";
 import {
   executePluginClientSlashCommand,
   resolvePluginClientSlashCommand,
@@ -1904,6 +1907,15 @@ function ComposerContentImpl({
   }, []);
   // CUSTOM(chat-esc-focus): lets this agent's chat timeline send focus back here on Esc.
   useRegisterChatComposerFocus(serverId, agentId, focusMessageInputForKeyboardAction);
+  // CUSTOM(chat-comments): a comment on this agent's chat text lands at the end of the input.
+  const appendCommentToInput = useCallback(
+    (comment: string) => {
+      replaceUserInput(appendChatComment(textSource.getSnapshot(), comment));
+      focusMessageInputForKeyboardAction();
+    },
+    [focusMessageInputForKeyboardAction, replaceUserInput, textSource],
+  );
+  useRegisterChatComposerAppend(serverId, agentId, appendCommentToInput);
 
   const isVoiceModeForAgent = resolveIsVoiceModeForAgent(voice, serverId, agentId);
 

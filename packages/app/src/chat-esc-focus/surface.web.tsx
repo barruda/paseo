@@ -1,5 +1,7 @@
 import { useEffect, useRef, type CSSProperties } from "react";
 import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
+// CUSTOM(chat-comments)
+import { ChatCommentSurface } from "@/chat-comments/surface";
 import {
   isPlainEnter,
   isPlainEscape,
@@ -125,7 +127,10 @@ export function ChatEscFocusSurface({
 
   return (
     <div ref={rootRef} style={DISPLAY_CONTENTS}>
-      <AssistantSelectionCopySurface style={style}>{children}</AssistantSelectionCopySurface>
+      {/* CUSTOM(chat-comments): right-click on selected response text to comment on it. */}
+      <ChatCommentSurface serverId={serverId} agentId={agentId} enabled={enabled}>
+        <AssistantSelectionCopySurface style={style}>{children}</AssistantSelectionCopySurface>
+      </ChatCommentSurface>
     </div>
   );
 }

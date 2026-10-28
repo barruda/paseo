@@ -328,6 +328,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts --bail=1)
   # History searches become tabs.
   (cd packages/app && npx vitest run src/workspace-tabs/identity.test.ts --bail=1)
+  # A comment on response text lands in the composer.
+  (cd packages/app && npx vitest run src/chat-comments/model.test.ts --bail=1)
   # Commit only the files checked in the Changes tree.
   (cd packages/app && npx vitest run src/git/commit-selection/model.test.ts --bail=1)
   (cd packages/server && npx vitest run src/utils/checkout-git.test.ts -t "commitChanges with paths" --bail=1)
