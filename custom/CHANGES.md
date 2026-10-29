@@ -3632,3 +3632,32 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Known:** the older e2e "unassigning a shortcut leaves it inert until it is reset" already
   fails on `custom` before this change (two rows show "Not set"), which is why the update script
   greps around it.
+
+## waiting-turn-judge: a turn that ends "I'll wait for the build" is not finished
+
+- **Added:** 2026-10-29 (based on upstream v0.14.0)
+- **Commit:** `custom: a turn that ends waiting on a build no longer marks the agent finished`
+- **Why:** Agents end turns with "the build is running, I'll wait for the notification" or "te aviso
+  assim que terminar". Paseo marked those agents "ready to review" and notified, with nothing to
+  review.
+- **What:** When a turn goes from running to idle, the daemon scores the last 500 characters of the
+  agent's last message (Portuguese and English). Strong waiting phrases ("vou esperar", "te aviso
+  assim que", "I'll wait", "I'll let you know once") count 2, weak ones ("ainda está rodando",
+  "once it finishes", "still running") count 1; done words ("pronto", "done") and a closing question
+  count against. Waiting score 0 is finished as before; 2 or more with no done words is waiting and
+  the agent is not marked finished. Anything between asks the metadata model (Haiku by default, set
+  in `agents.metadataGeneration`) whether the agent is still waiting. A model that errors counts as
+  not waiting, so the user is notified. Waiting on the user ("vou esperar sua resposta") scores
+  nothing. The next turn that ends clear of waiting words marks it finished.
+- **Files:** `packages/server/src/server/agent/waiting-turn.ts` (score, judge prompt and schema),
+  its test; tests at the end of the monitor/keep-alive tests in `agent/agent-manager.test.ts`.
+- **Core files touched:** `agent/agent-manager.ts` (`checkAndSetAttention`, `setWaitingTurnJudge`,
+  `raiseFinishedAttention`, `judgeThenRaiseFinished`); `bootstrap.ts` wires the judge with
+  `createAgentStructuredTextGeneration` before `setAgentArchivedCallback` (all marked
+  `CUSTOM(waiting-turn-judge)`).
+- **Re-apply:** In `checkAndSetAttention`, after the cache-warmup check, read
+  `timelineStore.getLastAssistantMessage`, return on `waiting`, and on `unsure` run the judge in a
+  tracked background task that raises attention when it says "not waiting" (and the agent is still
+  idle with the same last message). Set the judge in bootstrap from the metadata generation.
+- **Verify:** `npx vitest run src/server/agent/waiting-turn.test.ts` and the `a turn that ends
+waiting` tests in `agent-manager.test.ts`.

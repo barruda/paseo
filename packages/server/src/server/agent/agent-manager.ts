@@ -19,6 +19,7 @@ import {
 import type { Logger } from "pino";
 import type { ToolPolicy } from "@getpaseo/protocol/agent-types";
 import { isCacheWarmupMessage } from "@getpaseo/protocol/cache-warmup";
+import { scoreWaitingTurn, type WaitingTurnJudge } from "./waiting-turn.js";
 import type { AgentStatusSummaryPayload } from "@getpaseo/protocol/messages";
 import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-config";
 import { z } from "zod";
@@ -774,6 +775,8 @@ export class AgentManager {
   private appendSystemPrompt: string;
   private onAgentAttention?: AgentAttentionCallback;
   private onAgentArchived?: AgentArchivedCallback;
+  // CUSTOM(waiting-turn-judge)
+  private waitingTurnJudge?: WaitingTurnJudge;
   private onWorkspaceStateMayHaveChanged?: (params: { cwd: string }) => void;
   private logger: Logger;
   private readonly rescueTimeouts: Required<AgentManagerRescueTimeouts>;
@@ -867,6 +870,11 @@ export class AgentManager {
 
   setAgentArchivedCallback(callback: AgentArchivedCallback): void {
     this.onAgentArchived = callback;
+  }
+
+  // CUSTOM(waiting-turn-judge): asked only when the closing words are not clear on their own.
+  setWaitingTurnJudge(judge: WaitingTurnJudge | undefined): void {
+    this.waitingTurnJudge = judge;
   }
 
   setMcpBaseUrl(url: string | null): void {
@@ -5026,12 +5034,19 @@ export class AgentManager {
       if (lastUserMessage !== null && isCacheWarmupMessage(lastUserMessage)) {
         return;
       }
-      agent.attention = {
-        requiresAttention: true,
-        attentionReason: "finished",
-        attentionTimestamp: new Date(),
-      };
-      this.broadcastAgentAttention(agent, "finished");
+      // CUSTOM(waiting-turn-judge): a turn that ends "I'll wait for the build" is not finished.
+      const lastAssistantMessage = this.timelineStore.getLastAssistantMessage(agent.id);
+      if (lastAssistantMessage !== null) {
+        const { verdict } = scoreWaitingTurn(lastAssistantMessage);
+        if (verdict === "waiting") {
+          return;
+        }
+        if (verdict === "unsure" && this.waitingTurnJudge) {
+          this.trackBackgroundTask(this.judgeThenRaiseFinished(agent, lastAssistantMessage));
+          return;
+        }
+      }
+      this.raiseFinishedAttention(agent);
       return;
     }
 
@@ -5045,6 +5060,42 @@ export class AgentManager {
       this.broadcastAgentAttention(agent, "error");
       return;
     }
+  }
+
+  private raiseFinishedAttention(agent: ManagedAgent): void {
+    agent.attention = {
+      requiresAttention: true,
+      attentionReason: "finished",
+      attentionTimestamp: new Date(),
+    };
+    this.broadcastAgentAttention(agent, "finished");
+  }
+
+  // CUSTOM(waiting-turn-judge): a judge that fails counts as "not waiting", so the user is
+  // notified rather than left without a signal.
+  private async judgeThenRaiseFinished(agent: ManagedAgent, message: string): Promise<void> {
+    const judge = this.waitingTurnJudge;
+    let waiting = false;
+    try {
+      waiting = judge ? await judge({ cwd: agent.cwd, message }) : false;
+    } catch (err) {
+      this.logger.warn({ err, agentId: agent.id }, "Waiting-turn judge failed");
+    }
+    if (waiting) {
+      this.logger.debug({ agentId: agent.id }, "Waiting-turn judge: turn ended waiting");
+      return;
+    }
+    // A new turn, or the user reading the agent, may have happened while the judge ran.
+    const live = this.agents.get(agent.id);
+    if (!live || live.lifecycle !== "idle" || live.attention.requiresAttention) {
+      return;
+    }
+    if (this.timelineStore.getLastAssistantMessage(agent.id) !== message) {
+      return;
+    }
+    this.raiseFinishedAttention(live);
+    await this.persistSnapshot(live);
+    this.emitState(live, { persist: false });
   }
 
   private enqueueBackgroundPersist(agent: ManagedAgent): void {

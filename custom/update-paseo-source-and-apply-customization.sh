@@ -331,6 +331,9 @@ if $VERIFY; then
   # Big idle Claude sessions get a keep-alive ping before their prompt cache expires.
   (cd packages/app && npx vitest run src/cache-warmup/model.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "keep-alive ping" --bail=1)
+  # A turn that ends waiting on a build is not finished.
+  (cd packages/server && npx vitest run src/server/agent/waiting-turn.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "a turn that ends waiting" --bail=1)
   # Backspace in an empty composer removes the last attached image.
   (cd packages/app && npx vitest run src/composer/backspace-attachment.test.ts --bail=1)
   # History searches become tabs.

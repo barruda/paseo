@@ -8210,6 +8210,125 @@ test("a cache keep-alive ping's turn does not count as finished", async () => {
   expect(attentionReasons).toEqual(["finished"]);
 });
 
+// CUSTOM(waiting-turn-judge)
+describe("a turn that ends waiting", () => {
+  function createManagerReplying(reply: string, idSuffix: string) {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+    const storage = new AgentStorage(join(workdir, "agents"), logger);
+    class ReplyingSession extends TestAgentSession {
+      override async startTurn(): Promise<{ turnId: string }> {
+        const turnId = "reply-turn";
+        setTimeout(() => {
+          this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+          this.pushEvent({
+            type: "timeline",
+            provider: this.provider,
+            turnId,
+            item: { type: "assistant_message", text: reply },
+          });
+          this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+        }, 0);
+        return { turnId };
+      }
+    }
+    class ReplyingClient extends TestAgentClient {
+      override async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+        return new ReplyingSession(config);
+      }
+    }
+    const attentionReasons: string[] = [];
+    const manager = new AgentManager({
+      clients: { codex: new ReplyingClient() },
+      registry: storage,
+      logger,
+      idFactory: () => `00000000-0000-4000-8000-0000000002${idSuffix}`,
+      onAgentAttention: ({ reason }) => {
+        attentionReasons.push(reason);
+      },
+    });
+    return { manager, workdir, attentionReasons };
+  }
+
+  test("is not finished when its closing words say it is waiting", async () => {
+    const { manager, workdir, attentionReasons } = createManagerReplying(
+      "Build disparado. Vou esperar a notificação e te aviso assim que terminar.",
+      "01",
+    );
+    const agent = await manager.createAgent(
+      { provider: "codex", cwd: workdir, title: "Waiting agent" },
+      undefined,
+      { workspaceId: undefined },
+    );
+
+    await manager.runAgent(agent.id, "build it");
+
+    expect(attentionReasons).toEqual([]);
+    expect(manager.getAgent(agent.id)?.attention.requiresAttention).toBe(false);
+  });
+
+  test("an unclear ending goes to the judge, which can hold the notification back", async () => {
+    const { manager, workdir, attentionReasons } = createManagerReplying(
+      "O build ainda está rodando.",
+      "02",
+    );
+    const judged: string[] = [];
+    manager.setWaitingTurnJudge(async ({ message }) => {
+      judged.push(message);
+      return true;
+    });
+    const agent = await manager.createAgent(
+      { provider: "codex", cwd: workdir, title: "Unsure agent" },
+      undefined,
+      { workspaceId: undefined },
+    );
+
+    await manager.runAgent(agent.id, "build it");
+    await manager.flush();
+
+    expect(judged).toEqual(["O build ainda está rodando."]);
+    expect(attentionReasons).toEqual([]);
+  });
+
+  test("an unclear ending the judge calls done notifies after the judge answers", async () => {
+    const { manager, workdir, attentionReasons } = createManagerReplying(
+      "O build ainda está rodando.",
+      "03",
+    );
+    manager.setWaitingTurnJudge(async () => false);
+    const agent = await manager.createAgent(
+      { provider: "codex", cwd: workdir, title: "Done agent" },
+      undefined,
+      { workspaceId: undefined },
+    );
+
+    await manager.runAgent(agent.id, "build it");
+    await manager.flush();
+
+    expect(attentionReasons).toEqual(["finished"]);
+    expect(manager.getAgent(agent.id)?.attention.requiresAttention).toBe(true);
+  });
+
+  test("a judge that fails still notifies", async () => {
+    const { manager, workdir, attentionReasons } = createManagerReplying(
+      "O build ainda está rodando.",
+      "04",
+    );
+    manager.setWaitingTurnJudge(async () => {
+      throw new Error("no model");
+    });
+    const agent = await manager.createAgent(
+      { provider: "codex", cwd: workdir, title: "Failing judge agent" },
+      undefined,
+      { workspaceId: undefined },
+    );
+
+    await manager.runAgent(agent.id, "build it");
+    await manager.flush();
+
+    expect(attentionReasons).toEqual(["finished"]);
+  });
+});
+
 test("onAgentAttention is not called for delegated child agents", async () => {
   const childAgentId = "00000000-0000-4000-8000-000000000112";
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));

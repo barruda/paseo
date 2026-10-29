@@ -6,6 +6,8 @@ import { constants, existsSync, unlinkSync } from "fs";
 import { open, rm, stat } from "fs/promises";
 import { randomUUID } from "node:crypto";
 import { getHostName } from "./host-name.js";
+import { createAgentStructuredTextGeneration } from "./session/checkout/git-metadata-generator.js";
+import { buildWaitingTurnJudgePrompt, WaitingTurnJudgmentSchema } from "./agent/waiting-turn.js";
 import path from "node:path";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import type { Logger } from "pino";
@@ -1426,6 +1428,24 @@ export async function createPaseoDaemon(
     archiveWorkspace: archiveScheduleWorkspaceExternal,
   });
   await scheduleService.start();
+  // CUSTOM(waiting-turn-judge): the metadata model (Haiku by default) settles turn endings the
+  // closing-words score can't call.
+  const waitingTurnGeneration = createAgentStructuredTextGeneration({
+    agentManager,
+    providerSnapshotManager,
+    readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
+    getFocusedSelection: () => undefined,
+  });
+  agentManager.setWaitingTurnJudge(async ({ cwd, message }) => {
+    const judgment = await waitingTurnGeneration.generate({
+      cwd,
+      prompt: buildWaitingTurnJudgePrompt(message),
+      schema: WaitingTurnJudgmentSchema,
+      schemaName: "WaitingTurnJudgment",
+      agentTitle: "Waiting turn judge",
+    });
+    return judgment.waiting;
+  });
   agentManager.setAgentArchivedCallback(async (agentId) => {
     try {
       await scheduleService.completeForAgent(agentId);
