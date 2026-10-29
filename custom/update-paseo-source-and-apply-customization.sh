@@ -330,6 +330,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts --bail=1)
   # Big idle Claude sessions get a keep-alive ping before their prompt cache expires.
   (cd packages/app && npx vitest run src/cache-warmup/model.test.ts --bail=1)
+  # Backspace in an empty composer removes the last attached image.
+  (cd packages/app && npx vitest run src/composer/backspace-attachment.test.ts --bail=1)
   # History searches become tabs.
   (cd packages/app && npx vitest run src/workspace-tabs/identity.test.ts --bail=1)
   # A comment on response text lands in the composer.

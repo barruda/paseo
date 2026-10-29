@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { StreamItem } from "@/types/stream";
 import {
   CACHE_WARMUP_MESSAGE,
+  cacheLastUsedAt,
   cacheWarmupAgentKey,
   describeCacheWarmup,
   hideCacheWarmupTurns,
@@ -19,7 +20,7 @@ function candidate(overrides: Partial<CacheWarmupCandidate> = {}): CacheWarmupCa
     provider: "claude",
     status: "idle",
     contextTokens: 150_000,
-    lastActivityAt: NOW - 58 * MINUTE,
+    lastCacheUseAt: NOW - 58 * MINUTE,
     ...overrides,
   };
 }
@@ -40,12 +41,12 @@ function pick(
 describe("pickAgentsToWarm", () => {
   it("pings an idle open Claude session over 100k tokens 57 minutes after its last activity", () => {
     expect(pick([candidate()])).toEqual(["a1"]);
-    expect(pick([candidate({ lastActivityAt: NOW - 57 * MINUTE })])).toEqual(["a1"]);
+    expect(pick([candidate({ lastCacheUseAt: NOW - 57 * MINUTE })])).toEqual(["a1"]);
   });
 
   it("waits until 57 minutes and gives up once the hour has passed", () => {
-    expect(pick([candidate({ lastActivityAt: NOW - 56 * MINUTE })])).toEqual([]);
-    expect(pick([candidate({ lastActivityAt: NOW - 60 * MINUTE })])).toEqual([]);
+    expect(pick([candidate({ lastCacheUseAt: NOW - 56 * MINUTE })])).toEqual([]);
+    expect(pick([candidate({ lastCacheUseAt: NOW - 60 * MINUTE })])).toEqual([]);
   });
 
   it("skips sessions at or under 100k tokens or without usage", () => {
@@ -63,27 +64,50 @@ describe("pickAgentsToWarm", () => {
     expect(pick([candidate()], ["a1"], [cacheWarmupAgentKey("srv", "a1")])).toEqual([]);
     expect(pick([candidate()], ["a1"], [cacheWarmupAgentKey("other", "a1")])).toEqual(["a1"]);
   });
+
+  it("skips sessions with no known cache use", () => {
+    expect(pick([candidate({ lastCacheUseAt: null })])).toEqual([]);
+  });
+});
+
+describe("cacheLastUsedAt", () => {
+  it("takes the later of the last user message and the last turn this app saw", () => {
+    expect(cacheLastUsedAt({ lastUserMessageAt: 10, lastTurnSeenAt: 25 })).toBe(25);
+    expect(cacheLastUsedAt({ lastUserMessageAt: 30, lastTurnSeenAt: 25 })).toBe(30);
+    expect(cacheLastUsedAt({ lastUserMessageAt: 10, lastTurnSeenAt: null })).toBe(10);
+    expect(cacheLastUsedAt({ lastUserMessageAt: null, lastTurnSeenAt: null })).toBeNull();
+  });
+
+  it("leaves a session reopened the next day alone", () => {
+    // The daemon reloaded the agent when Paseo reopened, which moved its activity, but its
+    // last turn was the day before.
+    const lastCacheUseAt = cacheLastUsedAt({
+      lastUserMessageAt: NOW - 20 * 60 * MINUTE,
+      lastTurnSeenAt: null,
+    });
+    expect(pick([candidate({ lastCacheUseAt })])).toEqual([]);
+  });
 });
 
 describe("describeCacheWarmup", () => {
   const base = { enabled: true, status: "idle", contextTokens: 150_000, now: NOW };
 
   it("counts the minutes until the cache goes cold", () => {
-    expect(describeCacheWarmup({ ...base, lastActivityAt: NOW - 18 * MINUTE })).toEqual([
+    expect(describeCacheWarmup({ ...base, lastCacheUseAt: NOW - 18 * MINUTE })).toEqual([
       "Keep cache warm: on",
       "Cold in 42 min",
     ]);
-    expect(describeCacheWarmup({ ...base, lastActivityAt: NOW - 61 * MINUTE })[1]).toBe(
+    expect(describeCacheWarmup({ ...base, lastCacheUseAt: NOW - 61 * MINUTE })[1]).toBe(
       "Cache is cold",
     );
   });
 
   it("says the cache is in use while running and notes the token floor", () => {
     expect(
-      describeCacheWarmup({ ...base, status: "running", contextTokens: 50_000, lastActivityAt: 0 }),
+      describeCacheWarmup({ ...base, status: "running", contextTokens: 50_000, lastCacheUseAt: 0 }),
     ).toEqual(["Keep cache warm: on", "Cache in use", "Pings start above 100k tokens"]);
     expect(
-      describeCacheWarmup({ ...base, enabled: false, contextTokens: 50_000, lastActivityAt: NOW }),
+      describeCacheWarmup({ ...base, enabled: false, contextTokens: 50_000, lastCacheUseAt: NOW }),
     ).toEqual(["Keep cache warm: off", "Cold in 60 min"]);
   });
 });

@@ -20,11 +20,28 @@ export interface CacheWarmupCandidate {
   provider: string;
   status: string;
   contextTokens: number | null;
-  lastActivityAt: number;
+  /** When the session last sent a request to Claude, from `cacheLastUsedAt`; null if unknown. */
+  lastCacheUseAt: number | null;
 }
 
 export function cacheWarmupAgentKey(serverId: string, agentId: string): string {
   return `${serverId}\u0000${agentId}`;
+}
+
+/**
+ * When the session last used its prompt cache: the later of its last user message (the start of
+ * its last turn) and the last time this app saw a turn start or end. The agent's `lastActivityAt`
+ * can't be used: the daemon moves it for things that send nothing to Claude, such as reloading
+ * the agent when Paseo reopens, a title change or a label write. A session reopened the next day
+ * would look freshly active and get pinged 57 minutes later, paying to rebuild a cold cache.
+ */
+export function cacheLastUsedAt(input: {
+  lastUserMessageAt: number | null;
+  lastTurnSeenAt: number | null;
+}): number | null {
+  if (input.lastUserMessageAt === null) return input.lastTurnSeenAt;
+  if (input.lastTurnSeenAt === null) return input.lastUserMessageAt;
+  return Math.max(input.lastUserMessageAt, input.lastTurnSeenAt);
 }
 
 /**
@@ -46,7 +63,8 @@ export function pickAgentsToWarm(input: {
     }
     if ((candidate.contextTokens ?? 0) <= MIN_CONTEXT_TOKENS) return false;
     if (!input.openAgentIds.has(candidate.agentId)) return false;
-    const idleFor = input.now - candidate.lastActivityAt;
+    if (candidate.lastCacheUseAt === null) return false;
+    const idleFor = input.now - candidate.lastCacheUseAt;
     return idleFor >= WARM_AFTER_MS && idleFor < CACHE_TTL_MS;
   });
 }
@@ -56,14 +74,17 @@ export function describeCacheWarmup(input: {
   enabled: boolean;
   status: string;
   contextTokens: number | null;
-  lastActivityAt: number;
+  lastCacheUseAt: number | null;
   now: number;
 }): string[] {
   const lines = [input.enabled ? "Keep cache warm: on" : "Keep cache warm: off"];
   if (input.status === "running") {
     lines.push("Cache in use");
   } else {
-    const minutesLeft = Math.ceil((input.lastActivityAt + CACHE_TTL_MS - input.now) / 60_000);
+    const minutesLeft =
+      input.lastCacheUseAt === null
+        ? 0
+        : Math.ceil((input.lastCacheUseAt + CACHE_TTL_MS - input.now) / 60_000);
     lines.push(minutesLeft > 0 ? `Cold in ${minutesLeft} min` : "Cache is cold");
   }
   if (input.enabled && (input.contextTokens ?? 0) <= MIN_CONTEXT_TOKENS) {

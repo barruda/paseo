@@ -5,7 +5,8 @@ import { z } from "zod";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 
 // CUSTOM(cache-warmup): the composer toggle. Pings are on by default, so only sessions turned off
-// are stored, keyed by `cacheWarmupAgentKey`.
+// are stored, keyed by `cacheWarmupAgentKey`. `lastTurnSeenAt` is the last time this app saw each
+// session's turn start or end (see `cacheLastUsedAt`); it lives in memory only.
 
 const CacheWarmupPersistedStateSchema = z.object({
   disabledAgentKeys: z.array(z.string()),
@@ -13,17 +14,28 @@ const CacheWarmupPersistedStateSchema = z.object({
 
 interface CacheWarmupStoreState {
   disabledAgentKeys: string[];
+  lastTurnSeenAt: Record<string, number>;
   setEnabled: (agentKey: string, enabled: boolean) => void;
+  recordTurnsSeen: (agentKeys: readonly string[], at: number) => void;
 }
 
 export const useCacheWarmupStore = create<CacheWarmupStoreState>()(
   persist(
     (set) => ({
       disabledAgentKeys: [],
+      lastTurnSeenAt: {},
       setEnabled: (agentKey, enabled) => {
         set((state) => {
           const rest = state.disabledAgentKeys.filter((key) => key !== agentKey);
           return { disabledAgentKeys: enabled ? rest : [...rest, agentKey] };
+        });
+      },
+      recordTurnsSeen: (agentKeys, at) => {
+        if (agentKeys.length === 0) return;
+        set((state) => {
+          const lastTurnSeenAt = { ...state.lastTurnSeenAt };
+          for (const key of agentKeys) lastTurnSeenAt[key] = at;
+          return { lastTurnSeenAt };
         });
       },
     }),

@@ -3446,13 +3446,17 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 
 - **Added:** 2026-10-28 (based on upstream v0.13.0, `7f9b65d46`)
 - **Commit:** `custom: keep the prompt cache of big idle Claude sessions warm`, then
-  `custom: hide cache keep-alive pings and add a toggle for them`
+  `custom: hide cache keep-alive pings and add a toggle for them`,
+  `custom: cache keep-alive counts from the last turn, not agent activity`
 - **Why:** Anthropic's prompt cache lives an hour after its last use. A session over 100k tokens
   left idle loses it, and the next message pays to write the whole context again. The pings and
   their "pong" replies cluttered the chat, and some sessions are not worth keeping warm.
 - **What:** Every 30 s the app looks for Claude sessions that are idle, over 100k context tokens
-  (the composer's context meter), open in a tab of any workspace or Desk, and whose last activity
-  was 57 to 60 minutes ago. Each gets the message "Keep-alive ping to keep the prompt cache warm.
+  (the composer's context meter), open in a tab of any workspace or Desk, and whose cache was last
+  used 57 to 60 minutes ago. Cache use is the later of the agent's last user message and the last
+  time this app saw its turn start or end (kept in memory). The agent's activity time doesn't
+  count: the daemon moves it for things that send nothing to Claude (reloading the agent when
+  Paseo reopens, a title change, a label write), so tabs reopened the next day got pinged. Each gets the message "Keep-alive ping to keep the prompt cache warm.
   Reply with just: pong", once per idle stretch; the reply starts the next 57 minutes. Past the
   hour the cache is already gone, so the session is left alone; that also keeps tabs left open for
   days from being pinged. A session stays warm for as long as its tab stays open, with one ping
@@ -3470,15 +3474,18 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   `useRetainedValue`; `composer/agent-controls/index.tsx` passes `cacheWarmupAgentId` from
   `AgentControls` to `ControlledAgentControls`, which renders `<CacheWarmupToggle>` after
   `ModelPickerShortcutChip` (all marked `CUSTOM(cache-warmup)`).
-- **Re-apply:** Mount a root component that, every 30 s, reads the session store (agent status,
-  `lastUsage.contextWindowUsedTokens`, the later of `lastActivityAt` and `agentLastActivity`), the
-  workspace layouts and the Desks, and sends `client.sendAgentMessage` to what `pickAgentsToWarm`
+- **Re-apply:** Mount a root component that records in `useCacheWarmupStore.lastTurnSeenAt` when an
+  agent's status goes into or out of `running` (a `useSessionStore.subscribe`), and every 30 s reads
+  the session store (agent status, `lastUsage.contextWindowUsedTokens`, `cacheLastUsedAt` of
+  `lastUserMessageAt` and the recorded turn time; never `lastActivityAt`), the workspace layouts
+  and the Desks, and sends `client.sendAgentMessage` to what `pickAgentsToWarm`
   returns, skipping the keys in `useCacheWarmupStore`. Filter the items the agent stream view
   renders through `hideCacheWarmupTurns`, and render `CacheWarmupToggle` at the end of the
   composer's agent control row.
 - **Verify:** `cache-warmup/model.test.ts` is in the update script. By hand: leave a Claude session
   over 100k tokens idle with its tab open; 57 minutes later the session's activity moves but no
-  ping or "pong" shows in the chat. Hover the flame: "Cold in N min". Click it: the flame turns
+  ping or "pong" shows in the chat. Close Paseo with such a tab open and reopen it more than an
+  hour later: the flame's tooltip says "Cache is cold" and the session is never pinged. Hover the flame: "Cold in N min". Click it: the flame turns
   to a gray outline and that session is no longer pinged.
 
 ## tab-lanes-sticky: only tabs you moved keep their spot
@@ -3551,3 +3558,26 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   the app, in a long Claude chat with images, click the effort chip and then the model chip: the
   model changes at once, and the next message runs on it. Daemon-side, so it needs a daemon
   restart.
+
+## backspace-image: Backspace in an empty composer removes the last image
+
+- **Added:** 2026-10-29 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: Backspace in an empty composer removes the last attached image`
+- **Why:** After pasting a picture by mistake the user had to reach for the thumbnail's X. Tag
+  inputs let Backspace delete the last chip; the composer should too.
+- **What:** On web and desktop, Backspace with no modifier and nothing typed in the composer
+  removes the last image attachment (other attachments are skipped). With any text, even a space,
+  Backspace edits the text as usual.
+- **Files:** `packages/app/src/composer/backspace-attachment.ts` (`imageIndexToRemoveOnBackspace`)
+  and its test.
+- **Core files touched:** `composer/index.tsx`: `handleCommandKeyPress` calls
+  `imageIndexToRemoveOnBackspace` right after the parent's `onKeyPress`, and on a hit calls
+  `handleRemoveAttachment(index)` (marked `CUSTOM(backspace-image)`).
+- **Re-apply:** In the composer's key handler that gets `ComposerKeyPressEvent` (the one that
+  runs autocomplete and the empty-composer shortcuts), when the key is `Backspace`, there is no
+  modifier and `event.input.text` is empty, find the last `kind: "image"` in the selected
+  attachments, `preventDefault()`, remove it through the same function as the thumbnail's X, and
+  return true.
+- **Verify:** `composer/backspace-attachment.test.ts` is in the update script. By hand: paste two
+  images into an empty composer and press Backspace twice; each press removes the last one. Type
+  a letter with an image attached; Backspace deletes the letter and keeps the image.

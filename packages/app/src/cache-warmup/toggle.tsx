@@ -6,7 +6,12 @@ import { AgentControlTrigger } from "@/composer/agent-controls/control";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useSessionStore } from "@/stores/session-store";
 import type { AgentControlIconProps } from "@/agent-controls/icons";
-import { CACHE_WARMUP_PROVIDER, cacheWarmupAgentKey, describeCacheWarmup } from "./model";
+import {
+  CACHE_WARMUP_PROVIDER,
+  cacheLastUsedAt,
+  cacheWarmupAgentKey,
+  describeCacheWarmup,
+} from "./model";
 import { useCacheWarmupStore } from "./store";
 
 // CUSTOM(cache-warmup): the composer toggle beside the Ctrl+M chip. On (the default) the flame is
@@ -29,14 +34,15 @@ function useCacheWarmupAgent(serverId: string, agentId: string) {
     (state) =>
       state.sessions[serverId]?.agents.get(agentId)?.lastUsage?.contextWindowUsedTokens ?? null,
   );
-  // Same "last activity" the pinger uses: the later of the snapshot and the live stream.
-  const lastActivityAt = useSessionStore((state) =>
-    Math.max(
-      state.sessions[serverId]?.agents.get(agentId)?.lastActivityAt.getTime() ?? 0,
-      state.agentLastActivity.get(agentId)?.getTime() ?? 0,
-    ),
+  // Same cache use time the pinger counts from.
+  const lastUserMessageAt = useSessionStore(
+    (state) => state.sessions[serverId]?.agents.get(agentId)?.lastUserMessageAt?.getTime() ?? null,
   );
-  return { status, contextTokens, lastActivityAt };
+  const lastTurnSeenAt = useCacheWarmupStore(
+    (state) => state.lastTurnSeenAt[cacheWarmupAgentKey(serverId, agentId)] ?? null,
+  );
+  const lastCacheUseAt = cacheLastUsedAt({ lastUserMessageAt, lastTurnSeenAt });
+  return { status, contextTokens, lastCacheUseAt };
 }
 
 function CacheWarmupTooltipText({
