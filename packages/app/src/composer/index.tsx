@@ -1,6 +1,7 @@
 import { ComposerProjectIcon } from "./project-icon";
 import { useContentWidthBoostRerender } from "@/content-width-boost/store";
 import { handleEmptyRewindKey } from "./empty-shortcuts";
+import { imageIndexToRemoveOnBackspace } from "./backspace-attachment";
 import { createDoubleTrigger } from "./empty-voice-trigger";
 import type { ComposerTextSource } from "./text-source";
 import { createStore, type StoreApi } from "zustand/vanilla";
@@ -2029,6 +2030,18 @@ function ComposerContentImpl({
     (event: ComposerKeyPressEvent) => {
       if (autocompleteRef.current?.onKeyPress(event)) return true;
       if (onKeyPress?.(event)) return true;
+      // CUSTOM(backspace-image): Backspace with nothing typed removes the last attached image.
+      const imageIndex = imageIndexToRemoveOnBackspace({
+        key: event.key,
+        hasModifier: Boolean(event.hasModifier),
+        text: event.input.text,
+        attachments: selectedAttachments,
+      });
+      if (imageIndex !== null) {
+        event.preventDefault();
+        handleRemoveAttachment(imageIndex);
+        return true;
+      }
       if (commandDraft || inputMode !== "chat" || event.hasModifier) return false;
       const session = useSessionStore.getState().sessions[serverId];
       const items =
@@ -2051,6 +2064,8 @@ function ComposerContentImpl({
     },
     [
       onKeyPress,
+      selectedAttachments,
+      handleRemoveAttachment,
       commandDraft,
       inputMode,
       serverId,
