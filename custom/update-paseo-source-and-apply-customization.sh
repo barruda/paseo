@@ -301,6 +301,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/sidebar-workspace-limit/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/header-shortcuts/fit.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/session.create-agent-title.test.ts --bail=1)
+  # Switching a Claude agent's model does not relaunch Claude Code.
+  (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.test.ts -t "switches the model" --bail=1)
   # Hovering an image thumbnail shows it magnified.
   (cd packages/app && npx vitest run src/attachments/attachment-thumbnail-zoom-size.test.ts --bail=1)
   # Chat file links resolve against the session's files and get a hover card of actions.

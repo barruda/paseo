@@ -3526,3 +3526,28 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   pin": double-clicking a task leaves the preview on the other task and adds one kept tab. In the
   app, Tasks mode: click task A (preview), double-click task B; A stays in the italic tab and B
   opens in a new upright tab.
+
+## lazy-model-switch: switching a Claude agent's model answers at once
+
+- **Added:** 2026-10-29 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: switching a Claude agent's model no longer relaunches Claude Code`
+- **Why:** Clicking the model chip ([chip-cycle](#chip-cycle-clicking-the-model-or-effort-chip-cycles-favorites-its-chevron-opens-the-menu))
+  in a long chat with images took a second or more, while the effort chip was instant. Changing
+  the effort only records it for the next launch. Changing the model called `ensureQuery()`,
+  which, when no Claude Code process was live or the live one was due a restart (any effort
+  change marks it so), killed the old process and spawned a new one that resumes the whole
+  transcript, all before the switch answered.
+- **What:** `ClaudeAgentSession.setModel` sends `setModel` to the Claude Code process only when a
+  live, current query exists. Otherwise it records the model in `config.model`, which
+  `buildOptions()` passes on the next launch, and turns off fast mode in config when the new model
+  lacks it.
+- **Core files touched:** `packages/server/src/server/agent/providers/claude/agent.ts`
+  (`setModel`), marked `CUSTOM(lazy-model-switch)`.
+- **Re-apply:** In the Claude session's `setModel`, replace `await this.ensureQuery()` with
+  `this.query && !this.queryRestartNeeded ? this.query : null`; call the query's `setModel` and
+  `applyFastModeFeature` only when that is non-null, else set `featureValues.fast_mode = false`
+  directly. Drop this if upstream stops launching a query in `setModel`.
+- **Verify:** `providers/claude/agent.test.ts -t "switches the model"` (in the update script). In
+  the app, in a long Claude chat with images, click the effort chip and then the model chip: the
+  model changes at once, and the next message runs on it. Daemon-side, so it needs a daemon
+  restart.

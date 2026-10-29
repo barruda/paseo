@@ -793,6 +793,55 @@ describe("ClaudeAgentSession features", () => {
     await session.close();
   });
 
+  // CUSTOM(lazy-model-switch)
+  test("switches the model without launching Claude Code when no query is live", async () => {
+    const { queryFactory, queryMock } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+      model: "claude-opus-5-5",
+    });
+
+    await session.setModel?.("claude-sonnet-5-5");
+    expect(queryFactory).not.toHaveBeenCalled();
+    expect(queryMock.setModel).not.toHaveBeenCalled();
+    await expect(session.getRuntimeInfo()).resolves.toMatchObject({ model: "claude-sonnet-5-5" });
+
+    await (session as unknown as { ensureQuery(): Promise<unknown> }).ensureQuery();
+    expect(queryFactory.mock.calls[0]?.[0].options.model).toBe("claude-sonnet-5-5");
+    await session.close();
+  });
+
+  // CUSTOM(lazy-model-switch)
+  test("switches the model on the next launch when the live query is due a restart", async () => {
+    const { queryFactory, queryMock } = createQueryMock();
+    const client = new ClaudeAgentClient({
+      logger,
+      queryFactory,
+      resolveBinary: async () => "/test/claude/bin",
+    });
+    const session = await client.createSession({
+      provider: "claude",
+      cwd: process.cwd(),
+      model: "claude-opus-5-5",
+    });
+    await (session as unknown as { ensureQuery(): Promise<unknown> }).ensureQuery();
+
+    await session.setThinkingOption?.("high");
+    await session.setModel?.("claude-sonnet-5-5");
+    expect(queryFactory).toHaveBeenCalledTimes(1);
+    expect(queryMock.setModel).not.toHaveBeenCalled();
+
+    await (session as unknown as { ensureQuery(): Promise<unknown> }).ensureQuery();
+    expect(queryFactory.mock.calls[1]?.[0].options.model).toBe("claude-sonnet-5-5");
+    await session.close();
+  });
+
   test("preapproves only granted Hub MCP tools while preserving Claude denies", async () => {
     const { queryFactory } = createQueryMock();
     const client = new ClaudeAgentClient({

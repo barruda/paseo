@@ -2530,12 +2530,21 @@ class ClaudeAgentSession implements AgentSession {
   async setModel(modelId: string | null): Promise<void> {
     const normalizedModelId =
       typeof modelId === "string" && modelId.trim().length > 0 ? modelId.trim() : null;
-    const activeQuery = await this.ensureQuery();
-    await activeQuery.setModel(normalizedModelId ?? undefined);
+    // CUSTOM(lazy-model-switch): without a live, current query, launching one here respawns
+    // Claude Code and resumes the whole transcript before the switch answers (a second or more
+    // in a long chat with images). buildOptions() reads config.model, so the next launch applies it.
+    const activeQuery = this.query && !this.queryRestartNeeded ? this.query : null;
+    if (activeQuery) {
+      await activeQuery.setModel(normalizedModelId ?? undefined);
+    }
     this.config.model = normalizedModelId ?? undefined;
     this.reconcileThinkingOptionForModel(normalizedModelId);
     if (!claudeModelSupportsFastMode(this.config.model) && this.config.featureValues?.fast_mode) {
-      await this.applyFastModeFeature(false, activeQuery);
+      if (activeQuery) {
+        await this.applyFastModeFeature(false, activeQuery);
+      } else {
+        this.config.featureValues = { ...this.config.featureValues, fast_mode: false };
+      }
     }
     this.contextUsage.setInitialContextWindowMaxTokens(
       findClaudeModel(this.config.model)?.contextWindowMaxTokens,
