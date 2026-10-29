@@ -3590,3 +3590,45 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Verify:** `composer/backspace-attachment.test.ts` is in the update script. By hand: paste two
   images into an empty composer and press Backspace twice; each press removes the last one. Type
   a letter with an image attached; Backspace deletes the letter and keeps the image.
+
+## shortcut-additional-bindings: up to five shortcuts per command
+
+- **Added:** 2026-10-29 (based on upstream v0.13.0, `7f9b65d46`)
+- **Commit:** `custom: a command takes up to five shortcuts`
+- **Why:** The user wants more than one key combination for the same command, without giving up
+  the default.
+- **What:** Settings → Shortcuts: the row menu gains **Bind additional** (once the command has a
+  shortcut and fewer than five) and one **Remove <keys>** item per extra shortcut. The row lists
+  every shortcut, primary first. **Clear** removes all of them; **Reset to default** drops the
+  extras and restores the default. Extras fire exactly like the primary binding (same `when`,
+  payload and focus rules, minus the default-combo `editable` guard, like any override). The
+  cheat sheet lists them and its search finds a row by them. Badges, tooltips and the command
+  center keep showing only the primary shortcut.
+- **Storage:** extras are ordinary entries in the existing override map, keyed
+  `<binding id>#2` .. `#5`. No new storage key or schema; Reset all clears them too. Removing a
+  middle extra leaves a gap that the next Bind additional fills.
+- **Core files touched (app):** `keyboard/keyboard-shortcuts.ts` (`MAX_SHORTCUTS_PER_ACTION`,
+  `additionalBindingIds`, `resolveAdditionalShortcutsForAction`, `buildEffectiveBindings` appends
+  extras after every primary binding, help rows get `additionalChords`),
+  `keyboard/shortcut-override-store.ts` (`apply` for multi-key changes in one write),
+  `hooks/use-keyboard-shortcut-overrides.ts` (`applyOverrides`),
+  `screens/settings/keyboard-shortcuts-section.tsx`, `components/keyboard-shortcuts-dialog.tsx`,
+  `keyboard/shortcut-help-search.ts`, and `settings.shortcuts.actions.bindAdditional` /
+  `removeKeys` in all nine `i18n/resources/*.ts`. Marked `CUSTOM(shortcut-additional-bindings)`.
+- **Re-apply:** In `buildEffectiveBindings`, after mapping the defaults, append for each default
+  binding and each id in `additionalBindingIds(binding.id)` a copy of the binding with the
+  override's combo (same parsing/guard stripping as a primary override) and `id` set to the slot
+  id, skipping empty or unparseable values. Appending keeps primary bindings first in matching.
+  In `buildKeyboardShortcutHelpSections`, when a later binding hits an already-seen row and its id
+  ends in `#<n>`, push its display chord to `row.additionalChords`. In the settings section,
+  capture into a target id (the row's binding id or the first free slot) instead of the row's
+  binding id, and route Clear/Reset through one `applyOverrides` call that also deletes the
+  extras.
+- **Verify:** `keyboard-shortcuts.test.ts` ("additional shortcuts"), `shortcut-override-store.test.ts`
+  and `shortcut-help-search.test.ts` plus the desktop e2e
+  `keyboard-shortcut-unassign.spec.ts --grep 'additional shortcuts'` (all in the update script).
+  By hand: Settings → Shortcuts → Toggle command center → ⋯ → Bind additional, press a combo,
+  Done; both combos open the command center.
+- **Known:** the older e2e "unassigning a shortcut leaves it inert until it is reset" already
+  fails on `custom` before this change (two rows show "Not set"), which is why the update script
+  greps around it.

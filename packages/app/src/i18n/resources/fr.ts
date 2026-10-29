@@ -2384,6 +2384,8 @@ export const fr: TranslationResources = {
         cancel: "Annuler",
         bind: "Attribuer",
         rebind: "Réattribuer",
+        bindAdditional: "Ajouter un raccourci",
+        removeKeys: "Supprimer {{keys}}",
         clear: "Effacer",
         reset: "Rétablir la valeur par défaut",
         resetAll: "Tout réinitialiser",

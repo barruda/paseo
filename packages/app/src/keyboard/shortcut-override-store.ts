@@ -24,6 +24,10 @@ export interface ShortcutOverrideStore {
   /** Drop the override entirely, restoring the binding's default combo. */
   remove(bindingId: string): Promise<void>;
   resetAll(): Promise<void>;
+  // CUSTOM(shortcut-additional-bindings): Clear and Reset change a command's primary and extra
+  // shortcuts together, in one write.
+  /** Apply several binding changes as one operation. */
+  apply(changes: Record<string, ShortcutOverrideValue>): Promise<void>;
 }
 
 export interface CreateShortcutOverrideStoreOptions {
@@ -65,10 +69,13 @@ export function createShortcutOverrideStore({
     return run;
   }
 
-  function commit(bindingId: string, value: ShortcutOverrideValue): Promise<void> {
+  function commit(changes: Record<string, ShortcutOverrideValue>): Promise<void> {
     return enqueue(async () => {
       const prev = cache.read();
-      const next = withOverride(prev, bindingId, value);
+      const next = Object.entries(changes).reduce(
+        (current, [bindingId, value]) => withOverride(current, bindingId, value),
+        prev,
+      );
       cache.write(next);
       try {
         await storage.write(JSON.stringify(next));
@@ -80,9 +87,10 @@ export function createShortcutOverrideStore({
   }
 
   return {
-    set: (bindingId, comboString) => commit(bindingId, comboString),
-    clear: (bindingId) => commit(bindingId, UNASSIGNED_COMBO),
-    remove: (bindingId) => commit(bindingId, undefined),
+    set: (bindingId, comboString) => commit({ [bindingId]: comboString }),
+    clear: (bindingId) => commit({ [bindingId]: UNASSIGNED_COMBO }),
+    remove: (bindingId) => commit({ [bindingId]: undefined }),
+    apply: commit,
     resetAll: () =>
       enqueue(async () => {
         const prev = cache.read();

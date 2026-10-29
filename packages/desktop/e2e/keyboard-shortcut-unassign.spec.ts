@@ -273,3 +273,50 @@ test("shortcut settings search filters loosely and keeps editing available", asy
   await expect(workspace).toBeVisible();
   await expect(project).toBeVisible();
 });
+
+// CUSTOM(shortcut-additional-bindings)
+test("additional shortcuts fire beside the first one and cap at five", async ({ page }) => {
+  await openShortcutsSettings(page);
+  const dialog = page.getByTestId("keyboard-shortcuts-dialog");
+  const bindAdditional = page.getByTestId(`shortcut-bind-additional-${SHORTCUTS_ROW}`);
+  const extras = ["Alt+Shift+K", "Alt+Shift+J", "Alt+Shift+L", "Alt+Shift+H"];
+  const row = page.getByText("Show keyboard shortcuts", { exact: true }).locator("..");
+
+  for (const keys of extras) {
+    await openRowMenu(page);
+    await bindAdditional.click();
+    await page.keyboard.press(keys);
+    await row.getByRole("button", { name: "Done" }).click();
+  }
+  for (const label of ["⌥⇧K", "⌥⇧J", "⌥⇧L", "⌥⇧H"]) {
+    await expect(row.getByText(label, { exact: true })).toBeVisible();
+  }
+  await openRowMenu(page);
+  await expect(bindAdditional).toHaveCount(0);
+  await closeRowMenu(page);
+
+  await page.keyboard.press("Alt+Shift+J");
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+  await expect(
+    dialog.getByTestId(`shortcut-help-row-${SHORTCUTS_ROW}`).getByText("⌥⇧J", { exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toBeVisible({ timeout: 10_000 });
+
+  await openRowMenu(page);
+  await page.getByTestId(`shortcut-remove-additional-${SHORTCUTS_ROW}-1`).click();
+  await expect(row.getByText("⌥⇧J", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Alt+Shift+J");
+  await expect(dialog).not.toBeVisible({ timeout: 5_000 });
+
+  // Clear drops every shortcut of the command; Reset brings back only the default.
+  await openRowMenu(page);
+  await page.getByTestId(`shortcut-clear-${SHORTCUTS_ROW}`).click();
+  await expect(row.getByText("Not set", { exact: true })).toBeVisible();
+  await expect(row.getByText("⌥⇧K", { exact: true })).toHaveCount(0);
+  await openRowMenu(page);
+  await page.getByTestId(`shortcut-reset-${SHORTCUTS_ROW}`).click();
+  await expect(row.getByText("Not set", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Shift+?");
+  await expect(dialog).toBeVisible({ timeout: 10_000 });
+});

@@ -89,6 +89,8 @@ export function filterShortcutHelpSections({
         translate(row.labelKey),
         row.noteKey ? translate(row.noteKey) : row.note,
         row.chord ? shortcutSearchText(row.chord, shortcutOs) : null,
+        // CUSTOM(shortcut-additional-bindings): extra shortcuts find their row too.
+        ...(row.additionalChords ?? []).map((chord) => shortcutSearchText(chord, shortcutOs)),
       ]
         .filter(Boolean)
         .join(" ")

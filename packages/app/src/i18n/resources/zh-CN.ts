@@ -2303,6 +2303,8 @@ export const zhCN: TranslationResources = {
         cancel: "取消",
         bind: "绑定",
         rebind: "重新绑定",
+        bindAdditional: "添加其他快捷键",
+        removeKeys: "移除 {{keys}}",
         clear: "清除",
         reset: "重置为默认",
         resetAll: "全部重置",

@@ -2341,6 +2341,8 @@ export const ko: TranslationResources = {
         cancel: "취소",
         bind: "지정",
         rebind: "다시 지정",
+        bindAdditional: "단축키 추가",
+        removeKeys: "{{keys}} 제거",
         clear: "지우기",
         reset: "기본값으로 재설정",
         resetAll: "모두 재설정",

@@ -2371,6 +2371,8 @@ export const ru: TranslationResources = {
         cancel: "Отмена",
         bind: "Назначить",
         rebind: "Переназначить",
+        bindAdditional: "Добавить сочетание",
+        removeKeys: "Удалить {{keys}}",
         clear: "Очистить",
         reset: "Восстановить значение по умолчанию",
         resetAll: "Сбросить все",

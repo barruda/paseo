@@ -2331,6 +2331,8 @@ export const ar: TranslationResources = {
         cancel: "يلغي",
         bind: "ربط",
         rebind: "إعادة ربط",
+        bindAdditional: "إضافة اختصار آخر",
+        removeKeys: "إزالة {{keys}}",
         clear: "مسح",
         reset: "إعادة الضبط إلى الافتراضي",
         resetAll: "إعادة ضبط الكل",

@@ -5,6 +5,7 @@ import type { ShortcutOverrides } from "@/keyboard/keyboard-shortcuts";
 import {
   createShortcutOverrideStore,
   type ShortcutOverrideStore,
+  type ShortcutOverrideValue,
 } from "@/keyboard/shortcut-override-store";
 import { readValidatedJson } from "@/storage/validated-storage";
 
@@ -21,6 +22,8 @@ export interface UseKeyboardShortcutOverridesReturn {
   clearOverride: (bindingId: string) => Promise<void>;
   removeOverride: (bindingId: string) => Promise<void>;
   resetAll: () => Promise<void>;
+  // CUSTOM(shortcut-additional-bindings): change several bindings in one write.
+  applyOverrides: (changes: Record<string, ShortcutOverrideValue>) => Promise<void>;
   hasOverrides: boolean;
 }
 
@@ -43,6 +46,7 @@ export function useKeyboardShortcutOverrides(): UseKeyboardShortcutOverridesRetu
     clearOverride: store.clear,
     removeOverride: store.remove,
     resetAll: store.resetAll,
+    applyOverrides: store.apply,
     hasOverrides: Object.keys(overrides).length > 0,
   };
 }

@@ -93,6 +93,14 @@ describe("filterShortcutHelpSections", () => {
     expect(matchedRowIds("cmd+n", overrides)).not.toContain("new-workspace");
   });
 
+  // CUSTOM(shortcut-additional-bindings)
+  it("finds a row by an extra shortcut", () => {
+    const overrides = { [`${NEW_WORKSPACE_BINDING}#2`]: "Cmd+Shift+K" };
+
+    expect(matchedRowIds("cmd+shift+k", overrides)).toContain("new-workspace");
+    expect(matchedRowIds("cmd+n", overrides)).toContain("new-workspace");
+  });
+
   it("still finds an unassigned row by its label", () => {
     const overrides = { [NEW_WORKSPACE_BINDING]: UNASSIGNED_COMBO };
 

@@ -2455,6 +2455,8 @@ export const en = {
         cancel: "Cancel",
         bind: "Bind",
         rebind: "Rebind",
+        bindAdditional: "Bind additional",
+        removeKeys: "Remove {{keys}}",
         clear: "Clear",
         reset: "Reset to default",
         resetAll: "Reset all",

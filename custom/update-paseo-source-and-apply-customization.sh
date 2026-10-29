@@ -269,8 +269,8 @@ if $VERIFY; then
   # Ruby syntax highlighting.
   (cd packages/highlight && npx vitest run src/__tests__/parsers.test.ts src/__tests__/highlighter.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/opener.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/keyboard/shortcut-help-search.test.ts --bail=1)
-  npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/keyboard-shortcut-unassign.spec.ts --grep 'sidebar shortcut settings|shortcut settings search' --workers=1
+  (cd packages/app && npx vitest run src/keyboard/shortcut-help-search.test.ts src/keyboard/shortcut-override-store.test.ts --bail=1)
+  npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/keyboard-shortcut-unassign.spec.ts --grep 'sidebar shortcut settings|shortcut settings search|additional shortcuts' --workers=1
   (cd packages/app && npx vitest run src/voice/sidebar/session.test.ts --bail=1)
   (cd packages/app && npx vitest run src/content-width-boost/store.test.ts --bail=1)
   # The chat's scroll arrows fade after 3 s without scrolling; scrolling up shows a top arrow.

@@ -47,6 +47,8 @@ export interface KeyboardShortcutHelpRow {
   labelKey: string;
   /** The keys that actually fire this action, or `null` when it has none. */
   chord: ShortcutKey[][] | null;
+  // CUSTOM(shortcut-additional-bindings): the extra shortcuts bound beside `chord`, in slot order.
+  additionalChords?: ShortcutKey[][][];
   note?: string;
   noteKey?: string;
 }
@@ -1391,31 +1393,96 @@ export const DEFAULT_BINDINGS: readonly ParsedShortcutBinding[] =
 export type ShortcutOverrides = Record<string, string | null>;
 
 export function buildEffectiveBindings(overrides: ShortcutOverrides): ParsedShortcutBinding[] {
-  return DEFAULT_BINDINGS.map(function (binding) {
+  const primary = DEFAULT_BINDINGS.map(function (binding) {
     const override = overrides[binding.id];
     if (override === UNASSIGNED_COMBO) {
       return { ...binding, combo: "", parsedChord: [] };
     }
-    // Storage is unvalidated JSON, so anything can turn up here.
-    if (typeof override !== "string") {
-      return binding;
+    return withOverrideCombo(binding, override) ?? binding;
+  });
+  // CUSTOM(shortcut-additional-bindings): extra shortcuts go after every primary binding, so a
+  // single combo bound to two commands still fires the one whose primary binding claims it.
+  const additional = DEFAULT_BINDINGS.flatMap(function (binding) {
+    return additionalBindingIds(binding.id).flatMap(function (id) {
+      const rebound = withOverrideCombo(binding, overrides[id]);
+      return rebound && rebound.parsedChord.length > 0 ? [{ ...rebound, id }] : [];
+    });
+  });
+  return [...primary, ...additional];
+}
+
+/**
+ * The binding with its combo replaced by an override, or `null` when the
+ * override is not a parseable combo string. Storage is unvalidated JSON, so
+ * anything can turn up here.
+ */
+function withOverrideCombo(
+  binding: ParsedShortcutBinding,
+  override: unknown,
+): ParsedShortcutBinding | null {
+  if (typeof override !== "string") {
+    return null;
+  }
+  let parsedChord: KeyCombo[];
+  try {
+    parsedChord = parseBindingChord(override);
+  } catch {
+    return null;
+  }
+  const lastCombo = parsedChord.at(-1);
+  if (binding.repeat === false && lastCombo) {
+    lastCombo.repeat = false;
+  }
+  const when = withoutDefaultComboGuard(binding.when);
+  if (!binding.help?.defaultDisplayKeys) {
+    return { ...binding, combo: override, parsedChord, when };
+  }
+  const { defaultDisplayKeys: _defaultDisplayKeys, ...help } = binding.help;
+  return { ...binding, combo: override, parsedChord, when, help };
+}
+
+// CUSTOM(shortcut-additional-bindings): a command takes up to five shortcuts. The first lives
+// under the binding's own id; the others are plain overrides under `<binding id>#2` .. `#5`, so
+// they share the override storage, its schema and Reset all.
+export const MAX_SHORTCUTS_PER_ACTION = 5;
+
+export function additionalBindingIds(bindingId: string): string[] {
+  return Array.from(
+    { length: MAX_SHORTCUTS_PER_ACTION - 1 },
+    (_, index) => `${bindingId}#${index + 2}`,
+  );
+}
+
+function isAdditionalBindingId(bindingId: string): boolean {
+  return /#\d+$/.test(bindingId);
+}
+
+export interface AdditionalShortcut {
+  bindingId: string;
+  chord: ShortcutKey[][];
+}
+
+/** The extra shortcuts bound to an action, in slot order, each with the id it is stored under. */
+export function resolveAdditionalShortcutsForAction(
+  actionId: string,
+  overrides: ShortcutOverrides,
+  platform: { isMac: boolean; isDesktop: boolean },
+): AdditionalShortcut[] {
+  const bindingId = getBindingIdForAction(actionId, platform);
+  if (bindingId === null) {
+    return [];
+  }
+  return additionalBindingIds(bindingId).flatMap(function (id) {
+    const override = overrides[id];
+    if (typeof override !== "string" || override === "") {
+      return [];
     }
-    let parsedChord: KeyCombo[];
     try {
-      parsedChord = parseBindingChord(override);
+      parseBindingChord(override);
     } catch {
-      return binding;
+      return [];
     }
-    const lastCombo = parsedChord.at(-1);
-    if (binding.repeat === false && lastCombo) {
-      lastCombo.repeat = false;
-    }
-    const when = withoutDefaultComboGuard(binding.when);
-    if (!binding.help?.defaultDisplayKeys) {
-      return { ...binding, combo: override, parsedChord, when };
-    }
-    const { defaultDisplayKeys: _defaultDisplayKeys, ...help } = binding.help;
-    return { ...binding, combo: override, parsedChord, when, help };
+    return [{ bindingId: id, chord: chordStringToShortcutKeys(override) }];
   });
 }
 
@@ -1877,7 +1944,7 @@ export function buildKeyboardShortcutHelpSections(
   input: KeyboardShortcutPlatformContext,
   bindings: readonly ParsedShortcutBinding[] = DEFAULT_BINDINGS,
 ): KeyboardShortcutHelpSection[] {
-  const seenRows = new Set<string>();
+  const seenRows = new Map<string, KeyboardShortcutHelpRow>();
   const rowsBySection = new Map<ShortcutSectionId, KeyboardShortcutHelpRow[]>(
     SHORTCUT_HELP_SECTION_ORDER.map((sectionId) => [sectionId, []]),
   );
@@ -1891,23 +1958,30 @@ export function buildKeyboardShortcutHelpSections(
       continue;
     }
     const rowKey = `${help.section}:${help.id}`;
-    if (seenRows.has(rowKey)) {
+    const seenRow = seenRows.get(rowKey);
+    if (seenRow) {
+      // CUSTOM(shortcut-additional-bindings): extra shortcuts join their command's row.
+      const chord = displayChordForBinding(binding);
+      if (chord && isAdditionalBindingId(binding.id)) {
+        seenRow.additionalChords = [...(seenRow.additionalChords ?? []), chord];
+      }
       continue;
     }
-    seenRows.add(rowKey);
 
     const rows = rowsBySection.get(help.section);
     if (!rows) {
       continue;
     }
-    rows.push({
+    const row: KeyboardShortcutHelpRow = {
       id: help.id,
       label: help.label,
       labelKey: SHORTCUT_HELP_LABEL_KEYS[help.id] ?? help.label,
       chord: displayChordForBinding(binding),
       ...(help.note ? { note: help.note } : {}),
       ...(SHORTCUT_HELP_NOTE_KEYS[help.id] ? { noteKey: SHORTCUT_HELP_NOTE_KEYS[help.id] } : {}),
-    });
+    };
+    seenRows.set(rowKey, row);
+    rows.push(row);
   }
 
   return SHORTCUT_HELP_SECTION_ORDER.flatMap((sectionId) => {

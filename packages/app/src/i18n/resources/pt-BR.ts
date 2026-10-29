@@ -2366,6 +2366,8 @@ export const ptBR: TranslationResources = {
         cancel: "Cancelar",
         bind: "Atribuir",
         rebind: "Reatribuir",
+        bindAdditional: "Adicionar atalho",
+        removeKeys: "Remover {{keys}}",
         clear: "Limpar",
         reset: "Redefinir para o padrão",
         resetAll: "Redefinir tudo",

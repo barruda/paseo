@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import { formatShortcut } from "@/utils/format-shortcut";
 import {
+  additionalBindingIds,
   buildKeyboardShortcutHelpSections,
   buildEffectiveBindings,
   getBindingIdForAction,
   getDefaultKeysForAction,
   getWorkspaceIndexJumpModifierKey,
+  MAX_SHORTCUTS_PER_ACTION,
   parseBindingChord,
+  resolveAdditionalShortcutsForAction,
   resolveKeyboardShortcut,
   resolveShortcutKeysForAction,
   SHORTCUT_HELP_ROW_ORDER,
@@ -1379,5 +1382,85 @@ describe("task mode shortcuts", () => {
         buildEffectiveBindings({ "task-jump-index": UNASSIGNED_COMBO }),
       ),
     ).toBeNull();
+  });
+});
+
+// CUSTOM(shortcut-additional-bindings)
+describe("additional shortcuts", () => {
+  const TAB_NEW_BINDING = "workspace-tab-new-ctrl-t-non-mac";
+  const desktopNonMac = { isMac: false, isDesktop: true };
+  const ctrlT = { key: "t", code: "KeyT", ctrlKey: true };
+  const ctrlY = { key: "y", code: "KeyY", ctrlKey: true };
+
+  it("offers four extra slots beside the binding's own", () => {
+    expect(additionalBindingIds(TAB_NEW_BINDING)).toEqual([
+      `${TAB_NEW_BINDING}#2`,
+      `${TAB_NEW_BINDING}#3`,
+      `${TAB_NEW_BINDING}#4`,
+      `${TAB_NEW_BINDING}#5`,
+    ]);
+    expect(MAX_SHORTCUTS_PER_ACTION).toBe(5);
+  });
+
+  it("fires the action from the default and from an extra shortcut", () => {
+    const bindings = buildEffectiveBindings({ [`${TAB_NEW_BINDING}#2`]: "Ctrl+Y" });
+
+    const fromDefault = resolveShortcut({ event: ctrlT, context: desktopNonMac, bindings });
+    const fromExtra = resolveShortcut({ event: ctrlY, context: desktopNonMac, bindings });
+
+    expect(fromDefault.match?.action).toBe("workspace.tab.menu.open");
+    expect(fromExtra.match?.action).toBe("workspace.tab.menu.open");
+  });
+
+  it("keeps firing an extra shortcut after the first one is unassigned", () => {
+    const bindings = buildEffectiveBindings({
+      [TAB_NEW_BINDING]: UNASSIGNED_COMBO,
+      [`${TAB_NEW_BINDING}#3`]: "Ctrl+Y",
+    });
+
+    expect(resolveShortcut({ event: ctrlT, context: desktopNonMac, bindings }).match).toBeNull();
+    expect(resolveShortcut({ event: ctrlY, context: desktopNonMac, bindings }).match?.action).toBe(
+      "workspace.tab.menu.open",
+    );
+  });
+
+  it("ignores extra slots holding nothing usable", () => {
+    const base = buildEffectiveBindings({});
+    const bindings = buildEffectiveBindings({
+      [`${TAB_NEW_BINDING}#2`]: UNASSIGNED_COMBO,
+      [`${TAB_NEW_BINDING}#3`]: "",
+      [`${TAB_NEW_BINDING}#4`]: "Ctrl+",
+    });
+
+    expect(bindings).toHaveLength(base.length);
+  });
+
+  it("lists the extra shortcuts in slot order with their storage ids", () => {
+    expect(
+      resolveAdditionalShortcutsForAction(
+        "workspace-tab-new",
+        {
+          [`${TAB_NEW_BINDING}#4`]: "Ctrl+U",
+          [`${TAB_NEW_BINDING}#2`]: "Ctrl+Y",
+        },
+        desktopNonMac,
+      ),
+    ).toEqual([
+      { bindingId: `${TAB_NEW_BINDING}#2`, chord: [["ctrl", "Y"]] },
+      { bindingId: `${TAB_NEW_BINDING}#4`, chord: [["ctrl", "U"]] },
+    ]);
+  });
+
+  it("adds the extra shortcuts to the command's help row", () => {
+    const sections = buildKeyboardShortcutHelpSections(
+      desktopNonMac,
+      buildEffectiveBindings({ [`${TAB_NEW_BINDING}#2`]: "Ctrl+Y" }),
+    );
+    const row = sections
+      .flatMap((section) => section.rows)
+      .find((candidate) => candidate.id === "workspace-tab-new");
+
+    expect(row?.chord).toEqual([["ctrl", "T"]]);
+    expect(row?.additionalChords).toEqual([[["ctrl", "Y"]]]);
   });
 });

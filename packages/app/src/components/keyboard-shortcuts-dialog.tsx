@@ -77,10 +77,18 @@ export function KeyboardShortcutsDialog() {
                       <Text style={styles.rowNote}>{row.noteKey ? t(row.noteKey) : row.note}</Text>
                     ) : null}
                   </View>
-                  {row.chord === null ? (
+                  {row.chord === null && !row.additionalChords ? (
                     <Text style={styles.rowUnassigned}>{t("settings.shortcuts.unassigned")}</Text>
                   ) : (
-                    <Shortcut chord={row.chord} style={styles.rowShortcut} />
+                    // CUSTOM(shortcut-additional-bindings): list every shortcut of the command.
+                    <View style={styles.rowKeys}>
+                      {row.chord !== null && (
+                        <Shortcut chord={row.chord} style={styles.rowShortcut} />
+                      )}
+                      {row.additionalChords?.map((chord) => (
+                        <Shortcut key={chord.join(" ")} chord={chord} style={styles.rowShortcut} />
+                      ))}
+                    </View>
                   )}
                 </View>
               ))}
@@ -138,6 +146,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   rowShortcut: {
     alignSelf: "flex-start",
+  },
+  rowKeys: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: theme.spacing[1],
   },
   // Matches the settings row's unassigned label, so the two screens describe the
   // same state the same way.

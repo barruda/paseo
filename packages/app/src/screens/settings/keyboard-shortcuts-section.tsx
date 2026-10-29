@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, type PressableStateCallbackType } from "react-native";
 import { useIsFocused } from "@react-navigation/native";
-import { MoreHorizontal, Pencil, Undo2, X } from "lucide-react-native";
+import { MoreHorizontal, Pencil, Plus, Undo2, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
 import { settingsStyles } from "@/styles/settings";
@@ -19,11 +19,15 @@ import {
 import { Shortcut } from "@/components/ui/shortcut";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import {
+  additionalBindingIds,
   buildKeyboardShortcutHelpSections,
   buildEffectiveBindings,
   getBindingIdForAction,
   getDefaultKeysForAction,
+  resolveAdditionalShortcutsForAction,
   resolveShortcutKeysForAction,
+  UNASSIGNED_COMBO,
+  type AdditionalShortcut,
   type KeyboardShortcutHelpRow,
 } from "@/keyboard/keyboard-shortcuts";
 import {
@@ -31,7 +35,7 @@ import {
   heldModifiersFromEvent,
   keyboardEventToComboString,
 } from "@/keyboard/shortcut-string";
-import type { ShortcutKey } from "@/utils/format-shortcut";
+import { formatShortcut, type ShortcutKey } from "@/utils/format-shortcut";
 import { useKeyboardShortcutsStore } from "@/stores/keyboard-shortcuts-store";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import { getIsElectronRuntime } from "@/constants/layout";
@@ -39,9 +43,11 @@ import { isNative } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
 
 const EMPTY_CAPTURED_COMBOS: string[] = [];
+const EMPTY_ADDITIONAL_SHORTCUTS: AdditionalShortcut[] = [];
 
 const ThemedMoreHorizontal = withUnistyles(MoreHorizontal);
 const ThemedPencil = withUnistyles(Pencil);
+const ThemedPlus = withUnistyles(Plus);
 const ThemedUndo2 = withUnistyles(Undo2);
 const ThemedX = withUnistyles(X);
 
@@ -49,8 +55,15 @@ const foregroundColorMapping = (theme: Theme) => ({ color: theme.colors.foregrou
 const foregroundMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 const bindLeadingIcon = <ThemedPencil size={14} uniProps={foregroundMutedColorMapping} />;
+const bindAdditionalLeadingIcon = <ThemedPlus size={14} uniProps={foregroundMutedColorMapping} />;
 const clearLeadingIcon = <ThemedX size={14} uniProps={foregroundMutedColorMapping} />;
 const resetLeadingIcon = <ThemedUndo2 size={14} uniProps={foregroundMutedColorMapping} />;
+
+function withoutAdditionalShortcuts(
+  additionalShortcuts: AdditionalShortcut[],
+): Record<string, undefined> {
+  return Object.fromEntries(additionalShortcuts.map((shortcut) => [shortcut.bindingId, undefined]));
+}
 
 function ShortcutSequence({
   chord,
@@ -79,22 +92,25 @@ interface ShortcutRowContainerProps {
   row: KeyboardShortcutHelpRow;
   bindingId: string | null;
   displayChord: ShortcutKey[][] | null;
+  additionalShortcuts: AdditionalShortcut[];
   hasOverride: boolean;
   hasDefault: boolean;
   isCapturing: boolean;
   capturedCombos: string[];
   heldModifiers: string | null;
-  onStartCapture: (bindingId: string) => void;
+  onStartCapture: (bindingId: string, targetBindingId: string) => void;
   onSaveCapture: () => void;
   onCancelCapture: () => void;
-  onClearOverride: (bindingId: string) => void;
-  onRemoveOverride: (bindingId: string) => void;
+  onClearOverride: (bindingId: string, additionalShortcuts: AdditionalShortcut[]) => void;
+  onRemoveOverride: (bindingId: string, additionalShortcuts: AdditionalShortcut[]) => void;
+  onRemoveAdditional: (additionalBindingId: string) => void;
 }
 
 function ShortcutRowContainer({
   row,
   bindingId,
   displayChord,
+  additionalShortcuts,
   hasOverride,
   hasDefault,
   isCapturing,
@@ -105,45 +121,63 @@ function ShortcutRowContainer({
   onCancelCapture,
   onClearOverride,
   onRemoveOverride,
+  onRemoveAdditional,
 }: ShortcutRowContainerProps) {
   const handleRebind = useCallback(() => {
-    if (bindingId) onStartCapture(bindingId);
+    if (bindingId) onStartCapture(bindingId, bindingId);
   }, [bindingId, onStartCapture]);
 
+  // The first free slot, so removing a middle shortcut leaves room for the next one.
+  const nextAdditionalBindingId = useMemo(() => {
+    if (!bindingId) return null;
+    const taken = new Set(additionalShortcuts.map((shortcut) => shortcut.bindingId));
+    return additionalBindingIds(bindingId).find((id) => !taken.has(id)) ?? null;
+  }, [bindingId, additionalShortcuts]);
+
+  const handleBindAdditional = useCallback(() => {
+    if (bindingId && nextAdditionalBindingId) onStartCapture(bindingId, nextAdditionalBindingId);
+  }, [bindingId, nextAdditionalBindingId, onStartCapture]);
+
   const handleClear = useCallback(() => {
-    if (bindingId) onClearOverride(bindingId);
-  }, [bindingId, onClearOverride]);
+    if (bindingId) onClearOverride(bindingId, additionalShortcuts);
+  }, [bindingId, additionalShortcuts, onClearOverride]);
 
   const handleReset = useCallback(() => {
-    if (bindingId) onRemoveOverride(bindingId);
-  }, [bindingId, onRemoveOverride]);
+    if (bindingId) onRemoveOverride(bindingId, additionalShortcuts);
+  }, [bindingId, additionalShortcuts, onRemoveOverride]);
 
   return (
     <ShortcutRow
       row={row}
       bindingId={bindingId}
       displayChord={displayChord}
+      additionalShortcuts={additionalShortcuts}
+      canBindAdditional={nextAdditionalBindingId !== null}
       hasOverride={hasOverride}
       hasDefault={hasDefault}
       isCapturing={isCapturing}
       capturedCombos={capturedCombos}
       heldModifiers={heldModifiers}
       onRebind={handleRebind}
+      onBindAdditional={handleBindAdditional}
       onDone={onSaveCapture}
       onCancel={onCancelCapture}
       onClear={handleClear}
       onReset={handleReset}
+      onRemoveAdditional={onRemoveAdditional}
     />
   );
 }
 
 function ShortcutRowKeys({
   displayChord,
+  additionalShortcuts,
   isCapturing,
   capturedCombos,
   heldModifiers,
 }: {
   displayChord: ShortcutKey[][] | null;
+  additionalShortcuts: AdditionalShortcut[];
   isCapturing: boolean;
   capturedCombos: string[];
   heldModifiers: string | null;
@@ -153,28 +187,72 @@ function ShortcutRowKeys({
   if (isCapturing) {
     return <ShortcutSequence chord={capturedCombos} heldModifiers={heldModifiers} />;
   }
-  if (displayChord === null) {
+  if (displayChord === null && additionalShortcuts.length === 0) {
     return <Text style={styles.unassignedText}>{t("settings.shortcuts.unassigned")}</Text>;
   }
-  return <Shortcut chord={displayChord} />;
+  // CUSTOM(shortcut-additional-bindings): every shortcut of the command, primary first.
+  return (
+    <View style={styles.keysList}>
+      {displayChord !== null && <Shortcut chord={displayChord} />}
+      {additionalShortcuts.map((shortcut) => (
+        <Shortcut key={shortcut.bindingId} chord={shortcut.chord} />
+      ))}
+    </View>
+  );
+}
+
+function RemoveAdditionalItem({
+  rowId,
+  index,
+  shortcut,
+  onRemove,
+}: {
+  rowId: string;
+  index: number;
+  shortcut: AdditionalShortcut;
+  onRemove: (additionalBindingId: string) => void;
+}) {
+  const { t } = useTranslation();
+  const shortcutOs = getShortcutOs();
+  const handleSelect = useCallback(() => onRemove(shortcut.bindingId), [onRemove, shortcut]);
+
+  return (
+    <DropdownMenuItem
+      leading={clearLeadingIcon}
+      onSelect={handleSelect}
+      testID={`shortcut-remove-additional-${rowId}-${index}`}
+    >
+      {t("settings.shortcuts.actions.removeKeys", {
+        keys: shortcut.chord.map((combo) => formatShortcut(combo, shortcutOs)).join(" "),
+      })}
+    </DropdownMenuItem>
+  );
 }
 
 function ShortcutActionsMenu({
   row,
   bindLabel,
+  showBindAdditional,
+  additionalShortcuts,
   showClear,
   showReset,
   onRebind,
+  onBindAdditional,
   onClear,
   onReset,
+  onRemoveAdditional,
 }: {
   row: KeyboardShortcutHelpRow;
   bindLabel: "bind" | "rebind";
+  showBindAdditional: boolean;
+  additionalShortcuts: AdditionalShortcut[];
   showClear: boolean;
   showReset: boolean;
   onRebind: () => void;
+  onBindAdditional: () => void;
   onClear: () => void;
   onReset: () => void;
+  onRemoveAdditional: (additionalBindingId: string) => void;
 }) {
   const { t } = useTranslation();
   const triggerStyle = useCallback(
@@ -214,6 +292,24 @@ function ShortcutActionsMenu({
         >
           {t(`settings.shortcuts.actions.${bindLabel}`)}
         </DropdownMenuItem>
+        {showBindAdditional && (
+          <DropdownMenuItem
+            leading={bindAdditionalLeadingIcon}
+            onSelect={onBindAdditional}
+            testID={`shortcut-bind-additional-${row.id}`}
+          >
+            {t("settings.shortcuts.actions.bindAdditional")}
+          </DropdownMenuItem>
+        )}
+        {additionalShortcuts.map((shortcut, index) => (
+          <RemoveAdditionalItem
+            key={shortcut.bindingId}
+            rowId={row.id}
+            index={index}
+            shortcut={shortcut}
+            onRemove={onRemoveAdditional}
+          />
+        ))}
         {showClear && (
           <DropdownMenuItem
             leading={clearLeadingIcon}
@@ -241,41 +337,53 @@ function ShortcutRow({
   row,
   bindingId,
   displayChord,
+  additionalShortcuts,
+  canBindAdditional,
   hasOverride,
   hasDefault,
   isCapturing,
   capturedCombos,
   heldModifiers,
   onRebind,
+  onBindAdditional,
   onDone,
   onCancel,
   onClear,
   onReset,
+  onRemoveAdditional,
 }: {
   row: KeyboardShortcutHelpRow;
   bindingId: string | null;
   displayChord: ShortcutKey[][] | null;
+  additionalShortcuts: AdditionalShortcut[];
+  canBindAdditional: boolean;
   hasOverride: boolean;
   hasDefault: boolean;
   isCapturing: boolean;
   capturedCombos: string[];
   heldModifiers: string | null;
   onRebind: () => void;
+  onBindAdditional: () => void;
   onDone: () => void;
   onCancel: () => void;
   onClear: () => void;
   onReset: () => void;
+  onRemoveAdditional: (additionalBindingId: string) => void;
 }) {
   const { t } = useTranslation();
   const rowStyle = useMemo(() => [styles.row, isCapturing && styles.rowCapturing], [isCapturing]);
 
   const isBindable = bindingId !== null;
   const showDone = isCapturing && capturedCombos.length > 0;
-  const showClear = displayChord !== null;
+  const hasAdditional = additionalShortcuts.length > 0;
+  const showClear = displayChord !== null || hasAdditional;
   // Reset restores the default, so it is only meaningful when there is a
   // default to restore. A binding that ships without one would otherwise show a
   // Reset that lands on the same "Not set" state Clear already produced.
-  const showReset = hasOverride && hasDefault;
+  // CUSTOM(shortcut-additional-bindings): Reset also drops the extra shortcuts.
+  const showReset = (hasOverride && hasDefault) || hasAdditional;
+  // An extra shortcut sits beside a first one; with nothing bound, Bind fills the first.
+  const showBindAdditional = displayChord !== null && canBindAdditional;
   // Nothing is bound in the unassigned state, so there is nothing to *re*-bind.
   const bindLabel = displayChord === null ? "bind" : "rebind";
 
@@ -286,6 +394,7 @@ function ShortcutRow({
         <View style={styles.rowKeys}>
           <ShortcutRowKeys
             displayChord={displayChord}
+            additionalShortcuts={additionalShortcuts}
             isCapturing={isCapturing}
             capturedCombos={capturedCombos}
             heldModifiers={heldModifiers}
@@ -312,11 +421,15 @@ function ShortcutRow({
               <ShortcutActionsMenu
                 row={row}
                 bindLabel={bindLabel}
+                showBindAdditional={showBindAdditional}
+                additionalShortcuts={additionalShortcuts}
                 showClear={showClear}
                 showReset={showReset}
                 onRebind={onRebind}
+                onBindAdditional={onBindAdditional}
                 onClear={onClear}
                 onReset={onReset}
+                onRemoveAdditional={onRemoveAdditional}
               />
             )}
           </View>
@@ -331,9 +444,12 @@ export function KeyboardShortcutsSection() {
   // CUSTOM(shortcut-settings-search): keep editing controls available in the filtered list.
   const [query, setQuery] = useState("");
   const [capturingBindingId, setCapturingBindingId] = useState<string | null>(null);
+  // CUSTOM(shortcut-additional-bindings): where the capture is saved: the row's binding id, or
+  // one of its extra slots.
+  const [captureTargetId, setCaptureTargetId] = useState<string | null>(null);
   const [capturedCombos, setCapturedCombos] = useState<string[]>([]);
   const [heldModifiers, setHeldModifiers] = useState<string | null>(null);
-  const { overrides, hasOverrides, setOverride, clearOverride, removeOverride, resetAll } =
+  const { overrides, hasOverrides, setOverride, removeOverride, applyOverrides, resetAll } =
     useKeyboardShortcutOverrides();
   const setCapturingShortcut = useKeyboardShortcutsStore((s) => s.setCapturingShortcut);
   const capturing = useKeyboardShortcutsStore((s) => s.capturingShortcut);
@@ -359,26 +475,28 @@ export function KeyboardShortcutsSection() {
     setCapturedCombos([]);
     setHeldModifiers(null);
     setCapturingBindingId(null);
+    setCaptureTargetId(null);
     setCapturingShortcut(false);
   }, [setCapturingShortcut]);
 
   const startCapture = useCallback(
-    (bindingId: string) => {
+    (bindingId: string, targetBindingId: string) => {
       setCapturedCombos([]);
       setHeldModifiers(null);
       setCapturingBindingId(bindingId);
+      setCaptureTargetId(targetBindingId);
       setCapturingShortcut(true);
     },
     [setCapturingShortcut],
   );
 
   const saveCapture = useCallback(() => {
-    if (capturingBindingId === null || capturedCombos.length === 0) {
+    if (captureTargetId === null || capturedCombos.length === 0) {
       return;
     }
-    void setOverride(capturingBindingId, capturedCombos.join(" "));
+    void setOverride(captureTargetId, capturedCombos.join(" "));
     cancelCapture();
-  }, [capturingBindingId, capturedCombos, setOverride, cancelCapture]);
+  }, [captureTargetId, capturedCombos, setOverride, cancelCapture]);
 
   useEffect(() => {
     if (!isFocused && capturingBindingId !== null) {
@@ -434,11 +552,23 @@ export function KeyboardShortcutsSection() {
 
   const handleResetAll = useCallback(() => void resetAll(), [resetAll]);
   const handleClearOverride = useCallback(
-    (bindingId: string) => void clearOverride(bindingId),
-    [clearOverride],
+    (bindingId: string, additionalShortcuts: AdditionalShortcut[]) =>
+      void applyOverrides({
+        [bindingId]: UNASSIGNED_COMBO,
+        ...withoutAdditionalShortcuts(additionalShortcuts),
+      }),
+    [applyOverrides],
   );
   const handleRemoveOverride = useCallback(
-    (bindingId: string) => void removeOverride(bindingId),
+    (bindingId: string, additionalShortcuts: AdditionalShortcut[]) =>
+      void applyOverrides({
+        [bindingId]: undefined,
+        ...withoutAdditionalShortcuts(additionalShortcuts),
+      }),
+    [applyOverrides],
+  );
+  const handleRemoveAdditional = useCallback(
+    (additionalBindingId: string) => void removeOverride(additionalBindingId),
     [removeOverride],
   );
 
@@ -482,6 +612,11 @@ export function KeyboardShortcutsSection() {
                 const platform = { isMac, isDesktop: isDesktopApp };
                 const bindingId = getBindingIdForAction(row.id, platform);
                 const displayChord = resolveShortcutKeysForAction(row.id, overrides, platform);
+                const additionalShortcuts = resolveAdditionalShortcutsForAction(
+                  row.id,
+                  overrides,
+                  platform,
+                );
                 // `in`, not a truthiness check: an unassigned shortcut stores
                 // null, and Reset has to stay available to undo it.
                 const hasOverride = bindingId !== null && bindingId in overrides;
@@ -494,6 +629,11 @@ export function KeyboardShortcutsSection() {
                       row={row}
                       bindingId={bindingId}
                       displayChord={displayChord}
+                      additionalShortcuts={
+                        additionalShortcuts.length > 0
+                          ? additionalShortcuts
+                          : EMPTY_ADDITIONAL_SHORTCUTS
+                      }
                       hasOverride={hasOverride}
                       hasDefault={hasDefault}
                       isCapturing={capturingBindingId === bindingId}
@@ -506,6 +646,7 @@ export function KeyboardShortcutsSection() {
                       onCancelCapture={cancelCapture}
                       onClearOverride={handleClearOverride}
                       onRemoveOverride={handleRemoveOverride}
+                      onRemoveAdditional={handleRemoveAdditional}
                     />
                     {index < section.rows.length - 1 && <View style={styles.separator} />}
                   </View>
@@ -548,6 +689,12 @@ const styles = StyleSheet.create((theme) => ({
   },
   rowKeys: {
     alignItems: "flex-end",
+  },
+  keysList: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    justifyContent: "flex-end",
+    gap: theme.spacing[1],
   },
   menuSlot: {
     width: 32,

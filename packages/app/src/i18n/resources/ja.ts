@@ -2352,6 +2352,8 @@ export const ja: TranslationResources = {
         cancel: "キャンセル",
         bind: "割り当て",
         rebind: "再割り当て",
+        bindAdditional: "ショートカットを追加",
+        removeKeys: "{{keys}} を削除",
         clear: "クリア",
         reset: "デフォルトに戻す",
         resetAll: "すべてリセット",

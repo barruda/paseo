@@ -89,6 +89,18 @@ describe("createShortcutOverrideStore", () => {
     expect(h.errors).toEqual([]);
   });
 
+  // CUSTOM(shortcut-additional-bindings)
+  it("applies several changes in one write", async () => {
+    const h = createHarness({
+      seed: { "new-workspace": "Mod+Shift+N", "new-workspace#2": "Mod+Y" },
+    });
+
+    await h.store.apply({ "new-workspace": null, "new-workspace#2": undefined });
+
+    expect(h.persisted()).toEqual({ "new-workspace": null });
+    expect(h.events.filter((event) => event.startsWith("write"))).toHaveLength(1);
+  });
+
   it("distinguishes unassigned from absent", async () => {
     const h = createHarness();
 
