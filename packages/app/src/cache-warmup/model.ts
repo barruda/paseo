@@ -2,6 +2,9 @@
 // session left idle loses it, and the next message pays to write the whole context again. A short
 // message just before the hour runs out keeps it.
 
+import { CACHE_WARMUP_MESSAGE, isCacheWarmupMessage } from "@getpaseo/protocol/cache-warmup";
+import type { StreamItem } from "@/types/stream";
+
 /** The prompt cache lasts this long after the last request. */
 export const CACHE_TTL_MS = 60 * 60_000;
 /** Ping this long after the last activity, before the cache runs out. */
@@ -9,10 +12,7 @@ export const WARM_AFTER_MS = 57 * 60_000;
 /** Smaller sessions are cheap to rebuild and not worth a ping. */
 export const MIN_CONTEXT_TOKENS = 100_000;
 export const CACHE_WARMUP_PROVIDER = "claude";
-export const CACHE_WARMUP_MESSAGE =
-  "Keep-alive ping to keep the prompt cache warm. Reply with just: pong";
-
-import type { StreamItem } from "@/types/stream";
+export { CACHE_WARMUP_MESSAGE };
 
 export interface CacheWarmupCandidate {
   serverId: string;
@@ -94,7 +94,7 @@ export function describeCacheWarmup(input: {
 }
 
 function isCacheWarmupPing(item: StreamItem): boolean {
-  return item.kind === "user_message" && item.text.trim() === CACHE_WARMUP_MESSAGE;
+  return item.kind === "user_message" && isCacheWarmupMessage(item.text);
 }
 
 function dropPingTurns(

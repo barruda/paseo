@@ -160,6 +160,15 @@ export class InMemoryAgentTimelineStore {
     return row?.item.type === "assistant_message" ? row.item.text : null;
   }
 
+  // CUSTOM(cache-warmup): lets the agent manager see which prompt the turn that just ended ran.
+  getLastUserMessage(agentId: string): string | null {
+    const row = this.states
+      .get(agentId)
+      ?.projection.getRows()
+      .findLast((candidate) => candidate.item.type === "user_message");
+    return row?.item.type === "user_message" ? row.item.text : null;
+  }
+
   private requireState(agentId: string): AgentTimelineState {
     const state = this.states.get(agentId);
     if (!state) {

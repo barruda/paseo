@@ -3447,10 +3447,12 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Added:** 2026-10-28 (based on upstream v0.13.0, `7f9b65d46`)
 - **Commit:** `custom: keep the prompt cache of big idle Claude sessions warm`, then
   `custom: hide cache keep-alive pings and add a toggle for them`,
-  `custom: cache keep-alive counts from the last turn, not agent activity`
+  `custom: cache keep-alive counts from the last turn, not agent activity`,
+  `custom: a cache keep-alive ping no longer notifies`
 - **Why:** Anthropic's prompt cache lives an hour after its last use. A session over 100k tokens
   left idle loses it, and the next message pays to write the whole context again. The pings and
-  their "pong" replies cluttered the chat, and some sessions are not worth keeping warm.
+  their "pong" replies cluttered the chat and raised an "Agent finished / pong" OS notification,
+  and some sessions are not worth keeping warm.
 - **What:** Every 30 s the app looks for Claude sessions that are idle, over 100k context tokens
   (the composer's context meter), open in a tab of any workspace or Desk, and whose cache was last
   used 57 to 60 minutes ago. Cache use is the later of the agent's last user message and the last
@@ -3462,18 +3464,23 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   days from being pinged. A session stays warm for as long as its tab stays open, with one ping
   every 57 minutes. Another window or device showing the same agent sees its activity move after
   the first ping and skips it. Only the app pings, so with every Paseo window closed nothing does.
-  The chat hides each ping and everything after it up to the next user message. A flame toggle
+  The chat hides each ping and everything after it up to the next user message. The daemon
+  doesn't count a ping's turn as finished: no OS or push notification, and the agent isn't marked
+  unread. A flame toggle
   after the Ctrl+M chip in a Claude session's composer turns pings off for that session (on by
   default, saved per session in app storage). On, the flame is filled in a muted red; off, it is a
   gray outline. Its tooltip says whether it is on and how many minutes until the cache goes cold.
 - **Files:** `packages/app/src/cache-warmup/` (`model.ts` the rule, the tooltip text and the chat
   filter, `cache-warmup.tsx` the timer, `store.ts` the sessions turned off, `toggle.tsx` the
-  toggle).
+  toggle); `packages/protocol/src/cache-warmup.ts` (the ping text, shared with the daemon).
 - **Core files touched:** `app/_layout.tsx` renders `<CacheWarmup />` in `ProvidersWrapper`;
   `agent-stream/view.tsx` runs `hideCacheWarmupTurns` on the stream tail and head before
   `useRetainedValue`; `composer/agent-controls/index.tsx` passes `cacheWarmupAgentId` from
   `AgentControls` to `ControlledAgentControls`, which renders `<CacheWarmupToggle>` after
-  `ModelPickerShortcutChip` (all marked `CUSTOM(cache-warmup)`).
+  `ModelPickerShortcutChip`; server `agent/agent-manager.ts` `checkAndSetAttention` returns
+  before setting "finished" attention when the turn's last user message is the ping, read with
+  `getLastUserMessage` added to `agent/agent-timeline-store.ts` (all marked
+  `CUSTOM(cache-warmup)`).
 - **Re-apply:** Mount a root component that records in `useCacheWarmupStore.lastTurnSeenAt` when an
   agent's status goes into or out of `running` (a `useSessionStore.subscribe`), and every 30 s reads
   the session store (agent status, `lastUsage.contextWindowUsedTokens`, `cacheLastUsedAt` of
@@ -3481,10 +3488,12 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   and the Desks, and sends `client.sendAgentMessage` to what `pickAgentsToWarm`
   returns, skipping the keys in `useCacheWarmupStore`. Filter the items the agent stream view
   renders through `hideCacheWarmupTurns`, and render `CacheWarmupToggle` at the end of the
-  composer's agent control row.
-- **Verify:** `cache-warmup/model.test.ts` is in the update script. By hand: leave a Claude session
+  composer's agent control row. In the daemon's running-to-idle "finished" branch, skip attention
+  when the last user message in the timeline is the ping.
+- **Verify:** `cache-warmup/model.test.ts` and the server's
+  `agent-manager.test.ts -t "keep-alive ping"` are in the update script. By hand: leave a Claude session
   over 100k tokens idle with its tab open; 57 minutes later the session's activity moves but no
-  ping or "pong" shows in the chat. Close Paseo with such a tab open and reopen it more than an
+  ping or "pong" shows in the chat and no "Agent finished" notification appears. Close Paseo with such a tab open and reopen it more than an
   hour later: the flame's tooltip says "Cache is cold" and the session is never pinged. Hover the flame: "Cold in N min". Click it: the flame turns
   to a gray outline and that session is no longer pinged.
 

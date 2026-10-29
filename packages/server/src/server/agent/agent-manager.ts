@@ -18,6 +18,7 @@ import {
 } from "@getpaseo/protocol/agent-labels";
 import type { Logger } from "pino";
 import type { ToolPolicy } from "@getpaseo/protocol/agent-types";
+import { isCacheWarmupMessage } from "@getpaseo/protocol/cache-warmup";
 import type { AgentStatusSummaryPayload } from "@getpaseo/protocol/messages";
 import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-config";
 import { z } from "zod";
@@ -5017,6 +5018,12 @@ export class AgentManager {
       // CUSTOM(monitor-quiet-finish): a turn that ends waiting on a Monitor or a background
       // subagent is not finished; the turn that ends once it settles is.
       if (agent.session.hasPendingWakeWork?.()) {
+        return;
+      }
+      // CUSTOM(cache-warmup): the app's keep-alive ping is not work the user waits on; its "pong"
+      // must not raise a notification or mark the agent unread.
+      const lastUserMessage = this.timelineStore.getLastUserMessage(agent.id);
+      if (lastUserMessage !== null && isCacheWarmupMessage(lastUserMessage)) {
         return;
       }
       agent.attention = {

@@ -22,6 +22,7 @@ import { AgentStorage } from "./agent-storage.js";
 import { InMemoryAgentTimelineStore } from "./agent-timeline-store.js";
 import { toAgentPayload } from "./agent-projections.js";
 import { projectTimelineRows } from "./timeline-projection.js";
+import { CACHE_WARMUP_MESSAGE } from "@getpaseo/protocol/cache-warmup";
 import { getOpenAgentTabLabel, PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import { startAgentRun } from "./agent-prompt.js";
 import { StaleProviderSessionError } from "./stale-provider-session-error.js";
@@ -8178,6 +8179,34 @@ test("a turn that ends waiting on a Monitor does not count as finished", async (
 
   pendingWakeWork = false;
   await manager.runAgent(agent.id, "the import finished");
+  expect(attentionReasons).toEqual(["finished"]);
+});
+
+// CUSTOM(cache-warmup)
+test("a cache keep-alive ping's turn does not count as finished", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const attentionReasons: string[] = [];
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000114",
+    onAgentAttention: ({ reason }) => {
+      attentionReasons.push(reason);
+    },
+  });
+  const agent = await manager.createAgent(
+    { provider: "codex", cwd: workdir, title: "Warm agent" },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await manager.runAgent(agent.id, CACHE_WARMUP_MESSAGE, { clientMessageId: "ping-client" });
+  expect(attentionReasons).toEqual([]);
+  expect(manager.getAgent(agent.id)?.attention.requiresAttention).toBe(false);
+
+  await manager.runAgent(agent.id, "real work", { clientMessageId: "work-client" });
   expect(attentionReasons).toEqual(["finished"]);
 });
 
