@@ -37,6 +37,11 @@ export interface PluginButton<Text extends PluginText = string> {
   visible?: boolean;
   disabled?: boolean;
   behavior: PluginButtonBehavior<Text>;
+  /**
+   * CUSTOM(pill-chevron): composer pills only. A chevron at the pill's right edge mounts `Content`
+   * until it calls `close()`; render a `Modal` from it.
+   */
+  chevron?: { title: Text; Content: ComponentType<PluginButtonContentProps> };
 }
 export interface PluginButtonRegistration<Text extends PluginText = string> {
   /** Updates presentation in place. Supply a complete behavior to replace it. */

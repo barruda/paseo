@@ -96,13 +96,28 @@ export type ResolvedPluginButtonMenuEntry =
       disabled?: boolean;
       behavior: ResolvedPluginButtonBehavior;
     };
-export type ResolvedPluginButton = Omit<PluginButton, "title" | "label" | "behavior"> & {
+export type ResolvedPluginButton = Omit<
+  PluginButton,
+  "title" | "label" | "behavior" | "chevron"
+> & {
   title: string;
   visible: boolean;
   disabled: boolean;
   label: string | undefined;
   behavior: ResolvedPluginButtonBehavior;
+  chevron: { title: string; Content: PluginButtonChevron["Content"] } | undefined;
 };
+type PluginButtonChevron = NonNullable<PluginButton["chevron"]>;
+
+// CUSTOM(pill-chevron)
+function validateChevron(
+  chevron: PluginButtonChevron | undefined,
+  resolve: (text: PluginText) => string,
+): ResolvedPluginButton["chevron"] {
+  if (chevron === undefined) return undefined;
+  if (!isComponent(chevron.Content)) throw new Error("Plugin button chevron needs Content");
+  return { title: requireText(chevron.title, "chevron title", resolve), Content: chevron.Content };
+}
 
 export function validateButton(
   button: PluginButton,
@@ -117,5 +132,6 @@ export function validateButton(
     visible: optionalBoolean(button.visible, true),
     disabled: optionalBoolean(button.disabled, false),
     behavior: validateBehavior(button.behavior, validation, resolve),
+    chevron: validateChevron(button.chevron, resolve),
   };
 }

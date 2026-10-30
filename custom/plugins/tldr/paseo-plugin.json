@@ -1,5 +1,5 @@
 {
   "id": "tldr",
-  "description": "A TLDR pill in the composer that sends \"TLDR\" to the agent.",
+  "description": "A TLDR pill and /tldr command that send a saved message (default \"TLDR\") to the agent; the pill's chevron edits it.",
   "requirements": { "paseo": ">=0.11.0" }
 }

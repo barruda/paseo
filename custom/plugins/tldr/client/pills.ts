@@ -1,5 +1,7 @@
 import type { PluginButtonRegistration, PluginClientContext } from "@getpaseo/plugin/client";
-import { TLDR_PROMPT, type TldrAgent, tldrPillWorkspace } from "../shared/tldr";
+import { type TldrAgent, tldrPillWorkspace } from "../shared/tldr";
+import { sendTldr } from "./prompt";
+import { TldrPromptModal } from "./prompt-modal";
 
 const PAGE_LIMIT = 200;
 
@@ -26,15 +28,14 @@ export function contributeTldrPills(client: PluginClientContext): () => void {
       workspaceId,
       agentId,
       button: {
-        title: "Ask the agent for a TLDR",
+        title: "Send the TLDR message to the agent",
         label: "TLDR",
         icon: "ScrollText",
         behavior: {
           kind: "action",
-          onPress: async () => {
-            await client.paseo.agents.ref(agentId).send(TLDR_PROMPT);
-          },
+          onPress: () => sendTldr(client, agentId),
         },
+        chevron: { title: "Edit the TLDR message", Content: TldrPromptModal },
       },
     });
     pills.set(agentId, { workspaceId, handle });

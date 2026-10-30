@@ -1,4 +1,5 @@
 import type {
+  ResolvedPluginButton,
   ResolvedPluginButtonBehavior as PluginButtonBehavior,
   ResolvedPluginButtonMenuEntry as PluginButtonMenuEntry,
 } from "./validation";
@@ -7,6 +8,7 @@ import type { PluginTheme } from "@getpaseo/plugin";
 import {
   useCallback,
   useMemo,
+  useState,
   useSyncExternalStore,
   type ReactElement,
   type ReactNode,
@@ -31,7 +33,7 @@ import {
   iconButtonChromeStyle,
   type IconButtonChromeState,
 } from "@/components/ui/icon-button-chrome";
-import { composerPillStyles } from "@/composer/pill-styles";
+import { COMPOSER_PILL_MIN_HEIGHT, composerPillStyles } from "@/composer/pill-styles";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
@@ -245,6 +247,8 @@ function ButtonControl({ view }: { view: ButtonView }) {
   const { entry, props } = view;
   const { button } = entry;
   const composer = entry.placement === "composer";
+  // CUSTOM(pill-chevron): the pill's border wraps both halves, so the action half drops its own.
+  const chevronAction = composer ? button.chevron : undefined;
   const disabled = button.disabled || entry.pending;
   const expanded = button.behavior.kind !== "action";
   const chevron = !composer && !props.layout.compact && expanded;
@@ -260,13 +264,13 @@ function ButtonControl({ view }: { view: ButtonView }) {
     ({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) =>
       composer
         ? [
-            composerPillStyles.body,
+            chevronAction ? styles.splitAction : composerPillStyles.body,
             styles.button,
             (hovered || pressed || entry.open) && styles.active,
             disabled && styles.disabled,
           ]
         : headerButtonStyle(props.layout.compact, { hovered, pressed, open: entry.open }, disabled),
-    [composer, disabled, entry.open, props.layout.compact],
+    [chevronAction, composer, disabled, entry.open, props.layout.compact],
   );
   const contents = (
     <>
@@ -322,7 +326,7 @@ function ButtonControl({ view }: { view: ButtonView }) {
       )),
     [view, entry.key, button.behavior],
   );
-  return (
+  const control = (
     <MenuRoot compactMode="sheet" open={entry.open} onOpenChange={setOpen}>
       <Tooltip enabledOnMobile={false}>
         <TooltipTrigger asChild>{trigger}</TooltipTrigger>
@@ -342,6 +346,57 @@ function ButtonControl({ view }: { view: ButtonView }) {
         </PluginPopoverSurface>
       ) : null}
     </MenuRoot>
+  );
+  if (!chevronAction) return control;
+  return (
+    <View style={styles.splitPill}>
+      {control}
+      <ButtonChevron view={view} chevron={chevronAction} />
+    </View>
+  );
+}
+
+type ButtonChevronAction = NonNullable<ResolvedPluginButton["chevron"]>;
+
+/** CUSTOM(pill-chevron): the chevron half of a split pill. Its content stays mounted until it closes. */
+function ButtonChevron({ view, chevron }: { view: ButtonView; chevron: ButtonChevronAction }) {
+  const [open, setOpen] = useState(false);
+  const show = useCallback(() => setOpen(true), []);
+  const close = useCallback(() => setOpen(false), []);
+  const style = useCallback(
+    ({ hovered, pressed }: { hovered?: boolean; pressed: boolean }) => [
+      styles.splitChevron,
+      (hovered || pressed || open) && styles.active,
+    ],
+    [open],
+  );
+  const Content = chevron.Content;
+  return (
+    <>
+      <Tooltip enabledOnMobile={false}>
+        <TooltipTrigger asChild>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={chevron.title}
+            onPress={show}
+            style={style}
+            testID="plugin-button-split-chevron"
+          >
+            <ChevronDown size={14} color={view.props.theme.colors.foregroundMuted} />
+          </Pressable>
+        </TooltipTrigger>
+        <TooltipContent>
+          <Text style={styles.tooltipLabel}>{chevron.title}</Text>
+        </TooltipContent>
+      </Tooltip>
+      {open ? (
+        <SurfaceErrorBoundary installation={view.entry.installation} Surface={Content}>
+          <ButtonEnvironment view={view}>
+            <Content {...view.props} close={close} />
+          </ButtonEnvironment>
+        </SurfaceErrorBoundary>
+      ) : null}
+    </>
   );
 }
 
@@ -682,6 +737,32 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.borderAccent,
   },
   button: { flexShrink: 1, minWidth: 0, maxWidth: 160 },
+  // CUSTOM(pill-chevron)
+  splitPill: {
+    flexDirection: "row",
+    alignItems: "stretch",
+    minHeight: COMPOSER_PILL_MIN_HEIGHT,
+    borderRadius: theme.borderRadius["2xl"],
+    borderWidth: theme.borderWidth[1],
+    borderColor: theme.colors.borderAccent,
+    backgroundColor: theme.colors.surface1,
+    overflow: "hidden",
+  },
+  splitAction: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    paddingLeft: theme.spacing[3],
+    paddingRight: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+  },
+  splitChevron: {
+    justifyContent: "center",
+    paddingLeft: theme.spacing[1],
+    paddingRight: theme.spacing[2],
+    borderLeftWidth: theme.borderWidth[1],
+    borderLeftColor: theme.colors.borderAccent,
+  },
   active: { backgroundColor: theme.colors.surface2 },
   disabled: { opacity: theme.opacity[50] },
   tooltipLabel: { fontSize: theme.fontSize.sm, color: theme.colors.foreground },

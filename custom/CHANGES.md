@@ -2090,9 +2090,10 @@ status` and `!ls`, type `!g` + Up: `git status` shows. Type `!cat packages/ap` +
 - **Why:** Agents often answer with two pages. One click asks for the short version without typing
   it.
 - **What:** Each open agent's composer gets a **TLDR** pill, after the other plugin pills. Clicking
-  it sends `TLDR` to the agent as a normal message (`paseo.agents.ref(id).send`), so the agent
-  answers in the chat with its full context. While a turn runs, it behaves like any message sent
-  then.
+  it sends the saved message (`TLDR` until you change it, see
+  [tldr-prompt](#tldr-prompt-the-tldr-pills-chevron-edits-its-message-tldr-sends-it)) to the agent
+  as a normal message (`paseo.agents.ref(id).send`), so the agent answers in the chat with its full
+  context. While a turn runs, it behaves like any message sent then.
 - **Files:** `custom/plugins/tldr/` (client only: `client/pills.ts`; the server entry is empty). No
   conflict risk.
 - **Core files touched:** none.
@@ -3797,3 +3798,43 @@ waiting` tests in `agent-manager.test.ts`.
 - **Verify:** `(cd packages/app && npx vitest run src/agent-stream/chat-links/model.test.ts)` (the
   update script runs it). In the app, ask an agent to reply with a URL, a file path in backticks
   and a folder path, then hover and click the rows at the bottom right.
+
+## tldr-prompt: the TLDR pill's chevron edits its message; `/tldr` sends it
+
+- **Added:** 2026-10-30 (upstream 0.14.0)
+- **Commit:** `custom: the TLDR pill's chevron edits the message it sends; /tldr sends it too`
+- **Why:** `TLDR` alone gets a different shape of answer each time. A saved message ("TLDR in 3
+  bullets, in Portuguese") gets the same one, and `/tldr` sends it without leaving the keyboard.
+- **What:**
+  - The TLDR pill is split: the left half sends, a chevron on the right opens the **TLDR message**
+    modal (multi-line text, **Use default**, Cancel, Save).
+  - The message lives in the plugin's host settings (`tldrSettings` in
+    `custom/plugins/tldr/shared/tldr.ts`, id `prompt`), so each daemon keeps its own and it
+    survives reopening the app and restarting the daemon. Empty is rejected; nothing saved means
+    `TLDR`.
+  - `/tldr` in an agent's composer sends the same saved message, through the same `sendTldr`.
+  - The split is a generic plugin button option: `chevron: { title, Content }` on a composer pill.
+    The host draws the chevron inside the pill's border and mounts `Content` until it calls
+    `close()`; `Content` renders its own `Modal`. Header buttons ignore it.
+- **Files:** `custom/plugins/tldr/` (`index.server.ts` registers the settings, `client/prompt.ts`
+  sends, `client/prompt-modal.tsx` is the modal, `index.client.tsx` adds `/tldr`).
+- **Core files touched** (each marked `CUSTOM(pill-chevron)`):
+  - `packages/plugin/src/client/buttons.ts`: the optional `chevron` field on `PluginButton`.
+  - `packages/app/src/plugins/buttons/validation.ts`: `validateChevron`, which resolves the title
+    and checks `Content`; `chevron` in `ResolvedPluginButton`. Test in `model.test.ts`.
+  - `packages/app/src/plugins/buttons/view.tsx`: in `ButtonControl`, a composer pill with a
+    chevron wraps the usual control and `ButtonChevron` in a `splitPill` view that owns the
+    border, and the action half takes `splitAction` instead of `composerPillStyles.body`.
+- **Re-apply:** Add `chevron?: { title; Content: ComponentType<PluginButtonContentProps> }` to the
+  plugin button type and resolve it next to `behavior` in the app's button validation. Where the
+  app renders a composer pill, when `chevron` is set, put the pill's control and a chevron
+  `Pressable` side by side in one bordered row, and mount `Content` (inside the button's
+  `ButtonEnvironment` and error boundary) while the chevron is open. Rebuild `@getpaseo/plugin`
+  (`npm run build --workspace=@getpaseo/plugin`) so the app sees the new type.
+- **Setup:** The plugin now has a server entry: after updating, run
+  `npx tsx packages/cli/src/index.js plugin reload tldr --home ~/.paseo` (and `~/.paseo-telus`).
+  The chevron needs the rebuilt app; an older app shows the plain pill.
+- **Verify:** `npx vitest run custom/plugins/tldr packages/app/src/plugins/buttons/model.test.ts`
+  (the update script runs both). In the app, click the chevron on **TLDR**, save "TLDR em 3
+  linhas", reopen the app, click the chevron again: the text is still there. Click **TLDR** and
+  type `/tldr`: both send it.

@@ -254,3 +254,28 @@ it("keeps the previous descriptor after rejecting an invalid update", () => {
   registration.remove();
   plugin.i18n.dispose();
 });
+
+// CUSTOM(pill-chevron)
+it("resolves a composer pill's chevron title and rejects a chevron without Content", () => {
+  const buttons = store();
+  const plugin = installation();
+  const Content = () => null;
+  buttons.addComposerPill(plugin, {
+    id: "review",
+    workspaceId: "workspace",
+    agentId: "agent",
+    button: { ...button(), chevron: { title: " Edit review ", Content } },
+  });
+  expect(buttons.getSnapshot()[0].button.chevron).toEqual({ title: "Edit review", Content });
+  expect(() =>
+    buttons.addComposerPill(plugin, {
+      id: "other",
+      workspaceId: "workspace",
+      agentId: "agent",
+      button: {
+        ...button(),
+        chevron: { title: "Edit", Content: undefined as unknown as typeof Content },
+      },
+    }),
+  ).toThrow("Plugin button chevron needs Content");
+});
