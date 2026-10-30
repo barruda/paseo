@@ -91,6 +91,9 @@ import { useChatOutline } from "@/agent-stream/chat-outline/use-chat-outline";
 import { createActivePromptPublisher } from "@/agent-stream/chat-outline/model";
 import { collectChatImages } from "@/agent-stream/chat-images/model";
 import { ChatImagesRail } from "@/agent-stream/chat-images/rail";
+// CUSTOM(chat-links)
+import { collectChatLinks } from "@/agent-stream/chat-links/model";
+import { ChatLinksBox } from "@/agent-stream/chat-links/box";
 // CUSTOM(reading-modes)
 import type { ReadingMode } from "@/agent-stream/reading-modes/model";
 import { useReadingRows } from "@/agent-stream/reading-modes/rows";
@@ -770,6 +773,13 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [effectiveStreamItems, effectiveStreamHead],
     );
     const [chatImagesReadingPosition] = useState(createActivePromptPublisher);
+    // CUSTOM(chat-links): links in the loaded transcript; the box's height keeps the strip above it.
+    const chatLinks = useMemo(
+      () =>
+        collectChatLinks([...effectiveStreamItems, ...(effectiveStreamHead ?? [])], workspaceRoot),
+      [effectiveStreamItems, effectiveStreamHead, workspaceRoot],
+    );
+    const [chatLinksReservedHeight, setChatLinksReservedHeight] = useState(0);
     const chatImagesMountedMessageIds = useMemo(
       () =>
         new Set(
@@ -1555,6 +1565,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               viewportRef={viewportRef}
               visibleMessageIds={chatImagesMountedMessageIds}
               revealLoadedMessage={revealLoadedMessage}
+              bottomReserve={chatLinksReservedHeight}
+            />
+            {/* CUSTOM(chat-links) */}
+            <ChatLinksBox
+              links={chatLinks}
+              client={client}
+              serverId={resolvedServerId}
+              workspaceRoot={workspaceRoot}
+              sessionPaths={sessionFilePaths}
+              onOpenWorkspaceFile={handleInlinePathPress}
+              toast={toast}
+              contentMaxWidth={contentMaxWidth}
+              bottomOffset={resolveBottomOverlayControlOffset(bottomOverlayControlClearance)}
+              onReservedHeightChange={setChatLinksReservedHeight}
             />
             {/* CUSTOM(scroll-arrows) */}
             <ScrollToTopArrow

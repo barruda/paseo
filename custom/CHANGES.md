@@ -3732,3 +3732,45 @@ waiting` tests in `agent-manager.test.ts`.
 - **Verify:** `store.test.ts` and the "Phone sidebar" case in `e2e/task-navigation.spec.ts`, both
   already in the update script. In the app, press the arrow: the controls disappear, the list
   moves up, and they stay hidden after reopening the app.
+
+## chat-links: a list of the links the agent sent, beside the chat
+
+- **Added:** 2026-10-30 (upstream 0.14.0)
+- **Commit:** `custom: link list beside the chat`
+- **Why:** Agents scatter URLs and file paths across a long chat. Opening one again meant
+  scrolling back to the message that had it.
+- **What:**
+  - A box at the bottom of the right gutter, under the
+    [image strip](#chat-images-an-image-strip-beside-the-chat), listing every distinct URL and file
+    path the agent's messages link: Markdown links, linked code spans (`` `/tmp/x.md` ``), and
+    bare URLs and paths in text. Oldest at the top; a link sent again moves to the bottom. Ten rows
+    show at once and the rest scroll; the list follows new links unless you scrolled up.
+  - Each row shows the file name (with `:line`) or the URL without its scheme. Hover for the full
+    path or URL. Click opens it the same way clicking it in the message does (file tab, Files
+    sidebar for folders, browser for URLs), through the same `AssistantFileLinkResolverProvider`.
+  - It sits above the composer pills (the scroll-to-bottom button's offset), and the image strip
+    ends above it instead of at 20% from the bottom when the box is taller.
+  - Width up to 280 px when the gutter fits at least 168 px. A narrower gutter shows a link
+    button that opens the list over the transcript; one too narrow for the button hides it.
+    Desktop and web only.
+  - It lists the loaded part of the history. Links in your own messages and in tool calls are not
+    listed.
+- **Files:** `packages/app/src/agent-stream/chat-links/` (`model.ts` parses and dedupes the links,
+  `box.web.tsx` is the box, `box.tsx` the native no-op, `model.test.ts`). New files; no conflict
+  risk. The same commit swaps the image strip's raw `Pressable` for `PressHighlight`, which
+  upstream 0.14's `no-raw-pressable` lint requires to commit the file.
+- **Core files touched** (each marked `CUSTOM(chat-links)`):
+  - `packages/app/src/agent-stream/view.tsx`: `chatLinks` and `chatLinksReservedHeight` next to
+    the chat-images state, and `<ChatLinksBox>` right after `<ChatImagesRail>`, which gets
+    `bottomReserve`.
+  - `packages/app/src/components/markdown/source.ts`: exports the renderer's bare URL and path
+    regex as `PROSE_LINK_PATTERN`, so the list finds exactly the text links the chat draws.
+- **Re-apply:** In the agent stream view, collect links with
+  `collectChatLinks([...tail items, ...head items], workspaceRoot)` and render `ChatLinksBox` beside
+  the image strip, passing the same client, server, workspace root, session paths, inline path
+  handler and toast the assistant message's `AssistantFileLinkResolverProvider` gets, the
+  scroll-to-bottom button's bottom offset, and a setter whose value goes to the strip's
+  `bottomReserve`. If upstream renames the renderer's text link regex, re-export the new one.
+- **Verify:** `(cd packages/app && npx vitest run src/agent-stream/chat-links/model.test.ts)` (the
+  update script runs it). In the app, ask an agent to reply with a URL, a file path in backticks
+  and a folder path, then hover and click the rows at the bottom right.

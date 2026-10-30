@@ -39,6 +39,8 @@ const URL_GROUP = String.raw`\(${URL_CHARACTER}*\)`;
 const BARE_URL = String.raw`https?://(?:${URL_CHARACTER}|${URL_GROUP})*(?:[^\s<>()"'\x60.,;:!?]|${URL_GROUP})`;
 
 const FILE_PATTERN = createFilePattern(PROSE_PATH);
+// CUSTOM(chat-links): the link list beside the chat finds the same bare URLs and paths.
+export const PROSE_LINK_PATTERN = FILE_PATTERN;
 function linkMetadata(inlineCodePaths: ReadonlySet<string>) {
   // The engine accepts regexes on both platforms. Classify complete code spans
   // first, then pass literal matches rather than maintaining a second path grammar.

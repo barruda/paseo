@@ -16,6 +16,8 @@ export interface ChatImagesRailProps {
   viewportRef: RefObject<StreamViewportHandle | null>;
   visibleMessageIds: ReadonlySet<string>;
   revealLoadedMessage: (messageId: string) => boolean;
+  /** CUSTOM(chat-links): height the link box takes at the bottom of the gutter. */
+  bottomReserve?: number;
 }
 
 // The strip lives in the gutter beside the transcript, which only wide layouts have.

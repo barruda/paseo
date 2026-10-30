@@ -8,7 +8,8 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import { Image, Pressable, ScrollView, View } from "react-native";
+import { Image, ScrollView, View } from "react-native";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { StyleSheet } from "react-native-unistyles";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { useMarkdownSource } from "@/components/markdown/images";
@@ -22,6 +23,7 @@ import type { ChatImagesRailProps } from "./rail";
 const LARGE_THUMB = 64;
 const SMALL_THUMB = 40;
 const RAIL_INSET = 12;
+const RAIL_BOTTOM_FRACTION = 0.2;
 const PREVIEW_MAX = 320;
 const PREVIEW_GAP = 8;
 const JUMP_TIMEOUT_MS = 3000;
@@ -90,9 +92,11 @@ export const ChatImagesRail = memo(function ChatImagesRail({
   viewportRef,
   visibleMessageIds,
   revealLoadedMessage,
+  bottomReserve = 0,
 }: ChatImagesRailProps) {
   const panelRef = useRef<View>(null);
   const [panelWidth, setPanelWidth] = useState(0);
+  const [panelHeight, setPanelHeight] = useState(0);
   const railRef = useRef<View>(null);
   const [hovered, setHovered] = useState<HoveredThumb | null>(null);
   const jumpRef = useRef<AbortController | null>(null);
@@ -106,11 +110,15 @@ export const ChatImagesRail = memo(function ChatImagesRail({
   const activeMessageId = useSyncExternalStore(readingPosition.subscribe, getActiveMessageId);
   const firstActiveKey = images.find((image) => image.messageId === activeMessageId)?.key ?? null;
 
-  const handleLayout = useCallback((event: { nativeEvent: { layout: { width: number } } }) => {
-    const width = event.nativeEvent.layout.width;
-    // Retained tabs report 0 under display: none; that is not a narrow panel.
-    if (width > 0) setPanelWidth(width);
-  }, []);
+  const handleLayout = useCallback(
+    (event: { nativeEvent: { layout: { width: number; height: number } } }) => {
+      const { width, height } = event.nativeEvent.layout;
+      // Retained tabs report 0 under display: none; that is not a narrow panel.
+      if (width > 0) setPanelWidth(width);
+      if (height > 0) setPanelHeight(height);
+    },
+    [],
+  );
 
   useEffect(() => () => jumpRef.current?.abort(), []);
 
@@ -170,6 +178,8 @@ export const ChatImagesRail = memo(function ChatImagesRail({
     if (thumbSize === null) setHovered(null);
   }, [thumbSize]);
   if (images.length === 0) return null;
+  // CUSTOM(chat-links): the strip ends above the link box when the box reaches past its usual end.
+  const railBottom = Math.max(panelHeight * RAIL_BOTTOM_FRACTION, bottomReserve + RAIL_INSET);
 
   return (
     <View
@@ -179,7 +189,12 @@ export const ChatImagesRail = memo(function ChatImagesRail({
       onLayout={handleLayout}
     >
       {thumbSize === null ? null : (
-        <View ref={railRef} style={styles.rail} pointerEvents="box-none" testID="chat-images-rail">
+        <View
+          ref={railRef}
+          style={[styles.rail, inlineUnistylesStyle({ bottom: railBottom })]}
+          pointerEvents="box-none"
+          testID="chat-images-rail"
+        >
           <ScrollView
             style={styles.scroller}
             contentContainerStyle={styles.scrollerContent}
@@ -307,7 +322,7 @@ const ChatImageThumb = memo(function ChatImageThumb({
       onPointerEnter={handlePointerEnter}
       onPointerLeave={handlePointerLeave}
     >
-      <Pressable
+      <PressHighlight
         onPress={handlePress}
         accessibilityRole="button"
         accessibilityLabel={label}
@@ -324,7 +339,7 @@ const ChatImageThumb = memo(function ChatImageThumb({
         ) : (
           <View style={styles.thumbPlaceholder} />
         )}
-      </Pressable>
+      </PressHighlight>
     </View>
   );
 });
@@ -338,7 +353,6 @@ const styles = StyleSheet.create((theme) => ({
     position: "absolute",
     right: RAIL_INSET,
     top: "10%",
-    bottom: "20%",
     justifyContent: "center",
     zIndex: 2,
   },
