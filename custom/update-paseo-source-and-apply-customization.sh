@@ -7,12 +7,12 @@ usage() {
   cat <<'EOF'
 Usage: custom/update-paseo-source-and-apply-customization.sh [options]
 
-  --ref <ref>     Upstream ref to rebase onto (default: origin/main). Use a tag such as
+  --ref <ref>     Upstream ref to merge (default: origin/main). Use a tag such as
                   v0.11.0 to stay on a release instead of main.
-  --continue      Finish an update that stopped on a rebase conflict, after you resolved
+  --continue      Finish an update that stopped on a merge conflict, after you resolved
                   and staged the conflicted files.
   --no-verify     Skip typecheck and the customization tests.
-  --no-build      Skip npm install, verification, and the desktop build (rebase only).
+  --no-build      Skip npm install, verification, and the desktop build (merge only).
   --install       After building, install the app into a new folder under
                   PASEO_BUILDS_DIR and point the Paseo launchers at it. Running
                   apps and daemons keep using their old folder, so nothing has to
@@ -22,7 +22,7 @@ Usage: custom/update-paseo-source-and-apply-customization.sh [options]
 
 Environment:
   CUSTOM_BRANCH       Branch holding the customizations (default: custom)
-  CUSTOM_BACKUP_REMOTE  Remote that receives the rebased branch after each update (default: fork)
+  CUSTOM_BACKUP_REMOTE  Remote that receives the updated branch after each update (default: fork)
   PASEO_BUILDS_DIR    Where installed builds live (default: ~/Applications/Paseo-builds)
   PASEO_LAUNCHERS     Space-separated .desktop files to repoint
                       (default: ~/.local/share/applications/paseo*.desktop)
@@ -45,7 +45,7 @@ GIT_DIR_ABS="$(git rev-parse --absolute-git-dir)"
 STATE_FILE="$GIT_DIR_ABS/custom-update-state"
 LOG_FILE="$ROOT/custom/UPDATE-LOG.md"
 
-# This script is itself a customization, so a rebase stopped partway can remove it from the
+# This script is itself a customization, so an update stopped partway can remove it from the
 # working tree. Run from a copy in .git so --continue always has a script to run.
 RUNNER="$GIT_DIR_ABS/custom-update.sh"
 if [[ "$SCRIPT_PATH" != "$RUNNER" ]]; then
@@ -88,21 +88,25 @@ rebase_in_progress() {
   [[ -d "$(git rev-parse --git-path rebase-merge)" || -d "$(git rev-parse --git-path rebase-apply)" ]]
 }
 
+merge_in_progress() {
+  git rev-parse -q --verify MERGE_HEAD >/dev/null
+}
+
 conflict_help() {
   local backup_tag
   backup_tag="$(sed -n 's/^backup=//p' "$STATE_FILE" 2>/dev/null)"
   cat >&2 <<EOF
 
-The rebase stopped on a conflict while replaying a customization.
+The merge stopped on conflicts between upstream and the customizations.
 
-  1. See which customization is being applied:   git log -1 --format='%h %s' REBASE_HEAD
-     Read its entry in the history (it may be missing from the working tree right now):
-                                                   git show $backup_tag:custom/CHANGES.md
-  2. Fix the files listed by:                      git diff --name-only --diff-filter=U
-     then stage them:                              git add <files>
+  1. List the conflicted files:                    git diff --name-only --diff-filter=U
+     Find the customizations in each one:          rg "CUSTOM\(" <file>
+     and read their entries (Re-apply notes) in:   custom/CHANGES.md
+  2. Resolve each file keeping upstream's change and the customization's intent,
+     then stage it:                                git add <files>
   3. Resume:                                       $RUNNER --continue
 
-To give up and go back to where you were:          git rebase --abort
+To give up and go back to where you were:          git merge --abort
 (The pre-update state is also saved as tag $backup_tag.)
 EOF
 }
@@ -159,21 +163,25 @@ if $INSTALL_ONLY; then
 fi
 
 # ---------------------------------------------------------------------------
-# 1. Rebase onto upstream
+# 1. Merge upstream
 # ---------------------------------------------------------------------------
+# A merge resolves each conflicting file once, against the sum of the customizations. Rebasing
+# replayed ~200 customization commits one by one and stopped on the same files over and over.
 if $CONTINUE; then
   [[ -f "$STATE_FILE" ]] || die "No interrupted update to continue."
   # shellcheck disable=SC1090
   source "$STATE_FILE"
-  if rebase_in_progress; then
-    step "Continuing rebase"
-    if ! GIT_EDITOR=true git rebase --continue; then
+  if merge_in_progress; then
+    [[ -z "$(git diff --name-only --diff-filter=U)" ]] || {
       conflict_help
       exit 1
-    fi
+    }
+    step "Committing the merge"
+    git commit -q --no-verify --no-edit
   fi
 else
-  rebase_in_progress && die "A rebase is already in progress. Resolve it and run with --continue, or run: git rebase --abort"
+  rebase_in_progress && die "A rebase is in progress (from an older version of this script). Finish it or run: git rebase --abort"
+  merge_in_progress && die "A merge is already in progress. Resolve it and run with --continue, or run: git merge --abort"
   current="$(git branch --show-current)"
   [[ "$current" == "$BRANCH" ]] || die "Check out the '$BRANCH' branch first (currently on '${current:-detached HEAD}')."
 
@@ -198,12 +206,11 @@ else
   old_base="$(git merge-base HEAD "$REF")"
   printf 'backup=%s\nold_base=%s\nref=%s\n' "$backup" "$old_base" "$REF" > "$STATE_FILE"
 
-  step "Replaying customizations onto $REF ($(git rev-parse --short "$REF"))"
-  git log --format='    %h %s' "$old_base..HEAD"
+  step "Merging $REF ($(git rev-parse --short "$REF")) into $BRANCH"
   # rerere remembers how you resolved a conflict and re-applies it on the next update.
   git config rerere.enabled true
   git config rerere.autoUpdate true
-  if ! git rebase "$REF"; then
+  if ! git merge --no-ff --no-verify -m "custom: merge upstream $REF" "$REF"; then
     conflict_help
     exit 1
   fi
@@ -227,8 +234,8 @@ if [[ "$old_base" != "$new_base" ]]; then
       "$ref" "$(git describe --tags --abbrev=0 "$new_base" 2>/dev/null || echo 'no tag')"
     printf -- '- Upstream commits pulled: %s\n' "$(git rev-list --count "$old_base..$new_base")"
     printf -- '- Backup tag: `%s`\n' "$backup"
-    printf -- '- Customizations replayed:\n'
-    git log --reverse --format='  - `%h` %s' "$new_base..HEAD" -- . ':!custom/UPDATE-LOG.md'
+    printf -- '- Customization commits on top: %s\n' \
+      "$(git rev-list --count --no-merges "$new_base..HEAD" -- . ':!custom/UPDATE-LOG.md')"
   } >> "$LOG_FILE"
   git add "$LOG_FILE"
   git commit -q --no-verify -m "custom: record update to $(git rev-parse --short "$new_base")"
@@ -237,8 +244,8 @@ else
 fi
 rm -f "$STATE_FILE"
 
-# Back up the rebased branch to your fork. The rebase rewrote the commits, so this force-pushes,
-# but only over the state this checkout last saw on the fork.
+# Back up the branch to your fork. A merge only adds commits; the lease still guards against
+# overwriting a fork state this checkout hasn't seen (older updates rebased and force-pushed).
 if git remote get-url "$BACKUP_REMOTE" >/dev/null 2>&1; then
   step "Backing up $BRANCH to $BACKUP_REMOTE"
   git push --force-with-lease "$BACKUP_REMOTE" "$BRANCH" ||
@@ -293,7 +300,7 @@ if $VERIFY; then
   (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts --bail=1)
   (cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/file-pane/html-preview-assets.test.ts src/file-pane/html-preview-navigation.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/file-panels/html-preview-assets.test.ts src/file-panels/html-preview-navigation.test.ts --bail=1)
   (cd packages/app && npx vitest run src/model-picker/model.test.ts src/model-picker/project.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts src/desktop/browser/shortcuts.test.ts --bail=1)
   (cd packages/app && npx vitest run src/screens/workspace/workspace-tab-menu.test.ts src/screens/workspace/tab-file-path.test.ts --bail=1)
   (cd packages/app && npx vitest run src/components/sidebar/done-task-archive.test.ts --bail=1)
@@ -322,7 +329,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/task-navigation/model.test.ts src/task-navigation/store.test.ts src/workspace-tabs/open-supporting-view.test.ts --bail=1)
   npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/task-navigation.spec.ts --workers=1
   (cd packages/app && npx vitest run src/screens/new-workspace/bottom-terminal.test.ts --bail=1)
-  (cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts src/file-pane/html-preview-keys.browser.test.ts --bail=1)
+  (cd packages/app && npx vitest run --project browser src/file-panels/html-preview-assets.browser.test.ts src/file-panels/html-preview-keys.browser.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/file-explorer/service.test.ts src/server/file-explorer/service.posix.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts src/server/speech/providers/local/model-files.test.ts src/server/speech/speech-config-resolver.test.ts src/server/speech/speech-settings-service.test.ts src/server/daemon-config-store.test.ts src/server/voice-config.test.ts src/server/speech/providers/local/sherpa/silero-vad-session.test.ts src/server/session/voice/voice-session.test.ts src/server/session/voice/voice-turn-controller.test.ts --bail=1)
   (cd packages/app && npx vitest run src/screens/settings/voice src/voice src/i18n/resources.test.ts --bail=1)
@@ -351,7 +358,7 @@ if $VERIFY; then
   (cd packages/app && npx playwright test --project=browser e2e/browser/changes-diff-tab.spec.ts)
   # Changes opens on Uncommitted even on a clean checkout.
   (cd packages/app && npx vitest run src/git/working-diff-comparison/state.test.ts src/git/checkout-status-cache.test.ts --bail=1)
-  (cd packages/app && npx playwright test --project=browser e2e/browser/changes-pane.spec.ts -g "Uncommitted for a clean checkout|expires a manual comparison|empty Changes comparison")
+  (cd packages/app && npx playwright test --project=browser e2e/browser/changes-pane.spec.ts -g "Uncommitted for a clean checkout|keeps a manual comparison|empty Changes comparison")
   # Changes clicks open the diff in the main content, with the comparison menu.
   (cd packages/app && npx playwright test --project=browser e2e/browser/changes-pane.spec.ts -g "keeps review navigation and controls")
   (cd packages/app && npx vitest run src/chat-code-run/model.test.ts --bail=1)

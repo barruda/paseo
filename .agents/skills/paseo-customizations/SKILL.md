@@ -1,6 +1,6 @@
 ---
 name: paseo-customizations
-description: Maintain the user's customized Paseo build — the `custom` branch rebased on upstream getpaseo/paseo. Use when asked to add a feature or change to their Paseo, update/pull upstream Paseo, rebuild or install the desktop app, resolve a conflict after an update, or set Paseo up on a new machine.
+description: Maintain the user's customized Paseo build — the `custom` branch merged with upstream getpaseo/paseo. Use when asked to add a feature or change to their Paseo, update/pull upstream Paseo, rebuild or install the desktop app, resolve a conflict after an update, or set Paseo up on a new machine.
 user-invocable: true
 ---
 
@@ -79,8 +79,9 @@ rules agents get wrong.
 
 ## Update conflicts
 
-The script stops mid-rebase and prints the failing commit. Find its entry with
-`git show <backup-tag>:custom/CHANGES.md` (the working tree may lack `custom/` mid-rebase), redo the
-change on the new upstream code following **Re-apply**, `git add` the files, and run
-`.git/custom-update.sh --continue`. If the change no longer makes sense upstream (for example,
+The script merges upstream into `custom` and stops on conflicts. In each conflicted file, find the
+customizations with `rg "CUSTOM\("`, read their `custom/CHANGES.md` entries, keep upstream's change
+and redo the customization following **Re-apply**, `git add` the files, and run
+`.git/custom-update.sh --continue`. Many conflicted files can be split among parallel agents by
+area; they touch disjoint files and nobody commits until all are staged. If the change no longer makes sense upstream (for example,
 upstream shipped the same feature), tell the user before dropping it.

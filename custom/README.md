@@ -1,8 +1,9 @@
 # Local customizations
 
 This checkout runs upstream Paseo plus our own changes. The changes are commits on the `custom`
-branch, on top of upstream. Updating means rebasing that branch onto the new upstream, which the
-update script does for you.
+branch, on top of upstream. Updating means merging the new upstream into that branch, which the
+update script does for you. Until 2026-10-29 updates rebased the branch instead; a merge resolves
+each conflicting file once, where the rebase stopped on the same files once per customization.
 
 | Remote   | Repository     | Used for                                                         |
 | -------- | -------------- | ---------------------------------------------------------------- |
@@ -12,12 +13,12 @@ update script does for you.
 Both remotes use the `github.com-personal` SSH alias, so git authenticates with the personal
 GitHub account instead of the work one.
 
-| File                                             | What it is                                                                                                   |
-| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| `CHANGES.md`                                     | History of every customization: what, why, files touched, re-apply notes. Read this when a rebase conflicts. |
-| `UPDATE-LOG.md`                                  | Written by the script on every update: upstream before/after, backup tag.                                    |
-| `update-paseo-source-and-apply-customization.sh` | Fetch upstream, replay customizations, verify, build, install, back up to `fork`.                            |
-| `plugins/`                                       | Paseo plugins we maintain. Self-contained; they never conflict with upstream.                                |
+| File                                             | What it is                                                                                                  |
+| ------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `CHANGES.md`                                     | History of every customization: what, why, files touched, re-apply notes. Read this when a merge conflicts. |
+| `UPDATE-LOG.md`                                  | Written by the script on every update: upstream before/after, backup tag.                                   |
+| `update-paseo-source-and-apply-customization.sh` | Fetch upstream, replay customizations, verify, build, install, back up to `fork`.                           |
+| `plugins/`                                       | Paseo plugins we maintain. Self-contained; they never conflict with upstream.                               |
 
 Agents (Claude Code, Codex) have a skill for this workflow: `.agents/skills/paseo-customizations/`.
 
@@ -59,7 +60,7 @@ Then run `custom/reopen-paseo-clients.sh` to close and reopen the Paseo windows 
 launchers, all of them. A window whose daemon keeps running after quit (Settings >
 `keepRunningAfterQuit`) leaves its daemon and agents running; for the others (`paseo-telus`) the
 daemon restarts with the window and its running agents stop. Use `--ref v0.11.0` to follow a release tag instead of
-`main`. `--no-build` only rebases. `--install-only` installs the last build.
+`main`. `--no-build` only merges. `--install-only` installs the last build.
 
 Each install goes to a new folder under `~/Applications/Paseo-builds/`, and the script repoints the
 `paseo*.desktop` launchers at it. It never replaces files a running app or daemon uses, so you
@@ -80,18 +81,17 @@ Installed builds have the auto-updater off, so they never replace themselves wit
 release; updates only come from this script.
 
 The script keeps the two newest builds plus any still in use. To roll back an install, restore a
-launcher from its `.desktop.bak`. Before rebasing, the script tags the current state as
+launcher from its `.desktop.bak`. Before merging, the script tags the current state as
 `custom-backup/<timestamp>`; roll the source back with `git reset --hard custom-backup/<timestamp>`.
 Delete old backup tags with `git tag -l 'custom-backup/*'` and `git tag -d`.
 
-### When the rebase conflicts
+### When the merge conflicts
 
-The script stops and prints which customization failed. Look that commit up in `CHANGES.md`. Its
-entry says what the change does, so you can redo it on top of the new upstream code if the code
-around it moved. Then `git add` the files and run `.git/custom-update.sh --continue`.
-
-The script runs from that copy in `.git/` because mid-rebase the working tree may not contain
-`custom/` yet. For the same reason, read the history with `git show <backup-tag>:custom/CHANGES.md`.
+The script stops and lists the conflicted files. In each one, `rg "CUSTOM\("` shows which
+customizations live there; their `CHANGES.md` entries say what they do and how to redo them
+(**Re-apply**) on top of the new upstream code. Keep upstream's change and the customization's
+intent, `git add` the files, and run `.git/custom-update.sh --continue`, which commits the merge and
+goes on to verify, build and install. `git merge --abort` goes back to where you were.
 
 `rerere` is enabled, so git remembers each conflict resolution and applies it on later updates.
 
