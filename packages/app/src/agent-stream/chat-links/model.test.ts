@@ -20,14 +20,22 @@ describe("parseMessageLinks", () => {
   it("finds markdown links, linked code spans and bare URLs in document order", () => {
     expect(
       summary(
-        "See [the report](https://example.com/report/) and `/tmp/out/result.html`.\n\nDocs at https://docs.test/page and /home/me/project/src/app.ts:12 too.",
+        "See [the report](https://example.com/report/) and `/tmp/out/result.html`.\n\nDocs at https://docs.test/page and /home/me/project/docs/notes.md:12 too.",
       ),
     ).toEqual([
       { kind: "url", label: "example.com/report", detail: "https://example.com/report/" },
       { kind: "file", label: "result.html", detail: "/tmp/out/result.html" },
       { kind: "url", label: "docs.test/page", detail: "https://docs.test/page" },
-      { kind: "file", label: "app.ts:12", detail: "/home/me/project/src/app.ts:12" },
+      { kind: "file", label: "notes.md:12", detail: "/home/me/project/docs/notes.md:12" },
     ]);
+  });
+
+  it("lists HTML and Markdown files only", () => {
+    expect(
+      summary("`/tmp/a/app.ts` [src](/tmp/a/src/) `/tmp/a/page.htm` `/tmp/a/README.MD`").map(
+        (link) => link.label,
+      ),
+    ).toEqual(["page.htm", "README.MD"]);
   });
 
   it("does not count the text of a link twice", () => {

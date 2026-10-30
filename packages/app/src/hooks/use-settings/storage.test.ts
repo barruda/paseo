@@ -227,6 +227,21 @@ describe("loadAppSettingsFromStorage", () => {
     expect(result.chatOutlineEnabled).toBe(false);
   });
 
+  // CUSTOM(chat-links)
+  it("shows the chat link list unless it was turned off", async () => {
+    const fresh = await loadAppSettingsFromStorage(makeDeps({}));
+    const off = await loadAppSettingsFromStorage(
+      makeDeps({
+        storage: createInMemoryKeyValueStorage({
+          [APP_SETTINGS_KEY]: JSON.stringify({ chatLinksEnabled: false }),
+        }),
+      }),
+    );
+
+    expect(fresh.chatLinksEnabled).toBe(true);
+    expect(off.chatLinksEnabled).toBe(false);
+  });
+
   it("uses Enter to send by default", async () => {
     const deps = makeDeps();
 

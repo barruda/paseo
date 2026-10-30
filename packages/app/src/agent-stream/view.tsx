@@ -92,7 +92,7 @@ import { createActivePromptPublisher } from "@/agent-stream/chat-outline/model";
 import { collectChatImages } from "@/agent-stream/chat-images/model";
 import { ChatImagesRail } from "@/agent-stream/chat-images/rail";
 // CUSTOM(chat-links)
-import { collectChatLinks } from "@/agent-stream/chat-links/model";
+import { collectChatLinks, type ChatLink } from "@/agent-stream/chat-links/model";
 import { ChatLinksBox } from "@/agent-stream/chat-links/box";
 // CUSTOM(reading-modes)
 import type { ReadingMode } from "@/agent-stream/reading-modes/model";
@@ -138,6 +138,8 @@ import { useStreamHistoryWindow } from "./use-stream-history-window";
 import { PluginTimelineItemView, useInstalledTimelineTransform } from "@/plugins/timeline";
 import { findTurnUsageItem, isTurnUsageItem } from "./turn-usage"; // CUSTOM(turn-usage-inline)
 import { hideCacheWarmupTurns } from "@/cache-warmup/model"; // CUSTOM(cache-warmup)
+
+const NO_CHAT_LINKS: ChatLink[] = []; // CUSTOM(chat-links)
 
 function renderLiveAuxiliaryNode(input: {
   pendingPermissions: ReactNode;
@@ -774,10 +776,16 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     );
     const [chatImagesReadingPosition] = useState(createActivePromptPublisher);
     // CUSTOM(chat-links): links in the loaded transcript; the box's height keeps the strip above it.
+    const chatLinksEnabled = useSettings((settings) => settings.chatLinksEnabled);
     const chatLinks = useMemo(
       () =>
-        collectChatLinks([...effectiveStreamItems, ...(effectiveStreamHead ?? [])], workspaceRoot),
-      [effectiveStreamItems, effectiveStreamHead, workspaceRoot],
+        !chatLinksEnabled
+          ? NO_CHAT_LINKS
+          : collectChatLinks(
+              [...effectiveStreamItems, ...(effectiveStreamHead ?? [])],
+              workspaceRoot,
+            ),
+      [chatLinksEnabled, effectiveStreamItems, effectiveStreamHead, workspaceRoot],
     );
     const [chatLinksReservedHeight, setChatLinksReservedHeight] = useState(0);
     const chatImagesMountedMessageIds = useMemo(

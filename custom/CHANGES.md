@@ -3741,10 +3741,14 @@ waiting` tests in `agent-manager.test.ts`.
   scrolling back to the message that had it.
 - **What:**
   - A box at the bottom of the right gutter, under the
-    [image strip](#chat-images-an-image-strip-beside-the-chat), listing every distinct URL and file
-    path the agent's messages link: Markdown links, linked code spans (`` `/tmp/x.md` ``), and
-    bare URLs and paths in text. Oldest at the top; a link sent again moves to the bottom. Ten rows
-    show at once and the rest scroll; the list follows new links unless you scrolled up.
+    [image strip](#chat-images-an-image-strip-beside-the-chat), listing every distinct URL and
+    HTML or Markdown file (`.html`, `.htm`, `.md`, `.markdown`) the agent's messages link:
+    Markdown links, linked code spans (`` `/tmp/x.md` ``), and bare URLs and paths in text. Source
+    files and folders are left out on purpose: the list is for reports and notes to reopen. Oldest
+    at the top; a link sent again moves to the bottom. Ten rows show at once and the rest scroll;
+    the list follows new links unless you scrolled up.
+  - Settings > Chat > **Link list** turns it off (`chatLinksEnabled` in the app settings, on by
+    default). Off, the image strip goes back to its usual height.
   - Each row shows the file name (with `:line`) or the URL without its scheme. Hover for the full
     path or URL. Click opens it the same way clicking it in the message does (file tab, Files
     sidebar for folders, browser for URLs), through the same `AssistantFileLinkResolverProvider`.
@@ -3763,6 +3767,10 @@ waiting` tests in `agent-manager.test.ts`.
   - `packages/app/src/agent-stream/view.tsx`: `chatLinks` and `chatLinksReservedHeight` next to
     the chat-images state, and `<ChatLinksBox>` right after `<ChatImagesRail>`, which gets
     `bottomReserve`.
+  - `packages/app/src/hooks/use-settings/storage.ts`: `chatLinksEnabled` in the type, the
+    defaults and the schema, next to `chatOutlineEnabled`; a test in `storage.test.ts`.
+  - `packages/app/src/screens/settings/chat/chat-section.tsx`: the **Link list** switch after
+    the chat outline switch.
   - `packages/app/src/components/markdown/source.ts`: exports the renderer's bare URL and path
     regex as `PROSE_LINK_PATTERN`, so the list finds exactly the text links the chat draws.
 - **Re-apply:** In the agent stream view, collect links with
@@ -3770,7 +3778,7 @@ waiting` tests in `agent-manager.test.ts`.
   the image strip, passing the same client, server, workspace root, session paths, inline path
   handler and toast the assistant message's `AssistantFileLinkResolverProvider` gets, the
   scroll-to-bottom button's bottom offset, and a setter whose value goes to the strip's
-  `bottomReserve`. If upstream renames the renderer's text link regex, re-export the new one.
+  `bottomReserve`. Pass an empty list when `chatLinksEnabled` is off. If upstream renames the renderer's text link regex, re-export the new one.
 - **Verify:** `(cd packages/app && npx vitest run src/agent-stream/chat-links/model.test.ts)` (the
   update script runs it). In the app, ask an agent to reply with a URL, a file path in backticks
   and a folder path, then hover and click the rows at the bottom right.

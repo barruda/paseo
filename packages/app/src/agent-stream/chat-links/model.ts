@@ -29,6 +29,8 @@ parser.validateLink = (url: string) =>
   url.trim().toLowerCase().startsWith("file://") || defaultValidateLink(url);
 
 const NO_LINKS: MessageLink[] = [];
+// Only documents worth reopening: reports and notes, not source files or folders.
+const LISTED_FILE = /\.(?:html?|md|markdown)$/i;
 
 // Streaming re-renders the stream on every chunk while older items keep their identity,
 // so each message is parsed once per text and workspace it ever had.
@@ -46,6 +48,7 @@ function describe(
     return { key: `url:${url}`, kind: "url", source, label: shortUrl(url), detail: url };
   }
   const { path, lineStart, lineEnd } = classification.target;
+  if (!LISTED_FILE.test(path)) return null;
   const lines = lineStart === undefined ? "" : `:${lineStart}${lineEnd ? `-${lineEnd}` : ""}`;
   const name = path.replace(/\/+$/, "").split("/").pop() || path;
   return {
