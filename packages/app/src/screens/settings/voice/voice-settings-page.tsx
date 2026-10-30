@@ -3,7 +3,7 @@
 // speech.local.* RPCs. The thinking tone is a per-device setting.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert as NativeAlert, ScrollView, Text, View } from "react-native";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
 import { StyleSheet } from "react-native-unistyles";

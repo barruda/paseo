@@ -12,7 +12,7 @@ import {
 } from "@/runtime/host-runtime";
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { Text, View } from "react-native";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -83,6 +83,8 @@ import { useTabLanesStore } from "@/tab-lanes/store";
 import { useFlexibleTabMovement } from "@/tab-lanes/settings";
 import { getPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { DiffDocumentWorkspaceCacheProvider } from "@/git/diff-document/workspace-cache";
+import { SheetPaneHostProvider, type SheetPaneHost } from "@/screens/workspace/sheet-pane";
+import { ensurePanelsRegistered } from "@/panels/register-panels";
 import { useDesktopBrowserNewTabRequests } from "@/desktop/browser/new-tab-requests";
 import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { confirmDialog } from "@/utils/confirm-dialog";
@@ -145,6 +147,8 @@ function findDeskTab(desk: Desk, matches: (target: WorkspaceTabTarget) => boolea
 }
 
 export function DeskScreen() {
+  // CUSTOM(desks): Desks read the panel registry too, and 0.14 registers it in the screen that reads it.
+  ensurePanelsRegistered();
   const screenId = useId();
   const portalHost = `desk-floating-panels:${screenId}`;
   const desks = useDesksStore((s) => s.desks);
@@ -494,21 +498,31 @@ export function DeskScreen() {
   );
 
   const buildPaneContentModel = useCallback(
-    ({ paneId, tab }: { paneId: string; tab: WorkspaceTabDescriptor }) => {
+    ({
+      paneId,
+      tab,
+      host = "main",
+      onCloseCurrentTab,
+    }: {
+      paneId: string | null;
+      tab: WorkspaceTabDescriptor;
+      host?: "main" | "sheet";
+      onCloseCurrentTab?: () => void;
+    }) => {
       const owner = resolveOwner(tab.tabId) ?? {
         serverId: "",
         workspaceId: "",
       };
-      const open = (target: WorkspaceTabTarget) => openInDesk(owner, target, paneId);
+      const open = (target: WorkspaceTabTarget) => openInDesk(owner, target, paneId ?? undefined);
       return buildWorkspacePaneContentModel({
         tab,
         normalizedServerId: owner.serverId,
         normalizedWorkspaceId: owner.workspaceId,
-        host: "main",
+        host,
         panelRevision: fileRevisions[tab.tabId] ?? 0,
         onOpenTab: open,
         onOpenPreferredTarget: open,
-        onCloseCurrentTab: () => void closeTab(tab.tabId),
+        onCloseCurrentTab: onCloseCurrentTab ?? (() => void closeTab(tab.tabId)),
         onRetargetCurrentTab: (target) =>
           useDesksStore.getState().updateTab(tab.tabId, {
             serverId: owner.serverId,
@@ -525,6 +539,28 @@ export function DeskScreen() {
       });
     },
     [resolveOwner, fileRevisions, closeTab, openInDesk],
+  );
+
+  // CUSTOM(desks): 0.14 panels (subagents, sheets) need the workspace's sheet host; a Desk lends
+  // them the focused tab's workspace, like the scope.
+  const sheetPaneHost = useMemo<SheetPaneHost | null>(
+    () =>
+      scope
+        ? {
+            workspaceKey: `${scope.serverId}:${scope.workspaceId}`,
+            serverId: scope.serverId,
+            workspaceId: scope.workspaceId,
+            isWorkspaceFocused: isFocused,
+            buildContent: (tab, closeCurrentTab) =>
+              buildPaneContentModel({
+                tab,
+                paneId: null,
+                host: "sheet",
+                onCloseCurrentTab: closeCurrentTab,
+              }),
+          }
+        : null,
+    [buildPaneContentModel, isFocused, scope],
   );
 
   const createNewTab = useCallback(
@@ -761,6 +797,7 @@ export function DeskScreen() {
               moveMenu={moveMenu}
               scope={scope}
               enabled={isFocused}
+              sheetPaneHost={sheetPaneHost}
             >
               <WorkspaceTabDragScope
                 layout={desk.layout}
@@ -859,12 +896,14 @@ function DeskProviders({
   moveMenu,
   scope,
   enabled,
+  sheetPaneHost,
   children,
 }: {
   resolveOwner: WorkspaceTabOwnerResolver;
   moveMenu: WorkspaceTabMoveMenu;
   scope: DeskTabOwner;
   enabled: boolean;
+  sheetPaneHost: SheetPaneHost | null;
   children: ReactNode;
 }) {
   return (
@@ -872,7 +911,9 @@ function DeskProviders({
       <WorkspaceTabMoveProvider value={moveMenu}>
         <DeskLauncherProvider scope={scope} enabled={enabled}>
           <DiffDocumentWorkspaceCacheProvider>
-            <View style={styles.content}>{children}</View>
+            <SheetPaneHostProvider value={sheetPaneHost}>
+              <View style={styles.content}>{children}</View>
+            </SheetPaneHostProvider>
           </DiffDocumentWorkspaceCacheProvider>
         </DeskLauncherProvider>
       </WorkspaceTabMoveProvider>

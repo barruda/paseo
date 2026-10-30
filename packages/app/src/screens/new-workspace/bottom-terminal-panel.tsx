@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { TerminalPane } from "@/components/terminal-pane";
 import { supportsDesktopPaneSplits, useIsCompactFormFactor } from "@/constants/layout";

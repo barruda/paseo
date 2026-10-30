@@ -532,7 +532,8 @@ test("Tasks mode docks the focused task's Explorer", async ({ page }) => {
     await taskTab.click();
     await expect(explorer).toBeVisible();
     await toggle.click();
-    await expect(page.getByTestId("workspace-explorer-sidebar")).toHaveCount(0);
+    // 0.14 keeps the workspace's Explorer mounted while closed, so it is hidden rather than gone.
+    await expect(page.getByTestId("workspace-explorer-sidebar")).toBeHidden();
   } finally {
     await first.cleanup();
   }
