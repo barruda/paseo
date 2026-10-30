@@ -74,18 +74,6 @@ describe("collectChatImages", () => {
     ]);
     expect(images.map((image) => image.key)).toEqual(["a1:0", "a2:0"]);
   });
-
-  it("addresses a split assistant message by its block group", () => {
-    const block: StreamItem = {
-      ...(assistant("a1:block:1", "![x](x.png)", 1) as Extract<
-        StreamItem,
-        { kind: "assistant_message" }
-      >),
-      blockGroupId: "a1",
-      blockIndex: 1,
-    };
-    expect(collectChatImages([block])[0]?.messageId).toBe("a1");
-  });
 });
 
 describe("resolveActiveImageMessageId", () => {

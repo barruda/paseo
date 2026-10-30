@@ -18,6 +18,7 @@ export interface AssistantFileLinkSource {
 
 export interface AssistantFileLinkContext {
   workspaceRoot?: string;
+  relativePathBase?: string;
   /** CUSTOM(session-file-paths): full paths the agent's tool calls touched, newest first. */
   sessionPaths?: readonly string[];
 }
@@ -120,6 +121,8 @@ export function classifyForResolution(
   const classification = classifyAssistantFileLink(token, {
     workspaceRoot: context.workspaceRoot,
     decodeHref: tokenInfo.fromHref,
+    explicitLink: source.sourceType !== "inline-code" && !isLinkifiedSource(source),
+    relativePathBase: context.relativePathBase,
   });
   if (!classification) {
     return { kind: "resolved", value: { kind: "ignored" } };

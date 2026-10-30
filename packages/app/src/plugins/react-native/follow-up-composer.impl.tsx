@@ -18,6 +18,7 @@ import {
 import type { MessagePayload, TextReplacement } from "@/composer/types";
 import { useToast } from "@/contexts/toast-context";
 import { useFilePicker } from "@/hooks/use-file-picker";
+import { useAppSettings } from "@/hooks/use-settings";
 import { useIsDictationReady } from "@/hooks/use-is-dictation-ready";
 import {
   useHostRuntimeAgentDirectoryStatus,
@@ -49,11 +50,13 @@ export function FollowUpComposer({
   const isDictationReady = useIsDictationReady({ serverId, isConnected, agentDirectoryStatus });
   const cwd = useSessionStore((state) => state.sessions[serverId]?.agents.get(agentId)?.cwd ?? "");
   const { pickFiles } = useFilePicker();
+  const { settings: appSettings } = useAppSettings();
   const [text, setText] = useState("");
   const [files, setFiles] = useState<FileAttachment[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const replacementCount = useRef(0);
   const [textReplacement, setTextReplacement] = useState<TextReplacement>({
+    kind: "initial",
     key: "initial",
     text: "",
   });
@@ -102,7 +105,7 @@ export function FollowUpComposer({
       setText("");
       setFiles([]);
       replacementCount.current += 1;
-      setTextReplacement({ key: `sent-${replacementCount.current}`, text: "" });
+      setTextReplacement({ kind: "replace", key: `sent-${replacementCount.current}`, text: "" });
     },
     [files, onSubmit],
   );
@@ -138,6 +141,7 @@ export function FollowUpComposer({
       value={text}
       onChangeText={setText}
       onSubmit={handleSubmit}
+      sendShortcut={appSettings.sendShortcut}
       attachments={files}
       cwd={cwd}
       attachmentMenuItems={attachmentMenuItems}

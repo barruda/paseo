@@ -338,6 +338,8 @@ describe("buildWorkspaceTabMenuEntries", () => {
       }
       copyFullFilePathEntry.onSelect();
       expect(onCopyFilePath).toHaveBeenLastCalledWith("/some/path.ts", "full", "file_abc");
+      // After the two copy paths (CUSTOM(copy-full-file-path) adds the first).
+      expect(entries[2]).toEqual({ kind: "file-panel-open-with", key: "file-panel-open-with" });
     },
   );
 

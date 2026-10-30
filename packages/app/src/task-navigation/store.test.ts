@@ -378,6 +378,8 @@ it("routes existing launchers into Desks only when enabled, preserving source la
     status: "done",
     statusEnteredAt: null,
     archivingAt: null,
+    createdAt: null,
+    lastUserMessageAt: null,
     diffStat: null,
     scripts: [],
   };

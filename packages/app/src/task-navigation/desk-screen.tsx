@@ -43,10 +43,12 @@ import {
   FloatingPanelPortalHostNameProvider,
 } from "@/components/ui/floating-panel-portal";
 import { SplitContainer } from "@/components/split-container";
+// Upstream 0.14 moved tab drag and drop out of SplitContainer into this scope.
+import { WorkspaceTabDragScope } from "@/components/workspace-tab-drag-scope";
 import { useToast } from "@/contexts/toast-context";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { useSessionStore } from "@/stores/session-store";
-import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
+import { useWorkspace, useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import {
   collectAllPanes,
   collectAllTabs,
@@ -127,7 +129,9 @@ const noop = () => undefined;
 type DeskNaming = { mode: "create" } | { mode: "rename"; deskId: string };
 const ThemedPlus = withUnistyles(Plus);
 const ThemedX = withUnistyles(X);
-const extraMutedColorMapping = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
+const extraMutedColorMapping = (theme: Theme) => ({
+  color: theme.colors.foregroundExtraMuted,
+});
 
 function workspaceDirectoryOf(owner: DeskTabOwner): string | null {
   return (
@@ -367,7 +371,13 @@ export function DeskScreen() {
   const copyResumeCommand = useCallback(
     (agentId: string) => {
       const owner = agentOwner(agentId);
-      if (owner) void copyTabResumeCommand({ serverId: owner.serverId, agentId, toast, t });
+      if (owner)
+        void copyTabResumeCommand({
+          serverId: owner.serverId,
+          agentId,
+          toast,
+          t,
+        });
     },
     [agentOwner, toast, t],
   );
@@ -485,14 +495,17 @@ export function DeskScreen() {
 
   const buildPaneContentModel = useCallback(
     ({ paneId, tab }: { paneId: string; tab: WorkspaceTabDescriptor }) => {
-      const owner = resolveOwner(tab.tabId) ?? { serverId: "", workspaceId: "" };
+      const owner = resolveOwner(tab.tabId) ?? {
+        serverId: "",
+        workspaceId: "",
+      };
       const open = (target: WorkspaceTabTarget) => openInDesk(owner, target, paneId);
       return buildWorkspacePaneContentModel({
         tab,
         normalizedServerId: owner.serverId,
         normalizedWorkspaceId: owner.workspaceId,
         host: "main",
-        fileNavigationRevision: fileRevisions[tab.tabId] ?? 0,
+        panelRevision: fileRevisions[tab.tabId] ?? 0,
         onOpenTab: open,
         onOpenPreferredTarget: open,
         onCloseCurrentTab: () => void closeTab(tab.tabId),
@@ -505,7 +518,10 @@ export function DeskScreen() {
         onSetCurrentTabState: (state) => useDesksStore.getState().updateTab(tab.tabId, { state }),
         onOpenWorkspaceFile: (request) => open({ kind: "file", ...request.location }),
         onOpenImportSheet: () =>
-          setImportOwner({ serverId: owner.serverId, workspaceId: owner.workspaceId }),
+          setImportOwner({
+            serverId: owner.serverId,
+            workspaceId: owner.workspaceId,
+          }),
       });
     },
     [resolveOwner, fileRevisions, closeTab, openInDesk],
@@ -746,43 +762,56 @@ export function DeskScreen() {
               scope={scope}
               enabled={isFocused}
             >
-              <SplitContainer
-                tabLanes={flexibleTabs} // CUSTOM(tab-lanes), CUSTOM(flexible-tabs)
+              <WorkspaceTabDragScope
                 layout={desk.layout}
-                renderMainHeader={renderHeader}
-                externalExplorerSidebar={externalExplorerSidebar}
-                renderTopRightTabRowAction={renderTabRowExplorerToggle}
-                workspaceKey={`desk:${desk.id}`}
+                explorerSidebarPaneId={null}
+                allowCrossPane
                 normalizedServerId={scope.serverId}
                 normalizedWorkspaceId={scope.workspaceId}
-                isWorkspaceFocused={isFocused}
                 uiTabs={uiTabs}
-                hoveredCloseTabKey={hoveredCloseTabKey}
-                setHoveredCloseTabKey={setHoveredCloseTabKey}
-                closingTabIds={NO_CLOSING_TABS}
-                onNavigateTab={store.selectTab}
-                onCloseTab={closeTab}
-                onCopyResumeCommand={copyResumeCommand}
-                onCopyAgentId={copyAgentId}
-                onCopyTerminalId={copyTerminalId}
-                onCopyFilePath={copyFilePath}
-                onOpenFile={openFile}
-                onReloadAgent={reloadAgent}
-                onRenameTab={renameTab}
-                onCloseTabsToLeft={closeTabsToLeft}
-                onCloseTabsToRight={closeTabsToRight}
-                onCloseOtherTabs={closeOtherTabs}
-                onCreateNewTab={createNewTab}
-                buildPaneContentModel={buildPaneContentModel}
-                onFocusPane={store.focusPane}
-                onSplitPane={store.splitPane}
-                onSplitPaneEmpty={splitPaneEmpty}
                 onMoveTabToPane={store.moveTabToPane}
-                onSelectTabInPane={store.selectTabInPane}
-                onResizeSplit={store.resizeSplit}
                 onReorderTabsInPane={store.reorderTabsInPane}
-                onExitFocusMode={noop}
-              />
+                onSplitPane={store.splitPane}
+                laneScope={flexibleTabs ? `desk:${desk.id}` : null} // CUSTOM(tab-lanes)
+              >
+                <SplitContainer
+                  tabLanes={flexibleTabs} // CUSTOM(tab-lanes), CUSTOM(flexible-tabs)
+                  layout={desk.layout}
+                  renderMainHeader={renderHeader}
+                  externalExplorerSidebar={externalExplorerSidebar}
+                  renderTopRightTabRowAction={renderTabRowExplorerToggle}
+                  workspaceKey={`desk:${desk.id}`}
+                  normalizedServerId={scope.serverId}
+                  normalizedWorkspaceId={scope.workspaceId}
+                  isWorkspaceFocused={isFocused}
+                  uiTabs={uiTabs}
+                  hoveredCloseTabKey={hoveredCloseTabKey}
+                  setHoveredCloseTabKey={setHoveredCloseTabKey}
+                  closingTabIds={NO_CLOSING_TABS}
+                  onNavigateTab={store.selectTab}
+                  onCloseTab={closeTab}
+                  onCopyResumeCommand={copyResumeCommand}
+                  onCopyAgentId={copyAgentId}
+                  onCopyTerminalId={copyTerminalId}
+                  onCopyFilePath={copyFilePath}
+                  onOpenFile={openFile}
+                  onReloadAgent={reloadAgent}
+                  onRenameTab={renameTab}
+                  onCloseTabsToLeft={closeTabsToLeft}
+                  onCloseTabsToRight={closeTabsToRight}
+                  onCloseOtherTabs={closeOtherTabs}
+                  onCreateNewTab={createNewTab}
+                  buildPaneContentModel={buildPaneContentModel}
+                  onFocusPane={store.focusPane}
+                  onSplitPane={store.splitPane}
+                  onSplitPaneEmpty={splitPaneEmpty}
+                  onMoveTabToPane={store.moveTabToPane}
+                  onSelectTabInPane={store.selectTabInPane}
+                  onResizeSplit={store.resizeSplit}
+                  onReorderTabsInPane={store.reorderTabsInPane}
+                  onExitFocusMode={noop}
+                />
+              </WorkspaceTabDragScope>
             </DeskProviders>
           ) : (
             <>
@@ -984,11 +1013,15 @@ function useDeskExplorerTarget(
     () => (serverId && workspaceId ? { serverId, workspaceId } : null),
     [serverId, workspaceId],
   );
-  return { explorerScope, explorerTabId: contextTab?.id ?? focusedTabId ?? null };
+  return {
+    explorerScope,
+    explorerTabId: contextTab?.id ?? focusedTabId ?? null,
+  };
 }
 /** `tab` is the context tab; the focused tab's file opens in the editor when it is in that workspace. */
 function DeskWorkspaceActions({ tab, focused }: { tab: DeskTab; focused: DeskTab | null }) {
   const directory = useWorkspaceDirectory(tab.serverId, tab.workspaceId);
+  const workspace = useWorkspace(tab.serverId, tab.workspaceId);
   if (!directory) return null;
   const sameWorkspace =
     focused?.serverId === tab.serverId && focused.workspaceId === tab.workspaceId;
@@ -997,6 +1030,7 @@ function DeskWorkspaceActions({ tab, focused }: { tab: DeskTab; focused: DeskTab
       <WorkspaceOpenInEditorButton
         serverId={tab.serverId}
         cwd={directory}
+        projectId={workspace?.projectId ?? null}
         activeFile={sameWorkspace && focused.target.kind === "file" ? focused.target : null}
         hideLabels
       />
@@ -1157,9 +1191,23 @@ function DeskCreateMenu({ onCreateDesk }: { onCreateDesk: () => void }) {
 
 const styles = StyleSheet.create((theme) => ({
   root: { flex: 1, minHeight: 0, backgroundColor: theme.colors.surface0 },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2], minWidth: 0 },
-  context: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm, flexShrink: 1 },
-  deskTabs: { flexDirection: "row", alignItems: "center", gap: theme.spacing[1], flexShrink: 1 },
+  headerLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    minWidth: 0,
+  },
+  context: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
+    flexShrink: 1,
+  },
+  deskTabs: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexShrink: 1,
+  },
   deskTab: {
     height: buttonControlHeight.xs,
     maxWidth: 200,
@@ -1172,15 +1220,23 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor:
       theme.colorScheme === "dark" ? "rgba(32, 116, 74, 0.2)" : "rgba(32, 116, 74, 0.12)",
   },
-  deskTabText: { color: theme.colors.foregroundExtraMuted, fontSize: theme.fontSize.sm },
-  deskTabTextSelected: { color: theme.colorScheme === "dark" ? "#c3e3cf" : "#1d5e3d" },
+  deskTabText: {
+    color: theme.colors.foregroundExtraMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  deskTabTextSelected: {
+    color: theme.colorScheme === "dark" ? "#c3e3cf" : "#1d5e3d",
+  },
   newDeskDivider: {
     width: 1,
     height: 16,
     marginHorizontal: theme.spacing[1],
     backgroundColor: theme.colors.border,
   },
-  newDeskButton: { width: buttonControlHeight.xs, height: buttonControlHeight.xs },
+  newDeskButton: {
+    width: buttonControlHeight.xs,
+    height: buttonControlHeight.xs,
+  },
   // CUSTOM(desk-workboard)
   newDeskMenuTrigger: {
     width: buttonControlHeight.xs,
@@ -1199,6 +1255,11 @@ const styles = StyleSheet.create((theme) => ({
   workboardTabLabel: { height: "100%", justifyContent: "center" },
   workboardClose: { width: 20, height: 20 },
   content: { flex: 1, minHeight: 0 },
-  empty: { flex: 1, alignItems: "center", justifyContent: "center", gap: theme.spacing[3] },
+  empty: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: theme.spacing[3],
+  },
   emptyTitle: { color: theme.colors.foreground, fontSize: theme.fontSize.lg },
 }));

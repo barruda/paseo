@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { View, Text, type PressableStateCallbackType } from "react-native";
-import { useIsFocused } from "@react-navigation/native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { MoreHorizontal, Pencil, Plus, Undo2, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { Theme } from "@/styles/theme";
@@ -23,6 +23,8 @@ import {
   buildKeyboardShortcutHelpSections,
   buildEffectiveBindings,
   getBindingIdForAction,
+  normalizeCapturedShortcutCombo,
+  isShortcutCaptureComplete,
   getDefaultKeysForAction,
   resolveAdditionalShortcutsForAction,
   resolveShortcutKeysForAction,
@@ -375,6 +377,8 @@ function ShortcutRow({
 
   const isBindable = bindingId !== null;
   const showDone = isCapturing && capturedCombos.length > 0;
+  const captureComplete =
+    bindingId !== null && isShortcutCaptureComplete(bindingId, capturedCombos);
   const hasAdditional = additionalShortcuts.length > 0;
   const showClear = displayChord !== null || hasAdditional;
   // Reset restores the default, so it is only meaningful when there is a
@@ -399,11 +403,14 @@ function ShortcutRow({
             capturedCombos={capturedCombos}
             heldModifiers={heldModifiers}
           />
+          {showDone && !captureComplete && (
+            <Text style={styles.capturingText}>{t("settings.shortcuts.captureIndexPrompt")}</Text>
+          )}
         </View>
         {isCapturing ? (
           <>
             {showDone && (
-              <Button variant="ghost" size="sm" onPress={onDone}>
+              <Button variant="ghost" size="sm" disabled={!captureComplete} onPress={onDone}>
                 {t("settings.shortcuts.actions.done")}
               </Button>
             )}
@@ -491,12 +498,18 @@ export function KeyboardShortcutsSection() {
   );
 
   const saveCapture = useCallback(() => {
-    if (captureTargetId === null || capturedCombos.length === 0) {
+    // CUSTOM(shortcut-additional-bindings): the capture saves into its target slot, and the
+    // row's own binding decides whether the combo is complete.
+    if (
+      captureTargetId === null ||
+      capturingBindingId === null ||
+      !isShortcutCaptureComplete(capturingBindingId, capturedCombos)
+    ) {
       return;
     }
     void setOverride(captureTargetId, capturedCombos.join(" "));
     cancelCapture();
-  }, [captureTargetId, capturedCombos, setOverride, cancelCapture]);
+  }, [captureTargetId, capturingBindingId, capturedCombos, setOverride, cancelCapture]);
 
   useEffect(() => {
     if (!isFocused && capturingBindingId !== null) {
@@ -524,7 +537,8 @@ export function KeyboardShortcutsSection() {
       }
 
       setHeldModifiers(null);
-      setCapturedCombos((current) => [...current, comboString]);
+      const capturedCombo = normalizeCapturedShortcutCombo(capturingBindingId!, comboString);
+      setCapturedCombos((current) => [...current, capturedCombo]);
     }
 
     window.addEventListener("keydown", handleKeyDown, true);

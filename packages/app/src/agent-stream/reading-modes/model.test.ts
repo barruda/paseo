@@ -89,28 +89,9 @@ describe("plugin rows after the answer", () => {
 });
 
 describe("selectCompactRows", () => {
-  it("keeps every block row of a kept message, read across the live head", () => {
+  it("keeps the rows of the prompt and the final answer only", () => {
     const items = [user("u1"), assistant("a1"), tool("t1"), assistant("a2")];
-    const blocks: StreamItem[] = [
-      { kind: "assistant_message", id: "a2:0", blockGroupId: "a2", text: "a", timestamp },
-      { kind: "assistant_message", id: "a2:1", blockGroupId: "a2", text: "b", timestamp },
-    ];
-    const rows = [user("u1"), assistant("a1"), tool("t1"), ...blocks].map(
-      (item) => ({ item }) as StreamLayoutItem,
-    );
-    expect(selectCompactRows(rows, items).map((row) => row.item.id)).toEqual([
-      "u1",
-      "a2:0",
-      "a2:1",
-    ]);
-  });
-  it("keeps block rows when the items are the blocks themselves", () => {
-    const blocks: StreamItem[] = [
-      { kind: "assistant_message", id: "a1:0", blockGroupId: "a1", text: "a", timestamp },
-      { kind: "assistant_message", id: "a2:0", blockGroupId: "a2", text: "b", timestamp },
-    ];
-    const items = [user("u1"), blocks[0], tool("t1"), blocks[1]];
     const rows = items.map((item) => ({ item }) as StreamLayoutItem);
-    expect(selectCompactRows(rows, items).map((row) => row.item.id)).toEqual(["u1", "a2:0"]);
+    expect(selectCompactRows(rows, items).map((row) => row.item.id)).toEqual(["u1", "a2"]);
   });
 });

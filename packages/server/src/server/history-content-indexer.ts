@@ -5,7 +5,7 @@ import { createInterface } from "node:readline";
 import type { Logger } from "pino";
 import type { AgentManager } from "./agent/agent-manager.js";
 import type { AgentStorage, StoredAgentRecord } from "./agent/agent-storage.js";
-import { claudeConfigDir, claudeTranscriptPathSync } from "./agent/providers/claude/project-dir.js";
+import { claudeConfigDir, claudeTranscriptPath } from "./agent/providers/claude/project-dir.js";
 import {
   HistoryContentIndex,
   setActiveHistoryContentIndex,
@@ -150,7 +150,8 @@ export async function backfillHistoryContent(input: {
     let file: string | null = null;
     let format: TranscriptFormat | null = null;
     if (sessionId && record.provider === "claude") {
-      file = claudeTranscriptPathSync({
+      // CUSTOM(history-content-search): upstream made the transcript lookup async in 0.14.
+      file = await claudeTranscriptPath({
         cwd: record.cwd,
         sessionId,
         configDir: claudeConfigDir(input.env),

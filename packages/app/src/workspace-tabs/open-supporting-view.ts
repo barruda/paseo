@@ -1,5 +1,7 @@
 // CUSTOM(desks): supporting views belong in the current Desk while that mode is active.
 import { openDeskTarget } from "@/task-navigation/open-desk-target";
+import { supportsDesktopPaneSplits } from "@/constants/layout";
+import { revealWorkspaceTab } from "./navigation";
 import {
   collectAllPanes,
   collectAllTabs,
@@ -10,11 +12,9 @@ import {
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import type { OpenInSidePanePreferences, PullRequestOpenLocation } from "@/hooks/use-settings";
-import type { ExplorerCheckoutContext } from "@/stores/explorer-checkout-context";
 import {
   isExplorerSidebarOpen,
   openExplorerSidebarView,
-  usesCompactExplorerSidebar,
   type ExplorerSidebarView,
 } from "@/workspace-tabs/explorer-sidebar";
 import {
@@ -25,7 +25,6 @@ import {
 interface WorkspaceViewInput {
   isCompact: boolean;
   workspaceKey: string | null;
-  checkout: ExplorerCheckoutContext | null;
   supportsPaneSplits?: boolean;
 }
 
@@ -35,6 +34,10 @@ interface OpenWorkspaceChangesInput extends WorkspaceViewInput {
 
 interface OpenWorkspacePullRequestInput extends WorkspaceViewInput {
   destination: PullRequestOpenLocation;
+}
+
+function supportingViewsBelongInExplorer(input: WorkspaceViewInput): boolean {
+  return input.isCompact || !(input.supportsPaneSplits ?? supportsDesktopPaneSplits());
 }
 
 function openExplorerView(input: WorkspaceViewInput, view: ExplorerSidebarView): void {
@@ -48,12 +51,11 @@ export function openWorkspaceChanges(input: OpenWorkspaceChangesInput): string |
     target: { kind: "working_diff" },
   });
   if (deskTabId) return deskTabId;
-  if (usesCompactExplorerSidebar(input)) {
+  if (supportingViewsBelongInExplorer(input)) {
     openExplorerView(input, "changes");
     return null;
   }
   return openPreferredWorkspaceTarget({
-    isCompact: input.isCompact,
     workspaceKey: input.workspaceKey,
     target: { kind: "working_diff" },
     source: "diffs",
@@ -68,7 +70,7 @@ export function openComposerChanges(input: OpenWorkspaceChangesInput): string | 
     target: { kind: "working_diff" },
   });
   if (deskTabId) return deskTabId;
-  if (usesCompactExplorerSidebar(input) || isExplorerSidebarOpen(input)) {
+  if (supportingViewsBelongInExplorer(input) || isExplorerSidebarOpen(input)) {
     return openWorkspaceChanges(input);
   }
   openExplorerView(input, "changes");
@@ -82,16 +84,26 @@ export function openWorkspacePullRequest(input: OpenWorkspacePullRequestInput): 
     target: { kind: "pull_request" },
   });
   if (deskTabId) return deskTabId;
-  if (usesCompactExplorerSidebar(input) || input.destination === "explorer") {
-    openExplorerView(input, "pr");
-    return null;
+  if (!input.workspaceKey) return null;
+  let tabId: string | null;
+  if (supportingViewsBelongInExplorer(input) || input.destination === "explorer") {
+    const store = useWorkspaceLayoutStore.getState();
+    const paneId = store.ensureExplorerSidebar(input.workspaceKey);
+    tabId = store.openTab({
+      workspaceKey: input.workspaceKey,
+      target: { kind: "pull_request" },
+      intent: "reveal",
+      placement: paneId ? { mode: "prefer", paneId } : undefined,
+    });
+  } else {
+    return openWorkspaceTargetAtLocation({
+      workspaceKey: input.workspaceKey,
+      target: { kind: "pull_request" },
+      location: input.destination,
+    });
   }
-  return openWorkspaceTargetAtLocation({
-    isCompact: input.isCompact,
-    workspaceKey: input.workspaceKey,
-    target: { kind: "pull_request" },
-    location: input.destination,
-  });
+  revealWorkspaceTab(input.workspaceKey, tabId);
+  return tabId;
 }
 
 /** Adds a detected desktop PR once without revealing or selecting its destination. */

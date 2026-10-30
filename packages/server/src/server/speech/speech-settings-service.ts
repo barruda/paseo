@@ -322,11 +322,11 @@ export function createSpeechSettingsService(params: {
           kind: spec.kind === "tts" ? "tts" : "stt",
           label: spec.label,
           source: "catalog",
-          languages: spec.languages,
+          languages: spec.languagesLabel ?? spec.languages.join(", "),
           installed,
           path: installed ? dir : null,
           sizeBytes: installed && dir ? cachedSize(dir) : null,
-          downloadSizeMb: spec.downloadSizeMb,
+          downloadSizeMb: Math.round(spec.downloadSizeBytes / 1_000_000),
           speakers: [...(spec.speakers ?? [])],
         };
       }),

@@ -2,7 +2,7 @@
 import type Token from "markdown-it/lib/token.mjs";
 import type { StreamItem } from "@/types/stream";
 import { createAssistantMarkdownParser } from "@/utils/assistant-markdown-parser";
-import { getStreamItemMessageId } from "../presentation";
+import { getStreamItemMessageId } from "@/types/stream";
 
 export interface ChatImage {
   key: string;
@@ -95,6 +95,8 @@ export function resolveActiveImageMessageId(
   return active;
 }
 
-/** Rendered images carry this so the strip can land on the exact one. */
-export const CHAT_IMAGE_DATASET = { chatImage: "true" };
-export const CHAT_IMAGE_SELECTOR = "[data-chat-image]";
+/**
+ * The images the chat's Markdown renders (react-native-enriched-markdown draws a plain `<img>`
+ * inside each Markdown stack), in document order, so the strip can land on the exact one.
+ */
+export const CHAT_IMAGE_SELECTOR = "[data-paseo-markdown-image-sources] img";

@@ -43,10 +43,7 @@ export interface CreatePaseoWorktreeCommandDependencies<
   createPaseoWorktreeWorkflow?: CreatePaseoWorktreeWorkflow<Result>;
 }
 
-export type CreatePaseoWorktreeCommandInput = Omit<
-  CreatePaseoWorktreeInput,
-  "paseoHome" | "runSetup"
-> & {
+export type CreatePaseoWorktreeCommandInput = Omit<CreatePaseoWorktreeInput, "paseoHome"> & {
   paseoHome?: string;
   worktreesRoot?: string;
 };
@@ -73,7 +70,7 @@ export async function createPaseoWorktreeCommand<Result extends CreatePaseoWorkt
 
     const createdWorktree = await dependencies.createPaseoWorktreeWorkflow({
       ...input,
-      runSetup: false,
+
       paseoHome: input.paseoHome ?? dependencies.paseoHome,
       worktreesRoot: input.worktreesRoot ?? dependencies.worktreesRoot,
     });
@@ -91,7 +88,10 @@ export interface ArchiveCommandDependencies extends Omit<
   ArchiveDependencies,
   "workspaceGitService"
 > {
-  workspaceGitService: Pick<WorkspaceGitService, "getSnapshot" | "listWorktrees">;
+  workspaceGitService: Pick<
+    WorkspaceGitService,
+    "getSnapshot" | "listWorktrees" | "invalidateWorktrees"
+  >;
 }
 
 export interface ArchiveCommandInput {

@@ -1,8 +1,17 @@
 import { router, usePathname } from "expo-router";
 import { CalendarClock, ChevronDown, ChevronUp, History, Plus, Search } from "lucide-react-native";
-import { memo, useCallback, useMemo, useRef, useState, type ComponentType } from "react";
+import {
+  memo,
+  useCallback,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { View, type StyleProp, type ViewStyle } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { WakeDictationSidebarToggle } from "@/always-listening/sidebar-toggle";
 import { SidebarVoiceRow } from "@/voice/sidebar/row";
 import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
@@ -35,10 +44,13 @@ interface SidebarNavRowProps {
 interface SidebarNavRowsProps extends SidebarNavRowProps {
   /** Style for the group wrapper, which the sidebar owns. */
   style?: StyleProp<ViewStyle>;
+  /** Sits to the right of the first row, which shrinks to make room. */
+  firstRowTrailing?: ReactNode;
 }
 
 // CUSTOM(sidebar-show-more): keep daily controls fixed and disclose secondary navigation on demand.
-export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps) {
+// `firstRowTrailing` (the phone's close button) sits beside History, the first row.
+export function SidebarNavRows({ style, onBeforeNavigate, firstRowTrailing }: SidebarNavRowsProps) {
   const { items } = useSidebarNavItems("header");
   const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
@@ -60,10 +72,19 @@ export function SidebarNavRows({ style, onBeforeNavigate }: SidebarNavRowsProps)
   );
   const groupRef = useRef<View | null>(null);
 
+  const historyRow = <SidebarHistoryRow onBeforeNavigate={onBeforeNavigate} />;
+
   return (
     <View ref={groupRef} collapsable={false} style={style}>
-      <SidebarHistoryRow onBeforeNavigate={onBeforeNavigate} />
-      <SidebarSearchRow onBeforeNavigate={onBeforeNavigate} />
+      {firstRowTrailing ? (
+        <View style={styles.firstRow}>
+          <View style={styles.firstRowItem}>{historyRow}</View>
+          {firstRowTrailing}
+        </View>
+      ) : (
+        historyRow
+      )}
+      <SidebarSearchRow />
       <SidebarVoiceRow />
       <WakeDictationSidebarToggle />
       {pinnedItems.map((item) =>
@@ -202,14 +223,13 @@ function SidebarHistoryRow({ onBeforeNavigate }: SidebarNavRowProps) {
   );
 }
 
-function SidebarSearchRow({ onBeforeNavigate }: SidebarNavRowProps) {
+function SidebarSearchRow() {
   const { t } = useTranslation();
   const shortcutKeys = useShortcutKeys(builtinSidebarNavShortcutAction("search"));
   const setCommandCenterOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
   const handlePress = useCallback(() => {
-    onBeforeNavigate?.();
     setCommandCenterOpen(true);
-  }, [onBeforeNavigate, setCommandCenterOpen]);
+  }, [setCommandCenterOpen]);
 
   return (
     <SidebarHeaderRow
@@ -249,3 +269,14 @@ const BUILTIN_ROWS: Record<BuiltinSidebarNavId, ComponentType<SidebarNavRowProps
   search: SidebarSearchRow,
   schedules: SidebarSchedulesRow,
 };
+
+const styles = StyleSheet.create({
+  firstRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  firstRowItem: {
+    flex: 1,
+    minWidth: 0,
+  },
+});

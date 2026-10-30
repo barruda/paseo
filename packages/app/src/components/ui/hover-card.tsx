@@ -14,13 +14,16 @@ import { Dimensions, View, type Role, type StyleProp, type ViewStyle } from "rea
 import { FadeIn, FadeOut } from "react-native-reanimated";
 import { StyleSheet } from "react-native-unistyles";
 import { Portal } from "@gorhom/portal";
-import { useBottomSheetModalInternal } from "@gorhom/bottom-sheet";
 import {
   OverlayLayerProvider,
   useOverlayLayer,
   useWebOverlayRegistration,
 } from "@/lib/overlay-root";
 import { FloatingSurface } from "@/components/ui/floating";
+import {
+  measureFloatingPanelPortalHost,
+  useFloatingPanelPortalHostName,
+} from "@/components/ui/floating-panel-portal";
 import { isWeb } from "@/constants/platform";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import {
@@ -440,34 +443,37 @@ function HoverCardSurface({
   contentRef: RefObject<View | null>;
   pointerX: number | null;
 }): ReactElement {
-  const bottomSheetInternal = useBottomSheetModalInternal(true);
-  const [triggerRect, setTriggerRect] = useState<Rect | null>(null);
+  const portalHostName = useFloatingPanelPortalHostName();
+  const [anchor, setAnchor] = useState<{ triggerRect: Rect; hostRect: Rect } | null>(null);
   const [contentSize, setContentSize] = useState<Size | null>(null);
   const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     if (!triggerRef.current) return;
     let cancelled = false;
-    void measureElement(triggerRef.current).then((rect) => {
-      if (cancelled) return undefined;
+    void Promise.all([
+      measureElement(triggerRef.current),
+      measureFloatingPanelPortalHost(portalHostName),
+    ]).then(([rect, hostRect]) => {
+      if (cancelled || !hostRect) return undefined;
       // CUSTOM(chat-file-actions): a zero-width anchor at the pointer, with start alignment.
-      if (pointerAnchorOffset !== undefined && pointerX !== null) {
-        setTriggerRect({ ...rect, x: pointerX - pointerAnchorOffset, width: 0 });
-      } else {
-        setTriggerRect(rect);
-      }
+      const triggerRect =
+        pointerAnchorOffset !== undefined && pointerX !== null
+          ? { ...rect, x: pointerX - pointerAnchorOffset, width: 0 }
+          : rect;
+      setAnchor({ triggerRect, hostRect });
       return undefined;
     });
     return () => {
       cancelled = true;
     };
-  }, [pointerAnchorOffset, pointerX, triggerRef]);
+  }, [pointerAnchorOffset, pointerX, portalHostName, triggerRef]);
 
   useEffect(() => {
-    if (!triggerRect || !contentSize) return;
+    if (!anchor || !contentSize) return;
     const { width, height } = Dimensions.get("window");
     const { x, y } = computePosition({
-      triggerRect,
+      triggerRect: anchor.triggerRect,
       contentSize,
       displayArea: { x: 0, y: 0, width, height },
       placement,
@@ -475,8 +481,8 @@ function HoverCardSurface({
       alignment,
       offset,
     });
-    setPosition({ x, y });
-  }, [alignment, contentSize, offset, placement, triggerRect]);
+    setPosition({ x: x - anchor.hostRect.x, y: y - anchor.hostRect.y });
+  }, [alignment, anchor, contentSize, offset, placement]);
 
   const handleLayout = useCallback(
     (event: { nativeEvent: { layout: { width: number; height: number } } }) => {
@@ -497,7 +503,7 @@ function HoverCardSurface({
   const surfaceStyle = useMemo(() => [styles.surface, style], [style]);
 
   return (
-    <Portal hostName={bottomSheetInternal?.hostName}>
+    <Portal hostName={portalHostName}>
       <View pointerEvents="box-none" style={[styles.portalOverlay, { zIndex: layer }]}>
         <FloatingSurface
           ref={contentRef}

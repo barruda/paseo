@@ -1,6 +1,5 @@
-import { resolvePreviewHtmlLink } from "@/file-pane/html-preview-navigation";
 import { Text, View } from "react-native";
-import { useCallback, useMemo } from "react";
+import { useMemo } from "react";
 import invariant from "tiny-invariant";
 import { useTranslation } from "react-i18next";
 import { FilePane } from "@/file-pane/pane";
@@ -31,18 +30,9 @@ function useFilePanelDescriptor(target: { kind: "file"; path: string }) {
 
 function FilePanel() {
   const { t } = useTranslation();
-  const { serverId, workspaceId, target, fileNavigationRevision, openFileInWorkspace } =
-    usePaneContext();
+  const { serverId, workspaceId, target, panelRevision } = usePaneContext();
   const workspaceDirectory = useWorkspaceDirectory(serverId, workspaceId);
   invariant(target.kind === "file", "FilePanel requires file target");
-  // CUSTOM(html-preview-links): resolve from the file, never the app's srcdoc base URL.
-  const openHtmlLink = useCallback(
-    (url: string) => {
-      const path = resolvePreviewHtmlLink(target.path, url);
-      if (path) openFileInWorkspace({ location: { path }, disposition: "main" });
-    },
-    [target.path, openFileInWorkspace],
-  );
   if (!workspaceDirectory) {
     return (
       <View style={CENTERED_PADDED_STYLE}>
@@ -52,11 +42,10 @@ function FilePanel() {
   }
   return (
     <FilePane
-      onOpenHtmlLink={openHtmlLink}
       serverId={serverId}
       workspaceRoot={workspaceDirectory}
       location={target}
-      navigationRevision={fileNavigationRevision ?? 0}
+      navigationRevision={panelRevision ?? 0}
     />
   );
 }

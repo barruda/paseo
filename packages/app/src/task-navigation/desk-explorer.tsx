@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useHasWindowChromeObstruction } from "@/utils/desktop-window";
 import { ExplorerSidebarDock } from "@/screens/workspace/explorer-sidebar";
+import { WorkspaceTabDragContext } from "@/components/workspace-tab-drag-context";
 import { buildWorkspacePaneContentModel } from "@/screens/workspace/workspace-pane-content";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
 import {
@@ -23,12 +24,20 @@ import {
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import {
+  resolveExplorerSidebarPresentation,
   toggleExplorerSidebar,
   useIsExplorerSidebarOpen,
-  usesCompactExplorerSidebar,
 } from "@/workspace-tabs/explorer-sidebar";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { activeDesk, useDesksStore, type DeskTabOwner } from "./desks-store";
+
+const NO_DESK_DRAG = {
+  activeDragTabId: null,
+  dropPreview: null,
+  tabDropPreview: null,
+  laneDropPreview: null,
+  externalDndContext: false,
+};
 
 const NO_CLOSING_TABS = new Set<string>();
 const noop = () => undefined;
@@ -53,7 +62,7 @@ export function useDeskExplorer(scope: DeskTabOwner | null, tabId: string | null
   const isCompact = useIsCompactFormFactor();
   const hasMacTrafficLights = useHasWindowChromeObstruction("top-left");
   const workspaceKey = scope ? buildWorkspaceTabPersistenceKey(scope) : null;
-  const isCompactExplorer = usesCompactExplorerSidebar({ isCompact });
+  const isCompactExplorer = resolveExplorerSidebarPresentation({ isCompact }) === "overlay";
   const isWorkspaceOpen = useIsExplorerSidebarOpen({ isCompact, workspaceKey });
   const isTabOpen = useDesksStore((state) =>
     Boolean(tabId && activeDesk(state).explorerTabIds?.includes(tabId)),
@@ -78,7 +87,7 @@ export function useDeskExplorer(scope: DeskTabOwner | null, tabId: string | null
 
   const toggle = useCallback(() => {
     if (isCompactExplorer) {
-      toggleExplorerSidebar({ isCompact, workspaceKey, checkout: null });
+      toggleExplorerSidebar({ isCompact, workspaceKey });
       return;
     }
     if (tabId) useDesksStore.getState().setTabExplorerOpen(tabId, !isTabOpen);
@@ -86,7 +95,10 @@ export function useDeskExplorer(scope: DeskTabOwner | null, tabId: string | null
   return {
     workspaceKey,
     isOpen,
-    toggleOwner: resolveWorkspaceExplorerToggleOwner({ isMobile: isCompact, hasMacTrafficLights }),
+    toggleOwner: resolveWorkspaceExplorerToggleOwner({
+      isMobile: isCompact,
+      hasMacTrafficLights,
+    }),
     toggle,
   };
 }
@@ -177,29 +189,30 @@ export function DeskExplorerDock({
   return (
     <WorkspaceTabOwnerProvider value={null}>
       <WorkspaceTabMoveProvider value={null}>
-        <ExplorerSidebarDock
-          pane={pane}
-          uiTabs={uiTabs}
-          normalizedServerId={scope.serverId}
-          normalizedWorkspaceId={scope.workspaceId}
-          isWorkspaceFocused={isFocused}
-          closingTabIds={NO_CLOSING_TABS}
-          activeDragTabId={null}
-          tabDropPreview={null}
-          onSelectTab={selectTab}
-          onCloseTab={closeTab}
-          hoveredCloseTabKey={hoveredCloseTabKey}
-          setHoveredCloseTabKey={setHoveredCloseTabKey}
-          onRenameTab={noop}
-          onCloseTabsToLeft={closeTabsToLeft}
-          onCloseTabsToRight={closeTabsToRight}
-          onCloseOtherTabs={closeOtherTabs}
-          onExitFocusMode={noop}
-          onReorderTabsInPane={reorderTabs}
-          buildPaneContentModel={buildPaneContentModel}
-          headerAction={renderHeaderAction()}
-          {...tabActions}
-        />
+        {/* Outside the Desk's tab drag: these tabs only reorder within their own row. */}
+        <WorkspaceTabDragContext value={NO_DESK_DRAG}>
+          <ExplorerSidebarDock
+            pane={pane}
+            uiTabs={uiTabs}
+            normalizedServerId={scope.serverId}
+            normalizedWorkspaceId={scope.workspaceId}
+            isWorkspaceFocused={isFocused}
+            closingTabIds={NO_CLOSING_TABS}
+            onSelectTab={selectTab}
+            onCloseTab={closeTab}
+            hoveredCloseTabKey={hoveredCloseTabKey}
+            setHoveredCloseTabKey={setHoveredCloseTabKey}
+            onRenameTab={noop}
+            onCloseTabsToLeft={closeTabsToLeft}
+            onCloseTabsToRight={closeTabsToRight}
+            onCloseOtherTabs={closeOtherTabs}
+            onExitFocusMode={noop}
+            onReorderTabsInPane={reorderTabs}
+            buildPaneContentModel={buildPaneContentModel}
+            headerAction={renderHeaderAction()}
+            {...tabActions}
+          />
+        </WorkspaceTabDragContext>
       </WorkspaceTabMoveProvider>
     </WorkspaceTabOwnerProvider>
   );

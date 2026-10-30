@@ -6,7 +6,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { isWeb } from "@/constants/platform";
 import { sidebarWorkspaceRowStyles } from "@/components/sidebar/sidebar-workspace-row-content";
 import { DensityIcon } from "@/components/ui/density-icon";
-import { density, densityFontSize, densityIconBox } from "@/styles/density";
+import { density, densityIconBox } from "@/styles/density";
 
 /**
  * The row that ends a truncated group. It is a workspace row that happens to say "Show more", so
@@ -119,21 +119,19 @@ const styles = StyleSheet.create((theme) => ({
     opacity: 0.5,
   },
   quietText: {
-    fontSize: {
-      xs: densityFontSize(theme, "base").xs * 0.5,
-      md: densityFontSize(theme, "base").md * 0.5,
-    },
+    // Upstream 0.14 dropped density text sizes; the label uses `base` everywhere.
+    fontSize: theme.fontSize.base * 0.5,
     opacity: 0.5,
   },
   text: {
     color: theme.colors.foregroundMuted,
-    fontSize: densityFontSize(theme, "base"),
+    fontSize: theme.fontSize.base,
     minWidth: 0,
     flexShrink: 1,
   },
   textHovered: {
     color: theme.colors.foreground,
-    fontSize: densityFontSize(theme, "base"),
+    fontSize: theme.fontSize.base,
     minWidth: 0,
     flexShrink: 1,
   },

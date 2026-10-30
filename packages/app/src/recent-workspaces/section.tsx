@@ -10,7 +10,7 @@ import { isNative } from "@/constants/platform";
 import type { SidebarWorkspacePlacement } from "@/hooks/use-sidebar-workspaces-list";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { useSidebarWorkspaceLimitStore } from "@/sidebar-workspace-limit/store";
-import { density, densityFontSize } from "@/styles/density";
+import { density } from "@/styles/density";
 import { useRecentHighlightStore } from "./highlight";
 import { RecentWorkspaceTrailingContext } from "./trailing";
 
@@ -130,7 +130,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   title: {
     color: theme.colors.foregroundMuted,
-    fontSize: densityFontSize(theme, "sm"),
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.normal,
   },
 }));

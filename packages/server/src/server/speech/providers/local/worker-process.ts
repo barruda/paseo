@@ -1,10 +1,23 @@
+import path from "node:path";
 import pino from "pino";
 
 import type { StreamingTranscriptionSession } from "../../speech-provider.js";
 import type { TurnDetectionSession } from "../../turn-detection-provider.js";
 import { resolveLocalSpeechExecutionProvider } from "./local-speech-gpu.js";
 import { resolveSttModelFiles } from "./model-files.js";
-import { getLocalSpeechModelDir, type LocalSpeechModelId } from "./models.js";
+import {
+  getLocalSpeechModelDir,
+  type LocalSpeechModelId,
+  type LocalSttModelId,
+  type LocalTtsModelId,
+} from "./models.js";
+import {
+  getLocalSttEngine,
+  getLocalTtsEngine,
+  SHERPA_ONNX_MODEL_CATALOG,
+  type SttEngine,
+  type TtsEngine,
+} from "./sherpa/model-catalog.js";
 import { SherpaOfflineRecognizerEngine } from "./sherpa/sherpa-offline-recognizer.js";
 import { SherpaOnnxParakeetSTT } from "./sherpa/sherpa-parakeet-stt.js";
 import { SherpaParakeetRealtimeTranscriptionSession } from "./sherpa/sherpa-parakeet-realtime-session.js";
@@ -75,6 +88,33 @@ function modelDirFor(config: LocalSpeechWorkerConfig, modelId: string): string {
   );
 }
 
+function isCatalogModelId(modelId: string): modelId is LocalSpeechModelId {
+  return Object.hasOwn(SHERPA_ONNX_MODEL_CATALOG, modelId);
+}
+
+// CUSTOM(voice-settings, local-speech-gpu): a registered folder, or a NeMo transducer under
+// CUDA, is read by its files: CUDA prefers the patched fp16 and full-precision parts, which the
+// catalog's int8 file names would skip. Every other catalog model loads as the catalog says.
+function sttEngineFor(modelId: string, modelDir: string): SttEngine {
+  if (isCatalogModelId(modelId)) {
+    const engine = getLocalSttEngine(modelId as LocalSttModelId);
+    if (engine.family !== "transducer" || executionProvider === "cpu") return engine;
+  }
+  const files = resolveSttModelFiles(modelDir, executionProvider);
+  return {
+    family: "transducer",
+    encoder: path.basename(files.encoder),
+    decoder: path.basename(files.decoder),
+    joiner: path.basename(files.joiner),
+    tokens: path.basename(files.tokens),
+  };
+}
+
+// CUSTOM(voice-settings): a registered folder has no catalog engine; SherpaOnnxTTS reads it as Kokoro.
+function ttsEngineFor(modelId: string): TtsEngine | undefined {
+  return isCatalogModelId(modelId) ? getLocalTtsEngine(modelId as LocalTtsModelId) : undefined;
+}
+
 function sttEngineKey(config: LocalSpeechWorkerConfig, modelId: string): string {
   return `${config.modelsDir}:${modelId}`;
 }
@@ -95,14 +135,11 @@ function getSttEngine(
   if (existing) {
     return existing;
   }
-  // CUSTOM(voice-settings): pick the files by folder contents and execution provider.
-  const files = resolveSttModelFiles(modelDirFor(config, modelId), executionProvider);
+  const modelDir = modelDirFor(config, modelId);
   const created = new SherpaOfflineRecognizerEngine(
     {
-      model: {
-        kind: "nemo_transducer",
-        ...files,
-      },
+      modelDir,
+      engine: sttEngineFor(modelId, modelDir),
       numThreads: 2,
       provider: executionProvider,
       debug: 0,
@@ -147,8 +184,9 @@ function getTtsProvider(config: LocalSpeechWorkerConfig): SherpaOnnxTTS {
   const modelDir = modelDirFor(config, ttsModelId(config));
   const created = new SherpaOnnxTTS(
     {
-      preset: ttsModelId(config),
+      modelId: ttsModelId(config),
       modelDir,
+      engine: ttsEngineFor(ttsModelId(config)),
       speakerId: config.voiceTtsSpeakerId,
       speed: config.voiceTtsSpeed,
       provider: executionProvider,

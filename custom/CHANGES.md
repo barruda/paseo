@@ -217,24 +217,26 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     folder are refused before any read. The frame's sandbox and CSP are unchanged.
   - Not covered: CSS `url()`, `srcset`, `<video>`, images never attached to the document, and
     links to images (`<a href>`; popups stay blocked). Native keeps the self-contained preview.
-- **Files:** `packages/app/src/file-pane/html-preview-assets.ts` (path rules, loader, bridge),
+- **Files:** `packages/app/src/file-panels/html-preview-assets.ts` (path rules, loader, bridge),
   `html-preview-assets.test.ts`, `html-preview-assets.browser.test.ts`. New files; no conflict
-  risk.
+  risk. (Moved from `file-pane/` with upstream 0.14, which moved the preview to `file-panels/`.)
 - **Core files touched** (each marked `CUSTOM(html-preview-assets)`):
-  - `packages/app/src/file-pane/html-preview-csp.ts`: `withPreviewCsp` takes a second
+  - `packages/app/src/file-panels/html-preview-csp.ts`: `withPreviewCsp` takes a second
     `headMarkup` argument inserted after the policy meta.
-  - `packages/app/src/file-pane/html-preview.web.tsx`: iframe ref, injects the bridge, answers
+  - `packages/app/src/file-panels/html-preview.web.tsx`: iframe ref, injects the bridge, answers
     asset requests from its own frame. `html-preview.tsx` (native) accepts and ignores `loadAsset`.
-  - `packages/app/src/file-pane/pane.tsx`: `FilePane` builds the loader from `client` and
-    `readTarget`; `htmlAssetLoader` is threaded through `FilePanePresentation`,
-    `EditableFilePane`, and `FilePreviewBody` to `FileHtmlPreview`.
+  - `packages/app/src/file-panels/builtin.tsx`: `HtmlPreview` builds the loader from the host's
+    `client` and `resolveFilePreviewReadTarget({ path: params.path, workspaceRoot })` and passes
+    it to `FileHtmlPreview` as `loadAsset`.
   - `SECURITY.md`: the HTML preview section says which files the preview can read.
 - **Re-apply:** Wherever the web preview builds its srcdoc, append `PREVIEW_ASSET_BRIDGE_SCRIPT`
   right after the CSP meta, listen for `message` events whose `source` is the frame's
   `contentWindow`, and answer `parsePreviewAssetRequest` hits with `respondToPreviewAssetRequest`
   using a loader from `createPreviewAssetLoader({ client, cwd, htmlPath })` for the previewed file.
-- **Verify:** `(cd packages/app && npx vitest run src/file-pane/html-preview-assets.test.ts)` and
-  `(cd packages/app && npx vitest run --project browser src/file-pane/html-preview-assets.browser.test.ts)`
+  Since 0.14 that file is the built-in HTML panel's Preview (`HtmlPreview` in
+  `file-panels/builtin.tsx`), which gets `params`, `workspaceId` and `host` as props.
+- **Verify:** `(cd packages/app && npx vitest run src/file-panels/html-preview-assets.test.ts)` and
+  `(cd packages/app && npx vitest run --project browser src/file-panels/html-preview-assets.browser.test.ts)`
   (needs `npx playwright install --only-shell chromium` once). The update script runs both. In the
   app, open `~/uprojects/DreamMMO/docs/art/guided-lighting-2026-10-08/gallery/index.html` and check
   that the comparison and cards show the captures.
@@ -341,15 +343,18 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   - `packages/app/src/agent-stream/view.tsx`: `chatImages` and `chatImagesReadingPosition` before
     `useImperativeHandle`, a publish in `handleReadingPositionChange`, and `<ChatImagesRail>` after
     `<ChatOutlineRail>`.
-  - `packages/app/src/components/message.tsx`: `AssistantMarkdownImage` puts `CHAT_IMAGE_DATASET`
-    on the frame in all three states (failed, loading, loaded), so the strip can find the n-th
-    image of a message in the DOM.
+  - None in the renderer since upstream 0.14: chat Markdown is react-native-enriched-markdown,
+    which draws each image as a plain `<img>` inside the Markdown stack (the view carrying
+    `data-paseo-markdown-image-sources`). `CHAT_IMAGE_SELECTOR` in `model.ts` finds them there.
+    Thumbnails load through upstream's `useMarkdownSource` (`components/markdown/images.ts`),
+    sharing its cache with the transcript.
 - **Re-apply:** In the agent stream view, collect images with
   `collectChatImages([...tail items, ...head items])`, keep a `createActivePromptPublisher()` fed
   with the timeline seq of the row at the top of the viewport (wherever the chat outline gets its
   reading position), and render `ChatImagesRail` next to the outline rail with the viewport ref,
-  visible message ids, and the history window's reveal function. In the assistant markdown image
-  component, add `dataSet={CHAT_IMAGE_DATASET}` to the outermost view of every state.
+  visible message ids, and the reveal function that also opens collapsed turns. Find the n-th
+  rendered image of a message by querying the Markdown stack's `<img>`s inside the message's
+  `data-message-id` rows; if the renderer stops drawing a plain `<img>`, tag its image instead.
 - **Verify:** `(cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts)` (the
   update script runs it). In the app, ask an agent to reply with a few `![x](path.png)` images,
   then hover and click the thumbnails on the right.
@@ -475,17 +480,18 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   modifier-only presses are not forwarded. Web and desktop; native keeps upstream's preview.
   The page can post the message itself, so a hostile preview can fire app shortcuts; `SECURITY.md`
   says so.
-- **Files:** `packages/app/src/file-pane/html-preview-keys.ts` (bridge script, message parser,
-  replay) and `html-preview-keys.browser.test.ts`. New files; no conflict risk.
+- **Files:** `packages/app/src/file-panels/html-preview-keys.ts` (bridge script, message parser,
+  replay) and `html-preview-keys.browser.test.ts`. New files; no conflict risk. (Moved from
+  `file-pane/` with upstream 0.14.)
 - **Core files touched** (each marked `CUSTOM(html-preview-keys)`):
-  - `packages/app/src/file-pane/html-preview.web.tsx`: prepends `PREVIEW_KEY_BRIDGE_SCRIPT` to the
+  - `packages/app/src/file-panels/html-preview.web.tsx`: prepends `PREVIEW_KEY_BRIDGE_SCRIPT` to the
     head markup passed to `withPreviewCsp`, and a `message` listener that replays parsed keys.
   - `SECURITY.md`: the HTML preview section says the page can trigger app shortcuts.
 - **Re-apply:** Wherever the web preview builds its srcdoc, add `PREVIEW_KEY_BRIDGE_SCRIPT` after
   the CSP meta (it needs inline script, which the preview CSP allows). Listen for `message` events
   whose `source` is the frame's `contentWindow` and call `replayPreviewKey(frame, key)` for each
   `parsePreviewKey` hit. The replay only has to reach a window-level `keydown` capture listener.
-- **Verify:** `(cd packages/app && npx vitest run --project browser src/file-pane/html-preview-keys.browser.test.ts)`
+- **Verify:** `(cd packages/app && npx vitest run --project browser src/file-panels/html-preview-keys.browser.test.ts)`
   (the update script runs it). In the app, open an `.html` file, click inside the preview, and press
   your next-tab shortcut.
 
@@ -1417,8 +1423,11 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   Resolve against the source file’s folder and open another isolated preview. Inline scripts,
   modules, and blob workers keep the existing policy; external script dependencies still require
   the Browser panel with an HTTP server.
-- **Core files touched:** `file-pane/html-preview-navigation.ts`, `html-preview-assets.ts`,
-  `html-preview.web.tsx`, `html-preview.tsx`, `pane.tsx`, `panels/file-panel.tsx`, and `SECURITY.md`.
+- **Core files touched:** `file-panels/html-preview-navigation.ts`, `html-preview-assets.ts`,
+  `html-preview.web.tsx`, `html-preview.tsx`, `builtin.tsx` (`HtmlPreview` passes
+  `onOpenHtmlLink`, built from `usePaneContext().openFileInWorkspace` and
+  `resolvePreviewHtmlLink(params.path, url)`), and `SECURITY.md`. Before upstream 0.14 the
+  callback came from `panels/file-panel.tsx` through `file-pane/pane.tsx`; neither is touched now.
 - **Re-apply:** Inject the link bridge into web previews with an open callback, accept messages
   only from that iframe, resolve relative HTML paths with the shared bounded path resolver, and
   use the pane’s `openFileInWorkspace` action. Keep image MIME filtering in the image loader.
@@ -2632,8 +2641,12 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     right after the external-link case.
   - `assistant-file-links/provider.tsx` and `use-file-link.ts`: carry `sessionPaths` (also in the
     context value, so links re-resolve) and return `lookupQuery`.
-  - `assistant-file-links/link.tsx`: web links with a file target or lookup render
-    `FileLinkHoverActions` instead of the path tooltip.
+  - `assistant-file-links/link.tsx`: upstream 0.14 deleted it; the fork keeps it for
+    `wrapWithFileLinkHover(source, useFileLink result, anchor)` (file links get
+    `FileLinkHoverActions`, web links `UrlHoverActions`, anything else null) and the standalone
+    `AssistantMarkdownCodeLink` of shell-output-files.
+  - `components/markdown/renderers.web.tsx`: `WebLink` returns `wrapWithFileLinkHover(...)` when
+    it is not null, instead of the path tooltip.
   - `agent-stream/view.tsx`: `useSessionFilePaths` over the stream, passed to the provider.
   - `components/ui/hover-card.tsx`: `openDelayMs` on `HoverCard`, `style` on `HoverCardTrigger`,
     `useHoverCardClose()`, and `pointerAnchorOffset` on `HoverCardContent` (the trigger tracks the
@@ -2647,7 +2660,9 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **Re-apply:** Pass the agent's tool-call file paths to the chat's file link resolver and match
   them before the workspace lookup. Wrap web file links in a `HoverCard` whose content gets the
   chat's contexts as props: the card renders in a portal, outside the chat's providers (resolver,
-  run command, keyboard dispatcher, query client), and throws if it reads them itself.
+  run command, keyboard dispatcher, query client), and throws if it reads them itself. The web
+  Markdown link renderer (`WebLink` in `components/markdown/renderers.web.tsx` since 0.14) is
+  where the wrapping happens; keep the upstream tooltip for links that are neither.
 - **Verify:** `(cd packages/app && npx vitest run src/assistant-file-links/session-paths.test.ts src/assistant-file-links/hover-actions-model.test.ts)`
   and the desktop opener test (the update script runs both). In the app, have an agent read a
   `.sh` outside the workspace and name it by basename in backticks; hover it: the card shows its

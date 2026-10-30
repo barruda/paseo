@@ -497,6 +497,7 @@ export const SETTINGS_SECTION_SLUGS = [
   "terminal",
   "browser",
   "editor",
+  "files",
   "shortcuts",
   "integrations",
   "notifications",
@@ -517,7 +518,6 @@ export const HOST_SECTION_SLUGS = [
   "pair-device",
   "agents",
   "metadata",
-  // CUSTOM(voice-settings)
   "voice",
   "workspaces",
   "providers",

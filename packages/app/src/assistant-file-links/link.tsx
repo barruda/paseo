@@ -1,118 +1,50 @@
-import { useMemo, type CSSProperties, type MouseEvent, type ReactNode } from "react";
-import { Platform, Text, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
-import { isNative, isWeb } from "@/constants/platform";
-import { MarkdownTextSpan } from "@/components/markdown-text";
-import { MarkdownLinkText } from "@/components/markdown/link-text";
-import { AssistantLinkPressProvider, type AssistantLinkPress } from "./link-press-context";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { CODE_SURFACE_DATASET } from "@/styles/code-surface";
-import { markdownCopyDataSet } from "@/assistant-selection-copy/markup";
-import { useAssistantFileLinkResolverContext } from "./provider";
-import type { AssistantFileLinkSource } from "./resolver";
-import { formatFileLinkTooltipPath } from "./tooltip-path";
+// CUSTOM(chat-file-actions): upstream 0.14 moved chat markdown to react-native-enriched-markdown and
+// deleted this file. It stays as the fork's home for the file link pieces the customizations still
+// render themselves:
+// - `wrapWithFileLinkHover` wraps an already-rendered link with the hover card of actions (file links)
+//   or the URL card (web links), for the markdown renderer's web link (`components/markdown/
+//   renderers.web.tsx`).
+// - `AssistantMarkdownCodeLink`, a standalone monospace file link (the "Logs:" row of
+//   CUSTOM(shell-output-files)). Web only, like its callers.
+import {
+  useMemo,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { Pressable, Text, type TextStyle } from "react-native";
+import { useStableEvent } from "@/hooks/use-stable-event";
 import { FileLinkHoverActions, UrlHoverActions } from "./hover-actions";
-import { useFileLink } from "./use-file-link";
+import type { AssistantFileLinkSource } from "./resolver";
+import { useFileLink, type UseFileLinkResult } from "./use-file-link";
 
-interface AssistantMarkdownLinkProps {
-  source: AssistantFileLinkSource;
-  style: StyleProp<TextStyle>;
-  monoSurface?: boolean;
-  children: ReactNode;
-}
-
-const MARKDOWN_CODE_LINK_DATASET = {
-  ...CODE_SURFACE_DATASET,
-  ...markdownCopyDataSet.code,
-} as const;
-
-export function AssistantMarkdownLink({
-  source,
-  style,
-  monoSurface,
-  children,
-}: AssistantMarkdownLinkProps) {
-  const { target, onHoverIn, onPress, open, lookupQuery, externalUrl } = useFileLink(source);
-  const { configRef } = useAssistantFileLinkResolverContext();
-  const workspaceRoot = configRef.current.workspaceRoot;
-  const tooltipPath = useMemo(
-    () => (target ? formatFileLinkTooltipPath({ target, workspaceRoot }) : null),
-    [target, workspaceRoot],
-  );
-  const linkPress = useMemo<AssistantLinkPress>(
-    () => ({ onPress, accessibilityRole: "link" }),
-    [onPress],
-  );
-  const unwrapForMarkdownCopy = source.sourceType === "inline-code" || source.markup === "linkify";
-
-  if (isNative) {
-    // Must be a MarkdownTextSpan, not a plain <Text>: on iOS the link renders
-    // inside the paragraph's native UITextView, and a plain <Text> nested there
-    // is not hoisted into a UITextViewChild, so its text is silently dropped
-    // (the link disappears). The span composes correctly and stays selectable.
-    //
-    // Tap-to-open: react-native-uitextview only wires onPress onto the *string*
-    // children it turns into RNUITextViewChild nodes — the element children that
-    // markdown emits for link text pass through untouched, so an onPress placed
-    // here never reaches a tappable native node. We thread it down through
-    // AssistantLinkPressProvider so each leaf text span re-attaches it to its
-    // own string children, where the native tap recognizer can find it. iOS
-    // only: Android forwards onPress through nested <Text> already, and web uses
-    // the <a> path below.
-    const span = (
-      <MarkdownTextSpan
-        accessibilityRole="link"
-        monoSurface={monoSurface}
-        onPress={onPress}
-        style={style}
+/**
+ * The hover card for a link `useFileLink` already resolved, or null when the link is neither a
+ * file nor a web URL (the caller then keeps its own tooltip).
+ */
+export function wrapWithFileLinkHover(
+  source: AssistantFileLinkSource,
+  link: Pick<UseFileLinkResult, "target" | "lookupQuery" | "externalUrl" | "open">,
+  children: ReactNode,
+): ReactElement | null {
+  if (link.target || link.lookupQuery) {
+    return (
+      <FileLinkHoverActions
+        source={source}
+        target={link.target}
+        lookupQuery={link.lookupQuery}
+        open={link.open}
       >
         {children}
-      </MarkdownTextSpan>
-    );
-    return (
-      <FileLinkHoverTooltip filePath={tooltipPath}>
-        {Platform.OS === "ios" ? (
-          <AssistantLinkPressProvider value={linkPress}>{span}</AssistantLinkPressProvider>
-        ) : (
-          span
-        )}
-      </FileLinkHoverTooltip>
-    );
-  }
-
-  const anchor = (
-    <a
-      {...(unwrapForMarkdownCopy ? { "data-paseo-markdown-unwrap": "true" } : {})}
-      href={source.href}
-      title={source.title}
-      onClickCapture={preventAnchorNavigation}
-      onAuxClickCapture={preventAnchorNavigation}
-      style={LINK_ANCHOR_STYLE}
-    >
-      <MarkdownLinkText
-        dataSet={monoSurface ? MARKDOWN_CODE_LINK_DATASET : undefined}
-        style={style}
-        onPress={onPress}
-        onHoverIn={onHoverIn}
-      >
-        {children}
-      </MarkdownLinkText>
-    </a>
-  );
-
-  // CUSTOM(chat-file-actions): file links get a hover card with the full path and actions instead
-  // of the path tooltip. External links have neither a target nor a lookup and stay bare.
-  if (target || lookupQuery) {
-    return (
-      <FileLinkHoverActions source={source} target={target} lookupQuery={lookupQuery} open={open}>
-        {anchor}
       </FileLinkHoverActions>
     );
   }
-  if (externalUrl) {
-    return <UrlHoverActions url={externalUrl}>{anchor}</UrlHoverActions>;
+  if (link.externalUrl) {
+    return <UrlHoverActions url={link.externalUrl}>{children}</UrlHoverActions>;
   }
-  return <FileLinkHoverTooltip filePath={tooltipPath}>{anchor}</FileLinkHoverTooltip>;
+  return null;
 }
 
 interface AssistantMarkdownCodeLinkProps {
@@ -130,82 +62,39 @@ export function AssistantMarkdownCodeLink({
   linkStyle,
   children,
 }: AssistantMarkdownCodeLinkProps) {
+  const link = useFileLink(source);
+  const [hovered, setHovered] = useState(false);
+  const handleHoverIn = useStableEvent(() => {
+    setHovered(true);
+    link.onHoverIn();
+  });
+  const handleHoverOut = useStableEvent(() => setHovered(false));
   const style = useMemo(
-    () => [inheritedStyles, codeInlineStyle, linkStyle],
-    [inheritedStyles, codeInlineStyle, linkStyle],
+    () => [inheritedStyles, codeInlineStyle, linkStyle, hovered ? HOVERED_STYLE : null],
+    [inheritedStyles, codeInlineStyle, linkStyle, hovered],
   );
-  return (
-    <AssistantMarkdownLink source={source} style={style} monoSurface>
-      {children}
-    </AssistantMarkdownLink>
-  );
-}
-
-interface AssistantInlineCodePathLinkProps {
-  content: string;
-  inheritedStyles: TextStyle;
-  codeInlineStyle: TextStyle;
-  linkStyle: TextStyle;
-}
-
-export function AssistantInlineCodePathLink({
-  content,
-  inheritedStyles,
-  codeInlineStyle,
-  linkStyle,
-}: AssistantInlineCodePathLinkProps) {
-  const source = useMemo<AssistantFileLinkSource>(
-    () => ({
-      href: content,
-      text: content,
-      sourceType: "inline-code",
-    }),
-    [content],
-  );
-
-  return (
-    <AssistantMarkdownCodeLink
-      source={source}
-      inheritedStyles={inheritedStyles}
-      codeInlineStyle={codeInlineStyle}
-      linkStyle={linkStyle}
+  const anchor = (
+    <a
+      href={source.href}
+      title={source.title}
+      onClickCapture={preventAnchorNavigation}
+      onAuxClickCapture={preventAnchorNavigation}
+      style={LINK_ANCHOR_STYLE}
     >
-      {content}
-    </AssistantMarkdownCodeLink>
+      <Pressable
+        accessibilityRole="link"
+        onPress={link.onPress}
+        onHoverIn={handleHoverIn}
+        onHoverOut={handleHoverOut}
+      >
+        <Text style={style}>{children}</Text>
+      </Pressable>
+    </a>
   );
+  return wrapWithFileLinkHover(source, link, anchor) ?? anchor;
 }
 
-const FILE_LINK_TOOLTIP_TRIGGER_STYLE: ViewStyle = {
-  // RN doesn't type "inline-flex" but RN-web honors it at runtime, which keeps
-  // the tooltip wrapper from breaking inline link flow.
-  display: "inline-flex" as ViewStyle["display"],
-};
-
-function FileLinkHoverTooltip({
-  filePath,
-  children,
-}: {
-  filePath: string | null;
-  children: ReactNode;
-}) {
-  if (!isWeb) {
-    return children;
-  }
-  return (
-    <Tooltip delayDuration={400}>
-      <TooltipTrigger asChild>
-        <View style={FILE_LINK_TOOLTIP_TRIGGER_STYLE}>{children}</View>
-      </TooltipTrigger>
-      {filePath ? (
-        <TooltipContent side="top" align="start" maxWidth={520}>
-          <Text selectable={false} style={styles.tooltipPath}>
-            {filePath}
-          </Text>
-        </TooltipContent>
-      ) : null}
-    </Tooltip>
-  );
-}
+const HOVERED_STYLE: TextStyle = { textDecorationLine: "underline" };
 
 const LINK_ANCHOR_STYLE: CSSProperties = {
   display: "contents",
@@ -216,11 +105,3 @@ const LINK_ANCHOR_STYLE: CSSProperties = {
 function preventAnchorNavigation(event: MouseEvent<HTMLAnchorElement>): void {
   event.preventDefault();
 }
-
-const styles = StyleSheet.create((theme) => ({
-  tooltipPath: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.normal,
-  },
-}));

@@ -6,6 +6,7 @@ import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import type { ToastApi } from "@/components/toast-host";
 import { getDesktopHost } from "@/desktop/host";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
+import { planTimelineTailFetch } from "@/timeline/timeline-sync-plan";
 import { useSessionStore } from "@/stores/session-store";
 import { buildProviderCommand } from "@/utils/provider-command-templates";
 import { isAbsolutePath } from "@/utils/path";
@@ -167,8 +168,7 @@ export async function reloadTabAgent(
     const sessionState = useSessionStore.getState().sessions[serverId];
     const currentCursor = sessionState?.agentTimelineCursor.get(agentId);
     await getHostRuntimeStore().fetchAgentTimeline(serverId, agentId, {
-      direction: "tail",
-      projection: "projected",
+      ...planTimelineTailFetch(),
       ...(currentCursor
         ? { cursor: { epoch: currentCursor.epoch, seq: currentCursor.endSeq } }
         : {}),

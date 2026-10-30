@@ -52,7 +52,7 @@ export function useReadingRows(input: {
       isTurnActive,
       history: whole.history,
       liveHead: whole.segments.liveHead,
-      timingByAssistantId: whole.turnTiming.byAssistantId,
+      timingByItemId: whole.turnTiming.byItemId,
     });
     const rows = [...layout.history, ...layout.liveHead];
     return mode === "compact" ? selectCompactRows(rows, [...tail, ...head]) : rows;

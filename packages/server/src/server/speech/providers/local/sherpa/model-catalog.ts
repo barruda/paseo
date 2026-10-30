@@ -4,17 +4,43 @@ export type SherpaOnnxModelKind = "stt-offline" | "tts";
 
 type DefaultModelRole = "stt" | "tts";
 
-interface SherpaOnnxCatalogEntry {
-  kind: SherpaOnnxModelKind;
+// How sherpa-onnx loads a model, with file names relative to the extracted directory.
+export type SttEngine =
+  | { family: "transducer"; encoder: string; decoder: string; joiner: string; tokens: string }
+  | { family: "whisper"; encoder: string; decoder: string; tokens: string }
+  | { family: "sense_voice"; model: string; tokens: string }
+  | { family: "dolphin"; model: string; tokens: string }
+  | { family: "nemo_ctc"; model: string; tokens: string };
+
+export type TtsEngine =
+  | {
+      family: "kokoro";
+      model: string;
+      voices: string;
+      tokens: string;
+      dataDir: string;
+      // Multi-language Kokoro models read pronunciations from these instead of espeak alone.
+      lexicons?: readonly string[];
+      dictDir?: string;
+      ruleFsts?: readonly string[];
+    }
+  | { family: "kitten"; model: string; voices: string; tokens: string; dataDir: string }
+  | { family: "vits"; model: string; tokens: string; dataDir: string };
+
+interface SherpaOnnxCatalogEntryBase {
+  label: string;
+  // One user-facing sentence shown before download.
+  description: string;
+  // BCP 47 language tags the model transcribes or speaks.
+  languages: readonly string[];
+  // Exact size of the release archive. The downloader rejects any other size.
+  downloadSizeBytes: number;
   archiveUrl: string;
   extractedDir: string;
-  requiredFiles: string[];
-  description: string;
   defaultFor?: DefaultModelRole;
-  // CUSTOM(voice-settings): what Settings shows in the model and voice pickers.
-  label: string;
-  languages: string;
-  downloadSizeMb: number;
+  // CUSTOM(voice-settings): what Settings > Voice and dictation shows in the model and voice
+  // pickers: a readable language list and the voice names, by speaker id.
+  languagesLabel?: string;
   speakers?: readonly string[];
 }
 
@@ -108,69 +134,476 @@ export function kokoroLanguageForSpeaker(name: string | undefined): string {
   return KOKORO_LANGUAGE_BY_PREFIX[name?.charAt(0) ?? "a"] ?? "en-us";
 }
 
+type SherpaOnnxCatalogEntry =
+  | (SherpaOnnxCatalogEntryBase & { kind: "stt-offline"; engine: SttEngine })
+  | (SherpaOnnxCatalogEntryBase & { kind: "tts"; engine: TtsEngine });
+
+// Every sherpa-onnx release archive extracts to a directory named after the archive.
+function releaseArchive(tag: "asr-models" | "tts-models", name: string) {
+  return {
+    archiveUrl: `https://github.com/k2-fsa/sherpa-onnx/releases/download/${tag}/${name}.tar.bz2`,
+    extractedDir: name,
+  };
+}
+
+const PARAKEET_INT8_ENGINE = {
+  family: "transducer",
+  encoder: "encoder.int8.onnx",
+  decoder: "decoder.int8.onnx",
+  joiner: "joiner.int8.onnx",
+  tokens: "tokens.txt",
+} as const satisfies SttEngine;
+
+function whisperEngine(size: string): SttEngine {
+  return {
+    family: "whisper",
+    encoder: `${size}-encoder.int8.onnx`,
+    decoder: `${size}-decoder.int8.onnx`,
+    tokens: `${size}-tokens.txt`,
+  };
+}
+
+function piperEngine(voice: string): TtsEngine {
+  return {
+    family: "vits",
+    model: `${voice}.onnx`,
+    tokens: "tokens.txt",
+    dataDir: "espeak-ng-data",
+  };
+}
+
+// Parakeet TDT v3 transcribes these 25 European languages and detects which one is spoken.
+const PARAKEET_V3_LANGUAGES = [
+  "bg",
+  "hr",
+  "cs",
+  "da",
+  "nl",
+  "en",
+  "et",
+  "fi",
+  "fr",
+  "de",
+  "el",
+  "hu",
+  "it",
+  "lv",
+  "lt",
+  "mt",
+  "pl",
+  "pt",
+  "ro",
+  "sk",
+  "sl",
+  "es",
+  "sv",
+  "ru",
+  "uk",
+] as const;
+
+// The 99 languages multilingual Whisper models transcribe, detecting which one is spoken.
+const WHISPER_LANGUAGES = [
+  "en",
+  "zh",
+  "de",
+  "es",
+  "ru",
+  "ko",
+  "fr",
+  "ja",
+  "pt",
+  "tr",
+  "pl",
+  "ca",
+  "nl",
+  "ar",
+  "sv",
+  "it",
+  "id",
+  "hi",
+  "fi",
+  "vi",
+  "he",
+  "uk",
+  "el",
+  "ms",
+  "cs",
+  "ro",
+  "da",
+  "hu",
+  "ta",
+  "no",
+  "th",
+  "ur",
+  "hr",
+  "bg",
+  "lt",
+  "la",
+  "mi",
+  "ml",
+  "cy",
+  "sk",
+  "te",
+  "fa",
+  "lv",
+  "bn",
+  "sr",
+  "az",
+  "sl",
+  "kn",
+  "et",
+  "mk",
+  "br",
+  "eu",
+  "is",
+  "hy",
+  "ne",
+  "mn",
+  "bs",
+  "kk",
+  "sq",
+  "sw",
+  "gl",
+  "mr",
+  "pa",
+  "si",
+  "km",
+  "sn",
+  "yo",
+  "so",
+  "af",
+  "oc",
+  "ka",
+  "be",
+  "tg",
+  "sd",
+  "gu",
+  "am",
+  "yi",
+  "lo",
+  "uz",
+  "fo",
+  "ht",
+  "ps",
+  "tk",
+  "nn",
+  "mt",
+  "sa",
+  "lb",
+  "my",
+  "bo",
+  "tl",
+  "mg",
+  "as",
+  "tt",
+  "haw",
+  "ln",
+  "ha",
+  "ba",
+  "jv",
+  "su",
+] as const;
+
+// Dolphin's 40 Eastern languages. It also covers 22 Chinese dialects under "zh".
+const DOLPHIN_LANGUAGES = [
+  "zh",
+  "ja",
+  "th",
+  "ru",
+  "ko",
+  "id",
+  "vi",
+  "yue",
+  "hi",
+  "ur",
+  "ms",
+  "uz",
+  "ar",
+  "fa",
+  "bn",
+  "ta",
+  "te",
+  "ug",
+  "gu",
+  "my",
+  "tl",
+  "kk",
+  "or",
+  "ne",
+  "mn",
+  "km",
+  "jv",
+  "lo",
+  "si",
+  "fil",
+  "ps",
+  "pa",
+  "kab",
+  "ba",
+  "ks",
+  "tg",
+  "su",
+  "mr",
+  "ky",
+  "az",
+] as const;
+
 export const SHERPA_ONNX_MODEL_CATALOG = {
   "parakeet-tdt-0.6b-v2-int8": {
     kind: "stt-offline",
-    archiveUrl:
-      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
-    extractedDir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8",
-    requiredFiles: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"],
-    description: "NVIDIA Parakeet TDT v2 (offline NeMo transducer, English).",
+    label: "Parakeet v2",
+    description: "Accurate English transcription that runs well on a laptop CPU.",
+    languages: ["en"],
+    downloadSizeBytes: 482_468_385,
+    ...releaseArchive("asr-models", "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8"),
+    engine: PARAKEET_INT8_ENGINE,
     defaultFor: "stt",
-    label: "Parakeet v2 (int8)",
-    languages: "English",
-    downloadSizeMb: 482,
+    languagesLabel: "English",
+  },
+  "parakeet-tdt-110m-en-int8": {
+    kind: "stt-offline",
+    label: "Parakeet Small",
+    description: "Small, fast English model with punctuation. A quick download for any laptop.",
+    languages: ["en"],
+    downloadSizeBytes: 108_035_095,
+    ...releaseArchive("asr-models", "sherpa-onnx-nemo-parakeet_tdt_transducer_110m-en-36000-int8"),
+    engine: PARAKEET_INT8_ENGINE,
   },
   "parakeet-tdt-0.6b-v3-int8": {
     kind: "stt-offline",
-    archiveUrl:
-      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
-    extractedDir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8",
-    requiredFiles: ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"],
-    description:
-      "NVIDIA Parakeet TDT v3 (offline NeMo transducer, 25 European languages, auto-detected).",
-    label: "Parakeet v3 (int8)",
-    languages: "25 European languages, including Portuguese",
-    downloadSizeMb: 487,
+    label: "Parakeet v3",
+    description: "Parakeet for 25 European languages, detecting which one you speak.",
+    languages: PARAKEET_V3_LANGUAGES,
+    downloadSizeBytes: 487_170_055,
+    ...releaseArchive("asr-models", "sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8"),
+    engine: PARAKEET_INT8_ENGINE,
+    languagesLabel: "25 European languages, including Portuguese",
   },
   // CUSTOM(local-speech-gpu): full-precision Parakeet for the CUDA provider. int8 kernels
   // have no CUDA implementation, so the int8 models stay on the CPU even under CUDA.
   // Needs ~5.5 GB of RAM on the CPU; use it with PASEO_LOCAL_SPEECH_CUDA_DIR.
   "parakeet-tdt-0.6b-v2-fp16": {
     kind: "stt-offline",
-    archiveUrl:
-      "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16.tar.bz2",
-    extractedDir: "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16",
-    requiredFiles: ["encoder.fp16.onnx", "decoder.fp16.onnx", "joiner.fp16.onnx", "tokens.txt"],
-    description: "NVIDIA Parakeet TDT v2, fp16 (offline NeMo transducer, English, GPU).",
     label: "Parakeet v2 (fp16, GPU)",
-    languages: "English",
-    downloadSizeMb: 1120,
+    description: "Parakeet v2 at full precision, for the GPU. English.",
+    languages: ["en"],
+    downloadSizeBytes: 1_120_982_957,
+    ...releaseArchive("asr-models", "sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-fp16"),
+    engine: {
+      family: "transducer",
+      encoder: "encoder.fp16.onnx",
+      decoder: "decoder.fp16.onnx",
+      joiner: "joiner.fp16.onnx",
+      tokens: "tokens.txt",
+    },
+    languagesLabel: "English",
+  },
+  "whisper-tiny-en": {
+    kind: "stt-offline",
+    label: "Whisper Tiny (English)",
+    description: "Small English Whisper model. Quick to download, less accurate than Parakeet.",
+    languages: ["en"],
+    downloadSizeBytes: 118_071_777,
+    ...releaseArchive("asr-models", "sherpa-onnx-whisper-tiny.en"),
+    engine: whisperEngine("tiny.en"),
+  },
+  "whisper-base": {
+    kind: "stt-offline",
+    label: "Whisper Base",
+    description: "Compact Whisper model for 99 languages, detecting which one you speak.",
+    languages: WHISPER_LANGUAGES,
+    downloadSizeBytes: 207_557_382,
+    ...releaseArchive("asr-models", "sherpa-onnx-whisper-base"),
+    engine: whisperEngine("base"),
+  },
+  "whisper-turbo": {
+    kind: "stt-offline",
+    label: "Whisper Turbo",
+    description: "Whisper's most accurate model for 99 languages and Cantonese. Slower on a CPU.",
+    languages: [...WHISPER_LANGUAGES, "yue"],
+    downloadSizeBytes: 563_790_207,
+    ...releaseArchive("asr-models", "sherpa-onnx-whisper-turbo"),
+    engine: whisperEngine("turbo"),
+  },
+  "sense-voice-int8": {
+    kind: "stt-offline",
+    label: "SenseVoice",
+    description: "Chinese, Cantonese, English, Japanese and Korean, detecting which one you speak.",
+    languages: ["zh", "yue", "en", "ja", "ko"],
+    downloadSizeBytes: 165_783_878,
+    ...releaseArchive("asr-models", "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-int8-2025-09-09"),
+    engine: { family: "sense_voice", model: "model.int8.onnx", tokens: "tokens.txt" },
+  },
+  "dolphin-base-int8": {
+    kind: "stt-offline",
+    label: "Dolphin",
+    description: "Small model for 40 Asian and Middle Eastern languages and Chinese dialects.",
+    languages: DOLPHIN_LANGUAGES,
+    downloadSizeBytes: 80_671_385,
+    ...releaseArchive("asr-models", "sherpa-onnx-dolphin-base-ctc-multi-lang-int8-2025-04-02"),
+    engine: { family: "dolphin", model: "model.int8.onnx", tokens: "tokens.txt" },
+  },
+  "giga-am-v3-ru": {
+    kind: "stt-offline",
+    label: "GigaAM v3 (Russian)",
+    description: "Russian transcription with punctuation.",
+    languages: ["ru"],
+    downloadSizeBytes: 170_197_019,
+    ...releaseArchive(
+      "asr-models",
+      "sherpa-onnx-nemo-transducer-punct-giga-am-v3-russian-2025-12-16",
+    ),
+    engine: {
+      family: "transducer",
+      encoder: "encoder.int8.onnx",
+      decoder: "decoder.onnx",
+      joiner: "joiner.onnx",
+      tokens: "tokens.txt",
+    },
+  },
+  "parakeet-tdt-ctc-0.6b-ja-int8": {
+    kind: "stt-offline",
+    label: "Parakeet (Japanese)",
+    description: "Japanese transcription with punctuation.",
+    languages: ["ja"],
+    downloadSizeBytes: 489_389_564,
+    ...releaseArchive("asr-models", "sherpa-onnx-nemo-parakeet-tdt_ctc-0.6b-ja-35000-int8"),
+    engine: { family: "nemo_ctc", model: "model.int8.onnx", tokens: "tokens.txt" },
   },
   "kokoro-en-v0_19": {
     kind: "tts",
-    archiveUrl:
-      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-en-v0_19.tar.bz2",
-    extractedDir: "kokoro-en-v0_19",
-    requiredFiles: ["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"],
-    description: "Kokoro TTS (higher quality; larger).",
+    label: "Kokoro (English)",
+    description: "Natural-sounding English voice for voice mode replies.",
+    languages: ["en"],
+    downloadSizeBytes: 319_625_534,
+    ...releaseArchive("tts-models", "kokoro-en-v0_19"),
+    engine: {
+      family: "kokoro",
+      model: "model.onnx",
+      voices: "voices.bin",
+      tokens: "tokens.txt",
+      dataDir: "espeak-ng-data",
+    },
     defaultFor: "tts",
-    label: "Kokoro v0.19",
-    languages: "English",
-    downloadSizeMb: 319,
+    languagesLabel: "English",
     speakers: KOKORO_V0_19_SPEAKERS,
   },
+  // CUSTOM(voice-settings): 54 voices in 9 languages, Brazilian Portuguese included. No
+  // lexicons here: SherpaOnnxTTS picks the espeak-ng language and lexicon per voice.
   "kokoro-multi-lang-v1_0": {
     kind: "tts",
-    archiveUrl:
-      "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_0.tar.bz2",
-    extractedDir: "kokoro-multi-lang-v1_0",
-    requiredFiles: ["model.onnx", "voices.bin", "tokens.txt", "espeak-ng-data"],
-    description: "Kokoro TTS v1.0 (54 voices in 9 languages).",
     label: "Kokoro v1.0 multi-language",
-    languages: "English, Portuguese (Brazil), Spanish, French, Italian, Hindi, Japanese, Chinese",
-    downloadSizeMb: 349,
+    description:
+      "Kokoro voices in English, Portuguese, Spanish, French, Italian, Hindi, Japanese and Chinese.",
+    languages: ["en", "pt-BR", "es", "fr", "it", "hi", "ja", "zh"],
+    downloadSizeBytes: 349_886_476,
+    ...releaseArchive("tts-models", "kokoro-multi-lang-v1_0"),
+    engine: {
+      family: "kokoro",
+      model: "model.onnx",
+      voices: "voices.bin",
+      tokens: "tokens.txt",
+      dataDir: "espeak-ng-data",
+    },
+    languagesLabel:
+      "English, Portuguese (Brazil), Spanish, French, Italian, Hindi, Japanese, Chinese",
     speakers: KOKORO_V1_0_SPEAKERS,
+  },
+  "kokoro-int8-en-v0_19": {
+    kind: "tts",
+    label: "Kokoro Lite (English)",
+    description: "The same Kokoro English voices, quantized to a third of the download.",
+    languages: ["en"],
+    downloadSizeBytes: 103_248_205,
+    ...releaseArchive("tts-models", "kokoro-int8-en-v0_19"),
+    engine: {
+      family: "kokoro",
+      model: "model.int8.onnx",
+      voices: "voices.bin",
+      tokens: "tokens.txt",
+      dataDir: "espeak-ng-data",
+    },
+    // CUSTOM(voice-settings)
+    speakers: KOKORO_V0_19_SPEAKERS,
+  },
+  "kokoro-int8-multi-lang-v1_1": {
+    kind: "tts",
+    label: "Kokoro (Chinese and English)",
+    description: "Kokoro voices that speak both Mandarin Chinese and English.",
+    languages: ["zh", "en"],
+    downloadSizeBytes: 147_031_220,
+    ...releaseArchive("tts-models", "kokoro-int8-multi-lang-v1_1"),
+    engine: {
+      family: "kokoro",
+      model: "model.int8.onnx",
+      voices: "voices.bin",
+      tokens: "tokens.txt",
+      dataDir: "espeak-ng-data",
+      lexicons: ["lexicon-us-en.txt", "lexicon-zh.txt"],
+      dictDir: "dict",
+      ruleFsts: ["date-zh.fst", "phone-zh.fst", "number-zh.fst"],
+    },
+  },
+  // Kitten v0.8 needs a newer sherpa-onnx than we pin; v0.2 loads on 1.12.28.
+  "kitten-nano-en-v0_2-fp16": {
+    kind: "tts",
+    label: "Kitten Nano (English)",
+    description: "Tiny, very fast English voice.",
+    languages: ["en"],
+    downloadSizeBytes: 26_586_708,
+    ...releaseArchive("tts-models", "kitten-nano-en-v0_2-fp16"),
+    engine: {
+      family: "kitten",
+      model: "model.fp16.onnx",
+      voices: "voices.bin",
+      tokens: "tokens.txt",
+      dataDir: "espeak-ng-data",
+    },
+  },
+  "piper-en-us-libritts-r": {
+    kind: "tts",
+    label: "Piper LibriTTS (US English)",
+    description: "Lightweight American English voice.",
+    languages: ["en-US"],
+    downloadSizeBytes: 23_398_348,
+    ...releaseArchive("tts-models", "vits-piper-en_US-libritts_r-medium-int8"),
+    engine: piperEngine("en_US-libritts_r-medium"),
+  },
+  "piper-en-gb-alba": {
+    kind: "tts",
+    label: "Piper Alba (British English)",
+    description: "Lightweight British English voice.",
+    languages: ["en-GB"],
+    downloadSizeBytes: 21_104_326,
+    ...releaseArchive("tts-models", "vits-piper-en_GB-alba-medium-int8"),
+    engine: piperEngine("en_GB-alba-medium"),
+  },
+  "piper-de-thorsten": {
+    kind: "tts",
+    label: "Piper Thorsten (German)",
+    description: "Lightweight German voice.",
+    languages: ["de"],
+    downloadSizeBytes: 20_949_833,
+    ...releaseArchive("tts-models", "vits-piper-de_DE-thorsten-medium-int8"),
+    engine: piperEngine("de_DE-thorsten-medium"),
+  },
+  "piper-fr-siwis": {
+    kind: "tts",
+    label: "Piper Siwis (French)",
+    description: "Lightweight French voice.",
+    languages: ["fr"],
+    downloadSizeBytes: 20_914_888,
+    ...releaseArchive("tts-models", "vits-piper-fr_FR-siwis-medium-int8"),
+    engine: piperEngine("fr_FR-siwis-medium"),
+  },
+  "piper-es-davefx": {
+    kind: "tts",
+    label: "Piper Davefx (Spanish)",
+    description: "Lightweight Spanish voice.",
+    languages: ["es"],
+    downloadSizeBytes: 21_171_632,
+    ...releaseArchive("tts-models", "vits-piper-es_ES-davefx-medium-int8"),
+    engine: piperEngine("es_ES-davefx-medium"),
   },
 } as const satisfies Record<string, SherpaOnnxCatalogEntry>;
 
@@ -228,24 +661,44 @@ function createModelIdSchema<T extends string>(modelIds: readonly T[]): z.ZodTyp
     .transform((value) => value as T);
 }
 
+export const LocalSpeechModelIdSchema = createModelIdSchema(ALL_MODEL_IDS);
 export const LocalSttModelIdSchema = createModelIdSchema(LOCAL_STT_MODEL_IDS);
 export const LocalTtsModelIdSchema = createModelIdSchema(LOCAL_TTS_MODEL_IDS);
 
 export type SherpaOnnxModelSpec = SherpaOnnxCatalogEntry & {
   id: SherpaOnnxModelId;
+  // Every file and directory that must exist for the model to count as installed.
+  requiredFiles: string[];
 };
 
 export function listSherpaOnnxModels(): SherpaOnnxModelSpec[] {
-  return ALL_MODEL_IDS.map((id) => Object.assign({ id }, SHERPA_ONNX_MODEL_CATALOG[id]));
+  return ALL_MODEL_IDS.map(getSherpaOnnxModelSpec);
 }
 
 export function getSherpaOnnxModelSpec(id: SherpaOnnxModelId): SherpaOnnxModelSpec {
-  const spec = SHERPA_ONNX_MODEL_CATALOG[id];
+  const spec: SherpaOnnxCatalogEntry | undefined = SHERPA_ONNX_MODEL_CATALOG[id];
   if (!spec) {
     throw new Error(`Unknown local speech model id: ${id}`);
   }
   return {
     id,
     ...spec,
+    requiredFiles: engineFiles(spec.engine),
   };
+}
+
+// Every path an engine names, so the downloader can verify an install.
+export function engineFiles(engine: SttEngine | TtsEngine): string[] {
+  return Object.entries(engine).flatMap(([key, value]) => {
+    if (key === "family") return [];
+    return typeof value === "string" ? [value] : (value as readonly string[]);
+  });
+}
+
+export function getLocalSttEngine(id: LocalSttModelId): SttEngine {
+  return SHERPA_ONNX_MODEL_CATALOG[id].engine;
+}
+
+export function getLocalTtsEngine(id: LocalTtsModelId): TtsEngine {
+  return SHERPA_ONNX_MODEL_CATALOG[id].engine;
 }

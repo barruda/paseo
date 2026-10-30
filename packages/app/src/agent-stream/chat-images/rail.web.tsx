@@ -11,7 +11,7 @@ import {
 import { Image, Pressable, ScrollView, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
-import { useAssistantImage } from "@/assistant-image/use-assistant-image";
+import { useMarkdownSource } from "@/components/markdown/images";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import { CHAT_IMAGE_SELECTOR, resolveActiveImageMessageId, type ChatImage } from "./model";
@@ -45,6 +45,39 @@ function findRenderedImage(root: HTMLElement | null, image: ChatImage): HTMLElem
     Array.from(row.querySelectorAll<HTMLElement>(CHAT_IMAGE_SELECTOR)),
   );
   return rendered[image.index] ?? null;
+}
+
+const DIRECT_IMAGE_URL = /^(https?:|data:|blob:)/i;
+
+/**
+ * Loads a thumbnail through the chat's own Markdown image loader, so it shares its cache with the
+ * image rendered in the transcript. Upstream 0.14 replaced `useAssistantImage` with it.
+ */
+function useChatImageUri(
+  source: string,
+  context: { client: DaemonClient | null; workspaceRoot: string; serverId: string },
+): { uri: string | null; aspectRatio: number | null } {
+  const markdown = useMemo(() => `![](<${source}>)`, [source]);
+  const { imageSources } = useMarkdownSource(markdown, context);
+  const uri =
+    Object.keys(imageSources).find((url) => imageSources[url] === source) ??
+    (DIRECT_IMAGE_URL.test(source) ? source : null);
+  const [size, setSize] = useState<{ uri: string; ratio: number } | null>(null);
+  useEffect(() => {
+    if (!uri) return;
+    let cancelled = false;
+    Image.getSize(
+      uri,
+      (width, height) => {
+        if (!cancelled && width > 0 && height > 0) setSize({ uri, ratio: width / height });
+      },
+      () => {},
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [uri]);
+  return { uri, aspectRatio: size && size.uri === uri ? size.ratio : null };
 }
 
 export const ChatImagesRail = memo(function ChatImagesRail({
@@ -242,16 +275,7 @@ const ChatImageThumb = memo(function ChatImageThumb({
   onPress,
 }: ChatImageThumbProps) {
   const slotRef = useRef<View>(null);
-  // Keyed by source so repeats of one image share a single read.
-  const loaded = useAssistantImage({
-    source: image.source,
-    occurrenceKey: `chat-images:${image.source}`,
-    client,
-    workspaceRoot,
-    serverId,
-  });
-  const uri = loaded.status === "failed" ? null : (loaded.binding?.uri ?? null);
-  const aspectRatio = loaded.status === "failed" ? null : loaded.aspectRatio;
+  const { uri, aspectRatio } = useChatImageUri(image.source, { client, workspaceRoot, serverId });
   const imageSource = useMemo(() => (uri ? { uri } : null), [uri]);
 
   const handlePointerEnter = useCallback(() => {
@@ -296,14 +320,7 @@ const ChatImageThumb = memo(function ChatImageThumb({
         ]}
       >
         {imageSource ? (
-          <Image
-            source={imageSource}
-            style={styles.thumbImage}
-            resizeMode="cover"
-            onLoad={loaded.status === "failed" ? undefined : loaded.binding?.onLoad}
-            onError={loaded.status === "failed" ? undefined : loaded.binding?.onError}
-            ref={loaded.status === "failed" ? undefined : loaded.binding?.onRef}
-          />
+          <Image source={imageSource} style={styles.thumbImage} resizeMode="cover" />
         ) : (
           <View style={styles.thumbPlaceholder} />
         )}

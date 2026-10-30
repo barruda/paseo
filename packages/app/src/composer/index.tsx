@@ -3,6 +3,11 @@ import { useContentWidthBoostRerender } from "@/content-width-boost/store";
 import { handleEmptyRewindKey } from "./empty-shortcuts";
 import { imageIndexToRemoveOnBackspace } from "./backspace-attachment";
 import { createDoubleTrigger } from "./empty-voice-trigger";
+import {
+  useComposerEditingSession,
+  useComposerFullscreen,
+  type ComposerEditingSession,
+} from "./editing-session";
 import type { ComposerTextSource } from "./text-source";
 import { createStore, type StoreApi } from "zustand/vanilla";
 import { useStore } from "zustand";
@@ -31,6 +36,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { usePanelStore } from "@/stores/panel-store";
 import { useHasFinePointer } from "@/hooks/use-fine-pointer";
 import { useShallow } from "zustand/shallow";
 import {
@@ -54,7 +60,11 @@ import {
 } from "@/composer/agent-controls";
 import { ContextWindowMeter } from "@/components/context-window-meter";
 import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
-import { selectAgentTurnPresentation, useSessionStore } from "@/stores/session-store";
+import {
+  selectAgentSentMessages,
+  selectAgentTurnPresentation,
+  useSessionStore,
+} from "@/stores/session-store";
 import { useFilePicker } from "@/hooks/use-file-picker";
 import { useFileDrop } from "@/components/file-drop/use-file-drop";
 import type { DroppedItem } from "@/components/file-drop/types";
@@ -121,6 +131,7 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { submitAgentInput } from "@/composer/submit";
+import { ComposerRecall } from "@/composer/recall";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { ComposerKeyboardScopeProvider, useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
@@ -320,6 +331,7 @@ interface PendingFileAttachment {
 }
 
 interface RenderAttachmentTrayArgs {
+  serverId: string;
   selectedAttachments: ComposerAttachment[];
   pendingFiles: PendingFileAttachment[];
   isComposerLocked: boolean;
@@ -336,6 +348,7 @@ interface RenderAttachmentTrayArgs {
 
 function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | null {
   const {
+    serverId,
     selectedAttachments,
     pendingFiles,
     isComposerLocked,
@@ -348,6 +361,7 @@ function renderAttachmentTray(args: RenderAttachmentTrayArgs): ReactElement | nu
     <View style={styles.attachmentTray} testID="composer-attachment-tray">
       {selectedAttachments.map((attachment, index) =>
         renderComposerAttachmentPill({
+          serverId,
           attachment,
           index,
           disabled: isComposerLocked,
@@ -398,6 +412,7 @@ function renderQueueTrack(args: RenderQueueTrackArgs): ReactElement | null {
 }
 
 interface RenderComposerAttachmentPillArgs {
+  serverId: string;
   attachment: ComposerAttachment;
   index: number;
   disabled: boolean;
@@ -458,6 +473,7 @@ function renderComposerAttachmentPill(args: RenderComposerAttachmentPillArgs): R
   if (attachment.kind === "plugin_resource") {
     return (
       <PluginResourceAttachmentPill
+        serverId={args.serverId}
         key={`${attachment.pluginId}:${attachment.sourceId}:${attachment.item.id}`}
         attachment={attachment}
         index={index}
@@ -993,6 +1009,12 @@ interface ComposerProps {
    * voice-mode button; pressing it calls this to create the agent and start voice mode on it.
    */
   onStartVoice?: () => void;
+  /**
+   * The host that also lays out the dock and chrome shares this session so its
+   * fullscreen state and the composer's agree. Defaults to the tab's session for
+   * `inputMode`.
+   */
+  editingSession?: ComposerEditingSession;
 }
 
 const EMPTY_ARRAY: readonly QueuedMessage[] = [];
@@ -1005,20 +1027,24 @@ interface ComposerAutocompleteHandle {
 function ComposerAutocompleteBinding({
   text,
   cursor,
+  recall,
   configuration,
   inputRef,
-  anchorRef,
+  children,
+  anchorStyle,
   show,
   ref,
 }: {
   text: ComposerTextSource;
   cursor: StoreApi<number>;
+  recall: ComposerRecall;
   configuration: Omit<
     Parameters<typeof useAgentAutocomplete>[0],
     "userInput" | "cursorIndex" | "onAutocompleteApplied"
   >;
   inputRef: React.RefObject<MessageInputRef | null>;
-  anchorRef: React.RefObject<View | null>;
+  children: React.ReactNode;
+  anchorStyle: React.ComponentProps<typeof View>["style"];
   show: boolean;
   ref: React.Ref<ComposerAutocompleteHandle>;
 }) {
@@ -1030,8 +1056,12 @@ function ComposerAutocompleteBinding({
     cursorIndex: Math.min(cursorIndex, userInput.length),
     onAutocompleteApplied: () => inputRef.current?.focus(),
   });
-  useImperativeHandle(ref, () => ({ onKeyPress: autocomplete.onKeyPress }), [
-    autocomplete.onKeyPress,
+  // A recalled message is sent as is; its leading `/command` must not open the picker.
+  const isShown = show && !recall.isShowing(userInput);
+  const handleKeyPress = autocomplete.onKeyPress;
+  useImperativeHandle(ref, () => ({ onKeyPress: (event) => isShown && handleKeyPress(event) }), [
+    isShown,
+    handleKeyPress,
   ]);
   const selectOption = autocomplete.onSelectOption;
   const onSelect = useCallback(
@@ -1040,8 +1070,8 @@ function ComposerAutocompleteBinding({
   );
   return (
     <ComposerAutocomplete
-      visible={autocomplete.isVisible && show}
-      anchorRef={anchorRef}
+      visible={autocomplete.isVisible && isShown}
+      anchorStyle={anchorStyle}
       options={autocomplete.options}
       selectedIndex={autocomplete.selectedIndex}
       onSelect={onSelect}
@@ -1049,7 +1079,9 @@ function ComposerAutocompleteBinding({
       errorMessage={autocomplete.errorMessage}
       loadingText={autocomplete.loadingText}
       emptyText={autocomplete.emptyText}
-    />
+    >
+      {children}
+    </ComposerAutocomplete>
   );
 }
 
@@ -1206,8 +1238,19 @@ function ComposerVoiceModeButton({
 }
 
 export function Composer({ isPaneFocused, ...props }: ComposerProps) {
+  // A compact overlay panel (agent list, explorer) covers the pane without taking its
+  // focus. The composer gives up input from the moment the user asks for the panel,
+  // not when its motion settles, so the exit action and autocomplete never race it.
+  // Pane focus stays put, so the keyboard the panel dismisses is a blur in the
+  // user's own pane: closing the panel does not bring focus back.
+  const isCompact = useIsCompactFormFactor();
+  const overlayPanelRequested = usePanelStore((state) => state.mobilePanel.target !== "agent");
+  const coveredByOverlayPanel = isCompact && overlayPanelRequested;
   return (
-    <ComposerKeyboardScopeProvider isActiveComposer={isPaneFocused}>
+    <ComposerKeyboardScopeProvider
+      isPaneFocused={isPaneFocused}
+      isActiveComposer={isPaneFocused && !coveredByOverlayPanel}
+    >
       <RenderProfile id="ComposerContent">
         <ComposerContent {...props} />
       </RenderProfile>
@@ -1258,6 +1301,7 @@ function ComposerContentImpl({
   inputWrapperStyle,
   isCompactLayout: isCompactLayoutOverride,
   inputMode = "chat",
+  editingSession: providedEditingSession,
   readOnly = false,
   submitLabel,
   placeholder,
@@ -1366,11 +1410,14 @@ function ComposerContentImpl({
   );
   useEffect(() => () => cursorPublication.cancel(), [cursorPublication]);
   const autocompleteRef = useRef<ComposerAutocompleteHandle>(null);
+  const recall = useMemo(() => new ComposerRecall(), []);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pendingFiles, setPendingFiles] = useState<PendingFileAttachment[]>([]);
   const nextPendingFileId = useRef(0);
   const isUploadingFile = pendingFiles.length > 0;
   const [pendingNativeImagePastes, setPendingNativeImagePastes] = useState(0);
+  const editingSession = useComposerEditingSession(inputMode, providedEditingSession);
+  const isFullscreen = useComposerFullscreen(editingSession);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
   const [isGithubPickerOpen, setIsGithubPickerOpen] = useState(false);
@@ -2025,7 +2072,7 @@ function ComposerContentImpl({
     selectedAttachments.length === 0;
   const [emptyVoiceTrigger] = useState(createDoubleTrigger);
 
-  // Handle keyboard navigation for command autocomplete.
+  // An open autocomplete owns the arrows; otherwise they may recall sent messages.
   const handleCommandKeyPress = useCallback(
     (event: ComposerKeyPressEvent) => {
       if (autocompleteRef.current?.onKeyPress(event)) return true;
@@ -2042,16 +2089,29 @@ function ComposerContentImpl({
         handleRemoveAttachment(imageIndex);
         return true;
       }
-      if (commandDraft || inputMode !== "chat" || event.hasModifier) return false;
-      const session = useSessionStore.getState().sessions[serverId];
-      const items =
-        event.key === "ArrowUp" || event.key === "ArrowDown"
-          ? [
-              ...(session?.agentStreamTail.get(agentId) ?? []),
-              ...(session?.agentStreamHead.get(agentId) ?? []),
-            ]
-          : [];
-      if (handleEmptyRewindKey({ event, serverId, agentId, items })) return true;
+      const isPlainChatKey = !commandDraft && inputMode === "chat" && !event.hasModifier;
+      // CUSTOM(empty-composer-shortcuts): on an empty chat composer Up/Down select sent messages
+      // for rewind, so they run before upstream's recall of sent messages.
+      if (isPlainChatKey) {
+        const session = useSessionStore.getState().sessions[serverId];
+        const items =
+          event.key === "ArrowUp" || event.key === "ArrowDown"
+            ? [
+                ...(session?.agentStreamTail.get(agentId) ?? []),
+                ...(session?.agentStreamHead.get(agentId) ?? []),
+              ]
+            : [];
+        if (handleEmptyRewindKey({ event, serverId, agentId, items })) return true;
+      }
+      const recalledText = recall.handleKeyPress(event, () =>
+        selectAgentSentMessages(useSessionStore.getState().sessions[serverId], agentId),
+      );
+      if (recalledText !== null) {
+        event.preventDefault();
+        replaceUserInput(recalledText);
+        return true;
+      }
+      if (!isPlainChatKey) return false;
       // CUSTOM(empty-composer-voice): a second Enter on an empty composer starts voice mode.
       if (event.key !== "Enter") {
         emptyVoiceTrigger.reset();
@@ -2070,6 +2130,8 @@ function ComposerContentImpl({
       inputMode,
       serverId,
       agentId,
+      recall,
+      replaceUserInput,
       canStartVoiceFromEmpty,
       emptyVoiceTrigger,
       handleToggleRealtimeVoice,
@@ -2406,14 +2468,29 @@ function ComposerContentImpl({
     [githubSearchItems, selectedAttachments, handleToggleGithubItem],
   );
 
+  // Fullscreen fills the dock slot: the chain down to the input stretches and drops
+  // the inline padding, which the fullscreen presentation supplies itself.
   const inputAreaContainerStyle = useMemo(
-    () => [styles.inputAreaContainer, isComposerLocked && styles.inputAreaLocked],
-    [isComposerLocked],
+    () => [
+      styles.inputAreaContainer,
+      isComposerLocked && styles.inputAreaLocked,
+      isFullscreen && styles.inputAreaFullscreen,
+    ],
+    [isComposerLocked, isFullscreen],
+  );
+  const inputAreaContentStyle = useMemo(
+    () => [styles.inputAreaContent, isFullscreen && styles.fullscreenFill],
+    [isFullscreen],
+  );
+  const messageInputContainerStyle = useMemo(
+    () => [styles.messageInputContainer, isFullscreen && styles.fullscreenFill],
+    [isFullscreen],
   );
 
   const attachmentTray = useMemo(
     () =>
       renderAttachmentTray({
+        serverId,
         selectedAttachments,
         pendingFiles,
         isComposerLocked,
@@ -2433,6 +2510,7 @@ function ComposerContentImpl({
       handleOpenAttachment,
       handleRemoveAttachment,
       isComposerLocked,
+      serverId,
       selectedAttachments,
       pendingFiles,
       t,
@@ -2472,7 +2550,6 @@ function ComposerContentImpl({
       pluginClientSlashCommands,
     ],
   );
-  const messageInputContainerRef = useRef<View>(null);
 
   const isSubmitLoadingVisible =
     isProcessing || isSubmitLoading || isUploadingFile || pendingNativeImagePastes > 0;
@@ -2520,24 +2597,28 @@ function ComposerContentImpl({
         exitVoiceMode={exitVoiceMode}
         isMessageInputFocused={isMessageInputFocused}
       />
-      <View style={animatedStaticStyles.container}>
+      <View
+        style={
+          isFullscreen ? animatedStaticStyles.fullscreenContainer : animatedStaticStyles.container
+        }
+      >
         <AttachmentLightbox source={lightboxSource} onClose={handleLightboxClose} />
         {/* Input area */}
         <View style={inputAreaContainerStyle}>
-          <View style={styles.inputAreaContent}>
-            {queueList}
-            {sendErrorNode}
+          <View style={inputAreaContentStyle}>
+            {isFullscreen ? null : queueList}
+            {!isFullscreen && sendErrorNode}
 
-            <View ref={messageInputContainerRef} style={styles.messageInputContainer}>
-              <ComposerAutocompleteBinding
-                text={textSource}
-                cursor={cursor}
-                inputRef={messageInputRef}
-                anchorRef={messageInputContainerRef}
-                show={mode.showAutocomplete}
-                ref={autocompleteRef}
-                configuration={autocompleteConfiguration}
-              />
+            <ComposerAutocompleteBinding
+              text={textSource}
+              cursor={cursor}
+              recall={recall}
+              inputRef={messageInputRef}
+              anchorStyle={messageInputContainerStyle}
+              show={mode.showAutocomplete && !isFullscreen}
+              ref={autocompleteRef}
+              configuration={autocompleteConfiguration}
+            >
               <ComposerForgeBinding
                 text={textSource}
                 configuration={forgeConfiguration}
@@ -2549,6 +2630,8 @@ function ComposerContentImpl({
               <RenderProfile id="MessageInput">
                 <StableMessageInput
                   ref={messageInputRef}
+                  editingSession={editingSession}
+                  submissionError={sendErrorNode}
                   value={textSource.getSnapshot()}
                   onChangeText={setUserInput}
                   onSubmit={handleSubmit}
@@ -2580,6 +2663,7 @@ function ComposerContentImpl({
                   voiceAgentId={agentId}
                   isAgentRunning={isAgentRunning}
                   defaultSendBehavior={activeSendBehavior}
+                  sendShortcut={appSettings.sendShortcut}
                   onQueue={handleQueue}
                   onSubmitLoadingPress={submitLoadingPressHandler}
                   onKeyPress={handleCommandKeyPress}
@@ -2615,7 +2699,7 @@ function ComposerContentImpl({
                 renderOption={renderGithubPickerOption}
               />
               {pluginAttachments.picker}
-            </View>
+            </ComposerAutocompleteBinding>
           </View>
         </View>
       </View>
@@ -2628,6 +2712,12 @@ const animatedStaticStyles = RNStyleSheet.create({
     flexDirection: "column",
     // Propagate the viewport's height constraint down to the scrolling input.
     flexShrink: 1,
+    position: "relative",
+  },
+  fullscreenContainer: {
+    flexDirection: "column",
+    flex: 1,
+    minHeight: 0,
     position: "relative",
   },
 });
@@ -2650,6 +2740,18 @@ const styles = StyleSheet.create((theme: Theme) => ({
   },
   inputAreaLocked: {
     opacity: 0.6,
+  },
+  inputAreaFullscreen: {
+    flex: 1,
+    minHeight: 0,
+    alignItems: "stretch",
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+  },
+  fullscreenFill: {
+    flex: 1,
+    minHeight: 0,
+    maxWidth: "100%",
   },
   inputAreaContent: {
     flexShrink: 1,

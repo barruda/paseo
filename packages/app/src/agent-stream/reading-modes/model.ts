@@ -1,8 +1,7 @@
 // CUSTOM(reading-modes): two ways to read a long chat on a wide screen, as numbered pages drawn
 // over the chat: Columns every chat row, Compact only prompts and final answers.
-import type { AssistantMessageItem, StreamItem } from "@/types/stream";
+import { getStreamItemMessageId, type AssistantMessageItem, type StreamItem } from "@/types/stream";
 import type { StreamLayoutItem } from "../layout";
-import { getStreamItemMessageId } from "../presentation";
 
 export type ReadingMode = "chat" | "columns" | "compact";
 

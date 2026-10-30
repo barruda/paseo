@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  expireWorkingDiffComparisonsInState,
   resolveWorkingDiffComparisonFromState,
   selectWorkingDiffComparisonInState,
   type WorkingDiffComparisonState,
@@ -26,79 +25,23 @@ describe("working diff comparison", () => {
     );
   });
 
-  it("defaults to Uncommitted and honors a matching manual selection", () => {
-    expect(
-      resolveWorkingDiffComparisonFromState(emptyState(), { ...checkout, isDirty: true }),
-    ).toBe("uncommitted");
-    expect(
-      resolveWorkingDiffComparisonFromState(emptyState(), { ...checkout, isDirty: false }),
-    ).toBe("uncommitted");
-
-    const selected = selectWorkingDiffComparisonInState(emptyState(), {
-      ...checkout,
-      comparison: "base",
-      isDirty: true,
-    });
-    expect(resolveWorkingDiffComparisonFromState(selected, { ...checkout, isDirty: true })).toBe(
-      "base",
-    );
+  // CUSTOM(changes-uncommitted-default): upstream defaults to All changes.
+  it.each([true, false])("defaults to Uncommitted when checkout dirtiness is %s", (isDirty) => {
+    const status = { ...checkout, isDirty };
+    expect(resolveWorkingDiffComparisonFromState(emptyState(), status)).toBe("uncommitted");
   });
 
-  it("masks and expires stale selections for every workspace on the checkout", () => {
-    let state = selectWorkingDiffComparisonInState(emptyState(), {
-      ...checkout,
-      comparison: "base",
-      isDirty: true,
-    });
-    state = selectWorkingDiffComparisonInState(state, {
-      ...checkout,
-      workspaceId: "workspace-2",
-      comparison: "uncommitted",
-      isDirty: false,
-    });
-    state = selectWorkingDiffComparisonInState(state, {
-      serverId: "server-2",
-      workspaceId: "workspace-3",
-      cwd: "/other",
-      comparison: "base",
-      isDirty: true,
-    });
-
-    expect(resolveWorkingDiffComparisonFromState(state, { ...checkout, isDirty: false })).toBe(
-      "uncommitted",
-    );
-    const expired = expireWorkingDiffComparisonsInState(state, {
-      serverId: checkout.serverId,
-      cwd: checkout.cwd,
-      isDirty: false,
-    });
-    expect(expired.overrides[workingDiffComparisonKey(checkout)]).toBeUndefined();
-    expect(
-      expired.overrides[workingDiffComparisonKey({ ...checkout, workspaceId: "workspace-2" })],
-    ).toBeDefined();
-    expect(
-      expired.overrides[
-        workingDiffComparisonKey({
-          serverId: "server-2",
-          workspaceId: "workspace-3",
-          cwd: "/other",
-        })
-      ],
-    ).toBeDefined();
-  });
-
-  it("keeps state identity when nothing expires", () => {
-    const state = selectWorkingDiffComparisonInState(emptyState(), {
-      ...checkout,
-      comparison: "base",
-      isDirty: true,
-    });
-    expect(
-      expireWorkingDiffComparisonsInState(state, {
-        serverId: checkout.serverId,
-        cwd: checkout.cwd,
-        isDirty: true,
-      }),
-    ).toBe(state);
-  });
+  it.each(["all", "base", "uncommitted"] as const)(
+    "keeps the selected %s comparison",
+    (comparison) => {
+      const selected = selectWorkingDiffComparisonInState(emptyState(), {
+        ...checkout,
+        comparison,
+      });
+      expect(resolveWorkingDiffComparisonFromState(selected, checkout)).toBe(comparison);
+      expect(
+        resolveWorkingDiffComparisonFromState(selected, { ...checkout, workspaceId: "other" }),
+      ).toBe("uncommitted");
+    },
+  );
 });
