@@ -6,6 +6,7 @@ import {
   type FinishSubscriptions,
   type FinishSubscription,
 } from "./finish-subscriptions/index.js";
+import { resolveFirstAgentPromptTitle } from "./create-agent-title.js";
 import type { AgentMessageDelivery } from "./agent-messages/index.js";
 import { createTestAgentMessages } from "../test-utils/agent-messages.js";
 import { type PromptDispatchDisposition } from "./agent-prompt.js";
@@ -2167,7 +2168,8 @@ describe("create_agent MCP tool", () => {
             cwd,
             kind: "directory",
             displayName: "workspace",
-            title: firstAgentContext?.prompt ?? null,
+            // CUSTOM(title-max-four-words): production stores the clamped prompt title, not the prompt.
+            title: resolveFirstAgentPromptTitle(firstAgentContext),
             createdAt: "2026-07-03T00:00:00.000Z",
             updatedAt: "2026-07-03T00:00:00.000Z",
           });

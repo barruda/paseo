@@ -218,7 +218,7 @@ fi
 
 # shellcheck disable=SC1090
 source "$STATE_FILE"
-new_base="$(git rev-parse "$ref")"
+new_base="$(git rev-parse "$ref^{commit}")"
 
 # ---------------------------------------------------------------------------
 # 2. Record the update
