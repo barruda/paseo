@@ -2623,6 +2623,11 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
     `externalUrl` for them.
   - Every action closes the card (`useHoverCardClose`): after **Abrir em aba** the link is hidden
     behind the new tab, the pointer never "leaves" it, and the card stayed up over the new tab.
+  - The card also closes, in the same render, when its retained chat goes inactive, and can't open
+    while it is. A hidden chat freezes one commit later (`retained-chat-content.web.tsx`,
+    react-freeze); a card still open then could never commit its close and stayed in the
+    workspace's portal host over the new tab until that tab closed. Tooltip already gated itself
+    this way. `hover-card.browser.test.tsx` reproduces it.
   - When the daemon's suffix lookup finds a `.sh` (it wasn't a session file) and more than one file
     matches, the card lists each match with its own actions instead of guessing.
   - **Executar no Warp** shows the bottom panel and selects its Warp tab. Without a bottom panel it
@@ -2649,8 +2654,10 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     it is not null, instead of the path tooltip.
   - `agent-stream/view.tsx`: `useSessionFilePaths` over the stream, passed to the provider.
   - `components/ui/hover-card.tsx`: `openDelayMs` on `HoverCard`, `style` on `HoverCardTrigger`,
-    `useHoverCardClose()`, and `pointerAnchorOffset` on `HoverCardContent` (the trigger tracks the
-    pointer's x until the card opens).
+    `useHoverCardClose()`, `pointerAnchorOffset` on `HoverCardContent` (the trigger tracks the
+    pointer's x until the card opens), and `open` gated on `useRetainedPanelActive()` with an
+    effect that closes the card when the panel goes inactive. Test in
+    `hover-card.browser.test.tsx`.
   - `chat-code-run/context.tsx`: `ChatCodeRunProvider` also provides `useChatWorkspace()`.
   - `screens/workspace/workspace-tab-menu-actions.ts`: exports `resolveFullTabFilePath`.
   - `workspace-tabs/warp-session.ts`: `openWarpSession` takes an optional command.
@@ -3754,9 +3761,12 @@ waiting` tests in `agent-manager.test.ts`.
     the list follows new links unless you scrolled up.
   - Settings > Chat > **Link list** turns it off (`chatLinksEnabled` in the app settings, on by
     default). Off, the image strip goes back to its usual height.
-  - Each row shows the file name (with `:line`) or the URL without its scheme. Hover for the full
-    path or URL. Click opens it the same way clicking it in the message does (file tab, Files
-    sidebar for folders, browser for URLs), through the same `AssistantFileLinkResolverProvider`.
+  - Each row shows the file name (with `:line`) or the URL without its scheme. Hovering a row opens
+    the same card as hovering the link in the message
+    ([chat-file-actions](#chat-file-actions-file-links-in-the-chat-resolve-to-full-paths-and-get-a-hover-card-of-actions):
+    full path or URL, copy, open in a tab, open in the browser), through `useFileLink` and
+    `wrapWithFileLinkHover`. Click opens it the same way clicking it in the message does, through
+    the same `AssistantFileLinkResolverProvider`.
   - It sits above the composer pills (the scroll-to-bottom button's offset), and the image strip
     ends above it instead of at 20% from the bottom when the box is taller.
   - Width up to 280 px when the gutter fits at least 168 px. A narrower gutter shows a link

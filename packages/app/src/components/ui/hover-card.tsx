@@ -25,6 +25,7 @@ import {
   useFloatingPanelPortalHostName,
 } from "@/components/ui/floating-panel-portal";
 import { isWeb } from "@/constants/platform";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { useHoverSafeZone } from "@/hooks/use-hover-safe-zone";
 import {
   computePosition,
@@ -103,7 +104,15 @@ function WebHoverCard({
   const layer = useOverlayLayer("floating");
   const triggerRef = useRef<View>(null);
   const contentRef = useRef<View>(null);
-  const [open, setOpen] = useState(false);
+  const [openState, setOpen] = useState(false);
+  // CUSTOM(chat-file-actions): a hidden retained chat freezes one commit later (react-freeze), and
+  // a card still open then stays forever in the workspace's portal host, over the tab that hid the
+  // chat ("Abrir em aba"). Gate it on the panel in the same render that hides the chat, as
+  // Tooltip does.
+  const panelActive = useRetainedPanelActive();
+  const panelActiveRef = useRef(panelActive);
+  panelActiveRef.current = panelActive;
+  const open = openState && panelActive;
   const graceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Read when focus arrives: by focusout the element losing focus no longer matches :focus-visible.
   const keyboardFocusedRef = useRef(false);
@@ -141,7 +150,7 @@ function WebHoverCard({
 
   const openNow = useCallback(() => {
     clearGraceTimer();
-    if (!disabled) {
+    if (!disabled && panelActiveRef.current) {
       setOpen(true);
     }
   }, [clearGraceTimer, disabled]);
@@ -311,6 +320,10 @@ function WebHoverCard({
     clearGraceTimer();
     setOpen(false);
   }, [clearGraceTimer, clearOpenTimer]);
+  // CUSTOM(chat-file-actions): and stay closed when the chat comes back.
+  useEffect(() => {
+    if (!panelActive) close();
+  }, [close, panelActive]);
 
   const value = useMemo<HoverCardContextValue>(
     () => ({

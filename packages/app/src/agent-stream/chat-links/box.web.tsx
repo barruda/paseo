@@ -13,9 +13,11 @@ import { FileText, Globe, Link2 } from "lucide-react-native";
 import {
   AssistantFileLinkResolverProvider,
   useAssistantFileLinkActions,
+  useFileLink,
 } from "@/assistant-file-links";
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { wrapWithFileLinkHover } from "@/assistant-file-links/link";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
 import type { ChatLink } from "./model";
 import type { ChatLinksBoxProps } from "./box";
@@ -200,6 +202,8 @@ function ChatLinkList({
   );
 }
 
+// The same hover card as the link in the message (copy, open in a tab, open in the browser), so a
+// row offers what the link does. A click still opens it like clicking the link.
 const ChatLinkRow = memo(function ChatLinkRow({
   link,
   onOpen,
@@ -207,32 +211,32 @@ const ChatLinkRow = memo(function ChatLinkRow({
   link: ChatLink;
   onOpen: (link: ChatLink) => void;
 }) {
+  const fileLink = useFileLink(link.source);
   const handlePress = useCallback(() => onOpen(link), [link, onOpen]);
   const [hovered, setHovered] = useState(false);
-  const handleHoverIn = useCallback(() => setHovered(true), []);
+  const handleHoverIn = useCallback(() => {
+    setHovered(true);
+    fileLink.onHoverIn();
+  }, [fileLink]);
   const handleHoverOut = useCallback(() => setHovered(false), []);
   const rowStyle = useMemo(() => [styles.row, hovered && styles.rowHovered], [hovered]);
-  return (
-    <Tooltip delayDuration={400}>
-      <TooltipTrigger
-        onPress={handlePress}
-        accessibilityRole="link"
-        accessibilityLabel={link.detail}
-        testID={`chat-links-row-${link.key}`}
-        onHoverIn={handleHoverIn}
-        onHoverOut={handleHoverOut}
-        style={rowStyle}
-      >
-        {link.kind === "url" ? <ThemedGlobe size={14} /> : <ThemedFile size={14} />}
-        <Text style={styles.rowLabel} numberOfLines={1}>
-          {link.label}
-        </Text>
-      </TooltipTrigger>
-      <TooltipContent side="left" maxWidth={480}>
-        <Text style={styles.tooltipText}>{link.detail}</Text>
-      </TooltipContent>
-    </Tooltip>
+  const row = (
+    <PressHighlight
+      onPress={handlePress}
+      accessibilityRole="link"
+      accessibilityLabel={link.detail}
+      testID={`chat-links-row-${link.key}`}
+      onHoverIn={handleHoverIn}
+      onHoverOut={handleHoverOut}
+      style={rowStyle}
+    >
+      {link.kind === "url" ? <ThemedGlobe size={14} /> : <ThemedFile size={14} />}
+      <Text style={styles.rowLabel} numberOfLines={1}>
+        {link.label}
+      </Text>
+    </PressHighlight>
   );
+  return wrapWithFileLinkHover(link.source, fileLink, row) ?? row;
 });
 
 const styles = StyleSheet.create((theme) => ({
@@ -293,10 +297,6 @@ const styles = StyleSheet.create((theme) => ({
   rowLabel: {
     flex: 1,
     minWidth: 0,
-    fontSize: theme.fontSize.sm,
-    color: theme.colors.foreground,
-  },
-  tooltipText: {
     fontSize: theme.fontSize.sm,
     color: theme.colors.foreground,
   },
