@@ -2,12 +2,13 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
 import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
-import { FlatList, Pressable, Text, View, type ListRenderItemInfo } from "react-native";
+import { FlatList, Text, View, type ListRenderItemInfo } from "react-native";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
+import { PressHighlight } from "@/components/ui/press-highlight";
 import { DensityIcon } from "@/components/ui/density-icon";
 import { SearchField } from "@/components/ui/search-field";
 import { SelectField, SelectFieldTrigger } from "@/components/ui/select-field";
@@ -230,6 +231,12 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   const openedAt = useDesksStore((s) => s.openedAt);
   const pathname = usePathname();
   const [filter, setFilter] = useState<TaskFilter>("all");
+  const filtersCollapsed = useTaskNavigationStore((state) => state.filtersCollapsed);
+  const setFiltersCollapsed = useTaskNavigationStore((state) => state.setFiltersCollapsed);
+  const toggleFilters = useCallback(
+    () => setFiltersCollapsed(!filtersCollapsed),
+    [filtersCollapsed, setFiltersCollapsed],
+  );
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // Null is the opening limit. A number is how many idle roots show; Infinity shows them all.
   const [idleShown, setIdleShown] = useState<number | null>(null);
@@ -593,46 +600,46 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   );
   return (
     <View style={styles.container} testID="task-navigation-sidebar">
-      <View style={styles.header}>
-        <Text style={styles.title}>Tasks & crews</Text>
-      </View>
-      <View style={styles.controls}>
-        <View style={styles.searchRow}>
-          <View style={styles.search}>
-            <SearchField
-              value={query}
-              onChangeText={setQuery}
-              placeholder="Search tasks…"
-              clearAccessibilityLabel="Clear task search"
-              testID="task-navigation-search"
-            />
+      <TaskFiltersToggle collapsed={filtersCollapsed} onToggle={toggleFilters} />
+      {filtersCollapsed ? null : (
+        <View style={styles.controls}>
+          <View style={styles.searchRow}>
+            <View style={styles.search}>
+              <SearchField
+                value={query}
+                onChangeText={setQuery}
+                placeholder="Search tasks…"
+                clearAccessibilityLabel="Clear task search"
+                testID="task-navigation-search"
+              />
+            </View>
+            <ProjectPicker projects={projects} selected={projectKeys} />
           </View>
-          <ProjectPicker projects={projects} selected={projectKeys} />
+          <SelectField
+            field={false}
+            label="Sort tasks"
+            placeholder="Sort tasks"
+            emptyText="No sort options"
+            value={sort}
+            selectedDisplay={SORT_OPTIONS.find((s) => s.value === sort) ?? null}
+            options={SORT_OPTIONS}
+            onChange={setSort}
+            size="sm"
+            triggerTestID="task-navigation-sort"
+          />
+          <View style={styles.filters}>
+            {FILTERS.map((f) => (
+              <TaskFilterButton
+                key={f.key}
+                entry={f}
+                count={f.key === "archived" ? archivedCount : (counts[f.key] ?? 0)}
+                selected={filter === f.key}
+                onSelect={setFilter}
+              />
+            ))}
+          </View>
         </View>
-        <SelectField
-          field={false}
-          label="Sort tasks"
-          placeholder="Sort tasks"
-          emptyText="No sort options"
-          value={sort}
-          selectedDisplay={SORT_OPTIONS.find((s) => s.value === sort) ?? null}
-          options={SORT_OPTIONS}
-          onChange={setSort}
-          size="sm"
-          triggerTestID="task-navigation-sort"
-        />
-        <View style={styles.filters}>
-          {FILTERS.map((f) => (
-            <TaskFilterButton
-              key={f.key}
-              entry={f}
-              count={f.key === "archived" ? archivedCount : (counts[f.key] ?? 0)}
-              selected={filter === f.key}
-              onSelect={setFilter}
-            />
-          ))}
-        </View>
-      </View>
+      )}
       <FlatList
         style={styles.list}
         data={rows}
@@ -645,6 +652,29 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       />
       {taskRenameModal}
     </View>
+  );
+}
+
+// CUSTOM(task-filters-toggle): the header's arrow folds the controls away so the list gets the
+// room, which matters most in the phone sidebar.
+function TaskFiltersToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle(): void }) {
+  const accessibilityState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
+  return (
+    <PressHighlight
+      style={styles.header}
+      onPress={onToggle}
+      accessibilityRole="button"
+      accessibilityLabel={collapsed ? "Show task filters" : "Hide task filters"}
+      accessibilityState={accessibilityState}
+      testID="task-navigation-filters-toggle"
+    >
+      <Text style={styles.title}>Tasks & crews</Text>
+      <DensityIcon
+        icon={collapsed ? ChevronRight : ChevronDown}
+        size="sm"
+        color="foregroundMuted"
+      />
+    </PressHighlight>
   );
 }
 
@@ -810,7 +840,7 @@ const TaskRow = memo(function TaskRow({
         style={[styles.task, selected && styles.selected, { marginLeft: Math.min(depth, 5) * 12 }]}
       >
         {node.children.length ? (
-          <Pressable
+          <PressHighlight
             style={styles.expand}
             onPress={handleToggle}
             accessibilityRole="button"
@@ -823,7 +853,7 @@ const TaskRow = memo(function TaskRow({
               size="sm"
               color="foregroundMuted"
             />
-          </Pressable>
+          </PressHighlight>
         ) : (
           <View style={styles.railSpace} />
         )}
@@ -848,7 +878,7 @@ const TaskRow = memo(function TaskRow({
             {body}
           </TaskRowContextMenu>
         ) : (
-          <Pressable
+          <PressHighlight
             ref={middleClickRef}
             style={buttonStyle}
             onPress={handleOpen}
@@ -859,7 +889,7 @@ const TaskRow = memo(function TaskRow({
             testID={`${testIDPrefix}-${node.agent.id}`}
           >
             {body}
-          </Pressable>
+          </PressHighlight>
         )}
       </View>
     </TaskSummaryHoverCard>
@@ -873,6 +903,10 @@ const styles = StyleSheet.create((theme) => ({
     alignSelf: "stretch",
   },
   header: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: theme.spacing[1],
     paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[3],
     paddingBottom: theme.spacing[2],

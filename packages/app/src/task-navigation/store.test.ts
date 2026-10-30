@@ -29,7 +29,7 @@ describe("task navigation mode", () => {
     useTaskNavigationStore.getState().setEnabled(true);
     expect(JSON.parse((await AsyncStorage.getItem("custom-task-navigation"))!)).toEqual({
       version: 1,
-      state: { enabled: true, compactTasks: true },
+      state: { enabled: true, compactTasks: true, filtersCollapsed: false },
     });
   });
   it("shows the Tasks list on the phone by default and remembers Workspaces", async () => {
@@ -43,9 +43,23 @@ describe("task navigation mode", () => {
     useTaskNavigationStore.getState().setCompactTasks(false);
     expect(JSON.parse((await AsyncStorage.getItem("custom-task-navigation"))!)).toEqual({
       version: 1,
-      state: { enabled: false, compactTasks: false },
+      state: { enabled: false, compactTasks: false, filtersCollapsed: false },
     });
     useTaskNavigationStore.getState().setCompactTasks(true);
+  });
+  it("shows the task filters by default and remembers hiding them", async () => {
+    await AsyncStorage.setItem(
+      "custom-task-navigation",
+      JSON.stringify({ version: 1, state: { enabled: false, compactTasks: true } }),
+    );
+    await useTaskNavigationStore.persist.rehydrate();
+    expect(useTaskNavigationStore.getState().filtersCollapsed).toBe(false);
+    useTaskNavigationStore.getState().setFiltersCollapsed(true);
+    expect(JSON.parse((await AsyncStorage.getItem("custom-task-navigation"))!)).toEqual({
+      version: 1,
+      state: { enabled: false, compactTasks: true, filtersCollapsed: true },
+    });
+    useTaskNavigationStore.getState().setFiltersCollapsed(false);
   });
 });
 

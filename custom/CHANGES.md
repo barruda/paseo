@@ -3709,3 +3709,26 @@ waiting` tests in `agent-manager.test.ts`.
 - **Verify:** `store.test.ts` and the "Phone sidebar" case in `e2e/task-navigation.spec.ts`
   (390×844), both already in the update script. On the phone itself this needs an app build from
   this branch; the store app is upstream and has none of these customizations.
+
+## task-filters-toggle: the arrow beside "Tasks & crews" hides the filters
+
+- **Added:** 2026-10-30 (upstream 0.14.0)
+- **Commit:** `custom: the arrow beside Tasks & crews hides search, sort and filters`
+- **Why:** In the phone sidebar the search, project picker, sort and status chips took so much
+  height that little room was left for the tasks themselves.
+- **What:** The "Tasks & crews" header is a button with an arrow (⌄ open, › closed). Pressing it
+  hides or shows the search, project picker, sort and status filters, on desktop and phone. The
+  choice is saved per installation (`filtersCollapsed` in `custom-task-navigation`). The search,
+  projects and filter still apply while hidden.
+- **Files:** `packages/app/src/task-navigation/store.ts` (`filtersCollapsed`, optional in the
+  schema so older saved state still loads), `task-navigation/sidebar.tsx` (`TaskFiltersToggle`).
+  Marked `CUSTOM(task-filters-toggle)`. The same commit swaps the file's raw `Pressable`s (task
+  row, crew expand arrow) for `PressHighlight`: upstream 0.14's `no-raw-pressable` lint blocked
+  committing the file. Without `highlightStyle` it renders the same `Pressable`.
+- **Core files touched:** none.
+- **Re-apply:** Replace the sidebar's static "Tasks & crews" title with a pressable row holding
+  the title and a `ChevronDown`/`ChevronRight`, and render the controls block only when
+  `filtersCollapsed` is false.
+- **Verify:** `store.test.ts` and the "Phone sidebar" case in `e2e/task-navigation.spec.ts`, both
+  already in the update script. In the app, press the arrow: the controls disappear, the list
+  moves up, and they stay hidden after reopening the app.

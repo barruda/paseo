@@ -644,6 +644,19 @@ test("Phone sidebar lists tasks, opens one in its workspace and switches to Work
     await expect(page.getByTestId("task-navigation-sidebar")).toHaveCount(0);
     await page.getByTestId("compact-sidebar-mode-tasks").click();
     await expect(page.getByTestId("task-navigation-sidebar")).toBeVisible();
+
+    // The arrow beside "Tasks & crews" hides search, sort and filters, and stays hidden on reload.
+    await expect(page.getByTestId("task-navigation-search")).toBeVisible();
+    await page.getByTestId("task-navigation-filters-toggle").click();
+    await expect(page.getByTestId("task-navigation-search")).toHaveCount(0);
+    await expect(page.getByTestId("task-filter-all")).toHaveCount(0);
+    await expect(sidebar.getByTestId(`task-agent-${first.agentId}`)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("phone-tasks-filters-hidden.png") });
+    await page.reload();
+    await openPhoneMenu(page);
+    await expect(page.getByTestId("task-filter-all")).toHaveCount(0);
+    await page.getByTestId("task-navigation-filters-toggle").click();
+    await expect(page.getByTestId("task-navigation-search")).toBeVisible();
   } finally {
     await first.cleanup();
     await second.cleanup();
