@@ -54,3 +54,10 @@ Written by update-paseo-source-and-apply-customization.sh. Newest last.
   - `3fe41c595` custom: record the plugins installed on each daemon
   - `6ff2289dc` custom: beautiful-chat cards remember open or closed per kind
   - `f8c5b9877` custom: Workboard opens as a tab and takes pasted images
+
+## 2026-10-30 10:16
+
+- Upstream: `7f9b65d46` → `df9223b66` (v0.14.0, v0.14.0)
+- Upstream commits pulled: 384
+- Backup tag: `custom-backup/20261029-231847`
+- Customization commits on top: 204
