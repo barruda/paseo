@@ -3183,13 +3183,22 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   the standalone row.
 - **Files:** `packages/app/src/agent-stream/turn-usage.ts` (+ test).
 - **Core files touched** (marked `CUSTOM(turn-usage-inline)`): `agent-stream/view.tsx` (skips the row
-  when a footer shows it, passes `renderTurnUsage`), `agent-stream/turn-footer.tsx` (finds the row,
+  when a footer shows it, passes `renderTurnUsage`, and `renderStreamItemWithTurnFooter` still draws
+  the footer of an item that renders nothing), `agent-stream/turn-footer.tsx` (finds the row,
   passes `trailing`), `components/message.tsx` (`AssistantTurnFooter` renders `trailing`).
+- **Gotcha:** A finished turn's footer hangs off the turn's last item, which is this usage row.
+  Upstream's `renderStreamItemWithTurnFooter` returns `null` for an item with no content, footer
+  included, so hiding the row also hid every footer above the latest turn: copy, fork, and time
+  showed only on the bottom footer. Fixed in
+  `custom: earlier turns keep their footer when the usage row moves inline`.
 - **Re-apply:** Find the plugin's `turn-usage` timeline item newer than the footer's assistant
   message in the same response, render it through `PluginTimelineItemView` after the footer's
-  duration label, and return `null` for that item in the list.
+  duration label, and return `null` for that item in the list. In `renderStreamItemWithTurnFooter`,
+  return early only when there is neither content nor a `completedFooter`, and skip the content
+  wrapper when the content is empty.
 - **Verify:** `(cd packages/app && npx vitest run src/agent-stream/turn-usage.test.ts)`. In the app,
-  finish a turn: one line with copy, fork, "Worked for", then the dot and token figures.
+  finish a turn: one line with copy, fork, "Worked for", then the dot and token figures. Send
+  another message: the earlier turn keeps that line.
 
 ## shell-shortcuts: `/wip` and `/status` slash commands
 

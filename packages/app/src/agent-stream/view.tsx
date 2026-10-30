@@ -183,11 +183,13 @@ function renderStreamItemWithTurnFooter(input: {
   onForkAssistantTurn?: AssistantTurnForkHandler;
   renderTurnUsage?: TurnUsageRenderer; // CUSTOM(turn-usage-inline)
 }): ReactNode {
-  if (!input.content) {
+  const footerHost = input.layoutItem.completedFooter;
+  // CUSTOM(turn-usage-inline): the usage row a footer hangs off renders nothing once the footer
+  // shows it inline, so an empty item still draws its footer.
+  if (!input.content && !footerHost) {
     return null;
   }
 
-  const footerHost = input.layoutItem.completedFooter;
   const footer = footerHost ? (
     <CompletedTurnFooterRow
       strategy={input.strategy}
@@ -199,11 +201,11 @@ function renderStreamItemWithTurnFooter(input: {
       renderTurnUsage={input.renderTurnUsage}
     />
   ) : null;
-  const content = (
+  const content = input.content ? (
     <StreamItemWrapper itemId={input.layoutItem.item.id} gapBelow={input.layoutItem.gapBelow}>
       {input.content}
     </StreamItemWrapper>
-  );
+  ) : null;
 
   if (input.layoutItem.frameOrder === "footer-then-content") {
     return (
