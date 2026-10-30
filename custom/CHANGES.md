@@ -3670,3 +3670,27 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   idle with the same last message). Set the judge in bootstrap from the metadata generation.
 - **Verify:** `npx vitest run src/server/agent/waiting-turn.test.ts` and the `a turn that ends
 waiting` tests in `agent-manager.test.ts`.
+
+## task-navigation-compact: Tasks list in the phone sidebar
+
+- **Added:** 2026-10-29 (upstream 0.11.2)
+- **Commit:** `custom: phone sidebar shows the Tasks list and opens a task in its workspace`
+- **Why:** The Tasks switch is desktop only (the header has no room on a phone, and Desks are a
+  desktop layout), so the phone had no cross-project list to follow running and recent sessions.
+- **What:** On a compact layout with Tasks mode off, the sidebar gets a **Tasks | Workspaces**
+  switch above its list. Tasks (the default) shows the same Tasks & crews list as the desktop;
+  tapping a task opens it as the agent tab of its own workspace, like tapping a workspace row, and
+  the open agent's row is highlighted. Workspaces shows the original list. The choice is saved per
+  installation (`compactTasks` in `custom-task-navigation`). Wide layouts are unchanged, and a
+  compact window with the desktop Tasks switch on keeps Desks as before.
+- **Files:** `packages/app/src/task-navigation/store.ts` (`compactTasks`, optional in the schema so
+  older saved state still loads) and `task-navigation/sidebar.tsx` (`SidebarNavigationMode`,
+  `CompactSidebarModeSwitch`, `useWorkspaceFocusedAgentKey`, the non-Desk branch of `openTask`).
+- **Core files touched:** none.
+- **Re-apply:** In the mode boundary, keep the desktop rule (`enabled` → Tasks sidebar, wide →
+  children) and add the compact branch with the switch. In `openTask`, when `enabled` is off, call
+  `navigateToWorkspace` with the agent target and `pin: true` instead of opening a Desk tab. Without
+  Desks, take the highlighted row from the active workspace's focused agent tab.
+- **Verify:** `store.test.ts` and the "Phone sidebar" case in `e2e/task-navigation.spec.ts`
+  (390×844), both already in the update script. On the phone itself this needs an app build from
+  this branch; the store app is upstream and has none of these customizations.

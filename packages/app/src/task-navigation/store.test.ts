@@ -29,8 +29,23 @@ describe("task navigation mode", () => {
     useTaskNavigationStore.getState().setEnabled(true);
     expect(JSON.parse((await AsyncStorage.getItem("custom-task-navigation"))!)).toEqual({
       version: 1,
-      state: { enabled: true },
+      state: { enabled: true, compactTasks: true },
     });
+  });
+  it("shows the Tasks list on the phone by default and remembers Workspaces", async () => {
+    await AsyncStorage.setItem(
+      "custom-task-navigation",
+      JSON.stringify({ version: 1, state: { enabled: false } }),
+    );
+    useTaskNavigationStore.setState({ compactTasks: true });
+    await useTaskNavigationStore.persist.rehydrate();
+    expect(useTaskNavigationStore.getState().compactTasks).toBe(true);
+    useTaskNavigationStore.getState().setCompactTasks(false);
+    expect(JSON.parse((await AsyncStorage.getItem("custom-task-navigation"))!)).toEqual({
+      version: 1,
+      state: { enabled: false, compactTasks: false },
+    });
+    useTaskNavigationStore.getState().setCompactTasks(true);
   });
 });
 

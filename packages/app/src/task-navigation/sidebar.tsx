@@ -19,7 +19,17 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { usePathname } from "expo-router";
-import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import {
+  navigateToWorkspace,
+  useActiveWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
+import {
+  collectAllTabs,
+  findPaneById,
+  useWorkspaceLayoutStore,
+} from "@/stores/workspace-layout-store";
+import { useIsCompactFormFactor } from "@/constants/layout";
+import { SegmentedControl } from "@/components/ui/segmented-control";
 import { activeDeskTab, useDesksStore, type TaskSort } from "./desks-store";
 import { useMiddleClick } from "./use-middle-click";
 import { useSidebarModel } from "@/components/sidebar/sidebar-model";
@@ -147,13 +157,61 @@ export function SidebarNavigationMode({
   onBeforeNavigate?: () => void;
 }) {
   const enabled = useTaskNavigationStore((state) => state.enabled);
-  return enabled ? (
+  const compactTasks = useTaskNavigationStore((state) => state.compactTasks);
+  const compact = useIsCompactFormFactor();
+  const tasks = (
     <TaskProjectIconsProvider>
       <TaskNavigationSidebar onBeforeNavigate={onBeforeNavigate} />
     </TaskProjectIconsProvider>
-  ) : (
-    children
   );
+  if (enabled) return tasks;
+  if (!compact) return children;
+  // CUSTOM(task-navigation-compact): the phone has no Tasks switch nor Desks. Its sidebar picks the
+  // Tasks list or the Workspaces list, and a task opens in the ordinary workspace screen.
+  return (
+    <>
+      <CompactSidebarModeSwitch />
+      {compactTasks ? tasks : children}
+    </>
+  );
+}
+
+type CompactSidebarMode = "tasks" | "workspaces";
+const COMPACT_SIDEBAR_MODES = [
+  { value: "tasks", label: "Tasks", testID: "compact-sidebar-mode-tasks" },
+  { value: "workspaces", label: "Workspaces", testID: "compact-sidebar-mode-workspaces" },
+] satisfies { value: CompactSidebarMode; label: string; testID: string }[];
+
+function CompactSidebarModeSwitch() {
+  const compactTasks = useTaskNavigationStore((state) => state.compactTasks);
+  const setCompactTasks = useTaskNavigationStore((state) => state.setCompactTasks);
+  const onValueChange = useCallback(
+    (mode: CompactSidebarMode) => setCompactTasks(mode === "tasks"),
+    [setCompactTasks],
+  );
+  return (
+    <SegmentedControl
+      options={COMPACT_SIDEBAR_MODES}
+      value={compactTasks ? "tasks" : "workspaces"}
+      onValueChange={onValueChange}
+      size="sm"
+      style={styles.compactModeSwitch}
+      testID="compact-sidebar-mode"
+    />
+  );
+}
+
+/** The agent focused in the open workspace, for the row highlight when Desks are off. */
+function useWorkspaceFocusedAgentKey(enabled: boolean): string | null {
+  const selection = useActiveWorkspaceSelection();
+  return useWorkspaceLayoutStore((state) => {
+    if (!enabled || !selection) return null;
+    const layout = state.layoutByWorkspace[`${selection.serverId}:${selection.workspaceId}`];
+    if (!layout) return null;
+    const pane = findPaneById(layout.root, layout.focusedPaneId);
+    const tab = collectAllTabs(layout.root).find((entry) => entry.tabId === pane?.focusedTabId);
+    return tab?.target.kind === "agent" ? taskKey(selection.serverId, tab.target.agentId) : null;
+  });
 }
 
 function rowKey(row: ListRow) {
@@ -188,8 +246,11 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     [allWorkspaceEntriesByKey],
   );
   const deskTab = useDesksStore(activeDeskTab);
-  const selectedAgentKey =
+  const desksEnabled = useTaskNavigationStore((state) => state.enabled);
+  const workspaceAgentKey = useWorkspaceFocusedAgentKey(!desksEnabled);
+  const deskAgentKey =
     deskTab?.target.kind === "agent" ? taskKey(deskTab.serverId, deskTab.target.agentId) : null;
+  const selectedAgentKey = desksEnabled ? deskAgentKey : workspaceAgentKey;
   const workspaces = useMemo(
     () =>
       [...allWorkspaceEntriesByKey.values()]
@@ -331,6 +392,16 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   const openTask = useCallback(
     (node: TaskNode, pin = false) => {
       onBeforeNavigate?.();
+      // CUSTOM(task-navigation-compact): without Desks the task opens as the workspace's agent tab.
+      if (!useTaskNavigationStore.getState().enabled) {
+        navigateToWorkspace({
+          serverId: node.agent.serverId,
+          workspaceId: node.workspace.workspaceId,
+          target: { kind: "agent", agentId: node.agent.id },
+          pin: true,
+        });
+        return;
+      }
       useDesksStore.getState().openTab(
         {
           serverId: node.agent.serverId,
@@ -796,6 +867,11 @@ const TaskRow = memo(function TaskRow({
 });
 const styles = StyleSheet.create((theme) => ({
   container: { flex: 1, minHeight: 0 },
+  compactModeSwitch: {
+    marginHorizontal: theme.spacing[3],
+    marginTop: theme.spacing[2],
+    alignSelf: "stretch",
+  },
   header: {
     paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[3],

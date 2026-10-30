@@ -1,4 +1,5 @@
 import path from "node:path";
+import type { Page } from "@playwright/test";
 import { test, expect } from "../../app/e2e/support/fixtures";
 import { openAgentRoute, seedMockAgentWorkspace } from "../../app/e2e/support/helpers/mock-agent";
 import { openCommandCenter } from "../../app/e2e/support/helpers/command-center";
@@ -591,3 +592,64 @@ test("New agent flyout starts a draft in the picked project", async ({ page }) =
     await second.cleanup();
   }
 });
+
+// CUSTOM(task-navigation-compact): the phone picks Tasks or Workspaces in its own sidebar.
+test("Phone sidebar lists tasks, opens one in its workspace and switches to Workspaces", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await installDesktopRuntime(page, {
+    serverId: getServerId(),
+    manageBuiltInDaemon: false,
+    platform: "linux",
+  });
+  const first = await seedMockAgentWorkspace({
+    repoPrefix: "task-nav-phone-first-",
+    title: "Follow the phone sidebar",
+  });
+  const second = await seedMockAgentWorkspace({
+    repoPrefix: "task-nav-phone-second-",
+    title: "Check the terrain on the phone",
+    initialPrompt: "Finish this turn.",
+  });
+  try {
+    await second.client.waitForFinish(second.agentId, 20_000);
+    await openAgentRoute(page, first);
+    await openPhoneMenu(page);
+    const sidebar = page.getByTestId("task-navigation-sidebar");
+    await expect(page.getByTestId("compact-sidebar-mode")).toBeVisible();
+    await expect(sidebar).toBeVisible();
+    await expect(sidebar.getByTestId(`task-agent-${first.agentId}`)).toBeVisible();
+    await expect(sidebar.getByTestId(`task-agent-${second.agentId}`)).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath("phone-tasks.png") });
+
+    await sidebar.getByTestId(`task-agent-${second.agentId}`).click();
+    await expect(page.getByTestId("desk-screen")).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`/workspace/${second.workspaceId}`));
+    await openPhoneMenu(page);
+    await expect(sidebar.getByTestId(`task-agent-${second.agentId}`)).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
+
+    await page.getByTestId("compact-sidebar-mode-workspaces").click();
+    await expect(sidebar).toHaveCount(0);
+    await expect(
+      page.getByTestId(`sidebar-workspace-row-${getServerId()}:${first.workspaceId}`).first(),
+    ).toBeVisible();
+    await page.reload();
+    await openPhoneMenu(page);
+    await expect(page.getByTestId("compact-sidebar-mode")).toBeVisible();
+    await expect(page.getByTestId("task-navigation-sidebar")).toHaveCount(0);
+    await page.getByTestId("compact-sidebar-mode-tasks").click();
+    await expect(page.getByTestId("task-navigation-sidebar")).toBeVisible();
+  } finally {
+    await first.cleanup();
+    await second.cleanup();
+  }
+});
+
+/** The web deck keeps earlier workspaces mounted, each with its own hidden menu button. */
+async function openPhoneMenu(page: Page) {
+  await page.getByTestId("menu-button").filter({ visible: true }).click();
+}

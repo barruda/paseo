@@ -7,13 +7,28 @@ import { createValidatedPersistStorage } from "@/storage/validated-persist-stora
 
 interface TaskNavigationState {
   enabled: boolean;
+  /** CUSTOM(task-navigation-compact): the phone sidebar's own choice, Tasks list or Workspaces. */
+  compactTasks: boolean;
   setEnabled(enabled: boolean): void;
+  setCompactTasks(compactTasks: boolean): void;
 }
 export const useTaskNavigationStore = create<TaskNavigationState>()(
-  persist((set) => ({ enabled: false, setEnabled: (enabled) => set({ enabled }) }), {
-    name: "custom-task-navigation",
-    version: 1,
-    storage: createValidatedPersistStorage(AsyncStorage, z.object({ enabled: z.boolean() })),
-    partialize: (state) => ({ enabled: state.enabled }),
-  }),
+  persist(
+    (set) => ({
+      enabled: false,
+      compactTasks: true,
+      setEnabled: (enabled) => set({ enabled }),
+      setCompactTasks: (compactTasks) => set({ compactTasks }),
+    }),
+    {
+      name: "custom-task-navigation",
+      version: 1,
+      // Optional so a state saved before the phone choice existed still loads.
+      storage: createValidatedPersistStorage(
+        AsyncStorage,
+        z.object({ enabled: z.boolean(), compactTasks: z.boolean().optional() }),
+      ),
+      partialize: (state) => ({ enabled: state.enabled, compactTasks: state.compactTasks }),
+    },
+  ),
 );
