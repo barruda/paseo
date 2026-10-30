@@ -16,6 +16,8 @@ export interface ChatLink {
   source: AssistantFileLinkSource;
   label: string;
   detail: string;
+  /** A file named without a folder (`notes.md`); a listed path with that name replaces it. */
+  bareName: boolean;
   messageId: string;
 }
 
@@ -29,8 +31,13 @@ parser.validateLink = (url: string) =>
   url.trim().toLowerCase().startsWith("file://") || defaultValidateLink(url);
 
 const NO_LINKS: MessageLink[] = [];
-// Only documents worth reopening: reports and notes, not source files or folders.
-const LISTED_FILE = /\.(?:html?|md|markdown)$/i;
+// Only documents worth reopening: reports and notes, not source files or folders. The name needs a
+// stem, so an extension on its own (`.md`) is a mention of the file type, not a file.
+const LISTED_FILE = /(?:^|\/)[^/.][^/]*\.(?:html?|md|markdown)$/i;
+// Globs, templates and elisions name a pattern of files or a placeholder, never one file or page.
+const PLACEHOLDER = /[*?<>{}$|^`]|\.\.\.|…|%s\b/;
+// Hosts the docs and tests use for examples; nothing an agent sends there is worth reopening.
+const EXAMPLE_HOST = /(?:^|\.)(?:example(?:\.(?:com|org|net))?|invalid|localhost\.localdomain)$/i;
 
 // Streaming re-renders the stream on every chunk while older items keep their identity,
 // so each message is parsed once per text and workspace it ever had.
@@ -45,10 +52,18 @@ function describe(
   if (!classification) return null;
   if (classification.kind === "external") {
     const url = classification.raw.trim();
-    return { key: `url:${url}`, kind: "url", source, label: shortUrl(url), detail: url };
+    if (!isListedUrl(url)) return null;
+    return {
+      key: `url:${url}`,
+      kind: "url",
+      source,
+      label: shortUrl(url),
+      detail: url,
+      bareName: false,
+    };
   }
   const { path, lineStart, lineEnd } = classification.target;
-  if (!LISTED_FILE.test(path)) return null;
+  if (!LISTED_FILE.test(path) || PLACEHOLDER.test(token)) return null;
   const lines = lineStart === undefined ? "" : `:${lineStart}${lineEnd ? `-${lineEnd}` : ""}`;
   const name = path.replace(/\/+$/, "").split("/").pop() || path;
   return {
@@ -57,7 +72,27 @@ function describe(
     source,
     label: `${name}${lines}`,
     detail: `${path}${lines}`,
+    bareName: !/[\\/]/.test(token.replace(/^file:\/\//i, "")),
   };
+}
+
+/**
+ * The resolver calls anything shaped `word:` external, so prose like `note: see above` in a code
+ * span would be listed. Only real web addresses are: http(s), a host that can resolve (a dotted
+ * name, localhost or an IP, optionally with a port), and no placeholder text.
+ */
+export function isListedUrl(url: string): boolean {
+  if (/\s/.test(url) || PLACEHOLDER.test(url)) return false;
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return false;
+  const host = parsed.hostname;
+  if (!host || EXAMPLE_HOST.test(host)) return false;
+  return host.includes(".") || host === "localhost" || host.startsWith("[");
 }
 
 function shortUrl(url: string): string {
@@ -132,5 +167,12 @@ export function collectChatLinks(items: readonly StreamItem[], workspaceRoot: st
       byKey.set(link.key, { ...link, messageId });
     }
   }
-  return [...byKey.values()];
+  // `CHANGES.md` after `custom/CHANGES.md` is the same file mentioned in short; the guess the
+  // resolver makes for the bare name would list it twice under one label.
+  const namedWithFolder = new Set(
+    [...byKey.values()]
+      .filter((link) => link.kind === "file" && !link.bareName)
+      .map((l) => l.label),
+  );
+  return [...byKey.values()].filter((link) => !link.bareName || !namedWithFolder.has(link.label));
 }

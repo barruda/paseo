@@ -3744,7 +3744,12 @@ waiting` tests in `agent-manager.test.ts`.
     [image strip](#chat-images-an-image-strip-beside-the-chat), listing every distinct URL and
     HTML or Markdown file (`.html`, `.htm`, `.md`, `.markdown`) the agent's messages link:
     Markdown links, linked code spans (`` `/tmp/x.md` ``), and bare URLs and paths in text. Source
-    files and folders are left out on purpose: the list is for reports and notes to reopen. Oldest
+    files and folders are left out on purpose: the list is for reports and notes to reopen.
+  - Mentions that only look like links are dropped (`model.ts`, tested in `model.test.ts`): an
+    extension on its own (`.md`), globs and templates (`*.md`, `<name>.md`, `${id}.html`, `...`),
+    any URL that is not http(s) with a dotted host, `localhost` or an IP (the resolver calls
+    `custom: some text` a URL), example hosts (`example.com`, `.invalid`), and a bare `notes.md`
+    when the same name is listed with its folder. Oldest
     at the top; a link sent again moves to the bottom. Ten rows show at once and the rest scroll;
     the list follows new links unless you scrolled up.
   - Settings > Chat > **Link list** turns it off (`chatLinksEnabled` in the app settings, on by
