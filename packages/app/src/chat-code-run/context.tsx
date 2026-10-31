@@ -9,7 +9,7 @@ import {
 // CUSTOM(chat-code-run): lets markdown code blocks in an agent's chat run their command through
 // the same path the composer uses for `!<command>` (the shell-command plugin's `sh` command).
 // Without this provider (markdown outside a chat, read-only subagent views) there is no Run button.
-type RunChatCommand = (command: string) => void;
+type RunChatCommand = (command: string, options?: { onError?: () => void }) => void;
 
 const ChatCodeRunContext = createContext<RunChatCommand | null>(null);
 
@@ -52,19 +52,23 @@ export function useRunChatCommand({
     [commands],
   );
   const run = useCallback<RunChatCommand>(
-    (command) => {
+    (command, options) => {
       const resolved = resolvePluginClientSlashCommand({
         text: `!${command}`,
         hasAttachments: false,
         commands,
       });
-      if (!resolved) return;
+      if (!resolved) {
+        options?.onError?.();
+        return;
+      }
       executePluginClientSlashCommand({
         command: resolved.command,
         args: resolved.args,
         onError(error) {
           console.error("[ChatCodeRun] Failed to run command:", error);
           toast?.error(error instanceof Error ? error.message : String(error));
+          options?.onError?.();
         },
       });
     },

@@ -5,7 +5,7 @@ import { runShellCommandRpc } from "../shared/shell-command";
 /**
  * Slash commands that run a fixed shell command, as if typed after `!`. `/wip` is the composer's
  * **Commit: wip** pill as a command; keep it in step with `COMMIT_WIP_COMMAND` in
- * packages/app/src/composer/commit-wip-pill.tsx.
+ * packages/app/src/composer/commit-wip-pill-model.ts.
  */
 export const SHELL_SHORTCUTS = [
   {

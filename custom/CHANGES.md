@@ -2163,7 +2163,8 @@ src/server/lean-claude.test.ts)` (the update script runs them). On a daemon from
 ## commit-wip: a "Commit: wip" pill beside the diff stat
 
 - **Added:** 2026-10-20 (based on upstream 0.11.2, `0d61cca50`)
-- **Commit:** `custom: Commit: wip pill beside the diff stat`
+- **Commit:** `custom: Commit: wip pill beside the diff stat`; `custom: Commit: wip waits for the
+commit, then offers Git push`
 - **Why:** Saving work in progress was typing the same `!git add . && git commit -m 'wip'` again
   and again.
 - **What:** Right of the composer's diff stat pill (`+255 -18`), a **Commit: wip** pill runs
@@ -2173,21 +2174,37 @@ src/server/lean-claude.test.ts)` (the update script runs them). On a daemon from
   without changes: gating it on the diff stat hid it at times while there were changes, and with
   nothing to commit git says so in the card. Without the shell-command plugin on the daemon, a
   press shows an error toast. Commits with no confirmation.
+  While the command runs the pill fades and ignores presses. A commit that exits 0 turns it into
+  **Git push** (runs `git push` the same way); a push that exits 0 turns it back. A failure keeps
+  the label, for a retry. Git push turns back into **Commit: wip** when the checkout changes again,
+  read from `gitRuntime.isDirty` in the workspace descriptor: it must read clean once first,
+  because it can still say dirty right after the commit. The pill opens on Git push when the
+  checkout is clean and ahead of its remote (`aheadOfOrigin`). No file watcher: the pill reads the
+  `!<command>` card's status from the agent's stream (last 40 items, only while a run is pending)
+  and the descriptor the daemon already sends.
 - **Core files touched** (marked `CUSTOM(commit-wip)`):
   - `packages/app/src/composer/commit-wip-pill.tsx`: the pill. New file.
+  - `packages/app/src/composer/commit-wip-pill-model.ts`: finds the run's card, decides the next
+    step. New file, tested in `commit-wip-pill-model.test.ts`.
   - `packages/app/src/panels/agent-tracks.tsx`: renders it (now second in the row, see
     [pill-order](#pill-order-tldr-commit-wip-and-rename-session-lead-the-pill-row)), and
     `hasAgentTracks` returns true so the track row (and its clearance in `agent-panel.tsx`) always
     shows.
   - `packages/app/src/chat-code-run/context.tsx`: the `!<command>` runner moved out of
-    `ChatCodeRunProvider` into `useRunChatCommand`, which both use.
+    `ChatCodeRunProvider` into `useRunChatCommand`, which both use. Its `run` takes an optional
+    `onError`, so the pill stops waiting when the command never starts.
 - **Re-apply:** In the composer track bar, after the workspace diff stat pill, render a pill that
   always shows (make the track row's "has tracks" check true) and, on press, runs the command
   through the plugin client slash command `sh` (resolve `!<command>` with
-  `resolvePluginClientSlashCommand`, run it with `executePluginClientSlashCommand`).
+  `resolvePluginClientSlashCommand`, run it with `executePluginClientSlashCommand`). To wait for
+  it, note the newest shell-command plugin card with the same `data.command` before running, then
+  wait for a newer one to leave `running` (`completed` with `exitCode` 0 is success). Flip between
+  the commit and `git push` on success; return to commit when `gitRuntime.isDirty` goes false and
+  then true.
 - **Verify:** Typecheck. In the app, **Commit: wip** shows under every agent's composer. Edit a
-  file and press it: a Terminal card shows the commit and the diff stat pill goes away; the button
-  stays.
+  file and press it: the pill fades, a Terminal card shows the commit, the diff stat pill goes away
+  and the pill reads **Git push**. Edit a file again: it reads **Commit: wip**. Press Git push: it
+  fades, pushes, and reads Commit: wip.
 
 ## task-pins: pinned sessions under the Tasks filters
 

@@ -293,7 +293,7 @@ if $VERIFY; then
   # The status summary survives daemon restarts; New Agent tab names; pinned tabs.
   (cd packages/server && npx vitest run src/server/agent/agent-storage.test.ts -t "keeps the status summary" --bail=1)
   (cd packages/app && npx vitest run src/panels/agent-panel-descriptor.test.tsx src/tab-pins/model.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/draft-worktree/model.test.ts src/composer/worktree-pill-model.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/draft-worktree/model.test.ts src/composer/worktree-pill-model.test.ts src/composer/commit-wip-pill-model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/projects/remove-project-section.test.tsx --bail=1)
   (cd packages/server && npx vitest run src/server/paseo-worktree-service.test.ts -t "keeps a branch name the caller typed|worktrees folder beside the project" src/utils/project-worktrees-root.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts src/server/plugins/custom-btw-plugin.e2e.test.ts --bail=1)
