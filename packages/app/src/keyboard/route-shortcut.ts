@@ -125,13 +125,22 @@ function routeWorkspaceTabNavigateIndex(payload: KeyboardShortcutPayload): Short
   });
 }
 
-function routeWorkspaceTabNavigateRelative(payload: KeyboardShortcutPayload): ShortcutAction {
+// CUSTOM(recent-tabs): the tab actions that take a delta route through this table, so a new one
+// does not add a case to the switch in routeKeyboardShortcut (it sits at the complexity limit).
+const TAB_DELTA_DISPATCH: Record<
+  string,
+  "workspace.tab.navigate-relative" | "workspace.tab.navigate-recent"
+> = {
+  "workspace.tab.navigate.relative": "workspace.tab.navigate-relative",
+  "workspace.tab.navigate.recent": "workspace.tab.navigate-recent",
+};
+
+function routeWorkspaceTabNavigateDelta(
+  id: "workspace.tab.navigate-relative" | "workspace.tab.navigate-recent",
+  payload: KeyboardShortcutPayload,
+): ShortcutAction {
   if (!hasPayloadKey(payload, "delta")) return NONE;
-  return dispatch({
-    id: "workspace.tab.navigate-relative",
-    scope: "workspace",
-    delta: payload.delta,
-  });
+  return dispatch({ id, scope: "workspace", delta: payload.delta });
 }
 
 function routeWorkspaceNavigateIndex(
@@ -210,6 +219,12 @@ export function routeKeyboardShortcut(
     return { kind: "callback", name: callback };
   }
 
+  // CUSTOM(recent-tabs)
+  const tabDeltaId = TAB_DELTA_DISPATCH[input.action];
+  if (tabDeltaId) {
+    return routeWorkspaceTabNavigateDelta(tabDeltaId, input.payload);
+  }
+
   switch (input.action) {
     case "task.navigate.index":
       return input.payload && "index" in input.payload
@@ -217,8 +232,6 @@ export function routeKeyboardShortcut(
         : NONE;
     case "workspace.tab.navigate.index":
       return routeWorkspaceTabNavigateIndex(input.payload);
-    case "workspace.tab.navigate.relative":
-      return routeWorkspaceTabNavigateRelative(input.payload);
     case "workspace.navigate.index":
       return routeWorkspaceNavigateIndex(input.payload, ctx);
     case "workspace.navigate.relative":

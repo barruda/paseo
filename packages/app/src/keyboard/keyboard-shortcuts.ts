@@ -205,6 +205,9 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "workspace-tab-jump-index",
     "workspace-tab-prev",
     "workspace-tab-next",
+    // CUSTOM(recent-tabs)
+    "workspace-tab-recent",
+    "workspace-tab-recent-reverse",
     "workspace-pane-split-right",
     "workspace-pane-split-down",
     "workspace-pane-focus-left",
@@ -838,6 +841,31 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "workspace-tab-next",
       section: "tabs-panes",
       label: "Next tab",
+    },
+  },
+  // CUSTOM(recent-tabs): hold the modifier and press again to go further back, like Alt+Tab.
+  {
+    id: "workspace-tab-navigate-recent-ctrl-tab",
+    action: "workspace.tab.navigate.recent",
+    combo: "Ctrl+Tab",
+    when: { commandCenter: false },
+    payload: { type: "delta", delta: 1 },
+    help: {
+      id: "workspace-tab-recent",
+      section: "tabs-panes",
+      label: "Last visited tab (hold to go further back)",
+    },
+  },
+  {
+    id: "workspace-tab-navigate-recent-ctrl-shift-tab",
+    action: "workspace.tab.navigate.recent",
+    combo: "Ctrl+Shift+Tab",
+    when: { commandCenter: false },
+    payload: { type: "delta", delta: -1 },
+    help: {
+      id: "workspace-tab-recent-reverse",
+      section: "tabs-panes",
+      label: "Visited tabs in reverse",
     },
   },
 

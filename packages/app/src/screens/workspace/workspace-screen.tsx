@@ -6,6 +6,8 @@ import {
 } from "@/assistant-file-links";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { revealWorkspaceTab } from "@/workspace-tabs/navigation";
+// CUSTOM(recent-tabs)
+import { recordTabVisit, stepRecentTab } from "@/workspace-tabs/recent-tabs";
 import type { LayoutChangeEvent } from "react-native";
 import { ExplorerSidebarDock } from "@/screens/workspace/explorer-sidebar";
 import { ExplorerFrame } from "./explorer-sidebar/frame";
@@ -1587,6 +1589,10 @@ function WorkspaceScreenContent({
 
   const activeTabId = focusedPaneTabState.activeTabId;
   const activeTab = focusedPaneTabState.activeTab;
+  // CUSTOM(recent-tabs)
+  useEffect(() => {
+    if (persistenceKey) recordTabVisit(persistenceKey, activeTabId);
+  }, [activeTabId, persistenceKey]);
 
   const tabs = useMemo<WorkspaceTabDescriptor[]>(
     () => focusedPaneTabState.tabs.map((tab) => tab.descriptor),
@@ -2758,6 +2764,30 @@ function WorkspaceScreenContent({
     priority: 100,
     isActive: () => true,
     handle: handleWorkspaceTabAction,
+  });
+
+  // CUSTOM(recent-tabs)
+  useKeyboardActionHandler({
+    handlerId: buildWorkspaceKeyboardHandlerId({
+      name: "workspace-recent-tab-actions",
+      serverId: normalizedServerId,
+      workspaceId: normalizedWorkspaceId,
+    }),
+    actions: ["workspace.tab.navigate-recent"] as const,
+    enabled: workspaceActionsEnabled,
+    priority: 100,
+    isActive: () => true,
+    handle: (action) => {
+      if (action.id !== "workspace.tab.navigate-recent" || !persistenceKey) return false;
+      const tabId = stepRecentTab({
+        scope: persistenceKey,
+        openTabIds: uiTabs.map((tab) => tab.tabId),
+        currentTabId: activeTabId,
+        delta: action.delta,
+      });
+      if (tabId) navigateToTabId(tabId);
+      return true;
+    },
   });
 
   useKeyboardActionHandler({

@@ -105,6 +105,8 @@ import {
 } from "@/git/diff-tabs/model";
 import { useDiffTabsStore } from "@/git/diff-tabs/store";
 import { DeskTerminalTabs } from "./desk-terminal-tabs";
+// CUSTOM(recent-tabs)
+import { recordTabVisit, stepRecentTab } from "@/workspace-tabs/recent-tabs";
 import {
   useDesksStore,
   activeDesk,
@@ -134,6 +136,11 @@ const ThemedX = withUnistyles(X);
 const extraMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundExtraMuted,
 });
+
+// CUSTOM(recent-tabs): each Desk keeps its own visit order.
+function deskRecentTabsScope(deskId: string): string {
+  return `desk:${deskId}`;
+}
 
 function workspaceDirectoryOf(owner: DeskTabOwner): string | null {
   return (
@@ -177,6 +184,11 @@ export function DeskScreen() {
   const [fileRevisions, setFileRevisions] = useState<Record<string, number>>({});
   const onRowLayout = useHeaderShortcutsRowLayout(screenId);
   useEffect(() => useDesksStore.persist.onFinishHydration(() => setHydrated(true)), []);
+  // CUSTOM(recent-tabs)
+  const activeTabId = active?.id ?? null;
+  useEffect(() => {
+    recordTabVisit(deskRecentTabsScope(desk.id), activeTabId);
+  }, [activeTabId, desk.id]);
   useEffect(() => {
     if (!hydrated || !selection) return;
     const layout =
@@ -324,6 +336,27 @@ export function DeskScreen() {
         return true;
       }
       return false;
+    },
+  });
+
+  // CUSTOM(recent-tabs)
+  useKeyboardActionHandler({
+    handlerId: `desk-recent-tab-actions:${screenId}`,
+    enabled: isFocused,
+    priority: 200,
+    actions: ["workspace.tab.navigate-recent"],
+    handle: (action) => {
+      if (action.id !== "workspace.tab.navigate-recent") return false;
+      const store = useDesksStore.getState();
+      const current = activeDesk(store);
+      const tabId = stepRecentTab({
+        scope: deskRecentTabsScope(current.id),
+        openTabIds: collectAllTabs(current.layout.root).map((tab) => tab.tabId),
+        currentTabId: activeDeskTab(store)?.id ?? null,
+        delta: action.delta,
+      });
+      if (tabId) store.selectTab(tabId);
+      return true;
     },
   });
 

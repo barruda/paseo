@@ -229,6 +229,19 @@ describe("keyboard-shortcuts", () => {
       action: "workspace.tab.navigate.relative",
       payload: { delta: 1 },
     },
+    // CUSTOM(recent-tabs)
+    {
+      name: "matches Ctrl+Tab to the last visited tab",
+      event: { key: "Tab", code: "Tab", ctrlKey: true },
+      action: "workspace.tab.navigate.recent",
+      payload: { delta: 1 },
+    },
+    {
+      name: "matches Ctrl+Shift+Tab to the visited tabs in reverse",
+      event: { key: "Tab", code: "Tab", ctrlKey: true, shiftKey: true },
+      action: "workspace.tab.navigate.recent",
+      payload: { delta: -1 },
+    },
     {
       name: "matches Mod+T to open new tab",
       event: { key: "t", code: "KeyT", metaKey: true },

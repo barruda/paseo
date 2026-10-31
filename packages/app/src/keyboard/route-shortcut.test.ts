@@ -129,6 +129,19 @@ describe("routeKeyboardShortcut — workspace.tab.navigate", () => {
       ),
     ).toEqual<ShortcutAction>({ kind: "none" });
   });
+
+  // CUSTOM(recent-tabs)
+  it("forwards delta payloads to the workspace.tab.navigate-recent dispatch", () => {
+    expect(
+      routeKeyboardShortcut(
+        { action: "workspace.tab.navigate.recent", payload: { delta: 1 } },
+        makeCtx(),
+      ),
+    ).toEqual<ShortcutAction>({
+      kind: "dispatch",
+      action: { id: "workspace.tab.navigate-recent", scope: "workspace", delta: 1 },
+    });
+  });
 });
 
 describe("routeKeyboardShortcut — workspace.navigate.index", () => {

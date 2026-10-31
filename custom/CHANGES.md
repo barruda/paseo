@@ -3855,3 +3855,45 @@ waiting` tests in `agent-manager.test.ts`.
   (the update script runs both). In the app, click the chevron on **TLDR**, save "TLDR em 3
   linhas", reopen the app, click the chevron again: the text is still there. Click **TLDR** and
   type `/tldr`: both send it.
+
+## recent-tabs: Ctrl+Tab walks the tabs in the order you visited them
+
+- **Added:** 2026-10-31 (based on upstream v0.14.0)
+- **Commit:** `custom: Ctrl+Tab walks the tabs in the order you visited them`
+- **Why:** The user switches back and forth between a few tabs and wants Ctrl+Tab to work like
+  Alt+Tab, not to step to the tab beside. The tab beside moves to Ctrl+PageUp/PageDown, which the
+  user binds in Settings (their Silakka54 sends those from Space+D / Space+F).
+- **What:** Two new commands in Settings → Shortcuts → Tabs & panes, both rebindable:
+  **Last visited tab (hold to go further back)** (default Ctrl+Tab) and **Visited tabs in
+  reverse** (default Ctrl+Shift+Tab). One press goes to the tab you were on before; holding the
+  modifier and pressing again goes further back. Releasing Ctrl, Alt or Meta, a mouse move or
+  click without them, the window losing focus, or 2 s without a press ends the walk, and the tab
+  you landed on becomes the most recent. The 2 s cover a modifier released inside a browser tab
+  or HTML preview, whose key events never reach the app window. On native each press ends the
+  walk, so it toggles between the last two tabs. Each workspace and each Desk keeps its own
+  visit order, in memory (gone after a reload); open tabs never visited come last. "Previous
+  tab" / "Next tab" keep their upstream defaults (Alt+Shift+[ / ]).
+- **Files:** `packages/app/src/workspace-tabs/recent-tabs-model.ts` (order and walk, pure, tested
+  in `recent-tabs-model.test.ts`), `packages/app/src/workspace-tabs/recent-tabs.ts` (visit
+  record, walk state, release listeners).
+- **Core files touched (app):** each marked `CUSTOM(recent-tabs)`:
+  `keyboard/actions.ts` (`workspace.tab.navigate.recent`),
+  `keyboard/keyboard-action-dispatcher.ts` (`workspace.tab.navigate-recent` with `delta`),
+  `keyboard/route-shortcut.ts` (`TAB_DELTA_DISPATCH` routes it and the relative tab action
+  before the switch, which sits at the lint complexity limit),
+  `keyboard/keyboard-shortcuts.ts` (the two bindings after "Next tab", their rows in
+  `SHORTCUT_HELP_ROW_ORDER`), `screens/workspace/workspace-screen.tsx` and
+  `task-navigation/desk-screen.tsx` (an effect records the focused tab as a visit; a separate
+  `useKeyboardActionHandler` with the same priority as the screen's tab actions handles the
+  command).
+- **Re-apply:** Add the action id, the dispatcher definition and its route (any way that keeps
+  `routeKeyboardShortcut` under the complexity limit). Add the two bindings with
+  `payload: { type: "delta", delta: ±1 }` and help rows in the tabs section. In each screen that
+  owns tab navigation, call `recordTabVisit(scope, focusedTabId)` when the focused tab changes and
+  handle the action with `stepRecentTab({ scope, openTabIds: every tab in the layout,
+currentTabId, delta })`, then focus the returned tab the same way "Next tab" does.
+- **Verify:** `recent-tabs-model.test.ts`, plus the Ctrl+Tab cases in `keyboard-shortcuts.test.ts`
+  and `route-shortcut.test.ts` (all in the update script). By hand: open tabs A, B, C, visit A
+  then C; Ctrl+Tab goes to A, Ctrl+Tab again to C; holding Ctrl and pressing Tab twice from C
+  reaches B. If an old override still puts "Next tab" on Ctrl+Tab, that row wins: rebind it in
+  Settings.
