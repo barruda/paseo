@@ -73,8 +73,8 @@ under a long-lived `Paseo Supervisor` that respawns it from the build the superv
 so neither reopening the window nor Settings > Restart daemon picks up new daemon code. Run
 `kill-paseos-and-daemons.sh` (`custom/bin/`, linked into `~/.local/bin`). It stops the daemons
 (`~/.paseo` and `~/.paseo-telus`), closes the open Paseo windows, and reopens them from their
-launchers, giving each step 5 s before it kills. When the paseo-telus window is closed it leaves
-paseo-telus alone, daemon included. This stops the running agents. It detaches
+launchers, giving each step 5 s before it kills. When neither the paseo-telus window nor its daemon
+is running, it leaves paseo-telus alone. This stops the running agents. It detaches
 first, so it also works as `!kill-paseos-and-daemons.sh` from a Paseo chat or from a Paseo
 terminal, both of which the daemon owns. Its log is `~/.local/state/kill-paseos-and-daemons.log`.
 

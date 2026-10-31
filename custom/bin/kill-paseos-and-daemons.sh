@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Stop the Paseo daemons (~/.paseo and ~/.paseo-telus), close the Paseo windows that are open,
-# and reopen them from their launchers. paseo-telus is left alone when its window is closed: its
-# daemon stops with the window, so there is nothing of it to restart. Every step waits at most
-# 5 s before killing. This stops every running agent on the daemons it restarts.
+# and reopen them from their launchers. paseo-telus is left alone when neither its window nor its
+# daemon is running. Every step waits at most 5 s before killing. This stops every running agent on the daemons it restarts.
 #
 # It detaches first: run from a Paseo terminal or a `!` command, it is a child of the daemon it
 # is about to stop. Follow along in the log it prints.
@@ -18,7 +17,8 @@ if [[ -z "${KILL_PASEOS_DETACHED:-}" ]]; then
   exit 0
 fi
 
-# launcher | daemon home | Electron user data dir | restart: always, or only if its window is open
+# launcher | daemon home | Electron user data dir | restart: always, or only if its window or
+# daemon is running
 ALL_TARGETS=(
   "paseo-personal|$HOME/.paseo|$HOME/.config/Paseo|always"
   "paseo-telus|$HOME/.paseo-telus|$HOME/.config/Paseo-telus|if-open"
@@ -44,22 +44,29 @@ stop_pid() {
   kill -KILL "$pid" 2>/dev/null || true
 }
 
+# "<name>|<pid>" of each daemon process of this home, the supervisor first, since it restarts a
+# worker that dies. Process names are cut to 15 characters, so match the full command line.
+daemon_processes() {
+  local name pid
+  for name in "Paseo Supervisor" "Paseo Daemon"; do
+    for pid in $(pgrep -f "^$name\$" || true); do
+      if tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | grep -qx "PASEO_HOME=$1"; then
+        echo "$name|$pid"
+      fi
+    done
+  done
+}
+
 stop_daemon() {
   local home="$1"
   [[ -d "$home" ]] || return 0
   env -u PASEO_AGENT_ID -u PASEO_HOME "$PASEO_CLI" daemon stop --home "$home" \
     --timeout "$TIMEOUT" --force --kill-timeout 2 2>&1 | sed 's/^/  /' || true
-  # Leftovers of this home: the supervisor first, since it restarts a worker that dies.
-  # Process names are cut to 15 characters, so match the full command line.
   local name pid
-  for name in "Paseo Supervisor" "Paseo Daemon"; do
-    for pid in $(pgrep -f "^$name\$" || true); do
-      if tr '\0' '\n' <"/proc/$pid/environ" 2>/dev/null | grep -qx "PASEO_HOME=$home"; then
-        log "  $name (pid $pid) still running, stopping it"
-        stop_pid "$pid"
-      fi
-    done
-  done
+  while IFS='|' read -r name pid; do
+    log "  $name (pid $pid) still running, stopping it"
+    stop_pid "$pid"
+  done < <(daemon_processes "$home")
 }
 
 # Electron's single-instance lock points at "<hostname>-<pid>" of the running window.
@@ -73,9 +80,10 @@ window_pid() {
 
 TARGETS=()
 for target in "${ALL_TARGETS[@]}"; do
-  IFS='|' read -r launcher _ config restart <<<"$target"
-  if [[ "$restart" == if-open ]] && ! window_pid "$config" >/dev/null; then
-    log "Skipping $launcher: its window is not open"
+  IFS='|' read -r launcher home config restart <<<"$target"
+  if [[ "$restart" == if-open ]] && ! window_pid "$config" >/dev/null &&
+    [[ -z "$(daemon_processes "$home")" ]]; then
+    log "Skipping $launcher: neither its window nor its daemon is running"
     continue
   fi
   TARGETS+=("$target")

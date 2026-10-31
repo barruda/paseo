@@ -69,7 +69,7 @@ rules agents get wrong.
   kill-paseos-and-daemons.sh
   ```
   It stops the daemons, closes the open Paseo windows and reopens them; their running agents
-  stop. It skips paseo-telus, daemon included, when its window is closed.
+  stop. It skips paseo-telus when neither its window nor its daemon is running.
   From a Paseo chat or terminal, run it as `!kill-paseos-and-daemons.sh`.
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user
   first when the upstream version changed: reopening the app restarts the daemon, which stops its
