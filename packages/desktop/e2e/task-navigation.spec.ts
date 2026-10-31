@@ -16,6 +16,12 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     platform: "linux",
     flexibleTabMovement: true, // CUSTOM(flexible-tabs)
   });
+  // CUSTOM(desk-preview-tabs): this spec covers the preview tab, which is off by default.
+  await page.addInitScript(() => {
+    const key = "@paseo:app-settings";
+    const settings = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify({ ...settings, deskPreviewTabs: true }));
+  });
   const first = await seedMockAgentWorkspace({
     repoPrefix: "task-nav-first-",
     title: "Investigate sidebar navigation",

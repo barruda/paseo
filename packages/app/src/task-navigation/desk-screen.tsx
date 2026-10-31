@@ -81,6 +81,7 @@ import { buildTerminalsQueryKey } from "@/screens/workspace/terminals/state";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useTabLanesStore } from "@/tab-lanes/store";
 import { useFlexibleTabMovement } from "@/tab-lanes/settings";
+import { useDeskPreviewTabId, useDeskPreviewTabs } from "./preview-tabs";
 import { getPanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 import { DiffDocumentWorkspaceCacheProvider } from "@/git/diff-document/workspace-cache";
 import { SheetPaneHostProvider, type SheetPaneHost } from "@/screens/workspace/sheet-pane";
@@ -228,7 +229,7 @@ export function DeskScreen() {
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
   const owners = desk.owners;
-  const previewTabId = desk.previewTabId;
+  const previewTabId = useDeskPreviewTabId(desk.previewTabId); // CUSTOM(desk-preview-tabs)
   const resolveOwner = useCallback<WorkspaceTabOwnerResolver>(
     (tabId) => {
       const owner = owners[tabId] ?? scope;
@@ -898,9 +899,7 @@ export function DeskScreen() {
               {renderHeader()}
               <View style={styles.empty}>
                 <Text style={styles.emptyTitle}>{desk.name}</Text>
-                <Text style={styles.context}>
-                  Click a task to preview it. Middle-click to keep it as a tab.
-                </Text>
+                <DeskEmptyHint />
               </View>
             </>
           )}
@@ -1270,6 +1269,18 @@ function DeskCreateMenu({ onCreateDesk }: { onCreateDesk: () => void }) {
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// CUSTOM(desk-preview-tabs)
+function DeskEmptyHint() {
+  const previewTabs = useDeskPreviewTabs();
+  return (
+    <Text style={styles.context}>
+      {previewTabs
+        ? "Click a task to preview it. Middle-click to keep it as a tab."
+        : "Click a task to open it in a tab."}
+    </Text>
   );
 }
 

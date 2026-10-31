@@ -74,6 +74,8 @@ import {
   type DeskTabInput,
 } from "./desks-store";
 import { collectAllPanes, findPaneContainingTab } from "@/stores/workspace-layout-actions";
+import { queryClient } from "@/data/query-client";
+import { APP_SETTINGS_QUERY_KEY, DEFAULT_CLIENT_SETTINGS } from "@/hooks/use-settings/storage";
 const firstTab: DeskTabInput = {
   serverId: "home",
   workspaceId: "paseo",
@@ -97,6 +99,11 @@ describe("Desks", () => {
       projectKeys: null,
       sort: "attention",
       openedAt: {},
+    });
+    // CUSTOM(desk-preview-tabs): these cases cover the preview tab, which is off by default.
+    queryClient.setQueryData(APP_SETTINGS_QUERY_KEY, {
+      ...DEFAULT_CLIENT_SETTINGS,
+      deskPreviewTabs: true,
     });
   });
   it("changes a draft's project workspace without changing its tab or Desk identity", () => {
@@ -231,6 +238,18 @@ describe("Desks", () => {
     store.closeTab(preview.id);
     expect(tabs()).toEqual([]);
     expect(current()).toBeNull();
+  });
+  // CUSTOM(desk-preview-tabs)
+  it("opens every task in its own tab while preview tabs are off", () => {
+    const store = useDesksStore.getState();
+    store.openTab(firstTab);
+    const preview = current()!;
+    queryClient.setQueryData(APP_SETTINGS_QUERY_KEY, DEFAULT_CLIENT_SETTINGS);
+    store.openTab(secondTab);
+    expect(desk().previewTabId).toBeNull();
+    expect(tabs()).toHaveLength(2);
+    expect(tabs()[0]).toEqual(preview);
+    expect(current()).toMatchObject(secondTab);
   });
   it("restores independent Desks, allowing the same agent in each", async () => {
     const store = useDesksStore.getState();

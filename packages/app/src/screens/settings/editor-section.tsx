@@ -30,6 +30,7 @@ export function EditorSection() {
           />
         </View>
         <FlexibleTabMovementRow />
+        <DeskPreviewTabsRow />
       </View>
     </SettingsSection>
   );
@@ -52,6 +53,32 @@ function FlexibleTabMovementRow() {
         onValueChange={setEnabled}
         accessibilityLabel="Flexible tab movement"
         testID="flexible-tab-movement-toggle"
+      />
+    </View>
+  );
+}
+
+// CUSTOM(desk-preview-tabs)
+function DeskPreviewTabsRow() {
+  const { settings, updateSettings } = useAppSettings();
+  const setEnabled = useCallback(
+    (deskPreviewTabs: boolean) => void updateSettings({ deskPreviewTabs }),
+    [updateSettings],
+  );
+  return (
+    <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Preview tabs</Text>
+        <Text style={settingsStyles.rowHint}>
+          In Tasks mode, a click on a task replaces one preview tab and a double click keeps it.
+          Off, every click opens the task in its own tab.
+        </Text>
+      </View>
+      <Switch
+        value={settings.deskPreviewTabs}
+        onValueChange={setEnabled}
+        accessibilityLabel="Preview tabs"
+        testID="desk-preview-tabs-toggle"
       />
     </View>
   );

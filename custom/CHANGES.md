@@ -3592,6 +3592,35 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   app, Tasks mode: click task A (preview), double-click task B; A stays in the italic tab and B
   opens in a new upright tab.
 
+## desk-preview-tabs: the "Preview tabs" setting, off by default
+
+- **Added:** 2026-10-31
+- **Commit:** `custom: Preview tabs setting; off, a task click opens its own tab`
+- **Why:** The user prefers every task click in Tasks mode to open a tab of its own, with no
+  shared preview tab that the next click replaces.
+- **What:** Settings > Editor > **Preview tabs**, off by default. Off, every Desk open keeps its
+  tab (a task already open just gets focus), no tab reads as a preview (italic label, Keep tab
+  button) and a preview left from before the setting changed becomes a kept tab on the next open.
+  On restores the earlier behavior: a click replaces the preview tab and a double click
+  ([task-double-click](#task-double-click-double-clicking-a-task-opens-it-in-a-new-tab)) or
+  middle click keeps it. Saved with the app settings, so each launcher profile has its own.
+- **Files:** `packages/app/src/task-navigation/preview-tabs.ts` reads the setting inside and
+  outside React.
+- **Core files touched** (marked `CUSTOM(desk-preview-tabs)`):
+  `hooks/use-settings/storage.ts` (`deskPreviewTabs` field, default, schema),
+  `task-navigation/desks-store.ts` (`openTab`), `task-navigation/desk-screen.tsx` (preview id
+  and empty-Desk hint), `screens/settings/editor-section.tsx` (the switch row),
+  `packages/desktop/e2e/task-navigation.spec.ts` (seeds the setting on, since it tests previews).
+- **Re-apply:** Add `deskPreviewTabs: boolean` to `AppSettings` with default and schema fallback
+  `false`. In the Desks store's `openTab`, when the setting is off, clear the Desk's
+  `previewTabId` and open with `pin = true`. In `DeskScreen`, treat `previewTabId` as null while
+  it is off. Keep `DeskScreen` under the lint complexity limit (helpers live outside it). Any
+  spec or unit test that checks preview tabs turns the setting on first.
+- **Verify:** `task-navigation/store.test.ts` ("opens every task in its own tab while preview tabs
+  are off") and `e2e/task-navigation.spec.ts`, both in the update script. In the app, Tasks mode:
+  click task A, then task B; both stay open as upright tabs. Turn Preview tabs on in Settings >
+  Editor and B replaces A in an italic tab.
+
 ## lazy-model-switch: switching a Claude agent's model answers at once
 
 - **Added:** 2026-10-29 (based on upstream v0.13.0, `7f9b65d46`)

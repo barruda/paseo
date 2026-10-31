@@ -107,6 +107,8 @@ export interface AppSettings {
   chatOutlineEnabled: boolean;
   /** CUSTOM(chat-links): the link list beside the chat. */
   chatLinksEnabled: boolean;
+  /** CUSTOM(desk-preview-tabs): on, task clicks in Tasks mode share one preview tab. Off by default. */
+  deskPreviewTabs: boolean;
   vimKeybindings: boolean;
   sendShortcut: SendShortcut;
   filePanelAssociations: Record<string, string>;
@@ -165,6 +167,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatDisplay: "collapseTurns",
   chatOutlineEnabled: true,
   chatLinksEnabled: true, // CUSTOM(chat-links)
+  deskPreviewTabs: false, // CUSTOM(desk-preview-tabs)
   vimKeybindings: false,
   sendShortcut: "enter",
   filePanelAssociations: {},
@@ -271,6 +274,7 @@ const StoredAppSettingsSchema = z
     compactToolCalls: z.boolean().optional().catch(undefined),
     chatOutlineEnabled: z.boolean().catch(true),
     chatLinksEnabled: z.boolean().catch(true), // CUSTOM(chat-links)
+    deskPreviewTabs: z.boolean().catch(false), // CUSTOM(desk-preview-tabs)
     vimKeybindings: z.boolean().catch(false),
     sendShortcut: z.enum(["enter", "mod-enter"]).catch("enter"),
     filePanelAssociations: z.record(z.string(), z.string()).catch({}),

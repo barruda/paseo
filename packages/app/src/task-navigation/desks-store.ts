@@ -8,6 +8,7 @@ import { z } from "zod";
 import type { JsonValue } from "@getpaseo/protocol/agent-types";
 import type { WorkspaceTab, WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { workspaceTabTargetsEqual } from "@/workspace-tabs/identity";
+import { deskPreviewTabsEnabled } from "./preview-tabs";
 import {
   WorkspaceLayoutStorageSchema,
   WorkspaceTabTargetStorageSchema,
@@ -477,7 +478,17 @@ export const useDesksStore = create<DesksState>()(
             const key = `${input.serverId}:${input.target.agentId}`;
             set((state) => ({ openedAt: { ...state.openedAt, [key]: Date.now() } }));
           }
-          change((desk) => openInDesk(desk, input, pin, placement));
+          // CUSTOM(desk-preview-tabs): with preview tabs off every open keeps its tab, and a
+          // preview left from before the setting changed becomes a kept tab.
+          const previews = deskPreviewTabsEnabled();
+          change((desk) =>
+            openInDesk(
+              previews ? desk : { ...desk, previewTabId: null },
+              input,
+              pin || !previews,
+              placement,
+            ),
+          );
         },
         selectTab: (id) =>
           change((desk) => withLayout(desk, focusTabInLayout({ layout: desk.layout, tabId: id }))),
