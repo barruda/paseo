@@ -7,7 +7,7 @@ import {
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { revealWorkspaceTab } from "@/workspace-tabs/navigation";
 // CUSTOM(recent-tabs)
-import { recordTabVisit, stepRecentTab } from "@/workspace-tabs/recent-tabs";
+import { stepRecentTab, useWorkspaceRecentTabs } from "@/workspace-tabs/recent-tabs";
 import type { LayoutChangeEvent } from "react-native";
 import { ExplorerSidebarDock } from "@/screens/workspace/explorer-sidebar";
 import { ExplorerFrame } from "./explorer-sidebar/frame";
@@ -1590,9 +1590,13 @@ function WorkspaceScreenContent({
   const activeTabId = focusedPaneTabState.activeTabId;
   const activeTab = focusedPaneTabState.activeTab;
   // CUSTOM(recent-tabs)
-  useEffect(() => {
-    if (persistenceKey) recordTabVisit(persistenceKey, activeTabId);
-  }, [activeTabId, persistenceKey]);
+  const { recentTabIds, recentCurrentTabId } = useWorkspaceRecentTabs({
+    workspaceKey: persistenceKey,
+    layout: workspaceLayout,
+    tabs: uiTabs,
+    explorerSidebarPaneId,
+    activeTabId,
+  });
 
   const tabs = useMemo<WorkspaceTabDescriptor[]>(
     () => focusedPaneTabState.tabs.map((tab) => tab.descriptor),
@@ -2781,8 +2785,8 @@ function WorkspaceScreenContent({
       if (action.id !== "workspace.tab.navigate-recent" || !persistenceKey) return false;
       const tabId = stepRecentTab({
         scope: persistenceKey,
-        openTabIds: uiTabs.map((tab) => tab.tabId),
-        currentTabId: activeTabId,
+        openTabIds: recentTabIds,
+        currentTabId: recentCurrentTabId,
         delta: action.delta,
       });
       if (tabId) navigateToTabId(tabId);

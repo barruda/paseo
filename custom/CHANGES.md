@@ -3871,11 +3871,15 @@ waiting` tests in `agent-manager.test.ts`.
   you landed on becomes the most recent. The 2 s cover a modifier released inside a browser tab
   or HTML preview, whose key events never reach the app window. On native each press ends the
   walk, so it toggles between the last two tabs. Each workspace and each Desk keeps its own
-  visit order, in memory (gone after a reload); open tabs never visited come last. "Previous
+  visit order, in memory (gone after a reload); open tabs never visited come last. In a
+  workspace only the main content's tabs count: tabs in the bottom panel and the Explorer pane
+  are never visits nor stops, so the walk never reopens a panel you closed with Ctrl+J. From a
+  focused bottom-panel tab, the first press goes to the most recent main tab. "Previous
   tab" / "Next tab" keep their upstream defaults (Alt+Shift+[ / ]).
 - **Files:** `packages/app/src/workspace-tabs/recent-tabs-model.ts` (order and walk, pure, tested
   in `recent-tabs-model.test.ts`), `packages/app/src/workspace-tabs/recent-tabs.ts` (visit
-  record, walk state, release listeners).
+  record, walk state, release listeners, and `useWorkspaceRecentTabs`, which picks the main
+  content's tabs and records the visit).
 - **Core files touched (app):** each marked `CUSTOM(recent-tabs)`:
   `keyboard/actions.ts` (`workspace.tab.navigate.recent`),
   `keyboard/keyboard-action-dispatcher.ts` (`workspace.tab.navigate-recent` with `delta`),
@@ -3890,10 +3894,12 @@ waiting` tests in `agent-manager.test.ts`.
   `routeKeyboardShortcut` under the complexity limit). Add the two bindings with
   `payload: { type: "delta", delta: ±1 }` and help rows in the tabs section. In each screen that
   owns tab navigation, call `recordTabVisit(scope, focusedTabId)` when the focused tab changes and
-  handle the action with `stepRecentTab({ scope, openTabIds: every tab in the layout,
-currentTabId, delta })`, then focus the returned tab the same way "Next tab" does.
+  handle the action with `stepRecentTab({ scope, openTabIds, currentTabId, delta })`, then focus
+  the returned tab the same way "Next tab" does. In a workspace, `openTabIds` and `currentTabId`
+  come from `useWorkspaceRecentTabs` (main content only); in a Desk, every tab in the layout.
 - **Verify:** `recent-tabs-model.test.ts`, plus the Ctrl+Tab cases in `keyboard-shortcuts.test.ts`
   and `route-shortcut.test.ts` (all in the update script). By hand: open tabs A, B, C, visit A
   then C; Ctrl+Tab goes to A, Ctrl+Tab again to C; holding Ctrl and pressing Tab twice from C
-  reaches B. If an old override still puts "Next tab" on Ctrl+Tab, that row wins: rebind it in
+  reaches B. Open the bottom panel on a terminal, close it with Ctrl+J, then Ctrl+Tab: the panel
+  stays closed. If an old override still puts "Next tab" on Ctrl+Tab, that row wins: rebind it in
   Settings.

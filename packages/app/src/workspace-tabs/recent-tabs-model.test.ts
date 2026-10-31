@@ -55,6 +55,15 @@ describe("stepRecentTabWalk", () => {
     expect(other?.tabId).toBe("y");
   });
 
+  it("goes back to the most recent walked tab when focus is outside them", () => {
+    const fromBottomPanel = { ...input, currentTabId: "terminal" };
+    expect(stepRecentTabWalk(null, fromBottomPanel)?.tabId).toBe("b");
+    expect(stepRecentTabWalk(null, { ...fromBottomPanel, delta: -1 })?.tabId).toBe("c");
+    expect(
+      stepRecentTabWalk(null, { ...fromBottomPanel, currentTabId: null, openTabIds: ["b"] })?.tabId,
+    ).toBe("b");
+  });
+
   it("does nothing with a single open tab", () => {
     expect(stepRecentTabWalk(null, { ...input, openTabIds: ["b"] })).toBeNull();
   });

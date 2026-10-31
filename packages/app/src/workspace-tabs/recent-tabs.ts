@@ -2,7 +2,11 @@
 // last visited them, like Alt+Tab. While the shortcut's modifier stays held, each press goes one
 // tab further; letting go makes the tab you landed on the most recent one. The tabs passed on
 // the way are not recorded as visits.
+import { useEffect, useMemo } from "react";
 import { isWeb } from "@/constants/platform";
+import { findPaneById, type WorkspaceLayout } from "@/stores/workspace-layout-store";
+import type { WorkspaceTab } from "@/workspace-tabs/model";
+import { BOTTOM_PANEL_PANE_ID } from "./bottom-panel";
 import { stepRecentTabWalk, withVisitFirst, type RecentTabWalk } from "./recent-tabs-model";
 
 // A modifier released inside a browser tab or an HTML preview never reaches this window, so a
@@ -14,6 +18,35 @@ const visitsByScope = new Map<string, string[]>();
 let walk: RecentTabWalk | null = null;
 let stopWatchingRelease: (() => void) | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
+
+/**
+ * The workspace tabs the walk goes through, which are the main content's, and the active one
+ * among them, recorded as a visit. Tabs in the bottom panel and in the Explorer pane are left
+ * out, so the walk never reopens a panel you closed.
+ */
+export function useWorkspaceRecentTabs(input: {
+  workspaceKey: string | null;
+  layout: WorkspaceLayout | null;
+  tabs: readonly WorkspaceTab[];
+  explorerSidebarPaneId: string | null;
+  activeTabId: string | null;
+}): { recentTabIds: string[]; recentCurrentTabId: string | null } {
+  const { workspaceKey, layout, tabs, explorerSidebarPaneId, activeTabId } = input;
+  const recentTabIds = useMemo(() => {
+    if (!layout) return [];
+    const sidePaneTabIds = new Set(
+      [BOTTOM_PANEL_PANE_ID, explorerSidebarPaneId].flatMap(
+        (paneId) => findPaneById(layout.root, paneId)?.tabIds ?? [],
+      ),
+    );
+    return tabs.map((tab) => tab.tabId).filter((tabId) => !sidePaneTabIds.has(tabId));
+  }, [explorerSidebarPaneId, layout, tabs]);
+  const recentCurrentTabId = activeTabId && recentTabIds.includes(activeTabId) ? activeTabId : null;
+  useEffect(() => {
+    if (workspaceKey) recordTabVisit(workspaceKey, recentCurrentTabId);
+  }, [recentCurrentTabId, workspaceKey]);
+  return { recentTabIds, recentCurrentTabId };
+}
 
 /** Records `tabId` as the most recent tab of `scope` (a workspace or a Desk). */
 export function recordTabVisit(scope: string, tabId: string | null): void {

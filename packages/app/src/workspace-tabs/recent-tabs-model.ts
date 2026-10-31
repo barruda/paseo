@@ -36,7 +36,9 @@ export function recentTabOrder(input: {
 
 /**
  * One press: continues the walk when it is in the same scope, otherwise starts a new one from
- * the current tab. Returns `null` when the scope has fewer than two open tabs.
+ * the current tab. When the current tab is not one of the walked tabs (focus is in the bottom
+ * panel), the first press lands on the most recent walked tab, or the least recent going in
+ * reverse. Returns `null` when there is no other tab to go to.
  */
 export function stepRecentTabWalk(
   walk: RecentTabWalk | null,
@@ -48,6 +50,16 @@ export function stepRecentTabWalk(
     delta: 1 | -1;
   },
 ): { walk: RecentTabWalk; tabId: string } | null {
+  if (!(walk && walk.scope === input.scope)) {
+    const isCurrentWalked =
+      input.currentTabId !== null && input.openTabIds.includes(input.currentTabId);
+    if (!isCurrentWalked) {
+      const order = recentTabOrder(input);
+      if (order.length === 0) return null;
+      const index = input.delta === 1 ? 0 : order.length - 1;
+      return { walk: { scope: input.scope, order, index }, tabId: order[index]! };
+    }
+  }
   const current =
     walk && walk.scope === input.scope
       ? walk
