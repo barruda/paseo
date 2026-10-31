@@ -106,7 +106,12 @@ import {
 import { useDiffTabsStore } from "@/git/diff-tabs/store";
 import { DeskTerminalTabs } from "./desk-terminal-tabs";
 // CUSTOM(recent-tabs)
-import { recordTabVisit, stepRecentTab } from "@/workspace-tabs/recent-tabs";
+import {
+  mainContentTabId,
+  mainContentTabIds,
+  recordTabVisit,
+  stepRecentTab,
+} from "@/workspace-tabs/recent-tabs";
 import {
   useDesksStore,
   activeDesk,
@@ -185,10 +190,11 @@ export function DeskScreen() {
   const onRowLayout = useHeaderShortcutsRowLayout(screenId);
   useEffect(() => useDesksStore.persist.onFinishHydration(() => setHydrated(true)), []);
   // CUSTOM(recent-tabs)
-  const activeTabId = active?.id ?? null;
+  // The bottom panel's tabs are not visits.
+  const recentCurrentTabId = mainContentTabId(desk.layout, active?.id ?? null);
   useEffect(() => {
-    recordTabVisit(deskRecentTabsScope(desk.id), activeTabId);
-  }, [activeTabId, desk.id]);
+    recordTabVisit(deskRecentTabsScope(desk.id), recentCurrentTabId);
+  }, [recentCurrentTabId, desk.id]);
   useEffect(() => {
     if (!hydrated || !selection) return;
     const layout =
@@ -349,10 +355,14 @@ export function DeskScreen() {
       if (action.id !== "workspace.tab.navigate-recent") return false;
       const store = useDesksStore.getState();
       const current = activeDesk(store);
+      const { layout } = current;
       const tabId = stepRecentTab({
         scope: deskRecentTabsScope(current.id),
-        openTabIds: collectAllTabs(current.layout.root).map((tab) => tab.tabId),
-        currentTabId: activeDeskTab(store)?.id ?? null,
+        openTabIds: mainContentTabIds({
+          layout,
+          tabIds: collectAllTabs(layout.root).map((tab) => tab.tabId),
+        }),
+        currentTabId: mainContentTabId(layout, activeDeskTab(store)?.id ?? null),
         delta: action.delta,
       });
       if (tabId) store.selectTab(tabId);

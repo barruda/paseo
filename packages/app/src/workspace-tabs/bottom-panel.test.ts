@@ -5,6 +5,7 @@ import { routeKeyboardShortcut } from "@/keyboard/route-shortcut";
 import {
   closePaneInLayout,
   collectAllPanes,
+  collectAllTabs,
   createWorkspaceLayoutWithExplorerSidebar,
   DEFAULT_PANE_ID,
   EXPLORER_SIDEBAR_PANE_ID,
@@ -12,6 +13,8 @@ import {
   type WorkspaceLayout,
 } from "@/stores/workspace-layout-actions";
 import { BOTTOM_PANEL_PANE_ID, toggleBottomPanelInLayout } from "@/workspace-tabs/bottom-panel";
+// CUSTOM(recent-tabs)
+import { mainContentTabId, mainContentTabIds } from "@/workspace-tabs/recent-tabs";
 
 let nodeCounter = 0;
 function createNodeId(prefix: string): string {
@@ -34,6 +37,22 @@ function toggleOrThrow(layout: WorkspaceLayout) {
 }
 
 describe("bottom panel", () => {
+  // CUSTOM(recent-tabs)
+  it("keeps its tabs out of the visited-tabs walk, shown or hidden", () => {
+    const created = toggleOrThrow(createWorkspaceLayoutWithExplorerSidebar());
+    const panelTabId = findPaneById(created.layout.root, BOTTOM_PANEL_PANE_ID)!.focusedTabId!;
+    const hidden = toggleOrThrow(created.layout).layout;
+
+    for (const layout of [created.layout, hidden]) {
+      const tabIds = collectAllTabs(layout.root).map((tab) => tab.tabId);
+      expect(tabIds).toContain(panelTabId);
+      const walked = mainContentTabIds({ layout, tabIds });
+      expect(walked).not.toContain(panelTabId);
+      expect(walked).toHaveLength(tabIds.length - 1);
+      expect(mainContentTabId(layout, panelTabId)).toBeNull();
+    }
+  });
+
   it("creates a full-width pane under the whole workspace tree with a launcher tab", () => {
     const layout = createWorkspaceLayoutWithExplorerSidebar();
     const result = toggleOrThrow(layout);

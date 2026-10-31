@@ -20,10 +20,29 @@ let stopWatchingRelease: (() => void) | null = null;
 let idleTimer: ReturnType<typeof setTimeout> | null = null;
 
 /**
- * The workspace tabs the walk goes through, which are the main content's, and the active one
- * among them, recorded as a visit. Tabs in the bottom panel and in the Explorer pane are left
- * out, so the walk never reopens a panel you closed.
+ * The tabs the walk goes through: the main content's. Tabs in the bottom panel (of a workspace or
+ * a Desk) and in the Explorer pane are left out, so the walk never reopens a panel you closed.
  */
+export function mainContentTabIds(input: {
+  layout: WorkspaceLayout;
+  tabIds: readonly string[];
+  explorerSidebarPaneId?: string | null;
+}): string[] {
+  const sidePaneTabIds = new Set(
+    [BOTTOM_PANEL_PANE_ID, input.explorerSidebarPaneId].flatMap(
+      (paneId) => findPaneById(input.layout.root, paneId)?.tabIds ?? [],
+    ),
+  );
+  return input.tabIds.filter((tabId) => !sidePaneTabIds.has(tabId));
+}
+
+/** `tabId` when it is one of the main content's tabs, otherwise `null`. */
+export function mainContentTabId(layout: WorkspaceLayout, tabId: string | null): string | null {
+  if (!tabId) return null;
+  return mainContentTabIds({ layout, tabIds: [tabId] }).length > 0 ? tabId : null;
+}
+
+/** The workspace's main content tabs, and the active one among them, recorded as a visit. */
 export function useWorkspaceRecentTabs(input: {
   workspaceKey: string | null;
   layout: WorkspaceLayout | null;
@@ -32,15 +51,17 @@ export function useWorkspaceRecentTabs(input: {
   activeTabId: string | null;
 }): { recentTabIds: string[]; recentCurrentTabId: string | null } {
   const { workspaceKey, layout, tabs, explorerSidebarPaneId, activeTabId } = input;
-  const recentTabIds = useMemo(() => {
-    if (!layout) return [];
-    const sidePaneTabIds = new Set(
-      [BOTTOM_PANEL_PANE_ID, explorerSidebarPaneId].flatMap(
-        (paneId) => findPaneById(layout.root, paneId)?.tabIds ?? [],
-      ),
-    );
-    return tabs.map((tab) => tab.tabId).filter((tabId) => !sidePaneTabIds.has(tabId));
-  }, [explorerSidebarPaneId, layout, tabs]);
+  const recentTabIds = useMemo(
+    () =>
+      layout
+        ? mainContentTabIds({
+            layout,
+            tabIds: tabs.map((tab) => tab.tabId),
+            explorerSidebarPaneId,
+          })
+        : [],
+    [explorerSidebarPaneId, layout, tabs],
+  );
   const recentCurrentTabId = activeTabId && recentTabIds.includes(activeTabId) ? activeTabId : null;
   useEffect(() => {
     if (workspaceKey) recordTabVisit(workspaceKey, recentCurrentTabId);
