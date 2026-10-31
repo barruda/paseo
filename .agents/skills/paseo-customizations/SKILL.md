@@ -53,8 +53,9 @@ rules agents get wrong.
 - Core change: `npm run build:desktop -- --linux dir` (only the folder the install copies; the
   full build fails at rpm on Ubuntu), then
   `custom/update-paseo-source-and-apply-customization.sh --install-only`. Then run
-  `custom/reopen-paseo-clients.sh` yourself, without asking: it closes each Paseo window and
-  reopens it from its launcher (so it keeps its dock slot), `paseo-telus` included. `paseo-personal`
+  `custom/reopen-paseo-clients.sh` yourself, without asking: it closes each open Paseo window and
+  reopens it from its launcher (so it keeps its dock slot), `paseo-telus` included when it is
+  open. A closed window stays closed. `paseo-personal`
   keeps its daemon and agents running; `paseo-telus` has `keepRunningAfterQuit` off, so its daemon
   restarts with the window and its running agents stop. The user asked for that; say in your
   report that the telus daemon restarted. For daemon-side changes that is not enough: with an unchanged version the
@@ -67,7 +68,8 @@ rules agents get wrong.
   ```bash
   kill-paseos-and-daemons.sh
   ```
-  It stops both daemons, closes both Paseo windows and reopens them; their running agents stop.
+  It stops the daemons, closes the open Paseo windows and reopens them; their running agents
+  stop. It skips paseo-telus, daemon included, when its window is closed.
   From a Paseo chat or terminal, run it as `!kill-paseos-and-daemons.sh`.
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user
   first when the upstream version changed: reopening the app restarts the daemon, which stops its

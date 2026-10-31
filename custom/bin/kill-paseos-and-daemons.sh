@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# Stop both Paseo daemons (~/.paseo and ~/.paseo-telus), close both Paseo windows if they are
-# open, and reopen both from their launchers. Every step waits at most 5 s before killing.
-# This stops every running agent on both daemons.
+# Stop the Paseo daemons (~/.paseo and ~/.paseo-telus), close the Paseo windows that are open,
+# and reopen them from their launchers. paseo-telus is left alone when its window is closed: its
+# daemon stops with the window, so there is nothing of it to restart. Every step waits at most
+# 5 s before killing. This stops every running agent on the daemons it restarts.
 #
 # It detaches first: run from a Paseo terminal or a `!` command, it is a child of the daemon it
 # is about to stop. Follow along in the log it prints.
@@ -17,10 +18,10 @@ if [[ -z "${KILL_PASEOS_DETACHED:-}" ]]; then
   exit 0
 fi
 
-# launcher | daemon home | Electron user data dir
-TARGETS=(
-  "paseo-personal|$HOME/.paseo|$HOME/.config/Paseo"
-  "paseo-telus|$HOME/.paseo-telus|$HOME/.config/Paseo-telus"
+# launcher | daemon home | Electron user data dir | restart: always, or only if its window is open
+ALL_TARGETS=(
+  "paseo-personal|$HOME/.paseo|$HOME/.config/Paseo|always"
+  "paseo-telus|$HOME/.paseo-telus|$HOME/.config/Paseo-telus|if-open"
 )
 
 # The paseo CLI of the build the launchers point at.
@@ -69,6 +70,16 @@ window_pid() {
   [[ "$(ps -o args= -p "$pid" 2>/dev/null)" == *Paseo.bin* ]] || return 1
   echo "$pid"
 }
+
+TARGETS=()
+for target in "${ALL_TARGETS[@]}"; do
+  IFS='|' read -r launcher _ config restart <<<"$target"
+  if [[ "$restart" == if-open ]] && ! window_pid "$config" >/dev/null; then
+    log "Skipping $launcher: its window is not open"
+    continue
+  fi
+  TARGETS+=("$target")
+done
 
 log "Stopping the daemons"
 for target in "${TARGETS[@]}"; do
