@@ -3958,3 +3958,26 @@ waiting` tests in `agent-manager.test.ts`.
 - **Verify:** `clear-keeps-agent.test.ts` and `index.test.ts` (in the update script). By hand:
   in an agent tab, send `/clear`: the tab becomes a draft with the same model and mode, and the
   old agent stays in the Tasks sidebar, not archived; clicking it opens it in a tab again.
+
+## worktree-pill-own-project: a worktree opened as its own project gets the Worktree pill
+
+- **Added:** 2026-11-01 (based on upstream v0.14.0)
+- **Commit:** `custom: the Worktree pill shows for a worktree opened as its own project`
+- **Why:** `~/uprojects/DreamMMO-wt1` is a git worktree of DreamMMO, but it was added as its own
+  project, so its folder is the project root. The
+  [Worktree pill](#worktree-pill-done-a-done-worktree-session-gets-a-green-worktree-pill-at-the-front)
+  hid it, because "folder equals project root" was how it told the main checkout apart (the main
+  checkout can also report kind `worktree`).
+- **What:** The pill shows when the workspace kind is `worktree` and the checkout's
+  `mainRepoRoot` differs from both the workspace folder and its `worktreeRoot`. The checkout
+  comes from the workspace's `project.checkout`, or the agent's `projectPlacement.checkout` when
+  the workspace came from the app's cache (which drops `project`). Without either, the old
+  project-root rule applies.
+- **Files:** `isLinkedWorktreeWorkspace` in `packages/app/src/composer/worktree-pill-model.ts`
+  (tested in `worktree-pill-model.test.ts`, already in the update script).
+- **Core files touched:** `packages/app/src/composer/worktree-pill.tsx` (custom file), marked
+  `CUSTOM(worktree-pill-own-project)`.
+- **Re-apply:** In the pill's workspace selector, replace the "directory equals project root"
+  test with `isLinkedWorktreeWorkspace`, passing the workspace's checkout or the agent's.
+- **Verify:** `worktree-pill-model.test.ts`. By hand: open a session in DreamMMO-wt1; the pill
+  reads **Worktree: <branch>**. A session in the main DreamMMO or Paseo checkout has no pill.

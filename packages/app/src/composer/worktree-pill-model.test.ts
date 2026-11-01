@@ -3,7 +3,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MERGE_WORKTREE_COMMAND, resolveWorktreePillLabel } from "./worktree-pill-model";
+import {
+  isLinkedWorktreeWorkspace,
+  MERGE_WORKTREE_COMMAND,
+  resolveWorktreePillLabel,
+} from "./worktree-pill-model";
 
 function git(cwd: string, ...args: string[]): string {
   return execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -58,5 +62,69 @@ describe("resolveWorktreePillLabel", () => {
     expect(resolveWorktreePillLabel({ currentBranch: null, workspaceName: "wt" })).toBe(
       "Worktree: wt",
     );
+  });
+});
+
+// CUSTOM(worktree-pill-own-project): a worktree opened as its own project still gets the pill.
+describe("isLinkedWorktreeWorkspace", () => {
+  it("detects a worktree registered as its own project", () => {
+    expect(
+      isLinkedWorktreeWorkspace({
+        workspaceKind: "worktree",
+        directory: "/home/u/DreamMMO-wt1",
+        projectRootPath: "/home/u/DreamMMO-wt1",
+        checkout: { mainRepoRoot: "/home/u/DreamMMO", worktreeRoot: "/mnt/disk/DreamMMO-wt1" },
+      }),
+    ).toBe(true);
+  });
+
+  it("detects a worktree inside the main repo's project", () => {
+    expect(
+      isLinkedWorktreeWorkspace({
+        workspaceKind: "worktree",
+        directory: "/home/u/worktrees/repo-swan",
+        projectRootPath: "/home/u/repo",
+        checkout: { mainRepoRoot: "/home/u/repo", worktreeRoot: "/home/u/worktrees/repo-swan" },
+      }),
+    ).toBe(true);
+  });
+
+  it("leaves out the main checkout reporting kind worktree", () => {
+    expect(
+      isLinkedWorktreeWorkspace({
+        workspaceKind: "worktree",
+        directory: "/home/u/repo",
+        projectRootPath: "/home/u/repo",
+        checkout: { mainRepoRoot: "/home/u/repo/", worktreeRoot: "/home/u/repo" },
+      }),
+    ).toBe(false);
+  });
+
+  it("leaves out a main checkout opened by a symlink", () => {
+    expect(
+      isLinkedWorktreeWorkspace({
+        workspaceKind: "worktree",
+        directory: "/home/u/link-to-repo",
+        projectRootPath: "/home/u/link-to-repo",
+        checkout: { mainRepoRoot: "/mnt/disk/repo", worktreeRoot: "/mnt/disk/repo" },
+      }),
+    ).toBe(false);
+  });
+
+  it("falls back to the project root without a checkout", () => {
+    const base = { workspaceKind: "worktree", projectRootPath: "/home/u/repo" };
+    expect(isLinkedWorktreeWorkspace({ ...base, directory: "/home/u/repo" })).toBe(false);
+    expect(isLinkedWorktreeWorkspace({ ...base, directory: "/home/u/wt" })).toBe(true);
+  });
+
+  it("is false for other workspace kinds", () => {
+    expect(
+      isLinkedWorktreeWorkspace({
+        workspaceKind: "local_checkout",
+        directory: "/home/u/wt",
+        projectRootPath: "/home/u/repo",
+        checkout: { mainRepoRoot: "/home/u/repo", worktreeRoot: "/home/u/wt" },
+      }),
+    ).toBe(false);
   });
 });

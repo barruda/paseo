@@ -4,6 +4,8 @@
 // (shell-command plugin), so the output lands in a Terminal card in the chat.
 // CUSTOM(worktree-pill-done): `done` (the agent's status summary says the request is done or
 // nearly done) gives it a green border; AgentTracks also moves it to the front of the row.
+// CUSTOM(worktree-pill-own-project): a worktree opened as its own project (its folder is the
+// project root) is told from the main checkout by the checkout's main repo root.
 // CUSTOM(worktree-pill-merged): `merged` (done, and the worktree is already merged into the main
 // checkout) fills it green and puts a check before the label. New changes in the worktree clear it.
 import * as Clipboard from "expo-clipboard";
@@ -20,8 +22,13 @@ import {
   type DropdownMenuTriggerProps,
 } from "@/components/ui/dropdown-menu";
 import { composerPillStyles } from "@/composer/pill-styles";
-import { MERGE_WORKTREE_COMMAND, resolveWorktreePillLabel } from "@/composer/worktree-pill-model";
+import {
+  isLinkedWorktreeWorkspace,
+  MERGE_WORKTREE_COMMAND,
+  resolveWorktreePillLabel,
+} from "@/composer/worktree-pill-model";
 import { useToast } from "@/contexts/toast-context";
+import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 
 const triggerStyle: DropdownMenuTriggerProps["style"] = ({ hovered, open }) => [
@@ -68,11 +75,23 @@ export const WorktreePill = memo(function WorktreePill({
 }): ReactElement | null {
   const toast = useToast();
   const run = useRunChatCommand({ serverId, workspaceId, agentId, toast });
+  // CUSTOM(worktree-pill-own-project): the agent's checkout backs up the workspace's, which the
+  // app's workspace cache does not keep.
+  const agentCheckout = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    const agent = session?.agents.get(agentId) ?? session?.agentDetails.get(agentId);
+    return agent?.projectPlacement?.checkout ?? null;
+  });
   const worktree = useWorkspaceFields(serverId, workspaceId, (workspace) => {
-    // The main checkout also reports kind "worktree" (its main repo root is itself), so compare
-    // the directory with the project root to tell it apart.
     const directory = workspace.workspaceDirectory || cwd;
-    if (workspace.workspaceKind !== "worktree" || directory === workspace.projectRootPath) {
+    if (
+      !isLinkedWorktreeWorkspace({
+        workspaceKind: workspace.workspaceKind,
+        directory,
+        projectRootPath: workspace.projectRootPath,
+        checkout: workspace.project?.checkout ?? agentCheckout,
+      })
+    ) {
       return null;
     }
     return {
