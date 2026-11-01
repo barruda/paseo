@@ -30,6 +30,9 @@ import {
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
+import { resolveWorktreeChipConflicts } from "@/git-sync/model";
+import { ResolveConflictsPill } from "@/git-sync/pills";
+import type { GitSync } from "@/git-sync/use-git-sync";
 
 const triggerStyle: DropdownMenuTriggerProps["style"] = ({ hovered, open }) => [
   composerPillStyles.body,
@@ -65,6 +68,7 @@ export const WorktreePill = memo(function WorktreePill({
   cwd,
   done = false,
   merged = false,
+  gitSync,
 }: {
   serverId: string;
   workspaceId: string;
@@ -72,6 +76,8 @@ export const WorktreePill = memo(function WorktreePill({
   cwd: string;
   done?: boolean;
   merged?: boolean;
+  /** CUSTOM(git-sync): conflicts here or from merging this worktree turn it into "Resolver conflitos". */
+  gitSync?: GitSync;
 }): ReactElement | null {
   const toast = useToast();
   const run = useRunChatCommand({ serverId, workspaceId, agentId, toast });
@@ -108,12 +114,29 @@ export const WorktreePill = memo(function WorktreePill({
       .then(() => toast.copied("Worktree path"))
       .catch(() => toast.error("Could not copy the worktree path"));
   }, [directory, toast]);
+  const refreshGitSync = gitSync?.refresh;
   const handleMerge = useCallback(() => {
-    if (run) run(MERGE_WORKTREE_COMMAND);
-    else toast.error("Merging needs the shell-command plugin on this host");
-  }, [run, toast]);
+    if (run) {
+      run(MERGE_WORKTREE_COMMAND);
+      refreshGitSync?.();
+    } else toast.error("Merging needs the shell-command plugin on this host");
+  }, [refreshGitSync, run, toast]);
 
   if (!worktree) return null;
+
+  // CUSTOM(git-sync): the same slot becomes "Resolver conflitos" while conflicts are pending.
+  const conflicts = resolveWorktreeChipConflicts(gitSync?.status ?? null);
+  if (conflicts) {
+    return (
+      <ResolveConflictsPill
+        serverId={serverId}
+        workspaceId={workspaceId}
+        agentId={agentId}
+        conflicts={conflicts}
+        ownCheckout={conflicts === gitSync?.status?.conflicts}
+      />
+    );
+  }
 
   return (
     <DropdownMenu>

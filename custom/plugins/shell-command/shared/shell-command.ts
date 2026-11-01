@@ -78,3 +78,50 @@ export const sendShellInputRpc = defineRpc({
   input: z.object({ id: z.string().min(1), text: z.string().min(1) }),
   output: z.object({ accepted: z.boolean() }),
 });
+
+// CUSTOM(git-sync): what the composer's git chips need: unresolved conflicts, and on a main
+// checkout the worktrees branched from its current branch that have work to bring in.
+export const gitConflictsSchema = z.object({
+  /** The checkout holding the conflicts (git's real path). */
+  dir: z.string(),
+  /** The operation in progress; null for conflicts left without one (a `git stash pop`). */
+  operation: z.enum(["merge", "rebase", "cherry-pick", "revert"]).nullable(),
+  /** The branch checked out there, null when detached (as during a rebase). */
+  currentBranch: z.string().nullable(),
+  /** What is coming in: the merged branch, the picked commit, or the rebase's target. */
+  incoming: z.string().nullable(),
+  files: z.array(z.string()),
+});
+
+export const incomingWorktreeSchema = z.object({
+  path: z.string(),
+  branch: z.string(),
+  /** Commits on the worktree's branch that the main checkout's HEAD lacks. */
+  ahead: z.number(),
+  /** Uncommitted changes in the worktree. */
+  dirty: z.boolean(),
+});
+
+export const gitSyncStatusSchema = z.object({
+  /** True when `cwd` is a linked worktree (not the main checkout). */
+  linkedWorktree: z.boolean(),
+  /** Conflicts in `cwd`'s own checkout. */
+  conflicts: gitConflictsSchema.nullable(),
+  /**
+   * For a linked worktree: conflicts in the main checkout from merging this worktree's branch
+   * (what the Worktree chip's Merge action leaves behind when it conflicts).
+   */
+  mainConflicts: gitConflictsSchema.nullable(),
+  /** For a main checkout on a branch: worktrees created from that branch with work to bring in. */
+  incoming: z.array(incomingWorktreeSchema),
+});
+
+export type GitConflicts = z.output<typeof gitConflictsSchema>;
+export type IncomingWorktree = z.output<typeof incomingWorktreeSchema>;
+export type GitSyncStatus = z.output<typeof gitSyncStatusSchema>;
+
+export const gitSyncRpc = defineRpc({
+  name: "git-sync",
+  input: z.object({ cwd: z.string().min(1) }),
+  output: gitSyncStatusSchema,
+});

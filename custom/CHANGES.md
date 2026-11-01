@@ -3981,3 +3981,46 @@ waiting` tests in `agent-manager.test.ts`.
   test with `isLinkedWorktreeWorkspace`, passing the workspace's checkout or the agent's.
 - **Verify:** `worktree-pill-model.test.ts`. By hand: open a session in DreamMMO-wt1; the pill
   reads **Worktree: <branch>**. A session in the main DreamMMO or Paseo checkout has no pill.
+
+## git-sync: "Trazer do <worktree>" and "Resolver conflitos" chips above the composer
+
+- **Added:** 2026-11-01 (based on upstream v0.14.0)
+- **Commit:** `custom: "Trazer do <worktree>" and "Resolver conflitos" chips`
+- **Why:** The user works in worktrees (DreamMMO-wt1) branched off the branch the main checkout
+  has checked out, and wants to pull that work in from the main project's sessions, and to hand
+  merge conflicts to an agent with a good prompt.
+- **What:**
+  - **Trazer do <worktree folder>**, last in the main checkout's chip row: one per linked
+    worktree whose branch was created from the main checkout's current branch (the branch's
+    oldest reflog entry, `branch: Created from <branch>` or `<remote>/<branch>`) and that has
+    commits HEAD lacks or uncommitted changes. Its menu item **Fazer merge de <branch> aqui**
+    runs, as a `!<command>`, a "wip" commit of the worktree's changes (like the Worktree chip's
+    Merge) and `git merge --no-edit <branch>`.
+  - **Resolver conflitos** (warning colors): when a checkout has unmerged files. In a linked
+    worktree the Worktree chip turns into it in place, also when the main checkout is stuck in a
+    conflicting merge of this worktree's branch (its `MERGE_HEAD` is in the worktree's HEAD).
+    Elsewhere it is last in the row and replaces the Trazer chips. Pressing it opens a new tab
+    with the agent's provider, model, mode and features, in the conflicted checkout (its open
+    workspace when there is one), whose draft holds a resolve prompt in Portuguese: operation,
+    branches, files, how to read both sides, finish command per operation (`git commit
+--no-edit`, `git rebase --continue`, ...), ask before `--abort`/`reset`/whole-file
+    ours/theirs. Not sent; the caret is at the end.
+  - The app polls every 5 s while the composer is mounted (paused in a hidden browser tab), and
+    1 s and 2.5 s after a chip runs a merge. Read-only git with `GIT_OPTIONAL_LOCKS=0`; about
+    0.25 s on DreamMMO.
+- **Files:** `custom/plugins/shell-command/server/git-sync.ts` (`git-sync` RPC, `gitSyncRpc` in
+  `shared/shell-command.ts`, tested on real repos in `git-sync.test.ts`);
+  `packages/app/src/git-sync/` (`model.ts` + test, `use-git-sync.ts`, `pills.tsx`,
+  `open-resolve-tab.ts`).
+- **Core files touched (app):** `panels/agent-tracks.tsx` (calls `useGitSync`, passes it to both
+  Worktree chips, renders `GitSyncTrailingPills` after the Worktree chip), marked
+  `CUSTOM(git-sync)`; `composer/worktree-pill.tsx` (custom file: `gitSync` prop, renders
+  `ResolveConflictsPill` in place, refreshes after Merge).
+- **Re-apply:** In the composer chip row, call `useGitSync` once and render
+  `GitSyncTrailingPills` at the end, before `ReadingModePill`; give `WorktreePill` the result.
+- **Setup:** `plugin reload shell-command` on each daemon. No daemon restart. A host whose
+  shell-command plugin lacks the RPC shows no chips.
+- **Verify:** `npx vitest run custom/plugins/shell-command` and `src/git-sync/model.test.ts` (in
+  the update script). By hand: in a DreamMMO main checkout session with wt1 ahead, **Trazer do
+  DreamMMO-wt1** is last in the row; merge it; on a conflict the chip turns into **Resolver
+  conflitos** within seconds, and pressing it opens a tab with the prompt, unsent.

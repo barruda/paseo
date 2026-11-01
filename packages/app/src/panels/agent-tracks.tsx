@@ -5,6 +5,8 @@ import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { RenameSessionPill } from "@/composer/rename-session-pill";
 import { ReadingModePill } from "@/agent-stream/reading-modes/pill";
 import { WorktreePill } from "@/composer/worktree-pill";
+import { GitSyncTrailingPills } from "@/git-sync/pills"; // CUSTOM(git-sync)
+import { useGitSync } from "@/git-sync/use-git-sync"; // CUSTOM(git-sync)
 import { useAgentStatusSummary } from "@/composer/agent-status-line";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
 import { AgentTaskList } from "@/composer/task-list";
@@ -67,6 +69,8 @@ export const AgentTracks = memo(function AgentTracks({
   const isDone = statusSummary?.done === true;
   // CUSTOM(worktree-pill-merged): done and already merged into the main checkout.
   const isMerged = isDone && statusSummary?.merged === true;
+  // CUSTOM(git-sync): conflicts and worktrees to bring in, for the git chips.
+  const gitSync = useGitSync({ serverId, workspaceId, agentId });
   const isCompact = useIsCompactFormFactor();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
   const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
@@ -149,6 +153,7 @@ export const AgentTracks = memo(function AgentTracks({
           cwd={cwd}
           done
           merged={isMerged}
+          gitSync={gitSync}
         />
       ) : null}
       {parentAgentId ? <ParentAgentPill serverId={serverId} parentAgentId={parentAgentId} /> : null}
@@ -190,8 +195,21 @@ export const AgentTracks = memo(function AgentTracks({
       />
       {/* CUSTOM(worktree-pill): copies the worktree path or merges it into the main checkout. */}
       {isDone ? null : (
-        <WorktreePill serverId={serverId} workspaceId={workspaceId} agentId={agentId} cwd={cwd} />
+        <WorktreePill
+          serverId={serverId}
+          workspaceId={workspaceId}
+          agentId={agentId}
+          cwd={cwd}
+          gitSync={gitSync}
+        />
       )}
+      {/* CUSTOM(git-sync): "Trazer do <worktree>" or "Resolver conflitos", last in the row. */}
+      <GitSyncTrailingPills
+        serverId={serverId}
+        workspaceId={workspaceId}
+        agentId={agentId}
+        gitSync={gitSync}
+      />
       {/* CUSTOM(reading-modes): Columns and Compact, at the right end. */}
       <ReadingModePill agentId={agentId} />
     </ComposerTrackBar>

@@ -290,6 +290,7 @@ if $VERIFY; then
   # Ctrl+Tab walks the visited tabs.
   (cd packages/app && npx vitest run src/workspace-tabs/recent-tabs-model.test.ts src/keyboard/route-shortcut.test.ts --bail=1)
   (cd packages/app && npx vitest run src/client-slash-commands/clear-keeps-agent.test.ts src/client-slash-commands/index.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/git-sync/model.test.ts --bail=1)
   npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr custom/plugins/btw packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/plugins/buttons/model.test.ts packages/app/src/shell-command-composer/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
   (cd packages/server && npx vitest run src/server/agent-status-summary.test.ts src/server/lean-claude.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/worktree-merge-status.test.ts --bail=1)
