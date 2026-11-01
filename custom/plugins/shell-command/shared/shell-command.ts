@@ -125,3 +125,101 @@ export const gitSyncRpc = defineRpc({
   input: z.object({ cwd: z.string().min(1) }),
   output: gitSyncStatusSchema,
 });
+
+// CUSTOM(git-sync): the "Check sync status between projects" card, posted in the chat.
+export const SYNC_REPORT_TIMELINE_KIND = "sync-report";
+export const SYNC_REPORT_TIMELINE_VERSION = 1;
+
+const syncCommitSchema = z.object({ sha: z.string(), subject: z.string() });
+
+const syncSideSchema = z.object({
+  path: z.string(),
+  /** Null when detached. */
+  branch: z.string().nullable(),
+  /** Files with uncommitted changes. */
+  uncommitted: z.number(),
+  /** Files with unresolved conflicts right now. */
+  conflicts: z.array(z.string()),
+});
+
+const syncCommitsSchema = z.object({
+  total: z.number(),
+  /** Newest first, at most `SYNC_REPORT_COMMIT_LIMIT`. */
+  commits: z.array(syncCommitSchema),
+});
+
+export const SYNC_REPORT_COMMIT_LIMIT = 8;
+
+export const syncReportSchema = z.object({
+  id: z.string(),
+  checkedAt: z.string(),
+  /** Set when the report could not be made; the other fields are then empty. */
+  error: z.string().nullable(),
+  worktree: syncSideSchema.nullable(),
+  main: syncSideSchema.nullable(),
+  /** Commits on the worktree's HEAD that the main checkout's HEAD lacks. */
+  toMain: syncCommitsSchema,
+  /** Commits on the main checkout's HEAD that the worktree's HEAD lacks. */
+  fromMain: syncCommitsSchema,
+  /** Files a merge of the two HEADs would conflict on (`git merge-tree`); null when unknown. */
+  mergeConflicts: z.array(z.string()).nullable(),
+});
+
+export type SyncReportData = z.output<typeof syncReportSchema>;
+
+export const syncReportRpc = defineRpc({
+  name: "sync-report",
+  input: z.object({ agentId: z.string().min(1), cwd: z.string().min(1) }),
+  output: z.object({ id: z.string() }),
+});
+
+export type SyncTone = "success" | "warning" | "danger" | "muted";
+
+function plural(count: number, word: string): string {
+  return `${count} ${word}${count === 1 ? "" : "s"}`;
+}
+
+function syncHint(input: {
+  behind: number;
+  ahead: number;
+  uncommitted: number;
+  willConflict: boolean;
+}): string {
+  if (!input.behind) return "Merge back to main project to bring this work over.";
+  if (!input.ahead && !input.uncommitted) return "Pull changes from main project to catch up.";
+  return input.willConflict
+    ? "Both sides moved and a merge will conflict: pull from main here first and resolve, then merge back."
+    : "Both sides moved: pull changes from main project, then merge back to main project.";
+}
+
+/** The card's one-line verdict and what to do next. */
+export function summarizeSync(data: SyncReportData): {
+  headline: string;
+  tone: SyncTone;
+  hint: string | null;
+} {
+  if (data.error) return { headline: "Could not check", tone: "danger", hint: null };
+  const conflicted = (data.worktree?.conflicts.length ?? 0) + (data.main?.conflicts.length ?? 0);
+  if (conflicted > 0) {
+    return {
+      headline: `${plural(conflicted, "file")} in conflict`,
+      tone: "danger",
+      hint: "Resolve the conflicts first: the Worktree chip turns into Resolver conflitos.",
+    };
+  }
+  const ahead = data.toMain.total;
+  const behind = data.fromMain.total;
+  const uncommitted = data.worktree?.uncommitted ?? 0;
+  const parts = [
+    ahead ? `${plural(ahead, "commit")} to bring to main` : null,
+    behind ? `${plural(behind, "commit")} to pull from main` : null,
+    uncommitted ? plural(uncommitted, "uncommitted file") : null,
+  ].filter((part): part is string => part !== null);
+  if (parts.length === 0) return { headline: "In sync", tone: "success", hint: null };
+  const willConflict = (data.mergeConflicts?.length ?? 0) > 0;
+  return {
+    headline: parts.join(" · "),
+    tone: willConflict ? "warning" : "muted",
+    hint: syncHint({ behind, ahead, uncommitted, willConflict }),
+  };
+}

@@ -4005,17 +4005,32 @@ waiting` tests in `agent-manager.test.ts`.
     branches, files, how to read both sides, finish command per operation (`git commit
 --no-edit`, `git rebase --continue`, ...), ask before `--abort`/`reset`/whole-file
     ours/theirs. Not sent; the caret is at the end.
+  - The Worktree chip's menu gains, in this order: **Sync projects (merge into main, then back
+    into the worktree)** first (commits "wip", merges the worktree's branch into the main
+    checkout's branch, then merges that back here; stops at the first failure or conflict), then
+    the existing Copy path and Merge back, then **Pull changes from main project (merge)** (merges
+    the main checkout's branch here; commits nothing, so git refuses when a local change is in the
+    way) and **Check sync status between projects**. The last posts a SYNC card in the chat, like
+    the BTW card: verdict in the header (In sync / N commits to bring to main · M to pull from
+    main · uncommitted files / files in conflict), both checkouts with branch, path, uncommitted
+    and conflicted counts, up to 8 commits each side lacks, a `git merge-tree` preview of
+    whether merging the two HEADs conflicts, and what to do next.
   - The app polls every 5 s while the composer is mounted (paused in a hidden browser tab), and
     1 s and 2.5 s after a chip runs a merge. Read-only git with `GIT_OPTIONAL_LOCKS=0`; about
     0.25 s on DreamMMO.
 - **Files:** `custom/plugins/shell-command/server/git-sync.ts` (`git-sync` RPC, `gitSyncRpc` in
   `shared/shell-command.ts`, tested on real repos in `git-sync.test.ts`);
+  `server/sync-report.ts` (`sync-report` RPC, appends the card; `summarizeSync` in
+  `shared/shell-command.ts`; tested in `sync-report.test.ts`), `client/sync-report-card.tsx`
+  (renderer registered in `index.client.tsx`); `PULL_FROM_MAIN_COMMAND` and
+  `SYNC_PROJECTS_COMMAND` in `packages/app/src/composer/worktree-pill-model.ts` (run on real
+  repos in its test);
   `packages/app/src/git-sync/` (`model.ts` + test, `use-git-sync.ts`, `pills.tsx`,
   `open-resolve-tab.ts`).
 - **Core files touched (app):** `panels/agent-tracks.tsx` (calls `useGitSync`, passes it to both
   Worktree chips, renders `GitSyncTrailingPills` after the Worktree chip), marked
   `CUSTOM(git-sync)`; `composer/worktree-pill.tsx` (custom file: `gitSync` prop, renders
-  `ResolveConflictsPill` in place, refreshes after Merge).
+  `ResolveConflictsPill` in place, refreshes after Merge, the three new menu items).
 - **Re-apply:** In the composer chip row, call `useGitSync` once and render
   `GitSyncTrailingPills` at the end, before `ReadingModePill`; give `WorktreePill` the result.
 - **Setup:** `plugin reload shell-command` on each daemon. No daemon restart. A host whose

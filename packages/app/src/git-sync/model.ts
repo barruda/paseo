@@ -4,6 +4,7 @@
 import { z } from "zod";
 
 export const GIT_SYNC_RPC = "git-sync";
+export const SYNC_REPORT_RPC = "sync-report";
 
 const gitConflictsSchema = z.object({
   dir: z.string(),

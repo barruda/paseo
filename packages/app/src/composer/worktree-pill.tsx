@@ -25,7 +25,9 @@ import { composerPillStyles } from "@/composer/pill-styles";
 import {
   isLinkedWorktreeWorkspace,
   MERGE_WORKTREE_COMMAND,
+  PULL_FROM_MAIN_COMMAND,
   resolveWorktreePillLabel,
+  SYNC_PROJECTS_COMMAND,
 } from "@/composer/worktree-pill-model";
 import { useToast } from "@/contexts/toast-context";
 import { useSessionStore } from "@/stores/session-store";
@@ -115,6 +117,29 @@ export const WorktreePill = memo(function WorktreePill({
       .catch(() => toast.error("Could not copy the worktree path"));
   }, [directory, toast]);
   const refreshGitSync = gitSync?.refresh;
+  // CUSTOM(git-sync): pull the main project's branch in, and the sync report card.
+  const handlePull = useCallback(() => {
+    if (run) {
+      run(PULL_FROM_MAIN_COMMAND);
+      refreshGitSync?.();
+    } else toast.error("Pulling needs the shell-command plugin on this host");
+  }, [refreshGitSync, run, toast]);
+  const handleSync = useCallback(() => {
+    if (run) {
+      run(SYNC_PROJECTS_COMMAND);
+      refreshGitSync?.();
+    } else toast.error("Syncing needs the shell-command plugin on this host");
+  }, [refreshGitSync, run, toast]);
+  const postSyncReport = gitSync?.postSyncReport ?? null;
+  const handleSyncReport = useCallback(() => {
+    if (!postSyncReport) {
+      toast.error("The sync report needs the shell-command plugin on this host");
+      return;
+    }
+    postSyncReport().catch((error: unknown) =>
+      toast.error(error instanceof Error ? error.message : String(error)),
+    );
+  }, [postSyncReport, toast]);
   const handleMerge = useCallback(() => {
     if (run) {
       run(MERGE_WORKTREE_COMMAND);
@@ -162,11 +187,20 @@ export const WorktreePill = memo(function WorktreePill({
         )}
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" minWidth={240} side="top" testID="composer-worktree-menu">
+        <DropdownMenuItem onSelect={handleSync} testID="composer-worktree-sync">
+          Sync projects (merge into main, then back into the worktree)
+        </DropdownMenuItem>
         <DropdownMenuItem onSelect={handleCopyPath} testID="composer-worktree-copy-path">
           Copy worktree full path
         </DropdownMenuItem>
         <DropdownMenuItem onSelect={handleMerge} testID="composer-worktree-merge">
           Merge back to main project
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={handlePull} testID="composer-worktree-pull">
+          Pull changes from main project (merge)
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={handleSyncReport} testID="composer-worktree-sync-report">
+          Check sync status between projects
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

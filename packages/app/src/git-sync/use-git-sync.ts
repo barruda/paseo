@@ -7,7 +7,7 @@ import { usePluginClientSlashCommands } from "@/plugins/client-slash-commands";
 import { BANG_COMMAND_NAME } from "@/plugins/client-slash-commands/model";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
-import { GIT_SYNC_RPC, gitSyncStatusSchema, type GitSyncStatus } from "./model";
+import { GIT_SYNC_RPC, gitSyncStatusSchema, SYNC_REPORT_RPC, type GitSyncStatus } from "./model";
 
 const POLL_MS = 5_000;
 /** After a chip runs a merge, look again soon so the row follows it without waiting 5 s. */
@@ -17,6 +17,8 @@ export interface GitSync {
   status: GitSyncStatus | null;
   /** Reads the status again now, and twice more over the next seconds. */
   refresh: () => void;
+  /** Posts the "Check sync status between projects" card in the chat; null without the plugin. */
+  postSyncReport: (() => Promise<void>) | null;
 }
 
 export function useGitSync(input: {
@@ -87,5 +89,12 @@ export function useGitSync(input: {
     );
   }, []);
 
-  return useMemo(() => ({ status, refresh }), [status, refresh]);
+  const postSyncReport = useMemo(() => {
+    if (!pluginId || !cwd || !client) return null;
+    return async () => {
+      await client.invokePluginRpc(pluginId, SYNC_REPORT_RPC, { agentId, cwd });
+    };
+  }, [agentId, client, cwd, pluginId]);
+
+  return useMemo(() => ({ status, refresh, postSyncReport }), [status, refresh, postSyncReport]);
 }

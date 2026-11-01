@@ -15,7 +15,7 @@ const EMPTY: GitSyncStatus = {
   incoming: [],
 };
 
-function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
+export function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string }> {
   return new Promise((resolve) => {
     execFile(
       "git",
@@ -31,7 +31,7 @@ function git(cwd: string, args: string[]): Promise<{ ok: boolean; stdout: string
   });
 }
 
-async function gitOut(cwd: string, args: string[]): Promise<string | null> {
+export async function gitOut(cwd: string, args: string[]): Promise<string | null> {
   const result = await git(cwd, args);
   return result.ok ? result.stdout.trim() : null;
 }

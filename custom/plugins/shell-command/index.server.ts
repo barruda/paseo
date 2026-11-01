@@ -1,11 +1,13 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { completePath } from "./server/complete";
 import { readGitSync } from "./server/git-sync";
+import { postSyncReport } from "./server/sync-report";
 import { defaultHistoryFile, HistoryKeyResolver, HistoryStore } from "./server/history";
 import { ShellCommandRunner } from "./server/runner";
 import {
   completePathRpc,
   gitSyncRpc,
+  syncReportRpc,
   runShellCommandRpc,
   sendShellInputRpc,
   shellHistoryRpc,
@@ -32,5 +34,6 @@ export default function contribute(server: PluginServerContext) {
   server.handle(completePathRpc, async (input) => ({ entries: await completePath(input) }));
   // CUSTOM(git-sync): conflicts and worktrees to bring in, for the composer's git chips.
   server.handle(gitSyncRpc, (input) => readGitSync(input.cwd));
+  server.handle(syncReportRpc, postSyncReport);
   return () => runner.stopAll();
 }

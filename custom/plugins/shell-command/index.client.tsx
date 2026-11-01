@@ -1,11 +1,15 @@
 import type { PluginClientContext } from "@getpaseo/plugin/client";
 import { ShellCommandCard } from "./client/shell-command-card";
+import { SyncReportCard } from "./client/sync-report-card";
 import { addShortcutCommands } from "./client/shortcut-commands";
 import {
   runShellCommandRpc,
   SHELL_COMMAND_TIMELINE_KIND,
   SHELL_COMMAND_TIMELINE_VERSION,
   shellCommandTimelineSchema,
+  SYNC_REPORT_TIMELINE_KIND,
+  SYNC_REPORT_TIMELINE_VERSION,
+  syncReportSchema,
 } from "./shared/shell-command";
 
 export default function contribute(client: PluginClientContext) {
@@ -34,8 +38,16 @@ export default function contribute(client: PluginClientContext) {
     schema: shellCommandTimelineSchema,
     Component: ShellCommandCard,
   });
+  // CUSTOM(git-sync): the "Check sync status between projects" card.
+  const removeSyncReportRenderer = client.addTimelineRenderer({
+    kind: SYNC_REPORT_TIMELINE_KIND,
+    version: SYNC_REPORT_TIMELINE_VERSION,
+    schema: syncReportSchema,
+    Component: SyncReportCard,
+  });
   return () => {
     removeCommand();
+    removeSyncReportRenderer();
     for (const remove of removeShortcuts) void remove();
     removeRenderer();
   };

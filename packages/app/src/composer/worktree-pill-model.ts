@@ -46,3 +46,31 @@ export function isLinkedWorktreeWorkspace(input: {
     mainRepoRoot !== trimTrailingSlash(input.checkout?.worktreeRoot)
   );
 }
+
+/**
+ * CUSTOM(git-sync): merges the branch the main checkout has checked out into this worktree. It
+ * commits nothing first: git refuses (and changes nothing) when an uncommitted change is in the way.
+ */
+export const PULL_FROM_MAIN_COMMAND = [
+  'main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")',
+  'branch=$(git -C "$main" symbolic-ref --short -q HEAD)',
+  'if [ -z "$branch" ]; then echo "The main project ($main) has no branch checked out"; false',
+  'else echo "Merging $branch from $main into $(git rev-parse --abbrev-ref HEAD)" && git merge --no-edit "$branch"; fi',
+].join("; ");
+
+/**
+ * CUSTOM(git-sync): "Sync projects": commits the worktree's changes as "wip", merges its branch
+ * into the main checkout's branch, then merges that branch back here, so both end on the same
+ * work. Stops at the first step that fails or conflicts.
+ */
+export const SYNC_PROJECTS_COMMAND = [
+  "git add -A",
+  "{ git diff --cached --quiet || git commit -m 'wip'; }",
+  "branch=$(git rev-parse --abbrev-ref HEAD)",
+  'main=$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")',
+  '{ mainBranch=$(git -C "$main" symbolic-ref --short -q HEAD) || { echo "The main project ($main) has no branch checked out"; false; }; }',
+  'echo "1/2 Merging $branch into $mainBranch ($main)"',
+  'git -C "$main" merge --no-edit "$branch"',
+  'echo "2/2 Merging $mainBranch back into $branch"',
+  'git merge --no-edit "$mainBranch"',
+].join(" && ");

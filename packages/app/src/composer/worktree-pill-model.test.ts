@@ -6,7 +6,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   isLinkedWorktreeWorkspace,
   MERGE_WORKTREE_COMMAND,
+  PULL_FROM_MAIN_COMMAND,
   resolveWorktreePillLabel,
+  SYNC_PROJECTS_COMMAND,
 } from "./worktree-pill-model";
 
 function git(cwd: string, ...args: string[]): string {
@@ -51,6 +53,38 @@ describe("MERGE_WORKTREE_COMMAND", () => {
     execFileSync("sh", ["-c", MERGE_WORKTREE_COMMAND], { cwd: worktree });
 
     expect(git(main, "log", "-1", "--format=%s")).toBe("done");
+  });
+
+  // CUSTOM(git-sync)
+  it("pulls the main checkout's branch into the worktree", () => {
+    writeFileSync(path.join(main, "from-main.txt"), "main\n");
+    git(main, "add", "from-main.txt");
+    git(main, "commit", "-q", "-m", "on main");
+    execFileSync("sh", ["-c", PULL_FROM_MAIN_COMMAND], { cwd: worktree });
+
+    expect(git(worktree, "rev-parse", "--abbrev-ref", "HEAD")).toBe("feature");
+    expect(git(worktree, "ls-files")).toContain("from-main.txt");
+  });
+
+  it("syncs both ways: the worktree into main, then main back into the worktree", () => {
+    writeFileSync(path.join(main, "from-main.txt"), "main\n");
+    git(main, "add", "from-main.txt");
+    git(main, "commit", "-q", "-m", "on main");
+    writeFileSync(path.join(worktree, "from-wt.txt"), "wt\n");
+    execFileSync("sh", ["-c", SYNC_PROJECTS_COMMAND], { cwd: worktree });
+
+    expect(git(main, "ls-files")).toContain("from-wt.txt");
+    expect(git(worktree, "ls-files")).toContain("from-main.txt");
+    expect(git(worktree, "rev-parse", "HEAD")).toBe(git(main, "rev-parse", "HEAD"));
+  });
+
+  it("stops syncing when the main checkout has no branch", () => {
+    git(main, "checkout", "-q", "--detach");
+    writeFileSync(path.join(worktree, "from-wt.txt"), "wt\n");
+    expect(() =>
+      execFileSync("sh", ["-c", SYNC_PROJECTS_COMMAND], { cwd: worktree, stdio: "pipe" }),
+    ).toThrow();
+    expect(git(main, "ls-files")).not.toContain("from-wt.txt");
   });
 });
 
