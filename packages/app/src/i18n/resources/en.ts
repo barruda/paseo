@@ -190,7 +190,7 @@ export const en = {
     },
     clientCommands: {
       archiveAgent: "Archive the current agent",
-      freshDraft: "Archive this agent and start a fresh draft",
+      freshDraft: "Start a fresh draft; this agent stays as an idle task",
     },
     github: {
       searching: "Searching...",

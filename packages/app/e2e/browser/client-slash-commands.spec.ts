@@ -3,6 +3,7 @@ import { composerLocator, expectComposerVisible, submitMessage } from "../suppor
 import { openAgentRoute, seedMockAgentWorkspace } from "../support/helpers/mock-agent";
 import {
   expectSessionRowArchived,
+  expectSessionRowNotArchived,
   expectWorkspaceTabHidden,
   expectWorkspaceTabVisible,
   openSessions,
@@ -131,7 +132,7 @@ test.describe("Client slash commands", () => {
     );
   });
 
-  test("slash clear replaces the active agent with a matching draft", async ({ page }) => {
+  test("slash clear turns the tab into a matching draft and keeps the agent", async ({ page }) => {
     await withOpenReadyMockAgent(
       page,
       { title: "Slash clear e2e", model: "ten-second-stream", modeId: "load-test" },
@@ -141,7 +142,9 @@ test.describe("Client slash commands", () => {
         await expectReplacementDraftMatchesPreviousSetup(page);
         await createAgentFromReplacementDraft(page);
         await waitForReplacementAgentId(page, agentId);
-        await expectAgentArchivedInSessions(page, title);
+        // CUSTOM(clear-keeps-agent): the old agent stays as an idle task.
+        await openSessions(page);
+        await expectSessionRowNotArchived(page, title);
       },
     );
   });

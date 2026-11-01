@@ -3934,3 +3934,27 @@ waiting` tests in `agent-manager.test.ts`.
   reaches B. Open the bottom panel on a terminal, close it with Ctrl+J, then Ctrl+Tab: the panel
   stays closed, in a workspace and in Tasks mode. If an old override still puts "Next tab" on Ctrl+Tab, that row wins: rebind it in
   Settings.
+
+## clear-keeps-agent: `/clear` starts a fresh draft and keeps the old agent
+
+- **Added:** 2026-11-01 (based on upstream v0.14.0)
+- **Commit:** `custom: /clear keeps the old agent as an idle task`
+- **Why:** The user wants `/clear` to give a clean conversation in the same tab, with the same
+  setup, without losing the old one. Upstream archives the old agent.
+- **What:** `/clear` (and `/new`) still turns the current tab into a draft with the agent's
+  provider, folder, mode, model, effort and features, and still hides the old agent from the
+  workspace tabs. It no longer archives it: the old agent shows in the Tasks sidebar and Sessions
+  as a normal task (idle once it finishes; a running turn keeps running). `/exit` still archives.
+- **Files:** `packages/app/src/client-slash-commands/clear-keeps-agent.ts`
+  (`clientSlashCommandArchivesAgent`, tested in `clear-keeps-agent.test.ts`).
+- **Core files touched (app):** `panels/agent-panel.tsx` (`handleClientSlashCommand` returns
+  before `archiveAgent` when the command does not archive), marked `CUSTOM(clear-keeps-agent)`;
+  the `/clear` description in `client-slash-commands/index.ts` and `freshDraft` in
+  `i18n/resources/en.ts` and `pt-BR.ts`; the slash clear case in
+  `e2e/browser/client-slash-commands.spec.ts` expects the old session not archived.
+- **Re-apply:** In the composer's client slash command handler, keep the tab retarget to a draft
+  built by `buildDraftAgentSetup`, and skip `archiveAgent` unless the command kind is
+  `archive-agent`. Reword the `/clear` description.
+- **Verify:** `clear-keeps-agent.test.ts` and `index.test.ts` (in the update script). By hand:
+  in an agent tab, send `/clear`: the tab becomes a draft with the same model and mode, and the
+  old agent stays in the Tasks sidebar, not archived; clicking it opens it in a tab again.

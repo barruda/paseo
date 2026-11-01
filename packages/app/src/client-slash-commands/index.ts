@@ -27,7 +27,7 @@ export const CLIENT_SLASH_COMMANDS: readonly ClientSlashCommand[] = [
   {
     name: "clear",
     aliases: ["new"],
-    description: "Archive this agent and start a fresh draft",
+    description: "Start a fresh draft; this agent stays as an idle task",
     descriptionKey: "composer.clientCommands.freshDraft",
     argumentHint: "",
     kind: "replace-agent-with-draft",
