@@ -43,7 +43,7 @@ export function ComposerProjectIcon({
     if (!session || !resolvedWorkspaceId) return null;
     return session.workspaces.get(resolvedWorkspaceId)?.projectId ?? null;
   });
-  // CUSTOM(composer-branch-hint): the checkout's branch, shown after the icon.
+  // CUSTOM(composer-branch-hint): the checkout's branch, shown before the icon.
   const branch = useSessionStore((state) => {
     const session = state.sessions[serverId];
     const resolvedWorkspaceId = workspaceId ?? session?.agents.get(agentId)?.workspaceId;
@@ -81,6 +81,7 @@ export function ComposerProjectIcon({
   if (!projectSource) {
     return (
       <>
+        {branchHint}
         <Tooltip>
           <TooltipTrigger asChild>
             <View
@@ -95,17 +96,16 @@ export function ComposerProjectIcon({
             <Text style={styles.name}>{identity.name}</Text>
           </TooltipContent>
         </Tooltip>
-        {branchHint}
       </>
     );
   }
 
   return (
     <>
+      {branchHint}
       <ComposerProjectMenu name={identity.name} source={projectSource} onClose={onMenuClose}>
         {icon}
       </ComposerProjectMenu>
-      {branchHint}
     </>
   );
 }

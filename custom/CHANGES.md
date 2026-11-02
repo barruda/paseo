@@ -922,12 +922,12 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   the project, hovering reveals its name, and context usage still opens normally. Check a
   project with an uploaded icon and one using the colored initial.
 
-## composer-branch-hint: current branch beside the composer's project icon
+## composer-branch-hint: current branch before the composer's project icon
 
 - **Added:** 2026-11-02
 - **Commit:** see `git log --grep "branch name beside"`
 - **Why:** See which branch an agent works on without opening the workspace header or sidebar.
-- **What:** After the composer's project icon (see
+- **What:** Before the composer's project icon (see
   [composer-project-icon](#composer-project-icon-identify-the-project-beside-context-usage)), a
   small muted text shows the workspace's current git branch, truncated at 160 px. Hidden for a
   non-git folder or a detached HEAD. The favorites star in the project menu became a compact
@@ -936,10 +936,10 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   and `composer/project-icon-model.ts` (marked `CUSTOM(composer-branch-hint)`).
 - **Re-apply:** In `ComposerProjectIcon`, read `gitRuntime.currentBranch` of the resolved
   workspace from the session store, pass it through `normalizeBranchHint`, and render it as a
-  one-line `Text` after the icon (both the tooltip and the menu variants), in a fragment so it
+  one-line `Text` before the icon (both the tooltip and the menu variants), in a fragment so it
   sits in the same `projectContextIndicators` row.
 - **Verify:** `cd packages/app && npx vitest run src/composer/project-icon-model.test.ts --bail=1`
-  (already in the update script). Open a chat in a worktree: the branch shows after the icon and
+  (already in the update script). Open a chat in a worktree: the branch shows before the icon and
   changes after `git switch`.
 
 ## empty-composer-voice: double Enter or double-click starts voice mode
