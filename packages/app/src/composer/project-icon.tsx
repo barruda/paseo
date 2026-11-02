@@ -1,10 +1,11 @@
 // CUSTOM(composer-project-icon): identify the current project beside the context meter.
 // When the composer can switch projects, the icon opens the same list as the up-arrow cycle.
 import { useCallback, useMemo, type ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Star } from "lucide-react-native";
 import { ProjectIconView } from "@/components/project-icon-view";
+import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,7 +17,7 @@ import type { ModelPickerProjectOption, ModelPickerProjectSource } from "@/model
 import { useHostProjects } from "@/projects/host-projects";
 import { useProjectIcons } from "@/projects/icons";
 import { useSessionStore } from "@/stores/session-store";
-import { resolveComposerProjectIdentity } from "./project-icon-model";
+import { normalizeBranchHint, resolveComposerProjectIdentity } from "./project-icon-model";
 import { useProjectFavoritesStore } from "./project-favorites-store";
 
 interface ComposerProjectIconProps {
@@ -42,6 +43,15 @@ export function ComposerProjectIcon({
     if (!session || !resolvedWorkspaceId) return null;
     return session.workspaces.get(resolvedWorkspaceId)?.projectId ?? null;
   });
+  // CUSTOM(composer-branch-hint): the checkout's branch, shown after the icon.
+  const branch = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    const resolvedWorkspaceId = workspaceId ?? session?.agents.get(agentId)?.workspaceId;
+    if (!session || !resolvedWorkspaceId) return null;
+    return normalizeBranchHint(
+      session.workspaces.get(resolvedWorkspaceId)?.gitRuntime?.currentBranch,
+    );
+  });
   const serverIds = useMemo(() => [serverId], [serverId]);
   const projects = useHostProjects(serverIds);
   const identity = useMemo(
@@ -62,29 +72,41 @@ export function ComposerProjectIcon({
     />
   );
 
+  const branchHint = branch ? (
+    <Text numberOfLines={1} style={styles.branch} testID="composer-branch-hint">
+      {branch}
+    </Text>
+  ) : null;
+
   if (!projectSource) {
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <View
-            style={styles.slot}
-            accessibilityLabel={identity.name}
-            testID="composer-project-icon"
-          >
-            {icon}
-          </View>
-        </TooltipTrigger>
-        <TooltipContent side="top">
-          <Text style={styles.name}>{identity.name}</Text>
-        </TooltipContent>
-      </Tooltip>
+      <>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <View
+              style={styles.slot}
+              accessibilityLabel={identity.name}
+              testID="composer-project-icon"
+            >
+              {icon}
+            </View>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            <Text style={styles.name}>{identity.name}</Text>
+          </TooltipContent>
+        </Tooltip>
+        {branchHint}
+      </>
     );
   }
 
   return (
-    <ComposerProjectMenu name={identity.name} source={projectSource} onClose={onMenuClose}>
-      {icon}
-    </ComposerProjectMenu>
+    <>
+      <ComposerProjectMenu name={identity.name} source={projectSource} onClose={onMenuClose}>
+        {icon}
+      </ComposerProjectMenu>
+      {branchHint}
+    </>
   );
 }
 
@@ -163,16 +185,15 @@ function ProjectMenuItem({ option, selected, onPick }: ProjectMenuItemProps) {
   );
   const trailing = useMemo(
     () => (
-      <Pressable
+      <ToolbarButton
+        compact
         focusable={false}
-        hitSlop={6}
         onPress={handleToggleFavorite}
-        accessibilityRole="button"
-        accessibilityLabel={favorite ? "Remove from favorites" : "Add to favorites"}
+        label={favorite ? "Remove from favorites" : "Add to favorites"}
         testID={`composer-project-favorite-${option.id}`}
       >
         {favorite ? <ThemedFavoriteStar size={14} /> : <ThemedStar size={14} />}
-      </Pressable>
+      </ToolbarButton>
     ),
     [favorite, handleToggleFavorite, option.id],
   );
@@ -195,4 +216,11 @@ const styles = StyleSheet.create((theme) => ({
   trigger: { width: "100%", height: "100%", alignItems: "center", justifyContent: "center" },
   initial: { fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.medium },
   name: { fontSize: theme.fontSize.sm, color: theme.colors.foreground },
+  // CUSTOM(composer-branch-hint)
+  branch: {
+    maxWidth: 160,
+    flexShrink: 1,
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
+  },
 }));

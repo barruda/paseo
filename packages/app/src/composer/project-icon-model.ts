@@ -26,3 +26,9 @@ export function resolveComposerProjectIdentity(input: {
   }
   return null;
 }
+
+/** CUSTOM(composer-branch-hint): null for no git checkout or a detached HEAD. */
+export function normalizeBranchHint(branch: string | null | undefined): string | null {
+  const trimmed = branch?.trim() ?? "";
+  return trimmed.length === 0 || trimmed === "HEAD" ? null : trimmed;
+}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkspaceStructureProject } from "@/projects/workspace-structure";
-import { resolveComposerProjectIdentity } from "./project-icon-model";
+import { normalizeBranchHint, resolveComposerProjectIdentity } from "./project-icon-model";
 
 const project: WorkspaceStructureProject = {
   viewKey: "shared-project",
@@ -82,5 +82,14 @@ describe("composer project identity", () => {
     expect(identity?.name).toBe("Another");
     expect(identity?.initial).toBe("A");
     expect(identity?.target.projectViewKey).toBe("second");
+  });
+});
+
+describe("normalizeBranchHint", () => {
+  it("keeps a branch name and drops empty or detached checkouts", () => {
+    expect(normalizeBranchHint(" feature/x ")).toBe("feature/x");
+    expect(normalizeBranchHint("HEAD")).toBeNull();
+    expect(normalizeBranchHint("  ")).toBeNull();
+    expect(normalizeBranchHint(undefined)).toBeNull();
   });
 });
