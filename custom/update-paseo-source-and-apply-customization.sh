@@ -291,7 +291,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/workspace-tabs/recent-tabs-model.test.ts src/keyboard/route-shortcut.test.ts --bail=1)
   (cd packages/app && npx vitest run src/client-slash-commands/clear-keeps-agent.test.ts src/client-slash-commands/index.test.ts --bail=1)
   (cd packages/app && npx vitest run src/git-sync/model.test.ts --bail=1)
-  npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr custom/plugins/btw packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/plugins/buttons/model.test.ts packages/app/src/shell-command-composer/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
+  npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr custom/plugins/btw custom/plugins/critic packages/app/src/critic/model.test.ts packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/plugins/buttons/model.test.ts packages/app/src/shell-command-composer/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
   (cd packages/server && npx vitest run src/server/agent-status-summary.test.ts src/server/lean-claude.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/worktree-merge-status.test.ts --bail=1)
   # The status summary survives daemon restarts; New Agent tab names; pinned tabs.
@@ -300,7 +300,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/draft-worktree/model.test.ts src/composer/worktree-pill-model.test.ts src/composer/commit-wip-pill-model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/projects/remove-project-section.test.tsx --bail=1)
   (cd packages/server && npx vitest run src/server/paseo-worktree-service.test.ts -t "keeps a branch name the caller typed|worktrees folder beside the project" src/utils/project-worktrees-root.test.ts --bail=1)
-  (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts src/server/plugins/custom-btw-plugin.e2e.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts src/server/plugins/custom-btw-plugin.e2e.test.ts src/server/plugins/custom-critic-plugin.e2e.test.ts --bail=1)
   (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts --bail=1)
   (cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts src/agent-stream/chat-links/model.test.ts --bail=1)
@@ -347,6 +347,8 @@ if $VERIFY; then
   # A turn that ends waiting on a build is not finished.
   (cd packages/server && npx vitest run src/server/agent/waiting-turn.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "a turn that ends waiting" --bail=1)
+  # A critic reviews each answer before the user reads it; the daemon holds "finished" for it.
+  (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "the critic holds the finished notification" --bail=1)
   # Backspace in an empty composer removes the last attached image.
   (cd packages/app && npx vitest run src/composer/backspace-attachment.test.ts --bail=1)
   # History searches become tabs.
@@ -408,7 +410,7 @@ fi
 # 4. Check plugin registration
 # ---------------------------------------------------------------------------
 step "Checking the custom plugins on each daemon"
-for plugin in shell-command workspace-tasks warp btw; do
+for plugin in shell-command workspace-tasks warp btw critic; do
   plugin_dir="$ROOT/custom/plugins/$plugin"
   for home in $HOMES; do
     config="$home/config.json"

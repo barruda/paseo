@@ -85,6 +85,7 @@ import { useEffortFavoritesStore } from "@/composer/effort-favorites-store";
 import type { ModelPickerProjectSource } from "@/model-picker/project";
 import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
 import { CacheWarmupToggle } from "@/cache-warmup/toggle"; // CUSTOM(cache-warmup)
+import { CriticToggle } from "@/critic/toggle"; // CUSTOM(critic)
 import { isNative } from "@/constants/platform";
 import {
   resolveComposerControlDensity,
@@ -939,6 +940,8 @@ function ControlledAgentControls({
           serverId={modelSelectorServerId}
           agentId={cacheWarmupAgentId}
         />
+        {/* CUSTOM(critic): the critic toggle sits right after the flame, for any provider. */}
+        <CriticToggle serverId={modelSelectorServerId} agentId={cacheWarmupAgentId} />
       </View>
     </ComposerControlLayoutProvider>
   );

@@ -140,6 +140,7 @@ paseo plugin install "$PWD/custom/plugins/beautiful-chat" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/power-workboard" --home ~/.paseo  # the update script also does this
 paseo plugin install "$PWD/custom/plugins/tldr" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/btw" --home ~/.paseo
+paseo plugin install "$PWD/custom/plugins/critic" --home ~/.paseo
 ```
 
 After editing a plugin's source: `paseo plugin reload <id> --home ~/.paseo`.

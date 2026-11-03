@@ -4059,3 +4059,59 @@ waiting` tests in `agent-manager.test.ts`.
   the update script). By hand: in a DreamMMO main checkout session with wt1 ahead, **Trazer do
   DreamMMO-wt1** is last in the row; merge it; on a conflict the chip turns into **Resolver
   conflitos** within seconds, and pressing it opens a tab with the prompt, unsent.
+
+## critic: a second model reviews each answer before the user reads it
+
+- **Added:** 2026-11-03 (based on upstream v0.14.0)
+- **Commit:** `custom: a critic model reviews each answer before the user reads it`
+- **Why:** The user wants a critic LLM in the loop of any conversation, not only the Power
+  Workboard's review step in Tasks mode: a prompt (with reference images) and a model of their
+  choice judge each answer, and a rejected answer goes back to the agent with the critique.
+- **What:** A toggle after the flame in a running agent's composer (any provider), off by default.
+  It opens a sheet: on/off, model, critic prompt, reference images, **Per request** (a fresh critic
+  for each user message, kept across its rounds) or **Persistent** (one critic for the whole chat),
+  tools **Off** or **Read only**, include the workspace diff, max rounds (default 3), save as
+  default.
+  - Turning it on or off puts a `<critic-notice>` in front of the user's next message (the chat
+    strips it): the agent is told every answer goes through a reviewer and to end each turn with a
+    full report.
+  - When a turn of a reviewed agent completes, the `critic` plugin reads the user's request, the
+    agent's answer since the last user message and `git status` + `git diff HEAD`, and asks the
+    critic, a Paseo subagent of the reviewed agent (label `custom.critic.role=critic`, in its
+    subagents track), for a `<verdict>` JSON block: approved, rejected, question, waiting.
+  - Rejected: the critique goes back to the agent as a `<critic-feedback round="N">` message and the
+    loop runs again. On the last round the answer is shown as it is (status `limit`).
+  - The chat hides the answer while the critic reads it and after it rejects it, and hides the
+    feedback messages; a **critic-review** card per round shows the verdict, opening to the
+    critique and the rejected answer. The toggle shows ✓ / warning / busy for the last review.
+  - The daemon holds the "finished" notification of a reviewed agent (label
+    `custom.critic.enabled=true`) and raises it when the plugin appends a review row that ends the
+    loop (approved, limit, question, failed). Critic agents never notify.
+  - Read only is enforced for Claude critics (`disallowedTools`, default mode); for other providers
+    the critic is told not to change anything and the plugin denies every permission it asks for.
+    Off also takes Claude's read tools away.
+- **Files:** `packages/protocol/src/critic.ts` (labels, markers, config and row schemas, RPC
+  names); `custom/plugins/critic/` (`server/loop.ts` the loop, `server/store.ts` the config file
+  `$PASEO_HOME/custom-critic.json`, `server/diff.ts`, `shared/review.ts` prompt/verdict/turn reading
+  - test, `client/review-card.tsx`); `packages/app/src/critic/` (`model.ts` the chat filter and
+    last status, `store.ts` pending notices, `rpc.ts`, `form-model.ts`, `toggle.tsx`, `sheet.tsx`, with
+    tests); `packages/server/src/server/plugins/custom-critic-plugin.e2e.test.ts`.
+- **Core files touched:** server `agent/agent-manager.ts` (`checkAndSetAttention` returns early for
+  critic agents and, on running → idle, for reviewed agents; `appendTimelineItem` calls
+  `raiseFinishedWhenCriticSettles`); app `agent-stream/view.tsx` (`hideCriticRounds` after
+  `hideCacheWarmupTurns`), `composer/actions.ts` (`dispatchComposerAgentMessage` prepends a
+  pending notice), `composer/agent-controls/index.tsx` (`<CriticToggle>` after
+  `<CacheWarmupToggle>`). All marked `CUSTOM(critic)`.
+- **Re-apply:** In the daemon's attention check, skip agents labeled as critics, and skip
+  "finished" for agents labeled critic-enabled; when a `critic`/`critic-review` plugin row whose
+  status notifies is appended to an idle agent without attention, raise "finished". In the app,
+  filter the stream through `hideCriticRounds`, render `CriticToggle` at the end of the composer's
+  agent control row, and prefix the next sent message with `buildCriticNotice` while a notice is
+  pending.
+- **Setup:** `paseo plugin install "$PWD/custom/plugins/critic" --home <home>` once per daemon, a
+  desktop build for the app, and a daemon restart for the notification hold.
+- **Verify:** `npx vitest run custom/plugins/critic`, `packages/app/src/critic`, the e2e
+  `custom-critic-plugin.e2e.test.ts` and `agent-manager.test.ts -t "the critic holds the finished
+notification"` (all in the update script). By hand: turn the critic on with a strict prompt; send
+  a task; the answer stays hidden while a "Critic is reviewing" card shows, a rejection sends the
+  critique back, and only the approved answer shows with a ✓ card; one notification at the end.

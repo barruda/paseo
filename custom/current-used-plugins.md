@@ -51,3 +51,4 @@ closed per kind. Don't install the registry version on top of it; both use the i
 | `warp`            | yes      | no    |
 | `beautiful-chat`  | yes      | yes   |
 | `power-workboard` | yes      | yes   |
+| `critic`          | yes      | yes   |

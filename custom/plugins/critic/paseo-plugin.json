@@ -1,0 +1,5 @@
+{
+  "id": "critic",
+  "description": "A second model reviews each answer of an agent before the user reads it and sends rejected answers back with feedback.",
+  "requirements": { "paseo": ">=0.11.0" }
+}

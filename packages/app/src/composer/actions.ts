@@ -19,6 +19,8 @@ import { createUserMessage, generateMessageId, type UserMessageItem } from "@/ty
 import type { MessageSubmissionRejectionOutcome } from "@/composer/submission/model";
 import type { PickedImageAttachmentInput } from "@/hooks/image-attachment-picker";
 import { i18n } from "@/i18n/i18next";
+import { buildCriticNotice } from "@getpaseo/protocol/critic"; // CUSTOM(critic)
+import { useCriticStore } from "@/critic/store"; // CUSTOM(critic)
 
 export interface QueuedComposerMessage {
   id: string;
@@ -219,13 +221,18 @@ export async function dispatchComposerAgentMessage(
   input.submission.begin(input.agentId, userMessage);
   try {
     const imagesData = await input.encodeImages(wirePayload.images);
-    await input.client.sendAgentMessage(input.agentId, input.text, {
+    // CUSTOM(critic): after a critic toggle, the next message tells the agent; the chat strips it.
+    const criticNotice = useCriticStore.getState().peekNotice(input.agentId);
+    const text =
+      criticNotice === undefined ? input.text : buildCriticNotice(criticNotice) + input.text;
+    await input.client.sendAgentMessage(input.agentId, text, {
       messageId: clientMessageId,
       ...(input.activeTurnBehavior ? { activeTurnBehavior: input.activeTurnBehavior } : {}),
       images: imagesData ?? [],
       attachments: wirePayload.attachments,
     });
     input.submission.accept(input.agentId, clientMessageId);
+    if (criticNotice !== undefined) useCriticStore.getState().consumeNotice(input.agentId); // CUSTOM(critic)
   } catch (error) {
     input.submission.reject(input.agentId, clientMessageId);
     throw error;

@@ -23,6 +23,14 @@ import {
 import type { Logger } from "pino";
 import type { ToolPolicy } from "@getpaseo/protocol/agent-types";
 import { isCacheWarmupMessage } from "@getpaseo/protocol/cache-warmup";
+import {
+  CRITIC_PLUGIN_ID,
+  CRITIC_TIMELINE_KIND,
+  CriticReviewDataSchema,
+  criticStatusNotifies,
+  isCriticAgentLabels,
+  isCriticEnabledLabels,
+} from "@getpaseo/protocol/critic"; // CUSTOM(critic)
 import { scoreWaitingTurn, type WaitingTurnJudge } from "./waiting-turn.js";
 import type { AgentStatusSummaryPayload } from "@getpaseo/protocol/messages";
 import type { ProviderPaseoToolsPolicy } from "@getpaseo/protocol/provider-config";
@@ -2726,8 +2734,20 @@ export class AgentManager {
         timestamp: row.timestamp,
       },
     );
+    this.raiseFinishedWhenCriticSettles(agent, item);
     await this.persistSnapshot(agent);
     return { seq: row.seq, epoch: this.timelineStore.getEpoch(agentId) };
+  }
+
+  // CUSTOM(critic): the critic's review row that ends the loop (approved, last round, a question
+  // for the user, a failure) is the "finished" the daemon held back at the end of the turn.
+  private raiseFinishedWhenCriticSettles(agent: ManagedAgent, item: AgentTimelineItem): void {
+    if (item.type !== "plugin") return;
+    if (item.pluginId !== CRITIC_PLUGIN_ID || item.kind !== CRITIC_TIMELINE_KIND) return;
+    const review = CriticReviewDataSchema.safeParse(item.data);
+    if (!review.success || !criticStatusNotifies(review.data.status)) return;
+    if (agent.lifecycle !== "idle" || agent.attention.requiresAttention) return;
+    this.raiseFinishedAttention(agent);
   }
 
   async emitLiveTimelineItem(agentId: string, item: AgentTimelineItem): Promise<void> {
@@ -5210,6 +5230,11 @@ export class AgentManager {
       return;
     }
 
+    // CUSTOM(critic): a critic agent works for another agent; its turns are not the user's.
+    if (isCriticAgentLabels(agent.labels)) {
+      return;
+    }
+
     // Skip if already requires attention
     if (agent.attention.requiresAttention) {
       return;
@@ -5217,6 +5242,11 @@ export class AgentManager {
 
     // Check if agent transitioned from running to idle (finished)
     if (previousStatus === "running" && currentStatus === "idle") {
+      // CUSTOM(critic): with the critic on, the answer is not the user's until the critic
+      // settles; the critic plugin's review row raises "finished" (see appendTimelineItem).
+      if (isCriticEnabledLabels(agent.labels)) {
+        return;
+      }
       // CUSTOM(monitor-quiet-finish): a turn that ends waiting on a Monitor or a background
       // subagent is not finished; the turn that ends once it settles is.
       if (agent.session.hasPendingWakeWork?.()) {

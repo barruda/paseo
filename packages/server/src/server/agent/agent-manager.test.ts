@@ -24,6 +24,15 @@ import { InMemoryAgentTimelineStore } from "./agent-timeline-store.js";
 import { toAgentPayload } from "./agent-projections.js";
 import { projectTimelineRows } from "./timeline-projection.js";
 import { CACHE_WARMUP_MESSAGE } from "@getpaseo/protocol/cache-warmup";
+import {
+  CRITIC_ENABLED_LABEL,
+  CRITIC_PLUGIN_ID,
+  CRITIC_ROLE_LABEL,
+  CRITIC_ROLE_VALUE,
+  CRITIC_TIMELINE_KIND,
+  CRITIC_TIMELINE_VERSION,
+  type CriticReviewStatus,
+} from "@getpaseo/protocol/critic";
 import { getOpenAgentTabLabel, PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import { startAgentRun } from "./agent-prompt.js";
 import { StaleProviderSessionError } from "./stale-provider-session-error.js";
@@ -8269,6 +8278,80 @@ test("a cache keep-alive ping's turn does not count as finished", async () => {
 
   await manager.runAgent(agent.id, "real work", { clientMessageId: "work-client" });
   expect(attentionReasons).toEqual(["finished"]);
+});
+
+// CUSTOM(critic)
+describe("the critic holds the finished notification", () => {
+  function createCriticManager(idSuffix: string) {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-test-"));
+    const storage = new AgentStorage(join(workdir, "agents"), logger);
+    const attention: { agentId: string; reason: string }[] = [];
+    let next = 0;
+    const manager = new AgentManager({
+      clients: { codex: new TestAgentClient() },
+      registry: storage,
+      logger,
+      idFactory: () => `00000000-0000-4000-8000-0000000003${idSuffix}${next++}`,
+      onAgentAttention: ({ agentId, reason }) => {
+        attention.push({ agentId, reason });
+      },
+    });
+    return { manager, workdir, attention };
+  }
+
+  function reviewRow(status: CriticReviewStatus) {
+    return {
+      type: "plugin" as const,
+      pluginId: CRITIC_PLUGIN_ID,
+      id: `critic-${status}`,
+      kind: CRITIC_TIMELINE_KIND,
+      version: CRITIC_TIMELINE_VERSION,
+      data: {
+        round: 1,
+        maxRounds: 3,
+        status,
+        answer: "done",
+        feedback: null,
+        error: null,
+        criticAgentId: null,
+        model: "codex/gpt",
+        startedAt: new Date().toISOString(),
+        durationMs: 1,
+      },
+    };
+  }
+
+  test("a reviewed agent is finished when the critic approves, not when its turn ends", async () => {
+    const { manager, workdir, attention } = createCriticManager("1");
+    const agent = await manager.createAgent(
+      { provider: "codex", cwd: workdir, title: "Reviewed" },
+      undefined,
+      { workspaceId: undefined, labels: { [CRITIC_ENABLED_LABEL]: "true" } },
+    );
+
+    await manager.runAgent(agent.id, "do the work");
+    expect(attention).toEqual([]);
+
+    await manager.appendTimelineItem(agent.id, reviewRow("reviewing"));
+    await manager.appendTimelineItem(agent.id, reviewRow("rejected"));
+    expect(attention).toEqual([]);
+
+    await manager.appendTimelineItem(agent.id, reviewRow("approved"));
+    expect(attention).toEqual([{ agentId: agent.id, reason: "finished" }]);
+  });
+
+  test("a critic agent never raises attention", async () => {
+    const { manager, workdir, attention } = createCriticManager("2");
+    const critic = await manager.createAgent(
+      { provider: "codex", cwd: workdir, title: "Critic" },
+      undefined,
+      { workspaceId: undefined, labels: { [CRITIC_ROLE_LABEL]: CRITIC_ROLE_VALUE } },
+    );
+
+    await manager.runAgent(critic.id, "review this");
+
+    expect(attention).toEqual([]);
+  });
 });
 
 // CUSTOM(waiting-turn-judge)
