@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { recentTabOrder, stepRecentTabWalk, withVisitFirst } from "./recent-tabs-model";
+import {
+  recentTabOrder,
+  stepRecentTabWalk,
+  walkableTabIds,
+  withVisitFirst,
+} from "./recent-tabs-model";
 
 describe("recentTabOrder", () => {
   it("puts the current tab first, then visited tabs, then tabs never visited", () => {
@@ -66,5 +71,26 @@ describe("stepRecentTabWalk", () => {
 
   it("does nothing with a single open tab", () => {
     expect(stepRecentTabWalk(null, { ...input, openTabIds: ["b"] })).toBeNull();
+  });
+});
+
+describe("walkableTabIds", () => {
+  const input = { openTabIds: ["a", "b", "c"], pinnedTabIds: ["b"] };
+
+  it("keeps pinned tabs unless asked to skip them", () => {
+    expect(walkableTabIds({ ...input, skipPinned: false })).toEqual(["a", "b", "c"]);
+    expect(walkableTabIds({ ...input, skipPinned: true })).toEqual(["a", "c"]);
+  });
+
+  it("leaves a pinned current tab for the most recent unpinned one", () => {
+    const openTabIds = walkableTabIds({ ...input, skipPinned: true });
+    const step = stepRecentTabWalk(null, {
+      scope: "w1",
+      visits: ["b", "c", "a"],
+      openTabIds,
+      currentTabId: "b",
+      delta: 1,
+    });
+    expect(step?.tabId).toBe("c");
   });
 });

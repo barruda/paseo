@@ -109,6 +109,8 @@ export interface AppSettings {
   chatLinksEnabled: boolean;
   /** CUSTOM(desk-preview-tabs): on, task clicks in Tasks mode share one preview tab. Off by default. */
   deskPreviewTabs: boolean;
+  /** CUSTOM(recent-tabs): "Last visited tab" walks past pinned tabs. Off by default. */
+  recentTabsSkipPinned: boolean;
   vimKeybindings: boolean;
   sendShortcut: SendShortcut;
   filePanelAssociations: Record<string, string>;
@@ -168,6 +170,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatOutlineEnabled: true,
   chatLinksEnabled: true, // CUSTOM(chat-links)
   deskPreviewTabs: false, // CUSTOM(desk-preview-tabs)
+  recentTabsSkipPinned: false, // CUSTOM(recent-tabs)
   vimKeybindings: false,
   sendShortcut: "enter",
   filePanelAssociations: {},
@@ -275,6 +278,7 @@ const StoredAppSettingsSchema = z
     chatOutlineEnabled: z.boolean().catch(true),
     chatLinksEnabled: z.boolean().catch(true), // CUSTOM(chat-links)
     deskPreviewTabs: z.boolean().catch(false), // CUSTOM(desk-preview-tabs)
+    recentTabsSkipPinned: z.boolean().catch(false), // CUSTOM(recent-tabs)
     vimKeybindings: z.boolean().catch(false),
     sendShortcut: z.enum(["enter", "mod-enter"]).catch("enter"),
     filePanelAssociations: z.record(z.string(), z.string()).catch({}),

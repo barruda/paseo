@@ -69,3 +69,14 @@ export function stepRecentTabWalk(
   const index = (current.index + input.delta + length) % length;
   return { walk: { ...current, index }, tabId: current.order[index]! };
 }
+
+/** The tabs a walk goes through: all of `openTabIds`, or the unpinned ones when `skipPinned`. */
+export function walkableTabIds(input: {
+  openTabIds: readonly string[];
+  pinnedTabIds: readonly string[];
+  skipPinned: boolean;
+}): readonly string[] {
+  if (!input.skipPinned || input.pinnedTabIds.length === 0) return input.openTabIds;
+  const pinned = new Set(input.pinnedTabIds);
+  return input.openTabIds.filter((id) => !pinned.has(id));
+}

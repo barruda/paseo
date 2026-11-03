@@ -113,6 +113,7 @@ import {
   recordTabVisit,
   stepRecentTab,
 } from "@/workspace-tabs/recent-tabs";
+import { RecentTabSwitcher } from "@/workspace-tabs/recent-tab-switcher";
 import {
   useDesksStore,
   activeDesk,
@@ -357,7 +358,7 @@ export function DeskScreen() {
       const store = useDesksStore.getState();
       const current = activeDesk(store);
       const { layout } = current;
-      const tabId = stepRecentTab({
+      stepRecentTab({
         scope: deskRecentTabsScope(current.id),
         openTabIds: mainContentTabIds({
           layout,
@@ -365,8 +366,8 @@ export function DeskScreen() {
         }),
         currentTabId: mainContentTabId(layout, activeDeskTab(store)?.id ?? null),
         delta: action.delta,
+        navigate: (tabId) => useDesksStore.getState().selectTab(tabId),
       });
-      if (tabId) store.selectTab(tabId);
       return true;
     },
   });
@@ -893,6 +894,12 @@ export function DeskScreen() {
                   onExitFocusMode={noop}
                 />
               </WorkspaceTabDragScope>
+              {/* CUSTOM(recent-tabs) */}
+              <RecentTabSwitcher
+                scope={deskRecentTabsScope(desk.id)}
+                tabs={uiTabs}
+                ownerOf={resolveOwner}
+              />
             </DeskProviders>
           ) : (
             <>

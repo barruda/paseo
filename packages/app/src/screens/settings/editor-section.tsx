@@ -31,6 +31,7 @@ export function EditorSection() {
         </View>
         <FlexibleTabMovementRow />
         <DeskPreviewTabsRow />
+        <RecentTabsSkipPinnedRow />
       </View>
     </SettingsSection>
   );
@@ -79,6 +80,31 @@ function DeskPreviewTabsRow() {
         onValueChange={setEnabled}
         accessibilityLabel="Preview tabs"
         testID="desk-preview-tabs-toggle"
+      />
+    </View>
+  );
+}
+
+// CUSTOM(recent-tabs)
+function RecentTabsSkipPinnedRow() {
+  const { settings, updateSettings } = useAppSettings();
+  const setEnabled = useCallback(
+    (recentTabsSkipPinned: boolean) => void updateSettings({ recentTabsSkipPinned }),
+    [updateSettings],
+  );
+  return (
+    <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+      <View style={settingsStyles.rowContent}>
+        <Text style={settingsStyles.rowTitle}>Skip pinned tabs</Text>
+        <Text style={settingsStyles.rowHint}>
+          The Last visited tab shortcut goes through the unpinned tabs only.
+        </Text>
+      </View>
+      <Switch
+        value={settings.recentTabsSkipPinned}
+        onValueChange={setEnabled}
+        accessibilityLabel="Skip pinned tabs"
+        testID="recent-tabs-skip-pinned-toggle"
       />
     </View>
   );

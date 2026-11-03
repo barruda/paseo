@@ -3914,22 +3914,31 @@ waiting` tests in `agent-manager.test.ts`.
   user binds in Settings (their Silakka54 sends those from Space+D / Space+F).
 - **What:** Two new commands in Settings → Shortcuts → Tabs & panes, both rebindable:
   **Last visited tab (hold to go further back)** (default Ctrl+Tab) and **Visited tabs in
-  reverse** (default Ctrl+Shift+Tab). One press goes to the tab you were on before; holding the
-  modifier and pressing again goes further back. Releasing Ctrl, Alt or Meta, a mouse move or
-  click without them, the window losing focus, or 2 s without a press ends the walk, and the tab
-  you landed on becomes the most recent. The 2 s cover a modifier released inside a browser tab
-  or HTML preview, whose key events never reach the app window. On native each press ends the
-  walk, so it toggles between the last two tabs. Each workspace and each Desk keeps its own
+  reverse** (default Ctrl+Shift+Tab). On web (desktop and browser), a press opens a switcher in
+  the middle of the screen listing the tabs in visit order, like Alt+Tab, with the tab the walk
+  is on highlighted; holding the modifier and pressing again moves the highlight further back.
+  The tab only changes when the walk ends: releasing Ctrl, Alt or Meta, a mouse move or click
+  without them, the window losing focus, or 3 s without a press. Escape closes the switcher
+  without switching, and a click on a row (modifier still held) switches to it. The 3 s cover a
+  modifier released inside a browser tab or HTML preview, whose key events never reach the app
+  window. The tab you land on becomes the most recent. On native there is no switcher: each
+  press switches right away, so it toggles between the last two tabs. **Settings → Editor →
+  Skip pinned tabs** (off by default; the user has it on) leaves the
+  [pinned tabs](#tab-pins-pin-tab-keeps-a-tab-at-the-left-of-its-row) out of the walk; from a pinned tab,
+  the first press goes to the most recent unpinned one. Each workspace and each Desk keeps its own
   visit order, in memory (gone after a reload); open tabs never visited come last. In a
   workspace or a Desk only the main content's tabs count: tabs in the bottom panel and the Explorer pane
   are never visits nor stops, so the walk never reopens a panel you closed with Ctrl+J. From a
   focused bottom-panel tab, the first press goes to the most recent main tab. "Previous
   tab" / "Next tab" keep their upstream defaults (Alt+Shift+[ / ]).
-- **Files:** `packages/app/src/workspace-tabs/recent-tabs-model.ts` (order and walk, pure, tested
-  in `recent-tabs-model.test.ts`), `packages/app/src/workspace-tabs/recent-tabs.ts` (visit
-  record, walk state, release listeners, `mainContentTabIds` / `mainContentTabId`, which leave the
-  bottom panel and Explorer pane out, and `useWorkspaceRecentTabs`, which records the visit;
-  tested in `bottom-panel.test.ts`).
+- **Files:** `packages/app/src/workspace-tabs/recent-tabs-model.ts` (order, walk and
+  `walkableTabIds`, pure, tested in `recent-tabs-model.test.ts`),
+  `packages/app/src/workspace-tabs/recent-tabs.ts` (visit record, the walk as a small external
+  store read by `useRecentTabWalk`, release/Escape listeners, the pinned-tab filter,
+  `mainContentTabIds` / `mainContentTabId`, which leave the bottom panel and Explorer pane out,
+  and `useWorkspaceRecentTabs`, which records the visit; tested in `bottom-panel.test.ts`),
+  `packages/app/src/workspace-tabs/recent-tab-switcher.tsx` (the switcher, rows from
+  `WorkspaceTabPresentationResolver` + `WorkspaceTabOptionRow`).
 - **Core files touched (app):** each marked `CUSTOM(recent-tabs)`:
   `keyboard/actions.ts` (`workspace.tab.navigate.recent`),
   `keyboard/keyboard-action-dispatcher.ts` (`workspace.tab.navigate-recent` with `delta`),
@@ -3939,19 +3948,26 @@ waiting` tests in `agent-manager.test.ts`.
   `SHORTCUT_HELP_ROW_ORDER`), `screens/workspace/workspace-screen.tsx` and
   `task-navigation/desk-screen.tsx` (an effect records the focused tab as a visit; a separate
   `useKeyboardActionHandler` with the same priority as the screen's tab actions handles the
-  command).
+  command; `<RecentTabSwitcher>` is rendered over the content, inside `DeskProviders` in a Desk),
+  `hooks/use-settings/storage.ts` (`recentTabsSkipPinned`, default `false`),
+  `screens/settings/editor-section.tsx` (the Skip pinned tabs row).
 - **Re-apply:** Add the action id, the dispatcher definition and its route (any way that keeps
   `routeKeyboardShortcut` under the complexity limit). Add the two bindings with
   `payload: { type: "delta", delta: ±1 }` and help rows in the tabs section. In each screen that
   owns tab navigation, call `recordTabVisit(scope, focusedTabId)` when the focused tab changes and
-  handle the action with `stepRecentTab({ scope, openTabIds, currentTabId, delta })`, then focus
-  the returned tab the same way "Next tab" does. `openTabIds` and `currentTabId` are main content
-  only: `useWorkspaceRecentTabs` in a workspace, `mainContentTabIds` / `mainContentTabId` in a
-  Desk, whose bottom panel uses the same pane id.
+  handle the action with `stepRecentTab({ scope, openTabIds, currentTabId, delta, navigate })`,
+  where `navigate` focuses a tab the same way "Next tab" does. `openTabIds` and `currentTabId` are
+  main content only: `useWorkspaceRecentTabs` in a workspace, `mainContentTabIds` /
+  `mainContentTabId` in a Desk, whose bottom panel uses the same pane id. The scope must be the
+  same key the tab pins use (the workspace key, `desk:<id>`). Render
+  `<RecentTabSwitcher scope tabs ownerOf>` as the last child of the screen's content column, under
+  the providers the tab descriptors read. Add the boolean app setting and its row.
 - **Verify:** `recent-tabs-model.test.ts`, plus the Ctrl+Tab cases in `keyboard-shortcuts.test.ts`
   and `route-shortcut.test.ts` (all in the update script). By hand: open tabs A, B, C, visit A
-  then C; Ctrl+Tab goes to A, Ctrl+Tab again to C; holding Ctrl and pressing Tab twice from C
-  reaches B. Open the bottom panel on a terminal, close it with Ctrl+J, then Ctrl+Tab: the panel
+  then C; Ctrl+Tab shows the switcher with A highlighted and goes to A on release, Ctrl+Tab again
+  to C; holding Ctrl and pressing Tab twice from C moves the highlight to B without switching, and
+  releasing Ctrl switches to B. Escape while holding closes the switcher and stays on C. Pin A and
+  turn on Skip pinned tabs: A drops out of the switcher. Open the bottom panel on a terminal, close it with Ctrl+J, then Ctrl+Tab: the panel
   stays closed, in a workspace and in Tasks mode. If an old override still puts "Next tab" on Ctrl+Tab, that row wins: rebind it in
   Settings.
 

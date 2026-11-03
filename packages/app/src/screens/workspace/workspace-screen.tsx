@@ -8,6 +8,7 @@ import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { revealWorkspaceTab } from "@/workspace-tabs/navigation";
 // CUSTOM(recent-tabs)
 import { stepRecentTab, useWorkspaceRecentTabs } from "@/workspace-tabs/recent-tabs";
+import { RecentTabSwitcher } from "@/workspace-tabs/recent-tab-switcher";
 import type { LayoutChangeEvent } from "react-native";
 import { ExplorerSidebarDock } from "@/screens/workspace/explorer-sidebar";
 import { ExplorerFrame } from "./explorer-sidebar/frame";
@@ -1609,6 +1610,11 @@ function WorkspaceScreenContent({
       ),
     [normalizedWorkspaceId, uiTabs],
   );
+  // CUSTOM(recent-tabs): every tab of a workspace belongs to it.
+  const recentTabOwnerOf = useCallback(
+    () => ({ serverId: normalizedServerId, workspaceId: normalizedWorkspaceId }),
+    [normalizedServerId, normalizedWorkspaceId],
+  );
   const navigateToTabId = useCallback(
     function navigateToTabId(tabId: string) {
       if (!tabId || !persistenceKey) {
@@ -2783,13 +2789,13 @@ function WorkspaceScreenContent({
     isActive: () => true,
     handle: (action) => {
       if (action.id !== "workspace.tab.navigate-recent" || !persistenceKey) return false;
-      const tabId = stepRecentTab({
+      stepRecentTab({
         scope: persistenceKey,
         openTabIds: recentTabIds,
         currentTabId: recentCurrentTabId,
         delta: action.delta,
+        navigate: navigateToTabId,
       });
-      if (tabId) navigateToTabId(tabId);
       return true;
     },
   });
@@ -3670,6 +3676,8 @@ function WorkspaceScreenContent({
       </View>
       {/* CUSTOM(bottom-panel-expand): ⌃⌃ while the bottom panel is closed. */}
       <BottomPanelExpandButton layout={workspaceLayout} />
+      {/* CUSTOM(recent-tabs) */}
+      <RecentTabSwitcher scope={persistenceKey} tabs={uiTabs} ownerOf={recentTabOwnerOf} />
     </View>
   );
 
