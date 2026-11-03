@@ -74,6 +74,7 @@ import {
 import { DraftWorktreePicker, useDraftWorktreeSource } from "@/draft-worktree/picker";
 import { useDraftAgentTitleStore, withDraftAgentTitle } from "@/draft-agent-title/store";
 import { routeDraftAgent } from "@/jev-router/route"; // CUSTOM(jev-router)
+import { applyDraftComposerExtras, draftComposerCreateExtras } from "./composer-extras"; // CUSTOM(draft-composer-ready)
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
@@ -210,15 +211,22 @@ async function submitDraftCreateRequest(input: {
     config: selectedConfig,
   });
 
+  // CUSTOM(draft-composer-ready): what the flame and critic were set to before the session.
+  const extras = draftComposerCreateExtras({
+    draftKey: input.draftId,
+    prompt: text,
+    labels: jevOptions.labels,
+  });
+
   const attachmentsArray = Array.isArray(attachments) ? attachments : undefined;
   const imagesData = await encodeImages(images);
   const options = {
     idempotencyKey: input.draftId,
     config: withDraftAgentTitle(input.draftId, config), // CUSTOM(draft-agent-title)
     workspaceId,
-    initialPrompt: text,
+    initialPrompt: extras.prompt, // CUSTOM(draft-composer-ready)
     clientMessageId: attempt.clientMessageId,
-    ...jevOptions, // CUSTOM(jev-router)
+    ...extras.createOptions, // CUSTOM(jev-router, draft-composer-ready): labels
     ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
     ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
   };
@@ -233,10 +241,24 @@ async function submitDraftCreateRequest(input: {
       worktree: input.worktree,
       agent,
     });
+    await applyDraftComposerExtras({
+      client,
+      serverId: input.serverId,
+      draftKey: input.draftId,
+      agentId: result.id,
+      prompt: text,
+    });
     return { agentId: result.id, result };
   }
   const creation = useWorkspaceDraftSubmissionStore.getState().creationByDraftId[input.draftId];
   const result = creation ? await creation.retry(options) : await client.createAgent(options);
+  await applyDraftComposerExtras({
+    client,
+    serverId: input.serverId,
+    draftKey: input.draftId,
+    agentId: result.id,
+    prompt: text,
+  });
 
   return {
     agentId: result.id,
@@ -319,6 +341,23 @@ function resolveDraftWorkingDirectory(input: {
     return input.initialSetup.cwd;
   }
   return input.workspaceDirectory;
+}
+
+/** CUSTOM(draft-composer-ready): a command waiting for the draft's agent to exist. */
+interface CommandCreateRequest {
+  resolve: (agentId: string) => void;
+  reject: (error: Error) => void;
+}
+
+/** Voice and agent-needing commands start the session with no first message. */
+function resolveAllowsEmptyDraftText(input: {
+  autoSubmitAllowsEmpty: boolean;
+  voiceStartRequested: boolean;
+  commandCreateRequest: CommandCreateRequest | null;
+}): boolean {
+  return (
+    input.autoSubmitAllowsEmpty || input.voiceStartRequested || input.commandCreateRequest !== null
+  );
 }
 
 interface WorkspaceDraftAgentTabProps {
@@ -443,7 +482,16 @@ export function WorkspaceDraftAgentTab({
   const [voiceStartRequested, setVoiceStartRequested] = useState(
     () => pendingAutoSubmit?.startVoice === true,
   );
-  const allowsEmptyAutoSubmit = pendingAutoSubmit?.allowEmptyText === true || voiceStartRequested;
+  // CUSTOM(draft-composer-ready): a plugin command that needs an agent (`!`, `/sh`, ...) creates
+  // the session with no first message and then runs on it.
+  const [commandCreateRequest, setCommandCreateRequest] = useState<CommandCreateRequest | null>(
+    null,
+  );
+  const allowsEmptyAutoSubmit = resolveAllowsEmptyDraftText({
+    autoSubmitAllowsEmpty: pendingAutoSubmit?.allowEmptyText === true,
+    voiceStartRequested,
+    commandCreateRequest,
+  });
   const isCompactFormFactor = useIsCompactFormFactor();
   const editingSession = useComposerEditingSession("chat");
   const isComposerFullscreen = useComposerFullscreen(editingSession);
@@ -556,6 +604,11 @@ export function WorkspaceDraftAgentTab({
       clearWorkspaceAttachments({ scopeKey: draftAttachmentScopeKey });
       useWorkspaceDraftSubmissionStore.getState().clearDraftSetup({ draftId });
       onCreated(result);
+      // CUSTOM(draft-composer-ready): the command waiting on this agent runs now.
+      if (commandCreateRequest) {
+        setCommandCreateRequest(null);
+        commandCreateRequest.resolve(result.id);
+      }
       if (voiceStartRequested) {
         setVoiceStartRequested(false);
         void voice?.startVoice(serverId, result.id).catch((error: unknown) => {
@@ -586,6 +639,33 @@ export function WorkspaceDraftAgentTab({
     voiceStartRequested,
   ]);
   const handleStartVoice = useCallback(() => setVoiceStartRequested(true), []);
+  // CUSTOM(draft-composer-ready): the composer already took the command's text, so the session
+  // starts idle; attachments stay in the draft and go nowhere, as on a running agent.
+  const commandCreateStartedRef = useRef<CommandCreateRequest | null>(null);
+  useEffect(() => {
+    if (!commandCreateRequest || commandCreateStartedRef.current === commandCreateRequest) return;
+    commandCreateStartedRef.current = commandCreateRequest;
+    const request = commandCreateRequest;
+    void handleCreateFromInput({ text: "", attachments: [], cwd: composerState.workingDir }).catch(
+      (error: unknown) => {
+        setCommandCreateRequest(null);
+        request.reject(error instanceof Error ? error : new Error(String(error)));
+      },
+    );
+  }, [commandCreateRequest, composerState.workingDir, handleCreateFromInput]);
+  const handleCreateAgentForCommand = useCallback(
+    () =>
+      new Promise<string>((resolve, reject) => {
+        setCommandCreateRequest((current) => {
+          if (current) {
+            reject(new Error(t("composer.errors.alreadyLoading")));
+            return current;
+          }
+          return { resolve, reject };
+        });
+      }),
+    [t],
+  );
   const turnPresentation = useMemo(
     () => resolveTurnPresentation(TURN_LIVENESS_IDLE, pendingMessageSubmissions.length > 0),
     [pendingMessageSubmissions],
@@ -764,8 +844,15 @@ export function WorkspaceDraftAgentTab({
       onDropdownClose: handleDropdownCloseFocus,
       disabled: isSubmitting,
       modelPickerProject,
+      draftKey: draftId, // CUSTOM(draft-composer-ready)
     }),
-    [composerState.agentControls, handleDropdownCloseFocus, isSubmitting, modelPickerProject],
+    [
+      composerState.agentControls,
+      draftId,
+      handleDropdownCloseFocus,
+      isSubmitting,
+      modelPickerProject,
+    ],
   );
   const dockContent = (
     <View style={styles.contentContainer}>
@@ -839,6 +926,7 @@ export function WorkspaceDraftAgentTab({
             agentControls={composerAgentControls}
             isCompactLayout={isCompactComposerLayout}
             onStartVoice={voice ? handleStartVoice : undefined}
+            onCreateAgentForCommand={handleCreateAgentForCommand}
           />
         </View>
       </ComposerDock>

@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -73,6 +73,9 @@ export function useAgentCommandsQuery({
     },
     enabled: queryEnabled && !!client && isConnected && (!!agentId || !!draftConfig),
     staleTime: draftConfig ? DRAFT_COMMANDS_STALE_TIME : SESSION_COMMANDS_STALE_TIME,
+    // CUSTOM(draft-composer-ready): a draft's list survives a model or effort change while the
+    // new config's list loads (each load starts a provider session, 1-2 s).
+    placeholderData: draftConfig ? keepPreviousData : undefined,
     retry: 3,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 5000),
   });

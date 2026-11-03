@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Text } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Flame } from "lucide-react-native";
@@ -64,26 +64,54 @@ function CacheWarmupTooltipText({
   return <Text style={styles.tooltipText}>{lines.join("\n")}</Text>;
 }
 
-/** Renders only for a running Claude agent; drafts and other providers get nothing. */
+/**
+ * Renders for a Claude agent, and for a Claude draft that passes `draftKey` (CUSTOM
+ * draft-composer-ready: its choice moves to the session when it is created, see `./draft.ts`).
+ */
 export function CacheWarmupToggle({
   provider,
   serverId,
   agentId,
+  draftKey,
 }: {
   provider: string;
   serverId: string | null;
   agentId: string | undefined;
+  draftKey?: string;
 }) {
-  if (provider !== CACHE_WARMUP_PROVIDER || !serverId || !agentId) return null;
-  return <AgentCacheWarmupToggle serverId={serverId} agentId={agentId} />;
+  if (provider !== CACHE_WARMUP_PROVIDER || !serverId) return null;
+  if (agentId) return <AgentCacheWarmupToggle serverId={serverId} agentId={agentId} />;
+  if (draftKey) return <DraftCacheWarmupToggle serverId={serverId} draftKey={draftKey} />;
+  return null;
 }
 
-function AgentCacheWarmupToggle({ serverId, agentId }: { serverId: string; agentId: string }) {
-  const agentKey = cacheWarmupAgentKey(serverId, agentId);
-  const enabled = useCacheWarmupStore((state) => !state.disabledAgentKeys.includes(agentKey));
+function DraftCacheWarmupToggle({ serverId, draftKey }: { serverId: string; draftKey: string }) {
+  const key = cacheWarmupAgentKey(serverId, draftKey);
+  const enabled = useCacheWarmupStore((state) => !state.disabledAgentKeys.includes(key));
   const handlePress = useCallback(() => {
-    useCacheWarmupStore.getState().setEnabled(agentKey, !enabled);
-  }, [agentKey, enabled]);
+    useCacheWarmupStore.getState().setEnabled(key, !enabled);
+  }, [key, enabled]);
+  return (
+    <CacheWarmupTrigger enabled={enabled} onPress={handlePress}>
+      <Text style={styles.tooltipText}>
+        {[
+          enabled ? "Keep cache warm: on" : "Keep cache warm: off",
+          "Applies when the session starts",
+        ].join("\n")}
+      </Text>
+    </CacheWarmupTrigger>
+  );
+}
+
+function CacheWarmupTrigger({
+  enabled,
+  onPress,
+  children,
+}: {
+  enabled: boolean;
+  onPress: () => void;
+  children: ReactNode;
+}) {
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild triggerRefProp="ref">
@@ -93,15 +121,28 @@ function AgentCacheWarmupToggle({ serverId, agentId }: { serverId: string; agent
           surface="toolbar"
           label="Keep cache warm"
           showToolbarLabel={false}
-          onPress={handlePress}
+          onPress={onPress}
           accessibilityLabel={enabled ? "Keep cache warm: on" : "Keep cache warm: off"}
           testID="cache-warmup-toggle"
         />
       </TooltipTrigger>
       <TooltipContent side="top" align="center" offset={8}>
-        <CacheWarmupTooltipText serverId={serverId} agentId={agentId} enabled={enabled} />
+        {children}
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+function AgentCacheWarmupToggle({ serverId, agentId }: { serverId: string; agentId: string }) {
+  const agentKey = cacheWarmupAgentKey(serverId, agentId);
+  const enabled = useCacheWarmupStore((state) => !state.disabledAgentKeys.includes(agentKey));
+  const handlePress = useCallback(() => {
+    useCacheWarmupStore.getState().setEnabled(agentKey, !enabled);
+  }, [agentKey, enabled]);
+  return (
+    <CacheWarmupTrigger enabled={enabled} onPress={handlePress}>
+      <CacheWarmupTooltipText serverId={serverId} agentId={agentId} enabled={enabled} />
+    </CacheWarmupTrigger>
   );
 }
 

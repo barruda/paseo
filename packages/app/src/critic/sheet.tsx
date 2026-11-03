@@ -54,9 +54,16 @@ function errorMessage(error: unknown): string {
 }
 
 /** Model lifetime adapter: one model per mount, loaded once from the plugin. */
-function useCriticFormModel(serverId: string, agentId: string): CriticFormModel {
+function useCriticFormModel(serverId: string, agentId: string, isDraft: boolean): CriticFormModel {
   const [form] = useState(openCriticForm);
   useEffect(() => {
+    // CUSTOM(draft-composer-ready): a draft reopens what it saved; the first open loads the
+    // plugin's defaults (the plugin has no entry under the draft's key).
+    const draftSetup = isDraft ? useCriticStore.getState().drafts[agentId] : undefined;
+    if (draftSetup) {
+      form.applyLoaded(draftSetup.config);
+      return () => form.close();
+    }
     const client = getHostRuntimeStore().getClient(serverId);
     if (!client) {
       form.applyLoadError("Host is disconnected.");
@@ -73,20 +80,24 @@ function useCriticFormModel(serverId: string, agentId: string): CriticFormModel 
     }
     void load(client);
     return () => form.close();
-  }, [agentId, form, serverId]);
+  }, [agentId, form, isDraft, serverId]);
   return form;
 }
 
 export function CriticSettingsSheet({
   serverId,
   agentId,
+  isDraft = false,
   onClose,
 }: {
   serverId: string;
+  /** The agent, or with `isDraft` the draft's key. */
   agentId: string;
+  /** CUSTOM(draft-composer-ready): save to the draft; its create request applies it. */
+  isDraft?: boolean;
   onClose: () => void;
 }) {
-  const form = useCriticFormModel(serverId, agentId);
+  const form = useCriticFormModel(serverId, agentId, isDraft);
   const state = useSyncExternalStore(form.subscribe, form.getState, form.getState);
   const { draft } = state;
   const snapshot = useProvidersSnapshot(serverId);
@@ -136,6 +147,13 @@ export function CriticSettingsSheet({
       return;
     }
     const current = form.getState();
+    if (isDraft) {
+      useCriticStore
+        .getState()
+        .setDraft(agentId, { config: current.draft, saveAsDefault: current.saveAsDefault });
+      onClose();
+      return;
+    }
     form.beginSave();
     try {
       const { enabledChanged } = await saveCriticConfig({
@@ -153,7 +171,7 @@ export function CriticSettingsSheet({
     } catch (error) {
       form.saveFailed(errorMessage(error));
     }
-  }, [agentId, form, onClose, serverId]);
+  }, [agentId, form, isDraft, onClose, serverId]);
   const handleSavePress = useCallback(() => {
     void handleSave();
   }, [handleSave]);

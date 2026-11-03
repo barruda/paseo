@@ -61,15 +61,22 @@ function toOption(completion: ShellCompletion): AutocompleteOption {
   return { id: completionId(completion), label: completion.value, kind: completion.kind };
 }
 
-/** The agent's host, when it runs the shell-command plugin and the agent has a directory. */
+/**
+ * The agent's host, when it runs the shell-command plugin and the agent has a directory. A draft
+ * has no agent yet and uses its own directory (`draftCwd`).
+ */
 function useShellHost(
   serverId: string,
   agentId: string,
   pluginCommands: readonly PluginClientSlashCommand[],
+  draftCwd: string | null,
 ): ShellHost | null {
   const pluginId =
     pluginCommands.find((command) => command.name === BANG_COMMAND_NAME)?.pluginId ?? null;
-  const cwd = useSessionStore((state) => state.sessions[serverId]?.agents?.get(agentId)?.cwd ?? "");
+  const agentCwd = useSessionStore(
+    (state) => state.sessions[serverId]?.agents?.get(agentId)?.cwd ?? "",
+  );
+  const cwd = agentCwd || draftCwd || ""; // CUSTOM(draft-composer-ready)
   const workspaceId = useSessionStore(
     (state) => state.sessions[serverId]?.agents?.get(agentId)?.workspaceId ?? null,
   );
@@ -150,9 +157,16 @@ export function useShellCommandCompletion(input: {
   setUserInput: (text: string) => void;
   onApplied?: () => void;
   pluginCommands: readonly PluginClientSlashCommand[];
+  /** CUSTOM(draft-composer-ready): a draft's directory, for history and paths before it has an agent. */
+  draftCwd?: string | null;
 }) {
   const { userInput, setUserInput, onApplied } = input;
-  const host = useShellHost(input.serverId, input.agentId, input.pluginCommands);
+  const host = useShellHost(
+    input.serverId,
+    input.agentId,
+    input.pluginCommands,
+    input.draftCwd ?? null,
+  );
   const offset = shellCommandOffset(userInput);
   const isShell = offset !== null && host !== null;
   const history = useShellHistory(host, isShell);

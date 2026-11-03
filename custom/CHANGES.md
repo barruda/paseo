@@ -4181,3 +4181,51 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   personal Paseo the route icon shows after the flame; send "rename count to total in utils.ts"
   from Opus/high; the tooltip of the new agent's icon says it would have started on haiku/low (or
   started on it, with Apply on), and `route.py review` lists it.
+
+## draft-composer-ready: a New Agent tab has its commands and composer controls from the start
+
+- **Added:** 2026-11-03 (based on upstream v0.14.0)
+- **Commit:** `custom: a New Agent tab has its commands, ! and composer toggles before the first message`
+- **Why:** In a new agent tab, `/` commands and skills, `!` and part of the composer bar only
+  worked after the first message. The commands were there but loaded on the first `/`, and each
+  load starts a provider session (1-2 s, measured on the personal daemon), so the list stayed
+  hidden while it loaded. `!` and the other plugin commands that need an agent were left out
+  because the agent didn't exist yet. The flame, the critic and the context meter rendered only
+  for a running agent.
+- **What:**
+  - A draft loads its `/` list as soon as its config is complete, not on the first `/`. A model
+    or effort change keeps the old list on screen while the new one loads.
+  - Plugin commands with `context: "agent"` (`!`/`/sh`, `/btw`, the shell shortcuts...) show in a
+    draft. Running one creates the session with no first message, as the voice button does, then
+    runs the command on it; a `!` line's output lands in the new agent's chat. `!` history and Tab
+    path completion use the draft's directory.
+  - The flame and the critic show in a draft. The flame's choice is stored under the draft's key
+    and moves to the new agent. The critic sheet saves to the draft; the create request carries
+    `custom.critic.enabled` and the critic notice in front of the first message, and the plugin
+    gets the config right after creation (an empty first message queues the notice instead).
+  - The context meter shows in a draft, empty, without the usage cards (they need an agent).
+  - The Jev router skips an empty first message (voice, `!`): it has nothing to judge.
+- **Files:** `packages/app/src/composer/draft/composer-extras.ts` + test (create-request extras
+  and the post-create hand-off), `packages/app/src/critic/draft.ts`,
+  `packages/app/src/cache-warmup/draft.ts`.
+- **Core files touched (all marked `CUSTOM(draft-composer-ready)`):** app
+  `hooks/use-agent-commands-query.ts` (`placeholderData` for drafts),
+  `hooks/use-agent-autocomplete.ts` (`shouldLoadCommands`, `draftCwd` for the shell completion),
+  `shell-command-composer/use-shell-command-completion.ts` (`draftCwd` fallback),
+  `plugins/client-slash-commands/index.ts` (`createAgent` option), `composer/index.tsx`
+  (`onCreateAgentForCommand` prop, meter for drafts), `usage/agent-usage.tsx` (nothing for an
+  unknown agent), `composer/agent-controls/index.tsx` (`draftKey` to the flame and critic),
+  `composer/draft/workspace-tab.tsx` (`draftKey`, `handleCreateAgentForCommand`, extras in
+  `submitDraftCreateRequest`); `critic/store.ts`, `critic/sheet.tsx`, `critic/toggle.tsx`,
+  `cache-warmup/toggle.tsx` (draft mode); `jev-router/route.ts` (empty prompt).
+- **Re-apply:** In the draft's command query, enable it for drafts without waiting for `/` and
+  keep previous data. Give `usePluginClientSlashCommands` a `createAgent` that the draft tab
+  implements like `voice-new-agent` (empty first message, resolve with the new id after
+  `onCreated`), and build the agent context from the new agent's workspace. Pass the draft id as
+  `draftKey` from the draft tab's agent controls to `CacheWarmupToggle` and `CriticToggle`; in
+  `submitDraftCreateRequest`, merge `draftComposerCreateExtras` into the request and call
+  `applyDraftComposerExtras` after `createAgent`.
+- **Verify:** `npx vitest run src/composer/draft/composer-extras.test.ts` (in the update script).
+  By hand: open a New Agent tab and type `/` right away: the list shows at once; `!ls` creates
+  the agent and shows the output in its chat; turn the critic on and the flame off in the draft,
+  send a message: the new agent shows the critic on and the flame off.

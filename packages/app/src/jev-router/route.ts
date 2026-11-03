@@ -34,7 +34,8 @@ async function route<Config extends DraftRouteConfig & { cwd: string }>(input: {
   autoSubmitted: boolean;
   config: Config;
 }): Promise<{ config: Config; labels: Record<string, string> }> {
-  if (input.autoSubmitted || input.config.provider !== "claude")
+  // An empty first message (a session started for voice or for a `!` command) has nothing to judge.
+  if (input.autoSubmitted || input.config.provider !== "claude" || !input.prompt.trim())
     return { config: input.config, labels: {} };
   const plugin = pluginRegistry
     .getSnapshot()

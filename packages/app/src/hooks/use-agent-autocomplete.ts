@@ -347,6 +347,17 @@ function resolveDraftCommandContext(draft: DraftCommandTarget | undefined) {
   };
 }
 
+// CUSTOM(draft-composer-ready): a draft loads its commands when it opens; an agent on the first `/`.
+function shouldLoadCommands(args: {
+  mode: AutocompleteMode;
+  isDraftContext: boolean;
+  canLoadCommands: boolean;
+  canListCommands: boolean;
+}): boolean {
+  const wanted = args.mode === "command" || args.isDraftContext;
+  return wanted && args.canLoadCommands && args.canListCommands;
+}
+
 function resolveAutocompleteEmptyText(args: {
   mode: AutocompleteMode;
   draft: DraftCommandTarget | undefined;
@@ -437,7 +448,9 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
   const commandsQuery = useAgentCommandsQuery({
     serverId,
     agentId,
-    enabled: mode === "command" && canLoadCommands && canListCommands,
+    // CUSTOM(draft-composer-ready): a draft loads its commands when it opens, not on the first
+    // `/`; listing them starts a provider session, so waiting for `/` hid the list for 1-2 s.
+    enabled: shouldLoadCommands({ mode, isDraftContext, canLoadCommands, canListCommands }),
     draftConfig: queryDraftConfig,
   });
   const { commands, isError, error } = commandsQuery;
@@ -598,6 +611,7 @@ export function useAgentAutocomplete(input: UseAgentAutocompleteInput): AgentAut
     setUserInput,
     onApplied: onAutocompleteApplied,
     pluginCommands: pluginClientSlashCommands,
+    draftCwd: queryDraftConfig?.cwd ?? null, // CUSTOM(draft-composer-ready)
   });
   const shellOnKeyPress = shell.onKeyPress;
   const onKeyPressWithShell = useCallback(

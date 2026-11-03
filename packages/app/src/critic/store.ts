@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import type { CriticConfig } from "@getpaseo/protocol/critic";
 
 // CUSTOM(critic): after the critic is turned on or off, the user's next message to that agent
 // carries a short notice saying so (see `buildCriticNotice`). Turning it on and back off before
@@ -15,6 +16,18 @@ interface CriticStoreState {
   /** agentId → "provider/model" of its critic, as last loaded or saved, for the tooltip. */
   models: Record<string, string>;
   setModel: (agentId: string, model: string) => void;
+  /**
+   * CUSTOM(draft-composer-ready): draft key → the critic set up before the session exists. The
+   * draft's create request applies it (see `./draft.ts`); kept in memory like the notices.
+   */
+  drafts: Record<string, CriticDraftSetup>;
+  setDraft: (draftKey: string, setup: CriticDraftSetup) => void;
+  takeDraft: (draftKey: string) => CriticDraftSetup | undefined;
+}
+
+export interface CriticDraftSetup {
+  config: CriticConfig;
+  saveAsDefault: boolean;
 }
 
 export const useCriticStore = create<CriticStoreState>()((set, get) => ({
@@ -33,6 +46,21 @@ export const useCriticStore = create<CriticStoreState>()((set, get) => ({
     set((state) =>
       state.models[agentId] === model ? state : { models: { ...state.models, [agentId]: model } },
     );
+  },
+  drafts: {},
+  setDraft: (draftKey, setup) => {
+    set((state) => ({ drafts: { ...state.drafts, [draftKey]: setup } }));
+  },
+  takeDraft: (draftKey) => {
+    const setup = get().drafts[draftKey];
+    if (setup) {
+      set((state) => {
+        const drafts = { ...state.drafts };
+        delete drafts[draftKey];
+        return { drafts };
+      });
+    }
+    return setup;
   },
   consumeNotice: (agentId) => {
     set((state) => {

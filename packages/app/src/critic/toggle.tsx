@@ -89,16 +89,65 @@ function useLatestCriticStatus(serverId: string, agentId: string): CriticReviewS
   });
 }
 
-/** Renders only for a running agent; drafts get nothing. */
+/** Renders for a running agent, and for a draft that passes `draftKey` (draft-composer-ready). */
 export function CriticToggle({
   serverId,
   agentId,
+  draftKey,
 }: {
   serverId: string | null;
   agentId: string | undefined;
+  draftKey?: string;
 }) {
-  if (!serverId || !agentId) return null;
-  return <AgentCriticToggle serverId={serverId} agentId={agentId} />;
+  if (!serverId) return null;
+  if (agentId) return <AgentCriticToggle serverId={serverId} agentId={agentId} />;
+  if (draftKey) return <DraftCriticToggle serverId={serverId} draftKey={draftKey} />;
+  return null;
+}
+
+// CUSTOM(draft-composer-ready): before the session exists the sheet saves to the draft, and the
+// draft's create request applies it (`./draft.ts`).
+function DraftCriticToggle({ serverId, draftKey }: { serverId: string; draftKey: string }) {
+  const setup = useCriticStore((state) => state.drafts[draftKey]);
+  const enabled = setup?.config.enabled ?? false;
+  const [open, setOpen] = useState(false);
+  const handlePress = useCallback(() => setOpen(true), []);
+  const handleClose = useCallback(() => setOpen(false), []);
+  const model = setup ? `${setup.config.provider}/${setup.config.model}` : null;
+  const lines = [
+    ...describeCritic({ enabled, model, status: null }),
+    "Applies when the session starts",
+  ];
+  return (
+    <>
+      <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+        <TooltipTrigger asChild triggerRefProp="ref">
+          <AgentControlTrigger
+            icon={(enabled ? ICONS.none : ICONS.off) ?? ScanEye}
+            iconColor={enabled ? ON_ICON_COLOR : undefined}
+            surface="toolbar"
+            label="Critic"
+            showToolbarLabel={false}
+            onPress={handlePress}
+            accessibilityLabel={enabled ? "Critic: on" : "Critic: off"}
+            testID="critic-toggle"
+          />
+        </TooltipTrigger>
+        <TooltipContent side="top" align="center" offset={8}>
+          <Text style={styles.tooltipText}>{lines.join("\n")}</Text>
+        </TooltipContent>
+      </Tooltip>
+      {open ? (
+        <CriticSettingsSheet
+          key={`${serverId}:${draftKey}`}
+          serverId={serverId}
+          agentId={draftKey}
+          isDraft
+          onClose={handleClose}
+        />
+      ) : null}
+    </>
+  );
 }
 
 function AgentCriticToggle({ serverId, agentId }: { serverId: string; agentId: string }) {

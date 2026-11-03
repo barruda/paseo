@@ -149,6 +149,8 @@ interface ControlledAgentControlsProps {
   cycleControls?: AgentControlCommandCenterSource;
   // CUSTOM(cache-warmup): the running agent, for the keep-cache-warm toggle after the Ctrl+M chip.
   cacheWarmupAgentId?: string;
+  // CUSTOM(draft-composer-ready): a draft's key, so the flame and critic work before the session.
+  draftKey?: string;
   onRetryModelProvider?: (provider: AgentProvider) => void;
   isRetryingModelProvider?: boolean;
   modeControl?: AgentModeControlValue | null;
@@ -184,6 +186,8 @@ export interface DraftAgentControlsProps {
   isCompactLayout?: boolean;
   // CUSTOM(model-picker-project): the project row of the Ctrl+M picker.
   modelPickerProject?: ModelPickerProjectSource | null;
+  // CUSTOM(draft-composer-ready): the draft's key for the flame and critic toggles.
+  draftKey?: string;
 }
 
 interface AgentControlsProps {
@@ -601,6 +605,7 @@ function ControlledAgentControls({
   onOpenModelPicker,
   cycleControls,
   cacheWarmupAgentId,
+  draftKey,
   onRetryModelProvider,
   isRetryingModelProvider = false,
   modeControl,
@@ -940,9 +945,14 @@ function ControlledAgentControls({
           provider={provider}
           serverId={modelSelectorServerId}
           agentId={cacheWarmupAgentId}
+          draftKey={draftKey}
         />
         {/* CUSTOM(critic): the critic toggle sits right after the flame, for any provider. */}
-        <CriticToggle serverId={modelSelectorServerId} agentId={cacheWarmupAgentId} />
+        <CriticToggle
+          serverId={modelSelectorServerId}
+          agentId={cacheWarmupAgentId}
+          draftKey={draftKey}
+        />
         {/* CUSTOM(jev-router): after the critic; drafts show it too (it routes their first prompt). */}
         <JevRouterToggle serverId={modelSelectorServerId} agentId={cacheWarmupAgentId} />
       </View>
@@ -2022,6 +2032,7 @@ export function DraftAgentControls({
   modelSelectorServerId = null,
   isCompactLayout,
   modelPickerProject = null,
+  draftKey,
 }: DraftAgentControlsProps) {
   const mappedThinkingOptions = useMemo<AgentControlOption[]>(() => {
     return toThinkingControlOptions(thinkingOptions);
@@ -2162,6 +2173,7 @@ export function DraftAgentControls({
         modeControl={modeControl}
         modelSelectorServerId={modelSelectorServerId}
         isCompactLayout={isCompactLayout}
+        draftKey={draftKey}
       />
     </>
   );

@@ -657,6 +657,24 @@ function ComposerKeyboardRegistration({
   return null;
 }
 
+// CUSTOM(empty-composer-shortcuts): Up/Down on an empty chat composer select a sent message to
+// rewind to; the chat's items are read only for those keys.
+function handleChatRewindKey(
+  event: ComposerKeyPressEvent,
+  serverId: string,
+  agentId: string,
+): boolean {
+  const session = useSessionStore.getState().sessions[serverId];
+  const items =
+    event.key === "ArrowUp" || event.key === "ArrowDown"
+      ? [
+          ...(session?.agentStreamTail.get(agentId) ?? []),
+          ...(session?.agentStreamHead.get(agentId) ?? []),
+        ]
+      : [];
+  return handleEmptyRewindKey({ event, serverId, agentId, items });
+}
+
 function ComposerAutocomplete(props: React.ComponentProps<typeof AutocompletePopover>) {
   const { isActiveComposer } = useComposerKeyboardScope();
   return <AutocompletePopover {...props} visible={isActiveComposer && props.visible} />;
@@ -1010,6 +1028,11 @@ interface ComposerProps {
    */
   onStartVoice?: () => void;
   /**
+   * CUSTOM(draft-composer-ready): a draft creates its agent (no first message) and resolves to its
+   * id, so the plugin commands that need an agent (`!`, `/sh`, ...) work before the first message.
+   */
+  onCreateAgentForCommand?: () => Promise<string>;
+  /**
    * The host that also lays out the dock and chrome shares this session so its
    * fullscreen state and the composer's agree. Defaults to the tab's session for
    * `inputMode`.
@@ -1307,6 +1330,7 @@ function ComposerContentImpl({
   placeholder,
   onKeyPress,
   onStartVoice,
+  onCreateAgentForCommand,
 }: ComposerContentProps) {
   useContentWidthBoostRerender(); // CUSTOM(content-width-boost)
   const mode = resolveComposerInputMode(inputMode);
@@ -1437,6 +1461,7 @@ function ComposerContentImpl({
     serverId,
     workspaceId,
     agentId,
+    createAgent: onCreateAgentForCommand, // CUSTOM(draft-composer-ready)
   });
   const isComposerLocked = resolveIsComposerLocked(submitBehavior, isSubmitLoading);
   const keyboardHandlerIdRef = useRef(
@@ -2092,17 +2117,7 @@ function ComposerContentImpl({
       const isPlainChatKey = !commandDraft && inputMode === "chat" && !event.hasModifier;
       // CUSTOM(empty-composer-shortcuts): on an empty chat composer Up/Down select sent messages
       // for rewind, so they run before upstream's recall of sent messages.
-      if (isPlainChatKey) {
-        const session = useSessionStore.getState().sessions[serverId];
-        const items =
-          event.key === "ArrowUp" || event.key === "ArrowDown"
-            ? [
-                ...(session?.agentStreamTail.get(agentId) ?? []),
-                ...(session?.agentStreamHead.get(agentId) ?? []),
-              ]
-            : [];
-        if (handleEmptyRewindKey({ event, serverId, agentId, items })) return true;
-      }
+      if (isPlainChatKey && handleChatRewindKey(event, serverId, agentId)) return true;
       const recalledText = recall.handleKeyPress(event, () =>
         selectAgentSentMessages(useSessionStore.getState().sessions[serverId], agentId),
       );
@@ -2235,7 +2250,9 @@ function ComposerContentImpl({
             projectSource={agentControls?.modelPickerProject ?? null}
             onMenuClose={agentControls?.onDropdownClose}
           />
-          {hasAgent ? (
+          {/* CUSTOM(draft-composer-ready): a draft shows the meter too, empty, with the
+              account usage in its popover. */}
+          {hasAgent || commandDraft ? (
             <View style={styles.contextWindowMeterSlot}>
               <ContextWindowMeter
                 serverId={serverId}
@@ -2258,6 +2275,7 @@ function ComposerContentImpl({
       agentState.contextWindowUsedTokens,
       agentState.totalCostUsd,
       contextWindowMeterGlyphSize,
+      commandDraft,
       agentControls?.modelPickerProject,
       agentControls?.onDropdownClose,
     ],
