@@ -4289,3 +4289,89 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   `applyOverrides`. Add the `shortcutFile` strings to each locale.
 - **Verify:** `npx vitest run src/keyboard/shortcut-file.test.ts src/i18n/resources.test.ts`. By hand:
   rebind a shortcut, Export, Reset all, Import: the rebind comes back.
+
+## token-ledger: our fork of the TokenLedger plugin, with turn jumps and MLflow trace links
+
+- **Added:** 2026-11-03 (based on upstream v0.14.0)
+- **Commit:** `custom: vendor token-ledger 0.7.0 into custom/plugins` (unchanged baseline, diff
+  against it), then `custom: token ledger rows jump to their turn and link to the MLflow trace`
+- **Why:** The third-party TokenLedger plugin (`stv1024/token-ledger`, MIT) has the right numbers
+  but its turn rows were dead ends. MLflow's tracing hooks (`mlflow-tracing` for Claude in
+  `~/.claude-personal`, `mlflow-codex` for Codex) record every tool call of a turn, but they are
+  not a usable data source: a Claude trace keeps only some of the model requests (one 16-request
+  turn was logged as 3, 213k cache reads instead of 1.04M), and a Codex trace has no cache split
+  or cost. So Paseo keeps the numbers and MLflow serves the per-tool detail.
+- **What:** `custom/plugins/token-ledger/`, plugin id still `token-ledger` so the history in
+  `<PASEO_HOME>/plugins/token-ledger/` and the turn-usage rows already in agent timelines keep
+  working (see turn-usage-inline).
+  - Clicking a turn row in the session ledger opens the agent at that turn's prompt
+    (`navigation.openAgent({ agentId, turnStartedAt })`, see turn-jump). Old rows work too.
+  - Each row with a session id gets **trace ↗**: the `ledger.trace` RPC searches every MLflow
+    experiment for the session's trace that started within 2 minutes of the turn, closest first,
+    and the row opens it in a Paseo browser tab (system browser where there is none). "no trace"
+    when nothing matches (other providers, the work `~/.claude`, MLflow down).
+  - Settings > TokenLedger > MLflow traces: the server address (default
+    `http://localhost:5000`); empty hides the links.
+- **Files:** plugin-only: `shared/trace.ts`, `server/mlflow.ts` (+ `mlflow.test.ts`),
+  `shared/preferences.ts` (`mlflowUrl`), `index.server.ts`, `client/settings.tsx`,
+  `client/panel.tsx`. Marked `CUSTOM(token-ledger-trace)` / `CUSTOM(turn-jump)`. Excluded from
+  the root oxlint/oxfmt like power-workboard; it has its own `tsc` and `node --test` suite.
+- **Gotcha:** `paseo plugin remove token-ledger` deletes `<PASEO_HOME>/plugins/token-ledger/`
+  with the ledger in it (`managed-source.ts` removes the managed install root, which is also the
+  plugin's data folder). The switch from the npm plugin on 2026-11-03 was: `plugin disable`, copy
+  `ledger.jsonl`, `pricing.json`, `openrouter-pricing.json` and `tracker-state.json` out
+  (`~/.paseo-backups/token-ledger-*`), `plugin remove`, copy them back, `plugin install` the
+  folder. Back up before any future remove.
+- **Re-apply:** Plugin-only; an upstream merge can't conflict. To take a new upstream
+  token-ledger, diff it against the baseline commit and replay the changes listed above.
+- **Setup:** `paseo plugin install "$PWD/custom/plugins/token-ledger" --home <home>` (both
+  daemons), after the backup dance above if the npm version is installed.
+- **Verify:** `(cd custom/plugins/token-ledger && npx tsc --noEmit && npm test)`. In the app,
+  open the TokenLedger panel of a Claude agent: **trace ↗** opens the turn in MLflow, and a row
+  click scrolls the chat to that turn's prompt.
+
+## usage-cache-writes: agent usage carries Claude's cache write tokens
+
+- **Added:** 2026-11-03 (based on upstream v0.14.0)
+- **Commit:** `custom: agent usage carries Claude's cache write tokens`
+- **Why:** Cache creation is billed at 1.25× input, apart from reads. Paseo dropped it, so the
+  token ledger's estimate for a tool-heavy Claude turn missed a large part of the cost (55k
+  cache-write tokens in one turn).
+- **What:** `AgentUsage` gets an optional `cacheWriteInputTokens`, set from the Claude result's
+  `cache_creation_input_tokens` when present. The token ledger already reads that name.
+- **Core files touched** (marked `CUSTOM(usage-cache-writes)`): `packages/protocol/src/agent-types.ts`
+  and `messages.ts` (`AgentUsageSchema`), `packages/server/src/server/agent/agent-sdk-types.ts`,
+  `agent-projections.ts` (`sanitizeUsage` field list), `providers/claude/agent.ts`
+  (`buildResultUsage`).
+- **Re-apply:** Add the optional field to both `AgentUsage` interfaces and the zod schema, to the
+  field list in `sanitizeUsage`, and set it in `buildResultUsage` from
+  `message.usage.cache_creation_input_tokens`.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent/agent-projections.test.ts
+src/server/agent/providers/claude/agent.test.ts)`. Daemon-side: needs the daemons restarted.
+
+## turn-jump: plugins can open an agent at one of its turns
+
+- **Added:** 2026-11-03 (based on upstream v0.14.0)
+- **Commit:** `custom: plugins can open an agent at one of its turns`
+- **Why:** The token ledger lists turns; a row should take you to that turn in the chat.
+- **What:** Plugin `navigation.openAgent` takes an optional `turnStartedAt` (ISO). The app stores
+  the request (`turn-jump/store.ts`), opens the agent, and the chat view finds the turn's prompt
+  in the chat outline's prompt index by time: the last prompt at or before the turn start, with 5 s
+  of slack. `jumpToPrompt` then scrolls there, loading older history when needed. Matching by time
+  needs no timeline seq in the ledger, so rows recorded before this change jump too. A request
+  waits until the chat is active and the index has loaded, and is dropped after 15 s. The prompt
+  index loads even with the outline turned off while a jump is pending. Web and desktop only
+  (the outline's index is web-only); elsewhere the agent just opens.
+- **Files:** `packages/app/src/turn-jump/` (`model.ts` + test, `store.ts`, `use-turn-jump.ts`).
+- **Core files touched** (marked `CUSTOM(turn-jump)`): plugin SDK
+  `packages/plugin/src/client/contracts.ts` (`openAgent` input), app
+  `plugins/host-navigation-model.ts` (+ test) and `host-navigation.ts` (`requestTurnJump`),
+  `agent-stream/view.tsx` (`useTurnJumpRequest` before `useChatOutline`, `shouldLoadChatOutline`
+  as its `enabled`, `useTurnJump` after it).
+- **Re-apply:** Give `openAgent` the optional field and make the host navigation call
+  `requestTurnJump` before `openAgent`. In the agent stream view, read the pending request for
+  the agent, keep the chat outline enabled while one is pending, and feed `chatOutline.prompts`,
+  `isActive` and `chatOutline.jumpToPrompt` to `useTurnJump`.
+- **Verify:** `(cd packages/app && npx vitest run src/turn-jump/model.test.ts
+src/plugins/host-navigation.test.ts)`. In the desktop app, click an old row in an agent's
+  TokenLedger panel: the chat scrolls to that turn's message.

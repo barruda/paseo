@@ -1,5 +1,10 @@
 # TokenLedger
 
+> **This is our fork** of [stv1024/token-ledger](https://github.com/stv1024/token-ledger) 0.7.0
+> (MIT) for the customized Paseo in this repository. Changes: turn rows open the agent at that
+> turn, and each row links to the turn's trace on a local MLflow server. See
+> `custom/CHANGES.md` (token-ledger, turn-jump, usage-cache-writes). The upstream README follows.
+
 Per-turn LLM token usage and cost for [Paseo](https://paseo.sh) agents — an agent panel that records what each turn consumed, keeps a local history, and estimates cost when upstream omits it.
 
 一个为 Paseo 提供**按轮（agent turn）**统计 token 用量的插件：面板实时显示进行中一轮的状态，每轮结束后固化一条账目，历史保存在本机。

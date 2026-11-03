@@ -293,6 +293,10 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/git-sync/model.test.ts --bail=1)
   # A New Agent tab's flame and critic carry over to the session it creates.
   (cd packages/app && npx vitest run src/composer/draft/composer-extras.test.ts --bail=1)
+  # Token ledger fork: MLflow trace links, turn jumps, Claude cache writes.
+  (cd custom/plugins/token-ledger && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npm test)
+  (cd packages/app && npx vitest run src/turn-jump/model.test.ts src/plugins/host-navigation.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/agent-projections.test.ts --bail=1)
   npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr custom/plugins/btw custom/plugins/critic custom/plugins/jev-router packages/app/src/critic/model.test.ts packages/app/src/jev-router/model.test.ts packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/plugins/buttons/model.test.ts packages/app/src/shell-command-composer/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
   (cd packages/server && npx vitest run src/server/agent-status-summary.test.ts src/server/lean-claude.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/worktree-merge-status.test.ts --bail=1)
@@ -412,7 +416,7 @@ fi
 # 4. Check plugin registration
 # ---------------------------------------------------------------------------
 step "Checking the custom plugins on each daemon"
-for plugin in shell-command workspace-tasks warp btw critic; do
+for plugin in shell-command workspace-tasks warp btw critic token-ledger; do
   plugin_dir="$ROOT/custom/plugins/$plugin"
   for home in $HOMES; do
     config="$home/config.json"

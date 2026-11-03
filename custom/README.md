@@ -142,6 +142,7 @@ paseo plugin install "$PWD/custom/plugins/tldr" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/btw" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/critic" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/jev-router" --home ~/.paseo  # personal only: work prompts never go to TypeSafe
+paseo plugin install "$PWD/custom/plugins/token-ledger" --home ~/.paseo  # back up its data before replacing an npm install (CHANGES.md)
 ```
 
 After editing a plugin's source: `paseo plugin reload <id> --home ~/.paseo`.
