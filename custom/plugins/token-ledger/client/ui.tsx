@@ -1,0 +1,143 @@
+import type { PluginTheme } from "@getpaseo/plugin";
+import { Text, View } from "react-native";
+import type { Summary, TurnRecord } from "../shared/ledger.ts";
+
+export function fmtTokens(value: number | null): string {
+  if (value === null) return "–";
+  if (value < 1000) return String(value);
+  if (value < 1_000_000) return `${(value / 1000).toFixed(1)}k`;
+  return `${(value / 1_000_000).toFixed(2)}M`;
+}
+
+export function fmtCost(value: number | null): string | null {
+  if (value === null) return null;
+  return value >= 0.01 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
+}
+
+/** Cost when priced, else total tokens. "≈" marks a cost that includes estimates. */
+export function costOrTokens(summary: Summary): string {
+  const cost = fmtCost(summary.effectiveCostUsd);
+  if (cost) return `${summary.estimatedTurns > 0 ? "≈" : ""}${cost}`;
+  return `${fmtTokens(summary.input + summary.cached + (summary.cacheWrite ?? 0) + summary.output)} tok`;
+}
+
+/** Compact cost for per-component cells; "–" when unknown. */
+export function fmtCostSmall(value: number | null): string {
+  if (value === null) return "–";
+  if (value === 0) return "$0";
+  if (value >= 0.01) return `$${value.toFixed(2)}`;
+  return `$${value.toPrecision(1)}`;
+}
+
+/**
+ * Signed cost residual (reported total minus list-price component estimate)
+ * for the COST cell; blank when unknown or negligible. On Claude turns a
+ * positive residual is mostly cache writes, which upstream never reports as
+ * tokens.
+ */
+export function fmtResidual(value: number | null): string {
+  if (value === null || Math.abs(value) < 0.005) return " ";
+  return `${value > 0 ? "+" : "−"}${fmtCostSmall(Math.abs(value))}`;
+}
+
+export function fmtPct(ratio: number | null): string | null {
+  if (ratio === null) return null;
+  const pct = ratio * 100;
+  if (pct > 0 && pct < 1) return "<1%";
+  return `${Math.round(pct)}%`;
+}
+
+export function fmtDuration(ms: number | null): string {
+  if (ms === null) return "–";
+  const seconds = Math.round(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ${String(seconds % 60).padStart(2, "0")}s`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+}
+
+export function fmtTime(iso: string): string {
+  const date = new Date(iso);
+  const today = new Date();
+  const time = `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
+  if (date.toDateString() === today.toDateString()) return time;
+  return `${date.getMonth() + 1}/${date.getDate()} ${time}`;
+}
+
+export function statusColor(status: TurnRecord["status"], theme: PluginTheme): string {
+  if (status === "completed") return theme.colors.statusSuccess;
+  if (status === "failed") return theme.colors.statusDanger;
+  return theme.colors.statusWarning;
+}
+
+export function tokensLine(input: number | null, cached: number | null, output: number | null, cacheWrite?: number | null): string | null {
+  if (input === null && cached === null && output === null && cacheWrite == null) return null;
+  return `in ${fmtTokens(input)} · cache ${fmtTokens(cached)}${cacheWrite != null ? ` · write ${fmtTokens(cacheWrite)}` : ''} · out ${fmtTokens(output)}`;
+}
+
+/** Column widths for the TURNS table; shared by the header and data rows. */
+export function turnColumns(dense: boolean) {
+  return {
+    in: { minWidth: dense ? 40 : 56 },
+    cache: { minWidth: dense ? 58 : 78 },
+    out: { minWidth: dense ? 42 : 56 },
+    cost: { minWidth: dense ? 44 : 54 },
+    gap: dense ? 6 : 8,
+  };
+}
+
+export function TurnTableHeader({ theme, dense }: { theme: PluginTheme; dense: boolean }) {
+  const cols = turnColumns(dense);
+  const cell = {
+    color: theme.colors.foregroundMuted,
+    fontSize: 10,
+    fontWeight: "600" as const,
+    letterSpacing: 0.4,
+    textAlign: "right" as const,
+  };
+  return (
+    <View style={{ flexDirection: "row", alignItems: "baseline", gap: cols.gap, paddingVertical: 4 }}>
+      {/* Doubles as the section title; the column holds seq + time + duration. */}
+      <Text style={{ ...cell, textAlign: "left", flex: 1 }}>TURNS</Text>
+      <Text style={{ ...cell, ...cols.in }}>IN</Text>
+      <Text style={{ ...cell, ...cols.cache }}>CACHE</Text>
+      <Text style={{ ...cell, ...cols.out }}>OUT</Text>
+      <Text style={{ ...cell, ...cols.cost }}>COST</Text>
+    </View>
+  );
+}
+
+export function Stat({ label, value, theme, dense }: { label: string; value: string; theme: PluginTheme; dense?: boolean }) {
+  return (
+    <View style={{ minWidth: dense ? 44 : 56 }}>
+      <Text style={{ color: theme.colors.foreground, fontSize: 15, fontWeight: "600", fontVariant: ["tabular-nums"] }}>
+        {value}
+      </Text>
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>{label}</Text>
+    </View>
+  );
+}
+
+export function SummaryRow({ summary, theme, dense }: { summary: Summary; theme: PluginTheme; dense?: boolean }) {
+  const cost = fmtCost(summary.effectiveCostUsd);
+  const costValue = cost ? `${summary.estimatedTurns > 0 ? "≈" : ""}${cost}` : null;
+  const costLabel = summary.unpricedTurns > 0 ? `cost · ${summary.unpricedTurns} unknown` : summary.estimatedTurns > 0 ? "cost · estimated" : "cost";
+  return (
+    <View style={{ flexDirection: "row", flexWrap: "wrap", gap: dense ? 10 : 16 }}>
+      <Stat label="turns" value={String(summary.turns)} theme={theme} dense={dense} />
+      <Stat label="input" value={fmtTokens(summary.input)} theme={theme} dense={dense} />
+      <Stat label="cache" value={fmtTokens(summary.cached)} theme={theme} dense={dense} />
+      {summary.cacheWrite != null ? <Stat label="cache write" value={fmtTokens(summary.cacheWrite)} theme={theme} dense={dense} /> : null}
+      <Stat label="output" value={fmtTokens(summary.output)} theme={theme} dense={dense} />
+      {costValue ? <Stat label={costLabel} value={costValue} theme={theme} dense={dense} /> : null}
+    </View>
+  );
+}
+
+export function UsageCoverageNote({ theme }: { theme: PluginTheme }) {
+  return (
+    <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11 }}>
+      Totals reflect usage available from Paseo; subagent usage and cache writes may be missing.
+    </Text>
+  );
+}

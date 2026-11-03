@@ -1,0 +1,167 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { finalizeTurn, sameTokens, tokenObservation, type Observation } from "./aggregate.ts";
+
+const base = {
+  agentId: "agent-1",
+  turnId: "turn-1",
+  provider: "claude",
+  model: "claude-opus-5",
+  startedAt: "2026-09-04T10:00:00.000Z",
+  endedAt: "2026-09-04T10:00:30.000Z",
+  status: "completed" as const,
+  observations: [] as Observation[],
+  finalUsage: null,
+  prevSessionCostUsd: null,
+};
+
+test("context-window-only usage yields no observation", () => {
+  assert.equal(tokenObservation({ contextWindowUsedTokens: 5000, contextWindowMaxTokens: 200000 }), null);
+  assert.equal(tokenObservation(null), null);
+  assert.equal(tokenObservation({}), null);
+});
+
+test('write-only usage is retained, validated, and participates in observation identity', () => {
+  assert.equal(tokenObservation({ cacheWriteInputTokens: -1 }), null);
+  assert.equal(tokenObservation({ cacheWriteInputTokens: Infinity }), null);
+  const first = tokenObservation({ cacheWriteInputTokens: 10 })!;
+  const second = tokenObservation({ cacheWriteInputTokens: 20 })!;
+  assert.equal(sameTokens(first, second), false);
+  const record = finalizeTurn({ ...base, provider: 'codex', observations: [first, second] });
+  assert.equal(record.cacheWrite, 30);
+  assert.deepEqual(record.requests?.map((r) => r.cacheWrite), [10, 20]);
+  const reported = finalizeTurn({ ...base, observations: [first], finalUsage: { cacheWriteInputTokens: 40, totalCostUsd: 0.5 } });
+  assert.equal(reported.cacheWrite, 40);
+  assert.equal(reported.costUsd, 0.5);
+  assert.equal(finalizeTurn(base).cacheWrite, undefined);
+});
+
+test("negative and non-finite values are ignored", () => {
+  const observation = tokenObservation({ inputTokens: -5, outputTokens: Number.NaN, cachedInputTokens: 10 });
+  assert.deepEqual(observation, { input: null, cached: 10, output: null, cost: null });
+});
+
+test("claude-style: terminal usage is used as-is, exact", () => {
+  const record = finalizeTurn({
+    ...base,
+    finalUsage: { inputTokens: 120, cachedInputTokens: 4000, outputTokens: 900, totalCostUsd: 0.05 },
+  });
+  assert.equal(record.input, 120);
+  assert.equal(record.cached, 4000);
+  assert.equal(record.output, 900);
+  assert.equal(record.quality, "exact");
+  assert.equal(record.source, "turn_usage");
+  assert.equal(record.modelCalls, 0);
+  assert.equal(record.durationMs, 30000);
+});
+
+test("codex-style: multiple per-request observations are summed, partial", () => {
+  const record = finalizeTurn({
+    ...base,
+    provider: "codex",
+    observations: [
+      { input: 100, cached: 0, output: 50, cost: null },
+      { input: 200, cached: 100, output: 80, cost: null },
+      { input: 300, cached: 250, output: 20, cost: null },
+    ],
+    finalUsage: { inputTokens: 300, cachedInputTokens: 250, outputTokens: 20 },
+  });
+  assert.equal(record.input, 600);
+  assert.equal(record.cached, 350);
+  assert.equal(record.output, 150);
+  assert.equal(record.quality, "partial");
+  assert.equal(record.source, "summed_observations");
+  assert.equal(record.modelCalls, 3);
+});
+
+test("single observation without terminal usage, partial", () => {
+  const record = finalizeTurn({
+    ...base,
+    status: "canceled",
+    observations: [{ input: 100, cached: null, output: 50, cost: null }],
+  });
+  assert.equal(record.input, 100);
+  assert.equal(record.quality, "partial");
+  assert.equal(record.source, "last_observation");
+});
+
+test("no usage at all is unavailable, never estimated", () => {
+  const record = finalizeTurn({ ...base, status: "failed" });
+  assert.equal(record.input, null);
+  assert.equal(record.output, null);
+  assert.equal(record.costUsd, null);
+  assert.equal(record.quality, "unavailable");
+  assert.equal(record.source, "none");
+});
+
+test("cumulative session cost produces a per-turn delta", () => {
+  const record = finalizeTurn({
+    ...base,
+    finalUsage: { inputTokens: 10, outputTokens: 10, totalCostUsd: 0.08 },
+    prevSessionCostUsd: 0.05,
+  });
+  assert.equal(record.costUsd, 0.03);
+  assert.equal(record.sessionCostUsd, 0.08);
+});
+
+test("cost lower than previous raw is treated as a reset, raw kept", () => {
+  const record = finalizeTurn({
+    ...base,
+    finalUsage: { inputTokens: 10, outputTokens: 10, totalCostUsd: 0.02 },
+    prevSessionCostUsd: 0.05,
+  });
+  assert.equal(record.costUsd, 0.02);
+  assert.equal(record.sessionCostUsd, 0.02);
+});
+
+test("missing startedAt yields null duration", () => {
+  const record = finalizeTurn({ ...base, startedAt: null });
+  assert.equal(record.durationMs, null);
+  assert.equal(record.id, "agent-1:turn-1:2026-09-04T10:00:30.000Z");
+});
+
+test("sameTokens compares only token fields", () => {
+  assert.ok(
+    sameTokens(
+      { input: 1, cached: 2, output: 3, cost: 0.1 },
+      { input: 1, cached: 2, output: 3, cost: 0.9 },
+    ),
+  );
+  assert.ok(!sameTokens({ input: 1, cached: 2, output: 3, cost: null }, { input: 1, cached: 2, output: 4, cost: null }));
+});
+
+test("Claude terminal aggregate takes precedence over multiple observations", () => {
+  const record = finalizeTurn({ ...base,
+    observations: [{ input: 1, cached: 20, output: 3, cost: null }, { input: 2, cached: 30, output: 5, cost: null }],
+    finalUsage: { inputTokens: 2, cachedInputTokens: 30, outputTokens: 5 },
+  });
+  assert.equal(record.input, 2);
+  assert.equal(record.quality, "exact");
+});
+
+test("canceled turn can retain reported cost from its last observation", () => {
+  const record = finalizeTurn({ ...base, status: "canceled", prevSessionCostUsd: 1,
+    observations: [{ input: 1, cached: 20, output: 3, cost: 1.25 }],
+  });
+  assert.equal(record.costUsd, 0.25);
+  assert.equal(record.quality, "partial");
+});
+
+test('unknown harness never infers aggregation or cumulative cost from a model name', () => {
+  const record = finalizeTurn({ ...base, provider: 'custom', model: 'gpt-6-astra', prevSessionCostUsd: 1,
+    observations: [{ input: 100, cached: 0, output: 10, cost: 1 }, { input: 120, cached: 0, output: 20, cost: 1.5 }],
+    finalUsage: { inputTokens: 120, outputTokens: 20, totalCostUsd: 1.5 },
+  });
+  assert.equal(record.input, 120); assert.equal(record.quality, 'partial');
+  assert.equal(record.costUsd, null); assert.equal(record.sessionCostUsd, 1.5);
+  assert.equal(record.requests, undefined);
+});
+
+test('Codex includes an unseen terminal request and retains raw per-request counts', () => {
+  const record = finalizeTurn({ ...base, provider: 'codex',
+    observations: [{ input: 100, cached: 80, output: 10, cost: null }],
+    finalUsage: { inputTokens: 120, cachedInputTokens: 90, outputTokens: 20 },
+  });
+  assert.equal(record.input, 220); assert.equal(record.requests?.length, 2);
+  assert.equal(record.quality, 'partial');
+});

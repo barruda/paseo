@@ -1,0 +1,13 @@
+node_modules/
+promo/node_modules/
+promo/out/
+promo/public/audio/
+promo/.venv/
+*.tsbuildinfo
+
+# internal docs, not published
+DEVELOPMENT_PLAN.md
+# machine-specific / private notes for agents
+AGENTS.local.md
+# local Paseo agent settings (per-user)
+paseo.json
