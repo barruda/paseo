@@ -192,6 +192,8 @@ export interface AgentRunOptions {
 export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
+  // CUSTOM(usage-cache-writes): prompt-cache creation tokens, when the provider reports them.
+  cacheWriteInputTokens?: number;
   outputTokens?: number;
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;

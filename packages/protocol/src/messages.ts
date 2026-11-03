@@ -440,6 +440,8 @@ const AgentCapabilityFlagsSchema: z.ZodType<AgentCapabilityFlags> = z
 const AgentUsageSchema: z.ZodType<AgentUsage> = z.object({
   inputTokens: z.number().optional(),
   cachedInputTokens: z.number().optional(),
+  // CUSTOM(usage-cache-writes)
+  cacheWriteInputTokens: z.number().optional(),
   outputTokens: z.number().optional(),
   totalCostUsd: z.number().optional(),
   contextWindowMaxTokens: z.number().optional(),

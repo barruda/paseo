@@ -281,6 +281,7 @@ describe("toAgentPayload", () => {
     const fields = [
       "inputTokens",
       "cachedInputTokens",
+      "cacheWriteInputTokens",
       "outputTokens",
       "totalCostUsd",
       "contextWindowMaxTokens",
@@ -292,6 +293,7 @@ describe("toAgentPayload", () => {
         lastUsage: {
           inputTokens: 10,
           cachedInputTokens: 5,
+          cacheWriteInputTokens: 3,
           outputTokens: 20,
           totalCostUsd: 0.5,
           contextWindowMaxTokens: 200_000,
@@ -303,6 +305,18 @@ describe("toAgentPayload", () => {
       const payload = toAgentPayload(agent);
       expect(payload.lastUsage).toBeUndefined();
     }
+  });
+
+  // CUSTOM(usage-cache-writes)
+  it("keeps cache write tokens in the usage payload", () => {
+    const agent = createManagedAgent({
+      lastUsage: { inputTokens: 10, cachedInputTokens: 5, cacheWriteInputTokens: 3 },
+    });
+    expect(toAgentPayload(agent).lastUsage).toEqual({
+      inputTokens: 10,
+      cachedInputTokens: 5,
+      cacheWriteInputTokens: 3,
+    });
   });
 
   it("produces null title and current mode even without overrides", () => {

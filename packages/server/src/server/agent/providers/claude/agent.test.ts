@@ -3018,6 +3018,7 @@ describe("ClaudeAgentSession context window usage", () => {
       expect(result.usage).toEqual({
         inputTokens: 9_000,
         cachedInputTokens: 700,
+        cacheWriteInputTokens: 300,
         outputTokens: 400,
         totalCostUsd: 0.25,
         contextWindowMaxTokens: 200_000,
@@ -3174,6 +3175,7 @@ describe("ClaudeAgentSession context window usage", () => {
       expect(result.usage).toEqual({
         inputTokens: 4,
         cachedInputTokens: 16_999,
+        cacheWriteInputTokens: 17_252,
         outputTokens: 171,
         totalCostUsd: 0.25,
         contextWindowMaxTokens: 200_000,
@@ -3219,6 +3221,7 @@ describe("ClaudeAgentSession context window usage", () => {
       expect(result.usage).toEqual({
         inputTokens: 5_000,
         cachedInputTokens: 600,
+        cacheWriteInputTokens: 500,
         outputTokens: 700,
         totalCostUsd: 0.25,
         contextWindowMaxTokens: 200_000,
@@ -3578,6 +3581,7 @@ describe("ClaudeAgentSession context window usage", () => {
           usage: {
             inputTokens: 0,
             cachedInputTokens: 0,
+            cacheWriteInputTokens: 0,
             outputTokens: 0,
             totalCostUsd: 0.04,
             contextWindowMaxTokens: 200_000,
@@ -3631,6 +3635,7 @@ describe("ClaudeAgentSession context window usage", () => {
           usage: {
             inputTokens: 0,
             cachedInputTokens: 0,
+            cacheWriteInputTokens: 0,
             outputTokens: 0,
             totalCostUsd: 0.04,
             contextWindowMaxTokens: 200_000,

@@ -2177,6 +2177,14 @@ class ClaudeContextUsageState {
         outputTokens: message.usage.output_tokens,
         totalCostUsd: message.total_cost_usd,
       };
+      // CUSTOM(usage-cache-writes): cache creation is billed apart from reads and fresh input.
+      const cacheWriteInputTokens = readUsageCount(
+        message.usage as unknown as Record<string, unknown>,
+        "cache_creation_input_tokens",
+      );
+      if (cacheWriteInputTokens !== undefined) {
+        usage.cacheWriteInputTokens = cacheWriteInputTokens;
+      }
 
       const modelContextWindowMaxTokens = this.recordModelUsage(message.modelUsage, modelId);
       if (this.contextWindowMaxTokens !== undefined) {

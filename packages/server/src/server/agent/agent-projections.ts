@@ -547,6 +547,8 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
   const fields: UsageNumericField[] = [
     "inputTokens",
     "cachedInputTokens",
+    // CUSTOM(usage-cache-writes)
+    "cacheWriteInputTokens",
     "outputTokens",
     "totalCostUsd",
     "contextWindowMaxTokens",
