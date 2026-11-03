@@ -141,6 +141,7 @@ paseo plugin install "$PWD/custom/plugins/power-workboard" --home ~/.paseo  # th
 paseo plugin install "$PWD/custom/plugins/tldr" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/btw" --home ~/.paseo
 paseo plugin install "$PWD/custom/plugins/critic" --home ~/.paseo
+paseo plugin install "$PWD/custom/plugins/jev-router" --home ~/.paseo  # personal only: work prompts never go to TypeSafe
 ```
 
 After editing a plugin's source: `paseo plugin reload <id> --home ~/.paseo`.

@@ -4115,3 +4115,50 @@ waiting` tests in `agent-manager.test.ts`.
 notification"` (all in the update script). By hand: turn the critic on with a strict prompt; send
   a task; the answer stays hidden while a "Critic is reviewing" card shows, a rejection sends the
   critique back, and only the approved answer shows with a ✓ card; one notification at the end.
+
+## jev-router: a new Claude session starts on Sonnet or Haiku when its first prompt is small
+
+- **Added:** 2026-11-03 (based on upstream v0.14.0)
+- **Commit:** `custom: Jev router picks a cheaper model for a new session's small first prompt`
+- **Why:** Most first prompts need the user's usual Opus/high, but some are a rename or a quick
+  question. gnome-custom's `jev-router/route.py` asks TypeSafe Jev (~200 ms, ~US$ 0.00005) and,
+  under the `downgrade_only` policy measured on the user's own prompts, drops to Sonnet or Haiku
+  only when Jev is sure the task is small and plain. Handoff:
+  https://app.notion.com/p/40d0cc33bd4781ddbf4af8d1b08092c0
+- **What:** The `jev-router` plugin (Settings > Plugins > jev-router > Jev router), off by default:
+  - **Route new sessions** turns the feature on and shows a route icon in the composer, after the
+    critic's (in drafts too, where the critic doesn't show).
+  - **Apply the pick**, off by default, is shadow mode: the pick is logged and labeled but the
+    session starts as selected. A press on the composer icon flips it (tinted = applying).
+  - **TypeSafe API key** (empty: route.py reads `TYPESAFE_API_KEY` or `~/.config/typesafe/env`),
+    router script path (default `~/projetos/gnome-custom/jev-router/route.py`), Python, Jev
+    timeout (default 2 s), **Log decisions** (`~/.local/state/jev-router/decisions.jsonl`, read
+    with `route.py review`), and a **Test** button that routes a sample prompt.
+  - When the user sends a draft's first message, the app calls the plugin's `route` RPC before
+    creating the agent, with the prompt, cwd, image count and the selected model/effort. Only
+    Claude sessions above Haiku are routed; auto-submitted setups, follow-ups and other providers
+    are not. Only a strictly cheaper family is applied, never a stronger one.
+  - Fail-open: a missing plugin, an error, a script failure or no answer in 15 s creates the
+    session as selected.
+  - Every routed session gets `custom.jev.pick`, `custom.jev.home`, `custom.jev.why` and
+    `custom.jev.applied` labels; the composer icon's tooltip says what Jev did for that session.
+  - Installed on the personal daemon only, so work prompts (paseo-telus) never go to TypeSafe.
+- **Files:** `packages/protocol/src/jev-router.ts` (ids, settings schema, RPC schemas, labels);
+  `custom/plugins/jev-router/` (`shared/decision.ts` home/args/output/plan + test,
+  `shared/settings.ts`, `server/run.ts` spawns route.py, `client/settings-screen.tsx`);
+  `packages/app/src/jev-router/` (`model.ts` + test, `route.ts`, `toggle.tsx`);
+  `packages/server/src/server/plugins/custom-jev-router-plugin.e2e.test.ts` (fake route.py).
+- **Core files touched:** app `composer/agent-controls/index.tsx` (`<JevRouterToggle>` after
+  `<CriticToggle>`), `composer/draft/workspace-tab.tsx` (`submitDraftCreateRequest` passes the
+  config through `routeDraftAgent` and spreads its `labels` into the create request). Both marked
+  `CUSTOM(jev-router)`.
+- **Re-apply:** Render `JevRouterToggle` at the end of the composer's agent control row. Where the
+  draft tab builds the create-agent config from the composer selection, await `routeDraftAgent`
+  on it (skipping auto-submitted drafts) and add its `createOptions` to the request.
+- **Setup:** `paseo plugin install "$PWD/custom/plugins/jev-router" --home ~/.paseo` (personal
+  only), a desktop build for the app. Turn it on in Settings > Plugins > jev-router.
+- **Verify:** `npx vitest run custom/plugins/jev-router packages/app/src/jev-router` and the e2e
+  `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand: in a draft on the
+  personal Paseo the route icon shows after the flame; send "rename count to total in utils.ts"
+  from Opus/high; the tooltip of the new agent's icon says it would have started on haiku/low (or
+  started on it, with Apply on), and `route.py review` lists it.

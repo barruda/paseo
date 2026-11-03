@@ -73,6 +73,7 @@ import {
 } from "@/draft-worktree/model";
 import { DraftWorktreePicker, useDraftWorktreeSource } from "@/draft-worktree/picker";
 import { useDraftAgentTitleStore, withDraftAgentTitle } from "@/draft-agent-title/store";
+import { routeDraftAgent } from "@/jev-router/route"; // CUSTOM(jev-router)
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
 const DRAFT_CAPABILITIES: AgentCapabilityFlags = {
@@ -190,7 +191,7 @@ async function submitDraftCreateRequest(input: {
     autoSubmitConfig,
     effectiveModeId: composerState.effectiveModeId,
   });
-  const config = buildWorkspaceDraftAgentConfig({
+  const selectedConfig = buildWorkspaceDraftAgentConfig({
     provider,
     cwd,
     ...modeIdOverride,
@@ -198,6 +199,15 @@ async function submitDraftCreateRequest(input: {
     thinkingOptionId:
       autoSubmitConfig?.thinkingOptionId ?? (composerState.effectiveThinkingOptionId || undefined),
     featureValues: autoSubmitConfig?.featureValues ?? composerState.featureValues,
+  });
+  // CUSTOM(jev-router): a first message typed by the user may start on a cheaper model; the
+  // labels record Jev's pick either way.
+  const { config, createOptions: jevOptions } = await routeDraftAgent({
+    serverId: input.serverId,
+    prompt: text,
+    images,
+    autoSubmitted: Boolean(autoSubmitConfig),
+    config: selectedConfig,
   });
 
   const attachmentsArray = Array.isArray(attachments) ? attachments : undefined;
@@ -208,6 +218,7 @@ async function submitDraftCreateRequest(input: {
     workspaceId,
     initialPrompt: text,
     clientMessageId: attempt.clientMessageId,
+    ...jevOptions, // CUSTOM(jev-router)
     ...(imagesData && imagesData.length > 0 ? { images: imagesData } : {}),
     ...(attachmentsArray && attachmentsArray.length > 0 ? { attachments: attachmentsArray } : {}),
   };

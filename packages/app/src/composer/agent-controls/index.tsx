@@ -86,6 +86,7 @@ import type { ModelPickerProjectSource } from "@/model-picker/project";
 import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
 import { CacheWarmupToggle } from "@/cache-warmup/toggle"; // CUSTOM(cache-warmup)
 import { CriticToggle } from "@/critic/toggle"; // CUSTOM(critic)
+import { JevRouterToggle } from "@/jev-router/toggle"; // CUSTOM(jev-router)
 import { isNative } from "@/constants/platform";
 import {
   resolveComposerControlDensity,
@@ -942,6 +943,8 @@ function ControlledAgentControls({
         />
         {/* CUSTOM(critic): the critic toggle sits right after the flame, for any provider. */}
         <CriticToggle serverId={modelSelectorServerId} agentId={cacheWarmupAgentId} />
+        {/* CUSTOM(jev-router): after the critic; drafts show it too (it routes their first prompt). */}
+        <JevRouterToggle serverId={modelSelectorServerId} agentId={cacheWarmupAgentId} />
       </View>
     </ComposerControlLayoutProvider>
   );

@@ -1,0 +1,5 @@
+{
+  "id": "jev-router",
+  "description": "Starts a new Claude session on Sonnet or Haiku when TypeSafe Jev says its first prompt is small (gnome-custom's jev-router).",
+  "requirements": { "paseo": ">=0.11.0" }
+}
