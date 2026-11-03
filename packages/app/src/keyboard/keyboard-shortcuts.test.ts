@@ -663,6 +663,35 @@ describe("keyboard-shortcuts", () => {
     expect(secondResult.nextChordState).toEqual(initialChordState());
   });
 
+  // CUSTOM(chat-esc-focus)
+  it("fires a single combo at once when the chord on its prefix repeats the same key", () => {
+    const bindings = buildEffectiveBindings({
+      "agent-interrupt": "Escape Escape",
+      "message-input-focus-ctrl-l-non-mac": "Escape",
+    });
+    const interruptIndex = bindings.findIndex((binding) => binding.id === "agent-interrupt");
+
+    const first = resolveShortcut({
+      event: { key: "Escape", code: "Escape" },
+      context: { isMac: false, isDesktop: true },
+      bindings,
+    });
+    expect(first.match?.action).toBe("message-input.action");
+    expect(first.match?.payload).toMatchObject({ kind: "focus" });
+    expect(first.preventDefault).toBe(false);
+    expect(first.nextChordState.step).toBe(1);
+    expect(first.nextChordState.candidateIndices).toEqual([interruptIndex]);
+
+    const second = resolveShortcut({
+      event: { key: "Escape", code: "Escape" },
+      context: { isMac: false, isDesktop: true, focusScope: "message-input" },
+      chordState: first.nextChordState,
+      bindings,
+    });
+    expect(second.match?.action).toBe("agent.interrupt");
+    expect(second.nextChordState).toEqual(initialChordState());
+  });
+
   it("resolves a browser-origin shortcut with browser focus instead of host focus", () => {
     expectShortcutResolution({
       event: { key: "t", code: "KeyT", ctrlKey: true },

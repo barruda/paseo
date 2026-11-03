@@ -43,6 +43,15 @@ import { getShortcutOs } from "@/utils/shortcut-platform";
 import { getIsElectronRuntime } from "@/constants/layout";
 import { isNative } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
+// CUSTOM(shortcut-file): export / import the overrides as a JSON file.
+import { useToast } from "@/contexts/toast-context";
+import {
+  diffShortcutOverrides,
+  parseShortcutFile,
+  serializeShortcutFile,
+  SHORTCUT_FILE_NAME,
+} from "@/keyboard/shortcut-file";
+import { downloadTextFile, pickTextFile } from "@/keyboard/shortcut-file-io";
 
 const EMPTY_CAPTURED_COMBOS: string[] = [];
 const EMPTY_ADDITIONAL_SHORTCUTS: AdditionalShortcut[] = [];
@@ -448,6 +457,7 @@ function ShortcutRow({
 
 export function KeyboardShortcutsSection() {
   const { t } = useTranslation();
+  const toast = useToast();
   // CUSTOM(shortcut-settings-search): keep editing controls available in the filtered list.
   const [query, setQuery] = useState("");
   const [capturingBindingId, setCapturingBindingId] = useState<string | null>(null);
@@ -565,6 +575,37 @@ export function KeyboardShortcutsSection() {
   }, [capturing]);
 
   const handleResetAll = useCallback(() => void resetAll(), [resetAll]);
+  // CUSTOM(shortcut-file)
+  const handleExport = useCallback(() => {
+    downloadTextFile(SHORTCUT_FILE_NAME, serializeShortcutFile(overrides));
+    toast.show(t("settings.shortcutFile.exported"));
+  }, [overrides, t, toast]);
+  const handleImport = useCallback(async () => {
+    let text: string | null;
+    try {
+      text = await pickTextFile(".json,application/json");
+    } catch {
+      toast.error(t("settings.shortcutFile.readError"));
+      return;
+    }
+    if (text === null) return;
+    const result = parseShortcutFile(text);
+    if (!result.ok) {
+      const messageKey = {
+        "invalid-json": "settings.shortcutFile.invalidJson",
+        "invalid-format": "settings.shortcutFile.invalidFormat",
+        "newer-version": "settings.shortcutFile.newerVersion",
+      }[result.reason];
+      toast.error(t(messageKey));
+      return;
+    }
+    await applyOverrides(diffShortcutOverrides(overrides, result.overrides));
+    toast.show(
+      result.skipped.length > 0
+        ? t("settings.shortcutFile.importedSkipped", { count: result.skipped.length })
+        : t("settings.shortcutFile.imported"),
+    );
+  }, [applyOverrides, overrides, t, toast]);
   const handleClearOverride = useCallback(
     (bindingId: string, additionalShortcuts: AdditionalShortcut[]) =>
       void applyOverrides({
@@ -613,6 +654,12 @@ export function KeyboardShortcutsSection() {
           testID="shortcut-settings-search"
           clearTestID="shortcut-settings-search-clear"
         />
+        <Button variant="ghost" size="sm" onPress={handleExport} testID="shortcut-file-export">
+          {t("settings.shortcutFile.export")}
+        </Button>
+        <Button variant="ghost" size="sm" onPress={handleImport} testID="shortcut-file-import">
+          {t("settings.shortcutFile.import")}
+        </Button>
         {resetAllButton}
       </View>
       {visibleSections.length === 0 ? (

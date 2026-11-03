@@ -235,6 +235,27 @@ export function buildWorkspaceTabMenuEntries(
     });
   };
 
+  // CUSTOM(open-file-externally): right after Pin tab.
+  const pushOpenFile = () => {
+    if (tab.target.kind !== "file" || !onOpenFile) return;
+    const filePath = tab.target.path;
+    for (const [mode, label, icon] of [
+      ["browser", "Open in browser", "globe"],
+      ["default", "Open with default app", "external-link"],
+    ] as const) {
+      entries.push({
+        kind: "item",
+        key: `open-file-${mode}`,
+        label,
+        icon,
+        testID: `${menuTestIDBase}-open-file-${mode}`,
+        onSelect: () => {
+          void onOpenFile(filePath, mode, tab.tabId);
+        },
+      });
+    }
+  };
+
   if (tab.target.kind === "agent") {
     const { agentId } = tab.target;
     entries.push({
@@ -302,26 +323,6 @@ export function buildWorkspaceTabMenuEntries(
     entries.push({ kind: "file-panel-open-with", key: "file-panel-open-with" });
   }
 
-  // CUSTOM(open-file-externally): immediately follow the file path copy actions.
-  if (tab.target.kind === "file" && onOpenFile) {
-    const filePath = tab.target.path;
-    for (const [mode, label, icon] of [
-      ["browser", "Open in browser", "globe"],
-      ["default", "Open with default app", "external-link"],
-    ] as const) {
-      entries.push({
-        kind: "item",
-        key: `open-file-${mode}`,
-        label,
-        icon,
-        testID: `${menuTestIDBase}-open-file-${mode}`,
-        onSelect: () => {
-          void onOpenFile(filePath, mode, tab.tabId);
-        },
-      });
-    }
-  }
-
   // CUSTOM(draft-agent-title): a New Agent tab can be named before its agent exists.
   if (
     tab.target.kind === "agent" ||
@@ -356,9 +357,10 @@ export function buildWorkspaceTabMenuEntries(
       kind: "separator",
       key: "rename-separator",
     });
-  } else if (input.tabPin) {
+  } else if (input.tabPin || (tab.target.kind === "file" && onOpenFile)) {
     // CUSTOM(tab-pins)
     pushTabPin();
+    pushOpenFile(); // CUSTOM(open-file-externally)
     entries.push({ kind: "separator", key: "pin-tab-separator" });
   }
 

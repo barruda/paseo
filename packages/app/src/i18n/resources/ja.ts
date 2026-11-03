@@ -1,5 +1,6 @@
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_JA } from "./custom-voice-settings";
+import { SHORTCUT_FILE_JA } from "./custom-shortcut-file";
 import { pluginSettings } from "./plugin-settings";
 
 export const ja: TranslationResources = {
@@ -2182,6 +2183,8 @@ export const ja: TranslationResources = {
   settings: {
     // CUSTOM(voice-settings)
     voiceSettings: VOICE_SETTINGS_JA,
+    // CUSTOM(shortcut-file)
+    shortcutFile: SHORTCUT_FILE_JA,
     title: "設定",
     loading: "設定を読み込み中...",
     groups: {

@@ -413,6 +413,15 @@ export function useKeyboardShortcuts({
     });
   });
 
+  // CUSTOM(chat-esc-focus): a click between two presses ends a pending chord, so Esc, click, Esc
+  // is two single presses (focus the composer twice), not `Escape Escape` (interrupt the agent).
+  const handlePointerDown = useStableEvent(() => {
+    if (chordStateRef.current.step === 0) return;
+    clearTimeout(chordStateRef.current.timeoutId ?? undefined);
+    chordStateRef.current = { candidateIndices: [], step: 0, timeoutId: null };
+    publishBrowserShortcutPolicy();
+  });
+
   useEffect(() => {
     if (!enabled) return;
     if (!shortcutsAvailable) return;
@@ -421,6 +430,7 @@ export function useKeyboardShortcuts({
       resetModifiers();
     };
 
+    window.addEventListener("pointerdown", handlePointerDown, true);
     window.addEventListener("keydown", handleKeyDown, true);
     window.addEventListener("keyup", handleKeyUp, true);
     window.addEventListener("blur", handleBlurOrHide);
@@ -438,6 +448,7 @@ export function useKeyboardShortcuts({
           timeoutId: null,
         };
       }
+      window.removeEventListener("pointerdown", handlePointerDown, true);
       window.removeEventListener("keydown", handleKeyDown, true);
       window.removeEventListener("keyup", handleKeyUp, true);
       window.removeEventListener("blur", handleBlurOrHide);
@@ -453,6 +464,7 @@ export function useKeyboardShortcuts({
     handleBrowserShortcutInput,
     handleKeyDown,
     handleKeyUp,
+    handlePointerDown,
     resetModifiers,
     shortcutsAvailable,
   ]);

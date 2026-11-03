@@ -1,5 +1,6 @@
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_ZH_CN } from "./custom-voice-settings";
+import { SHORTCUT_FILE_ZH_CN } from "./custom-shortcut-file";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
@@ -2139,6 +2140,8 @@ export const zhCN: TranslationResources = {
   settings: {
     // CUSTOM(voice-settings)
     voiceSettings: VOICE_SETTINGS_ZH_CN,
+    // CUSTOM(shortcut-file)
+    shortcutFile: SHORTCUT_FILE_ZH_CN,
     title: "设置",
     loading: "正在加载设置...",
     groups: {

@@ -161,6 +161,13 @@ function WebHoverCard({
       const trigger = triggerRef.current as unknown as HTMLElement | null;
       if (!trigger) return false;
       if (event.key === "Escape" && open) {
+        // CUSTOM(chat-esc-focus): a card shown only by the pointer closes on Esc without taking
+        // the key, so the same press still does Esc's other jobs (back to the composer, interrupt).
+        if (!focusInside()) {
+          clearGraceTimer();
+          setOpen(false);
+          return false;
+        }
         event.preventDefault();
         if (focusInside()) trigger.focus();
         clearGraceTimer();

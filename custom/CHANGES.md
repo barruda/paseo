@@ -1599,21 +1599,28 @@ isBrowserInBottomPanel(input.browserId)`.
   the desktop `e2e/task-navigation.spec.ts`, which presses Ctrl+T inside the bottom panel's
   terminal.
 
-## chat-esc-focus: Esc in the chat returns to the composer
+## chat-esc-focus: Esc after selecting chat text returns to the composer
 
 - **Added:** 2026-10-16
 - **Commit:** `custom: return to the composer with Esc after selecting chat text`
 - **Why:** After selecting text in the chat with the mouse, or after scrolling up to read,
   typing again needed a click back into the composer.
-- **What:** On web and desktop, Esc in an agent's chat clears any chat text selection and focuses
-  that agent's composer, with or without a selection. The chat owns Esc when focus is inside its
-  timeline, or when nothing is focused and the chat holds the selection or was the last chat
-  pointed at or scrolled. (Until 2026-11-03 it needed a selection, so Esc after a plain click in
-  the chat did nothing.) It does nothing when focus is in an input, a menu, or a dialog, while a
-  web overlay or DOM popover is open, when the key has a modifier, or when a shortcut already
-  handled Esc with `preventDefault`. Esc's other jobs still run on the same press: if Interrupt agent is bound
+- **What:** On web and desktop, Esc with a non-empty text selection inside an agent's chat timeline
+  clears the selection and focuses that agent's composer. It does nothing when focus is in an
+  input, a menu, or a dialog, when the key has a modifier, or when a shortcut already handled Esc
+  with `preventDefault`. Esc's other jobs still run on the same press: if Interrupt agent is bound
   to Esc and the agent is running, that Esc also interrupts it. Native has no mouse selection and
   renders the plain surface.
+  Esc reaches the composer on the first press since 2026-11-03, through two fixes outside this
+  module. The user binds Focus message input to `Escape` and Interrupt agent to `Escape Escape`
+  (Settings > Shortcuts). The shortcut resolver used to let the chord win the prefix: the first
+  Esc was swallowed waiting for the second, so Esc only reached the composer through this
+  module's selection rule. Now a single combo fires at once when every chord sharing its first
+  key only repeats that key, and the chord stays armed: Esc focuses the composer, Esc Esc also
+  interrupts. Other chords (`Ctrl+W S`) still win their prefix. A click ends a pending chord, so
+  Esc, click, Esc is two single presses and does not interrupt the agent. And a hover card opened
+  only by the pointer (file links in the chat, the composer's status line, the context meter)
+  closes on Esc without taking the key; before, it swallowed the first Esc.
   Enter also focuses the composer when focus sits in the chat (not on a button or link inside it)
   or nowhere, and scrolling the chat back to the bottom does the same unless chat text is
   selected. With several chats on screen (Desk panes), only the chat last clicked or scrolled
@@ -1623,16 +1630,28 @@ isBrowserInBottomPanel(input.browserId)`.
   keydown listener, bubble phase), `surface.tsx` (native passthrough), `types.ts`. No conflict risk.
 - **Core files touched:** `agent-stream/view.tsx` renders `ChatEscFocusSurface` in place of
   `AssistantSelectionCopySurface` (it wraps that surface, so JSX depth stays the same);
+  `components/ui/hover-card.tsx` (`keyPressed`) closes a card without focus inside on Esc and
+  returns `false`; `keyboard/keyboard-shortcuts.ts` (`resolveInitialChordStep`,
+  `isRepeatedKeyChord`) fires the single combo before a repeated-key chord;
+  `hooks/use-keyboard-shortcuts.ts` resets a pending chord on `pointerdown`;
   `composer/index.tsx` calls `useRegisterChatComposerFocus(serverId, agentId,
 focusMessageInputForKeyboardAction)`; `agent-stream/view.tsx` passes its `isNearBottom` state
   to the surface.
 - **Re-apply:** Wrap the chat timeline's selection-copy surface in a DOM element the Esc listener
   can test the selection against, and keep `enabled={!readOnly}`. In the composer, register the
   same focus function the `message-input.focus` keyboard action uses, keyed by server and agent.
-  Leave the global shortcut handler and the `agent.interrupt` binding untouched.
-- **Verify:** `(cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts)` (the update
-  script runs it). In the app, select a word in an agent reply, press Esc: the selection clears
-  and the caret is in that agent's composer. Click the chat background and press Esc: same. Click the chat background and press Enter: the
+  Leave the `agent.interrupt` binding untouched. In the hover card, an Esc with focus outside the
+  card closes it and returns `false`. In `resolveInitialChordStep`, when a single combo matches
+  and every advancing chord candidate repeats one combo, return the single match with the chord
+  armed and `preventDefault: false`. In `useKeyboardShortcuts`, a capture `pointerdown` listener
+  resets a pending chord.
+- **Verify:** `(cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts
+src/keyboard/keyboard-shortcuts.test.ts)` and `(cd packages/app && npx vitest run --project
+browser src/components/ui/hover-card.browser.test.tsx)` (the update script runs them). With
+  `Escape` bound to Focus message input, click a sidebar row and press Esc once: the caret is in
+  the composer; click the chat and press Esc again within a second: the caret returns and the
+  agent keeps running. In the app, select a word in an agent reply, press Esc: the selection clears
+  and the caret is in that agent's composer. Click the chat background and press Enter: the
   caret is back in the composer. Scroll up, then scroll back down: the caret returns.
 
 ## chat-code-run: Run button on suggested shell commands
@@ -4243,3 +4262,30 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   By hand: open a New Agent tab and type `/` right away: the list shows at once; `!ls` creates
   the agent and shows the output in its chat; turn the critic on and the flame off in the draft,
   send a message: the new agent shows the critic on and the flame off.
+
+## shortcut-file: save and load the keyboard shortcuts as a JSON file
+
+- **Added:** 2026-11-03
+- **Commit:** `custom: Export and Import buttons save the keyboard shortcuts to a JSON file`
+- **Why:** The shortcuts live in the browser storage of one install (`@paseo:keyboard-shortcut-overrides`).
+  A fresh install, another machine or a cleared profile starts from the defaults. A file moves the
+  setup between them and can sit in a dotfiles repo.
+- **What:** Settings > Shortcuts has **Export** and **Import** beside the search field (desktop and
+  web; mobile has no shortcuts).
+  - Export downloads `paseo-shortcuts.json`: `{ "format": "paseo-shortcuts", "version": 1,
+"shortcuts": { "<binding id>": "Mod+K" | null } }`. Only the changed shortcuts are in it. `null`
+    is an unassigned shortcut, and extra shortcuts are `<binding id>#2` .. `#5`.
+  - Import replaces the current setup with the file (one write through `applyOverrides`), so ids the
+    file lacks go back to their default. Entries with an unknown binding id, a slot above 5 or a
+    combo that does not parse are skipped and counted in the toast. A file that isn't JSON, isn't
+    this format, or has a newer `version` is refused and nothing changes.
+- **Files:** `packages/app/src/keyboard/shortcut-file.ts` (+ test), `shortcut-file-io.ts` (download
+  and file picker), `i18n/resources/custom-shortcut-file.ts` (strings for the 9 locales).
+- **Core files touched:** `screens/settings/keyboard-shortcuts-section.tsx` (two buttons and their
+  handlers) and the 9 locale files (`shortcutFile: SHORTCUT_FILE_<LOCALE>` under `settings`). All
+  marked `CUSTOM(shortcut-file)`.
+- **Re-apply:** Add the two buttons next to `resetAllButton` in `KeyboardShortcutsSection` and call
+  `serializeShortcutFile(overrides)` / `diffShortcutOverrides(overrides, parsed.overrides)` through
+  `applyOverrides`. Add the `shortcutFile` strings to each locale.
+- **Verify:** `npx vitest run src/keyboard/shortcut-file.test.ts src/i18n/resources.test.ts`. By hand:
+  rebind a shortcut, Export, Reset all, Import: the rebind comes back.

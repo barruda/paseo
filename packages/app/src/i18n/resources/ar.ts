@@ -1,5 +1,6 @@
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_AR } from "./custom-voice-settings";
+import { SHORTCUT_FILE_AR } from "./custom-shortcut-file";
 import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
@@ -2197,6 +2198,8 @@ export const ar: TranslationResources = {
   settings: {
     // CUSTOM(voice-settings)
     voiceSettings: VOICE_SETTINGS_AR,
+    // CUSTOM(shortcut-file)
+    shortcutFile: SHORTCUT_FILE_AR,
     title: "إعدادات",
     loading: "جارٍ تحميل الإعدادات...",
     groups: {

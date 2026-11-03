@@ -1704,6 +1704,13 @@ function buildMatchFromBinding(
   };
 }
 
+// CUSTOM(chat-esc-focus): a chord such as `Escape Escape`, every step the same combo.
+function isRepeatedKeyChord(binding: ParsedShortcutBinding | undefined): boolean {
+  if (!binding) return false;
+  const steps = binding.combo.split(" ").filter((step) => step.length > 0);
+  return steps.length > 1 && steps.every((step) => step === steps[0]);
+}
+
 function resolveInitialChordStep(input: {
   event: KeyboardShortcutInput;
   context: KeyboardShortcutContext;
@@ -1737,6 +1744,25 @@ function resolveInitialChordStep(input: {
     if (!singleComboMatch) {
       singleComboMatch = buildMatchFromBinding(binding, event);
     }
+  }
+
+  // CUSTOM(chat-esc-focus): a single combo fires at once when every chord it shares a prefix with
+  // only repeats that key (Esc focuses the composer while Esc Esc interrupts), like a click before
+  // a double click. Waiting would swallow the single press. Other chords still win the prefix.
+  if (
+    singleComboMatch &&
+    advancingCandidateIndices.length > 0 &&
+    advancingCandidateIndices.every((index) => isRepeatedKeyChord(bindings[index]))
+  ) {
+    return {
+      match: singleComboMatch,
+      nextChordState: {
+        candidateIndices: advancingCandidateIndices,
+        step: 1,
+        timeoutId: createChordTimeout(onChordReset),
+      },
+      preventDefault: false,
+    };
   }
 
   if (advancingCandidateIndices.length > 0) {

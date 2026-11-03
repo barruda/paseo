@@ -125,3 +125,28 @@ it("does not bring the card back with the chat", async () => {
 
   expect(card()).toBeNull();
 });
+
+// CUSTOM(chat-esc-focus): a card the pointer opened must not swallow Esc, or the chat's
+// return-to-composer (and Interrupt agent) needs a second press.
+it("closes a pointer-opened card on Esc and lets the key through", async () => {
+  act(() => root.render(<Harness />));
+  openCard();
+  await settle();
+  expect(card()).not.toBeNull();
+
+  let reachedBubble = false;
+  const onBubble = (event: KeyboardEvent) => {
+    reachedBubble = !event.defaultPrevented;
+  };
+  window.addEventListener("keydown", onBubble);
+  act(() => {
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }),
+    );
+  });
+  window.removeEventListener("keydown", onBubble);
+  await settle();
+
+  expect(reachedBubble).toBe(true);
+  expect(card()).toBeNull();
+});

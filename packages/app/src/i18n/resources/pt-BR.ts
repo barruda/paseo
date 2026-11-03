@@ -1,5 +1,6 @@
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_PT_BR } from "./custom-voice-settings";
+import { SHORTCUT_FILE_PT_BR } from "./custom-shortcut-file";
 import { pluginSettings } from "./plugin-settings";
 
 export const ptBR: TranslationResources = {
@@ -2194,6 +2195,8 @@ export const ptBR: TranslationResources = {
   settings: {
     // CUSTOM(voice-settings)
     voiceSettings: VOICE_SETTINGS_PT_BR,
+    // CUSTOM(shortcut-file)
+    shortcutFile: SHORTCUT_FILE_PT_BR,
     title: "Configurações",
     loading: "Carregando configurações...",
     groups: {

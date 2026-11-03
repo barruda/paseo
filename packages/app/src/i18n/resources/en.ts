@@ -1,4 +1,5 @@
 import { VOICE_SETTINGS_EN } from "./custom-voice-settings";
+import { SHORTCUT_FILE_EN } from "./custom-shortcut-file";
 
 export const en = {
   paneFind: {
@@ -2187,6 +2188,8 @@ export const en = {
   settings: {
     // CUSTOM(voice-settings)
     voiceSettings: VOICE_SETTINGS_EN,
+    // CUSTOM(shortcut-file)
+    shortcutFile: SHORTCUT_FILE_EN,
     title: "Settings",
     loading: "Loading settings...",
     groups: {
