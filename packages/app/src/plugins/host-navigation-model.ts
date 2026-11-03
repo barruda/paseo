@@ -5,6 +5,8 @@ import { isHttpUrl } from "@/utils/http-url";
 interface HostNavigationOwner {
   browserAvailable: boolean;
   openAgent(input: { serverId: string; agentId: string }): void;
+  /** CUSTOM(turn-jump) */
+  requestTurnJump?(input: { serverId: string; agentId: string; turnStartedAt: string }): void;
   openWorkspace(input: NavigateToWorkspaceInput): void;
   resolveWorkspace(input: { serverId: string; workspaceId: string }): string | null;
   createBrowser(input: { initialUrl: string; hideToolbar?: boolean; tabIcon?: string }): {
@@ -19,8 +21,14 @@ export function createPluginHostNavigation(
   owner: HostNavigationOwner,
 ): NonNullable<PluginSurfaceProps["navigation"]> {
   return {
-    openAgent: ({ agentId, serverId: targetServerId }) =>
-      owner.openAgent({ serverId: targetServerId ?? serverId, agentId }),
+    openAgent: ({ agentId, serverId: targetServerId, turnStartedAt }) => {
+      const destinationServerId = targetServerId ?? serverId;
+      // CUSTOM(turn-jump): the request waits in a store until the agent's chat has its prompts.
+      if (turnStartedAt) {
+        owner.requestTurnJump?.({ serverId: destinationServerId, agentId, turnStartedAt });
+      }
+      owner.openAgent({ serverId: destinationServerId, agentId });
+    },
     openWorkspace: ({ workspaceId, serverId: targetServerId }) =>
       owner.openWorkspace({ serverId: targetServerId ?? serverId, workspaceId }),
     openBrowser: owner.browserAvailable

@@ -8,6 +8,8 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { getIsElectron } from "@/constants/platform";
 import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { createPluginHostNavigation } from "./host-navigation-model";
+// CUSTOM(turn-jump)
+import { requestTurnJump } from "@/turn-jump/store";
 
 export function usePluginHostNavigation(
   serverId: string,
@@ -20,6 +22,7 @@ export function usePluginHostNavigation(
         replaceCurrentTab,
         browserAvailable: getIsElectron(),
         openAgent: navigateToAgent,
+        requestTurnJump,
         openWorkspace: navigateToWorkspace,
         createBrowser: createWorkspaceBrowser,
         resolveWorkspace: ({ serverId: targetServerId, workspaceId }) =>

@@ -51,7 +51,15 @@ interface PluginNavigableHostProps extends PluginHostProps {
        */
       readonly replacePanel?: boolean;
     }) => void;
-    readonly openAgent: (input: { readonly agentId: string; readonly serverId?: string }) => void;
+    readonly openAgent: (input: {
+      readonly agentId: string;
+      readonly serverId?: string;
+      /**
+       * CUSTOM(turn-jump): scroll the chat to the prompt of the turn that started at this ISO time.
+       * Web and desktop only; elsewhere the agent just opens.
+       */
+      readonly turnStartedAt?: string;
+    }) => void;
     readonly openWorkspace: (input: {
       readonly workspaceId: string;
       readonly serverId?: string;

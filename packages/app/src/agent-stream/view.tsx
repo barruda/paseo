@@ -128,6 +128,9 @@ import {
   type WorkspaceFileOpenRequest,
 } from "@/workspace/file-open";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+// CUSTOM(turn-jump)
+import { shouldLoadChatOutline } from "@/turn-jump/model";
+import { useTurnJump, useTurnJumpRequest } from "@/turn-jump/use-turn-jump";
 import { useStableEvent } from "@/hooks/use-stable-event";
 import { useForkAgent } from "@/hooks/use-fork-agent";
 import { isWeb } from "@/constants/platform";
@@ -758,17 +761,32 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
           mountedHistoryMessageIds.has(messageId) || liveHeadMessageIds.has(messageId),
       };
     }, [baseRenderModel.segments.liveHead, mountedHistoryMessageIds]);
+    // CUSTOM(turn-jump): a plugin opened this agent at one of its turns.
+    const turnJumpRequest = useTurnJumpRequest(resolvedServerId, agentId);
     const chatOutline = useChatOutline({
       agentId,
       serverId: resolvedServerId,
       timelineEpoch,
       tail: effectiveStreamItems,
       head: effectiveStreamHead,
-      enabled: supportsChatOutline && chatOutlineEnabled,
+      // CUSTOM(turn-jump): a pending turn jump needs the prompt index even with the outline off.
+      enabled: shouldLoadChatOutline({
+        supported: supportsChatOutline,
+        enabled: chatOutlineEnabled,
+        turnJump: turnJumpRequest,
+      }),
       viewportRef,
       onJumpError: handleTimelineHistoryLoadError,
       mountedHistoryMessageIds,
       revealLoadedMessage: revealLoadedHistory,
+    });
+
+    // CUSTOM(turn-jump)
+    useTurnJump({
+      request: turnJumpRequest,
+      prompts: chatOutline.prompts,
+      active: isActive,
+      jumpToPrompt: chatOutline.jumpToPrompt,
     });
 
     // CUSTOM(chat-images): images in the loaded transcript, and where the reader is.

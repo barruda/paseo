@@ -43,6 +43,28 @@ describe("plugin host navigation", () => {
     ]);
   });
 
+  // CUSTOM(turn-jump)
+  it("asks for a turn jump on the destination host before opening the agent", () => {
+    const events: unknown[] = [];
+    const navigation = createPluginHostNavigation("selected", {
+      browserAvailable: false,
+      resolveWorkspace: () => null,
+      openAgent: (input) => events.push({ open: input }),
+      openWorkspace: () => undefined,
+      createBrowser: () => ({ browserId: "unused" }),
+      requestTurnJump: (input) => events.push({ jump: input }),
+    });
+    navigation.openAgent({ agentId: "a1", turnStartedAt: "2026-11-03T18:11:53.297Z" });
+    navigation.openAgent({ agentId: "a2", serverId: "remote" });
+    expect(events).toEqual([
+      {
+        jump: { serverId: "selected", agentId: "a1", turnStartedAt: "2026-11-03T18:11:53.297Z" },
+      },
+      { open: { serverId: "selected", agentId: "a1" } },
+      { open: { serverId: "remote", agentId: "a2" } },
+    ]);
+  });
+
   it("refuses unknown or removed workspaces before creating browser records", () => {
     const { navigation, destinations, browsers, workspaces } = setup();
     expect(() =>
