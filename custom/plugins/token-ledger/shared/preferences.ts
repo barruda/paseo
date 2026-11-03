@@ -8,6 +8,8 @@ export const preferences = defineSettings({
     openRouterPricing: z.boolean().default(true),
     builtinPricing: z.boolean().default(true),
     refreshInterval: z.enum(['normal', 'relaxed']).default('normal'),
+    // CUSTOM(token-ledger-trace): MLflow server whose traces each turn links to; empty turns it off.
+    mlflowUrl: z.string().default('http://localhost:5000'),
   }),
 });
 export type Preferences = z.infer<typeof preferences.schema>;

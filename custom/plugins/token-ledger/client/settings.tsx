@@ -1,10 +1,13 @@
 import { useSettings, type PluginSurfaceProps } from '@getpaseo/plugin/client';
-import { SettingsAction, SettingsCard, SettingsRow, SettingsSection, SettingsSelect, SettingsSwitch } from '@getpaseo/plugin/client/ui';
+import { SettingsAction, SettingsCard, SettingsInput, SettingsRow, SettingsSection, SettingsSelect, SettingsSwitch } from '@getpaseo/plugin/client/ui';
+import { useState } from 'react';
 import { Text, View } from 'react-native';
 import { preferences, type Preferences } from '../shared/preferences.ts';
 
 export function TokenLedgerSettings({ theme }: PluginSurfaceProps) {
   const settings = useSettings(preferences);
+  // CUSTOM(token-ledger-trace): typed text, saved by the button so each keystroke isn't a write.
+  const [mlflowDraft, setMlflowDraft] = useState<string | null>(null);
   const save = (patch: Partial<Preferences>) => {
     if (settings.status === 'ready' && !settings.saving) {
       void settings.save({ ...settings.values, ...patch }, settings.revision);
@@ -25,6 +28,12 @@ export function TokenLedgerSettings({ theme }: PluginSurfaceProps) {
         <SettingsCard>
           <SettingsSwitch label="Timeline summaries" hint="Add a usage summary after each newly finished turn. Changes apply to future summaries." value={settings.values.timelineSummaries} disabled={settings.saving} onValueChange={(timelineSummaries) => save({ timelineSummaries })} />
           <SettingsSelect label="Refresh frequency" hint="Live usage updates still refresh automatically when they arrive." value={settings.values.refreshInterval} disabled={settings.saving} options={[{ label: 'Normal · 3s active / 30s idle', value: 'normal' }, { label: 'Relaxed · 10s active / 60s idle', value: 'relaxed' }]} onValueChange={(refreshInterval) => save({ refreshInterval })} />
+        </SettingsCard>
+      </SettingsSection>
+      <SettingsSection title="MLflow traces">
+        <SettingsCard>
+          <SettingsInput label="MLflow server" hint="Each turn row links to its trace on this server, found by session and start time. Leave empty to hide the links." initialValue={settings.values.mlflowUrl} placeholder="http://localhost:5000" disabled={settings.saving} onChangeText={setMlflowDraft} />
+          <SettingsAction label="Save MLflow server" actionLabel="Save" disabled={settings.saving || mlflowDraft === null || mlflowDraft.trim() === settings.values.mlflowUrl} onPress={() => { if (mlflowDraft !== null) save({ mlflowUrl: mlflowDraft.trim() }); }} />
         </SettingsCard>
       </SettingsSection>
       <SettingsSection title="Cost estimates">

@@ -1,13 +1,21 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { ledgerEnsure, ledgerOverview, ledgerSync } from "./shared/ledger.ts";
 import { ensureTracker, handleEnsure, handleOverview, handleSync, observeStart, observeEnd, prepareAgent, stopTracker } from "./server/tracker.ts";
-import { initializePreferences } from './server/preferences.ts';
+import { getPreferences, initializePreferences } from './server/preferences.ts';
+// CUSTOM(token-ledger-trace)
+import { findTraceUrl } from './server/mlflow.ts';
+import { ledgerTrace } from './shared/trace.ts';
 
 export default function contribute(server: PluginServerContext) {
   const preferences = initializePreferences(server);
   server.handle(ledgerSync, async (input, context) => { await preferences.ready; return handleSync(input, context); });
   server.handle(ledgerEnsure, async (input, context) => { await preferences.ready; return handleEnsure(input, context); });
   server.handle(ledgerOverview, async (input, context) => { await preferences.ready; return handleOverview(input, context); });
+  // CUSTOM(token-ledger-trace)
+  server.handle(ledgerTrace, async (input) => {
+    await preferences.ready;
+    return findTraceUrl({ baseUrl: getPreferences().mlflowUrl, ...input });
+  });
   // Establish timeline demand before the provider can emit its first turn.
   // Lifecycle hooks run even with no desktop/mobile client connected.
   const beforeOpen = server.before("agent.session_open", async ({ request }, { paseo }) => {

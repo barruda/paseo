@@ -1,11 +1,16 @@
 import { useDenseLayout } from "./layout.ts";
 import type { PluginTheme } from "@getpaseo/plugin";
-import { useAgent, type PluginAgentPanelProps } from "@getpaseo/plugin/client";
+import { useAgent, useRpc, useSettings, type PluginAgentPanelProps } from "@getpaseo/plugin/client";
 import { ScrollView } from "@getpaseo/plugin/client/react-native";
 import { useLedger } from "./data.ts";
-import { useEffect, useMemo, useState } from "react";
-import { Text, View } from "react-native";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Linking, Pressable, Text, View, type PressableStateCallbackType } from "react-native";
+
+/** React Native Web adds `hovered` to Pressable's state. */
+type PressState = PressableStateCallbackType & { hovered?: boolean };
 import type { Ctx, InFlight, TurnRow } from "../shared/ledger.ts";
+import { preferences } from "../shared/preferences.ts";
+import { ledgerTrace } from "../shared/trace.ts";
 import { cacheRatio } from "../shared/pricing.ts";
 import {
   fmtCost,
@@ -124,7 +129,68 @@ function TurnCell({
   );
 }
 
-function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginTheme; dense: boolean }) {
+type Navigation = NonNullable<PluginAgentPanelProps["navigation"]>;
+// CUSTOM(turn-jump): our Paseo's openAgent also takes the turn's start; the published SDK types
+// don't list it yet.
+type OpenAgentAtTurn = (input: { agentId: string; turnStartedAt?: string }) => void;
+
+type TraceState = "idle" | "loading" | "missing" | "error";
+
+/** CUSTOM(token-ledger-trace): opens the turn's MLflow trace, looked up on press. */
+function TraceLink({ record, workspaceId, navigation, theme }: {
+  record: TurnRow; workspaceId: string; navigation: Navigation | undefined; theme: PluginTheme;
+}) {
+  const lookup = useRpc(ledgerTrace);
+  const [state, setState] = useState<TraceState>("idle");
+  const [message, setMessage] = useState<string | null>(null);
+  const sessionId = record.sessionId;
+  const startedAt = record.startedAt;
+  if (!sessionId || !startedAt) return null;
+  const open = async () => {
+    setState("loading");
+    try {
+      const result = await lookup({ sessionId, startedAt });
+      if (result.status === "found") {
+        setState("idle");
+        if (navigation?.openBrowser) navigation.openBrowser({ url: result.url, workspaceId });
+        else await Linking.openURL(result.url);
+        return;
+      }
+      setState(result.status === "error" ? "error" : "missing");
+      setMessage(result.status === "error" ? result.message : null);
+    } catch (error) {
+      setState("error");
+      setMessage(error instanceof Error ? error.message : String(error));
+    }
+  };
+  const label = state === "loading" ? "trace…" : state === "missing" ? "no trace" : state === "error" ? "trace failed" : "trace ↗";
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={message ? `MLflow trace: ${message}` : "Open the MLflow trace of this turn"}
+      disabled={state === "loading"}
+      onPress={() => { void open(); }}
+      hitSlop={4}
+    >
+      {({ hovered }: PressState) => (
+        <Text style={{
+          color: state === "error" ? theme.colors.statusDanger : theme.colors.accent,
+          fontSize: 10,
+          textDecorationLine: hovered ? "underline" : "none",
+        }}>
+          {label}
+        </Text>
+      )}
+    </Pressable>
+  );
+}
+
+function RecordRow({ record, theme, dense, onOpenTurn, traceLink }: {
+  record: TurnRow; theme: PluginTheme; dense: boolean;
+  /** CUSTOM(turn-jump): scrolls the agent's chat to this turn. */
+  onOpenTurn?: () => void;
+  traceLink?: ReactNode;
+}) {
   const cols = turnColumns(dense);
   const hasUsage = record.input !== null || record.cached !== null || record.output !== null || record.cacheWrite != null;
   const split = record.costBreakdown;
@@ -140,15 +206,20 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
           : fmtResidual(split?.otherUsd ?? null);
   const seqWidth = dense ? 20 : 24;
   return (
-    <View
-      style={{
+    <Pressable
+      disabled={!onOpenTurn}
+      onPress={onOpenTurn}
+      accessibilityRole={onOpenTurn ? "button" : undefined}
+      accessibilityLabel={onOpenTurn ? `Show turn ${record.seq} in the chat` : undefined}
+      style={({ hovered, pressed }: PressState) => ({
         flexDirection: "row",
         alignItems: "center",
         gap: cols.gap,
         paddingVertical: 6,
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.border,
-      }}
+        backgroundColor: onOpenTurn && (hovered || pressed) ? theme.colors.surface1 : "transparent",
+      })}
     >
       <View style={{ flex: 1, minWidth: dense ? 72 : 88 }}>
         <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
@@ -162,19 +233,17 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
             {fmtTime(record.endedAt)}
           </Text>
         </View>
-        <Text
-          numberOfLines={1}
-          style={{
-            color: theme.colors.foregroundMuted,
-            fontSize: 10,
-            fontVariant: ["tabular-nums"],
-            // Align under the time text: dot(7) + gap(6) + seq col + gap(6).
-            paddingLeft: 19 + seqWidth,
-          }}
-        >
-          {fmtDuration(record.durationMs)}
-            {record.usageGap ? ' · gap' : record.quality === "partial" ? " ≈" : ""}
-        </Text>
+        {/* Align under the time text: dot(7) + gap(6) + seq col + gap(6). */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, paddingLeft: 19 + seqWidth }}>
+          <Text
+            numberOfLines={1}
+            style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}
+          >
+            {fmtDuration(record.durationMs)}
+              {record.usageGap ? ' · gap' : record.quality === "partial" ? " ≈" : ""}
+          </Text>
+          {traceLink}
+        </View>
       </View>
       {hasUsage ? (
         <>
@@ -222,13 +291,16 @@ function RecordRow({ record, theme, dense }: { record: TurnRow; theme: PluginThe
         width={cols.cost}
         theme={theme}
       />
-    </View>
+    </Pressable>
   );
 }
 
-export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelProps) {
+export function TokenLedgerPanel({ theme, layout, agentId, workspaceId, navigation }: PluginAgentPanelProps) {
   const { dense, setWidth } = useDenseLayout(layout.compact);
   const { data, error } = useLedger(agentId);
+  const settings = useSettings(preferences);
+  const tracesOn = settings.status === "ready" && settings.values.mlflowUrl.trim() !== "";
+  const openAgent = navigation?.openAgent as OpenAgentAtTurn | undefined;
   // Make the panel↔agent binding visible: which session is this ledger for?
   const agentLabel = useAgent(agentId, (agent) => {
     const name = agent.title ?? agentId.slice(0, 8);
@@ -284,7 +356,18 @@ export function TokenLedgerPanel({ theme, layout, agentId }: PluginAgentPanelPro
                   // Keyed by seq, not record.id: ids of records persisted before
                   // v0.1.x lack the endedAt component and collide across session
                   // restarts (turnId reuse), which made React render ghost rows.
-                  <RecordRow key={record.seq} record={record} theme={theme} dense={dense} />
+                  <RecordRow
+                    key={record.seq}
+                    record={record}
+                    theme={theme}
+                    dense={dense}
+                    onOpenTurn={openAgent && record.startedAt
+                      ? () => openAgent({ agentId, turnStartedAt: record.startedAt ?? undefined })
+                      : undefined}
+                    traceLink={tracesOn
+                      ? <TraceLink record={record} workspaceId={workspaceId} navigation={navigation} theme={theme} />
+                      : null}
+                  />
                 ))}
                 {data.records.some((record) => fmtResidual(record.costBreakdown?.otherUsd ?? null).trim() !== "") ? (
                   <Text style={{ color: theme.colors.foregroundMuted, fontSize: 10, paddingTop: 6 }}>
