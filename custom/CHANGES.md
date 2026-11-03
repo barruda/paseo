@@ -1599,16 +1599,19 @@ isBrowserInBottomPanel(input.browserId)`.
   the desktop `e2e/task-navigation.spec.ts`, which presses Ctrl+T inside the bottom panel's
   terminal.
 
-## chat-esc-focus: Esc after selecting chat text returns to the composer
+## chat-esc-focus: Esc in the chat returns to the composer
 
 - **Added:** 2026-10-16
 - **Commit:** `custom: return to the composer with Esc after selecting chat text`
 - **Why:** After selecting text in the chat with the mouse, or after scrolling up to read,
   typing again needed a click back into the composer.
-- **What:** On web and desktop, Esc with a non-empty text selection inside an agent's chat timeline
-  clears the selection and focuses that agent's composer. It does nothing when focus is in an
-  input, a menu, or a dialog, when the key has a modifier, or when a shortcut already handled Esc
-  with `preventDefault`. Esc's other jobs still run on the same press: if Interrupt agent is bound
+- **What:** On web and desktop, Esc in an agent's chat clears any chat text selection and focuses
+  that agent's composer, with or without a selection. The chat owns Esc when focus is inside its
+  timeline, or when nothing is focused and the chat holds the selection or was the last chat
+  pointed at or scrolled. (Until 2026-11-03 it needed a selection, so Esc after a plain click in
+  the chat did nothing.) It does nothing when focus is in an input, a menu, or a dialog, while a
+  web overlay or DOM popover is open, when the key has a modifier, or when a shortcut already
+  handled Esc with `preventDefault`. Esc's other jobs still run on the same press: if Interrupt agent is bound
   to Esc and the agent is running, that Esc also interrupts it. Native has no mouse selection and
   renders the plain surface.
   Enter also focuses the composer when focus sits in the chat (not on a button or link inside it)
@@ -1629,7 +1632,7 @@ focusMessageInputForKeyboardAction)`; `agent-stream/view.tsx` passes its `isNear
   Leave the global shortcut handler and the `agent.interrupt` binding untouched.
 - **Verify:** `(cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts)` (the update
   script runs it). In the app, select a word in an agent reply, press Esc: the selection clears
-  and the caret is in that agent's composer. Click the chat background and press Enter: the
+  and the caret is in that agent's composer. Click the chat background and press Esc: same. Click the chat background and press Enter: the
   caret is back in the composer. Scroll up, then scroll back down: the caret returns.
 
 ## chat-code-run: Run button on suggested shell commands
@@ -3918,8 +3921,8 @@ waiting` tests in `agent-manager.test.ts`.
   the middle of the screen listing the tabs in visit order, like Alt+Tab, with the tab the walk
   is on highlighted; holding the modifier and pressing again moves the highlight further back.
   The tab only changes when the walk ends: releasing Ctrl, Alt or Meta, a mouse move or click
-  without them, the window losing focus, or 3 s without a press. Escape closes the switcher
-  without switching, and a click on a row (modifier still held) switches to it. The 3 s cover a
+  without them, the window losing focus, or 10 s without a press. Escape closes the switcher
+  without switching, and a click on a row (modifier still held) switches to it. The 10 s cover a
   modifier released inside a browser tab or HTML preview, whose key events never reach the app
   window. The tab you land on becomes the most recent. On native there is no switcher: each
   press switches right away, so it toggles between the last two tabs. **Settings → Editor →

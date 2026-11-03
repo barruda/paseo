@@ -25,7 +25,7 @@ import {
 
 // A modifier released inside a browser tab or an HTML preview never reaches this window, so a
 // pause this long also ends the walk.
-const IDLE_END_MS = 3000;
+const IDLE_END_MS = 10_000;
 const MODIFIER_KEYS = new Set(["Control", "Meta", "Alt", "OS"]);
 
 const visitsByScope = new Map<string, string[]>();
