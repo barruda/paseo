@@ -19,10 +19,10 @@ import { useSessionStore } from "@/stores/session-store";
 import { toErrorMessage } from "@/utils/error-messages";
 import { describeJevRouter, readJevLabels } from "./model";
 
-// CUSTOM(jev-router): the composer icon after the critic's. It shows on hosts with the jev-router
-// plugin and "Route new sessions" on, in drafts and running agents alike. A press flips "Apply the
-// pick" (on: tinted; off: shadow mode, outline); the tooltip also says what Jev did for this
-// session. It shares the plugin settings screen's query cache, so both stay in sync.
+// CUSTOM(jev-router): the composer icon after the critic's, on hosts with the jev-router plugin, in
+// drafts and running agents alike. A press turns the router on (tinted) or off (outline); the
+// tooltip also says what Jev did for this session. It shares the plugin settings screen's query
+// cache, so both stay in sync.
 
 // The critic's desaturated blue, so the two tinted icons read as one family.
 const ON_ICON_COLOR = "#56677d";
@@ -78,7 +78,7 @@ function PluginJevRouterToggle({
       const result = rpc.write.output.parse(
         await plugin.invoke(rpc.write.name, {
           revision: ready.revision,
-          values: { ...settings, apply: !settings.apply },
+          values: { ...settings, enabled: !settings.enabled },
         }),
       );
       if (result.status !== "saved") throw new Error(result.error);
@@ -91,19 +91,19 @@ function PluginJevRouterToggle({
     }
   }, [key, plugin, ready, saving, settings, toast]);
 
-  if (!settings?.enabled) return null;
+  if (!settings) return null;
   const lines = describeJevRouter({ settings, session: readJevLabels(labels) });
   return (
     <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger asChild triggerRefProp="ref">
         <AgentControlTrigger
           icon={Route}
-          iconColor={settings.apply ? ON_ICON_COLOR : undefined}
+          iconColor={settings.enabled ? ON_ICON_COLOR : undefined}
           surface="toolbar"
           label="Jev router"
           showToolbarLabel={false}
           onPress={handlePress}
-          accessibilityLabel={settings.apply ? "Jev router: on" : "Jev router: shadow"}
+          accessibilityLabel={settings.enabled ? "Jev router: on" : "Jev router: off"}
           testID="jev-router-toggle"
         />
       </TooltipTrigger>

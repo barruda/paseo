@@ -1,6 +1,12 @@
-import { JevRouterSettingsSchema } from "@getpaseo/protocol/jev-router";
+import {
+  formatClaudeModel,
+  type JevDecision,
+  JevRouterSettingsSchema,
+} from "@getpaseo/protocol/jev-router";
+import { RouteCardStash } from "../server/stash";
 import { describe, expect, it } from "vitest";
 import {
+  buildRouteCard,
   buildRouterArgs,
   expandHome,
   familyOf,
@@ -9,7 +15,7 @@ import {
   resolveHome,
 } from "./decision";
 
-const decision = (model: string, effort = "low", why = "small") => ({
+const decision = (model: string, effort = "low", why = "small"): JevDecision => ({
   model,
   modelId: `claude-${model}-5-5`,
   effort,
@@ -115,8 +121,11 @@ describe("parseRouterOutput", () => {
 });
 
 describe("planRoute", () => {
-  it("applies a cheaper family only when apply is on", () => {
-    const applied = planRoute({ decision: decision("sonnet"), home: opusHigh, apply: true });
+  const plan = (d: ReturnType<typeof decision>, home = opusHigh, test = false) =>
+    planRoute({ decision: d, home, test, routeId: "r1" });
+
+  it("applies a cheaper family and labels the session with the route id", () => {
+    const applied = plan(decision("sonnet"));
     expect(applied).toMatchObject({
       model: "claude-sonnet-5-5",
       thinkingOptionId: "low",
@@ -128,32 +137,74 @@ describe("planRoute", () => {
       "custom.jev.home": "opus/high",
       "custom.jev.why": "small",
       "custom.jev.applied": "true",
+      "custom.jev.route-id": "r1",
     });
-    const shadow = planRoute({ decision: decision("sonnet"), home: opusHigh, apply: false });
-    expect(shadow).toMatchObject({ model: "claude-sonnet-5-5", applied: false });
-    expect(shadow.labels["custom.jev.applied"]).toBe("false");
+  });
+
+  it("only reports the pick for the settings test", () => {
+    const tested = plan(decision("sonnet"), opusHigh, true);
+    expect(tested).toMatchObject({ model: null, applied: false });
+    expect(tested.labels["custom.jev.pick"]).toBe("sonnet/low");
+    expect(tested.labels["custom.jev.route-id"]).toBeUndefined();
   });
 
   it("never moves to the same or a stronger family", () => {
-    const sonnetHome = { family: "sonnet", effort: "medium" };
-    const same = planRoute({ decision: decision("sonnet", "high"), home: sonnetHome, apply: true });
+    const same = plan(decision("sonnet", "high"), { family: "sonnet", effort: "medium" });
     expect(same).toMatchObject({ model: null, thinkingOptionId: null, applied: false });
     expect(same.labels["custom.jev.pick"]).toBe("sonnet/medium");
-    const home = planRoute({
-      decision: decision("opus", "high", "home"),
-      home: opusHigh,
-      apply: true,
-    });
-    expect(home).toMatchObject({ model: null, applied: false });
+    expect(plan(decision("opus", "high", "home"))).toMatchObject({ model: null, applied: false });
   });
 
   it("keeps the home model when the router failed", () => {
-    const failed = planRoute({
-      decision: { ...decision("haiku"), why: "error", error: "TimeoutError" },
-      home: opusHigh,
-      apply: true,
-    });
+    const failed = plan({ ...decision("haiku"), why: "error", error: "TimeoutError" });
     expect(failed).toMatchObject({ model: null, applied: false });
     expect(failed.labels["custom.jev.why"]).toBe("error");
+  });
+});
+
+describe("buildRouteCard", () => {
+  it("keeps what the restart needs and drops a prompt too long for a row", () => {
+    const input = {
+      decision: decision("haiku", "low", "tiny"),
+      homeModelId: "claude-opus-5-5",
+      homeThinkingOptionId: "high",
+    };
+    expect(buildRouteCard({ ...input, prompt: "rename it" })).toEqual({
+      pickModelId: "claude-haiku-5-5",
+      pickEffort: "low",
+      why: "tiny",
+      homeModelId: "claude-opus-5-5",
+      homeThinkingOptionId: "high",
+      prompt: "rename it",
+    });
+    expect(buildRouteCard({ ...input, prompt: "x".repeat(40_000) }).prompt).toBeNull();
+  });
+});
+
+describe("RouteCardStash", () => {
+  it("hands each card out once and forgets it after 10 minutes", () => {
+    let now = 0;
+    const stash = new RouteCardStash(() => now);
+    const card = buildRouteCard({
+      prompt: "p",
+      decision: decision("haiku"),
+      homeModelId: "claude-opus-5-5",
+      homeThinkingOptionId: null,
+    });
+    stash.put("a", card);
+    stash.put("b", card);
+    expect(stash.take("a")).toEqual(card);
+    expect(stash.take("a")).toBeNull();
+    now = 11 * 60_000;
+    expect(stash.take("b")).toBeNull();
+  });
+});
+
+describe("formatClaudeModel", () => {
+  it("turns ids into names", () => {
+    expect(formatClaudeModel("claude-haiku-5-5")).toBe("Haiku 5.5");
+    expect(formatClaudeModel("claude-opus-4-8[1m]")).toBe("Opus 4.8 [1m]");
+    expect(formatClaudeModel("claude-sonnet-5")).toBe("Sonnet 5");
+    expect(formatClaudeModel("gpt-5")).toBe("gpt-5");
   });
 });

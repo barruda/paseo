@@ -40,7 +40,7 @@ describe("applyJevRoute", () => {
     });
   });
 
-  it("keeps the selection in shadow mode but still labels the session", () => {
+  it("keeps the selection when the pick was not applied but still labels the session", () => {
     expect(applyJevRoute(config, routed(false))).toEqual({
       config,
       labels: labels("sonnet/low", false),
@@ -56,23 +56,21 @@ describe("applyJevRoute", () => {
 });
 
 describe("describeJevRouter", () => {
-  it("says the mode and what a click does", () => {
-    expect(describeJevRouter({ settings: { apply: true }, session: null })[0]).toBe(
+  it("says on or off and what a click does", () => {
+    expect(describeJevRouter({ settings: { enabled: true }, session: null })).toEqual([
       "Jev router: on",
-    );
-    expect(describeJevRouter({ settings: { apply: false }, session: null })[1]).toMatch(
-      /Click to apply/,
+      "Small first prompts start on Sonnet or Haiku. Click to turn it off.",
+    ]);
+    expect(describeJevRouter({ settings: { enabled: false }, session: null })[0]).toBe(
+      "Jev router: off",
     );
   });
 
   it("tells what happened to this session", () => {
     const line = (raw: Record<string, string>) =>
-      describeJevRouter({ settings: { apply: true }, session: readJevLabels(raw) })[2];
+      describeJevRouter({ settings: { enabled: true }, session: readJevLabels(raw) })[2];
     expect(line(labels("sonnet/low", true))).toBe(
       "This session: started on sonnet/low (small), not opus/high",
-    );
-    expect(line(labels("sonnet/low", false))).toBe(
-      "This session: would have started on sonnet/low (small)",
     );
     expect(line(labels("opus/high", false, "home"))).toBe("This session: kept opus/high");
     expect(line(labels("opus/high", false, "error"))).toBe(

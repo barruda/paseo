@@ -4137,50 +4137,64 @@ notification"` (all in the update script). By hand: turn the critic on with a st
 
 ## jev-router: a new Claude session starts on Sonnet or Haiku when its first prompt is small
 
-- **Added:** 2026-11-03 (based on upstream v0.14.0)
-- **Commit:** `custom: Jev router picks a cheaper model for a new session's small first prompt`
+- **Added:** 2026-11-03 (based on upstream v0.14.0). Changed the same day: no shadow mode (just
+  on/off, on by default), a card in the chat when the model changed, and a button on it to undo.
+- **Commit:** `custom: Jev router picks a cheaper model for a new session's small first prompt`,
+  then `custom: Jev router is on or off, and a routed session gets a card to undo it`
 - **Why:** Most first prompts need the user's usual Opus/high, but some are a rename or a quick
   question. gnome-custom's `jev-router/route.py` asks TypeSafe Jev (~200 ms, ~US$ 0.00005) and,
   under the `downgrade_only` policy measured on the user's own prompts, drops to Sonnet or Haiku
   only when Jev is sure the task is small and plain. Handoff:
   https://app.notion.com/p/40d0cc33bd4781ddbf4af8d1b08092c0
-- **What:** The `jev-router` plugin (Settings > Plugins > jev-router > Jev router), off by default:
-  - **Route new sessions** turns the feature on and shows a route icon in the composer, after the
-    critic's (in drafts too, where the critic doesn't show).
-  - **Apply the pick**, off by default, is shadow mode: the pick is logged and labeled but the
-    session starts as selected. A press on the composer icon flips it (tinted = applying).
+- **What:** The `jev-router` plugin (Settings > Plugins > jev-router > Jev router):
+  - **Route new sessions**, on by default. A route icon in the composer, after the critic's (in
+    drafts too, where the critic doesn't show), turns it on (tinted) or off (outline); its
+    tooltip also says what Jev did for that session.
   - **TypeSafe API key** (empty: route.py reads `TYPESAFE_API_KEY` or `~/.config/typesafe/env`),
     router script path (default `~/projetos/gnome-custom/jev-router/route.py`), Python, Jev
     timeout (default 2 s), **Log decisions** (`~/.local/state/jev-router/decisions.jsonl`, read
-    with `route.py review`), and a **Test** button that routes a sample prompt.
+    with `route.py review`), and a **Test** button that routes a sample prompt without applying.
   - When the user sends a draft's first message, the app calls the plugin's `route` RPC before
     creating the agent, with the prompt, cwd, image count and the selected model/effort. Only
     Claude sessions above Haiku are routed; auto-submitted setups, follow-ups and other providers
     are not. Only a strictly cheaper family is applied, never a stronger one.
   - Fail-open: a missing plugin, an error, a script failure or no answer in 15 s creates the
     session as selected.
-  - Every routed session gets `custom.jev.pick`, `custom.jev.home`, `custom.jev.why` and
-    `custom.jev.applied` labels; the composer icon's tooltip says what Jev did for that session.
+  - Every routed session gets `custom.jev.pick`, `.home`, `.why` and `.applied` labels.
+  - When the model changed, the RPC also stashes a card (by `custom.jev.route-id`, in memory for
+    10 min) and the plugin's `agent.created` hook appends it to the new agent: one line, "Jev
+    começou em Haiku 5.5 · low (você escolheu Opus 5.5 · high)", and **Ignorar recomendação e
+    reiniciar com modelo selecionado**. That button turns Jev off, creates a session like the
+    agent's (provider, folder, mode, features) on the selected model and effort with the same
+    first prompt (text only; attached images are not resent), opens it and archives the routed
+    one. A first prompt over 30k characters is not kept, and its card has no button.
   - Installed on the personal daemon only, so work prompts (paseo-telus) never go to TypeSafe.
-- **Files:** `packages/protocol/src/jev-router.ts` (ids, settings schema, RPC schemas, labels);
-  `custom/plugins/jev-router/` (`shared/decision.ts` home/args/output/plan + test,
-  `shared/settings.ts`, `server/run.ts` spawns route.py, `client/settings-screen.tsx`);
+- **Files:** `packages/protocol/src/jev-router.ts` (ids, settings schema, RPC schemas, labels,
+  card schema, `formatClaudeModel`); `custom/plugins/jev-router/` (`shared/decision.ts`
+  home/args/output/plan/card + test, `shared/settings.ts`, `server/run.ts` spawns route.py,
+  `server/stash.ts`, `client/settings-screen.tsx`, `client/route-card.tsx`);
   `packages/app/src/jev-router/` (`model.ts` + test, `route.ts`, `toggle.tsx`);
+  `packages/app/src/plugins/react-native/restart-agent-button.impl.tsx`;
   `packages/server/src/server/plugins/custom-jev-router-plugin.e2e.test.ts` (fake route.py).
 - **Core files touched:** app `composer/agent-controls/index.tsx` (`<JevRouterToggle>` after
   `<CriticToggle>`), `composer/draft/workspace-tab.tsx` (`submitDraftCreateRequest` passes the
-  config through `routeDraftAgent` and spreads its `labels` into the create request). Both marked
+  config through `routeDraftAgent` and spreads its `labels` into the create request),
+  `plugins/react-native/host-components.tsx` and `plugins/evaluate.ts` (lend
+  `RestartAgentButton` to plugins, next to btw-actions' `AgentForkMenu`); plugin SDK
+  `packages/plugin/src/client/react-native.ts` (`RestartAgentButton` declaration). All marked
   `CUSTOM(jev-router)`.
 - **Re-apply:** Render `JevRouterToggle` at the end of the composer's agent control row. Where the
   draft tab builds the create-agent config from the composer selection, await `routeDraftAgent`
-  on it (skipping auto-submitted drafts) and add its `createOptions` to the request.
+  on it (skipping auto-submitted drafts) and add its `createOptions` to the request. Declare
+  `RestartAgentButton` in the plugin react-native entry and add it to the app's
+  `pluginReactNativeCompatRuntime`, lazily required like `AgentForkMenu`.
 - **Setup:** `paseo plugin install "$PWD/custom/plugins/jev-router" --home ~/.paseo` (personal
-  only), a desktop build for the app. Turn it on in Settings > Plugins > jev-router.
+  only), a desktop build for the app.
 - **Verify:** `npx vitest run custom/plugins/jev-router packages/app/src/jev-router` and the e2e
-  `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand: in a draft on the
-  personal Paseo the route icon shows after the flame; send "rename count to total in utils.ts"
-  from Opus/high; the tooltip of the new agent's icon says it would have started on haiku/low (or
-  started on it, with Apply on), and `route.py review` lists it.
+  `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand: on the personal Paseo,
+  send "rename count to total in utils.ts" from Opus/high in a draft; the session starts on
+  Haiku/low with the Jev card; its button turns the icon off and reopens the prompt on Opus/high
+  in a new session, the routed one archived.
 
 ## draft-composer-ready: a New Agent tab has its commands and composer controls from the start
 

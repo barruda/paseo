@@ -42,3 +42,22 @@ export interface AgentForkMenuProps {
  * `extraContext` into a new tab or workspace; in Tasks mode, straight into a tab.
  */
 export declare const AgentForkMenu: ComponentType<AgentForkMenuProps>;
+
+export interface RestartAgentButtonProps {
+  serverId: string;
+  agentId: string;
+  label: string;
+  /** The first prompt the new session starts with. */
+  prompt: string;
+  model: string;
+  thinkingOptionId: string | null;
+  /** Runs first; a throw cancels the restart. */
+  onBeforeRestart?(): Promise<void>;
+  testID?: string;
+}
+
+/**
+ * CUSTOM(jev-router): a text button that starts a new session like the agent's (provider, folder,
+ * mode, features) on `model`, sends it `prompt`, opens it and archives the agent.
+ */
+export declare const RestartAgentButton: ComponentType<RestartAgentButtonProps>;

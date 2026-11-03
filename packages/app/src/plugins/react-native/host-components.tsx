@@ -3,6 +3,7 @@
 import type {
   AgentForkMenuProps,
   FollowUpComposerProps,
+  RestartAgentButtonProps,
 } from "@getpaseo/plugin/client/react-native";
 
 export function FollowUpComposer(props: FollowUpComposerProps) {
@@ -14,5 +15,12 @@ export function FollowUpComposer(props: FollowUpComposerProps) {
 export function AgentForkMenu(props: AgentForkMenuProps) {
   const { AgentForkMenu: Impl } =
     require("./agent-fork-menu.impl") as typeof import("./agent-fork-menu.impl");
+  return <Impl {...props} />;
+}
+
+// CUSTOM(jev-router)
+export function RestartAgentButton(props: RestartAgentButtonProps) {
+  const { RestartAgentButton: Impl } =
+    require("./restart-agent-button.impl") as typeof import("./restart-agent-button.impl");
   return <Impl {...props} />;
 }

@@ -7,6 +7,7 @@ import {
   JEV_ROUTER_PLUGIN_ID,
   JEV_ROUTER_RPC,
   JEV_ROUTER_SETTINGS_ID,
+  JEV_TIMELINE_KIND,
   type JevRouterSettings,
 } from "@getpaseo/protocol/jev-router";
 import { afterEach, expect, test } from "vitest";
@@ -76,13 +77,27 @@ async function startRouter(values: Partial<JevRouterSettings>) {
     await client.close();
     await daemon.close();
   };
-  return { route, recorded, close, root };
+  return { route, recorded, close, root, client };
 }
 
-test("applies a cheaper pick and passes prompt, key and session facts to the script", async () => {
-  const router = await startRouter({ enabled: true, apply: true, apiKey: "test-key" });
+async function waitForCard(client: DaemonClient, agentId: string): Promise<unknown> {
+  const deadline = Date.now() + 10_000;
+  while (Date.now() < deadline) {
+    const timeline = await client.fetchAgentTimeline(agentId, { projection: "projected" });
+    const card = timeline.entries.find(
+      (entry) => entry.item.type === "plugin" && entry.item.kind === JEV_TIMELINE_KIND,
+    );
+    if (card && card.item.type === "plugin") return card.item.data;
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error("the jev-route card never showed");
+}
+
+test("applies a cheaper pick, passes prompt, key and session facts, and cards the agent", async () => {
+  const router = await startRouter({ apiKey: "test-key" });
   try {
-    await expect(router.route({})).resolves.toMatchObject({
+    const output = (await router.route({})) as { labels: Record<string, string> };
+    expect(output).toMatchObject({
       status: "routed",
       model: "claude-sonnet-5-5",
       thinkingOptionId: "low",
@@ -95,25 +110,36 @@ test("applies a cheaper pick and passes prompt, key and session facts to the scr
     expect(call.argv).toEqual(
       expect.arrayContaining(["--cwd", router.root, "--images", "1", "--home", "opus/high"]),
     );
+
+    // The app creates the agent with the route's labels; the plugin then appends the card.
+    const agent = await router.client.createAgent({
+      provider: "claude",
+      cwd: router.root,
+      labels: output.labels,
+    });
+    await expect(waitForCard(router.client, agent.id)).resolves.toEqual({
+      pickModelId: "claude-sonnet-5-5",
+      pickEffort: "low",
+      why: "small",
+      homeModelId: "claude-opus-5-5",
+      homeThinkingOptionId: "high",
+      prompt: "rename foo to bar",
+    });
   } finally {
     await router.close();
   }
 }, 60_000);
 
-test("shadow mode labels the pick without applying it; disabled skips the script", async () => {
-  const shadow = await startRouter({ enabled: true, apply: false });
-  try {
-    await expect(shadow.route({})).resolves.toMatchObject({
-      status: "routed",
-      applied: false,
-      labels: { "custom.jev.applied": "false", "custom.jev.pick": "sonnet/low" },
-    });
-  } finally {
-    await shadow.close();
-  }
+test("off skips the script; the settings test reports without applying", async () => {
   const off = await startRouter({ enabled: false });
   try {
-    await expect(off.route({})).resolves.toEqual({ status: "skipped", reason: "disabled" });
+    await expect(off.route({})).resolves.toEqual({ status: "skipped", reason: "off" });
+    await expect(off.route({ test: true })).resolves.toMatchObject({
+      status: "routed",
+      applied: false,
+      model: null,
+      labels: { "custom.jev.pick": "sonnet/low", "custom.jev.applied": "false" },
+    });
     await expect(off.route({ provider: "codex", test: true })).resolves.toMatchObject({
       status: "skipped",
     });
@@ -123,7 +149,7 @@ test("shadow mode labels the pick without applying it; disabled skips the script
 }, 60_000);
 
 test("a script that can't run keeps the selected model", async () => {
-  const router = await startRouter({ enabled: true, apply: true, python: "/nonexistent/python" });
+  const router = await startRouter({ python: "/nonexistent/python" });
   try {
     await expect(router.route({})).resolves.toMatchObject({
       status: "routed",

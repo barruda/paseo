@@ -3,7 +3,11 @@ import type { createPluginHosts } from "./hosts";
 import { openExternalUrl } from "@/utils/open-external-url";
 import * as pluginUiRuntime from "./react-native/ui";
 // CUSTOM(btw-actions)
-import { AgentForkMenu, FollowUpComposer } from "./react-native/host-components";
+import {
+  AgentForkMenu,
+  FollowUpComposer,
+  RestartAgentButton,
+} from "./react-native/host-components";
 import { useRevealedText } from "@/hooks/use-revealed-text";
 import { useSettings } from "./settings/use-settings";
 import * as pluginSharedRuntime from "@getpaseo/plugin";
@@ -125,6 +129,7 @@ const pluginReactNativeCompatRuntime = {
   useRevealedText,
   FollowUpComposer,
   AgentForkMenu,
+  RestartAgentButton, // CUSTOM(jev-router)
 };
 
 export function runPluginClientBundle(

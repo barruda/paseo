@@ -25,21 +25,20 @@ export function readJevLabels(labels: Record<string, string> | undefined): JevSe
   };
 }
 
-/** Tooltip lines: the mode, what a press does, and what happened to this session. */
+/** Tooltip lines: on or off, what a click does, and what happened to this session. */
 export function describeJevRouter(input: {
-  settings: Pick<JevRouterSettings, "apply">;
+  settings: Pick<JevRouterSettings, "enabled">;
   session: JevSessionLabels | null;
 }): string[] {
-  const lines = input.settings.apply
-    ? ["Jev router: on", "Small first prompts start on Sonnet or Haiku. Click for shadow mode."]
-    : ["Jev router: shadow", "Only logs what it would pick. Click to apply it."];
+  const lines = input.settings.enabled
+    ? ["Jev router: on", "Small first prompts start on Sonnet or Haiku. Click to turn it off."]
+    : ["Jev router: off", "New sessions start on the model you pick. Click to turn it on."];
   const session = input.session;
   if (!session) return lines;
   if (session.why === "error") lines.push(`This session: router failed, kept ${session.home}`);
-  else if (session.pick === session.home) lines.push(`This session: kept ${session.home}`);
   else if (session.applied)
     lines.push(`This session: started on ${session.pick} (${session.why}), not ${session.home}`);
-  else lines.push(`This session: would have started on ${session.pick} (${session.why})`);
+  else lines.push(`This session: kept ${session.home}`);
   return lines;
 }
 

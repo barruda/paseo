@@ -1,6 +1,7 @@
 import {
   JEV_LABELS,
   type JevDecision,
+  type JevRouteCardData,
   type JevRouteOutput,
   type JevRouterSettings,
 } from "@getpaseo/protocol/jev-router";
@@ -82,28 +83,50 @@ export function parseRouterOutput(stdout: string): JevDecision {
   };
 }
 
+/** `test` (the settings Test button) reports the pick without applying it. */
 export function planRoute(input: {
   decision: JevDecision;
   home: RouteHome;
-  apply: boolean;
+  test: boolean;
+  routeId: string;
 }): Extract<JevRouteOutput, { status: "routed" }> {
   const { decision, home } = input;
   const cheaper =
     !decision.error && (FAMILY_RANK[decision.model] ?? 99) < (FAMILY_RANK[home.family] ?? 0);
-  const applied = cheaper && input.apply;
+  const applied = cheaper && !input.test;
   const homeLabel = `${home.family}/${home.effort}`;
   return {
     status: "routed",
     decision,
     home: homeLabel,
-    model: cheaper ? decision.modelId : null,
-    thinkingOptionId: cheaper ? decision.effort : null,
+    model: applied ? decision.modelId : null,
+    thinkingOptionId: applied ? decision.effort : null,
     applied,
     labels: {
       [JEV_LABELS.pick]: cheaper ? `${decision.model}/${decision.effort}` : homeLabel,
       [JEV_LABELS.home]: homeLabel,
       [JEV_LABELS.why]: decision.error ? "error" : decision.why,
       [JEV_LABELS.applied]: applied ? "true" : "false",
+      ...(applied ? { [JEV_LABELS.routeId]: input.routeId } : {}),
     },
+  };
+}
+
+/** Plugin rows are capped at 64 KiB; a longer first prompt is not kept for the restart button. */
+const MAX_CARD_PROMPT_CHARS = 30_000;
+
+export function buildRouteCard(input: {
+  prompt: string;
+  decision: JevDecision;
+  homeModelId: string;
+  homeThinkingOptionId: string | null;
+}): JevRouteCardData {
+  return {
+    pickModelId: input.decision.modelId,
+    pickEffort: input.decision.effort,
+    why: input.decision.why,
+    homeModelId: input.homeModelId,
+    homeThinkingOptionId: input.homeThinkingOptionId,
+    prompt: input.prompt.length <= MAX_CARD_PROMPT_CHARS ? input.prompt : null,
   };
 }

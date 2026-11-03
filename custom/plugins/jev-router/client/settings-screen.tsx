@@ -122,7 +122,6 @@ function RouterControls({ settings, theme }: { settings: ReadySettings } & Plugi
     }
   }, [route]);
   const setEnabled = useCallback((enabled: boolean) => patch({ enabled }), [patch]);
-  const setApply = useCallback((apply: boolean) => patch({ apply }), [patch]);
   const setTimeoutSeconds = useCallback(
     (value: string) => patch({ timeoutSeconds: Number(value) }),
     [patch],
@@ -138,17 +137,10 @@ function RouterControls({ settings, theme }: { settings: ReadySettings } & Plugi
         <SettingsCard>
           <SettingsSwitch
             label="Route new sessions"
-            hint="Shows the router icon in the composer, after the critic's"
+            hint="The route icon in the composer, after the critic's, turns this on and off too. A routed session gets a card in the chat with a button to start over on the model you picked."
             value={values.enabled}
             onValueChange={setEnabled}
             disabled={settings.saving}
-          />
-          <SettingsSwitch
-            label="Apply the pick"
-            hint="Off is shadow mode: the pick is logged and shown in the icon's tooltip, the session starts as selected. The composer icon toggles this too."
-            value={values.apply}
-            onValueChange={setApply}
-            disabled={settings.saving || !values.enabled}
           />
           <SettingsSelect
             label="Jev timeout"
