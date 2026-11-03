@@ -46,6 +46,24 @@ describe("plugin client slash commands", () => {
     ).toBeNull();
   });
 
+  it("routes a bare git status to the sh plugin command", () => {
+    const sh = { name: "sh" };
+    expect(
+      resolvePluginClientSlashCommand({
+        text: " git status -sb ",
+        hasAttachments: false,
+        commands: [sh],
+      }),
+    ).toEqual({ command: sh, args: "git status -sb" });
+    expect(
+      resolvePluginClientSlashCommand({
+        text: "git statuses",
+        hasAttachments: false,
+        commands: [sh],
+      }),
+    ).toBeNull();
+  });
+
   it("routes !<command> to the sh plugin command", () => {
     const sh = { name: "sh" };
     expect(

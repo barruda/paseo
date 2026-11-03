@@ -8,6 +8,8 @@ export const TurnRecordSchema = z.object({
   turnId: z.string().nullable(),
   provider: z.string().nullable(),
   model: z.string().nullable(),
+  /** Thinking/effort option selected for the turn; absent in older records. */
+  effort: z.string().nullable().optional(),
   /** Provider session identity, when observed; optional for pre-0.8 records. */
   sessionId: z.string().nullable().optional(),
   startedAt: z.string().nullable(),

@@ -8,7 +8,8 @@ export function UsageTimelineRow({ item, theme }: PluginTimelineItemProps<UsageT
   const row = item.data;
   const cost = fmtCost(row.effectiveCostUsd);
   const tokens = tokensLine(row.input, row.cached, row.output, row.cacheWrite);
-  const details = [row.status === 'completed' ? null : row.status,
+  const modelEffort = [row.model, row.effort].filter(Boolean).join(' / ');
+  const details = [modelEffort || null, row.status === 'completed' ? null : row.status,
     row.usageGap ? 'usage gap' : null,
     tokens ? `${row.quality === 'partial' ? '≈ ' : ''}${tokens}` : 'usage unavailable',
     cost ? `${row.costSource !== 'reported' ? '≈' : ''}${cost}` : null,

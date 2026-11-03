@@ -8,10 +8,10 @@ const nullableCount = z.number().finite().nonnegative().nullable();
 const observationSchema = z.object({ input: nullableCount, cached: nullableCount, cacheWrite: nullableCount.optional(), output: nullableCount, cost: nullableCount });
 const contextSchema = z.object({ contextWindowUsedTokens: z.number().optional(), contextWindowMaxTokens: z.number().optional() });
 export const AgentStateSchema = z.object({
-  provider: z.string().nullable(), model: z.string().nullable(), sessionId: z.string().nullable(),
+  provider: z.string().nullable(), model: z.string().nullable(), effort: z.string().nullable().optional(), sessionId: z.string().nullable(),
   open: z.object({ key: z.string(), turnId: z.string().nullable(), startedAt: z.string(),
     usageGap: z.boolean().optional(),
-    provider: z.string().nullable(), model: z.string().nullable(), sessionId: z.string().nullable(),
+    provider: z.string().nullable(), model: z.string().nullable(), effort: z.string().nullable().optional(), sessionId: z.string().nullable(),
     observations: z.array(observationSchema), lastUsage: contextSchema.nullable(),
   }).nullable(),
   prevSessionCostUsd: nullableCount, lastObservation: observationSchema.nullable(),
@@ -22,18 +22,18 @@ export const AgentStateSchema = z.object({
 });
 export type AgentState = z.infer<typeof AgentStateSchema>;
 export type AgentSnapshotLike = {
-  id: string; provider?: string; model?: string | null;
+  id: string; provider?: string; model?: string | null; thinkingOptionId?: string | null;
   runtimeInfo?: { sessionId: string | null; model?: string | null } | null;
   activeTurn?: { turnId: string; startedAt: string | null } | null;
   lastUsage?: UsageLike;
 };
 export function createState(previous: TurnRecord | null = null): AgentState {
-  return { provider: previous?.provider ?? null, model: previous?.model ?? null, sessionId: previous?.sessionId ?? null,
+  return { provider: previous?.provider ?? null, model: previous?.model ?? null, effort: previous?.effort ?? null, sessionId: previous?.sessionId ?? null,
     open: null, prevSessionCostUsd: previous?.sessionCostUsd ?? null, lastObservation: null, lastCtx: null,
     lastClosedTurnId: previous?.turnId ?? null, lastClosedAt: previous?.endedAt ?? null };
 }
 function openTurn(state: AgentState, turnId: string | null, startedAt: string) {
-  state.open = { key: randomUUID(), turnId, startedAt, provider: state.provider, model: state.model,
+  state.open = { key: randomUUID(), turnId, startedAt, provider: state.provider, model: state.model, effort: state.effort ?? null,
     sessionId: state.sessionId, observations: [], lastUsage: null,
     ...(state.usageGapPending ? { usageGap: true } : {}) };
   state.usageGapPending = false;
@@ -50,7 +50,7 @@ export function closeTurn(agentId: string, state: AgentState, status: TurnRecord
   if (final) state.lastObservation = state.lastObservation && sameTokens(state.lastObservation, final)
     ? mergeObservation(state.lastObservation, final) : final;
   const record = finalizeTurn({ agentId, turnId: open.turnId, provider: open.provider ?? state.provider,
-    model: open.model ?? state.model, startedAt: open.startedAt, endedAt, status,
+    model: open.model ?? state.model, effort: open.effort ?? state.effort ?? null, startedAt: open.startedAt, endedAt, status,
     observations: open.observations, finalUsage, prevSessionCostUsd: state.prevSessionCostUsd });
   // Stable across replay/reload, even if settlement is retried at another time.
   record.id = open.key;
@@ -86,11 +86,13 @@ export function noteUsage(state: AgentState, snapshot: AgentSnapshotLike): TurnR
   const interrupted = sessionChanged(snapshot.id, state, snapshot.runtimeInfo?.sessionId);
   if (snapshot.provider) state.provider = snapshot.provider;
   if (snapshot.model !== undefined) state.model = snapshot.model;
+  if (snapshot.thinkingOptionId !== undefined) state.effort = snapshot.thinkingOptionId;
   // Fill metadata that wasn't available at start; don't reattribute an old turn
   // to a newly selected model at its end.
   if (state.open) {
     state.open.provider ??= state.provider;
     state.open.model ??= state.model;
+    state.open.effort ??= state.effort ?? null;
   }
   const usage = snapshot.lastUsage;
   if (usage && Number.isFinite(usage.contextWindowUsedTokens) && Number.isFinite(usage.contextWindowMaxTokens)) {

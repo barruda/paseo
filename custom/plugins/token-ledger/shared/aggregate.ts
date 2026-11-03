@@ -64,6 +64,7 @@ export type FinalizeInput = {
   turnId: string | null;
   provider: string | null;
   model: string | null;
+  effort?: string | null;
   startedAt: string | null;
   endedAt: string;
   status: TurnRecord["status"];
@@ -131,6 +132,7 @@ export function finalizeTurn(args: FinalizeInput): TurnRecord {
     turnId: args.turnId,
     provider: args.provider,
     model: args.model,
+    ...(args.effort !== undefined ? { effort: args.effort } : {}),
     startedAt: args.startedAt,
     endedAt: args.endedAt,
     durationMs,

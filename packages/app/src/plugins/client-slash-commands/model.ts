@@ -54,7 +54,9 @@ export function resolvePluginClientSlashCommand<Command extends SlashCommandDesc
 }): { command: Command; args: string } | null {
   if (input.hasAttachments) return null;
   // CUSTOM(shell-command): `!<command>` is shorthand for the shell-command plugin's `/sh <command>`.
-  const bang = /^!\s*([\s\S]+)$/.exec(input.text.trim());
+  // A bare `git status [args]` counts as `!git status ...`: easy to forget the `!`.
+  const trimmed = input.text.trim();
+  const bang = /^!\s*([\s\S]+)$/.exec(trimmed) ?? /^(git\s+status(?:\s[^\n]*)?)$/.exec(trimmed);
   if (bang) {
     const command = input.commands.find((candidate) => candidate.name === BANG_COMMAND_NAME);
     return command ? { command, args: bang[1]!.trim() } : null;

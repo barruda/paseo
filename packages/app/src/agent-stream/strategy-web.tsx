@@ -156,6 +156,43 @@ function canNestedScrollerConsumeUpwardInput(
   return false;
 }
 
+// CUSTOM(composer-page-scroll): PageUp/PageDown typed in this chat's composer page the feed.
+// The composer sits outside the scroll container, so the browser would only move the caret.
+// The lowest ancestor shared by the composer and this feed must hold no other feed, so a
+// composer in another split pane never pages this one.
+const STREAM_SCROLL_CONTAINER_SELECTOR = '[data-testid="agent-chat-scroll"]';
+const COMPOSER_PAGE_SCROLL_RATIO = 0.875;
+
+function getComposerPageScrollDirection(
+  event: KeyboardEvent,
+  scrollContainer: HTMLElement,
+): 1 | -1 | null {
+  if (event.key !== "PageUp" && event.key !== "PageDown") {
+    return null;
+  }
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) {
+    return null;
+  }
+  const target = event.target;
+  if (!(target instanceof Element) || !isEditableEventTarget(target)) {
+    return null;
+  }
+  if (scrollContainer.contains(target)) {
+    return null;
+  }
+  let sharedAncestor = scrollContainer.parentElement;
+  while (sharedAncestor && !sharedAncestor.contains(target)) {
+    sharedAncestor = sharedAncestor.parentElement;
+  }
+  if (!sharedAncestor) {
+    return null;
+  }
+  if (sharedAncestor.querySelectorAll(STREAM_SCROLL_CONTAINER_SELECTOR).length !== 1) {
+    return null;
+  }
+  return event.key === "PageDown" ? 1 : -1;
+}
+
 function isVerticalScrollbarGutterPress(
   event: PointerEvent,
   scrollContainer: HTMLElement,
@@ -1082,6 +1119,21 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       }
       markUpwardViewportInput();
     };
+    // CUSTOM(composer-page-scroll)
+    const handleComposerPageScroll = (event: KeyboardEvent) => {
+      const direction = getComposerPageScrollDirection(event, scrollContainer);
+      if (direction === null) {
+        return;
+      }
+      event.preventDefault();
+      if (direction < 0) {
+        markUpwardViewportInput();
+      }
+      scrollContainer.scrollBy({
+        top: direction * scrollContainer.clientHeight * COMPOSER_PAGE_SCROLL_RATIO,
+        behavior: "auto",
+      });
+    };
     const handlePointerDown = (event: PointerEvent) => {
       clearMouseScrollGesture();
       if (
@@ -1166,6 +1218,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     scrollContainer.addEventListener("scroll", handleDomScroll, { passive: true, capture: true });
     scrollContainer.addEventListener("wheel", handleWheel, { passive: true });
     scrollContainer.addEventListener("keydown", handleKeyDown, { passive: true });
+    document.addEventListener("keydown", handleComposerPageScroll);
     scrollContainer.addEventListener("pointerdown", handlePointerDown, { passive: true });
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("pointerup", handlePointerEnd, { passive: true });
@@ -1180,6 +1233,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       scrollContainer.removeEventListener("scroll", handleDomScroll, true);
       scrollContainer.removeEventListener("wheel", handleWheel);
       scrollContainer.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("keydown", handleComposerPageScroll);
       scrollContainer.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerEnd);
