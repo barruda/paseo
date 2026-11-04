@@ -81,7 +81,14 @@ describe("hideCriticRounds", () => {
   });
 
   it("shows the answer when the loop ends without approval", () => {
-    for (const status of ["limit", "question", "waiting", "failed", "canceled"] as const) {
+    for (const status of [
+      "limit",
+      "question",
+      "waiting",
+      "unverified",
+      "failed",
+      "canceled",
+    ] as const) {
       const result = hideCriticRounds([user("u1", "go"), reply("a1"), review("r1", status)], []);
       expect(ids(result.tail)).toEqual(["u1", "a1", "r1"]);
     }

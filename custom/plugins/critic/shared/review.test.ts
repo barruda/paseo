@@ -3,10 +3,13 @@ import { buildCriticFeedbackMessage, buildCriticNotice } from "@getpaseo/protoco
 import { describe, expect, it } from "vitest";
 import {
   buildCriticPrompt,
+  citedEvidenceFiles,
+  htmlImageSources,
   isReviewableTurn,
   isSameTurn,
   parseVerdict,
   readReviewedTurn,
+  sniffImageMime,
   verdictOutcome,
 } from "./review";
 
@@ -110,5 +113,90 @@ describe("verdictOutcome", () => {
       maxRounds: 2,
     });
     expect(outcome.feedback).toBe("The button is red.");
+  });
+});
+
+describe("evidence in the prompt", () => {
+  const turn = { request: "paint it", answer: "Painted.", round: 1 };
+  const config = { prompt: "", tools: "read" as const, images: [] };
+
+  it("lists what is attached and what the critic has not seen", () => {
+    const prompt = buildCriticPrompt({
+      config,
+      turn,
+      diff: null,
+      continuing: false,
+      evidence: {
+        attached: ["/tmp/a.png"],
+        unavailable: [{ path: "/tmp/b.png", reason: "file not found" }],
+      },
+    });
+    expect(prompt).toContain("1. /tmp/a.png");
+    expect(prompt).toContain("- /tmp/b.png: file not found");
+  });
+
+  it("leaves the section out when the answer links to nothing", () => {
+    const prompt = buildCriticPrompt({
+      config,
+      turn,
+      diff: null,
+      continuing: false,
+      evidence: { attached: [], unavailable: [] },
+    });
+    expect(prompt).not.toContain("<agent_evidence>");
+  });
+
+  it("offers unverified, which ends the loop with the note for the user", () => {
+    const prompt = buildCriticPrompt({ config, turn, diff: null, continuing: false });
+    expect(prompt).toContain("- unverified:");
+    const verdict = parseVerdict(
+      '<verdict>{"verdict":"unverified","feedback":"no shot"}</verdict>',
+    );
+    expect(verdict).toEqual({ verdict: "unverified", feedback: "no shot" });
+    expect(verdictOutcome({ verdict: verdict!, reply: "", round: 1, maxRounds: 3 })).toEqual({
+      status: "unverified",
+      feedback: "no shot",
+    });
+  });
+});
+
+describe("citedEvidenceFiles", () => {
+  it("finds images and pages in links and code spans, in order, without repeats", () => {
+    const answer = [
+      "`Temp/first.png`",
+      "![a](file:///tmp/my%20shot.png)",
+      "[page](/tmp/compare.html) [again](/tmp/compare.html)",
+      '[titled](/tmp/titled.webp "title")',
+      "[spaced](</tmp/with space.jpg>)",
+    ].join(" ");
+    expect(citedEvidenceFiles(answer)).toEqual([
+      "Temp/first.png",
+      "/tmp/my shot.png",
+      "/tmp/compare.html",
+      "/tmp/titled.webp",
+      "/tmp/with space.jpg",
+    ]);
+  });
+
+  it("ignores web links, other files and code that is not a path", () => {
+    const answer = "[a](https://x.dev/a.png) [b](/tmp/notes.md) [c](#a.png) `const a = 'b.png'`";
+    expect(citedEvidenceFiles(answer)).toEqual([]);
+  });
+});
+
+describe("htmlImageSources", () => {
+  it("reads local img sources and skips web and data ones", () => {
+    const html = `<img src="a.png"><img alt="x" src='/tmp/b.png'><img src="https://x/c.png"><img src="data:image/png;base64,AA">`;
+    expect(htmlImageSources(html)).toEqual(["a.png", "/tmp/b.png"]);
+  });
+});
+
+describe("sniffImageMime", () => {
+  it("recognizes images by their first bytes", () => {
+    expect(sniffImageMime(Uint8Array.from([0x89, 0x50, 0x4e, 0x47]))).toBe("image/png");
+    expect(sniffImageMime(Uint8Array.from([0xff, 0xd8, 0xff]))).toBe("image/jpeg");
+    expect(sniffImageMime(new TextEncoder().encode("GIF89a"))).toBe("image/gif");
+    expect(sniffImageMime(new TextEncoder().encode("RIFF0000WEBPVP8"))).toBe("image/webp");
+    expect(sniffImageMime(new TextEncoder().encode("<svg>"))).toBeNull();
   });
 });

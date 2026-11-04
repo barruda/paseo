@@ -4116,7 +4116,7 @@ waiting` tests in `agent-manager.test.ts`.
   - When a turn of a reviewed agent completes, the `critic` plugin reads the user's request, the
     agent's answer since the last user message and `git status` + `git diff HEAD`, and asks the
     critic, a Paseo subagent of the reviewed agent (label `custom.critic.role=critic`, in its
-    subagents track), for a `<verdict>` JSON block: approved, rejected, question, waiting.
+    subagents track), for a `<verdict>` JSON block: approved, rejected, question, waiting, unverified.
   - Rejected: the critique goes back to the agent as a `<critic-feedback round="N">` message and the
     loop runs again. On the last round the answer is shown as it is (status `limit`).
   - The chat hides the answer while the critic reads it and after it rejects it, and hides the
@@ -4124,13 +4124,23 @@ waiting` tests in `agent-manager.test.ts`.
     critique and the rejected answer. The toggle shows ✓ / warning / busy for the last review.
   - The daemon holds the "finished" notification of a reviewed agent (label
     `custom.critic.enabled=true`) and raises it when the plugin appends a review row that ends the
-    loop (approved, limit, question, failed). Critic agents never notify.
+    loop (approved, limit, question, unverified, failed). Critic agents never notify.
   - Read only is enforced for Claude critics (`disallowedTools`, default mode); for other providers
     the critic is told not to change anything and the plugin denies every permission it asks for.
     Off also takes Claude's read tools away.
+  - The critic is sent the images the answer links to (`server/evidence.ts`). Claude's read tools
+    stop at the workspace (default mode asks permission outside it, and the plugin denies every
+    permission), and agents keep screenshots in `/tmp`: on 2026-11-03 a critic rejected 11 rounds of
+    a visual task without seeing one capture. Linked pages are opened for their `<img>` files. At
+    most 6 images, the latest citations first; what is left out is listed in the prompt.
+  - Verdict **unverified**: the critic could not see what the verdict depends on. The answer goes to
+    the user with a warning card and the note, and nothing goes back to the agent.
+  - On web and desktop, pasting an image anywhere in the sheet adds a reference image
+    (`packages/app/src/critic/image-paste.ts`); a capture listener keeps it from the composer behind
+    the sheet. A text paste still reaches the prompt.
 - **Files:** `packages/protocol/src/critic.ts` (labels, markers, config and row schemas, RPC
   names); `custom/plugins/critic/` (`server/loop.ts` the loop, `server/store.ts` the config file
-  `$PASEO_HOME/custom-critic.json`, `server/diff.ts`, `shared/review.ts` prompt/verdict/turn reading
+  `$PASEO_HOME/custom-critic.json`, `server/diff.ts`, `server/evidence.ts`, `shared/review.ts` prompt/verdict/turn reading
   - test, `client/review-card.tsx`); `packages/app/src/critic/` (`model.ts` the chat filter and
     last status, `store.ts` pending notices, `rpc.ts`, `form-model.ts`, `toggle.tsx`, `sheet.tsx`, with
     tests); `packages/server/src/server/plugins/custom-critic-plugin.e2e.test.ts`.

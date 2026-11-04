@@ -1218,7 +1218,8 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
     scrollContainer.addEventListener("scroll", handleDomScroll, { passive: true, capture: true });
     scrollContainer.addEventListener("wheel", handleWheel, { passive: true });
     scrollContainer.addEventListener("keydown", handleKeyDown, { passive: true });
-    document.addEventListener("keydown", handleComposerPageScroll);
+    // Capture: react-native-web's TextInput stops every keydown from bubbling out of the composer.
+    document.addEventListener("keydown", handleComposerPageScroll, true);
     scrollContainer.addEventListener("pointerdown", handlePointerDown, { passive: true });
     window.addEventListener("pointermove", handlePointerMove, { passive: true });
     window.addEventListener("pointerup", handlePointerEnd, { passive: true });
@@ -1233,7 +1234,7 @@ function WebStreamViewport(props: StreamRenderInput & { isMobileBreakpoint: bool
       scrollContainer.removeEventListener("scroll", handleDomScroll, true);
       scrollContainer.removeEventListener("wheel", handleWheel);
       scrollContainer.removeEventListener("keydown", handleKeyDown);
-      document.removeEventListener("keydown", handleComposerPageScroll);
+      document.removeEventListener("keydown", handleComposerPageScroll, true);
       scrollContainer.removeEventListener("pointerdown", handlePointerDown);
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerEnd);

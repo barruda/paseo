@@ -109,6 +109,7 @@ export const CRITIC_STATUS_LABELS: Record<CriticReviewStatus, string> = {
   limit: "not approved after the last round",
   question: "agent asked you something",
   waiting: "agent is waiting on background work",
+  unverified: "could not verify; check it yourself",
   failed: "failed",
   canceled: "canceled",
 };

@@ -24,7 +24,7 @@ type CriticBadge = "approved" | "warning" | "busy" | null;
 
 function badgeFor(status: CriticReviewStatus | null): CriticBadge {
   if (status === "approved") return "approved";
-  if (status === "limit" || status === "failed") return "warning";
+  if (status === "limit" || status === "unverified" || status === "failed") return "warning";
   if (status === "reviewing" || status === "rejected") return "busy";
   return null;
 }

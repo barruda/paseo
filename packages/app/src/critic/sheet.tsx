@@ -20,6 +20,9 @@ import { useImageAttachmentPicker } from "@/hooks/use-image-attachment-picker";
 import { buildSelectableProviderSelectorProviders } from "@/provider-selection/provider-selection";
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { pickAndPersistImages } from "@/composer/actions";
+import { isWeb } from "@/constants/platform";
+import type { AttachmentMetadata } from "@/attachments/types";
+import { filesToImageAttachments } from "@/utils/image-attachments-from-files";
 import {
   deleteAttachments,
   encodeAttachmentsForSend,
@@ -28,6 +31,7 @@ import {
   persistAttachmentFromFileUri,
 } from "@/attachments/service";
 import { openCriticForm, type CriticFormModel } from "./form-model";
+import { listenForPastedImages } from "./image-paste";
 import { loadCriticConfig, saveCriticConfig } from "./rpc";
 import { useCriticStore } from "./store";
 
@@ -121,24 +125,49 @@ export function CriticSettingsSheet({
   );
   const handleMaxRounds = useCallback((value: string) => form.setMaxRounds(Number(value)), [form]);
 
+  const addPersistedImages = useCallback(
+    async (persisted: readonly AttachmentMetadata[]) => {
+      if (persisted.length === 0) return;
+      try {
+        const encoded = (await encodeAttachmentsForSend([...persisted])) ?? [];
+        const images: CriticImage[] = encoded.map((image, index) => ({
+          name: persisted[index]?.fileName ?? `image-${index + 1}`,
+          mimeType: image.mimeType,
+          data: image.data,
+        }));
+        form.addImages(images);
+      } finally {
+        await deleteAttachments([...persisted]);
+      }
+    },
+    [form],
+  );
   const handleAddImages = useCallback(async () => {
-    const persisted = await pickAndPersistImages({ pickImages, persister: IMAGE_PERSISTER });
-    if (persisted.length === 0) return;
-    try {
-      const encoded = (await encodeAttachmentsForSend(persisted)) ?? [];
-      const images: CriticImage[] = encoded.map((image, index) => ({
-        name: persisted[index]?.fileName ?? `image-${index + 1}`,
-        mimeType: image.mimeType,
-        data: image.data,
-      }));
-      form.addImages(images);
-    } finally {
-      await deleteAttachments(persisted);
-    }
-  }, [form, pickImages]);
+    await addPersistedImages(
+      await pickAndPersistImages({ pickImages, persister: IMAGE_PERSISTER }),
+    );
+  }, [addPersistedImages, pickImages]);
   const handleAddImagesPress = useCallback(() => {
     void handleAddImages();
   }, [handleAddImages]);
+
+  // The composer stays mounted behind the sheet: this listener takes the pasted image first.
+  useEffect(() => {
+    if (!isWeb) return;
+    return listenForPastedImages(document, {
+      canPaste: () => {
+        const current = form.getState();
+        return current.load.status === "ready" && !current.saving;
+      },
+      onFiles: (files) => {
+        filesToImageAttachments(files)
+          .then(addPersistedImages)
+          .catch((error: unknown) => {
+            form.reportImageError(`Could not add the pasted image: ${errorMessage(error)}`);
+          });
+      },
+    });
+  }, [addPersistedImages, form]);
 
   const handleSave = useCallback(async () => {
     const client = getHostRuntimeStore().getClient(serverId);
@@ -254,7 +283,9 @@ export function CriticSettingsSheet({
                 ))}
               </View>
             ) : (
-              <Text style={styles.hint}>Mockups or screenshots the critic compares against.</Text>
+              <Text style={styles.hint}>
+                Paste or add mockups or screenshots the critic compares against.
+              </Text>
             )}
           </View>
           <Row title="Mode" hint="Per request: a new critic for each of your messages.">

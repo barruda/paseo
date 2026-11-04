@@ -102,6 +102,8 @@ export const CriticReviewStatusSchema = z.enum([
   "question",
   /** The agent is waiting on background work and will go on by itself. */
   "waiting",
+  /** The verdict depends on something the critic could not see: the user has to check it. */
+  "unverified",
   "failed",
   /** The user sent a message or turned the critic off while it ran. */
   "canceled",
@@ -132,7 +134,11 @@ export function criticStatusHidesAnswer(status: CriticReviewStatus): boolean {
 /** Statuses that end the loop with something for the user to read. */
 export function criticStatusNotifies(status: CriticReviewStatus): boolean {
   return (
-    status === "approved" || status === "limit" || status === "question" || status === "failed"
+    status === "approved" ||
+    status === "limit" ||
+    status === "question" ||
+    status === "unverified" ||
+    status === "failed"
   );
 }
 
@@ -145,7 +151,7 @@ const NOTICE_CLOSE = "</critic-notice>";
 const FEEDBACK_PATTERN = /^\s*<critic-feedback round="(\d+)">/;
 
 const NOTICE_ON =
-  "From this message on, a reviewer (another model) reads each of your answers before the user does. End every turn with a complete report: what you changed, how you checked it, and what you left out. If the reviewer rejects an answer, its review reaches you in a <critic-feedback> message: fix what it points out and answer again with the full report.";
+  "From this message on, a reviewer (another model) reads each of your answers before the user does. End every turn with a complete report: what you changed, how you checked it, and what you left out. If the reviewer rejects an answer, its review reaches you in a <critic-feedback> message: fix what it points out and answer again with the full report. The reviewer receives the images your answer links to if the files exist when your turn ends: keep screenshots in place and link each one by its real path.";
 const NOTICE_OFF =
   "The reviewer is off from this message on: your answers go straight to the user again.";
 

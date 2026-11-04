@@ -62,6 +62,61 @@ export function isSameTurn(a: ReviewedTurn, b: ReviewedTurn): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Files the agent's answer links to
+// ---------------------------------------------------------------------------
+
+const EVIDENCE_FILE = /\.(?:png|jpe?g|gif|webp|html?)$/i;
+const MARKDOWN_LINK = /\]\(\s*(?:<([^>\n]+)>|([^)\s]+))[^)\n]*\)/g;
+const CODE_SPAN = /`([^`\n]+)`/g;
+const HTML_IMAGE = /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/gi;
+
+/** A local file path from a link target; null for web URLs, data URIs and anchors. */
+function localPathOf(target: string): string | null {
+  const value = target.trim();
+  const isFileUrl = /^file:\/\//i.test(value);
+  if (!isFileUrl && (/^[a-z][a-z0-9+.-]*:/i.test(value) || value.startsWith("#"))) return null;
+  const raw = isFileUrl ? value.replace(/^file:\/\/(?:localhost)?/i, "") : value;
+  try {
+    return decodeURI(raw.split(/[?#]/)[0] ?? raw);
+  } catch {
+    return raw;
+  }
+}
+
+/** Local image and page files the answer links to, in order, without repeats. */
+export function citedEvidenceFiles(answer: string): string[] {
+  const found: { index: number; path: string }[] = [];
+  for (const match of answer.matchAll(MARKDOWN_LINK)) {
+    const path = localPathOf(match[1] ?? match[2] ?? "");
+    if (path && EVIDENCE_FILE.test(path)) found.push({ index: match.index, path });
+  }
+  for (const match of answer.matchAll(CODE_SPAN)) {
+    const path = localPathOf(match[1] ?? "");
+    if (path && !/\s/.test(path) && EVIDENCE_FILE.test(path)) {
+      found.push({ index: match.index, path });
+    }
+  }
+  found.sort((a, b) => a.index - b.index);
+  return [...new Set(found.map((entry) => entry.path))];
+}
+
+/** The local images a page shows, in order. */
+export function htmlImageSources(html: string): string[] {
+  const paths = [...html.matchAll(HTML_IMAGE)].map((match) => localPathOf(match[1] ?? ""));
+  return paths.filter((path): path is string => path !== null);
+}
+
+/** The image type by its first bytes, among those the models accept; null for anything else. */
+export function sniffImageMime(bytes: Uint8Array): string | null {
+  const ascii = (start: number, end: number) => String.fromCharCode(...bytes.subarray(start, end));
+  if (bytes[0] === 0x89 && ascii(1, 4) === "PNG") return "image/png";
+  if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (ascii(0, 4) === "GIF8") return "image/gif";
+  if (ascii(0, 4) === "RIFF" && ascii(8, 12) === "WEBP") return "image/webp";
+  return null;
+}
+
+// ---------------------------------------------------------------------------
 // The critic's prompt
 // ---------------------------------------------------------------------------
 
@@ -70,7 +125,7 @@ const DEFAULT_INSTRUCTIONS =
 
 const TOOLS_LINE: Record<CriticConfig["tools"], string> = {
   off: "Do not use any tools. Judge only from what this message carries.",
-  read: "You may read files and search the repository to check the work. Never change anything: no edits, no commands that write.",
+  read: "You may read files and search the repository to check the work. Reads outside the workspace are refused. Never change anything: no edits, no commands that write.",
 };
 
 const MAX_REQUEST_CHARS = 20_000;
@@ -83,11 +138,19 @@ export function fitText(text: string, maxChars: number): string {
     : text;
 }
 
+/** What the plugin could attach of the files the agent's answer links to. */
+export interface EvidenceSummary {
+  /** Paths of the attached images, in the order they follow the reference images. */
+  attached: readonly string[];
+  unavailable: readonly { path: string; reason: string }[];
+}
+
 export interface CriticPromptInput {
   config: Pick<CriticConfig, "prompt" | "tools" | "images">;
   turn: Pick<ReviewedTurn, "request" | "answer" | "round">;
   /** null when the diff is off; a note when the workspace is not a git checkout. */
   diff: string | null;
+  evidence?: EvidenceSummary;
   /** True when this critic already reviewed earlier rounds of the same work. */
   continuing: boolean;
 }
@@ -107,7 +170,9 @@ export function buildCriticPrompt(input: CriticPromptInput): string {
     "</reviewer_instructions>",
   );
   if (config.images.length > 0 && !input.continuing) {
-    parts.push("The images attached to this message are references from the user for this review.");
+    parts.push(
+      `The first ${config.images.length} image(s) attached to this message are references from the user for this review.`,
+    );
   }
   parts.push(
     "",
@@ -130,9 +195,28 @@ export function buildCriticPrompt(input: CriticPromptInput): string {
       "</workspace_diff>",
     );
   }
+  const evidence = input.evidence;
+  if (evidence && (evidence.attached.length > 0 || evidence.unavailable.length > 0)) {
+    parts.push("", "<agent_evidence>");
+    if (evidence.attached.length > 0) {
+      parts.push(
+        "These files, linked from the agent's answer, are attached to this message as images, in this order:",
+        ...evidence.attached.map((path, index) => `${index + 1}. ${path}`),
+      );
+    }
+    if (evidence.unavailable.length > 0) {
+      parts.push(
+        "These could not be attached, so you have not seen them:",
+        ...evidence.unavailable.map(({ path, reason }) => `- ${path}: ${reason}`),
+      );
+    }
+    parts.push("</agent_evidence>");
+  }
   parts.push(
     "",
     TOOLS_LINE[config.tools],
+    "",
+    "The agent's description of a result you could not see is not evidence. When your verdict depends on how something looks or behaves and you could not see it, answer unverified: do not approve or reject on the description.",
     "",
     "Write your review, then end your reply with one verdict block, JSON inside the tags:",
     '<verdict>{"verdict": "approved", "feedback": ""}</verdict>',
@@ -141,6 +225,7 @@ export function buildCriticPrompt(input: CriticPromptInput): string {
     "- rejected: something is wrong or missing. feedback lists what the agent must fix, concrete and complete; the agent sees only the feedback.",
     "- question: the agent stopped to ask the user something it needs before going on.",
     "- waiting: the agent says it is waiting on background work (a build, a job) and will go on by itself.",
+    "- unverified: you could not see what the verdict depends on. feedback says what you could not check; the answer goes to the user with that note.",
   );
   return parts.join("\n");
 }
@@ -150,7 +235,7 @@ export function buildCriticPrompt(input: CriticPromptInput): string {
 // ---------------------------------------------------------------------------
 
 const VerdictSchema = z.object({
-  verdict: z.enum(["approved", "rejected", "question", "waiting"]),
+  verdict: z.enum(["approved", "rejected", "question", "waiting", "unverified"]),
   feedback: z.string().optional(),
 });
 export interface Verdict {

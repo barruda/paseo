@@ -1,5 +1,5 @@
 // CUSTOM(critic): exercises custom/plugins/critic against a real daemon with fake providers.
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -91,7 +91,7 @@ async function startReviewedAgent(verdict: string, overrides: Partial<CriticConf
     config,
     saveAsDefault: false,
   });
-  return { daemon, client, agent };
+  return { daemon, client, agent, workspace };
 }
 
 test("a rejected answer goes back to the agent until the last round", async () => {
@@ -149,6 +149,46 @@ test("an approved answer is finished once, when the critic approves", async () =
     expect(timeline.entries.filter((entry) => entry.item.type === "user_message")).toHaveLength(1);
     const reviewed = await client.fetchAgent(agent.id);
     expect(reviewed?.agent).toMatchObject({ requiresAttention: true, attentionReason: "finished" });
+  } finally {
+    await client.close();
+    await daemon.close();
+  }
+}, 60_000);
+
+test("an unverified answer reaches the user with the critic's note", async () => {
+  const { daemon, client, agent } = await startReviewedAgent(
+    '{"verdict":"unverified","feedback":"Could not see the wall."}',
+  );
+  try {
+    await client.sendAgentMessage(agent.id, "Respond with exactly: painted");
+    const rows = await waitForReview(client, agent.id, (all) =>
+      all.some((row) => row.status === "unverified"),
+    );
+    expect(rows.map((row) => row.status)).toEqual(["unverified"]);
+    expect(rows[0]?.feedback).toBe("Could not see the wall.");
+    const timeline = await client.fetchAgentTimeline(agent.id, { projection: "projected" });
+    expect(timeline.entries.filter((entry) => entry.item.type === "user_message")).toHaveLength(1);
+    const reviewed = await client.fetchAgent(agent.id);
+    expect(reviewed?.agent).toMatchObject({ requiresAttention: true, attentionReason: "finished" });
+  } finally {
+    await client.close();
+    await daemon.close();
+  }
+}, 60_000);
+
+test("the critic is sent the images the answer links to", async () => {
+  const { daemon, client, agent, workspace } = await startReviewedAgent('{"verdict":"approved"}');
+  try {
+    const shot = path.join(workspace, "shot.png");
+    await writeFile(shot, Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+    await client.sendAgentMessage(agent.id, `Respond with exactly: ![shot](${shot})`);
+    // The fake provider JSON-encodes a prompt that carries images, so its echo holds no parsable
+    // verdict. That encoding is the proof the image blocks arrived; only the prompt matters here.
+    const rows = await waitForReview(client, agent.id, (all) =>
+      all.some((row) => row.status === "failed"),
+    );
+    expect(rows.at(-1)?.feedback).toContain(`1. ${shot}`);
+    expect(rows.at(-1)?.feedback).toContain("</agent_evidence>");
   } finally {
     await client.close();
     await daemon.close();

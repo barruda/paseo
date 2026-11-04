@@ -59,6 +59,13 @@ export function reviewLook(data: CriticReviewData): Look {
         title: "Agent is waiting on background work",
         open: false,
       };
+    case "unverified":
+      return {
+        icon: "EyeOff",
+        tone: "warning",
+        title: "Critic could not verify this; check it yourself",
+        open: true,
+      };
     case "failed":
       return { icon: "TriangleAlert", tone: "danger", title: "Critic failed", open: true };
     case "canceled":

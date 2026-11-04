@@ -39,6 +39,7 @@ export interface CriticFormModel {
   setPrompt(prompt: string): void;
   addImages(images: readonly CriticImage[]): void;
   removeImage(index: number): void;
+  reportImageError(message: string): void;
   setMode(mode: CriticMode): void;
   setTools(tools: CriticTools): void;
   setIncludeDiff(includeDiff: boolean): void;
@@ -121,6 +122,7 @@ export function openCriticForm(): CriticFormModel {
     removeImage(index) {
       editDraft({ images: state.draft.images.filter((_, position) => position !== index) });
     },
+    reportImageError: (message) => publish({ error: message }),
     setMode: (mode) => editDraft({ mode }),
     setTools: (tools) => editDraft({ tools }),
     setIncludeDiff: (includeDiff) => editDraft({ includeDiff }),

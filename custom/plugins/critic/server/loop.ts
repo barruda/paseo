@@ -23,6 +23,7 @@ import {
   verdictOutcome,
 } from "../shared/review";
 import { readWorkspaceDiff } from "./diff";
+import { collectEvidence } from "./evidence";
 import type { CriticStore } from "./store";
 
 type Paseo = PluginHookContext["paseo"];
@@ -112,7 +113,8 @@ export class CriticLoop {
         requestId: event.request.id,
         response: {
           behavior: "deny",
-          message: "You are a read-only reviewer: judge from what you can read, change nothing.",
+          message:
+            "Refused: a critic changes nothing and does not read outside the workspace. Judge from what you can read; if your verdict depends on what you could not open, answer unverified.",
         },
       });
   }
@@ -179,8 +181,15 @@ export class CriticLoop {
         reviewRow({ ...base, status: "reviewing", feedback: null, error: null, durationMs: null }),
       );
 
-      const prompt = buildCriticPrompt({ config, turn, diff, continuing: critic.continuing });
-      const reply = await this.ask(critic, prompt, config);
+      const evidence = await collectEvidence(turn.answer, event.agent.cwd);
+      const prompt = buildCriticPrompt({
+        config,
+        turn,
+        diff,
+        evidence,
+        continuing: critic.continuing,
+      });
+      const reply = await this.ask(critic, prompt, config, evidence.images);
 
       const current = await this.readTurn(agent);
       const latest = await this.store.get(agentId);
@@ -274,13 +283,14 @@ export class CriticLoop {
     critic: { handle: PaseoAgentHandle; isNew: boolean },
     prompt: string,
     config: CriticConfig,
+    evidenceImages: readonly { data: string; mimeType: string }[],
   ): Promise<{ text: string; error: string | null }> {
-    const images =
-      critic.isNew && config.images.length > 0
-        ? config.images.map(({ data, mimeType }) => ({ data, mimeType }))
-        : undefined;
+    const references = critic.isNew
+      ? config.images.map(({ data, mimeType }) => ({ data, mimeType }))
+      : [];
+    const images = [...references, ...evidenceImages];
     let result = await critic.handle.run(prompt, {
-      ...(images ? { images } : {}),
+      ...(images.length > 0 ? { images } : {}),
       timeoutMs: CRITIC_TURN_TIMEOUT_MS,
     });
     for (let waits = 0; result.status === "permission" && waits < MAX_PERMISSION_WAITS; waits++) {
