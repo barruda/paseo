@@ -545,6 +545,66 @@ test("Tasks mode docks the focused task's Explorer", async ({ page }) => {
   }
 });
 
+// CUSTOM(desk-file-search): Ctrl+P and the Explorer open files as Desk tabs, in the focused task's
+// project even when the route still points at another project.
+test("Tasks mode opens files from Ctrl+P and the Explorer in the focused task's project", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await installDesktopRuntime(page, {
+    serverId: getServerId(),
+    manageBuiltInDaemon: false,
+    platform: "linux",
+  });
+  const first = await seedMockAgentWorkspace({
+    repoPrefix: "task-files-first-",
+    title: "First project task",
+    repo: { files: [{ path: "only-in-first.md", content: "first\n" }] },
+  });
+  const second = await seedMockAgentWorkspace({
+    repoPrefix: "task-files-second-",
+    title: "Second project task",
+    repo: {
+      files: [
+        { path: "only-in-second.md", content: "second palette\n" },
+        { path: "second-explorer.md", content: "second explorer\n" },
+      ],
+    },
+  });
+  try {
+    await openAgentRoute(page, first);
+    await page.getByTestId("task-navigation-switch").filter({ visible: true }).click();
+    const sidebar = page.getByTestId("task-navigation-sidebar");
+    await sidebar.getByTestId(`task-agent-${second.agentId}`).click({ button: "middle" });
+    const desk = page.getByTestId("desk-screen");
+    await expect(page).toHaveURL(new RegExp(`/workspace/${first.workspaceId}`));
+    await expect(
+      desk.locator('[data-desk-tab="pinned"]').filter({ hasText: "Second project" }),
+    ).toBeVisible();
+
+    await page.keyboard.press("Control+p");
+    const panel = page.getByTestId("command-center-panel");
+    await expect(panel).toBeVisible();
+    await page.keyboard.type("only-in");
+    await expect(panel.getByTestId("command-center-file-row-only-in-second.md")).toBeVisible();
+    await expect(panel.getByTestId("command-center-file-row-only-in-first.md")).toHaveCount(0);
+    await panel.getByTestId("command-center-file-row-only-in-second.md").click();
+    await expect(panel).toHaveCount(0);
+    await expect(desk.getByTestId("workspace-tab-file_only-in-second.md")).toBeVisible();
+    await expect(desk.getByText("second palette", { exact: false }).first()).toBeVisible();
+
+    await desk.getByTestId("workspace-explorer-toggle").click();
+    const explorer = desk.getByTestId("workspace-explorer-sidebar");
+    await explorer.getByTestId("workspace-tab-files").click();
+    await explorer.getByText("second-explorer.md", { exact: true }).click();
+    await expect(desk.getByTestId("workspace-tab-file_second-explorer.md")).toBeVisible();
+    await expect(desk.getByText("second explorer", { exact: false }).first()).toBeVisible();
+  } finally {
+    await first.cleanup();
+    await second.cleanup();
+  }
+});
+
 // CUSTOM(new-agent-projects): hovering the + menu's Agent row lists projects; one click starts a
 // draft in the picked project, in the workspace view and in a Desk.
 test("New agent flyout starts a draft in the picked project", async ({ page }) => {

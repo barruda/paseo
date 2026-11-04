@@ -5,6 +5,9 @@ import { revealWorkspaceTab } from "@/workspace-tabs/navigation";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { deskContextTab, useDesksStore } from "@/task-navigation/desks-store";
+import { openDeskTargetInMainContent } from "@/task-navigation/open-desk-target";
+import { useTaskNavigationStore } from "@/task-navigation/store";
 import { clearCommandCenterFocusRestoreElement } from "@/utils/command-center-focus-restore";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import {
@@ -54,8 +57,12 @@ export function useWorkspaceFileSearch(input: { enabled: boolean; query: string 
   openFile(path: string): void;
 } {
   const selection = useActiveWorkspaceSelection();
-  const serverId = selection?.serverId ?? null;
-  const workspaceId = selection?.workspaceId ?? null;
+  // CUSTOM(desk-file-search): a Desk mixes projects while the route stays on one, so Tasks mode
+  // searches the project the Explorer shows.
+  const tasksMode = useTaskNavigationStore((state) => state.enabled);
+  const contextTab = useDesksStore((state) => (tasksMode ? deskContextTab(state) : null));
+  const serverId = contextTab?.serverId ?? selection?.serverId ?? null;
+  const workspaceId = contextTab?.workspaceId ?? selection?.workspaceId ?? null;
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
   const client = useSessionStore((state) =>
     serverId ? (state.sessions[serverId]?.client ?? null) : null,
@@ -132,6 +139,7 @@ export function useWorkspaceFileSearch(input: { enabled: boolean; query: string 
         filePath: path,
         persistenceKey: buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
         openWorkspaceTabInFocusedPane: (workspaceKey, target, placement) =>
+          openDeskTargetInMainContent({ workspaceKey, target }) ??
           useWorkspaceLayoutStore.getState().openTab({
             workspaceKey,
             target,

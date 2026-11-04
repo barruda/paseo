@@ -4432,3 +4432,24 @@ src/composer/input/state.test.ts)`. In the desktop app, type something and dicta
   for a few seconds, the text comes back, and stop inserts everything. The app part needs a new app
   build; the daemon log line needs the daemons restarted. `dictation-stream-manager.test.ts` needs
   `PASEO_DICTATION_DEBUG` unset: with it set, final messages wait on a disk write and 3 tests fail.
+
+## desk-file-search: Ctrl+P opens files in Tasks mode
+
+- **Added:** 2026-11-04
+- **Commit:** `custom: Ctrl+P opens files as Desk tabs in the focused task's project`
+- **Why:** In Tasks mode Ctrl+P seemed to do nothing. The file opened in the workspace layout, which
+  the Desk doesn't show, and the search ran in the route's project, which a Desk doesn't follow.
+- **What:** In Tasks mode the Search files palette searches the project the Explorer shows (the
+  context task's). The picked file opens as a kept Desk tab in the main content, never in the bottom
+  panel. The workspace view is unchanged.
+- **Core files touched** (marked `CUSTOM(desk-file-search)`):
+  `command-center/workspace-file-search.ts`, `task-navigation/open-desk-target.ts`
+  (`openDeskTargetInMainContent`, `placement` on `openDeskTarget`).
+- **Re-apply:** In `useWorkspaceFileSearch`, read `deskContextTab` when `useTaskNavigationStore` is
+  enabled and prefer its `serverId`/`workspaceId` over the route's selection. Call
+  `openDeskTargetInMainContent` first in `openWorkspaceTabInFocusedPane`, and fall back to the
+  workspace layout's `openTab` when it returns null.
+- **Verify:** The "opens files from Ctrl+P and the Explorer" test in desktop
+  `e2e/task-navigation.spec.ts` (already in the update script). In the app: in Tasks mode, focus a
+  task of a project other than the route's, press Ctrl+P and open a file: a Desk tab shows it. Needs
+  a new app build; no daemon restart.
