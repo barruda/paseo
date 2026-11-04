@@ -520,6 +520,24 @@ function usePasteImagesEffect(args: PasteImagesEffectArgs): void {
   }, [disabled, textarea, isConnected, isDictating, isRealtimeVoiceForCurrentAgent, onAddImages]);
 }
 
+// CUSTOM(dictation-live-text): setting a textarea's value leaves nothing for the browser to undo,
+// so the transcribed part goes back in as an edit the user can undo with Ctrl+Z.
+function insertDictationTextWithUndo(
+  input: ComposerTextInputHandle | null,
+  base: string,
+  fullText: string,
+): void {
+  const element = getTextInputNativeElement(input);
+  if (!input || !(element instanceof HTMLTextAreaElement) || element.readOnly) return;
+  if (!fullText.startsWith(base) || fullText === base) return;
+  element.focus();
+  input.replaceText(base, { start: base.length, end: base.length });
+  if (!document.execCommand("insertText", false, fullText.slice(base.length))) {
+    input.replaceText(fullText, { start: fullText.length, end: fullText.length });
+  }
+  element.scrollTop = element.scrollHeight;
+}
+
 function focusTextInputOnWeb(
   textInputRef: React.MutableRefObject<ComposerTextInputHandle | null>,
 ): () => void {
@@ -1456,6 +1474,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const sendAfterTranscriptRef = useRef(false);
     // CUSTOM(dictation-live-text): what the box held before the first partial, null when idle.
     const dictationBaseRef = useRef<string | null>(null);
+    const dictationUndoBaseRef = useRef<string | null>(null);
     const serverInfo = useSessionStore(
       useCallback(
         (state) => {
@@ -1535,11 +1554,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       [replaceText],
     );
 
+    // What was transcribed stays in the box; the effect below makes Ctrl+Z take it back out.
     const handleDictationCancelled = useCallback(() => {
-      const base = dictationBaseRef.current;
-      dictationBaseRef.current = null;
-      if (base !== null) replaceText(base);
-    }, [replaceText]);
+      dictationUndoBaseRef.current = dictationBaseRef.current;
+    }, []);
 
     const handleDictationError = useCallback(
       (error: Error) => {
@@ -1623,7 +1641,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     // CUSTOM(dictation-live-text): "failed" keeps the base, so a retry rewrites the same text.
     useEffect(() => {
-      if (!showDictationOverlay) dictationBaseRef.current = null;
+      if (showDictationOverlay) return;
+      const undoBase = dictationUndoBaseRef.current;
+      dictationBaseRef.current = null;
+      dictationUndoBaseRef.current = null;
+      if (undoBase === null || !isWeb) return;
+      // Runs here because the box is read-only until the overlay closes.
+      focusTextInputOnWeb(textInputRef);
+      insertDictationTextWithUndo(textInputRef.current, undoBase, valueRef.current);
     }, [showDictationOverlay]);
 
     const startDictationIfAvailable = useCallback(
@@ -1675,6 +1700,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     }, [retryFailedDictation]);
 
     const handleDiscardFailedRecording = useCallback(() => {
+      // CUSTOM(dictation-live-text): same as cancel, the text stays and Ctrl+Z removes it.
+      dictationUndoBaseRef.current = dictationBaseRef.current;
       discardFailedDictation();
     }, [discardFailedDictation]);
 

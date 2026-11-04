@@ -4396,9 +4396,13 @@ src/plugins/host-navigation.test.ts)`. In the desktop app, click an old row in a
   `startDictationStream` and `finishDictationStream` wait for it.
 - **What:**
   - Each partial writes `base + partial` to the composer (`handleDictationPartial`), where `base` is
-    the text from before the first partial. The final transcript replaces the partial, and cancel
-    restores `base`. Partials also reach the draft, so a failure or leaving the screen keeps what
-    was transcribed. The discard button on a failed dictation keeps the text and drops the audio.
+    the text from before the first partial. The final transcript replaces the partial. Partials
+    also reach the draft, so a failure or leaving the screen keeps what was transcribed.
+  - Cancel (Esc, Esc Esc, the X) and discarding a failed dictation keep the transcribed text and
+    drop the audio. On web and desktop the focus returns to the box and Ctrl+Z removes that text:
+    setting a textarea's value leaves nothing to undo, so `insertDictationTextWithUndo` puts it back
+    with `document.execCommand("insertText")`. It runs after the overlay closes, because the box is
+    read-only until then.
   - The dictation controls take the toolbar's row below the text box instead of covering the
     composer. The box takes no input until dictation ends. Realtime voice still covers it.
   - When the daemon loses the stream mid-recording, the bar says so and the sender replays every
@@ -4412,8 +4416,9 @@ src/plugins/host-navigation.test.ts)`. In the desktop app, click an old row in a
   `hooks/use-dictation.shared.ts` (`onCancelled`), `i18n/resources/custom-voice-settings.ts`; server
   `dictation/dictation-stream-manager.ts`.
 - **Re-apply:** Pass `onPartialTranscript` to `useDictation` in the composer and write
-  `base + partial` with `replaceText`; use `base` for `applyDictationTranscript`'s `value` and
-  restore it on cancel. Render the `DictationOverlay` in the `toolbar` slot of
+  `base + partial` with `replaceText`; use `base` for `applyDictationTranscript`'s `value`. On
+  cancel keep the text and re-insert the part after `base` as an undoable edit once the box is
+  editable. Render the `DictationOverlay` in the `toolbar` slot of
   `ComposerInputPresentation`, and call `resolveComposerSurfacePresentation` with the realtime flag
   only. Keep the box non-editable and without pointer events while the bar shows; otherwise a
   double-click on an empty box starts voice mode (`empty-composer-voice`). In the sender, handle
@@ -4421,7 +4426,8 @@ src/plugins/host-navigation.test.ts)`. In the desktop app, click an old row in a
   while retryable and under the limit, otherwise hold.
 - **Verify:** `(cd packages/app && npx vitest run src/dictation/dictation-stream-sender.test.ts
 src/composer/input/state.test.ts)`. In the desktop app, type something and dictate: the words appear
-  after it within a few seconds. Cancel restores the typed text. To test recovery, kill the
+  after it within a few seconds. Press Esc: the text stays and the caret is in the box; Ctrl+Z
+  leaves only what you typed. To test recovery, kill the
   `Paseo Voice` child of your daemon during a long dictation (`kill -9`): the bar shows the error
   for a few seconds, the text comes back, and stop inserts everything. The app part needs a new app
   build; the daemon log line needs the daemons restarted. `dictation-stream-manager.test.ts` needs
