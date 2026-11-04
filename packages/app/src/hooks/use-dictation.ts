@@ -26,6 +26,7 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
     onTranscript,
     onPartialTranscript,
     onError,
+    onCancelled,
     onPermanentFailure,
     canStart,
     canConfirm,
@@ -56,6 +57,11 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   useEffect(() => {
     onErrorRef.current = onError;
   }, [onError]);
+
+  const onCancelledRef = useRef(onCancelled);
+  useEffect(() => {
+    onCancelledRef.current = onCancelled;
+  }, [onCancelled]);
 
   const onPermanentFailureRef = useRef(onPermanentFailure);
   useEffect(() => {
@@ -89,6 +95,11 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       client,
       format: PCM_DICTATION_FORMAT,
       createDictationId: generateMessageId,
+      // CUSTOM(dictation-live-text): shown while recording; the next partial clears it.
+      onStreamInterrupted: (streamError) => {
+        console.error("[useDictation] Dictation stream interrupted", streamError);
+        setError(streamError.message);
+      },
     });
   }
   useEffect(() => {
@@ -188,6 +199,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       const next = message.payload.text ?? "";
       latestPartialTranscriptRef.current = next;
       setPartialTranscript(next);
+      // CUSTOM(dictation-live-text): text is flowing again, so the interruption is over.
+      setError(null);
       onPartialTranscriptRef.current?.(next, { requestId: generateMessageId() });
     });
   }, [client]);
@@ -340,6 +353,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       setStatus("idle");
       clearStreamingState();
       actionGateRef.current.cancelling = false;
+      // CUSTOM(dictation-live-text)
+      onCancelledRef.current?.();
     }
   }, [audio, clearStreamingState, reportError, stopDurationTracking]);
 

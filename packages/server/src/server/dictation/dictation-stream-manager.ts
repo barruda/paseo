@@ -529,6 +529,8 @@ export class DictationStreamManager {
   }
 
   private failDictationStream(dictationId: string, error: string, retryable: boolean): void {
+    // CUSTOM(dictation-live-text): these only reached the client, so daemon.log couldn't explain a lost dictation.
+    this.logger.warn({ dictationId, error, retryable }, "Dictation stream failed");
     this.emit({
       type: "dictation_stream_error",
       payload: { dictationId, error, retryable },
@@ -543,6 +545,11 @@ export class DictationStreamManager {
     const state = this.streams.get(dictationId);
     const debugRecordingPath = await this.maybePersistDictationStreamAudio(dictationId);
     if (!state || this.streams.get(dictationId) !== state) return;
+    // CUSTOM(dictation-live-text)
+    this.logger.warn(
+      { dictationId, error, retryable, debugRecordingPath },
+      "Dictation stream failed",
+    );
     this.emit({
       type: "dictation_stream_error",
       payload: {

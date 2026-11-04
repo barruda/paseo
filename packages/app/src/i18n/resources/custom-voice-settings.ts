@@ -5,6 +5,8 @@
 type Strings<T> = { [K in keyof T]: T[K] extends string ? string : Strings<T[K]> };
 
 export const VOICE_SETTINGS_EN = {
+  dictationListening: "Listening…",
+  dictationInterrupted: "Transcription interrupted: {{error}}. Your audio is kept.",
   offline: "Connect to this host to see its voice settings.",
   updateTitle: "Update this host",
   updateBody: "Voice and dictation settings need a newer Paseo on this host.",
@@ -143,6 +145,8 @@ export const VOICE_SETTINGS_EN = {
 type VoiceSettingsStrings = Strings<typeof VOICE_SETTINGS_EN>;
 
 export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
+  dictationListening: "Ouvindo…",
+  dictationInterrupted: "Transcrição interrompida: {{error}}. Seu áudio está guardado.",
   offline: "Conecte-se a este host para ver as configurações de voz.",
   updateTitle: "Atualize este host",
   updateBody: "As configurações de voz e ditado exigem uma versão mais nova do Paseo neste host.",
@@ -279,6 +283,8 @@ export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
 };
 
 export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
+  dictationListening: "Escuchando…",
+  dictationInterrupted: "Transcripción interrumpida: {{error}}. Tu audio se conserva.",
   offline: "Conéctate a este host para ver su configuración de voz.",
   updateTitle: "Actualiza este host",
   updateBody: "La configuración de voz y dictado requiere un Paseo más reciente en este host.",
@@ -415,6 +421,8 @@ export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
 };
 
 export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
+  dictationListening: "Écoute en cours…",
+  dictationInterrupted: "Transcription interrompue : {{error}}. Votre audio est conservé.",
   offline: "Connectez-vous à cet hôte pour voir ses réglages vocaux.",
   updateTitle: "Mettez à jour cet hôte",
   updateBody:
@@ -552,6 +560,8 @@ export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
 };
 
 export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
+  dictationListening: "聞き取り中…",
+  dictationInterrupted: "文字起こしが中断されました: {{error}}。音声は保持されています。",
   offline: "音声設定を表示するには、このホストに接続してください。",
   updateTitle: "このホストを更新してください",
   updateBody: "音声と音声入力の設定には、このホストで新しい Paseo が必要です。",
@@ -688,6 +698,8 @@ export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
 };
 
 export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
+  dictationListening: "듣는 중…",
+  dictationInterrupted: "받아쓰기가 중단되었습니다: {{error}}. 오디오는 보관되어 있습니다.",
   offline: "음성 설정을 보려면 이 호스트에 연결하세요.",
   updateTitle: "이 호스트를 업데이트하세요",
   updateBody: "음성 및 받아쓰기 설정에는 이 호스트에 최신 Paseo가 필요합니다.",
@@ -824,6 +836,8 @@ export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
 };
 
 export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
+  dictationListening: "Слушаю…",
+  dictationInterrupted: "Расшифровка прервана: {{error}}. Аудио сохранено.",
   offline: "Подключитесь к этому хосту, чтобы увидеть настройки голоса.",
   updateTitle: "Обновите этот хост",
   updateBody: "Для настроек голоса и диктовки на этом хосте нужна более новая версия Paseo.",
@@ -960,6 +974,8 @@ export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
 };
 
 export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
+  dictationListening: "正在聆听…",
+  dictationInterrupted: "转写已中断：{{error}}。音频已保留。",
   offline: "连接到此主机以查看其语音设置。",
   updateTitle: "请更新此主机",
   updateBody: "语音和听写设置需要此主机上更新版本的 Paseo。",
@@ -1096,6 +1112,8 @@ export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
 };
 
 export const VOICE_SETTINGS_AR: VoiceSettingsStrings = {
+  dictationListening: "جارٍ الاستماع…",
+  dictationInterrupted: "توقف النسخ: {{error}}. تم الاحتفاظ بالصوت.",
   offline: "اتصل بهذا المضيف لعرض إعدادات الصوت الخاصة به.",
   updateTitle: "حدّث هذا المضيف",
   updateBody: "تتطلب إعدادات الصوت والإملاء إصدارًا أحدث من Paseo على هذا المضيف.",

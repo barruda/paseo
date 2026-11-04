@@ -4375,3 +4375,44 @@ src/server/agent/providers/claude/agent.test.ts)`. Daemon-side: needs the daemon
 - **Verify:** `(cd packages/app && npx vitest run src/turn-jump/model.test.ts
 src/plugins/host-navigation.test.ts)`. In the desktop app, click an old row in an agent's
   TokenLedger panel: the chat scrolls to that turn's message.
+
+## dictation-live-text: dictation types into the text box as you speak
+
+- **Added:** 2026-11-04 (based on upstream v0.14.0)
+- **Commit:** `custom: dictation shows live text in the composer and survives a dead stream`
+- **Why:** A long dictation gave no feedback beyond the volume meter, and you only learned it had
+  failed after pressing stop. The daemon already sent `dictation_stream_partial`, but the composer
+  dropped it. `dictation_stream_error` also went unheard while recording, because only
+  `startDictationStream` and `finishDictationStream` wait for it.
+- **What:**
+  - Each partial writes `base + partial` to the composer (`handleDictationPartial`), where `base` is
+    the text from before the first partial. The final transcript replaces the partial, and cancel
+    restores `base`. Partials also reach the draft, so a failure or leaving the screen keeps what
+    was transcribed. The discard button on a failed dictation keeps the text and drops the audio.
+  - The dictation controls take the toolbar's row below the text box instead of covering the
+    composer. The box takes no input until dictation ends. Realtime voice still covers it.
+  - When the daemon loses the stream mid-recording, the bar says so and the sender replays every
+    segment on a new stream (at most 3 times per dictation, because each replays the whole
+    recording). After a permanent error or the last restart it only buffers, and stop tries again
+    on a new stream; if that fails, the existing failed state offers retry.
+  - The daemon logs failed streams to `daemon.log` ("Dictation stream failed").
+- **Core files touched** (marked `CUSTOM(dictation-live-text)`): app `composer/input/input.tsx`,
+  `composer/input/state.ts` (`composeDictationText`), `components/dictation-controls.tsx`,
+  `dictation/dictation-stream-sender.ts`, `hooks/use-dictation.ts`,
+  `hooks/use-dictation.shared.ts` (`onCancelled`), `i18n/resources/custom-voice-settings.ts`; server
+  `dictation/dictation-stream-manager.ts`.
+- **Re-apply:** Pass `onPartialTranscript` to `useDictation` in the composer and write
+  `base + partial` with `replaceText`; use `base` for `applyDictationTranscript`'s `value` and
+  restore it on cancel. Render the `DictationOverlay` in the `toolbar` slot of
+  `ComposerInputPresentation`, and call `resolveComposerSurfacePresentation` with the realtime flag
+  only. Keep the box non-editable and without pointer events while the bar shows; otherwise a
+  double-click on an empty box starts voice mode (`empty-composer-voice`). In the sender, handle
+  `dictation_stream_error` for the active id when the stream is ready and not finishing: restart
+  while retryable and under the limit, otherwise hold.
+- **Verify:** `(cd packages/app && npx vitest run src/dictation/dictation-stream-sender.test.ts
+src/composer/input/state.test.ts)`. In the desktop app, type something and dictate: the words appear
+  after it within a few seconds. Cancel restores the typed text. To test recovery, kill the
+  `Paseo Voice` child of your daemon during a long dictation (`kill -9`): the bar shows the error
+  for a few seconds, the text comes back, and stop inserts everything. The app part needs a new app
+  build; the daemon log line needs the daemons restarted. `dictation-stream-manager.test.ts` needs
+  `PASEO_DICTATION_DEBUG` unset: with it set, final messages wait on a disk write and 3 tests fail.

@@ -4,10 +4,17 @@ import { i18n } from "@/i18n/i18next";
 
 const MAX_CHUNKS_PER_FLUSH_TURN = 128;
 const DICTATION_DRAIN_IDLE_TIMEOUT_MS = 30_000;
+// CUSTOM(dictation-live-text): each restart replays the whole recording, so a stream that keeps
+// dying (a worker crash loop) must stop replaying and wait for the user to finish.
+const MAX_STREAM_RESTARTS_PER_DICTATION = 3;
 
 const waitForNextFlushTurn = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
 type DictationStreamAckMessage = Extract<SessionOutboundMessage, { type: "dictation_stream_ack" }>;
+type DictationStreamErrorMessage = Extract<
+  SessionOutboundMessage,
+  { type: "dictation_stream_error" }
+>;
 
 interface DrainWaitResult {
   kind: "signaled" | "timed-out";
@@ -29,6 +36,8 @@ export interface DictationStreamSenderParams {
   client: DictationStreamClient | null;
   format: string;
   createDictationId?: () => string;
+  // CUSTOM(dictation-live-text): the daemon lost the stream while audio is still being captured.
+  onStreamInterrupted?: (error: Error) => void;
 }
 
 interface DictationFinishResult {
@@ -65,9 +74,16 @@ export class DictationStreamSender {
   private startGeneration = 0;
   private startPromise: Promise<void> | null = null;
 
+  // CUSTOM(dictation-live-text)
+  private readonly onStreamInterrupted: ((error: Error) => void) | undefined;
+  private streamRestarts = 0;
+  private streamHeld = false;
+  private finishing = false;
+
   constructor(params: DictationStreamSenderParams) {
     this.format = params.format;
     this.createDictationId = params.createDictationId ?? generateMessageId;
+    this.onStreamInterrupted = params.onStreamInterrupted;
     this.setClient(params.client);
   }
 
@@ -88,6 +104,10 @@ export class DictationStreamSender {
     }
 
     this.clientCleanup = client.subscribeRawMessages((message) => {
+      if (message.type === "dictation_stream_error") {
+        this.handleStreamError(message);
+        return;
+      }
       if (message.type !== "dictation_stream_ack") {
         return;
       }
@@ -118,6 +138,8 @@ export class DictationStreamSender {
   clearAll(): void {
     this.resetStreamForReplay();
     this.segments = [];
+    this.streamRestarts = 0;
+    this.streamHeld = false;
   }
 
   resetStreamForReplay(): void {
@@ -135,7 +157,7 @@ export class DictationStreamSender {
     this.segments.push(base64Pcm);
 
     const client = this.client;
-    if (!client?.isConnected) {
+    if (!client?.isConnected || this.streamHeld) {
       return;
     }
 
@@ -191,6 +213,7 @@ export class DictationStreamSender {
 
     this.startGeneration += 1;
     const generation = this.startGeneration;
+    this.streamHeld = false;
 
     const dictationId = this.createDictationId();
     this.dictationId = dictationId;
@@ -240,21 +263,26 @@ export class DictationStreamSender {
       throw new Error(i18n.t("common.errors.daemonClientDisconnected"));
     }
 
-    if (!this.dictationId) {
-      await this.restartStream("finalize");
-    }
-    if (this.startPromise) {
-      await this.startPromise;
-    }
+    this.finishing = true;
+    try {
+      if (!this.dictationId) {
+        await this.restartStream("finalize");
+      }
+      if (this.startPromise) {
+        await this.startPromise;
+      }
 
-    const dictationId = this.dictationId;
-    if (!dictationId || !this.streamReady) {
-      throw new Error("Failed to start dictation stream");
-    }
+      const dictationId = this.dictationId;
+      if (!dictationId || !this.streamReady) {
+        throw new Error("Failed to start dictation stream");
+      }
 
-    this.flush();
-    await this.waitForFlushDrain(finalSeq);
-    return client.finishDictationStream(dictationId, finalSeq);
+      this.flush();
+      await this.waitForFlushDrain(finalSeq);
+      return await client.finishDictationStream(dictationId, finalSeq);
+    } finally {
+      this.finishing = false;
+    }
   }
 
   cancel(): void {
@@ -283,6 +311,34 @@ export class DictationStreamSender {
     }
     this.acknowledgedSeq = message.payload.ackSeq;
     this.resolveDrainWaiters();
+  }
+
+  // CUSTOM(dictation-live-text): without this the daemon's error goes unheard while recording: the
+  // meter keeps moving, chunks go to a dead stream, and you only find out when you press stop.
+  private handleStreamError(message: DictationStreamErrorMessage): void {
+    if (message.payload.dictationId !== this.dictationId) {
+      return;
+    }
+    // startDictationStream and finishDictationStream wait for this error themselves.
+    if (!this.streamReady || this.finishing) {
+      return;
+    }
+    this.onStreamInterrupted?.(new Error(message.payload.error));
+    if (!message.payload.retryable || this.streamRestarts >= MAX_STREAM_RESTARTS_PER_DICTATION) {
+      this.holdStream();
+      return;
+    }
+    this.streamRestarts += 1;
+    void this.restartStream("stream-error").catch((error) => {
+      console.error("[DictationStreamSender] Failed to restart interrupted stream", error);
+      this.holdStream();
+    });
+  }
+
+  // Keeps buffering without sending. finish() and restartStream() start a new stream.
+  private holdStream(): void {
+    this.resetStreamForReplay();
+    this.streamHeld = true;
   }
 
   private invalidateStream(): void {

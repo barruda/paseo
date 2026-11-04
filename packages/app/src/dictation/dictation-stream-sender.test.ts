@@ -69,6 +69,16 @@ class FakeDaemonClient {
     this.isConnected = isConnected;
   }
 
+  emitStreamError(dictationId: string, retryable: boolean): void {
+    const message = {
+      type: "dictation_stream_error",
+      payload: { dictationId, error: "Local speech worker exited", retryable },
+    } as SessionOutboundMessage;
+    for (const listener of this.rawMessageListeners) {
+      listener(message);
+    }
+  }
+
   emitAck(dictationId: string, ackSeq: number): void {
     const message: FakeAck = {
       type: "dictation_stream_ack",
@@ -106,6 +116,112 @@ const promiseOutcome = async <T>(promise: Promise<T>, timeoutMs: number) => {
     new Promise<"timed-out">((resolve) => setTimeout(() => resolve("timed-out"), timeoutMs)),
   ]);
 };
+
+let nextId = 0;
+const chunksOf = (client: FakeDaemonClient, dictationId: string | null) =>
+  client.chunks.filter((chunk) => chunk.dictationId === dictationId);
+const startedSender = async (onStreamInterrupted = vi.fn()) => {
+  const client = new FakeDaemonClient();
+  const sender = new DictationStreamSender({
+    client,
+    format: "audio/pcm;rate=16000;bits=16",
+    createDictationId: () => `dictation-${(nextId += 1)}`,
+    onStreamInterrupted,
+  });
+  await sender.restartStream("start");
+  return { client, sender, onStreamInterrupted };
+};
+
+// CUSTOM(dictation-live-text)
+describe("a stream that dies while recording", () => {
+  it("reports it and replays every captured segment on a new stream", async () => {
+    const { client, sender, onStreamInterrupted } = await startedSender();
+    sender.enqueueSegment("a");
+    sender.enqueueSegment("b");
+    const deadId = sender.getDictationId()!;
+
+    client.emitStreamError(deadId, true);
+    await tick();
+    sender.enqueueSegment("c");
+
+    expect(onStreamInterrupted).toHaveBeenCalledTimes(1);
+    expect(onStreamInterrupted.mock.calls[0][0].message).toBe("Local speech worker exited");
+    expect(sender.getDictationId()).not.toBe(deadId);
+    const replayed = chunksOf(client, sender.getDictationId());
+    expect(replayed.map((c) => [c.seq, c.audio])).toEqual([
+      [0, "a"],
+      [1, "b"],
+      [2, "c"],
+    ]);
+  });
+
+  it("ignores errors from a stream it already left", async () => {
+    const { client, sender, onStreamInterrupted } = await startedSender();
+    const currentId = sender.getDictationId();
+
+    client.emitStreamError("some-other-stream", true);
+    await tick();
+
+    expect(onStreamInterrupted).not.toHaveBeenCalled();
+    expect(sender.getDictationId()).toBe(currentId);
+  });
+
+  it("stops sending after a permanent error, keeps the audio, and finish still delivers it", async () => {
+    const { client, sender } = await startedSender();
+    sender.enqueueSegment("a");
+
+    client.emitStreamError(sender.getDictationId()!, false);
+    await tick();
+    const startsAfterError = client.starts.length;
+    const chunksAfterError = client.chunks.length;
+    sender.enqueueSegment("b");
+    await tick();
+
+    expect(client.starts.length).toBe(startsAfterError);
+    expect(client.chunks.length).toBe(chunksAfterError);
+    expect(sender.getSegmentCount()).toBe(2);
+
+    await expect(sender.finish(sender.getFinalSeq())).resolves.toMatchObject({ text: "ok" });
+    const delivered = chunksOf(client, client.finishes[0].dictationId);
+    expect(delivered.map((c) => c.audio)).toEqual(["a", "b"]);
+  });
+
+  it("gives up replaying when the stream keeps dying", async () => {
+    const { client, sender } = await startedSender();
+    sender.enqueueSegment("a");
+
+    for (let attempt = 0; attempt < 10 && sender.getDictationId(); attempt += 1) {
+      client.emitStreamError(sender.getDictationId()!, true);
+      await tick();
+    }
+
+    // One start for the recording plus at most three restarts.
+    expect(client.starts.length).toBe(4);
+    expect(sender.getDictationId()).toBeNull();
+    expect(sender.getSegmentCount()).toBe(1);
+  });
+
+  it("leaves an error during finish to the finish call", async () => {
+    const { client, sender, onStreamInterrupted } = await startedSender();
+    sender.enqueueSegment("a");
+    const id = sender.getDictationId()!;
+    let resolveFinish: (value: { dictationId: string; text: string }) => void = () => undefined;
+    client.finishDictationStream = () =>
+      new Promise((resolve) => {
+        resolveFinish = resolve;
+      });
+
+    const finishing = sender.finish(sender.getFinalSeq());
+    await tick();
+    client.emitStreamError(id, true);
+    await tick();
+
+    expect(onStreamInterrupted).not.toHaveBeenCalled();
+    expect(client.starts.length).toBe(1);
+    resolveFinish({ dictationId: id, text: "done" });
+    await expect(finishing).resolves.toMatchObject({ text: "done" });
+  });
+});
 
 describe("DictationStreamSender", () => {
   it("enqueues segments and sends them after stream start", async () => {

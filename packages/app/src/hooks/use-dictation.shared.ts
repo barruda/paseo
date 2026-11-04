@@ -7,6 +7,8 @@ export interface UseDictationOptions {
   onTranscript: (text: string, meta: { requestId: string }) => void;
   onPartialTranscript?: (text: string, meta: { requestId: string }) => void;
   onError?: (error: Error) => void;
+  // CUSTOM(dictation-live-text): the user threw this recording away.
+  onCancelled?: () => void;
   onPermanentFailure?: (error: Error, context: { requestId: string }) => void;
   canStart?: () => boolean;
   canConfirm?: () => boolean;

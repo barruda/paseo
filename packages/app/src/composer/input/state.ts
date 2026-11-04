@@ -67,10 +67,17 @@ interface DictationTranscriptContext {
   autoSend: boolean;
 }
 
+// CUSTOM(dictation-live-text): the box shows `base + partial` while you speak, so every partial
+// and the final transcript are composed from the text that was there before dictation started.
+export function composeDictationText(base: string, text: string): string {
+  if (!text) return base;
+  const shouldPad = base.length > 0 && !/\s$/.test(base);
+  return `${base}${shouldPad ? " " : ""}${text}`;
+}
+
 export function applyDictationTranscript(text: string, ctx: DictationTranscriptContext): void {
   if (!text) return;
-  const shouldPad = ctx.value.length > 0 && !/\s$/.test(ctx.value);
-  const nextValue = `${ctx.value}${shouldPad ? " " : ""}${text}`;
+  const nextValue = composeDictationText(ctx.value, text);
 
   if (!ctx.autoSend) {
     ctx.replaceText(nextValue);

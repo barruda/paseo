@@ -273,6 +273,8 @@ if $VERIFY; then
   npm run typecheck
   step "Running customization tests"
   (cd packages/app && npx vitest run src/composer/input/state.test.ts --bail=1)
+  # Dictation writes live text to the composer and replays a stream that died while recording.
+  (cd packages/app && npx vitest run src/dictation/dictation-stream-sender.test.ts --bail=1)
   # Ruby syntax highlighting.
   (cd packages/highlight && npx vitest run src/__tests__/parsers.test.ts src/__tests__/highlighter.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/opener.test.ts --bail=1)

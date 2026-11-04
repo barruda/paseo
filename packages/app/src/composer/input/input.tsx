@@ -85,6 +85,7 @@ import {
 } from "./labels";
 import {
   applyDictationTranscript,
+  composeDictationText,
   computeCanStartDictation,
   resolveAlternateSendAction,
   resolveComposerSurfacePresentation,
@@ -611,7 +612,8 @@ function MessageInputOverlay({
         isRecording={isDictating}
         isProcessing={isDictationProcessing}
         status={dictationStatus}
-        errorText={dictationStatus === "failed" ? (dictationError ?? undefined) : undefined}
+        // CUSTOM(dictation-live-text): also shows a stream that died while still recording.
+        errorText={dictationError ?? undefined}
         onCancel={onCancelRecording}
         onAccept={onAcceptRecording}
         onAcceptAndSend={onAcceptAndSendRecording}
@@ -656,6 +658,8 @@ function FocusHint({
 
 interface ComposerTextSurfaceProps {
   readOnly: boolean;
+  // CUSTOM(dictation-live-text): the box stays visible during dictation but takes no input.
+  surfacePointerEvents: "auto" | "none";
   value: string;
   textReplacementKey: string;
   textInputRef: React.Ref<ComposerTextInputHandle>;
@@ -714,7 +718,10 @@ function ComposerTextSurface(props: ComposerTextSurfaceProps): React.ReactElemen
     );
   }
   return (
-    <View style={[styles.textInputScrollWrapper, props.fullscreen && styles.fullscreenTextSurface]}>
+    <View
+      style={[styles.textInputScrollWrapper, props.fullscreen && styles.fullscreenTextSurface]}
+      pointerEvents={props.surfacePointerEvents}
+    >
       {!isWeb && props.compact && !props.fullscreen ? (
         <Text
           accessible={false}
@@ -1447,6 +1454,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       getNativeElement: () => (isWeb ? getTextInputNativeElement(textInputRef.current) : null),
     }));
     const sendAfterTranscriptRef = useRef(false);
+    // CUSTOM(dictation-live-text): what the box held before the first partial, null when idle.
+    const dictationBaseRef = useRef<string | null>(null);
     const serverInfo = useSessionStore(
       useCallback(
         (state) => {
@@ -1490,7 +1499,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         const autoSend = sendAfterTranscriptRef.current;
         sendAfterTranscriptRef.current = false;
         applyDictationTranscript(text, {
-          value: valueRef.current,
+          // CUSTOM(dictation-live-text): the final text replaces the partial already in the box.
+          value: dictationBaseRef.current ?? valueRef.current,
           defaultSendBehavior,
           isAgentRunning,
           onQueue,
@@ -1508,6 +1518,28 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       },
       [replaceText, onSubmit, onQueue, attachments, cwd, isAgentRunning, defaultSendBehavior],
     );
+
+    // CUSTOM(dictation-live-text): the text box is the feedback that dictation is working, and
+    // what was transcribed so far survives a failure or leaving the screen as a draft.
+    const handleDictationPartial = useCallback(
+      (text: string) => {
+        if (dictationBaseRef.current === null) {
+          if (!text) return;
+          dictationBaseRef.current = valueRef.current;
+        }
+        const nextText = composeDictationText(dictationBaseRef.current, text);
+        replaceText(nextText, { start: nextText.length, end: nextText.length });
+        const element = isWeb ? getTextInputNativeElement(textInputRef.current) : null;
+        if (element) element.scrollTop = element.scrollHeight;
+      },
+      [replaceText],
+    );
+
+    const handleDictationCancelled = useCallback(() => {
+      const base = dictationBaseRef.current;
+      dictationBaseRef.current = null;
+      if (base !== null) replaceText(base);
+    }, [replaceText]);
 
     const handleDictationError = useCallback(
       (error: Error) => {
@@ -1558,6 +1590,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     } = useDictation({
       client,
       onTranscript: handleDictationTranscript,
+      onPartialTranscript: handleDictationPartial,
+      onCancelled: handleDictationCancelled,
       onError: handleDictationError,
       canStart: canStartDictation,
       canConfirm: canConfirmDictation,
@@ -1576,7 +1610,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
     const showRealtimeOverlay = isRealtimeVoiceForCurrentAgent;
     const showOverlay = showDictationOverlay || showRealtimeOverlay;
-    const surfacePresentation = resolveComposerSurfacePresentation(showOverlay);
+    // CUSTOM(dictation-live-text): dictation keeps the text box visible; its controls take the
+    // toolbar's row instead of covering the composer. Only realtime voice covers it.
+    const surfacePresentation = resolveComposerSurfacePresentation(showRealtimeOverlay);
 
     useEffect(() => {
       if (isDictating || isDictationProcessing) {
@@ -1584,6 +1620,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       }
       sendAfterTranscriptRef.current = false;
     }, [dictationStatus, isDictating, isDictationProcessing]);
+
+    // CUSTOM(dictation-live-text): "failed" keeps the base, so a retry rewrites the same text.
+    useEffect(() => {
+      if (!showDictationOverlay) dictationBaseRef.current = null;
+    }, [showDictationOverlay]);
 
     const startDictationIfAvailable = useCallback(
       () =>
@@ -2081,12 +2122,19 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             textInputRef={assignTextInput}
             textInputStyle={textInputStyle}
             readOnlyTextStyle={readOnlyTextStyle}
-            placeholder={placeholder ?? t("composer.placeholders.fallback")}
+            placeholder={
+              // CUSTOM(dictation-live-text)
+              isDictating
+                ? t("settings.voiceSettings.dictationListening")
+                : (placeholder ?? t("composer.placeholders.fallback"))
+            }
             accessibilityLabel={t(mode.accessibilityLabelKey)}
             onChangeText={handleInputChange}
             onFocus={handleInputFocus}
             onBlur={handleInputBlur}
-            editable={!isDictating && !isRealtimeVoiceForCurrentAgent && !disabled}
+            // CUSTOM(dictation-live-text): dictation owns the text until the overlay closes.
+            editable={!showDictationOverlay && !isRealtimeVoiceForCurrentAgent && !disabled}
+            surfacePointerEvents={showDictationOverlay ? "none" : "auto"}
             scrollEnabled={isComposerScrollEnabled}
             autoFocus={false}
             onKeyPress={shouldHandleWebKeyPress ? handleDesktopKeyPress : undefined}
@@ -2117,6 +2165,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         handleInputFocus,
         handleInputBlur,
         isDictating,
+        showDictationOverlay,
         isRealtimeVoiceForCurrentAgent,
         disabled,
         isComposerScrollEnabled,
@@ -2193,35 +2242,28 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         sendButton,
       ],
     );
-    const voiceOverlay = useMemo(
+    const overlayContent = useMemo(
       () => (
-        <View
-          style={overlayContainerStyle}
-          pointerEvents={surfacePresentation.overlay.pointerEvents}
-        >
-          <MessageInputOverlay
-            showDictationOverlay={showDictationOverlay}
-            showRealtimeOverlay={showRealtimeOverlay}
-            voice={voice}
-            dictationVolume={dictationVolume}
-            dictationDuration={dictationDuration}
-            isDictating={isDictating}
-            isDictationProcessing={isDictationProcessing}
-            dictationStatus={dictationStatus}
-            dictationError={dictationError}
-            onCancelRecording={handleCancelRecording}
-            onAcceptRecording={handleAcceptRecording}
-            onAcceptAndSendRecording={handleAcceptAndSendRecording}
-            onRetryFailedRecording={handleRetryFailedRecording}
-            onDiscardFailedRecording={handleDiscardFailedRecording}
-            onRealtimeVoiceStop={handleRealtimeVoiceStop}
-            onRealtimeVoiceExit={handleRealtimeVoiceExit}
-          />
-        </View>
+        <MessageInputOverlay
+          showDictationOverlay={showDictationOverlay}
+          showRealtimeOverlay={showRealtimeOverlay}
+          voice={voice}
+          dictationVolume={dictationVolume}
+          dictationDuration={dictationDuration}
+          isDictating={isDictating}
+          isDictationProcessing={isDictationProcessing}
+          dictationStatus={dictationStatus}
+          dictationError={dictationError}
+          onCancelRecording={handleCancelRecording}
+          onAcceptRecording={handleAcceptRecording}
+          onAcceptAndSendRecording={handleAcceptAndSendRecording}
+          onRetryFailedRecording={handleRetryFailedRecording}
+          onDiscardFailedRecording={handleDiscardFailedRecording}
+          onRealtimeVoiceStop={handleRealtimeVoiceStop}
+          onRealtimeVoiceExit={handleRealtimeVoiceExit}
+        />
       ),
       [
-        overlayContainerStyle,
-        surfacePresentation.overlay.pointerEvents,
         showDictationOverlay,
         showRealtimeOverlay,
         voice,
@@ -2237,6 +2279,24 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         handleRetryFailedRecording,
         handleDiscardFailedRecording,
         handleRealtimeVoiceStop,
+        handleRealtimeVoiceExit,
+      ],
+    );
+    const voiceOverlay = useMemo(
+      () => (
+        <View
+          style={overlayContainerStyle}
+          pointerEvents={surfacePresentation.overlay.pointerEvents}
+        >
+          {showRealtimeOverlay && !showDictationOverlay ? overlayContent : null}
+        </View>
+      ),
+      [
+        overlayContainerStyle,
+        surfacePresentation.overlay.pointerEvents,
+        showRealtimeOverlay,
+        showDictationOverlay,
+        overlayContent,
       ],
     );
     return (
@@ -2255,7 +2315,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           fullscreen={isFullscreen}
           sendIconSize={buttonIconSize}
           surface={textSurface}
-          toolbar={toolbar}
+          toolbar={showDictationOverlay ? overlayContent : toolbar}
           send={sendButton}
           error={props.submissionError}
           onExit={exitFullscreen}

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   applyDictationTranscript,
+  composeDictationText,
   computeCanStartDictation,
   type MessageInputEnterContext,
   resolveActiveSendBehavior,
@@ -16,6 +17,19 @@ import {
   runMessageInputKeyboardAction,
   stopRealtimeVoice,
 } from "./state";
+
+// CUSTOM(dictation-live-text)
+describe("composeDictationText", () => {
+  it("keeps typed text in front of what is being dictated", () => {
+    expect(composeDictationText("typed", "spoken")).toBe("typed spoken");
+    expect(composeDictationText("typed\n", "spoken")).toBe("typed\nspoken");
+    expect(composeDictationText("", "spoken")).toBe("spoken");
+  });
+
+  it("gives back the typed text when nothing has been transcribed yet", () => {
+    expect(composeDictationText("typed", "")).toBe("typed");
+  });
+});
 
 const connected = { isConnected: true } as never;
 const disconnected = { isConnected: false } as never;

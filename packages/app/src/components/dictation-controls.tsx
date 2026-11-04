@@ -5,7 +5,6 @@ import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { X, ArrowUp, RefreshCcw, Check, Mic, Pencil } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { VolumeMeter } from "./volume-meter";
-import { FOOTER_HEIGHT } from "@/constants/layout";
 import type { DictationStatus } from "@/hooks/use-dictation";
 
 interface DictationControlsProps {
@@ -224,6 +223,12 @@ export function DictationOverlay({
               : t("message.dictation.failedRetry")}
           </Text>
         ) : null}
+        {/* CUSTOM(dictation-live-text): the mic is still capturing; say so before the user stops. */}
+        {!isFailed && errorText ? (
+          <Text numberOfLines={2} style={overlayTranscriptTextStyle}>
+            {t("settings.voiceSettings.dictationInterrupted", { error: errorText })}
+          </Text>
+        ) : null}
       </View>
 
       <View style={overlayStyles.actionButtonsContainer}>
@@ -338,19 +343,20 @@ const styles = StyleSheet.create((theme) => ({
   },
 }));
 
-const OVERLAY_BUTTON_SIZE = 44;
-const OVERLAY_VERTICAL_PADDING = (FOOTER_HEIGHT - OVERLAY_BUTTON_SIZE) / 2;
+// CUSTOM(dictation-live-text): a row in the toolbar's place, below the text box, instead of a bar
+// covering the whole composer. It bleeds 6px like the toolbar and grows with an error message.
+const OVERLAY_BUTTON_SIZE = 40;
 
 const overlayStyles = StyleSheet.create((theme) => ({
   container: {
     flexDirection: "row",
     alignItems: "center",
-    width: "100%",
+    alignSelf: "stretch",
+    marginHorizontal: -6,
     borderRadius: theme.borderRadius["2xl"],
     justifyContent: "space-between",
-    paddingHorizontal: theme.spacing[4],
-    paddingVertical: OVERLAY_VERTICAL_PADDING,
-    height: FOOTER_HEIGHT,
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
   },
   cancelButton: {
     width: OVERLAY_BUTTON_SIZE,
