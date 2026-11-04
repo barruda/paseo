@@ -227,6 +227,10 @@ import {
   searchDirectoryEntries,
   WORKSPACE_SEARCH_HIDDEN_DIRECTORIES,
 } from "../utils/directory-suggestions.js";
+import {
+  searchWorkspaceContent,
+  type WorkspaceContentMatch,
+} from "../utils/workspace-content-search.js";
 import type { CheckoutDiffManager } from "./checkout-diff-manager.js";
 import type { Resolvable } from "./speech/provider-resolver.js";
 import type { SpeechReadinessSnapshot } from "./speech/speech-runtime.js";
@@ -3151,6 +3155,9 @@ export class Session {
         return this.handleProjectCreateDirectoryRequest(msg);
       case "workspace.github.search_repositories.request":
         return this.handleWorkspaceGithubSearchRepositoriesRequest(msg);
+      // CUSTOM(workspace-content-search)
+      case "workspace.files.search_content.request":
+        return this.handleWorkspaceFilesSearchContentRequest(msg);
       case "project.github.clone.request":
         return this.handleProjectGithubCloneRequest(msg);
       case "archive_workspace_request":
@@ -7313,6 +7320,36 @@ export class Session {
           project: null,
           error: requestError.message,
           errorCode: requestError.code,
+        },
+      });
+    }
+  }
+
+  // CUSTOM(workspace-content-search)
+  private async handleWorkspaceFilesSearchContentRequest(
+    request: Extract<SessionInboundMessage, { type: "workspace.files.search_content.request" }>,
+  ): Promise<void> {
+    const emitResult = (result: { matches: WorkspaceContentMatch[]; truncated: boolean }) =>
+      this.emit({
+        type: "workspace.files.search_content.response",
+        payload: { requestId: request.requestId, ...result, error: null },
+      });
+    try {
+      emitResult(
+        await searchWorkspaceContent({
+          cwd: expandTilde(request.cwd),
+          query: request.query,
+          limit: request.limit,
+        }),
+      );
+    } catch (error) {
+      this.emit({
+        type: "workspace.files.search_content.response",
+        payload: {
+          requestId: request.requestId,
+          matches: [],
+          truncated: false,
+          error: error instanceof Error ? error.message : String(error),
         },
       });
     }

@@ -38,7 +38,7 @@ const EMPTY_STATE: WorkspaceFileSearchState = {
   error: null,
 };
 
-function errorMessage(error: unknown): string {
+export function errorMessage(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   if (error.name !== "DaemonRpcError") return error.message;
   return error.message.replace(/ requestType=\S+(?: code=\S+)?$/, "");
@@ -50,19 +50,52 @@ function describeFileEntries(
   return entries.map(({ path }) => describeWorkspaceFilePath(path));
 }
 
+/** CUSTOM(desk-file-search): the workspace the command center searches and opens files in. */
+export function useCommandCenterSearchWorkspace(): {
+  serverId: string | null;
+  workspaceId: string | null;
+} {
+  const selection = useActiveWorkspaceSelection();
+  // A Desk mixes projects while the route stays on one, so Tasks mode searches the project the
+  // Explorer shows.
+  const tasksMode = useTaskNavigationStore((state) => state.enabled);
+  const contextTab = useDesksStore((state) => (tasksMode ? deskContextTab(state) : null));
+  return {
+    serverId: contextTab?.serverId ?? selection?.serverId ?? null,
+    workspaceId: contextTab?.workspaceId ?? selection?.workspaceId ?? null,
+  };
+}
+
+export function openFileFromCommandCenter(input: {
+  serverId: string;
+  workspaceId: string;
+  path: string;
+  lineStart?: number;
+}): void {
+  clearCommandCenterFocusRestoreElement();
+  openWorkspaceFileFromExplorer({
+    filePath: input.path,
+    lineStart: input.lineStart,
+    persistenceKey: buildWorkspaceTabPersistenceKey(input),
+    openWorkspaceTabInFocusedPane: (workspaceKey, target, placement) =>
+      openDeskTargetInMainContent({ workspaceKey, target }) ??
+      useWorkspaceLayoutStore.getState().openTab({
+        workspaceKey,
+        target,
+        intent: "reveal",
+        placement,
+      }),
+    revealWorkspaceTab,
+  });
+}
+
 export function useWorkspaceFileSearch(input: { enabled: boolean; query: string }): {
   entries: readonly WorkspaceFileSearchEntry[];
   loading: boolean;
   error: string | null;
   openFile(path: string): void;
 } {
-  const selection = useActiveWorkspaceSelection();
-  // CUSTOM(desk-file-search): a Desk mixes projects while the route stays on one, so Tasks mode
-  // searches the project the Explorer shows.
-  const tasksMode = useTaskNavigationStore((state) => state.enabled);
-  const contextTab = useDesksStore((state) => (tasksMode ? deskContextTab(state) : null));
-  const serverId = contextTab?.serverId ?? selection?.serverId ?? null;
-  const workspaceId = contextTab?.workspaceId ?? selection?.workspaceId ?? null;
+  const { serverId, workspaceId } = useCommandCenterSearchWorkspace();
   const cwd = useWorkspaceDirectory(serverId, workspaceId);
   const client = useSessionStore((state) =>
     serverId ? (state.sessions[serverId]?.client ?? null) : null,
@@ -133,21 +166,7 @@ export function useWorkspaceFileSearch(input: { enabled: boolean; query: string 
 
   const openFile = useCallback(
     (path: string) => {
-      if (!serverId || !workspaceId) return;
-      clearCommandCenterFocusRestoreElement();
-      openWorkspaceFileFromExplorer({
-        filePath: path,
-        persistenceKey: buildWorkspaceTabPersistenceKey({ serverId, workspaceId }),
-        openWorkspaceTabInFocusedPane: (workspaceKey, target, placement) =>
-          openDeskTargetInMainContent({ workspaceKey, target }) ??
-          useWorkspaceLayoutStore.getState().openTab({
-            workspaceKey,
-            target,
-            intent: "reveal",
-            placement,
-          }),
-        revealWorkspaceTab,
-      });
+      if (serverId && workspaceId) openFileFromCommandCenter({ serverId, workspaceId, path });
     },
     [serverId, workspaceId],
   );

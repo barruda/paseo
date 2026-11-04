@@ -2733,6 +2733,15 @@ export const WorkspaceGithubSearchRepositoriesRequestSchema = z.object({
   requestId: z.string(),
 });
 
+// CUSTOM(workspace-content-search): text search inside a workspace's files.
+export const WorkspaceFilesSearchContentRequestSchema = z.object({
+  type: z.literal("workspace.files.search_content.request"),
+  cwd: z.string(),
+  query: z.string(),
+  limit: z.number().int().min(1).max(500).optional(),
+  requestId: z.string(),
+});
+
 export const ProjectGithubCloneProtocolSchema = z.enum(["https", "ssh"]);
 
 export const ProjectGithubCloneRequestSchema = z.object({
@@ -3341,6 +3350,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentHistoryRequestMessageSchema,
   // CUSTOM(history-ai-search)
   HistoryAiSearchRequestSchema,
+  WorkspaceFilesSearchContentRequestSchema,
   // CUSTOM(btw)
   AgentSideQuestionRequestSchema,
   FetchRecentProviderSessionsRequestMessageSchema,
@@ -3776,6 +3786,8 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutCommitPaths: z.boolean().optional(),
         // CUSTOM(history-ai-search): history.ai_search.request.
         historyAiSearch: z.boolean().optional(),
+        // CUSTOM(workspace-content-search): workspace.files.search_content.request.
+        workspaceContentSearch: z.boolean().optional(),
         // CUSTOM(btw): agent.side_question.request.
         agentSideQuestion: z.boolean().optional(),
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.
@@ -4709,6 +4721,23 @@ export const ProjectCreateDirectoryResponseSchema = z.object({
     // Error codes are open-ended on the wire so older clients can still parse
     // responses after a newer daemon learns another failure reason.
     errorCode: z.string().nullable(),
+  }),
+});
+
+// CUSTOM(workspace-content-search)
+export const WorkspaceFilesSearchContentResponseSchema = z.object({
+  type: z.literal("workspace.files.search_content.response"),
+  payload: z.object({
+    requestId: z.string(),
+    matches: z.array(
+      z.object({
+        path: z.string(),
+        line: z.number(),
+        text: z.string(),
+      }),
+    ),
+    truncated: z.boolean(),
+    error: z.string().nullable(),
   }),
 });
 
@@ -7156,6 +7185,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentHistoryResponseMessageSchema,
   // CUSTOM(history-ai-search)
   HistoryAiSearchResponseSchema,
+  WorkspaceFilesSearchContentResponseSchema,
   // CUSTOM(btw)
   AgentSideQuestionResponseSchema,
   FetchRecentProviderSessionsResponseMessageSchema,
@@ -7515,6 +7545,9 @@ export type FetchAgentHistoryRequestMessage = z.infer<typeof FetchAgentHistoryRe
 // CUSTOM(history-ai-search)
 export type HistoryAiSearchRequest = z.infer<typeof HistoryAiSearchRequestSchema>;
 export type HistoryAiSearchResponse = z.infer<typeof HistoryAiSearchResponseSchema>;
+export type WorkspaceFilesSearchContentResponse = z.infer<
+  typeof WorkspaceFilesSearchContentResponseSchema
+>;
 // CUSTOM(btw)
 export type AgentSideQuestionResponse = z.infer<typeof AgentSideQuestionResponseSchema>;
 export type FetchRecentProviderSessionsRequestMessage = z.infer<

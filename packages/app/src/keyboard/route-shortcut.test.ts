@@ -419,6 +419,22 @@ describe("routeKeyboardShortcut — toggle dialogs", () => {
     });
   });
 
+  // CUSTOM(workspace-content-search)
+  it("opens the command center scoped to file contents from a workspace", () => {
+    expect(
+      routeKeyboardShortcut({ action: "command-center.content", payload: null }, makeCtx()),
+    ).toEqual<ShortcutAction>({ kind: "command-center-toggle", nextOpen: true, scope: "content" });
+  });
+
+  it("does nothing for the content search outside a workspace", () => {
+    expect(
+      routeKeyboardShortcut(
+        { action: "command-center.content", payload: null },
+        makeCtx({ pathname: "/settings" }),
+      ),
+    ).toEqual<ShortcutAction>({ kind: "none" });
+  });
+
   it("opens the command center when closed", () => {
     expect(
       routeKeyboardShortcut(

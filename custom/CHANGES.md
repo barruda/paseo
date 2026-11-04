@@ -4453,3 +4453,47 @@ src/composer/input/state.test.ts)`. In the desktop app, type something and dicta
   `e2e/task-navigation.spec.ts` (already in the update script). In the app: in Tasks mode, focus a
   task of a project other than the route's, press Ctrl+P and open a file: a Desk tab shows it. Needs
   a new app build; no daemon restart.
+
+## workspace-content-search: Ctrl+Shift+F searches inside the project's files
+
+- **Added:** 2026-11-04
+- **Commit:** `custom: Ctrl+Shift+F searches the text of the project's files`
+- **Why:** Ctrl+P only matches file names, and the daemon had no way to search file contents.
+- **What:**
+  - Ctrl/Cmd+Shift+F opens the command center in an "In files" scope. It finds literal text, ignoring
+    case unless the query has a capital, in tracked and untracked files; ignored and binary files are
+    skipped. It shows at most 200 results and says so when it stops there.
+  - Each result shows `file:line`, its folder and the matching line. Opening one opens the file at
+    that line, in the project the Explorer shows (see `desk-file-search`).
+  - In Tasks mode another line of an open file moves that file's tab instead of opening a second tab.
+  - Focus mode moved to Ctrl/Cmd+Alt+F. A chord the user customized keeps working, because the binding
+    ids did not change.
+  - Focus that a scoped palette's chip gets from outside goes to the input, for Ctrl+P too. A composer
+    mounting late could leave focus on the chip, and what you typed was lost.
+  - Hosts without `features.workspaceContentSearch` show a message asking to restart or update the
+    daemon.
+- **Files:** server `utils/workspace-content-search.ts`; app
+  `command-center/workspace-content-search.ts`, `i18n/resources/custom-content-search.ts` (strings for
+  the 9 locales).
+- **Core files touched** (marked `CUSTOM(workspace-content-search)`): protocol `messages.ts`
+  (`workspace.files.search_content.request` / `.response`, `features.workspaceContentSearch`); client
+  `daemon-client.ts` (`searchWorkspaceContent`); server `session.ts`, `websocket-server.ts`,
+  `authorization/operation-permissions.ts`; app `command-center/command-center.tsx`, `interaction.ts`,
+  `results.ts` (`match` on file results), `workspace-file-search.ts`,
+  `keyboard/keyboard-shortcuts.ts`, `keyboard/actions.ts`, `keyboard/route-shortcut.ts`,
+  `stores/keyboard-shortcuts-store.ts`, `screens/workspace/workspace-file-open-command.ts`
+  (`lineStart`), `task-navigation/desks-store.ts` (`retargetOpenFile`), and each locale file
+  (`contentSearch` under `shell.commandCenter`).
+- **Re-apply:** Add the RPC and feature flag, with both message types in the permission map. The search
+  runs `git grep -n -z -I -F`, with `--untracked --exclude-standard` in a repo and `--no-index` outside
+  one, and `-c grep.fullName=false` so paths stay relative to the workspace. Don't move it to ripgrep:
+  it isn't guaranteed on the host. Add scope `"content"` to `CommandCenterScope`; `interaction.ts`
+  treats every scope as daemon-served. Rebind `view.toggle.focus` under its existing binding ids. In
+  `openInDeskWithoutParent`, retarget a tab with the same owner and path before looking for an equal
+  target, because `sameDeskTarget` compares lines too. `routeKeyboardShortcut` is at the complexity
+  limit, so scoped routing lives in `routeScopedCommandCenter`.
+- **Verify:** `(cd packages/server && npx vitest run src/utils/workspace-content-search.test.ts)`,
+  `(cd packages/app && npx vitest run src/keyboard/route-shortcut.test.ts
+src/keyboard/keyboard-shortcuts.test.ts src/task-navigation/store.test.ts)`, and the "searches inside
+  files" tests in desktop `e2e/task-navigation.spec.ts`. Needs a new app build and the daemons
+  restarted; before the restart the search shows the message about the daemon.

@@ -2016,6 +2016,8 @@ export class VoiceAssistantWebSocketServer {
         checkoutCommitPaths: true,
         // CUSTOM(history-ai-search)
         historyAiSearch: true,
+        // CUSTOM(workspace-content-search)
+        workspaceContentSearch: true,
         // CUSTOM(btw)
         agentSideQuestion: true,
         // COMPAT(relayConfig): added in v0.2.6, remove gate after 2027-01-31.

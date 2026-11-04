@@ -179,6 +179,7 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
   general: [
     "toggle-command-center",
     "search-files",
+    "search-content",
     "show-shortcuts",
     "toggle-settings",
     "cycle-theme",
@@ -272,6 +273,8 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "workspace-pane-close": "settings.shortcuts.help.closePane",
   "workspace-terminal-new": "settings.shortcuts.help.newTerminal",
   "search-files": "settings.shortcuts.help.searchFiles",
+  // CUSTOM(workspace-content-search)
+  "search-content": "shell.commandCenter.contentSearch.shortcutLabel",
   "toggle-command-center": "settings.shortcuts.help.toggleCommandCenter",
   "show-shortcuts": "settings.shortcuts.help.showKeyboardShortcuts",
   "toggle-left-sidebar": "settings.shortcuts.help.toggleLeftSidebar",
@@ -443,6 +446,30 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "search-files",
       section: "general",
       label: "Search files",
+    },
+  },
+
+  // CUSTOM(workspace-content-search): Search in files takes the IDE chord from focus mode.
+  {
+    id: "command-center-content-cmd-shift-f-mac",
+    action: "command-center.content",
+    combo: "Cmd+Shift+F",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "search-content",
+      section: "general",
+      label: "Search in files",
+    },
+  },
+  {
+    id: "command-center-content-ctrl-shift-f-non-mac",
+    action: "command-center.content",
+    combo: "Ctrl+Shift+F",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "search-content",
+      section: "general",
+      label: "Search in files",
     },
   },
 
@@ -1184,7 +1211,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   {
     id: "view-toggle-focus-cmd-shift-f-mac",
     action: "view.toggle.focus",
-    combo: "Cmd+Shift+F",
+    combo: "Cmd+Alt+F",
     when: { mac: true, commandCenter: false },
     help: {
       id: "toggle-focus",
@@ -1195,7 +1222,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   {
     id: "view-toggle-focus-ctrl-shift-f-non-mac",
     action: "view.toggle.focus",
-    combo: "Ctrl+Shift+F",
+    combo: "Ctrl+Alt+F",
     when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "toggle-focus",

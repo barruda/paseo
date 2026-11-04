@@ -605,6 +605,111 @@ test("Tasks mode opens files from Ctrl+P and the Explorer in the focused task's 
   }
 });
 
+// CUSTOM(workspace-content-search): Ctrl+Shift+F searches the text of the focused task's project;
+// its results open the file at the line, in one tab per file.
+test("Tasks mode searches inside files with Ctrl+Shift+F and opens the matching line", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await installDesktopRuntime(page, {
+    serverId: getServerId(),
+    manageBuiltInDaemon: false,
+    platform: "linux",
+  });
+  const filler = Array.from({ length: 150 }, (_, index) => `filler ${index}`);
+  const first = await seedMockAgentWorkspace({
+    repoPrefix: "task-content-first-",
+    title: "First project task",
+    repo: { files: [{ path: "first.md", content: "contentneedle in first\n" }] },
+  });
+  const second = await seedMockAgentWorkspace({
+    repoPrefix: "task-content-second-",
+    title: "Second project task",
+    repo: {
+      files: [
+        {
+          path: "src/second.ts",
+          content: ["// contentneedle top", ...filler, "// contentneedle bottom", ""].join("\n"),
+        },
+      ],
+    },
+  });
+  try {
+    await openAgentRoute(page, first);
+    await page.getByTestId("task-navigation-switch").filter({ visible: true }).click();
+    const sidebar = page.getByTestId("task-navigation-sidebar");
+    await sidebar.getByTestId(`task-agent-${second.agentId}`).click({ button: "middle" });
+    const desk = page.getByTestId("desk-screen");
+    await expect(
+      desk.locator('[data-desk-tab="pinned"]').filter({ hasText: "Second project" }),
+    ).toBeVisible();
+
+    await page.keyboard.press("Control+Shift+F");
+    const panel = page.getByTestId("command-center-panel");
+    await expect(panel).toBeVisible();
+    await expect(panel.getByTestId("command-center-files-scope")).toContainText("In files");
+    const input = panel.getByTestId("command-center-input");
+    await expect(input).toBeFocused();
+    // A composer that mounts late takes focus while the search is open; typing still lands here.
+    await page.evaluate(() => document.querySelector<HTMLElement>("textarea")?.focus());
+    await expect(input).toBeFocused();
+    await page.keyboard.type("contentneedle");
+    const bottomRow = panel.getByTestId("command-center-file-row-src/second.ts:152");
+    await expect(panel.getByTestId("command-center-file-row-src/second.ts:1")).toBeVisible();
+    await expect(bottomRow).toContainText("// contentneedle bottom");
+    await expect(panel.getByText("first.md")).toHaveCount(0);
+
+    await bottomRow.click();
+    await expect(panel).toHaveCount(0);
+    const fileTabs = desk.locator('[data-testid^="workspace-tab-file_src/second.ts"]');
+    await expect(fileTabs).toHaveCount(1);
+    await expect(desk.getByText("contentneedle bottom").first()).toBeVisible();
+
+    // Another match in the same file moves the same tab to that line.
+    await page.keyboard.press("Control+Shift+F");
+    await expect(input).toBeFocused();
+    await page.keyboard.type("contentneedle");
+    await panel.getByTestId("command-center-file-row-src/second.ts:1").click();
+    await expect(panel).toHaveCount(0);
+    await expect(desk.getByText("contentneedle top").first()).toBeVisible();
+    await expect(fileTabs).toHaveCount(1);
+  } finally {
+    await first.cleanup();
+    await second.cleanup();
+  }
+});
+
+// CUSTOM(workspace-content-search): the workspace view searches and opens in its own layout.
+test("Workspace view searches inside files with Ctrl+Shift+F", async ({ page }) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await installDesktopRuntime(page, {
+    serverId: getServerId(),
+    manageBuiltInDaemon: false,
+    platform: "linux",
+  });
+  const workspace = await seedMockAgentWorkspace({
+    repoPrefix: "workspace-content-",
+    title: "Workspace search task",
+    repo: { files: [{ path: "notes.md", content: "first line\nworkspaceneedle here\n" }] },
+  });
+  try {
+    await openAgentRoute(page, workspace);
+    await expect(
+      page.getByRole("textbox", { name: "Message agent...", exact: true }),
+    ).toBeVisible();
+    await page.keyboard.press("Control+Shift+F");
+    const panel = page.getByTestId("command-center-panel");
+    await expect(panel.getByTestId("command-center-input")).toBeFocused();
+    await page.keyboard.type("workspaceneedle");
+    await panel.getByTestId("command-center-file-row-notes.md:2").click();
+    await expect(panel).toHaveCount(0);
+    await expect(page.locator('[data-testid^="workspace-tab-file_notes.md"]')).toHaveCount(1);
+    await expect(page.getByText("workspaceneedle here").first()).toBeVisible();
+  } finally {
+    await workspace.cleanup();
+  }
+});
+
 // CUSTOM(new-agent-projects): hovering the + menu's Agent row lists projects; one click starts a
 // draft in the picked project, in the workspace view and in a Desk.
 test("New agent flyout starts a draft in the picked project", async ({ page }) => {

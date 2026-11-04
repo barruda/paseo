@@ -1,6 +1,7 @@
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_KO } from "./custom-voice-settings";
 import { SHORTCUT_FILE_KO } from "./custom-shortcut-file";
+import { CONTENT_SEARCH_KO } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
@@ -87,6 +88,7 @@ export const ko: TranslationResources = {
       close: "메뉴 닫기",
     },
     commandCenter: {
+      contentSearch: CONTENT_SEARCH_KO,
       placeholder: "명령, 파일, 워크스페이스 및 에이전트 검색...",
       filePlaceholder: "파일 검색...",
       searchingFiles: "파일 검색 중...",

@@ -18,7 +18,10 @@ import {
 import { CreationClient } from "./creation/index.js";
 import type { CreationSnapshot } from "@getpaseo/protocol/messages";
 // CUSTOM(history-ai-search)
-import type { HistoryAiSearchResponse } from "@getpaseo/protocol/messages";
+import type {
+  HistoryAiSearchResponse,
+  WorkspaceFilesSearchContentResponse,
+} from "@getpaseo/protocol/messages";
 // CUSTOM(btw)
 import type { AgentSideQuestionResponse } from "@getpaseo/protocol/messages";
 // CUSTOM(voice-settings)
@@ -2979,6 +2982,22 @@ export class DaemonClient {
         },
       },
     );
+  }
+
+  // CUSTOM(workspace-content-search): the caller gates on features.workspaceContentSearch.
+  async searchWorkspaceContent(
+    input: { cwd: string; query: string; limit?: number },
+    requestId?: string,
+  ): Promise<WorkspaceFilesSearchContentResponse["payload"]> {
+    return this.sendNamespacedCorrelatedSessionRequest<"workspace.files.search_content.response">({
+      requestId,
+      message: {
+        type: "workspace.files.search_content.request",
+        cwd: input.cwd,
+        query: input.query,
+        limit: input.limit,
+      },
+    });
   }
 
   async cloneGithubProject(

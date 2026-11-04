@@ -381,6 +381,21 @@ describe("Desks", () => {
   });
 });
 
+// CUSTOM(workspace-content-search)
+it("moves an open file's tab to another line instead of opening a second tab", () => {
+  useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary" });
+  const store = useDesksStore.getState();
+  store.openTab({ ...firstTab, target: { kind: "file", path: "README.md", lineStart: 5 } }, true);
+  store.openTab(secondTab, true);
+  store.openTab({ ...firstTab, target: { kind: "file", path: "README.md", lineStart: 9 } }, true);
+  const fileTabs = tabs().filter((tab) => tab.target.kind === "file");
+  expect(fileTabs).toHaveLength(1);
+  expect(current()?.target).toEqual({ kind: "file", path: "README.md", lineStart: 9 });
+  // The same path in another project is another file.
+  store.openTab({ ...secondTab, target: { kind: "file", path: "README.md", lineStart: 9 } }, true);
+  expect(tabs().filter((tab) => tab.target.kind === "file")).toHaveLength(2);
+});
+
 it("keeps state updates attached to their original Desk while another Desk is active", () => {
   useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary" });
   const store = useDesksStore.getState();

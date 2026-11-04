@@ -32,7 +32,7 @@ export type ShortcutAction =
   | { kind: "router-push"; route: string }
   | { kind: "open-project-picker" }
   | { kind: "callback"; name: ShortcutCallbackName }
-  | { kind: "command-center-toggle"; nextOpen: boolean; scope?: "files" }
+  | { kind: "command-center-toggle"; nextOpen: boolean; scope?: "files" | "content" }
   | { kind: "shortcuts-dialog-toggle"; nextOpen: boolean };
 
 const NONE: ShortcutAction = { kind: "none" };
@@ -198,6 +198,16 @@ function routeSettingsToggle(ctx: ShortcutRoutingContext): ShortcutAction {
   return { kind: "router-back" };
 }
 
+function routeScopedCommandCenter(action: string, ctx: ShortcutRoutingContext): ShortcutAction {
+  const inWorkspace = Boolean(parseHostWorkspaceRouteFromPathname(ctx.pathname));
+  // CUSTOM(workspace-content-search): searches the open workspace, so it needs one.
+  if (action === "command-center.content") {
+    return inWorkspace ? { kind: "command-center-toggle", nextOpen: true, scope: "content" } : NONE;
+  }
+  if (inWorkspace) return { kind: "command-center-toggle", nextOpen: true, scope: "files" };
+  return dispatch({ id: "workspace.project.pick", scope: "workspace" });
+}
+
 export function routeKeyboardShortcut(
   input: ShortcutRoutingInput,
   ctx: ShortcutRoutingContext,
@@ -245,10 +255,8 @@ export function routeKeyboardShortcut(
     case "command-center.toggle":
       return { kind: "command-center-toggle", nextOpen: !ctx.commandCenterOpen };
     case "command-center.files":
-      if (parseHostWorkspaceRouteFromPathname(ctx.pathname)) {
-        return { kind: "command-center-toggle", nextOpen: true, scope: "files" };
-      }
-      return dispatch({ id: "workspace.project.pick", scope: "workspace" });
+    case "command-center.content":
+      return routeScopedCommandCenter(input.action, ctx);
     case "shortcuts.dialog.toggle":
       return { kind: "shortcuts-dialog-toggle", nextOpen: !ctx.shortcutsDialogOpen };
     default:

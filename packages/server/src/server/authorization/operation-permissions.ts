@@ -216,6 +216,8 @@ const INBOUND_PERMISSION = {
   "workspace.mark_unread.request": "workspace.write",
   "workspace.create.request": "workspace.manage",
   "workspace.github.search_repositories.request": "workspace.read",
+  // CUSTOM(workspace-content-search)
+  "workspace.files.search_content.request": "workspace.read",
   "workspace.label.assignment.set.request": "workspace.manage",
   "workspace.label.delete.inspect.request": "workspace.read",
   "workspace.label.delete.request": "workspace.manage",
@@ -461,6 +463,8 @@ const OUTBOUND_PERMISSION = {
   "workspace.mark_unread.response": "workspace.write",
   "workspace.create.response": "workspace.manage",
   "workspace.github.search_repositories.response": "workspace.read",
+  // CUSTOM(workspace-content-search)
+  "workspace.files.search_content.response": "workspace.read",
   "workspace.label.assignment.set.response": "workspace.manage",
   "workspace.label.delete.inspect.response": "workspace.read",
   "workspace.label.delete.response": "workspace.manage",

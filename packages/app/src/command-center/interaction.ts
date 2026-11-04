@@ -38,8 +38,8 @@ export function createCommandCenterInteraction(scrollToOffset: (offset: number) 
 
   function reveal() {
     if (!open || !revealPending || !projection || visibleLength <= 0) return;
-    // Scoped file search keeps its previous entries while the next query is loading.
-    if (scope === "files" && loading) return;
+    // A scoped search keeps its previous entries while the next query is loading.
+    if (scope !== null && loading) return;
     if (!snapshot.activeId) {
       if (!loading) revealPending = false;
       return;
@@ -86,7 +86,7 @@ export function createCommandCenterInteraction(scrollToOffset: (offset: number) 
       if (input.query !== snapshot.query) return;
       projection = input.projection;
       loading = input.loading;
-      if (scope !== "files" || !loading) {
+      if (scope === null || !loading) {
         publish({
           ...snapshot,
           activeId: preserveActiveResultId(snapshot.activeId, projection.selectableResults),
@@ -103,7 +103,7 @@ export function createCommandCenterInteraction(scrollToOffset: (offset: number) 
       if (
         !open ||
         !projection ||
-        (scope === "files" && loading) ||
+        (scope !== null && loading) ||
         projection.selectableResults.length === 0
       )
         return false;

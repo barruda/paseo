@@ -341,6 +341,9 @@ if $VERIFY; then
   # Tasks/Desks persistence, cross-project references, workspace fallback, closing tabs of
   # terminals that are gone, and opening every task in its own tab while preview tabs are off.
   (cd packages/app && npx vitest run src/task-navigation/model.test.ts src/task-navigation/store.test.ts src/workspace-tabs/open-supporting-view.test.ts --bail=1)
+  # Search in files (Ctrl+Shift+F); its browser check is in e2e/task-navigation.spec.ts.
+  (cd packages/server && npx vitest run src/utils/workspace-content-search.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/keyboard/route-shortcut.test.ts src/keyboard/keyboard-shortcuts.test.ts --bail=1)
   npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/task-navigation.spec.ts --workers=1
   (cd packages/app && npx vitest run src/screens/new-workspace/bottom-terminal.test.ts --bail=1)
   (cd packages/app && npx vitest run --project browser src/file-panels/html-preview-assets.browser.test.ts src/file-panels/html-preview-keys.browser.test.ts --bail=1)

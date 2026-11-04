@@ -1,6 +1,7 @@
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_PT_BR } from "./custom-voice-settings";
 import { SHORTCUT_FILE_PT_BR } from "./custom-shortcut-file";
+import { CONTENT_SEARCH_PT_BR } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const ptBR: TranslationResources = {
@@ -88,6 +89,7 @@ export const ptBR: TranslationResources = {
       close: "Fechar menu",
     },
     commandCenter: {
+      contentSearch: CONTENT_SEARCH_PT_BR,
       placeholder: "Buscar comandos, arquivos, espaços de trabalho e agentes...",
       filePlaceholder: "Pesquisar arquivos...",
       searchingFiles: "Pesquisando arquivos...",

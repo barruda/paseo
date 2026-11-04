@@ -1063,6 +1063,29 @@ describe("getWorkspaceIndexJumpModifierKey", () => {
   });
 });
 
+// CUSTOM(workspace-content-search)
+describe("Search in files and focus mode chords", () => {
+  it("gives Ctrl+Shift+F to Search in files and Ctrl+Alt+F to focus mode", () => {
+    expectShortcutResolution({
+      event: { key: "F", code: "KeyF", ctrlKey: true, shiftKey: true },
+      context: { isMac: false, isDesktop: true },
+      action: "command-center.content",
+    });
+    expectShortcutResolution({
+      event: { key: "f", code: "KeyF", ctrlKey: true, altKey: true },
+      context: { isMac: false, isDesktop: true },
+      action: "view.toggle.focus",
+    });
+  });
+
+  it("leaves Ctrl+Shift+F to the terminal", () => {
+    expectNoShortcutResolution({
+      event: { key: "F", code: "KeyF", ctrlKey: true, shiftKey: true },
+      context: { isMac: false, isDesktop: true, focusScope: "terminal" },
+    });
+  });
+});
+
 function parseUnknownBindingChord() {
   return parseBindingChord("Ctrl+Nonsense");
 }

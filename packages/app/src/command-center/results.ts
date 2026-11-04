@@ -80,6 +80,8 @@ export interface CommandCenterFileResult {
   filePath: string;
   title: string;
   subtitle: string;
+  /** CUSTOM(workspace-content-search): a text match shows its line under the file. */
+  match?: { line: number; text: string };
   run(): void;
 }
 
@@ -184,7 +186,7 @@ function contributionSearchFields(
 /** Whether the row draws a second, subtitle line under its title. */
 function hasSubtitleLine(result: CommandCenterResult): boolean {
   if (result.kind === "workspace" || result.kind === "agent") return true;
-  if (result.kind === "file") return false;
+  if (result.kind === "file") return Boolean(result.match);
   const presentation = result.contribution.presentation;
   return presentation.kind === "action" && Boolean(presentation.subtitle);
 }

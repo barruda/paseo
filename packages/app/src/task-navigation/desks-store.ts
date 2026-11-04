@@ -330,12 +330,28 @@ function openInDesk(
   };
 }
 
+// CUSTOM(workspace-content-search): another line of an open file moves that file's tab there, as
+// the workspace layout does; a tab per line would pile up with every search result opened.
+function retargetOpenFile(desk: Desk, input: DeskTabInput): Desk {
+  const { target } = input;
+  if (target.kind !== "file") return desk;
+  const open = deskTabs(desk).find(
+    (tab) =>
+      tab.serverId === input.serverId &&
+      tab.workspaceId === input.workspaceId &&
+      tab.target.kind === "file" &&
+      tab.target.path === target.path,
+  );
+  return open ? updateDeskTab(desk, open.id, { target }) : desk;
+}
+
 function openInDeskWithoutParent(
-  desk: Desk,
+  current: Desk,
   input: DeskTabInput,
   pin: boolean,
   placement: WorkspaceTabPlacement,
 ): Desk {
+  const desk = retargetOpenFile(current, input);
   const existing = deskTabs(desk).find((tab) => sameDeskTarget(tab, input));
   if (existing) {
     const layout = focusTabInLayout({ layout: desk.layout, tabId: existing.id }) ?? desk.layout;

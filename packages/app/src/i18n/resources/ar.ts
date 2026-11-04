@@ -1,6 +1,7 @@
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_AR } from "./custom-voice-settings";
 import { SHORTCUT_FILE_AR } from "./custom-shortcut-file";
+import { CONTENT_SEARCH_AR } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
@@ -87,6 +88,7 @@ export const ar: TranslationResources = {
       close: "إغلاق القائمة",
     },
     commandCenter: {
+      contentSearch: CONTENT_SEARCH_AR,
       placeholder: "ابحث في الأوامر والملفات ومساحات العمل والوكلاء...",
       filePlaceholder: "البحث في الملفات...",
       searchingFiles: "جارٍ البحث في الملفات...",

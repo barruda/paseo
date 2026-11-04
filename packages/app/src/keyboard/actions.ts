@@ -59,6 +59,7 @@ export type KeyboardActionId =
   | "settings.toggle"
   | "command-center.toggle"
   | "command-center.files"
+  | "command-center.content"
   | "shortcuts.dialog.toggle"
   | "workspace.terminal.new"
   // CUSTOM(bottom-panel)

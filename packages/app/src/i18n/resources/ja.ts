@@ -1,6 +1,7 @@
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_JA } from "./custom-voice-settings";
 import { SHORTCUT_FILE_JA } from "./custom-shortcut-file";
+import { CONTENT_SEARCH_JA } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const ja: TranslationResources = {
@@ -88,6 +89,7 @@ export const ja: TranslationResources = {
       close: "メニューを閉じる",
     },
     commandCenter: {
+      contentSearch: CONTENT_SEARCH_JA,
       placeholder: "コマンド、ファイル、ワークスペース、エージェントを検索...",
       filePlaceholder: "ファイルを検索...",
       searchingFiles: "ファイルを検索中...",

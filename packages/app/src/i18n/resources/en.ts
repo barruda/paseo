@@ -1,5 +1,6 @@
 import { VOICE_SETTINGS_EN } from "./custom-voice-settings";
 import { SHORTCUT_FILE_EN } from "./custom-shortcut-file";
+import { CONTENT_SEARCH_EN } from "./custom-content-search";
 
 export const en = {
   paneFind: {
@@ -84,6 +85,7 @@ export const en = {
       close: "Close menu",
     },
     commandCenter: {
+      contentSearch: CONTENT_SEARCH_EN,
       placeholder: "Search commands, files, workspaces, and agents...",
       filePlaceholder: "Search files...",
       searchingFiles: "Searching files...",

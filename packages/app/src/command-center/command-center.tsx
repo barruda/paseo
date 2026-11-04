@@ -23,6 +23,7 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useTranslation } from "react-i18next";
+import type { TFunction } from "i18next";
 import { Check, ChevronRight, Folder, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { BottomSheetFlatList, type BottomSheetFlatListMethods } from "@gorhom/bottom-sheet";
@@ -95,7 +96,9 @@ import {
   type CommandCenterWorkspaceResult,
 } from "./results";
 import { createCommandCenterInteraction, type CommandCenterInteraction } from "./interaction";
+import { useWorkspaceContentSearch } from "./workspace-content-search";
 import { useWorkspaceFileSearch } from "./workspace-file-search";
+import { describeWorkspaceFilePath } from "./workspace-file-search-model";
 
 const ThemedBottomSheetTextInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
@@ -281,6 +284,41 @@ interface CommandCenterState {
   key(key: string): boolean;
 }
 
+// CUSTOM(workspace-content-search): text matches, as file rows with the matching line under them.
+function useContentSearchSection(enabled: boolean, query: string) {
+  const { t } = useTranslation();
+  const { matches, truncated, loading, error, openMatch } = useWorkspaceContentSearch({
+    enabled,
+    query,
+  });
+  const sections = useMemo<CommandCenterResultSection[]>(() => {
+    const results = matches.map<CommandCenterFileResult>((match) => {
+      const { name, directory } = describeWorkspaceFilePath(match.path);
+      return {
+        kind: "file",
+        id: `match:${match.path}:${match.line}`,
+        filePath: match.path,
+        title: name,
+        subtitle: directory,
+        match: { line: match.line, text: match.text },
+        run: () => openMatch(match),
+      };
+    });
+    return [
+      {
+        id: "content",
+        band: PINNED_SECTION_BAND,
+        rank: 4,
+        title: truncated
+          ? t("shell.commandCenter.contentSearch.truncated", { count: results.length })
+          : t("shell.commandCenter.contentSearch.results"),
+        results,
+      },
+    ];
+  }, [matches, openMatch, t, truncated]);
+  return { sections, loading, error };
+}
+
 function useCommandCenterState(
   listMetrics: CommandCenterListMetrics,
   interaction: CommandCenterInteraction,
@@ -302,9 +340,13 @@ function useCommandCenterState(
     error: fileSearchError,
     openFile,
   } = useWorkspaceFileSearch({
-    enabled: open && (scope === "files" || Boolean(query.trim())),
+    enabled: open && (scope === "files" || (scope === null && Boolean(query.trim()))),
     query,
   });
+  // CUSTOM(workspace-content-search)
+  const contentSearch = useContentSearchSection(open && scope === "content", query);
+  const scopedLoading = scope === "content" ? contentSearch.loading : fileSearchLoading;
+  const scopedError = scope === "content" ? contentSearch.error : fileSearchError;
   const fileSections = useMemo<CommandCenterResultSection[]>(() => {
     const results = fileSearchEntries.map<CommandCenterFileResult>((entry) => ({
       kind: "file",
@@ -331,19 +373,25 @@ function useCommandCenterState(
     () => buildContributionSections(snapshot.contributions, query),
     [query, snapshot.contributions],
   );
-  const projection = useMemo(
-    () =>
-      projectCommandCenterRows(
-        scope === "files"
-          ? fileSections
-          : [...contributionSections, ...fileSections, ...builtInSections],
-        listMetrics,
-      ),
-    [builtInSections, contributionSections, fileSections, listMetrics, scope],
-  );
+  const projection = useMemo(() => {
+    if (scope === "content") return projectCommandCenterRows(contentSearch.sections, listMetrics);
+    return projectCommandCenterRows(
+      scope === "files"
+        ? fileSections
+        : [...contributionSections, ...fileSections, ...builtInSections],
+      listMetrics,
+    );
+  }, [
+    builtInSections,
+    contentSearch.sections,
+    contributionSections,
+    fileSections,
+    listMetrics,
+    scope,
+  ]);
   useLayoutEffect(() => {
-    interaction.update({ open, scope, query, projection, loading: fileSearchLoading });
-  }, [interaction, open, scope, query, projection, fileSearchLoading]);
+    interaction.update({ open, scope, query, projection, loading: scopedLoading });
+  }, [interaction, open, scope, query, projection, scopedLoading]);
 
   const close = useCallback(() => setOpen(false), [setOpen]);
   const select = useCallback(
@@ -416,8 +464,8 @@ function useCommandCenterState(
     rows: projection.rows,
     offsets: projection.offsets,
     inputRef,
-    fileSearchLoading,
-    fileSearchError,
+    fileSearchLoading: scopedLoading,
+    fileSearchError: scopedError,
     close,
     select,
     key,
@@ -447,7 +495,7 @@ const ResultRow = memo(function ResultRow({
       : null;
   const accessibilityLabel =
     result.kind === "file"
-      ? [result.title, result.subtitle].filter(Boolean).join(" ")
+      ? [result.title, result.subtitle, result.match?.text].filter(Boolean).join(" ")
       : choice?.path.join(" › ");
   const accessibilityState = useMemo(
     () => (isNative && choice ? { selected: choice.selected } : undefined),
@@ -470,7 +518,9 @@ const ResultRow = memo(function ResultRow({
       accessibilityState={accessibilityState}
       aria-pressed={isWeb ? choice?.selected : undefined}
       testID={
-        result.kind === "file" ? `command-center-file-row-${result.filePath}` : choice?.testId
+        result.kind === "file"
+          ? `command-center-file-row-${result.filePath}${result.match ? `:${result.match.line}` : ""}`
+          : choice?.testId
       }
     >
       {(state) => (
@@ -619,6 +669,43 @@ function WorkspaceProjectIcon({ project }: { project: CommandCenterWorkspaceResu
   );
 }
 
+// CUSTOM(workspace-content-search): only the matching line highlights the query; the file name
+// usually doesn't hold it.
+function FileMatchContent({
+  result,
+  line,
+  text,
+  query,
+}: {
+  result: CommandCenterFileResult;
+  line: number;
+  text: string;
+  query: string;
+}) {
+  return (
+    <View style={styles.rowContent}>
+      <View style={styles.rowMain}>
+        <View style={styles.iconSlot} testID="command-center-file-icon">
+          <MaterialFileIcon fileName={result.title} size={16} />
+        </View>
+        <View style={styles.textContent}>
+          <Text style={styles.title} numberOfLines={1}>
+            <Text style={styles.fileName}>{`${result.title}:${line}`}</Text>
+            {result.subtitle ? <Text style={styles.filePath}> {result.subtitle}</Text> : null}
+          </Text>
+          <QueryHighlightedText
+            query={query}
+            text={text}
+            style={styles.subtitle}
+            numberOfLines={1}
+            testID="command-center-match-text"
+          />
+        </View>
+      </View>
+    </View>
+  );
+}
+
 function ResultContent({
   result,
   query,
@@ -628,6 +715,16 @@ function ResultContent({
   query: string;
   backdrop: SurfaceBackdrop;
 }) {
+  if (result.kind === "file" && result.match) {
+    return (
+      <FileMatchContent
+        result={result}
+        line={result.match.line}
+        text={result.match.text}
+        query={query}
+      />
+    );
+  }
   if (result.kind === "file") {
     return (
       <View style={styles.rowContent}>
@@ -832,10 +929,18 @@ export function CommandCenter() {
   const empty = useMemo(
     () =>
       state.fileSearchError || state.fileSearchLoading ? null : (
-        <Text style={styles.emptyText}>{t("shell.commandCenter.noMatches")}</Text>
+        <Text style={styles.emptyText}>
+          {state.scope === "content" && !state.query.trim()
+            ? t("shell.commandCenter.contentSearch.prompt")
+            : t("shell.commandCenter.noMatches")}
+        </Text>
       ),
-    [state.fileSearchError, state.fileSearchLoading, t],
+    [state.fileSearchError, state.fileSearchLoading, state.query, state.scope, t],
   );
+  const { scopeChipLabel, inputPlaceholder, searchingLabel } = describeScope(state.scope, t);
+  const panelInputRef = state.inputRef;
+  const focusPanelInput = useCallback(() => panelInputRef.current?.focus(), [panelInputRef]);
+  const focusSheetInput = useCallback(() => bottomSheetInputRef.current?.focus(), []);
   const fileSearchError = useMemo(
     () =>
       state.fileSearchError ? (
@@ -912,8 +1017,12 @@ export function CommandCenter() {
         accessible={false}
       >
         <View style={[styles.bottomSheetHeader, styles.searchRow]} testID="command-center-header">
-          {state.scope === "files" ? (
-            <ScopeChip label={t("shell.commandCenter.files")} onRemove={state.clearScope} />
+          {scopeChipLabel ? (
+            <ScopeChip
+              label={scopeChipLabel}
+              onRemove={state.clearScope}
+              onFocusFromOutside={focusSheetInput}
+            />
           ) : null}
           <ThemedBottomSheetTextInput
             testID="command-center-input"
@@ -923,20 +1032,13 @@ export function CommandCenter() {
             onChangeText={state.setQuery}
             onKeyPress={keyPress}
             onSubmitEditing={submit}
-            placeholder={
-              state.scope === "files"
-                ? t("shell.commandCenter.filePlaceholder")
-                : t("shell.commandCenter.placeholder")
-            }
+            placeholder={inputPlaceholder}
             style={[styles.input, styles.growingInput]}
             autoCapitalize="none"
             autoCorrect={false}
             autoFocus
           />
-          <FileSearchLoadingIndicator
-            loading={state.fileSearchLoading}
-            label={t("shell.commandCenter.searchingFiles")}
-          />
+          <FileSearchLoadingIndicator loading={state.fileSearchLoading} label={searchingLabel} />
         </View>
         {fileSearchError}
         <BottomSheetFlatList ref={bottomSheetListRef} {...commonListProps} />
@@ -951,19 +1053,19 @@ export function CommandCenter() {
           <Pressable style={styles.backdrop} onPress={state.close} />
           <View ref={setWebOverlayScope} testID="command-center-panel" style={styles.panel}>
             <View style={[styles.header, styles.searchRow]} testID="command-center-header">
-              {state.scope === "files" ? (
-                <ScopeChip label={t("shell.commandCenter.files")} onRemove={state.clearScope} />
+              {scopeChipLabel ? (
+                <ScopeChip
+                  label={scopeChipLabel}
+                  onRemove={state.clearScope}
+                  onFocusFromOutside={focusPanelInput}
+                />
               ) : null}
               <ThemedTextInput
                 testID="command-center-input"
                 ref={state.inputRef}
                 initialValue={state.query}
                 onChangeText={state.setQuery}
-                placeholder={
-                  state.scope === "files"
-                    ? t("shell.commandCenter.filePlaceholder")
-                    : t("shell.commandCenter.placeholder")
-                }
+                placeholder={inputPlaceholder}
                 style={[styles.input, styles.growingInput]}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -971,7 +1073,7 @@ export function CommandCenter() {
               />
               <FileSearchLoadingIndicator
                 loading={state.fileSearchLoading}
-                label={t("shell.commandCenter.searchingFiles")}
+                label={searchingLabel}
               />
             </View>
             {fileSearchError}
@@ -981,6 +1083,24 @@ export function CommandCenter() {
       </Modal>
     </OverlayLayerProvider>
   );
+}
+
+function describeScope(scope: CommandCenterScope, t: TFunction) {
+  if (scope === "content") {
+    return {
+      scopeChipLabel: t("shell.commandCenter.contentSearch.scope"),
+      inputPlaceholder: t("shell.commandCenter.contentSearch.placeholder"),
+      searchingLabel: t("shell.commandCenter.contentSearch.searching"),
+    };
+  }
+  return {
+    scopeChipLabel: scope === "files" ? t("shell.commandCenter.files") : null,
+    inputPlaceholder:
+      scope === "files"
+        ? t("shell.commandCenter.filePlaceholder")
+        : t("shell.commandCenter.placeholder"),
+    searchingLabel: t("shell.commandCenter.searchingFiles"),
+  };
 }
 
 function FileSearchLoadingIndicator({ loading, label }: { loading: boolean; label: string }) {
@@ -1002,12 +1122,36 @@ function FileSearchLoadingIndicator({ loading, label }: { loading: boolean; labe
 // The chip sits at the input's own height and type size so it reads as the scope of the field
 // rather than a badge dropped into the query. Its 28px matches the input's line box, so showing or
 // dropping the scope cannot resize the header.
-function ScopeChip({ label, onRemove }: { label: string; onRemove(): void }) {
+function ScopeChip({
+  label,
+  onRemove,
+  onFocusFromOutside,
+}: {
+  label: string;
+  onRemove(): void;
+  onFocusFromOutside(): void;
+}) {
+  // CUSTOM(workspace-content-search): when something outside takes focus (a composer that mounts
+  // late), the Modal's focus trap returns it to its first focusable element, this chip, and what
+  // the user types is lost. Tabbing from the input keeps working.
+  const handleFocus = useCallback(
+    (event: unknown) => {
+      if (!isWeb) return;
+      const { currentTarget, relatedTarget } = event as FocusEvent & {
+        currentTarget: HTMLElement;
+      };
+      if (!currentTarget.parentElement?.contains(relatedTarget as Node | null)) {
+        onFocusFromOutside();
+      }
+    },
+    [onFocusFromOutside],
+  );
   return (
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={label}
       onPress={onRemove}
+      onFocus={handleFocus}
       style={styles.scopeChip}
       testID="command-center-files-scope"
     >
