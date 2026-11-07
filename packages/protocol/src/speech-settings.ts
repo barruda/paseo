@@ -29,6 +29,40 @@ export const MutableSpeechConfigSchema = z
     // Empty means the built-in instructions.
     voiceInstructions: z.string().optional(),
     customModels: z.array(SpeechCustomModelSchema).optional(),
+    // CUSTOM(dictation-tuning): how dictation cuts and re-transcribes its audio. The daemon
+    // reports the effective values (env var, then config, then default).
+    dictationAutoCommitSeconds: z.number().min(0).optional(),
+    dictationSilencePeakThreshold: z.number().int().min(0).optional(),
+    dictationDecodeIntervalMs: z.number().int().min(0).optional(),
+    // Empty means the built-in prompt.
+    dictationPrompt: z.string().optional(),
+  })
+  .passthrough();
+
+const DictationTuningFieldsSchema = z
+  .object({
+    autoCommitSeconds: z.boolean(),
+    silencePeakThreshold: z.boolean(),
+    decodeIntervalMs: z.boolean(),
+    prompt: z.boolean(),
+  })
+  .passthrough();
+
+// CUSTOM(dictation-tuning): which tuning fields the dictation provider in use reads, and the
+// values each field falls back to.
+export const DictationTuningStatusSchema = z
+  .object({
+    provider: z.string(),
+    model: z.string().nullable(),
+    supported: DictationTuningFieldsSchema,
+    defaults: z
+      .object({
+        autoCommitSeconds: z.number(),
+        silencePeakThreshold: z.number(),
+        decodeIntervalMs: z.number(),
+        prompt: z.string(),
+      })
+      .passthrough(),
   })
   .passthrough();
 
@@ -102,6 +136,8 @@ export const SpeechLocalStatusSchema = z
     // Settings an environment variable controls; edits to them don't take effect.
     envControlled: z.array(z.string()),
     defaultVoiceInstructions: z.string(),
+    // CUSTOM(dictation-tuning): absent on daemons without the dictation tuning settings.
+    dictationTuning: DictationTuningStatusSchema.optional(),
     logs: z.array(
       z
         .object({
@@ -174,6 +210,7 @@ export const SpeechLocalInspectModelFolderResponseSchema = z.object({
 export type MutableSpeechConfig = z.infer<typeof MutableSpeechConfigSchema>;
 export type SpeechCustomModel = z.infer<typeof SpeechCustomModelSchema>;
 export type SpeechModelInfo = z.infer<typeof SpeechModelInfoSchema>;
+export type DictationTuningStatus = z.infer<typeof DictationTuningStatusSchema>;
 export type SpeechLocalStatus = z.infer<typeof SpeechLocalStatusSchema>;
 export type SpeechLocalGetStatusResponse = z.infer<typeof SpeechLocalGetStatusResponseSchema>;
 export type SpeechLocalPreviewVoiceResponse = z.infer<typeof SpeechLocalPreviewVoiceResponseSchema>;

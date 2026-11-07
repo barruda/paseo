@@ -58,6 +58,7 @@ import { getActiveHistoryContentIndex } from "./history-content-index.js";
 // CUSTOM(history-ai-search)
 import { runHistoryAiSearch } from "./history-ai-search.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
+import type { DictationTuning } from "./speech/dictation-tuning.js";
 import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
 import {
   buildConfigOverrides,
@@ -575,6 +576,8 @@ export interface SessionOptions {
     stt?: Resolvable<SpeechToTextProvider | null>;
     sttLanguage?: string;
     getSpeechReadiness?: () => SpeechReadinessSnapshot;
+    // CUSTOM(dictation-tuning)
+    tuning?: () => DictationTuning | undefined;
   };
   serverId?: string;
   daemonVersion?: string;

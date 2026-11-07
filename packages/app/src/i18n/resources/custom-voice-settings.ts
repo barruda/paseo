@@ -4,6 +4,60 @@
 
 type Strings<T> = { [K in keyof T]: T[K] extends string ? string : Strings<T[K]> };
 
+// CUSTOM(dictation-tuning): Settings > Voice and dictation > Dictation tuning. Only English and
+// Brazilian Portuguese are translated; the other locales show the English text.
+const DICTATION_TUNING_EN = {
+  title: "Dictation tuning",
+  info: "The local model can't transcribe as you speak. Paseo keeps the audio of the open segment and transcribes all of it again on a timer, so earlier words change as more audio arrives. When a segment closes, its text stops changing. Changes apply to the next dictation.",
+  unsupported: "{{model}} doesn't use this setting.",
+  defaultValue: "{{value}} (default)",
+  off: "Off",
+  autoCommitSeconds: {
+    label: "Close segment after",
+    info: "How much audio the open segment holds before it closes. Its text then stops changing, and the next segment starts without the previous one's context. The cut is by time, so it can fall mid-word. Shorter freezes text sooner but cuts more often. Off keeps the whole dictation in one segment: any word can still change, and each pass gets slower as you talk.",
+  },
+  decodeIntervalMs: {
+    label: "Transcribe again every",
+    info: "The shortest time between two transcriptions of the open segment. Longer means the text jumps less but shows up later. Each pass transcribes the whole open segment, so short intervals cost more GPU or CPU. Only models that show text while you talk use it.",
+  },
+  silencePeakThreshold: {
+    label: "Silence threshold",
+    info: "A segment whose loudest sample stays below this (PCM16 peak, 0 to 32767) counts as silence and is dropped instead of transcribed. Raise it if background noise turns into stray words; lower it if quiet speech goes missing.",
+  },
+  prompt: {
+    label: "Transcription prompt",
+    info: "Instructions sent with each segment to the OpenAI transcription model, such as the language or how to spell names. Local models take no prompt.",
+    custom: "Custom prompt",
+    builtIn: "Built-in prompt",
+  },
+};
+
+const DICTATION_TUNING_PT_BR: Strings<typeof DICTATION_TUNING_EN> = {
+  title: "Ajuste do ditado",
+  info: "O modelo local não transcreve enquanto você fala. O Paseo guarda o áudio do trecho aberto e transcreve tudo de novo de tempos em tempos, por isso as palavras do começo mudam quando chega mais áudio. Quando o trecho fecha, o texto dele para de mudar. Mudanças valem a partir do próximo ditado.",
+  unsupported: "{{model}} não usa este ajuste.",
+  defaultValue: "{{value}} (padrão)",
+  off: "Desligado",
+  autoCommitSeconds: {
+    label: "Fechar o trecho após",
+    info: "Quanto áudio o trecho aberto guarda antes de fechar. Aí o texto dele para de mudar, e o próximo trecho começa sem o contexto do anterior. O corte é por tempo, então pode cair no meio de uma palavra. Menor congela o texto mais cedo, mas corta mais vezes. Desligado deixa o ditado inteiro num trecho só: qualquer palavra ainda pode mudar, e cada passada fica mais lenta conforme você fala.",
+  },
+  decodeIntervalMs: {
+    label: "Transcrever de novo a cada",
+    info: "O menor tempo entre duas transcrições do trecho aberto. Maior faz o texto pular menos, mas aparecer mais tarde. Cada passada transcreve o trecho aberto inteiro, então intervalos curtos gastam mais GPU ou CPU. Só vale para modelos que mostram o texto enquanto você fala.",
+  },
+  silencePeakThreshold: {
+    label: "Limite de silêncio",
+    info: "Um trecho cujo som mais alto fica abaixo deste valor (pico PCM16, de 0 a 32767) conta como silêncio e é descartado em vez de transcrito. Aumente se ruído de fundo virar palavras soltas; diminua se fala baixa sumir.",
+  },
+  prompt: {
+    label: "Prompt de transcrição",
+    info: "Instruções enviadas com cada trecho ao modelo de transcrição da OpenAI, como o idioma ou como escrever nomes. Modelos locais não recebem prompt.",
+    custom: "Prompt personalizado",
+    builtIn: "Prompt padrão",
+  },
+};
+
 export const VOICE_SETTINGS_EN = {
   dictationListening: "Listening…",
   dictationInterrupted: "Transcription interrupted: {{error}}. Your audio is kept.",
@@ -88,6 +142,7 @@ export const VOICE_SETTINGS_EN = {
     zh: "Chinese",
     unknown: "Other",
   },
+  dictationTuning: DICTATION_TUNING_EN,
   instructions: {
     title: "Voice mode instructions",
     custom: "Custom instructions",
@@ -228,6 +283,7 @@ export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
     zh: "Chinês",
     unknown: "Outro",
   },
+  dictationTuning: DICTATION_TUNING_PT_BR,
   instructions: {
     title: "Instruções do modo de voz",
     custom: "Instruções personalizadas",
@@ -366,6 +422,7 @@ export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
     zh: "Chino",
     unknown: "Otro",
   },
+  dictationTuning: DICTATION_TUNING_EN,
   instructions: {
     title: "Instrucciones del modo de voz",
     custom: "Instrucciones personalizadas",
@@ -505,6 +562,7 @@ export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
     zh: "Chinois",
     unknown: "Autre",
   },
+  dictationTuning: DICTATION_TUNING_EN,
   instructions: {
     title: "Instructions du mode vocal",
     custom: "Instructions personnalisées",
@@ -643,6 +701,7 @@ export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
     zh: "中国語",
     unknown: "その他",
   },
+  dictationTuning: DICTATION_TUNING_EN,
   instructions: {
     title: "音声モードの指示",
     custom: "カスタムの指示",
@@ -781,6 +840,7 @@ export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
     zh: "중국어",
     unknown: "기타",
   },
+  dictationTuning: DICTATION_TUNING_EN,
   instructions: {
     title: "음성 모드 지침",
     custom: "사용자 지정 지침",
@@ -919,6 +979,7 @@ export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
     zh: "Китайский",
     unknown: "Другой",
   },
+  dictationTuning: DICTATION_TUNING_EN,
   instructions: {
     title: "Инструкции голосового режима",
     custom: "Свои инструкции",
@@ -1057,6 +1118,7 @@ export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
     zh: "中文",
     unknown: "其他",
   },
+  dictationTuning: DICTATION_TUNING_EN,
   instructions: {
     title: "语音模式指令",
     custom: "自定义指令",
@@ -1195,6 +1257,7 @@ export const VOICE_SETTINGS_AR: VoiceSettingsStrings = {
     zh: "الصينية",
     unknown: "أخرى",
   },
+  dictationTuning: DICTATION_TUNING_EN,
   instructions: {
     title: "تعليمات الوضع الصوتي",
     custom: "تعليمات مخصصة",

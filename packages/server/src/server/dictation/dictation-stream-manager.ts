@@ -13,30 +13,15 @@ import type {
 } from "../speech/speech-provider.js";
 import { toResolver, type Resolvable } from "../speech/provider-resolver.js";
 import { parsePcmRateFromFormat, pcm16lePeakAbs } from "../speech/audio.js";
+import { resolveDictationTuning, type DictationTuning } from "../speech/dictation-tuning.js";
 
 const PCM_CHANNELS = 1;
 const PCM_BITS_PER_SAMPLE = 16;
 const DEFAULT_DICTATION_FINAL_TIMEOUT_MS = 10000;
-const DEFAULT_DICTATION_AUTO_COMMIT_SECONDS = 15;
 const DICTATION_FINAL_TIMEOUT_MAX_MS = 5 * 60 * 1000;
 const DICTATION_FINAL_TIMEOUT_PER_PENDING_SEGMENT_MS = 15 * 1000;
 const DICTATION_FINAL_TIMEOUT_PER_PENDING_AUDIO_SECOND_MS = 1500;
 const DICTATION_FINAL_TIMEOUT_PER_MISSING_SEQ_MS = 250;
-const DICTATION_SILENCE_PEAK_THRESHOLD = Number.parseInt(
-  process.env.PASEO_DICTATION_SILENCE_PEAK_THRESHOLD ?? "300",
-  10,
-);
-
-function parseNonNegativeNumber(value: string | undefined): number | null {
-  if (value === undefined) {
-    return null;
-  }
-  const parsed = Number.parseFloat(value);
-  if (!Number.isFinite(parsed) || parsed < 0) {
-    return null;
-  }
-  return parsed;
-}
 
 function convertPCMToWavBuffer(
   pcmBuffer: Buffer,
@@ -82,6 +67,7 @@ interface DictationStreamState {
   nextSeqToForward: number;
   ackSeq: number;
   autoCommitBytes: number;
+  silencePeakThreshold: number;
   bytesSinceCommit: number;
   peakSinceCommit: number;
   committedSegmentIds: string[];
@@ -133,7 +119,9 @@ export class DictationStreamManager {
   private readonly resolveStt: () => SpeechToTextProvider | null;
   private readonly language: string;
   private readonly finalTimeoutMs: number;
-  private readonly autoCommitSeconds: number;
+  private readonly autoCommitSecondsOverride: number | undefined;
+  // CUSTOM(dictation-tuning): Settings values; without them, the env vars and defaults.
+  private readonly resolveTuning: () => DictationTuning | undefined;
   private readonly onIdle: (() => void) | undefined;
   private readonly streams = new Map<string, DictationStreamState>();
 
@@ -145,6 +133,7 @@ export class DictationStreamManager {
     language?: string;
     finalTimeoutMs?: number;
     autoCommitSeconds?: number;
+    tuning?: () => DictationTuning | undefined;
     onIdle?: () => void;
   }) {
     this.onIdle = params.onIdle;
@@ -154,10 +143,8 @@ export class DictationStreamManager {
     this.resolveStt = toResolver(params.stt);
     this.language = params.language ?? "en";
     this.finalTimeoutMs = params.finalTimeoutMs ?? DEFAULT_DICTATION_FINAL_TIMEOUT_MS;
-    this.autoCommitSeconds =
-      params.autoCommitSeconds ??
-      parseNonNegativeNumber(process.env.PASEO_DICTATION_AUTO_COMMIT_SECONDS) ??
-      DEFAULT_DICTATION_AUTO_COMMIT_SECONDS;
+    this.autoCommitSecondsOverride = params.autoCommitSeconds;
+    this.resolveTuning = params.tuning ?? (() => undefined);
   }
 
   get hasDemand(): boolean {
@@ -185,16 +172,16 @@ export class DictationStreamManager {
       return;
     }
 
-    const transcriptionPrompt =
-      process.env.PASEO_DICTATION_TRANSCRIPTION_PROMPT ??
-      "Transcribe only what the speaker says. Do not add words. Preserve punctuation and casing. If the audio is silence or non-speech noise, return an empty transcript.";
+    const tuning = this.resolveTuning() ?? resolveDictationTuning({ env: process.env });
+    const autoCommitSeconds = this.autoCommitSecondsOverride ?? tuning.autoCommitSeconds;
 
     let stt: ReturnType<SpeechToTextProvider["createSession"]>;
     try {
       stt = sttProvider.createSession({
         logger: this.logger.child({ dictationId }),
         language: this.language,
-        prompt: transcriptionPrompt,
+        prompt: tuning.prompt,
+        decodeIntervalMs: tuning.decodeIntervalMs,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -224,9 +211,7 @@ export class DictationStreamManager {
 
     const outputRate = stt.requiredSampleRate;
     const autoCommitBytes =
-      this.autoCommitSeconds > 0
-        ? Math.max(1, Math.round(this.autoCommitSeconds * outputRate * 2))
-        : 0;
+      autoCommitSeconds > 0 ? Math.max(1, Math.round(autoCommitSeconds * outputRate * 2)) : 0;
 
     this.streams.set(dictationId, {
       dictationId,
@@ -249,6 +234,7 @@ export class DictationStreamManager {
       nextSeqToForward: 0,
       ackSeq: -1,
       autoCommitBytes,
+      silencePeakThreshold: tuning.silencePeakThreshold,
       bytesSinceCommit: 0,
       peakSinceCommit: 0,
       committedSegmentIds: [],
@@ -630,7 +616,7 @@ export class DictationStreamManager {
     if (state.autoCommitBytes <= 0 || state.bytesSinceCommit < state.autoCommitBytes) {
       return;
     }
-    if (state.peakSinceCommit < DICTATION_SILENCE_PEAK_THRESHOLD) {
+    if (state.peakSinceCommit < state.silencePeakThreshold) {
       state.stt.clear();
       state.bytesSinceCommit = 0;
       state.peakSinceCommit = 0;
@@ -668,7 +654,7 @@ export class DictationStreamManager {
     }
 
     if (state.bytesSinceCommit > 0) {
-      if (state.peakSinceCommit < DICTATION_SILENCE_PEAK_THRESHOLD) {
+      if (state.peakSinceCommit < state.silencePeakThreshold) {
         this.logger.debug(
           {
             dictationId,

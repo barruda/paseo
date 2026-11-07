@@ -141,6 +141,7 @@ import type { LocalSpeechProviderConfig } from "./speech/providers/local/config.
 import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService, type SpeechService } from "./speech/speech-runtime.js";
 import { createSpeechSettingsOwner } from "./speech/speech-settings.js";
+import { DEFAULT_DICTATION_TUNING, type DictationTuning } from "./speech/dictation-tuning.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
@@ -398,6 +399,8 @@ export interface PaseoSpeechConfig {
   local?: PaseoLocalSpeechConfig;
   // CUSTOM(voice-settings): replaces the built-in voice-mode instructions when set.
   voiceInstructions?: string;
+  // CUSTOM(dictation-tuning): absent only in configs built by hand (tests).
+  dictationTuning?: DictationTuning;
 }
 
 export type DaemonLifecycleIntent =
@@ -594,6 +597,18 @@ function buildMutableSpeechConfig(
         }
       : {}),
     voiceInstructions: speech?.voiceInstructions ?? "",
+    // CUSTOM(dictation-tuning): the effective values; the built-in prompt shows as empty.
+    ...(speech?.dictationTuning
+      ? {
+          dictationAutoCommitSeconds: speech.dictationTuning.autoCommitSeconds,
+          dictationSilencePeakThreshold: speech.dictationTuning.silencePeakThreshold,
+          dictationDecodeIntervalMs: speech.dictationTuning.decodeIntervalMs,
+          dictationPrompt:
+            speech.dictationTuning.prompt === DEFAULT_DICTATION_TUNING.prompt
+              ? ""
+              : speech.dictationTuning.prompt,
+        }
+      : {}),
   };
 }
 

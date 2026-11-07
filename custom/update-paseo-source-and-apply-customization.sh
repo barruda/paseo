@@ -311,6 +311,9 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts src/server/plugins/custom-btw-plugin.e2e.test.ts src/server/plugins/custom-critic-plugin.e2e.test.ts src/server/plugins/custom-jev-router-plugin.e2e.test.ts --bail=1)
   (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts --bail=1)
+  # Dictation tuning settings.
+  (cd packages/server && npx vitest run src/server/speech/dictation-tuning.test.ts src/server/dictation/dictation-stream-manager.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/screens/settings/voice/dictation-tuning-model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts src/agent-stream/chat-links/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/hooks/use-settings/storage.test.ts -t "chat link list" --bail=1)
   (cd packages/app && npx vitest run --project browser src/components/ui/hover-card.browser.test.tsx --bail=1)

@@ -6,6 +6,7 @@ import type { SessionInboundMessage, SessionOutboundMessage } from "../../messag
 import { TTSManager } from "../../agent/tts-manager.js";
 import { STTManager } from "../../agent/stt-manager.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "../../speech/speech-provider.js";
+import type { DictationTuning } from "../../speech/dictation-tuning.js";
 import type { TurnDetectionProvider } from "../../speech/turn-detection-provider.js";
 import { maybePersistTtsDebugAudio } from "../../agent/tts-debug.js";
 import { isPaseoDictationDebugEnabled } from "../../agent/recordings-debug.js";
@@ -172,6 +173,8 @@ export interface VoiceSessionOptions {
     stt?: Resolvable<SpeechToTextProvider | null>;
     sttLanguage?: string;
     getSpeechReadiness?: () => SpeechReadinessSnapshot;
+    // CUSTOM(dictation-tuning): Settings values, read at each dictation start.
+    tuning?: () => DictationTuning | undefined;
   };
 }
 
@@ -259,6 +262,7 @@ export class VoiceSession {
       stt: dictation?.stt ?? null,
       language: dictation?.sttLanguage,
       finalTimeoutMs: dictation?.finalTimeoutMs,
+      tuning: dictation?.tuning,
       onIdle: this.onIdle,
     });
   }

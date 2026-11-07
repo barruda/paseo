@@ -177,6 +177,51 @@ describe("DaemonConfigStore", () => {
     expect(store.get().speech?.customModels).toEqual([]);
   });
 
+  // CUSTOM(dictation-tuning)
+  test("dictation tuning lands in features.dictation.tuning and an empty prompt clears it", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+      speech: { dictationAutoCommitSeconds: 15 },
+    });
+    const changes: unknown[] = [];
+    store.onFieldChange("speech", (value) => changes.push(value));
+
+    await store.patch({
+      speech: {
+        dictationAutoCommitSeconds: 6,
+        dictationSilencePeakThreshold: 150,
+        dictationDecodeIntervalMs: 800,
+        dictationPrompt: " Only Portuguese. ",
+      },
+    });
+
+    expect(changes).toHaveLength(1);
+    expect(loadPersistedConfig(paseoHome).features?.dictation?.tuning).toEqual({
+      autoCommitSeconds: 6,
+      silencePeakThreshold: 150,
+      decodeIntervalMs: 800,
+      prompt: "Only Portuguese.",
+    });
+    expect(store.get().speech?.dictationDecodeIntervalMs).toBe(800);
+
+    await store.patch({ speech: { dictationPrompt: "" } });
+
+    expect(loadPersistedConfig(paseoHome).features?.dictation?.tuning).toEqual({
+      autoCommitSeconds: 6,
+      silencePeakThreshold: 150,
+      decodeIntervalMs: 800,
+    });
+  });
+
   test("a speech engine that rejects the new settings rolls config.json back", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import type { PersistedConfig } from "../persisted-config.js";
 import type { PaseoOpenAIConfig, PaseoSpeechConfig } from "../bootstrap.js";
+import { resolveDictationTuning } from "./dictation-tuning.js";
 import { resolveLocalSpeechConfig } from "./providers/local/config.js";
 import { resolveOpenAiSpeechConfig } from "./providers/openai/config.js";
 import {
@@ -183,6 +184,11 @@ export function resolveSpeechConfig(params: {
       localModelsDir: local.modelsDir,
       sttLanguages: local.sttLanguages,
       ...(local.local ? { local: local.local } : {}),
+      // CUSTOM(dictation-tuning)
+      dictationTuning: resolveDictationTuning({
+        env: params.env,
+        saved: params.persisted.features?.dictation?.tuning,
+      }),
       // CUSTOM(voice-settings)
       ...(params.persisted.features?.voiceMode?.instructions?.trim()
         ? { voiceInstructions: params.persisted.features.voiceMode.instructions.trim() }

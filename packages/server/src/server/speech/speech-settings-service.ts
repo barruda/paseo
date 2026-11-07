@@ -22,6 +22,11 @@ import type {
 } from "@getpaseo/protocol/speech-settings";
 
 import { VOICE_AGENT_SYSTEM_INSTRUCTION } from "../voice-config.js";
+import {
+  DEFAULT_DICTATION_TUNING,
+  DICTATION_TUNING_ENV,
+  dictationTuningSupport,
+} from "./dictation-tuning.js";
 import { checkCudaAvailability, resolveCudaLibDir } from "./providers/local/local-speech-gpu.js";
 import {
   countKokoroVoices,
@@ -45,6 +50,11 @@ export interface SpeechSettingsService {
 }
 
 const ENV_CONTROLLED_SETTINGS: ReadonlyArray<[string, string]> = [
+  // CUSTOM(dictation-tuning)
+  [DICTATION_TUNING_ENV.autoCommitSeconds, "dictationAutoCommitSeconds"],
+  [DICTATION_TUNING_ENV.silencePeakThreshold, "dictationSilencePeakThreshold"],
+  [DICTATION_TUNING_ENV.decodeIntervalMs, "dictationDecodeIntervalMs"],
+  [DICTATION_TUNING_ENV.prompt, "dictationPrompt"],
   ["PASEO_DICTATION_LOCAL_STT_MODEL", "dictationSttModel"],
   ["PASEO_VOICE_LOCAL_STT_MODEL", "voiceSttModel"],
   ["PASEO_VOICE_LOCAL_TTS_MODEL", "voiceTtsModel"],
@@ -420,6 +430,17 @@ export function createSpeechSettingsService(params: {
     };
   };
 
+  const dictationTuningStatus = (): SpeechLocalStatus["dictationTuning"] => {
+    const config = speech.resolveSpeechConfig();
+    const provider = config?.providers.dictationStt.provider ?? "local";
+    return {
+      provider,
+      model: provider === "local" ? (config?.local?.models.dictationStt ?? null) : null,
+      supported: dictationTuningSupport(provider),
+      defaults: { ...DEFAULT_DICTATION_TUNING },
+    };
+  };
+
   const getStatus: SpeechSettingsService["getStatus"] = async ({ includeLogs }) => {
     const [runtime, gpu, models] = await Promise.all([
       speech.getLocalStatus(),
@@ -436,6 +457,7 @@ export function createSpeechSettingsService(params: {
         ([, setting]) => setting,
       ),
       defaultVoiceInstructions: VOICE_AGENT_SYSTEM_INSTRUCTION,
+      dictationTuning: dictationTuningStatus(),
       logs: includeLogs ? readSpeechLogs(paseoHome) : [],
     };
   };

@@ -55,6 +55,9 @@ export interface SpeechToTextProvider {
     logger: pino.Logger;
     language?: string;
     prompt?: string;
+    // CUSTOM(dictation-tuning): minimum time between re-transcriptions of the open segment,
+    // for providers that send partial text by re-transcribing it.
+    decodeIntervalMs?: number;
   }): StreamingTranscriptionSession;
 }
 

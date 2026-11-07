@@ -23,6 +23,7 @@ import {
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
 import type { RequestedSpeechProviders } from "./speech-types.js";
 import type { TurnDetectionProvider } from "./turn-detection-provider.js";
+import type { DictationTuning } from "./dictation-tuning.js";
 
 const SPEECH_RUNTIME_MONITOR_INTERVAL_MS = 3000;
 
@@ -339,6 +340,8 @@ export interface SpeechService {
   getLocalStatus: () => Promise<LocalSpeechRuntimeStatus>;
   previewVoice: (request: SpeechVoicePreviewRequest) => Promise<{ audio: Buffer; format: string }>;
   resolveVoiceInstructions: () => string | undefined;
+  // CUSTOM(dictation-tuning)
+  resolveDictationTuning: () => DictationTuning | undefined;
   resolveSpeechConfig: () => PaseoSpeechConfig | null;
   resolveStt: () => SpeechToTextProvider | null;
   resolveSttLanguage: () => string;
@@ -817,6 +820,7 @@ export function createSpeechService(
     getLocalStatus,
     previewVoice,
     resolveVoiceInstructions: () => speechConfig?.voiceInstructions,
+    resolveDictationTuning: () => speechConfig?.dictationTuning,
     resolveSpeechConfig: () => speechConfig,
     resolveTurnDetection: () => turnDetectionService,
     resolveStt: () => sttService,

@@ -1136,6 +1136,51 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   status fills in; switch a model and the status shows the download or the new model loaded
   after the next use; Preview plays the selected voice.
 
+## dictation-tuning: Settings > Voice and dictation > Dictation tuning
+
+- **Added:** 2026-11-07
+- **Commit:** `custom: dictation tuning settings in Voice and dictation`
+- **Why:** The local dictation model (Parakeet) is offline: Paseo re-transcribes the whole open
+  segment every 350 ms and closes a segment every 15 s, so the text keeps rewriting itself. Those
+  numbers lived in env vars or were hardcoded, and nothing explained them.
+- **What:** A Dictation tuning section under Models with the effective values and an info tip
+  on each row:
+  - Close segment after (`autoCommitSeconds`, default 15 s, Off = one segment).
+  - Transcribe again every (`decodeIntervalMs`, default 350 ms; was hardcoded).
+  - Silence threshold (`silencePeakThreshold`, PCM16 peak, default 300).
+  - Transcription prompt (OpenAI only; empty = built-in).
+  - Support: the daemon reports which fields the dictation provider reads
+    (`status.dictationTuning`). Local models ignore the prompt; OpenAI sends no partial text,
+    so it ignores the interval. Unsupported rows are dimmed and locked with "<model> doesn't
+    use this setting". A row an env var sets is locked like the other host settings
+    (`PASEO_DICTATION_AUTO_COMMIT_SECONDS`, `PASEO_DICTATION_DECODE_INTERVAL_MS`,
+    `PASEO_DICTATION_SILENCE_PEAK_THRESHOLD`, `PASEO_DICTATION_TRANSCRIPTION_PROMPT`).
+  - Values persist in `features.dictation.tuning` and apply from the next dictation, without a
+    restart. Only en and pt-BR are translated; the other locales reuse the English strings.
+- **Core files touched:** protocol: `speech-settings.ts` (four optional fields on the mutable
+  speech config, optional `dictationTuning` on the status). Server: `persisted-config.ts`
+  (`features.dictation.tuning`), `speech/speech-config-resolver.ts`, `bootstrap.ts`
+  (`PaseoSpeechConfig.dictationTuning`, effective values in `buildMutableSpeechConfig`),
+  `daemon-config-store.ts` (`mergeDictationTuningPatch`), `speech/speech-runtime.ts`
+  (`resolveDictationTuning`), `websocket-server.ts`, `session.ts`, `session/voice/voice-session.ts`
+  (pass the resolver), `dictation/dictation-stream-manager.ts` (reads it at each start; the
+  module-level env reads are gone), `speech/speech-provider.ts` (`decodeIntervalMs` on
+  `createSession`), `speech/providers/local/worker-{protocol,client,process}.ts` (forward it to
+  `SherpaParakeetRealtimeTranscriptionSession`), `speech/speech-settings-service.ts`; new
+  `speech/dictation-tuning.ts`. App: `voice-settings-page.tsx` (one line),
+  `i18n/resources/custom-voice-settings.ts`; new `screens/settings/voice/dictation-tuning-*.ts(x)`.
+- **Re-apply:** Keep `speech/dictation-tuning.ts` as the one place for defaults, env names and
+  the support matrix. Thread a `tuning` resolver from the speech service to
+  `DictationStreamManager` next to the dictation STT resolver, and read it in `handleStart`, not
+  in the constructor, so Settings changes reach the next dictation. The decode interval rides
+  on `createSession` and the worker's `session.create` message. Render
+  `<DictationTuningSection>` after `ModelsSection`.
+- **Verify:** `cd packages/server && npx vitest run src/server/speech/dictation-tuning.test.ts src/server/dictation/dictation-stream-manager.test.ts src/server/daemon-config-store.test.ts --bail=1`
+  and `cd packages/app && npx vitest run src/screens/settings/voice/dictation-tuning-model.test.ts --bail=1`
+  (both in the update script). Needs a daemon restart. In Settings > host > Voice and
+  dictation, Dictation tuning shows 15 s, 350 ms and 300 with Parakeet, and the prompt row dimmed.
+  Set "Transcribe again every" to 1000 ms and dictate: the text updates about once a second.
+
 ## voice-speak-eager: the first spoken reply skips tool search
 
 - **Added:** 2026-10-13

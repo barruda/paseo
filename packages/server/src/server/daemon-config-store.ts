@@ -829,6 +829,10 @@ function mergeMutableSpeechPatch(
     if (instructions) voiceMode.instructions = instructions;
     else delete voiceMode.instructions;
   }
+  // CUSTOM(dictation-tuning)
+  const tuning = mergeDictationTuningPatch(dictation.tuning, speech);
+  if (tuning) dictation.tuning = tuning;
+  else delete dictation.tuning;
   if (Object.keys(dictation).length > 0) features.dictation = dictation;
   if (Object.keys(voiceMode).length > 0) features.voiceMode = voiceMode;
 
@@ -852,4 +856,27 @@ function mergeMutableSpeechPatch(
     };
   }
   return { features, providers };
+}
+
+// CUSTOM(dictation-tuning): an empty prompt goes back to the built-in one.
+function mergeDictationTuningPatch(
+  current: NonNullable<NonNullable<PersistedConfig["features"]>["dictation"]>["tuning"],
+  speech: NonNullable<SupportedMutableConfigPatch["speech"]>,
+) {
+  const tuning = { ...current };
+  if (speech.dictationAutoCommitSeconds !== undefined) {
+    tuning.autoCommitSeconds = speech.dictationAutoCommitSeconds;
+  }
+  if (speech.dictationSilencePeakThreshold !== undefined) {
+    tuning.silencePeakThreshold = speech.dictationSilencePeakThreshold;
+  }
+  if (speech.dictationDecodeIntervalMs !== undefined) {
+    tuning.decodeIntervalMs = speech.dictationDecodeIntervalMs;
+  }
+  if (speech.dictationPrompt !== undefined) {
+    const prompt = speech.dictationPrompt.trim();
+    if (prompt) tuning.prompt = prompt;
+    else delete tuning.prompt;
+  }
+  return Object.keys(tuning).length > 0 ? tuning : undefined;
 }

@@ -1677,6 +1677,8 @@ export class VoiceAssistantWebSocketServer {
               stt: () => this.speech?.resolveDictationStt() ?? null,
               sttLanguage: this.speech?.resolveDictationSttLanguage() ?? "en",
               getSpeechReadiness: () => this.speech!.getReadiness(),
+              // CUSTOM(dictation-tuning)
+              tuning: () => this.speech?.resolveDictationTuning(),
             }
           : undefined,
       serverId: this.serverId,

@@ -281,7 +281,10 @@ async function createSession(
   const session =
     message.kind === "voiceStt"
       ? getSttProvider(message.config, "voice").createSession({ logger })
-      : new SherpaParakeetRealtimeTranscriptionSession({ engine });
+      : new SherpaParakeetRealtimeTranscriptionSession({
+          engine,
+          minDecodeIntervalMs: message.decodeIntervalMs,
+        });
   trackTranscriptionSession(message.sessionId, session);
   await session.connect();
   sessions.set(message.sessionId, session);

@@ -46,6 +46,7 @@ import {
 import { canPickThinkingToneFile, decodeThinkingToneFile } from "@/voice/decode-thinking-tone";
 import { useVoiceMicrophoneStore } from "@/voice/microphone-settings";
 import { useLocalSpeechStatus } from "./use-local-speech-status";
+import { DictationTuningSection } from "./dictation-tuning-section";
 import {
   deriveEngineState,
   describeSpeaker,
@@ -149,6 +150,7 @@ export function VoiceSettingsPage({ serverId }: { serverId: string }) {
       <StatusSection status={status} />
       <EngineSection status={status} speech={speech} save={saveSpeech} />
       <ModelsSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
+      <DictationTuningSection status={status} speech={speech} save={saveSpeech} />
       <VoiceSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
       <InstructionsSection status={status} speech={speech} save={saveSpeech} />
       <ThinkingToneSection />

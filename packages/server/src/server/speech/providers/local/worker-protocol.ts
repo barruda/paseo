@@ -51,6 +51,8 @@ export type LocalSpeechWorkerRequest =
       config: LocalSpeechWorkerConfig;
       sessionId: string;
       kind: LocalSpeechSessionKind;
+      // CUSTOM(dictation-tuning): minimum time between re-transcriptions of a dictation segment.
+      decodeIntervalMs?: number;
     }
   | {
       type: "session.append";

@@ -282,6 +282,7 @@ export class LocalSpeechWorkerClient {
   async createSession(
     kind: LocalSpeechSessionKind,
     emitter: EventEmitter,
+    options: { decodeIntervalMs?: number } = {},
   ): Promise<{ sessionId: string; requiredSampleRate: number }> {
     const sessionId = randomUUID();
     this.activeSessionIds.add(sessionId);
@@ -292,6 +293,9 @@ export class LocalSpeechWorkerClient {
         config: this.config,
         sessionId,
         kind,
+        ...(options.decodeIntervalMs !== undefined
+          ? { decodeIntervalMs: options.decodeIntervalMs }
+          : {}),
       });
       return { sessionId, requiredSampleRate: result.requiredSampleRate };
     } catch (err) {
@@ -679,12 +683,15 @@ export class WorkerBackedSpeechToTextProvider implements SpeechToTextProvider {
     private readonly kind: Extract<LocalSpeechSessionKind, "voiceStt" | "dictationStt">,
   ) {}
 
-  createSession(_params: {
+  createSession(params: {
     logger: pino.Logger;
     language?: string;
     prompt?: string;
+    decodeIntervalMs?: number;
   }): StreamingTranscriptionSession {
-    return new WorkerBackedTranscriptionSession(this.client, this.kind);
+    return new WorkerBackedTranscriptionSession(this.client, this.kind, {
+      decodeIntervalMs: params.decodeIntervalMs,
+    });
   }
 }
 
@@ -709,6 +716,7 @@ class WorkerBackedTranscriptionSession
   constructor(
     private readonly client: LocalSpeechWorkerClient,
     private readonly kind: Extract<LocalSpeechSessionKind, "voiceStt" | "dictationStt">,
+    private readonly options: { decodeIntervalMs?: number } = {},
   ) {
     super();
   }
@@ -725,7 +733,7 @@ class WorkerBackedTranscriptionSession
 
   private async connectRemoteSession(): Promise<void> {
     try {
-      const result = await this.client.createSession(this.kind, this);
+      const result = await this.client.createSession(this.kind, this, this.options);
       this.connectedSessionId = result.sessionId;
       this.requiredSampleRate = result.requiredSampleRate;
     } finally {

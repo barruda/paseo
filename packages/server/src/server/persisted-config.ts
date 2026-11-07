@@ -153,6 +153,16 @@ const FeatureDictationSchema = z
   .object({
     enabled: z.boolean().optional(),
     stt: SpeechSttConfigSchema.optional(),
+    // CUSTOM(dictation-tuning): see speech/dictation-tuning.ts.
+    tuning: z
+      .object({
+        autoCommitSeconds: z.number().min(0).optional(),
+        silencePeakThreshold: z.number().int().min(0).optional(),
+        decodeIntervalMs: z.number().int().min(0).optional(),
+        prompt: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 

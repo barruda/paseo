@@ -57,11 +57,13 @@ class FakeRealtimeSession extends EventEmitter implements StreamingTranscription
 class FakeSttProvider implements SpeechToTextProvider {
   public readonly id = "fake";
   public lastLanguage?: string;
+  public lastParams?: Parameters<SpeechToTextProvider["createSession"]>[0];
   constructor(private readonly session: FakeRealtimeSession) {}
   createSession(
     params: Parameters<SpeechToTextProvider["createSession"]>[0],
   ): StreamingTranscriptionSession {
     this.lastLanguage = params.language;
+    this.lastParams = params;
     return this.session;
   }
 }
@@ -593,4 +595,47 @@ it("closes every dictation stream when one provider cleanup fails", async () => 
   expect(first.closed).toBe(true);
   expect(second.closed).toBe(true);
   expect(manager.hasDemand).toBe(false);
+});
+
+// CUSTOM(dictation-tuning)
+describe("DictationStreamManager tuning from Settings", () => {
+  it("cuts segments, drops silence and configures the provider with the Settings values", async () => {
+    const session = new FakeRealtimeSession();
+    const provider = new FakeSttProvider(session);
+    const tuning = {
+      autoCommitSeconds: 1,
+      silencePeakThreshold: 5000,
+      decodeIntervalMs: 900,
+      prompt: "Only Portuguese.",
+    };
+    const manager = new DictationStreamManager({
+      logger: pino({ level: "silent" }),
+      emit: () => {},
+      sessionId: "s1",
+      stt: provider,
+      tuning: () => tuning,
+    });
+
+    await manager.handleStart("d-tuned", "audio/pcm;rate=24000;bits=16");
+    expect(provider.lastParams?.prompt).toBe("Only Portuguese.");
+    expect(provider.lastParams?.decodeIntervalMs).toBe(900);
+
+    await manager.handleChunk({
+      dictationId: "d-tuned",
+      seq: 0,
+      audioBase64: buildPcmBase64(2000, 24000),
+      format: "audio/pcm;rate=24000;bits=16",
+    });
+    expect(session.commitCalls).toBe(0);
+    expect(session.clearCalls).toBe(1);
+
+    await manager.handleChunk({
+      dictationId: "d-tuned",
+      seq: 1,
+      audioBase64: buildPcmBase64(6000, 24000),
+      format: "audio/pcm;rate=24000;bits=16",
+    });
+    expect(session.commitCalls).toBe(1);
+    manager.cleanupAll();
+  });
 });
