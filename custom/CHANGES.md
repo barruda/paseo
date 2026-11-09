@@ -4063,17 +4063,19 @@ waiting` tests in `agent-manager.test.ts`.
 - **Added:** 2026-11-09
 - **Why:** The mouse's back button made Chromium run `history.back()`, which moved between routes
   (often into Settings) instead of tabs.
-- **What:** On web (desktop and browser), the back button (button 3) goes to the last visited tab,
-  like Ctrl+Tab, and forward (button 4) walks the other way, like Ctrl+Shift+Tab. Each click
-  switches right away, with no switcher. Only when a workspace or a Desk takes the command; off
-  those screens the buttons keep the browser default. Clicks inside a browser pane's
-  `<webview>` still navigate its pages. Builds on [recent-tabs](#recent-tabs-ctrltab-walks-the-tabs-in-the-order-you-visited-them).
+- **What:** Back (button 3) and forward (button 4) walk the chronological tab history of the
+  workspace or Desk. Selecting another tab after going back clears the forward branch. Closed
+  and skipped pinned tabs are passed over. The guest preload forwards clicks from browser tabs.
+  Ctrl+Tab keeps its separate recent-tab order.
 - **Files:** `packages/app/src/hooks/use-mouse-tab-navigation.web.ts` (listeners) and
   `use-mouse-tab-navigation.ts` (native no-op).
 - **Core files touched (app):** each marked `CUSTOM(mouse-tab-nav)`: `app/_layout.tsx` (calls
   the hook), `keyboard/keyboard-action-dispatcher.ts` (optional `immediate` on
   `workspace.tab.navigate-recent`), `workspace-tabs/recent-tabs.ts` (`immediate` skips the
   switcher); `workspace-screen.tsx` and `desk-screen.tsx` pass `immediate` through.
+- **Re-apply:** Record tab visits in a per-scope history, route immediate mouse actions through it,
+  and forward guest button events from the sandboxed preload through the resident webview.
+- **Verify:** Run `recent-tabs-model.test.ts`, then test back and forward over a browser tab.
 
 ## clear-keeps-agent: `/clear` starts a fresh draft and keeps the old agent
 

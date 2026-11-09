@@ -291,6 +291,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/composer/empty-voice-trigger.test.ts --bail=1)
   # Ctrl+Tab walks the visited tabs.
   (cd packages/app && npx vitest run src/workspace-tabs/recent-tabs-model.test.ts src/keyboard/route-shortcut.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/desktop/browser/resident-webviews.browser.test.ts --bail=1)
   (cd packages/app && npx vitest run src/client-slash-commands/clear-keeps-agent.test.ts src/client-slash-commands/index.test.ts --bail=1)
   (cd packages/app && npx vitest run src/git-sync/model.test.ts --bail=1)
   # A New Agent tab's flame and critic carry over to the session it creates.

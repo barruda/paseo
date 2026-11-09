@@ -3,6 +3,29 @@
 
 const MAX_VISITS = 50;
 
+// CUSTOM(mouse-tab-nav): a chronological history, independent of the Ctrl+Tab MRU order.
+export class TabHistory {
+  private entries: string[] = [];
+  private index = -1;
+
+  visit(tabId: string): void {
+    if (this.entries[this.index] === tabId) return;
+    this.entries = [...this.entries.slice(0, this.index + 1), tabId].slice(-MAX_VISITS);
+    this.index = this.entries.length - 1;
+  }
+
+  step(delta: 1 | -1, openTabIds: readonly string[]): string | null {
+    const open = new Set(openTabIds);
+    for (let i = this.index + delta; i >= 0 && i < this.entries.length; i += delta) {
+      if (open.has(this.entries[i]!)) {
+        this.index = i;
+        return this.entries[i]!;
+      }
+    }
+    return null;
+  }
+}
+
 /** One press-and-hold of the shortcut: the order it walks, frozen when the walk starts. */
 export interface RecentTabWalk {
   scope: string;

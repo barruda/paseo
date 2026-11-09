@@ -103,6 +103,20 @@ function stageShortcutForward(event: KeyboardEvent): void {
 
 window.addEventListener("keydown", stageShortcutForward, { capture: true });
 
+// CUSTOM(mouse-tab-nav): guest mouse events do not bubble into the host window.
+for (const type of ["mousedown", "mouseup"] as const) {
+  window.addEventListener(
+    type,
+    (event) => {
+      if (!event.isTrusted || (event.button !== 3 && event.button !== 4)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (type === "mouseup") ipcRenderer.sendToHost("paseo:mouse-tab-navigation", event.button);
+    },
+    true,
+  );
+}
+
 ipcRenderer.on(POLICY_CHANNEL, (_event, value: BrowserKeyboardPolicyPayload) => {
   if (!value || typeof value.browserId !== "string" || !Array.isArray(value.prefixes)) {
     return;

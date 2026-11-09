@@ -21,6 +21,7 @@ import {
   walkableTabIds,
   withVisitFirst,
   type RecentTabWalk,
+  TabHistory,
 } from "./recent-tabs-model";
 
 // A modifier released inside a browser tab or an HTML preview never reaches this window, so a
@@ -29,6 +30,7 @@ const IDLE_END_MS = 10_000;
 const MODIFIER_KEYS = new Set(["Control", "Meta", "Alt", "OS"]);
 
 const visitsByScope = new Map<string, string[]>();
+const historiesByScope = new Map<string, TabHistory>();
 let walk: RecentTabWalk | null = null;
 let navigateOnEnd: ((tabId: string) => void) | null = null;
 let stopWatchingRelease: (() => void) | null = null;
@@ -119,6 +121,9 @@ export function useWorkspaceRecentTabs(input: {
 export function recordTabVisit(scope: string, tabId: string | null): void {
   if (!tabId || walk?.scope === scope) return;
   visitsByScope.set(scope, withVisitFirst(visitsByScope.get(scope) ?? [], tabId));
+  let history = historiesByScope.get(scope);
+  if (!history) historiesByScope.set(scope, (history = new TabHistory()));
+  history.visit(tabId);
 }
 
 /**
@@ -134,6 +139,22 @@ export function stepRecentTab(input: {
   /** CUSTOM(mouse-tab-nav): a mouse button has no modifier to hold, so it switches right away. */
   immediate?: boolean;
 }): void {
+  if (input.immediate) {
+    if (input.currentTabId) recordTabVisit(input.scope, input.currentTabId);
+    const tabId = historiesByScope.get(input.scope)?.step(
+      -input.delta as 1 | -1,
+      walkableTabIds({
+        openTabIds: input.openTabIds,
+        pinnedTabIds: useTabPinsStore.getState().byScope[input.scope] ?? [],
+        skipPinned: skipPinnedTabs(),
+      }),
+    );
+    if (tabId) {
+      visitsByScope.set(input.scope, withVisitFirst(visitsByScope.get(input.scope) ?? [], tabId));
+      input.navigate(tabId);
+    }
+    return;
+  }
   if (walk && walk.scope !== input.scope) endWalk({ navigate: false });
   const step = stepRecentTabWalk(walk, {
     scope: input.scope,

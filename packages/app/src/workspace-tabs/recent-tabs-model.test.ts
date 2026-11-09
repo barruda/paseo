@@ -4,7 +4,22 @@ import {
   stepRecentTabWalk,
   walkableTabIds,
   withVisitFirst,
+  TabHistory,
 } from "./recent-tabs-model";
+
+describe("mouse tab history", () => {
+  it("walks back and forward through visits and drops the forward branch after a new visit", () => {
+    const history = new TabHistory();
+    for (const id of ["a", "b", "c"]) history.visit(id);
+    expect(history.step(-1, ["a", "b", "c"])).toBe("b");
+    history.visit("b");
+    expect(history.step(1, ["a", "b", "c"])).toBe("c");
+    expect(history.step(-1, ["a", "c"])).toBe("a");
+    history.visit("d");
+    expect(history.step(1, ["a", "b", "c", "d"])).toBeNull();
+    expect(history.step(-1, ["a", "d"])).toBe("a");
+  });
+});
 
 describe("recentTabOrder", () => {
   it("puts the current tab first, then visited tabs, then tabs never visited", () => {

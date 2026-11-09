@@ -58,6 +58,15 @@ function registerBrowserWhenAttached(
   identity: BrowserWebviewIdentity,
   browser: BrowserWebviewProfileHost,
 ): void {
+  // CUSTOM(mouse-tab-nav): forward trusted guest button presses to the host navigation hook.
+  webview.addEventListener("ipc-message", (event) => {
+    const message = event as Event & { channel: string; args: unknown[] };
+    if (message.channel !== "paseo:mouse-tab-navigation") return;
+    const button = message.args[0];
+    if (button === 3 || button === 4) {
+      window.dispatchEvent(new CustomEvent("paseo:mouse-tab-navigation", { detail: button }));
+    }
+  });
   // Reparenting a webview can replace its guest WebContents without replacing
   // this DOM element, so every attachment needs a fresh main-process registration.
   webview.addEventListener("did-attach", () => {

@@ -1,5 +1,7 @@
 # Warp embedded in Paseo (custom)
 
+Mouse back and forward inside the embedded browser navigate Paseo tab history, including in Warp.
+
 This checkout's `custom` branch runs Warp's terminal inside a Paseo tab. Warp is a native GPU app
 and can't be embedded, but its open-source client also compiles to WebAssembly, and its
 `remote_tty` build feature drives a shell over a plain WebSocket. Paseo opens that web build in an

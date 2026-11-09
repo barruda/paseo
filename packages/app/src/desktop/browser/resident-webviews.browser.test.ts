@@ -31,6 +31,27 @@ const profileHost: BrowserWebviewProfileHost = {
   },
 };
 
+it("forwards only the guest's tab navigation buttons", () => {
+  const webview = document.createElement("webview");
+  prepareTestBrowser(webview, { browserId: "mouse-test", workspaceId: "workspace" });
+  const received: unknown[] = [];
+  const listener = (event: Event) => received.push((event as CustomEvent).detail);
+  window.addEventListener("paseo:mouse-tab-navigation", listener);
+  try {
+    for (const [channel, button] of [
+      ["paseo:mouse-tab-navigation", 3],
+      ["paseo:mouse-tab-navigation", 4],
+      ["paseo:mouse-tab-navigation", 1],
+      ["other", 3],
+    ] as const) {
+      webview.dispatchEvent(Object.assign(new Event("ipc-message"), { channel, args: [button] }));
+    }
+    expect(received).toEqual([3, 4]);
+  } finally {
+    window.removeEventListener("paseo:mouse-tab-navigation", listener);
+  }
+});
+
 function ensureTestBrowser(input: {
   browserId: string;
   workspaceId: string;
