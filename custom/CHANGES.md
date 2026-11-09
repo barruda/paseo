@@ -4767,21 +4767,21 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Added:** 2026-11-09
 - **Commit:** same as task-idle-divider.
 - **Why:** Opening several links from an answer meant leaving the chat for each one.
-- **What:** On desktop (Electron), right-clicking a web link in the chat opens it in a Paseo browser
+- **What:** On desktop (Electron), right-clicking or middle-clicking a web link in the chat opens it in a Paseo browser
   tab of the chat's workspace, like the hover card's **Abrir em aba**, but the focus stays on the
   tab you were in. A toast says "Link aberto em aba". When the right-click lands on selected
   response text, the chat-comments menu wins (it runs first and calls `preventDefault`). Plain web
   keeps the browser's menu.
 - **Core files touched:** `assistant-file-links/hover-actions.tsx` (`openUrlInWorkspaceTab`, the
   trigger's `onContextMenu`), `components/ui/hover-card.tsx` (`HoverCardTrigger` passes
-  `onContextMenu` to the View; react-native-web forwards it), and
+  `onContextMenu` and `onAuxClick` to the View; react-native-web forwards them), and
   `task-navigation/desks-store.ts` (`openTabInBackground`). All marked `CUSTOM(link-context-tab)`.
   The workspace layout uses its existing `intent: "background"`.
-- **Re-apply:** Give `HoverCardTrigger` an `onContextMenu` prop. In `UrlHoverCardBody`, pass one that
+- **Re-apply:** Give `HoverCardTrigger` `onContextMenu` and `onAuxClick` props. In `UrlHoverCardBody`, pass handlers that
   opens the URL as a browser tab without focus. In the Desks store, `openTabInBackground` opens a
   kept tab with `openInDesk` and then refocuses the tab that had focus.
 - **Verify:** `(cd packages/app && npx vitest run src/task-navigation/store.test.ts -t "background")`.
-  In the desktop app, right-click a link in a chat: a browser tab appears and the chat keeps focus.
+  In the desktop app, right-click and middle-click a link in a chat: a browser tab appears for each and the chat keeps focus.
 
 ## reopen-closed-tab: Ctrl+Z right after closing a Desk tab reopens it
 

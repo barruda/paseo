@@ -385,6 +385,7 @@ export function HoverCardTrigger({
   accessibilityLabel,
   style,
   onContextMenu,
+  onAuxClick,
 }: {
   children: ReactNode;
   focusable?: boolean;
@@ -393,6 +394,8 @@ export function HoverCardTrigger({
   style?: StyleProp<ViewStyle>;
   /** CUSTOM(link-context-tab): web only; react-native-web forwards it to the DOM element. */
   onContextMenu?: (event: { preventDefault(): void; defaultPrevented?: boolean }) => void;
+  /** CUSTOM(link-context-tab): intercept the browser's middle-click navigation. */
+  onAuxClick?: (event: { button: number; preventDefault(): void }) => void;
 }): ReactNode {
   const ctx = useContext(HoverCardContext);
   if (!ctx) return children;
@@ -408,6 +411,7 @@ export function HoverCardTrigger({
       onPointerMove={ctx.trackPointer}
       onPointerLeave={ctx.leaveTrigger}
       {...(onContextMenu ? { onContextMenu } : null)}
+      {...(onAuxClick ? { onAuxClick } : null)}
     >
       {children}
     </View>

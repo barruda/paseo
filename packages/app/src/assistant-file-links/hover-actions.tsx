@@ -475,11 +475,24 @@ function UrlHoverCardBody({
     },
     [closeCard, tasksMode, toast, url, workspace],
   );
+  const handleAuxClick = useCallback(
+    (event: { button: number; preventDefault(): void }) => {
+      if (event.button === 1) {
+        event.preventDefault();
+        if (!workspace) return;
+        closeCard();
+        openUrlInWorkspaceTab({ url, workspace, tasksMode, background: true });
+        toast?.show("Link aberto em aba");
+      }
+    },
+    [closeCard, tasksMode, toast, url, workspace],
+  );
   return (
     <>
       <HoverCardTrigger
         style={TRIGGER_STYLE}
         onContextMenu={canOpenInTab ? openInBackgroundTab : undefined}
+        onAuxClick={canOpenInTab ? handleAuxClick : undefined}
       >
         {children}
       </HoverCardTrigger>
