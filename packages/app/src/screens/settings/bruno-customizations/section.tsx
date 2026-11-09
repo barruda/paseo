@@ -3,7 +3,7 @@
 // Editor (tab movement, preview tabs, skip pinned) and the host's Voice and dictation page.
 // Keyboard shortcuts stay in Shortcuts, plugin settings in each host's Plugins page.
 
-import { useCallback, useState } from "react";
+import { useCallback, useState, useSyncExternalStore } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { JEV_ROUTER_PLUGIN_ID } from "@getpaseo/protocol/jev-router";
@@ -18,12 +18,15 @@ import { useInstalledPlugin } from "@/plugins/registry";
 import { VoiceSettingsPage } from "@/screens/settings/voice/voice-settings-page";
 import { settingsStyles } from "@/styles/settings";
 import { useFlexibleTabMovement } from "@/tab-lanes/settings";
+import { CHAT_OPTIONS, chatOptionEnabled, pluginChatOptionKey } from "@/composer/chat-options";
+import { pluginButtonStore } from "@/plugins/buttons/store";
 
-type CustomizationsTab = "composer" | "chat" | "tabs" | "voice";
+type CustomizationsTab = "composer" | "chat" | "chat-options" | "tabs" | "voice";
 
 const TAB_OPTIONS: SegmentedControlOption<CustomizationsTab>[] = [
   { value: "composer", label: "Composer", testID: "bruno-tab-composer" },
   { value: "chat", label: "Chat", testID: "bruno-tab-chat" },
+  { value: "chat-options", label: "Chat Options", testID: "bruno-tab-chat-options" },
   { value: "tabs", label: "Tabs", testID: "bruno-tab-tabs" },
   { value: "voice", label: "Voice", testID: "bruno-tab-voice" },
 ];
@@ -42,9 +45,53 @@ export function BrunoCustomizationsSection({ serverId }: { serverId: string | nu
       />
       {tab === "composer" ? <ComposerTab serverId={serverId} /> : null}
       {tab === "chat" ? <ChatTab /> : null}
+      {tab === "chat-options" ? <ChatOptionsTab /> : null}
       {tab === "tabs" ? <TabsTab /> : null}
       {tab === "voice" ? <VoiceTab serverId={serverId} /> : null}
     </View>
+  );
+}
+
+// CUSTOM(chat-options): show registered plugin pills as well as the built-in rail items.
+function ChatOptionsTab() {
+  const entries = useSyncExternalStore(
+    pluginButtonStore.subscribe,
+    pluginButtonStore.getSnapshot,
+    pluginButtonStore.getSnapshot,
+  );
+  const options = new Map<string, string>(CHAT_OPTIONS);
+  for (const entry of entries) {
+    if (entry.placement !== "composer" || entry.context.context !== "agent") continue;
+    const key = pluginChatOptionKey(entry.installation.id, entry.id, entry.context.agentId);
+    if (!options.has(key)) options.set(key, entry.button.title);
+  }
+  return (
+    <SettingsSection title="Chat options">
+      <SettingsCard>
+        {[...options].map(([key, label]) => (
+          <ChatOptionRow key={key} optionKey={key} label={label} />
+        ))}
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+function ChatOptionRow({ optionKey, label }: { optionKey: string; label: string }) {
+  const { settings, updateSettings } = useAppSettings();
+  const onChange = useCallback(
+    (value: boolean) => {
+      void updateSettings((current) => ({
+        chatOptions: { ...current.chatOptions, [optionKey]: value },
+      }));
+    },
+    [optionKey, updateSettings],
+  );
+  return (
+    <SettingsSwitch
+      label={label}
+      value={chatOptionEnabled(settings.chatOptions, optionKey)}
+      onValueChange={onChange}
+    />
   );
 }
 

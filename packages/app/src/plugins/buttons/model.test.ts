@@ -5,6 +5,25 @@ import { describe, expect, it } from "vitest";
 import type { PluginButton } from "@getpaseo/plugin/client";
 import type { InstalledPlugin } from "../types";
 import { PluginButtonStore, buttonMatches } from "./model";
+import { CHAT_OPTIONS, chatOptionEnabled, pluginChatOptionKey } from "@/composer/chat-options";
+
+describe("chat pill preferences", () => {
+  it("enables every option by default and identifies plugin pills across sessions", () => {
+    expect(CHAT_OPTIONS.every(([key]) => chatOptionEnabled({}, key))).toBe(true);
+    expect(pluginChatOptionKey("token-ledger", "ledger-pill-agent-a", "agent-a")).toBe(
+      "plugin:token-ledger:ledger-pill",
+    );
+    expect(
+      chatOptionEnabled(
+        { "plugin:token-ledger:ledger-pill": false },
+        pluginChatOptionKey("token-ledger", "ledger-pill-agent-b", "agent-b"),
+      ),
+    ).toBe(false);
+    expect(pluginChatOptionKey("tell-agent", "message-agent", "agent-b")).toBe(
+      "plugin:tell-agent:message-agent",
+    );
+  });
+});
 
 function installation(): InstalledPlugin {
   return {

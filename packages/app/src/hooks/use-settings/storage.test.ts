@@ -44,6 +44,19 @@ function makeDeps(
 }
 
 describe("loadAppSettingsFromStorage", () => {
+  it("defaults chat options to visible and persists individual choices", async () => {
+    const deps = makeDeps();
+    expect((await loadAppSettingsFromStorage(deps)).chatOptions).toEqual({});
+    await saveAppSettings({
+      queryClient: new QueryClient(),
+      deps,
+      updates: { chatOptions: { commit: false, reading: true } },
+    });
+    expect((await loadAppSettingsFromStorage(deps)).chatOptions).toEqual({
+      commit: false,
+      reading: true,
+    });
+  });
   it("persists file panel associations, including panels absent from this host", async () => {
     const deps = makeDeps();
     const queryClient = new QueryClient();

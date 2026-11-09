@@ -4058,6 +4058,22 @@ waiting` tests in `agent-manager.test.ts`.
   stays closed, in a workspace and in Tasks mode. If an old override still puts "Next tab" on Ctrl+Tab, that row wins: rebind it in
   Settings.
 
+## chat-options: choose the pills above the chat composer
+
+- **Added:** 2026-11-09
+- **Commit:** `custom: add chat option toggles`
+- **Why:** Let Bruno hide individual chat pills without disabling their features or plugins.
+- **What:** Settings > Bruno's Customizations > Chat Options controls built-in and plugin pills.
+  Missing preferences default to visible. Registered plugin pills also get a toggle, keyed by
+  plugin and pill rather than session, so the choice applies across agents and hosts.
+- **Core files touched:** `composer/chat-options.ts`, `hooks/use-settings/storage.ts`,
+  `screens/settings/bruno-customizations/section.tsx`, `panels/agent-tracks.tsx`,
+  `panels/agent-panel.tsx`, and `plugins/buttons/view.tsx` (marked `CUSTOM(chat-options)`).
+- **Re-apply:** Store the visibility map in app settings; apply it to each built-in pill and
+  plugin composer contribution, and list the controls in the customizations tab. Normalize
+  agent-specific plugin pill IDs before looking them up.
+- **Verify:** Run `storage.test.ts` and `plugins/buttons/model.test.ts`; toggle pills in a chat.
+
 ## mouse-tab-nav: the mouse's back/forward buttons switch tabs
 
 - **Added:** 2026-11-09

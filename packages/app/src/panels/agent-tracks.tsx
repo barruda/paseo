@@ -30,6 +30,7 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
 import { openComposerChanges } from "@/workspace-tabs/open-supporting-view";
+import { chatOptionEnabled } from "@/composer/chat-options";
 
 /**
  * The pane's ambient context — workspace changes, subagents, and tasks — as a row of pills above
@@ -38,6 +39,8 @@ import { openComposerChanges } from "@/workspace-tabs/open-supporting-view";
  * The row shares the composer's keyboard transform and owns the space between itself and the
  * transcript. Each pill owns its action while tab placement stays behind the workspace boundary.
  */
+// Each independently configurable pill contributes one render branch.
+// eslint-disable-next-line complexity
 export const AgentTracks = memo(function AgentTracks({
   serverId,
   workspaceId,
@@ -73,6 +76,8 @@ export const AgentTracks = memo(function AgentTracks({
   const gitSync = useGitSync({ serverId, workspaceId, agentId });
   const isCompact = useIsCompactFormFactor();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
+  const options = useSettings((settings) => settings.chatOptions);
+  const show = (key: string) => chatOptionEnabled(options, key);
   const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
   const canDetachSubagents = useSessionStore(
     (state) => state.sessions[serverId]?.serverInfo?.features?.agentDetach === true,
@@ -130,13 +135,14 @@ export const AgentTracks = memo(function AgentTracks({
   }, [isCompact, openInSidePane, workspaceKey]);
 
   if (
-    !hasWorkspaceDiffStat &&
+    !(show("diff") && hasWorkspaceDiffStat) &&
     !hasAgentTracks({
       parentAgentId,
       subagentRows,
       tasks,
       archiveFinishedStatus,
       hasPluginComposerPills,
+      options,
     })
   ) {
     return null;
@@ -145,7 +151,7 @@ export const AgentTracks = memo(function AgentTracks({
   return (
     <ComposerTrackBar>
       {/* CUSTOM(worktree-pill-done) */}
-      {isDone ? (
+      {isDone && show("worktree") ? (
         <WorktreePill
           serverId={serverId}
           workspaceId={workspaceId}
@@ -156,19 +162,23 @@ export const AgentTracks = memo(function AgentTracks({
           gitSync={gitSync}
         />
       ) : null}
-      {parentAgentId ? <ParentAgentPill serverId={serverId} parentAgentId={parentAgentId} /> : null}
-      <AgentTaskList tasks={tasks} />
-      <SubagentsTrack
-        serverId={serverId}
-        rows={subagentRows}
-        onOpenSubagent={handleOpenSubagent}
-        onOpenProviderSubagent={handleOpenProviderSubagent}
-        sheetTabFor={sheetTabFor}
-        onArchiveSubagent={archiveSubagent}
-        onArchiveFinished={onArchiveFinished}
-        archiveFinishedStatus={archiveFinishedStatus}
-        onDetachSubagent={canDetachSubagents ? detachSubagent : undefined}
-      />
+      {parentAgentId && show("parent") ? (
+        <ParentAgentPill serverId={serverId} parentAgentId={parentAgentId} />
+      ) : null}
+      {show("tasks") ? <AgentTaskList tasks={tasks} /> : null}
+      {show("subagents") ? (
+        <SubagentsTrack
+          serverId={serverId}
+          rows={subagentRows}
+          onOpenSubagent={handleOpenSubagent}
+          onOpenProviderSubagent={handleOpenProviderSubagent}
+          sheetTabFor={sheetTabFor}
+          onArchiveSubagent={archiveSubagent}
+          onArchiveFinished={onArchiveFinished}
+          archiveFinishedStatus={archiveFinishedStatus}
+          onDetachSubagent={canDetachSubagents ? detachSubagent : undefined}
+        />
+      ) : null}
       {/* CUSTOM(pill-order): TLDR, Commit: wip and Rename session lead the row. */}
       <PluginComposerPills
         serverId={serverId}
@@ -178,9 +188,11 @@ export const AgentTracks = memo(function AgentTracks({
         leading
       />
       {/* CUSTOM(commit-wip): commits everything as "wip". */}
-      <CommitWipPill serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
+      {show("commit") ? (
+        <CommitWipPill serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
+      ) : null}
       {/* CUSTOM(session-auto-rename): names the session from its status summary. */}
-      <RenameSessionPill serverId={serverId} agentId={agentId} />
+      {show("rename") ? <RenameSessionPill serverId={serverId} agentId={agentId} /> : null}
       <PluginComposerPills
         serverId={serverId}
         workspaceId={workspaceId}
@@ -188,13 +200,15 @@ export const AgentTracks = memo(function AgentTracks({
         compact={isCompact}
         leading={false}
       />
-      <WorkspaceDiffStatPill
-        serverId={serverId}
-        workspaceId={workspaceId}
-        onPress={handleOpenChanges}
-      />
+      {show("diff") ? (
+        <WorkspaceDiffStatPill
+          serverId={serverId}
+          workspaceId={workspaceId}
+          onPress={handleOpenChanges}
+        />
+      ) : null}
       {/* CUSTOM(worktree-pill): copies the worktree path or merges it into the main checkout. */}
-      {isDone ? null : (
+      {isDone || !show("worktree") ? null : (
         <WorktreePill
           serverId={serverId}
           workspaceId={workspaceId}
@@ -204,14 +218,16 @@ export const AgentTracks = memo(function AgentTracks({
         />
       )}
       {/* CUSTOM(git-sync): "Trazer do <worktree>" or "Resolver conflitos", last in the row. */}
-      <GitSyncTrailingPills
-        serverId={serverId}
-        workspaceId={workspaceId}
-        agentId={agentId}
-        gitSync={gitSync}
-      />
+      {show("git-sync") ? (
+        <GitSyncTrailingPills
+          serverId={serverId}
+          workspaceId={workspaceId}
+          agentId={agentId}
+          gitSync={gitSync}
+        />
+      ) : null}
       {/* CUSTOM(reading-modes): Columns and Compact, at the right end. */}
-      <ReadingModePill agentId={agentId} />
+      {show("reading") ? <ReadingModePill agentId={agentId} /> : null}
     </ComposerTrackBar>
   );
 });
@@ -222,20 +238,26 @@ export function hasAgentTracks({
   tasks,
   archiveFinishedStatus,
   hasPluginComposerPills = false,
+  options = {},
 }: {
   parentAgentId: string | null;
   subagentRows: readonly SubagentRow[];
   tasks: readonly TodoEntry[] | undefined;
   archiveFinishedStatus: ArchiveFinishedStatus;
   hasPluginComposerPills?: boolean;
+  options?: Record<string, boolean>;
 }): boolean {
   return (
     // CUSTOM(commit-wip): Commit: wip shows with or without changes, so the row always does.
-    COMMIT_WIP_PILL_ALWAYS_SHOWN ||
-    parentAgentId !== null ||
-    subagentRows.length > 0 ||
-    Boolean(tasks?.length) ||
-    archiveFinishedStatus.kind !== "idle" ||
+    (chatOptionEnabled(options, "commit") && COMMIT_WIP_PILL_ALWAYS_SHOWN) ||
+    (chatOptionEnabled(options, "parent") && parentAgentId !== null) ||
+    (chatOptionEnabled(options, "subagents") &&
+      (subagentRows.length > 0 || archiveFinishedStatus.kind !== "idle")) ||
+    (chatOptionEnabled(options, "tasks") && Boolean(tasks?.length)) ||
+    chatOptionEnabled(options, "rename") ||
+    chatOptionEnabled(options, "reading") ||
+    chatOptionEnabled(options, "worktree") ||
+    chatOptionEnabled(options, "git-sync") ||
     hasPluginComposerPills
   );
 }

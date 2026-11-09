@@ -49,6 +49,8 @@ import {
 import { SurfaceErrorBoundary } from "../surface-error-boundary";
 import { toPluginTheme } from "../theme";
 import { buttonMatches, type RegisteredPluginButton } from "./model";
+import { chatOptionEnabled, pluginChatOptionKey } from "@/composer/chat-options";
+import { useSettings } from "@/hooks/use-settings";
 import { pluginButtonStore } from "./store";
 import { resolvePluginPlatform } from "../platform";
 
@@ -619,7 +621,10 @@ export function useHasPluginComposerPills(
   workspaceId: string,
   agentId: string,
 ): boolean {
-  return useButtons(serverId, workspaceId, agentId).length > 0;
+  const options = useSettings((settings) => settings.chatOptions);
+  return useButtons(serverId, workspaceId, agentId).some((entry) =>
+    chatOptionEnabled(options, pluginChatOptionKey(entry.installation.id, entry.id, agentId)),
+  );
 }
 
 // CUSTOM(pill-order): these pills lead the composer row, ahead of Commit: wip and Rename session.
@@ -640,10 +645,14 @@ export function PluginComposerPills({
   leading?: boolean;
 }) {
   const allEntries = useButtons(serverId, workspaceId, agentId);
+  const options = useSettings((settings) => settings.chatOptions);
+  const enabledEntries = allEntries.filter((entry) =>
+    chatOptionEnabled(options, pluginChatOptionKey(entry.installation.id, entry.id, agentId)),
+  );
   const entries =
     leading === undefined
-      ? allEntries
-      : allEntries.filter((entry) => LEADING_COMPOSER_PILL_IDS.has(entry.id) === leading);
+      ? enabledEntries
+      : enabledEntries.filter((entry) => LEADING_COMPOSER_PILL_IDS.has(entry.id) === leading);
   const hosts = useHosts();
   const hostLabel = hosts.find((host) => host.serverId === serverId)?.label ?? serverId;
   return entries.map((entry) => (
