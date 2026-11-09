@@ -37,11 +37,6 @@ export function ChatSection() {
     (chatOutlineEnabled: boolean) => void updateSettings({ chatOutlineEnabled }),
     [updateSettings],
   );
-  // CUSTOM(chat-links)
-  const changeChatLinks = useCallback(
-    (chatLinksEnabled: boolean) => void updateSettings({ chatLinksEnabled }),
-    [updateSettings],
-  );
 
   return (
     <View>
@@ -66,15 +61,6 @@ export function ChatSection() {
               hint={t("settings.appearance.chatOutline.description")}
               value={settings.chatOutlineEnabled}
               onValueChange={changeChatOutline}
-            />
-          )}
-          {/* CUSTOM(chat-links) */}
-          {isNative ? null : (
-            <SettingsSwitch
-              label="Link list"
-              hint="Show the links the agent sent beside the chat"
-              value={settings.chatLinksEnabled}
-              onValueChange={changeChatLinks}
             />
           )}
         </SettingsCard>

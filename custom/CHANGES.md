@@ -521,8 +521,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   `client/live-renderers.tsx`. Upstream's own code fails this repo's lint and format rules and is
   left as upstream wrote it.
 - **Core files touched:** `.oxlintrc.json` and `.oxfmtrc.json`: `ignorePatterns` skip
-  `custom/plugins/beautiful-chat/**` except `client/expand-memory*.ts`, so the pre-commit hook
-  passes on the vendored code and still checks ours. JSON has no comments, so no `CUSTOM(` marker.
+  `custom/plugins/beautiful-chat/**` except `client/expand-memory*.ts`, so checks skip the
+  vendored code and still check ours. JSON has no comments, so no `CUSTOM(` marker.
   On conflict, re-add the two patterns to whatever list upstream has.
 - **Re-apply:** To take a newer upstream, copy its files over the plugin folder (keep
   `expand-memory.ts` and its test), then redo the three edits: in `ToolCallout` replace
@@ -1035,7 +1035,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   the whole utterance on 2 CPU threads every 350 ms. On an RTX 4070 Ti SUPER the same work
   takes ~100 ms (TTS) and ~15 ms (STT) with almost no CPU. RAM does not drop: ONNX Runtime
   keeps a host copy of the weights, and the worker sits around 2 GB plus ~1-3.5 GB of VRAM.
-- **What:** With GPU selected (Settings > Voice and dictation, stored as
+- **What:** With GPU selected (Settings > Bruno's Customizations > Voice, stored as
   `providers.local.executionProvider: "cuda"`), the worker client forks the local speech
   worker with sherpa-onnx's CUDA build ahead of the CPU-only npm package on
   `LD_LIBRARY_PATH` and runs Parakeet and Kokoro on the `cuda` provider. The build lives in
@@ -1132,7 +1132,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   sidebar item and render case.
 - **Verify:** Server: `npx vitest run src/server/speech src/server/daemon-config-store.test.ts src/server/voice-config.test.ts src/server/speech/providers/local/sherpa/silero-vad-session.test.ts --bail=1`.
   App: `npx vitest run src/screens/settings/voice src/voice/thinking-tone-settings.test.ts src/i18n --bail=1`.
-  Both are in the update script. In the app, open Settings > host > Voice and dictation: the
+  Both are in the update script. In the app, open Settings > Bruno's Customizations > Voice: the
   status fills in; switch a model and the status shows the download or the new model loaded
   after the next use; Preview plays the selected voice.
 
@@ -1358,7 +1358,9 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **What:** A **Tasks** switch immediately after the header shortcut hints selects a global task
   sidebar. The choice persists locally and defaults off. Search and project/status filters span
   visible workspaces and hosts. **Your attention** separates blocked/failed tasks from unread
-  finished responses; **In progress** and **Idle** show the rest. Managed children stay under
+  finished responses; **In progress** and **Idle** show the rest. A row's second line shows the
+  project, plus the host when it is remote, and not the workspace name: a workspace keeps the title
+  of its first prompt, so every task in it repeated the same text. Managed children stay under
   their parent across workspaces. Selecting a task uses existing agent navigation and attention
   clearing. The **desks** customization below extends this mode with independent tab sets and
   replaces the original single-project filter and Browse workspaces footer.
@@ -1771,8 +1773,10 @@ click Run: a Terminal card with `hi` appears and the agent receives nothing.
 - **Why:** Old idle sessions buried the rest of the Tasks sidebar, task rows had none of the
   workspace row's everyday actions, and archived sessions could only be found in History.
 - **What:**
-  - Idle limit: under **Attention first**, the Idle group opens on the 5 newest tasks that changed
-    in the last 30 minutes. The toggle row below it (the workspace sidebar's toggle, with a label
+  - Idle limit: in every sort (only **Attention first** until
+    [task-idle-divider](#task-idle-divider-expand--collapse-on-the-line-under-the-pinned-tasks)),
+    the idle tasks open on the 5 newest that changed in the last 30 minutes. The toggle row at the
+    end of the Idle group (of the list, in the other sorts) (the workspace sidebar's toggle, with a label
     override) pages: **Show next 5** reveals the next five whatever their age, then **Show N more**
     reveals the rest, and **Show less** folds back to the opening limit. The crew holding the
     selected task is never hidden and does not count. Searching or choosing the Idle filter shows
@@ -2412,50 +2416,68 @@ agentId) ?? useProviderIcon(provider, serverId)`. Call both hooks unconditionall
   the app, open **+**, hover **Agent**, click another project: a new agent tab opens with that
   project's icon in the composer.
 
-## session-auto-rename: the status summary names the session
+## session-auto-rename: the status summary names the session, once
 
-- **Added:** 2026-10-21 (based on upstream 0.11.2, `0d61cca50`)
+- **Added:** 2026-10-21 (based on upstream 0.11.2, `0d61cca50`); reworked 2026-11-04
 - **Commits:** `custom: the status summary renames the session`, then
-  `custom: auto-rename from the first summary, following it until renamed by hand`.
+  `custom: auto-rename from the first summary, following it until renamed by hand`, then
+  `custom: a session is named once, with at most two words`.
 - **Why:** A session's tab title is the first line of its first message, which rarely says what
-  the session turned out to be about. The status summary under the composer already knows.
+  the session turned out to be about. The status summary under the composer already knows. A name
+  that keeps changing is worse than none, and two words say the subject at a glance.
 - **What:**
   - The [agent-status-summary](#agent-status-summary-what-each-agent-was-asked-and-where-it-stands-under-the-composer)
-    call also asks Haiku for a `title` of 2 to 4 words: a complete name for the subject, kept
-    from the previous card unless the subject changed. Same call, no extra cost beyond a few
-    tokens. The reply is clamped to four words like
-    [title-max-four-words](#title-max-four-words-agent-and-workspace-titles-stay-at-four-words),
-    and connector words the cut leaves at the end ("de", "e", "por", "and", "of"...) are dropped
-    (`tidyGeneratedTitle`).
-  - The daemon renames the session from its first summary on, a few seconds after the first
-    message, and keeps following the summary's title while the session's title is one this
-    feature wrote: the first message's provisional title or the previous summary's title. A
-    rename by hand, or an explicit title from the CLI/MCP, matches neither and is kept, daemon
-    restarts included.
+    call also asks Haiku for a `title` of at most 2 words: a complete name for the subject. The
+    reply is clamped to two words (`tidyGeneratedTitle`), and connector words the cut leaves at the
+    end ("de", "e", "por", "and", "of"...) are dropped.
+  - The daemon renames the session from its first summary, a few seconds after the first message,
+    and never again. It only replaces a title that is empty or still the first message's
+    provisional title, so a later summary, a rename by hand and an explicit title from the CLI/MCP
+    all leave the name alone, daemon restarts included.
   - A **Rename session** pill right of **Commit: wip** renames the session to the current summary
-    title at any time (falling back to the topic for older summaries), which also hands the title
-    back to the auto-rename. With no summary yet, it shows an error toast.
-  - **History:** until 2026-10-25 the rename waited for the third user message and happened once.
-    Most sessions never got there (in a sample of 45, the ones still titled "1) vmos colocar o"
-    or "A gente fez uma" had one or two messages), and the four-word cut left titles like
-    "Abas do World e".
+    title on demand (falling back to the topic for older summaries). It is a manual rename: it no
+    longer hands the title back to the auto-rename. With no summary yet, it shows an error toast.
+  - **History:** until 2026-10-25 the rename waited for the third user message. Until 2026-11-04
+    the title had 2 to 4 words and followed the summary while it was the one this feature wrote.
 - **Core files touched** (marked `CUSTOM(session-auto-rename)`):
   - Protocol `messages.ts`: optional `title` on `AgentStatusSummaryPayloadSchema`.
   - Server `agent-status-summary.ts`: the `title` field in the prompt and reply,
-    `tidyGeneratedTitle` and `maybeAutoRename`; `bootstrap.ts` passes `agentStorage` to
-    `AgentStatusSummaries`.
+    `tidyGeneratedTitle` and `maybeAutoRename`; `agent/create-agent-title.ts`: `clampTitleWords`
+    takes an optional word limit; `bootstrap.ts` passes `agentStorage` to `AgentStatusSummaries`.
   - App `composer/rename-session-pill.tsx` (new) and `panels/agent-tracks.tsx` (renders it after
     `CommitWipPill`).
-- **Re-apply:** Depends on agent-status-summary and commit-wip. Add `title` to the summary prompt,
-  schema and payload. After storing a summary, call `agentManager.setTitle` with its title when
-  the stored title is empty, equals the previous summary's title, or equals
-  `resolveCreateAgentTitles({ initialPrompt: firstUserMessage })`. In the app, a pill after
-  Commit: wip calls `client.updateAgent(agentId, { name: summary.title })`.
+- **Re-apply:** Depends on agent-status-summary and commit-wip. Add `title` to the summary prompt
+  ("at most 2 words"), schema and payload. After storing a summary, call `agentManager.setTitle`
+  with its title only when the stored title is empty or equals
+  `resolveCreateAgentTitles({ initialPrompt: firstUserMessage }).provisionalTitle`. In the app, a
+  pill after Commit: wip calls `client.updateAgent(agentId, { name: summary.title })`.
 - **Verify:** `(cd packages/server && npx vitest run src/server/agent-status-summary.test.ts)`
-  (already in the update script) covers the first rename, following the summary, the kept manual
-  title and the title tidying. In the app, send a fresh agent a message: a few seconds later its
-  tab title changes to a name of up to 4 words. Rename it by hand and send another message: the
-  title stays. Press **Rename session**: it goes back to the summary's title.
+  (already in the update script) covers the first rename, the name staying after later summaries,
+  the kept manual title and the two-word tidying. In the app, send a fresh agent a message: a few
+  seconds later its tab title changes to a name of up to 2 words. Send more messages that change
+  the subject: the title stays. Needs the daemons restarted.
+
+## status-topic-breadcrumb: the line under the composer keeps the first topic
+
+- **Added:** 2026-11-07 (based on upstream 0.14.0)
+- **Commit:** `custom: status line shows first topic › current topic`
+- **Why:** The [agent-status-summary](#agent-status-summary-what-each-agent-was-asked-and-where-it-stands-under-the-composer)
+  topic changed with every summary, so the line under the composer lost what the session started
+  as and was confusing to read.
+- **What:** The daemon saves the first summary's topic as `firstTopic` and carries it into every
+  later summary. From the second summary on, once the topic differs, the line reads
+  `first topic › current topic` (the Tasks sidebar hover card too). A summary from before this
+  change promotes its topic to `firstTopic` on the next summary.
+- **Core files touched** (marked `CUSTOM(status-topic-breadcrumb)`):
+  - Protocol `messages.ts`: optional `firstTopic` on `AgentStatusSummaryPayloadSchema`.
+  - Server `agent-status-summary.ts`: `generate` sets `firstTopic` from the previous summary
+    (`previous.firstTopic ?? previous.topic`), or from the new topic when there is none.
+  - App `composer/agent-status-line.tsx`: `formatSummaryTopic`.
+- **Re-apply:** Add the optional field, set it in the daemon before `setStatusSummary`, and render
+  `${firstTopic} › ${topic}` when both exist and differ.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent-status-summary.test.ts)`
+  (already in the update script). In the app, send an agent two messages on different subjects:
+  after the second summary the line reads `first › current`. Needs the daemons restarted.
 
 ## agent-status-summary-persist: the line under the composer survives restarts
 
@@ -2897,9 +2919,7 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     toggle, instead of inside it.
   - `.oxlintrc.json` and `.oxfmtrc.json` skip `custom/plugins/power-workboard/**`. The plugin keeps
     upstream Workboard's style (Prettier, 80 columns) and is checked with its own `tsc`, `vitest`
-    and `prettier`. `lefthook.yml` (`CUSTOM(vendored-plugins)`) passes
-    `--no-error-on-unmatched-pattern` to lint and format, so a commit that stages only ignored
-    files still passes the hook. JSON has no comments; on conflict, re-add the patterns and flag.
+    and `prettier`. JSON has no comments; on conflict, re-add the patterns.
 - **Re-apply:** Plugin: none. Sidebar: in the header rows, split the visible plugin items with
   those ids out of the Show more list and render them before the toggle.
 - **Tests:** `tests/power-workboard.test.ts` (no import, tracking, Ready to start migration,
@@ -3489,7 +3509,7 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Why:** [tab-lanes](#tab-lanes-desk-tabs-sit-in-free-rows-drop-a-tab-anywhere) should be a
   choice per install: the user wants it in `paseo-personal` but not forced everywhere. And after
   moving tabs around freely, they wanted one click to line them all up again.
-- **What:** Settings > Editor has a **Flexible tab movement** switch (desktop app only). Off, the
+- **What:** Settings > Bruno's Customizations > Tabs has a **Flexible tab movement** switch (desktop app only). Off, the
   default, Desks use the original single scrolling tab row. On, they use the free rows of
   tab-lanes, and each row starts with a refresh button (**Tidy tabs**) before the pinned tabs that
   packs every tab to the left in the order they show, wrapping to more rows only when one is full.
@@ -3509,12 +3529,12 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   - `packages/desktop/e2e/support/runtime.ts`: a `flexibleTabMovement` option for the fake
     desktop bridge.
 - **Re-apply:** Add an optional boolean desktop setting, read it where the Desk renders its
-  `SplitContainer`, and show its switch in the Editor settings. Put a button before the lane
+  `SplitContainer`, and show its switch in Settings > Bruno's Customizations > Tabs. Put a button before the lane
   chips that clears the pane's stored positions in row order.
 - **Verify:** `(cd packages/desktop && npx vitest run src/settings/desktop-settings.test.ts)` and
   the first test of desktop `e2e/task-navigation.spec.ts` (turns the setting on, drags a tab to a
   second row, tidies it back), both in the update script; the other tests there run with it off.
-  In the app, Settings > Editor: turn the switch off and the Desk shows one scrolling row.
+  In the app, Settings > Bruno's Customizations > Tabs: turn the switch off and the Desk shows one scrolling row.
 
 ## history-search-tabs: a History search becomes a tab
 
@@ -3685,7 +3705,7 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **Commit:** `custom: Preview tabs setting; off, a task click opens its own tab`
 - **Why:** The user prefers every task click in Tasks mode to open a tab of its own, with no
   shared preview tab that the next click replaces.
-- **What:** Settings > Editor > **Preview tabs**, off by default. Off, every Desk open keeps its
+- **What:** Settings > Bruno's Customizations > Tabs > **Preview tabs**, off by default. Off, every Desk open keeps its
   tab (a task already open just gets focus), no tab reads as a preview (italic label, Keep tab
   button) and a preview left from before the setting changed becomes a kept tab on the next open.
   On restores the earlier behavior: a click replaces the preview tab and a double click
@@ -3705,8 +3725,8 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
   spec or unit test that checks preview tabs turns the setting on first.
 - **Verify:** `task-navigation/store.test.ts` ("opens every task in its own tab while preview tabs
   are off") and `e2e/task-navigation.spec.ts`, both in the update script. In the app, Tasks mode:
-  click task A, then task B; both stay open as upright tabs. Turn Preview tabs on in Settings >
-  Editor and B replaces A in an italic tab.
+  click task A, then task B; both stay open as upright tabs. Turn Preview tabs on in Settings > Bruno's Customizations >
+  Tabs and B replaces A in an italic tab.
 
 ## lazy-model-switch: switching a Claude agent's model answers at once
 
@@ -3893,7 +3913,7 @@ waiting` tests in `agent-manager.test.ts`.
     when the same name is listed with its folder. Oldest
     at the top; a link sent again moves to the bottom. Ten rows show at once and the rest scroll;
     the list follows new links unless you scrolled up.
-  - Settings > Chat > **Link list** turns it off (`chatLinksEnabled` in the app settings, on by
+  - Settings > Bruno's Customizations > Chat > **Link list** turns it off (`chatLinksEnabled` in the app settings, on by
     default). Off, the image strip goes back to its usual height.
   - Each row shows the file name (with `:line`) or the URL without its scheme. Hovering a row opens
     the same card as hovering the link in the message
@@ -3989,7 +4009,7 @@ waiting` tests in `agent-manager.test.ts`.
   without switching, and a click on a row (modifier still held) switches to it. The 10 s cover a
   modifier released inside a browser tab or HTML preview, whose key events never reach the app
   window. The tab you land on becomes the most recent. On native there is no switcher: each
-  press switches right away, so it toggles between the last two tabs. **Settings → Editor →
+  press switches right away, so it toggles between the last two tabs. **Settings > Bruno's Customizations > Tabs >
   Skip pinned tabs** (off by default; the user has it on) leaves the
   [pinned tabs](#tab-pins-pin-tab-keeps-a-tab-at-the-left-of-its-row) out of the walk; from a pinned tab,
   the first press goes to the most recent unpinned one. Each workspace and each Desk keeps its own
@@ -4037,6 +4057,23 @@ waiting` tests in `agent-manager.test.ts`.
   turn on Skip pinned tabs: A drops out of the switcher. Open the bottom panel on a terminal, close it with Ctrl+J, then Ctrl+Tab: the panel
   stays closed, in a workspace and in Tasks mode. If an old override still puts "Next tab" on Ctrl+Tab, that row wins: rebind it in
   Settings.
+
+## mouse-tab-nav: the mouse's back/forward buttons switch tabs
+
+- **Added:** 2026-11-09
+- **Why:** The mouse's back button made Chromium run `history.back()`, which moved between routes
+  (often into Settings) instead of tabs.
+- **What:** On web (desktop and browser), the back button (button 3) goes to the last visited tab,
+  like Ctrl+Tab, and forward (button 4) walks the other way, like Ctrl+Shift+Tab. Each click
+  switches right away, with no switcher. Only when a workspace or a Desk takes the command; off
+  those screens the buttons keep the browser default. Clicks inside a browser pane's
+  `<webview>` still navigate its pages. Builds on [recent-tabs](#recent-tabs-ctrltab-walks-the-tabs-in-the-order-you-visited-them).
+- **Files:** `packages/app/src/hooks/use-mouse-tab-navigation.web.ts` (listeners) and
+  `use-mouse-tab-navigation.ts` (native no-op).
+- **Core files touched (app):** each marked `CUSTOM(mouse-tab-nav)`: `app/_layout.tsx` (calls
+  the hook), `keyboard/keyboard-action-dispatcher.ts` (optional `immediate` on
+  `workspace.tab.navigate-recent`), `workspace-tabs/recent-tabs.ts` (`immediate` skips the
+  switcher); `workspace-screen.tsx` and `desk-screen.tsx` pass `immediate` through.
 
 ## clear-keeps-agent: `/clear` starts a fresh draft and keeps the old agent
 
@@ -4153,8 +4190,8 @@ waiting` tests in `agent-manager.test.ts`.
 - **What:** A toggle after the flame in a running agent's composer (any provider), off by default.
   It opens a sheet: on/off, model, critic prompt, reference images, **Per request** (a fresh critic
   for each user message, kept across its rounds) or **Persistent** (one critic for the whole chat),
-  tools **Off** or **Read only**, include the workspace diff, max rounds (default 3), save as
-  default.
+  tools **Off** or **Read only**, include the workspace diff, max rounds (a number field, 1 to 50,
+  default 10), save as default.
   - Turning it on or off puts a `<critic-notice>` in front of the user's next message (the chat
     strips it): the agent is told every answer goes through a reviewer and to end each turn with a
     full report.
@@ -4222,7 +4259,8 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   https://app.notion.com/p/40d0cc33bd4781ddbf4af8d1b08092c0
 - **What:** The `jev-router` plugin (Settings > Plugins > jev-router > Jev router):
   - **Route new sessions**, on by default. A route icon in the composer, after the critic's (in
-    drafts too, where the critic doesn't show), turns it on (tinted) or off (outline); its
+    drafts too, where the critic doesn't show), is tinted while it is on and opens the router
+    sheet ([jev-router-modes](#jev-router-modes-model-focused-or-effort-focused-and-a-locked--)); its
     tooltip also says what Jev did for that session.
   - **TypeSafe API key** (empty: route.py reads `TYPESAFE_API_KEY` or `~/.config/typesafe/env`),
     router script path (default `~/projetos/gnome-custom/jev-router/route.py`), Python, Jev
@@ -4242,7 +4280,9 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     agent's (provider, folder, mode, features) on the selected model and effort with the same
     first prompt (text only; attached images are not resent), opens it and archives the routed
     one. A first prompt over 30k characters is not kept, and its card has no button.
-  - Installed on the personal daemon only, so work prompts (paseo-telus) never go to TypeSafe.
+  - Installed on both daemons. It was personal-only at first, to keep work prompts away from
+    TypeSafe; on 2026-11-09 the user had it installed on paseo-telus too, still on TypeSafe. Each
+    host keeps its own settings; the sessions it routes use that host's Claude provider.
 - **Files:** `packages/protocol/src/jev-router.ts` (ids, settings schema, RPC schemas, labels,
   card schema, `formatClaudeModel`); `custom/plugins/jev-router/` (`shared/decision.ts`
   home/args/output/plan/card + test, `shared/settings.ts`, `server/run.ts` spawns route.py,
@@ -4262,13 +4302,112 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   on it (skipping auto-submitted drafts) and add its `createOptions` to the request. Declare
   `RestartAgentButton` in the plugin react-native entry and add it to the app's
   `pluginReactNativeCompatRuntime`, lazily required like `AgentForkMenu`.
-- **Setup:** `paseo plugin install "$PWD/custom/plugins/jev-router" --home ~/.paseo` (personal
-  only), a desktop build for the app.
+- **Setup:** `paseo plugin install "$PWD/custom/plugins/jev-router" --home ~/.paseo` and again
+  with `--home ~/.paseo-telus`, a desktop build for the app.
 - **Verify:** `npx vitest run custom/plugins/jev-router packages/app/src/jev-router` and the e2e
   `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand: on the personal Paseo,
   send "rename count to total in utils.ts" from Opus/high in a draft; the session starts on
   Haiku/low with the Jev card; its button turns the icon off and reopens the prompt on Opus/high
   in a new session, the routed one archived.
+
+## bruno-customizations: one Settings section for the fork's own settings
+
+- **Added:** 2026-11-09
+- **Commit:** `custom: Bruno's Customizations settings section, critic and Jev icons can be hidden`
+- **Why:** The fork's settings were spread over Chat, Editor and the host's Voice page, and the
+  composer's critic and Jev icons could not be hidden. The user wants one organized place.
+- **What:** An app section **Bruno's Customizations** (before Diagnostics), in tabs:
+  - **Composer**: **Toolbar icons** with **Critic** and **Jev router** switches (on by default,
+    app settings `showCriticToggle` / `showJevRouterToggle`), and \*\*Jev router > Router settings
+    > Open\*\*, the router sheet for the selected host when it has the plugin. A hidden Jev icon
+    > hides only the icon: the router runs, the ←/→ lock keeps its settings and a moved session
+    > still gets its green chip.
+  - **Chat**: **Link list** ([chat-links](#chat-links-a-list-of-the-links-the-agent-sent-beside-the-chat)).
+  - **Tabs**: **Flexible tab movement**, **Preview tabs**, **Skip pinned tabs** (from Editor).
+  - **Voice**: the host's Voice and dictation page
+    ([voice-settings](#voice-settings-settings--voice-and-dictation)) for the host the settings
+    screen points at. The host sidebar no longer lists Voice; its slug still opens the page.
+  - Keyboard shortcut customizations stay in Shortcuts, plugin settings in each host's Plugins.
+- **Files:** `packages/app/src/screens/settings/bruno-customizations/section.tsx`.
+- **Core files touched** (marked `CUSTOM(bruno-customizations)`): `screens/settings-screen.tsx`
+  (the sidebar item and its case, Voice out of the host items), `utils/host-routes.ts` (the
+  `customizations` slug), `i18n/resources/*.ts` (`settings.sections.customizations`, the same
+  name in every locale), `hooks/use-settings/storage.ts` (the two switches),
+  `composer/agent-controls/index.tsx` (gates the two icons), `jev-router/toggle.tsx`
+  (`showIcon`); the moved rows left `screens/settings/editor-section.tsx` and
+  `screens/settings/chat/chat-section.tsx`, which are upstream again.
+- **Re-apply:** Add the `customizations` slug and a sidebar item rendering
+  `BrunoCustomizationsSection` with the active host id; drop Voice from the host items but keep
+  its route case; add the two app settings and wrap the critic toggle and the Jev icon in them.
+  Any new fork setting goes into a tab of this section.
+- **Verify:** typecheck. In the app, Settings > Bruno's Customizations: each tab shows its
+  rows; turning Composer > Critic off removes the critic icon from the composer; Jev router off
+  removes its icon but the green chip still appears on a routed session.
+
+## jev-router-modes: Model focused or Effort focused, and a locked ←/→
+
+- **Added:** 2026-11-09
+- **Commit:** `custom: Jev router sheet with Model focused and Effort focused modes, locked ←/→`
+- **Why:** The user moved to two models: Opus for every non-trivial task, on low effort to start
+  and explore (as fast as Sonnet high, about the same price) and high for hard questions, and
+  Haiku for operational sessions (search code, an easy merge, an HTML page). On 5.5 models an
+  effort change keeps the prompt cache, so stepping from Opus low to high mid-session costs
+  nothing, and starting every session on the same model removes the model choice and the
+  session migrations.
+- **What:**
+  - The composer's route icon opens a sheet (like the critic's): **Route new sessions**, the mode,
+    the selected mode's settings, **Restore this mode's defaults**, Save. All of it lives in the
+    plugin's host settings (`mode`, `modelFocused`, `effortFocused`), so the Settings > Plugins
+    screen and the icon see the same document; documents saved before this get the defaults.
+  - **Model focused** is the old behavior (route.py `downgrade_only`), with its two thresholds
+    editable (small task 0.7, hard signal limit 0.3) and **Use Sonnet for small tasks**, off by
+    default: off, route.py's Sonnet pick keeps the selection, so only chat and tiny tasks move
+    (to Haiku). The user wants Sonnet out in practice but kept as a choice.
+  - **Effort focused** (route.py `--policy effort_focused`): chat and tiny tasks go to the
+    **Operational** model (Haiku) on Jev's effort moved to the nearest checked one (low, medium,
+    high; chat on the lowest); hard reasoning or a hard signal ≥ 0.5 to **Hard** (Opus high);
+    everything else to **Default** (Opus low). It ignores the selection, so it may move up, and
+    it routes Haiku selections too. Models, efforts and the three thresholds are editable. On the
+    78 labeled real prompts (cached Jev answers) it picked ~47% Opus low, ~41% Opus high, ~12%
+    Haiku.
+  - **Lock models/effort fast cycling**, on by default, in Effort focused (it follows the mode,
+    not the router's on/off): in a Claude composer, ← moves between the picks' models (keeping
+    the effort when the new model allows it, else the nearest allowed one) and → between the
+    current model's allowed efforts. Defaults: Haiku low/medium/high, Opus low/high. A model
+    outside the lock leaves → to the regular cycling.
+  - In every mode, → with text in the composer changes the effort too when the caret is at the
+    end with nothing selected (web and desktop).
+  - The model and effort chips flash briefly when their value changes, however it changed
+    (`composer/agent-controls/change-flash.tsx`); a chip's first value never flashes.
+  - A session Jev moved gets a soft green chip (the selected Desk's green, lighter text) after the
+    route icon: "Model: Haiku 5.5 Effort: low", or "Effort: high" when only the effort changed. It
+    flashes when it appears and stays while the agent is still on Jev's pick. Its menu offers
+    **Run with Opus 5.5 · high** (what was selected): the first prompt again in a new session,
+    this one archived, Jev left as it is. It reads the router card the plugin appends, so it
+    needs no new labels; the card's button and the chip share `useRestartAgent`.
+- **Files:** `packages/protocol/src/jev-router.ts` (modes, `effortFocusedPick`,
+  `effortFocusedCycle`, `nearestEffort`); `custom/plugins/jev-router/shared/decision.ts`
+  (`resolveHome`/`planRoute` by mode, `applyEffortFocused`, the policy and threshold args) +
+  test; `packages/app/src/jev-router/` (`sheet.tsx`, `form-model.ts` + test, `cycle.ts` + test
+  with the settings store the icon fills, `use-locked-cycle-keys.ts`, `toggle.tsx` opens the
+  sheet, `route-chip.tsx`, `use-restart-agent.ts`); gnome-custom `jev-router/route.py` (`--policy`, `--t-small`, `--t-hard`, `--t-deep`,
+  `jev_effort` in the output) and `strategies.py` (`effort_focused_decide`).
+- **Core files touched** (marked `CUSTOM(jev-router)`): app `composer/agent-controls/index.tsx`
+  (`useLockedCycleKeys` in `AgentControlCommandCenterRegistration` and `DraftAgentControls`; the
+  agent ←/→ handler lets → through with the caret at the end), `composer/draft/workspace-tab.tsx`
+  (same for the draft handler), `keyboard/keyboard-shortcuts.ts` (the → help label); the model
+  and effort chips in `composer/agent-controls/index.tsx` are wrapped in `<ChangeFlash>`.
+- **Re-apply:** Register `useLockedCycleKeys` (priority above the regular ←/→ handlers) wherever
+  a composer registers its model-picker source, with the same source id and controls. In the
+  handlers that cycle model and effort only in an empty composer, also let `task.draft.effort`
+  through when `isFocusedComposerCaretAtEnd()`.
+- **Verify:** `npx vitest run custom/plugins/jev-router packages/app/src/jev-router` and the e2e
+  `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand, on the personal Paseo:
+  click the route icon, pick Effort focused, Save; in a draft on Opus high, ← goes to Haiku high
+  and → walks Haiku's efforts, ← again Opus high, → Opus low; type text and press → at its end:
+  the effort changes; each change flashes its chip. Send "rename count to total in utils.ts": the
+  session starts on Haiku with the Jev card and the green chip, whose menu runs it again on the
+  selection.
 
 ## draft-composer-ready: a New Agent tab has its commands and composer controls from the start
 
@@ -4542,3 +4681,180 @@ src/composer/input/state.test.ts)`. In the desktop app, type something and dicta
 src/keyboard/keyboard-shortcuts.test.ts src/task-navigation/store.test.ts)`, and the "searches inside
   files" tests in desktop `e2e/task-navigation.spec.ts`. Needs a new app build and the daemons
   restarted; before the restart the search shows the message about the daemon.
+
+## desk-docs: a Docs tab in the Explorer sidebar
+
+- **Added:** 2026-11-04; moved from a Desk header chip to the sidebar on 2026-11-05
+- **Commit:** `custom: Docs tab in the Explorer sidebar with the HTML and Markdown files each project mentions`
+- **Why:** The link list beside a chat dies with the chat tab, and reports an agent wrote last week
+  are hard to find again. The Docs tab keeps them per project, opens them in the browsing Desk, and
+  also shows any folder you add. It lives in the sidebar next to Files and Changes.
+- **What:**
+  - **Docs** is a singleton panel of the Explorer sidebar (target kind `docs`). Open it from the
+    sidebar's **+** menu; its tab has a close button and stays where you put it, in the workspace
+    layout and in Tasks mode alike.
+  - The page has one collapsible section per project (icon, name, count, folded state remembered).
+    Projects with content come first.
+  - Documents: every `.html`, `.htm`, `.md` and `.markdown` file an agent's chat links, the same
+    rule as [chat-links](#chat-links-a-list-of-the-links-the-agent-sent-beside-the-chat). They are
+    copied into the tab with their full path when the chat shows them, so closing the agent tab
+    keeps them. A file that doesn't exist on the host is ignored. The same file again changes
+    nothing. The same file name at another path moves the entry when the old path is gone, and is
+    a second entry when the old one still exists. Right-click: Open, Copy full path, Remove from
+    Docs.
+  - A **+** with a discreet border on each project picks a folder with the desktop folder dialog
+    (projects on the local daemon only; other hosts get a toast) and adds it as a collapsible tree
+    like the Files sidebar, listed by the project's daemon. Right-click removes it from Docs.
+  - Sorting, top right: **Most recent** (default; the file's modification time) or **A to Z**.
+    Folders come before files: added folders above the documents, and inside a tree folders above
+    files, each group sorted.
+  - In Tasks mode the sidebar's **+** launches into the Desk, so `launchDeskTarget` sends a `docs`
+    launch to the workspace's Explorer pane instead (Docs has no place in a Desk).
+  - Clicking a document or a tree file opens it as a file tab. In Tasks mode it goes to the Desk
+    named **Navegadores** (any case or accents, also "Navegador") and shows that Desk; with no such
+    Desk, it opens in the Desk that is showing. In the workspace layout it opens in the project's
+    workspace.
+- **Files:** `packages/app/src/desk-docs/` (`model.ts` pure capture and sort rules with
+  `model.test.ts`, `store.ts` persisted as `custom-desk-docs`, `capture.ts` the hook the agent view
+  calls, `projects.ts`, `open.ts`, `panel.tsx`, `view.tsx`). New files; no conflict risk.
+- **Core files touched** (marked `CUSTOM(desk-docs)`): the new `docs` tab target in
+  `workspace-tabs/model.ts`, `workspace-tabs/identity.ts` (normalize, equality, deterministic id)
+  and `stores/workspace-layout-storage.ts` (schema); `panels/panel-manifest.ts` and
+  `panels/register-panels.ts`; the launcher (`workspace-tabs/launcher/index.tsx` and
+  `internal/catalog.ts`, supporting order only, with its test); the label and close-button id of a
+  docs tab in `screens/workspace/workspace-desktop-tabs-row.tsx`,
+  `compact-workspace-header/tab-switcher.tsx` and `workspace-tab-menu.ts`;
+  `task-navigation/new-tab-menu.tsx` (`launchDeskTarget` sends `docs` to the Explorer); and
+  `agent-stream/view.tsx` (`useDeskDocsCapture` after the chat-links memo).
+- **Re-apply:** Model `docs` on `files`: a singleton Explorer-host panel with no fields, added
+  wherever `files` is listed as a target kind (type, schema, normalize, equality, id, manifest,
+  registration, launcher, tab labels). Its component is `DeskDocsView`. In the agent view, call
+  `useDeskDocsCapture` with the chat links, the client, the workspace root and the session's file
+  paths.
+- **Verify:** `(cd packages/app && npx vitest run src/desk-docs/model.test.ts
+src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.ts)` (the update script runs
+  the Docs ones). In
+  the app: in the Explorer sidebar, + > Docs. Ask an agent to write and link a Markdown file: the
+  project lists it. Move the file and have the agent link the new path: still one entry. With a
+  Desk named Navegadores, click the entry: that Desk shows with the file open. Use + to add a
+  folder, expand it, switch sorting. Needs a new app build; no daemon restart.
+
+## task-idle-divider: Expand / Collapse on the line under the pinned tasks
+
+- **Added:** 2026-11-09
+- **Commit:** `custom: Tasks sidebar Expand/Collapse on the divider, Ctrl+Z reopens a closed tab, right-click opens a link in a background tab`
+- **Why:** Once the idle tasks were expanded, the only way to fold them back was the **Show less**
+  row at the very end of a long list, and under **Last activity** nothing was held back at all.
+- **What:** The line under the pinned tasks reads **⌄ Expand N ———** while idle tasks are hidden
+  and **⌃ Collapse ———** once they are all shown. Expand shows every idle task; Collapse goes
+  back to the opening limit. The idle limit of
+  [task-sidebar-actions](#task-sidebar-actions-idle-limit-row-menu-and-archived-sessions-in-the-tasks-sidebar)
+  now applies to every sort: under **Last activity** and the others, idle crews past the limit are
+  dropped from the list in place and the **Show next 5** row sits at the end. With no pinned tasks
+  the line still shows when there is something to expand or collapse.
+- **Core files touched:** `packages/app/src/task-navigation/sidebar.tsx` (`CUSTOM(task-idle-divider)`:
+  the non-attention branch of `rows`, `TaskListDivider`, the pinned section lost its bottom border).
+- **Re-apply:** In `TaskNavigationSidebar`'s `rows`, run `limitIdleTasks` on the idle/closed roots of
+  every sort and push `idleToggleRow` at the end. Render `TaskListDivider` after the pinned header
+  in `ListHeaderComponent`; it reads the idle-toggle row (`mode === "less"` means expanded) and
+  sets `idleShown` to `Infinity` or `null`.
+- **Verify:** Tasks sidebar under **Last activity** with more than 5 idle tasks: the line under the
+  pinned tasks says Expand N; clicking it shows all and the line says Collapse. Needs a new app
+  build; no daemon restart.
+
+## link-context-tab: right-clicking a web link in the chat opens it in a background tab
+
+- **Added:** 2026-11-09
+- **Commit:** same as task-idle-divider.
+- **Why:** Opening several links from an answer meant leaving the chat for each one.
+- **What:** On desktop (Electron), right-clicking a web link in the chat opens it in a Paseo browser
+  tab of the chat's workspace, like the hover card's **Abrir em aba**, but the focus stays on the
+  tab you were in. A toast says "Link aberto em aba". When the right-click lands on selected
+  response text, the chat-comments menu wins (it runs first and calls `preventDefault`). Plain web
+  keeps the browser's menu.
+- **Core files touched:** `assistant-file-links/hover-actions.tsx` (`openUrlInWorkspaceTab`, the
+  trigger's `onContextMenu`), `components/ui/hover-card.tsx` (`HoverCardTrigger` passes
+  `onContextMenu` to the View; react-native-web forwards it), and
+  `task-navigation/desks-store.ts` (`openTabInBackground`). All marked `CUSTOM(link-context-tab)`.
+  The workspace layout uses its existing `intent: "background"`.
+- **Re-apply:** Give `HoverCardTrigger` an `onContextMenu` prop. In `UrlHoverCardBody`, pass one that
+  opens the URL as a browser tab without focus. In the Desks store, `openTabInBackground` opens a
+  kept tab with `openInDesk` and then refocuses the tab that had focus.
+- **Verify:** `(cd packages/app && npx vitest run src/task-navigation/store.test.ts -t "background")`.
+  In the desktop app, right-click a link in a chat: a browser tab appears and the chat keeps focus.
+
+## reopen-closed-tab: Ctrl+Z right after closing a Desk tab reopens it
+
+- **Added:** 2026-11-09
+- **Commit:** same as task-idle-divider.
+- **Why:** A tab closed by mistake (Ctrl+W, middle click) had to be found again in the sidebar.
+- **What:** In Tasks mode, closing Desk tabs remembers them (up to 20, empty launchers skipped).
+  The next Ctrl+Z (Cmd+Z) reopens the newest one in the Desk it was closed from, and pressing it
+  again reopens the one before. Any other key disarms it, so Ctrl+Z goes back to undoing text as
+  soon as you type. The tab comes back as a kept tab at the focused pane, not in its old position.
+  The workspace layout (Tasks mode off) is not covered.
+- **Files:** `packages/app/src/task-navigation/reopen-closed-tab.ts` (+ `.test.ts`), new. Core:
+  `task-navigation/desk-screen.tsx` (`CUSTOM(reopen-closed-tab)`: `closeTabs` remembers the tabs,
+  and the screen mounts `useReopenClosedTabShortcut`). It listens on `window` in the capture phase
+  instead of a keyboard action so the composer's own undo never sees that Ctrl+Z.
+- **Re-apply:** In the Desk screen's `closeTabs`, call `rememberClosedDeskTabs` with the active Desk
+  id and the closing tabs (without `id`) before closing them, and call
+  `useReopenClosedTabShortcut(isFocused)`.
+- **Verify:** `(cd packages/app && npx vitest run src/task-navigation/reopen-closed-tab.test.ts)`
+  (the update script runs it). In the app, close a tab with Ctrl+W, press Ctrl+Z: it is back.
+  Needs a new app build; no daemon restart.
+
+## skills-loaded: our fork of the Skills plugin, with a tab for what the session has loaded
+
+- **Added:** 2026-11-09
+- **Commit:** `custom: vendor paseo-skills 0.4.0 into custom/plugins` (unchanged baseline, diff
+  against it), then `custom: Skills/MCPs popover shows the skills and MCPs the session loaded`
+- **Why:** The third-party Skills plugin (`@gpambrozio/paseo-skills`, MIT) lists the skills on
+  disk, which is not what the agent has in its context: Claude Code drops descriptions past its
+  budget, adds plugin and bundled skills, and loads MCP tools by name only until they are
+  searched. The session file records all of that, so no model call is needed.
+- **What:** `custom/plugins/skills/`, plugin id still `skills`. The composer pill reads
+  **Skills/MCPs** (with the count). Its popover has two tabs: **Search Skill** (the original
+  browser) and **Skills and MCPs Loaded**, backed by the `skills.loaded` RPC.
+  - Claude: replays the transcript's `attachment` lines (`skill_listing`, `deferred_tools_delta`,
+    `mcp_instructions_delta`); a `compact_boundary` resets them. ToolSearch's `tool_reference`
+    results count as full schemas. The transcript is
+    `<config>/projects/<encoded cwd>/<sessionId>.jsonl`, looked up in `CLAUDE_CONFIG_DIR`, then
+    `~/.claude-personal`, then `~/.claude`, then in any project folder of those.
+  - Codex: the last `<skills_instructions>` in the rollout (`$CODEX_HOME/sessions/.../rollout-*-<threadId>.jsonl`).
+    Rollouts record no MCP state, so the servers come from `config.toml` as configured/disabled.
+  - An agent without a session file shows the newest session of the same project (Claude: the
+    project folder of the daemon's config dir; Codex: the newest rollouts whose cwd matches),
+    without that session's ToolSearch loads, and says so with its date.
+  - Skills are grouped your own (in `<config>/skills`, `~/.agents/skills`, or `.claude/skills` /
+    `.agents/skills` up to the repo root; for Codex, any root that is not `.system` or the plugin
+    cache), then the rest with a description, then name-only. Each row shows its badge and
+    category. MCP servers show status, tool count, full schema vs name only, and whether their
+    instructions are in context.
+- **Files:** plugin-only. New: `server/loaded/` (`claude.ts`, `codex.ts`, `report.ts`,
+  `sources.ts`, `handler.ts`, tests and trimmed fixtures), `client/loaded.tsx`, `tsconfig.json`,
+  `.gitignore`, `package-lock.json`. Changed: `shared/skills.ts` (RPC), `index.server.ts`,
+  `client/popover.tsx` (tabs), `client/pill.tsx` (label), `package.json` (devDependencies and a
+  `node --test` script, like token-ledger). Marked `CUSTOM(skills-loaded)`. Excluded from the root
+  oxlint/oxfmt like token-ledger.
+- **Gotcha:** the npm plugin keeps no data: its install folder only holds `node_modules`, so
+  `paseo plugin remove skills` loses nothing. Session files can be large (a Codex rollout passed
+  200 MB); the server streams them and caches each parse until the file's size or mtime changes.
+- **Re-apply:** Plugin-only; an upstream merge can't conflict. To take a new upstream
+  paseo-skills, diff it against the baseline commit and replay the changes listed above.
+- **Setup:** `paseo plugin remove skills --home <home>`, then
+  `paseo plugin install "$PWD/custom/plugins/skills" --home <home>` (both daemons).
+- **Verify:** `(cd custom/plugins/skills && npx tsc --noEmit && npm test)` (the update script runs
+  it). In the app, open the Skills/MCPs pill of a Claude agent and pick **Skills and MCPs Loaded**:
+  your skills come first, and the MCP servers match `/mcp`. A new agent shows "From your last
+  session in this project".
+
+## no-git-hooks: run checks manually
+
+- **Added:** 2026-11-09
+- **Commit:** pending
+- **Why:** Commits should not run formatting, lint, or typecheck automatically.
+- **What:** Remove Lefthook, its configuration and its npm prepare script. Run the checks manually.
+- **Core files touched:** `lefthook.yml` (removed), `package.json` and `package-lock.json`.
+- **Re-apply:** Remove the Lefthook dependency, configuration and `prepare` script if upstream restores them.
+- **Verify:** `npm exec -- lefthook uninstall` removes installed hooks; `npm run typecheck` and `npm run lint` remain available.

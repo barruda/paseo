@@ -8,7 +8,8 @@
     "custom/plugins/beautiful-chat/**",
     "!custom/plugins/beautiful-chat/client/expand-memory*.ts",
     "custom/plugins/power-workboard/**",
-    "custom/plugins/token-ledger/**"
+    "custom/plugins/token-ledger/**",
+    "custom/plugins/skills/**"
   ],
   "plugins": ["react", "react-perf", "unicorn", "typescript", "oxc", "import", "promise"],
   "jsPlugins": ["./scripts/oxlint/paseo-plugin.mjs"],

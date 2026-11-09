@@ -135,6 +135,8 @@ import {
   parseServerIdFromPathname,
 } from "@/utils/host-routes";
 import { PluginCatalogSync } from "@/plugins";
+// CUSTOM(mouse-tab-nav)
+import { useMouseTabNavigation } from "@/hooks/use-mouse-tab-navigation";
 import { NotificationOpenRouter } from "@/notification-open/react";
 import { ensureOsNotificationPermission } from "@/utils/os-notifications";
 
@@ -391,6 +393,12 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
   // global concerns like keyboard shortcuts. Split those out so settings (and
   // other non-workspace routes) don't need a special-case to keep shortcuts alive.
   const keyboardShortcutsEnabled = chromeEnabled || pathname.startsWith("/settings");
+
+  // CUSTOM(mouse-tab-nav)
+  useMouseTabNavigation({
+    dispatcher: keyboardActionDispatcher,
+    enabled: keyboardShortcutsEnabled,
+  });
 
   useKeyboardShortcuts({
     enabled: keyboardShortcutsEnabled,

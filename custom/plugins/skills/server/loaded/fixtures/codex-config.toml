@@ -1,0 +1,21 @@
+model = "gpt-5"
+
+[mcp_servers.brave-zmw]
+command = "npx"
+args = ["--yes", "@playwright/mcp@0.0.82", "--extension"]
+
+[mcp_servers.brave-zmw.env]
+PLAYWRIGHT_MCP_EXTENSION_TOKEN = "redacted"
+enabled = false
+
+[mcp_servers.unityMCP]
+command = "uvx"
+startup_timeout_sec = 60.0
+enabled = false
+
+[mcp_servers."blender mcp"]
+command = "uvx"
+
+[[skills.config]]
+path = "/home/user/.codex/skills/x/SKILL.md"
+enabled = false

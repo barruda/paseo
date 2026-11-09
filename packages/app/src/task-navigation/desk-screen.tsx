@@ -97,6 +97,8 @@ import {
   WorkspaceTabRowExplorerToggle,
 } from "@/screens/workspace/workspace-explorer-toggle";
 import { DeskLauncherProvider } from "./new-tab-menu";
+// CUSTOM(reopen-closed-tab)
+import { rememberClosedDeskTabs, useReopenClosedTabShortcut } from "./reopen-closed-tab";
 import { DeskExplorerDock, useDeskExplorer } from "./desk-explorer";
 import { useCommitMessageFocusStore } from "@/git/commit-selection/focus-request";
 import {
@@ -265,12 +267,20 @@ export function DeskScreen() {
         });
         if (!confirmed) return;
       }
+      // CUSTOM(reopen-closed-tab): remembered so Ctrl+Z right after can bring them back.
+      const closing = activeDesk(useDesksStore.getState());
+      const closingTabs = deskTabs(closing).filter((tab) => tabIds.includes(tab.id));
+      rememberClosedDeskTabs(
+        closing.id,
+        closingTabs.map(({ id: _id, ...input }) => input),
+      );
       // Closing a Desk tab drops its reference; the agent and workspace stay untouched.
       for (const tabId of tabIds) useDesksStore.getState().closeTab(tabId);
     },
     [ownerOf, t],
   );
   const closeTab = useCallback((tabId: string) => closeTabs([tabId]), [closeTabs]);
+  useReopenClosedTabShortcut(isFocused);
 
   useKeyboardActionHandler({
     handlerId: `desk-tab-actions:${screenId}`,
@@ -366,6 +376,7 @@ export function DeskScreen() {
         }),
         currentTabId: mainContentTabId(layout, activeDeskTab(store)?.id ?? null),
         delta: action.delta,
+        immediate: action.immediate,
         navigate: (tabId) => useDesksStore.getState().selectTab(tabId),
       });
       return true;

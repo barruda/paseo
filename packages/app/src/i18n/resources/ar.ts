@@ -2234,6 +2234,7 @@ export const ar: TranslationResources = {
       integrations: "التكامل",
       notifications: "الإشعارات",
       permissions: "الأذونات",
+      customizations: "Bruno's Customizations", // CUSTOM(bruno-customizations)
       diagnostics: "التشخيص",
       about: "عن",
     },

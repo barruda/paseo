@@ -20,6 +20,7 @@ describe("getBuiltInLaunchOrder", () => {
       "terminal",
       "diff",
       "files",
+      "docs",
       "agent",
       "browser",
       "pullRequest",

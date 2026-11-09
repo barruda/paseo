@@ -111,6 +111,10 @@ export interface AppSettings {
   deskPreviewTabs: boolean;
   /** CUSTOM(recent-tabs): "Last visited tab" walks past pinned tabs. Off by default. */
   recentTabsSkipPinned: boolean;
+  /** CUSTOM(bruno-customizations): the critic's composer icon. On by default. */
+  showCriticToggle: boolean;
+  /** CUSTOM(bruno-customizations): the Jev router's composer icon. On by default. */
+  showJevRouterToggle: boolean;
   vimKeybindings: boolean;
   sendShortcut: SendShortcut;
   filePanelAssociations: Record<string, string>;
@@ -171,6 +175,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatLinksEnabled: true, // CUSTOM(chat-links)
   deskPreviewTabs: false, // CUSTOM(desk-preview-tabs)
   recentTabsSkipPinned: false, // CUSTOM(recent-tabs)
+  showCriticToggle: true, // CUSTOM(bruno-customizations)
+  showJevRouterToggle: true, // CUSTOM(bruno-customizations)
   vimKeybindings: false,
   sendShortcut: "enter",
   filePanelAssociations: {},
@@ -279,6 +285,8 @@ const StoredAppSettingsSchema = z
     chatLinksEnabled: z.boolean().catch(true), // CUSTOM(chat-links)
     deskPreviewTabs: z.boolean().catch(false), // CUSTOM(desk-preview-tabs)
     recentTabsSkipPinned: z.boolean().catch(false), // CUSTOM(recent-tabs)
+    showCriticToggle: z.boolean().catch(true), // CUSTOM(bruno-customizations)
+    showJevRouterToggle: z.boolean().catch(true), // CUSTOM(bruno-customizations)
     vimKeybindings: z.boolean().catch(false),
     sendShortcut: z.enum(["enter", "mod-enter"]).catch("enter"),
     filePanelAssociations: z.record(z.string(), z.string()).catch({}),

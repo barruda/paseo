@@ -1,11 +1,15 @@
 import {
+  effortFocusedCycle,
   formatClaudeModel,
   type JevDecision,
   JevRouterSettingsSchema,
+  nearestEffort,
 } from "@getpaseo/protocol/jev-router";
 import { RouteCardStash } from "../server/stash";
 import { describe, expect, it } from "vitest";
 import {
+  applyEffortFocused,
+  applyModelFocused,
   buildRouteCard,
   buildRouterArgs,
   expandHome,
@@ -78,6 +82,31 @@ describe("buildRouterArgs", () => {
       "opus/high",
       "--timeout",
       "2",
+      "--t-small",
+      "0.7",
+      "--t-hard",
+      "0.3",
+    ]);
+  });
+
+  it("asks for the effort-focused policy and its thresholds in effort mode", () => {
+    const args = buildRouterArgs({
+      settings: { ...settings, mode: "effort" },
+      home: opusHigh,
+      cwd: "/repo",
+      images: 0,
+      test: false,
+      homeDir: "/h",
+    });
+    expect(args.slice(args.indexOf("--policy"))).toEqual([
+      "--policy",
+      "effort_focused",
+      "--t-small",
+      "0.7",
+      "--t-hard",
+      "0.3",
+      "--t-deep",
+      "0.5",
     ]);
   });
 
@@ -102,6 +131,7 @@ describe("parseRouterOutput", () => {
       effort: "low",
       why: "small",
       latency_ms: 193,
+      jev_effort: "medium",
       changed: true,
     });
     expect(parseRouterOutput(`warning\n${line}\n`)).toEqual({
@@ -111,6 +141,7 @@ describe("parseRouterOutput", () => {
       why: "small",
       latencyMs: 193,
       error: null,
+      jevEffort: "medium",
     });
   });
 
@@ -206,5 +237,143 @@ describe("formatClaudeModel", () => {
     expect(formatClaudeModel("claude-opus-4-8[1m]")).toBe("Opus 4.8 [1m]");
     expect(formatClaudeModel("claude-sonnet-5")).toBe("Sonnet 5");
     expect(formatClaudeModel("gpt-5")).toBe("gpt-5");
+  });
+});
+
+describe("settings defaults", () => {
+  it("fills the modes into a document saved before they existed", () => {
+    const old = JevRouterSettingsSchema.parse({ enabled: false, apiKey: "k" });
+    expect(old.mode).toBe("model");
+    expect(old.modelFocused).toEqual({ smallThreshold: 0.7, hardThreshold: 0.3, useSonnet: false });
+    expect(old.effortFocused).toMatchObject({
+      operationalModel: "claude-haiku-5-5",
+      operationalEfforts: ["low", "medium", "high"],
+      defaultPick: { model: "claude-opus-5-5", effort: "low" },
+      hardPick: { model: "claude-opus-5-5", effort: "high" },
+      lockCycling: true,
+    });
+  });
+});
+
+describe("effort focused", () => {
+  const settings = { ...JevRouterSettingsSchema.parse({}), mode: "effort" as const };
+  const opusLow = { family: "opus", effort: "low" };
+  const route = (
+    why: string,
+    jevEffort: string | null,
+    home = opusLow,
+    homeModelId = "claude-opus-5-5",
+  ) =>
+    planRoute({
+      decision: applyEffortFocused({ ...decision("haiku", "low", why), jevEffort }, settings),
+      home,
+      test: false,
+      routeId: "r1",
+      mode: "effort",
+      homeModelId,
+    });
+
+  it("maps each bucket to its pick, moving Jev's effort to an allowed one", () => {
+    expect(route("operational", "medium")).toMatchObject({
+      model: "claude-haiku-5-5",
+      thinkingOptionId: "medium",
+      applied: true,
+    });
+    expect(route("chat", "high")).toMatchObject({
+      model: "claude-haiku-5-5",
+      thinkingOptionId: "low",
+    });
+    expect(route("hard", "high")).toMatchObject({
+      model: "claude-opus-5-5",
+      thinkingOptionId: "high",
+      applied: true,
+    });
+  });
+
+  it("may move up from the selection, and stays put when the pick is the selection", () => {
+    const fromHaiku = route(
+      "default",
+      null,
+      { family: "haiku", effort: "low" },
+      "claude-haiku-5-5",
+    );
+    expect(fromHaiku).toMatchObject({
+      model: "claude-opus-5-5",
+      thinkingOptionId: "low",
+      applied: true,
+    });
+    expect(route("default", null)).toMatchObject({ model: null, applied: false });
+  });
+
+  it("keeps the selection when the router failed", () => {
+    const failed = planRoute({
+      decision: applyEffortFocused({ ...decision("opus", "high", "error"), error: "x" }, settings),
+      home: opusLow,
+      test: false,
+      routeId: "r1",
+      mode: "effort",
+      homeModelId: "claude-opus-5-5",
+    });
+    expect(failed).toMatchObject({ model: null, applied: false });
+  });
+
+  it("routes Haiku and unknown Claude models instead of skipping them", () => {
+    expect(
+      resolveHome({
+        provider: "claude",
+        model: "claude-haiku-5-5",
+        thinkingOptionId: "low",
+        mode: "effort",
+      }),
+    ).toEqual({ family: "haiku", effort: "low" });
+    expect(
+      resolveHome({ provider: "claude", model: null, thinkingOptionId: null, mode: "effort" }),
+    ).toEqual({
+      family: "opus",
+      effort: "high",
+    });
+  });
+
+  it("cycles the operational model's efforts and the picks' models", () => {
+    expect(effortFocusedCycle(settings.effortFocused)).toEqual([
+      { model: "claude-haiku-5-5", efforts: ["low", "medium", "high"] },
+      { model: "claude-opus-5-5", efforts: ["low", "high"] },
+    ]);
+    expect(nearestEffort(["low", "high"], "medium")).toBe("low");
+    expect(nearestEffort(["medium"], "low")).toBe("medium");
+    expect(nearestEffort(["low", "high"], "xhigh")).toBe("high");
+  });
+});
+
+describe("model focused Sonnet step", () => {
+  const settings = JevRouterSettingsSchema.parse({});
+  const route = (d: JevDecision, useSonnet: boolean) =>
+    planRoute({
+      decision: applyModelFocused(
+        d,
+        { ...settings, modelFocused: { ...settings.modelFocused, useSonnet } },
+        opusHigh,
+      ),
+      home: opusHigh,
+      test: false,
+      routeId: "r1",
+    });
+
+  it("keeps the selection for a small task while Sonnet is off (the default)", () => {
+    expect(route(decision("sonnet", "medium", "small"), false)).toMatchObject({
+      applied: false,
+      model: null,
+    });
+    expect(route(decision("sonnet", "medium", "small"), true)).toMatchObject({
+      applied: true,
+      model: "claude-sonnet-5-5",
+    });
+  });
+
+  it("still drops tiny tasks to Haiku", () => {
+    expect(route(decision("haiku", "low", "tiny"), false)).toMatchObject({
+      applied: true,
+      model: "claude-haiku-5-5",
+    });
   });
 });

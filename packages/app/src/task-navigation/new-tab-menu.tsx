@@ -22,6 +22,10 @@ import { useHasPullRequest } from "@/panels/pull-request";
 import { NewTabLauncherProvider, type NewTabLauncher } from "@/workspace-tabs/launcher";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import {
+  selectExplorerSidebarPaneId,
+  useWorkspaceLayoutStore,
+} from "@/stores/workspace-layout-store"; // CUSTOM(desk-docs)
 import { activeDesk, deskContextTab, useDesksStore, type DeskTabOwner } from "./desks-store";
 
 /** Opens a launched target in its pane, or turns the launching new-tab tab into it. */
@@ -30,6 +34,11 @@ export function launchDeskTarget(
   target: WorkspaceTabTarget,
   destination: TerminalTabDestination,
 ) {
+  // CUSTOM(desk-docs): Docs only lives in the workspace's Explorer sidebar, which the Desk docks.
+  if (target.kind === "docs") {
+    openDocsInExplorer(scope, destination);
+    return;
+  }
   const store = useDesksStore.getState();
   if (destination.kind === "replace") {
     store.updateTab(destination.tabId, { ...scope, target });
@@ -41,6 +50,21 @@ export function launchDeskTarget(
     true,
     destination.paneId ? { mode: "pane", paneId: destination.paneId } : undefined,
   );
+}
+
+/** CUSTOM(desk-docs): puts the Docs tab in the Explorer pane of the scope's workspace. */
+function openDocsInExplorer(scope: DeskTabOwner, destination: TerminalTabDestination) {
+  const workspaceKey = `${scope.serverId}:${scope.workspaceId}`;
+  const layoutStore = useWorkspaceLayoutStore.getState();
+  const paneId = selectExplorerSidebarPaneId(layoutStore, workspaceKey);
+  layoutStore.openTab({
+    workspaceKey,
+    target: { kind: "docs" },
+    intent: "reveal",
+    placement: paneId ? { mode: "pane", paneId } : undefined,
+  });
+  // A launching New tab has nothing to turn into; it goes away like after any launch.
+  if (destination.kind === "replace") useDesksStore.getState().closeTab(destination.tabId);
 }
 
 export function DeskLauncherProvider({

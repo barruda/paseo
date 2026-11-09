@@ -2208,6 +2208,7 @@ export const ko: TranslationResources = {
       integrations: "통합",
       notifications: "알림",
       permissions: "권한",
+      customizations: "Bruno's Customizations", // CUSTOM(bruno-customizations)
       diagnostics: "진단",
       about: "정보",
     },

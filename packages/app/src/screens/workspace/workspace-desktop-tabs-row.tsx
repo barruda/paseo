@@ -754,6 +754,9 @@ function getFallbackTabLabel(
   if (tab.target.kind === "files") {
     return labels.files;
   }
+  if (tab.target.kind === "docs") {
+    return "Docs"; // CUSTOM(desk-docs)
+  }
   if (tab.target.kind === "pull_request") {
     return labels.pullRequest;
   }

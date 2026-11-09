@@ -131,6 +131,8 @@ export function stepRecentTab(input: {
   currentTabId: string | null;
   delta: 1 | -1;
   navigate: (tabId: string) => void;
+  /** CUSTOM(mouse-tab-nav): a mouse button has no modifier to hold, so it switches right away. */
+  immediate?: boolean;
 }): void {
   if (walk && walk.scope !== input.scope) endWalk({ navigate: false });
   const step = stepRecentTabWalk(walk, {
@@ -147,7 +149,7 @@ export function stepRecentTab(input: {
   if (!step) return;
   navigateOnEnd = input.navigate;
   setWalk(step.walk);
-  if (isWeb) {
+  if (isWeb && !input.immediate) {
     watchRelease();
   } else {
     endWalk({ navigate: true });

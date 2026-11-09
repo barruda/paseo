@@ -87,6 +87,8 @@ interface DesksState {
   selectDesk(id: string): void;
   /** Unpinned opens replace the Desk's preview tab; pinned opens keep their tab. */
   openTab(tab: DeskTabInput, pin?: boolean, placement?: WorkspaceTabPlacement): void;
+  /** CUSTOM(link-context-tab): opens a kept tab and leaves the focus on the tab you were in. */
+  openTabInBackground(tab: DeskTabInput): void;
   selectTab(id: string): void;
   closeTab(id: string): void;
   /**
@@ -505,6 +507,21 @@ export const useDesksStore = create<DesksState>()(
               placement,
             ),
           );
+        },
+        openTabInBackground: (input) => {
+          if (!get().initialized) set({ initialized: true });
+          change((desk) => {
+            const previousTabId = findPaneById(
+              desk.layout.root,
+              desk.layout.focusedPaneId,
+            )?.focusedTabId;
+            const next = openInDesk(desk, input, true, FOCUSED_PANE_PLACEMENT);
+            if (!previousTabId) return next;
+            return withLayout(
+              next,
+              focusTabInLayout({ layout: next.layout, tabId: previousTabId }),
+            );
+          });
         },
         selectTab: (id) =>
           change((desk) => withLayout(desk, focusTabInLayout({ layout: desk.layout, tabId: id }))),

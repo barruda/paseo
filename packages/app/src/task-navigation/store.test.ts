@@ -151,6 +151,15 @@ describe("Desks", () => {
     store.closeTab(agent.id);
     expect(context()?.target.kind).toBe("file");
   });
+  // CUSTOM(link-context-tab)
+  it("opens a tab in the background and keeps the focus where it was", () => {
+    const store = useDesksStore.getState();
+    store.openTab(firstTab, true);
+    const before = current()!;
+    store.openTabInBackground({ ...firstTab, target: { kind: "browser", browserId: "b-1" } });
+    expect(current()?.id).toBe(before.id);
+    expect(tabs().some((tab) => tab.target.kind === "browser")).toBe(true);
+  });
   // CUSTOM(desk-close-returns)
   it("closing a tab returns to the tab it was opened from, not to its neighbor", () => {
     const store = useDesksStore.getState();

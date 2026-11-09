@@ -1,5 +1,6 @@
 import {
   JEV_LABELS,
+  effortFocusedPick,
   type JevDecision,
   type JevRouteCardData,
   type JevRouteOutput,
@@ -7,7 +8,8 @@ import {
 } from "@getpaseo/protocol/jev-router";
 
 // Pure pieces of the router: which sessions qualify, how route.py is called, how its answer turns
-// into a model/effort and labels. Only a strictly cheaper model family is ever applied.
+// into a model/effort and labels. Model focused applies only a strictly cheaper model family; effort
+// focused applies its bucket's pick, up or down, whenever it differs from the selection.
 
 const FAMILY_RANK: Record<string, number> = { haiku: 1, sonnet: 2, opus: 3, fable: 4, mythos: 5 };
 
@@ -23,14 +25,20 @@ export interface RouteHome {
   effort: string;
 }
 
-/** The session's selection without routing, or why it can't be routed. */
+/**
+ * The session's selection without routing, or why it can't be routed. Effort focused routes any
+ * Claude selection (it may move up); an unknown model then counts as Opus.
+ */
 export function resolveHome(input: {
   provider: string;
   model: string | null;
   thinkingOptionId: string | null;
+  mode?: JevRouterSettings["mode"];
 }): RouteHome | { skip: string } {
   if (input.provider !== "claude") return { skip: `provider ${input.provider}` };
   const family = familyOf(input.model);
+  if (input.mode === "effort")
+    return { family: family ?? "opus", effort: input.thinkingOptionId || "high" };
   if (!family) return { skip: input.model ? `unknown model ${input.model}` : "no model selected" };
   if (family === "haiku") return { skip: "already on Haiku" };
   return { family, effort: input.thinkingOptionId || "high" };
@@ -42,7 +50,10 @@ export function expandHome(file: string, home: string): string {
 }
 
 export function buildRouterArgs(input: {
-  settings: Pick<JevRouterSettings, "routerScript" | "timeoutSeconds" | "logDecisions">;
+  settings: Pick<
+    JevRouterSettings,
+    "routerScript" | "timeoutSeconds" | "logDecisions" | "mode" | "modelFocused" | "effortFocused"
+  >;
   home: RouteHome;
   cwd: string;
   images: number;
@@ -60,6 +71,26 @@ export function buildRouterArgs(input: {
     "--timeout",
     String(input.settings.timeoutSeconds),
   ];
+  const { mode, modelFocused, effortFocused } = input.settings;
+  if (mode === "effort") {
+    args.push(
+      "--policy",
+      "effort_focused",
+      "--t-small",
+      String(effortFocused.smallThreshold),
+      "--t-hard",
+      String(effortFocused.hardThreshold),
+      "--t-deep",
+      String(effortFocused.deepThreshold),
+    );
+  } else {
+    args.push(
+      "--t-small",
+      String(modelFocused.smallThreshold),
+      "--t-hard",
+      String(modelFocused.hardThreshold),
+    );
+  }
   if (input.test || !input.settings.logDecisions) args.push("--no-log");
   return args;
 }
@@ -80,19 +111,60 @@ export function parseRouterOutput(stdout: string): JevDecision {
     why: text("why") ?? "home",
     latencyMs: typeof raw.latency_ms === "number" ? raw.latency_ms : null,
     error: text("error"),
+    jevEffort: text("jev_effort"),
   };
 }
 
-/** `test` (the settings Test button) reports the pick without applying it. */
+/**
+ * Model focused with Sonnet off: route.py's Sonnet pick (a small task) keeps the selection
+ * instead. `home` is the selection.
+ */
+export function applyModelFocused(
+  decision: JevDecision,
+  settings: Pick<JevRouterSettings, "mode" | "modelFocused">,
+  home: RouteHome,
+): JevDecision {
+  if (settings.mode === "effort" || settings.modelFocused.useSonnet) return decision;
+  if (decision.error || decision.model !== "sonnet") return decision;
+  return { ...decision, model: home.family, effort: home.effort, why: "home" };
+}
+
+/**
+ * Effort focused: replaces route.py's own pick with the bucket's model and effort from the
+ * settings. Errors are left alone (the session keeps its selection).
+ */
+export function applyEffortFocused(
+  decision: JevDecision,
+  settings: Pick<JevRouterSettings, "mode" | "effortFocused">,
+): JevDecision {
+  if (settings.mode !== "effort" || decision.error) return decision;
+  const pick = effortFocusedPick(settings.effortFocused, decision.why, decision.jevEffort);
+  return {
+    ...decision,
+    model: familyOf(pick.model) ?? decision.model,
+    modelId: pick.model,
+    effort: pick.effort,
+  };
+}
+
+/**
+ * `test` (the settings Test button) reports the pick without applying it. `homeModelId` is the
+ * selected model id: effort focused applies the pick when its model id or effort differs from it.
+ */
 export function planRoute(input: {
   decision: JevDecision;
   home: RouteHome;
   test: boolean;
   routeId: string;
+  mode?: JevRouterSettings["mode"];
+  homeModelId?: string | null;
 }): Extract<JevRouteOutput, { status: "routed" }> {
   const { decision, home } = input;
   const cheaper =
-    !decision.error && (FAMILY_RANK[decision.model] ?? 99) < (FAMILY_RANK[home.family] ?? 0);
+    input.mode === "effort"
+      ? !decision.error &&
+        (decision.modelId !== input.homeModelId || decision.effort !== home.effort)
+      : !decision.error && (FAMILY_RANK[decision.model] ?? 99) < (FAMILY_RANK[home.family] ?? 0);
   const applied = cheaper && !input.test;
   const homeLabel = `${home.family}/${home.effort}`;
   return {

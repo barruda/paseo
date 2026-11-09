@@ -27,6 +27,9 @@ export function isCriticAgentLabels(labels: Readonly<Record<string, string>>): b
 // Config
 // ---------------------------------------------------------------------------
 
+/** The most rounds a critic config can ask for. */
+export const CRITIC_MAX_ROUNDS_LIMIT = 50;
+
 export const CriticImageSchema = z.object({
   name: z.string(),
   mimeType: z.string(),
@@ -47,7 +50,7 @@ export const CriticConfigSchema = z.object({
   /** off: judges only what the prompt carries. read: may read and search the repository. */
   tools: z.enum(["off", "read"]),
   includeDiff: z.boolean(),
-  maxRounds: z.number().int().min(1).max(10),
+  maxRounds: z.number().int().min(1).max(CRITIC_MAX_ROUNDS_LIMIT),
 });
 export type CriticConfig = z.infer<typeof CriticConfigSchema>;
 export type CriticMode = CriticConfig["mode"];
@@ -63,7 +66,7 @@ export const DEFAULT_CRITIC_CONFIG: CriticConfig = {
   mode: "per-request",
   tools: "off",
   includeDiff: true,
-  maxRounds: 3,
+  maxRounds: 10,
 };
 
 /** Plugin RPC names (`client.invokePluginRpc(CRITIC_PLUGIN_ID, name, input)`). */

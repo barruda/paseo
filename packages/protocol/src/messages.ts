@@ -872,6 +872,11 @@ export const AgentStatusSummaryPayloadSchema = z.object({
   title: z.string().optional(),
   /** What the session is about, at most 6 words. The line under the composer shows only this. */
   topic: z.string().optional(),
+  /**
+   * CUSTOM(status-topic-breadcrumb): the session's first topic, kept from the first summary on.
+   * The line shows `firstTopic › topic` once the topic moves on.
+   */
+  firstTopic: z.string().optional(),
   request: z.string(),
   status: z.string(),
   /**

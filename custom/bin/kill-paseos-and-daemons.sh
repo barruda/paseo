@@ -98,7 +98,7 @@ done
 
 log "Closing the windows"
 for target in "${TARGETS[@]}"; do
-  IFS='|' read -r launcher _ config <<<"$target"
+  IFS='|' read -r launcher _ config _ <<<"$target"
   if pid="$(window_pid "$config")"; then
     log " $launcher (pid $pid)"
     stop_pid "$pid"
@@ -117,7 +117,9 @@ done
 log "Reopening"
 for target in "${TARGETS[@]}"; do
   IFS='|' read -r launcher _ _ <<<"$target"
-  setsid -f gtk-launch "$launcher" >/dev/null 2>&1 </dev/null
+  setsid -f env -u ELECTRON_RUN_AS_NODE -u PASEO_HOME -u PASEO_AGENT_ID \
+    -u PASEO_ELECTRON_USER_DATA_DIR -u PASEO_DESKTOP_NAME -u PASEO_DESKTOP_MANAGED \
+    -u PASEO_CLI gtk-launch "$launcher" >/dev/null 2>&1 </dev/null
   log " $launcher"
 done
 log "Done"

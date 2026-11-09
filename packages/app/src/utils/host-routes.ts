@@ -502,6 +502,7 @@ export const SETTINGS_SECTION_SLUGS = [
   "integrations",
   "notifications",
   "permissions",
+  "customizations", // CUSTOM(bruno-customizations)
   "diagnostics",
   "about",
 ] as const;

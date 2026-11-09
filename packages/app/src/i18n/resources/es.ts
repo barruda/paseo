@@ -2246,6 +2246,7 @@ export const es: TranslationResources = {
       integrations: "Integraciones",
       notifications: "Notificaciones",
       permissions: "Permisos",
+      customizations: "Bruno's Customizations", // CUSTOM(bruno-customizations)
       diagnostics: "Diagnóstico",
       about: "Acerca de",
     },

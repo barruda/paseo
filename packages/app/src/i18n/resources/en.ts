@@ -2224,6 +2224,7 @@ export const en = {
       integrations: "Integrations",
       notifications: "Notifications",
       permissions: "Permissions",
+      customizations: "Bruno's Customizations", // CUSTOM(bruno-customizations)
       diagnostics: "Diagnostics",
       about: "About",
     },

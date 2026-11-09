@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   CRITIC_ENABLED_LABEL,
+  CRITIC_MAX_ROUNDS_LIMIT,
   CRITIC_PLUGIN_ID,
   CRITIC_RPC,
+  CriticConfigSchema,
   DEFAULT_CRITIC_CONFIG,
 } from "@getpaseo/protocol/critic";
 import { base64Bytes, CRITIC_IMAGES_MAX_BYTES, openCriticForm } from "./form-model";
@@ -28,7 +30,7 @@ describe("openCriticForm", () => {
     form.setModel("codex", "gpt-5.5");
     form.setMode("persistent");
     form.setTools("read");
-    form.setMaxRounds(5);
+    form.setMaxRoundsText("5");
     const state = form.getState();
     expect(state.draft).toMatchObject({
       enabled: true,
@@ -39,6 +41,33 @@ describe("openCriticForm", () => {
       maxRounds: 5,
     });
     expect(state.saved?.enabled).toBe(false);
+  });
+
+  it("starts max rounds at 10 and shows the loaded value in the field", () => {
+    expect(DEFAULT_CRITIC_CONFIG.maxRounds).toBe(10);
+    const form = openCriticForm();
+    form.applyLoaded({ ...DEFAULT_CRITIC_CONFIG, maxRounds: 7 });
+    expect(form.getState()).toMatchObject({ maxRoundsText: "7", maxRoundsError: null });
+  });
+
+  it("accepts max rounds up to the limit and saves a config the schema accepts", () => {
+    const form = openCriticForm();
+    form.applyLoaded(DEFAULT_CRITIC_CONFIG);
+    form.setMaxRoundsText(String(CRITIC_MAX_ROUNDS_LIMIT));
+    const state = form.getState();
+    expect(state).toMatchObject({ canSave: true, maxRoundsError: null });
+    expect(state.draft.maxRounds).toBe(50);
+    expect(CriticConfigSchema.safeParse(state.draft).success).toBe(true);
+  });
+
+  it.each(["", "0", "51", "2.5", "-1", "abc"])("blocks saving with max rounds %j", (text) => {
+    const form = openCriticForm();
+    form.applyLoaded({ ...DEFAULT_CRITIC_CONFIG, maxRounds: 7 });
+    form.setMaxRoundsText(text);
+    const state = form.getState();
+    expect(state).toMatchObject({ canSave: false, maxRoundsText: text });
+    expect(state.maxRoundsError).toMatch(/1 to 50/);
+    expect(state.draft.maxRounds).toBe(7);
   });
 
   it("refuses images past the size cap", () => {

@@ -5,7 +5,7 @@ import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "re
 import { FlatList, Text, View, type ListRenderItemInfo } from "react-native";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
+import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 import { PressHighlight } from "@/components/ui/press-highlight";
@@ -86,6 +86,7 @@ const FILTERS: readonly { key: TaskFilter; label: string }[] = [
 const EMPTY_COLLAPSED = new Set<string>();
 
 type IdleToggleMode = "next" | "more" | "less";
+const IDLE_CREW_STATES: readonly string[] = ["idle", "closed"];
 
 /**
  * The row under the Idle group. "next" reveals a step, "more" shows the rest, and "less" folds back
@@ -334,20 +335,40 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       return result;
     }
     const filtered = filterTaskTree(orderedTree, { query, projectKeys, filter });
-    if (sort !== "attention")
-      return flattenTaskTree(
-        filtered,
+    if (sort !== "attention") {
+      // CUSTOM(task-idle-divider): the idle limit applies to every sort, not only "Your attention";
+      // the divider's Expand / Collapse and the "Show next" row at the end page it.
+      let visible = filtered;
+      let toggle: ListRow | null = null;
+      if (limitsIdle) {
+        const idle = filtered.filter((node) => IDLE_CREW_STATES.includes(node.crewState));
+        const limited = limitIdleTasks(idle, {
+          now: Date.now(),
+          keepKey: selectedAgentKey,
+          shown: idleShown,
+        });
+        const shownIdle = new Set(limited.visible);
+        visible = filtered.filter(
+          (node) => !IDLE_CREW_STATES.includes(node.crewState) || shownIdle.has(node),
+        );
+        toggle = idleToggleRow(setIdleShown, { ...limited, idleShown });
+      }
+      const result = flattenTaskTree(
+        visible,
         query || filter !== "all" || projectKeys !== null ? EMPTY_COLLAPSED : collapsed,
       ).map(
         (row): ListRow => ({ kind: "task", key: row.node.key, node: row.node, depth: row.depth }),
       );
+      if (toggle) result.push(toggle);
+      return result;
+    }
     const result: ListRow[] = [];
     let attentionHeading = false;
     const groups = [
       { label: "Needs you", states: ["needs-you", "failed"], attention: true },
       { label: "Ready to review", states: ["review"], attention: true },
       { label: "In progress", states: ["working"], attention: false },
-      { label: "Idle · ready to resume", states: ["idle", "closed"], attention: false },
+      { label: "Idle · ready to resume", states: IDLE_CREW_STATES, attention: false },
     ];
     for (const group of groups) {
       let members = filtered.filter((node) => group.states.includes(node.crewState));
@@ -647,10 +668,57 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         renderItem={renderRow}
         keyboardShouldPersistTaps="handled"
         extraData={selectedKeyInList}
-        ListHeaderComponent={pinnedHeader}
+        ListHeaderComponent={
+          <>
+            {pinnedHeader}
+            <TaskListDivider
+              rows={rows}
+              afterPinned={pinnedNodes.length > 0}
+              setIdleShown={setIdleShown}
+            />
+          </>
+        }
         ListEmptyComponent={emptyComponent}
       />
       {taskRenameModal}
+    </View>
+  );
+}
+
+// CUSTOM(task-idle-divider): the line under the pinned tasks reads "Expand N ———" or "Collapse ———"
+// for the idle tasks the list holds back, so folding them away never means scrolling to the end.
+function TaskListDivider({
+  rows,
+  afterPinned,
+  setIdleShown,
+}: {
+  rows: readonly ListRow[];
+  afterPinned: boolean;
+  setIdleShown(shown: number | null): void;
+}) {
+  const toggle = rows.find((row) => row.kind === "idle-toggle");
+  const expanded = toggle?.kind === "idle-toggle" && toggle.mode === "less";
+  const hiddenCount = toggle?.kind === "idle-toggle" ? toggle.hiddenCount : 0;
+  const onPress = useCallback(
+    () => setIdleShown(expanded ? null : Number.POSITIVE_INFINITY),
+    [expanded, setIdleShown],
+  );
+  const accessibilityState = useMemo(() => ({ expanded }), [expanded]);
+  if (!toggle) return afterPinned ? <View style={styles.dividerLine} /> : null;
+  return (
+    <View style={styles.dividerRow}>
+      <PressHighlight
+        style={styles.dividerButton}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={expanded ? "Collapse idle tasks" : "Expand idle tasks"}
+        accessibilityState={accessibilityState}
+        testID="task-idle-divider-toggle"
+      >
+        <DensityIcon icon={expanded ? ChevronUp : ChevronDown} size="sm" color="foregroundMuted" />
+        <Text style={styles.dividerLabel}>{expanded ? "Collapse" : `Expand ${hiddenCount}`}</Text>
+      </PressHighlight>
+      <View style={styles.dividerFill} />
     </View>
   );
 }
@@ -802,7 +870,7 @@ const TaskRow = memo(function TaskRow({
     ({ hovered }: { hovered?: boolean }) => [styles.taskButton, hovered && styles.hovered],
     [],
   );
-  const accessibilityLabel = `${node.agent.title ?? "Untitled agent"}, ${TASK_STATE_LABELS[node.state]}, ${node.workspace.projectName}, ${node.workspace.name}`;
+  const accessibilityLabel = `${node.agent.title ?? "Untitled agent"}, ${TASK_STATE_LABELS[node.state]}, ${node.workspace.projectName}`;
   const body = (
     <>
       <View style={styles.taskTop}>
@@ -820,7 +888,7 @@ const TaskRow = memo(function TaskRow({
         )}
       </View>
       <Text numberOfLines={1} style={styles.metadata}>
-        {node.workspace.projectName} · {node.workspace.name}
+        {node.workspace.projectName}
         {hostLabel ? ` · ${hostLabel}` : ""}
       </Text>
       <TaskStateLabel state={node.state} />
@@ -921,12 +989,29 @@ const styles = StyleSheet.create((theme) => ({
   search: { flex: 1, minWidth: 0, flexDirection: "row" },
   filters: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing[1] },
   list: { flex: 1, paddingHorizontal: theme.spacing[2] },
-  pinned: {
-    borderBottomWidth: 1,
-    borderColor: theme.colors.border,
-    paddingBottom: theme.spacing[1],
+  pinned: { paddingBottom: theme.spacing[1] },
+  // CUSTOM(task-idle-divider)
+  dividerLine: {
+    height: 1,
+    backgroundColor: theme.colors.border,
     marginBottom: theme.spacing[1],
   },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[2],
+    marginBottom: theme.spacing[1],
+  },
+  dividerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.borderRadius.sm,
+  },
+  dividerLabel: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  dividerFill: { flex: 1, height: 1, backgroundColor: theme.colors.border },
   heading: {
     color: theme.colors.foregroundMuted,
     fontSize: theme.fontSize.sm,

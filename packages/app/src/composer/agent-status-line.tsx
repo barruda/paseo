@@ -36,7 +36,7 @@ export function AgentStatusLine({
   if (!summary) return null;
   // Only the topic shows; the request and status wait for a hover. Summaries written before
   // the topic existed fall back to the request.
-  const text = summary.topic ?? summary.request;
+  const text = formatSummaryTopic(summary) ?? summary.request;
   return (
     <View style={[styles.row, widthStyle]} testID="agent-status-line">
       {/* CUSTOM(bottom-panel-toggle-inline) */}
@@ -86,6 +86,17 @@ function NativeTrigger({ text }: { text: string }) {
 }
 
 /**
+ * CUSTOM(status-topic-breadcrumb): "first topic › current topic" once the topic moved on from
+ * the session's first one, so the line keeps saying where the session started.
+ */
+export function formatSummaryTopic(summary: AgentStatusSummaryPayload): string | undefined {
+  const { firstTopic, topic } = summary;
+  if (!topic) return firstTopic;
+  if (!firstTopic || firstTopic === topic) return topic;
+  return `${firstTopic} › ${topic}`;
+}
+
+/**
  * The request, status and call line. CUSTOM(task-summary-hover): the Tasks sidebar's hover card
  * reuses it with the topic on top, since its row shows the title instead.
  */
@@ -98,7 +109,9 @@ export function StatusDetails({
 }) {
   return (
     <View style={styles.details}>
-      {showTopic && summary.topic ? <Text style={styles.detailsTopic}>{summary.topic}</Text> : null}
+      {showTopic && summary.topic ? (
+        <Text style={styles.detailsTopic}>{formatSummaryTopic(summary)}</Text>
+      ) : null}
       <View style={styles.detailsBlock}>
         <Text style={styles.detailsLabel}>Request</Text>
         <Text style={styles.detailsText}>{summary.request}</Text>

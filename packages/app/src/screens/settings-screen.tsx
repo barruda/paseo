@@ -26,6 +26,7 @@ import {
   Gauge,
   Keyboard,
   Stethoscope,
+  Wrench,
   Info,
   Bell,
   Shield,
@@ -37,7 +38,6 @@ import {
   Files,
   Smartphone,
   Sparkles,
-  Mic,
   Blocks,
   Globe,
   PanelLeft,
@@ -80,6 +80,7 @@ import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
 import { EditorSection } from "@/screens/settings/editor-section";
+import { BrunoCustomizationsSection } from "@/screens/settings/bruno-customizations/section"; // CUSTOM(bruno-customizations)
 // CUSTOM(voice-settings)
 import { VoiceSettingsPage } from "@/screens/settings/voice/voice-settings-page";
 import { FilesSection } from "@/screens/settings/files-section";
@@ -226,6 +227,8 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     desktopOnly: true,
     Content: DesktopPermissionsSection,
   },
+  // CUSTOM(bruno-customizations): the fork's own settings, in tabs.
+  { id: "customizations", labelKey: "settings.sections.customizations", icon: Wrench },
   { id: "diagnostics", labelKey: "settings.sections.diagnostics", icon: Stethoscope },
   { id: "about", labelKey: "settings.sections.about", icon: Info },
 ];
@@ -247,7 +250,8 @@ const HOST_SECTION_ITEMS: HostSectionItem[] = [
   { id: "pair-device", labelKey: "openProject.tiles.pairDevice.title", icon: Smartphone },
   { id: "agents", labelKey: "settings.hostSections.agents", icon: Bot },
   { id: "metadata", labelKey: "settings.hostSections.metadata", icon: Sparkles },
-  { id: "voice", labelKey: "settings.hostSections.voice", icon: Mic },
+  // CUSTOM(bruno-customizations): Voice and dictation moved to Bruno's Customizations > Voice;
+  // the host slug still opens it for old links.
   { id: "workspaces", labelKey: "settings.hostSections.workspaces", icon: FolderGit2 },
   { id: "providers", labelKey: "settings.hostSections.providers", icon: Boxes },
   { id: "usage", labelKey: "settings.hostSections.usage", icon: Gauge },
@@ -1368,6 +1372,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handlePlaybackTest={handlePlaybackTest}
             />
           );
+        // CUSTOM(bruno-customizations)
+        case "customizations":
+          return <BrunoCustomizationsSection serverId={activeHostServerId} />;
         case "about":
           return (
             <AboutSection

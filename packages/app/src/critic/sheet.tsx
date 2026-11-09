@@ -11,6 +11,7 @@ import {
 } from "@/components/adaptive-modal-sheet";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import { Button } from "@/components/ui/button";
+import { FormTextInput } from "@/components/ui/form-field";
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
@@ -46,7 +47,6 @@ const TOOLS_OPTIONS: { value: CriticTools; label: string }[] = [
   { value: "off", label: "Off" },
   { value: "read", label: "Read only" },
 ];
-const ROUND_OPTIONS = ["1", "2", "3", "4", "5"].map((value) => ({ value, label: value }));
 const IMAGE_PERSISTER = {
   persistFromBlob: persistAttachmentFromBlob,
   persistFromDataUrl: persistAttachmentFromDataUrl,
@@ -123,7 +123,6 @@ export function CriticSettingsSheet({
     (provider: AgentProvider) => snapshot.refresh([provider]),
     [snapshot],
   );
-  const handleMaxRounds = useCallback((value: string) => form.setMaxRounds(Number(value)), [form]);
 
   const addPersistedImages = useCallback(
     async (persisted: readonly AttachmentMetadata[]) => {
@@ -315,14 +314,22 @@ export function CriticSettingsSheet({
             />
           </Row>
           <Row title="Max rounds" hint="After the last round the answer reaches you as it is.">
-            <SegmentedControl
-              options={ROUND_OPTIONS}
-              value={String(Math.min(draft.maxRounds, 5))}
-              onValueChange={handleMaxRounds}
+            <FormTextInput
               size="sm"
+              initialValue={state.maxRoundsText}
+              onChangeText={form.setMaxRoundsText}
+              keyboardType="number-pad"
+              inputMode="numeric"
+              selectTextOnFocus
+              editable={!state.saving}
+              style={styles.roundsInput}
+              accessibilityLabel="Max rounds"
               testID="critic-max-rounds"
             />
           </Row>
+          {state.maxRoundsError ? (
+            <Text style={styles.errorText}>{state.maxRoundsError}</Text>
+          ) : null}
           <Row title="Save as default" hint="New agents start from these settings, critic off.">
             <Switch
               value={state.saveAsDefault}
@@ -465,6 +472,10 @@ const styles = StyleSheet.create((theme) => ({
     borderColor: theme.colors.border,
     fontSize: theme.fontSize.base,
     textAlignVertical: "top",
+  },
+  roundsInput: {
+    width: 72,
+    textAlign: "right",
   },
   thumbnails: {
     flexDirection: "row",

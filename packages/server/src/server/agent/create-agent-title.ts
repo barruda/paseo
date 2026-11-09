@@ -4,8 +4,8 @@ import type { FirstAgentContext } from "@getpaseo/protocol/messages";
 const MAX_INITIAL_AGENT_TITLE_CHARS = Math.min(60, MAX_EXPLICIT_AGENT_TITLE_CHARS);
 export const MAX_GENERATED_TITLE_WORDS = 4;
 
-export function clampTitleWords(title: string): string {
-  return title.trim().split(/\s+/).slice(0, MAX_GENERATED_TITLE_WORDS).join(" ");
+export function clampTitleWords(title: string, maxWords = MAX_GENERATED_TITLE_WORDS): string {
+  return title.trim().split(/\s+/).slice(0, maxWords).join(" ");
 }
 
 function deriveInitialAgentTitle(prompt: string): string | null {

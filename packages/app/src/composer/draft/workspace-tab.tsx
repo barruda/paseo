@@ -1,3 +1,4 @@
+import { isFocusedComposerCaretAtEnd } from "@/jev-router/cycle"; // CUSTOM(jev-router)
 import { useModelFavoritesStore } from "@/model-picker/favorites-store";
 import { useEffortFavoritesStore } from "@/composer/effort-favorites-store";
 import { useProjectFavoritesStore } from "@/composer/project-favorites-store";
@@ -798,7 +799,10 @@ export function WorkspaceDraftAgentTab({
     enabled: isPaneFocused,
     priority: 200,
     handle: (action) => {
-      if (isSubmitting || draftInput.textSource.getSnapshot().length > 0) return false;
+      // CUSTOM(jev-router): with text, → still changes the effort when the caret is at the end.
+      const hasText = draftInput.textSource.getSnapshot().length > 0;
+      const caretAtEnd = action.id === "task.draft.effort" && isFocusedComposerCaretAtEnd();
+      if (isSubmitting || (hasText && !caretAtEnd)) return false;
       if (
         (action.id === "task.draft.project" || action.id === "task.draft.project.next") &&
         modelPickerProject

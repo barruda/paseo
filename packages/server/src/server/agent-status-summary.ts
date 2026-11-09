@@ -26,9 +26,11 @@ const RUNNING_REFRESH_MS = 3 * 60_000;
 /** Each summary starts a `claude` process, so a burst of turn ends waits its turn. */
 const MAX_CONCURRENT = 2;
 const SUMMARY_MODEL = "haiku";
+/** CUSTOM(session-auto-rename): a session's generated name is at most this many words. */
+const AUTO_RENAME_MAX_WORDS = 2;
 /**
- * CUSTOM(session-auto-rename): words a clamped title must not end on, so "Pesquisa de modelos low
- * poly" doesn't become "Pesquisa de modelos low" and "Abas do World e Árvores" not "Abas do World e".
+ * CUSTOM(session-auto-rename): words a clamped title must not end on, so "Pesquisa de modelos"
+ * doesn't become "Pesquisa de" and "Abas do World" not "Abas do".
  */
 const TITLE_TRAILING_WORDS = new Set(
   (
@@ -146,9 +148,10 @@ export function buildStatusSummaryPrompt(input: {
     "You keep a status card for a coding agent session. The user glances at it when switching",
     "back to this tab and needs to remember what the session is about.",
     "",
-    "- title: a name for the session, 2 to 4 words, used as its tab title. A complete name, never",
-    '  a phrase cut short: no trailing "de", "e", "para", "and", "of". Name the subject',
-    "  (feature, bug, tool), not the activity. Keep the previous title unless the subject changed.",
+    "- title: a name for the session, at most 2 words (one is fine), used as its tab title. It",
+    "  must say clearly what the session is about. A complete name, never a phrase cut short: no",
+    '  trailing "de", "e", "para", "and", "of". Name the subject (feature, bug, tool), not the',
+    "  activity. It is set once, from the first card, and never changes afterwards.",
     "- topic: what the session is about right now, in at most 6 words, like a tab title. It is",
     "  the only part shown without hovering, so it must read at a glance.",
     "- request: what the user is asking for right now, as a short phrase (at most 12 words).",
@@ -346,31 +349,30 @@ export class AgentStatusSummaries {
       const status = result.status.trim();
       if (!request || !status) return;
       state.lastFingerprint = fingerprint;
+      // CUSTOM(status-topic-breadcrumb): the first topic stays; summaries from before it existed
+      // promote their topic.
+      const firstTopic = previous ? (previous.firstTopic ?? previous.topic) : result.topic;
       agentManager.setStatusSummary(agentId, {
         ...result,
+        ...(firstTopic ? { firstTopic } : {}),
         request,
         status,
         updatedAt: this.now().toISOString(),
       });
-      if (result.title) await this.maybeAutoRename(agentId, result.title, previous?.title ?? null);
+      if (result.title) await this.maybeAutoRename(agentId, result.title);
     } catch (error) {
       logger.warn({ err: error, agentId }, "agent status summary failed");
     }
   }
 
-  // CUSTOM(session-auto-rename): the summary's title names the session from its first summary on,
-  // and follows it while the title is still one this feature wrote: the first message's
-  // provisional title or the previous summary's title. A rename by hand (or an explicit title from
-  // the CLI/MCP) matches neither, so it stays, across daemon restarts too.
-  private async maybeAutoRename(
-    agentId: string,
-    title: string,
-    previousTitle: string | null,
-  ): Promise<void> {
+  // CUSTOM(session-auto-rename): the summary's title names the session once. Only a title the
+  // first message gave (or none) is replaced; after that, whether the LLM or a person renamed the
+  // session, the name stays. Survives daemon restarts, because it is read from the stored title.
+  private async maybeAutoRename(agentId: string, title: string): Promise<void> {
     const { agentManager, agentStorage } = this.options;
     const current = (await agentStorage.get(agentId))?.title?.trim() || null;
     if (current === title) return;
-    if (current && current !== previousTitle) {
+    if (current) {
       const firstUserText = agentManager
         .getTimeline(agentId)
         .find((item) => item.type === "user_message" && item.text.trim());
@@ -384,11 +386,11 @@ export class AgentStatusSummaries {
 }
 
 /**
- * CUSTOM(session-auto-rename): clamps a generated title to four words, then drops connector words
+ * CUSTOM(session-auto-rename): clamps a generated title to two words, then drops connector words
  * the cut left at the end.
  */
 export function tidyGeneratedTitle(title: string | undefined): string | undefined {
-  const words = clampTitleWords(title ?? "").split(" ");
+  const words = clampTitleWords(title ?? "", AUTO_RENAME_MAX_WORDS).split(" ");
   while (words.length > 1 && TITLE_TRAILING_WORDS.has(words[words.length - 1].toLowerCase())) {
     words.pop();
   }

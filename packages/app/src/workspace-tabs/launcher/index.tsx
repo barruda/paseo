@@ -83,6 +83,7 @@ const BUILT_IN_SELECTIONS = {
   changes: { kind: "target", target: { kind: "changes_tree" } },
   diff: { kind: "target", target: { kind: "working_diff" } },
   files: { kind: "target", target: { kind: "files" } },
+  docs: { kind: "target", target: { kind: "docs" } }, // CUSTOM(desk-docs)
   browser: { kind: "browser" },
   pullRequest: { kind: "target", target: { kind: "pull_request" } },
 } satisfies Record<BuiltInLaunchItemId, NewTabSelection>;
@@ -124,6 +125,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
     const diffPresentation = getLaunchPresentation("working_diff");
     const filesPresentation = getLaunchPresentation("files");
     const pullRequestPresentation = getLaunchPresentation("pull_request");
+    const docsPresentation = getLaunchPresentation("docs"); // CUSTOM(desk-docs)
     const builtIns: Record<BuiltInLaunchItemId, WorkspaceTabLaunchItem & { hidden?: boolean }> = {
       agent: {
         id: "agent",
@@ -171,6 +173,15 @@ export function useWorkspaceTabLaunchCatalog(input: {
         disabled: false,
         panelKind: "files",
         launch: launchSelection(BUILT_IN_SELECTIONS.files),
+      },
+      // CUSTOM(desk-docs)
+      docs: {
+        id: "docs",
+        label: docsPresentation.label(t),
+        Icon: docsPresentation.icon,
+        disabled: false,
+        panelKind: "docs",
+        launch: launchSelection(BUILT_IN_SELECTIONS.docs),
       },
       browser: {
         id: "browser",

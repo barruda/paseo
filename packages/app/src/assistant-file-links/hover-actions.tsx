@@ -460,9 +460,29 @@ function UrlHoverCardBody({
   children: ReactNode;
 }) {
   const closeCard = useHoverCardClose();
+  const tasksMode = useTaskNavigationStore((state) => state.enabled);
+  // CUSTOM(link-context-tab): right-click opens the link in a Paseo tab behind the chat, so you
+  // can keep reading and collect links. Electron only, like "Abrir em aba".
+  const canOpenInTab = getIsElectron() && workspace !== null;
+  const openInBackgroundTab = useCallback(
+    (event: { preventDefault(): void; defaultPrevented?: boolean }) => {
+      // The chat-comments menu already took this right-click (it runs first, on selected text).
+      if (!workspace || event.defaultPrevented) return;
+      event.preventDefault();
+      closeCard();
+      openUrlInWorkspaceTab({ url, workspace, tasksMode, background: true });
+      toast?.show("Link aberto em aba");
+    },
+    [closeCard, tasksMode, toast, url, workspace],
+  );
   return (
     <>
-      <HoverCardTrigger style={TRIGGER_STYLE}>{children}</HoverCardTrigger>
+      <HoverCardTrigger
+        style={TRIGGER_STYLE}
+        onContextMenu={canOpenInTab ? openInBackgroundTab : undefined}
+      >
+        {children}
+      </HoverCardTrigger>
       <HoverCardContent
         placement="top"
         alignment="start"
@@ -475,6 +495,31 @@ function UrlHoverCardBody({
       </HoverCardContent>
     </>
   );
+}
+
+/**
+ * A browser tab of the chat's workspace, opened next to the chat like Ctrl+T's browser tabs.
+ * `background` keeps the focus on the tab you were in (CUSTOM(link-context-tab)).
+ */
+function openUrlInWorkspaceTab(input: {
+  url: string;
+  workspace: ChatWorkspace;
+  tasksMode: boolean;
+  background: boolean;
+}) {
+  const { browserId } = createWorkspaceBrowser({ initialUrl: input.url });
+  const target = { kind: "browser" as const, browserId };
+  if (input.tasksMode) {
+    const desks = useDesksStore.getState();
+    if (input.background) desks.openTabInBackground({ ...input.workspace, target });
+    else desks.openTab({ ...input.workspace, target }, true);
+    return;
+  }
+  const workspaceKey = buildWorkspaceTabPersistenceKey(input.workspace);
+  if (workspaceKey)
+    useWorkspaceLayoutStore
+      .getState()
+      .openTab({ workspaceKey, target, intent: input.background ? "background" : "reveal" });
 }
 
 function UrlActionRow({
@@ -497,18 +542,9 @@ function UrlActionRow({
       toast?.error("Não foi possível copiar o link");
     }
   }, [toast, url]);
-  // A browser tab of the chat's workspace, opened next to the chat like Ctrl+T's browser tabs.
   const openInTab = useCallback(() => {
     if (!workspace) return;
-    const { browserId } = createWorkspaceBrowser({ initialUrl: url });
-    const target = { kind: "browser" as const, browserId };
-    if (tasksMode) {
-      useDesksStore.getState().openTab({ ...workspace, target }, true);
-      return;
-    }
-    const workspaceKey = buildWorkspaceTabPersistenceKey(workspace);
-    if (workspaceKey)
-      useWorkspaceLayoutStore.getState().openTab({ workspaceKey, target, intent: "reveal" });
+    openUrlInWorkspaceTab({ url, workspace, tasksMode, background: false });
   }, [tasksMode, url, workspace]);
   const openInBrowser = useCallback(() => {
     void openExternalUrl(url);

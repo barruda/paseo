@@ -2219,6 +2219,7 @@ export const ja: TranslationResources = {
       integrations: "連携",
       notifications: "通知",
       permissions: "権限",
+      customizations: "Bruno's Customizations", // CUSTOM(bruno-customizations)
       diagnostics: "診断",
       about: "アプリ情報",
     },

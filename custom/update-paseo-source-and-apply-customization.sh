@@ -299,7 +299,7 @@ if $VERIFY; then
   (cd custom/plugins/token-ledger && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npm test)
   (cd packages/app && npx vitest run src/turn-jump/model.test.ts src/plugins/host-navigation.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/agent-projections.test.ts --bail=1)
-  npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr custom/plugins/btw custom/plugins/critic custom/plugins/jev-router packages/app/src/critic/model.test.ts packages/app/src/jev-router/model.test.ts packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/plugins/buttons/model.test.ts packages/app/src/shell-command-composer/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
+  npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr custom/plugins/btw custom/plugins/critic custom/plugins/jev-router packages/app/src/critic/model.test.ts packages/app/src/critic/form-model.test.ts packages/app/src/jev-router/model.test.ts packages/app/src/jev-router/cycle.test.ts packages/app/src/jev-router/form-model.test.ts packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/plugins/buttons/model.test.ts packages/app/src/shell-command-composer/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
   (cd packages/server && npx vitest run src/server/agent-status-summary.test.ts src/server/lean-claude.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/worktree-merge-status.test.ts --bail=1)
   # The status summary survives daemon restarts; New Agent tab names; pinned tabs.
@@ -314,7 +314,7 @@ if $VERIFY; then
   # Dictation tuning settings.
   (cd packages/server && npx vitest run src/server/speech/dictation-tuning.test.ts src/server/dictation/dictation-stream-manager.test.ts --bail=1)
   (cd packages/app && npx vitest run src/screens/settings/voice/dictation-tuning-model.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts src/agent-stream/chat-links/model.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts src/agent-stream/chat-links/model.test.ts src/desk-docs/model.test.ts src/desk-docs/launch.test.ts --bail=1)
   (cd packages/app && npx vitest run src/hooks/use-settings/storage.test.ts -t "chat link list" --bail=1)
   (cd packages/app && npx vitest run --project browser src/components/ui/hover-card.browser.test.tsx --bail=1)
   (cd packages/app && npx vitest run src/file-panels/html-preview-assets.test.ts src/file-panels/html-preview-navigation.test.ts --bail=1)
@@ -344,6 +344,8 @@ if $VERIFY; then
   # Tasks/Desks persistence, cross-project references, workspace fallback, closing tabs of
   # terminals that are gone, and opening every task in its own tab while preview tabs are off.
   (cd packages/app && npx vitest run src/task-navigation/model.test.ts src/task-navigation/store.test.ts src/workspace-tabs/open-supporting-view.test.ts --bail=1)
+  # Ctrl+Z reopens the Desk tab you just closed.
+  (cd packages/app && npx vitest run src/task-navigation/reopen-closed-tab.test.ts --bail=1)
   # Search in files (Ctrl+Shift+F); its browser check is in e2e/task-navigation.spec.ts.
   (cd packages/server && npx vitest run src/utils/workspace-content-search.test.ts --bail=1)
   (cd packages/app && npx vitest run src/keyboard/route-shortcut.test.ts src/keyboard/keyboard-shortcuts.test.ts --bail=1)
@@ -404,6 +406,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/tab-lanes/model.test.ts --bail=1)
   # The Flexible tab movement desktop setting (flexible-tabs).
   (cd packages/desktop && npx vitest run src/settings/desktop-settings.test.ts --bail=1)
+  # Skills/MCPs popover: what the agent's session file says is loaded (skills-loaded).
+  (cd custom/plugins/skills && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npm test)
 fi
 
 step "Building the desktop app"

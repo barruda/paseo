@@ -18,6 +18,7 @@
     "custom/plugins/beautiful-chat/**",
     "!custom/plugins/beautiful-chat/client/expand-memory*.ts",
     "custom/plugins/power-workboard/**",
-    "custom/plugins/token-ledger/**"
+    "custom/plugins/token-ledger/**",
+    "custom/plugins/skills/**"
   ]
 }

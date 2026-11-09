@@ -26,6 +26,9 @@ rules agents get wrong.
 - Every customization gets a `custom/CHANGES.md` entry with: Added, Commit, Why, What, Core files
   touched, Re-apply, Verify. Write **Re-apply** so someone can redo the change by hand when upstream
   moves the surrounding code.
+- A customization's app settings go into a tab of **Settings > Bruno's Customizations**
+  (`packages/app/src/screens/settings/bruno-customizations/section.tsx`), not into upstream's
+  sections.
 - Add tests, and add them to the "Running customization tests" step of
   `custom/update-paseo-source-and-apply-customization.sh`.
 - Run `npm run typecheck`, `npm run lint -- <files>`, and `npm run format:files -- <files>` before

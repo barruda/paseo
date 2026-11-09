@@ -2176,6 +2176,7 @@ export const zhCN: TranslationResources = {
       integrations: "集成",
       notifications: "通知",
       permissions: "权限",
+      customizations: "Bruno's Customizations", // CUSTOM(bruno-customizations)
       diagnostics: "诊断",
       about: "关于",
     },

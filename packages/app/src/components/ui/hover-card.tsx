@@ -384,12 +384,15 @@ export function HoverCardTrigger({
   focusable = false,
   accessibilityLabel,
   style,
+  onContextMenu,
 }: {
   children: ReactNode;
   focusable?: boolean;
   accessibilityLabel?: string;
   /** CUSTOM(chat-file-actions): e.g. inline-flex, for a trigger inside running text. */
   style?: StyleProp<ViewStyle>;
+  /** CUSTOM(link-context-tab): web only; react-native-web forwards it to the DOM element. */
+  onContextMenu?: (event: { preventDefault(): void; defaultPrevented?: boolean }) => void;
 }): ReactNode {
   const ctx = useContext(HoverCardContext);
   if (!ctx) return children;
@@ -404,6 +407,7 @@ export function HoverCardTrigger({
       onPointerEnter={ctx.enterTrigger}
       onPointerMove={ctx.trackPointer}
       onPointerLeave={ctx.leaveTrigger}
+      {...(onContextMenu ? { onContextMenu } : null)}
     >
       {children}
     </View>

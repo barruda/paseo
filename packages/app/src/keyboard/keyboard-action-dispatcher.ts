@@ -105,7 +105,13 @@ export type KeyboardActionDefinition =
   | { id: "workspace.tab.navigate-index"; scope: KeyboardActionScope; index: number }
   | { id: "workspace.tab.navigate-relative"; scope: KeyboardActionScope; delta: 1 | -1 }
   // CUSTOM(recent-tabs)
-  | { id: "workspace.tab.navigate-recent"; scope: KeyboardActionScope; delta: 1 | -1 }
+  | {
+      id: "workspace.tab.navigate-recent";
+      scope: KeyboardActionScope;
+      delta: 1 | -1;
+      /** CUSTOM(mouse-tab-nav): switch right away instead of opening the switcher. */
+      immediate?: boolean;
+    }
   | {
       id: "workspace.tab.open";
       scope: KeyboardActionScope;

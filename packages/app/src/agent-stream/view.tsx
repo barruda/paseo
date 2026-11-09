@@ -94,6 +94,7 @@ import { ChatImagesRail } from "@/agent-stream/chat-images/rail";
 // CUSTOM(chat-links)
 import { collectChatLinks, type ChatLink } from "@/agent-stream/chat-links/model";
 import { ChatLinksBox } from "@/agent-stream/chat-links/box";
+import { useDeskDocsCapture } from "@/desk-docs/capture"; // CUSTOM(desk-docs)
 // CUSTOM(reading-modes)
 import type { ReadingMode } from "@/agent-stream/reading-modes/model";
 import { useReadingRows } from "@/agent-stream/reading-modes/rows";
@@ -808,6 +809,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [chatLinksEnabled, effectiveStreamItems, effectiveStreamHead, workspaceRoot],
     );
     const [chatLinksReservedHeight, setChatLinksReservedHeight] = useState(0);
+    // CUSTOM(desk-docs): the Docs tab keeps the documents this chat mentions.
+    useDeskDocsCapture({
+      links: chatLinks,
+      client,
+      serverId: resolvedServerId,
+      workspaceId: context.workspaceId ?? null,
+      workspaceRoot,
+      sessionPaths: sessionFilePaths,
+    });
     const chatImagesMountedMessageIds = useMemo(
       () =>
         new Set(

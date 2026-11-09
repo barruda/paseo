@@ -1,13 +1,19 @@
 import { randomUUID } from "node:crypto";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { JEV_LABELS, JEV_TIMELINE_KIND, JEV_TIMELINE_VERSION } from "@getpaseo/protocol/jev-router";
-import { buildRouteCard, planRoute, resolveHome } from "./shared/decision";
+import {
+  applyEffortFocused,
+  applyModelFocused,
+  buildRouteCard,
+  planRoute,
+  resolveHome,
+} from "./shared/decision";
 import { routeRpc, routerSettings } from "./shared/settings";
 import { runRouter } from "./server/run";
 import { RouteCardStash } from "./server/stash";
 
 // The app calls `route` right before it creates a session from a draft composer's first message
-// (never for automations or follow-ups). Off, a non-Claude provider or Haiku answer `skipped`; a
+// (never for automations or follow-ups). Off, a non-Claude provider or (model focused) Haiku answer `skipped`; a
 // router failure answers `routed` with the error and the selected model kept (fail-open). When the
 // model changed, the new agent gets a short card saying so, with a button to undo it.
 export default function contribute(server: PluginServerContext) {
@@ -19,11 +25,11 @@ export default function contribute(server: PluginServerContext) {
     if (state.status !== "ready") return { status: "skipped" as const, reason: state.error };
     const values = state.values;
     if (!values.enabled && !input.test) return { status: "skipped" as const, reason: "off" };
-    const home = resolveHome(input);
+    const home = resolveHome({ ...input, mode: values.mode });
     if ("skip" in home) return { status: "skipped" as const, reason: home.skip };
     const routeId = randomUUID();
     try {
-      const decision = await runRouter({
+      const raw = await runRouter({
         settings: values,
         home,
         prompt: input.prompt,
@@ -31,7 +37,15 @@ export default function contribute(server: PluginServerContext) {
         images: input.images,
         test: input.test,
       });
-      const plan = planRoute({ decision, home, test: input.test, routeId });
+      const decision = applyModelFocused(applyEffortFocused(raw, values), values, home);
+      const plan = planRoute({
+        decision,
+        home,
+        test: input.test,
+        routeId,
+        mode: values.mode,
+        homeModelId: input.model,
+      });
       if (plan.applied && input.model)
         stash.put(
           routeId,
@@ -58,6 +72,8 @@ export default function contribute(server: PluginServerContext) {
         home,
         test: input.test,
         routeId,
+        mode: values.mode,
+        homeModelId: input.model,
       });
     }
   });

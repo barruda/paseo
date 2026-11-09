@@ -2,6 +2,7 @@
 // renders `getState()` and calls the commands; the loader and the save go through the adapter.
 
 import {
+  CRITIC_MAX_ROUNDS_LIMIT,
   DEFAULT_CRITIC_CONFIG,
   type CriticConfig,
   type CriticImage,
@@ -22,6 +23,9 @@ export interface CriticFormState {
   /** The config as loaded; `enabled` here is what the agent last heard about. */
   saved: CriticConfig | null;
   draft: CriticConfig;
+  /** What the field shows; `draft.maxRounds` keeps the last valid number. */
+  maxRoundsText: string;
+  maxRoundsError: string | null;
   saveAsDefault: boolean;
   saving: boolean;
   error: string | null;
@@ -43,7 +47,7 @@ export interface CriticFormModel {
   setMode(mode: CriticMode): void;
   setTools(tools: CriticTools): void;
   setIncludeDiff(includeDiff: boolean): void;
-  setMaxRounds(maxRounds: number): void;
+  setMaxRoundsText(text: string): void;
   setSaveAsDefault(saveAsDefault: boolean): void;
   beginSave(): void;
   saveFailed(message: string): void;
@@ -63,6 +67,13 @@ function imagesBytes(images: readonly CriticImage[]): number {
   return images.reduce((total, image) => total + base64Bytes(image.data), 0);
 }
 
+function parseMaxRounds(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const rounds = Number(trimmed);
+  return rounds >= 1 && rounds <= CRITIC_MAX_ROUNDS_LIMIT ? rounds : null;
+}
+
 export function openCriticForm(): CriticFormModel {
   const listeners = new Set<() => void>();
   let closed = false;
@@ -70,6 +81,8 @@ export function openCriticForm(): CriticFormModel {
     load: { status: "loading" },
     saved: null,
     draft: DEFAULT_CRITIC_CONFIG,
+    maxRoundsText: String(DEFAULT_CRITIC_CONFIG.maxRounds),
+    maxRoundsError: null,
     saveAsDefault: false,
     saving: false,
     error: null,
@@ -79,10 +92,18 @@ export function openCriticForm(): CriticFormModel {
 
   function derive(next: CriticFormState): CriticFormState {
     const imageBytes = imagesBytes(next.draft.images);
+    const maxRoundsValid = parseMaxRounds(next.maxRoundsText) !== null;
     return {
       ...next,
       imageBytes,
-      canSave: next.load.status === "ready" && !next.saving && next.draft.model.length > 0,
+      maxRoundsError: maxRoundsValid
+        ? null
+        : `Enter a whole number from 1 to ${CRITIC_MAX_ROUNDS_LIMIT}.`,
+      canSave:
+        next.load.status === "ready" &&
+        !next.saving &&
+        next.draft.model.length > 0 &&
+        maxRoundsValid,
     };
   }
 
@@ -103,7 +124,12 @@ export function openCriticForm(): CriticFormModel {
       return () => listeners.delete(listener);
     },
     applyLoaded(config) {
-      publish({ load: { status: "ready" }, saved: config, draft: config });
+      publish({
+        load: { status: "ready" },
+        saved: config,
+        draft: config,
+        maxRoundsText: String(config.maxRounds),
+      });
     },
     applyLoadError(message) {
       publish({ load: { status: "error", message } });
@@ -126,7 +152,10 @@ export function openCriticForm(): CriticFormModel {
     setMode: (mode) => editDraft({ mode }),
     setTools: (tools) => editDraft({ tools }),
     setIncludeDiff: (includeDiff) => editDraft({ includeDiff }),
-    setMaxRounds: (maxRounds) => editDraft({ maxRounds }),
+    setMaxRoundsText(text) {
+      const maxRounds = parseMaxRounds(text) ?? state.draft.maxRounds;
+      publish({ draft: { ...state.draft, maxRounds }, maxRoundsText: text, error: null });
+    },
     setSaveAsDefault: (saveAsDefault) => publish({ saveAsDefault }),
     beginSave: () => publish({ saving: true, error: null }),
     saveFailed: (message) => publish({ saving: false, error: message }),

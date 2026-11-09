@@ -2794,6 +2794,7 @@ function WorkspaceScreenContent({
         openTabIds: recentTabIds,
         currentTabId: recentCurrentTabId,
         delta: action.delta,
+        immediate: action.immediate,
         navigate: navigateToTabId,
       });
       return true;

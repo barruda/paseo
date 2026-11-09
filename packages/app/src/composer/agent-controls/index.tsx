@@ -87,6 +87,10 @@ import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
 import { CacheWarmupToggle } from "@/cache-warmup/toggle"; // CUSTOM(cache-warmup)
 import { CriticToggle } from "@/critic/toggle"; // CUSTOM(critic)
 import { JevRouterToggle } from "@/jev-router/toggle"; // CUSTOM(jev-router)
+import { isFocusedComposerCaretAtEnd } from "@/jev-router/cycle"; // CUSTOM(jev-router)
+import { useLockedCycleKeys } from "@/jev-router/use-locked-cycle-keys"; // CUSTOM(jev-router)
+import { ChangeFlash } from "@/composer/agent-controls/change-flash"; // CUSTOM(jev-router)
+import { useAppSettings } from "@/hooks/use-settings"; // CUSTOM(bruno-customizations)
 import { isNative } from "@/constants/platform";
 import {
   resolveComposerControlDensity,
@@ -256,6 +260,8 @@ function AgentControlCommandCenterRegistration({
   });
   // CUSTOM(model-picker)
   useModelPickerSource({ sourceId, enabled: enabled && isActiveComposer, controls });
+  // CUSTOM(jev-router): Effort focused's lock keeps ←/→ on its models and efforts.
+  useLockedCycleKeys({ sourceId, enabled: enabled && isActiveComposer, controls });
   // CUSTOM(task-shortcuts): ← cycles favorite models and → the effort in an ongoing chat.
   useKeyboardActionHandler({
     handlerId: `empty-composer-cycle:${sourceId}`,
@@ -263,7 +269,9 @@ function AgentControlCommandCenterRegistration({
     enabled: enabled && isActiveComposer && Boolean(isInputEmpty),
     priority: 200,
     handle: (action) => {
-      if (!isInputEmpty?.()) return false;
+      // CUSTOM(jev-router): with text, → still changes the effort when the caret is at the end.
+      const caretAtEnd = action.id === "task.draft.effort" && isFocusedComposerCaretAtEnd();
+      if (!isInputEmpty?.() && !caretAtEnd) return false;
       if (action.id === "task.draft.model") {
         const next = previousModelSelection(
           controls.models.providers,
@@ -836,6 +844,9 @@ function ControlledAgentControls({
     },
     [onSelectModel, onSelectProvider, onSelectProviderAndModel, provider],
   );
+  // CUSTOM(bruno-customizations): Settings > Bruno's Customizations > Composer.
+  const showCriticToggle = useAppSettings().settings.showCriticToggle;
+  const showJevRouterToggle = useAppSettings().settings.showJevRouterToggle;
 
   if (!hasAnyControl) {
     return null;
@@ -947,14 +958,22 @@ function ControlledAgentControls({
           agentId={cacheWarmupAgentId}
           draftKey={draftKey}
         />
-        {/* CUSTOM(critic): the critic toggle sits right after the flame, for any provider. */}
-        <CriticToggle
+        {/* CUSTOM(critic): the critic toggle sits right after the flame, for any provider.
+            CUSTOM(bruno-customizations): unless hidden in Settings. */}
+        {showCriticToggle ? (
+          <CriticToggle
+            serverId={modelSelectorServerId}
+            agentId={cacheWarmupAgentId}
+            draftKey={draftKey}
+          />
+        ) : null}
+        {/* CUSTOM(jev-router): after the critic; drafts show it too (it routes their first prompt).
+            Hidden in Settings, it still feeds the ←/→ lock and shows the route chip. */}
+        <JevRouterToggle
           serverId={modelSelectorServerId}
           agentId={cacheWarmupAgentId}
-          draftKey={draftKey}
+          showIcon={showJevRouterToggle}
         />
-        {/* CUSTOM(jev-router): after the critic; drafts show it too (it routes their first prompt). */}
-        <JevRouterToggle serverId={modelSelectorServerId} agentId={cacheWarmupAgentId} />
       </View>
     </ComposerControlLayoutProvider>
   );
@@ -1119,66 +1138,72 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
       ) : null}
 
       {canSelectModel ? (
-        <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-          <TooltipTrigger asChild triggerRefProp="ref">
-            <View style={styles.modelControl}>
-              <CombinedModelSelector
-                providers={modelSelectorProviders}
-                selectedProvider={provider}
-                selectedModel={selectedModelId ?? ""}
-                onSelect={handleDesktopModelSelect}
-                profiles={agentProfiles}
-                onApplyProfile={onApplyAgentProfile}
-                onEditProfiles={onEditAgentProfiles}
-                onCreateProfile={onCreateAgentProfile}
-                onEditProfile={onEditAgentProfile}
-                isLoading={isModelLoading}
-                disabled={modelDisabled}
-                onOpen={onModelSelectorOpen}
-                onTriggerPress={onOpenModelPicker}
-                onBodyPress={onCycleModel}
-                onClose={onDropdownClose}
-                onRetryProvider={onRetryModelProvider}
-                isRetryingProvider={isRetryingModelProvider}
-                serverId={modelSelectorServerId}
-                desktopPlacement="top-start"
-                desktopMinWidth={360}
-                toolbar={modelToolbar}
-              />
-            </View>
-          </TooltipTrigger>
-          <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{t(getAgentControlHintKey("model"))}</Text>
-          </TooltipContent>
-        </Tooltip>
+        // CUSTOM(jev-router): the chip flashes when the model changes.
+        <ChangeFlash value={selectedModelId}>
+          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+            <TooltipTrigger asChild triggerRefProp="ref">
+              <View style={styles.modelControl}>
+                <CombinedModelSelector
+                  providers={modelSelectorProviders}
+                  selectedProvider={provider}
+                  selectedModel={selectedModelId ?? ""}
+                  onSelect={handleDesktopModelSelect}
+                  profiles={agentProfiles}
+                  onApplyProfile={onApplyAgentProfile}
+                  onEditProfiles={onEditAgentProfiles}
+                  onCreateProfile={onCreateAgentProfile}
+                  onEditProfile={onEditAgentProfile}
+                  isLoading={isModelLoading}
+                  disabled={modelDisabled}
+                  onOpen={onModelSelectorOpen}
+                  onTriggerPress={onOpenModelPicker}
+                  onBodyPress={onCycleModel}
+                  onClose={onDropdownClose}
+                  onRetryProvider={onRetryModelProvider}
+                  isRetryingProvider={isRetryingModelProvider}
+                  serverId={modelSelectorServerId}
+                  desktopPlacement="top-start"
+                  desktopMinWidth={360}
+                  toolbar={modelToolbar}
+                />
+              </View>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="center" offset={8}>
+              <Text style={styles.tooltipText}>{t(getAgentControlHintKey("model"))}</Text>
+            </TooltipContent>
+          </Tooltip>
+        </ChangeFlash>
       ) : null}
 
       {thinkingOptions && thinkingOptions.length > 0 ? (
         <>
-          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-            <TooltipTrigger asChild triggerRefProp="ref">
-              <AgentControlTrigger
-                ref={thinkingAnchorRef}
-                icon={ThinkingIcon}
-                surface="toolbar"
-                label={t("agentControls.thinking.title")}
-                value={displayThinking}
-                showToolbarLabel={presentation.showThinkingLabel}
-                showCaret={presentation.showCarets}
-                open={openSelector === "thinking"}
-                disabled={disabled || !canSelectThinking}
-                onPress={onCycleEffort ?? handleThinkingPress}
-                onChevronPress={onCycleEffort ? handleThinkingPress : undefined}
-                accessibilityLabel={t("agentControls.thinking.selectWithValue", {
-                  value: displayThinking,
-                })}
-                testID="agent-thinking-selector"
-              />
-            </TooltipTrigger>
-            <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{t(getAgentControlHintKey("thinking"))}</Text>
-            </TooltipContent>
-          </Tooltip>
+          {/* CUSTOM(jev-router): the chip flashes when the effort changes. */}
+          <ChangeFlash value={selectedThinkingOptionId}>
+            <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+              <TooltipTrigger asChild triggerRefProp="ref">
+                <AgentControlTrigger
+                  ref={thinkingAnchorRef}
+                  icon={ThinkingIcon}
+                  surface="toolbar"
+                  label={t("agentControls.thinking.title")}
+                  value={displayThinking}
+                  showToolbarLabel={presentation.showThinkingLabel}
+                  showCaret={presentation.showCarets}
+                  open={openSelector === "thinking"}
+                  disabled={disabled || !canSelectThinking}
+                  onPress={onCycleEffort ?? handleThinkingPress}
+                  onChevronPress={onCycleEffort ? handleThinkingPress : undefined}
+                  accessibilityLabel={t("agentControls.thinking.selectWithValue", {
+                    value: displayThinking,
+                  })}
+                  testID="agent-thinking-selector"
+                />
+              </TooltipTrigger>
+              <TooltipContent side="top" align="center" offset={8}>
+                <Text style={styles.tooltipText}>{t(getAgentControlHintKey("thinking"))}</Text>
+              </TooltipContent>
+            </Tooltip>
+          </ChangeFlash>
           <Combobox
             options={comboboxThinkingOptions}
             value={selectedThinkingOptionId ?? ""}
@@ -2140,6 +2165,12 @@ export function DraftAgentControls({
     enabled: isActiveComposer && !disabled,
     controls: pickerControls,
     project: modelPickerProject,
+  });
+  // CUSTOM(jev-router): Effort focused's lock keeps ←/→ on its models and efforts.
+  useLockedCycleKeys({
+    sourceId: pickerSourceId,
+    enabled: isActiveComposer && !disabled,
+    controls: pickerControls,
   });
 
   return (

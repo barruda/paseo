@@ -2231,6 +2231,7 @@ export const ru: TranslationResources = {
       integrations: "Интеграции",
       notifications: "Уведомления",
       permissions: "Разрешения",
+      customizations: "Bruno's Customizations", // CUSTOM(bruno-customizations)
       diagnostics: "Диагностика",
       about: "О приложении",
     },

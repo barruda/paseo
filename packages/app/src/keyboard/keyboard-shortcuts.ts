@@ -370,7 +370,8 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     help: {
       id: "task-draft-effort",
       section: "tasks",
-      label: "Cycle the effort level in an empty composer",
+      // CUSTOM(jev-router): also with the caret at the end of the text.
+      label: "Cycle the effort level in an empty composer or at the end of the text",
     },
   },
   // --- Open project ---

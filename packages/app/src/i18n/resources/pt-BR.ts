@@ -2231,6 +2231,7 @@ export const ptBR: TranslationResources = {
       integrations: "Integrações",
       notifications: "Notificações",
       permissions: "Permissões",
+      customizations: "Bruno's Customizations", // CUSTOM(bruno-customizations)
       diagnostics: "Diagnósticos",
       about: "Sobre",
     },

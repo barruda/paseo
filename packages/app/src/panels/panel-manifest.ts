@@ -158,6 +158,15 @@ const manifests = {
     compactSheet: null,
     resourceKey: (target) => target.sha,
   },
+  // CUSTOM(desk-docs): Docs sits in the Explorer sidebar beside Files and Changes, opened from +.
+  docs: {
+    kind: "docs",
+    supportedHosts: ["explorer"],
+    showCloseButton: true,
+    singleton: true,
+    compactSheet: null,
+    resourceKey: () => "docs",
+  },
   // CUSTOM(history-search-tabs)
   history_search: {
     kind: "history_search",

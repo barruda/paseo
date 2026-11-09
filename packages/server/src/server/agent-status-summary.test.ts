@@ -52,13 +52,12 @@ describe("buildStatusSummaryPrompt", () => {
 });
 
 describe("tidyGeneratedTitle", () => {
-  it("drops connector words a four-word cut leaves at the end", () => {
-    expect(tidyGeneratedTitle("Pesquisa de modelos low poly")).toBe("Pesquisa de modelos low");
-    expect(tidyGeneratedTitle("Abas do World e Árvores")).toBe("Abas do World");
-    expect(tidyGeneratedTitle("PowerEditor: Seguir seleção por aba")).toBe(
-      "PowerEditor: Seguir seleção",
-    );
+  it("cuts the title at two words and drops connector words the cut leaves at the end", () => {
+    expect(tidyGeneratedTitle("Pesquisa de modelos low poly")).toBe("Pesquisa");
+    expect(tidyGeneratedTitle("Abas do World e Árvores")).toBe("Abas");
     expect(tidyGeneratedTitle("Fix of the")).toBe("Fix");
+    expect(tidyGeneratedTitle("Login fix flow")).toBe("Login fix");
+    expect(tidyGeneratedTitle("Mixer")).toBe("Mixer");
   });
 
   it("keeps a complete title and drops trailing punctuation", () => {
@@ -211,14 +210,14 @@ describe("AgentStatusSummaries", () => {
       expect(manager.title).toBe("Login fix");
     });
 
-    it("follows the summary while the title is the one it wrote", async () => {
+    it("names the session once and keeps that name", async () => {
       manager.emit("turn_completed");
       await vi.advanceTimersByTimeAsync(3_000);
       generate.mockResolvedValue({ title: "Signup flow", request: "Signup", status: "Done" });
       manager.timeline = [...manager.timeline, user("now the signup")];
       manager.emit("turn_completed");
       await vi.advanceTimersByTimeAsync(3_000);
-      expect(manager.title).toBe("Signup flow");
+      expect(manager.title).toBe("Login fix");
     });
 
     it("keeps a title set by hand", async () => {
@@ -237,6 +236,49 @@ describe("AgentStatusSummaries", () => {
       manager.emit("turn_completed");
       await vi.advanceTimersByTimeAsync(3_000);
       expect(manager.title).toBe("My name");
+    });
+  });
+
+  describe("topic breadcrumb", () => {
+    it("keeps the first topic while later summaries change the topic", async () => {
+      generate.mockResolvedValue({ topic: "Login fix", request: "Fix login", status: "Reading" });
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(manager.summaries.get("a1")?.firstTopic).toBe("Login fix");
+
+      generate.mockResolvedValue({ topic: "Session cookie", request: "Cookie", status: "Done" });
+      manager.timeline = [...manager.timeline, user("now the cookie")];
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(manager.summaries.get("a1")).toMatchObject({
+        firstTopic: "Login fix",
+        topic: "Session cookie",
+      });
+
+      generate.mockResolvedValue({ topic: "Logout button", request: "Logout", status: "Done" });
+      manager.timeline = [...manager.timeline, user("and logout")];
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(manager.summaries.get("a1")).toMatchObject({
+        firstTopic: "Login fix",
+        topic: "Logout button",
+      });
+    });
+
+    it("promotes the topic of a summary written before the first topic existed", async () => {
+      manager.summaries.set("a1", {
+        topic: "Old topic",
+        request: "Old",
+        status: "Old",
+        updatedAt: "2026-10-19T10:00:00Z",
+      });
+      generate.mockResolvedValue({ topic: "New topic", request: "New", status: "Done" });
+      manager.emit("turn_completed");
+      await vi.advanceTimersByTimeAsync(3_000);
+      expect(manager.summaries.get("a1")).toMatchObject({
+        firstTopic: "Old topic",
+        topic: "New topic",
+      });
     });
   });
 
