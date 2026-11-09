@@ -5,7 +5,12 @@ import { describe, expect, it } from "vitest";
 import type { PluginButton } from "@getpaseo/plugin/client";
 import type { InstalledPlugin } from "../types";
 import { PluginButtonStore, buttonMatches } from "./model";
-import { CHAT_OPTIONS, chatOptionEnabled, pluginChatOptionKey } from "@/composer/chat-options";
+import {
+  CHAT_OPTIONS,
+  chatOptionEnabled,
+  pluginChatOptionKey,
+  featureChatOptionKey,
+} from "@/composer/chat-options";
 
 describe("chat pill preferences", () => {
   it("enables every option by default and identifies plugin pills across sessions", () => {
@@ -22,6 +27,14 @@ describe("chat pill preferences", () => {
     expect(pluginChatOptionKey("tell-agent", "message-agent", "agent-b")).toBe(
       "plugin:tell-agent:message-agent",
     );
+  });
+  it("controls fast, plan and other provider features separately", () => {
+    expect(featureChatOptionKey("fast_mode")).toBe("feature:fast_mode");
+    expect(featureChatOptionKey("plan_mode")).toBe("feature:plan_mode");
+    expect(featureChatOptionKey("another_feature")).toBe("feature:other");
+    expect(
+      chatOptionEnabled({ "feature:fast_mode": false }, featureChatOptionKey("fast_mode")),
+    ).toBe(false);
   });
 });
 

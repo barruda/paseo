@@ -2209,7 +2209,7 @@ function ComposerContentImpl({
         hasAgent={hasAgent || Boolean(onStartVoice)}
         hasSendableContent={hasSendableContent}
         isCompact={isCompactLayout}
-        showVoice={mode.showVoice}
+        showVoice={mode.showVoice && appSettings.chatOptions.voice !== false}
         buttonIconSize={buttonIconSize}
         handleToggleRealtimeVoice={handleToggleRealtimeVoice}
         isConnected={isConnected}
@@ -2230,6 +2230,7 @@ function ComposerContentImpl({
       isVoiceModeForAgent,
       isVoiceSwitching,
       mode.showVoice,
+      appSettings.chatOptions.voice,
       realtimeVoiceButtonStyle,
       t,
       voiceToggleKeys,
@@ -2252,7 +2253,7 @@ function ComposerContentImpl({
           />
           {/* CUSTOM(draft-composer-ready): a draft shows the meter too, empty, with the
               account usage in its popover. */}
-          {hasAgent || commandDraft ? (
+          {(hasAgent || commandDraft) && appSettings.chatOptions["context-meter"] !== false ? (
             <View style={styles.contextWindowMeterSlot}>
               <ContextWindowMeter
                 serverId={serverId}
@@ -2278,6 +2279,7 @@ function ComposerContentImpl({
       commandDraft,
       agentControls?.modelPickerProject,
       agentControls?.onDropdownClose,
+      appSettings.chatOptions,
     ],
   );
 

@@ -3,11 +3,11 @@
 // Editor (tab movement, preview tabs, skip pinned) and the host's Voice and dictation page.
 // Keyboard shortcuts stay in Shortcuts, plugin settings in each host's Plugins page.
 
-import { useCallback, useState, useSyncExternalStore } from "react";
+import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Text, View } from "react-native";
-import { StyleSheet } from "react-native-unistyles";
+import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { JEV_ROUTER_PLUGIN_ID } from "@getpaseo/protocol/jev-router";
-import { SettingsCard, SettingsSection, SettingsSwitch } from "@/components/settings";
+import { SettingsCard, SettingsRow, SettingsSection, SettingsSwitch } from "@/components/settings";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
@@ -20,6 +20,42 @@ import { settingsStyles } from "@/styles/settings";
 import { useFlexibleTabMovement } from "@/tab-lanes/settings";
 import { CHAT_OPTIONS, chatOptionEnabled, pluginChatOptionKey } from "@/composer/chat-options";
 import { pluginButtonStore } from "@/plugins/buttons/store";
+import { PluginIconView } from "@/plugins/icons";
+import type { PluginIcon } from "@getpaseo/plugin/client";
+import type { Theme } from "@/styles/theme";
+
+const ThemedOptionIcon = withUnistyles(PluginIconView);
+const iconColors = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
+const OPTION_ICONS: Record<string, PluginIcon> = {
+  parent: "Bot",
+  tasks: "ListTodo",
+  subagents: "Users",
+  "plugin:tldr:tldr": "ScrollText",
+  commit: "GitCommitHorizontal",
+  rename: "Pencil",
+  "plugin:skills:skills": "Sparkles",
+  "plugin:tell-agent:message-agent": "MessagesSquare",
+  "plugin:token-ledger:ledger-pill": "Coins",
+  diff: "FileDiff",
+  worktree: "GitBranch",
+  "git-sync": "GitMerge",
+  reading: "Columns3",
+  mode: "ShieldOff",
+  "feature:fast_mode": "Zap",
+  "feature:plan_mode": "ListTodo",
+  "feature:other": "Settings2",
+  "model-shortcut": "Keyboard",
+  "cache-warmup": "Flame",
+  critic: "ScanEye",
+  jev: "Route",
+  branch: "GitBranch",
+  project: "Folder",
+  "context-meter": "CircleGauge",
+  dictation: "Mic",
+  voice: "AudioLines",
+  send: "ArrowUp",
+  stop: "Square",
+};
 
 type CustomizationsTab = "composer" | "chat" | "chat-options" | "tabs" | "voice";
 
@@ -60,26 +96,56 @@ function ChatOptionsTab() {
     pluginButtonStore.getSnapshot,
   );
   const options = new Map<string, string>(CHAT_OPTIONS);
+  const icons = new Map<string, PluginIcon>();
   for (const entry of entries) {
     if (entry.placement !== "composer" || entry.context.context !== "agent") continue;
     const key = pluginChatOptionKey(entry.installation.id, entry.id, entry.context.agentId);
     if (!options.has(key)) options.set(key, entry.button.title);
+    if (!icons.has(key) && typeof entry.button.icon === "string") icons.set(key, entry.button.icon);
   }
   return (
     <SettingsSection title="Chat options">
       <SettingsCard>
         {[...options].map(([key, label]) => (
-          <ChatOptionRow key={key} optionKey={key} label={label} />
+          <ChatOptionRow
+            key={key}
+            optionKey={key}
+            label={label}
+            icon={OPTION_ICONS[key] ?? icons.get(key) ?? "Settings2"}
+          />
         ))}
       </SettingsCard>
     </SettingsSection>
   );
 }
 
-function ChatOptionRow({ optionKey, label }: { optionKey: string; label: string }) {
+function ChatOptionRow({
+  optionKey,
+  label,
+  icon,
+}: {
+  optionKey: string;
+  label: string;
+  icon: PluginIcon;
+}) {
   const { settings, updateSettings } = useAppSettings();
+  const accessory = useMemo(
+    () => <ThemedOptionIcon icon={icon} size={16} uniProps={iconColors} />,
+    [icon],
+  );
+  let enabled = chatOptionEnabled(settings.chatOptions, optionKey);
+  if (optionKey === "critic") enabled = settings.showCriticToggle;
+  if (optionKey === "jev") enabled = settings.showJevRouterToggle;
   const onChange = useCallback(
     (value: boolean) => {
+      if (optionKey === "critic") {
+        void updateSettings({ showCriticToggle: value });
+        return;
+      }
+      if (optionKey === "jev") {
+        void updateSettings({ showJevRouterToggle: value });
+        return;
+      }
       void updateSettings((current) => ({
         chatOptions: { ...current.chatOptions, [optionKey]: value },
       }));
@@ -87,11 +153,9 @@ function ChatOptionRow({ optionKey, label }: { optionKey: string; label: string 
     [optionKey, updateSettings],
   );
   return (
-    <SettingsSwitch
-      label={label}
-      value={chatOptionEnabled(settings.chatOptions, optionKey)}
-      onValueChange={onChange}
-    />
+    <SettingsRow label={label} labelAccessory={accessory}>
+      <Switch accessibilityLabel={label} value={enabled} onValueChange={onChange} />
+    </SettingsRow>
   );
 }
 
@@ -100,36 +164,7 @@ function ChatOptionRow({ optionKey, label }: { optionKey: string; label: string 
 // ---------------------------------------------------------------------------
 
 function ComposerTab({ serverId }: { serverId: string | null }) {
-  const { settings, updateSettings } = useAppSettings();
-  const setShowCritic = useCallback(
-    (showCriticToggle: boolean) => void updateSettings({ showCriticToggle }),
-    [updateSettings],
-  );
-  const setShowJev = useCallback(
-    (showJevRouterToggle: boolean) => void updateSettings({ showJevRouterToggle }),
-    [updateSettings],
-  );
-  return (
-    <>
-      <SettingsSection title="Toolbar icons">
-        <SettingsCard>
-          <SettingsSwitch
-            label="Critic"
-            hint="The critic's icon after the flame, on hosts with the critic plugin."
-            value={settings.showCriticToggle}
-            onValueChange={setShowCritic}
-          />
-          <SettingsSwitch
-            label="Jev router"
-            hint="The router's icon after the critic's. Hidden, the router still runs, ←/→ stay locked in Effort focused and a moved session still gets its green chip."
-            value={settings.showJevRouterToggle}
-            onValueChange={setShowJev}
-          />
-        </SettingsCard>
-      </SettingsSection>
-      {serverId ? <JevRouterSettingsCard serverId={serverId} /> : null}
-    </>
-  );
+  return serverId ? <JevRouterSettingsCard serverId={serverId} /> : null;
 }
 
 function JevRouterSettingsCard({ serverId }: { serverId: string }) {

@@ -25,6 +25,7 @@ import {
   forwardRef,
 } from "react";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { useSettings } from "@/hooks/use-settings";
 import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
@@ -2087,10 +2088,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       [isDictating, isRealtimeVoiceForCurrentAgent, voice?.isMuted, buttonIconSize],
     );
 
+    const chatOptions = useSettings((settings) => settings.chatOptions); // CUSTOM(chat-options)
+    let visibleActionKind: PrimaryActionKind = isFullscreen ? "send" : primaryActionKind;
+    if (visibleActionKind === "send" && chatOptions.send === false) visibleActionKind = "none";
+    if (visibleActionKind === "active" && chatOptions.stop === false) visibleActionKind = "none";
     const sendButton = useMemo(
       () => (
         <PrimaryAction
-          kind={isFullscreen ? "send" : primaryActionKind}
+          kind={visibleActionKind}
           activeActionContent={activeActionContent}
           shouldShow
           canPressLoadingButton={canPressLoadingButton}
@@ -2111,8 +2116,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         />
       ),
       [
-        isFullscreen,
-        primaryActionKind,
         activeActionContent,
         canPressLoadingButton,
         onSubmitLoadingPress,
@@ -2129,6 +2132,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         buttonIconSize,
         sendShortcut,
         sendTooltipLabel,
+        visibleActionKind,
       ],
     );
     const textSurface = useMemo(
@@ -2229,7 +2233,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           <View style={styles.rightButtonGroup}>
             {beforeVoiceContent}
             <VoiceButtonTooltip
-              visible={mode.showVoice}
+              visible={
+                mode.showVoice &&
+                (chatOptions.dictation !== false || isRealtimeVoiceForCurrentAgent)
+              }
               onVoicePress={handleVoicePress}
               isDictationStartEnabled={isDictationStartEnabled}
               voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
@@ -2267,6 +2274,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         dictationToggleKeys,
         rightContent,
         sendButton,
+        chatOptions.dictation,
       ],
     );
     const overlayContent = useMemo(

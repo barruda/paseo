@@ -19,6 +19,7 @@ import { useProjectIcons } from "@/projects/icons";
 import { useSessionStore } from "@/stores/session-store";
 import { normalizeBranchHint, resolveComposerProjectIdentity } from "./project-icon-model";
 import { useProjectFavoritesStore } from "./project-favorites-store";
+import { useSettings } from "@/hooks/use-settings";
 
 interface ComposerProjectIconProps {
   serverId: string;
@@ -37,6 +38,7 @@ export function ComposerProjectIcon({
   projectSource = null,
   onMenuClose,
 }: ComposerProjectIconProps) {
+  const options = useSettings((settings) => settings.chatOptions); // CUSTOM(chat-options)
   const projectId = useSessionStore((state) => {
     const session = state.sessions[serverId];
     const resolvedWorkspaceId = workspaceId ?? session?.agents.get(agentId)?.workspaceId;
@@ -72,11 +74,14 @@ export function ComposerProjectIcon({
     />
   );
 
-  const branchHint = branch ? (
-    <Text numberOfLines={1} style={styles.branch} testID="composer-branch-hint">
-      {branch}
-    </Text>
-  ) : null;
+  const branchHint =
+    branch && options.branch !== false ? (
+      <Text numberOfLines={1} style={styles.branch} testID="composer-branch-hint">
+        {branch}
+      </Text>
+    ) : null;
+
+  if (options.project === false) return branchHint;
 
   if (!projectSource) {
     return (

@@ -4066,9 +4066,12 @@ waiting` tests in `agent-manager.test.ts`.
 - **What:** Settings > Bruno's Customizations > Chat Options controls built-in and plugin pills.
   Missing preferences default to visible. Registered plugin pills also get a toggle, keyed by
   plugin and pill rather than session, so the choice applies across agents and hosts.
+  The same tab controls the composer's toolbar and shows an icon for each choice; Critic and Jev
+  retain their existing preferences. Hiding a control does not disable its keyboard shortcuts.
 - **Core files touched:** `composer/chat-options.ts`, `hooks/use-settings/storage.ts`,
   `screens/settings/bruno-customizations/section.tsx`, `panels/agent-tracks.tsx`,
-  `panels/agent-panel.tsx`, and `plugins/buttons/view.tsx` (marked `CUSTOM(chat-options)`).
+  `panels/agent-panel.tsx`, `plugins/buttons/view.tsx`, `composer/agent-controls/index.tsx`,
+  `composer/index.tsx`, `composer/input/input.tsx`, and `composer/project-icon.tsx`.
 - **Re-apply:** Store the visibility map in app settings; apply it to each built-in pill and
   plugin composer contribution, and list the controls in the customizations tab. Normalize
   agent-specific plugin pill IDs before looking them up.

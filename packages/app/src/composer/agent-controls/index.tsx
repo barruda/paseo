@@ -91,6 +91,7 @@ import { isFocusedComposerCaretAtEnd } from "@/jev-router/cycle"; // CUSTOM(jev-
 import { useLockedCycleKeys } from "@/jev-router/use-locked-cycle-keys"; // CUSTOM(jev-router)
 import { ChangeFlash } from "@/composer/agent-controls/change-flash"; // CUSTOM(jev-router)
 import { useAppSettings } from "@/hooks/use-settings"; // CUSTOM(bruno-customizations)
+import { chatOptionEnabled, featureChatOptionKey } from "@/composer/chat-options";
 import { isNative } from "@/constants/platform";
 import {
   resolveComposerControlDensity,
@@ -586,6 +587,8 @@ function buildOpenChangeHandler(
   };
 }
 
+// The toolbar combines provider controls and independently configurable custom actions.
+// eslint-disable-next-line complexity
 function ControlledAgentControls({
   provider,
   providerOptions,
@@ -845,8 +848,14 @@ function ControlledAgentControls({
     [onSelectModel, onSelectProvider, onSelectProviderAndModel, provider],
   );
   // CUSTOM(bruno-customizations): Settings > Bruno's Customizations > Composer.
-  const showCriticToggle = useAppSettings().settings.showCriticToggle;
-  const showJevRouterToggle = useAppSettings().settings.showJevRouterToggle;
+  const chatSettings = useAppSettings().settings;
+  const options = chatSettings.chatOptions;
+  const showCriticToggle = chatSettings.showCriticToggle;
+  const showJevRouterToggle = chatSettings.showJevRouterToggle;
+  const visibleFeatures = features?.filter((feature) =>
+    chatOptionEnabled(options, featureChatOptionKey(feature.id)),
+  );
+  const visibleModeControl = chatOptionEnabled(options, "mode") ? modeControl : null;
 
   if (!hasAnyControl) {
     return null;
@@ -864,7 +873,7 @@ function ControlledAgentControls({
             selectedModelId={selectedModelId}
             thinkingOptions={formattedThinkingOptions}
             selectedThinkingOptionId={selectedThinkingOptionId}
-            features={features}
+            features={visibleFeatures}
             onSetFeature={onSetFeature}
             onApplyAgentProfile={onApplyAgentProfile}
             onEditAgentProfiles={onEditAgentProfiles}
@@ -903,7 +912,7 @@ function ControlledAgentControls({
             handleOpenChange={handleOpenChange}
             handleNestedOpenChange={handleSheetOpenChange}
             renderThinkingOption={renderThinkingOption}
-            modeControl={modeControl}
+            modeControl={visibleModeControl}
             presentation={presentation}
             glyphSize={layoutContextValue.glyphSize}
             activeSheet={activeSheet}
@@ -916,7 +925,7 @@ function ControlledAgentControls({
             provider={provider}
             selectedModelId={selectedModelId}
             selectedThinkingOptionId={selectedThinkingOptionId}
-            features={features}
+            features={visibleFeatures}
             onSetFeature={onSetFeature}
             onApplyAgentProfile={onApplyAgentProfile}
             onEditAgentProfiles={onEditAgentProfiles}
@@ -943,21 +952,25 @@ function ControlledAgentControls({
             handleSelectThinkingAndClose={handleSelectThinkingAndClose}
             handleOpenChange={handleSheetOpenChange}
             renderThinkingOption={renderThinkingOption}
-            modeControl={modeControl}
+            modeControl={visibleModeControl}
             glyphSize={layoutContextValue.glyphSize}
             modelSelectorServerId={modelSelectorServerId}
             canSwitchProvider={Boolean(onSelectProviderAndModel)}
           />
         )}
         {/* CUSTOM(model-picker) */}
-        {!isCompact ? <ModelPickerShortcutChip /> : null}
+        {!isCompact && chatOptionEnabled(options, "model-shortcut") ? (
+          <ModelPickerShortcutChip />
+        ) : null}
         {/* CUSTOM(cache-warmup) */}
-        <CacheWarmupToggle
-          provider={provider}
-          serverId={modelSelectorServerId}
-          agentId={cacheWarmupAgentId}
-          draftKey={draftKey}
-        />
+        {chatOptionEnabled(options, "cache-warmup") ? (
+          <CacheWarmupToggle
+            provider={provider}
+            serverId={modelSelectorServerId}
+            agentId={cacheWarmupAgentId}
+            draftKey={draftKey}
+          />
+        ) : null}
         {/* CUSTOM(critic): the critic toggle sits right after the flame, for any provider.
             CUSTOM(bruno-customizations): unless hidden in Settings. */}
         {showCriticToggle ? (
