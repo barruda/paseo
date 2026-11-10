@@ -1,6 +1,6 @@
 import { JevRouterSettingsSchema } from "@getpaseo/protocol/jev-router";
 import { describe, expect, it } from "vitest";
-import { openJevRouterForm, parseThreshold } from "./form-model";
+import { OPERATIONAL_OFF, openJevRouterForm, parseThreshold } from "./form-model";
 
 function loaded() {
   const form = openJevRouterForm();
@@ -43,6 +43,24 @@ describe("jev router form", () => {
     form.toggleOperationalEffort("high");
     form.toggleOperationalEffort("low");
     expect(form.getState().draft.effortFocused.operationalEfforts).toEqual(["low", "high"]);
+  });
+
+  it("turns Operational off without needing an effort, and back on with a model", () => {
+    const form = loaded();
+    for (const effort of ["low", "medium", "high"]) form.toggleOperationalEffort(effort);
+    expect(form.getState().canSave).toBe(false);
+    form.setOperationalModel(OPERATIONAL_OFF);
+    expect(form.getState().draft.effortFocused).toMatchObject({
+      operationalEnabled: false,
+      operationalModel: "claude-haiku-5-5",
+    });
+    expect(form.getState().canSave).toBe(true);
+    form.setOperationalModel("claude-sonnet-5-5");
+    expect(form.getState().draft.effortFocused).toMatchObject({
+      operationalEnabled: true,
+      operationalModel: "claude-sonnet-5-5",
+    });
+    expect(form.getState().canSave).toBe(false);
   });
 
   it("restores only the selected mode's defaults and remounts the threshold inputs", () => {

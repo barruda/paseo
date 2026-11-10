@@ -19,6 +19,7 @@ import { pluginSettingsKey } from "@/plugins/settings/use-settings";
 import type { InstalledPlugin } from "@/plugins/types";
 import { toErrorMessage } from "@/utils/error-messages";
 import {
+  OPERATIONAL_OFF,
   openJevRouterForm,
   type JevPickSlot,
   type JevRouterFormModel,
@@ -48,6 +49,13 @@ const EFFORT_OPTIONS: SegmentedControlOption<string>[] = JEV_ROUTER_EFFORTS.map(
 function modelOptions(selected: string): SegmentedControlOption<string>[] {
   const ids = CLAUDE_MODELS.includes(selected) ? CLAUDE_MODELS : [...CLAUDE_MODELS, selected];
   return ids.map((id) => ({ value: id, label: formatClaudeModel(id).replace(/ 5\.5$/, "") }));
+}
+
+function operationalOptions(selected: string): SegmentedControlOption<string>[] {
+  return [
+    { value: OPERATIONAL_OFF, label: "Off", testID: "jev-operational-off" },
+    ...modelOptions(selected),
+  ];
 }
 
 function useJevRouterFormModel(plugin: InstalledPlugin): JevRouterFormModel {
@@ -238,27 +246,30 @@ function EffortFocusedFields({ form }: { form: JevRouterFormModel }) {
       <View style={styles.bucket}>
         <Text style={styles.label}>Operational</Text>
         <Text style={styles.hint}>
-          Chat and tiny tasks: searching code, an easy merge, an HTML page. Starts on Jev’s effort,
-          moved to the nearest checked one (chat on the lowest).
+          {config.operationalEnabled
+            ? "Chat and tiny tasks: searching code, an easy merge, an HTML page. Starts on Jev’s effort, moved to the nearest checked one (chat on the lowest)."
+            : "Off: chat and tiny tasks start on Default, like every other task that isn’t hard."}
         </Text>
         <SegmentedControl
-          options={modelOptions(config.operationalModel)}
-          value={config.operationalModel}
+          options={operationalOptions(config.operationalModel)}
+          value={config.operationalEnabled ? config.operationalModel : OPERATIONAL_OFF}
           onValueChange={setOperationalModel}
           size="sm"
           testID="jev-operational-model"
         />
-        <View style={styles.effortChips}>
-          {JEV_ROUTER_EFFORTS.map((effort) => (
-            <EffortChip
-              key={effort}
-              effort={effort}
-              checked={config.operationalEfforts.includes(effort)}
-              onToggle={form.toggleOperationalEffort}
-            />
-          ))}
-        </View>
-        {config.operationalEfforts.length === 0 ? (
+        {config.operationalEnabled ? (
+          <View style={styles.effortChips}>
+            {JEV_ROUTER_EFFORTS.map((effort) => (
+              <EffortChip
+                key={effort}
+                effort={effort}
+                checked={config.operationalEfforts.includes(effort)}
+                onToggle={form.toggleOperationalEffort}
+              />
+            ))}
+          </View>
+        ) : null}
+        {config.operationalEnabled && config.operationalEfforts.length === 0 ? (
           <Text style={styles.errorText}>Check at least one effort.</Text>
         ) : null}
       </View>

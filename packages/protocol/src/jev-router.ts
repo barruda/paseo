@@ -46,6 +46,7 @@ export const JevModelFocusedSchema = z.object({
 export type JevModelFocused = z.infer<typeof JevModelFocusedSchema>;
 
 export const DEFAULT_JEV_EFFORT_FOCUSED = {
+  operationalEnabled: true,
   operationalModel: "claude-haiku-5-5",
   operationalEfforts: ["low", "medium", "high"],
   defaultPick: { model: "claude-opus-5-5", effort: "low" },
@@ -57,6 +58,8 @@ export const DEFAULT_JEV_EFFORT_FOCUSED = {
 };
 
 export const JevEffortFocusedSchema = z.object({
+  /** Off: no Operational bucket; chat and tiny tasks start on `defaultPick`. */
+  operationalEnabled: z.boolean().default(DEFAULT_JEV_EFFORT_FOCUSED.operationalEnabled),
   /** Chat and tiny operational work (search code, an easy merge, an HTML page). */
   operationalModel: z.string().default(DEFAULT_JEV_EFFORT_FOCUSED.operationalModel),
   /** Jev's own effort pick is moved to the nearest of these. */
@@ -196,13 +199,16 @@ export function nearestEffort(
 /**
  * Effort focused: the model and effort a route.py bucket (`why`) starts on. Chat and operational go
  * to the operational model (chat on its lowest effort, operational on Jev's effort moved to the
- * nearest allowed one), hard to `hardPick`, everything else to `defaultPick`.
+ * nearest allowed one), hard to `hardPick`, everything else to `defaultPick`. With Operational
+ * off, chat and operational go to `defaultPick` too.
  */
 export function effortFocusedPick(
   config: JevEffortFocused,
   why: string,
   jevEffort: string | null | undefined,
 ): JevRouterPick {
+  if (!config.operationalEnabled && (why === "chat" || why === "operational"))
+    return config.defaultPick;
   if (why === "chat")
     return {
       model: config.operationalModel,
@@ -227,7 +233,7 @@ export function effortFocusedCycle(
     for (const effort of efforts) set.add(effort);
     byModel.set(model, set);
   };
-  add(config.operationalModel, config.operationalEfforts);
+  if (config.operationalEnabled) add(config.operationalModel, config.operationalEfforts);
   add(config.defaultPick.model, [config.defaultPick.effort]);
   add(config.hardPick.model, [config.hardPick.effort]);
   return [...byModel].map(([model, efforts]) => ({

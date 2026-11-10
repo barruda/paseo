@@ -17,6 +17,9 @@ export type JevThresholdField =
   | "effort.hard"
   | "effort.deep";
 
+/** The Operational model control's "Off" value. */
+export const OPERATIONAL_OFF = "off";
+
 export type JevPickSlot = "defaultPick" | "hardPick";
 
 export type JevRouterFormLoad =
@@ -46,6 +49,7 @@ export interface JevRouterFormModel {
   setEnabled(enabled: boolean): void;
   setMode(mode: JevRouterMode): void;
   setThresholdText(field: JevThresholdField, text: string): void;
+  /** A model id, or `OPERATIONAL_OFF` to turn the Operational bucket off. */
   setOperationalModel(model: string): void;
   toggleOperationalEffort(effort: string): void;
   setPickModel(slot: JevPickSlot, model: string): void;
@@ -147,7 +151,8 @@ export function openJevRouterForm(): JevRouterFormModel {
         next.load.status === "ready" &&
         !next.saving &&
         Object.keys(thresholdErrors).length === 0 &&
-        next.draft.effortFocused.operationalEfforts.length > 0,
+        (!next.draft.effortFocused.operationalEnabled ||
+          next.draft.effortFocused.operationalEfforts.length > 0),
     };
   }
 
@@ -190,7 +195,10 @@ export function openJevRouterForm(): JevRouterFormModel {
       const draft = value === null ? state.draft : writeThreshold(state.draft, field, value);
       publish({ draft, thresholdTexts: { ...state.thresholdTexts, [field]: text }, error: null });
     },
-    setOperationalModel: (operationalModel) => editEffortFocused({ operationalModel }),
+    setOperationalModel(model) {
+      if (model === OPERATIONAL_OFF) editEffortFocused({ operationalEnabled: false });
+      else editEffortFocused({ operationalEnabled: true, operationalModel: model });
+    },
     toggleOperationalEffort(effort) {
       const current = state.draft.effortFocused.operationalEfforts;
       const next = current.includes(effort)

@@ -4388,7 +4388,10 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     **Operational** model (Haiku) on Jev's effort moved to the nearest checked one (low, medium,
     high; chat on the lowest); hard reasoning or a hard signal ≥ 0.5 to **Hard** (Opus high);
     everything else to **Default** (Opus low). It ignores the selection, so it may move up, and
-    it routes Haiku selections too. Models, efforts and the three thresholds are editable. On the
+    it routes Haiku selections too. Models, efforts and the three thresholds are editable.
+    **Operational** also has **Off** before its models (`operationalEnabled`): chat and tiny tasks
+    then start on Default, and ←/→ leave its model out (added 2026-11-10, so a Sonnet or Haiku
+    pick can be dropped without unchecking every effort, which blocks Save). On the
     78 labeled real prompts (cached Jev answers) it picked ~47% Opus low, ~41% Opus high, ~12%
     Haiku.
   - **Lock models/effort fast cycling**, on by default, in Effort focused (it follows the mode,
@@ -4424,7 +4427,8 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   through when `isFocusedComposerCaretAtEnd()`.
 - **Verify:** `npx vitest run custom/plugins/jev-router packages/app/src/jev-router` and the e2e
   `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand, on the personal Paseo:
-  click the route icon, pick Effort focused, Save; in a draft on Opus high, ← goes to Haiku high
+  click the route icon, pick Effort focused, Save; Operational > Off hides its efforts and
+  still saves, ← no longer lands on its model; in a draft on Opus high, ← goes to Haiku high
   and → walks Haiku's efforts, ← again Opus high, → Opus low; type text and press → at its end:
   the effort changes; each change flashes its chip. Send "rename count to total in utils.ts": the
   session starts on Haiku with the Jev card and the green chip, whose menu runs it again on the

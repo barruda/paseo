@@ -1,5 +1,6 @@
 import {
   effortFocusedCycle,
+  effortFocusedPick,
   formatClaudeModel,
   type JevDecision,
   JevRouterSettingsSchema,
@@ -332,6 +333,16 @@ describe("effort focused", () => {
       family: "opus",
       effort: "high",
     });
+  });
+
+  it("sends chat and operational to Default when Operational is off", () => {
+    const off = { ...settings.effortFocused, operationalEnabled: false };
+    expect(effortFocusedPick(off, "chat", "low")).toEqual(off.defaultPick);
+    expect(effortFocusedPick(off, "operational", "medium")).toEqual(off.defaultPick);
+    expect(effortFocusedPick(off, "hard", null)).toEqual(off.hardPick);
+    expect(effortFocusedCycle({ ...off, operationalModel: "claude-sonnet-5-5" })).toEqual([
+      { model: "claude-opus-5-5", efforts: ["low", "high"] },
+    ]);
   });
 
   it("cycles the operational model's efforts and the picks' models", () => {
