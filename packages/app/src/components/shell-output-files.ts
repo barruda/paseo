@@ -74,13 +74,13 @@ function tokenize(command: string): Token[] {
         tokens.push({ kind: "pipe" });
       } else if (/^(&&|\|\||;;|;|&|\(|\))$/.test(operator)) {
         tokens.push({ kind: "separator" });
+      } else if (operator.startsWith("<<") && operator !== "<<<") {
+        // The delimiter is read here, so no redirect stays pending for the word after it.
+        const word = readWord(command, skipBlanks(command, index));
+        index = word.end;
+        heredocs.push(word.value.replace(/["']/g, ""));
       } else {
         tokens.push({ kind: "redirect", op: operator });
-        if (operator.startsWith("<<") && operator !== "<<<") {
-          const word = readWord(command, skipBlanks(command, index));
-          index = word.end;
-          heredocs.push(word.value.replace(/["']/g, ""));
-        }
       }
       continue;
     }
@@ -222,6 +222,38 @@ function resolvePath(value: string, directory: string | null): string | null {
 }
 
 export function shellOutputFiles(command: string, cwd?: string): string[] {
+  return collectShellFiles(command, cwd, "outputs");
+}
+
+// CUSTOM(session-file-paths): every file a shell command names, for the chat's file links. Agents
+// that work with `cd <dir>; grep … file.html` later name the file by its basename; the command is
+// the only place its full path appears.
+const FILE_WORD = /^[\w.@+\-/]+$/;
+const FILE_EXTENSION = /\.[A-Za-z][A-Za-z0-9]*$/;
+
+/**
+ * The files a shell command names: redirect targets in either direction, and every word that
+ * looks like a file name with an extension (`report.html`, `src/a.ts`, `./run.sh`). Relative
+ * names resolve against `cwd` and any `cd` before them.
+ */
+export function shellMentionedFiles(command: string, cwd?: string): string[] {
+  return collectShellFiles(command, cwd, "mentions");
+}
+
+function looksLikeFile(value: string): boolean {
+  return (
+    FILE_WORD.test(value) &&
+    !value.startsWith("-") &&
+    !value.endsWith("/") &&
+    FILE_EXTENSION.test(value.slice(value.lastIndexOf("/") + 1))
+  );
+}
+
+function collectShellFiles(
+  command: string,
+  cwd: string | undefined,
+  mode: "outputs" | "mentions",
+): string[] {
   const vars = new Map<string, string | null>();
   const files: string[] = [];
   let directory = cwd?.startsWith("/") ? cwd : null;
@@ -240,6 +272,11 @@ export function shellOutputFiles(command: string, cwd?: string): string[] {
     if (name === "cd" && args.length === 1) {
       const target = expandWord(args[0], vars);
       directory = target ? resolvePath(target, directory) : null;
+    } else if (mode === "mentions") {
+      for (const word of words) {
+        const value = expandWord(word, vars);
+        if (value && looksLikeFile(value)) add(word);
+      }
     } else if (name === "tee") {
       for (const arg of args) if (!arg.startsWith("-")) add(arg);
     } else if (name && READERS.has(name)) {
@@ -266,7 +303,8 @@ export function shellOutputFiles(command: string, cwd?: string): string[] {
       const op = pendingRedirect;
       pendingRedirect = null;
       // `2>&1` and `>&2` duplicate a descriptor; `<` and here-strings read input.
-      if (op.includes(">") && !op.endsWith(">&")) add(token.raw);
+      if (op.endsWith(">&")) continue;
+      if (op.includes(">") || (mode === "mentions" && op === "<")) add(token.raw);
       continue;
     }
     if (words.length === 0 && !token.quoted && KEYWORDS.has(token.raw)) continue;

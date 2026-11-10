@@ -26,7 +26,7 @@ import { useFileLink, type UseFileLinkResult } from "./use-file-link";
  */
 export function wrapWithFileLinkHover(
   source: AssistantFileLinkSource,
-  link: Pick<UseFileLinkResult, "target" | "lookupQuery" | "externalUrl" | "open">,
+  link: Pick<UseFileLinkResult, "target" | "lookupQuery" | "lookupFailed" | "externalUrl" | "open">,
   children: ReactNode,
 ): ReactElement | null {
   if (link.target || link.lookupQuery) {
@@ -35,6 +35,7 @@ export function wrapWithFileLinkHover(
         source={source}
         target={link.target}
         lookupQuery={link.lookupQuery}
+        lookupFailed={link.lookupFailed}
         open={link.open}
       >
         {children}

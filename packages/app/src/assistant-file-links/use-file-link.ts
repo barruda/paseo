@@ -26,6 +26,8 @@ export interface UseFileLinkResult {
   open: (source: AssistantFileLinkSource, disposition: OpenFileDisposition) => void;
   /** CUSTOM(chat-file-actions): the daemon suffix query when the link needs one, else null. */
   lookupQuery: string | null;
+  /** CUSTOM(chat-file-actions): the daemon lookup ran and found no file. */
+  lookupFailed: boolean;
   /** CUSTOM(chat-file-actions): the URL when the link is a web link, else null. */
   externalUrl: string | null;
 }
@@ -147,13 +149,23 @@ export function useFileLink(source: AssistantFileLinkSource): UseFileLinkResult 
 
   const tooltipPath = target ? formatFileLinkTooltipPath({ target, workspaceRoot }) : null;
   const lookupQuery = resolution.kind === "needsLookup" ? resolution.ambiguousQuery : null;
+  const lookupFailed = resolution.kind === "needsLookup" && query.isError;
   const externalUrl =
     resolution.kind === "resolved" && resolution.value.kind === "external"
       ? resolution.value.url
       : null;
   return useMemo(
-    () => ({ target, tooltipPath, onHoverIn, onPress, open, lookupQuery, externalUrl }),
-    [target, tooltipPath, onHoverIn, onPress, open, lookupQuery, externalUrl],
+    () => ({
+      target,
+      tooltipPath,
+      onHoverIn,
+      onPress,
+      open,
+      lookupQuery,
+      lookupFailed,
+      externalUrl,
+    }),
+    [target, tooltipPath, onHoverIn, onPress, open, lookupQuery, lookupFailed, externalUrl],
   );
 }
 

@@ -218,6 +218,23 @@ describe("useFileLink", () => {
     expect(getDirectorySuggestions).toHaveBeenCalledTimes(2);
   });
 
+  // CUSTOM(chat-file-actions): the hover card says "not found" instead of searching forever.
+  it("reports a failed lookup after hover finds no file", async () => {
+    const getDirectorySuggestions = vi.fn(async () => resolvedSuggestions([]));
+    const { result } = renderHook(() => useFileLink(SOURCE), {
+      wrapper: createWrapper({ client: { getDirectorySuggestions }, openedFiles: [] }),
+    });
+    expect(result.current.lookupFailed).toBe(false);
+
+    act(() => {
+      result.current.onHoverIn();
+    });
+    await waitFor(() => {
+      expect(result.current.lookupFailed).toBe(true);
+    });
+    expect(result.current.target).toBeNull();
+  });
+
   it("dedupes two links pointing at the same source", async () => {
     const deferred = createDeferred<DirectorySuggestionResult>();
     const getDirectorySuggestions = vi.fn(() => deferred.promise);

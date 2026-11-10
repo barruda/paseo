@@ -60,4 +60,18 @@ describe("session file paths", () => {
       },
     });
   });
+
+  it("takes the files a shell command names, through its cd", () => {
+    const paths = collectSessionFilePaths(
+      [
+        toolCall("5", {
+          type: "shell",
+          command: "cd /home/me/reports/; grep -n rocks gap-map.html",
+        }),
+      ],
+      "/home/me/work",
+    );
+    expect(paths).toEqual(["/home/me/reports/gap-map.html"]);
+    expect(matchSessionFilePath("gap-map.html", paths)).toBe("/home/me/reports/gap-map.html");
+  });
 });

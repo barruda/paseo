@@ -102,6 +102,7 @@ export function FileLinkHoverActions({
   source,
   target,
   lookupQuery,
+  lookupFailed,
   open,
   children,
 }: {
@@ -109,6 +110,8 @@ export function FileLinkHoverActions({
   /** The resolved file; null while unresolved, and the card then waits for it. */
   target: InlinePathTarget | null;
   lookupQuery: string | null;
+  /** The lookup found no file: the card says so instead of waiting. */
+  lookupFailed: boolean;
   open: (source: AssistantFileLinkSource, disposition: "preferred") => void;
   children: ReactNode;
 }) {
@@ -127,6 +130,7 @@ export function FileLinkHoverActions({
         source={source}
         target={target}
         lookupQuery={lookupQuery}
+        lookupFailed={lookupFailed}
         open={open}
       >
         {children}
@@ -141,6 +145,7 @@ function FileLinkHoverCardBody({
   source,
   target,
   lookupQuery,
+  lookupFailed,
   open,
   children,
 }: {
@@ -148,6 +153,8 @@ function FileLinkHoverCardBody({
   source: AssistantFileLinkSource;
   target: InlinePathTarget | null;
   lookupQuery: string | null;
+  /** The lookup found no file: the card says so instead of waiting. */
+  lookupFailed: boolean;
   open: (source: AssistantFileLinkSource, disposition: "preferred") => void;
   children: ReactNode;
 }) {
@@ -172,6 +179,7 @@ function FileLinkHoverCardBody({
           source={source}
           target={target}
           lookupQuery={lookupQuery}
+          lookupFailed={lookupFailed}
           open={open}
         />
       </HoverCardContent>
@@ -184,12 +192,15 @@ function FileLinkActionsCard({
   source,
   target,
   lookupQuery,
+  lookupFailed,
   open,
 }: {
   chat: ChatContexts;
   source: AssistantFileLinkSource;
   target: InlinePathTarget | null;
   lookupQuery: string | null;
+  /** The lookup found no file: the card says so instead of waiting. */
+  lookupFailed: boolean;
   open: (source: AssistantFileLinkSource, disposition: "preferred") => void;
 }) {
   const { configRef, getDirectorySuggestions } = chat.resolver;
@@ -229,7 +240,10 @@ function FileLinkActionsCard({
   const openInTab = useCallback(() => open(source, "preferred"), [open, source]);
 
   if (!path || !kind) {
-    return <Text style={styles.pending}>Procurando arquivo…</Text>;
+    const message = lookupFailed
+      ? `Arquivo não encontrado na pasta do workspace (${lookupQuery ?? ""})`
+      : "Procurando arquivo…";
+    return <Text style={styles.pending}>{message}</Text>;
   }
 
   const paths = kind === "script" && candidates && candidates.length > 1 ? candidates : [path];

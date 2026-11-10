@@ -1,6 +1,6 @@
 // CUSTOM(shell-output-files)
 import { describe, expect, it } from "vitest";
-import { shellOutputFiles } from "./shell-output-files";
+import { shellMentionedFiles, shellOutputFiles } from "./shell-output-files";
 
 describe("shellOutputFiles", () => {
   it("finds the file an agent polls for and reads back, through its variables", () => {
@@ -38,5 +38,41 @@ describe("shellOutputFiles", () => {
       "python3 - <<'EOF' > /tmp/out.txt\nprint(1 > 2)\nx = a >> b\nEOF\ncat /tmp/out.txt";
     expect(shellOutputFiles(command)).toEqual(["/tmp/out.txt"]);
     expect(shellOutputFiles("cmd >&2; cmd 1>&2 < /tmp/in")).toEqual([]);
+  });
+});
+
+// CUSTOM(session-file-paths)
+describe("shellMentionedFiles", () => {
+  it("finds the files an agent works on after a cd outside its workspace", () => {
+    const dir = "/home/me/reports/core";
+    expect(
+      shellMentionedFiles(
+        `cd ${dir}/; grep -n 'id="rocks"' gap-map.html; awk '/id="rocks"/{f=1} f&&/<\\/table>/{print NR; exit}' gap-map.html`,
+        "/home/me/repo",
+      ),
+    ).toEqual([`${dir}/gap-map.html`]);
+    expect(
+      shellMentionedFiles(
+        `cd ${dir}/ && cp gap-map.html history/gap-map.before-2026-11-10.html && python3 -I - <<'EOF' in.json\nopen("x.py")\nEOF`,
+      ),
+    ).toEqual([
+      `${dir}/gap-map.html`,
+      `${dir}/history/gap-map.before-2026-11-10.html`,
+      `${dir}/in.json`,
+    ]);
+  });
+
+  it("skips flags, patterns, numbers, directories and what only the shell knows", () => {
+    expect(
+      shellMentionedFiles(
+        "sed -n 125,160p a.ts | head -30; cut -c1-400 v1.0 dir/ $X/b.ts; ls *.md; git -C src log",
+        "/r",
+      ),
+    ).toEqual(["/r/a.ts"]);
+    expect(shellMentionedFiles("node ./run.mjs < in.txt > out.log 2>&1", "/r")).toEqual([
+      "/r/in.txt",
+      "/r/out.log",
+      "/r/run.mjs",
+    ]);
   });
 });

@@ -2,8 +2,10 @@
 // wherever they were working (`deploy.sh`, `scripts/deploy.sh`), not by its full path. The files
 // the agent read, edited, wrote or found in this session carry their full paths in the tool calls,
 // and the file it talks about is almost always one of them. Resolving against those first finds
-// files outside the workspace too, where the daemon's suffix lookup never looks.
+// files outside the workspace too, where the daemon's suffix lookup never looks. Shell commands
+// count too: an agent that works with `cd <dir>; grep … file.html` names the file only there.
 import { useMemo, useRef } from "react";
+import { shellMentionedFiles } from "@/components/shell-output-files";
 import { isAgentToolCallItem, type AgentToolCallItem, type StreamItem } from "@/types/stream";
 import { isAbsolutePath } from "@/utils/path";
 
@@ -18,7 +20,7 @@ export function collectSessionFilePaths(
     const item = items[index]!;
     if (!isAgentToolCallItem(item)) continue;
     const { detail } = item.payload.data;
-    for (const candidate of toolCallFilePaths(detail)) {
+    for (const candidate of toolCallFilePaths(detail, cwd)) {
       const absolute = toAbsolute(candidate, cwd);
       if (!absolute || seen.has(absolute)) continue;
       seen.add(absolute);
@@ -47,12 +49,30 @@ export function matchSessionFilePath(
   return sessionPaths.find((path) => path.endsWith(suffix)) ?? null;
 }
 
-function toolCallFilePaths(detail: AgentToolCallItem["payload"]["data"]["detail"]): string[] {
+function toolCallFilePaths(
+  detail: AgentToolCallItem["payload"]["data"]["detail"],
+  cwd: string | undefined,
+): readonly string[] {
   if (detail.type === "read" || detail.type === "edit" || detail.type === "write") {
     return [detail.filePath];
   }
   if (detail.type === "search") return detail.filePaths ?? [];
+  if (detail.type === "shell") return cachedShellFiles(detail.command, detail.cwd ?? cwd);
   return [];
+}
+
+// The paths are collected again on every stream update; parse each command once.
+const SHELL_CACHE_LIMIT = 2000;
+const shellCache = new Map<string, readonly string[]>();
+
+function cachedShellFiles(command: string, cwd: string | undefined): readonly string[] {
+  const key = `${cwd ?? ""}\0${command}`;
+  const cached = shellCache.get(key);
+  if (cached) return cached;
+  if (shellCache.size >= SHELL_CACHE_LIMIT) shellCache.clear();
+  const files = shellMentionedFiles(command, cwd);
+  shellCache.set(key, files);
+  return files;
 }
 
 function toAbsolute(path: string, cwd: string | undefined): string | null {

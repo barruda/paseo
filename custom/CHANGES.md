@@ -2732,9 +2732,13 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
   could only be run by typing its path by hand.
 - **What:**
   - **Session file paths.** A chat file link first matches the files the agent's tool calls touched
-    in this session (Read, Edit and Write `filePath`, Search `filePaths`), newest first: the same
-    relative path, or a full path ending in `/<link>`. Only then the workspace and the daemon's
-    suffix lookup, as upstream does. This finds files outside the workspace too.
+    in this session (Read, Edit and Write `filePath`, Search `filePaths`, and every file name with
+    an extension in a Shell command, after its `cd`: `shellMentionedFiles` in
+    `components/shell-output-files.ts`), newest first: the same relative path, or a full path
+    ending in `/<link>`. Only then the workspace and the daemon's suffix lookup, as upstream does.
+    This finds files outside the workspace too. Shell commands count because agents often work
+    with `cd <dir>; grep … file.html` and then name the file by its basename; before 2026-11-10 a
+    file touched only that way, outside the workspace, never resolved.
   - **Hover card.** On web and desktop, resting the pointer on a file link for 200 ms opens a card
     with icons first and the full path after them. The card opens with its first icon right above
     the pointer (`pointerAnchorOffset`), shifting left only when the screen's right edge is near: **Copiar caminho completo** and **Abrir em aba** (what clicking
@@ -2755,6 +2759,9 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
     react-freeze); a card still open then could never commit its close and stayed in the
     workspace's portal host over the new tab until that tab closed. Tooltip already gated itself
     this way. `hover-card.browser.test.tsx` reproduces it.
+  - While the daemon's suffix lookup runs, the card says **Procurando arquivo…**; when it finds
+    nothing (`useFileLink`'s `lookupFailed`), **Arquivo não encontrado na pasta do workspace**.
+    Before, a failed lookup left "Procurando arquivo…" up forever.
   - When the daemon's suffix lookup finds a `.sh` (it wasn't a session file) and more than one file
     matches, the card lists each match with its own actions instead of guessing.
   - **Executar no Warp** shows the bottom panel and selects its Warp tab. Without a bottom panel it
@@ -2797,7 +2804,7 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   run command, keyboard dispatcher, query client), and throws if it reads them itself. The web
   Markdown link renderer (`WebLink` in `components/markdown/renderers.web.tsx` since 0.14) is
   where the wrapping happens; keep the upstream tooltip for links that are neither.
-- **Verify:** `(cd packages/app && npx vitest run src/assistant-file-links/session-paths.test.ts src/assistant-file-links/hover-actions-model.test.ts)`
+- **Verify:** `(cd packages/app && npx vitest run src/assistant-file-links/session-paths.test.ts src/assistant-file-links/hover-actions-model.test.ts src/assistant-file-links/use-file-link.test.tsx src/components/shell-output-files.test.ts)`
   and the desktop opener test (the update script runs both). In the app, have an agent read a
   `.sh` outside the workspace and name it by basename in backticks; hover it: the card shows its
   full path, and **Executar aqui** prints the script's folder for `pwd`. **Executar no Warp** opens
