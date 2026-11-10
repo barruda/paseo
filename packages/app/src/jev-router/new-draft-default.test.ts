@@ -24,9 +24,17 @@ function plan(overrides: Partial<Parameters<typeof planNewDraftDefault>[0]> = {}
 describe("new draft on the Default pick", () => {
   it("moves the effort, the model, or both to Default", () => {
     const apply = { kind: "apply", model: "claude-opus-5-5", effort: "low" };
-    expect(plan()).toEqual(apply);
-    expect(plan({ modelId: "claude-haiku-5-5", effort: "low" })).toEqual(apply);
-    expect(plan({ modelId: "claude-haiku-5-5", effort: "high" })).toEqual(apply);
+    expect(plan()).toEqual({ ...apply, modelChanged: false, effortChanged: true });
+    expect(plan({ modelId: "claude-haiku-5-5", effort: "low" })).toEqual({
+      ...apply,
+      modelChanged: true,
+      effortChanged: false,
+    });
+    expect(plan({ modelId: "claude-haiku-5-5", effort: "high" })).toEqual({
+      ...apply,
+      modelChanged: true,
+      effortChanged: true,
+    });
     expect(plan({ effort: "low" })).toEqual({ kind: "done" });
   });
 

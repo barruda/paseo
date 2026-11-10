@@ -90,6 +90,7 @@ import { JevRouterToggle } from "@/jev-router/toggle"; // CUSTOM(jev-router)
 import { isFocusedComposerCaretAtEnd } from "@/jev-router/cycle"; // CUSTOM(jev-router)
 import { useLockedCycleKeys } from "@/jev-router/use-locked-cycle-keys"; // CUSTOM(jev-router)
 import { ChangeFlash } from "@/composer/agent-controls/change-flash"; // CUSTOM(jev-router)
+import { useJevChipSignal } from "@/jev-router/flash-signal"; // CUSTOM(jev-router)
 import { useAppSettings } from "@/hooks/use-settings"; // CUSTOM(bruno-customizations)
 import { chatOptionEnabled, featureChatOptionKey } from "@/composer/chat-options";
 import { isNative } from "@/constants/platform";
@@ -919,6 +920,7 @@ function ControlledAgentControls({
             handleOpenSheet={handleOpenSheet}
             handleCloseSheet={handleCloseSheet}
             modelSelectorServerId={modelSelectorServerId}
+            draftKey={draftKey} // CUSTOM(jev-router): the green flash of a new tab moved by Jev
           />
         ) : (
           <SheetAgentControlsContent
@@ -994,6 +996,8 @@ function ControlledAgentControls({
 
 interface DesktopAgentControlsContentProps {
   provider: string;
+  // CUSTOM(jev-router): a draft's key, for the green flash when Jev moves a new tab.
+  draftKey?: string;
   providerOptions?: AgentControlOption[];
   selectedProviderId?: string;
   modelOptions?: AgentControlOption[];
@@ -1058,6 +1062,9 @@ const DESKTOP_SEARCH_THRESHOLD = 6;
 function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
+  // CUSTOM(jev-router): the chips Jev changed on a new tab flash green.
+  const jevModelFlash = useJevChipSignal(props.draftKey, "model");
+  const jevEffortFlash = useJevChipSignal(props.draftKey, "effort");
   const {
     provider,
     providerOptions,
@@ -1152,7 +1159,11 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
 
       {canSelectModel ? (
         // CUSTOM(jev-router): the chip flashes when the model changes.
-        <ChangeFlash value={selectedModelId}>
+        <ChangeFlash
+          value={selectedModelId}
+          jevSignal={jevModelFlash.signal}
+          onJevSignalShown={jevModelFlash.consume}
+        >
           <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
             <TooltipTrigger asChild triggerRefProp="ref">
               <View style={styles.modelControl}>
@@ -1191,7 +1202,11 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
       {thinkingOptions && thinkingOptions.length > 0 ? (
         <>
           {/* CUSTOM(jev-router): the chip flashes when the effort changes. */}
-          <ChangeFlash value={selectedThinkingOptionId}>
+          <ChangeFlash
+            value={selectedThinkingOptionId}
+            jevSignal={jevEffortFlash.signal}
+            onJevSignalShown={jevEffortFlash.consume}
+          >
             <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
               <TooltipTrigger asChild triggerRefProp="ref">
                 <AgentControlTrigger

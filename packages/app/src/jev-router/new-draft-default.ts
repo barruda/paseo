@@ -6,6 +6,7 @@
 import { useEffect } from "react";
 import type { JevRouterSettings } from "@getpaseo/protocol/jev-router";
 import { useJevRouterSettingsStore } from "./cycle";
+import { useJevFlashSignalStore } from "./flash-signal";
 
 export interface DraftModelOption {
   id: string;
@@ -15,7 +16,7 @@ export interface DraftModelOption {
 export type NewDraftDefaultStep =
   | { kind: "wait" }
   | { kind: "done" }
-  | { kind: "apply"; model: string; effort: string };
+  | { kind: "apply"; model: string; effort: string; modelChanged: boolean; effortChanged: boolean };
 
 /** What a draft whose selection has loaded should switch to, if anything. */
 export function planNewDraftDefault(input: {
@@ -40,7 +41,13 @@ export function planNewDraftDefault(input: {
   if (!model?.thinkingOptions?.some((option) => option.id === pick.effort)) {
     return { kind: "done" };
   }
-  return { kind: "apply", model: pick.model, effort: pick.effort };
+  return {
+    kind: "apply",
+    model: pick.model,
+    effort: pick.effort,
+    modelChanged: input.modelId !== pick.model,
+    effortChanged: input.effort !== pick.effort,
+  };
 }
 
 /** Drafts already moved (or left alone): a remounted tab keeps what the user picked since. */
@@ -49,6 +56,8 @@ const settledDrafts = new Set<string>();
 export function useJevDefaultPickForNewDraft(input: {
   serverId: string;
   draftId: string;
+  /** The key the draft's composer chips read their green flash by (`DraftAgentControls.draftKey`). */
+  flashKey: string;
   /** False for tabs that carry their own selection (fork, /clear, resolve conflicts). */
   isFreshDraft: boolean;
   provider: string | null;
@@ -59,8 +68,17 @@ export function useJevDefaultPickForNewDraft(input: {
   apply: ((modelId: string, effort: string) => void) | undefined;
 }): void {
   const settings = useJevRouterSettingsStore((state) => state.byServer[input.serverId]);
-  const { draftId, isFreshDraft, provider, modelId, effort, isLoading, availableModels, apply } =
-    input;
+  const {
+    draftId,
+    flashKey,
+    isFreshDraft,
+    provider,
+    modelId,
+    effort,
+    isLoading,
+    availableModels,
+    apply,
+  } = input;
 
   useEffect(() => {
     if (settledDrafts.has(draftId)) return;
@@ -78,12 +96,17 @@ export function useJevDefaultPickForNewDraft(input: {
     });
     if (step.kind === "wait") return;
     settledDrafts.add(draftId);
-    if (step.kind === "apply") apply(step.model, step.effort);
+    if (step.kind !== "apply") return;
+    useJevFlashSignalStore
+      .getState()
+      .request(flashKey, { model: step.modelChanged, effort: step.effortChanged });
+    apply(step.model, step.effort);
   }, [
     apply,
     availableModels,
     draftId,
     effort,
+    flashKey,
     isFreshDraft,
     isLoading,
     modelId,

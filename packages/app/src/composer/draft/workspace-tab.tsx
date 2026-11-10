@@ -449,6 +449,7 @@ export function WorkspaceDraftAgentTab({
   useJevDefaultPickForNewDraft({
     serverId,
     draftId: `${tabId}:${draftId}`,
+    flashKey: draftId,
     isFreshDraft: draftSetup === null,
     provider: composerState.selectedProvider,
     modelId: composerState.effectiveModelId,

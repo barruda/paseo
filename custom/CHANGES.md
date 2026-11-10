@@ -4401,7 +4401,10 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     outside the lock leaves → to the regular cycling.
   - With the router on in Effort focused, a new agent tab (no inherited setup: not a fork, /clear
     or resolve-conflicts tab) starts on **Default** (Opus low) instead of the last session's
-    model and effort; the effort chip, the model chip, or both flash, whichever changed. Model and
+    model and effort; the effort chip, the model chip, or both flash green (the route chip's
+    green), whichever changed. The flash request waits by draft key in
+    `jev-router/flash-signal.ts` until the chip shows it, because the chips can mount after the
+    change and a chip's first value never flashes; the grey change flash stays out of the way. Model and
     effort change in one render (`setModelAndThinkingFromUser`) so the effort chip doesn't flash
     through the model's remembered effort, and the effort is remembered for the new model. Each
     draft is moved once per app run, so a remounted tab keeps what the user picked since. Added
@@ -4430,7 +4433,8 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   `hooks/use-agent-form-state.ts` (`setModelAndThinkingFromUser`: SET_MODEL_FROM_USER then
   SET_THINKING_OPTION_FROM_USER, and the preference for the new model),
   `keyboard/keyboard-shortcuts.ts` (the → help label); the model
-  and effort chips in `composer/agent-controls/index.tsx` are wrapped in `<ChangeFlash>`.
+  and effort chips in `composer/agent-controls/index.tsx` are wrapped in `<ChangeFlash>`, and `DesktopAgentControlsContent` gets `draftKey` to read
+  the green flash (`useJevChipSignal`).
 - **Re-apply:** Register `useLockedCycleKeys` (priority above the regular ←/→ handlers) wherever
   a composer registers its model-picker source, with the same source id and controls. In the
   handlers that cycle model and effort only in an empty composer, also let `task.draft.effort`

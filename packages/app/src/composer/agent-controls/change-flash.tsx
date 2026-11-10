@@ -14,6 +14,7 @@ import { StyleSheet } from "react-native-unistyles";
 
 const FLASH_IN_MS = 120;
 const FLASH_OUT_MS = 700;
+const JEV_FLASH_OUT_MS = 1100;
 
 /** True when `value` moved from one non-empty value to another. */
 export function shouldFlashChange(
@@ -29,6 +30,8 @@ export function ChangeFlash({
   peakOpacity = 1,
   style,
   overlayStyle,
+  jevSignal,
+  onJevSignalShown,
   children,
 }: {
   /** Flashes when this changes. */
@@ -39,9 +42,13 @@ export function ChangeFlash({
   style?: StyleProp<ViewStyle>;
   /** Overrides the overlay's color or radius. */
   overlayStyle?: StyleProp<ViewStyle>;
+  /** A new id flashes green, even on mount: Jev moved this chip (jev-router/flash-signal.ts). */
+  jevSignal?: number;
+  onJevSignalShown?: () => void;
   children: ReactNode;
 }) {
   const opacity = useSharedValue(0);
+  const jevOpacity = useSharedValue(0);
   const previous = useRef<string | null | undefined>(undefined);
   const mounted = useRef(false);
 
@@ -51,18 +58,33 @@ export function ChangeFlash({
       : flashOnMount && Boolean(value);
     mounted.current = true;
     previous.current = value;
-    if (!flash) return;
+    // The green flash covers a change Jev made; no grey one on top of it.
+    if (!flash || jevSignal) return;
     opacity.value = withSequence(
       withTiming(peakOpacity, { duration: FLASH_IN_MS }),
       withTiming(0, { duration: FLASH_OUT_MS }),
     );
-  }, [flashOnMount, opacity, peakOpacity, value]);
+  }, [flashOnMount, jevSignal, opacity, peakOpacity, value]);
+
+  useEffect(() => {
+    if (!jevSignal) return;
+    jevOpacity.value = withSequence(
+      withTiming(1, { duration: FLASH_IN_MS }),
+      withTiming(0, { duration: JEV_FLASH_OUT_MS }),
+    );
+    onJevSignalShown?.();
+  }, [jevOpacity, jevSignal, onJevSignalShown]);
 
   const animated = useAnimatedStyle(() => ({ opacity: opacity.value }));
+  const jevAnimated = useAnimatedStyle(() => ({ opacity: jevOpacity.value }));
   return (
     <View style={[styles.container, style]}>
       {children}
       <Animated.View pointerEvents="none" style={[styles.overlay, overlayStyle, animated]} />
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.overlay, styles.jevOverlay, jevAnimated]}
+      />
     </View>
   );
 }
@@ -82,5 +104,10 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     backgroundColor:
       theme.colorScheme === "dark" ? "rgba(255, 255, 255, 0.14)" : "rgba(0, 0, 0, 0.08)",
+  },
+  // CUSTOM(jev-router): the route chip's green (jev-router/route-chip.tsx).
+  jevOverlay: {
+    backgroundColor:
+      theme.colorScheme === "dark" ? "rgba(120, 220, 160, 0.45)" : "rgba(32, 116, 74, 0.3)",
   },
 }));
