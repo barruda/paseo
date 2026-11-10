@@ -58,6 +58,8 @@ export interface UseAgentFormStateResult {
   setModelFromUser: (modelId: string) => void;
   selectedThinkingOptionId: string;
   setThinkingOptionFromUser: (thinkingOptionId: string) => void;
+  /** CUSTOM(jev-router): model and effort in one render, the effort remembered for that model. */
+  setModelAndThinkingFromUser?: (modelId: string, thinkingOptionId: string) => void;
   workingDir: string;
   providerDefinitions: AgentProviderDefinition[];
   providerDefinitionMap: Map<AgentProvider, AgentProviderDefinition>;
@@ -438,6 +440,30 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
     [formState, updateCurrentPreferences],
   );
 
+  // CUSTOM(jev-router): a new tab moved to the router's Default pick. Both actions land in the
+  // same render, so only the chips whose value really changed flash.
+  const setModelAndThinkingFromUser = useCallback(
+    (modelId: string, thinkingOptionId: string) => {
+      const provider = formState.provider;
+      const providerPrefs = provider
+        ? preferenceOverlayRef.current.current().providerPreferences?.[provider]
+        : undefined;
+      dispatch({ type: "SET_MODEL_FROM_USER", modelId, availableModels, providerPrefs });
+      dispatch({ type: "SET_THINKING_OPTION_FROM_USER", thinkingOptionId });
+      const nextModelId =
+        normalizeSelectedModelId(modelId) || resolveDefaultModelId(availableModels);
+      if (!provider || !nextModelId) return;
+      void updateCurrentPreferences((current) =>
+        mergeSelectedComposerPreferences({
+          preferences: current,
+          provider,
+          updates: { model: nextModelId, thinkingByModel: { [nextModelId]: thinkingOptionId } },
+        }),
+      );
+    },
+    [availableModels, formState.provider, updateCurrentPreferences],
+  );
+
   const refreshProviderModels = useCallback(
     (provider?: AgentProvider) => {
       void refreshSnapshot(provider ? [provider] : undefined);
@@ -485,6 +511,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
       setModelFromUser,
       selectedThinkingOptionId: formState.thinkingOptionId,
       setThinkingOptionFromUser,
+      setModelAndThinkingFromUser, // CUSTOM(jev-router)
       workingDir,
       providerDefinitions,
       providerDefinitionMap,
@@ -517,6 +544,7 @@ export function useAgentFormState(options: UseAgentFormStateOptions): UseAgentFo
       setModeFromUser,
       setModelFromUser,
       setThinkingOptionFromUser,
+      setModelAndThinkingFromUser, // CUSTOM(jev-router)
       providerDefinitions,
       providerDefinitionMap,
       agentDefinition,

@@ -75,6 +75,7 @@ import {
 import { DraftWorktreePicker, useDraftWorktreeSource } from "@/draft-worktree/picker";
 import { useDraftAgentTitleStore, withDraftAgentTitle } from "@/draft-agent-title/store";
 import { routeDraftAgent } from "@/jev-router/route"; // CUSTOM(jev-router)
+import { useJevDefaultPickForNewDraft } from "@/jev-router/new-draft-default"; // CUSTOM(jev-router)
 import { applyDraftComposerExtras, draftComposerCreateExtras } from "./composer-extras"; // CUSTOM(draft-composer-ready)
 
 const EMPTY_PENDING_PERMISSIONS = new Map();
@@ -444,6 +445,18 @@ export function WorkspaceDraftAgentTab({
   const draftSetMode = composerState.setModeFromUser;
   const draftFeatures = composerState.agentControls.features;
   const draftOnSetFeature = composerState.agentControls.onSetFeature;
+  // CUSTOM(jev-router): a new tab starts on Effort focused's Default pick when the router is on.
+  useJevDefaultPickForNewDraft({
+    serverId,
+    draftId: `${tabId}:${draftId}`,
+    isFreshDraft: draftSetup === null,
+    provider: composerState.selectedProvider,
+    modelId: composerState.effectiveModelId,
+    effort: composerState.effectiveThinkingOptionId,
+    isLoading: composerState.isModelLoading,
+    availableModels: composerState.availableModels,
+    apply: composerState.setModelAndThinkingFromUser,
+  });
 
   const clearDraftInput = draftInput.clear;
   const replaceDraftText = draftInput.replaceText;

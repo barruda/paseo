@@ -4399,6 +4399,13 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     the effort when the new model allows it, else the nearest allowed one) and → between the
     current model's allowed efforts. Defaults: Haiku low/medium/high, Opus low/high. A model
     outside the lock leaves → to the regular cycling.
+  - With the router on in Effort focused, a new agent tab (no inherited setup: not a fork, /clear
+    or resolve-conflicts tab) starts on **Default** (Opus low) instead of the last session's
+    model and effort; the effort chip, the model chip, or both flash, whichever changed. Model and
+    effort change in one render (`setModelAndThinkingFromUser`) so the effort chip doesn't flash
+    through the model's remembered effort, and the effort is remembered for the new model. Each
+    draft is moved once per app run, so a remounted tab keeps what the user picked since. Added
+    2026-11-10 (`new-draft-default.ts` + test).
   - In every mode, → with text in the composer changes the effort too when the caret is at the
     end with nothing selected (web and desktop).
   - The model and effort chips flash briefly when their value changes, however it changed
@@ -4419,18 +4426,25 @@ notification"` (all in the update script). By hand: turn the critic on with a st
 - **Core files touched** (marked `CUSTOM(jev-router)`): app `composer/agent-controls/index.tsx`
   (`useLockedCycleKeys` in `AgentControlCommandCenterRegistration` and `DraftAgentControls`; the
   agent ←/→ handler lets → through with the caret at the end), `composer/draft/workspace-tab.tsx`
-  (same for the draft handler), `keyboard/keyboard-shortcuts.ts` (the → help label); the model
+  (same for the draft handler; also `useJevDefaultPickForNewDraft` after the composer state),
+  `hooks/use-agent-form-state.ts` (`setModelAndThinkingFromUser`: SET_MODEL_FROM_USER then
+  SET_THINKING_OPTION_FROM_USER, and the preference for the new model),
+  `keyboard/keyboard-shortcuts.ts` (the → help label); the model
   and effort chips in `composer/agent-controls/index.tsx` are wrapped in `<ChangeFlash>`.
 - **Re-apply:** Register `useLockedCycleKeys` (priority above the regular ←/→ handlers) wherever
   a composer registers its model-picker source, with the same source id and controls. In the
   handlers that cycle model and effort only in an empty composer, also let `task.draft.effort`
-  through when `isFocusedComposerCaretAtEnd()`.
+  through when `isFocusedComposerCaretAtEnd()`. In `useAgentFormState`, add
+  `setModelAndThinkingFromUser` (both reducer actions back to back, then persist the model and
+  `thinkingByModel` for it) and return it; in the draft tab, call `useJevDefaultPickForNewDraft`
+  with the composer state once it exists, `isFreshDraft` true only without an `initialSetup`.
 - **Verify:** `npx vitest run custom/plugins/jev-router packages/app/src/jev-router` and the e2e
   `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand, on the personal Paseo:
   click the route icon, pick Effort focused, Save; Operational > Off hides its efforts and
   still saves, ← no longer lands on its model; in a draft on Opus high, ← goes to Haiku high
   and → walks Haiku's efforts, ← again Opus high, → Opus low; type text and press → at its end:
-  the effort changes; each change flashes its chip. Send "rename count to total in utils.ts": the
+  the effort changes; each change flashes its chip. With the router on, from an Opus high
+  session open a new tab: it shows Opus low and the effort chip flashes. Send "rename count to total in utils.ts": the
   session starts on Haiku with the Jev card and the green chip, whose menu runs it again on the
   selection.
 
