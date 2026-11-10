@@ -4406,7 +4406,9 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     interactive on that host (`jev-router/last-viewed-agent.ts`, recorded in `AgentPanel`); the
     draft's own start can't tell, because it comes from the saved preferences, which a routed
     session doesn't update (after a first send they say Opus low, so nothing would change and
-    nothing flash). Without such a session the draft's start is the reference. Model and effort
+    nothing flash). A chip also flashes whenever it changes in front of you. The session is read
+    when the tab opens, and a focused draft clears it, so a tab opened from a draft never compares
+    against an older session. Model and effort
     change in one render (`setModelAndThinkingFromUser`) and the effort is remembered for the new
     model. The flash request waits by draft key in `jev-router/flash-signal.ts` until the chip
     shows it (the chips can mount after the change, and a chip's first value never flashes). A

@@ -15,6 +15,13 @@ export function useRecordViewedAgent(serverId: string, agentId: string, isIntera
   }, [agentId, isInteractive, serverId]);
 }
 
+/** A focused draft is what you are looking at now: a tab opened from it has no session to compare. */
+export function useRecordViewedDraft(isFocused: boolean) {
+  useEffect(() => {
+    if (isFocused) lastViewed = null;
+  }, [isFocused]);
+}
+
 /** Model and effort of the Claude session last viewed on `serverId`, if any. */
 export function readLastViewedClaudeSelection(
   serverId: string,

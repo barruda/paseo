@@ -457,6 +457,7 @@ export function WorkspaceDraftAgentTab({
     isLoading: composerState.isModelLoading,
     availableModels: composerState.availableModels,
     apply: composerState.setModelAndThinkingFromUser,
+    isFocused: isPaneFocused,
   });
 
   const clearDraftInput = draftInput.clear;

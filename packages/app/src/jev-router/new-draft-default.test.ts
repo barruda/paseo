@@ -51,6 +51,10 @@ describe("new draft on the Default pick", () => {
     expect(
       plan({ effort: "low", source: { model: "claude-haiku-5-5", effort: "low" } }),
     ).toMatchObject({ apply: false, flashModel: true, flashEffort: false });
+    // The chip changes in front of you even when the session you came from was already there.
+    expect(
+      plan({ modelId: "claude-haiku-5-5", source: { model: "claude-opus-5-5", effort: "low" } }),
+    ).toMatchObject({ apply: true, flashModel: true, flashEffort: true });
     expect(plan({ effort: "low", source: { model: "claude-opus-5-5", effort: "low" } })).toEqual({
       kind: "done",
     });

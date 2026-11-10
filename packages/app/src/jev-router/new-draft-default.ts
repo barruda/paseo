@@ -3,11 +3,11 @@
 // and effort change in one render, and the composer chips flash on their own (ChangeFlash) when the
 // value they show changes: the effort alone, the model alone, or both.
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { JevRouterSettings } from "@getpaseo/protocol/jev-router";
 import { useJevRouterSettingsStore } from "./cycle";
 import { useJevFlashSignalStore } from "./flash-signal";
-import { readLastViewedClaudeSelection } from "./last-viewed-agent";
+import { readLastViewedClaudeSelection, useRecordViewedDraft } from "./last-viewed-agent";
 
 export interface DraftModelOption {
   id: string;
@@ -55,9 +55,12 @@ export function planNewDraftDefault(input: {
   if (apply && !model?.thinkingOptions?.some((option) => option.id === pick.effort)) {
     return { kind: "done" };
   }
-  const from = input.source ?? { model: input.modelId, effort: input.effort };
-  const flashModel = from.model !== pick.model;
-  const flashEffort = from.effort !== pick.effort;
+  // A chip flashes when it differs from the session you came from, or when it changes in front of
+  // you (the draft started elsewhere, from the saved preferences).
+  const flashModel =
+    input.modelId !== pick.model || (input.source !== null && input.source.model !== pick.model);
+  const flashEffort =
+    input.effort !== pick.effort || (input.source !== null && input.source.effort !== pick.effort);
   if (!apply && !flashModel && !flashEffort) return { kind: "done" };
   return { kind: "move", apply, model: pick.model, effort: pick.effort, flashModel, flashEffort };
 }
@@ -78,10 +81,13 @@ export function useJevDefaultPickForNewDraft(input: {
   isLoading: boolean;
   availableModels: readonly DraftModelOption[];
   apply: ((modelId: string, effort: string) => void) | undefined;
+  isFocused: boolean;
 }): void {
   const settings = useJevRouterSettingsStore((state) => state.byServer[input.serverId]);
+  // The session you came from, read when the tab opens: before this draft's focus clears it.
+  const [source] = useState(() => readLastViewedClaudeSelection(input.serverId));
+  useRecordViewedDraft(input.isFocused);
   const {
-    serverId,
     draftId,
     flashKey,
     isFreshDraft,
@@ -106,7 +112,7 @@ export function useJevDefaultPickForNewDraft(input: {
       effort,
       isLoading,
       availableModels,
-      source: readLastViewedClaudeSelection(serverId),
+      source,
     });
     if (step.kind === "wait") return;
     settledDrafts.add(draftId);
@@ -125,7 +131,7 @@ export function useJevDefaultPickForNewDraft(input: {
     isLoading,
     modelId,
     provider,
-    serverId,
     settings,
+    source,
   ]);
 }
