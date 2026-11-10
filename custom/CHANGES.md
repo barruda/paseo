@@ -4401,14 +4401,17 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     outside the lock leaves → to the regular cycling.
   - With the router on in Effort focused, a new agent tab (no inherited setup: not a fork, /clear
     or resolve-conflicts tab) starts on **Default** (Opus low) instead of the last session's
-    model and effort; the effort chip, the model chip, or both flash green (the route chip's
-    green), whichever changed. The flash request waits by draft key in
-    `jev-router/flash-signal.ts` until the chip shows it, because the chips can mount after the
-    change and a chip's first value never flashes; the grey change flash stays out of the way. Model and
-    effort change in one render (`setModelAndThinkingFromUser`) so the effort chip doesn't flash
-    through the model's remembered effort, and the effort is remembered for the new model. Each
-    draft is moved once per app run, so a remounted tab keeps what the user picked since. Added
-    2026-11-10 (`new-draft-default.ts` + test).
+    model and effort, and the chips that differ from the session you came from flash green (the
+    route chip's green): the effort, the model, or both. "Came from" is the agent panel last
+    interactive on that host (`jev-router/last-viewed-agent.ts`, recorded in `AgentPanel`); the
+    draft's own start can't tell, because it comes from the saved preferences, which a routed
+    session doesn't update (after a first send they say Opus low, so nothing would change and
+    nothing flash). Without such a session the draft's start is the reference. Model and effort
+    change in one render (`setModelAndThinkingFromUser`) and the effort is remembered for the new
+    model. The flash request waits by draft key in `jev-router/flash-signal.ts` until the chip
+    shows it (the chips can mount after the change, and a chip's first value never flashes). A
+    draft that loads with no model is left alone, so Jev never replaces your first pick. Each
+    draft is handled once per app run. Added 2026-11-10 (`new-draft-default.ts` + test).
   - In every mode, → with text in the composer changes the effort too when the caret is at the
     end with nothing selected (web and desktop).
   - The model and effort chips flash briefly when their value changes, however it changed
@@ -4430,6 +4433,7 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   (`useLockedCycleKeys` in `AgentControlCommandCenterRegistration` and `DraftAgentControls`; the
   agent ←/→ handler lets → through with the caret at the end), `composer/draft/workspace-tab.tsx`
   (same for the draft handler; also `useJevDefaultPickForNewDraft` after the composer state),
+  `panels/agent-panel.tsx` (`useRecordViewedAgent` in `AgentPanel`),
   `hooks/use-agent-form-state.ts` (`setModelAndThinkingFromUser`: SET_MODEL_FROM_USER then
   SET_THINKING_OPTION_FROM_USER, and the preference for the new model),
   `keyboard/keyboard-shortcuts.ts` (the → help label); the model
@@ -4441,14 +4445,15 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   through when `isFocusedComposerCaretAtEnd()`. In `useAgentFormState`, add
   `setModelAndThinkingFromUser` (both reducer actions back to back, then persist the model and
   `thinkingByModel` for it) and return it; in the draft tab, call `useJevDefaultPickForNewDraft`
-  with the composer state once it exists, `isFreshDraft` true only without an `initialSetup`.
+  with the composer state once it exists, `isFreshDraft` true only without an `initialSetup`; in
+  `AgentPanel`, call `useRecordViewedAgent(serverId, agentId, isInteractive)`.
 - **Verify:** `npx vitest run custom/plugins/jev-router packages/app/src/jev-router` and the e2e
   `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand, on the personal Paseo:
   click the route icon, pick Effort focused, Save; Operational > Off hides its efforts and
   still saves, ← no longer lands on its model; in a draft on Opus high, ← goes to Haiku high
   and → walks Haiku's efforts, ← again Opus high, → Opus low; type text and press → at its end:
   the effort changes; each change flashes its chip. With the router on, from an Opus high
-  session open a new tab: it shows Opus low and the effort chip flashes. Send "rename count to total in utils.ts": the
+  session open a new agent tab: it shows Opus low and only the effort chip flashes green. Send "rename count to total in utils.ts": the
   session starts on Haiku with the Jev card and the green chip, whose menu runs it again on the
   selection.
 

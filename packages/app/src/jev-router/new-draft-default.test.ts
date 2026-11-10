@@ -17,30 +17,49 @@ function plan(overrides: Partial<Parameters<typeof planNewDraftDefault>[0]> = {}
     effort: "high",
     isLoading: false,
     availableModels: models,
+    source: null,
     ...overrides,
   });
 }
 
 describe("new draft on the Default pick", () => {
-  it("moves the effort, the model, or both to Default", () => {
-    const apply = { kind: "apply", model: "claude-opus-5-5", effort: "low" };
-    expect(plan()).toEqual({ ...apply, modelChanged: false, effortChanged: true });
+  it("moves to Default and flashes what changed from the draft's start", () => {
+    const move = { kind: "move", apply: true, model: "claude-opus-5-5", effort: "low" };
+    expect(plan()).toEqual({ ...move, flashModel: false, flashEffort: true });
     expect(plan({ modelId: "claude-haiku-5-5", effort: "low" })).toEqual({
-      ...apply,
-      modelChanged: true,
-      effortChanged: false,
+      ...move,
+      flashModel: true,
+      flashEffort: false,
     });
     expect(plan({ modelId: "claude-haiku-5-5", effort: "high" })).toEqual({
-      ...apply,
-      modelChanged: true,
-      effortChanged: true,
+      ...move,
+      flashModel: true,
+      flashEffort: true,
     });
     expect(plan({ effort: "low" })).toEqual({ kind: "done" });
   });
 
-  it("waits for the selection and the router settings", () => {
+  it("flashes what differs from the session you came from, even when nothing moves", () => {
+    expect(plan({ effort: "low", source: { model: "claude-opus-5-5", effort: "high" } })).toEqual({
+      kind: "move",
+      apply: false,
+      model: "claude-opus-5-5",
+      effort: "low",
+      flashModel: false,
+      flashEffort: true,
+    });
+    expect(
+      plan({ effort: "low", source: { model: "claude-haiku-5-5", effort: "low" } }),
+    ).toMatchObject({ apply: false, flashModel: true, flashEffort: false });
+    expect(plan({ effort: "low", source: { model: "claude-opus-5-5", effort: "low" } })).toEqual({
+      kind: "done",
+    });
+  });
+
+  it("waits for the selection and the router settings, and leaves an empty selection", () => {
     expect(plan({ isLoading: true })).toEqual({ kind: "wait" });
-    expect(plan({ modelId: "" })).toEqual({ kind: "wait" });
+    expect(plan({ modelId: "" })).toEqual({ kind: "done" });
+    expect(plan({ provider: null, modelId: "" })).toEqual({ kind: "done" });
     expect(plan({ settings: undefined })).toEqual({ kind: "wait" });
   });
 

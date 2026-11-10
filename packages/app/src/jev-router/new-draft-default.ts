@@ -7,6 +7,7 @@ import { useEffect } from "react";
 import type { JevRouterSettings } from "@getpaseo/protocol/jev-router";
 import { useJevRouterSettingsStore } from "./cycle";
 import { useJevFlashSignalStore } from "./flash-signal";
+import { readLastViewedClaudeSelection } from "./last-viewed-agent";
 
 export interface DraftModelOption {
   id: string;
@@ -16,9 +17,21 @@ export interface DraftModelOption {
 export type NewDraftDefaultStep =
   | { kind: "wait" }
   | { kind: "done" }
-  | { kind: "apply"; model: string; effort: string; modelChanged: boolean; effortChanged: boolean };
+  | {
+      kind: "move";
+      /** False when the draft already starts on Default (from the saved preferences). */
+      apply: boolean;
+      model: string;
+      effort: string;
+      flashModel: boolean;
+      flashEffort: boolean;
+    };
 
-/** What a draft whose selection has loaded should switch to, if anything. */
+/**
+ * What a draft whose selection has loaded should switch to, and which chips flash: the ones whose
+ * Default differs from `source` (the session you came from), or from the draft's own starting
+ * selection when there is no such session.
+ */
 export function planNewDraftDefault(input: {
   settings: JevRouterSettings | undefined;
   provider: string | null;
@@ -26,28 +39,27 @@ export function planNewDraftDefault(input: {
   effort: string;
   isLoading: boolean;
   availableModels: readonly DraftModelOption[];
+  source: { model: string; effort: string | null } | null;
 }): NewDraftDefaultStep {
-  if (input.isLoading || !input.provider || !input.modelId || !input.settings) {
-    return { kind: "wait" };
-  }
+  if (input.isLoading || !input.settings) return { kind: "wait" };
+  // Loaded with nothing selected: the user's first pick is theirs, not Jev's to replace.
+  if (!input.provider || !input.modelId) return { kind: "done" };
   const { settings } = input;
   if (!settings.enabled || settings.mode !== "effort" || input.provider !== "claude") {
     return { kind: "done" };
   }
   const pick = settings.effortFocused.defaultPick;
-  if (input.modelId === pick.model && input.effort === pick.effort) return { kind: "done" };
+  const apply = input.modelId !== pick.model || input.effort !== pick.effort;
   // A model or effort the host doesn't offer: leave the selection alone.
   const model = input.availableModels.find((option) => option.id === pick.model);
-  if (!model?.thinkingOptions?.some((option) => option.id === pick.effort)) {
+  if (apply && !model?.thinkingOptions?.some((option) => option.id === pick.effort)) {
     return { kind: "done" };
   }
-  return {
-    kind: "apply",
-    model: pick.model,
-    effort: pick.effort,
-    modelChanged: input.modelId !== pick.model,
-    effortChanged: input.effort !== pick.effort,
-  };
+  const from = input.source ?? { model: input.modelId, effort: input.effort };
+  const flashModel = from.model !== pick.model;
+  const flashEffort = from.effort !== pick.effort;
+  if (!apply && !flashModel && !flashEffort) return { kind: "done" };
+  return { kind: "move", apply, model: pick.model, effort: pick.effort, flashModel, flashEffort };
 }
 
 /** Drafts already moved (or left alone): a remounted tab keeps what the user picked since. */
@@ -69,6 +81,7 @@ export function useJevDefaultPickForNewDraft(input: {
 }): void {
   const settings = useJevRouterSettingsStore((state) => state.byServer[input.serverId]);
   const {
+    serverId,
     draftId,
     flashKey,
     isFreshDraft,
@@ -93,14 +106,15 @@ export function useJevDefaultPickForNewDraft(input: {
       effort,
       isLoading,
       availableModels,
+      source: readLastViewedClaudeSelection(serverId),
     });
     if (step.kind === "wait") return;
     settledDrafts.add(draftId);
-    if (step.kind !== "apply") return;
+    if (step.kind !== "move") return;
     useJevFlashSignalStore
       .getState()
-      .request(flashKey, { model: step.modelChanged, effort: step.effortChanged });
-    apply(step.model, step.effort);
+      .request(flashKey, { model: step.flashModel, effort: step.flashEffort });
+    if (step.apply) apply(step.model, step.effort);
   }, [
     apply,
     availableModels,
@@ -111,6 +125,7 @@ export function useJevDefaultPickForNewDraft(input: {
     isLoading,
     modelId,
     provider,
+    serverId,
     settings,
   ]);
 }

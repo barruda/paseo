@@ -88,6 +88,7 @@ import { WorkspaceDraftAgentTab } from "@/composer/draft/workspace-tab";
 import { AgentTracks, hasAgentTracks } from "@/panels/agent-tracks";
 import { ParentAgentCallout, useParentAgentId } from "@/subagents/parent";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
+import { useRecordViewedAgent } from "@/jev-router/last-viewed-agent"; // CUSTOM(jev-router)
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import {
   selectAgentTimelineState,
@@ -327,6 +328,8 @@ function AgentPanel() {
   const { serverId, workspaceId, target, openFileInWorkspace } = usePaneContext();
   const { isInteractive } = usePaneFocus();
   invariant(target.kind === "agent", "AgentPanel requires agent target");
+  // CUSTOM(jev-router): a new tab compares Jev's Default with the session viewed last.
+  useRecordViewedAgent(serverId, target.agentId, isInteractive);
 
   return (
     <RetainedChatContent>

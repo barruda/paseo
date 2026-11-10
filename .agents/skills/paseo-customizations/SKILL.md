@@ -57,11 +57,12 @@ rules agents get wrong.
   full build fails at rpm on Ubuntu), then
   `custom/update-paseo-source-and-apply-customization.sh --install-only`. Then run
   `custom/reopen-paseo-clients.sh` yourself, without asking: it closes each open Paseo window and
-  reopens it from its launcher (so it keeps its dock slot), `paseo-telus` included when it is
-  open. A closed window stays closed. `paseo-personal`
-  keeps its daemon and agents running; `paseo-telus` has `keepRunningAfterQuit` off, so its daemon
-  restarts with the window and its running agents stop. The user asked for that; say in your
-  report that the telus daemon restarted. For daemon-side changes that is not enough: with an unchanged version the
+  reopens it from its launcher (so it keeps its dock slot). It skips clients whose daemon stops on
+  quit (`paseo-telus`, `keepRunningAfterQuit` off): reopening those stops their running agents, so
+  never pass `--include-daemon-restart` unless the user asks; say in your report that paseo-telus
+  still runs the old build until they reopen it. Then **test the change in the running app** (or
+  an isolated dev stack driven by Playwright) before reporting; unit tests passing is not enough.
+  For daemon-side changes that is not enough: with an unchanged version the
   `Paseo Supervisor` keeps respawning the daemon from the old build, even after Settings >
   Restart daemon. Don't run the restart script yourself: it stops the daemon your own session
   runs under (see "Updating" in `custom/README.md`).
