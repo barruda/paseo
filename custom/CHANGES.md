@@ -5035,8 +5035,10 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   cut-offs seen on 2026-11-11 transcribed to an empty string. The faster barge-in in
   [voice-settings](#voice-settings-settings--voice-and-dictation) (300 ms and 4x gain while a
   reply plays) made false starts more likely.
-- **What:** Speech interrupts once it lasts 1 s (`BARGE_IN_CONFIRM_MS`) or transcribes to words.
-  An empty transcript interrupts nothing. `voice_input_state isSpeaking=true` waits for the same
+- **What:** Speech interrupts once it transcribes to words, or, while no reply plays, once it
+  lasts 1 s (`BARGE_IN_CONFIRM_MS`). An empty transcript interrupts nothing. While a reply plays
+  only words count: on the first build the reply's own echo held the detector open for 1.4 s,
+  transcribed to nothing, and still cut the reply off. `voice_input_state isSpeaking=true` waits for the same
   confirmation, because the app stops playback when it sees it. A short "stop" now cuts the reply
   after transcription, about half a second later than before.
 - **Core files touched:** `packages/server/src/server/session/voice/voice-session.ts`

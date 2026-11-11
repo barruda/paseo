@@ -158,19 +158,31 @@ describe("VoiceSession streaming transcription", () => {
 
   const SPEAKING = { type: "voice_input_state", payload: { isSpeaking: true } };
 
-  test("interrupts playback and the agent once speech lasts past the confirm window", async () => {
-    const { voiceSession, detector, host, speak, interrupted } = createSpeakingSession(20);
+  test("interrupts the agent once speech lasts past the confirm window", async () => {
+    const { voiceSession, detector, host, interrupted } = createSpeakingSession(20);
     await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
-    const playback = speak({ text: "A spoken response." });
     try {
-      await waitForAudioOutput(host);
       detector.emit("speech_started");
       await settle();
       expect(host.emitted).not.toContainEqual(SPEAKING);
       expect(interrupted).toEqual([]);
       await vi.waitFor(() => expect(interrupted).toEqual([VOICE_AGENT_ID]));
       expect(host.emitted).toContainEqual(SPEAKING);
-      await playback;
+    } finally {
+      await voiceSession.cleanup();
+    }
+  });
+
+  test("long sound without words leaves the reply playing", async () => {
+    const { voiceSession, detector, host, speak, interrupted } = createSpeakingSession(20);
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    const playback = speak({ text: "A spoken response." });
+    try {
+      await waitForAudioOutput(host);
+      detector.emit("speech_started");
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      expect(interrupted).toEqual([]);
+      expect(host.emitted).not.toContainEqual(SPEAKING);
     } finally {
       await voiceSession.cleanup();
       await playback.catch(() => {});

@@ -210,6 +210,9 @@ export class VoiceSession {
   private bargeInTimer: ReturnType<typeof setTimeout> | null = null;
   private bargeInConfirmed = false;
   private vadSpeechActive = false;
+  // While a reply plays, its echo through the speaker can hold the detector open for seconds
+  // and still transcribe to nothing, so only words interrupt a reply.
+  private replyPlaying = false;
 
   private readonly dictationStreamManager: DictationStreamManager;
   private readonly resolveVoiceTurnDetection: () => TurnDetectionProvider | null;
@@ -765,6 +768,7 @@ export class VoiceSession {
     this.clearBargeInTimer();
     this.bargeInTimer = setTimeout(() => {
       this.bargeInTimer = null;
+      if (this.replyPlaying) return;
       this.confirmBargeIn("sustained speech").catch((error: unknown) => {
         this.sessionLogger.error({ err: error }, "Voice barge-in failed");
       });
@@ -1190,6 +1194,8 @@ export class VoiceSession {
         : this.abortController.signal;
       // CUSTOM(voice-settings): let the detector interrupt faster while the reply plays.
       this.voiceTurnController?.setAssistantSpeaking(true);
+      // CUSTOM(confirmed-barge-in)
+      this.replyPlaying = true;
       try {
         await this.ttsManager.generateAndWaitForPlayback(
           text,
@@ -1199,6 +1205,7 @@ export class VoiceSession {
         );
       } finally {
         this.voiceTurnController?.setAssistantSpeaking(false);
+        this.replyPlaying = false;
       }
       this.sessionLogger.info(
         { agentId, textLength: text.length },
