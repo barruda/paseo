@@ -5,7 +5,6 @@
 
 import { useEffect, useState } from "react";
 import type { JevRouterSettings } from "@getpaseo/protocol/jev-router";
-import { useJevBypassStore } from "./bypass";
 import { useJevRouterSettingsStore } from "./cycle";
 import { useJevFlashSignalStore } from "./flash-signal";
 import { readLastViewedClaudeSelection, useRecordViewedDraft } from "./last-viewed-agent";
@@ -86,8 +85,6 @@ export function useJevDefaultPickForNewDraft(input: {
 }): void {
   const settings = useJevRouterSettingsStore((state) => state.byServer[input.serverId]);
   // The session you came from, read when the tab opens: before this draft's focus clears it.
-  // CUSTOM(jev-router-bypass): locked until unlocked keeps the selection on a new tab.
-  const bypassAlways = useJevBypassStore((state) => state.mode === "always");
   const [source] = useState(() => readLastViewedClaudeSelection(input.serverId));
   useRecordViewedDraft(input.isFocused);
   const {
@@ -104,7 +101,7 @@ export function useJevDefaultPickForNewDraft(input: {
 
   useEffect(() => {
     if (settledDrafts.has(draftId)) return;
-    if (!isFreshDraft || !apply || bypassAlways) {
+    if (!isFreshDraft || !apply) {
       settledDrafts.add(draftId);
       return;
     }
@@ -127,7 +124,6 @@ export function useJevDefaultPickForNewDraft(input: {
   }, [
     apply,
     availableModels,
-    bypassAlways,
     draftId,
     effort,
     flashKey,
