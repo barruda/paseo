@@ -4,6 +4,7 @@
 
 import { JEV_ROUTER_PLUGIN_ID, JEV_ROUTER_RPC } from "@getpaseo/protocol/jev-router";
 import { pluginRegistry } from "@/plugins/registry";
+import { useJevBypassStore } from "./bypass";
 import { applyJevRoute, type DraftRouteConfig } from "./model";
 
 /** route.py's own timeout tops out at 10 s; past this the session starts as selected. */
@@ -37,6 +38,8 @@ async function route<Config extends DraftRouteConfig & { cwd: string }>(input: {
   // An empty first message (a session started for voice or for a `!` command) has nothing to judge.
   if (input.autoSubmitted || input.config.provider !== "claude" || !input.prompt.trim())
     return { config: input.config, labels: {} };
+  // CUSTOM(jev-router-bypass): the composer's lock skips Jev for this message or until unlocked.
+  if (useJevBypassStore.getState().consume()) return { config: input.config, labels: {} };
   const plugin = pluginRegistry
     .getSnapshot()
     .find((item) => item.serverId === input.serverId && item.id === JEV_ROUTER_PLUGIN_ID);

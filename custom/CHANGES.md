@@ -4915,3 +4915,27 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Core files touched:** `lefthook.yml` (removed), `package.json` and `package-lock.json`.
 - **Re-apply:** Remove the Lefthook dependency, configuration and `prepare` script if upstream restores them.
 - **Verify:** `npm exec -- lefthook uninstall` removes installed hooks; `npm run typecheck` and `npm run lint` remain available.
+
+## jev-router-bypass: a lock that skips Jev for this message or until unlocked
+
+- **Added:** 2026-11-11
+- **Commit:** `custom: Jev router lock skips routing for this message or until unlocked`
+- **Why:** With the router on, the user sometimes wants a message to start exactly on the selected
+  model and effort without turning the whole router off in its sheet.
+- **What:** In a draft composer, with the router on, a lock icon follows the route icon. A press
+  cycles: off (grey) → **this message** (tinted lock) → **until unlocked** (tinted lock with a
+  ring) → off. While locked, the next session is created without asking Jev; "this message" is
+  used up by that send. "Until unlocked" persists across app runs (AsyncStorage
+  `custom.jev-router.bypass`) and also keeps a new tab off Effort focused's Default pick. The lock
+  is global to the app, not per host. Running agents don't show it (routing only happens when a
+  draft creates its session).
+- **Files:** `packages/app/src/jev-router/bypass.ts` + test; `toggle.tsx` (`JevBypassLock`);
+  `route.ts` (consumes the bypass); `new-draft-default.ts` (skips on "always").
+- **Core files touched:** none beyond the jev-router files.
+- **Re-apply:** Keep a store with `off | once | always`; in `route()` after the provider/prompt
+  checks, return the config unrouted when `consume()` is true; in `useJevDefaultPickForNewDraft`
+  settle the draft without moving it when the mode is `always`; render the lock after the route
+  icon when `settings.enabled` and there is no `agentId`.
+- **Verify:** `npx vitest run packages/app/src/jev-router/bypass.test.ts`. By hand: router on, a new
+  tab shows the lock; lock once, send a small prompt: it starts as selected with no Jev chip, and
+  the lock is grey again; lock twice (ring), open a new tab: it keeps the last model.
