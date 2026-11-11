@@ -83,3 +83,56 @@ export const DELEGATION_WHEN_LABELS: Record<DelegationWhen, string> = {
   balanced: "Balanced",
   aggressive: "Aggressive",
 };
+
+/** The sheet's Reports tab: Opus/Fable Claude sessions of this host, with and without the rule. */
+export const DELEGATION_RPC = {
+  report: "report",
+} as const;
+
+export const DELEGATION_REPORT_DAYS = [7, 30] as const;
+
+export const DelegationReportInputSchema = z.object({
+  days: z.number().int().min(1).max(90),
+});
+export type DelegationReportInput = z.infer<typeof DelegationReportInputSchema>;
+
+/** API-equivalent dollars, from the token counts in the Claude transcripts. */
+export const DelegationGroupSchema = z.object({
+  sessions: z.number(),
+  /** Sessions whose transcript could not be found (another Claude config dir, deleted). */
+  missing: z.number(),
+  turns: z.number(),
+  mainCost: z.number(),
+  subagentCost: z.number(),
+  /** Cache reads per main-session turn: how much context each turn re-reads. */
+  contextPerTurn: z.number(),
+  agentCalls: z.number(),
+  /** Agent calls that named a cheaper model (sonnet/haiku). */
+  cheapAgentCalls: z.number(),
+});
+export type DelegationGroup = z.infer<typeof DelegationGroupSchema>;
+
+export const DelegationReportSessionSchema = z.object({
+  agentId: z.string(),
+  title: z.string().nullable(),
+  cwd: z.string(),
+  lastActivityAt: z.string(),
+  delegated: z.boolean(),
+  turns: z.number(),
+  mainCost: z.number(),
+  subagentCost: z.number(),
+  contextPerTurn: z.number(),
+  agentCalls: z.number(),
+  cheapAgentCalls: z.number(),
+  fixMessages: z.number(),
+});
+export type DelegationReportSession = z.infer<typeof DelegationReportSessionSchema>;
+
+export const DelegationReportSchema = z.object({
+  days: z.number(),
+  delegated: DelegationGroupSchema,
+  other: DelegationGroupSchema,
+  /** Newest first, at most 50. */
+  sessions: z.array(DelegationReportSessionSchema),
+});
+export type DelegationReport = z.infer<typeof DelegationReportSchema>;

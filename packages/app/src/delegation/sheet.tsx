@@ -26,12 +26,20 @@ import { pluginSettingsKey } from "@/plugins/settings/use-settings";
 import type { InstalledPlugin } from "@/plugins/types";
 import { toErrorMessage } from "@/utils/error-messages";
 import { openDelegationForm, type DelegationFormModel } from "./form-model";
+import { DelegationReports } from "./reports";
 
 // CUSTOM(delegation): the delegation sheet, opened from the composer icon's caret and from
 // Settings > Bruno's Customizations > Composer. Mounted fresh per open; the form model owns every
 // value (docs/forms.md). Saving writes the host's plugin settings, the document the icon reads.
 
 const rpc = settingsRpc(DELEGATION_SETTINGS_ID);
+
+type SheetTab = "options" | "reports";
+
+const TAB_OPTIONS: SegmentedControlOption<SheetTab>[] = [
+  { value: "options", label: "Options", testID: "delegation-tab-options" },
+  { value: "reports", label: "Reports", testID: "delegation-tab-reports" },
+];
 
 const MODEL_OPTIONS: SegmentedControlOption<DelegationModel>[] = DELEGATION_MODELS.map((model) => ({
   value: model,
@@ -96,6 +104,7 @@ export function DelegationSheet({
   const state = useSyncExternalStore(form.subscribe, form.getState, form.getState);
   const { draft } = state;
   const header = useMemo<SheetHeader>(() => ({ title: "Delegation" }), []);
+  const [tab, setTab] = useState<SheetTab>("options");
   const handleSavePress = useDelegationSave(form, plugin, onClose);
   const setEnabled = useCallback((value: boolean) => form.set("enabled", value), [form]);
   const setModel = useCallback(
@@ -116,15 +125,24 @@ export function DelegationSheet({
 
   return (
     <AdaptiveModalSheet visible onClose={onClose} header={header} testID="delegation-settings">
-      {state.load.status === "loading" ? (
+      <SegmentedControl
+        options={TAB_OPTIONS}
+        value={tab}
+        onValueChange={setTab}
+        size="sm"
+        style={styles.tabs}
+        testID="delegation-tabs"
+      />
+      {tab === "reports" ? <DelegationReports plugin={plugin} /> : null}
+      {tab === "options" && state.load.status === "loading" ? (
         <View style={styles.loading}>
           <LoadingSpinner size="large" color={styles.spinnerColor.color} />
         </View>
       ) : null}
-      {state.load.status === "error" ? (
+      {tab === "options" && state.load.status === "error" ? (
         <Text style={styles.errorText}>{state.load.message}</Text>
       ) : null}
-      {state.load.status === "ready" ? (
+      {tab === "options" && state.load.status === "ready" ? (
         <View style={styles.body}>
           <Text style={styles.hint}>
             A new Claude session on Opus or Fable plans, decides and reviews, and hands the code to
@@ -318,6 +336,9 @@ function Row({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  tabs: {
+    marginBottom: theme.spacing[3],
+  },
   loading: {
     alignItems: "center",
     justifyContent: "center",

@@ -10,7 +10,8 @@ import {
   isDelegationEligible,
   withDelegationPolicy,
 } from "./shared/policy";
-import { delegationSettings } from "./shared/settings";
+import { delegationSettings, reportRpc } from "./shared/settings";
+import { buildReport } from "./server/report";
 import { logDelegatedSession } from "./server/session-log";
 import { DelegationTracker } from "./server/tracker";
 
@@ -21,6 +22,9 @@ import { DelegationTracker } from "./server/tracker";
 export default function contribute(server: PluginServerContext) {
   const settings = server.registerSettings(delegationSettings);
   const tracker = new DelegationTracker();
+
+  // The sheet's Reports tab.
+  server.handle(reportRpc, (input) => buildReport({ days: input.days }));
 
   const removeCreate = server.before("agent.create", async ({ request }) => {
     if (!isDelegationEligible(request.config)) return undefined;

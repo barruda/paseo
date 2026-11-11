@@ -4963,12 +4963,22 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   - Pairing: `agent.create` puts `PASEO_DELEGATION_ID` in the first launch's env,
     `agent.session_open` (reason create) ties it to the agent id, and `agent.created` appends a
     card ("Delegação ligada: implementação vai para Sonnet · medium, …") and a line to
-    `~/.local/state/paseo-delegation/sessions.jsonl` (`PASEO_DELEGATION_LOG` moves it), the input
-    for the evaluation tab still to come.
+    `~/.local/state/paseo-delegation/sessions.jsonl` (`PASEO_DELEGATION_LOG` moves it).
+  - The sheet's **Reports** tab (`reports`, added 2026-11-11, plugin RPC `report`,
+    `server/report.ts` + test, app `reports.tsx` + `report-model.ts` + test): 7 or 30 days of this
+    host's Claude sessions on Opus/Fable, split by whether the saved system prompt in
+    `PASEO_HOME/agents` has the rule (so it doesn't need the session log), each priced at API
+    rates from its transcript found by `persistence.sessionId` under
+    `CLAUDE_CONFIG_DIR/projects` (main and `subagents/`, one count per request id). Shows a
+    verdict on cost per session with a small-sample warning, a table (sessions, cost per session,
+    subagent share, context per turn, turns, cheap delegations per session) and the 50 newest
+    sessions (● delegated). The first read of 30 days took ~12 s on 636 sessions; each transcript
+    is cached by size and mtime in the plugin process (~0.4 s after).
 - **Files:** `packages/protocol/src/delegation.ts` (ids, settings schema, card schema);
   `custom/plugins/delegation/` (`shared/policy.ts` + test, `shared/settings.ts`,
-  `server/tracker.ts` + test, `server/session-log.ts`, `client/card.tsx`);
-  `packages/app/src/delegation/` (`form-model.ts` + test, `sheet.tsx`, `toggle.tsx`);
+  `server/tracker.ts` + test, `server/session-log.ts`, `server/report.ts` + test, `client/card.tsx` + test);
+  `packages/app/src/delegation/` (`form-model.ts` + test, `report-model.ts` + test, `sheet.tsx`,
+  `reports.tsx`, `toggle.tsx`);
   `packages/server/src/server/plugins/custom-delegation-plugin.e2e.test.ts`.
 - **Core files touched:** app `composer/agent-controls/index.tsx` (`<DelegationToggle>` after
   `<JevRouterToggle>`), `composer/chat-options.ts` (`delegation` key),
