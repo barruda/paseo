@@ -1,7 +1,7 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Pressable, View } from "react-native";
+import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { Ear, EarOff, Mic, MicOff, Square, X } from "lucide-react-native";
 import { FOOTER_HEIGHT } from "@/constants/layout";
@@ -34,7 +34,7 @@ export function RealtimeVoiceOverlay({
 }: RealtimeVoiceOverlayProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const { volume, isSpeaking } = useVoiceTelemetry();
+  const { volume, isSpeaking, liveTranscript } = useVoiceTelemetry();
   const muteButtonStyle = useMemo(
     () => [
       styles.actionButton,
@@ -64,6 +64,12 @@ export function RealtimeVoiceOverlay({
   return (
     <View style={styles.container}>
       <View style={styles.meterContainer}>
+        {liveTranscript ? (
+          // CUSTOM(voice-live-transcript): head-truncated so the newest words stay visible.
+          <Text style={styles.liveTranscript} numberOfLines={1} ellipsizeMode="head">
+            {liveTranscript}
+          </Text>
+        ) : null}
         <VolumeMeter
           volume={volume}
           isMuted={isMuted}
@@ -166,6 +172,13 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+  },
+  liveTranscript: {
+    maxWidth: "100%",
+    marginBottom: theme.spacing[1],
+    paddingHorizontal: theme.spacing[2],
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
   },
   actionsContainer: {
     flexDirection: "row",

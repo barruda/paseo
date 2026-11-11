@@ -90,4 +90,48 @@ describe("SherpaOnnxParakeetSTT session", () => {
       }),
     ]);
   });
+
+  // CUSTOM(voice-live-transcript)
+  it("emits changed interim transcripts while a segment is open and drops them after commit", async () => {
+    const provider = new TestSherpaOnnxParakeetStt();
+    const session = provider.createSession({
+      logger: pino({ level: "silent" }),
+      partialIntervalMs: 0,
+    });
+    const transcripts: Array<{ segmentId: string; transcript: string; isFinal: boolean }> = [];
+    session.on("transcript", (payload) => {
+      transcripts.push(payload);
+    });
+    await session.connect();
+
+    session.appendPcm16(Buffer.from([1, 2, 3, 4]));
+    expect(provider.calls).toHaveLength(1);
+    // A second chunk while a decode is in flight does not start another decode.
+    session.appendPcm16(Buffer.from([5, 6]));
+    expect(provider.calls).toHaveLength(1);
+
+    provider.pending[0]?.resolve({ text: "hello", duration: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(transcripts).toHaveLength(1);
+    expect(transcripts[0]).toMatchObject({ transcript: "hello", isFinal: false });
+
+    // Same text again is not re-emitted.
+    session.appendPcm16(Buffer.from([7, 8]));
+    expect(provider.calls).toHaveLength(2);
+    provider.pending[1]?.resolve({ text: "hello", duration: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(transcripts).toHaveLength(1);
+
+    // An interim result that lands after commit is dropped.
+    session.appendPcm16(Buffer.from([9, 10]));
+    expect(provider.calls).toHaveLength(3);
+    session.commit();
+    provider.pending[2]?.resolve({ text: "stale", duration: 1 });
+    provider.pending[3]?.resolve({ text: "hello world", duration: 1 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(transcripts.map((t) => [t.transcript, t.isFinal])).toEqual([
+      ["hello", false],
+      ["hello world", true],
+    ]);
+  });
 });

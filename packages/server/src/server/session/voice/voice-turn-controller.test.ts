@@ -246,7 +246,7 @@ describe("voice turn controller", () => {
     expect(harness.onError).not.toHaveBeenCalled();
   });
 
-  it("fires onPartialTranscript exactly once for the first non-empty partial in a turn", async () => {
+  it("forwards every changed non-empty partial in a turn and skips repeats", async () => {
     const harness = createControllerHarness();
 
     await harness.controller.start();
@@ -265,12 +265,18 @@ describe("voice turn controller", () => {
       isFinal: false,
     });
     await settleSerialQueue();
-
-    expect(harness.onPartialTranscript).toHaveBeenCalledTimes(1);
-    expect(harness.onPartialTranscript).toHaveBeenCalledWith({
+    harness.sttSessions[0]?.emitTranscript({
       segmentId: "segment-1",
-      transcript: "hello",
+      transcript: "hello again",
+      isFinal: false,
     });
+    await settleSerialQueue();
+
+    // CUSTOM(voice-live-transcript)
+    expect(harness.onPartialTranscript.mock.calls.map(([arg]) => arg)).toEqual([
+      { segmentId: "segment-1", transcript: "hello" },
+      { segmentId: "segment-1", transcript: "hello again" },
+    ]);
   });
 
   it("does not fire onPartialTranscript for filler-only partials, but fires once the partial grows past the filler", async () => {

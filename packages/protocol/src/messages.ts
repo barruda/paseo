@@ -3623,6 +3623,8 @@ export const VoiceInputStateMessageSchema = z.object({
   type: z.literal("voice_input_state"),
   payload: z.object({
     isSpeaking: z.boolean(),
+    // CUSTOM(voice-live-transcript): the words recognized so far in the current utterance.
+    transcript: z.string().optional(),
   }),
 });
 

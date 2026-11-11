@@ -5047,3 +5047,34 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Re-apply:** In the voice turn controller callbacks, replace the immediate
   `handleVoiceSpeechStart()` on speech start with a timer, and call the same confirmation before
   handling a non-empty final transcript.
+
+## voice-live-transcript: voice mode shows your words while you talk
+
+- **Added:** 2026-11-11
+- **Commit:** `custom: voice mode shows your words live and stops a reply at the first one`
+- **Why:** Voice mode only showed text after you stopped talking, and a barge-in during a spoken
+  reply waited for the final transcript. Dictation already shows live partials.
+- **What:** The voice STT session (`SherpaOnnxParakeetSTT.createSession`) takes `partialIntervalMs`
+  and re-decodes the open segment on that cadence (one decode in flight, only changed text,
+  dropped if the segment was committed or cleared meanwhile, skipped when low-confidence, since
+  a partial with words interrupts a reply and echo must not); the final path and its confidence
+  filtering are unchanged. The worker passes `decodeIntervalMs ?? 500`. The turn controller now
+  forwards every changed non-filler partial, not just the first. `VoiceSession` turns each
+  non-empty partial into a barge-in confirmation (reason `partial`) and a `voice_input_state`
+  `{ isSpeaking: true, transcript }`. The app keeps `liveTranscript` in the voice telemetry,
+  shows it as one muted line (head-truncated) above the volume meter, clears it on the
+  transcription result, on stop, and when a new utterance starts. A repeated `isSpeaking: true`
+  no longer re-stops playback; only the false to true transition does.
+- **Core files touched:** `packages/protocol/src/messages.ts` (optional `transcript` on
+  `voice_input_state`), `packages/server/src/server/speech/providers/local/sherpa/sherpa-parakeet-stt.ts`,
+  `.../local/worker-process.ts`, `packages/server/src/server/session/voice/voice-turn-controller.ts`,
+  `.../voice-session.ts`, `packages/app/src/voice/voice-runtime.ts`,
+  `packages/app/src/contexts/session-context.tsx`, `packages/app/src/contexts/voice-context.tsx`,
+  `packages/app/src/components/realtime-voice-overlay.tsx`, and their tests.
+- **Re-apply:** Re-add the optional `transcript` field, the interim decode in the voice STT
+  session, `partialIntervalMs` in the worker, drop the once-per-turn limit in
+  `firePartialTranscript`, and the `onPartialTranscript` body in `voice-session.ts`; then the
+  `liveTranscript` plumbing in the app.
+- **Verify:** `cd packages/server && npx vitest run src/server/session/voice/ src/server/speech/providers/local/sherpa/sherpa-parakeet-stt.test.ts --bail=1`
+  and `cd packages/app && npx vitest run src/voice/voice-runtime.test.ts --bail=1`. In voice mode,
+  talk: words appear above the meter; speak words while a reply plays: it stops at once.

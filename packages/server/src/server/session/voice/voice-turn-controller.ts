@@ -112,7 +112,8 @@ export function createVoiceTurnController(params: {
   // CUSTOM(voice-settings): see INTERRUPT_GAIN.
   let assistantSpeaking = false;
   let activeTranscriptSegmentId: string | null = null;
-  let partialTranscriptFired = false;
+  // CUSTOM(voice-live-transcript): last partial forwarded this turn; only changed text is forwarded.
+  let lastPartialTranscript = "";
   let reconnectAttemptedForTurn = false;
   const sealedTranscriptSegmentIds = new Set<string>();
   let currentFinalizingTurn: FinalizingVoiceTurn | null = null;
@@ -122,11 +123,11 @@ export function createVoiceTurnController(params: {
   }
 
   function firePartialTranscript(segmentId: string, transcript: string): void {
-    if (partialTranscriptFired || state.status !== "capturing") {
+    if (state.status !== "capturing" || transcript === lastPartialTranscript) {
       return;
     }
 
-    partialTranscriptFired = true;
+    lastPartialTranscript = transcript;
     void runSerial(async () => {
       await params.callbacks.onPartialTranscript({ segmentId, transcript });
     });
@@ -285,7 +286,7 @@ export function createVoiceTurnController(params: {
   }
 
   function handlePartialSttTranscript(event: StreamingTranscriptionEvent): void {
-    if (state.status !== "capturing" || partialTranscriptFired) {
+    if (state.status !== "capturing") {
       return;
     }
 
@@ -410,7 +411,7 @@ export function createVoiceTurnController(params: {
 
     const startedAt = Date.now();
     activeTranscriptSegmentId = null;
-    partialTranscriptFired = false;
+    lastPartialTranscript = "";
     reconnectAttemptedForTurn = false;
     clearFinalizingTurnTimeout();
     currentFinalizingTurn = null;

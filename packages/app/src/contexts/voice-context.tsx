@@ -45,6 +45,7 @@ const EMPTY_TELEMETRY: VoiceRuntimeTelemetrySnapshot = {
   volume: 0,
   isSpeaking: false,
   segmentDuration: 0,
+  liveTranscript: "",
 };
 
 const VoiceRuntimeContext = createContext<VoiceRuntime | null>(null);

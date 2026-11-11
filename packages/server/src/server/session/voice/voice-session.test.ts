@@ -253,6 +253,44 @@ describe("VoiceSession streaming transcription", () => {
     }
   });
 
+  // CUSTOM(voice-live-transcript)
+  test("words in a partial transcript interrupt a playing reply and are sent live", async () => {
+    const { voiceSession, detector, sttSession, host, speak, interrupted } =
+      createSpeakingSession(60_000);
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    const playback = speak({ text: "A spoken response." });
+    try {
+      await waitForAudioOutput(host);
+      detector.emit("speech_started");
+      await settle();
+      sttSession.emitTranscript({ segmentId: "segment-1", transcript: "  ", isFinal: false });
+      await settle();
+      expect(interrupted).toEqual([]);
+      expect(host.emitted).not.toContainEqual(SPEAKING);
+      sttSession.emitTranscript({ segmentId: "segment-1", transcript: "wait a", isFinal: false });
+      await vi.waitFor(() => expect(interrupted).toEqual([VOICE_AGENT_ID]));
+      sttSession.emitTranscript({
+        segmentId: "segment-1",
+        transcript: "wait a second",
+        isFinal: false,
+      });
+      await vi.waitFor(() =>
+        expect(host.emitted).toContainEqual({
+          type: "voice_input_state",
+          payload: { isSpeaking: true, transcript: "wait a second" },
+        }),
+      );
+      expect(host.emitted).toContainEqual({
+        type: "voice_input_state",
+        payload: { isSpeaking: true, transcript: "wait a" },
+      });
+      expect(interrupted).toEqual([VOICE_AGENT_ID]);
+    } finally {
+      await voiceSession.cleanup();
+      await playback.catch(() => {});
+    }
+  });
+
   test("session abort stops later audio even when the speak tool supplies its own signal", async () => {
     const tts: TextToSpeechProvider = {
       async synthesizeSpeech() {

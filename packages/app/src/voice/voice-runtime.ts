@@ -54,6 +54,8 @@ export interface VoiceRuntimeTelemetrySnapshot {
   volume: number;
   isSpeaking: boolean;
   segmentDuration: number;
+  // CUSTOM(voice-live-transcript): words recognized so far in the current utterance.
+  liveTranscript: string;
 }
 
 export interface VoiceSessionAdapter {
@@ -145,6 +147,7 @@ const INITIAL_TELEMETRY: VoiceRuntimeTelemetrySnapshot = {
   volume: 0,
   isSpeaking: false,
   segmentDuration: 0,
+  liveTranscript: "",
 };
 
 let nextVoiceRuntimeInstanceId = 1;
@@ -168,7 +171,8 @@ function telemetryEqual(
   return (
     left.volume === right.volume &&
     left.isSpeaking === right.isSpeaking &&
-    left.segmentDuration === right.segmentDuration
+    left.segmentDuration === right.segmentDuration &&
+    left.liveTranscript === right.liveTranscript
   );
 }
 
@@ -192,7 +196,7 @@ export interface VoiceRuntime {
   onAssistantAudioStarted(serverId: string): void;
   onAssistantAudioFinished(serverId: string): void;
   onTranscriptionResult(serverId: string, text: string): void;
-  onServerSpeechStateChanged(serverId: string, isSpeaking: boolean): void;
+  onServerSpeechStateChanged(serverId: string, isSpeaking: boolean, transcript?: string): void;
   onTurnEvent(serverId: string, agentId: string, eventType: TurnEventType): void;
 }
 
@@ -949,6 +953,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         return;
       }
 
+      patchTelemetry((prev) => ({ ...prev, liveTranscript: "" }));
+
       if (text.trim()) {
         state.turnInProgress = true;
         patchSnapshot((prev) => ({ ...prev, phase: "waiting" }));
@@ -961,14 +967,17 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       stopCue();
     },
 
-    onServerSpeechStateChanged(serverId, isSpeaking) {
+    onServerSpeechStateChanged(serverId, isSpeaking, transcript) {
       if (serverId !== state.snapshot.activeServerId || !state.snapshot.isVoiceMode) {
         return;
       }
 
+      const wasSpeaking = state.serverSpeechDetected;
       state.serverSpeechDetected = isSpeaking;
       state.serverSpeechStartedAt = isSpeaking ? (state.serverSpeechStartedAt ?? Date.now()) : null;
-      if (isSpeaking) {
+      // CUSTOM(voice-live-transcript): the server repeats isSpeaking=true with every partial
+      // transcript; only the false -> true transition stops playback.
+      if (isSpeaking && !wasSpeaking) {
         const shouldInterruptPlayback =
           state.snapshot.phase === "playing" || playback.groups.size > 0;
         resetPlaybackState();
@@ -982,6 +991,10 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       patchTelemetry((prev) => ({
         ...prev,
         isSpeaking,
+        // A new utterance starts empty; the words stay after it ends until the result arrives.
+        liveTranscript: isSpeaking
+          ? (transcript ?? (wasSpeaking ? prev.liveTranscript : ""))
+          : prev.liveTranscript,
       }));
       reconcileSegmentDurationTimer();
       reconcileCue();

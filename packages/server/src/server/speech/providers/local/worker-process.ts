@@ -280,7 +280,11 @@ async function createSession(
   const engine = getSttEngine(message.config, model);
   const session =
     message.kind === "voiceStt"
-      ? getSttProvider(message.config, "voice").createSession({ logger })
+      ? getSttProvider(message.config, "voice").createSession({
+          logger,
+          // CUSTOM(voice-live-transcript): live words while the user talks.
+          partialIntervalMs: message.decodeIntervalMs ?? 500,
+        })
       : new SherpaParakeetRealtimeTranscriptionSession({
           engine,
           minDecodeIntervalMs: message.decodeIntervalMs,

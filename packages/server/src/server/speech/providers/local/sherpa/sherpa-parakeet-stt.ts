@@ -37,6 +37,8 @@ export class SherpaOnnxParakeetSTT implements SpeechToTextProvider {
     logger: pino.Logger;
     language?: string;
     prompt?: string;
+    // CUSTOM(voice-live-transcript): when set, appendPcm16 emits throttled interim transcripts.
+    partialIntervalMs?: number;
   }): StreamingTranscriptionSession {
     const emitter = new EventEmitter();
     const logger = params.logger.child({ provider: "local", component: "parakeet-stt-session" });
@@ -45,18 +47,56 @@ export class SherpaOnnxParakeetSTT implements SpeechToTextProvider {
     let segmentId = uuidv4();
     let previousSegmentId: string | null = null;
     let pcm16: Buffer = Buffer.alloc(0);
+    // CUSTOM(voice-live-transcript): interim decode state. The final path below is unchanged.
+    const partialIntervalMs = params.partialIntervalMs;
+    let lastInterimAt = 0;
+    let interimInFlight = false;
+    let lastInterimText = "";
+    const maybeDecodeInterim = (): void => {
+      if (partialIntervalMs === undefined || interimInFlight || pcm16.length === 0) return;
+      const now = Date.now();
+      if (now - lastInterimAt < partialIntervalMs) return;
+      lastInterimAt = now;
+      interimInFlight = true;
+      const interimSegmentId = segmentId;
+      const snapshot = pcm16;
+      void (async () => {
+        try {
+          const rt = await this.transcribeAudio(snapshot, `audio/pcm;rate=${requiredSampleRate}`);
+          // Dropped when the segment was committed or cleared while decoding.
+          if (interimSegmentId !== segmentId || !connected) return;
+          // Low-confidence text is noise or echo; the final path drops it too, and a partial
+          // with words interrupts a playing reply.
+          if (rt.isLowConfidence) return;
+          if (rt.text && rt.text !== lastInterimText) {
+            lastInterimText = rt.text;
+            emitter.emit("transcript", {
+              segmentId: interimSegmentId,
+              transcript: rt.text,
+              isFinal: false,
+            });
+          }
+        } catch (err) {
+          logger.debug({ err }, "Parakeet interim decode failed");
+        } finally {
+          interimInFlight = false;
+          lastInterimAt = Date.now();
+        }
+      })();
+    };
 
     return {
       requiredSampleRate,
       async connect() {
         connected = true;
       },
-      appendPcm16(chunk: Buffer) {
+      appendPcm16: (chunk: Buffer) => {
         if (!connected) {
           emitter.emit("error", new Error("STT session not connected"));
           return;
         }
         pcm16 = pcm16.length === 0 ? chunk : Buffer.concat([pcm16, chunk]);
+        maybeDecodeInterim();
       },
       commit: () => {
         if (!connected) {
@@ -70,6 +110,7 @@ export class SherpaOnnxParakeetSTT implements SpeechToTextProvider {
         previousSegmentId = committedId;
         segmentId = uuidv4();
         pcm16 = Buffer.alloc(0);
+        lastInterimText = "";
         emitter.emit("committed", { segmentId: committedId, previousSegmentId: prev });
 
         void (async () => {
@@ -96,6 +137,7 @@ export class SherpaOnnxParakeetSTT implements SpeechToTextProvider {
       },
       clear() {
         pcm16 = Buffer.alloc(0);
+        lastInterimText = "";
         segmentId = uuidv4();
       },
       close() {

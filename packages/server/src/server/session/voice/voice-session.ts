@@ -206,6 +206,8 @@ export class VoiceSession {
   // CUSTOM(confirmed-barge-in): the detector's speech start no longer interrupts by itself.
   // Noise, a cough or the reply's own echo fired it and cut replies off with an empty
   // transcript. Speech interrupts once it lasts bargeInConfirmMs or transcribes to words.
+  // CUSTOM(voice-live-transcript): words are recognized live (partial transcripts), so they
+  // interrupt as soon as they appear instead of after the user stops talking.
   private readonly bargeInConfirmMs: number;
   private bargeInTimer: ReturnType<typeof setTimeout> | null = null;
   private bargeInConfirmed = false;
@@ -686,6 +688,14 @@ export class VoiceSession {
             { segmentId, transcriptLength: transcript.trim().length },
             "Voice partial transcript",
           );
+          // CUSTOM(voice-live-transcript)
+          const liveText = transcript.trim();
+          if (!liveText) return;
+          await this.confirmBargeIn("partial");
+          this.emit({
+            type: "voice_input_state",
+            payload: { isSpeaking: true, transcript: liveText },
+          });
         },
         onSpeechStopped: async () => {
           this.vadSpeechActive = false;
@@ -785,7 +795,9 @@ export class VoiceSession {
   // The client stops playback when it sees isSpeaking=true, so that message waits for the
   // confirmation too. A transcript confirms after the detector already stopped, so the
   // client gets the matching isSpeaking=false right away.
-  private async confirmBargeIn(reason: "sustained speech" | "transcript"): Promise<void> {
+  private async confirmBargeIn(
+    reason: "sustained speech" | "transcript" | "partial",
+  ): Promise<void> {
     if (this.bargeInConfirmed || this.closed) return;
     this.bargeInConfirmed = true;
     this.clearBargeInTimer();

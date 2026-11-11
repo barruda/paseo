@@ -458,6 +458,39 @@ describe("voice runtime", () => {
     expect(runtime.getTelemetrySnapshot().isSpeaking).toBe(true);
   });
 
+  // CUSTOM(voice-live-transcript)
+  it("shows the live transcript, clears it on the result, and stops playback only once", async () => {
+    const adapter = createSessionAdapter();
+    const { runtime, engine } = createRuntime();
+    runtime.registerSession(adapter);
+
+    await runtime.startVoice("server-1", "agent-1");
+    runtime.onAssistantAudioStarted("server-1");
+
+    runtime.onServerSpeechStateChanged("server-1", true);
+    runtime.onServerSpeechStateChanged("server-1", true, "hello");
+    expect(runtime.getTelemetrySnapshot().liveTranscript).toBe("hello");
+    expect(engine.stop).toHaveBeenCalledTimes(1);
+
+    runtime.onServerSpeechStateChanged("server-1", true, "hello there");
+    expect(runtime.getTelemetrySnapshot().liveTranscript).toBe("hello there");
+    expect(engine.stop).toHaveBeenCalledTimes(1);
+
+    runtime.onServerSpeechStateChanged("server-1", false);
+    expect(runtime.getTelemetrySnapshot().liveTranscript).toBe("hello there");
+
+    runtime.onServerSpeechStateChanged("server-1", true);
+    expect(runtime.getTelemetrySnapshot().liveTranscript).toBe("");
+
+    runtime.onServerSpeechStateChanged("server-1", true, "again");
+    runtime.onTranscriptionResult("server-1", "again");
+    expect(runtime.getTelemetrySnapshot().liveTranscript).toBe("");
+
+    runtime.onServerSpeechStateChanged("server-1", true, "bye");
+    await runtime.stopVoice();
+    expect(runtime.getTelemetrySnapshot().liveTranscript).toBe("");
+  });
+
   it("drops queued voice chunks that arrive after server speech interrupts playback", async () => {
     const adapter = createSessionAdapter();
     const { runtime, engine } = createRuntime();
