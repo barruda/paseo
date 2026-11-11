@@ -3,18 +3,24 @@ import { Text, View } from "react-native";
 import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import {
-  DELEGATION_WHEN_LABELS,
   formatDelegationModel,
   type DelegationCardData,
+  type DelegationWhen,
 } from "@getpaseo/protocol/delegation";
 
 // One line at the top of a session that started with the delegation rule, so the session says
-// what it was told even after the settings change.
+// what it was told even after the settings change. In Portuguese, like the Jev router's card.
+
+const WHEN_PT: Record<DelegationWhen, string> = {
+  conservative: "modo conservador",
+  balanced: "modo equilibrado",
+  aggressive: "modo agressivo",
+};
 
 export function describeDelegationCard(data: DelegationCardData): string {
   const parts = [
     `implementação vai para ${formatDelegationModel(data.implementerModel)} · ${data.implementerEffort}`,
-    DELEGATION_WHEN_LABELS[data.when].toLowerCase(),
+    WHEN_PT[data.when],
   ];
   if (data.review) parts.push("revisão nesta sessão");
   if (data.searchModel !== "off") parts.push(`busca em ${formatDelegationModel(data.searchModel)}`);
