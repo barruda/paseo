@@ -1,7 +1,13 @@
 import { spawn } from "node:child_process";
 import os from "node:os";
 import type { JevDecision, JevRouterSettings } from "@getpaseo/protocol/jev-router";
-import { buildRouterArgs, expandHome, parseRouterOutput, type RouteHome } from "../shared/decision";
+import {
+  buildRouterArgs,
+  buildRouterEnv,
+  expandHome,
+  parseRouterOutput,
+  type RouteHome,
+} from "../shared/decision";
 
 // Runs gnome-custom's route.py with the prompt on stdin. It always exits 0 and prints one JSON
 // line, failing open (home model) on its own problems; this only throws when the script itself
@@ -19,8 +25,7 @@ export function runRouter(input: {
 }): Promise<JevDecision> {
   const homeDir = os.homedir();
   const args = buildRouterArgs({ ...input, homeDir });
-  const env = { ...process.env };
-  if (input.settings.apiKey.trim()) env.TYPESAFE_API_KEY = input.settings.apiKey.trim();
+  const env = buildRouterEnv(input.settings, process.env);
   return new Promise((resolve, reject) => {
     const child = spawn(expandHome(input.settings.python, homeDir), args, {
       env,

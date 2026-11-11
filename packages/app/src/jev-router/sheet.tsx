@@ -58,7 +58,8 @@ function operationalOptions(selected: string): SegmentedControlOption<string>[] 
   ];
 }
 
-function useJevRouterFormModel(plugin: InstalledPlugin): JevRouterFormModel {
+/** One form per sheet mount, loaded from the host's plugin settings. */
+export function useJevRouterFormModel(plugin: InstalledPlugin): JevRouterFormModel {
   const [form] = useState(openJevRouterForm);
   useEffect(() => {
     let cancelled = false;
@@ -96,28 +97,7 @@ export function JevRouterSheet({
   const state = useSyncExternalStore(form.subscribe, form.getState, form.getState);
   const { draft } = state;
   const header = useMemo<SheetHeader>(() => ({ title: "Jev router" }), []);
-
-  const handleSave = useCallback(async () => {
-    const current = form.getState();
-    if (!current.revision) return;
-    form.beginSave();
-    try {
-      const result = rpc.write.output.parse(
-        await plugin.invoke(rpc.write.name, { revision: current.revision, values: current.draft }),
-      );
-      if (result.status !== "saved") throw new Error(result.error);
-      // Same key as the composer icon and the settings screen: both see the save at once.
-      plugin.queryClient.setQueryData(pluginSettingsKey(JEV_ROUTER_SETTINGS_ID), {
-        ...result,
-        status: "ready",
-      });
-      form.saveSucceeded(result.revision);
-      onClose();
-    } catch (error) {
-      form.saveFailed(toErrorMessage(error));
-    }
-  }, [form, onClose, plugin]);
-  const handleSavePress = useCallback(() => void handleSave(), [handleSave]);
+  const handleSavePress = useJevRouterSave(form, plugin, onClose);
 
   return (
     <AdaptiveModalSheet visible onClose={onClose} header={header} testID="jev-router-settings">
@@ -193,6 +173,35 @@ export function JevRouterSheet({
       ) : null}
     </AdaptiveModalSheet>
   );
+}
+
+/** Writes the draft to the host's plugin settings and closes the sheet; returns the Save handler. */
+export function useJevRouterSave(
+  form: JevRouterFormModel,
+  plugin: InstalledPlugin,
+  onClose: () => void,
+): () => void {
+  const handleSave = useCallback(async () => {
+    const current = form.getState();
+    if (!current.revision) return;
+    form.beginSave();
+    try {
+      const result = rpc.write.output.parse(
+        await plugin.invoke(rpc.write.name, { revision: current.revision, values: current.draft }),
+      );
+      if (result.status !== "saved") throw new Error(result.error);
+      // Same key as the composer icon and the settings screen: both see the save at once.
+      plugin.queryClient.setQueryData(pluginSettingsKey(JEV_ROUTER_SETTINGS_ID), {
+        ...result,
+        status: "ready",
+      });
+      form.saveSucceeded(result.revision);
+      onClose();
+    } catch (error) {
+      form.saveFailed(toErrorMessage(error));
+    }
+  }, [form, onClose, plugin]);
+  return useCallback(() => void handleSave(), [handleSave]);
 }
 
 function ModelFocusedFields({ form }: { form: JevRouterFormModel }) {

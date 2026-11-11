@@ -14,6 +14,10 @@ export const JEV_ROUTER_RPC = {
 
 export const DEFAULT_JEV_ROUTER_SCRIPT = "~/projetos/gnome-custom/jev-router/route.py";
 
+/** jev.py's own defaults, shown as placeholders when a host leaves its provider fields empty. */
+export const DEFAULT_TYPESAFE_API_URL = "https://api.typesafe.ai/v1/systemone";
+export const DEFAULT_JEV_MODEL = "jev-1.14.0";
+
 /**
  * Model focused: keep the selected model and drop to Sonnet or Haiku only when Jev is sure the task
  * is small (route.py `downgrade_only`). Effort focused: two models, the effort does the rest; Jev
@@ -87,6 +91,10 @@ export const JevRouterSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   /** TypeSafe gateway key. Empty: route.py reads TYPESAFE_API_KEY or ~/.config/typesafe/env. */
   apiKey: z.string().default(""),
+  /** TypeSafe System One endpoint, as TYPESAFE_API_URL. Empty: jev.py's default. */
+  apiUrl: z.string().default(""),
+  /** Jev model, as JEV_MODEL. Empty: the one route.py's thresholds were measured on. */
+  jevModel: z.string().default(""),
   routerScript: z.string().trim().min(1).default(DEFAULT_JEV_ROUTER_SCRIPT),
   python: z.string().trim().min(1).default("python3"),
   /** Jev call timeout handed to route.py; the plugin kills the script 3 s after it. */

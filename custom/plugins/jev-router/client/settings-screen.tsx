@@ -11,7 +11,12 @@ import {
   SettingsSelect,
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
-import type { JevRouteOutput, JevRouterSettings } from "@getpaseo/protocol/jev-router";
+import {
+  DEFAULT_JEV_MODEL,
+  DEFAULT_TYPESAFE_API_URL,
+  type JevRouteOutput,
+  type JevRouterSettings,
+} from "@getpaseo/protocol/jev-router";
 import { routeRpc, routerSettings } from "../shared/settings";
 
 type ReadySettings = Extract<SettingsState<typeof routerSettings.schema>, { status: "ready" }>;
@@ -41,7 +46,7 @@ function TextFields({ settings }: { settings: ReadySettings }) {
     revision: settings.revision,
   }));
   const set = useCallback(
-    (key: "apiKey" | "routerScript" | "python") => (text: string) =>
+    (key: "apiKey" | "apiUrl" | "jevModel" | "routerScript" | "python") => (text: string) =>
       setDraft((current) => ({ ...current, values: { ...current.values, [key]: text } })),
     [],
   );
@@ -49,6 +54,8 @@ function TextFields({ settings }: { settings: ReadySettings }) {
     const values: JevRouterSettings = {
       ...settings.values,
       apiKey: draft.values.apiKey,
+      apiUrl: draft.values.apiUrl,
+      jevModel: draft.values.jevModel,
       routerScript: draft.values.routerScript,
       python: draft.values.python,
     };
@@ -67,6 +74,22 @@ function TextFields({ settings }: { settings: ReadySettings }) {
         disabled={settings.saving}
       />
       <SettingsInput
+        label="TypeSafe endpoint"
+        hint="Another account or gateway for this host. Empty: TYPESAFE_API_URL or the public API."
+        initialValue={draft.values.apiUrl}
+        placeholder={DEFAULT_TYPESAFE_API_URL}
+        onChangeText={set("apiUrl")}
+        disabled={settings.saving}
+      />
+      <SettingsInput
+        label="Jev model"
+        hint="Empty: the model the thresholds were measured on"
+        initialValue={draft.values.jevModel}
+        placeholder={DEFAULT_JEV_MODEL}
+        onChangeText={set("jevModel")}
+        disabled={settings.saving}
+      />
+      <SettingsInput
         label="Router script"
         hint="gnome-custom's jev-router/route.py"
         initialValue={draft.values.routerScript}
@@ -81,7 +104,7 @@ function TextFields({ settings }: { settings: ReadySettings }) {
         disabled={settings.saving}
       />
       <SettingsAction
-        label="Key and paths"
+        label="Provider and paths"
         actionLabel="Save"
         onPress={save}
         disabled={settings.saving}

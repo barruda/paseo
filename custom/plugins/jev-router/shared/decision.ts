@@ -49,6 +49,24 @@ export function expandHome(file: string, home: string): string {
   return file.startsWith("~/") ? `${home}/${file.slice(2)}` : file;
 }
 
+/**
+ * route.py's environment: the host's TypeSafe provider (key, endpoint, Jev model) over the
+ * daemon's. An empty field leaves the inherited variable, so jev.py falls back to its own defaults.
+ */
+export function buildRouterEnv(
+  settings: Pick<JevRouterSettings, "apiKey" | "apiUrl" | "jevModel">,
+  base: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const env = { ...base };
+  const apiKey = settings.apiKey.trim();
+  const apiUrl = settings.apiUrl.trim();
+  const jevModel = settings.jevModel.trim();
+  if (apiKey) env.TYPESAFE_API_KEY = apiKey;
+  if (apiUrl) env.TYPESAFE_API_URL = apiUrl;
+  if (jevModel) env.JEV_MODEL = jevModel;
+  return env;
+}
+
 export function buildRouterArgs(input: {
   settings: Pick<
     JevRouterSettings,

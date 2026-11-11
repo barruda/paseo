@@ -22,6 +22,9 @@ export const OPERATIONAL_OFF = "off";
 
 export type JevPickSlot = "defaultPick" | "hardPick";
 
+/** The host's TypeSafe provider, edited in Settings > Bruno's Customizations. */
+export type JevProviderField = "apiKey" | "apiUrl" | "jevModel";
+
 export type JevRouterFormLoad =
   | { status: "loading" }
   | { status: "ready" }
@@ -36,6 +39,7 @@ export interface JevRouterFormState {
   /** Bumped when the texts are replaced (load, reset): the uncontrolled inputs remount on it. */
   textsVersion: number;
   thresholdErrors: Partial<Record<JevThresholdField, string>>;
+  apiUrlError: string | null;
   saving: boolean;
   error: string | null;
   canSave: boolean;
@@ -56,6 +60,7 @@ export interface JevRouterFormModel {
   setPickEffort(slot: JevPickSlot, effort: string): void;
   setLockCycling(lockCycling: boolean): void;
   setUseSonnet(useSonnet: boolean): void;
+  setProviderField(field: JevProviderField, text: string): void;
   /** Puts the selected mode's models, efforts and thresholds back to their defaults. */
   resetMode(): void;
   beginSave(): void;
@@ -106,6 +111,12 @@ function writeThreshold(
   }
 }
 
+/** Empty (jev.py's default endpoint) or an http(s) URL. */
+export function isValidApiUrl(text: string): boolean {
+  const trimmed = text.trim();
+  return trimmed === "" || /^https?:\/\/\S+$/.test(trimmed);
+}
+
 /** A probability typed by hand: a number from 0 to 1, comma or dot. */
 export function parseThreshold(text: string): number | null {
   const trimmed = text.trim().replace(",", ".");
@@ -133,6 +144,7 @@ export function openJevRouterForm(): JevRouterFormModel {
     thresholdTexts: textsFor(initial),
     textsVersion: 0,
     thresholdErrors: {},
+    apiUrlError: null,
     saving: false,
     error: null,
     canSave: false,
@@ -144,13 +156,18 @@ export function openJevRouterForm(): JevRouterFormModel {
       if (parseThreshold(next.thresholdTexts[field]) === null)
         thresholdErrors[field] = "A number from 0 to 1.";
     }
+    const apiUrlError = isValidApiUrl(next.draft.apiUrl)
+      ? null
+      : "Empty, or a URL starting with https://.";
     return {
       ...next,
       thresholdErrors,
+      apiUrlError,
       canSave:
         next.load.status === "ready" &&
         !next.saving &&
         Object.keys(thresholdErrors).length === 0 &&
+        apiUrlError === null &&
         (!next.draft.effortFocused.operationalEnabled ||
           next.draft.effortFocused.operationalEfforts.length > 0),
     };
@@ -215,6 +232,7 @@ export function openJevRouterForm(): JevRouterFormModel {
     setLockCycling: (lockCycling) => editEffortFocused({ lockCycling }),
     setUseSonnet: (useSonnet) =>
       edit({ ...state.draft, modelFocused: { ...state.draft.modelFocused, useSonnet } }),
+    setProviderField: (field, text) => edit({ ...state.draft, [field]: text }),
     resetMode() {
       const draft =
         state.draft.mode === "effort"

@@ -4294,7 +4294,14 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     caret opens the router sheet (since 2026-11-11, `showCaret` + `onChevronPress`; `AgentControlTrigger` drops the 28 px
     icon-only width when it has a caret) ([jev-router-modes](#jev-router-modes-model-focused-or-effort-focused-and-a-locked--)); its
     tooltip also says what Jev did for that session.
-  - **TypeSafe API key** (empty: route.py reads `TYPESAFE_API_KEY` or `~/.config/typesafe/env`),
+  - **TypeSafe provider** per host: API key, endpoint and Jev model (since 2026-11-11, so
+    paseo-telus can call Jev on another TypeSafe account or gateway than the personal host). The
+    plugin hands them to route.py as `TYPESAFE_API_KEY`, `TYPESAFE_API_URL` and `JEV_MODEL`
+    (`buildRouterEnv` in `shared/decision.ts`); an empty field keeps the daemon's environment, so
+    the key falls back to `~/.config/typesafe/env` and the rest to jev.py's defaults (gnome-custom
+    jev.py reads `TYPESAFE_API_URL` since the same day). Edited in Settings > Bruno's
+    Customizations > Composer > **TypeSafe provider** (`jev-router/provider-sheet.tsx`, with a
+    **Test** that routes a sample prompt on the saved provider) and in the plugin screen. Also
     router script path (default `~/projetos/gnome-custom/jev-router/route.py`), Python, Jev
     timeout (default 2 s), **Log decisions** (`~/.local/state/jev-router/decisions.jsonl`, read
     with `route.py review`), and a **Test** button that routes a sample prompt without applying.
@@ -4314,12 +4321,13 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     one. A first prompt over 30k characters is not kept, and its card has no button.
   - Installed on both daemons. It was personal-only at first, to keep work prompts away from
     TypeSafe; on 2026-11-09 the user had it installed on paseo-telus too, still on TypeSafe. Each
-    host keeps its own settings; the sessions it routes use that host's Claude provider.
+    host keeps its own settings, TypeSafe provider included; the sessions it routes use that
+    host's Claude provider.
 - **Files:** `packages/protocol/src/jev-router.ts` (ids, settings schema, RPC schemas, labels,
   card schema, `formatClaudeModel`); `custom/plugins/jev-router/` (`shared/decision.ts`
   home/args/output/plan/card + test, `shared/settings.ts`, `server/run.ts` spawns route.py,
   `server/stash.ts`, `client/settings-screen.tsx`, `client/route-card.tsx`);
-  `packages/app/src/jev-router/` (`model.ts` + test, `route.ts`, `toggle.tsx`);
+  `packages/app/src/jev-router/` (`model.ts` + test, `route.ts`, `toggle.tsx`, `provider-sheet.tsx`);
   `packages/app/src/plugins/react-native/restart-agent-button.impl.tsx`;
   `packages/server/src/server/plugins/custom-jev-router-plugin.e2e.test.ts` (fake route.py).
 - **Core files touched:** app `composer/agent-controls/index.tsx` (`<JevRouterToggle>` after
@@ -4337,7 +4345,9 @@ notification"` (all in the update script). By hand: turn the critic on with a st
 - **Setup:** `paseo plugin install "$PWD/custom/plugins/jev-router" --home ~/.paseo` and again
   with `--home ~/.paseo-telus`, a desktop build for the app.
 - **Verify:** `npx vitest run custom/plugins/jev-router packages/app/src/jev-router` and the e2e
-  `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand: on the personal Paseo,
+  `custom-jev-router-plugin.e2e.test.ts` (in the update script; it checks the provider env reaches
+  route.py). On a host, Bruno's Customizations > Composer > TypeSafe provider > **Test** answers
+  "Jev answered: …" with the saved key and endpoint. By hand: on the personal Paseo,
   send "rename count to total in utils.ts" from Opus/high in a draft; the session starts on
   Haiku/low with the Jev card; its button turns the icon off and reopens the prompt on Opus/high
   in a new session, the routed one archived.
@@ -4353,7 +4363,8 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     app settings `showCriticToggle` / `showJevRouterToggle`), and \*\*Jev router > Router settings
     > Open\*\*, the router sheet for the selected host when it has the plugin. A hidden Jev icon
     > hides only the icon: the router runs, the ←/→ lock keeps its settings and a moved session
-    > still gets its green chip.
+    > still gets its green chip. Below it, **TypeSafe provider > Edit / Test** for that host
+    > ([jev-router](#jev-router-a-new-claude-session-starts-on-sonnet-or-haiku-when-its-first-prompt-is-small)).
   - **Chat**: **Link list** ([chat-links](#chat-links-a-list-of-the-links-the-agent-sent-beside-the-chat)).
   - **Tabs**: **Flexible tab movement**, **Preview tabs**, **Skip pinned tabs** (from Editor).
   - **Voice**: the host's Voice and dictation page

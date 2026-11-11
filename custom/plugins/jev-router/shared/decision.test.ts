@@ -13,6 +13,7 @@ import {
   applyModelFocused,
   buildRouteCard,
   buildRouterArgs,
+  buildRouterEnv,
   expandHome,
   familyOf,
   parseRouterOutput,
@@ -121,6 +122,27 @@ describe("buildRouterArgs", () => {
 
   it("leaves absolute paths alone", () => {
     expect(expandHome("/opt/route.py", "/h")).toBe("/opt/route.py");
+  });
+});
+
+describe("buildRouterEnv", () => {
+  const base = { PATH: "/bin", TYPESAFE_API_KEY: "daemon-key" };
+
+  it("gives route.py the host's TypeSafe provider over the daemon's", () => {
+    const env = buildRouterEnv(
+      { apiKey: " work-key ", apiUrl: "https://gw.example/v1/systemone", jevModel: "jev-2.0.0" },
+      base,
+    );
+    expect(env).toEqual({
+      PATH: "/bin",
+      TYPESAFE_API_KEY: "work-key",
+      TYPESAFE_API_URL: "https://gw.example/v1/systemone",
+      JEV_MODEL: "jev-2.0.0",
+    });
+  });
+
+  it("keeps the inherited variables for empty fields", () => {
+    expect(buildRouterEnv({ apiKey: "", apiUrl: " ", jevModel: "" }, base)).toEqual(base);
   });
 });
 

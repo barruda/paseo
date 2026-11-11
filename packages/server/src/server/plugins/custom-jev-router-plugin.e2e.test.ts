@@ -28,10 +28,11 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-// Stands in for route.py: records its argv, stdin and key, and always picks sonnet/low.
+// Stands in for route.py: records its argv, stdin and TypeSafe provider, and always picks sonnet/low.
 const FAKE_ROUTER = `import json, os, sys
 prompt = sys.stdin.read()
-json.dump({"argv": sys.argv[1:], "prompt": prompt, "key": os.environ.get("TYPESAFE_API_KEY")},
+json.dump({"argv": sys.argv[1:], "prompt": prompt, "key": os.environ.get("TYPESAFE_API_KEY"),
+           "url": os.environ.get("TYPESAFE_API_URL"), "jev": os.environ.get("JEV_MODEL")},
           open(os.environ["FAKE_ROUTER_RECORD"], "w"))
 print(json.dumps({"model": "sonnet", "model_id": "claude-sonnet-5-5", "effort": "low", "why": "small",
                   "changed": True, "latency_ms": 5}))
@@ -93,8 +94,13 @@ async function waitForCard(client: DaemonClient, agentId: string): Promise<unkno
   throw new Error("the jev-route card never showed");
 }
 
-test("applies a cheaper pick, passes prompt, key and session facts, and cards the agent", async () => {
-  const router = await startRouter({ apiKey: "test-key" });
+test("applies a cheaper pick, passes prompt, provider and session facts, and cards the agent", async () => {
+  const router = await startRouter({
+    apiKey: "test-key",
+    apiUrl: "https://gw.example/v1/systemone",
+    jevModel: "jev-test",
+    modelFocused: { smallThreshold: 0.7, hardThreshold: 0.3, useSonnet: true },
+  });
   try {
     const output = (await router.route({})) as { labels: Record<string, string> };
     expect(output).toMatchObject({
@@ -106,7 +112,11 @@ test("applies a cheaper pick, passes prompt, key and session facts, and cards th
     });
     const call = await router.recorded();
     expect(call.prompt).toBe("rename foo to bar");
-    expect(call.key).toBe("test-key");
+    expect(call).toMatchObject({
+      key: "test-key",
+      url: "https://gw.example/v1/systemone",
+      jev: "jev-test",
+    });
     expect(call.argv).toEqual(
       expect.arrayContaining(["--cwd", router.root, "--images", "1", "--home", "opus/high"]),
     );
@@ -131,7 +141,10 @@ test("applies a cheaper pick, passes prompt, key and session facts, and cards th
 }, 60_000);
 
 test("off skips the script; the settings test reports without applying", async () => {
-  const off = await startRouter({ enabled: false });
+  const off = await startRouter({
+    enabled: false,
+    modelFocused: { smallThreshold: 0.7, hardThreshold: 0.3, useSonnet: true },
+  });
   try {
     await expect(off.route({})).resolves.toEqual({ status: "skipped", reason: "off" });
     await expect(off.route({ test: true })).resolves.toMatchObject({

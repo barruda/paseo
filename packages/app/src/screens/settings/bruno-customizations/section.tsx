@@ -6,14 +6,21 @@
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { JEV_ROUTER_PLUGIN_ID } from "@getpaseo/protocol/jev-router";
+import {
+  JEV_ROUTER_PLUGIN_ID,
+  JEV_ROUTER_RPC,
+  JevRouteOutputSchema,
+  type JevRouteOutput,
+} from "@getpaseo/protocol/jev-router";
 import { SettingsCard, SettingsRow, SettingsSection, SettingsSwitch } from "@/components/settings";
 import { Button } from "@/components/ui/button";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { isNative } from "@/constants/platform";
 import { useAppSettings } from "@/hooks/use-settings";
+import { JevProviderSheet } from "@/jev-router/provider-sheet";
 import { JevRouterSheet } from "@/jev-router/sheet";
+import { toErrorMessage } from "@/utils/error-messages";
 import { useInstalledPlugin } from "@/plugins/registry";
 import { VoiceSettingsPage } from "@/screens/settings/voice/voice-settings-page";
 import { settingsStyles } from "@/styles/settings";
@@ -167,11 +174,49 @@ function ComposerTab({ serverId }: { serverId: string | null }) {
   return serverId ? <JevRouterSettingsCard serverId={serverId} /> : null;
 }
 
+type JevSheet = "router" | "provider" | null;
+
+const JEV_TEST_PROMPT = "Rename the variable `count` to `total` in utils.ts";
+
+function describeJevTest(output: JevRouteOutput): string {
+  if (output.status === "skipped") return `Skipped: ${output.reason}`;
+  const { decision } = output;
+  if (decision.error) return `Jev failed (the session keeps ${output.home}): ${decision.error}`;
+  const latency = decision.latencyMs === null ? "" : `, ${decision.latencyMs} ms`;
+  return `Jev answered: ${decision.model}/${decision.effort}${latency}`;
+}
+
 function JevRouterSettingsCard({ serverId }: { serverId: string }) {
   const plugin = useInstalledPlugin(serverId, JEV_ROUTER_PLUGIN_ID);
-  const [open, setOpen] = useState(false);
-  const handleOpen = useCallback(() => setOpen(true), []);
-  const handleClose = useCallback(() => setOpen(false), []);
+  const [open, setOpen] = useState<JevSheet>(null);
+  const [test, setTest] = useState<{ running: boolean; result: string | null }>({
+    running: false,
+    result: null,
+  });
+  const handleOpenRouter = useCallback(() => setOpen("router"), []);
+  const handleOpenProvider = useCallback(() => setOpen("provider"), []);
+  const handleClose = useCallback(() => setOpen(null), []);
+  const handleTest = useCallback(async () => {
+    if (!plugin) return;
+    setTest({ running: true, result: null });
+    try {
+      const output = JevRouteOutputSchema.parse(
+        await plugin.invoke(JEV_ROUTER_RPC.route, {
+          prompt: JEV_TEST_PROMPT,
+          cwd: "/tmp",
+          images: 0,
+          provider: "claude",
+          model: "claude-opus-5-5",
+          thinkingOptionId: "high",
+          test: true,
+        }),
+      );
+      setTest({ running: false, result: describeJevTest(output) });
+    } catch (error) {
+      setTest({ running: false, result: toErrorMessage(error) });
+    }
+  }, [plugin]);
+  const handleTestPress = useCallback(() => void handleTest(), [handleTest]);
   if (!plugin) return null;
   return (
     <SettingsSection title="Jev router">
@@ -184,12 +229,48 @@ function JevRouterSettingsCard({ serverId }: { serverId: string }) {
               thresholds, for this host. Same sheet as the composer icon.
             </Text>
           </View>
-          <Button variant="secondary" size="sm" onPress={handleOpen} testID="bruno-jev-settings">
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={handleOpenRouter}
+            testID="bruno-jev-settings"
+          >
             Open
           </Button>
         </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>TypeSafe provider</Text>
+            <Text style={settingsStyles.rowHint}>
+              API key, endpoint and Jev model this host calls Jev with. Each host keeps its own.
+            </Text>
+            {test.result ? (
+              <Text selectable style={settingsStyles.rowHint} testID="bruno-jev-provider-result">
+                {test.result}
+              </Text>
+            ) : null}
+          </View>
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={handleTestPress}
+            disabled={test.running}
+            testID="bruno-jev-provider-test"
+          >
+            {test.running ? "Testing…" : "Test"}
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            onPress={handleOpenProvider}
+            testID="bruno-jev-provider"
+          >
+            Edit
+          </Button>
+        </View>
       </View>
-      {open ? <JevRouterSheet plugin={plugin} onClose={handleClose} /> : null}
+      {open === "router" ? <JevRouterSheet plugin={plugin} onClose={handleClose} /> : null}
+      {open === "provider" ? <JevProviderSheet plugin={plugin} onClose={handleClose} /> : null}
     </SettingsSection>
   );
 }

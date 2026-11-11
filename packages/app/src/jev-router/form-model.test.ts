@@ -83,6 +83,21 @@ describe("jev router form", () => {
     expect(form.getState().draft.modelFocused.useSonnet).toBe(true);
   });
 
+  it("edits the TypeSafe provider and blocks saving on a bad endpoint", () => {
+    const form = loaded();
+    form.setProviderField("apiKey", "work-key");
+    form.setProviderField("jevModel", "jev-2.0.0");
+    form.setProviderField("apiUrl", "gw.example");
+    expect(form.getState()).toMatchObject({ canSave: false, apiUrlError: expect.any(String) });
+    form.setProviderField("apiUrl", "https://gw.example/v1/systemone");
+    expect(form.getState()).toMatchObject({ canSave: true, apiUrlError: null });
+    expect(form.getState().draft).toMatchObject({
+      apiKey: "work-key",
+      apiUrl: "https://gw.example/v1/systemone",
+      jevModel: "jev-2.0.0",
+    });
+  });
+
   it("parses thresholds from 0 to 1", () => {
     expect(parseThreshold("0.7")).toBe(0.7);
     expect(parseThreshold(".5")).toBe(0.5);
