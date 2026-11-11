@@ -4992,3 +4992,36 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   `custom-delegation-plugin.e2e.test.ts` (both in the update script). By hand: turn the icon on,
   start an Opus session; the card shows at the top, and a multi-file change goes to a Sonnet
   subagent pane.
+
+## later: `/later <duration> <message>` sends a message to this agent once, later
+
+- **Added:** 2026-11-11 (based on upstream v0.14.0)
+- **Commit:** pending
+- **Why:** To say "run the tests again in 5 minutes" or "ping me in 1h30m" from the composer and
+  have it survive a daemon restart, without leaving a recurring schedule behind.
+- **What:** The `later` plugin adds the client slash command `/later 5m run the tests again`
+  (units `s`, `m`, `h`, `d`, combinable like `1h30m`; at most 365d). A missing, zero or invalid
+  duration, or an empty message, shows a toast error and sends nothing. There is no success toast
+  (the plugin API has none).
+  - The command calls the plugin RPC `send-later`; the daemon creates a schedule named
+    `later: <first 40 chars>` with target `{type:"agent", agentId}`, `maxRuns: 1`,
+    `runOnCreate: false` and `expiresAt` 10 minutes after the run.
+  - Cadence: a one-shot **cron** for the minute at or after now + duration, in the daemon's time
+    zone (`0 10 11 11 *`). Minute granularity: `5m` fires at the next whole minute at or after 5
+    minutes, so `90s` fires at most 30 s late and anything under a minute fires at the next
+    minute. `every` was not used: it is marked COMPAT in `schedule/cron.ts` (to be removed after
+    2027-01-17), defaults to running at create, and the client type only allows cron.
+  - After the single run the schedule is `completed` (`nextRunAt: null`) and stays in the list as
+    history. If the daemon is down at the due minute, restart skips the missed run (the cursor
+    moves to next year) and `expiresAt` completes the schedule: the message is lost, not delayed.
+  - Pure parser and schedule math in `shared/later.ts` with `shared/later.test.ts`.
+- **Core files touched:** `packages/client/src/index.ts`: `PaseoScheduleActions` and the
+  `schedules.create` member of `PaseoApi` (marked `CUSTOM(later)`), because plugins had no way
+  to create schedules. It wraps `DaemonClient.scheduleCreate`.
+- **Re-apply:** Add `schedules: { create }` to `PaseoApi` and `createPaseoApi` again, calling
+  `daemonClient.scheduleCreate(options)` and throwing on `payload.error`. If upstream adds a
+  schedules surface to the plugin API, drop the patch and call that from `server/schedule.ts`.
+- **Verify:** `npx vitest run custom/plugins/later --bail=1`. Then `npm run build:client`, and
+  `npx tsx packages/cli/src/index.js plugin install "$PWD/custom/plugins/later" --home ~/.paseo`
+  (or `plugin reload later` after edits). In an agent composer, `/later 1m hello`: the agent gets
+  "hello" at the next minute and `paseo schedule ls` shows it `completed`.

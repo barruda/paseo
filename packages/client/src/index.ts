@@ -483,6 +483,13 @@ export interface PaseoProviderActions {
   subscribe(handler: (update: PaseoProviderSnapshotUpdate) => void): () => void;
 }
 
+// CUSTOM(later): plugins had no way to create a schedule. /later needs one to survive daemon restarts.
+export interface PaseoScheduleActions {
+  create(
+    options: Parameters<DaemonClient["scheduleCreate"]>[0],
+  ): Promise<{ id: string; nextRunAt: string | null }>;
+}
+
 export interface PaseoConfigActions {
   /**
    * Reads daemon config through the existing config RPC. Provider profiles,
@@ -513,6 +520,7 @@ export interface PaseoApi {
   readonly agents: PaseoAgentActions;
   readonly providers: PaseoProviderActions;
   readonly config: PaseoConfigActions;
+  readonly schedules: PaseoScheduleActions; // CUSTOM(later)
 }
 
 export interface PaseoClient extends PaseoApi {
@@ -804,6 +812,16 @@ export function createPaseoApi(
     config: {
       get: (requestId) => daemonClient.getDaemonConfig(requestId),
       patch: (patch, requestId) => daemonClient.patchDaemonConfig(patch, requestId),
+    },
+    // CUSTOM(later)
+    schedules: {
+      create: async (options) => {
+        const payload = await daemonClient.scheduleCreate(options);
+        if (payload.error || !payload.schedule) {
+          throw new Error(payload.error ?? "The daemon did not create a schedule");
+        }
+        return { id: payload.schedule.id, nextRunAt: payload.schedule.nextRunAt };
+      },
     },
   };
 }

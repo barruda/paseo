@@ -1,0 +1,5 @@
+{
+  "id": "later",
+  "description": "/later <duration> <message> sends a message to this agent once, after the duration.",
+  "requirements": { "paseo": ">=0.11.0" }
+}
