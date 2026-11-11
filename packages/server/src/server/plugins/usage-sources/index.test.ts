@@ -103,6 +103,36 @@ test("discovery preserves account IDs and updates input after token rotation", a
   expect(refreshed[0]?.report.windows[0]?.label).toBe("new");
 });
 
+test("a forced refresh answers from a cache entry younger than the floor", async () => {
+  let now = 0;
+  let calls = 0;
+  const registry = new UsageSourceRegistry(
+    () => now,
+    300_000,
+    undefined,
+    undefined,
+    20_000,
+    30_000,
+  );
+  registry.register(
+    source({
+      id: "source",
+      discover: async () => [{ key: "a", input: {} }],
+      fetch: async () => {
+        calls += 1;
+        return { status: "available", windows: [] };
+      },
+    }),
+  );
+  await registry.listReports();
+  now = 29_999;
+  await registry.listReports({ forceRefresh: true });
+  expect(calls).toBe(1);
+  now = 30_000;
+  await registry.listReports({ forceRefresh: true });
+  expect(calls).toBe(2);
+});
+
 test("coalesces per account, caches errors, and refreshes only requested IDs", async () => {
   let now = 0;
   const counts = new Map<string, number>();

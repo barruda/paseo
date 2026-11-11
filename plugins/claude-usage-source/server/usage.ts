@@ -544,7 +544,9 @@ export async function fetchUsage(
     });
     if (res.status === 401 || res.status === 403) return res.status;
     if (res.status === 429) {
-      const waitMs = retryAfterMs(res.headers.get("retry-after"), now);
+      const retryAfter = res.headers.get("retry-after");
+      console.warn({ retryAfter }, "Claude usage API rate limited");
+      const waitMs = retryAfterMs(retryAfter, now);
       if (waitMs !== null) rateLimitedUntil.set(tokenKey, now + waitMs);
       throw rateLimitedError(waitMs);
     }

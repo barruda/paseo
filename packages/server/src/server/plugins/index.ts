@@ -116,6 +116,8 @@ export class PluginService {
       300_000,
       this.logger,
       dependencies.usageAgents,
+      20_000,
+      30_000,
     );
     this.runtime =
       dependencies.runtime ??

@@ -35,6 +35,9 @@ import type { UsageReportEntry, UsageView } from "./types";
 // The daemon caches each report for five minutes, so re-reading it is cheap. Only
 // an explicit refresh passes `forceRefresh` and reaches the source's API.
 const REPORTS_STALE_TIME_MS = 60_000;
+// While a usage view is open, re-read it on the daemon's cache period so it stays current
+// without ever reaching the source more than once per period.
+const REPORTS_REFETCH_INTERVAL_MS = 300_000;
 
 /** Every report list of a host: its own and each agent's. */
 function hostUsageQueryKey(serverId: string) {
@@ -141,6 +144,7 @@ export function useHostUsage(serverId: string): { view: UsageView; refresh: () =
     enabled: isConnected && isSupported,
     dataShape: "list",
     staleTimeMs: REPORTS_STALE_TIME_MS,
+    refetchInterval: REPORTS_REFETCH_INTERVAL_MS,
   });
   const refresh = useCallback(() => {
     void refreshReports(queryClient, serverId).catch(() => undefined);
@@ -172,6 +176,7 @@ export function useUsageHostReports(serverId: string | null): UsageReportEntry[]
     queryFn: serverId ? () => listReports(queryClient, serverId) : skipToken,
     dataShape: "list",
     staleTimeMs: REPORTS_STALE_TIME_MS,
+    refetchInterval: REPORTS_REFETCH_INTERVAL_MS,
   });
   return query.data ?? NO_REPORTS;
 }
@@ -200,6 +205,7 @@ export function useAgentUsage(serverId: string, agentId: string): AgentUsageView
     // fetches again; retrying would hold the loading sentence for seconds instead.
     retry: false,
     staleTimeMs: REPORTS_STALE_TIME_MS,
+    refetchInterval: REPORTS_REFETCH_INTERVAL_MS,
   });
   const { t } = useTranslation();
   return resolveAgentUsageView({ canReport, query: toQueryState(query) }, t);

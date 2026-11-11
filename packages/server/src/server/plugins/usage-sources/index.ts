@@ -62,9 +62,15 @@ export class UsageSourceRegistry {
   constructor(
     private readonly now: () => number = Date.now,
     private readonly ttlMs = 300_000,
-    private readonly logger: Pick<Logger, "warn"> = { warn: console.warn },
+    private readonly logger: Pick<Logger, "warn"> & Partial<Pick<Logger, "info">> = {
+      warn: console.warn,
+      info: console.info,
+    },
     private readonly agents: AgentUsageLookup = { hasAgent: () => false, usageSession: () => null },
     private readonly deadlineMs = 20_000,
+    // A forced refresh still answers from a cache entry younger than this, so repeated Refresh
+    // clicks (or several clients refreshing at once) cannot burst the source's rate limit.
+    private readonly forceRefreshFloorMs = 0,
   ) {}
 
   register(source: UsageSource): void {
@@ -266,8 +272,8 @@ export class UsageSourceRegistry {
     // Account identity groups cards; the ordered login set identifies a fetch result.
     const cacheKey = cacheIdentity(id, known);
     const cached = this.cache.get(cacheKey);
-    if (!forceRefresh && cached && this.now() - cached.at < this.ttlMs)
-      return Promise.resolve(cached.entry);
+    const maxAge = forceRefresh ? this.forceRefreshFloorMs : this.ttlMs;
+    if (cached && this.now() - cached.at < maxAge) return Promise.resolve(cached.entry);
     const pending = this.pending.get(cacheKey);
     if (pending) return pending;
     const request = (async () => {
@@ -352,6 +358,8 @@ export class UsageSourceRegistry {
   }
 
   private async fetchLogin(source: UsageSource, input: unknown): Promise<UsageReport> {
+    // One line per call that reaches the source, to calibrate against its rate limit.
+    this.logger.info?.({ sourceId: source.id }, "Usage fetch");
     try {
       return UsageReportSchema.parse(await source.fetch(input));
     } catch (error) {
