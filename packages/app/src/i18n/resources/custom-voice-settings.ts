@@ -66,6 +66,9 @@ export const VOICE_SETTINGS_EN = {
   updateBody: "Voice and dictation settings need a newer Paseo on this host.",
   loadError: "Couldn't load the voice status",
   saveError: "Couldn't save the voice setting",
+  switches: {
+    title: "Turn on",
+  },
   status: {
     title: "Status",
     engine: "Engine",
@@ -207,6 +210,9 @@ export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
   updateBody: "As configurações de voz e ditado exigem uma versão mais nova do Paseo neste host.",
   loadError: "Não foi possível carregar o status da voz",
   saveError: "Não foi possível salvar a configuração de voz",
+  switches: {
+    title: "Ligar",
+  },
   status: {
     title: "Status",
     engine: "Motor",
@@ -346,6 +352,9 @@ export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
   updateBody: "La configuración de voz y dictado requiere un Paseo más reciente en este host.",
   loadError: "No se pudo cargar el estado de la voz",
   saveError: "No se pudo guardar la configuración de voz",
+  switches: {
+    title: "Activar",
+  },
   status: {
     title: "Estado",
     engine: "Motor",
@@ -486,6 +495,9 @@ export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
     "Les réglages de voix et de dictée nécessitent une version plus récente de Paseo sur cet hôte.",
   loadError: "Impossible de charger l'état de la voix",
   saveError: "Impossible d'enregistrer le réglage vocal",
+  switches: {
+    title: "Activation",
+  },
   status: {
     title: "État",
     engine: "Moteur",
@@ -625,6 +637,9 @@ export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
   updateBody: "音声と音声入力の設定には、このホストで新しい Paseo が必要です。",
   loadError: "音声の状態を読み込めませんでした",
   saveError: "音声設定を保存できませんでした",
+  switches: {
+    title: "有効化",
+  },
   status: {
     title: "状態",
     engine: "エンジン",
@@ -764,6 +779,9 @@ export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
   updateBody: "음성 및 받아쓰기 설정에는 이 호스트에 최신 Paseo가 필요합니다.",
   loadError: "음성 상태를 불러오지 못했습니다",
   saveError: "음성 설정을 저장하지 못했습니다",
+  switches: {
+    title: "사용",
+  },
   status: {
     title: "상태",
     engine: "엔진",
@@ -903,6 +921,9 @@ export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
   updateBody: "Для настроек голоса и диктовки на этом хосте нужна более новая версия Paseo.",
   loadError: "Не удалось загрузить состояние голоса",
   saveError: "Не удалось сохранить настройку голоса",
+  switches: {
+    title: "Включение",
+  },
   status: {
     title: "Состояние",
     engine: "Движок",
@@ -1042,6 +1063,9 @@ export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
   updateBody: "语音和听写设置需要此主机上更新版本的 Paseo。",
   loadError: "无法加载语音状态",
   saveError: "无法保存语音设置",
+  switches: {
+    title: "启用",
+  },
   status: {
     title: "状态",
     engine: "引擎",
@@ -1181,6 +1205,9 @@ export const VOICE_SETTINGS_AR: VoiceSettingsStrings = {
   updateBody: "تتطلب إعدادات الصوت والإملاء إصدارًا أحدث من Paseo على هذا المضيف.",
   loadError: "تعذّر تحميل حالة الصوت",
   saveError: "تعذّر حفظ إعداد الصوت",
+  switches: {
+    title: "التفعيل",
+  },
   status: {
     title: "الحالة",
     engine: "المحرك",

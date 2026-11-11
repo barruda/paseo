@@ -1075,6 +1075,10 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Why:** Speech settings lived only in `config.json` and env vars, needed a daemon restart,
   and nothing showed whether the voice worker was running or what it cost.
 - **What:** A host settings page with:
+  - Turn on: the Dictation and Voice mode switches from upstream's Voice page (patched as
+    `features.dictation.enabled` / `features.voiceMode.enabled`). This page replaces upstream's
+    on the same slug, and since 0.14 voice mode is off by default, so without them the status
+    said "Turn it on in Settings > Voice" with no way to do it.
   - Status, refreshed every 2 s: engine state, worker PID and uptime, RAM, VRAM and CPU of the
     worker, the GPU's memory and load (`nvidia-smi`), loaded models, dictation and voice
     readiness, model downloads.

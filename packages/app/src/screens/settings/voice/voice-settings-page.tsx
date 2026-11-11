@@ -10,6 +10,7 @@ import { StyleSheet } from "react-native-unistyles";
 import { Buffer } from "buffer";
 import * as Clipboard from "expo-clipboard";
 import * as DocumentPicker from "expo-document-picker";
+import type { SpeechSettings, SpeechSettingsPatch } from "@getpaseo/protocol/speech/rpc-schemas";
 import type {
   MutableSpeechConfig,
   SpeechCustomModel,
@@ -68,6 +69,7 @@ import {
 } from "./voice-settings-model";
 
 type SaveSpeech = (patch: MutableSpeechConfig) => Promise<void>;
+type SaveFeatures = (patch: SpeechSettingsPatch) => Promise<void>;
 
 const ENV_NAME_BY_FIELD: Record<SettingField, string> = {
   dictationSttModel: "PASEO_DICTATION_LOCAL_STT_MODEL",
@@ -114,6 +116,16 @@ export function VoiceSettingsPage({ serverId }: { serverId: string }) {
     },
     [patchConfig, t],
   );
+  const saveFeatures = useCallback<SaveFeatures>(
+    async (patch) => {
+      try {
+        await patchConfig({ features: patch });
+      } catch (error) {
+        NativeAlert.alert(t("settings.voiceSettings.saveError"), errorMessage(error));
+      }
+    },
+    [patchConfig, t],
+  );
 
   if (state.status === "offline") {
     return <Alert variant="info" description={t("settings.voiceSettings.offline")} />;
@@ -147,6 +159,13 @@ export function VoiceSettingsPage({ serverId }: { serverId: string }) {
   const status = state.data;
   return (
     <View style={styles.page} testID="voice-settings">
+      {config?.features ? (
+        <FeatureSwitchesSection
+          features={config.features}
+          envOverrides={config.envOverrides}
+          save={saveFeatures}
+        />
+      ) : null}
       <StatusSection status={status} />
       <EngineSection status={status} speech={speech} save={saveSpeech} />
       <ModelsSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
@@ -258,6 +277,65 @@ function StatusSection({ status }: { status: SpeechLocalStatus }) {
         ) : null}
         <SettingsRow label={t("settings.voiceSettings.status.dictation")} hint={text.dictation} />
         <SettingsRow label={t("settings.voiceSettings.status.voice")} hint={text.voice} />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// On/off switches
+// ---------------------------------------------------------------------------
+
+// Upstream's Voice page owns these switches; this page replaces it, so it carries them.
+// Voice mode is off by default since 0.14.
+function FeatureSwitchesSection({
+  features,
+  envOverrides,
+  save,
+}: {
+  features: SpeechSettings;
+  envOverrides: Record<string, string> | undefined;
+  save: SaveFeatures;
+}) {
+  const { t } = useTranslation();
+  const dictationEnv = envOverrides?.["features.dictation.enabled"];
+  const voiceModeEnv = envOverrides?.["features.voiceMode.enabled"];
+  const setDictation = useCallback(
+    (enabled: boolean) => void save({ dictation: { enabled } }),
+    [save],
+  );
+  const setVoiceMode = useCallback(
+    (enabled: boolean) => void save({ voiceMode: { enabled } }),
+    [save],
+  );
+
+  return (
+    <SettingsSection title={t("settings.voiceSettings.switches.title")}>
+      <SettingsCard>
+        <SettingsSwitch
+          label={t("settings.voice.dictation.enabled")}
+          hint={
+            dictationEnv
+              ? t("settings.voice.setBy", { name: dictationEnv })
+              : t("settings.voice.dictation.enabledHint")
+          }
+          value={features.dictation.enabled}
+          onValueChange={setDictation}
+          disabled={Boolean(dictationEnv)}
+          testID="voice-settings-dictation-enabled"
+        />
+        <SettingsSwitch
+          label={t("settings.voice.voiceMode.enabled")}
+          hint={
+            voiceModeEnv
+              ? t("settings.voice.setBy", { name: voiceModeEnv })
+              : t("settings.voice.voiceMode.enabledHint")
+          }
+          value={features.voiceMode.enabled}
+          onValueChange={setVoiceMode}
+          disabled={Boolean(voiceModeEnv)}
+          testID="voice-settings-voice-mode-enabled"
+        />
       </SettingsCard>
     </SettingsSection>
   );
