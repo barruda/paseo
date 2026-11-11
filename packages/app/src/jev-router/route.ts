@@ -5,6 +5,7 @@
 import { JEV_ROUTER_PLUGIN_ID, JEV_ROUTER_RPC } from "@getpaseo/protocol/jev-router";
 import { pluginRegistry } from "@/plugins/registry";
 import { applyJevRoute, type DraftRouteConfig } from "./model";
+import { useJevSkipNextStore } from "./skip-next";
 
 /** route.py's own timeout tops out at 10 s; past this the session starts as selected. */
 const CLIENT_TIMEOUT_MS = 15_000;
@@ -36,6 +37,9 @@ async function route<Config extends DraftRouteConfig & { cwd: string }>(input: {
 }): Promise<{ config: Config; labels: Record<string, string> }> {
   // An empty first message (a session started for voice or for a `!` command) has nothing to judge.
   if (input.autoSubmitted || input.config.provider !== "claude" || !input.prompt.trim())
+    return { config: input.config, labels: {} };
+  // The route icon's press skips this one creation; the next new agent routes again.
+  if (useJevSkipNextStore.getState().consume(input.serverId))
     return { config: input.config, labels: {} };
   const plugin = pluginRegistry
     .getSnapshot()

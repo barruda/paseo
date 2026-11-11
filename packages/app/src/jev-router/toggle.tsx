@@ -19,6 +19,7 @@ import { useJevRouterSettingsStore } from "./cycle";
 import { describeJevRouter, readJevLabels } from "./model";
 import { JevRouteChip } from "./route-chip";
 import { JevRouterSheet } from "./sheet";
+import { useJevSkipNextStore } from "./skip-next";
 
 // CUSTOM(jev-router): the composer icon after the critic's, on hosts with the jev-router plugin, in
 // drafts and running agents alike, tinted while the router is on. A press opens the router sheet
@@ -88,28 +89,19 @@ function PluginJevRouterToggle({
     if (settings) useJevRouterSettingsStore.getState().set(serverId, settings);
   }, [serverId, settings]);
 
-  // CUSTOM(jev-router): the icon turns the router on or off; its caret opens the sheet.
-  const handleToggle = useCallback(async () => {
-    if (!ready || !settings) return;
-    try {
-      const result = rpc.write.output.parse(
-        await plugin.invoke(rpc.write.name, {
-          revision: ready.revision,
-          values: { ...settings, enabled: !settings.enabled },
-        }),
-      );
-      if (result.status !== "saved") throw new Error(result.error);
-      plugin.queryClient.setQueryData(key, { ...result, status: "ready" });
-    } catch (error) {
-      console.warn("[jev-router] toggle failed", error);
-      void plugin.queryClient.invalidateQueries({ queryKey: key });
-    }
-  }, [key, plugin, ready, settings]);
-  const handlePress = useCallback(() => void handleToggle(), [handleToggle]);
+  // CUSTOM(jev-router): the icon skips Jev for the next new agent only (it comes back on by
+  // itself); the caret opens the sheet, the only place that turns the router off for good. With
+  // the router off, the icon opens the sheet too.
+  const skipNext = useJevSkipNextStore((state) => state.byServer[serverId] === true);
+  const handlePress = useCallback(() => {
+    if (settings?.enabled) useJevSkipNextStore.getState().toggle(serverId);
+    else setOpen(true);
+  }, [serverId, settings?.enabled]);
   const handleOpenSheet = useCallback(() => setOpen(true), []);
   const handleClose = useCallback(() => setOpen(false), []);
 
   if (!settings) return null;
+  const iconState = describeIconState(settings.enabled, skipNext);
   const lines = describeJevRouter({ settings, session: readJevLabels(labels) });
   return (
     <>
@@ -118,21 +110,19 @@ function PluginJevRouterToggle({
           <TooltipTrigger asChild triggerRefProp="ref">
             <AgentControlTrigger
               icon={Route}
-              iconColor={settings.enabled ? ON_ICON_COLOR : undefined}
+              iconColor={settings.enabled && !skipNext ? ON_ICON_COLOR : undefined}
               surface="toolbar"
               label="Jev router"
               showToolbarLabel={false}
               onPress={handlePress}
               showCaret
               onChevronPress={handleOpenSheet}
-              accessibilityLabel={settings.enabled ? "Jev router: on" : "Jev router: off"}
+              accessibilityLabel={iconState.label}
               testID="jev-router-toggle"
             />
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>
-              {[...lines, "Click: turn on/off · Caret: settings"].join("\n")}
-            </Text>
+            <Text style={styles.tooltipText}>{[...lines, iconState.hint].join("\n")}</Text>
           </TooltipContent>
         </Tooltip>
       ) : null}
@@ -140,6 +130,20 @@ function PluginJevRouterToggle({
       {open ? <JevRouterSheet plugin={plugin} onClose={handleClose} /> : null}
     </>
   );
+}
+
+function describeIconState(enabled: boolean, skipNext: boolean): { label: string; hint: string } {
+  if (!enabled) return { label: "Jev router: off", hint: "Turn it on in the settings (caret)" };
+  if (skipNext) {
+    return {
+      label: "Jev router: skipped for the next new agent",
+      hint: "Skipped for the next new agent only. Click to route it again.",
+    };
+  }
+  return {
+    label: "Jev router: on",
+    hint: "Click: skip Jev for the next new agent · Caret: settings",
+  };
 }
 
 const styles = StyleSheet.create((theme) => ({

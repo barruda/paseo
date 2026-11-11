@@ -4288,8 +4288,10 @@ notification"` (all in the update script). By hand: turn the critic on with a st
 - **What:** The `jev-router` plugin (Settings > Plugins > jev-router > Jev router):
   - **Route new sessions**, on by default. A route icon in the composer, after the critic's (in
     drafts too, where the critic doesn't show), is tinted while it is on. A press on the icon
-    turns the router on or off (writes `enabled` to the plugin settings); its caret opens the router
-    sheet (since 2026-11-11, `showCaret` + `onChevronPress`; `AgentControlTrigger` drops the 28 px
+    skips Jev for the next new agent on that host only (untinted until then; a second press undoes
+    it; in memory, `jev-router/skip-next.ts` + test, consumed in `route.ts`); the router comes back
+    by itself. Only the sheet turns it off for good; with it off, the icon opens the sheet. The
+    caret opens the router sheet (since 2026-11-11, `showCaret` + `onChevronPress`; `AgentControlTrigger` drops the 28 px
     icon-only width when it has a caret) ([jev-router-modes](#jev-router-modes-model-focused-or-effort-focused-and-a-locked--)); its
     tooltip also says what Jev did for that session.
   - **TypeSafe API key** (empty: route.py reads `TYPESAFE_API_KEY` or `~/.config/typesafe/env`),
