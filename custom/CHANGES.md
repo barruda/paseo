@@ -4287,8 +4287,10 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   https://app.notion.com/p/40d0cc33bd4781ddbf4af8d1b08092c0
 - **What:** The `jev-router` plugin (Settings > Plugins > jev-router > Jev router):
   - **Route new sessions**, on by default. A route icon in the composer, after the critic's (in
-    drafts too, where the critic doesn't show), is tinted while it is on and opens the router
-    sheet ([jev-router-modes](#jev-router-modes-model-focused-or-effort-focused-and-a-locked--)); its
+    drafts too, where the critic doesn't show), is tinted while it is on. A press on the icon
+    turns the router on or off (writes `enabled` to the plugin settings); its caret opens the router
+    sheet (since 2026-11-11, `showCaret` + `onChevronPress`; `AgentControlTrigger` drops the 28 px
+    icon-only width when it has a caret) ([jev-router-modes](#jev-router-modes-model-focused-or-effort-focused-and-a-locked--)); its
     tooltip also says what Jev did for that session.
   - **TypeSafe API key** (empty: route.py reads `TYPESAFE_API_KEY` or `~/.config/typesafe/env`),
     router script path (default `~/projetos/gnome-custom/jev-router/route.py`), Python, Jev
@@ -4383,7 +4385,7 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   nothing, and starting every session on the same model removes the model choice and the
   session migrations.
 - **What:**
-  - The composer's route icon opens a sheet (like the critic's): **Route new sessions**, the mode,
+  - The composer's route icon caret opens a sheet (like the critic's): **Route new sessions**, the mode,
     the selected mode's settings, **Restore this mode's defaults**, Save. All of it lives in the
     plugin's host settings (`mode`, `modelFocused`, `effortFocused`), so the Settings > Plugins
     screen and the icon see the same document; documents saved before this get the defaults.

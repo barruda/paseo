@@ -88,7 +88,25 @@ function PluginJevRouterToggle({
     if (settings) useJevRouterSettingsStore.getState().set(serverId, settings);
   }, [serverId, settings]);
 
-  const handlePress = useCallback(() => setOpen(true), []);
+  // CUSTOM(jev-router): the icon turns the router on or off; its caret opens the sheet.
+  const handleToggle = useCallback(async () => {
+    if (!ready || !settings) return;
+    try {
+      const result = rpc.write.output.parse(
+        await plugin.invoke(rpc.write.name, {
+          revision: ready.revision,
+          values: { ...settings, enabled: !settings.enabled },
+        }),
+      );
+      if (result.status !== "saved") throw new Error(result.error);
+      plugin.queryClient.setQueryData(key, { ...result, status: "ready" });
+    } catch (error) {
+      console.warn("[jev-router] toggle failed", error);
+      void plugin.queryClient.invalidateQueries({ queryKey: key });
+    }
+  }, [key, plugin, ready, settings]);
+  const handlePress = useCallback(() => void handleToggle(), [handleToggle]);
+  const handleOpenSheet = useCallback(() => setOpen(true), []);
   const handleClose = useCallback(() => setOpen(false), []);
 
   if (!settings) return null;
@@ -105,12 +123,16 @@ function PluginJevRouterToggle({
               label="Jev router"
               showToolbarLabel={false}
               onPress={handlePress}
+              showCaret
+              onChevronPress={handleOpenSheet}
               accessibilityLabel={settings.enabled ? "Jev router: on" : "Jev router: off"}
               testID="jev-router-toggle"
             />
           </TooltipTrigger>
           <TooltipContent side="top" align="center" offset={8}>
-            <Text style={styles.tooltipText}>{lines.join("\n")}</Text>
+            <Text style={styles.tooltipText}>
+              {[...lines, "Click: turn on/off · Caret: settings"].join("\n")}
+            </Text>
           </TooltipContent>
         </Tooltip>
       ) : null}

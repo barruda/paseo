@@ -49,12 +49,12 @@ export const AgentControlTrigger = forwardRef<View, AgentControlTriggerProps>(
     const triggerStyle = useCallback(
       ({ pressed, hovered }: PressableStateCallbackType) => [
         isSheet ? styles.sheetRow : styles.toolbarControl,
-        !isSheet && !showToolbarLabel && styles.toolbarIconOnly,
+        !isSheet && !showToolbarLabel && !showCaret && styles.toolbarIconOnly,
         hovered && (isSheet ? styles.sheetRowInteractive : styles.hovered),
         (pressed || open) && (isSheet ? styles.sheetRowInteractive : styles.pressed),
         disabled && styles.disabled,
       ],
-      [disabled, isSheet, open, showToolbarLabel],
+      [disabled, isSheet, open, showCaret, showToolbarLabel],
     );
 
     return (
