@@ -4930,3 +4930,51 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Core files touched:** `lefthook.yml` (removed), `package.json` and `package-lock.json`.
 - **Re-apply:** Remove the Lefthook dependency, configuration and `prepare` script if upstream restores them.
 - **Verify:** `npm exec -- lefthook uninstall` removes installed hooks; `npm run typecheck` and `npm run lint` remain available.
+
+## delegation: Opus sessions plan and review, a cheaper subagent writes the code
+
+- **Added:** 2026-11-11 (based on upstream v0.14.0)
+- **Commit:** `custom: delegation icon and plugin, Opus sessions hand implementation to a Sonnet subagent`
+- **Why:** In 30 days only 34 of 825 Claude sessions used a subagent, and the Opus main sessions
+  re-read ~215k tokens of context per turn (52% of their cost is cache reads). Claude Code's own
+  Agent tool description pushes against delegating ("When in doubt, don't spawn"), and a
+  general-purpose subagent inherits Opus. Measured elsewhere, an Opus session that delegates to a
+  Sonnet implementer cost ~40% less per PR, mostly because the main session stays smaller.
+  Analysis script: `~/uprojects/tmp/subagent-usage-cost.py`.
+- **What:** The `delegation` plugin and a composer icon (Split), after Jev's.
+  - The icon turns delegation on or off for the host's **new** sessions (tinted while on); the
+    caret opens the sheet: **Delegate in new sessions**, implementer model (Sonnet/Opus/Haiku,
+    default Sonnet) and effort (default medium), **When to delegate** (Conservative, Balanced,
+    Aggressive), **Review in the session**, **Broad searches** (Off/Haiku/Sonnet, an Explore
+    subagent), **Extra instructions**, Restore defaults. Off by default. The same sheet opens from
+    Settings > Bruno's Customizations > Composer > Delegation; Chat options > Delegation hides
+    the icon.
+  - The plugin's `agent.create` hook appends the rule (`shared/policy.ts`) to the saved
+    `systemPrompt` of a new Claude session on Opus, Fable or the provider default. It tells the
+    session to call the Agent tool with `model`/`effort` per call, so no agent file is needed and
+    the terminal CLI is untouched. Written once at creation: changing a running session's system
+    prompt would throw its prompt cache away, so open sessions keep what they started with.
+    Sonnet/Haiku sessions, other providers and daemon-internal agents are skipped; a prompt that
+    already has the rule (a restart copying the config) doesn't get it twice.
+  - Pairing: `agent.create` puts `PASEO_DELEGATION_ID` in the first launch's env,
+    `agent.session_open` (reason create) ties it to the agent id, and `agent.created` appends a
+    card ("Delegação ligada: implementação vai para Sonnet · medium, …") and a line to
+    `~/.local/state/paseo-delegation/sessions.jsonl` (`PASEO_DELEGATION_LOG` moves it), the input
+    for the evaluation tab still to come.
+- **Files:** `packages/protocol/src/delegation.ts` (ids, settings schema, card schema);
+  `custom/plugins/delegation/` (`shared/policy.ts` + test, `shared/settings.ts`,
+  `server/tracker.ts` + test, `server/session-log.ts`, `client/card.tsx`);
+  `packages/app/src/delegation/` (`form-model.ts` + test, `sheet.tsx`, `toggle.tsx`);
+  `packages/server/src/server/plugins/custom-delegation-plugin.e2e.test.ts`.
+- **Core files touched:** app `composer/agent-controls/index.tsx` (`<DelegationToggle>` after
+  `<JevRouterToggle>`), `composer/chat-options.ts` (`delegation` key),
+  `screens/settings/bruno-customizations/section.tsx` (icon and the Composer card). Marked
+  `CUSTOM(delegation)`.
+- **Re-apply:** Render `DelegationToggle` at the end of the composer's agent control row when the
+  `delegation` chat option is on; add the key to `CHAT_OPTIONS`. Everything else is plugin code.
+- **Setup:** `paseo plugin install "$PWD/custom/plugins/delegation" --home ~/.paseo` and again
+  with `--home ~/.paseo-telus`, a desktop build for the app.
+- **Verify:** `npx vitest run custom/plugins/delegation packages/app/src/delegation` and the e2e
+  `custom-delegation-plugin.e2e.test.ts` (both in the update script). By hand: turn the icon on,
+  start an Opus session; the card shows at the top, and a multi-file change goes to a Sonnet
+  subagent pane.

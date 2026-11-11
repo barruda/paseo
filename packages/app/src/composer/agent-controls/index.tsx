@@ -87,6 +87,7 @@ import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
 import { CacheWarmupToggle } from "@/cache-warmup/toggle"; // CUSTOM(cache-warmup)
 import { CriticToggle } from "@/critic/toggle"; // CUSTOM(critic)
 import { JevRouterToggle } from "@/jev-router/toggle"; // CUSTOM(jev-router)
+import { DelegationToggle } from "@/delegation/toggle"; // CUSTOM(delegation)
 import { isFocusedComposerCaretAtEnd } from "@/jev-router/cycle"; // CUSTOM(jev-router)
 import { useLockedCycleKeys } from "@/jev-router/use-locked-cycle-keys"; // CUSTOM(jev-router)
 import { ChangeFlash } from "@/composer/agent-controls/change-flash"; // CUSTOM(jev-router)
@@ -989,6 +990,11 @@ function ControlledAgentControls({
           agentId={cacheWarmupAgentId}
           showIcon={showJevRouterToggle}
         />
+        {/* CUSTOM(delegation): after Jev; it sets how the host's new sessions start, so drafts
+            show it too. Hidden in Settings > Bruno's Customizations > Chat options. */}
+        {chatOptionEnabled(options, "delegation") ? (
+          <DelegationToggle serverId={modelSelectorServerId} />
+        ) : null}
       </View>
     </ComposerControlLayoutProvider>
   );

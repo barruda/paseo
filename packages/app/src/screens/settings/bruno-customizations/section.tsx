@@ -20,6 +20,8 @@ import { isNative } from "@/constants/platform";
 import { useAppSettings } from "@/hooks/use-settings";
 import { JevProviderSheet } from "@/jev-router/provider-sheet";
 import { JevRouterSheet } from "@/jev-router/sheet";
+import { DELEGATION_PLUGIN_ID } from "@getpaseo/protocol/delegation"; // CUSTOM(delegation)
+import { DelegationSheet } from "@/delegation/sheet"; // CUSTOM(delegation)
 import { toErrorMessage } from "@/utils/error-messages";
 import { useInstalledPlugin } from "@/plugins/registry";
 import { VoiceSettingsPage } from "@/screens/settings/voice/voice-settings-page";
@@ -55,6 +57,7 @@ const OPTION_ICONS: Record<string, PluginIcon> = {
   "cache-warmup": "Flame",
   critic: "ScanEye",
   jev: "Route",
+  delegation: "Split", // CUSTOM(delegation)
   branch: "GitBranch",
   project: "Folder",
   "context-meter": "CircleGauge",
@@ -171,7 +174,40 @@ function ChatOptionRow({
 // ---------------------------------------------------------------------------
 
 function ComposerTab({ serverId }: { serverId: string | null }) {
-  return serverId ? <JevRouterSettingsCard serverId={serverId} /> : null;
+  return serverId ? (
+    <>
+      <JevRouterSettingsCard serverId={serverId} />
+      <DelegationSettingsCard serverId={serverId} />
+    </>
+  ) : null;
+}
+
+// CUSTOM(delegation): the same sheet as the composer icon's caret.
+function DelegationSettingsCard({ serverId }: { serverId: string }) {
+  const plugin = useInstalledPlugin(serverId, DELEGATION_PLUGIN_ID);
+  const [open, setOpen] = useState(false);
+  const handleOpen = useCallback(() => setOpen(true), []);
+  const handleClose = useCallback(() => setOpen(false), []);
+  if (!plugin) return null;
+  return (
+    <SettingsSection title="Delegation">
+      <View style={settingsStyles.card}>
+        <View style={settingsStyles.row}>
+          <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Delegation settings</Text>
+            <Text style={settingsStyles.rowHint}>
+              On or off, the implementer&apos;s model and effort, when to delegate, review and
+              search, for this host&apos;s new Opus/Fable sessions. Same sheet as the composer icon.
+            </Text>
+          </View>
+          <Button variant="secondary" size="sm" onPress={handleOpen} testID="bruno-delegation">
+            Open
+          </Button>
+        </View>
+      </View>
+      {open ? <DelegationSheet plugin={plugin} onClose={handleClose} /> : null}
+    </SettingsSection>
+  );
 }
 
 type JevSheet = "router" | "provider" | null;

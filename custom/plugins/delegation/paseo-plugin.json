@@ -1,0 +1,5 @@
+{
+  "id": "delegation",
+  "description": "New Opus/Fable Claude sessions plan and review, and hand implementation to a cheaper subagent (Sonnet by default).",
+  "requirements": { "paseo": ">=0.11.0" }
+}

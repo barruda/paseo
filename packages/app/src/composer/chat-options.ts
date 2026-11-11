@@ -21,6 +21,7 @@ export const CHAT_OPTIONS = [
   ["cache-warmup", "Keep cache warm"],
   ["critic", "Critic"],
   ["jev", "Jev router"],
+  ["delegation", "Delegation"],
   ["branch", "Git branch"],
   ["project", "Project icon"],
   ["context-meter", "Context usage"],
