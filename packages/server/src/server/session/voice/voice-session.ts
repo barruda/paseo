@@ -131,6 +131,9 @@ function convertPCMToWavBuffer(
   return wavBuffer;
 }
 
+// CUSTOM(confirmed-barge-in): speech this long interrupts even before it is transcribed.
+const BARGE_IN_CONFIRM_MS = 1000;
+
 /**
  * The agent-facing operations VoiceSession needs from the session that owns it.
  * VoiceSession owns all voice/audio state; it reaches back through this narrow
@@ -161,6 +164,8 @@ export interface VoiceSessionOptions {
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
     // CUSTOM(voice-settings): instructions edited in Settings, read at each enable.
     instructions?: () => string | undefined;
+    // CUSTOM(confirmed-barge-in): how long speech must last before it interrupts.
+    bargeInConfirmMs?: number;
   };
   voiceBridge?: {
     registerVoiceSpeakHandler?: (agentId: string, handler: VoiceSpeakHandler) => void;
@@ -198,6 +203,13 @@ export class VoiceSession {
 
   private isVoiceMode = false;
   private speechInProgress = false;
+  // CUSTOM(confirmed-barge-in): the detector's speech start no longer interrupts by itself.
+  // Noise, a cough or the reply's own echo fired it and cut replies off with an empty
+  // transcript. Speech interrupts once it lasts bargeInConfirmMs or transcribes to words.
+  private readonly bargeInConfirmMs: number;
+  private bargeInTimer: ReturnType<typeof setTimeout> | null = null;
+  private bargeInConfirmed = false;
+  private vadSpeechActive = false;
 
   private readonly dictationStreamManager: DictationStreamManager;
   private readonly resolveVoiceTurnDetection: () => TurnDetectionProvider | null;
@@ -242,6 +254,7 @@ export class VoiceSession {
     this.sessionId = sessionId;
     this.sttLanguage = sttLanguage ?? "en";
     this.abortController = new AbortController();
+    this.bargeInConfirmMs = voice?.bargeInConfirmMs ?? BARGE_IN_CONFIRM_MS;
 
     this.resolveVoiceTurnDetection = toResolver(voice?.turnDetection ?? null);
     this.registerVoiceSpeakHandler = voiceBridge?.registerVoiceSpeakHandler;
@@ -662,16 +675,8 @@ export class VoiceSession {
       sttLanguage: this.sttLanguage,
       callbacks: {
         onSpeechStarted: async () => {
-          // Voice STT providers return final transcripts only. Use the detector's
-          // confirmed speech event so interruption does not wait for transcription.
           this.sessionLogger.debug("Voice VAD speech_started");
-          this.emit({
-            type: "voice_input_state",
-            payload: {
-              isSpeaking: true,
-            },
-          });
-          await this.handleVoiceSpeechStart();
+          this.armBargeIn();
         },
         onPartialTranscript: async ({ segmentId, transcript }) => {
           this.sessionLogger.debug(
@@ -680,6 +685,8 @@ export class VoiceSession {
           );
         },
         onSpeechStopped: async () => {
+          this.vadSpeechActive = false;
+          this.clearBargeInTimer();
           this.handleVoiceSpeechStopped();
           this.setPhase("transcribing");
           this.emit({
@@ -716,6 +723,9 @@ export class VoiceSession {
             },
             "Transcription result",
           );
+          if (transcriptText) {
+            await this.confirmBargeIn("transcript");
+          }
           await this.handleTranscriptionResultPayload({
             text: transcriptText,
             requestId,
@@ -746,6 +756,46 @@ export class VoiceSession {
     const controller = this.voiceTurnController;
     this.voiceTurnController = null;
     await controller.stop();
+  }
+
+  // CUSTOM(confirmed-barge-in)
+  private armBargeIn(): void {
+    this.vadSpeechActive = true;
+    this.bargeInConfirmed = false;
+    this.clearBargeInTimer();
+    this.bargeInTimer = setTimeout(() => {
+      this.bargeInTimer = null;
+      this.confirmBargeIn("sustained speech").catch((error: unknown) => {
+        this.sessionLogger.error({ err: error }, "Voice barge-in failed");
+      });
+    }, this.bargeInConfirmMs);
+  }
+
+  private clearBargeInTimer(): void {
+    if (this.bargeInTimer) {
+      clearTimeout(this.bargeInTimer);
+      this.bargeInTimer = null;
+    }
+  }
+
+  // The client stops playback when it sees isSpeaking=true, so that message waits for the
+  // confirmation too. A transcript confirms after the detector already stopped, so the
+  // client gets the matching isSpeaking=false right away.
+  private async confirmBargeIn(reason: "sustained speech" | "transcript"): Promise<void> {
+    if (this.bargeInConfirmed || this.closed) return;
+    this.bargeInConfirmed = true;
+    this.clearBargeInTimer();
+    this.sessionLogger.info({ reason }, "voice_turn.barge_in_confirmed");
+    this.emit({
+      type: "voice_input_state",
+      payload: {
+        isSpeaking: true,
+      },
+    });
+    await this.handleVoiceSpeechStart();
+    if (!this.vadSpeechActive) {
+      this.handleVoiceSpeechStopped();
+    }
   }
 
   private handleVoiceSpeechStopped(): void {
@@ -1402,6 +1452,7 @@ export class VoiceSession {
     this.closed = true;
     this.abortController.abort();
     this.clearBufferTimeout();
+    this.clearBargeInTimer();
     this.pendingAudioSegments = [];
     this.audioBuffer = null;
     const failures: unknown[] = [];

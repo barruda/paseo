@@ -5025,3 +5025,23 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   `npx tsx packages/cli/src/index.js plugin install "$PWD/custom/plugins/later" --home ~/.paseo`
   (or `plugin reload later` after edits). In an agent composer, `/later 1m hello`: the agent gets
   "hello" at the next minute and `paseo schedule ls` shows it `completed`.
+
+## confirmed-barge-in: noise no longer cuts a spoken reply off
+
+- **Added:** 2026-11-11
+- **Commit:** `custom: voice mode interrupts on words or a second of speech, not on any sound`
+- **Why:** The voice detector's speech start interrupted the reply and the agent right away. A
+  short noise, or the reply's own echo through a speaker, cut replies off mid-sentence, and both
+  cut-offs seen on 2026-11-11 transcribed to an empty string. The faster barge-in in
+  [voice-settings](#voice-settings-settings--voice-and-dictation) (300 ms and 4x gain while a
+  reply plays) made false starts more likely.
+- **What:** Speech interrupts once it lasts 1 s (`BARGE_IN_CONFIRM_MS`) or transcribes to words.
+  An empty transcript interrupts nothing. `voice_input_state isSpeaking=true` waits for the same
+  confirmation, because the app stops playback when it sees it. A short "stop" now cuts the reply
+  after transcription, about half a second later than before.
+- **Core files touched:** `packages/server/src/server/session/voice/voice-session.ts`
+  (`onSpeechStarted`, `onSpeechStopped`, `onFinalTranscript`, `cancel`, new `armBargeIn` /
+  `confirmBargeIn`), its test.
+- **Re-apply:** In the voice turn controller callbacks, replace the immediate
+  `handleVoiceSpeechStart()` on speech start with a timer, and call the same confirmation before
+  handling a non-empty final transcript.
