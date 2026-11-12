@@ -488,6 +488,8 @@ export interface PaseoScheduleActions {
   create(
     options: Parameters<DaemonClient["scheduleCreate"]>[0],
   ): Promise<{ id: string; nextRunAt: string | null }>;
+  list(): Promise<Awaited<ReturnType<DaemonClient["scheduleList"]>>["schedules"]>;
+  delete(id: string): Promise<void>;
 }
 
 export interface PaseoConfigActions {
@@ -821,6 +823,15 @@ export function createPaseoApi(
           throw new Error(payload.error ?? "The daemon did not create a schedule");
         }
         return { id: payload.schedule.id, nextRunAt: payload.schedule.nextRunAt };
+      },
+      list: async () => {
+        const payload = await daemonClient.scheduleList();
+        if (payload.error) throw new Error(payload.error);
+        return payload.schedules;
+      },
+      delete: async (id) => {
+        const payload = await daemonClient.scheduleDelete({ id });
+        if (payload.error) throw new Error(payload.error);
       },
     },
   };

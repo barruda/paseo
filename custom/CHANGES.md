@@ -5014,17 +5014,29 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   - After the single run the schedule is `completed` (`nextRunAt: null`) and stays in the list as
     history. If the daemon is down at the due minute, restart skips the missed run (the cursor
     moves to next year) and `expiresAt` completes the schedule: the message is lost, not delayed.
-  - Pure parser and schedule math in `shared/later.ts` with `shared/later.test.ts`.
+  - Feedback (added 2026-11-11): one **composer pill** per pending `/later` message of any agent:
+    clock icon, label `HH:MM · preview` (local time, `DD/MM HH:MM` when not today, `paused` for a
+    paused schedule). Tapping the pill opens a menu with one item, X **Cancel this message**, which
+    deletes the schedule. The pill API has no inline button, so the X lives in that menu. The
+    pills come from `client/pending-pills.ts` (plain entry code, no React): it calls the RPC
+    `list-later` on load, right after `/later` succeeds, after a cancel, every 30 s, and 2 s after
+    the earliest send time so a fired message's pill goes away. `cancel-later` refuses any schedule
+    whose name does not start with `later:`. The slash-command context has no toast, so there is
+    no "Scheduled for HH:MM" notice; the pill is the confirmation.
+  - Pure logic (filtering, time label, refresh delay) and the parser in `shared/later.ts` with
+    `shared/later.test.ts`.
 - **Core files touched:** `packages/client/src/index.ts`: `PaseoScheduleActions` and the
-  `schedules.create` member of `PaseoApi` (marked `CUSTOM(later)`), because plugins had no way
-  to create schedules. It wraps `DaemonClient.scheduleCreate`.
-- **Re-apply:** Add `schedules: { create }` to `PaseoApi` and `createPaseoApi` again, calling
-  `daemonClient.scheduleCreate(options)` and throwing on `payload.error`. If upstream adds a
+  `schedules` member of `PaseoApi` with `create`, `list` and `delete` (marked `CUSTOM(later)`),
+  because plugins had no way to manage schedules. They wrap `DaemonClient.scheduleCreate`,
+  `scheduleList` and `scheduleDelete`.
+- **Re-apply:** Add `schedules: { create, list, delete }` to `PaseoApi` and `createPaseoApi` again, calling
+  the matching `daemonClient.schedule*` method and throwing on `payload.error`. If upstream adds a
   schedules surface to the plugin API, drop the patch and call that from `server/schedule.ts`.
 - **Verify:** `npx vitest run custom/plugins/later --bail=1`. Then `npm run build:client`, and
   `npx tsx packages/cli/src/index.js plugin install "$PWD/custom/plugins/later" --home ~/.paseo`
   (or `plugin reload later` after edits). In an agent composer, `/later 1m hello`: the agent gets
-  "hello" at the next minute and `paseo schedule ls` shows it `completed`.
+  "hello" at the next minute and `paseo schedule ls` shows it `completed`. Right after typing `/later 5m hi`
+  the pill `HH:MM · hi` appears above the composer; its menu's Cancel removes it and the schedule.
 
 ## confirmed-barge-in: noise no longer cuts a spoken reply off
 
@@ -5078,3 +5090,57 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Verify:** `cd packages/server && npx vitest run src/server/session/voice/ src/server/speech/providers/local/sherpa/sherpa-parakeet-stt.test.ts --bail=1`
   and `cd packages/app && npx vitest run src/voice/voice-runtime.test.ts --bail=1`. In voice mode,
   talk: words appear above the meter; speak words while a reply plays: it stops at once.
+
+## voice-ack-silences-reply: "okay" only silences the reply
+
+- **Added:** 2026-11-11
+- **Commit:** (uncommitted when written)
+- **Why:** Saying "okay" while the agent spoke aborted its run and sent "okay" as a new prompt.
+  An acknowledgement should only make it stop talking.
+- **What:** `ACKNOWLEDGEMENT_WORDS` (`ok`, `okay`, `tá`, `ta`, `beleza`; case and punctuation
+  ignored, repeats allowed) in `voice-session.ts`. A partial or final transcript made only of
+  those words calls `silenceReplyOnly()`: it emits `voice_input_state isSpeaking=true` (the app
+  stops playback), replaces the abort controller (stops TTS generation, later replies still
+  speak) and cancels pending playbacks. It does not call `handleAbort`, does not interrupt the
+  agent, and the final goes through the empty-transcript path, so nothing reaches the agent. The
+  1 s sustained-speech timer also skips a partial that is ack-only. A partial that grows into
+  other words takes the normal barge-in. Only the reply playing at that moment is silenced; the
+  agent's next speak call plays normally.
+- **Core files touched:** `packages/server/src/server/session/voice/voice-session.ts`, its test.
+- **Re-apply:** Re-add the constant and `isAcknowledgementOnly`, `silenceReplyOnly`, and the
+  three branches in `onPartialTranscript`, `onFinalTranscript` and the `armBargeIn` timer.
+- **Verify:** `cd packages/server && npx vitest run src/server/session/voice/voice-session.test.ts --bail=1`.
+  In voice mode, say "okay" while a reply plays: it stops, the agent keeps working, no prompt.
+
+## voice-hold-to-talk: hold Enter to talk, release to send
+
+- **Added:** 2026-11-11
+- **Commit:** (uncommitted when written)
+- **Why:** Silence detection cuts long or hesitant utterances short. Holding a key keeps the turn
+  open until you let go.
+- **What:** New optional inbound message `voice.set_hold.request { held }` (fire-and-forget, no
+  response) gated by `server_info.features.voiceHold`; the client sends it only when the flag is
+  present. Host: `held=true` is a full barge-in (stops playback, interrupts the agent) and opens a
+  capture turn through `VoiceTurnController.beginHold()`; while held the detector's `speech_stopped`
+  is ignored; `held=false` (`endHold()`) ends the turn like `handleSpeechStopped`. App: Enter
+  (web/desktop, not repeating, not in a text field, released on blur) and a new hand button in
+  the voice overlay (press and hold, works on native) call `runtime.setHold`; release is sent
+  200 ms late so the capture buffer's last words arrive first. The overlay shows "Release to
+  send" while held. Settings > Voice > Microphone gets "Hold to talk" (per device,
+  `voice/hold-to-talk-settings.ts`): when on, the app streams audio only while held (client-side
+  gate, so the host needs no setting). Muting releases the hold.
+- **Core files touched:** `packages/protocol/src/messages.ts` (`VoiceSetHoldRequestSchema`,
+  `features.voiceHold`), `packages/server/src/server/websocket-server.ts`, `session.ts`,
+  `authorization/operation-permissions.ts`, `session/voice/index.ts`, `voice-session.ts`
+  (`handleHold`), `voice-turn-controller.ts`, `packages/client/src/daemon-client.ts`
+  (`setVoiceHold`), app `voice-runtime.ts`, `contexts/voice-context.tsx`,
+  `contexts/session-context.tsx`, `components/realtime-voice-overlay.tsx`,
+  `composer/input/input.tsx`, `screens/settings/voice/voice-settings-page.tsx`,
+  `i18n/resources/custom-voice-settings.ts`; new `voice/hold-to-talk-settings.ts`,
+  `voice/use-voice-hold-key.ts`.
+- **Re-apply:** Re-add the schema, flag and dispatch; `beginHold`/`endHold` plus the `held` guard
+  on `speech_stopped`; `VoiceSession.handleHold`; then the runtime `setHold`, upload gate, key
+  hook, overlay button and settings switch.
+- **Verify:** `cd packages/server && npx vitest run src/server/session/voice/ --bail=1` and
+  `cd packages/app && npx vitest run src/voice/voice-runtime.test.ts --bail=1`. Restart the
+  daemon, then in voice mode hold Enter, talk with pauses, release: one utterance is sent.
