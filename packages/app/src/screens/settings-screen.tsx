@@ -47,6 +47,7 @@ import {
   MessageSquare,
   ChevronRight,
   GitBranch, // CUSTOM(github-account)
+  FileJson, // CUSTOM(bruno-config-file)
 } from "lucide-react-native";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
@@ -94,6 +95,7 @@ import {
 import { BrunoChatOptionsPage } from "@/screens/settings/bruno-customizations/chat-options-page";
 // CUSTOM(github-account)
 import { BrunoGithubPage } from "@/screens/settings/bruno-customizations/github-page";
+import { BrunoConfigFilePage } from "@/screens/settings/bruno-customizations/config-file-page"; // CUSTOM(bruno-config-file)
 // CUSTOM(voice-settings)
 import { VoiceSettingsPage } from "@/screens/settings/voice/voice-settings-page";
 import { FilesSection } from "@/screens/settings/files-section";
@@ -258,6 +260,8 @@ const BRUNO_SECTION_ITEMS: {
   { id: "customizations-voice", label: "Voice and Dictation", icon: AudioLines },
   // CUSTOM(github-account)
   { id: "customizations-github", label: "GitHub", icon: GitBranch },
+  // CUSTOM(bruno-config-file): save and load every setting above as one JSON file.
+  { id: "customizations-config-file", label: "Save and Load", icon: FileJson },
 ];
 
 function isSectionAvailable(item: SidebarSectionItem, isDesktopApp: boolean): boolean {
@@ -1409,6 +1413,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
         // CUSTOM(github-account)
         case "customizations-github":
           return <BrunoGithubPage serverId={activeHostServerId} />;
+        // CUSTOM(bruno-config-file)
+        case "customizations-config-file":
+          return <BrunoConfigFilePage serverId={activeHostServerId} />;
         default:
           break;
       }

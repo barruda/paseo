@@ -5577,3 +5577,26 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
   and `cd packages/app && npx vitest run src/screens/settings/voice/claude-stt-model.test.ts src/screens/settings/voice/claude-tts-model.test.ts --bail=1`
   (both in the update script). Needs a daemon restart. In Voice mode pick Speaking provider
   Claude, pick a voice, press Preview, then talk in voice mode and hear the answer.
+
+## bruno-config-file: save and load every Bruno's Customizations setting as one JSON file
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: save and load Bruno's Customizations as a JSON file`
+- **Why:** Moving to a new machine or launcher profile meant re-entering every Bruno's
+  Customizations setting by hand.
+- **What:** Settings > Bruno's Customizations > Save and Load. Save downloads
+  `paseo-bruno-config.json` with the app settings (chat links, chat options and order, desk preview
+  tabs, skip pinned, Critic and Jev toggles), the desktop `flexibleTabMovement`, and the active
+  host's `github.configDir`, `speech`, `features`, and the jev-router and delegation plugin
+  settings. The file includes the TypeSafe API key. Load asks to confirm, then applies each section
+  on its own and shows an applied / skipped / failed report. Missing sections and keys stay as they
+  are; a file with a newer `paseoBrunoConfig` version is refused. Plugins not installed on the host
+  are skipped. Web and Electron only; native shows "Only on desktop and web."
+- **Files:** New: `packages/app/src/bruno-config/` (`config-file.ts`, `config-file.test.ts`,
+  `use-bruno-config-file.ts`), `screens/settings/bruno-customizations/config-file-page.tsx`.
+- **Core files touched:** `packages/app/src/screens/settings-screen.tsx` (import, `FileJson`,
+  `BRUNO_SECTION_ITEMS` entry, switch case), `packages/app/src/utils/host-routes.ts` (slug).
+- **Re-apply:** Add the `customizations-config-file` slug to `SETTINGS_SECTION_SLUGS`, a
+  `BRUNO_SECTION_ITEMS` entry and a switch case rendering `BrunoConfigFilePage`.
+- **Verify:** Test `bruno-config/config-file.test.ts` (in the update script). In the app, Save,
+  change a toggle, Load the file: the toggle returns and the report lists what was applied.

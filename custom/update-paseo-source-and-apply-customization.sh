@@ -289,6 +289,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/composer/project-icon-model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts --bail=1)
   (cd packages/app && npx vitest run src/composer/empty-voice-trigger.test.ts --bail=1)
+  # Bruno's Customizations > Save and Load: the configuration file.
+  (cd packages/app && npx vitest run src/bruno-config/config-file.test.ts --bail=1)
   # Ctrl+Tab walks the visited tabs.
   (cd packages/app && npx vitest run src/hooks/use-settings/storage.test.ts src/plugins/buttons/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/workspace-tabs/recent-tabs-model.test.ts src/keyboard/route-shortcut.test.ts --bail=1)

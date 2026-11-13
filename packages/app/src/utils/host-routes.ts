@@ -509,6 +509,7 @@ export const SETTINGS_SECTION_SLUGS = [
   "customizations-tabs",
   "customizations-voice",
   "customizations-github", // CUSTOM(github-account)
+  "customizations-config-file", // CUSTOM(bruno-config-file)
   "diagnostics",
   "about",
 ] as const;
