@@ -2,7 +2,11 @@
 import { describe, expect, it } from "vitest";
 import type { ProviderSubagentRow } from "@/subagents/select";
 import type { TaskNode } from "./model";
-import { buildProviderSubagentRows, runningParentKeys } from "./provider-subagent-rows";
+import {
+  buildProviderSubagentRows,
+  equalProviderSubagentGroups,
+  runningParentKeys,
+} from "./provider-subagent-rows";
 
 const node = {
   key: "s1:parent",
@@ -97,5 +101,23 @@ describe("runningParentKeys", () => {
       ["s1:other", [sub("z", "completed", "2026-11-13T00:00:01Z")]],
     ]);
     expect([...runningParentKeys(grouped)]).toEqual(["s1:parent"]);
+  });
+});
+
+describe("equalProviderSubagentGroups", () => {
+  it("sees a new subagent, so the list updates after its first, empty value", () => {
+    expect(equalProviderSubagentGroups(new Map(), new Map([["s:parent", rows]]))).toBe(false);
+  });
+
+  it("sees a status change", () => {
+    const before = new Map([["s:parent", [sub("b", "running", "2026-11-13T00:00:02Z")]]]);
+    const after = new Map([["s:parent", [sub("b", "completed", "2026-11-13T00:00:02Z")]]]);
+    expect(equalProviderSubagentGroups(before, after)).toBe(false);
+  });
+
+  it("keeps equal groups equal", () => {
+    expect(
+      equalProviderSubagentGroups(new Map([["s:parent", rows]]), new Map([["s:parent", rows]])),
+    ).toBe(true);
   });
 });

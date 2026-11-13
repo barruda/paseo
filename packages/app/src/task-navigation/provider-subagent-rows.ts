@@ -1,5 +1,6 @@
 // CUSTOM(task-provider-subagents): the Tasks list shows an agent's provider subagents (Claude
 // Code's Agent tool and the like) as a collapsed "N subagents" row under the agent's own row.
+import equalWithMaps from "fast-deep-equal/es6";
 import { useProviderSubagentStore } from "@/subagents/provider-store";
 import { selectProviderSubagentsForParent, type ProviderSubagentRow } from "@/subagents/select";
 import { buildSubagentRowPresentationData } from "@/subagents/track-presentation";
@@ -127,4 +128,15 @@ export function buildProviderSubagentRows(input: {
     });
   }
   return rows;
+}
+
+/**
+ * Equality for `groupProviderSubagentsByParent` results. The plain `fast-deep-equal` sees every
+ * Map as equal (it only compares own keys), so the list never updated past its first, empty value.
+ */
+export function equalProviderSubagentGroups(
+  left: ReadonlyMap<string, readonly ProviderSubagentRow[]>,
+  right: ReadonlyMap<string, readonly ProviderSubagentRow[]>,
+): boolean {
+  return equalWithMaps(left, right);
 }

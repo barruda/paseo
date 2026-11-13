@@ -44,6 +44,7 @@ import { refreshProviderSubagents, useProviderSubagentStore } from "@/subagents/
 import {
   buildProviderSubagentRows,
   groupProviderSubagentsByParent,
+  equalProviderSubagentGroups,
   runningParentKeys,
   type ProviderSubagentListRow,
   type ProviderSubagentServerFlags,
@@ -258,7 +259,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   const providerSubagents = useStoreWithEqualityFn(
     useProviderSubagentStore,
     (state) => groupProviderSubagentsByParent(state, providerSubagentFlags, taskKey),
-    equal,
+    equalProviderSubagentGroups,
   );
   const runningParents = useMemo(() => runningParentKeys(providerSubagents), [providerSubagents]);
   const agents = useMemo(
