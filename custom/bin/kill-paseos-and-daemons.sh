@@ -10,10 +10,23 @@ set -euo pipefail
 TIMEOUT=5
 LOG="${XDG_STATE_HOME:-$HOME/.local/state}/kill-paseos-and-daemons.log"
 
+# Detach into a transient user service. setsid alone leaves the session but not the cgroup: the
+# script stayed in the systemd scope of the Paseo window that ran it and could go down with that
+# Paseo halfway through, leaving paseo-personal neither killed nor reopened. KillMode=process keeps
+# whatever the reopen leaves behind alive when the script exits.
 if [[ -z "${KILL_PASEOS_DETACHED:-}" ]]; then
   mkdir -p "$(dirname "$LOG")"
-  KILL_PASEOS_DETACHED=1 setsid -f "$0" "$@" >"$LOG" 2>&1 </dev/null
-  echo "Restarting the Paseo daemons and windows in the background. Log: $LOG"
+  : >"$LOG"
+  self="$(readlink -f "$0")"
+  if systemd-run --user --quiet --collect --unit="kill-paseos-and-daemons-$(date +%s)" \
+    -p KillMode=process -p StandardInput=null -p "StandardOutput=append:$LOG" \
+    -p "StandardError=append:$LOG" --setenv=KILL_PASEOS_DETACHED=1 -- "$self" "$@"; then
+    echo "Restarting the Paseo daemons and windows in a systemd user service. Log: $LOG"
+  else
+    echo "systemd-run failed, detaching with setsid instead" >>"$LOG"
+    KILL_PASEOS_DETACHED=1 setsid -f "$self" "$@" >>"$LOG" 2>&1 </dev/null
+    echo "Restarting the Paseo daemons and windows in the background. Log: $LOG"
+  fi
   exit 0
 fi
 
@@ -114,10 +127,14 @@ for target in "${TARGETS[@]}"; do
   stop_daemon "$home"
 done
 
+# gtk-launch moves the window into its own app scope only after it starts, so the first processes
+# the window forks stay where gtk-launch ran. Give gtk-launch a scope of its own in app.slice so
+# they land there and not in this service.
 log "Reopening"
 for target in "${TARGETS[@]}"; do
   IFS='|' read -r launcher _ _ <<<"$target"
-  setsid -f env -u ELECTRON_RUN_AS_NODE -u PASEO_HOME -u PASEO_AGENT_ID -u GH_CONFIG_DIR -u CLAUDE_CONFIG_DIR \
+  setsid -f systemd-run --user --scope --quiet --collect --slice=app.slice \
+    --unit="paseo-launch-$launcher-$$-$RANDOM" -- env -u ELECTRON_RUN_AS_NODE -u PASEO_HOME -u PASEO_AGENT_ID -u GH_CONFIG_DIR -u CLAUDE_CONFIG_DIR \
     -u PASEO_ELECTRON_USER_DATA_DIR -u PASEO_DESKTOP_NAME -u PASEO_DESKTOP_MANAGED \
     -u PASEO_CLI gtk-launch "$launcher" >/dev/null 2>&1 </dev/null
   log " $launcher"
