@@ -98,3 +98,7 @@ app.json
 
 # Project-local Serena configuration and memories.
 .serena/
+
+# CUSTOM(local-models-dir): local speech models shared by the personal and TELUS daemons
+# (providers.local.modelsDir in ~/.paseo*/config.json).
+.llm/
