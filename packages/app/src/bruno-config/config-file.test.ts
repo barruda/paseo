@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { parseBrunoConfig, serializeBrunoConfig } from "./config-file";
+import {
+  mergePluginValues,
+  parseBrunoConfig,
+  serializeBrunoConfig,
+  stripAccountSettings,
+} from "./config-file";
 
 const NOW = new Date("2026-11-13T10:00:00.000Z");
 
@@ -55,5 +60,92 @@ describe("bruno config file", () => {
       ok: false,
       reason: "newer-version",
     });
+  });
+});
+
+describe("stripAccountSettings", () => {
+  const full = {
+    app: { chatLinksEnabled: true },
+    host: {
+      github: { configDir: "~/.config/gh" },
+      speech: {
+        dictationSttProvider: "openai",
+        voiceSttProvider: "claude",
+        voiceTtsProvider: "claude",
+        claudeSttConfigDir: "~/.claude",
+        dictationPrompt: "hello",
+      },
+      features: {
+        dictation: { enabled: true, stt: { provider: "openai", apiKey: "k" } },
+        voiceMode: {
+          enabled: false,
+          stt: {},
+          tts: {},
+          llm: {},
+          turnDetection: {},
+        },
+      },
+      plugins: {
+        "jev-router": {
+          router: { enabled: true, apiKey: "k", apiUrl: "u", jevModel: "m", python: "python3" },
+        },
+        delegation: { settings: { a: 1 } },
+      },
+    },
+  };
+
+  it("removes every account field and keeps the rest", () => {
+    expect(stripAccountSettings(full)).toEqual({
+      app: { chatLinksEnabled: true },
+      host: {
+        speech: { dictationPrompt: "hello" },
+        features: { dictation: { enabled: true }, voiceMode: { enabled: false } },
+        plugins: {
+          "jev-router": { router: { enabled: true, python: "python3" } },
+          delegation: { settings: { a: 1 } },
+        },
+      },
+    });
+  });
+
+  it("does not mutate the input", () => {
+    stripAccountSettings(full);
+    expect(full.host.github.configDir).toBe("~/.config/gh");
+    expect(full.host.plugins["jev-router"].router.apiKey).toBe("k");
+  });
+
+  it("drops sections that end up empty", () => {
+    const result = stripAccountSettings({
+      host: {
+        github: { configDir: "x" },
+        speech: { voiceTtsProvider: "claude" },
+        features: { voiceMode: { stt: {} } },
+      },
+    });
+    expect(result).toEqual({ host: {} });
+  });
+
+  it("leaves a config without host untouched", () => {
+    const config = { app: { deskPreviewTabs: true } };
+    expect(stripAccountSettings(config)).toEqual(config);
+  });
+
+  it("ignores a Jev router value that is not an object", () => {
+    const config = { host: { plugins: { "jev-router": { router: "odd" } } } };
+    expect(stripAccountSettings(config)).toEqual(config);
+  });
+});
+
+describe("mergePluginValues", () => {
+  it("keeps current keys the file lacks", () => {
+    expect(mergePluginValues({ apiKey: "k", enabled: true }, { enabled: false })).toEqual({
+      apiKey: "k",
+      enabled: false,
+    });
+  });
+
+  it("writes the file value when either side is not an object", () => {
+    expect(mergePluginValues(null, { a: 1 })).toEqual({ a: 1 });
+    expect(mergePluginValues({ a: 1 }, [1])).toEqual([1]);
   });
 });

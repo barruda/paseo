@@ -5588,7 +5588,13 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
   `paseo-bruno-config.json` with the app settings (chat links, chat options and order, desk preview
   tabs, skip pinned, Critic and Jev toggles), the desktop `flexibleTabMovement`, and the active
   host's `github.configDir`, `speech`, `features`, and the jev-router and delegation plugin
-  settings. The file includes the TypeSafe API key. Load asks to confirm, then applies each section
+  settings. A switch, "Skip providers and API keys" (on by default, not persisted), applies to both
+  Save and Load: it leaves out and ignores `host.github`, the speech providers and
+  `claudeSttConfigDir`, the `features` stt/tts/llm/turnDetection blocks, and the Jev router
+  `apiKey`, `apiUrl` and `jevModel`, so a file moves between hosts on different accounts (Load
+  reports "Providers and API keys (kept this host's)"). With it off the file includes the
+  TypeSafe API key. Plugin loads merge over the host's current values (shallow), so a file
+  without `apiKey` keeps the host's key. Load asks to confirm, then applies each section
   on its own and shows an applied / skipped / failed report. Missing sections and keys stay as they
   are; a file with a newer `paseoBrunoConfig` version is refused. Plugins not installed on the host
   are skipped. Web and Electron only; native shows "Only on desktop and web."
@@ -5599,4 +5605,7 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
 - **Re-apply:** Add the `customizations-config-file` slug to `SETTINGS_SECTION_SLUGS`, a
   `BRUNO_SECTION_ITEMS` entry and a switch case rendering `BrunoConfigFilePage`.
 - **Verify:** Test `bruno-config/config-file.test.ts` (in the update script). In the app, Save,
-  change a toggle, Load the file: the toggle returns and the report lists what was applied.
+  change a toggle, Load the file: the toggle returns and the report lists what was applied. With
+  the switch on, Save and check the file has no `github`, provider or `apiKey`; set a different
+  TypeSafe key on the host, Load: the key stays. Test also covers `stripAccountSettings` and
+  `mergePluginValues`.

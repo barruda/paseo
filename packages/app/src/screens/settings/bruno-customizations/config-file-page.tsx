@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { Text, View } from "react-native";
 import { SettingsSection } from "@/components/settings";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { isNative } from "@/constants/platform";
 import { useToast } from "@/contexts/toast-context";
 import { BRUNO_CONFIG_FILE_NAME } from "@/bruno-config/config-file";
@@ -31,10 +32,11 @@ export function BrunoConfigFilePage({ serverId }: { serverId: string | null }) {
   const toast = useToast();
   const { busy, save, pick, apply } = useBrunoConfigFile(serverId);
   const [report, setReport] = useState<string | null>(null);
+  const [skipAccounts, setSkipAccounts] = useState(true);
 
   const handleSave = useCallback(async () => {
     try {
-      const { skipped } = await save();
+      const { skipped } = await save({ skipAccounts });
       toast.show(
         skipped.length > 0
           ? `Configuration saved. Skipped: ${skipped.join(", ")}.`
@@ -43,7 +45,7 @@ export function BrunoConfigFilePage({ serverId }: { serverId: string | null }) {
     } catch (error) {
       toast.error(`Could not save the configuration: ${toErrorMessage(error)}`);
     }
-  }, [save, toast]);
+  }, [save, skipAccounts, toast]);
 
   const handleLoad = useCallback(async () => {
     const picked = await pick();
@@ -56,15 +58,17 @@ export function BrunoConfigFilePage({ serverId }: { serverId: string | null }) {
     const prepared: PreparedLoad = picked;
     const confirmed = await confirmDialog({
       title: "Load configuration",
-      message: `This replaces: ${prepared.sections.join(", ")}. Settings missing from the file stay as they are.`,
+      message: `This replaces: ${prepared.sections.join(", ")}. Settings missing from the file stay as they are.${
+        skipAccounts ? " Providers and API keys in the file are skipped." : ""
+      }`,
       confirmLabel: "Load",
     });
     if (!confirmed) return;
-    const result = await apply(prepared.config);
+    const result = await apply(prepared.config, { skipAccounts });
     setReport(describeReport(result));
     if (result.failed.length > 0) toast.error("Some settings could not be loaded.");
     else toast.show("Configuration loaded.");
-  }, [apply, pick, toast]);
+  }, [apply, pick, skipAccounts, toast]);
 
   const handleSavePress = useCallback(() => void handleSave(), [handleSave]);
   const handleLoadPress = useCallback(() => void handleLoad(), [handleLoad]);
@@ -78,10 +82,27 @@ export function BrunoConfigFilePage({ serverId }: { serverId: string | null }) {
       <View style={settingsStyles.card}>
         <View style={settingsStyles.row}>
           <View style={settingsStyles.rowContent}>
+            <Text style={settingsStyles.rowTitle}>Skip providers and API keys</Text>
+            <Text style={settingsStyles.rowHint}>
+              Leaves out and ignores the GitHub account, the voice and dictation providers, the
+              Claude account folder and the TypeSafe key, endpoint and model, so a file moves
+              between hosts on different accounts.
+            </Text>
+          </View>
+          <Switch
+            value={skipAccounts}
+            onValueChange={setSkipAccounts}
+            accessibilityLabel="Skip providers and API keys"
+            testID="bruno-config-skip-accounts"
+          />
+        </View>
+        <View style={[settingsStyles.row, settingsStyles.rowBorder]}>
+          <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>Save configuration</Text>
             <Text style={settingsStyles.rowHint}>
               Saves every Bruno&apos;s Customizations setting of this app and of the active host to{" "}
-              {BRUNO_CONFIG_FILE_NAME}. The file includes the TypeSafe API key, so keep it private.
+              {BRUNO_CONFIG_FILE_NAME}. With providers and API keys included, the file holds the
+              TypeSafe API key, so keep it private.
             </Text>
           </View>
           <Button

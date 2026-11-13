@@ -20,8 +20,10 @@ import { toErrorMessage } from "@/utils/error-messages";
 import {
   BRUNO_CONFIG_ERROR_MESSAGES,
   BRUNO_CONFIG_FILE_NAME,
+  mergePluginValues,
   parseBrunoConfig,
   serializeBrunoConfig,
+  stripAccountSettings,
   type BrunoConfig,
   type BrunoConfigSnapshot,
   type JsonValue,
@@ -58,6 +60,11 @@ const APP_KEYS = [
   "showJevRouterToggle",
 ] as const;
 
+export interface AccountOption {
+  /** Leave out (save) or ignore (load) providers, API keys and the GitHub account. */
+  skipAccounts: boolean;
+}
+
 interface PluginTarget {
   label: string;
   pluginId: string;
@@ -80,8 +87,10 @@ async function writePluginValues(
   const rpc = settingsRpc(settingsId);
   // An invalid stored document still has a revision to overwrite.
   const current = rpc.read.output.parse(await plugin.invoke(rpc.read.name, {}));
+  // Merge over a readable document, so a file without the API key keeps the host's.
+  const merged = current.status === "ready" ? mergePluginValues(current.values, values) : values;
   const result = rpc.write.output.parse(
-    await plugin.invoke(rpc.write.name, { revision: current.revision, values }),
+    await plugin.invoke(rpc.write.name, { revision: current.revision, values: merged }),
   );
   if (result.status !== "saved") throw new Error(result.error);
   plugin.queryClient.setQueryData(pluginSettingsKey(settingsId), { ...result, status: "ready" });
@@ -156,42 +165,46 @@ export function useBrunoConfigFile(serverId: string | null) {
     [jevPlugin, delegationPlugin],
   );
 
-  const save = useCallback(async (): Promise<{ skipped: string[] }> => {
-    setBusy(true);
-    try {
-      const skipped: string[] = [];
-      const snapshot: BrunoConfigSnapshot = {
-        app: Object.fromEntries(APP_KEYS.map((key) => [key, settings[key]])),
-      };
-      if (getIsElectron()) {
-        snapshot.desktop = {
-          flexibleTabMovement: desktop.settings.tabs?.flexibleMovement === true,
+  const save = useCallback(
+    async (options?: AccountOption): Promise<{ skipped: string[] }> => {
+      setBusy(true);
+      try {
+        const skipped: string[] = [];
+        const snapshot: BrunoConfigSnapshot = {
+          app: Object.fromEntries(APP_KEYS.map((key) => [key, settings[key]])),
         };
-      }
-      if (serverId) {
-        const plugins: Record<string, Record<string, JsonValue>> = {};
-        for (const target of targets) {
-          if (!target.plugin) {
-            skipped.push(`${target.label} (not installed on this host)`);
-            continue;
-          }
-          plugins[target.pluginId] = {
-            [target.settingsId]: await readPluginValues(target.plugin, target.settingsId),
+        if (getIsElectron()) {
+          snapshot.desktop = {
+            flexibleTabMovement: desktop.settings.tabs?.flexibleMovement === true,
           };
         }
-        snapshot.host = {
-          github: { configDir: daemonConfig?.github?.configDir ?? "" },
-          ...(daemonConfig?.speech ? { speech: daemonConfig.speech } : {}),
-          ...(daemonConfig?.features ? { features: daemonConfig.features } : {}),
-          plugins,
-        };
+        if (serverId) {
+          const plugins: Record<string, Record<string, JsonValue>> = {};
+          for (const target of targets) {
+            if (!target.plugin) {
+              skipped.push(`${target.label} (not installed on this host)`);
+              continue;
+            }
+            plugins[target.pluginId] = {
+              [target.settingsId]: await readPluginValues(target.plugin, target.settingsId),
+            };
+          }
+          snapshot.host = {
+            github: { configDir: daemonConfig?.github?.configDir ?? "" },
+            ...(daemonConfig?.speech ? { speech: daemonConfig.speech } : {}),
+            ...(daemonConfig?.features ? { features: daemonConfig.features } : {}),
+            plugins,
+          };
+        }
+        const output = options?.skipAccounts ? stripAccountSettings(snapshot) : snapshot;
+        downloadTextFile(BRUNO_CONFIG_FILE_NAME, serializeBrunoConfig(output));
+        return { skipped };
+      } finally {
+        setBusy(false);
       }
-      downloadTextFile(BRUNO_CONFIG_FILE_NAME, serializeBrunoConfig(snapshot));
-      return { skipped };
-    } finally {
-      setBusy(false);
-    }
-  }, [settings, desktop.settings.tabs?.flexibleMovement, serverId, daemonConfig, targets]);
+    },
+    [settings, desktop.settings.tabs?.flexibleMovement, serverId, daemonConfig, targets],
+  );
 
   /** Picks and parses a file. `null` is a cancelled picker. */
   const pick = useCallback(async (): Promise<PreparedLoad | LoadReport | null> => {
@@ -220,8 +233,9 @@ export function useBrunoConfigFile(serverId: string | null) {
   }, []);
 
   const apply = useCallback(
-    async (config: BrunoConfig): Promise<LoadReport> => {
+    async (input: BrunoConfig, options?: AccountOption): Promise<LoadReport> => {
       setBusy(true);
+      const config = options?.skipAccounts ? stripAccountSettings(input) : input;
       const report: LoadReport = { refused: null, applied: [], skipped: [], failed: [] };
       const run = async (section: string, work: () => Promise<void>) => {
         try {
@@ -250,6 +264,9 @@ export function useBrunoConfigFile(serverId: string | null) {
           } else {
             report.skipped.push("Flexible tab movement (desktop app only)");
           }
+        }
+        if (options?.skipAccounts && JSON.stringify(config.host) !== JSON.stringify(input.host)) {
+          report.skipped.push("Providers and API keys (kept this host's)");
         }
         const host = config.host;
         if (host && !serverId) report.skipped.push("Host settings (no active host)");
