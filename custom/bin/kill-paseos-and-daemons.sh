@@ -117,7 +117,7 @@ done
 log "Reopening"
 for target in "${TARGETS[@]}"; do
   IFS='|' read -r launcher _ _ <<<"$target"
-  setsid -f env -u ELECTRON_RUN_AS_NODE -u PASEO_HOME -u PASEO_AGENT_ID \
+  setsid -f env -u ELECTRON_RUN_AS_NODE -u PASEO_HOME -u PASEO_AGENT_ID -u GH_CONFIG_DIR -u CLAUDE_CONFIG_DIR \
     -u PASEO_ELECTRON_USER_DATA_DIR -u PASEO_DESKTOP_NAME -u PASEO_DESKTOP_MANAGED \
     -u PASEO_CLI gtk-launch "$launcher" >/dev/null 2>&1 </dev/null
   log " $launcher"
