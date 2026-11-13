@@ -5200,12 +5200,14 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   whole open segment every 350 ms and costs GPU/CPU; Claude costs nothing extra on a
   subscription.
 - **What:** A third STT provider, `claude`, next to `local` (labeled "Local STT") and `openai`.
-  The Settings page (Bruno's Customizations > "Voice and Dictation") is organized by feature,
-  provider first: Dictation (provider, then the local model only for Local STT), Dictation
-  tuning, Voice mode (listening provider, local listening model, speaking model), Speaking voice,
-  instructions, Claude (which features use it, login state, language (default `en`), key terms,
-  config folder), Local engine (GPU, model folders), then thinking tone, microphone and logs. A
+  The Settings page (Bruno's Customizations > "Voice and Dictation") has tabs, remembered per
+  device (`voice/voice-settings-tab.ts`): Dictation (on/off, provider, local model only for Local
+  STT, tuning), Voice mode (on/off, listening provider and model, speaking model and voice,
+  instructions, thinking tone, microphone), Claude (which features use it, login state, language,
+  key terms, config folder), Local engine (GPU, model folders), Status (status and logs). A
   feature on Claude hides its local model picker; the model stays saved for switching back.
+  Language is one of the 20 codes Claude Code accepts (default `en`); the service has no mixed or
+  auto mode (`multi` and `auto` are refused), but its final pass handles other-language words.
   - Protocol, read from claude-cli 2.1.322 (`/api/ws/speech_to_text/voice_stream`):
     `speech/providers/claude/stt.ts` has it in its header comment. It is undocumented; a Claude
     Code update can change it. To re-read it, search the binary

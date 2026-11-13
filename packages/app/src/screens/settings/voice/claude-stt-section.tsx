@@ -155,7 +155,7 @@ export function ClaudeSttSection({
         ) : null}
         <SettingsSelect
           label={t(`${PREFIX}.language`)}
-          hint={envHint(status, "claudeSttLanguage", t)}
+          hint={envHint(status, "claudeSttLanguage", t) ?? t(`${PREFIX}.languageHint`)}
           value={speech.claudeSttLanguage ?? "en"}
           options={languageOptions}
           onValueChange={selectLanguage}

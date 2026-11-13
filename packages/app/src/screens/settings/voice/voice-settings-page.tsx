@@ -46,9 +46,11 @@ import {
 } from "@/voice/thinking-tone-settings";
 import { canPickThinkingToneFile, decodeThinkingToneFile } from "@/voice/decode-thinking-tone";
 import { useHoldToTalkStore } from "@/voice/hold-to-talk-settings";
+import { useVoiceSettingsTabStore } from "@/voice/voice-settings-tab";
 import { useVoiceMicrophoneStore } from "@/voice/microphone-settings";
 import { useLocalSpeechStatus } from "./use-local-speech-status";
 import { DictationTuningSection } from "./dictation-tuning-section";
+import { VOICE_SETTINGS_TABS, type VoiceSettingsTab } from "./voice-settings-tabs";
 import { ClaudeSttSection, SttProviderRow } from "./claude-stt-section";
 import { showsLocalModel } from "./claude-stt-model";
 import {
@@ -109,7 +111,13 @@ export function VoiceSettingsPage({ serverId }: { serverId: string }) {
   const { t } = useTranslation();
   const isFocused = useIsFocused();
   const [showLogs, setShowLogs] = useState(false);
-  const state = useLocalSpeechStatus(serverId, { includeLogs: showLogs, live: isFocused });
+  const tab = useVoiceSettingsTabStore((store) => store.tab);
+  const setTab = useVoiceSettingsTabStore((store) => store.setTab);
+  // The log tail is only fetched while it is on screen.
+  const state = useLocalSpeechStatus(serverId, {
+    includeLogs: showLogs && tab === "status",
+    live: isFocused,
+  });
   const { config, patchConfig } = useDaemonConfig(serverId);
   const speech = config?.speech;
   const toggleLogs = useCallback(() => setShowLogs((value) => !value), []);
@@ -167,25 +175,74 @@ export function VoiceSettingsPage({ serverId }: { serverId: string }) {
   const status = state.data;
   return (
     <View style={styles.page} testID="voice-settings">
-      {config?.features ? (
-        <FeatureSwitchesSection
-          features={config.features}
-          envOverrides={config.envOverrides}
-          save={saveFeatures}
-        />
+      <VoiceTabBar tab={tab} onChange={setTab} />
+      {tab === "dictation" ? (
+        <>
+          {config?.features ? (
+            <DictationSwitchSection
+              features={config.features}
+              envOverrides={config.envOverrides}
+              save={saveFeatures}
+            />
+          ) : null}
+          <DictationSection status={status} speech={speech} save={saveSpeech} />
+          <DictationTuningSection status={status} speech={speech} save={saveSpeech} />
+        </>
       ) : null}
-      <StatusSection status={status} />
-      <DictationSection status={status} speech={speech} save={saveSpeech} />
-      <DictationTuningSection status={status} speech={speech} save={saveSpeech} />
-      <VoiceModeSection status={status} speech={speech} save={saveSpeech} />
-      <VoiceSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
-      <InstructionsSection status={status} speech={speech} save={saveSpeech} />
-      <ClaudeSttSection status={status} speech={speech} save={saveSpeech} />
-      <EngineSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
-      <ThinkingToneSection />
-      {isWeb ? <MicrophoneSection /> : null}
-      <LogsSection status={status} visible={showLogs} onToggle={toggleLogs} />
+      {tab === "voiceMode" ? (
+        <>
+          {config?.features ? (
+            <VoiceModeSwitchSection
+              features={config.features}
+              envOverrides={config.envOverrides}
+              save={saveFeatures}
+            />
+          ) : null}
+          <VoiceModeSection status={status} speech={speech} save={saveSpeech} />
+          <VoiceSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
+          <InstructionsSection status={status} speech={speech} save={saveSpeech} />
+          <ThinkingToneSection />
+          {isWeb ? <MicrophoneSection /> : null}
+        </>
+      ) : null}
+      {tab === "claude" ? (
+        <ClaudeSttSection status={status} speech={speech} save={saveSpeech} />
+      ) : null}
+      {tab === "localEngine" ? (
+        <EngineSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
+      ) : null}
+      {tab === "status" ? (
+        <>
+          <StatusSection status={status} />
+          <LogsSection status={status} visible={showLogs} onToggle={toggleLogs} />
+        </>
+      ) : null}
     </View>
+  );
+}
+
+// Five tabs can outgrow a phone, so the bar scrolls sideways instead of wrapping or clipping.
+function VoiceTabBar({
+  tab,
+  onChange,
+}: {
+  tab: VoiceSettingsTab;
+  onChange: (tab: VoiceSettingsTab) => void;
+}) {
+  const { t } = useTranslation();
+  const options = useMemo(
+    () =>
+      VOICE_SETTINGS_TABS.map((value) => ({
+        value,
+        label: t(`settings.voiceSettings.claudeStt.tabs.${value}`),
+        testID: `voice-settings-tab-${value}`,
+      })),
+    [t],
+  );
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} testID="voice-settings-tabs">
+      <SegmentedControl options={options} value={tab} onValueChange={onChange} size="sm" />
+    </ScrollView>
   );
 }
 
@@ -296,54 +353,61 @@ function StatusSection({ status }: { status: SpeechLocalStatus }) {
 // On/off switches
 // ---------------------------------------------------------------------------
 
-// Upstream's Voice page owns these switches; this page replaces it, so it carries them.
-// Voice mode is off by default since 0.14.
-function FeatureSwitchesSection({
-  features,
-  envOverrides,
-  save,
-}: {
+// Upstream's Voice page owns these switches; this page replaces it, so it carries them. Each
+// tab has the switch of its own feature. Voice mode is off by default since 0.14.
+interface FeatureSwitchProps {
   features: SpeechSettings;
   envOverrides: Record<string, string> | undefined;
   save: SaveFeatures;
-}) {
+}
+
+function DictationSwitchSection({ features, envOverrides, save }: FeatureSwitchProps) {
   const { t } = useTranslation();
-  const dictationEnv = envOverrides?.["features.dictation.enabled"];
-  const voiceModeEnv = envOverrides?.["features.voiceMode.enabled"];
-  const setDictation = useCallback(
+  const env = envOverrides?.["features.dictation.enabled"];
+  const setEnabled = useCallback(
     (enabled: boolean) => void save({ dictation: { enabled } }),
     [save],
   );
-  const setVoiceMode = useCallback(
-    (enabled: boolean) => void save({ voiceMode: { enabled } }),
-    [save],
-  );
-
   return (
     <SettingsSection title={t("settings.voiceSettings.switches.title")}>
       <SettingsCard>
         <SettingsSwitch
           label={t("settings.voice.dictation.enabled")}
           hint={
-            dictationEnv
-              ? t("settings.voice.setBy", { name: dictationEnv })
+            env
+              ? t("settings.voice.setBy", { name: env })
               : t("settings.voice.dictation.enabledHint")
           }
           value={features.dictation.enabled}
-          onValueChange={setDictation}
-          disabled={Boolean(dictationEnv)}
+          onValueChange={setEnabled}
+          disabled={Boolean(env)}
           testID="voice-settings-dictation-enabled"
         />
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+function VoiceModeSwitchSection({ features, envOverrides, save }: FeatureSwitchProps) {
+  const { t } = useTranslation();
+  const env = envOverrides?.["features.voiceMode.enabled"];
+  const setEnabled = useCallback(
+    (enabled: boolean) => void save({ voiceMode: { enabled } }),
+    [save],
+  );
+  return (
+    <SettingsSection title={t("settings.voiceSettings.switches.title")}>
+      <SettingsCard>
         <SettingsSwitch
           label={t("settings.voice.voiceMode.enabled")}
           hint={
-            voiceModeEnv
-              ? t("settings.voice.setBy", { name: voiceModeEnv })
+            env
+              ? t("settings.voice.setBy", { name: env })
               : t("settings.voice.voiceMode.enabledHint")
           }
           value={features.voiceMode.enabled}
-          onValueChange={setVoiceMode}
-          disabled={Boolean(voiceModeEnv)}
+          onValueChange={setEnabled}
+          disabled={Boolean(env)}
           testID="voice-settings-voice-mode-enabled"
         />
       </SettingsCard>

@@ -11,15 +11,29 @@ export function sttProviderOptionIds(current: string | undefined): string[] {
   return ids;
 }
 
-// Each language is named in itself, so the list reads the same in every app language.
+// The 20 languages Claude Code's voice supports, each named in itself so the list reads the
+// same in every app language.
 export const CLAUDE_STT_LANGUAGES: ReadonlyArray<{ value: string; label: string }> = [
   { value: "en", label: "English" },
-  { value: "pt", label: "Português" },
   { value: "es", label: "Español" },
   { value: "fr", label: "Français" },
-  { value: "de", label: "Deutsch" },
-  { value: "it", label: "Italiano" },
   { value: "ja", label: "日本語" },
+  { value: "de", label: "Deutsch" },
+  { value: "pt", label: "Português" },
+  { value: "it", label: "Italiano" },
+  { value: "ko", label: "한국어" },
+  { value: "hi", label: "हिन्दी" },
+  { value: "id", label: "Bahasa Indonesia" },
+  { value: "ru", label: "Русский" },
+  { value: "pl", label: "Polski" },
+  { value: "tr", label: "Türkçe" },
+  { value: "nl", label: "Nederlands" },
+  { value: "uk", label: "Українська" },
+  { value: "el", label: "Ελληνικά" },
+  { value: "cs", label: "Čeština" },
+  { value: "da", label: "Dansk" },
+  { value: "sv", label: "Svenska" },
+  { value: "no", label: "Norsk" },
 ];
 
 export function claudeLanguageOptions(

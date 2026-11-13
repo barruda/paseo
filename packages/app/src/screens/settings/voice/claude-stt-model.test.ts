@@ -28,9 +28,17 @@ describe("provider options", () => {
 });
 
 describe("language options", () => {
+  it("lists the 20 supported languages, each once, named in itself", () => {
+    const options = claudeLanguageOptions("en");
+    expect(options).toHaveLength(20);
+    expect(new Set(options.map((option) => option.value)).size).toBe(20);
+    expect(options.find((option) => option.value === "pt")?.label).toBe("Português");
+    expect(options.find((option) => option.value === "ko")?.label).toBe("한국어");
+  });
+
   it("keeps the current value when it is not in the list", () => {
     expect(claudeLanguageOptions("pt").map((option) => option.value)).not.toContain("xx");
-    expect(claudeLanguageOptions("nl").at(-1)).toEqual({ value: "nl", label: "nl" });
+    expect(claudeLanguageOptions("zh").at(-1)).toEqual({ value: "zh", label: "zh" });
   });
 });
 
