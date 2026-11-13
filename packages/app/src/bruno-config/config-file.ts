@@ -99,17 +99,15 @@ export function isPlainObject(value: unknown): value is PlainObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-const ACCOUNT_SPEECH_KEYS = [
-  "dictationSttProvider",
-  "voiceSttProvider",
-  "voiceTtsProvider",
-  "claudeSttConfigDir",
-] as const;
-// Provider, model, OpenAI key and base URL live under these feature keys.
-const ACCOUNT_FEATURE_KEYS: Record<string, readonly string[]> = {
+// The voice and dictation provider choices (local or Claude) move between hosts; the Claude
+// account folder does not.
+const ACCOUNT_SPEECH_KEYS = ["claudeSttConfigDir"] as const;
+// OpenAI credentials live in these feature sub-objects, next to the provider and model.
+const ACCOUNT_FEATURE_PATHS: Record<string, readonly string[]> = {
   dictation: ["stt"],
-  voiceMode: ["stt", "tts", "llm", "turnDetection"],
+  voiceMode: ["stt", "tts", "llm"],
 };
+const ACCOUNT_FEATURE_KEYS = ["apiKey", "baseUrl"] as const;
 const ACCOUNT_JEV_KEYS = ["apiKey", "apiUrl", "jevModel"] as const;
 
 function omitKeys(source: PlainObject, keys: readonly string[]): PlainObject {
@@ -120,19 +118,27 @@ function omitKeys(source: PlainObject, keys: readonly string[]): PlainObject {
 
 function stripFeatures(features: PlainObject): PlainObject {
   const copy: PlainObject = { ...features };
-  for (const [group, keys] of Object.entries(ACCOUNT_FEATURE_KEYS)) {
+  for (const [group, paths] of Object.entries(ACCOUNT_FEATURE_PATHS)) {
     const value = copy[group];
     if (!isPlainObject(value)) continue;
-    const stripped = omitKeys(value, keys);
-    if (Object.keys(stripped).length > 0) copy[group] = stripped;
+    const nextGroup: PlainObject = { ...value };
+    for (const path of paths) {
+      const inner = nextGroup[path];
+      if (!isPlainObject(inner)) continue;
+      const stripped = omitKeys(inner, ACCOUNT_FEATURE_KEYS);
+      if (Object.keys(stripped).length > 0) nextGroup[path] = stripped;
+      else delete nextGroup[path];
+    }
+    if (Object.keys(nextGroup).length > 0) copy[group] = nextGroup;
     else delete copy[group];
   }
   return copy;
 }
 
 /**
- * Copy of a config without the account-specific host fields: the GitHub account, the speech
- * providers, the Claude account folder, and the Jev router key, endpoint and model. A section that
+ * Copy of a config without the account-specific host fields: the GitHub account, the Claude
+ * account folder, the OpenAI keys and URLs of voice and dictation, and the Jev router key,
+ * endpoint and model. A section that
  * ends up empty is left out.
  */
 export function stripAccountSettings<T extends BrunoConfigSnapshot>(config: T): T {

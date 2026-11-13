@@ -5591,10 +5591,11 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
   tabs, skip pinned, Critic and Jev toggles), the desktop `flexibleTabMovement`, and the active
   host's `github.configDir`, `speech`, `features`, and the jev-router and delegation plugin
   settings. A switch, "Skip providers and API keys" (on by default, not persisted), applies to both
-  Save and Load: it leaves out and ignores `host.github`, the speech providers and
-  `claudeSttConfigDir`, the `features` stt/tts/llm/turnDetection blocks, and the Jev router
+  Save and Load: it leaves out and ignores `host.github`, `speech.claudeSttConfigDir`, the
+  `apiKey`/`baseUrl` inside `features` stt/tts/llm, and the Jev router
   `apiKey`, `apiUrl` and `jevModel`, so a file moves between hosts on different accounts (Load
-  reports "Providers and API keys (kept this host's)"). With it off the file includes the
+  reports "Providers and API keys (kept this host's)"). The voice and dictation provider choices
+  (local or Claude) and models are not account data and stay in the file. With it off the file includes the
   TypeSafe API key. Plugin loads merge over the host's current values (shallow), so a file
   without `apiKey` keeps the host's key. Load asks to confirm, then applies each section
   on its own and shows an applied / skipped / failed report. Missing sections and keys stay as they

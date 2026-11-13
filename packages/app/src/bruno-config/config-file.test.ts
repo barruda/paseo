@@ -76,13 +76,13 @@ describe("stripAccountSettings", () => {
         dictationPrompt: "hello",
       },
       features: {
-        dictation: { enabled: true, stt: { provider: "openai", apiKey: "k" } },
+        dictation: { enabled: true, stt: { provider: "openai", apiKey: "k", baseUrl: "b" } },
         voiceMode: {
           enabled: false,
-          stt: {},
-          tts: {},
-          llm: {},
-          turnDetection: {},
+          stt: { provider: "local", model: "parakeet" },
+          tts: { provider: "openai", apiKey: "k", voice: "alloy" },
+          llm: { apiKey: "k" },
+          turnDetection: { provider: "silero" },
         },
       },
       plugins: {
@@ -98,8 +98,21 @@ describe("stripAccountSettings", () => {
     expect(stripAccountSettings(full)).toEqual({
       app: { chatLinksEnabled: true },
       host: {
-        speech: { dictationPrompt: "hello" },
-        features: { dictation: { enabled: true }, voiceMode: { enabled: false } },
+        speech: {
+          dictationSttProvider: "openai",
+          voiceSttProvider: "claude",
+          voiceTtsProvider: "claude",
+          dictationPrompt: "hello",
+        },
+        features: {
+          dictation: { enabled: true, stt: { provider: "openai" } },
+          voiceMode: {
+            enabled: false,
+            stt: { provider: "local", model: "parakeet" },
+            tts: { provider: "openai", voice: "alloy" },
+            turnDetection: { provider: "silero" },
+          },
+        },
         plugins: {
           "jev-router": { router: { enabled: true, python: "python3" } },
           delegation: { settings: { a: 1 } },
@@ -118,8 +131,8 @@ describe("stripAccountSettings", () => {
     const result = stripAccountSettings({
       host: {
         github: { configDir: "x" },
-        speech: { voiceTtsProvider: "claude" },
-        features: { voiceMode: { stt: {} } },
+        speech: { claudeSttConfigDir: "~/.claude" },
+        features: { voiceMode: { llm: { apiKey: "k" } } },
       },
     });
     expect(result).toEqual({ host: {} });

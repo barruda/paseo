@@ -84,9 +84,9 @@ export function BrunoConfigFilePage({ serverId }: { serverId: string | null }) {
           <View style={settingsStyles.rowContent}>
             <Text style={settingsStyles.rowTitle}>Skip providers and API keys</Text>
             <Text style={settingsStyles.rowHint}>
-              Leaves out and ignores the GitHub account, the voice and dictation providers, the
-              Claude account folder and the TypeSafe key, endpoint and model, so a file moves
-              between hosts on different accounts.
+              Leaves out and ignores the GitHub account, the Claude account folder, the OpenAI keys
+              of voice and dictation, and the TypeSafe key, endpoint and model, so a file moves
+              between hosts on different accounts. Voice and dictation still go in.
             </Text>
           </View>
           <Switch
