@@ -33,7 +33,7 @@ export interface DelegationFormModel {
   applyLoadError(message: string): void;
   /** Sets one field of the draft; the sheet's controls each own one. */
   set<Key extends keyof DelegationSettings>(key: Key, value: DelegationSettings[Key]): void;
-  /** Everything back to the defaults except on/off. */
+  /** Everything back to the defaults except on/off (the Subagents tab included). */
   resetDefaults(): void;
   beginSave(): void;
   saveFailed(message: string): void;

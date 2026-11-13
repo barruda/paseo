@@ -297,6 +297,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/git-sync/model.test.ts --bail=1)
   # A New Agent tab's flame and critic carry over to the session it creates.
   (cd packages/app && npx vitest run src/composer/draft/composer-extras.test.ts --bail=1)
+  # Delegation: CLAUDE.md / AGENTS.md trimming for Paseo-created subagents.
+  (cd packages/server && npx vitest run src/server/agent/providers/claude/claude-md-excludes.test.ts src/server/agent/providers/codex-agents-md.test.ts --bail=1)
   # An agent's tab keeps working while a subagent runs.
   (cd packages/app && npx vitest run src/subagents/running.test.ts --bail=1)
   # The Tasks sidebar lists provider subagents under their agent.

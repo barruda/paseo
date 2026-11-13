@@ -26,6 +26,13 @@ export type DelegationWhen = (typeof DELEGATION_WHEN)[number];
 export const DELEGATION_SEARCH = ["off", "haiku", "sonnet"] as const;
 export type DelegationSearch = (typeof DELEGATION_SEARCH)[number];
 
+/**
+ * Which CLAUDE.md files a Claude subagent created through Paseo loads: all of them, only the
+ * project's own, or none.
+ */
+export const DELEGATION_SUBAGENT_CONTEXT = ["full", "project", "none"] as const;
+export type DelegationSubagentContext = (typeof DELEGATION_SUBAGENT_CONTEXT)[number];
+
 export const DEFAULT_DELEGATION = {
   enabled: false,
   implementerModel: "sonnet",
@@ -34,6 +41,7 @@ export const DEFAULT_DELEGATION = {
   review: true,
   searchModel: "off",
   extraInstructions: "",
+  subagentContext: "full",
 } as const;
 
 export const MAX_DELEGATION_EXTRA_CHARS = 4000;
@@ -52,6 +60,8 @@ export const DelegationSettingsSchema = z.object({
     .string()
     .max(MAX_DELEGATION_EXTRA_CHARS)
     .default(DEFAULT_DELEGATION.extraInstructions),
+  /** Applies to Claude subagents created through Paseo, on every launch. */
+  subagentContext: z.enum(DELEGATION_SUBAGENT_CONTEXT).default(DEFAULT_DELEGATION.subagentContext),
 });
 export type DelegationSettings = z.infer<typeof DelegationSettingsSchema>;
 

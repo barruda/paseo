@@ -5006,6 +5006,21 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
     prompt would throw its prompt cache away, so open sessions keep what they started with.
     Sonnet/Haiku sessions, other providers and daemon-internal agents are skipped; a prompt that
     already has the rule (a restart copying the config) doesn't get it twice.
+  - **Sheet tabs** (2026-11-13): Delegation (switch, **Implementer**, **Policy**, collapsed
+    **Advanced** with Extra instructions and Restore defaults), Subagents, Reports. One Save
+    (footer on the first two tabs) writes everything.
+  - **Subagent context** (setting `subagentContext`, Subagents tab, default `full`): trims the
+    memory files a subagent created through Paseo (label `paseo.parent-agent-id`) loads. The
+    plugin's `agent.session_open` hook sets an env var on every launch (create and resume),
+    whether or not delegation is on. Claude: `none` sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`;
+    `project` sets `PASEO_CLAUDE_MD_EXCLUDES` (JSON list from `shared/claude-md-excludes.ts`:
+    the config dir's `CLAUDE.md` and `rules/**`, and `CLAUDE.md`, `CLAUDE.local.md`,
+    `.claude/CLAUDE.md`, `.claude/rules/**` of every folder above the git root), which the Claude
+    provider passes to the SDK as the `claudeMdExcludes` setting. Codex: only `none` does
+    anything, `PASEO_CODEX_AGENTS_MD=none` becomes `project_doc_max_bytes=0` in the thread config
+    (drops the repo's AGENTS.md). Codex 0.163 has no setting for `$CODEX_HOME/AGENTS.md`
+    (checked with `codex exec -c ...` and the rollout file), so the global file is always read and
+    `project` is a no-op for Codex. Claude Code's own Agent-tool subagents are not affected.
   - Pairing: `agent.create` puts `PASEO_DELEGATION_ID` in the first launch's env,
     `agent.session_open` (reason create) ties it to the agent id, and `agent.created` appends a
     card ("Delegação ligada: implementação vai para Sonnet · medium, …") and a line to
@@ -5026,18 +5041,26 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   `packages/app/src/delegation/` (`form-model.ts` + test, `report-model.ts` + test, `sheet.tsx`,
   `reports.tsx`, `toggle.tsx`);
   `packages/server/src/server/plugins/custom-delegation-plugin.e2e.test.ts`.
-- **Core files touched:** app `composer/agent-controls/index.tsx` (`<DelegationToggle>` after
+- **Core files touched:** server `agent/providers/claude/agent.ts` (`buildSettingsOptions` adds
+  `claudeMdExcludes`, new `claude-md-excludes.ts` + test) and `agent/providers/codex-app-server-agent.ts`
+  (`launchEnv` in the session deps, `buildCodexInnerConfig` merges `codex-agents-md.ts` + test),
+  marked `CUSTOM(delegation-subagent-context)`; app `composer/agent-controls/index.tsx` (`<DelegationToggle>` after
   `<JevRouterToggle>`), `composer/chat-options.ts` (`delegation` key),
   `screens/settings/bruno-customizations/section.tsx` (icon and the Composer card). Marked
   `CUSTOM(delegation)`.
-- **Re-apply:** Render `DelegationToggle` at the end of the composer's agent control row when the
+- **Re-apply:** In the Claude provider's `buildSettingsOptions`, merge
+  `claudeMdExcludes` from `parseClaudeMdExcludes(this.launchEnv)` into the settings (and don't
+  return `{}` early). In the Codex provider, pass the launch env into the session deps and
+  `Object.assign(innerConfig, codexAgentsMdConfig(deps.launchEnv))`. Render `DelegationToggle` at the end of the composer's agent control row when the
   `delegation` chat option is on; add the key to `CHAT_OPTIONS`. Everything else is plugin code.
 - **Setup:** `paseo plugin install "$PWD/custom/plugins/delegation" --home ~/.paseo` and again
   with `--home ~/.paseo-telus`, a desktop build for the app.
 - **Verify:** `npx vitest run custom/plugins/delegation packages/app/src/delegation` and the e2e
-  `custom-delegation-plugin.e2e.test.ts` (both in the update script). By hand: turn the icon on,
+  `custom-delegation-plugin.e2e.test.ts` (both in the update script), plus
+  `claude-md-excludes.test.ts` and `codex-agents-md.test.ts` in `packages/server`. By hand: turn the icon on,
   start an Opus session; the card shows at the top, and a multi-file change goes to a Sonnet
-  subagent pane.
+  subagent pane. Set Subagent context to Project only, have a session create a Claude subagent
+  and ask it which CLAUDE.md files it sees (or run `getContextUsage` on it): only the repo's.
 
 ## later: `/later <duration> <message>` sends a message to this agent once, later
 

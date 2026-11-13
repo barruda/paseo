@@ -1,3 +1,4 @@
+import { codexAgentsMdConfig } from "./codex-agents-md.js"; // CUSTOM(delegation-subagent-context)
 import { validateProviderOptions } from "../provider-options.js";
 import {
   getAgentStreamEventTurnId,
@@ -279,6 +280,8 @@ interface CodexAppServerAgentDeps {
     extends: string;
   };
   customCodexConfig?: CodexCustomProviderConfig | null;
+  // CUSTOM(delegation-subagent-context): the launch env, for PASEO_CODEX_AGENTS_MD.
+  launchEnv?: Record<string, string>;
   // The CODEX_HOME the session's app-server runs with; prompts and skills are read from it.
   codexHome?: string;
   _createCodexClient?: (
@@ -5399,6 +5402,8 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (this.deps.customCodexConfig) {
       Object.assign(innerConfig, this.deps.customCodexConfig);
     }
+    // CUSTOM(delegation-subagent-context): a Paseo subagent without the repo's AGENTS.md.
+    Object.assign(innerConfig, codexAgentsMdConfig(this.deps.launchEnv));
     if (this.config.mcpServers) {
       const mcpServers: Record<string, CodexMcpServerConfig> = {};
       for (const [name, serverConfig] of Object.entries(this.config.mcpServers)) {
@@ -7245,6 +7250,7 @@ export class CodexAppServerAgentClient implements AgentClient {
       ...this.deps,
       codexHome: resolveCodexHomeDir(buildCodexAppServerEnv(this.runtimeSettings, launchEnv)),
       customCodexConfig: this.customProviderConfig(),
+      launchEnv, // CUSTOM(delegation-subagent-context)
     };
   }
 

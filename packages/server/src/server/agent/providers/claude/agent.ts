@@ -1,4 +1,5 @@
 import { setImmediate } from "node:timers/promises";
+import { parseClaudeMdExcludes } from "./claude-md-excludes.js"; // CUSTOM(delegation-subagent-context)
 import { ClaudeRuntimeSafety } from "./runtime-safety.js";
 import { validateProviderOptions } from "../../provider-options.js";
 import type { ChildProcess } from "node:child_process";
@@ -3754,12 +3755,15 @@ class ClaudeAgentSession implements AgentSession {
     // Internal agents do daemon work such as naming a branch, so the user's and
     // project's hooks must not run for them.
     const disableAllHooks = this.config.internal === true;
-    if (fastMode === null && !input.ultracode && !disableAllHooks) {
+    // CUSTOM(delegation-subagent-context): CLAUDE.md files a Paseo subagent must not load.
+    const claudeMdExcludes = parseClaudeMdExcludes(this.launchEnv);
+    if (fastMode === null && !input.ultracode && !disableAllHooks && !claudeMdExcludes) {
       return {};
     }
     return {
       settings: mergeClaudeSettings(providerOptions.settings, {
         ...(fastMode === null ? {} : { fastMode }),
+        ...(claudeMdExcludes ? { claudeMdExcludes } : {}),
         ...(input.ultracode ? { ultracode: true } : {}),
         ...(disableAllHooks ? { disableAllHooks: true } : {}),
       }),

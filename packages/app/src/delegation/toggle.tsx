@@ -35,7 +35,18 @@ export function DelegationToggle({ serverId }: { serverId: string | null }) {
   return <PluginDelegationToggle plugin={plugin} />;
 }
 
+const SUBAGENT_CONTEXT_LINES = {
+  project: "Subagents: project CLAUDE.md only",
+  none: "Subagents: no CLAUDE.md",
+} as const;
+
 export function describeDelegation(settings: DelegationSettings): string[] {
+  const subagents =
+    settings.subagentContext === "full" ? [] : [SUBAGENT_CONTEXT_LINES[settings.subagentContext]];
+  return [...describeDelegationRule(settings), ...subagents];
+}
+
+function describeDelegationRule(settings: DelegationSettings): string[] {
   if (!settings.enabled) return ["Delegation: off"];
   const implementer = `${formatDelegationModel(settings.implementerModel)} · ${settings.implementerEffort}`;
   return [

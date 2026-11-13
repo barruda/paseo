@@ -50,6 +50,19 @@ describe("delegation form", () => {
     expect(form.getState().textsVersion).toBe(version + 1);
   });
 
+  it("edits and restores the subagent context", () => {
+    const form = loaded();
+    expect(form.getState().draft.subagentContext).toBe("full");
+    form.set("subagentContext", "project");
+    expect(form.getState().draft.subagentContext).toBe("project");
+    form.resetDefaults();
+    expect(form.getState().draft.subagentContext).toBe("full");
+  });
+
+  it("reads stored settings without a subagent context as full", () => {
+    expect(DelegationSettingsSchema.parse({ enabled: true }).subagentContext).toBe("full");
+  });
+
   it("ignores edits after closing", () => {
     const form = loaded();
     form.close();
