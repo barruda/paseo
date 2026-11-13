@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Text, View } from "react-native";
-import { ChevronDown, ChevronRight } from "lucide-react-native";
-import { StyleSheet, withUnistyles } from "react-native-unistyles";
+import { StyleSheet } from "react-native-unistyles";
 import { settingsRpc } from "@getpaseo/plugin";
 import {
   DELEGATION_EFFORTS,
@@ -19,15 +18,20 @@ import {
   type DelegationWhen,
 } from "@getpaseo/protocol/delegation";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
+import {
+  SettingsCard,
+  SettingsCollapsibleRow,
+  SettingsRow,
+  SettingsSection,
+  SettingsSelect,
+} from "@/components/settings";
 import { Button } from "@/components/ui/button";
-import { PressHighlight } from "@/components/ui/press-highlight";
 import { FormTextInput } from "@/components/ui/form-field";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { pluginSettingsKey } from "@/plugins/settings/use-settings";
 import type { InstalledPlugin } from "@/plugins/types";
-import type { Theme } from "@/styles/theme";
 import { toErrorMessage } from "@/utils/error-messages";
 import { openDelegationForm, type DelegationFormModel } from "./form-model";
 import { DelegationReports } from "./reports";
@@ -141,8 +145,6 @@ export function DelegationSheet({
   );
   const setExtra = useCallback((text: string) => form.set("extraInstructions", text), [form]);
 
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const toggleAdvanced = useCallback(() => setAdvancedOpen((value) => !value), []);
   const setSubagentContext = useCallback(
     (value: DelegationSubagentContext) => form.set("subagentContext", value),
     [form],
@@ -172,134 +174,122 @@ export function DelegationSheet({
         <View style={styles.body}>
           {tab === "delegation" ? (
             <>
-              <Text style={styles.hint}>
-                A new Claude session on Opus or Fable plans, decides and reviews, and hands the code
-                to a cheaper subagent. It applies when a session is created: sessions already open
-                keep what they started with.
-              </Text>
-              <Row title="Delegate in new sessions">
-                <Switch
-                  value={draft.enabled}
-                  onValueChange={setEnabled}
-                  accessibilityLabel="Delegate in new sessions"
-                  testID="delegation-enabled"
-                />
-              </Row>
-              <Group title="Implementer">
-                <Field title="Model">
-                  <SegmentedControl
+              <SettingsCard>
+                <SettingsRow
+                  label="Delegate in new sessions"
+                  hint="Opus and Fable sessions plan and review; a cheaper subagent writes the code. Applies to new sessions."
+                >
+                  <Switch
+                    value={draft.enabled}
+                    onValueChange={setEnabled}
+                    accessibilityLabel="Delegate in new sessions"
+                    testID="delegation-enabled"
+                  />
+                </SettingsRow>
+              </SettingsCard>
+              <SettingsSection title="Implementer">
+                <SettingsCard>
+                  <SettingsSelect
+                    label="Model"
                     options={MODEL_OPTIONS}
                     value={draft.implementerModel}
                     onValueChange={setModel}
-                    size="sm"
                     testID="delegation-model"
                   />
-                </Field>
-                <Field title="Effort">
-                  <SegmentedControl
+                  <SettingsSelect
+                    label="Effort"
                     options={EFFORT_OPTIONS}
                     value={draft.implementerEffort}
                     onValueChange={setEffort}
-                    size="sm"
                     testID="delegation-effort"
                   />
-                </Field>
-              </Group>
-              <Group title="Policy">
-                <Field title="When to delegate" hint={WHEN_HINTS[draft.when]}>
-                  <SegmentedControl
+                </SettingsCard>
+              </SettingsSection>
+              <SettingsSection title="Policy">
+                <SettingsCard>
+                  <SettingsSelect
+                    label="When to delegate"
+                    hint={WHEN_HINTS[draft.when]}
                     options={WHEN_OPTIONS}
                     value={draft.when}
                     onValueChange={setWhen}
-                    size="sm"
                     testID="delegation-when"
                   />
-                </Field>
-                <Row
-                  title="Review in the session"
-                  hint="It reads the diff, reruns the checks and sends fixes back to the same subagent."
-                >
-                  <Switch
-                    value={draft.review}
-                    onValueChange={setReview}
-                    accessibilityLabel="Review in the session"
-                    testID="delegation-review"
-                  />
-                </Row>
-                <Field
-                  title="Broad searches"
-                  hint="Off leaves search to the session. A model sends broad searches to an Explore subagent on it."
-                >
-                  <SegmentedControl
+                  <SettingsRow
+                    label="Review in the session"
+                    hint="It reads the diff, reruns the checks and sends fixes back to the same subagent."
+                  >
+                    <Switch
+                      value={draft.review}
+                      onValueChange={setReview}
+                      accessibilityLabel="Review in the session"
+                      testID="delegation-review"
+                    />
+                  </SettingsRow>
+                  <SettingsSelect
+                    label="Broad searches"
+                    hint="Off leaves search to the session. A model sends broad searches to an Explore subagent on it."
                     options={SEARCH_OPTIONS}
                     value={draft.searchModel}
                     onValueChange={setSearch}
-                    size="sm"
                     testID="delegation-search"
                   />
-                </Field>
-              </Group>
-              <Disclosure
-                title="Advanced"
-                expanded={advancedOpen}
-                onToggle={toggleAdvanced}
-                testID="delegation-advanced"
-              >
-                <Field
-                  title="Extra instructions"
-                  hint="Added to the end of the rule, as written."
-                  error={state.extraError}
-                >
-                  <FormTextInput
-                    key={state.textsVersion}
-                    size="sm"
-                    multiline
-                    initialValue={draft.extraInstructions}
-                    onChangeText={setExtra}
-                    placeholder="Never delegate Unity scene edits."
-                    editable={!state.saving}
-                    style={styles.extraInput}
-                    accessibilityLabel="Extra instructions"
-                    testID="delegation-extra"
-                  />
-                </Field>
-                <View style={styles.resetRow}>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onPress={form.resetDefaults}
-                    disabled={state.saving}
-                    testID="delegation-reset"
+                </SettingsCard>
+              </SettingsSection>
+              <SettingsCard>
+                <SettingsCollapsibleRow label="Advanced" testID="delegation-advanced">
+                  <SettingsRow
+                    label="Extra instructions"
+                    hint="Added to the end of the rule, as written."
+                    error={state.extraError}
                   >
-                    Restore defaults
-                  </Button>
-                </View>
-              </Disclosure>
+                    <FormTextInput
+                      key={state.textsVersion}
+                      multiline
+                      initialValue={draft.extraInstructions}
+                      onChangeText={setExtra}
+                      placeholder="Never delegate Unity scene edits."
+                      editable={!state.saving}
+                      style={styles.extraInput}
+                      accessibilityLabel="Extra instructions"
+                      testID="delegation-extra"
+                    />
+                  </SettingsRow>
+                  <SettingsRow label="Restore defaults">
+                    <Button
+                      variant="outline"
+                      onPress={form.resetDefaults}
+                      disabled={state.saving}
+                      testID="delegation-reset"
+                    >
+                      Restore
+                    </Button>
+                  </SettingsRow>
+                </SettingsCollapsibleRow>
+              </SettingsCard>
             </>
           ) : null}
           {tab === "subagents" ? (
-            <>
-              <Text style={styles.hint}>
-                Applies to Claude and Codex subagents created through Paseo, on their next launch.
-                Subagents that Claude Code starts with its own Agent tool inherit the context of the
-                parent and are not affected.
-              </Text>
-              <Field title="Subagent context" hint={SUBAGENT_CONTEXT_HINTS[draft.subagentContext]}>
-                <SegmentedControl
+            <SettingsSection
+              title="Subagent context"
+              info="Applies to Claude and Codex subagents created through Paseo, on their next launch. Subagents that Claude Code starts with its own Agent tool inherit the context of the parent and are not affected."
+            >
+              <SettingsCard>
+                <SettingsSelect
+                  label="Context"
+                  hint={SUBAGENT_CONTEXT_HINTS[draft.subagentContext]}
                   options={SUBAGENT_CONTEXT_OPTIONS}
                   value={draft.subagentContext}
                   onValueChange={setSubagentContext}
-                  size="sm"
                   testID="delegation-subagent-context"
                 />
-              </Field>
-            </>
+              </SettingsCard>
+            </SettingsSection>
           ) : null}
           {state.error ? <Text style={styles.errorText}>{state.error}</Text> : null}
           <View style={styles.actions}>
             <Button
               variant="secondary"
-              size="sm"
               style={styles.actionButton}
               onPress={onClose}
               disabled={state.saving}
@@ -309,7 +299,6 @@ export function DelegationSheet({
             </Button>
             <Button
               variant="default"
-              size="sm"
               style={styles.actionButton}
               onPress={handleSavePress}
               disabled={!state.canSave}
@@ -353,100 +342,9 @@ function useDelegationSave(
   return useCallback(() => void handleSave(), [handleSave]);
 }
 
-const ThemedChevronDown = withUnistyles(ChevronDown);
-const ThemedChevronRight = withUnistyles(ChevronRight);
-const chevronColor = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-
-function Group({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <View style={styles.group}>
-      <Text style={styles.groupTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-/** A collapsed-by-default section: a header row with a chevron, the content under it. */
-function Disclosure({
-  title,
-  expanded,
-  onToggle,
-  testID,
-  children,
-}: {
-  title: string;
-  expanded: boolean;
-  onToggle: () => void;
-  testID: string;
-  children: React.ReactNode;
-}) {
-  const accessibilityState = useMemo(() => ({ expanded }), [expanded]);
-  return (
-    <View style={styles.group}>
-      <PressHighlight
-        onPress={onToggle}
-        accessibilityRole="button"
-        accessibilityLabel={title}
-        accessibilityState={accessibilityState}
-        style={styles.disclosureHeader}
-        testID={`${testID}-toggle`}
-      >
-        {expanded ? (
-          <ThemedChevronDown size={16} uniProps={chevronColor} />
-        ) : (
-          <ThemedChevronRight size={16} uniProps={chevronColor} />
-        )}
-        <Text style={styles.groupTitle}>{title}</Text>
-      </PressHighlight>
-      {expanded ? <View style={styles.disclosureBody}>{children}</View> : null}
-    </View>
-  );
-}
-
-function Field({
-  title,
-  hint,
-  error,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  error?: string | null;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={styles.field}>
-      <Text style={styles.label}>{title}</Text>
-      {hint ? <Text style={styles.hint}>{hint}</Text> : null}
-      {children}
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
-    </View>
-  );
-}
-
-function Row({
-  title,
-  hint,
-  children,
-}: {
-  title: string;
-  hint?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <View style={styles.row}>
-      <View style={styles.rowContent}>
-        <Text style={styles.label}>{title}</Text>
-        {hint ? <Text style={styles.hint}>{hint}</Text> : null}
-      </View>
-      {children}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create((theme) => ({
   tabs: {
-    marginBottom: theme.spacing[3],
+    marginBottom: theme.spacing[6],
   },
   loading: {
     alignItems: "center",
@@ -457,54 +355,13 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
   },
   body: {
-    gap: theme.spacing[3],
+    gap: theme.spacing[6],
     paddingBottom: theme.spacing[2],
-  },
-  group: {
-    gap: theme.spacing[3],
-  },
-  groupTitle: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    fontWeight: theme.fontWeight.medium,
-  },
-  disclosureHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  disclosureBody: {
-    gap: theme.spacing[3],
-  },
-  field: {
-    gap: theme.spacing[2],
-  },
-  row: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    gap: theme.spacing[3],
-  },
-  rowContent: {
-    flex: 1,
-    gap: theme.spacing[1],
-  },
-  label: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
-  },
-  hint: {
-    color: theme.colors.foregroundMuted,
-    fontSize: theme.fontSize.sm,
-    lineHeight: theme.fontSize.sm * 1.4,
   },
   extraInput: {
     minHeight: 64,
+    minWidth: 200,
     textAlignVertical: "top",
-  },
-  resetRow: {
-    flexDirection: "row",
-    justifyContent: "flex-start",
   },
   errorText: {
     color: theme.colors.statusDanger,
@@ -512,8 +369,8 @@ const styles = StyleSheet.create((theme) => ({
   },
   actions: {
     flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[2],
+    gap: theme.spacing[3],
+    marginTop: theme.spacing[2],
   },
   actionButton: {
     flex: 1,
