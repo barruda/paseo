@@ -4,13 +4,15 @@
 // `.html`, open it in the system browser; for anything else, show it in the system file manager.
 // Web links get the same card: copy, open in a Paseo browser tab, open in the system browser. Web
 // and desktop only: hover doesn't exist on native, where the link keeps opening on tap.
+// CUSTOM(link-new-agent): web links also get "new agent with this link": a fresh agent tab of the
+// chat's workspace, unrelated to the current agent, with the link in its composer, unsent.
 import * as Clipboard from "expo-clipboard";
 import {
+  BotMessageSquare,
   Copy,
   ExternalLink,
   FolderOpen,
   Globe,
-  Link,
   PanelTop,
   Play,
   SquareTerminal,
@@ -39,6 +41,9 @@ import { getIsElectron } from "@/constants/platform";
 import { getDesktopHost } from "@/desktop/host";
 import { createWorkspaceBrowser } from "@/desktop/browser/store";
 import { useDesksStore } from "@/task-navigation/desks-store";
+import { useDraftStore } from "@/stores/draft-store";
+import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
+import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { openExternalUrl } from "@/utils/open-external-url";
@@ -84,8 +89,8 @@ const ThemedWarp = themed(SquareTerminal);
 const ThemedTab = themed(PanelTop);
 const ThemedBrowser = themed(ExternalLink);
 const ThemedFolder = themed(FolderOpen);
-const ThemedLink = themed(Link);
 const ThemedGlobe = themed(Globe);
+const ThemedNewAgent = themed(BotMessageSquare);
 
 // The card renders in a portal, outside the chat's providers, so the link reads them here and
 // hands them down.
@@ -535,7 +540,26 @@ function openUrlInWorkspaceTab(input: {
   background: boolean;
 }) {
   const { browserId } = createWorkspaceBrowser({ initialUrl: input.url });
-  const target = { kind: "browser" as const, browserId };
+  openWorkspaceTab({ ...input, target: { kind: "browser", browserId } });
+}
+
+/** CUSTOM(link-new-agent): a new agent tab whose draft holds the link; the user sends it. */
+function openNewAgentWithUrl(input: { url: string; workspace: ChatWorkspace; tasksMode: boolean }) {
+  const draftId = generateDraftId();
+  useDraftStore.getState().saveDraftInput({
+    draftKey: buildDraftStoreKey({ serverId: input.workspace.serverId, agentId: "", draftId }),
+    draft: { text: input.url, attachments: [] },
+  });
+  openWorkspaceTab({ ...input, background: false, target: { kind: "draft", draftId } });
+}
+
+function openWorkspaceTab(input: {
+  workspace: ChatWorkspace;
+  tasksMode: boolean;
+  background: boolean;
+  target: WorkspaceTabTarget;
+}) {
+  const { target } = input;
   if (input.tasksMode) {
     const desks = useDesksStore.getState();
     if (input.background) desks.openTabInBackground({ ...input.workspace, target });
@@ -576,13 +600,17 @@ function UrlActionRow({
   const openInBrowser = useCallback(() => {
     void openExternalUrl(url);
   }, [url]);
+  const openNewAgent = useCallback(() => {
+    if (!workspace) return;
+    openNewAgentWithUrl({ url, workspace, tasksMode });
+  }, [tasksMode, url, workspace]);
 
   return (
     <View style={styles.row}>
       <View style={styles.actions}>
         <ActionButton
           label="Copiar link"
-          icon={ThemedLink}
+          icon={ThemedCopy}
           onPress={copyUrl}
           closeCard={closeCard}
         />
@@ -600,6 +628,14 @@ function UrlActionRow({
           onPress={openInBrowser}
           closeCard={closeCard}
         />
+        {workspace ? (
+          <ActionButton
+            label="Novo agente com este link"
+            icon={ThemedNewAgent}
+            onPress={openNewAgent}
+            closeCard={closeCard}
+          />
+        ) : null}
       </View>
       <Text selectable style={styles.path} numberOfLines={2}>
         {url}

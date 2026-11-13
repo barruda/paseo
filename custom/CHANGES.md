@@ -2752,10 +2752,11 @@ paseo-warp-new-tab event` listens for that window event. Paseo runs `executeJava
     **Abrir no navegador**; for anything else,
     **Abrir no gerenciador de arquivos** (Electron's `shell.showItemInFolder`). Browser and file
     manager only show for the local desktop host; Warp only in Electron with the Warp plugin.
-  - **Web links** get the same card (`UrlHoverActions`): the URL (a markdown link shows its
-    target), **Copiar link**, **Abrir em aba** (a Paseo browser tab of the chat's workspace,
-    Electron only) and **Abrir no navegador** (what clicking does). `useFileLink` returns
-    `externalUrl` for them.
+  - **Web links** get the same card (`UrlHoverActions`): **Copiar link** (the same Copy icon as
+    files; a chain-link icon read as "open"), **Abrir em aba** (a Paseo browser tab of the chat's
+    workspace, Electron only), **Abrir no navegador** (what clicking does) and **Novo agente com
+    este link** (see link-new-agent), then the URL (a markdown link shows its target).
+    `useFileLink` returns `externalUrl` for them.
   - Every action closes the card (`useHoverCardClose`): after **Abrir em aba** the link is hidden
     behind the new tab, the pointer never "leaves" it, and the card stayed up over the new tab.
   - The card also closes, in the same render, when its retained chat goes inactive, and can't open
@@ -4876,6 +4877,26 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   kept tab with `openInDesk` and then refocuses the tab that had focus.
 - **Verify:** `(cd packages/app && npx vitest run src/task-navigation/store.test.ts -t "background")`.
   In the desktop app, right-click and middle-click a link in a chat: a browser tab appears for each and the chat keeps focus.
+
+## link-new-agent: a web link's hover card starts a new agent with the link as its prompt
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: a web link's hover card opens a new agent tab with the link in its composer`
+- **Why:** Handing a link to a fresh agent meant opening a new tab and pasting it by hand.
+- **What:** The web link hover card gets a last icon (BotMessageSquare, **Novo agente com este
+  link**) between **Abrir no navegador** and the URL. It opens a new agent tab (a draft, no
+  parent, no setup copied from the current agent) in the chat's workspace, with the URL as the
+  composer text, unsent: the user picks the model and presses Enter. Tasks mode opens it in the
+  Desk; otherwise in the workspace layout. Shows wherever the chat has a workspace, web included.
+- **Core files touched:** `assistant-file-links/hover-actions.tsx` only (`CUSTOM(link-new-agent)`:
+  `openNewAgentWithUrl`, and `openWorkspaceTab` shared with `openUrlInWorkspaceTab`).
+- **Re-apply:** Save the draft text with `useDraftStore.getState().saveDraftInput` under
+  `buildDraftStoreKey({ serverId, agentId: "", draftId })` for a fresh `generateDraftId()`, then
+  open the target `{ kind: "draft", draftId }` the same way the card opens a browser tab (Desks
+  store `openTab`, or the workspace layout store with `intent: "reveal"`). Same pattern as
+  `git-sync/open-resolve-tab.ts`.
+- **Verify:** Hover a web link in a chat, click the robot icon: a "New Agent" tab opens with the
+  link in the composer and nothing sent. Needs a new app build; no daemon restart.
 
 ## reopen-closed-tab: Ctrl+Z right after closing a Desk tab reopens it
 
