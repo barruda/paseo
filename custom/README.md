@@ -83,7 +83,8 @@ so neither reopening the window nor Settings > Restart daemon picks up new daemo
 `kill-paseos-and-daemons.sh` (`custom/bin/`, linked into `~/.local/bin` under that name and as
 `restart-paseos-and-daemons.sh`). It stops the daemons
 (`~/.paseo` and `~/.paseo-telus`), closes the open Paseo windows, and reopens them from their
-launchers, giving each step 5 s before it kills. When neither the paseo-telus window nor its daemon
+launchers, giving each step 5 s before it kills. It then waits up to 30 s for each window and
+its daemon and launches a window once more if it did not come back. When neither the paseo-telus window nor its daemon
 is running, it leaves paseo-telus alone. This stops the running agents. It first moves itself
 into a transient systemd user service (`setsid` alone keeps it in the cgroup of the Paseo that ran
 it, which can take it down halfway), so it also works as `!kill-paseos-and-daemons.sh` from a

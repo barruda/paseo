@@ -130,13 +130,53 @@ done
 # gtk-launch moves the window into its own app scope only after it starts, so the first processes
 # the window forks stay where gtk-launch ran. Give gtk-launch a scope of its own in app.slice so
 # they land there and not in this service.
+launch() {
+  setsid -f systemd-run --user --scope --quiet --collect --slice=app.slice \
+    --unit="paseo-launch-$1-$$-$RANDOM" -- env -u ELECTRON_RUN_AS_NODE -u PASEO_HOME \
+    -u PASEO_AGENT_ID -u GH_CONFIG_DIR -u CLAUDE_CONFIG_DIR -u PASEO_ELECTRON_USER_DATA_DIR \
+    -u PASEO_DESKTOP_NAME -u PASEO_DESKTOP_MANAGED -u PASEO_CLI gtk-launch "$1" \
+    >/dev/null 2>&1 </dev/null
+}
+
+# The window pid once the window holds its lock and its daemon is running, within 30 s.
+wait_until_up() {
+  local config="$1" home="$2" pid
+  for _ in $(seq 150); do
+    if pid="$(window_pid "$config")" && [[ -n "$(daemon_processes "$home")" ]]; then
+      echo "$pid"
+      return 0
+    fi
+    sleep 0.2
+  done
+  return 1
+}
+
 log "Reopening"
 for target in "${TARGETS[@]}"; do
   IFS='|' read -r launcher _ _ <<<"$target"
-  setsid -f systemd-run --user --scope --quiet --collect --slice=app.slice \
-    --unit="paseo-launch-$launcher-$$-$RANDOM" -- env -u ELECTRON_RUN_AS_NODE -u PASEO_HOME -u PASEO_AGENT_ID -u GH_CONFIG_DIR -u CLAUDE_CONFIG_DIR \
-    -u PASEO_ELECTRON_USER_DATA_DIR -u PASEO_DESKTOP_NAME -u PASEO_DESKTOP_MANAGED \
-    -u PASEO_CLI gtk-launch "$launcher" >/dev/null 2>&1 </dev/null
+  launch "$launcher"
   log " $launcher"
 done
+
+# A reopened window has died on its own before, leaving no Paseo at all. Check, and launch once
+# more if it did not come back.
+log "Checking that they came back"
+failed=0
+for target in "${TARGETS[@]}"; do
+  IFS='|' read -r launcher home config _ <<<"$target"
+  if pid="$(wait_until_up "$config" "$home")"; then
+    log " $launcher: window pid $pid, daemon running"
+    continue
+  fi
+  log " $launcher did not come back in 30s (window: $(window_pid "$config" || echo none)," \
+    "daemon: $(daemon_processes "$home" | tr '\n' ' ')), launching it again"
+  launch "$launcher"
+  if pid="$(wait_until_up "$config" "$home")"; then
+    log " $launcher: window pid $pid, daemon running"
+  else
+    log " FAILED: $launcher is still not up"
+    failed=1
+  fi
+done
 log "Done"
+exit "$failed"
