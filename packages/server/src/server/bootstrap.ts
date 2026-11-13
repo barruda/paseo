@@ -615,6 +615,29 @@ function buildMutableSttProviderConfig(
   };
 }
 
+// CUSTOM(claude-tts): the speaking provider and, with Claude picked, its voice and speed. The
+// local model and speaker shown are the ones remembered in the persisted site for switching back.
+function buildMutableTtsProviderConfig(
+  speech: PaseoSpeechConfig | undefined,
+  persisted: PersistedConfig | undefined,
+): NonNullable<MutableDaemonConfig["speech"]> {
+  if (!speech) return {};
+  const provider = speech.providers.voiceTts.provider;
+  if (provider !== "claude") return { voiceTtsProvider: provider };
+  const site = persisted?.features?.voiceMode?.tts;
+  const remembered = site?.provider === "claude" ? site : undefined;
+  const model = remembered?.model ?? speech.local?.models.voiceTts;
+  const speakerId = remembered?.speakerId ?? speech.local?.models.voiceTtsSpeakerId;
+  return {
+    voiceTtsProvider: provider,
+    ...(model !== undefined ? { voiceTtsModel: model } : {}),
+    ...(speakerId !== undefined ? { voiceTtsSpeakerId: speakerId } : {}),
+    ...(speech.claude
+      ? { claudeTtsVoice: speech.claude.tts.voice, voiceTtsSpeed: speech.claude.tts.speed }
+      : {}),
+  };
+}
+
 // CUSTOM(voice-settings): the effective speech settings, as Settings shows them.
 function buildMutableSpeechConfig(
   speech: PaseoSpeechConfig | undefined,
@@ -643,6 +666,7 @@ function buildMutableSpeechConfig(
         }
       : {}),
     ...buildMutableSttProviderConfig(speech, persisted),
+    ...buildMutableTtsProviderConfig(speech, persisted),
     voiceInstructions: speech?.voiceInstructions ?? "",
     // CUSTOM(dictation-tuning): the effective values; the built-in prompt shows as empty.
     ...(speech?.dictationTuning

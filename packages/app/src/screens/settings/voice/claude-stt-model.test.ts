@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   claudeLanguageOptions,
-  claudeUsage,
+  claudeFeatures,
   describeClaudeLogin,
   formatKeyterms,
   parseKeyterms,
@@ -81,13 +81,16 @@ describe("login state", () => {
   });
 });
 
-describe("Claude usage", () => {
-  it("says which features use Claude", () => {
-    expect(claudeUsage("claude", "claude")).toBe("both");
-    expect(claudeUsage("claude", "local")).toBe("dictation");
-    expect(claudeUsage("local", "claude")).toBe("voice");
-    expect(claudeUsage("local", undefined)).toBe("none");
-    expect(claudeUsage("openai", "local")).toBe("none");
+describe("Claude features", () => {
+  it("lists the features that use Claude, speaking included", () => {
+    const features = (dictationProvider?: string, listeningProvider?: string, speaking?: string) =>
+      claudeFeatures({ dictationProvider, listeningProvider, speakingProvider: speaking });
+    expect(features("claude", "claude", "claude")).toEqual(["dictation", "listening", "speaking"]);
+    expect(features("claude", "local")).toEqual(["dictation"]);
+    expect(features("local", "claude", "local")).toEqual(["listening"]);
+    expect(features("local", "local", "claude")).toEqual(["speaking"]);
+    expect(features("local", undefined)).toEqual([]);
+    expect(features("openai", "local", "openai")).toEqual([]);
   });
 });
 

@@ -52,7 +52,8 @@ import { useLocalSpeechStatus } from "./use-local-speech-status";
 import { DictationTuningSection } from "./dictation-tuning-section";
 import { VOICE_SETTINGS_TABS, type VoiceSettingsTab } from "./voice-settings-tabs";
 import { ClaudeSttSection, SttProviderRow } from "./claude-stt-section";
-import { showsLocalModel } from "./claude-stt-model";
+import { showsLocalModel, usesClaude } from "./claude-stt-model";
+import { claudePreviewText, claudeVoiceOptionIds, claudeVoiceValue } from "./claude-tts-model";
 import {
   deriveEngineState,
   describeSpeaker,
@@ -88,6 +89,7 @@ const ENV_NAME_BY_FIELD: Record<SettingField, string> = {
   voiceSttProvider: "PASEO_VOICE_STT_PROVIDER",
   claudeSttLanguage: "PASEO_CLAUDE_STT_LANGUAGE",
   claudeSttConfigDir: "PASEO_CLAUDE_STT_CONFIG_DIR",
+  voiceTtsProvider: "PASEO_VOICE_TTS_PROVIDER", // CUSTOM(claude-tts)
 };
 
 const EMPTY_CUSTOM_MODELS: SpeechCustomModel[] = [];
@@ -605,15 +607,28 @@ function VoiceModeSection({
             testID="voice-settings-voice-stt-model"
           />
         ) : null}
-        <SettingsSelect
-          label={t(`${CLAUDE_PREFIX}.speakingModel`)}
-          hint={envHint(status, "voiceTtsModel", t)}
-          value={speech.voiceTtsModel ?? ""}
-          options={ttsOptions}
-          onValueChange={selectVoiceTts}
-          disabled={isEnvControlled(status, "voiceTtsModel")}
-          testID="voice-settings-voice-tts-model"
-        />
+        {speech.voiceTtsProvider !== undefined ? (
+          <SttProviderRow
+            label={t(`${CLAUDE_PREFIX}.provider.speakingLabel`)}
+            status={status}
+            field="voiceTtsProvider"
+            value={speech.voiceTtsProvider}
+            note={t(`${CLAUDE_PREFIX}.speakingNote`)}
+            save={save}
+            testID="voice-settings-voice-tts-provider"
+          />
+        ) : null}
+        {showsLocalModel(speech.voiceTtsProvider) ? (
+          <SettingsSelect
+            label={t(`${CLAUDE_PREFIX}.speakingModel`)}
+            hint={envHint(status, "voiceTtsModel", t)}
+            value={speech.voiceTtsModel ?? ""}
+            options={ttsOptions}
+            onValueChange={selectVoiceTts}
+            disabled={isEnvControlled(status, "voiceTtsModel")}
+            testID="voice-settings-voice-tts-model"
+          />
+        ) : null}
       </SettingsCard>
     </SettingsSection>
   );
@@ -756,17 +771,110 @@ function useSpeakerLabel() {
   );
 }
 
-function VoiceSection({
-  serverId,
-  status,
-  speech,
-  save,
-}: {
+interface VoiceSectionProps {
   serverId: string;
   status: SpeechLocalStatus;
   speech: MutableSpeechConfig;
   save: SaveSpeech;
-}) {
+}
+
+// CUSTOM(claude-tts): with Claude speaking, the voice is one of its five instead of a local speaker.
+function VoiceSection(props: VoiceSectionProps) {
+  return usesClaude(props.speech.voiceTtsProvider) ? (
+    <ClaudeVoiceSection {...props} />
+  ) : (
+    <LocalVoiceSection {...props} />
+  );
+}
+
+function ClaudeVoiceSection({ serverId, speech, save }: VoiceSectionProps) {
+  const { t } = useTranslation();
+  const client = useHostRuntimeClient(serverId);
+  const play = useAudioPlayer();
+  const voice = claudeVoiceValue(speech.claudeTtsVoice);
+  const speed = nearestSpeed(speech.voiceTtsSpeed);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+
+  const voiceOptions = useMemo(
+    () =>
+      claudeVoiceOptionIds(speech.claudeTtsVoice).map((value) => ({
+        value,
+        label: t(`${CLAUDE_PREFIX}.voices.${value}`, { defaultValue: value }),
+      })),
+    [speech.claudeTtsVoice, t],
+  );
+  const speedOptions = useMemo(
+    () => SPEED_VALUES.map((value) => ({ value: String(value), label: `${value}×` })),
+    [],
+  );
+  const handleVoice = useCallback((value: string) => void save({ claudeTtsVoice: value }), [save]);
+  const handleSpeed = useCallback(
+    (value: string) => void save({ voiceTtsSpeed: Number(value) }),
+    [save],
+  );
+  const handlePreview = useCallback(() => {
+    if (!client) return;
+    setPreviewing(true);
+    setPreviewError(null);
+    // With Claude speaking, the daemon reads `model` as the voice to preview.
+    void client
+      .previewLocalSpeechVoice({
+        text: claudePreviewText(speech.claudeSttLanguage),
+        model: voice,
+        speed,
+      })
+      .then((result) => {
+        if (!result.audio || !result.format) {
+          throw new Error(result.error ?? t("settings.voiceSettings.voice.previewError"));
+        }
+        return play(
+          Uint8Array.from(Buffer.from(result.audio, "base64")),
+          pcmMimeType(result.format),
+        );
+      })
+      .catch((cause: unknown) => setPreviewError(errorMessage(cause)))
+      .finally(() => setPreviewing(false));
+  }, [client, play, speech.claudeSttLanguage, speed, t, voice]);
+
+  return (
+    <SettingsSection title={t(`${CLAUDE_PREFIX}.speakingVoiceTitle`)}>
+      <SettingsCard testID="voice-settings-voice">
+        <SettingsSelect
+          label={t(`${CLAUDE_PREFIX}.claudeVoice`)}
+          value={voice}
+          options={voiceOptions}
+          onValueChange={handleVoice}
+          testID="voice-settings-claude-voice"
+        />
+        <SettingsRow label={t("settings.voiceSettings.voice.speed")}>
+          <SegmentedControl
+            options={speedOptions}
+            value={String(speed)}
+            onValueChange={handleSpeed}
+            size="sm"
+            testID="voice-settings-speed"
+          />
+        </SettingsRow>
+        <SettingsRow label={t("settings.voiceSettings.voice.preview")} error={previewError}>
+          <Button
+            variant="outline"
+            size="sm"
+            onPress={handlePreview}
+            disabled={previewing}
+            testID="voice-settings-preview"
+          >
+            {previewing
+              ? t("settings.voiceSettings.voice.previewing")
+              : t("settings.voiceSettings.voice.play")}
+          </Button>
+        </SettingsRow>
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+function LocalVoiceSection({ serverId, status, speech, save }: VoiceSectionProps) {
   const { t } = useTranslation();
   const client = useHostRuntimeClient(serverId);
   const play = useAudioPlayer();

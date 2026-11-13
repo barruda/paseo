@@ -45,6 +45,10 @@ export const MutableSpeechConfigSchema = z
     claudeSttKeyterms: z.array(z.string()).optional(),
     // Empty means the default Claude Code config folder.
     claudeSttConfigDir: z.string().optional(),
+    // CUSTOM(claude-tts): the voice mode speaking provider ("local" or "claude") and the Claude
+    // voice (buttery, airy, mellow, glassy or rounded). The speed stays `voiceTtsSpeed`.
+    voiceTtsProvider: z.string().optional(),
+    claudeTtsVoice: z.string().optional(),
   })
   .passthrough();
 

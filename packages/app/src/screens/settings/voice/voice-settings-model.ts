@@ -117,7 +117,9 @@ export type SettingField =
   | "dictationSttProvider"
   | "voiceSttProvider"
   | "claudeSttLanguage"
-  | "claudeSttConfigDir";
+  | "claudeSttConfigDir"
+  // CUSTOM(claude-tts)
+  | "voiceTtsProvider";
 
 export function isEnvControlled(status: SpeechLocalStatus | null, field: SettingField): boolean {
   return status?.envControlled.includes(field) ?? false;

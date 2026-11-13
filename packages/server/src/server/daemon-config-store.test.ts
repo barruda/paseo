@@ -266,6 +266,61 @@ describe("DaemonConfigStore", () => {
     });
   });
 
+  // CUSTOM(claude-tts)
+  test("switching the speaking provider keeps the local voice and edits keep the provider", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+      speech: { voiceInstructions: "" },
+    });
+
+    await store.patch({
+      speech: {
+        voiceTtsModel: "kokoro-multi-lang-v1_0",
+        voiceTtsSpeakerId: 3,
+        voiceTtsSpeed: 1.15,
+      },
+    });
+    await store.patch({ speech: { voiceTtsProvider: "claude", claudeTtsVoice: "mellow" } });
+    expect(loadPersistedConfig(paseoHome).features?.voiceMode?.tts).toEqual({
+      provider: "claude",
+      model: "kokoro-multi-lang-v1_0",
+      speakerId: 3,
+      speed: 1.15,
+      voice: "mellow",
+    });
+
+    await store.patch({ speech: { voiceTtsSpeed: 1.3 } });
+    await store.patch({ speech: { claudeTtsVoice: "glassy" } });
+    expect(loadPersistedConfig(paseoHome).features?.voiceMode?.tts).toEqual({
+      provider: "claude",
+      model: "kokoro-multi-lang-v1_0",
+      speakerId: 3,
+      speed: 1.3,
+      voice: "glassy",
+    });
+
+    await store.patch({ speech: { voiceTtsProvider: "local" } });
+    expect(loadPersistedConfig(paseoHome).features?.voiceMode?.tts).toEqual({
+      provider: "local",
+      model: "kokoro-multi-lang-v1_0",
+      speakerId: 3,
+      speed: 1.3,
+    });
+
+    await expect(store.patch({ speech: { voiceTtsProvider: "openai" } })).rejects.toThrow(
+      /Unsupported/,
+    );
+  });
+
   // CUSTOM(claude-stt)
   test("an unknown STT provider is rejected without persisting", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));

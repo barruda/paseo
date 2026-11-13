@@ -165,6 +165,17 @@ export const SpeechTtsConfigSchema = z.discriminatedUnion("provider", [
       voice: z.string().trim().min(1).optional(),
     })
     .strict(),
+  // CUSTOM(claude-tts): `model`, `speakerId` and `speed` keep the local voice settings for
+  // switching back; `speed` is also the Claude speed (clamped to 0.7 to 1.5 when used).
+  z
+    .object({
+      provider: z.literal("claude"),
+      model: SpeechModelSchema,
+      speakerId: z.number().int().optional(),
+      speed: z.number().optional(),
+      voice: z.string().trim().min(1).optional(),
+    })
+    .strict(),
 ]);
 
 const FeatureDictationSchema = z
@@ -503,6 +514,7 @@ function normalizeSpeechSite(
   }
   if (kind === "tts") {
     if (site.provider === "local") delete site.voice;
+    // CUSTOM(claude-tts): the Claude site keeps model, speaker, speed and voice as they are.
     if (site.provider === "openai") {
       delete site.speakerId;
       delete site.speed;

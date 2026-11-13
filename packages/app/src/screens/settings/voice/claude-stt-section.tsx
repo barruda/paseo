@@ -11,7 +11,7 @@ import { SettingsCard, SettingsRow, SettingsSection, SettingsSelect } from "@/co
 import { FormTextInput } from "@/components/ui/form-field";
 import {
   claudeLanguageOptions,
-  claudeUsage,
+  claudeFeatures,
   describeClaudeLogin,
   formatKeyterms,
   parseKeyterms,
@@ -30,6 +30,7 @@ const ENV_NAME: Partial<Record<SettingField, string>> = {
   voiceSttProvider: "PASEO_VOICE_STT_PROVIDER",
   claudeSttLanguage: "PASEO_CLAUDE_STT_LANGUAGE",
   claudeSttConfigDir: "PASEO_CLAUDE_STT_CONFIG_DIR",
+  voiceTtsProvider: "PASEO_VOICE_TTS_PROVIDER", // CUSTOM(claude-tts)
 };
 
 function envHint(status: SpeechLocalStatus, field: SettingField, t: TFunction): string | undefined {
@@ -38,15 +39,18 @@ function envHint(status: SpeechLocalStatus, field: SettingField, t: TFunction): 
     : undefined;
 }
 
-function useProviderOptions(current: string | undefined) {
+function useProviderOptions(current: string | undefined, speech: boolean) {
   const { t } = useTranslation();
   return useMemo(
     () =>
       sttProviderOptionIds(current).map((value) => ({
         value,
-        label: t(`${PREFIX}.provider.${value}`, { defaultValue: value }),
+        // CUSTOM(claude-tts): the speaking row calls the local choice "Local", not "Local STT".
+        label: t(`${PREFIX}.provider.${speech && value === "local" ? "localSpeech" : value}`, {
+          defaultValue: value,
+        }),
       })),
-    [current, t],
+    [current, speech, t],
   );
 }
 
@@ -63,14 +67,14 @@ export function SttProviderRow({
 }: {
   label: string;
   status: SpeechLocalStatus;
-  field: "dictationSttProvider" | "voiceSttProvider";
+  field: "dictationSttProvider" | "voiceSttProvider" | "voiceTtsProvider";
   value: string;
   note: string | undefined;
   save: SaveSpeech;
   testID: string;
 }) {
   const { t } = useTranslation();
-  const options = useProviderOptions(value);
+  const options = useProviderOptions(value, field === "voiceTtsProvider");
   const select = useCallback((next: string) => void save({ [field]: next }), [field, save]);
   return (
     <SettingsSelect
@@ -132,6 +136,18 @@ export function ClaudeSttSection({
       : t(`${PREFIX}.signedIn`, { path: login.path });
   }
 
+  const features = claudeFeatures({
+    dictationProvider: speech.dictationSttProvider,
+    listeningProvider: speech.voiceSttProvider,
+    speakingProvider: speech.voiceTtsProvider,
+  });
+  const usageLabel =
+    features.length > 0
+      ? t(`${PREFIX}.usage.used`, {
+          features: features.map((feature) => t(`${PREFIX}.usage.${feature}`)).join(", "),
+        })
+      : t(`${PREFIX}.usage.none`);
+
   return (
     <SettingsSection
       title={t(`${PREFIX}.title`)}
@@ -139,12 +155,7 @@ export function ClaudeSttSection({
       testID="voice-settings-claude"
     >
       <SettingsCard>
-        <SettingsRow
-          label={t(
-            `${PREFIX}.usage.${claudeUsage(speech.dictationSttProvider, speech.voiceSttProvider)}`,
-          )}
-          testID="voice-settings-claude-usage"
-        />
+        <SettingsRow label={usageLabel} testID="voice-settings-claude-usage" />
         {claude ? (
           <SettingsRow
             label={t(`${PREFIX}.account`)}

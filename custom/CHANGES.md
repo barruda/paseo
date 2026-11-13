@@ -5298,7 +5298,7 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   - Persisted as `features.{dictation,voiceMode}.stt.provider: "claude"` (its `model` is the
     remembered local model) and `providers.claude.{configDir,language,keyterms}`. Env overrides:
     `PASEO_DICTATION_STT_PROVIDER`, `PASEO_VOICE_STT_PROVIDER`, `PASEO_CLAUDE_STT_LANGUAGE`,
-    `PASEO_CLAUDE_STT_CONFIG_DIR`. Turn detection and TTS stay local.
+    `PASEO_CLAUDE_STT_CONFIG_DIR`. Turn detection stays local; speaking can use Claude too (see "Claude text-to-speech provider").
 - **Core files touched:** protocol `speech-settings.ts` (five optional fields on the mutable speech
   config, optional `claudeStt` status). Server: `persisted-config.ts` (`providers.claude`, the
   `claude` STT site), `speech/speech-types.ts` (enum), `speech/speech-config-resolver.ts`,
@@ -5528,3 +5528,52 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
 - **Re-apply:** Keep `.llm/` in `.gitignore`.
 - **Verify:** `ls ~/projetos/paseo/.llm` lists the Parakeet, Kokoro and Silero folders. After a
   daemon restart, Settings > Voice and Dictation > Status shows the models directory as `.llm`.
+
+## claude-tts: Claude as the speaking provider for voice mode
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: Claude text-to-speech provider (claude.ai read-aloud service)`
+- **Why:** The local sherpa voices cost CPU/GPU and sound flat. The read-aloud service behind the
+  Claude apps speaks with five natural voices, streams audio in under a second, and costs
+  nothing extra on a subscription. It is the twin of the Claude speech-to-text provider.
+- **What:** `claude` as a second speaking provider next to `local`. Voice mode > "Speaking
+  provider" (right above "Speaking model"). With Claude picked, the local speaking model and
+  speaker pickers hide (their values stay saved) and the "Speaking voice" section shows a Voice
+  picker (Buttery, Airy, Mellow, Glassy, Rounded), the speed, and Preview. The Claude tab lists
+  Voice mode speaking among the features that use it. Login, language and config folder are the
+  Claude STT ones.
+  - Protocol, undocumented, read from the Claude desktop 45.2.1 bundle (search
+    `text_to_speech/text_stream` in `/usr/lib/claude-desktop/resources/ion-dist.asar`); the header
+    comment of `speech/providers/claude/tts.ts` has it. `wss://api.anthropic.com/api/ws/text_to_speech/text_stream`
+    with the STT headers; query `output_format=pcm_24000`, `voice`, `tts_speed` (0.7 to 1.5, two
+    decimals), `client_platform=cli`, `language`. Send `text_chunk` frames (text over 800 chars
+    split at sentence ends, like the web client), then `close_stream`; `keep_alive` every 4 s.
+    Binary frames are raw 16-bit mono PCM at 24 kHz, then `SpeechComplete`. Errors come as
+    `SpeechError` / `error` frames or an HTTP status on the handshake.
+  - `ClaudeTTS.synthesizeSpeech` resolves on the first audio frame and streams the rest as it
+    arrives (`tts-manager` reads the stream incrementally); a later failure errors the stream.
+    Handshake timeout 8 s, 20 s without any frame.
+  - Persisted as `features.voiceMode.tts = { provider: "claude", voice, speed, model, speakerId }`;
+    `model` and `speakerId` are the remembered local values. Speed is the existing `speed`
+    field, shared with the local voice and clamped to 0.7 to 1.5 for Claude (the Settings speeds
+    0.85 to 1.3 all fit), so no new speed setting. The voice is only kept on the Claude site.
+    Env override: `PASEO_VOICE_TTS_PROVIDER`.
+  - Preview reuses `speech.local.preview_voice.request`: with Claude speaking, `model` is read as
+    the Claude voice, so there is no protocol change.
+- **Core files touched:** protocol `speech-settings.ts` (optional `voiceTtsProvider`,
+  `claudeTtsVoice`). Server: `persisted-config.ts` (`claude` TTS branch), `bootstrap.ts`
+  (`buildMutableTtsProviderConfig`), `daemon-config-store.ts` (`mergeVoiceTtsPatch`),
+  `speech/speech-runtime.ts` (`resolveVoiceTtsLabel`, preview), `speech/speech-settings-service.ts`
+  (env name), `speech/providers/local/config.ts` (a Claude site keeps the local speaker/speed),
+  `speech/providers/claude/{config,runtime}.ts`; new `speech/providers/claude/tts.ts`. App:
+  `voice-settings-page.tsx`, `voice-settings-model.ts`, `claude-stt-section.tsx`,
+  `claude-stt-model.ts` (`claudeFeatures`), `i18n/resources/custom-voice-settings.ts`; new
+  `claude-tts-model.ts`.
+- **Re-apply:** Add `claude` to the TTS persisted union, chain TTS creation in
+  `initializeClaudeSpeechServices`, make `mergeVoiceTtsPatch` keep the provider on a model/speed
+  edit and the model on a provider switch, and render the `SttProviderRow` for `voiceTtsProvider`
+  above the speaking model.
+- **Verify:** `cd packages/server && npx vitest run src/server/speech/providers/claude src/server/daemon-config-store.test.ts --bail=1`
+  and `cd packages/app && npx vitest run src/screens/settings/voice/claude-stt-model.test.ts src/screens/settings/voice/claude-tts-model.test.ts --bail=1`
+  (both in the update script). Needs a daemon restart. In Voice mode pick Speaking provider
+  Claude, pick a voice, press Preview, then talk in voice mode and hear the answer.

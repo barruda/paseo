@@ -90,16 +90,18 @@ export function showsLocalModel(provider: string | undefined): boolean {
   return provider === undefined || provider === "local";
 }
 
-export type ClaudeUsage = "both" | "dictation" | "voice" | "none";
+// CUSTOM(claude-tts): the features a Claude login serves, in the order Settings lists them.
+export type ClaudeFeature = "dictation" | "listening" | "speaking";
 
-// Which features transcribe with Claude, for the hint under the Claude section's title.
-export function claudeUsage(
-  dictationProvider: string | undefined,
-  voiceProvider: string | undefined,
-): ClaudeUsage {
-  const dictation = usesClaude(dictationProvider);
-  const voice = usesClaude(voiceProvider);
-  if (dictation && voice) return "both";
-  if (dictation) return "dictation";
-  return voice ? "voice" : "none";
+// Which features use Claude, for the hint under the Claude section's title.
+export function claudeFeatures(params: {
+  dictationProvider: string | undefined;
+  listeningProvider: string | undefined;
+  speakingProvider: string | undefined;
+}): ClaudeFeature[] {
+  const features: ClaudeFeature[] = [];
+  if (usesClaude(params.dictationProvider)) features.push("dictation");
+  if (usesClaude(params.listeningProvider)) features.push("listening");
+  if (usesClaude(params.speakingProvider)) features.push("speaking");
+  return features;
 }

@@ -2,6 +2,7 @@
 // Claude Code's /voice. It signs in with the Claude.ai login of a Claude Code config folder.
 import type { PersistedConfig } from "../../../persisted-config.js";
 import type { RequestedSpeechProviders } from "../../speech-types.js";
+import { clampClaudeTtsSpeed, resolveClaudeTtsVoice } from "./tts.js";
 
 export const DEFAULT_CLAUDE_STT_LANGUAGE = "en";
 
@@ -12,6 +13,8 @@ export interface ClaudeSpeechConfig {
   language: string;
   // Words the recognizer should favor: project names, jargon.
   keyterms: string[];
+  // CUSTOM(claude-tts): the voice and speed of the speaking provider.
+  tts: { voice: string; speed: number };
 }
 
 export function claudeSttInUse(providers: RequestedSpeechProviders): boolean {
@@ -35,6 +38,18 @@ export function resolveClaudeSpeechConfig(params: {
     ...(configDir ? { configDir } : {}),
     language,
     keyterms: normalizeKeyterms(saved?.keyterms ?? []),
+    tts: resolveClaudeTtsSettings(params.persisted),
+  };
+}
+
+// CUSTOM(claude-tts): read from the voice mode speaking site, whichever provider it is on, so
+// a voice picked earlier is there when Claude is switched on.
+function resolveClaudeTtsSettings(persisted: PersistedConfig): ClaudeSpeechConfig["tts"] {
+  const site = persisted.features?.voiceMode?.tts;
+  const claudeSite = site?.provider === "claude" ? site : undefined;
+  return {
+    voice: resolveClaudeTtsVoice(claudeSite?.voice),
+    speed: clampClaudeTtsSpeed(claudeSite?.speed),
   };
 }
 

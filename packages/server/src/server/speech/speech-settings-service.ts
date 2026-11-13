@@ -70,6 +70,8 @@ const ENV_CONTROLLED_SETTINGS: ReadonlyArray<[string, string]> = [
   ["PASEO_VOICE_STT_PROVIDER", "voiceSttProvider"],
   ["PASEO_CLAUDE_STT_LANGUAGE", "claudeSttLanguage"],
   ["PASEO_CLAUDE_STT_CONFIG_DIR", "claudeSttConfigDir"],
+  // CUSTOM(claude-tts)
+  ["PASEO_VOICE_TTS_PROVIDER", "voiceTtsProvider"],
 ];
 
 const SIZE_CACHE_TTL_MS = 5 * 60 * 1000;

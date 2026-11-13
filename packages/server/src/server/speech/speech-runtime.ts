@@ -20,7 +20,8 @@ import {
   initializeOpenAiSpeechServices,
   validateOpenAiCredentialRequirements,
 } from "./providers/openai/runtime.js";
-import { initializeClaudeSpeechServices } from "./providers/claude/runtime.js";
+import { initializeClaudeSpeechServices, previewClaudeVoice } from "./providers/claude/runtime.js";
+import { ClaudeTTS } from "./providers/claude/tts.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
 import type { RequestedSpeechProviders } from "./speech-types.js";
 import type { TurnDetectionProvider } from "./turn-detection-provider.js";
@@ -279,9 +280,11 @@ function describeRequestedProviders(providers: RequestedSpeechProviders): {
 function resolveVoiceTtsLabel(
   ttsService: TextToSpeechProvider | null,
   localVoiceTtsProvider: TextToSpeechProvider | null,
-): "unavailable" | "local" | "openai" {
+): "unavailable" | "local" | "openai" | "claude" {
   if (!ttsService) return "unavailable";
   if (ttsService === localVoiceTtsProvider) return "local";
+  // CUSTOM(claude-tts)
+  if (ttsService instanceof ClaudeTTS) return "claude";
   return "openai";
 }
 
@@ -804,6 +807,15 @@ export function createSpeechService(
   };
 
   const previewVoice: SpeechService["previewVoice"] = async (request) => {
+    // CUSTOM(claude-tts)
+    if (speechConfig?.providers.voiceTts.provider === "claude") {
+      return previewClaudeVoice({
+        request,
+        claudeConfig: speechConfig.claude,
+        activeTts: ttsService,
+        logger,
+      });
+    }
     const client = localWorkerClient;
     const local = speechConfig?.local;
     if (!client || !local) {

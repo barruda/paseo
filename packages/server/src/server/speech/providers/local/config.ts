@@ -160,7 +160,8 @@ function buildLocalSpeechResolutionInput(params: {
 }): Record<string, unknown> {
   const { paseoHome, env, persisted, providers, includeProviderConfig } = params;
   const tts = persisted.features?.voiceMode?.tts;
-  const localTts = tts?.provider === "local" ? tts : undefined;
+  // CUSTOM(claude-tts): a Claude site keeps the local speaker and speed.
+  const localTts = tts?.provider === "local" || tts?.provider === "claude" ? tts : undefined;
   return {
     includeProviderConfig,
     modelsDir: firstDefinedValue<string>([

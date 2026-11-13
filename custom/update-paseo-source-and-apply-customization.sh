@@ -334,7 +334,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/screens/settings/voice/dictation-tuning-model.test.ts --bail=1)
   # Claude speech-to-text provider.
   (cd packages/server && npx vitest run src/server/speech/providers/claude src/server/daemon-config-store.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/screens/settings/voice/claude-stt-model.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/screens/settings/voice/claude-stt-model.test.ts src/screens/settings/voice/claude-tts-model.test.ts --bail=1)
+  # (the server line above already runs providers/claude, which includes tts.test.ts)
   # Dictation waits for the microphone to deliver audio.
   (cd packages/app && npx vitest run src/hooks/dictation-mic-live.test.ts --bail=1)
   (cd packages/app && npx vitest run src/agent-stream/chat-images/model.test.ts src/agent-stream/chat-links/model.test.ts src/desk-docs/model.test.ts src/desk-docs/launch.test.ts --bail=1)

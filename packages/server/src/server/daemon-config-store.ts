@@ -895,26 +895,54 @@ type PersistedTtsSite = NonNullable<
   NonNullable<NonNullable<PersistedConfig["features"]>["voiceMode"]>["tts"]
 >;
 
-// Speaker and speed belong to the local voice; with OpenAI speaking they wait for a local model.
+// CUSTOM(claude-tts): like mergeSttSite, a provider switch keeps `model`, `speakerId` and `speed`
+// (the local values, remembered while Claude speaks; `speed` is shared and clamped for Claude)
+// and a model, speaker or speed edit keeps the provider. The Claude voice only lives on the
+// Claude site. Speaker and speed belong to the local voice; with OpenAI speaking they wait for
+// a local model or a provider switch.
 function mergeVoiceTtsPatch(
   current: PersistedTtsSite | undefined,
   speech: NonNullable<SupportedMutableConfigPatch["speech"]>,
 ): PersistedTtsSite | undefined {
-  const localTts = current?.provider === "openai" ? undefined : current;
-  if (
-    speech.voiceTtsModel === undefined &&
-    (current?.provider === "openai" ||
-      (speech.voiceTtsSpeakerId === undefined && speech.voiceTtsSpeed === undefined))
-  ) {
-    return undefined;
-  }
+  const edit = {
+    provider: speech.voiceTtsProvider,
+    voice: speech.claudeTtsVoice,
+    model: speech.voiceTtsModel,
+    speakerId: speech.voiceTtsSpeakerId,
+    speed: speech.voiceTtsSpeed,
+  };
+  if (Object.values(edit).every((value) => value === undefined)) return undefined;
+  assertSupportedTtsProvider(edit.provider);
+  const onOpenAi = current?.provider === "openai";
+  if (onOpenAi && edit.provider === undefined && edit.model === undefined) return undefined;
+  // An OpenAI site's model id means nothing to the other providers, so it is not carried over.
+  const kept = onOpenAi ? undefined : current;
+  const provider = edit.provider ?? (kept?.provider === "claude" ? "claude" : "local");
   return {
-    ...localTts,
-    provider: "local",
-    ...(speech.voiceTtsModel !== undefined ? { model: speech.voiceTtsModel } : {}),
-    ...(speech.voiceTtsSpeakerId !== undefined ? { speakerId: speech.voiceTtsSpeakerId } : {}),
-    ...(speech.voiceTtsSpeed !== undefined ? { speed: speech.voiceTtsSpeed } : {}),
+    provider,
+    ...pickDefined({
+      model: edit.model ?? kept?.model,
+      speakerId: edit.speakerId ?? kept?.speakerId,
+      speed: edit.speed ?? kept?.speed,
+    }),
+    ...(provider === "claude" ? pickDefined({ voice: edit.voice ?? keptClaudeVoice(kept) }) : {}),
   } as PersistedTtsSite;
+}
+
+function assertSupportedTtsProvider(provider: string | undefined): void {
+  if (provider !== undefined && provider !== "local" && provider !== "claude") {
+    throw new Error(`Unsupported text-to-speech provider: ${provider}`);
+  }
+}
+
+function keptClaudeVoice(site: PersistedTtsSite | undefined): string | undefined {
+  return site?.provider === "claude" ? site.voice : undefined;
+}
+
+function pickDefined<T extends Record<string, unknown>>(values: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined),
+  ) as Partial<T>;
 }
 
 // CUSTOM(claude-stt): empty language and config folder go back to the defaults.
