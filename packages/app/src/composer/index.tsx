@@ -2238,33 +2238,47 @@ function ComposerContentImpl({
   );
 
   const contextWindowMeterGlyphSize = isCompactLayout ? ICON_SIZE.md : buttonIconSize;
-  const beforeVoiceContent = useMemo(
+  // CUSTOM(chat-options): the project icon and the context meter are separate nodes so each can
+  // be ordered in Settings > Chat Options > Inside right.
+  const projectContent = useMemo(
     () =>
       hasAgent || workspaceId ? (
-        <View style={styles.projectContextIndicators}>
-          {/* CUSTOM(composer-project-icon): keep project identity next to context usage. */}
-          <ComposerProjectIcon
+        /* CUSTOM(composer-project-icon): keep project identity next to context usage. */
+        <ComposerProjectIcon
+          serverId={serverId}
+          agentId={agentId}
+          workspaceId={workspaceId}
+          size={contextWindowMeterGlyphSize}
+          projectSource={agentControls?.modelPickerProject ?? null}
+          onMenuClose={agentControls?.onDropdownClose}
+        />
+      ) : null,
+    [
+      hasAgent,
+      serverId,
+      agentId,
+      workspaceId,
+      contextWindowMeterGlyphSize,
+      agentControls?.modelPickerProject,
+      agentControls?.onDropdownClose,
+    ],
+  );
+  const beforeVoiceContent = useMemo(
+    () =>
+      /* CUSTOM(draft-composer-ready): a draft shows the meter too, empty, with the account usage
+         in its popover. */
+      (hasAgent || workspaceId) &&
+      (hasAgent || commandDraft) &&
+      appSettings.chatOptions["context-meter"] !== false ? (
+        <View style={styles.contextWindowMeterSlot}>
+          <ContextWindowMeter
             serverId={serverId}
             agentId={agentId}
-            workspaceId={workspaceId}
-            size={contextWindowMeterGlyphSize}
-            projectSource={agentControls?.modelPickerProject ?? null}
-            onMenuClose={agentControls?.onDropdownClose}
+            maxTokens={agentState.contextWindowMaxTokens}
+            usedTokens={agentState.contextWindowUsedTokens}
+            totalCostUsd={agentState.totalCostUsd}
+            glyphSize={contextWindowMeterGlyphSize}
           />
-          {/* CUSTOM(draft-composer-ready): a draft shows the meter too, empty, with the
-              account usage in its popover. */}
-          {(hasAgent || commandDraft) && appSettings.chatOptions["context-meter"] !== false ? (
-            <View style={styles.contextWindowMeterSlot}>
-              <ContextWindowMeter
-                serverId={serverId}
-                agentId={agentId}
-                maxTokens={agentState.contextWindowMaxTokens}
-                usedTokens={agentState.contextWindowUsedTokens}
-                totalCostUsd={agentState.totalCostUsd}
-                glyphSize={contextWindowMeterGlyphSize}
-              />
-            </View>
-          ) : null}
         </View>
       ) : null,
     [
@@ -2277,8 +2291,6 @@ function ComposerContentImpl({
       agentState.totalCostUsd,
       contextWindowMeterGlyphSize,
       commandDraft,
-      agentControls?.modelPickerProject,
-      agentControls?.onDropdownClose,
       appSettings.chatOptions,
     ],
   );
@@ -2676,6 +2688,7 @@ function ComposerContentImpl({
                   autoFocusKey={`${serverId}:${agentId}:${autoFocusKey ?? ""}`}
                   disabled={isSubmitLoading}
                   leftContent={leftContent}
+                  projectContent={projectContent}
                   beforeVoiceContent={beforeVoiceContent}
                   rightContent={rightContent}
                   activeActionContent={activeActionContent}
@@ -2795,11 +2808,6 @@ const styles = StyleSheet.create((theme: Theme) => ({
     marginLeft: theme.spacing[1],
   },
   rightControls: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: theme.spacing[1],
-  },
-  projectContextIndicators: {
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],

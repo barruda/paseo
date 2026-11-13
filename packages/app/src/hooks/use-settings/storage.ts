@@ -109,6 +109,8 @@ export interface AppSettings {
   chatLinksEnabled: boolean;
   /** CUSTOM(chat-options): hidden composer rail items; missing keys are enabled. */
   chatOptions: Record<string, boolean>;
+  /** CUSTOM(chat-options): saved order of the movable composer items, per group. */
+  chatOptionOrder: { above?: string[]; left?: string[]; right?: string[] };
   /** CUSTOM(desk-preview-tabs): on, task clicks in Tasks mode share one preview tab. Off by default. */
   deskPreviewTabs: boolean;
   /** CUSTOM(recent-tabs): "Last visited tab" walks past pinned tabs. Off by default. */
@@ -176,6 +178,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatOutlineEnabled: true,
   chatLinksEnabled: true, // CUSTOM(chat-links)
   chatOptions: {}, // CUSTOM(chat-options)
+  chatOptionOrder: {}, // CUSTOM(chat-options)
   deskPreviewTabs: false, // CUSTOM(desk-preview-tabs)
   recentTabsSkipPinned: false, // CUSTOM(recent-tabs)
   showCriticToggle: true, // CUSTOM(bruno-customizations)
@@ -287,6 +290,13 @@ const StoredAppSettingsSchema = z
     chatOutlineEnabled: z.boolean().catch(true),
     chatLinksEnabled: z.boolean().catch(true), // CUSTOM(chat-links)
     chatOptions: z.record(z.string(), z.boolean()).catch({}), // CUSTOM(chat-options)
+    chatOptionOrder: z // CUSTOM(chat-options)
+      .object({
+        above: z.array(z.string()).optional(),
+        left: z.array(z.string()).optional(),
+        right: z.array(z.string()).optional(),
+      })
+      .catch({}),
     deskPreviewTabs: z.boolean().catch(false), // CUSTOM(desk-preview-tabs)
     recentTabsSkipPinned: z.boolean().catch(false), // CUSTOM(recent-tabs)
     showCriticToggle: z.boolean().catch(true), // CUSTOM(bruno-customizations)

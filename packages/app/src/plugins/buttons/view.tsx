@@ -627,43 +627,52 @@ export function useHasPluginComposerPills(
   );
 }
 
-// CUSTOM(pill-order): these pills lead the composer row, ahead of Commit: wip and Rename session.
-const LEADING_COMPOSER_PILL_IDS: ReadonlySet<string> = new Set(["tldr"]);
+export interface ComposerPillEntry {
+  /** The chat-option key the pill is ordered and toggled by. */
+  optionKey: string;
+  entry: RegisteredPluginButton;
+}
 
-export function PluginComposerPills({
-  serverId,
-  workspaceId,
-  agentId,
-  compact,
-  leading,
-}: {
-  serverId: string;
-  workspaceId: string;
-  agentId: string;
-  compact: boolean;
-  /** true: only the leading pills; false: all but them; omitted: every pill. */
-  leading?: boolean;
-}) {
+// CUSTOM(chat-options): the enabled composer pills of an agent, each with its own chat-option key,
+// so the composer row can order them with the built-in pills (Settings > Chat Options).
+export function usePluginComposerPillEntries(
+  serverId: string,
+  workspaceId: string,
+  agentId: string,
+): ComposerPillEntry[] {
   const allEntries = useButtons(serverId, workspaceId, agentId);
   const options = useSettings((settings) => settings.chatOptions);
-  const enabledEntries = allEntries.filter((entry) =>
-    chatOptionEnabled(options, pluginChatOptionKey(entry.installation.id, entry.id, agentId)),
+  return useMemo(
+    () =>
+      allEntries
+        .map((entry) => ({
+          optionKey: pluginChatOptionKey(entry.installation.id, entry.id, agentId),
+          entry,
+        }))
+        .filter(({ optionKey }) => chatOptionEnabled(options, optionKey)),
+    [allEntries, options, agentId],
   );
-  const entries =
-    leading === undefined
-      ? enabledEntries
-      : enabledEntries.filter((entry) => LEADING_COMPOSER_PILL_IDS.has(entry.id) === leading);
+}
+
+export function PluginComposerPill({
+  serverId,
+  entry,
+  compact,
+}: {
+  serverId: string;
+  entry: RegisteredPluginButton;
+  compact: boolean;
+}) {
   const hosts = useHosts();
   const hostLabel = hosts.find((host) => host.serverId === serverId)?.label ?? serverId;
-  return entries.map((entry) => (
+  return (
     <ThemedPluginButton
-      key={entry.key}
       entry={entry}
       compact={compact}
       hostLabel={hostLabel}
       uniProps={pluginThemeMapping}
     />
-  ));
+  );
 }
 
 /**

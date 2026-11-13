@@ -1,5 +1,5 @@
 import type { AgentAddress } from "@getpaseo/protocol/addresses";
-import { memo, useCallback, type ReactElement } from "react";
+import { Fragment, memo, useCallback, type ReactElement } from "react";
 import { COMMIT_WIP_PILL_ALWAYS_SHOWN, CommitWipPill } from "@/composer/commit-wip-pill";
 import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { RenameSessionPill } from "@/composer/rename-session-pill";
@@ -14,7 +14,7 @@ import { ComposerTrackBar } from "@/composer/tracks";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePaneContext } from "@/panels/pane-context";
 import { useSettings } from "@/hooks/use-settings";
-import { PluginComposerPills } from "@/plugins";
+import { PluginComposerPill, usePluginComposerPillEntries } from "@/plugins";
 import { useSessionStore } from "@/stores/session-store";
 import {
   type ArchiveFinishedStatus,
@@ -30,7 +30,7 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
 import { openComposerChanges } from "@/workspace-tabs/open-supporting-view";
-import { chatOptionEnabled } from "@/composer/chat-options";
+import { chatOptionEnabled, defaultAboveOrder, orderChatOptions } from "@/composer/chat-options";
 
 /**
  * The pane's ambient context — workspace changes, subagents, and tasks — as a row of pills above
@@ -77,6 +77,8 @@ export const AgentTracks = memo(function AgentTracks({
   const isCompact = useIsCompactFormFactor();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
   const options = useSettings((settings) => settings.chatOptions);
+  const orderSetting = useSettings((settings) => settings.chatOptionOrder);
+  const pluginPills = usePluginComposerPillEntries(serverId, workspaceId, agentId);
   const show = (key: string) => chatOptionEnabled(options, key);
   const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
   const canDetachSubagents = useSessionStore(
@@ -148,9 +150,73 @@ export const AgentTracks = memo(function AgentTracks({
     return null;
   }
 
+  // CUSTOM(chat-options): every pill is a keyed node, ordered by Settings > Chat Options > Above chat.
+  const nodes: Record<string, ReactElement | null> = {
+    parent:
+      parentAgentId && show("parent") ? (
+        <ParentAgentPill serverId={serverId} parentAgentId={parentAgentId} />
+      ) : null,
+    tasks: show("tasks") ? <AgentTaskList tasks={tasks} /> : null,
+    subagents: show("subagents") ? (
+      <SubagentsTrack
+        serverId={serverId}
+        rows={subagentRows}
+        onOpenSubagent={handleOpenSubagent}
+        onOpenProviderSubagent={handleOpenProviderSubagent}
+        sheetTabFor={sheetTabFor}
+        onArchiveSubagent={archiveSubagent}
+        onArchiveFinished={onArchiveFinished}
+        archiveFinishedStatus={archiveFinishedStatus}
+        onDetachSubagent={canDetachSubagents ? detachSubagent : undefined}
+      />
+    ) : null,
+    // CUSTOM(commit-wip): commits everything as "wip".
+    commit: show("commit") ? (
+      <CommitWipPill serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
+    ) : null,
+    // CUSTOM(session-auto-rename): names the session from its status summary.
+    rename: show("rename") ? <RenameSessionPill serverId={serverId} agentId={agentId} /> : null,
+    diff: show("diff") ? (
+      <WorkspaceDiffStatPill
+        serverId={serverId}
+        workspaceId={workspaceId}
+        onPress={handleOpenChanges}
+      />
+    ) : null,
+    // CUSTOM(worktree-pill): copies the worktree path or merges it into the main checkout.
+    worktree:
+      isDone || !show("worktree") ? null : (
+        <WorktreePill
+          serverId={serverId}
+          workspaceId={workspaceId}
+          agentId={agentId}
+          cwd={cwd}
+          gitSync={gitSync}
+        />
+      ),
+    // CUSTOM(git-sync): "Trazer do <worktree>" or "Resolver conflitos".
+    "git-sync": show("git-sync") ? (
+      <GitSyncTrailingPills
+        serverId={serverId}
+        workspaceId={workspaceId}
+        agentId={agentId}
+        gitSync={gitSync}
+      />
+    ) : null,
+    // CUSTOM(reading-modes): Columns and Compact.
+    reading: show("reading") ? <ReadingModePill agentId={agentId} /> : null,
+  };
+  for (const { optionKey, entry } of pluginPills) {
+    nodes[optionKey] = <PluginComposerPill serverId={serverId} entry={entry} compact={isCompact} />;
+  }
+  const orderedKeys = orderChatOptions(
+    defaultAboveOrder(pluginPills.map(({ optionKey }) => optionKey)),
+    orderSetting.above,
+  ).filter((key) => nodes[key]);
+
   return (
     <ComposerTrackBar>
-      {/* CUSTOM(worktree-pill-done) */}
+      {/* CUSTOM(worktree-pill-done): a done worktree session leads the row, whatever the order. */}
       {isDone && show("worktree") ? (
         <WorktreePill
           serverId={serverId}
@@ -162,72 +228,9 @@ export const AgentTracks = memo(function AgentTracks({
           gitSync={gitSync}
         />
       ) : null}
-      {parentAgentId && show("parent") ? (
-        <ParentAgentPill serverId={serverId} parentAgentId={parentAgentId} />
-      ) : null}
-      {show("tasks") ? <AgentTaskList tasks={tasks} /> : null}
-      {show("subagents") ? (
-        <SubagentsTrack
-          serverId={serverId}
-          rows={subagentRows}
-          onOpenSubagent={handleOpenSubagent}
-          onOpenProviderSubagent={handleOpenProviderSubagent}
-          sheetTabFor={sheetTabFor}
-          onArchiveSubagent={archiveSubagent}
-          onArchiveFinished={onArchiveFinished}
-          archiveFinishedStatus={archiveFinishedStatus}
-          onDetachSubagent={canDetachSubagents ? detachSubagent : undefined}
-        />
-      ) : null}
-      {/* CUSTOM(pill-order): TLDR, Commit: wip and Rename session lead the row. */}
-      <PluginComposerPills
-        serverId={serverId}
-        workspaceId={workspaceId}
-        agentId={agentId}
-        compact={isCompact}
-        leading
-      />
-      {/* CUSTOM(commit-wip): commits everything as "wip". */}
-      {show("commit") ? (
-        <CommitWipPill serverId={serverId} workspaceId={workspaceId} agentId={agentId} />
-      ) : null}
-      {/* CUSTOM(session-auto-rename): names the session from its status summary. */}
-      {show("rename") ? <RenameSessionPill serverId={serverId} agentId={agentId} /> : null}
-      <PluginComposerPills
-        serverId={serverId}
-        workspaceId={workspaceId}
-        agentId={agentId}
-        compact={isCompact}
-        leading={false}
-      />
-      {show("diff") ? (
-        <WorkspaceDiffStatPill
-          serverId={serverId}
-          workspaceId={workspaceId}
-          onPress={handleOpenChanges}
-        />
-      ) : null}
-      {/* CUSTOM(worktree-pill): copies the worktree path or merges it into the main checkout. */}
-      {isDone || !show("worktree") ? null : (
-        <WorktreePill
-          serverId={serverId}
-          workspaceId={workspaceId}
-          agentId={agentId}
-          cwd={cwd}
-          gitSync={gitSync}
-        />
-      )}
-      {/* CUSTOM(git-sync): "Trazer do <worktree>" or "Resolver conflitos", last in the row. */}
-      {show("git-sync") ? (
-        <GitSyncTrailingPills
-          serverId={serverId}
-          workspaceId={workspaceId}
-          agentId={agentId}
-          gitSync={gitSync}
-        />
-      ) : null}
-      {/* CUSTOM(reading-modes): Columns and Compact, at the right end. */}
-      {show("reading") ? <ReadingModePill agentId={agentId} /> : null}
+      {orderedKeys.map((key) => (
+        <Fragment key={key}>{nodes[key]}</Fragment>
+      ))}
     </ComposerTrackBar>
   );
 });

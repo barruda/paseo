@@ -10,6 +10,7 @@ import {
   chatOptionEnabled,
   pluginChatOptionKey,
   featureChatOptionKey,
+  orderChatOptions,
 } from "@/composer/chat-options";
 
 describe("chat pill preferences", () => {
@@ -310,4 +311,24 @@ it("resolves a composer pill's chevron title and rejects a chevron without Conte
       },
     }),
   ).toThrow("Plugin button chevron needs Content");
+});
+
+describe("orderChatOptions", () => {
+  const keys = ["a", "b", "c", "d"];
+  it("keeps the default order with no saved order", () => {
+    expect(orderChatOptions(keys, undefined)).toEqual(keys);
+    expect(orderChatOptions(keys, [])).toEqual(keys);
+  });
+  it("follows a partial saved order and puts the rest after their default predecessor", () => {
+    expect(orderChatOptions(keys, ["c", "a"])).toEqual(["c", "d", "a", "b"]);
+  });
+  it("inserts a new key right after its default predecessor", () => {
+    expect(orderChatOptions(["a", "b", "n", "c"], ["c", "b", "a"])).toEqual(["c", "b", "n", "a"]);
+  });
+  it("puts a new first key at the start", () => {
+    expect(orderChatOptions(["n", "a", "b"], ["b", "a"])).toEqual(["n", "b", "a"]);
+  });
+  it("ignores stale and duplicate saved keys", () => {
+    expect(orderChatOptions(keys, ["x", "d", "d", "a"])).toEqual(["d", "a", "b", "c"]);
+  });
 });

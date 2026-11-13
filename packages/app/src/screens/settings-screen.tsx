@@ -26,7 +26,10 @@ import {
   Gauge,
   Keyboard,
   Stethoscope,
-  Wrench,
+  PenLine,
+  SlidersHorizontal,
+  PanelsTopLeft,
+  AudioLines,
   Info,
   Bell,
   Shield,
@@ -80,7 +83,14 @@ import { AddRemoteSshHostModal } from "@/components/add-remote-ssh-host-modal";
 import { PairLinkModal } from "@/components/pair-link-modal";
 import { KeyboardShortcutsSection } from "@/screens/settings/keyboard-shortcuts-section";
 import { EditorSection } from "@/screens/settings/editor-section";
-import { BrunoCustomizationsSection } from "@/screens/settings/bruno-customizations/section"; // CUSTOM(bruno-customizations)
+// CUSTOM(bruno-customizations)
+import {
+  BrunoChatPage,
+  BrunoComposerPage,
+  BrunoTabsPage,
+  BrunoVoicePage,
+} from "@/screens/settings/bruno-customizations/section";
+import { BrunoChatOptionsPage } from "@/screens/settings/bruno-customizations/chat-options-page";
 // CUSTOM(voice-settings)
 import { VoiceSettingsPage } from "@/screens/settings/voice/voice-settings-page";
 import { FilesSection } from "@/screens/settings/files-section";
@@ -227,10 +237,22 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     desktopOnly: true,
     Content: DesktopPermissionsSection,
   },
-  // CUSTOM(bruno-customizations): the fork's own settings, in tabs.
-  { id: "customizations", labelKey: "settings.sections.customizations", icon: Wrench },
   { id: "diagnostics", labelKey: "settings.sections.diagnostics", icon: Stethoscope },
   { id: "about", labelKey: "settings.sections.about", icon: Info },
+];
+
+// CUSTOM(bruno-customizations): the fork's own settings, a sidebar group of their own between App
+// and Host. English labels on purpose: they are not translated.
+const BRUNO_SECTION_ITEMS: {
+  id: SettingsSectionSlug;
+  label: string;
+  icon: SidebarSectionItem["icon"];
+}[] = [
+  { id: "customizations-composer", label: "Composer", icon: PenLine },
+  { id: "customizations-chat", label: "Chat", icon: MessageSquare },
+  { id: "customizations-chat-options", label: "Chat Options", icon: SlidersHorizontal },
+  { id: "customizations-tabs", label: "Tabs", icon: PanelsTopLeft },
+  { id: "customizations-voice", label: "Voice", icon: AudioLines },
 ];
 
 function isSectionAvailable(item: SidebarSectionItem, isDesktopApp: boolean): boolean {
@@ -994,6 +1016,19 @@ function SettingsSidebar({
           />
         ))}
       </SidebarGroup>
+      {/* CUSTOM(bruno-customizations) */}
+      <SidebarGroup label="Bruno's Customizations">
+        {BRUNO_SECTION_ITEMS.map((item) => (
+          <SidebarSectionButton
+            key={item.id}
+            itemId={item.id}
+            label={item.label}
+            icon={item.icon}
+            isSelected={selectedSectionId === item.id}
+            onSelect={onSelectSection}
+          />
+        ))}
+      </SidebarGroup>
       {hasHosts ? (
         <SidebarGroup label={t("settings.groups.host")}>
           <HostPicker
@@ -1318,6 +1353,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
       return item ? t(item.labelKey) : undefined;
     }
     if (view.kind === "section") {
+      const brunoItem = BRUNO_SECTION_ITEMS.find((s) => s.id === view.section);
+      if (brunoItem) return brunoItem.label; // CUSTOM(bruno-customizations)
       const item = SIDEBAR_SECTION_ITEMS.find((s) => s.id === view.section);
       return item ? t(item.labelKey) : undefined;
     }
@@ -1352,6 +1389,21 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
       );
     }
     if (view.kind === "section") {
+      // CUSTOM(bruno-customizations)
+      switch (view.section) {
+        case "customizations-composer":
+          return <BrunoComposerPage serverId={activeHostServerId} />;
+        case "customizations-chat":
+          return <BrunoChatPage />;
+        case "customizations-chat-options":
+          return <BrunoChatOptionsPage />;
+        case "customizations-tabs":
+          return <BrunoTabsPage />;
+        case "customizations-voice":
+          return <BrunoVoicePage serverId={activeHostServerId} />;
+        default:
+          break;
+      }
       const item = SIDEBAR_SECTION_ITEMS.find((candidate) => candidate.id === view.section);
       if (!item || !isSectionAvailable(item, isDesktopApp)) return null;
       switch (view.section) {
@@ -1372,9 +1424,6 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
               handlePlaybackTest={handlePlaybackTest}
             />
           );
-        // CUSTOM(bruno-customizations)
-        case "customizations":
-          return <BrunoCustomizationsSection serverId={activeHostServerId} />;
         case "about":
           return (
             <AboutSection

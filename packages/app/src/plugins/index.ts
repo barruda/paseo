@@ -4,7 +4,9 @@ export { PluginSurfaceScreen } from "./surface-screen";
 export { usePluginAttachmentPicker } from "./attachments/picker";
 export { PluginResourceAttachmentPill } from "./attachments/pill";
 export {
-  PluginComposerPills,
+  PluginComposerPill,
+  usePluginComposerPillEntries,
+  type ComposerPillEntry,
   PluginHeaderButtons,
   useHasPluginComposerPills,
   usePluginWorkspaceMenu,

@@ -4077,16 +4077,31 @@ waiting` tests in `agent-manager.test.ts`.
 - **What:** Settings > Bruno's Customizations > Chat Options controls built-in and plugin pills.
   Missing preferences default to visible. Registered plugin pills also get a toggle, keyed by
   plugin and pill rather than session, so the choice applies across agents and hosts.
-  The same tab controls the composer's toolbar and shows an icon for each choice; Critic and Jev
+  The page also controls the composer's toolbar and shows an icon for each choice; Critic and Jev
   retain their existing preferences. Hiding a control does not disable its keyboard shortcuts.
-- **Core files touched:** `composer/chat-options.ts`, `hooks/use-settings/storage.ts`,
-  `screens/settings/bruno-customizations/section.tsx`, `panels/agent-tracks.tsx`,
-  `panels/agent-panel.tsx`, `plugins/buttons/view.tsx`, `composer/agent-controls/index.tsx`,
-  `composer/index.tsx`, `composer/input/input.tsx`, and `composer/project-icon.tsx`.
-- **Re-apply:** Store the visibility map in app settings; apply it to each built-in pill and
-  plugin composer contribution, and list the controls in the customizations tab. Normalize
-  agent-specific plugin pill IDs before looking them up.
-- **Verify:** Run `storage.test.ts` and `plugins/buttons/model.test.ts`; toggle pills in a chat.
+  The page has three blocks, each just a label ("Above chat", "Inside left", "Inside right").
+  Inside a block the movable rows have a grip handle and can be dragged; the composer renders
+  the items in that order (app setting `chatOptionOrder`, `{above?, left?, right?}` lists of keys;
+  `orderChatOptions` puts keys missing from the saved list after their default predecessor, so new
+  items and plugin pills appear in place). Fixed rows stay put: left has Agent permissions and
+  the Fast/Plan/Other features first (they live in the model/mode control); right has Git branch
+  (drawn inside the project icon), Send and Stop last. A done Worktree pill still leads the row.
+  Plugin pills are individually orderable and default to right after TokenLedger.
+- **Core files touched:** `composer/chat-options.ts` (groups, `orderChatOptions`),
+  `hooks/use-settings/storage.ts` (`chatOptions`, `chatOptionOrder`),
+  `screens/settings/bruno-customizations/chat-options-page.tsx` (the page, `DraggableList`),
+  `panels/agent-tracks.tsx` (keyed pills sorted by `above`), `panels/agent-panel.tsx`,
+  `plugins/buttons/view.tsx` (`usePluginComposerPillEntries` and `PluginComposerPill` replace
+  `PluginComposerPills`), `composer/agent-controls/index.tsx` (trailing chips sorted by `left`),
+  `composer/index.tsx` (project icon and context meter as separate nodes),
+  `composer/input/input.tsx` (`projectContent` prop; project, meter, dictation and voice sorted by
+  `right`, then Send), and `composer/project-icon.tsx`.
+- **Re-apply:** Store the visibility map and the order lists in app settings; apply them to each
+  built-in pill and plugin composer contribution, build each group as keyed nodes sorted with
+  `orderChatOptions`, and list the controls in the Chat Options page. Normalize agent-specific
+  plugin pill IDs before looking them up.
+- **Verify:** Run `storage.test.ts` and `plugins/buttons/model.test.ts`; toggle pills in a chat;
+  drag a row in each block and check the composer follows, also after a reload.
 
 ## mouse-tab-nav: the mouse's back/forward buttons switch tabs
 
@@ -4362,7 +4377,9 @@ notification"` (all in the update script). By hand: turn the critic on with a st
 - **Commit:** `custom: Bruno's Customizations settings section, critic and Jev icons can be hidden`
 - **Why:** The fork's settings were spread over Chat, Editor and the host's Voice page, and the
   composer's critic and Jev icons could not be hidden. The user wants one organized place.
-- **What:** An app section **Bruno's Customizations** (before Diagnostics), in tabs:
+- **What:** A sidebar group **Bruno's Customizations** (between App and Host), with one page per
+  former tab (slugs `customizations-composer`, `-chat`, `-chat-options`, `-tabs`, `-voice`; the old
+  `customizations` slug redirects to Composer, `COMPAT(customizationsSlug)`):
   - **Composer**: **Toolbar icons** with **Critic** and **Jev router** switches (on by default,
     app settings `showCriticToggle` / `showJevRouterToggle`), and \*\*Jev router > Router settings
     > Open\*\*, the router sheet for the selected host when it has the plugin. A hidden Jev icon
@@ -4375,19 +4392,20 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     ([voice-settings](#voice-settings-settings--voice-and-dictation)) for the host the settings
     screen points at. The host sidebar no longer lists Voice; its slug still opens the page.
   - Keyboard shortcut customizations stay in Shortcuts, plugin settings in each host's Plugins.
-- **Files:** `packages/app/src/screens/settings/bruno-customizations/section.tsx`.
+- **Files:** `packages/app/src/screens/settings/bruno-customizations/section.tsx` (Composer, Chat,
+  Tabs, Voice pages) and `chat-options-page.tsx` ([chat-options](#chat-options-choose-the-pills-above-the-chat-composer)).
 - **Core files touched** (marked `CUSTOM(bruno-customizations)`): `screens/settings-screen.tsx`
-  (the sidebar item and its case, Voice out of the host items), `utils/host-routes.ts` (the
-  `customizations` slug), `i18n/resources/*.ts` (`settings.sections.customizations`, the same
-  name in every locale), `hooks/use-settings/storage.ts` (the two switches),
+  (the `BRUNO_SECTION_ITEMS` sidebar group, title and content cases, Voice out of the host
+  items), `utils/host-routes.ts` (the five slugs), `app/settings/[section].tsx` (legacy slug
+  redirect), `i18n/resources/*.ts` (`settings.sections.customizations` is now unused), `hooks/use-settings/storage.ts` (the two switches),
   `composer/agent-controls/index.tsx` (gates the two icons), `jev-router/toggle.tsx`
   (`showIcon`); the moved rows left `screens/settings/editor-section.tsx` and
   `screens/settings/chat/chat-section.tsx`, which are upstream again.
-- **Re-apply:** Add the `customizations` slug and a sidebar item rendering
-  `BrunoCustomizationsSection` with the active host id; drop Voice from the host items but keep
+- **Re-apply:** Add the five slugs and a sidebar group between App and Host rendering the pages
+  (`BrunoComposerPage`, `BrunoVoicePage` get the active host id); drop Voice from the host items but keep
   its route case; add the two app settings and wrap the critic toggle and the Jev icon in them.
-  Any new fork setting goes into a tab of this section.
-- **Verify:** typecheck. In the app, Settings > Bruno's Customizations: each tab shows its
+  Any new fork setting goes into a page of this group.
+- **Verify:** typecheck. In the app, Settings > Bruno's Customizations: each page shows its
   rows; turning Composer > Critic off removes the critic icon from the composer; Jev router off
   removes its icon but the green chip still appears on a routed session.
 

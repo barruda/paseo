@@ -502,7 +502,12 @@ export const SETTINGS_SECTION_SLUGS = [
   "integrations",
   "notifications",
   "permissions",
-  "customizations", // CUSTOM(bruno-customizations)
+  // CUSTOM(bruno-customizations): one page per former tab.
+  "customizations-composer",
+  "customizations-chat",
+  "customizations-chat-options",
+  "customizations-tabs",
+  "customizations-voice",
   "diagnostics",
   "about",
 ] as const;

@@ -37,7 +37,12 @@ function SettingsDaemonRedirect() {
 export default function SettingsSectionRoute() {
   const params = useLocalSearchParams<{ section?: string; addHost?: string }>();
   const rawSection = typeof params.section === "string" ? params.section : "";
-  const section: SettingsSectionSlug = isSettingsSectionSlug(rawSection) ? rawSection : "general";
+  // CUSTOM(bruno-customizations): the old single "customizations" page is now Composer.
+  // COMPAT(customizationsSlug): added 2026-11-13, remove after 2027-05-13.
+  const section: SettingsSectionSlug = (() => {
+    if (rawSection === "customizations") return "customizations-composer";
+    return isSettingsSectionSlug(rawSection) ? rawSection : "general";
+  })();
   const openAddHostIntent = typeof params.addHost === "string" ? params.addHost : null;
   const view = useMemo(() => ({ kind: "section" as const, section }), [section]);
 

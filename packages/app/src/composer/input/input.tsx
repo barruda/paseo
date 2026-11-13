@@ -23,9 +23,11 @@ import {
   useImperativeHandle,
   useMemo,
   forwardRef,
+  Fragment,
 } from "react";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useSettings } from "@/hooks/use-settings";
+import { movableChatOptions, orderChatOptions } from "@/composer/chat-options";
 import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
@@ -163,6 +165,8 @@ export interface MessageInputProps {
   disabled?: boolean;
   /** Content to render on the left side of the composer toolbar (e.g., AgentControls) */
   leftContent?: React.ReactNode;
+  /** CUSTOM(chat-options): the project icon, ordered with the other right-side items. */
+  projectContent?: React.ReactNode;
   /** Content to render on the right side before the voice button (e.g., context window meter) */
   beforeVoiceContent?: React.ReactNode;
   /** Auxiliary content to render on the right side after the voice button. */
@@ -1163,6 +1167,7 @@ interface ResolvedMessageInputProps {
   autoFocusKey: string | undefined;
   disabled: boolean;
   leftContent: React.ReactNode;
+  projectContent: React.ReactNode;
   beforeVoiceContent: React.ReactNode;
   rightContent: React.ReactNode;
   activeActionContent: React.ReactNode;
@@ -1211,6 +1216,7 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
     autoFocusKey: props.autoFocusKey,
     disabled: props.disabled ?? false,
     leftContent: props.leftContent,
+    projectContent: props.projectContent,
     beforeVoiceContent: props.beforeVoiceContent,
     rightContent: props.rightContent,
     activeActionContent: props.activeActionContent,
@@ -1289,6 +1295,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       autoFocusKey,
       disabled,
       leftContent,
+      projectContent,
       beforeVoiceContent,
       rightContent,
       activeActionContent,
@@ -2089,6 +2096,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     );
 
     const chatOptions = useSettings((settings) => settings.chatOptions); // CUSTOM(chat-options)
+    const rightOrder = useSettings((settings) => settings.chatOptionOrder.right); // CUSTOM(chat-options)
     let visibleActionKind: PrimaryActionKind = isFullscreen ? "send" : primaryActionKind;
     if (visibleActionKind === "send" && chatOptions.send === false) visibleActionKind = "none";
     if (visibleActionKind === "active" && chatOptions.stop === false) visibleActionKind = "none";
@@ -2212,8 +2220,29 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         focusInputKeys,
       ],
     );
-    const toolbar = useMemo(
-      () => (
+    const toolbar = useMemo(() => {
+      const rightItems: Record<string, React.ReactNode> = {
+        project: projectContent,
+        "context-meter": beforeVoiceContent,
+        dictation: (
+          <VoiceButtonTooltip
+            visible={
+              mode.showVoice && (chatOptions.dictation !== false || isRealtimeVoiceForCurrentAgent)
+            }
+            onVoicePress={handleVoicePress}
+            isDictationStartEnabled={isDictationStartEnabled}
+            voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
+            voiceButtonStyle={voiceButtonStyle}
+            renderVoiceButtonIcon={renderVoiceButtonIcon}
+            voiceTooltipText={voiceTooltipText}
+            isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
+            voiceMuteToggleKeys={voiceMuteToggleKeys}
+            dictationToggleKeys={dictationToggleKeys}
+          />
+        ),
+        voice: rightContent,
+      };
+      return (
         <View style={styles.buttonRow}>
           {/* Toolbar left: attachment button + agent controls */}
           <View style={styles.leftButtonGroup}>
@@ -2231,52 +2260,40 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
           {/* Right: voice button, contextual button (realtime/send/cancel) */}
           <View style={styles.rightButtonGroup}>
-            {beforeVoiceContent}
-            <VoiceButtonTooltip
-              visible={
-                mode.showVoice &&
-                (chatOptions.dictation !== false || isRealtimeVoiceForCurrentAgent)
-              }
-              onVoicePress={handleVoicePress}
-              isDictationStartEnabled={isDictationStartEnabled}
-              voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}
-              voiceButtonStyle={voiceButtonStyle}
-              renderVoiceButtonIcon={renderVoiceButtonIcon}
-              voiceTooltipText={voiceTooltipText}
-              isRealtimeVoiceForCurrentAgent={isRealtimeVoiceForCurrentAgent}
-              voiceMuteToggleKeys={voiceMuteToggleKeys}
-              dictationToggleKeys={dictationToggleKeys}
-            />
-            {rightContent}
+            {/* CUSTOM(chat-options): ordered by Settings > Chat Options > Inside right. */}
+            {orderChatOptions(movableChatOptions("right"), rightOrder).map((key) => (
+              <Fragment key={key}>{rightItems[key]}</Fragment>
+            ))}
             {sendButton}
           </View>
         </View>
-      ),
-      [
-        mode.showAttachments,
-        isConnected,
-        disabled,
-        attachButtonStyle,
-        renderAttachButtonIcon,
-        attachmentMenuItems,
-        t,
-        leftContent,
-        beforeVoiceContent,
-        mode.showVoice,
-        handleVoicePress,
-        isDictationStartEnabled,
-        voiceButtonAccessibilityLabel,
-        voiceButtonStyle,
-        renderVoiceButtonIcon,
-        voiceTooltipText,
-        isRealtimeVoiceForCurrentAgent,
-        voiceMuteToggleKeys,
-        dictationToggleKeys,
-        rightContent,
-        sendButton,
-        chatOptions.dictation,
-      ],
-    );
+      );
+    }, [
+      mode.showAttachments,
+      isConnected,
+      disabled,
+      attachButtonStyle,
+      renderAttachButtonIcon,
+      attachmentMenuItems,
+      t,
+      leftContent,
+      projectContent,
+      beforeVoiceContent,
+      rightOrder,
+      mode.showVoice,
+      handleVoicePress,
+      isDictationStartEnabled,
+      voiceButtonAccessibilityLabel,
+      voiceButtonStyle,
+      renderVoiceButtonIcon,
+      voiceTooltipText,
+      isRealtimeVoiceForCurrentAgent,
+      voiceMuteToggleKeys,
+      dictationToggleKeys,
+      rightContent,
+      sendButton,
+      chatOptions.dictation,
+    ]);
     const overlayContent = useMemo(
       () => (
         <MessageInputOverlay

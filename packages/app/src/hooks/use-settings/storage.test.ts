@@ -57,6 +57,19 @@ describe("loadAppSettingsFromStorage", () => {
       reading: true,
     });
   });
+  it("round-trips the saved chat option order, per group", async () => {
+    const deps = makeDeps();
+    expect((await loadAppSettingsFromStorage(deps)).chatOptionOrder).toEqual({});
+    await saveAppSettings({
+      queryClient: new QueryClient(),
+      deps,
+      updates: { chatOptionOrder: { above: ["diff", "commit"], right: ["voice", "project"] } },
+    });
+    expect((await loadAppSettingsFromStorage(deps)).chatOptionOrder).toEqual({
+      above: ["diff", "commit"],
+      right: ["voice", "project"],
+    });
+  });
   it("persists file panel associations, including panels absent from this host", async () => {
     const deps = makeDeps();
     const queryClient = new QueryClient();

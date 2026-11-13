@@ -1,4 +1,5 @@
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -7,6 +8,7 @@ import {
   useRef,
   useState,
   type ReactElement,
+  type ReactNode,
   type RefObject,
 } from "react";
 import { useTranslation } from "react-i18next";
@@ -93,7 +95,12 @@ import { useLockedCycleKeys } from "@/jev-router/use-locked-cycle-keys"; // CUST
 import { ChangeFlash } from "@/composer/agent-controls/change-flash"; // CUSTOM(jev-router)
 import { useJevChipSignal } from "@/jev-router/flash-signal"; // CUSTOM(jev-router)
 import { useAppSettings } from "@/hooks/use-settings"; // CUSTOM(bruno-customizations)
-import { chatOptionEnabled, featureChatOptionKey } from "@/composer/chat-options";
+import {
+  chatOptionEnabled,
+  featureChatOptionKey,
+  movableChatOptions,
+  orderChatOptions,
+} from "@/composer/chat-options";
 import { isNative } from "@/constants/platform";
 import {
   resolveComposerControlDensity,
@@ -863,6 +870,50 @@ function ControlledAgentControls({
     return null;
   }
 
+  // CUSTOM(chat-options): the trailing chips follow Settings > Chat Options > Inside left.
+  const trailingChips: Record<string, ReactNode> = {
+    // CUSTOM(model-picker)
+    "model-shortcut":
+      !isCompact && chatOptionEnabled(options, "model-shortcut") ? (
+        <ModelPickerShortcutChip />
+      ) : null,
+    // CUSTOM(cache-warmup)
+    "cache-warmup": chatOptionEnabled(options, "cache-warmup") ? (
+      <CacheWarmupToggle
+        provider={provider}
+        serverId={modelSelectorServerId}
+        agentId={cacheWarmupAgentId}
+        draftKey={draftKey}
+      />
+    ) : null,
+    // CUSTOM(critic): the critic toggle, for any provider.
+    // CUSTOM(bruno-customizations): unless hidden in Settings.
+    critic: showCriticToggle ? (
+      <CriticToggle
+        serverId={modelSelectorServerId}
+        agentId={cacheWarmupAgentId}
+        draftKey={draftKey}
+      />
+    ) : null,
+    // CUSTOM(jev-router): drafts show it too (it routes their first prompt). Hidden in Settings,
+    // it still feeds the left/right lock and shows the route chip.
+    jev: (
+      <JevRouterToggle
+        serverId={modelSelectorServerId}
+        agentId={cacheWarmupAgentId}
+        showIcon={showJevRouterToggle}
+      />
+    ),
+    // CUSTOM(delegation): it sets how the host's new sessions start, so drafts show it too.
+    delegation: chatOptionEnabled(options, "delegation") ? (
+      <DelegationToggle serverId={modelSelectorServerId} />
+    ) : null,
+  };
+  const trailingKeys = orderChatOptions(
+    movableChatOptions("left"),
+    chatSettings.chatOptionOrder.left,
+  );
+
   return (
     <ComposerControlLayoutProvider value={layoutContextValue}>
       <View style={styles.container} onLayout={handleLayout}>
@@ -961,40 +1012,9 @@ function ControlledAgentControls({
             canSwitchProvider={Boolean(onSelectProviderAndModel)}
           />
         )}
-        {/* CUSTOM(model-picker) */}
-        {!isCompact && chatOptionEnabled(options, "model-shortcut") ? (
-          <ModelPickerShortcutChip />
-        ) : null}
-        {/* CUSTOM(cache-warmup) */}
-        {chatOptionEnabled(options, "cache-warmup") ? (
-          <CacheWarmupToggle
-            provider={provider}
-            serverId={modelSelectorServerId}
-            agentId={cacheWarmupAgentId}
-            draftKey={draftKey}
-          />
-        ) : null}
-        {/* CUSTOM(critic): the critic toggle sits right after the flame, for any provider.
-            CUSTOM(bruno-customizations): unless hidden in Settings. */}
-        {showCriticToggle ? (
-          <CriticToggle
-            serverId={modelSelectorServerId}
-            agentId={cacheWarmupAgentId}
-            draftKey={draftKey}
-          />
-        ) : null}
-        {/* CUSTOM(jev-router): after the critic; drafts show it too (it routes their first prompt).
-            Hidden in Settings, it still feeds the ←/→ lock and shows the route chip. */}
-        <JevRouterToggle
-          serverId={modelSelectorServerId}
-          agentId={cacheWarmupAgentId}
-          showIcon={showJevRouterToggle}
-        />
-        {/* CUSTOM(delegation): after Jev; it sets how the host's new sessions start, so drafts
-            show it too. Hidden in Settings > Bruno's Customizations > Chat options. */}
-        {chatOptionEnabled(options, "delegation") ? (
-          <DelegationToggle serverId={modelSelectorServerId} />
-        ) : null}
+        {trailingKeys.map((key) => (
+          <Fragment key={key}>{trailingChips[key]}</Fragment>
+        ))}
       </View>
     </ComposerControlLayoutProvider>
   );
