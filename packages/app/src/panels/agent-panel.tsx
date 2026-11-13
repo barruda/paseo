@@ -105,6 +105,7 @@ import type { PendingPermission } from "@/types/shared";
 import type { StreamItem, TodoEntry } from "@/types/stream";
 import type { ViewedTimelineStatus, ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import { useArchiveFinishedSubagents, useSubagentsForParent } from "@/subagents";
+import { useHasRunningSubagent, withRunningSubagents } from "@/subagents/running"; // CUSTOM(subagent-tab-status)
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
 import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-workspaces";
@@ -319,8 +320,15 @@ function useAgentPanelDescriptor(
   target: { kind: "agent"; agentId: string },
   context: { serverId: string },
 ): PanelDescriptor {
-  const descriptor = useAgentDescriptor(target, context);
+  const upstreamDescriptor = useAgentDescriptor(target, context);
   const projectIcon = useAgentProjectTabIcon(context.serverId, target.agentId);
+  // CUSTOM(subagent-tab-status): the tab keeps working while a subagent runs.
+  const subagentRunning = useHasRunningSubagent(context.serverId, target.agentId);
+  const statusBucket = withRunningSubagents(upstreamDescriptor.statusBucket, subagentRunning);
+  const descriptor =
+    statusBucket === upstreamDescriptor.statusBucket
+      ? upstreamDescriptor
+      : { ...upstreamDescriptor, statusBucket };
   return projectIcon ? { ...descriptor, icon: projectIcon } : descriptor;
 }
 

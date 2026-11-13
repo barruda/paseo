@@ -5246,3 +5246,25 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   (both in the update script). Needs a daemon restart. In Settings > Voice and dictation, the
   provider section shows "Signed in (max)"; pick Claude for Dictation, set Português, dictate:
   the words appear as you speak and the local model picker is locked.
+
+## subagent-tab-status: an agent's tab keeps working while a subagent runs
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: Agent tab shows working while a subagent runs`
+- **Why:** When an agent hands work to a subagent and ends its turn, its tab went back to idle
+  while the subagents track still said "1 working". The sidebar's workspace status already counts
+  running subagents; the tab did not.
+- **What:** The agent tab's status bucket becomes `running` when the agent's own bucket is `done`
+  or `attention` and one of its direct subagents (Paseo or provider, the same rows and rule as the
+  track pill's "N working") is working. The agent's own `needs_input` and `failed` still win.
+  `subagents/running.ts` reads the session and provider-subagent stores only (no refresh RPC per
+  tab); the daemon pushes provider subagent updates to every client.
+- **Core files touched:** `packages/app/src/panels/agent-panel.tsx` (`useAgentPanelDescriptor`,
+  already custom for `agent-tab-project-icon`); new `packages/app/src/subagents/running.ts` and
+  `running.test.ts`.
+- **Re-apply:** In the agent panel's `useDescriptor`, take upstream's descriptor and replace its
+  `statusBucket` with `withRunningSubagents(bucket, useHasRunningSubagent(serverId, agentId))`.
+  If upstream renames the subagent selectors, point `running.ts` at whatever feeds the track pill.
+- **Verify:** `cd packages/app && npx vitest run src/subagents/running.test.ts --bail=1` (in the
+  update script). In the app: ask an agent to start a background subagent and finish its turn;
+  its tab keeps the working spinner until the subagent finishes, then turns finished.
