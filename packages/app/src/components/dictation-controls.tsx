@@ -6,6 +6,7 @@ import { X, ArrowUp, RefreshCcw, Check, Mic, Pencil } from "lucide-react-native"
 import { useTranslation } from "react-i18next";
 import { VolumeMeter } from "./volume-meter";
 import type { DictationStatus } from "@/hooks/use-dictation";
+import type { Theme } from "@/styles/theme";
 
 interface DictationControlsProps {
   volume: number;
@@ -135,6 +136,36 @@ export function DictationControls({
   );
 }
 
+// Failed and processing states keep their usual look even if the mic never went live.
+function isOverlayWarming(
+  isMicWarming: boolean | undefined,
+  isProcessing: boolean,
+  status: DictationStatus,
+): boolean {
+  return Boolean(isMicWarming) && !isProcessing && status !== "failed";
+}
+
+function overlayTone(colors: Theme["colors"], warming: boolean) {
+  if (warming) {
+    return {
+      background: colors.surface2,
+      foreground: colors.foreground,
+      cancelBackground: colors.surface3,
+      acceptBackground: colors.surface3,
+      confirmBackground: colors.foreground,
+      confirmIcon: colors.surface0,
+    };
+  }
+  return {
+    background: colors.accent,
+    foreground: colors.accentForeground,
+    cancelBackground: undefined,
+    acceptBackground: OVERLAY_ACCEPT_BUTTON_BG.backgroundColor,
+    confirmBackground: colors.accentForeground,
+    confirmIcon: colors.accent,
+  };
+}
+
 /**
  * Full-width overlay variant for the agent input footer.
  * Uses blue background with white icons.
@@ -143,6 +174,7 @@ export function DictationOverlay({
   volume,
   duration,
   isRecording,
+  isMicWarming,
   isProcessing,
   status,
   errorText,
@@ -151,7 +183,11 @@ export function DictationOverlay({
   onAcceptAndSend,
   onRetry,
   onDiscard,
-}: Omit<DictationControlsProps, "onStart" | "disabled" | "transcript"> & { errorText?: string }) {
+}: Omit<DictationControlsProps, "onStart" | "disabled" | "transcript"> & {
+  errorText?: string;
+  // CUSTOM(dictation-live-mic): recording, but the microphone hasn't delivered audio yet.
+  isMicWarming?: boolean;
+}) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
   const isFailed = status === "failed";
@@ -159,30 +195,40 @@ export function DictationOverlay({
   const actionsDisabled = isProcessing;
   const handleCancel = isFailed && onDiscard ? onDiscard : onCancel;
 
+  // CUSTOM(dictation-live-mic): while the mic warms up the overlay uses the neutral surface
+  // palette instead of the accent one, so green means "your words are being heard".
+  const warming = isOverlayWarming(isMicWarming, isProcessing, status);
+  const startingMicLabel = t("settings.voiceSettings.claudeStt.startingMic");
+  const tone = overlayTone(theme.colors, warming);
   const containerStyle = useMemo(
-    () => [overlayStyles.container, { backgroundColor: theme.colors.accent }],
-    [theme.colors.accent],
+    () => [overlayStyles.container, { backgroundColor: tone.background }],
+    [tone.background],
   );
   const overlayCancelButtonStyle = useMemo(
     () => [
       overlayStyles.cancelButton,
+      tone.cancelBackground ? { backgroundColor: tone.cancelBackground } : undefined,
       actionsDisabled && !isFailed && overlayStyles.buttonDisabled,
     ],
-    [actionsDisabled, isFailed],
+    [actionsDisabled, isFailed, tone.cancelBackground],
   );
   const overlayTimerTextStyle = useMemo(
-    () => [overlayStyles.timerText, { color: theme.colors.accentForeground }],
-    [theme.colors.accentForeground],
+    () => [overlayStyles.timerText, { color: tone.foreground }],
+    [tone.foreground],
   );
   const overlayTranscriptTextStyle = useMemo(
-    () => [overlayStyles.transcriptText, { color: theme.colors.accentForeground, opacity: 0.95 }],
-    [theme.colors.accentForeground],
+    () => [overlayStyles.transcriptText, { color: tone.foreground, opacity: 0.95 }],
+    [tone.foreground],
   );
   const overlayRetryButtonStyle = useMemo(
-    () => [overlayStyles.actionButton, { backgroundColor: theme.colors.accentForeground }],
-    [theme.colors.accentForeground],
+    () => [overlayStyles.actionButton, { backgroundColor: tone.confirmBackground }],
+    [tone.confirmBackground],
   );
   const overlayConfirmButtonStyle = overlayRetryButtonStyle;
+  const overlayAcceptButtonStyle = useMemo(
+    () => [overlayStyles.actionButton, { backgroundColor: tone.acceptBackground }],
+    [tone.acceptBackground],
+  );
 
   if (!showActiveState) {
     return null;
@@ -197,7 +243,7 @@ export function DictationOverlay({
         accessibilityLabel={t("message.dictation.cancel")}
         style={overlayCancelButtonStyle}
       >
-        <X size={theme.iconSize.lg} color={theme.colors.accentForeground} strokeWidth={2.5} />
+        <X size={theme.iconSize.lg} color={tone.foreground} strokeWidth={2.5} />
       </Pressable>
 
       <View style={overlayStyles.centerContainer}>
@@ -207,10 +253,15 @@ export function DictationOverlay({
             isMuted={false}
             isSpeaking={false}
             orientation="horizontal"
-            color={theme.colors.accentForeground}
+            color={tone.foreground}
           />
           <Text style={overlayTimerTextStyle}>{formatDuration(duration)}</Text>
         </View>
+        {warming ? (
+          <Text numberOfLines={1} style={overlayTranscriptTextStyle}>
+            {startingMicLabel}
+          </Text>
+        ) : null}
         {status === "paused" ? (
           <Text numberOfLines={2} style={overlayTranscriptTextStyle}>
             {t("message.dictation.paused")}
@@ -234,7 +285,7 @@ export function DictationOverlay({
       <View style={overlayStyles.actionButtonsContainer}>
         {actionsDisabled ? (
           <View style={overlayStyles.loadingContainer}>
-            <LoadingSpinner size="small" color={theme.colors.accentForeground} />
+            <LoadingSpinner size="small" color={tone.foreground} />
           </View>
         ) : null}
         {!actionsDisabled && isFailed ? (
@@ -244,7 +295,7 @@ export function DictationOverlay({
             accessibilityLabel={t("message.dictation.retry")}
             style={overlayRetryButtonStyle}
           >
-            <RefreshCcw size={theme.iconSize.lg} color={theme.colors.accent} strokeWidth={2.5} />
+            <RefreshCcw size={theme.iconSize.lg} color={tone.confirmIcon} strokeWidth={2.5} />
           </Pressable>
         ) : null}
         {!actionsDisabled && !isFailed ? (
@@ -253,13 +304,9 @@ export function DictationOverlay({
               onPress={onAccept}
               accessibilityRole="button"
               accessibilityLabel={t("message.dictation.insert")}
-              style={[overlayStyles.actionButton, OVERLAY_ACCEPT_BUTTON_BG]}
+              style={overlayAcceptButtonStyle}
             >
-              <Pencil
-                size={theme.iconSize.lg}
-                color={theme.colors.accentForeground}
-                strokeWidth={2.5}
-              />
+              <Pencil size={theme.iconSize.lg} color={tone.foreground} strokeWidth={2.5} />
             </Pressable>
             <Pressable
               onPress={onAcceptAndSend}
@@ -267,7 +314,7 @@ export function DictationOverlay({
               accessibilityLabel={t("message.dictation.insertAndSend")}
               style={overlayConfirmButtonStyle}
             >
-              <ArrowUp size={theme.iconSize.lg} color={theme.colors.accent} strokeWidth={2.5} />
+              <ArrowUp size={theme.iconSize.lg} color={tone.confirmIcon} strokeWidth={2.5} />
             </Pressable>
           </>
         ) : null}

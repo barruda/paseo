@@ -591,6 +591,7 @@ function MessageInputOverlay({
   dictationVolume,
   dictationDuration,
   isDictating,
+  isDictationMicWarming,
   isDictationProcessing,
   dictationStatus,
   dictationError,
@@ -620,6 +621,8 @@ function MessageInputOverlay({
   dictationVolume: number;
   dictationDuration: number;
   isDictating: boolean;
+  // CUSTOM(dictation-live-mic)
+  isDictationMicWarming: boolean;
   isDictationProcessing: boolean;
   dictationStatus: React.ComponentProps<typeof DictationOverlay>["status"];
   dictationError: string | null;
@@ -637,6 +640,7 @@ function MessageInputOverlay({
         volume={dictationVolume}
         duration={dictationDuration}
         isRecording={isDictating}
+        isMicWarming={isDictationMicWarming}
         isProcessing={isDictationProcessing}
         status={dictationStatus}
         // CUSTOM(dictation-live-text): also shows a stream that died while still recording.
@@ -1606,6 +1610,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
 
     const {
       isRecording: isDictating,
+      isMicWarming: isDictationMicWarming,
       isRecordingActive: isDictationActive,
       isProcessing: isDictationProcessing,
       partialTranscript: _dictationPartialTranscript,
@@ -2008,9 +2013,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         styles.voiceButton,
         Boolean(hovered) && !isDictating && styles.iconButtonHovered,
         !isDictationStartEnabled && styles.buttonDisabled,
-        isDictating && styles.voiceButtonRecording,
+        // CUSTOM(dictation-live-mic): no recording color until the mic delivers audio.
+        isDictating && !isDictationMicWarming && styles.voiceButtonRecording,
       ],
-      [isDictating, isDictationStartEnabled],
+      [isDictating, isDictationMicWarming, isDictationStartEnabled],
     );
 
     const handleRealtimeVoiceStop = useCallback(() => {
@@ -2319,6 +2325,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
           dictationVolume={dictationVolume}
           dictationDuration={dictationDuration}
           isDictating={isDictating}
+          isDictationMicWarming={isDictationMicWarming}
           isDictationProcessing={isDictationProcessing}
           dictationStatus={dictationStatus}
           dictationError={dictationError}
@@ -2338,6 +2345,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         dictationVolume,
         dictationDuration,
         isDictating,
+        isDictationMicWarming,
         isDictationProcessing,
         dictationStatus,
         dictationError,

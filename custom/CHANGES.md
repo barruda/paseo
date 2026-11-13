@@ -5296,3 +5296,31 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   (in the update script). In the app, Tasks mode: an agent with a running subagent shows the
   working dot and a collapsed "N subagents · 1 working" row; click expands it, click a subagent
   opens its tab.
+
+## dictation-live-mic: dictation turns green only once the microphone delivers audio
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: dictation turns green only once the microphone delivers audio`
+- **Why:** The user's only microphone is a Bluetooth speakerphone (LG XG5S). Measured three
+  times: every time it opens it sends ~950 ms of exact digital silence (all samples 0), then a
+  click, then real audio. The composer turned green as soon as the mic opened, so words spoken
+  right after Ctrl+D were lost with any speech-to-text provider.
+- **What:** The web audio source feeds each input block to a detector
+  (`hooks/dictation-mic-live.ts`): the first block with a sample above 1e-4 marks the mic live;
+  after 2.5 s without one it is marked live anyway. `useDictation` returns `isMicWarming`
+  (recording and not live yet). While warming, the dictation overlay uses `surface2`/`foreground`
+  instead of the accent green, shows "Starting mic…", and the toolbar voice button skips its
+  recording fill. Audio keeps flowing to the daemon while warming; only the look waits. Cancel,
+  confirm and media pause behave as before. Native and the MediaRecorder fallback are live at
+  once.
+- **Core files touched:** app `hooks/use-dictation-audio-source.{web,native,types}.ts`
+  (`isLive`), `hooks/use-dictation.ts` and `.shared.ts` (`isMicWarming`),
+  `components/dictation-controls.tsx`, `composer/input/input.tsx`,
+  `i18n/resources/custom-voice-settings.ts` (`claudeStt.startingMic`); new
+  `hooks/dictation-mic-live.ts`.
+- **Re-apply:** Add `isLive` to the dictation audio source contract, feed the detector from
+  `onaudioprocess`, reset it on stop, and derive `isMicWarming` in `useDictation`. Thread it to
+  the overlay and the voice button as a neutral variant of the recording look.
+- **Verify:** `cd packages/app && npx vitest run src/hooks/dictation-mic-live.test.ts --bail=1`
+  (in the update script). On the desktop with the LG XG5S, press Ctrl+D: the bar shows "Starting
+  mic…" in neutral colors for about a second, then turns green; words said after green are kept.

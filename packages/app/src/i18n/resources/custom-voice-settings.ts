@@ -62,6 +62,8 @@ const DICTATION_TUNING_PT_BR: Strings<typeof DICTATION_TUNING_EN> = {
 // the section titles that moved with them. Only English and Brazilian Portuguese are
 // translated; the other locales show the English text.
 const CLAUDE_STT_EN = {
+  // CUSTOM(dictation-live-mic): shown in the dictation bar until the microphone delivers audio.
+  startingMic: "Starting mic…",
   title: "Claude",
   info: "Claude uses the speech service behind Claude Code's /voice. It signs in with the Claude.ai login of a Claude Code folder on this host.",
   provider: {
@@ -107,6 +109,7 @@ const CLAUDE_STT_EN = {
 };
 
 const CLAUDE_STT_PT_BR: Strings<typeof CLAUDE_STT_EN> = {
+  startingMic: "Abrindo o microfone…",
   title: "Claude",
   info: "O Claude usa o serviço de voz por trás do /voice do Claude Code. Ele entra com o login Claude.ai de uma pasta do Claude Code neste host.",
   provider: {

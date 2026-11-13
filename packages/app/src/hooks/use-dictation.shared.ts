@@ -18,6 +18,9 @@ export interface UseDictationOptions {
 export interface UseDictationResult {
   isRecording: boolean;
   isRecordingActive: () => boolean;
+  // CUSTOM(dictation-live-mic): recording has started but the microphone hasn't delivered audio
+  // yet. Logic treats it as recording; only the look differs.
+  isMicWarming: boolean;
   isProcessing: boolean;
   partialTranscript: string;
   volume: number;

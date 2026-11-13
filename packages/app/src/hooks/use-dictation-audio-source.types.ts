@@ -9,4 +9,6 @@ export interface DictationAudioSource {
   stop: () => Promise<void>;
   volume: number;
   isPaused: boolean;
+  // CUSTOM(dictation-live-mic): false from start() until the microphone delivers audio.
+  isLive: boolean;
 }

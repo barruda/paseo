@@ -481,6 +481,8 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
   return {
     isRecording,
     isRecordingActive,
+    // CUSTOM(dictation-live-mic)
+    isMicWarming: isRecording && !audio.isLive,
     isProcessing,
     partialTranscript,
     volume: audio.volume,

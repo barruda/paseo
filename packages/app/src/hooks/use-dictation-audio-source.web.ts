@@ -2,6 +2,8 @@ import { resampleToPcm16 } from "@/audio/pcm";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parsePcm16Wav } from "@/utils/pcm16-wav";
 import { isElectronRuntime } from "@/desktop/host";
+// CUSTOM(dictation-live-mic)
+import { createMicLiveDetector, type MicLiveDetector } from "./dictation-mic-live";
 
 import type {
   DictationAudioSource,
@@ -135,6 +137,9 @@ async function finalizeRecorderStoppedPromise(input: {
 
 export function useDictationAudioSource(config: DictationAudioSourceConfig): DictationAudioSource {
   const [volume, setVolume] = useState(0);
+  // CUSTOM(dictation-live-mic): true once the microphone delivers audio, not when it opens.
+  const [isLive, setIsLive] = useState(false);
+  const liveDetectorRef = useRef<MicLiveDetector | null>(null);
 
   const onPcmSegmentRef = useRef(config.onPcmSegment);
   const onErrorRef = useRef(config.onError);
@@ -246,6 +251,12 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
 
     const context = new AudioContextCtor();
 
+    // CUSTOM(dictation-live-mic): chunks keep flowing while warming; only the flag waits.
+    liveDetectorRef.current?.dispose();
+    const liveDetector = createMicLiveDetector(() => setIsLive(true));
+    liveDetectorRef.current = liveDetector;
+    liveDetector.start();
+
     try {
       const source = context.createMediaStreamSource(stream);
       const processor = context.createScriptProcessor(4096, 1, 1);
@@ -263,6 +274,7 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
           return;
         }
         const input = event.inputBuffer.getChannelData(0);
+        liveDetector.feed(input);
 
         let sumSquares = 0;
         for (let i = 0; i < input.length; i++) {
@@ -349,6 +361,9 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
       recorderRefs.stoppedReject = reject;
     });
 
+    // CUSTOM(dictation-live-mic): the recorder path can't see samples.
+    liveDetector.markLive();
+
     try {
       recorder.start();
     } catch (err) {
@@ -371,6 +386,9 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
 
   const stop = useCallback(async () => {
     refs.current.started = false;
+    liveDetectorRef.current?.dispose();
+    liveDetectorRef.current = null;
+    setIsLive(false);
     setVolume(0);
 
     const { processor, source, gain, context, stream, pending, mode, recorder } = refs.current;
@@ -443,7 +461,8 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
       stop,
       volume,
       isPaused: false,
+      isLive,
     }),
-    [start, stop, volume],
+    [start, stop, volume, isLive],
   );
 }

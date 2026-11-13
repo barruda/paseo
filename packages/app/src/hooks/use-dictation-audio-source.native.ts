@@ -15,6 +15,8 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
   const onInterruptionRef = useRef(config.onInterruption);
   const [volume, setVolume] = useState(0);
   const [isPaused, setIsPaused] = useState(false);
+  // CUSTOM(dictation-live-mic): native capture starts delivering as soon as it is started.
+  const [isLive, setIsLive] = useState(false);
   const engineRef = useRef<ReturnType<typeof createAudioEngine> | null>(null);
 
   const getOrCreateEngine = useCallback(() => {
@@ -53,10 +55,12 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     const engine = getOrCreateEngine();
     await engine.initialize();
     await engine.startCapture();
+    setIsLive(true);
   }, [getOrCreateEngine]);
 
   const stop = useCallback(async () => {
     await engineRef.current?.stopCapture();
+    setIsLive(false);
     setVolume(0);
   }, []);
 
@@ -73,5 +77,6 @@ export function useDictationAudioSource(config: DictationAudioSourceConfig): Dic
     stop,
     volume,
     isPaused,
+    isLive,
   };
 }
