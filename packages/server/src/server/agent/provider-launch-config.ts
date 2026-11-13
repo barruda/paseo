@@ -166,6 +166,12 @@ export function resolveShellEnv(): Record<string, string> {
   return cachedShellEnv;
 }
 
+// CUSTOM(github-account): the daemon rewrites GH_CONFIG_DIR live, so agents and terminals
+// started afterwards must read a fresh copy.
+export function resetShellEnvCache(): void {
+  cachedShellEnv = null;
+}
+
 export function migrateProviderSettings(
   raw: Record<string, unknown>,
   builtinProviderIds: string[],

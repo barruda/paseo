@@ -93,6 +93,8 @@ const INBOUND_PERMISSION = {
   fetch_agent_history_request: "workspace.read",
   // CUSTOM(history-ai-search)
   "history.ai_search.request": "workspace.read",
+  // CUSTOM(github-account)
+  "github.account.status.request": "workspace.read",
   // CUSTOM(btw): asks the agent's model, like a prompt, but changes nothing.
   "agent.side_question.request": ["workspace.write", "hub.execute"],
   fetch_agent_request: ["workspace.read", "hub.execute"],
@@ -339,6 +341,8 @@ const OUTBOUND_PERMISSION = {
   fetch_agent_history_response: "workspace.read",
   // CUSTOM(history-ai-search)
   "history.ai_search.response": "workspace.read",
+  // CUSTOM(github-account)
+  "github.account.status.response": "workspace.read",
   // CUSTOM(btw): asks the agent's model, like a prompt, but changes nothing.
   "agent.side_question.response": ["workspace.write", "hub.execute"],
   fetch_agent_response: ["workspace.read", "hub.execute"],

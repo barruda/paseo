@@ -2020,6 +2020,8 @@ export class VoiceAssistantWebSocketServer {
         checkoutCommitPaths: true,
         // CUSTOM(history-ai-search)
         historyAiSearch: true,
+        // CUSTOM(github-account)
+        githubAccount: true,
         // CUSTOM(workspace-content-search)
         workspaceContentSearch: true,
         // CUSTOM(btw)

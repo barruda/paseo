@@ -22,6 +22,8 @@ import type {
   HistoryAiSearchResponse,
   WorkspaceFilesSearchContentResponse,
 } from "@getpaseo/protocol/messages";
+// CUSTOM(github-account)
+import type { GithubAccountStatusResponse } from "@getpaseo/protocol/messages";
 // CUSTOM(btw)
 import type { AgentSideQuestionResponse } from "@getpaseo/protocol/messages";
 // CUSTOM(voice-settings)
@@ -2756,6 +2758,25 @@ export class DaemonClient {
       requestId,
       message: { type: "history.ai_search.request", question },
       timeout: 180_000,
+    });
+  }
+
+  // CUSTOM(github-account): who the host's `gh` is signed in as. `configDir` tests a candidate
+  // directory without saving it.
+  async getGithubAccountStatus(
+    configDir?: string,
+    requestId?: string,
+  ): Promise<GithubAccountStatusResponse["payload"]> {
+    if (this.lastServerInfoMessage?.features?.githubAccount !== true) {
+      throw new Error("Update the host to change its GitHub account.");
+    }
+    return this.sendNamespacedCorrelatedSessionRequest<"github.account.status.response">({
+      requestId,
+      message: {
+        type: "github.account.status.request",
+        ...(configDir !== undefined ? { configDir } : {}),
+      },
+      timeout: 20_000,
     });
   }
 

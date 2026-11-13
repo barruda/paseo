@@ -205,6 +205,8 @@ import type {
   ProviderOverride,
 } from "./agent/provider-launch-config.js";
 import { loadPersistedConfig, type PersistedConfig } from "./persisted-config.js";
+// CUSTOM(github-account)
+import { applyGithubConfigDir } from "./github-account.js";
 import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import type { SpeechCustomModel } from "@getpaseo/protocol/speech-settings";
 import { createServiceProxySubsystem, type ServiceProxySubsystem } from "./service-proxy.js";
@@ -440,6 +442,8 @@ export interface PaseoDaemonConfig {
   autoArchiveAfterMerge?: boolean;
   enableTerminalAgentHooks?: boolean;
   appendSystemPrompt?: string;
+  // CUSTOM(github-account)
+  githubConfigDir?: string;
   terminalProfiles?: TerminalProfile[];
   agentProfiles?: AgentProfile[];
   skillSelection?: AgentSkillSelection;
@@ -698,6 +702,8 @@ function createInitialMutableDaemonConfig(
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
     idleRuntimeCleanup: config.idleRuntimeCleanup !== false,
     appendSystemPrompt: config.appendSystemPrompt ?? "",
+    // CUSTOM(github-account)
+    ...(config.githubConfigDir ? { github: { configDir: config.githubConfigDir } } : {}),
     pluginsEnabled: config.pluginsEnabled ?? false,
     plugins: config.plugins ?? {},
     skills: { selection: config.skillSelection },
@@ -722,6 +728,8 @@ export async function createPaseoDaemon(
   dependencies: PaseoDaemonDependencies = {},
 ): Promise<PaseoDaemon> {
   configureGitProcessPolicy(config.git ?? resolveGitProcessPolicy({ env: process.env }));
+  // CUSTOM(github-account): the daemon's own gh account wins over the launcher's GH_CONFIG_DIR.
+  applyGithubConfigDir(config.githubConfigDir);
   const logger = rootLogger.child({ module: "bootstrap" });
   const obsoleteTimelineDirectory = path.join(config.paseoHome, "agent-timelines");
   await rm(obsoleteTimelineDirectory, { recursive: true, force: true }).catch((error) => {
@@ -1132,6 +1140,10 @@ export async function createPaseoDaemon(
   daemonConfigStore.onFieldChange("git.maxProcessConcurrency", () => {
     const git = daemonConfigStore.get().git;
     if (git) configureGitProcessPolicy(git);
+  });
+  // CUSTOM(github-account)
+  daemonConfigStore.onFieldChange("github.configDir", (value) => {
+    applyGithubConfigDir(typeof value === "string" ? value : undefined);
   });
   const initialAgentManagerState = providerSnapshotManager.getAgentManagerProviderState();
   const agentManager = new AgentManager({

@@ -508,6 +508,7 @@ export const SETTINGS_SECTION_SLUGS = [
   "customizations-chat-options",
   "customizations-tabs",
   "customizations-voice",
+  "customizations-github", // CUSTOM(github-account)
   "diagnostics",
   "about",
 ] as const;

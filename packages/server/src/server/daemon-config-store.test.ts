@@ -942,6 +942,39 @@ describe("DaemonConfigStore", () => {
     expect(persisted.daemon?.appendSystemPrompt).toBe("Prefer terse replies.");
   });
 
+  // CUSTOM(github-account)
+  test("patch persists the gh config dir and an empty value clears it", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const changes: unknown[] = [];
+
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        metadataGeneration: { providers: [] },
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+      },
+      undefined,
+    );
+    store.onFieldChange("github.configDir", (value) => changes.push(value));
+
+    const saved = await store.patch({ github: { configDir: " ~/.config/gh-personal " } });
+    expect(saved.github).toEqual({ configDir: "~/.config/gh-personal" });
+    expect(loadPersistedConfig(paseoHome).daemon?.github).toEqual({
+      configDir: "~/.config/gh-personal",
+    });
+
+    const cleared = await store.patch({ github: { configDir: "" } });
+    expect(cleared.github).toBeUndefined();
+    expect(loadPersistedConfig(paseoHome).daemon?.github).toBeUndefined();
+    expect(changes).toEqual(["~/.config/gh-personal", undefined]);
+  });
+
   test("patch persists browser tools opt-in into config.json", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

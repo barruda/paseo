@@ -404,6 +404,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/chat-code-run/model.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/media-pause.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/history-content-index.test.ts src/server/agent-history-search.test.ts src/server/history-ai-search.test.ts --bail=1)
+  # GitHub account per host (config dir precedence, daemon config readback).
+  (cd packages/server && npx vitest run src/server/github-account.test.ts src/server/daemon-config-store.test.ts --bail=1)
   (cd packages/protocol && npx vitest run src/search/history-query.test.ts --bail=1)
   (cd packages/cli && npx vitest run src/commands/speech/shared.test.ts --bail=1)
   (cd packages/client && npx vitest run src/wake-dictation.test.ts --bail=1)

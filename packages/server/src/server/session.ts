@@ -57,6 +57,8 @@ import { parseHistoryQuery } from "@getpaseo/protocol/search/history-query";
 import { getActiveHistoryContentIndex } from "./history-content-index.js";
 // CUSTOM(history-ai-search)
 import { runHistoryAiSearch } from "./history-ai-search.js";
+// CUSTOM(github-account)
+import { getGithubAccountStatus } from "./github-account.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech/speech-provider.js";
 import type { DictationTuning } from "./speech/dictation-tuning.js";
 import type { TurnDetectionProvider } from "./speech/turn-detection-provider.js";
@@ -2487,6 +2489,8 @@ export class Session {
       // CUSTOM(history-ai-search): chained here because the top-level chain is at its
       // complexity limit.
       this.dispatchHistoryAiSearchMessage(msg) ??
+      // CUSTOM(github-account)
+      this.dispatchGithubAccountMessage(msg) ??
       // CUSTOM(btw)
       this.dispatchAgentSideQuestionMessage(msg) ??
       this.dispatchWorkspaceAndProjectMessage(msg)
@@ -2898,6 +2902,24 @@ export class Session {
   // CUSTOM(history-ai-search)
   private dispatchHistoryAiSearchMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     return msg.type === "history.ai_search.request" ? this.handleHistoryAiSearch(msg) : undefined;
+  }
+
+  // CUSTOM(github-account)
+  private dispatchGithubAccountMessage(msg: SessionInboundMessage): Promise<void> | undefined {
+    return msg.type === "github.account.status.request"
+      ? this.handleGithubAccountStatus(msg)
+      : undefined;
+  }
+
+  // CUSTOM(github-account): failures come back inside the payload as `error`.
+  private async handleGithubAccountStatus(
+    request: Extract<SessionInboundMessage, { type: "github.account.status.request" }>,
+  ): Promise<void> {
+    const status = await getGithubAccountStatus({ configDir: request.configDir });
+    this.emit({
+      type: "github.account.status.response",
+      payload: { requestId: request.requestId, ...status },
+    });
   }
 
   private dispatchAgentLifecycleMessage(msg: SessionInboundMessage): Promise<void> | undefined {

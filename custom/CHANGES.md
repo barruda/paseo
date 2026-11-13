@@ -5380,3 +5380,33 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   `agent.background-subagent.test.ts`). In the app: ask an agent to start a background `sleep 600`
   and end its turn; the tab keeps the working spinner, a `1 tool` chip appears, and clicking a row
   copies the command.
+
+## github-account: GitHub account per host in Bruno's Customizations
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: GitHub account per host in Bruno's Customizations`
+- **Why:** Two daemons run side by side (personal and work), each with its own `gh` config
+  directory. The choice came only from the `GH_CONFIG_DIR` the launcher passed; when a launcher
+  inherited the wrong env, the work daemon ran `gh` as the personal account and PR status failed
+  ("GitHub batch PR status response is missing repository ...").
+- **What:** Settings > Bruno's Customizations > GitHub edits `daemon.github.configDir` of the
+  active host (empty = keep the launcher's `GH_CONFIG_DIR`). The daemon applies it to its own
+  `process.env.GH_CONFIG_DIR` at startup and on every change (the setting wins, clearing restores
+  the launch-time value) and resets the cached shell env so new agents and terminals inherit it;
+  the `gh` runner reads `process.env` per call. New RPC `github.account.status.request` /
+  `.response` runs `gh api user --jq .login` for the effective dir or a typed candidate (Test),
+  gated on `server_info.features.githubAccount`. Running agents keep the old account until restarted.
+- **Core files touched:** `packages/protocol/src/messages.ts` (config + patch fields, RPC schemas,
+  feature flag), `packages/server/src/server/{persisted-config,config,bootstrap,daemon-config-store,
+session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
+  `agent/provider-launch-config.ts` (`resetShellEnvCache`), `packages/client/src/daemon-client.ts`
+  (`getGithubAccountStatus`), app `screens/settings-screen.tsx`, `utils/host-routes.ts`; new
+  `server/github-account.{ts,test.ts}` and `screens/settings/bruno-customizations/github-page.tsx`.
+- **Re-apply:** Add `github.configDir` through the same paths as `appendSystemPrompt`
+  (`RELOADABLE_PATHS`, `PERSISTED_TO_MUTABLE_PATH`, `resolveStaticLoadConfigSettings`,
+  `createInitialMutableDaemonConfig`), call `applyGithubConfigDir` at the top of `createDaemon`
+  and from `onFieldChange("github.configDir")`, wire the RPC like `history.ai_search`, and add the
+  `customizations-github` slug, sidebar item and page case.
+- **Verify:** `cd packages/server && npx vitest run src/server/github-account.test.ts src/server/daemon-config-store.test.ts --bail=1`
+  (in the update script). In the app, set the Telus host's directory to `~/.config/gh`, press
+  Test, then Save: "Signed in as" shows the work login and PR status loads.

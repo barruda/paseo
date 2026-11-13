@@ -248,6 +248,8 @@ export const MutableDaemonConfigSchema = z
     // Persisted host-wide value, applied live by the daemon.
     idleRuntimeCleanup: z.boolean().optional(),
     appendSystemPrompt: z.string().default(""),
+    // CUSTOM(github-account): the gh config directory this host uses; absent = the launcher's.
+    github: z.object({ configDir: z.string().optional() }).optional(),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
     agentProfiles: z.array(AgentProfileSchema).optional(),
     skills: z.object({ selection: AgentSkillSelectionSchema.optional() }).strict().optional(),
@@ -275,6 +277,8 @@ export const MutableDaemonConfigPatchSchema = z
     enableTerminalAgentHooks: z.boolean().optional(),
     idleRuntimeCleanup: z.boolean().optional(),
     appendSystemPrompt: z.string().optional(),
+    // CUSTOM(github-account): an empty configDir clears it.
+    github: z.object({ configDir: z.string().optional() }).optional(),
     terminalProfiles: z.array(TerminalProfileSchema).optional(),
     agentProfiles: z.array(AgentProfileSchema).optional(),
     pluginsEnabled: z.boolean().optional(),
@@ -1471,6 +1475,13 @@ export const HistoryAiSearchRequestSchema = z.object({
   type: z.literal("history.ai_search.request"),
   requestId: z.string(),
   question: z.string(),
+});
+
+// CUSTOM(github-account): which gh account the host uses; `configDir` tests a candidate.
+export const GithubAccountStatusRequestSchema = z.object({
+  type: z.literal("github.account.status.request"),
+  requestId: z.string(),
+  configDir: z.string().optional(),
 });
 
 export const FetchRecentProviderSessionsRequestMessageSchema = z.object({
@@ -3377,6 +3388,8 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentHistoryRequestMessageSchema,
   // CUSTOM(history-ai-search)
   HistoryAiSearchRequestSchema,
+  // CUSTOM(github-account)
+  GithubAccountStatusRequestSchema,
   WorkspaceFilesSearchContentRequestSchema,
   // CUSTOM(btw)
   AgentSideQuestionRequestSchema,
@@ -3815,6 +3828,8 @@ export const ServerInfoStatusPayloadSchema = z
         checkoutCommitPaths: z.boolean().optional(),
         // CUSTOM(history-ai-search): history.ai_search.request.
         historyAiSearch: z.boolean().optional(),
+        // CUSTOM(github-account): github.account.status.request and the github config field.
+        githubAccount: z.boolean().optional(),
         // CUSTOM(workspace-content-search): workspace.files.search_content.request.
         workspaceContentSearch: z.boolean().optional(),
         // CUSTOM(btw): agent.side_question.request.
@@ -4454,6 +4469,18 @@ export const HistoryAiSearchResponseSchema = z.object({
     queries: z.array(z.string()),
     since: z.string().nullable(),
     until: z.string().nullable(),
+    error: z.string().nullable(),
+  }),
+});
+
+// CUSTOM(github-account)
+export const GithubAccountStatusResponseSchema = z.object({
+  type: z.literal("github.account.status.response"),
+  payload: z.object({
+    requestId: z.string(),
+    configDir: z.string().nullable(),
+    source: z.enum(["settings", "launcher", "default"]),
+    login: z.string().nullable(),
     error: z.string().nullable(),
   }),
 });
@@ -7216,6 +7243,8 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   FetchAgentHistoryResponseMessageSchema,
   // CUSTOM(history-ai-search)
   HistoryAiSearchResponseSchema,
+  // CUSTOM(github-account)
+  GithubAccountStatusResponseSchema,
   WorkspaceFilesSearchContentResponseSchema,
   // CUSTOM(btw)
   AgentSideQuestionResponseSchema,
@@ -7576,6 +7605,9 @@ export type FetchAgentHistoryRequestMessage = z.infer<typeof FetchAgentHistoryRe
 // CUSTOM(history-ai-search)
 export type HistoryAiSearchRequest = z.infer<typeof HistoryAiSearchRequestSchema>;
 export type HistoryAiSearchResponse = z.infer<typeof HistoryAiSearchResponseSchema>;
+// CUSTOM(github-account)
+export type GithubAccountStatusRequest = z.infer<typeof GithubAccountStatusRequestSchema>;
+export type GithubAccountStatusResponse = z.infer<typeof GithubAccountStatusResponseSchema>;
 export type WorkspaceFilesSearchContentResponse = z.infer<
   typeof WorkspaceFilesSearchContentResponseSchema
 >;

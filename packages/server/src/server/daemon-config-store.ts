@@ -30,6 +30,8 @@ interface SupportedMutableConfigPatch {
   enableTerminalAgentHooks?: boolean;
   idleRuntimeCleanup?: boolean;
   appendSystemPrompt?: string;
+  // CUSTOM(github-account)
+  github?: { configDir?: string };
   terminalProfiles?: MutableDaemonConfig["terminalProfiles"];
   agentProfiles?: MutableDaemonConfig["agentProfiles"];
   skills?: MutableDaemonConfig["skills"];
@@ -191,6 +193,8 @@ const RELOADABLE_PATHS = [
   "daemon.autoArchiveAfterMerge",
   "daemon.enableTerminalAgentHooks",
   "daemon.appendSystemPrompt",
+  // CUSTOM(github-account)
+  "daemon.github.configDir",
   "daemon.terminalProfiles",
   "daemon.agentProfiles",
   "app.baseUrl",
@@ -221,6 +225,8 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["daemon.autoArchiveAfterMerge", "autoArchiveAfterMerge"],
   ["daemon.enableTerminalAgentHooks", "enableTerminalAgentHooks"],
   ["daemon.appendSystemPrompt", "appendSystemPrompt"],
+  // CUSTOM(github-account)
+  ["daemon.github.configDir", "github.configDir"],
   ["daemon.terminalProfiles", "terminalProfiles"],
   ["daemon.agentProfiles", "agentProfiles"],
   ["app.baseUrl", "app.baseUrl"],
@@ -309,6 +315,8 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
     ...(patch.appendSystemPrompt !== undefined
       ? { appendSystemPrompt: patch.appendSystemPrompt }
       : {}),
+    // CUSTOM(github-account)
+    ...pickGithubPatch(patch),
     ...(patch.terminalProfiles !== undefined ? { terminalProfiles: patch.terminalProfiles } : {}),
     ...(patch.agentProfiles !== undefined ? { agentProfiles: patch.agentProfiles } : {}),
     ...(patch.pluginsEnabled !== undefined ? { pluginsEnabled: patch.pluginsEnabled } : {}),
@@ -316,6 +324,25 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
     ...(patch.speech !== undefined ? { speech: patch.speech } : {}),
     ...(patch.features !== undefined ? { features: patch.features } : {}),
   };
+}
+
+// CUSTOM(github-account)
+function pickGithubPatch(
+  patch: Pick<SupportedMutableConfigPatch, "github">,
+): Pick<SupportedMutableConfigPatch, "github"> {
+  const configDir = patch.github?.configDir;
+  return configDir === undefined ? {} : { github: { configDir } };
+}
+
+// CUSTOM(github-account): readback drops an empty or cleared configDir.
+function applyGithubPatchToReadback(
+  merged: Record<string, unknown>,
+  patch: Pick<SupportedMutableConfigPatch, "github">,
+): void {
+  const configDir = patch.github?.configDir?.trim();
+  if (configDir === undefined) return;
+  if (configDir) merged.github = { configDir };
+  else delete merged.github;
 }
 
 export function applyMutableProviderConfigToOverrides(
@@ -431,6 +458,7 @@ export class DaemonConfigStore {
     if (parsedPatch.speech?.customModels !== undefined && merged.speech) {
       merged.speech = { ...merged.speech, customModels: parsedPatch.speech.customModels };
     }
+    applyGithubPatchToReadback(merged, parsedPatch);
     const next = MutableDaemonConfigSchema.parse(
       omitMetadataGenerationProvidersFromConfig(
         omitProvidersFromConfig(merged, removedProviders),
@@ -785,6 +813,12 @@ function mergeMutableDaemonPatch(
     next.enableTerminalAgentHooks = patch.enableTerminalAgentHooks;
   }
   if (patch.appendSystemPrompt !== undefined) next.appendSystemPrompt = patch.appendSystemPrompt;
+  // CUSTOM(github-account): an empty value removes the key so the launcher's GH_CONFIG_DIR wins again.
+  if (patch.github?.configDir !== undefined) {
+    const configDir = patch.github.configDir.trim();
+    if (configDir) next.github = { configDir };
+    else delete next.github;
+  }
   if (patch.terminalProfiles !== undefined) next.terminalProfiles = patch.terminalProfiles;
   if (patch.agentProfiles !== undefined) next.agentProfiles = patch.agentProfiles;
   return Object.keys(next).length > 0 ? next : undefined;
