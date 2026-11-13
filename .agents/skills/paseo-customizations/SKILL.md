@@ -39,6 +39,11 @@ rules agents get wrong.
 
 ## Shipping a change to the user's running Paseo
 
+- **Clients are yours, daemons are the user's.** Rebuilding, reinstalling and reopening the Paseo
+  clients is yours to do whenever a change needs it, without asking. Restarting a daemon never
+  is: don't run anything that stops or restarts one (ports 6767 and 6768, the `Paseo Supervisor`,
+  a client whose daemon stops with its window). When a change needs a daemon restart, end your
+  report with the command for the user to run (below).
 - Only the main checkout (`/home/bruno/projetos/paseo`) ships. In a git worktree (any other
   `git rev-parse --show-toplevel`, such as `~/projetos/worktrees/paseo-*`), don't build, install,
   reload plugins, run `custom/reopen-paseo-clients.sh`, or start `npm run dev`, `dev:app`, or
@@ -79,9 +84,7 @@ rules agents get wrong.
   first when the upstream version changed: reopening the app restarts the daemon, which stops its
   running agents. Only run `custom/reopen-paseo-clients.sh` after an upstream pull when the
   version did not change, or once the user agrees.
-- Never stop or restart a running Paseo daemon yourself (ports 6767 and 6768 belong to the user's
-  daemons). Never replace files under a folder a running Paseo uses; the install step already
-  avoids this.
+- Never replace files under a folder a running Paseo uses; the install step already avoids this.
 
 ## Update conflicts
 
