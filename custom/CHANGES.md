@@ -5013,7 +5013,7 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
     memory files a subagent created through Paseo (label `paseo.parent-agent-id`) loads. The
     plugin's `agent.session_open` hook sets an env var on every launch (create and resume),
     whether or not delegation is on. Claude: `none` sets `CLAUDE_CODE_DISABLE_CLAUDE_MDS=1`;
-    `project` sets `PASEO_CLAUDE_MD_EXCLUDES` (JSON list from `shared/claude-md-excludes.ts`:
+    `project` sets `PASEO_CLAUDE_MD_EXCLUDES` (JSON list from `server/claude-md-excludes.ts`:
     the config dir's `CLAUDE.md` and `rules/**`, and `CLAUDE.md`, `CLAUDE.local.md`,
     `.claude/CLAUDE.md`, `.claude/rules/**` of every folder above the git root), which the Claude
     provider passes to the SDK as the `claudeMdExcludes` setting. Codex: only `none` does

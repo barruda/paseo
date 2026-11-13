@@ -1,3 +1,4 @@
+// Server only: it uses node:path, and shared/ is bundled into the app too.
 import path from "node:path";
 
 /** Env var the plugin sets on a Claude subagent; the Claude provider turns it into `claudeMdExcludes`. */

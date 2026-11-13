@@ -19,7 +19,7 @@ import {
   CLAUDE_MD_EXCLUDES_ENV,
   CODEX_AGENTS_MD_ENV,
   buildClaudeMdExcludes,
-} from "./shared/claude-md-excludes";
+} from "./server/claude-md-excludes";
 import { delegationSettings, reportRpc } from "./shared/settings";
 import { buildReport } from "./server/report";
 import { logDelegatedSession } from "./server/session-log";
