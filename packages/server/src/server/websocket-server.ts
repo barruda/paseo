@@ -1972,6 +1972,8 @@ export class VoiceAssistantWebSocketServer {
         ownedSubscriptions: true,
         // CUSTOM(voice-hold-to-talk)
         voiceHold: true,
+        // CUSTOM(steer-pending)
+        steerPending: true,
         agentRequestReceipts: true,
         workspaceRequestReceipts: true,
         creationLifecycle: true,

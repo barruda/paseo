@@ -139,5 +139,12 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     labels: snapshot.labels,
     ...(snapshot.statusSummary ? { statusSummary: snapshot.statusSummary } : {}), // CUSTOM(agent-status-summary)
     ...(snapshot.backgroundTasks ? { backgroundTasks: snapshot.backgroundTasks } : {}), // CUSTOM(background-tools)
+    // CUSTOM(steer-pending)
+    ...(snapshot.pendingSteerMessageIds
+      ? { pendingSteerMessageIds: snapshot.pendingSteerMessageIds }
+      : {}),
+    ...(snapshot.cancelledSteerMessageIds
+      ? { cancelledSteerMessageIds: snapshot.cancelledSteerMessageIds }
+      : {}),
   };
 }

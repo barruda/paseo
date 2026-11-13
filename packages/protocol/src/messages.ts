@@ -948,6 +948,10 @@ export const AgentSnapshotPayloadSchema = z.object({
   statusSummary: AgentStatusSummaryPayloadSchema.optional(),
   // CUSTOM(background-tools): absent means none.
   backgroundTasks: z.array(AgentBackgroundTaskPayloadSchema).optional(),
+  // CUSTOM(steer-pending): client message ids of steers Claude has not started yet, and of steers
+  // the user cancelled (the app hides those bubbles). Claude only; absent elsewhere.
+  pendingSteerMessageIds: z.array(z.string()).optional(),
+  cancelledSteerMessageIds: z.array(z.string()).optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
@@ -2168,6 +2172,24 @@ export const AgentDetachRequestMessageSchema = z.object({
 export const AgentDetachResponseMessageSchema = z.object({
   type: z.literal("agent.detach.response"),
   payload: AgentActionResponsePayloadSchema,
+});
+
+// CUSTOM(steer-pending): only send when `server_info.features.steerPending` is set.
+export const AgentCancelSteerRequestMessageSchema = z.object({
+  type: z.literal("agent.cancel_steer.request"),
+  agentId: z.string(),
+  clientMessageId: z.string(),
+  requestId: z.string(),
+});
+
+export const AgentCancelSteerResponseMessageSchema = z.object({
+  type: z.literal("agent.cancel_steer.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    cancelled: z.boolean(),
+    error: z.string().nullable(),
+  }),
 });
 
 export const AgentRewindModeSchema = z.enum(["conversation", "files", "both"]);
@@ -3487,6 +3509,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentFeatureRequestMessageSchema,
   AgentConfigApplyRequestMessageSchema,
   AgentDetachRequestMessageSchema,
+  AgentCancelSteerRequestMessageSchema,
   AgentRewindRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
   CheckoutStatusRequestSchema,
@@ -3949,6 +3972,9 @@ export const ServerInfoStatusPayloadSchema = z
         ownedSubscriptions: z.boolean().optional(),
         // CUSTOM(voice-hold-to-talk): the daemon accepts `voice.set_hold.request`.
         voiceHold: z.boolean().optional(),
+        // CUSTOM(steer-pending): the daemon accepts `agent.cancel_steer.request` and reports
+        // `pendingSteerMessageIds` on agent snapshots.
+        steerPending: z.boolean().optional(),
         workspaceSetupObservation: z.boolean().optional(),
         workspaceSortTimes: z.boolean().optional(),
         // COMPAT(canonicalSubmittedPrompts): added in v0.2.6, remove gate after 2027-01-30.
@@ -7306,6 +7332,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   SetAgentFeatureResponseMessageSchema,
   AgentConfigApplyResponseMessageSchema,
   AgentDetachResponseMessageSchema,
+  AgentCancelSteerResponseMessageSchema,
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
@@ -7510,6 +7537,7 @@ export type SetAgentThinkingResponseMessage = z.infer<typeof SetAgentThinkingRes
 export type SetAgentFeatureResponseMessage = z.infer<typeof SetAgentFeatureResponseMessageSchema>;
 export type AgentConfigApplyResponseMessage = z.infer<typeof AgentConfigApplyResponseMessageSchema>;
 export type AgentDetachResponseMessage = z.infer<typeof AgentDetachResponseMessageSchema>;
+export type AgentCancelSteerResponseMessage = z.infer<typeof AgentCancelSteerResponseMessageSchema>;
 export type AgentRewindResponseMessage = z.infer<typeof AgentRewindResponseMessageSchema>;
 export type UpdateAgentResponseMessage = z.infer<typeof UpdateAgentResponseMessageSchema>;
 export type ProjectRenameResponse = z.infer<typeof ProjectRenameResponseSchema>;
@@ -7690,6 +7718,7 @@ export type SetAgentThinkingRequestMessage = z.infer<typeof SetAgentThinkingRequ
 export type SetAgentFeatureRequestMessage = z.infer<typeof SetAgentFeatureRequestMessageSchema>;
 export type AgentConfigApplyRequestMessage = z.infer<typeof AgentConfigApplyRequestMessageSchema>;
 export type AgentDetachRequestMessage = z.infer<typeof AgentDetachRequestMessageSchema>;
+export type AgentCancelSteerRequestMessage = z.infer<typeof AgentCancelSteerRequestMessageSchema>;
 export type AgentPermissionResponseMessage = z.infer<typeof AgentPermissionResponseMessageSchema>;
 export type CheckoutStatusRequest = z.infer<typeof CheckoutStatusRequestSchema>;
 export type CheckoutStatusResponse = z.infer<typeof CheckoutStatusResponseSchema>;

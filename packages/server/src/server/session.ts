@@ -2796,6 +2796,9 @@ export class Session {
     switch (msg.type) {
       case "agent.detach.request":
         return this.handleDetachAgentRequest(msg.agentId, msg.requestId);
+      // CUSTOM(steer-pending)
+      case "agent.cancel_steer.request":
+        return this.handleCancelAgentSteerRequest(msg.agentId, msg.clientMessageId, msg.requestId);
       default:
         return undefined;
     }
@@ -3528,6 +3531,32 @@ export class Session {
     }
 
     return { agentId, archivedAt };
+  }
+
+  // CUSTOM(steer-pending)
+  private async handleCancelAgentSteerRequest(
+    agentId: string,
+    clientMessageId: string,
+    requestId: string,
+  ): Promise<void> {
+    try {
+      const cancelled = await this.agentManager.cancelAgentSteer(agentId, clientMessageId);
+      this.emit({
+        type: "agent.cancel_steer.response",
+        payload: { requestId, agentId, cancelled, error: null },
+      });
+    } catch (error) {
+      this.sessionLogger.warn({ err: error, agentId, requestId }, "Failed to cancel agent steer");
+      this.emit({
+        type: "agent.cancel_steer.response",
+        payload: {
+          requestId,
+          agentId,
+          cancelled: false,
+          error: getErrorMessageOr(error, "Failed to cancel agent steer"),
+        },
+      });
+    }
   }
 
   private async handleDetachAgentRequest(agentId: string, requestId: string): Promise<void> {

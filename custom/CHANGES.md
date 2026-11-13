@@ -5430,3 +5430,53 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
 - **Verify:** `cd packages/server && npx vitest run src/server/github-account.test.ts src/server/daemon-config-store.test.ts --bail=1`
   (in the update script). In the app, set the Telus host's directory to `~/.config/gh`, press
   Test, then Save: "Signed in as" shows the work login and PR status loads.
+
+## steer-pending: a steered message shows pending until Claude takes it, with an X to cancel
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: steered message shows pending until Claude takes it, with an X to cancel`
+- **Why:** A message sent in steer mode while Claude Code is mid-turn (a long tool call) waits in
+  the CLI's queue until the next tool boundary, but its bubble looked delivered. There was no way
+  to see that Claude had not read it, or to take it back.
+- **What:** Claude only. While Claude has not started the message, its bubble carries a muted
+  clock and "pending" label plus an X ("Cancel message"). X asks the daemon to withdraw the
+  message from the CLI queue (`query.cancelAsyncMessage(uuid)`). On success the bubble
+  disappears and its text goes back into that agent's composer when the composer is empty (the
+  rewind restore path). If Claude already took the message the daemon answers `cancelled: false`
+  and the badge goes away: the message was delivered. Other providers send no fields, so no
+  badge. How "started" is detected: the CLI's `command_lifecycle` frame (state other than
+  `queued`) for the steer's uuid, the same frame that clears `unstartedMessageUuids`. Fallback
+  for a CLI that never sends it: a `user` frame carrying that uuid. A finished or interrupted
+  turn, a failed enqueue and closing the session also clear pending, so a steer never stays
+  pending. The timeline store is append-only, so a cancelled row stays there and the app hides
+  it through `cancelledSteerMessageIds` (the last 50 per agent, in daemon memory); the CLI never
+  writes it to Claude's transcript, so a history reload does not show it either.
+  - Wire: agent snapshots gain optional `pendingSteerMessageIds` and `cancelledSteerMessageIds`;
+    new RPC `agent.cancel_steer.request` `{agentId, clientMessageId}` -> `.response`
+    `{cancelled, error}` (dotted name per `docs/rpc-namespacing.md`); `server_info.features.steerPending`
+    gates the X in the app.
+- **Core files touched:** `packages/protocol/src/messages.ts` (snapshot fields, RPC schemas,
+  feature flag); `packages/client/src/daemon-client.ts` (`cancelAgentSteer`);
+  `packages/server/src/server/agent/agent-sdk-types.ts` (`getPendingSteerMessageIds`,
+  `subscribePendingSteers`, `cancelSteer` on `AgentSession`), `provider-registry.ts` (forwards
+  them), `providers/claude/agent.ts` (`pendingSteerClientIds`, set in `enqueueSteer`, cleared in
+  `forgetStartedMessage`, `withdrawUnstartedMessages`, `notifySubscribers` on turn end, `close`),
+  `agent-manager.ts` (`syncPendingSteers`, `cancelAgentSteer`, `subscribeToSession`),
+  `agent-projections.ts`, `session.ts` (handler), `authorization/operation-permissions.ts`,
+  `websocket-server.ts` (feature flag); app `stores/session-store.ts`, `utils/agent-snapshots.ts`,
+  `agent-stream/view.tsx` (selectors, `hideCancelledSteers` next to `hideCriticRounds`,
+  `cancelSteer`, `steerPending` prop), `components/message.tsx` (one prop and one element). New:
+  `agent-stream/steer-pending.ts`, `components/steer-pending-row.tsx`.
+- **Re-apply:** In `ClaudeSession.enqueueSteer`, record `uuid -> clientMessageId` after
+  `input.push`; drop the entry wherever the uuid leaves `unstartedMessageUuids`, and clear all of
+  them on turn end. Expose the three session methods, mirror them into the manager's agent
+  (`pendingSteerMessageIds`, `cancelledSteerMessageIds`) and `toAgentPayload`. In the app, filter
+  cancelled user rows in `visibleStream` and pass `steerPending` to `UserMessage` for ids in
+  `pendingSteerMessageIds`.
+- **Verify:** Needs a daemon restart (`kill-paseos-and-daemons.sh`). Tests (in the update
+  script): `agent-stream/steer-pending.test.ts`, `providers/claude/agent.steer-pending.test.ts`,
+  the "pending steers" test in `agent-manager.test.ts`, and the "cancel steer" tests in
+  `packages/protocol/src/messages.test.ts`. In the app: start a Claude agent on a long
+  tool call (`sleep 60`), send a message in steer mode: the bubble shows "pending" and an X.
+  X before the tool ends: the bubble disappears and the text returns to an empty composer.
+  Without pressing X, the badge goes away when Claude picks the message up.

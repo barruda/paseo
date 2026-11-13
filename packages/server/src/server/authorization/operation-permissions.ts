@@ -17,6 +17,7 @@ const INBOUND_PERMISSION = {
   abort_request: "workspace.write",
   "agent.config.apply.request": ["workspace.write", "hub.execute"],
   "agent.detach.request": "workspace.write",
+  "agent.cancel_steer.request": "workspace.write", // CUSTOM(steer-pending)
   "agent.fork_context.request": "workspace.read",
   "agent.provider_subagents.list.request": "workspace.read",
   "agent.provider_subagents.timeline.get.request": "workspace.read",
@@ -256,6 +257,7 @@ const OUTBOUND_PERMISSION = {
   activity_log: "workspace.read",
   "agent.config.apply.response": ["workspace.write", "hub.execute"],
   "agent.detach.response": "workspace.write",
+  "agent.cancel_steer.response": "workspace.write", // CUSTOM(steer-pending)
   "agent.fork_context.response": "workspace.read",
   "agent.provider_subagents.list.response": "workspace.read",
   "agent.provider_subagents.timeline.get.response": "workspace.read",

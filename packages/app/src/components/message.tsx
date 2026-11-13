@@ -14,6 +14,7 @@ import {
 } from "@/components/attachment-pill";
 import { MarkdownRenderer } from "@/components/markdown/renderer";
 import { useRetainedPanelActive } from "@/components/retained-panel";
+import { SteerPendingRow } from "@/components/steer-pending-row"; // CUSTOM(steer-pending)
 import { RewindMenu, type RewindMode } from "@/components/rewind/rewind-menu";
 import { useRewindAgentMutation } from "@/components/rewind/use-rewind-agent-mutation";
 import { TaskListRow } from "@/components/task-list-row";
@@ -108,6 +109,9 @@ interface UserMessageProps {
   isFirstInGroup?: boolean;
   isLastInGroup?: boolean;
   isPending?: boolean;
+  // CUSTOM(steer-pending): Claude has not started this steered message. Shows the badge and X.
+  steerPending?: boolean;
+  onSteerCancel?: () => void;
   disableOuterSpacing?: boolean;
 }
 
@@ -414,6 +418,8 @@ export const UserMessage = memo(function UserMessage({
   isFirstInGroup = true,
   isLastInGroup = true,
   isPending = false,
+  steerPending,
+  onSteerCancel,
   disableOuterSpacing,
 }: UserMessageProps) {
   const isCompact = useIsCompactFormFactor();
@@ -538,6 +544,7 @@ export const UserMessage = memo(function UserMessage({
             ) : null}
           </MessagePreview>
         </View>
+        <SteerPendingRow active={steerPending} onCancel={onSteerCancel} />
         {hasActions ? (
           <View
             style={trailingRowStyle}

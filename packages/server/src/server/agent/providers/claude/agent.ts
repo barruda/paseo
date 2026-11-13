@@ -2291,6 +2291,11 @@ class ClaudeAgentSession implements AgentSession {
   private readonly unstartedMessageUuids = new Set<string>();
   /** Human steers whose text has not reached Claude yet and therefore supersede blocking cards. */
   private readonly permissionClearingSteerUuids = new Set<string>();
+  // CUSTOM(steer-pending): steer SDK uuid -> the app's clientMessageId, for steers Claude has not
+  // started. Narrower than unstartedMessageUuids: a failed cancel (Claude already dequeued it) drops
+  // the steer from here, but it stays withdrawable on interrupt until its lifecycle "started".
+  private readonly pendingSteerClientIds = new Map<string, string>();
+  private readonly pendingSteerListeners = new Set<() => void>();
   private claudeSessionId: string | null;
   private persistence: AgentPersistenceHandle | null;
   private currentMode: PermissionMode;
@@ -2613,14 +2618,89 @@ class ClaudeAgentSession implements AgentSession {
     ) {
       return { status: "unavailable" };
     }
-    this.enqueueSteer(input, message, options.clearPendingPermissions === true);
+    this.enqueueSteer(
+      input,
+      message,
+      options.clearPendingPermissions === true,
+      options.clientMessageId,
+    );
     return { status: "accepted" };
+  }
+
+  // CUSTOM(steer-pending): the clientMessageIds of steers Claude has not started yet.
+  getPendingSteerMessageIds(): string[] {
+    return [...this.pendingSteerClientIds.values()];
+  }
+
+  // CUSTOM(steer-pending): fires whenever getPendingSteerMessageIds() changes.
+  subscribePendingSteers(callback: () => void): () => void {
+    this.pendingSteerListeners.add(callback);
+    return () => {
+      this.pendingSteerListeners.delete(callback);
+    };
+  }
+
+  /**
+   * CUSTOM(steer-pending): withdraw one queued steer. True only when Claude confirmed it never
+   * dequeued the message. False means Claude already took it: it is no longer cancellable, so it
+   * stops being reported pending, but stays in unstartedMessageUuids until its lifecycle "started"
+   * so an interrupt still withdraws it.
+   */
+  async cancelSteer(clientMessageId: string): Promise<boolean> {
+    const uuid = this.findPendingSteerUuid(clientMessageId);
+    if (!uuid) return false;
+    const query = this.query;
+    const cancelAsyncMessage = (
+      query as (Query & { cancelAsyncMessage?: (uuid: string) => Promise<boolean> }) | null
+    )?.cancelAsyncMessage;
+    let cancelled = false;
+    if (cancelAsyncMessage) {
+      try {
+        cancelled = await cancelAsyncMessage.call(query, uuid);
+      } catch (error) {
+        this.logger.warn({ err: error }, "Failed to cancel a queued Claude steer");
+      }
+    }
+    if (cancelled) {
+      this.unstartedMessageUuids.delete(uuid);
+      this.permissionClearingSteerUuids.delete(uuid);
+    }
+    this.forgetPendingSteer(uuid);
+    return cancelled;
+  }
+
+  private findPendingSteerUuid(clientMessageId: string): string | null {
+    for (const [uuid, id] of this.pendingSteerClientIds) {
+      if (id === clientMessageId) return uuid;
+    }
+    return null;
+  }
+
+  private forgetPendingSteer(uuid: string): void {
+    if (this.pendingSteerClientIds.delete(uuid)) this.notifyPendingSteersChanged();
+  }
+
+  private clearPendingSteers(): void {
+    if (this.pendingSteerClientIds.size === 0) return;
+    this.pendingSteerClientIds.clear();
+    this.notifyPendingSteersChanged();
+  }
+
+  private notifyPendingSteersChanged(): void {
+    for (const callback of this.pendingSteerListeners) {
+      try {
+        callback();
+      } catch (error) {
+        this.logger.warn({ err: error }, "Pending steer listener threw");
+      }
+    }
   }
 
   private enqueueSteer(
     input: AsyncMessageInput<SDKUserMessage>,
     message: SDKUserMessage,
     clearPendingPermissions: boolean,
+    clientMessageId?: string,
   ): void {
     const uuid = message.uuid;
     if (uuid) this.unstartedMessageUuids.add(uuid);
@@ -2629,6 +2709,10 @@ class ClaudeAgentSession implements AgentSession {
     }
     try {
       input.push(message);
+      if (uuid && clientMessageId) {
+        this.pendingSteerClientIds.set(uuid, clientMessageId);
+        this.notifyPendingSteersChanged();
+      }
       if (clearPendingPermissions) {
         this.denyPendingPermissionsSupersededBySteer();
       }
@@ -2636,6 +2720,7 @@ class ClaudeAgentSession implements AgentSession {
       if (uuid) {
         this.unstartedMessageUuids.delete(uuid);
         this.permissionClearingSteerUuids.delete(uuid);
+        this.forgetPendingSteer(uuid);
       }
       throw error;
     }
@@ -3008,6 +3093,8 @@ class ClaudeAgentSession implements AgentSession {
     this.rejectAllPendingPermissions(new Error("Claude session closed"));
     this.cancelCurrentTurn?.();
     this.subscribers.clear();
+    this.pendingSteerClientIds.clear(); // CUSTOM(steer-pending)
+    this.pendingSteerListeners.clear();
     this.activeForegroundTurnId = null;
     this.activeForegroundQuery = null;
     this.activeForegroundInput = null;
@@ -4535,6 +4622,7 @@ class ClaudeAgentSession implements AgentSession {
     const uuids = [...this.unstartedMessageUuids];
     this.unstartedMessageUuids.clear();
     this.permissionClearingSteerUuids.clear();
+    this.clearPendingSteers(); // CUSTOM(steer-pending)
     if (uuids.length === 0) return true;
     // The SDK runtime supports this, but its public Query type has not caught up. Keep the
     // compatibility escape hatch inside the Claude adapter.
@@ -4644,9 +4732,19 @@ class ClaudeAgentSession implements AgentSession {
    */
   private forgetStartedMessage(message: unknown): void {
     const lifecycle = readClaudeCommandLifecycle(message);
-    if (!lifecycle || lifecycle.state === "queued") return;
+    if (!lifecycle) {
+      // CUSTOM(steer-pending): fallback when no lifecycle frame arrives. The CLI echoing the
+      // steer's own user message means it was taken off the queue.
+      const record = toObjectRecord(message);
+      if (record?.type === "user" && typeof record.uuid === "string") {
+        this.forgetPendingSteer(record.uuid);
+      }
+      return;
+    }
+    if (lifecycle.state === "queued") return;
     this.unstartedMessageUuids.delete(lifecycle.commandUuid);
     this.permissionClearingSteerUuids.delete(lifecycle.commandUuid);
+    this.forgetPendingSteer(lifecycle.commandUuid); // CUSTOM(steer-pending)
   }
 
   private appendTaskStateEvent(message: SDKMessage, events: AgentStreamEvent[]): void {
@@ -5401,6 +5499,14 @@ class ClaudeAgentSession implements AgentSession {
   }
 
   private notifySubscribers(event: AgentStreamEvent): void {
+    // CUSTOM(steer-pending): a finished turn leaves nothing for the user to cancel.
+    if (
+      event.type === "turn_completed" ||
+      event.type === "turn_failed" ||
+      event.type === "turn_canceled"
+    ) {
+      this.clearPendingSteers();
+    }
     const turnId =
       getAgentStreamEventTurnId(event) ?? this.activeForegroundTurnId ?? this.autonomousTurn?.id;
     const tagged = turnId ? { ...event, turnId } : event;

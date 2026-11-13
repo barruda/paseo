@@ -143,6 +143,8 @@ import { PluginTimelineItemView, useInstalledTimelineTransform } from "@/plugins
 import { findTurnUsageItem, isTurnUsageItem } from "./turn-usage"; // CUSTOM(turn-usage-inline)
 import { hideCacheWarmupTurns } from "@/cache-warmup/model"; // CUSTOM(cache-warmup)
 import { hideCriticRounds } from "@/critic/model"; // CUSTOM(critic)
+import { hideCancelledSteers, resolveSteerMessageState } from "@/agent-stream/steer-pending"; // CUSTOM(steer-pending)
+import { useRewindComposerRestore } from "@/components/rewind/composer-restore"; // CUSTOM(steer-pending)
 
 const NO_CHAT_LINKS: ChatLink[] = []; // CUSTOM(chat-links)
 
@@ -490,6 +492,17 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       state.sessions[resolvedServerId]?.agentStreamHead?.get(agentId),
     );
     const streamHead = providedStreamHead ?? sessionStreamHead;
+    // CUSTOM(steer-pending)
+    const pendingSteerMessageIds = useSessionStore(
+      (state) => state.sessions[resolvedServerId]?.agents.get(agentId)?.pendingSteerMessageIds,
+    );
+    const cancelledSteerMessageIds = useSessionStore(
+      (state) => state.sessions[resolvedServerId]?.agents.get(agentId)?.cancelledSteerMessageIds,
+    );
+    const supportsSteerPending = useSessionStore(
+      (state) => state.sessions[resolvedServerId]?.serverInfo?.features?.steerPending === true,
+    );
+    const composerRestore = useRewindComposerRestore();
     const forkAgent = useForkAgent({ serverId: resolvedServerId, toast, readOnly });
     const supportsAgentForkContextCursor = useSessionStore(
       (state) =>
@@ -655,10 +668,15 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     // the component reads the current (fresh) streamItems/streamHead from props.
     // CUSTOM(cache-warmup): keep-alive pings and their replies stay out of the chat.
     // CUSTOM(critic): answers the critic is reading or rejected, and its feedback, stay out too.
+    // CUSTOM(steer-pending): cancelled steers stay out too.
     const visibleStream = useMemo(() => {
       const warm = hideCacheWarmupTurns(streamItems, streamHead ?? EMPTY_STREAM_HEAD);
-      return hideCriticRounds(warm.tail, warm.head);
-    }, [streamItems, streamHead]);
+      const critic = hideCriticRounds(warm.tail, warm.head);
+      return {
+        tail: hideCancelledSteers(critic.tail, cancelledSteerMessageIds),
+        head: hideCancelledSteers(critic.head, cancelledSteerMessageIds),
+      };
+    }, [streamItems, streamHead, cancelledSteerMessageIds]);
     const effectiveStreamItems = useRetainedValue(visibleStream.tail, isActive);
     const effectiveStreamHead = useRetainedValue(visibleStream.head, isActive);
     // CUSTOM(session-file-paths): chat file links resolve against the files the agent touched.
@@ -950,9 +968,35 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const setToolCallGroupExpanded = toolCallExpansion.setGroupExpanded;
 
+    // CUSTOM(steer-pending): X on a pending steer. A cancel Claude refuses means it already took
+    // the message; the daemon then drops the badge by itself.
+    const cancelSteer = useCallback(
+      (clientMessageId: string, text: string) => {
+        if (!client) return;
+        client
+          .cancelAgentSteer(agentId, clientMessageId)
+          .then((cancelled) => {
+            if (cancelled) composerRestore?.completeRewind(text);
+            return undefined;
+          })
+          .catch((error: unknown) => {
+            console.warn("[steer-pending] cancel failed", error);
+          });
+      },
+      [agentId, client, composerRestore],
+    );
+
     const renderUserMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "user_message" }>) => {
         const collapsedTurn = getCollapsedTurn(item.id);
+        const steerState = resolveSteerMessageState({
+          clientMessageId: item.clientMessageId,
+          pendingSteerMessageIds,
+          cancelledSteerMessageIds,
+        });
+        const handleSteerCancel = () => {
+          if (item.clientMessageId) cancelSteer(item.clientMessageId, item.text);
+        };
         const message = (
           <UserMessage
             serverId={resolvedServerId}
@@ -971,6 +1015,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               item.clientMessageId !== undefined &&
               pendingClientMessageIds.has(item.clientMessageId)
             }
+            steerPending={steerState === "pending"}
+            onSteerCancel={supportsSteerPending && !readOnly ? handleSteerCancel : undefined}
           />
         );
         if (!collapsedTurn) {
@@ -991,6 +1037,11 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         pendingClientMessageIds,
         resolvedServerId,
         setTurnExpanded,
+        pendingSteerMessageIds, // CUSTOM(steer-pending)
+        cancelledSteerMessageIds,
+        supportsSteerPending,
+        readOnly,
+        cancelSteer,
       ],
     );
 

@@ -12635,3 +12635,92 @@ test("an out-of-band command racing idle cleanup waits for the resumed runtime",
   expect(h.commands).toEqual(["/maintenance"]);
   expect(h.prompts).toEqual([]);
 });
+
+// CUSTOM(steer-pending): the snapshot lists steers the provider has not started, and cancelling
+// one hides it for clients.
+class PendingSteerTestSession extends SteeringTestSession {
+  pending: string[] = [];
+  cancelResult = true;
+  private pendingListeners = new Set<() => void>();
+
+  override async steerActiveTurn(
+    prompt: AgentPromptInput,
+    options: import("./agent-sdk-types.js").SteerActiveTurnOptions,
+  ): Promise<import("./agent-sdk-types.js").SteerResult> {
+    const result = await super.steerActiveTurn(prompt, options);
+    if (result.status === "accepted" && options.clientMessageId) {
+      this.setPending([...this.pending, options.clientMessageId]);
+    }
+    return result;
+  }
+
+  setPending(next: string[]): void {
+    this.pending = next;
+    for (const listener of this.pendingListeners) listener();
+  }
+
+  getPendingSteerMessageIds(): string[] {
+    return this.pending;
+  }
+
+  subscribePendingSteers(callback: () => void): () => void {
+    this.pendingListeners.add(callback);
+    return () => this.pendingListeners.delete(callback);
+  }
+
+  async cancelSteer(clientMessageId: string): Promise<boolean> {
+    if (!this.pending.includes(clientMessageId)) return false;
+    this.setPending(this.pending.filter((id) => id !== clientMessageId));
+    return this.cancelResult;
+  }
+}
+
+test("pending steers reach the agent snapshot and clear when the provider starts them", async () => {
+  const session = new PendingSteerTestSession({ provider: "codex", cwd: process.cwd() });
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-steer-pending-"));
+  const manager = new AgentManager({
+    clients: {
+      codex: new (class extends TestAgentClient {
+        override async createSession(): Promise<AgentSession> {
+          return session;
+        }
+      })(),
+    },
+    logger,
+  });
+  const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+    workspaceId: undefined,
+  });
+  try {
+    const first = (async () => {
+      for await (const _event of manager.streamAgent(agent.id, "initial")) {
+      }
+    })();
+    await manager.waitForAgentRunStart(agent.id);
+    await manager.steerAgentRun(agent.id, "one", { clientMessageId: "steer-1" });
+    await manager.steerAgentRun(agent.id, "two", { clientMessageId: "steer-2" });
+    expect(toAgentPayload(manager.getAgent(agent.id)!).pendingSteerMessageIds).toEqual([
+      "steer-1",
+      "steer-2",
+    ]);
+
+    // Cancelled: gone from pending and listed for clients to hide.
+    await expect(manager.cancelAgentSteer(agent.id, "steer-1")).resolves.toBe(true);
+    const afterCancel = toAgentPayload(manager.getAgent(agent.id)!);
+    expect(afterCancel.pendingSteerMessageIds).toEqual(["steer-2"]);
+    expect(afterCancel.cancelledSteerMessageIds).toEqual(["steer-1"]);
+
+    // Claude refused (already took it): not hidden.
+    session.cancelResult = false;
+    await expect(manager.cancelAgentSteer(agent.id, "steer-2")).resolves.toBe(false);
+    const afterRefusal = toAgentPayload(manager.getAgent(agent.id)!);
+    expect(afterRefusal.pendingSteerMessageIds).toEqual([]);
+    expect(afterRefusal.cancelledSteerMessageIds).toEqual(["steer-1"]);
+
+    session.pushEvent({ type: "turn_completed", provider: "codex", turnId: "active-turn-1" });
+    await first;
+  } finally {
+    await manager.closeAgent(agent.id).catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});

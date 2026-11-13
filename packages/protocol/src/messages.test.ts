@@ -571,3 +571,31 @@ test.each(["all", "base", "uncommitted"] as const)(
     expect(parsed.attachments).toEqual([attachment]);
   },
 );
+
+// CUSTOM(steer-pending)
+describe("agent cancel steer RPC", () => {
+  test("parses the request and response", () => {
+    const request = SessionInboundMessageSchema.parse({
+      type: "agent.cancel_steer.request",
+      agentId: "agent-1",
+      clientMessageId: "client-1",
+      requestId: "req-1",
+    });
+    expect(request.type).toBe("agent.cancel_steer.request");
+
+    const response = SessionOutboundMessageSchema.parse({
+      type: "agent.cancel_steer.response",
+      payload: { requestId: "req-1", agentId: "agent-1", cancelled: true, error: null },
+    });
+    expect(response.type).toBe("agent.cancel_steer.response");
+  });
+
+  test("parses the steerPending server feature gate", () => {
+    const parsed = parseServerInfoStatusPayload({
+      status: "server_info",
+      serverId: "srv-test",
+      features: { steerPending: true },
+    });
+    expect(parsed?.features?.steerPending).toBe(true);
+  });
+});

@@ -109,6 +109,20 @@ export function toStoredAgentRecord(
   } satisfies StoredAgentRecord;
 }
 
+// CUSTOM(steer-pending): [] once the last pending steer clears, so clients drop the badge.
+function steerPayloadFields(
+  agent: ManagedAgent,
+): Pick<AgentSnapshotPayload, "pendingSteerMessageIds" | "cancelledSteerMessageIds"> {
+  return {
+    ...(agent.pendingSteerMessageIds
+      ? { pendingSteerMessageIds: [...agent.pendingSteerMessageIds] }
+      : {}),
+    ...(agent.cancelledSteerMessageIds?.length
+      ? { cancelledSteerMessageIds: [...agent.cancelledSteerMessageIds] }
+      : {}),
+  };
+}
+
 export function toAgentPayload(
   agent: ManagedAgent,
   options?: ProjectionOptions,
@@ -153,6 +167,7 @@ export function toAgentPayload(
     ...(agent.statusSummary ? { statusSummary: agent.statusSummary } : {}),
     // CUSTOM(background-tools)
     ...(agent.backgroundTasks?.length ? { backgroundTasks: agent.backgroundTasks } : {}),
+    ...steerPayloadFields(agent), // CUSTOM(steer-pending)
   };
 
   const usage = sanitizeUsage(agent.lastUsage);

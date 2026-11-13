@@ -3384,6 +3384,22 @@ export class DaemonClient {
     }
   }
 
+  // CUSTOM(steer-pending): only call when `server_info.features.steerPending` is set.
+  async cancelAgentSteer(agentId: string, clientMessageId: string): Promise<boolean> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"agent.cancel_steer.response">({
+        message: {
+          type: "agent.cancel_steer.request",
+          agentId,
+          clientMessageId,
+        },
+      });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.cancelled;
+  }
+
   async updateAgent(
     agentId: string,
     updates: { name?: string; labels?: Record<string, string> },

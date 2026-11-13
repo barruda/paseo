@@ -106,6 +106,9 @@ export interface Agent {
   statusSummary?: AgentStatusSummaryPayload;
   // CUSTOM(background-tools): live background shells and monitors.
   backgroundTasks?: AgentBackgroundTaskPayload[];
+  // CUSTOM(steer-pending): Claude only. Absent on other providers and older daemons.
+  pendingSteerMessageIds?: string[];
+  cancelledSteerMessageIds?: string[];
 }
 
 export interface WorkspaceDescriptor {

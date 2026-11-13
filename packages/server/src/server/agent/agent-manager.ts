@@ -420,6 +420,9 @@ interface HandleStreamEventOptions {
   fromHistory?: boolean;
 }
 
+// CUSTOM(steer-pending)
+const MAX_CANCELLED_STEER_IDS = 50;
+
 interface ManagedAgentBase {
   id: string;
   provider: AgentProvider;
@@ -469,6 +472,9 @@ interface ManagedAgentBase {
   statusSummary?: AgentStatusSummaryPayload;
   // CUSTOM(background-tools): live background shells and monitors. In memory only.
   backgroundTasks?: AgentBackgroundTask[];
+  // CUSTOM(steer-pending): in memory only. Defined once the session reports pending steers.
+  pendingSteerMessageIds?: string[];
+  cancelledSteerMessageIds?: string[];
 }
 
 type ManagedAgentWithSession = ManagedAgentBase & {
@@ -4117,10 +4123,46 @@ export class AgentManager {
       return;
     }
     const agentId = agent.id;
-    const unsubscribe = agent.session.subscribe((event: AgentStreamEvent) => {
+    const unsubscribeEvents = agent.session.subscribe((event: AgentStreamEvent) => {
       this.enqueueSessionEvent(agentId, event);
     });
-    agent.unsubscribeSession = unsubscribe;
+    // CUSTOM(steer-pending)
+    const unsubscribePendingSteers = agent.session.subscribePendingSteers?.(() => {
+      this.syncPendingSteers(agent);
+    });
+    agent.unsubscribeSession = () => {
+      unsubscribeEvents();
+      unsubscribePendingSteers?.();
+    };
+  }
+
+  // CUSTOM(steer-pending): mirror the session's pending steers into the snapshot clients see.
+  private syncPendingSteers(agent: ActiveManagedAgent): void {
+    const next = agent.session.getPendingSteerMessageIds?.() ?? [];
+    const previous = agent.pendingSteerMessageIds;
+    if (previous && previous.length === next.length && previous.every((id, i) => id === next[i])) {
+      return;
+    }
+    if (!previous && next.length === 0) return;
+    agent.pendingSteerMessageIds = next;
+    this.emitState(agent, { persist: false });
+  }
+
+  // CUSTOM(steer-pending): cancel one steer Claude has not started. The message row stays in the
+  // append-only timeline; clients hide it through cancelledSteerMessageIds.
+  async cancelAgentSteer(agentId: string, clientMessageId: string): Promise<boolean> {
+    const agent = this.requireSessionAgent(agentId);
+    if (!agent.session.cancelSteer) return false;
+    const cancelled = await agent.session.cancelSteer(clientMessageId);
+    if (cancelled) {
+      agent.cancelledSteerMessageIds = [
+        ...(agent.cancelledSteerMessageIds ?? []),
+        clientMessageId,
+      ].slice(-MAX_CANCELLED_STEER_IDS);
+    }
+    this.syncPendingSteers(agent);
+    if (cancelled) this.emitState(agent, { persist: false });
+    return cancelled;
   }
 
   private enqueueSessionEvent(agentId: string, event: AgentStreamEvent): void {

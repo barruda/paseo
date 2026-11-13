@@ -297,6 +297,11 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/git-sync/model.test.ts --bail=1)
   # A New Agent tab's flame and critic carry over to the session it creates.
   (cd packages/app && npx vitest run src/composer/draft/composer-extras.test.ts --bail=1)
+  # A steered message shows pending until Claude starts it, with an X to cancel.
+  (cd packages/app && npx vitest run src/agent-stream/steer-pending.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.steer-pending.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "pending steers" --bail=1)
+  (cd packages/protocol && npx vitest run src/messages.test.ts -t "cancel steer" --bail=1)
   # Delegation: CLAUDE.md / AGENTS.md trimming for Paseo-created subagents.
   (cd packages/server && npx vitest run src/server/agent/providers/claude/claude-md-excludes.test.ts src/server/agent/providers/codex-agents-md.test.ts --bail=1)
   # An agent's tab keeps working while a subagent runs.

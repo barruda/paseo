@@ -691,6 +691,13 @@ export interface AgentSession {
   run(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<AgentRunResult>;
   startTurn(prompt: AgentPromptInput, options?: AgentRunOptions): Promise<{ turnId: string }>;
   steerActiveTurn?(prompt: AgentPromptInput, options: SteerActiveTurnOptions): Promise<SteerResult>;
+  // CUSTOM(steer-pending): steers accepted but not yet started by the provider, by the
+  // clientMessageId they were submitted with. Claude only.
+  getPendingSteerMessageIds?(): string[];
+  /** Fires whenever getPendingSteerMessageIds() changes. */
+  subscribePendingSteers?(callback: () => void): () => void;
+  /** Withdraw one pending steer. True only when the provider confirmed it never took the message. */
+  cancelSteer?(clientMessageId: string): Promise<boolean>;
   subscribe(callback: (event: AgentStreamEvent) => void): () => void;
   streamHistory(): AsyncGenerator<AgentStreamEvent>;
   getRuntimeInfo(): Promise<AgentRuntimeInfo>;

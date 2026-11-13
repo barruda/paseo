@@ -454,6 +454,10 @@ export function wrapSessionProvider(provider: AgentProvider, inner: AgentSession
     run: (prompt, options) => inner.run(prompt, options),
     startTurn: (prompt, options) => inner.startTurn(prompt, options),
     steerActiveTurn: inner.steerActiveTurn?.bind(inner),
+    // CUSTOM(steer-pending)
+    getPendingSteerMessageIds: inner.getPendingSteerMessageIds?.bind(inner),
+    subscribePendingSteers: inner.subscribePendingSteers?.bind(inner),
+    cancelSteer: inner.cancelSteer?.bind(inner),
     subscribe: (callback) => inner.subscribe((event) => callback(mapStreamEvent(provider, event))),
     async *streamHistory() {
       for await (const event of inner.streamHistory()) {
