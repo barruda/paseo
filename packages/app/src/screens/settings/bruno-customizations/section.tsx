@@ -1,7 +1,7 @@
 // CUSTOM(bruno-customizations): Settings > Bruno's Customizations, a sidebar group of its own with
-// one page per former tab (Composer, Chat, Chat Options, Tabs, Voice), for the settings that exist
+// one page per former tab (Composer, Chat, Chat Options, Tabs, Voice and Dictation), for the settings that exist
 // only because of this fork's customizations. Moved here from Chat (link list), Editor (tab
-// movement, preview tabs, skip pinned) and the host's Voice and dictation page. Chat Options lives
+// movement, preview tabs, skip pinned) and the host's Voice and Dictation page. Chat Options lives
 // in chat-options-page.tsx. Keyboard shortcuts stay in Shortcuts, plugin settings in each host's
 // Plugins page.
 

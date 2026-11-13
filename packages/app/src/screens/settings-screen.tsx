@@ -252,7 +252,7 @@ const BRUNO_SECTION_ITEMS: {
   { id: "customizations-chat", label: "Chat", icon: MessageSquare },
   { id: "customizations-chat-options", label: "Chat Options", icon: SlidersHorizontal },
   { id: "customizations-tabs", label: "Tabs", icon: PanelsTopLeft },
-  { id: "customizations-voice", label: "Voice", icon: AudioLines },
+  { id: "customizations-voice", label: "Voice and Dictation", icon: AudioLines },
 ];
 
 function isSectionAvailable(item: SidebarSectionItem, isDesktopApp: boolean): boolean {

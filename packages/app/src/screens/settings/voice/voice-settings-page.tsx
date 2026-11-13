@@ -49,8 +49,8 @@ import { useHoldToTalkStore } from "@/voice/hold-to-talk-settings";
 import { useVoiceMicrophoneStore } from "@/voice/microphone-settings";
 import { useLocalSpeechStatus } from "./use-local-speech-status";
 import { DictationTuningSection } from "./dictation-tuning-section";
-import { SttProviderSection } from "./claude-stt-section";
-import { usesClaude } from "./claude-stt-model";
+import { ClaudeSttSection, SttProviderRow } from "./claude-stt-section";
+import { showsLocalModel } from "./claude-stt-model";
 import {
   deriveEngineState,
   describeSpeaker,
@@ -175,12 +175,13 @@ export function VoiceSettingsPage({ serverId }: { serverId: string }) {
         />
       ) : null}
       <StatusSection status={status} />
-      <EngineSection status={status} speech={speech} save={saveSpeech} />
-      <SttProviderSection status={status} speech={speech} save={saveSpeech} />
-      <ModelsSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
+      <DictationSection status={status} speech={speech} save={saveSpeech} />
       <DictationTuningSection status={status} speech={speech} save={saveSpeech} />
+      <VoiceModeSection status={status} speech={speech} save={saveSpeech} />
       <VoiceSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
       <InstructionsSection status={status} speech={speech} save={saveSpeech} />
+      <ClaudeSttSection status={status} speech={speech} save={saveSpeech} />
+      <EngineSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
       <ThinkingToneSection />
       {isWeb ? <MicrophoneSection /> : null}
       <LogsSection status={status} visible={showLogs} onToggle={toggleLogs} />
@@ -351,14 +352,16 @@ function FeatureSwitchesSection({
 }
 
 // ---------------------------------------------------------------------------
-// Engine
+// Local engine
 // ---------------------------------------------------------------------------
 
 function EngineSection({
+  serverId,
   status,
   speech,
   save,
 }: {
+  serverId: string;
   status: SpeechLocalStatus;
   speech: MutableSpeechConfig;
   save: SaveSpeech;
@@ -366,14 +369,32 @@ function EngineSection({
   const { t } = useTranslation();
   const requested = (speech.executionProvider ?? status.engine.requestedProvider) === "cuda";
   const fallback = requested && status.engine.effectiveProvider !== "cuda";
+  const customModels = speech.customModels ?? EMPTY_CUSTOM_MODELS;
+  const selectedIds = useMemo(
+    () => [speech.dictationSttModel, speech.voiceSttModel, speech.voiceTtsModel],
+    [speech.dictationSttModel, speech.voiceSttModel, speech.voiceTtsModel],
+  );
   const handleChange = useCallback(
     (useGpu: boolean) => void save({ executionProvider: useGpu ? "cuda" : "cpu" }),
     [save],
   );
+  const removeCustom = useCallback(
+    (id: string) => {
+      if (selectedIds.includes(id)) {
+        NativeAlert.alert(t("settings.voiceSettings.models.removeInUse"));
+        return;
+      }
+      void save({ customModels: customModels.filter((model) => model.id !== id) });
+    },
+    [customModels, save, selectedIds, t],
+  );
 
   return (
-    <SettingsSection title={t("settings.voiceSettings.engine.title")}>
-      <SettingsCard>
+    <SettingsSection
+      title={t("settings.voiceSettings.claudeStt.localEngineTitle")}
+      info={t("settings.voiceSettings.claudeStt.localEngineInfo")}
+    >
+      <SettingsCard testID="voice-settings-models">
         <SettingsSwitch
           label={t("settings.voiceSettings.engine.useGpu")}
           hint={
@@ -393,13 +414,17 @@ function EngineSection({
           disabled={!status.engine.gpuAvailable && !requested}
           testID="voice-settings-use-gpu"
         />
+        {customModels.map((model) => (
+          <CustomModelRow key={model.id} model={model} onRemove={removeCustom} />
+        ))}
+        <AddModelFolderRow serverId={serverId} customModels={customModels} save={save} />
       </SettingsCard>
     </SettingsSection>
   );
 }
 
 // ---------------------------------------------------------------------------
-// Models
+// Dictation and Voice mode: provider first, then the local models Local STT needs
 // ---------------------------------------------------------------------------
 
 function useModelOptions(status: SpeechLocalStatus, kind: SpeechModelKind) {
@@ -417,13 +442,59 @@ function useModelOptions(status: SpeechLocalStatus, kind: SpeechModelKind) {
   );
 }
 
-function ModelsSection({
-  serverId,
+const CLAUDE_PREFIX = "settings.voiceSettings.claudeStt";
+
+function DictationSection({
   status,
   speech,
   save,
 }: {
-  serverId: string;
+  status: SpeechLocalStatus;
+  speech: MutableSpeechConfig;
+  save: SaveSpeech;
+}) {
+  const { t } = useTranslation();
+  const sttOptions = useModelOptions(status, "stt");
+  const selectModel = useCallback(
+    (value: string) => void save({ dictationSttModel: value }),
+    [save],
+  );
+  const provider = speech.dictationSttProvider;
+  return (
+    <SettingsSection title={t(`${CLAUDE_PREFIX}.dictationTitle`)} testID="voice-settings-dictation">
+      <SettingsCard>
+        {provider !== undefined ? (
+          <SttProviderRow
+            label={t(`${CLAUDE_PREFIX}.provider.label`)}
+            status={status}
+            field="dictationSttProvider"
+            value={provider}
+            note={t(`${CLAUDE_PREFIX}.dictationNote`)}
+            save={save}
+            testID="voice-settings-dictation-provider"
+          />
+        ) : null}
+        {showsLocalModel(provider) ? (
+          <SettingsSelect
+            label={t(`${CLAUDE_PREFIX}.model`)}
+            hint={envHint(status, "dictationSttModel", t)}
+            value={speech.dictationSttModel ?? ""}
+            options={sttOptions}
+            onValueChange={selectModel}
+            disabled={isEnvControlled(status, "dictationSttModel")}
+            testID="voice-settings-dictation-model"
+          />
+        ) : null}
+      </SettingsCard>
+    </SettingsSection>
+  );
+}
+
+function VoiceModeSection({
+  status,
+  speech,
+  save,
+}: {
   status: SpeechLocalStatus;
   speech: MutableSpeechConfig;
   save: SaveSpeech;
@@ -431,19 +502,6 @@ function ModelsSection({
   const { t } = useTranslation();
   const sttOptions = useModelOptions(status, "stt");
   const ttsOptions = useModelOptions(status, "tts");
-  const customModels = speech.customModels ?? EMPTY_CUSTOM_MODELS;
-  // CUSTOM(claude-stt)
-  const dictationClaude = usesClaude(speech.dictationSttProvider);
-  const voiceClaude = usesClaude(speech.voiceSttProvider);
-  const selectedIds = useMemo(
-    () => [speech.dictationSttModel, speech.voiceSttModel, speech.voiceTtsModel],
-    [speech.dictationSttModel, speech.voiceSttModel, speech.voiceTtsModel],
-  );
-
-  const selectDictation = useCallback(
-    (value: string) => void save({ dictationSttModel: value }),
-    [save],
-  );
   const selectVoiceStt = useCallback(
     (value: string) => void save({ voiceSttModel: value }),
     [save],
@@ -452,51 +510,39 @@ function ModelsSection({
     (value: string) => void save({ voiceTtsModel: value, voiceTtsSpeakerId: 0 }),
     [save],
   );
-  const removeCustom = useCallback(
-    (id: string) => {
-      if (selectedIds.includes(id)) {
-        NativeAlert.alert(t("settings.voiceSettings.models.removeInUse"));
-        return;
-      }
-      void save({ customModels: customModels.filter((model) => model.id !== id) });
-    },
-    [customModels, save, selectedIds, t],
-  );
-
+  // The listening provider only exists on daemons that report the dictation one too.
+  const provider =
+    speech.dictationSttProvider === undefined ? undefined : (speech.voiceSttProvider ?? "local");
   return (
     <SettingsSection
-      title={t("settings.voiceSettings.models.title")}
-      info={t("settings.voiceSettings.models.info")}
+      title={t(`${CLAUDE_PREFIX}.voiceModeTitle`)}
+      testID="voice-settings-voice-mode"
     >
-      <SettingsCard testID="voice-settings-models">
+      <SettingsCard>
+        {provider !== undefined ? (
+          <SttProviderRow
+            label={t(`${CLAUDE_PREFIX}.provider.listeningLabel`)}
+            status={status}
+            field="voiceSttProvider"
+            value={provider}
+            note={t(`${CLAUDE_PREFIX}.voiceNote`)}
+            save={save}
+            testID="voice-settings-voice-stt-provider"
+          />
+        ) : null}
+        {showsLocalModel(provider) ? (
+          <SettingsSelect
+            label={t(`${CLAUDE_PREFIX}.listeningModel`)}
+            hint={envHint(status, "voiceSttModel", t)}
+            value={speech.voiceSttModel ?? ""}
+            options={sttOptions}
+            onValueChange={selectVoiceStt}
+            disabled={isEnvControlled(status, "voiceSttModel")}
+            testID="voice-settings-voice-stt-model"
+          />
+        ) : null}
         <SettingsSelect
-          label={t("settings.voiceSettings.models.dictation")}
-          hint={
-            dictationClaude
-              ? t("settings.voiceSettings.claudeStt.dictationModelHint")
-              : envHint(status, "dictationSttModel", t)
-          }
-          value={speech.dictationSttModel ?? ""}
-          options={sttOptions}
-          onValueChange={selectDictation}
-          disabled={dictationClaude || isEnvControlled(status, "dictationSttModel")}
-          testID="voice-settings-dictation-model"
-        />
-        <SettingsSelect
-          label={t("settings.voiceSettings.models.voiceRecognition")}
-          hint={
-            voiceClaude
-              ? t("settings.voiceSettings.claudeStt.voiceModelHint")
-              : envHint(status, "voiceSttModel", t)
-          }
-          value={speech.voiceSttModel ?? ""}
-          options={sttOptions}
-          onValueChange={selectVoiceStt}
-          disabled={voiceClaude || isEnvControlled(status, "voiceSttModel")}
-          testID="voice-settings-voice-stt-model"
-        />
-        <SettingsSelect
-          label={t("settings.voiceSettings.models.voiceSynthesis")}
+          label={t(`${CLAUDE_PREFIX}.speakingModel`)}
           hint={envHint(status, "voiceTtsModel", t)}
           value={speech.voiceTtsModel ?? ""}
           options={ttsOptions}
@@ -504,10 +550,6 @@ function ModelsSection({
           disabled={isEnvControlled(status, "voiceTtsModel")}
           testID="voice-settings-voice-tts-model"
         />
-        {customModels.map((model) => (
-          <CustomModelRow key={model.id} model={model} onRemove={removeCustom} />
-        ))}
-        <AddModelFolderRow serverId={serverId} customModels={customModels} save={save} />
       </SettingsCard>
     </SettingsSection>
   );
@@ -725,7 +767,7 @@ function VoiceSection({
   if (!model || speakers.length === 0) return null;
 
   return (
-    <SettingsSection title={t("settings.voiceSettings.voice.title")}>
+    <SettingsSection title={t(`${CLAUDE_PREFIX}.speakingVoiceTitle`)}>
       <SettingsCard testID="voice-settings-voice">
         <SettingsRow
           label={t("settings.voiceSettings.voice.speaker")}

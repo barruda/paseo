@@ -58,26 +58,39 @@ const DICTATION_TUNING_PT_BR: Strings<typeof DICTATION_TUNING_EN> = {
   },
 };
 
-// CUSTOM(claude-stt): Settings > Voice and dictation > Speech-to-text provider. Only English and
-// Brazilian Portuguese are translated; the other locales show the English text.
+// CUSTOM(claude-stt): Settings > Voice and Dictation: the provider rows, the Claude section and
+// the section titles that moved with them. Only English and Brazilian Portuguese are
+// translated; the other locales show the English text.
 const CLAUDE_STT_EN = {
-  title: "Speech-to-text provider",
-  info: "Local STT runs a model on this host. Claude uses the speech service behind Claude Code's /voice and signs in with the Claude.ai login of a Claude Code folder on this host.",
-  dictation: "Dictation",
-  voiceListening: "Voice mode listening",
+  title: "Claude",
+  info: "Claude uses the speech service behind Claude Code's /voice. It signs in with the Claude.ai login of a Claude Code folder on this host.",
   provider: {
+    label: "Provider",
+    listeningLabel: "Listening provider",
     local: "Local STT",
     claude: "Claude",
     openai: "OpenAI",
   },
-  dictationModelHint:
-    "Claude transcribes dictation. This model is used again if you switch back to Local STT.",
-  voiceModelHint:
-    "Claude transcribes voice mode listening. This model is used again if you switch back to Local STT.",
-  account: "Claude account",
+  dictationTitle: "Dictation",
+  voiceModeTitle: "Voice mode",
+  speakingVoiceTitle: "Speaking voice",
+  localEngineTitle: "Local engine",
+  localEngineInfo: "Runs Local STT and the speaking voice on this host. Claude does not use it.",
+  dictationNote: "Transcribes with Claude. Its settings are in the Claude section below.",
+  voiceNote: "Listens with Claude. Its settings are in the Claude section below.",
+  model: "Model",
+  listeningModel: "Listening model",
+  speakingModel: "Speaking model",
+  usage: {
+    both: "Used by Dictation and Voice mode listening",
+    dictation: "Used by Dictation",
+    voice: "Used by Voice mode listening",
+    none: "Not used. Pick Claude in Dictation or Voice mode to use it.",
+  },
+  account: "Account",
   signedIn: "Signed in · {{path}}",
   signedInPlan: "Signed in ({{plan}}) · {{path}}",
-  language: "Claude language",
+  language: "Language",
   keyterms: "Key terms",
   keytermsHint: "Names and jargon the recognizer should get right, like project names.",
   configDir: "Claude config folder",
@@ -85,23 +98,35 @@ const CLAUDE_STT_EN = {
 };
 
 const CLAUDE_STT_PT_BR: Strings<typeof CLAUDE_STT_EN> = {
-  title: "Provedor de voz para texto",
-  info: "O STT local roda um modelo neste host. O Claude usa o serviço de voz por trás do /voice do Claude Code e entra com o login Claude.ai de uma pasta do Claude Code neste host.",
-  dictation: "Ditado",
-  voiceListening: "Modo de voz: ouvir",
+  title: "Claude",
+  info: "O Claude usa o serviço de voz por trás do /voice do Claude Code. Ele entra com o login Claude.ai de uma pasta do Claude Code neste host.",
   provider: {
+    label: "Provedor",
+    listeningLabel: "Provedor de escuta",
     local: "STT local",
     claude: "Claude",
     openai: "OpenAI",
   },
-  dictationModelHint:
-    "O Claude transcreve o ditado. Este modelo volta a ser usado se você voltar para o STT local.",
-  voiceModelHint:
-    "O Claude transcreve a escuta do modo de voz. Este modelo volta a ser usado se você voltar para o STT local.",
-  account: "Conta do Claude",
+  dictationTitle: "Ditado",
+  voiceModeTitle: "Modo de voz",
+  speakingVoiceTitle: "Voz de fala",
+  localEngineTitle: "Mecanismo local",
+  localEngineInfo: "Roda o STT local e a voz de fala neste host. O Claude não usa.",
+  dictationNote: "Transcreve com o Claude. As configurações dele estão na seção Claude abaixo.",
+  voiceNote: "Escuta com o Claude. As configurações dele estão na seção Claude abaixo.",
+  model: "Modelo",
+  listeningModel: "Modelo de escuta",
+  speakingModel: "Modelo de fala",
+  usage: {
+    both: "Usado pelo Ditado e pela escuta do Modo de voz",
+    dictation: "Usado pelo Ditado",
+    voice: "Usado pela escuta do Modo de voz",
+    none: "Não usado. Escolha Claude em Ditado ou Modo de voz para usá-lo.",
+  },
+  account: "Conta",
   signedIn: "Conectado · {{path}}",
   signedInPlan: "Conectado ({{plan}}) · {{path}}",
-  language: "Idioma do Claude",
+  language: "Idioma",
   keyterms: "Termos-chave",
   keytermsHint: "Nomes e jargões que o reconhecedor deve acertar, como nomes de projetos.",
   configDir: "Pasta de configuração do Claude",
@@ -147,18 +172,12 @@ export const VOICE_SETTINGS_EN = {
     ready: "Ready",
   },
   engine: {
-    title: "Engine",
     useGpu: "Use the GPU",
     useGpuHint:
       "Recognition and speech run on the graphics card: faster replies and almost no CPU. Voice detection stays on the CPU.",
     fallback: "Running on the CPU: {{reason}}",
   },
   models: {
-    title: "Models",
-    info: "A model you pick downloads in the background the first time.",
-    dictation: "Dictation",
-    voiceRecognition: "Voice mode listening",
-    voiceSynthesis: "Voice mode speaking",
     installed: "Installed",
     download: "Download {{size}}",
     customFolder: "Your folder",
@@ -174,7 +193,6 @@ export const VOICE_SETTINGS_EN = {
     addError: "This folder isn't a model Paseo can load.",
   },
   voice: {
-    title: "Voice",
     speaker: "Voice",
     speed: "Speed",
     preview: "Preview",
@@ -297,18 +315,12 @@ export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
     ready: "Pronto",
   },
   engine: {
-    title: "Motor",
     useGpu: "Usar a GPU",
     useGpuHint:
       "Reconhecimento e fala rodam na placa de vídeo: respostas mais rápidas e quase nada de CPU. A detecção de voz continua na CPU.",
     fallback: "Rodando na CPU: {{reason}}",
   },
   models: {
-    title: "Modelos",
-    info: "Um modelo escolhido é baixado em segundo plano na primeira vez.",
-    dictation: "Ditado",
-    voiceRecognition: "Modo de voz: ouvir",
-    voiceSynthesis: "Modo de voz: falar",
     installed: "Instalado",
     download: "Baixar {{size}}",
     customFolder: "Sua pasta",
@@ -324,7 +336,6 @@ export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
     addError: "Esta pasta não é um modelo que o Paseo consiga carregar.",
   },
   voice: {
-    title: "Voz",
     speaker: "Voz",
     speed: "Velocidade",
     preview: "Ouvir amostra",
@@ -445,18 +456,12 @@ export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
     ready: "Listo",
   },
   engine: {
-    title: "Motor",
     useGpu: "Usar la GPU",
     useGpuHint:
       "El reconocimiento y la voz se ejecutan en la tarjeta gráfica: respuestas más rápidas y casi sin CPU. La detección de voz sigue en la CPU.",
     fallback: "Ejecutando en la CPU: {{reason}}",
   },
   models: {
-    title: "Modelos",
-    info: "El modelo elegido se descarga en segundo plano la primera vez.",
-    dictation: "Dictado",
-    voiceRecognition: "Modo de voz: escuchar",
-    voiceSynthesis: "Modo de voz: hablar",
     installed: "Instalado",
     download: "Descargar {{size}}",
     customFolder: "Tu carpeta",
@@ -472,7 +477,6 @@ export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
     addError: "Esta carpeta no es un modelo que Paseo pueda cargar.",
   },
   voice: {
-    title: "Voz",
     speaker: "Voz",
     speed: "Velocidad",
     preview: "Escuchar muestra",
@@ -594,18 +598,12 @@ export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
     ready: "Prêt",
   },
   engine: {
-    title: "Moteur",
     useGpu: "Utiliser le GPU",
     useGpuHint:
       "La reconnaissance et la synthèse tournent sur la carte graphique : réponses plus rapides et presque pas de CPU. La détection de voix reste sur le CPU.",
     fallback: "Fonctionne sur le CPU : {{reason}}",
   },
   models: {
-    title: "Modèles",
-    info: "Un modèle choisi se télécharge en arrière-plan la première fois.",
-    dictation: "Dictée",
-    voiceRecognition: "Mode vocal : écoute",
-    voiceSynthesis: "Mode vocal : parole",
     installed: "Installé",
     download: "Télécharger {{size}}",
     customFolder: "Votre dossier",
@@ -621,7 +619,6 @@ export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
     addError: "Ce dossier n'est pas un modèle que Paseo peut charger.",
   },
   voice: {
-    title: "Voix",
     speaker: "Voix",
     speed: "Vitesse",
     preview: "Écouter un extrait",
@@ -742,18 +739,12 @@ export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
     ready: "準備完了",
   },
   engine: {
-    title: "エンジン",
     useGpu: "GPU を使用",
     useGpuHint:
       "音声認識と音声合成をグラフィックカードで実行します。応答が速くなり、CPU はほとんど使いません。音声検出は CPU のままです。",
     fallback: "CPU で実行中: {{reason}}",
   },
   models: {
-    title: "モデル",
-    info: "選んだモデルは初回にバックグラウンドでダウンロードされます。",
-    dictation: "音声入力",
-    voiceRecognition: "音声モードの聞き取り",
-    voiceSynthesis: "音声モードの読み上げ",
     installed: "インストール済み",
     download: "ダウンロード {{size}}",
     customFolder: "自分のフォルダー",
@@ -769,7 +760,6 @@ export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
     addError: "このフォルダーは Paseo が読み込めるモデルではありません。",
   },
   voice: {
-    title: "声",
     speaker: "声",
     speed: "速度",
     preview: "試聴",
@@ -890,18 +880,12 @@ export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
     ready: "준비됨",
   },
   engine: {
-    title: "엔진",
     useGpu: "GPU 사용",
     useGpuHint:
       "음성 인식과 음성 합성을 그래픽 카드에서 실행합니다. 응답이 빨라지고 CPU를 거의 쓰지 않습니다. 음성 감지는 CPU에 남습니다.",
     fallback: "CPU에서 실행 중: {{reason}}",
   },
   models: {
-    title: "모델",
-    info: "선택한 모델은 처음에 백그라운드에서 다운로드됩니다.",
-    dictation: "받아쓰기",
-    voiceRecognition: "음성 모드 듣기",
-    voiceSynthesis: "음성 모드 말하기",
     installed: "설치됨",
     download: "다운로드 {{size}}",
     customFolder: "내 폴더",
@@ -917,7 +901,6 @@ export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
     addError: "이 폴더는 Paseo가 불러올 수 있는 모델이 아닙니다.",
   },
   voice: {
-    title: "목소리",
     speaker: "목소리",
     speed: "속도",
     preview: "미리 듣기",
@@ -1038,18 +1021,12 @@ export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
     ready: "Готово",
   },
   engine: {
-    title: "Движок",
     useGpu: "Использовать ГП",
     useGpuHint:
       "Распознавание и синтез речи работают на видеокарте: ответы быстрее, а ЦП почти не нагружается. Определение речи остаётся на ЦП.",
     fallback: "Работает на ЦП: {{reason}}",
   },
   models: {
-    title: "Модели",
-    info: "Выбранная модель скачивается в фоне при первом использовании.",
-    dictation: "Диктовка",
-    voiceRecognition: "Голосовой режим: распознавание",
-    voiceSynthesis: "Голосовой режим: речь",
     installed: "Установлена",
     download: "Скачать {{size}}",
     customFolder: "Ваша папка",
@@ -1065,7 +1042,6 @@ export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
     addError: "Эта папка не является моделью, которую Paseo может загрузить.",
   },
   voice: {
-    title: "Голос",
     speaker: "Голос",
     speed: "Скорость",
     preview: "Прослушать",
@@ -1186,18 +1162,12 @@ export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
     ready: "就绪",
   },
   engine: {
-    title: "引擎",
     useGpu: "使用 GPU",
     useGpuHint:
       "语音识别和语音合成在显卡上运行：回复更快，几乎不占用 CPU。语音检测仍在 CPU 上运行。",
     fallback: "正在 CPU 上运行：{{reason}}",
   },
   models: {
-    title: "模型",
-    info: "首次选择的模型会在后台下载。",
-    dictation: "听写",
-    voiceRecognition: "语音模式：聆听",
-    voiceSynthesis: "语音模式：朗读",
     installed: "已安装",
     download: "下载 {{size}}",
     customFolder: "你的文件夹",
@@ -1213,7 +1183,6 @@ export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
     addError: "此文件夹不是 Paseo 可以加载的模型。",
   },
   voice: {
-    title: "声音",
     speaker: "声音",
     speed: "语速",
     preview: "试听",
@@ -1334,18 +1303,12 @@ export const VOICE_SETTINGS_AR: VoiceSettingsStrings = {
     ready: "جاهز",
   },
   engine: {
-    title: "المحرك",
     useGpu: "استخدام معالج الرسوميات",
     useGpuHint:
       "يعمل التعرّف على الكلام وتوليده على بطاقة الرسوميات: ردود أسرع وشبه انعدام لاستخدام المعالج. يبقى اكتشاف الكلام على المعالج.",
     fallback: "يعمل على المعالج: {{reason}}",
   },
   models: {
-    title: "النماذج",
-    info: "يُنزَّل النموذج الذي تختاره في الخلفية في المرة الأولى.",
-    dictation: "الإملاء",
-    voiceRecognition: "الوضع الصوتي: الاستماع",
-    voiceSynthesis: "الوضع الصوتي: التحدث",
     installed: "مثبّت",
     download: "تنزيل {{size}}",
     customFolder: "مجلدك",
@@ -1361,7 +1324,6 @@ export const VOICE_SETTINGS_AR: VoiceSettingsStrings = {
     addError: "هذا المجلد ليس نموذجًا يستطيع Paseo تحميله.",
   },
   voice: {
-    title: "الصوت",
     speaker: "الصوت",
     speed: "السرعة",
     preview: "معاينة",

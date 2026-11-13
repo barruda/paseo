@@ -67,3 +67,23 @@ export function describeClaudeLogin(status: ClaudeSttStatus): ClaudeLoginState {
 export function usesClaude(provider: string | undefined): boolean {
   return provider === "claude";
 }
+
+// A local model picker shows only while the feature uses Local STT. Old daemons report no
+// provider and always show it.
+export function showsLocalModel(provider: string | undefined): boolean {
+  return provider === undefined || provider === "local";
+}
+
+export type ClaudeUsage = "both" | "dictation" | "voice" | "none";
+
+// Which features transcribe with Claude, for the hint under the Claude section's title.
+export function claudeUsage(
+  dictationProvider: string | undefined,
+  voiceProvider: string | undefined,
+): ClaudeUsage {
+  const dictation = usesClaude(dictationProvider);
+  const voice = usesClaude(voiceProvider);
+  if (dictation && voice) return "both";
+  if (dictation) return "dictation";
+  return voice ? "voice" : "none";
+}

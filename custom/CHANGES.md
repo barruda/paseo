@@ -5200,10 +5200,12 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   whole open segment every 350 ms and costs GPU/CPU; Claude costs nothing extra on a
   subscription.
 - **What:** A third STT provider, `claude`, next to `local` (labeled "Local STT") and `openai`.
-  Settings > Voice and dictation gets a "Speech-to-text provider" section: a provider per
-  feature (Dictation, Voice mode listening), the Claude login state, the language (default `en`),
-  key terms, and the Claude Code config folder. A feature on Claude locks its local model picker,
-  which keeps the remembered model for switching back.
+  The Settings page (Bruno's Customizations > "Voice and Dictation") is organized by feature,
+  provider first: Dictation (provider, then the local model only for Local STT), Dictation
+  tuning, Voice mode (listening provider, local listening model, speaking model), Speaking voice,
+  instructions, Claude (which features use it, login state, language (default `en`), key terms,
+  config folder), Local engine (GPU, model folders), then thinking tone, microphone and logs. A
+  feature on Claude hides its local model picker; the model stays saved for switching back.
   - Protocol, read from claude-cli 2.1.322 (`/api/ws/speech_to_text/voice_stream`):
     `speech/providers/claude/stt.ts` has it in its header comment. It is undocumented; a Claude
     Code update can change it. To re-read it, search the binary
@@ -5235,7 +5237,8 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Re-apply:** Add `claude` to both STT provider enums and the persisted STT union, then chain
   `initializeClaudeSpeechServices` after the OpenAI services in `reconcileServices`. In the config
   store, a model edit keeps the site's provider and a provider edit keeps its model. Render
-  `<SttProviderSection>` before `ModelsSection`.
+  `<SttProviderRow>` at the top of the Dictation and Voice mode sections and
+  `<ClaudeSttSection>` before Local engine.
 - **Verify:** `cd packages/server && npx vitest run src/server/speech/providers/claude src/server/daemon-config-store.test.ts --bail=1`
   and `cd packages/app && npx vitest run src/screens/settings/voice/claude-stt-model.test.ts --bail=1`
   (both in the update script). Needs a daemon restart. In Settings > Voice and dictation, the

@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import {
   claudeLanguageOptions,
+  claudeUsage,
   describeClaudeLogin,
   formatKeyterms,
   parseKeyterms,
   sameTerms,
+  showsLocalModel,
   sttProviderOptionIds,
 } from "./claude-stt-model";
 
@@ -67,5 +69,24 @@ describe("login state", () => {
       kind: "error",
       message: "No login",
     });
+  });
+});
+
+describe("Claude usage", () => {
+  it("says which features use Claude", () => {
+    expect(claudeUsage("claude", "claude")).toBe("both");
+    expect(claudeUsage("claude", "local")).toBe("dictation");
+    expect(claudeUsage("local", "claude")).toBe("voice");
+    expect(claudeUsage("local", undefined)).toBe("none");
+    expect(claudeUsage("openai", "local")).toBe("none");
+  });
+});
+
+describe("local model picker", () => {
+  it("shows for Local STT and for daemons that report no provider", () => {
+    expect(showsLocalModel("local")).toBe(true);
+    expect(showsLocalModel(undefined)).toBe(true);
+    expect(showsLocalModel("claude")).toBe(false);
+    expect(showsLocalModel("openai")).toBe(false);
   });
 });

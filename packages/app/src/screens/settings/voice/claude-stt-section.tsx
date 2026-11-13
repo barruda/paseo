@@ -1,6 +1,6 @@
-// CUSTOM(claude-stt): Settings > Voice and dictation > Speech-to-text provider. Picks the
-// provider for dictation and for voice mode listening, and holds the Claude provider's own
-// settings (language, key terms, config folder) plus its login state.
+// CUSTOM(claude-stt): Settings > Voice and Dictation > Claude: the Claude provider's login state
+// and settings (language, key terms, config folder), plus the provider picker row that
+// Dictation and Voice mode share.
 import { useCallback, useMemo, useRef } from "react";
 import { StyleSheet } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
@@ -11,11 +11,13 @@ import { SettingsCard, SettingsRow, SettingsSection, SettingsSelect } from "@/co
 import { FormTextInput } from "@/components/ui/form-field";
 import {
   claudeLanguageOptions,
+  claudeUsage,
   describeClaudeLogin,
   formatKeyterms,
   parseKeyterms,
   sameTerms,
   sttProviderOptionIds,
+  usesClaude,
 } from "./claude-stt-model";
 import { isEnvControlled, type SettingField } from "./voice-settings-model";
 
@@ -48,7 +50,42 @@ function useProviderOptions(current: string | undefined) {
   );
 }
 
-export function SttProviderSection({
+// A provider picker row for one STT feature. Shows the feature's note under the label when
+// Claude is picked, so the row says where Claude's settings are.
+export function SttProviderRow({
+  label,
+  status,
+  field,
+  value,
+  note,
+  save,
+  testID,
+}: {
+  label: string;
+  status: SpeechLocalStatus;
+  field: "dictationSttProvider" | "voiceSttProvider";
+  value: string;
+  note: string | undefined;
+  save: SaveSpeech;
+  testID: string;
+}) {
+  const { t } = useTranslation();
+  const options = useProviderOptions(value);
+  const select = useCallback((next: string) => void save({ [field]: next }), [field, save]);
+  return (
+    <SettingsSelect
+      label={label}
+      hint={envHint(status, field, t) ?? (usesClaude(value) ? note : undefined)}
+      value={value}
+      options={options}
+      onValueChange={select}
+      disabled={isEnvControlled(status, field)}
+      testID={testID}
+    />
+  );
+}
+
+export function ClaudeSttSection({
   status,
   speech,
   save,
@@ -58,19 +95,9 @@ export function SttProviderSection({
   save: SaveSpeech;
 }) {
   const { t } = useTranslation();
-  const dictationOptions = useProviderOptions(speech.dictationSttProvider);
-  const voiceOptions = useProviderOptions(speech.voiceSttProvider);
   const languageOptions = useMemo(
     () => claudeLanguageOptions(speech.claudeSttLanguage),
     [speech.claudeSttLanguage],
-  );
-  const selectDictation = useCallback(
-    (value: string) => void save({ dictationSttProvider: value }),
-    [save],
-  );
-  const selectVoice = useCallback(
-    (value: string) => void save({ voiceSttProvider: value }),
-    [save],
   );
   const selectLanguage = useCallback(
     (value: string) => void save({ claudeSttLanguage: value }),
@@ -93,7 +120,7 @@ export function SttProviderSection({
     [save, speech.claudeSttConfigDir],
   );
 
-  // Daemons from before the provider choice report no provider; there is nothing to pick.
+  // Daemons from before the provider choice report no provider; there is no Claude to set up.
   if (speech.dictationSttProvider === undefined) return null;
 
   const claude = status.claudeStt;
@@ -109,26 +136,14 @@ export function SttProviderSection({
     <SettingsSection
       title={t(`${PREFIX}.title`)}
       info={t(`${PREFIX}.info`)}
-      testID="voice-settings-stt-provider"
+      testID="voice-settings-claude"
     >
       <SettingsCard>
-        <SettingsSelect
-          label={t(`${PREFIX}.dictation`)}
-          hint={envHint(status, "dictationSttProvider", t)}
-          value={speech.dictationSttProvider}
-          options={dictationOptions}
-          onValueChange={selectDictation}
-          disabled={isEnvControlled(status, "dictationSttProvider")}
-          testID="voice-settings-dictation-provider"
-        />
-        <SettingsSelect
-          label={t(`${PREFIX}.voiceListening`)}
-          hint={envHint(status, "voiceSttProvider", t)}
-          value={speech.voiceSttProvider ?? "local"}
-          options={voiceOptions}
-          onValueChange={selectVoice}
-          disabled={isEnvControlled(status, "voiceSttProvider")}
-          testID="voice-settings-voice-stt-provider"
+        <SettingsRow
+          label={t(
+            `${PREFIX}.usage.${claudeUsage(speech.dictationSttProvider, speech.voiceSttProvider)}`,
+          )}
+          testID="voice-settings-claude-usage"
         />
         {claude ? (
           <SettingsRow
