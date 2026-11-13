@@ -42,6 +42,7 @@ export const DEFAULT_DELEGATION = {
   searchModel: "off",
   extraInstructions: "",
   subagentContext: "full",
+  subagentInstructions: "",
 } as const;
 
 export const MAX_DELEGATION_EXTRA_CHARS = 4000;
@@ -62,6 +63,14 @@ export const DelegationSettingsSchema = z.object({
     .default(DEFAULT_DELEGATION.extraInstructions),
   /** Applies to Claude subagents created through Paseo, on every launch. */
   subagentContext: z.enum(DELEGATION_SUBAGENT_CONTEXT).default(DEFAULT_DELEGATION.subagentContext),
+  /**
+   * Added to every subagent's instructions: Paseo subagents get it in their appended system prompt,
+   * and a delegating session is told to end its Agent-tool prompts with it.
+   */
+  subagentInstructions: z
+    .string()
+    .max(MAX_DELEGATION_EXTRA_CHARS)
+    .default(DEFAULT_DELEGATION.subagentInstructions),
 });
 export type DelegationSettings = z.infer<typeof DelegationSettingsSchema>;
 

@@ -304,6 +304,8 @@ if $VERIFY; then
   (cd packages/protocol && npx vitest run src/messages.test.ts -t "cancel steer" --bail=1)
   # Delegation: CLAUDE.md / AGENTS.md trimming for Paseo-created subagents.
   (cd packages/server && npx vitest run src/server/agent/providers/claude/claude-md-excludes.test.ts src/server/agent/providers/codex-agents-md.test.ts --bail=1)
+  # Delegation: instructions for Paseo subagents folded into the launch config's appended prompt.
+  (cd packages/server && npx vitest run src/server/agent/subagent-append-prompt.test.ts --bail=1)
   # An agent's tab keeps working while a subagent runs.
   (cd packages/app && npx vitest run src/subagents/running.test.ts --bail=1)
   # Background tools chip (shells and monitors left running) and the working tab.

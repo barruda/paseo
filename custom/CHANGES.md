@@ -5026,9 +5026,19 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
     prompt would throw its prompt cache away, so open sessions keep what they started with.
     Sonnet/Haiku sessions, other providers and daemon-internal agents are skipped; a prompt that
     already has the rule (a restart copying the config) doesn't get it twice.
-  - **Sheet tabs** (2026-11-13): Delegation (switch, **Implementer**, **Policy**, collapsed
-    **Advanced** with Extra instructions and Restore defaults), Subagents, Reports. One Save
-    (footer on the first two tabs) writes everything.
+  - **Sheet tabs** (2026-11-13): Delegation (switch, **Implementer**, **Policy**), Subagents,
+    Advanced (Extra instructions, Restore defaults), Reports. One Save (footer on the first
+    three tabs) writes everything.
+  - **Additional instructions** (setting `subagentInstructions`, Subagents tab, empty by default):
+    text added to every subagent's instructions, in two places. (a) Paseo subagents (label
+    `paseo.parent-agent-id`, any provider): the `agent.session_open` hook sets
+    `PASEO_SUBAGENT_APPEND_PROMPT`, and the daemon folds it into the launch config's
+    `daemonAppendSystemPrompt` after any daemon append (`withSubagentAppendPrompt`, called from
+    `resolveProviderLaunchConfig`, so create, resume, refresh and import all get it). It is not
+    saved in the stored config. Providers that read `daemonAppendSystemPrompt` (Claude, Codex,
+    OpenCode, Pi, OMP, plugin providers) use it; the ACP ones (Copilot, Cursor, Kimi, Kiro,
+    generic ACP) ignore it. (b) A delegating session (Agent tool): `buildDelegationPolicy` adds a
+    line telling it to end every subagent prompt with the text, verbatim.
   - **Subagent context** (setting `subagentContext`, Subagents tab, default `full`): trims the
     memory files a subagent created through Paseo (label `paseo.parent-agent-id`) loads. The
     plugin's `agent.session_open` hook sets an env var on every launch (create and resume),
@@ -5064,11 +5074,14 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Core files touched:** server `agent/providers/claude/agent.ts` (`buildSettingsOptions` adds
   `claudeMdExcludes`, new `claude-md-excludes.ts` + test) and `agent/providers/codex-app-server-agent.ts`
   (`launchEnv` in the session deps, `buildCodexInnerConfig` merges `codex-agents-md.ts` + test),
-  marked `CUSTOM(delegation-subagent-context)`; app `composer/agent-controls/index.tsx` (`<DelegationToggle>` after
+  marked `CUSTOM(delegation-subagent-context)`; server `agent/agent-manager.ts`
+  (`resolveProviderLaunchConfig` calls `withSubagentAppendPrompt`) and new
+  `agent/subagent-append-prompt.ts` + test, marked `CUSTOM(delegation-subagent-instructions)`; app `composer/agent-controls/index.tsx` (`<DelegationToggle>` after
   `<JevRouterToggle>`), `composer/chat-options.ts` (`delegation` key),
   `screens/settings/bruno-customizations/section.tsx` (icon and the Composer card). Marked
   `CUSTOM(delegation)`.
-- **Re-apply:** In the Claude provider's `buildSettingsOptions`, merge
+- **Re-apply:** In `resolveProviderLaunchConfig` (agent-manager), run the merged config through
+  `withSubagentAppendPrompt(merged, launchContext.env)` before the `paseoTools` strip. In the Claude provider's `buildSettingsOptions`, merge
   `claudeMdExcludes` from `parseClaudeMdExcludes(this.launchEnv)` into the settings (and don't
   return `{}` early). In the Codex provider, pass the launch env into the session deps and
   `Object.assign(innerConfig, codexAgentsMdConfig(deps.launchEnv))`. Render `DelegationToggle` at the end of the composer's agent control row when the
@@ -5081,6 +5094,9 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   start an Opus session; the card shows at the top, and a multi-file change goes to a Sonnet
   subagent pane. Set Subagent context to Project only, have a session create a Claude subagent
   and ask it which CLAUDE.md files it sees (or run `getContextUsage` on it): only the repo's.
+  `subagent-append-prompt.test.ts` in `packages/server/src/server/agent`. For Additional
+  instructions, the daemon part needs a daemon restart (`kill-paseos-and-daemons.sh`) to load;
+  then create a subagent through Paseo and check that it follows the text.
 
 ## later: `/later <duration> <message>` sends a message to this agent once, later
 

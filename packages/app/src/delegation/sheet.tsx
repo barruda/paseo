@@ -18,13 +18,7 @@ import {
   type DelegationWhen,
 } from "@getpaseo/protocol/delegation";
 import { AdaptiveModalSheet, type SheetHeader } from "@/components/adaptive-modal-sheet";
-import {
-  SettingsCard,
-  SettingsCollapsibleRow,
-  SettingsRow,
-  SettingsSection,
-  SettingsSelect,
-} from "@/components/settings";
+import { SettingsCard, SettingsRow, SettingsSection, SettingsSelect } from "@/components/settings";
 import { Button } from "@/components/ui/button";
 import { FormTextInput } from "@/components/ui/form-field";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
@@ -42,11 +36,12 @@ import { DelegationReports } from "./reports";
 
 const rpc = settingsRpc(DELEGATION_SETTINGS_ID);
 
-type SheetTab = "delegation" | "subagents" | "reports";
+type SheetTab = "delegation" | "subagents" | "advanced" | "reports";
 
 const TAB_OPTIONS: SegmentedControlOption<SheetTab>[] = [
   { value: "delegation", label: "Delegation", testID: "delegation-tab-delegation" },
   { value: "subagents", label: "Subagents", testID: "delegation-tab-subagents" },
+  { value: "advanced", label: "Advanced", testID: "delegation-tab-advanced" },
   { value: "reports", label: "Reports", testID: "delegation-tab-reports" },
 ];
 
@@ -149,6 +144,10 @@ export function DelegationSheet({
     (value: DelegationSubagentContext) => form.set("subagentContext", value),
     [form],
   );
+  const setSubagentInstructions = useCallback(
+    (text: string) => form.set("subagentInstructions", text),
+    [form],
+  );
   const isFormTab = tab !== "reports";
 
   return (
@@ -236,8 +235,55 @@ export function DelegationSheet({
                   />
                 </SettingsCard>
               </SettingsSection>
-              <SettingsCard>
-                <SettingsCollapsibleRow label="Advanced" testID="delegation-advanced">
+            </>
+          ) : null}
+          {tab === "subagents" ? (
+            <>
+              <SettingsSection
+                title="Subagent context"
+                info="Applies to Claude and Codex subagents created through Paseo, on their next launch. Subagents that Claude Code starts with its own Agent tool inherit the context of the parent and are not affected."
+              >
+                <SettingsCard>
+                  <SettingsSelect
+                    label="Context"
+                    hint={SUBAGENT_CONTEXT_HINTS[draft.subagentContext]}
+                    options={SUBAGENT_CONTEXT_OPTIONS}
+                    value={draft.subagentContext}
+                    onValueChange={setSubagentContext}
+                    testID="delegation-subagent-context"
+                  />
+                </SettingsCard>
+              </SettingsSection>
+              <SettingsSection
+                title="Additional instructions"
+                info="Added to every subagent's instructions. Paseo subagents (any provider that supports an appended system prompt) get it in their system prompt on their next launch; a delegating Claude session is told to end each Agent tool prompt with it. Applies to new sessions."
+              >
+                <SettingsCard>
+                  <SettingsRow
+                    label="Instructions"
+                    hint="Paseo subagents get this text in their system prompt. New delegating Claude sessions also put it at the end of every Agent tool prompt."
+                    error={state.subagentInstructionsError}
+                  >
+                    <FormTextInput
+                      key={state.textsVersion}
+                      multiline
+                      initialValue={draft.subagentInstructions}
+                      onChangeText={setSubagentInstructions}
+                      placeholder="Added to every subagent's instructions. Example: End with a short report: files changed, commands run, results."
+                      editable={!state.saving}
+                      style={styles.extraInput}
+                      accessibilityLabel="Additional subagent instructions"
+                      testID="delegation-subagent-instructions"
+                    />
+                  </SettingsRow>
+                </SettingsCard>
+              </SettingsSection>
+            </>
+          ) : null}
+          {tab === "advanced" ? (
+            <>
+              <SettingsSection title="Delegation rule">
+                <SettingsCard>
                   <SettingsRow
                     label="Extra instructions"
                     hint="Added to the end of the rule, as written."
@@ -255,36 +301,21 @@ export function DelegationSheet({
                       testID="delegation-extra"
                     />
                   </SettingsRow>
-                  <SettingsRow label="Restore defaults">
-                    <Button
-                      variant="outline"
-                      onPress={form.resetDefaults}
-                      disabled={state.saving}
-                      testID="delegation-reset"
-                    >
-                      Restore
-                    </Button>
-                  </SettingsRow>
-                </SettingsCollapsibleRow>
+                </SettingsCard>
+              </SettingsSection>
+              <SettingsCard>
+                <SettingsRow label="Restore defaults">
+                  <Button
+                    variant="outline"
+                    onPress={form.resetDefaults}
+                    disabled={state.saving}
+                    testID="delegation-reset"
+                  >
+                    Restore
+                  </Button>
+                </SettingsRow>
               </SettingsCard>
             </>
-          ) : null}
-          {tab === "subagents" ? (
-            <SettingsSection
-              title="Subagent context"
-              info="Applies to Claude and Codex subagents created through Paseo, on their next launch. Subagents that Claude Code starts with its own Agent tool inherit the context of the parent and are not affected."
-            >
-              <SettingsCard>
-                <SettingsSelect
-                  label="Context"
-                  hint={SUBAGENT_CONTEXT_HINTS[draft.subagentContext]}
-                  options={SUBAGENT_CONTEXT_OPTIONS}
-                  value={draft.subagentContext}
-                  onValueChange={setSubagentContext}
-                  testID="delegation-subagent-context"
-                />
-              </SettingsCard>
-            </SettingsSection>
           ) : null}
           {state.error ? <Text style={styles.errorText}>{state.error}</Text> : null}
           <View style={styles.actions}>

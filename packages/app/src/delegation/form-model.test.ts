@@ -40,6 +40,17 @@ describe("delegation form", () => {
     expect(form.getState().canSave).toBe(false);
   });
 
+  it("blocks saving subagent instructions that are too long, and restores them to empty", () => {
+    const form = loaded();
+    expect(form.getState().draft.subagentInstructions).toBe("");
+    form.set("subagentInstructions", "x".repeat(MAX_DELEGATION_EXTRA_CHARS + 1));
+    expect(form.getState().subagentInstructionsError).toBeTruthy();
+    expect(form.getState().canSave).toBe(false);
+    form.resetDefaults();
+    expect(form.getState().draft.subagentInstructions).toBe("");
+    expect(form.getState().canSave).toBe(true);
+  });
+
   it("restores the defaults but keeps on/off", () => {
     const form = loaded();
     form.set("when", "aggressive");

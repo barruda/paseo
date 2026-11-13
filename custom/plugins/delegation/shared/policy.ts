@@ -63,6 +63,13 @@ export function buildDelegationPolicy(settings: DelegationSettings): string {
       `Search: for a broad search across many files where you only need the conclusion, use the Agent tool with subagent_type "Explore" and model "${settings.searchModel}".`,
     );
   }
+  const subagentText = settings.subagentInstructions.trim();
+  if (subagentText) {
+    lines.push(
+      "",
+      `Subagent instructions: end the prompt of every subagent you start with the Agent tool with the following text, quoted verbatim:\n${subagentText}`,
+    );
+  }
   const extra = settings.extraInstructions.trim();
   if (extra) lines.push("", extra);
   return lines.join("\n");

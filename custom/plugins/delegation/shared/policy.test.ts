@@ -58,6 +58,26 @@ describe("buildDelegationPolicy", () => {
   });
 });
 
+describe("subagent instructions", () => {
+  it("adds nothing when empty", () => {
+    expect(buildDelegationPolicy({ ...defaults, subagentInstructions: "  " })).not.toContain(
+      "Subagent instructions",
+    );
+  });
+
+  it("tells the session to end every Agent prompt with the text, verbatim, before the extras", () => {
+    const policy = buildDelegationPolicy({
+      ...defaults,
+      subagentInstructions: "  End with a short report.\nList files.  ",
+      extraInstructions: "Extra.",
+    });
+    expect(policy).toContain("Agent tool");
+    expect(policy).toContain("quoted verbatim:\nEnd with a short report.\nList files.");
+    expect(policy.indexOf("Subagent instructions")).toBeLessThan(policy.indexOf("Extra."));
+    expect(policy.endsWith("Extra.")).toBe(true);
+  });
+});
+
 describe("withDelegationPolicy", () => {
   it("keeps the session's own system prompt first", () => {
     expect(withDelegationPolicy(undefined, "rule")).toBe("rule");

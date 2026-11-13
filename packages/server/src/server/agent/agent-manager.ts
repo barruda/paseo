@@ -1,3 +1,4 @@
+import { withSubagentAppendPrompt } from "./subagent-append-prompt.js";
 import type { AttachedAgentTool, PluginAgentToolsRuntime } from "../plugins/agent-tools.js";
 import type { AgentToolResult } from "@getpaseo/plugin/server";
 import type { RuntimeCleanupCandidate } from "./idle-runtime-cleanup/index.js";
@@ -5784,7 +5785,12 @@ export class AgentManager {
             mcpServers: { ...launchConfig.mcpServers, ...launchContext.mcpServers },
           }
         : launchConfig;
-    return launchContext.paseoTools ? stripInternalPaseoMcpServer(merged) : merged;
+    // CUSTOM(delegation-subagent-instructions): fold the plugin's subagent instructions (env set by
+    // the session_open hook) into the launch config, after the daemon append.
+    const withInstructions = withSubagentAppendPrompt(merged, launchContext.env);
+    return launchContext.paseoTools
+      ? stripInternalPaseoMcpServer(withInstructions)
+      : withInstructions;
   }
 
   private async requireAvailableClient(options: { provider: AgentProvider }): Promise<AgentClient> {

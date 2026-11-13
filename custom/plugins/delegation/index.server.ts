@@ -25,6 +25,9 @@ import { buildReport } from "./server/report";
 import { logDelegatedSession } from "./server/session-log";
 import { DelegationTracker } from "./server/tracker";
 
+// Same name as `SUBAGENT_APPEND_PROMPT_ENV` in the daemon (agent/subagent-append-prompt.ts).
+const SUBAGENT_APPEND_PROMPT_ENV = "PASEO_SUBAGENT_APPEND_PROMPT";
+
 const execFileAsync = promisify(execFile);
 
 async function findProjectRoot(cwd: string): Promise<string> {
@@ -73,18 +76,32 @@ export default function contribute(server: PluginServerContext) {
     const id = request.reason === "create" ? request.env[DELEGATION_ENV] : undefined;
     if (id) tracker.bind(id, request.agentId);
     if (!request.labels[PARENT_AGENT_ID_LABEL]) return undefined;
-    if (request.provider !== "claude" && request.provider !== "codex") return undefined;
     const state = await settings.read();
     if (state.status !== "ready") return undefined;
+    // Any provider: the daemon folds this into the launch config's appended system prompt.
+    const instructions = state.values.subagentInstructions.trim();
+    const withInstructions = instructions
+      ? { ...request, env: { ...request.env, [SUBAGENT_APPEND_PROMPT_ENV]: instructions } }
+      : request;
+    if (request.provider !== "claude" && request.provider !== "codex") {
+      return instructions ? withInstructions : undefined;
+    }
     const mode = state.values.subagentContext;
     if (request.provider === "codex") {
       // Codex can drop the repo's AGENTS.md but not the global one, so `project` changes nothing.
-      return mode === "none"
-        ? { ...request, env: { ...request.env, [CODEX_AGENTS_MD_ENV]: "none" } }
-        : undefined;
+      if (mode === "none") {
+        return {
+          ...withInstructions,
+          env: { ...withInstructions.env, [CODEX_AGENTS_MD_ENV]: "none" },
+        };
+      }
+      return instructions ? withInstructions : undefined;
     }
     if (mode === "none") {
-      return { ...request, env: { ...request.env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" } };
+      return {
+        ...withInstructions,
+        env: { ...withInstructions.env, CLAUDE_CODE_DISABLE_CLAUDE_MDS: "1" },
+      };
     }
     if (mode === "project") {
       const excludes = buildClaudeMdExcludes({
@@ -95,11 +112,11 @@ export default function contribute(server: PluginServerContext) {
           path.join(os.homedir(), ".claude"),
       });
       return {
-        ...request,
-        env: { ...request.env, [CLAUDE_MD_EXCLUDES_ENV]: JSON.stringify(excludes) },
+        ...withInstructions,
+        env: { ...withInstructions.env, [CLAUDE_MD_EXCLUDES_ENV]: JSON.stringify(excludes) },
       };
     }
-    return undefined;
+    return instructions ? withInstructions : undefined;
   });
 
   const removeCreated = server.on("agent.created", async (event, context) => {

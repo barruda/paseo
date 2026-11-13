@@ -21,6 +21,7 @@ export interface DelegationFormState {
   /** Bumped when the draft is replaced (load, reset): the uncontrolled text input remounts on it. */
   textsVersion: number;
   extraError: string | null;
+  subagentInstructionsError: string | null;
   saving: boolean;
   error: string | null;
   canSave: boolean;
@@ -50,6 +51,7 @@ export function openDelegationForm(): DelegationFormModel {
     draft: DelegationSettingsSchema.parse({}),
     textsVersion: 0,
     extraError: null,
+    subagentInstructionsError: null,
     saving: false,
     error: null,
     canSave: false,
@@ -60,10 +62,19 @@ export function openDelegationForm(): DelegationFormModel {
       next.draft.extraInstructions.length > MAX_DELEGATION_EXTRA_CHARS
         ? `At most ${MAX_DELEGATION_EXTRA_CHARS} characters.`
         : null;
+    const subagentInstructionsError =
+      next.draft.subagentInstructions.length > MAX_DELEGATION_EXTRA_CHARS
+        ? `At most ${MAX_DELEGATION_EXTRA_CHARS} characters.`
+        : null;
     return {
       ...next,
       extraError,
-      canSave: next.load.status === "ready" && !next.saving && extraError === null,
+      subagentInstructionsError,
+      canSave:
+        next.load.status === "ready" &&
+        !next.saving &&
+        extraError === null &&
+        subagentInstructionsError === null,
     };
   }
 
