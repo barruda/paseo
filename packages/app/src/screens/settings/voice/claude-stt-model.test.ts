@@ -28,10 +28,11 @@ describe("provider options", () => {
 });
 
 describe("language options", () => {
-  it("lists the 20 supported languages, each once, named in itself", () => {
+  it("lists the 20 supported languages plus pt-BR, each once, named in itself", () => {
     const options = claudeLanguageOptions("en");
-    expect(options).toHaveLength(20);
-    expect(new Set(options.map((option) => option.value)).size).toBe(20);
+    expect(options).toHaveLength(21);
+    expect(new Set(options.map((option) => option.value)).size).toBe(21);
+    expect(options.find((option) => option.value === "pt-BR")?.label).toBe("Português (Brasil)");
     expect(options.find((option) => option.value === "pt")?.label).toBe("Português");
     expect(options.find((option) => option.value === "ko")?.label).toBe("한국어");
   });

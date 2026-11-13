@@ -5206,7 +5206,7 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   instructions, thinking tone, microphone), Claude (which features use it, login state, language,
   key terms, config folder), Local engine (GPU, model folders), Status (status and logs). A
   feature on Claude hides its local model picker; the model stays saved for switching back.
-  Language is one of the 20 codes Claude Code accepts (default `en`); the service has no mixed or
+  Language is one of the 20 codes Claude Code accepts, plus `pt-BR` (Claude Code only sends `pt`; the service accepts both) (default `en`); the service has no mixed or
   auto mode (`multi` and `auto` are refused), but its final pass handles other-language words.
   - Protocol, read from claude-cli 2.1.322 (`/api/ws/speech_to_text/voice_stream`):
     `speech/providers/claude/stt.ts` has it in its header comment. It is undocumented; a Claude

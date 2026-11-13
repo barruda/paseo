@@ -12,7 +12,8 @@ export function sttProviderOptionIds(current: string | undefined): string[] {
 }
 
 // The 20 languages Claude Code's voice supports, each named in itself so the list reads the
-// same in every app language.
+// same in every app language, plus pt-BR: Claude Code itself only sends `pt`, but the service
+// accepts the regional code too, kept here to compare the two.
 export const CLAUDE_STT_LANGUAGES: ReadonlyArray<{ value: string; label: string }> = [
   { value: "en", label: "English" },
   { value: "es", label: "Español" },
@@ -20,6 +21,7 @@ export const CLAUDE_STT_LANGUAGES: ReadonlyArray<{ value: string; label: string 
   { value: "ja", label: "日本語" },
   { value: "de", label: "Deutsch" },
   { value: "pt", label: "Português" },
+  { value: "pt-BR", label: "Português (Brasil)" },
   { value: "it", label: "Italiano" },
   { value: "ko", label: "한국어" },
   { value: "hi", label: "हिन्दी" },
