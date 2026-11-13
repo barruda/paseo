@@ -148,7 +148,8 @@ function selectAgents(state: ReturnType<typeof useSessionStore.getState>): TaskA
         provider: agent.provider,
         model: agent.model,
         status: agent.status,
-        running: agent.turn.phase === "open",
+        // CUSTOM(background-tools): a live background shell or monitor keeps the agent working.
+        running: agent.turn.phase === "open" || (agent.backgroundTasks?.length ?? 0) > 0,
         pendingPermissionCount: agent.pendingPermissions.length,
         requiresAttention: agent.requiresAttention === true,
         attentionReason: agent.attentionReason,

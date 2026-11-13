@@ -86,6 +86,7 @@ export function projectAgentSnapshot(agent: Agent): AgentSnapshotPayload {
     attentionTimestamp: agent.attentionTimestamp?.toISOString() ?? null,
     archivedAt: agent.archivedAt?.toISOString() ?? null,
     ...(agent.statusSummary ? { statusSummary: agent.statusSummary } : {}), // CUSTOM(agent-status-summary)
+    ...(agent.backgroundTasks ? { backgroundTasks: agent.backgroundTasks } : {}), // CUSTOM(background-tools)
   };
 }
 
@@ -137,5 +138,6 @@ export function normalizeAgentSnapshot(snapshot: AgentSnapshotPayload, serverId:
     parentAgentId,
     labels: snapshot.labels,
     ...(snapshot.statusSummary ? { statusSummary: snapshot.statusSummary } : {}), // CUSTOM(agent-status-summary)
+    ...(snapshot.backgroundTasks ? { backgroundTasks: snapshot.backgroundTasks } : {}), // CUSTOM(background-tools)
   };
 }

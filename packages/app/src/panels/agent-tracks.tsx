@@ -25,6 +25,8 @@ import {
 } from "@/subagents";
 import { ParentAgentPill } from "@/subagents/parent";
 import { SubagentsTrack } from "@/subagents/track";
+import { BackgroundToolsTrack, useAgentBackgroundTools } from "@/background-tools/track"; // CUSTOM(background-tools)
+import { hasBackgroundTools } from "@/background-tools/presentation"; // CUSTOM(background-tools)
 import type { TodoEntry } from "@/types/stream";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
@@ -74,6 +76,7 @@ export const AgentTracks = memo(function AgentTracks({
   const isMerged = isDone && statusSummary?.merged === true;
   // CUSTOM(git-sync): conflicts and worktrees to bring in, for the git chips.
   const gitSync = useGitSync({ serverId, workspaceId, agentId });
+  const backgroundTools = useAgentBackgroundTools(serverId, agentId); // CUSTOM(background-tools)
   const isCompact = useIsCompactFormFactor();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
   const options = useSettings((settings) => settings.chatOptions);
@@ -145,6 +148,7 @@ export const AgentTracks = memo(function AgentTracks({
       archiveFinishedStatus,
       hasPluginComposerPills,
       options,
+      hasBackgroundToolsRunning: hasBackgroundTools(backgroundTools),
     })
   ) {
     return null;
@@ -169,6 +173,10 @@ export const AgentTracks = memo(function AgentTracks({
         archiveFinishedStatus={archiveFinishedStatus}
         onDetachSubagent={canDetachSubagents ? detachSubagent : undefined}
       />
+    ) : null,
+    // CUSTOM(background-tools): live background shells and monitors, right of the subagents pill.
+    "background-tools": show("background-tools") ? (
+      <BackgroundToolsTrack tasks={backgroundTools} />
     ) : null,
     // CUSTOM(commit-wip): commits everything as "wip".
     commit: show("commit") ? (
@@ -242,6 +250,7 @@ export function hasAgentTracks({
   archiveFinishedStatus,
   hasPluginComposerPills = false,
   options = {},
+  hasBackgroundToolsRunning = false,
 }: {
   parentAgentId: string | null;
   subagentRows: readonly SubagentRow[];
@@ -249,6 +258,7 @@ export function hasAgentTracks({
   archiveFinishedStatus: ArchiveFinishedStatus;
   hasPluginComposerPills?: boolean;
   options?: Record<string, boolean>;
+  hasBackgroundToolsRunning?: boolean;
 }): boolean {
   return (
     // CUSTOM(commit-wip): Commit: wip shows with or without changes, so the row always does.
@@ -256,6 +266,7 @@ export function hasAgentTracks({
     (chatOptionEnabled(options, "parent") && parentAgentId !== null) ||
     (chatOptionEnabled(options, "subagents") &&
       (subagentRows.length > 0 || archiveFinishedStatus.kind !== "idle")) ||
+    (chatOptionEnabled(options, "background-tools") && hasBackgroundToolsRunning) ||
     (chatOptionEnabled(options, "tasks") && Boolean(tasks?.length)) ||
     chatOptionEnabled(options, "rename") ||
     chatOptionEnabled(options, "reading") ||

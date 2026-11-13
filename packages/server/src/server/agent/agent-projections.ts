@@ -151,6 +151,8 @@ export function toAgentPayload(
     ...(agent.internal ? { internal: true } : {}),
     // CUSTOM(agent-status-summary)
     ...(agent.statusSummary ? { statusSummary: agent.statusSummary } : {}),
+    // CUSTOM(background-tools)
+    ...(agent.backgroundTasks?.length ? { backgroundTasks: agent.backgroundTasks } : {}),
   };
 
   const usage = sanitizeUsage(agent.lastUsage);

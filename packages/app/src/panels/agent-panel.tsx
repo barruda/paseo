@@ -105,6 +105,8 @@ import type { PendingPermission } from "@/types/shared";
 import type { StreamItem, TodoEntry } from "@/types/stream";
 import type { ViewedTimelineStatus, ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import { useArchiveFinishedSubagents, useSubagentsForParent } from "@/subagents";
+import { hasBackgroundTools } from "@/background-tools/presentation"; // CUSTOM(background-tools)
+import { useAgentBackgroundTools } from "@/background-tools/track"; // CUSTOM(background-tools)
 import { useHasRunningSubagent, withRunningSubagents } from "@/subagents/running"; // CUSTOM(subagent-tab-status)
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
 import { derivePendingPermissionKey, normalizeAgentSnapshot } from "@/utils/agent-snapshots";
@@ -323,7 +325,12 @@ function useAgentPanelDescriptor(
   const upstreamDescriptor = useAgentDescriptor(target, context);
   const projectIcon = useAgentProjectTabIcon(context.serverId, target.agentId);
   // CUSTOM(subagent-tab-status): the tab keeps working while a subagent runs.
-  const subagentRunning = useHasRunningSubagent(context.serverId, target.agentId);
+  // CUSTOM(background-tools): so does a live background shell or monitor.
+  const backgroundToolsRunning = hasBackgroundTools(
+    useAgentBackgroundTools(context.serverId, target.agentId),
+  );
+  const subagentRunning =
+    useHasRunningSubagent(context.serverId, target.agentId) || backgroundToolsRunning;
   const statusBucket = withRunningSubagents(upstreamDescriptor.statusBucket, subagentRunning);
   const descriptor =
     statusBucket === upstreamDescriptor.statusBucket

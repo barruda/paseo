@@ -817,13 +817,22 @@ test("Claude session runtime safety observes pumped background work and autonomo
     await push(init);
     await push(result);
     expect(await session.canStopRuntime!()).toBe(true);
+    // CUSTOM(background-tools): the live set reaches the manager as a replace-style event.
+    const toolEvents: unknown[] = [];
+    session.subscribe((event) => {
+      if (event.type === "background_tasks_changed") toolEvents.push(event.tasks);
+    });
     await push({
       type: "system",
       subtype: "background_tasks_changed",
       tasks: [{ task_id: "monitor", task_type: "local_bash", description: "quiet monitor" }],
     });
     expect(await session.canStopRuntime!()).toBe(false);
+    expect(toolEvents.at(-1)).toEqual([
+      { id: "monitor", kind: "shell", description: "quiet monitor" },
+    ]);
     await push({ type: "system", subtype: "background_tasks_changed", tasks: [] });
+    expect(toolEvents.at(-1)).toEqual([]);
     expect(await session.canStopRuntime!()).toBe(false);
     await push({
       type: "system",

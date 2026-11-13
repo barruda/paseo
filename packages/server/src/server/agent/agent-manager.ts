@@ -61,6 +61,7 @@ import {
   type AgentSession,
   type AgentSessionConfig,
   type SteerResult,
+  type AgentBackgroundTask,
   type AgentStreamEvent,
   type AgentTimelineItem,
   type AgentUsage,
@@ -466,6 +467,8 @@ interface ManagedAgentBase {
   labels: Record<string, string>;
   // CUSTOM(agent-status-summary): what was asked and where the work stands. In memory only.
   statusSummary?: AgentStatusSummaryPayload;
+  // CUSTOM(background-tools): live background shells and monitors. In memory only.
+  backgroundTasks?: AgentBackgroundTask[];
 }
 
 type ManagedAgentWithSession = ManagedAgentBase & {
@@ -4078,6 +4081,7 @@ export class AgentManager {
       ...agent,
       lifecycle: "closed",
       session: null,
+      backgroundTasks: undefined, // CUSTOM(background-tools): they died with the session
       activeForegroundTurnId: null,
       activeTurnId: null,
       activeTurnStartedAt: null,
@@ -4681,6 +4685,12 @@ export class AgentManager {
         return undefined;
       case "usage_updated":
         agent.lastUsage = event.usage;
+        this.emitState(agent);
+        return undefined;
+      // CUSTOM(background-tools): state only, never on the client event stream.
+      case "background_tasks_changed":
+        agent.backgroundTasks = event.tasks;
+        flags.shouldDispatchEvent = false;
         this.emitState(agent);
         return undefined;
       case "mode_changed":

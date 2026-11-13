@@ -407,11 +407,21 @@ export type AgentTimelineItem =
   | CompactionTimelineItem
   | PluginTimelineItem;
 
+// CUSTOM(background-tools)
+export interface AgentBackgroundTask {
+  id: string;
+  kind: "shell" | "monitor" | "other";
+  description: string;
+  command?: string;
+}
+
 export type AgentStreamEvent =
   | { type: "thread_started"; sessionId: string; provider: AgentProvider }
   | { type: "turn_started"; provider: AgentProvider; turnId?: string }
   | { type: "turn_completed"; provider: AgentProvider; usage?: AgentUsage; turnId?: string }
   | { type: "usage_updated"; provider: AgentProvider; usage: AgentUsage; turnId?: string }
+  // CUSTOM(background-tools): the full live set of background tools; replaces the previous one.
+  | { type: "background_tasks_changed"; provider: AgentProvider; tasks: AgentBackgroundTask[] }
   | {
       type: "mode_changed";
       provider: AgentProvider;

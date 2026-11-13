@@ -85,7 +85,11 @@ import {
 } from "./rewind.js";
 import { normalizeProviderReplayTimestamp } from "../../provider-history-timestamps.js";
 import { claudeConfigDir, claudeProjectDirSync, claudeTranscriptPath } from "./project-dir.js";
-import { countClaudeWakeTasks } from "./wake-tasks.js";
+import {
+  countClaudeWakeTasks,
+  mapClaudeBackgroundTools,
+  readClaudeToolCommand,
+} from "./wake-tasks.js";
 import { THINKING_APPLIES_NEXT_TURN_NOTICE } from "../../provider-notices.js";
 import {
   isProviderImageMarkdown,
@@ -2304,6 +2308,10 @@ class ClaudeAgentSession implements AgentSession {
   private readonly taskState = new ClaudeTaskState();
   // CUSTOM(monitor-quiet-finish): live background tasks that will wake this agent back up.
   private wakeTaskCount = 0;
+  // CUSTOM(background-tools): the last live set and each task's command line. The tool call that
+  // started a task can leave toolUseCache before the task ends, so the command is kept here.
+  private lastBackgroundTasksMessage: unknown = null;
+  private readonly backgroundTaskCommands = new Map<string, string>();
   private readonly taskProtocolSource = new ClaudeTaskProtocolSource({
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
     readWorkflowResult: readClaudeWorkflowResultFile,
@@ -3535,6 +3543,7 @@ class ClaudeAgentSession implements AgentSession {
           this.childProcess = child;
           // CUSTOM(monitor-quiet-finish): the task set is per process.
           this.wakeTaskCount = 0;
+          this.resetBackgroundTools(); // CUSTOM(background-tools)
           child.once("exit", (code, signal) => this.handleRuntimeExit(child, code, signal));
         },
       },
@@ -4093,6 +4102,7 @@ class ClaudeAgentSession implements AgentSession {
     this.childProcess = null;
     // CUSTOM(monitor-quiet-finish): its background tasks died with it.
     this.wakeTaskCount = 0;
+    this.resetBackgroundTools(); // CUSTOM(background-tools)
     this.logger.warn(
       { agentId: this.agentId, pid: child.pid, code, signal },
       "Claude runtime exited unexpectedly",
@@ -4560,6 +4570,7 @@ class ClaudeAgentSession implements AgentSession {
 
     const events: AgentStreamEvent[] = [];
     this.appendTaskStateEvent(message, events);
+    this.observeBackgroundToolStart(message, events); // CUSTOM(background-tools)
 
     // Subagent identity and lifecycle are announced by Claude Code's task protocol, so they are
     // read rather than inferred from sidechain frames. `task_started` precedes the child's first
@@ -4821,7 +4832,57 @@ class ClaudeAgentSession implements AgentSession {
     // CUSTOM(monitor-quiet-finish): a level signal; replace the count with each payload.
     if (message.subtype === "background_tasks_changed") {
       this.wakeTaskCount = countClaudeWakeTasks(message);
+      this.lastBackgroundTasksMessage = message;
+      this.pruneBackgroundTaskCommands(message);
+      events.push(this.buildBackgroundToolsEvent());
       return;
+    }
+  }
+
+  // CUSTOM(background-tools): remember the command of a task as it starts, then refresh the list
+  // when that task is already live (task_started can land after background_tasks_changed).
+  private observeBackgroundToolStart(message: SDKMessage, events: AgentStreamEvent[]): void {
+    if (message.type !== "system" || message.subtype !== "task_started") return;
+    const { task_id: taskId, tool_use_id: toolUseId } = message;
+    if (typeof taskId !== "string" || typeof toolUseId !== "string") return;
+    const command = readClaudeToolCommand(this.toolUseCache.get(toolUseId)?.input);
+    if (!command || this.backgroundTaskCommands.get(taskId) === command) return;
+    this.backgroundTaskCommands.set(taskId, command);
+    if (this.lastBackgroundTasksMessage) {
+      events.push(this.buildBackgroundToolsEvent());
+    }
+  }
+
+  private buildBackgroundToolsEvent(): AgentStreamEvent {
+    return {
+      type: "background_tasks_changed",
+      provider: "claude",
+      tasks: mapClaudeBackgroundTools(this.lastBackgroundTasksMessage, this.backgroundTaskCommands),
+    };
+  }
+
+  private pruneBackgroundTaskCommands(message: unknown): void {
+    const tasks = (message as { tasks?: unknown } | null)?.tasks;
+    const live = new Set<string>();
+    if (Array.isArray(tasks)) {
+      for (const task of tasks) {
+        const id = (task as { task_id?: unknown } | null)?.task_id;
+        if (typeof id === "string") live.add(id);
+      }
+    }
+    for (const id of this.backgroundTaskCommands.keys()) {
+      if (!live.has(id)) this.backgroundTaskCommands.delete(id);
+    }
+  }
+
+  // The task set is per process: a new or dead process has none.
+  private resetBackgroundTools(): void {
+    const hadTools =
+      this.lastBackgroundTasksMessage !== null || this.backgroundTaskCommands.size > 0;
+    this.lastBackgroundTasksMessage = null;
+    this.backgroundTaskCommands.clear();
+    if (hadTools) {
+      this.notifySubscribers({ type: "background_tasks_changed", provider: "claude", tasks: [] });
     }
   }
 

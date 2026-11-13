@@ -3,6 +3,7 @@ export const CHAT_OPTIONS = [
   ["parent", "Parent agent"],
   ["tasks", "Tasks"],
   ["subagents", "Subagents"],
+  ["background-tools", "Background tools"], // CUSTOM(background-tools)
   ["plugin:tldr:tldr", "TLDR"],
   ["commit", "Commit: wip"],
   ["rename", "Rename session"],
@@ -58,6 +59,7 @@ const MOVABLE_CHAT_OPTIONS: Record<ChatOptionGroup, readonly string[]> = {
     "parent",
     "tasks",
     "subagents",
+    "background-tools", // CUSTOM(background-tools)
     "plugin:tldr:tldr",
     "commit",
     "rename",

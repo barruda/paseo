@@ -34,6 +34,7 @@ import type {
   AgentPersistenceHandle,
 } from "@getpaseo/protocol/agent-types";
 import type {
+  AgentBackgroundTaskPayload,
   AgentStatusSummaryPayload,
   ServerInfoStatusPayload,
   ProjectPlacementPayload,
@@ -103,6 +104,8 @@ export interface Agent {
   projectPlacement?: ProjectPlacementPayload | null;
   // CUSTOM(agent-status-summary): what was asked and where the work stands.
   statusSummary?: AgentStatusSummaryPayload;
+  // CUSTOM(background-tools): live background shells and monitors.
+  backgroundTasks?: AgentBackgroundTaskPayload[];
 }
 
 export interface WorkspaceDescriptor {

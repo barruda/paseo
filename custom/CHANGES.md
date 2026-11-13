@@ -5347,3 +5347,36 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Verify:** `cd packages/app && npx vitest run src/hooks/dictation-mic-live.test.ts --bail=1`
   (in the update script). On the desktop with the LG XG5S, press Ctrl+D: the bar shows "Starting
   mic…" in neutral colors for about a second, then turns green; words said after green are kept.
+
+## background-tools: a chip for background shells and monitors, and the tab stays working
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: Background tools chip, and the tab stays working while they run`
+- **Why:** A Claude agent can end its turn with a `Bash` run in the background or a `Monitor` still
+  running. The tab went idle and nothing showed that work was left.
+- **What:** Claude Code's `background_tasks_changed` (the full live set, per process) is mapped to
+  `shell` / `monitor` / `other` tools; subagents and workflows stay in the subagents pill, ambient
+  tasks are skipped. The command line comes from the starting tool call (`task_started`). The
+  session emits an internal `background_tasks_changed` stream event, and an empty one when the
+  process restarts. The agent manager keeps it on the agent (not on the client event stream), and
+  `toAgentPayload` sends it as the optional `backgroundTasks` field. In the app, a `2 tools` chip
+  (`1 tool`) sits next to the subagents pill; its panel lists kind, description and command, and a
+  click copies the command (or the description). The agent tab and the Tasks sidebar count such an
+  agent as working. A new chat option, "Background tools", hides or moves the chip. Wording is
+  English only.
+- **Core files touched:** protocol `messages.ts` (`AgentBackgroundTaskPayloadSchema`, `backgroundTasks`);
+  server `agent-sdk-types.ts`, `agent-manager.ts`, `agent-projections.ts`,
+  `providers/claude/agent.ts`, `providers/claude/wake-tasks.ts`; app `stores/session-store.ts`,
+  `utils/agent-snapshots.ts`, `panels/agent-tracks.tsx`, `panels/agent-panel.tsx`,
+  `task-navigation/sidebar.tsx`, `composer/chat-options.ts`; new `background-tools/`.
+- **Re-apply:** Re-add the field to the snapshot schema, the stream event and the manager case
+  (`flags.shouldDispatchEvent = false`, then `emitState`), the projection spread, and the Claude
+  session hooks (`observeBackgroundToolStart`, the emit beside `wakeTaskCount`, `resetBackgroundTools`
+  where `wakeTaskCount` resets). In the app, carry the field through both snapshot normalizers, add
+  the chip node to `AgentTracks` and `hasAgentTracks`, and OR the tools into the tab and sidebar
+  running checks.
+- **Verify:** Needs a daemon restart (the server sends the new field). Tests are in the update
+  script (`background-tools/presentation.test.ts`, `wake-tasks.test.ts`,
+  `agent.background-subagent.test.ts`). In the app: ask an agent to start a background `sleep 600`
+  and end its turn; the tab keeps the working spinner, a `1 tool` chip appears, and clicking a row
+  copies the command.

@@ -898,6 +898,17 @@ export const AgentStatusSummaryPayloadSchema = z.object({
 
 export type AgentStatusSummaryPayload = z.infer<typeof AgentStatusSummaryPayloadSchema>;
 
+// CUSTOM(background-tools): a live background tool of the agent (shell, monitor). `kind` stays a
+// plain string so an old client keeps parsing a kind added later.
+export const AgentBackgroundTaskPayloadSchema = z.object({
+  id: z.string(),
+  kind: z.string(),
+  description: z.string(),
+  command: z.string().optional(),
+});
+
+export type AgentBackgroundTaskPayload = z.infer<typeof AgentBackgroundTaskPayloadSchema>;
+
 export const AgentSnapshotPayloadSchema = z.object({
   id: z.string(),
   provider: AgentProviderSchema,
@@ -931,6 +942,8 @@ export const AgentSnapshotPayloadSchema = z.object({
   internal: z.boolean().optional(),
   // CUSTOM(agent-status-summary)
   statusSummary: AgentStatusSummaryPayloadSchema.optional(),
+  // CUSTOM(background-tools): absent means none.
+  backgroundTasks: z.array(AgentBackgroundTaskPayloadSchema).optional(),
 });
 
 export type AgentSnapshotPayload = z.infer<typeof AgentSnapshotPayloadSchema>;
