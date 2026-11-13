@@ -49,6 +49,7 @@ import {
   useActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { dispatchTopWebOverlayKeyDown, keyBelongsToDomPopover } from "@/lib/overlay-root";
+import { noteKeydownAfterInterrupt } from "@/jev-router/triple-esc"; // CUSTOM(jev-router)
 
 export function useKeyboardShortcuts({
   enabled,
@@ -355,6 +356,9 @@ export function useKeyboardShortcuts({
     if (store.capturingShortcut) {
       return;
     }
+
+    // CUSTOM(jev-router): Esc 3×, an Esc right after a keyboard interrupt (it still runs below).
+    noteKeydownAfterInterrupt(event);
 
     const key = event.key ?? "";
     if (

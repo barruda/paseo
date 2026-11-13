@@ -4352,6 +4352,20 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     agent's (provider, folder, mode, features) on the selected model and effort with the same
     first prompt (text only; attached images are not resent), opens it and archives the routed
     one. A first prompt over 30k characters is not kept, and its card has no button.
+  - Esc 3× (since 2026-11-13): one more plain Esc within `CHORD_TIMEOUT_MS` (1.5 s) after the
+    keyboard `agent.interrupt` does what the card's button does (Jev off, restart on the selected
+    model/effort with the first prompt), whether interrupt is bound to `Escape` or `Escape Escape`.
+    Only when the agent has a card with a prompt; otherwise the Esc does what it always did, and
+    nothing is delayed or swallowed. The card shows a muted "· 3× Esc" after its button on web.
+    `jev-router/triple-esc.ts` + test (pure `shouldRestartOnEscape`, last-interrupt memory, a
+    listener), `turn-off.ts` (saves `enabled: false` from the app), `use-esc-restart.ts`
+    (`useJevEscRestart`, mounted in `AgentPanel`, interactive panel only, a ref guards double
+    triggers). The interrupt is recorded in `composer/index.tsx` (`dispatchComposerKeyboardAction`,
+    after `handleCancelAgent()`, via `onKeyboardInterrupt`); the next Esc is seen in
+    `hooks/use-keyboard-shortcuts.ts` (`handleKeyDown`, before chord resolution). Re-apply: call
+    `recordKeyboardInterrupt(serverId, agentId)` where the composer handles `agent.interrupt`, call
+    `noteKeydownAfterInterrupt(event)` at the top of the global keydown handler (after the popover
+    guards), and mount `useJevEscRestart` in `AgentPanel`.
   - Installed on both daemons. It was personal-only at first, to keep work prompts away from
     TypeSafe; on 2026-11-09 the user had it installed on paseo-telus too, still on TypeSafe. Each
     host keeps its own settings, TypeSafe provider included; the sessions it routes use that

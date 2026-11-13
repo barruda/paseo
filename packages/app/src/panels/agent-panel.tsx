@@ -89,6 +89,7 @@ import { AgentTracks, hasAgentTracks } from "@/panels/agent-tracks";
 import { ParentAgentCallout, useParentAgentId } from "@/subagents/parent";
 import { useCreateFlowStore } from "@/stores/create-flow-store";
 import { useRecordViewedAgent } from "@/jev-router/last-viewed-agent"; // CUSTOM(jev-router)
+import { useJevEscRestart } from "@/jev-router/use-esc-restart"; // CUSTOM(jev-router)
 import { buildDraftStoreKey, generateDraftId } from "@/stores/draft-keys";
 import {
   selectAgentTimelineState,
@@ -345,6 +346,8 @@ function AgentPanel() {
   invariant(target.kind === "agent", "AgentPanel requires agent target");
   // CUSTOM(jev-router): a new tab compares Jev's Default with the session viewed last.
   useRecordViewedAgent(serverId, target.agentId, isInteractive);
+  // CUSTOM(jev-router): Esc 3× (an Esc right after the keyboard interrupt) = the Jev card's restart.
+  useJevEscRestart(serverId, target.agentId, isInteractive);
 
   return (
     <RetainedChatContent>

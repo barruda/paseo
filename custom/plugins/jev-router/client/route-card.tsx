@@ -1,5 +1,5 @@
 import { useCallback, useMemo } from "react";
-import { Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { useSettings, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { Icon, RestartAgentButton } from "@getpaseo/plugin/client/react-native";
 import { formatClaudeModel, type JevRouteCardData } from "@getpaseo/protocol/jev-router";
@@ -23,7 +23,8 @@ function useStyles(theme: PluginTimelineItemProps["theme"]) {
       row: { flexDirection: "row" as const, alignItems: "center" as const, gap: 8 },
       text: { flex: 1, color: theme.colors.foreground, fontSize: 13 },
       muted: { color: theme.colors.foregroundMuted },
-      action: { paddingLeft: 22 },
+      action: { paddingLeft: 22, flexDirection: "row" as const, alignItems: "center" as const },
+      hint: { color: theme.colors.foregroundMuted, fontSize: 12, marginLeft: 4 },
     }),
     [theme],
   );
@@ -73,6 +74,11 @@ export function JevRouteCard({
             onBeforeRestart={turnJevOff}
             testID="jev-route-restart"
           />
+          {Platform.OS === "web" ? (
+            <Text style={styles.hint} testID="jev-route-restart-hint">
+              · 3× Esc
+            </Text>
+          ) : null}
         </View>
       ) : null}
     </View>

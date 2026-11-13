@@ -14,17 +14,10 @@ import {
   DropdownMenuTrigger,
   type DropdownMenuTriggerProps,
 } from "@/components/ui/dropdown-menu";
-import { useSessionStore, type SessionState } from "@/stores/session-store";
-import { describeRouteChip, findJevRouteCardData } from "./model";
+import { useSessionStore } from "@/stores/session-store";
+import { describeRouteChip } from "./model";
+import { selectJevRouteCardData as selectRouteCardData } from "./use-esc-restart";
 import { useRestartAgent } from "./use-restart-agent";
-
-function selectRouteCardData(session: SessionState | undefined, agentId: string): unknown {
-  if (!session) return undefined;
-  return (
-    findJevRouteCardData(session.agentStreamTail.get(agentId) ?? []) ??
-    findJevRouteCardData(session.agentStreamHead.get(agentId) ?? [])
-  );
-}
 
 export function JevRouteChip({ serverId, agentId }: { serverId: string; agentId: string }) {
   const rawCard = useSessionStore((state) =>

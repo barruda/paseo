@@ -106,6 +106,7 @@ import type { AutocompleteOption } from "@/components/ui/autocomplete";
 import { useAgentAutocomplete } from "@/hooks/use-agent-autocomplete";
 import { usePluginClientSlashCommands } from "@/plugins/client-slash-commands";
 import { useRegisterChatComposerFocus } from "@/chat-esc-focus/registry";
+import { recordKeyboardInterrupt } from "@/jev-router/triple-esc"; // CUSTOM(jev-router)
 // CUSTOM(chat-comments)
 import { useRegisterChatComposerAppend } from "@/chat-comments/registry";
 import { appendChatComment } from "@/chat-comments/model";
@@ -555,6 +556,7 @@ interface DispatchComposerKeyboardActionArgs {
   handleCancelAgent: () => void;
   focusMessageInputForKeyboardAction: () => void;
   exitVoiceMode?: () => boolean;
+  onKeyboardInterrupt?: () => void; // CUSTOM(jev-router): Esc 3×
 }
 
 function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs): boolean {
@@ -568,6 +570,7 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
     handleCancelAgent,
     focusMessageInputForKeyboardAction,
     exitVoiceMode,
+    onKeyboardInterrupt,
   } = args;
   if (!isPaneFocused) return false;
 
@@ -579,6 +582,7 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
     if (exitVoiceMode?.()) return true;
     if (!isAgentRunning || isCancellingAgent || !isConnected) return false;
     handleCancelAgent();
+    onKeyboardInterrupt?.(); // CUSTOM(jev-router): Esc 3×
     return true;
   }
 
@@ -604,6 +608,7 @@ function ComposerKeyboardRegistration({
   handleCancelAgent,
   focusMessageInputForKeyboardAction,
   exitVoiceMode,
+  onKeyboardInterrupt,
   isMessageInputFocused,
   handlerId,
 }: Omit<DispatchComposerKeyboardActionArgs, "action" | "isPaneFocused"> & {
@@ -623,9 +628,11 @@ function ComposerKeyboardRegistration({
         handleCancelAgent,
         focusMessageInputForKeyboardAction,
         exitVoiceMode,
+        onKeyboardInterrupt,
       }),
     [
       exitVoiceMode,
+      onKeyboardInterrupt,
       focusMessageInputForKeyboardAction,
       handleCancelAgent,
       isActiveComposer,
@@ -1951,6 +1958,11 @@ function ComposerContentImpl({
     [openAttachment],
   );
 
+  // CUSTOM(jev-router): Esc 3×, remember the keyboard interrupt so the next Esc can restart.
+  const handleKeyboardInterrupt = useCallback(() => {
+    if (agentIdRef.current) recordKeyboardInterrupt(serverId, agentIdRef.current);
+  }, [serverId]);
+
   const handleCancelAgent = useCallback(() => {
     const targetAgentId = agentIdRef.current;
     const cancellation = cancelComposerAgent({
@@ -2627,6 +2639,7 @@ function ComposerContentImpl({
         handleCancelAgent={handleCancelAgent}
         focusMessageInputForKeyboardAction={focusMessageInputForKeyboardAction}
         exitVoiceMode={exitVoiceMode}
+        onKeyboardInterrupt={handleKeyboardInterrupt}
         isMessageInputFocused={isMessageInputFocused}
       />
       <View
