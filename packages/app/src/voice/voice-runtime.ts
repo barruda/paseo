@@ -56,12 +56,16 @@ export interface VoiceRuntimeTelemetrySnapshot {
   segmentDuration: number;
   // CUSTOM(voice-live-transcript): words recognized so far in the current utterance.
   liveTranscript: string;
+  // CUSTOM(voice-hold-to-talk): the talk key or button is down.
+  isHolding: boolean;
 }
 
 export interface VoiceSessionAdapter {
   serverId: string;
   setVoiceMode(enabled: boolean, agentId?: string): Promise<void>;
   sendVoiceAudioChunk(audioData: string, mimeType: string): Promise<void>;
+  // CUSTOM(voice-hold-to-talk)
+  setVoiceHold?(held: boolean): Promise<void>;
   audioPlayed(chunkId: string): Promise<void>;
   abortRequest(): Promise<void>;
   setAssistantAudioPlaying(isPlaying: boolean): void;
@@ -74,6 +78,8 @@ export interface VoiceRuntimeDeps {
   deactivateKeepAwake(tag: string): Promise<void>;
   // CUSTOM(voice-settings): the thinking tone's on/off and volume from Settings.
   getThinkingTone?(): ThinkingToneSettings;
+  // CUSTOM(voice-hold-to-talk): Settings > Voice "Hold to talk": audio outside a hold is not sent.
+  getHoldToTalkOnly?(): boolean;
 }
 
 interface RuntimeSessionState {
@@ -98,6 +104,10 @@ interface RuntimeState {
   serverSpeechStartedAt: number | null;
   // CUSTOM(voice-reply-mute): messages that stay silent to their end, even after unmuting.
   mutedUtteranceIds: Set<string>;
+  // CUSTOM(voice-hold-to-talk): audio keeps flowing until holdTailUntil after a release, because
+  // the capture buffer still holds the last words.
+  holdTailUntil: number;
+  holdReleaseTimer: ReturnType<typeof setTimeout> | null;
 }
 
 type AudioOutputPayload = Extract<SessionOutboundMessage, { type: "audio_output" }>["payload"];
@@ -148,7 +158,11 @@ const INITIAL_TELEMETRY: VoiceRuntimeTelemetrySnapshot = {
   isSpeaking: false,
   segmentDuration: 0,
   liveTranscript: "",
+  isHolding: false,
 };
+
+// CUSTOM(voice-hold-to-talk)
+const HOLD_RELEASE_TAIL_MS = 200;
 
 let nextVoiceRuntimeInstanceId = 1;
 
@@ -172,7 +186,8 @@ function telemetryEqual(
     left.volume === right.volume &&
     left.isSpeaking === right.isSpeaking &&
     left.segmentDuration === right.segmentDuration &&
-    left.liveTranscript === right.liveTranscript
+    left.liveTranscript === right.liveTranscript &&
+    left.isHolding === right.isHolding
   );
 }
 
@@ -191,6 +206,8 @@ export interface VoiceRuntime {
   destroy(): Promise<void>;
   toggleMute(): void;
   toggleReplyMute(): void;
+  // CUSTOM(voice-hold-to-talk): no-op unless the host advertises features.voiceHold.
+  setHold(held: boolean): void;
   isVoiceModeForAgent(serverId: string, agentId: string): boolean;
   shouldPlayVoiceAudio(serverId: string): boolean;
   onAssistantAudioStarted(serverId: string): void;
@@ -216,6 +233,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     lastDisplayVolumePublishMs: 0,
     serverSpeechStartedAt: null,
     mutedUtteranceIds: new Set(),
+    holdTailUntil: 0,
+    holdReleaseTimer: null,
   };
   const playback: RuntimePlaybackState = {
     groups: new Map(),
@@ -539,6 +558,16 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         return;
       }
 
+      // CUSTOM(voice-hold-to-talk)
+      if (
+        deps.getHoldToTalkOnly?.() &&
+        hostSupportsHold(activeSession.adapter.serverId) &&
+        !state.telemetry.isHolding &&
+        Date.now() >= state.holdTailUntil
+      ) {
+        return;
+      }
+
       const base64 = Buffer.from(chunk).toString("base64");
 
       void activeSession.adapter.sendVoiceAudioChunk(base64, PCM_MIME_TYPE).catch((error) => {
@@ -547,7 +576,55 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     },
   };
 
+  function hostSupportsHold(serverId: string): boolean {
+    return deps.getServerInfo(serverId)?.features?.voiceHold === true;
+  }
+
+  function clearHoldReleaseTimer(): void {
+    if (state.holdReleaseTimer) {
+      clearTimeout(state.holdReleaseTimer);
+      state.holdReleaseTimer = null;
+    }
+  }
+
+  // CUSTOM(voice-hold-to-talk): holding keeps one turn open on the host; releasing ends it.
+  function setHold(held: boolean): void {
+    const activeSession = getActiveSession();
+    if (
+      !activeSession ||
+      !state.transportReady ||
+      !state.snapshot.isVoiceMode ||
+      (held && state.snapshot.isMuted) ||
+      !activeSession.adapter.setVoiceHold ||
+      !hostSupportsHold(activeSession.adapter.serverId)
+    ) {
+      return;
+    }
+    if (held === state.telemetry.isHolding) {
+      return;
+    }
+    const adapter = activeSession.adapter;
+    const send = (value: boolean) => {
+      void adapter.setVoiceHold?.(value).catch((error) => {
+        console.error(`[VoiceRuntime#${instanceId}] Failed to send hold state:`, error);
+      });
+    };
+    clearHoldReleaseTimer();
+    patchTelemetry((prev) => ({ ...prev, isHolding: held }));
+    if (held) {
+      send(true);
+      return;
+    }
+    state.holdTailUntil = Date.now() + HOLD_RELEASE_TAIL_MS;
+    state.holdReleaseTimer = setTimeout(() => {
+      state.holdReleaseTimer = null;
+      send(false);
+    }, HOLD_RELEASE_TAIL_MS);
+  }
+
   function resetToDisabledState(): void {
+    clearHoldReleaseTimer();
+    state.holdTailUntil = 0;
     state.transportReady = false;
     state.turnInProgress = false;
     state.serverSpeechDetected = false;
@@ -865,6 +942,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     },
 
     toggleMute() {
+      // CUSTOM(voice-hold-to-talk): muting must not leave the host's turn held open.
+      setHold(false);
       const nextMuted = deps.engine.toggleMute();
       if (nextMuted) {
         uploader.reset();
@@ -883,6 +962,8 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     // CUSTOM(voice-reply-mute): the ear button. Muting cuts the sentence playing and lets
     // the rest of the reply pass unplayed (still confirmed, so the speak tool returns);
     // unmuting takes effect from the agent's next message.
+    setHold,
+
     toggleReplyMute() {
       if (state.snapshot.isReplyMuted) {
         patchSnapshot((prev) => ({ ...prev, isReplyMuted: false }));

@@ -7,6 +7,7 @@ type VoiceMessage = Extract<
   {
     type:
       | "voice_audio_chunk"
+      | "voice.set_hold.request"
       | "abort_request"
       | "audio_played"
       | "set_voice_mode"
@@ -104,6 +105,8 @@ export class VoiceSessions {
     switch (message.type) {
       case "voice_audio_chunk":
         return voice.handleAudioChunk(message);
+      case "voice.set_hold.request":
+        return voice.handleHold(message.held);
       case "abort_request":
         return voice.handleAbort();
       case "audio_played":

@@ -2742,6 +2742,7 @@ export class Session {
   private dispatchVoiceAndControlMessage(msg: SessionInboundMessage): Promise<void> | undefined {
     switch (msg.type) {
       case "voice_audio_chunk":
+      case "voice.set_hold.request":
       case "abort_request":
       case "audio_played":
       case "set_voice_mode":

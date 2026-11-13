@@ -4,7 +4,7 @@ import { EventEmitter } from "node:events";
 import pino from "pino";
 import { describe, expect, test, vi } from "vitest";
 
-import { VoiceSession, type VoiceSessionHost } from "./voice-session.js";
+import { VoiceSession, isAcknowledgementOnly, type VoiceSessionHost } from "./voice-session.js";
 import { buildVoiceModeSystemPrompt } from "../../voice-config.js";
 import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { SessionOutboundMessage } from "../../messages.js";
@@ -123,6 +123,10 @@ function createVoiceSession(
       return speakHandler(args);
     },
   };
+}
+
+function isTranscriptionResult(message: SessionOutboundMessage): boolean {
+  return message.type === "transcription_result";
 }
 
 function isAudioOutput(message: SessionOutboundMessage): boolean {
@@ -288,6 +292,120 @@ describe("VoiceSession streaming transcription", () => {
     } finally {
       await voiceSession.cleanup();
       await playback.catch(() => {});
+    }
+  });
+
+  // CUSTOM(voice-ack-silences-reply)
+  test("an acknowledgement word silences the reply without interrupting the agent", async () => {
+    const { voiceSession, detector, sttSession, host, speak, interrupted } =
+      createSpeakingSession(20);
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    const playback = speak({ text: "A spoken response." });
+    try {
+      await waitForAudioOutput(host);
+      detector.emit("speech_started");
+      await settle();
+      sttSession.emitTranscript({ segmentId: "segment-1", transcript: "Okay.", isFinal: false });
+      await vi.waitFor(() => expect(host.emitted).toContainEqual(SPEAKING));
+      await playback;
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      expect(interrupted).toEqual([]);
+
+      detector.emit("speech_stopped");
+      await settle();
+      sttSession.emitCommitted({ segmentId: "segment-1", previousSegmentId: null });
+      sttSession.emitTranscript({
+        segmentId: "segment-1",
+        transcript: "Okay okay.",
+        isFinal: true,
+        isLowConfidence: false,
+      });
+      await vi.waitFor(() => expect(host.emitted.filter(isTranscriptionResult)).toHaveLength(1));
+      expect(interrupted).toEqual([]);
+      expect(host.spokenInput).toEqual([]);
+    } finally {
+      await voiceSession.cleanup();
+      await playback.catch(() => {});
+    }
+  });
+
+  test("an acknowledgement that grows into words still interrupts the agent", async () => {
+    const { voiceSession, detector, sttSession, host, speak, interrupted } =
+      createSpeakingSession(60_000);
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    const playback = speak({ text: "A spoken response." });
+    try {
+      await waitForAudioOutput(host);
+      detector.emit("speech_started");
+      await settle();
+      sttSession.emitTranscript({ segmentId: "segment-1", transcript: "ok", isFinal: false });
+      await vi.waitFor(() => expect(host.emitted).toContainEqual(SPEAKING));
+      expect(interrupted).toEqual([]);
+      sttSession.emitTranscript({
+        segmentId: "segment-1",
+        transcript: "ok but wait",
+        isFinal: false,
+      });
+      await vi.waitFor(() => expect(interrupted).toEqual([VOICE_AGENT_ID]));
+    } finally {
+      await voiceSession.cleanup();
+      await playback.catch(() => {});
+    }
+  });
+
+  test("isAcknowledgementOnly ignores case and punctuation and rejects other words", () => {
+    expect(isAcknowledgementOnly("OK!")).toBe(true);
+    expect(isAcknowledgementOnly("okay, okay")).toBe(true);
+    expect(isAcknowledgementOnly("Tá.")).toBe(true);
+    expect(isAcknowledgementOnly("beleza")).toBe(true);
+    expect(isAcknowledgementOnly("")).toBe(false);
+    expect(isAcknowledgementOnly("okay stop")).toBe(false);
+  });
+
+  // CUSTOM(voice-hold-to-talk)
+  test("pressing hold interrupts the agent and releasing it ends the utterance", async () => {
+    const { voiceSession, sttSession, host, interrupted } = createSpeakingSession(60_000);
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    try {
+      await voiceSession.handleHold(true);
+      expect(interrupted).toEqual([VOICE_AGENT_ID]);
+      expect(host.emitted).toContainEqual(SPEAKING);
+      expect(sttSession.commitCount).toBe(0);
+
+      await voiceSession.handleHold(false);
+      expect(sttSession.commitCount).toBe(1);
+      expect(host.emitted).toContainEqual({
+        type: "voice_input_state",
+        payload: { isSpeaking: false },
+      });
+      sttSession.emitCommitted({ segmentId: "segment-1", previousSegmentId: null });
+      sttSession.emitTranscript({
+        segmentId: "segment-1",
+        transcript: "run the tests",
+        isFinal: true,
+        isLowConfidence: false,
+      });
+      await vi.waitFor(() =>
+        expect(host.spokenInput).toEqual([{ agentId: VOICE_AGENT_ID, text: "run the tests" }]),
+      );
+    } finally {
+      await voiceSession.cleanup();
+    }
+  });
+
+  test("the detector's speech stop does not end a held utterance", async () => {
+    const { voiceSession, detector, sttSession } = createSpeakingSession(60_000);
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    try {
+      await voiceSession.handleHold(true);
+      detector.emit("speech_stopped");
+      await settle();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(sttSession.commitCount).toBe(0);
+      await voiceSession.handleHold(false);
+      expect(sttSession.commitCount).toBe(1);
+    } finally {
+      await voiceSession.cleanup();
     }
   });
 

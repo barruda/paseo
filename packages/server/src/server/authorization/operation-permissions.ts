@@ -211,6 +211,7 @@ const INBOUND_PERMISSION = {
   update_agent_request: "workspace.write",
   validate_branch_request: "workspace.read",
   voice_audio_chunk: "workspace.write",
+  "voice.set_hold.request": "workspace.write",
   wait_for_finish_request: "workspace.read",
   "workspace.clear_attention.request": "workspace.write",
   "workspace.mark_unread.request": "workspace.write",

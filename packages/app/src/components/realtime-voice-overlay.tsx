@@ -1,9 +1,9 @@
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { useMemo } from "react";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Pressable, Text, View } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { Ear, EarOff, Mic, MicOff, Square, X } from "lucide-react-native";
+import { Ear, EarOff, Hand, Mic, MicOff, Square, X } from "lucide-react-native";
 import { FOOTER_HEIGHT } from "@/constants/layout";
 import { useVoiceTelemetry } from "@/contexts/voice-context";
 import { VolumeMeter } from "./volume-meter";
@@ -18,6 +18,9 @@ interface RealtimeVoiceOverlayProps {
   onStop: () => void;
   // CUSTOM(voice-exit): leave voice mode and let the agent keep working (Esc).
   onExit?: () => void;
+  // CUSTOM(voice-hold-to-talk): press and hold to talk, release to send. Omitted when the host
+  // cannot hold a turn open.
+  onHoldChange?: (held: boolean) => void;
 }
 
 const OVERLAY_BUTTON_SIZE = 44;
@@ -31,10 +34,11 @@ export function RealtimeVoiceOverlay({
   onToggleReplyMute,
   onStop,
   onExit,
+  onHoldChange,
 }: RealtimeVoiceOverlayProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
-  const { volume, isSpeaking, liveTranscript } = useVoiceTelemetry();
+  const { volume, isSpeaking, liveTranscript, isHolding } = useVoiceTelemetry();
   const muteButtonStyle = useMemo(
     () => [
       styles.actionButton,
@@ -53,6 +57,17 @@ export function RealtimeVoiceOverlay({
     ],
     [isReplyMuted, isSwitching],
   );
+  const holdButtonStyle = useMemo(
+    () => [
+      styles.actionButton,
+      styles.muteButton,
+      isHolding ? styles.holdButtonActive : undefined,
+      isSwitching ? styles.buttonDisabled : undefined,
+    ],
+    [isHolding, isSwitching],
+  );
+  const handleHoldIn = useCallback(() => onHoldChange?.(true), [onHoldChange]);
+  const handleHoldOut = useCallback(() => onHoldChange?.(false), [onHoldChange]);
   const exitButtonStyle = useMemo(
     () => [styles.actionButton, styles.muteButton, isSwitching ? styles.buttonDisabled : undefined],
     [isSwitching],
@@ -68,6 +83,12 @@ export function RealtimeVoiceOverlay({
           // CUSTOM(voice-live-transcript): head-truncated so the newest words stay visible.
           <Text style={styles.liveTranscript} numberOfLines={1} ellipsizeMode="head">
             {liveTranscript}
+          </Text>
+        ) : null}
+        {isHolding ? (
+          // CUSTOM(voice-hold-to-talk)
+          <Text style={styles.liveTranscript} numberOfLines={1}>
+            {t("settings.voiceSettings.voiceMode.holding")}
           </Text>
         ) : null}
         <VolumeMeter
@@ -94,6 +115,23 @@ export function RealtimeVoiceOverlay({
             <Mic size={theme.iconSize.lg} color={theme.colors.foreground} strokeWidth={2.5} />
           )}
         </Pressable>
+
+        {onHoldChange ? (
+          <Pressable
+            onPressIn={handleHoldIn}
+            onPressOut={handleHoldOut}
+            disabled={isSwitching}
+            accessibilityRole="button"
+            accessibilityLabel={t("settings.voiceSettings.voiceMode.holdPrompt")}
+            style={holdButtonStyle}
+          >
+            <Hand
+              size={theme.iconSize.lg}
+              color={isHolding ? theme.colors.palette.white : theme.colors.foreground}
+              strokeWidth={2.5}
+            />
+          </Pressable>
+        ) : null}
 
         {onToggleReplyMute ? (
           <Pressable
@@ -200,6 +238,10 @@ const styles = StyleSheet.create((theme) => ({
   muteButtonMuted: {
     backgroundColor: theme.colors.palette.red[600],
     borderColor: theme.colors.palette.red[800],
+  },
+  holdButtonActive: {
+    backgroundColor: theme.colors.palette.blue[600],
+    borderColor: theme.colors.palette.blue[800],
   },
   stopButton: {
     backgroundColor: theme.colors.palette.red[600],

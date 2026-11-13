@@ -986,6 +986,14 @@ export const VoiceAudioChunkMessageSchema = z.object({
   isLast: z.boolean(),
 });
 
+// CUSTOM(voice-hold-to-talk): fire-and-forget, so there is no `.response`. `held: true` opens a
+// voice turn that silence cannot end; `held: false` ends it. Sent only when
+// `server_info.features.voiceHold` is set.
+export const VoiceSetHoldRequestSchema = z.object({
+  type: z.literal("voice.set_hold.request"),
+  held: z.boolean(),
+});
+
 export const AbortRequestMessageSchema = z.object({
   type: z.literal("abort_request"),
 });
@@ -3349,6 +3357,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   HubExecutionControlRequestSchema,
   BrowserAutomationExecuteResponseSchema,
   VoiceAudioChunkMessageSchema,
+  VoiceSetHoldRequestSchema,
   AbortRequestMessageSchema,
   AudioPlayedMessageSchema,
   FetchAgentsRequestMessageSchema,
@@ -3910,6 +3919,8 @@ export const ServerInfoStatusPayloadSchema = z
         selectiveAgentTimeline: z.boolean().optional(),
         explicitEventSubscriptions: z.boolean().optional(),
         ownedSubscriptions: z.boolean().optional(),
+        // CUSTOM(voice-hold-to-talk): the daemon accepts `voice.set_hold.request`.
+        voiceHold: z.boolean().optional(),
         workspaceSetupObservation: z.boolean().optional(),
         workspaceSortTimes: z.boolean().optional(),
         // COMPAT(canonicalSubmittedPrompts): added in v0.2.6, remove gate after 2027-01-30.

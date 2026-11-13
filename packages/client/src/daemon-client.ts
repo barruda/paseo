@@ -4228,6 +4228,11 @@ export class DaemonClient {
     this.sendSessionMessage({ type: "voice_audio_chunk", audio, format, isLast });
   }
 
+  // CUSTOM(voice-hold-to-talk): only call when `server_info.features.voiceHold` is set.
+  async setVoiceHold(held: boolean): Promise<void> {
+    this.sendSessionMessage({ type: "voice.set_hold.request", held });
+  }
+
   async startDictationStream(dictationId: string, format: string): Promise<void> {
     const ack = this.waitForWithCancel(
       (msg) => {

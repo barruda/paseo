@@ -9,6 +9,8 @@ import {
 } from "react";
 // CUSTOM(voice-settings)
 import { useThinkingToneStore } from "@/voice/thinking-tone-settings";
+import { useHoldToTalkStore } from "@/voice/hold-to-talk-settings";
+import { useVoiceHoldKey } from "@/voice/use-voice-hold-key";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { useSessionStore } from "@/stores/session-store";
 import { createAudioEngine } from "@/audio";
@@ -29,6 +31,9 @@ interface VoiceContextValue extends VoiceRuntimeSnapshot {
   toggleMute: () => void;
   // CUSTOM(voice-reply-mute)
   toggleReplyMute: () => void;
+  // CUSTOM(voice-hold-to-talk)
+  setHold: (held: boolean) => void;
+  supportsHold: boolean;
 }
 
 const EMPTY_SNAPSHOT: VoiceRuntimeSnapshot = {
@@ -46,6 +51,7 @@ const EMPTY_TELEMETRY: VoiceRuntimeTelemetrySnapshot = {
   isSpeaking: false,
   segmentDuration: 0,
   liveTranscript: "",
+  isHolding: false,
 };
 
 const VoiceRuntimeContext = createContext<VoiceRuntime | null>(null);
@@ -71,6 +77,14 @@ export function useVoiceOptional(): VoiceContextValue | null {
     runtime ? runtime.getSnapshot : getEmptySnapshot,
   );
 
+  // CUSTOM(voice-hold-to-talk): the host takes `voice.set_hold.request`.
+  const activeServerId = snapshot.activeServerId;
+  const supportsHold = useSessionStore((state) =>
+    activeServerId
+      ? state.getSession(activeServerId)?.serverInfo?.features?.voiceHold === true
+      : false,
+  );
+
   // Methods on the runtime object literal close over factory-local state; they
   // don't use `this`, so no binding is needed. Memoising on [snapshot, runtime]
   // keeps the returned object reference stable across re-renders that don't
@@ -86,8 +100,10 @@ export function useVoiceOptional(): VoiceContextValue | null {
       isVoiceModeForAgent: runtime.isVoiceModeForAgent,
       toggleMute: runtime.toggleMute,
       toggleReplyMute: runtime.toggleReplyMute,
+      setHold: runtime.setHold,
+      supportsHold,
     };
-  }, [snapshot, runtime]);
+  }, [snapshot, runtime, supportsHold]);
 }
 
 export function useVoiceTelemetry() {
@@ -156,6 +172,8 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       },
       // CUSTOM(voice-settings)
       getThinkingTone: () => useThinkingToneStore.getState(),
+      // CUSTOM(voice-hold-to-talk)
+      getHoldToTalkOnly: () => useHoldToTalkStore.getState().holdToTalkOnly,
     });
 
     engineRef.current = engine;
@@ -171,6 +189,8 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
     () => runtime.getSnapshot().isVoiceMode,
   );
   usePauseMediaWhile(isVoiceMode);
+  // CUSTOM(voice-hold-to-talk)
+  useVoiceHoldKey(runtime);
 
   useEffect(() => {
     return () => {

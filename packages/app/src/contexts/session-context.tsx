@@ -324,6 +324,13 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
         }
         await client.sendVoiceAudioChunk(audioData, mimeType);
       },
+      // CUSTOM(voice-hold-to-talk)
+      setVoiceHold: async (held) => {
+        if (!client) {
+          throw new Error(t("common.errors.daemonUnavailable"));
+        }
+        await client.setVoiceHold(held);
+      },
       audioPlayed: async (chunkId) => {
         if (!client) {
           throw new Error(t("common.errors.daemonUnavailable"));

@@ -45,6 +45,7 @@ import {
   type ThinkingToneVolume,
 } from "@/voice/thinking-tone-settings";
 import { canPickThinkingToneFile, decodeThinkingToneFile } from "@/voice/decode-thinking-tone";
+import { useHoldToTalkStore } from "@/voice/hold-to-talk-settings";
 import { useVoiceMicrophoneStore } from "@/voice/microphone-settings";
 import { useLocalSpeechStatus } from "./use-local-speech-status";
 import { DictationTuningSection } from "./dictation-tuning-section";
@@ -1005,6 +1006,9 @@ function MicrophoneSection() {
     [update],
   );
   const handleGain = useCallback((value: boolean) => update({ autoGainControl: value }), [update]);
+  // CUSTOM(voice-hold-to-talk)
+  const holdToTalkOnly = useHoldToTalkStore((state) => state.holdToTalkOnly);
+  const setHoldToTalkOnly = useHoldToTalkStore((state) => state.setHoldToTalkOnly);
 
   return (
     <SettingsSection
@@ -1028,6 +1032,13 @@ function MicrophoneSection() {
           label={t("settings.voiceSettings.microphone.autoGainControl")}
           value={autoGainControl}
           onValueChange={handleGain}
+        />
+        <SettingsSwitch
+          label={t("settings.voiceSettings.voiceMode.holdToTalk")}
+          hint={t("settings.voiceSettings.voiceMode.holdToTalkHint")}
+          value={holdToTalkOnly}
+          onValueChange={setHoldToTalkOnly}
+          testID="voice-settings-hold-to-talk"
         />
       </SettingsCard>
     </SettingsSection>

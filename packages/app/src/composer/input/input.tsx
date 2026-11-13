@@ -611,6 +611,9 @@ function MessageInputOverlay({
         toggleMute: () => void;
         isReplyMuted: boolean;
         toggleReplyMute: () => void;
+        // CUSTOM(voice-hold-to-talk)
+        setHold: (held: boolean) => void;
+        supportsHold: boolean;
       }
     | null
     | undefined;
@@ -654,6 +657,7 @@ function MessageInputOverlay({
         onToggleMute={voice.toggleMute}
         isReplyMuted={voice.isReplyMuted}
         onToggleReplyMute={voice.toggleReplyMute}
+        onHoldChange={voice.supportsHold ? voice.setHold : undefined}
         onStop={onRealtimeVoiceStop}
         onExit={onRealtimeVoiceExit}
       />

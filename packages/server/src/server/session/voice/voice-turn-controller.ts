@@ -63,6 +63,9 @@ export interface VoiceTurnController {
   stop(): Promise<void>;
   appendClientChunk(input: { audioBase64: string; format: string }): Promise<void>;
   setAssistantSpeaking(speaking: boolean): void;
+  // CUSTOM(voice-hold-to-talk): opens a turn that detector silence cannot end, until endHold().
+  beginHold(): Promise<void>;
+  endHold(): Promise<void>;
 }
 
 interface TranscriptSegmentMeta {
@@ -115,6 +118,8 @@ export function createVoiceTurnController(params: {
   // CUSTOM(voice-live-transcript): last partial forwarded this turn; only changed text is forwarded.
   let lastPartialTranscript = "";
   let reconnectAttemptedForTurn = false;
+  // CUSTOM(voice-hold-to-talk): while held, the detector's speech_stopped is ignored.
+  let held = false;
   const sealedTranscriptSegmentIds = new Set<string>();
   let currentFinalizingTurn: FinalizingVoiceTurn | null = null;
 
@@ -474,7 +479,10 @@ export function createVoiceTurnController(params: {
     void runSerial(handleSpeechStarted);
   });
   detector.on("speech_stopped", () => {
-    void runSerial(handleSpeechStopped);
+    void runSerial(async () => {
+      if (held) return;
+      await handleSpeechStopped();
+    });
   });
   detector.on("error", fail);
 
@@ -497,7 +505,24 @@ export function createVoiceTurnController(params: {
         sttResampler = null;
         sttSession = null;
         currentFinalizingTurn = null;
+        held = false;
         state = { status: "idle" };
+      });
+    },
+
+    async beginHold(): Promise<void> {
+      await runSerial(async () => {
+        if (state.status === "idle") return;
+        held = true;
+        await handleSpeechStarted();
+      });
+    },
+
+    async endHold(): Promise<void> {
+      await runSerial(async () => {
+        if (!held) return;
+        held = false;
+        await handleSpeechStopped();
       });
     },
 

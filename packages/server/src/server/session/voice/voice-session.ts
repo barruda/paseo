@@ -140,6 +140,24 @@ const BARGE_IN_CONFIRM_MS = 1000;
  * seam only to deliver transcripts to the agent, drive TTS playback, and
  * abort/inspect the active agent run.
  */
+// CUSTOM(voice-ack-silences-reply): an utterance made only of these words stops the reply audio
+// but neither interrupts the agent nor reaches it as a prompt. Lowercase, no punctuation.
+export const ACKNOWLEDGEMENT_WORDS: ReadonlySet<string> = new Set([
+  "ok",
+  "okay",
+  "tá",
+  "ta",
+  "beleza",
+]);
+
+export function isAcknowledgementOnly(text: string): boolean {
+  const words = text
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u)
+    .filter((word) => word.length > 0);
+  return words.length > 0 && words.every((word) => ACKNOWLEDGEMENT_WORDS.has(word));
+}
+
 export interface VoiceSessionHost {
   emit(msg: SessionOutboundMessage): void;
   loadAgent(agentId: string): Promise<ManagedAgent>;
@@ -215,6 +233,10 @@ export class VoiceSession {
   // While a reply plays, its echo through the speaker can hold the detector open for seconds
   // and still transcribe to nothing, so only words interrupt a reply.
   private replyPlaying = false;
+  // CUSTOM(voice-ack-silences-reply): latest partial of the current utterance, and whether an
+  // acknowledgement word already silenced the reply during it.
+  private lastPartialText = "";
+  private ackSilenced = false;
 
   private readonly dictationStreamManager: DictationStreamManager;
   private readonly resolveVoiceTurnDetection: () => TurnDetectionProvider | null;
@@ -691,7 +713,13 @@ export class VoiceSession {
           // CUSTOM(voice-live-transcript)
           const liveText = transcript.trim();
           if (!liveText) return;
-          await this.confirmBargeIn("partial");
+          this.lastPartialText = liveText;
+          if (isAcknowledgementOnly(liveText)) {
+            // CUSTOM(voice-ack-silences-reply): "okay" only stops the reply audio.
+            this.silenceReplyOnly();
+          } else {
+            await this.confirmBargeIn("partial");
+          }
           this.emit({
             type: "voice_input_state",
             payload: { isSpeaking: true, transcript: liveText },
@@ -736,11 +764,16 @@ export class VoiceSession {
             },
             "Transcription result",
           );
-          if (transcriptText) {
+          // CUSTOM(voice-ack-silences-reply): an acknowledgement is not a prompt. It still goes
+          // through the empty-transcript path so the turn ends cleanly.
+          const acknowledgementOnly = isAcknowledgementOnly(transcriptText);
+          if (acknowledgementOnly) {
+            this.silenceReplyOnly();
+          } else if (transcriptText) {
             await this.confirmBargeIn("transcript");
           }
           await this.handleTranscriptionResultPayload({
-            text: transcriptText,
+            text: acknowledgementOnly ? "" : transcriptText,
             requestId,
             ...(language ? { language } : {}),
             duration: durationMs,
@@ -775,14 +808,46 @@ export class VoiceSession {
   private armBargeIn(): void {
     this.vadSpeechActive = true;
     this.bargeInConfirmed = false;
+    this.lastPartialText = "";
+    this.ackSilenced = false;
     this.clearBargeInTimer();
     this.bargeInTimer = setTimeout(() => {
       this.bargeInTimer = null;
       if (this.replyPlaying) return;
+      // CUSTOM(voice-ack-silences-reply): a long "okay" is still only an acknowledgement.
+      if (this.lastPartialText && isAcknowledgementOnly(this.lastPartialText)) return;
       this.confirmBargeIn("sustained speech").catch((error: unknown) => {
         this.sessionLogger.error({ err: error }, "Voice barge-in failed");
       });
     }, this.bargeInConfirmMs);
+  }
+
+  // CUSTOM(voice-ack-silences-reply): stop the reply audio without aborting the agent run.
+  // A fresh abort controller replaces the aborted one so later replies still speak.
+  private silenceReplyOnly(): void {
+    if (this.ackSilenced || this.bargeInConfirmed || this.closed) return;
+    this.ackSilenced = true;
+    this.clearBargeInTimer();
+    if (!this.replyPlaying) return;
+    this.sessionLogger.info("voice_turn.reply_silenced_by_acknowledgement");
+    this.emit({ type: "voice_input_state", payload: { isSpeaking: true } });
+    this.createAbortController();
+    this.ttsManager.cancelPendingPlaybacks("acknowledgement");
+  }
+
+  // CUSTOM(voice-hold-to-talk): holding a key keeps one turn open regardless of silence. Pressing
+  // it is a full barge-in; releasing it ends the utterance as the detector's stop would.
+  async handleHold(held: boolean): Promise<void> {
+    if (!this.isVoiceMode || !this.voiceTurnController) {
+      this.sessionLogger.debug({ held }, "Ignoring voice hold while voice mode is off");
+      return;
+    }
+    if (held) {
+      await this.voiceTurnController.beginHold();
+      await this.confirmBargeIn("hold");
+      return;
+    }
+    await this.voiceTurnController.endHold();
   }
 
   private clearBargeInTimer(): void {
@@ -796,7 +861,7 @@ export class VoiceSession {
   // confirmation too. A transcript confirms after the detector already stopped, so the
   // client gets the matching isSpeaking=false right away.
   private async confirmBargeIn(
-    reason: "sustained speech" | "transcript" | "partial",
+    reason: "sustained speech" | "transcript" | "partial" | "hold",
   ): Promise<void> {
     if (this.bargeInConfirmed || this.closed) return;
     this.bargeInConfirmed = true;

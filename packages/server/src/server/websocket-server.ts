@@ -1970,6 +1970,8 @@ export class VoiceAssistantWebSocketServer {
         relayProtectedSecurity: true,
         usageSources: true,
         ownedSubscriptions: true,
+        // CUSTOM(voice-hold-to-talk)
+        voiceHold: true,
         agentRequestReceipts: true,
         workspaceRequestReceipts: true,
         creationLifecycle: true,
