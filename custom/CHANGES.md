@@ -5555,8 +5555,10 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
     Handshake timeout 8 s, 20 s without any frame.
   - Persisted as `features.voiceMode.tts = { provider: "claude", voice, speed, model, speakerId }`;
     `model` and `speakerId` are the remembered local values. Speed is the existing `speed`
-    field, shared with the local voice and clamped to 0.7 to 1.5 for Claude (the Settings speeds
-    0.85 to 1.3 all fit), so no new speed setting. The voice is only kept on the Claude site.
+    field, shared with the local voice and clamped to 0.7 to 1.5 for Claude: the service refuses
+    more (`query.tts_speed: Input should be less than or equal to 1.5`, tested 2026-11-13).
+    Settings offers 0.85x to 2x for the local voice and stops at 1.5x with Claude
+    (`CLAUDE_SPEED_VALUES` in `voice-settings-model.ts`). The voice is only kept on the Claude site.
     Env override: `PASEO_VOICE_TTS_PROVIDER`.
   - Preview reuses `speech.local.preview_voice.request`: with Claude speaking, `model` is read as
     the Claude voice, so there is no protocol change.

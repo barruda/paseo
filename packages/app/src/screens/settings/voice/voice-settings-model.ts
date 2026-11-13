@@ -97,11 +97,20 @@ export function describeSpeaker(name: string, id: number): SpeakerInfo {
   };
 }
 
-export const SPEED_VALUES = [0.85, 1, 1.15, 1.3] as const;
+export const SPEED_VALUES = [0.85, 1, 1.15, 1.3, 1.5, 1.75, 2] as const;
+export type SpeedValue = (typeof SPEED_VALUES)[number];
 
-export function nearestSpeed(speed: number | undefined): (typeof SPEED_VALUES)[number] {
+// CUSTOM(claude-tts): the Claude read-aloud service refuses tts_speed above 1.5.
+export const CLAUDE_SPEED_VALUES: readonly SpeedValue[] = SPEED_VALUES.filter(
+  (value) => value <= 1.5,
+);
+
+export function nearestSpeed(
+  speed: number | undefined,
+  values: readonly SpeedValue[] = SPEED_VALUES,
+): SpeedValue {
   const value = speed ?? 1;
-  return SPEED_VALUES.reduce((best, candidate) =>
+  return values.reduce((best, candidate) =>
     Math.abs(candidate - value) < Math.abs(best - value) ? candidate : best,
   );
 }

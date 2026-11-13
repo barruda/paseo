@@ -64,6 +64,7 @@ import {
   isEnvControlled,
   modelAvailability,
   modelsOfKind,
+  CLAUDE_SPEED_VALUES,
   nearestSpeed,
   pcmMimeType,
   previewTextFor,
@@ -792,7 +793,7 @@ function ClaudeVoiceSection({ serverId, speech, save }: VoiceSectionProps) {
   const client = useHostRuntimeClient(serverId);
   const play = useAudioPlayer();
   const voice = claudeVoiceValue(speech.claudeTtsVoice);
-  const speed = nearestSpeed(speech.voiceTtsSpeed);
+  const speed = nearestSpeed(speech.voiceTtsSpeed, CLAUDE_SPEED_VALUES);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
 
@@ -805,7 +806,7 @@ function ClaudeVoiceSection({ serverId, speech, save }: VoiceSectionProps) {
     [speech.claudeTtsVoice, t],
   );
   const speedOptions = useMemo(
-    () => SPEED_VALUES.map((value) => ({ value: String(value), label: `${value}×` })),
+    () => CLAUDE_SPEED_VALUES.map((value) => ({ value: String(value), label: `${value}×` })),
     [],
   );
   const handleVoice = useCallback((value: string) => void save({ claudeTtsVoice: value }), [save]);

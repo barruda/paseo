@@ -6,6 +6,7 @@ import {
   describeSpeaker,
   formatBytes,
   modelAvailability,
+  CLAUDE_SPEED_VALUES,
   nearestSpeed,
   pcmMimeType,
   previewTextFor,
@@ -121,6 +122,8 @@ describe("voice settings model", () => {
     expect(formatBytes(null)).toBeNull();
     expect(nearestSpeed(undefined)).toBe(1);
     expect(nearestSpeed(1.35)).toBe(1.3);
+    expect(nearestSpeed(1.9)).toBe(2);
+    expect(nearestSpeed(2, CLAUDE_SPEED_VALUES)).toBe(1.5);
     expect(pcmMimeType("pcm;rate=24000")).toBe("audio/pcm;rate=24000;bits=16");
     expect(previewTextFor("ptBR")).toMatch(/modo de voz/);
     expect(previewTextFor("unknown")).toBe(previewTextFor("enUS"));
