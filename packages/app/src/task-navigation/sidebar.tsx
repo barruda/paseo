@@ -256,9 +256,18 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     selectProviderSubagentFlags,
     equal,
   );
+  // A stable selector. An inline one makes the selector hook rebuild its memo on every render pass,
+  // and before a commit it then hands each pass a new Map: with a running subagent that re-creates
+  // `agents`, and the render-time updates below (`useSettledTaskStates`, `setOrdering`) loop until
+  // React gives up (error #301, the app crashed whenever a subagent started).
+  const selectProviderSubagentGroups = useCallback(
+    (state: Parameters<typeof groupProviderSubagentsByParent>[0]) =>
+      groupProviderSubagentsByParent(state, providerSubagentFlags, taskKey),
+    [providerSubagentFlags],
+  );
   const providerSubagents = useStoreWithEqualityFn(
     useProviderSubagentStore,
-    (state) => groupProviderSubagentsByParent(state, providerSubagentFlags, taskKey),
+    selectProviderSubagentGroups,
     equalProviderSubagentGroups,
   );
   const runningParents = useMemo(() => runningParentKeys(providerSubagents), [providerSubagents]);
