@@ -210,6 +210,7 @@ async function submitDraftCreateRequest(input: {
     prompt: text,
     images,
     autoSubmitted: Boolean(autoSubmitConfig),
+    attachments,
     config: selectedConfig,
   });
 

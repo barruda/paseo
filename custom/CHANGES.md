@@ -4336,6 +4336,12 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     creating the agent, with the prompt, cwd, image count and the selected model/effort. Only
     Claude sessions above Haiku are routed; auto-submitted setups, follow-ups and other providers
     are not. Only a strictly cheaper family is applied, never a stronger one.
+  - Threads are never routed (since 2026-11-13): a draft whose attachments carry a previous
+    conversation (`contextKind: "chat_history"`, from a fork or a /btw thread) keeps the source
+    agent's model, because switching it would invalidate the prompt cache the thread warmed.
+    `isThreadDraft` in `jev-router/model.ts` + test; `route.ts` checks it, and `workspace-tab.tsx`
+    passes the create request's `attachments` to `routeDraftAgent`. Re-apply: skip routing in
+    `route.ts` when any wire attachment has `contextKind === "chat_history"`.
   - Fail-open: a missing plugin, an error, a script failure or no answer in 15 s creates the
     session as selected.
   - Every routed session gets `custom.jev.pick`, `.home`, `.why` and `.applied` labels.

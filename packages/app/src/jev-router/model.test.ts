@@ -4,6 +4,7 @@ import {
   describeJevRouter,
   describeRouteChip,
   findJevRouteCardData,
+  isThreadDraft,
   readJevLabels,
 } from "./model";
 
@@ -148,5 +149,27 @@ describe("describeRouteChip", () => {
     ] as unknown as Parameters<typeof findJevRouteCardData>[0];
     expect(findJevRouteCardData(items)).toBe(card);
     expect(findJevRouteCardData([])).toBeUndefined();
+  });
+});
+
+describe("isThreadDraft", () => {
+  const chatHistory = {
+    type: "text",
+    mimeType: "text/plain",
+    title: "Chat history",
+    text: "<chat-history-summary>\nPrevious work\n</chat-history-summary>",
+    contextKind: "chat_history",
+  };
+  const plainText = { type: "text", mimeType: "text/plain", title: "Notes", text: "notes" };
+
+  it("is a thread when an attachment carries the previous conversation", () => {
+    expect(isThreadDraft([plainText, chatHistory])).toBe(true);
+  });
+
+  it("is not a thread without chat history", () => {
+    expect(isThreadDraft([plainText])).toBe(false);
+    expect(isThreadDraft([])).toBe(false);
+    expect(isThreadDraft(undefined)).toBe(false);
+    expect(isThreadDraft([null, "x"])).toBe(false);
   });
 });

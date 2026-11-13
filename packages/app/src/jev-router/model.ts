@@ -54,6 +54,21 @@ export function describeJevRouter(input: {
   return lines;
 }
 
+/**
+ * A draft that carries a previous conversation (a fork or a /btw thread: a `chat_history`
+ * attachment) continues that thread on the source agent's model. Routing it to another model
+ * would throw away the prompt cache the thread already warmed, so it is never routed.
+ */
+export function isThreadDraft(attachments: unknown): boolean {
+  if (!Array.isArray(attachments)) return false;
+  return attachments.some(
+    (attachment: unknown) =>
+      typeof attachment === "object" &&
+      attachment !== null &&
+      (attachment as { contextKind?: unknown }).contextKind === "chat_history",
+  );
+}
+
 export interface DraftRouteConfig {
   provider: string;
   model?: string;

@@ -4,7 +4,7 @@
 
 import { JEV_ROUTER_PLUGIN_ID, JEV_ROUTER_RPC } from "@getpaseo/protocol/jev-router";
 import { pluginRegistry } from "@/plugins/registry";
-import { applyJevRoute, type DraftRouteConfig } from "./model";
+import { applyJevRoute, isThreadDraft, type DraftRouteConfig } from "./model";
 import { useJevSkipNextStore } from "./skip-next";
 
 /** route.py's own timeout tops out at 10 s; past this the session starts as selected. */
@@ -12,13 +12,16 @@ const CLIENT_TIMEOUT_MS = 15_000;
 
 /**
  * Returns the config to create the session with, plus `labels` for the create request when Jev
- * answered. `autoSubmitted` (a setup that sends itself, not a message the user typed) is not routed.
+ * answered. `autoSubmitted` (a setup that sends itself, not a message the user typed) is not routed,
+ * nor is a thread (a fork or /btw carrying the previous conversation; see `isThreadDraft`).
  */
 export async function routeDraftAgent<Config extends DraftRouteConfig & { cwd: string }>(input: {
   serverId: string;
   prompt: string;
   images: readonly unknown[] | undefined;
   autoSubmitted: boolean;
+  /** The create request's attachments, to spot a thread's chat history. */
+  attachments: unknown;
   config: Config;
 }): Promise<{ config: Config; createOptions: { labels?: Record<string, string> } }> {
   const routed = await route(input);
@@ -33,11 +36,14 @@ async function route<Config extends DraftRouteConfig & { cwd: string }>(input: {
   prompt: string;
   images: readonly unknown[] | undefined;
   autoSubmitted: boolean;
+  attachments: unknown;
   config: Config;
 }): Promise<{ config: Config; labels: Record<string, string> }> {
   // An empty first message (a session started for voice or for a `!` command) has nothing to judge.
   if (input.autoSubmitted || input.config.provider !== "claude" || !input.prompt.trim())
     return { config: input.config, labels: {} };
+  // A thread keeps its model: switching it would invalidate the prompt cache the thread warmed.
+  if (isThreadDraft(input.attachments)) return { config: input.config, labels: {} };
   // The route icon's press skips this one creation; the next new agent routes again.
   if (useJevSkipNextStore.getState().consume(input.serverId))
     return { config: input.config, labels: {} };
