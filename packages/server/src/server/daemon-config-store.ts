@@ -203,6 +203,8 @@ const RELOADABLE_PATHS = [
   // CUSTOM(voice-settings): the speech engine reloads live. features.dictation and
   // features.voiceMode reload through the speech settings owner (SPEECH_PERSISTED_PATHS).
   "providers.local",
+  // CUSTOM(claude-stt)
+  "providers.claude",
 ] as const;
 
 const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
@@ -230,6 +232,8 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["pluginsEnabled", "pluginsEnabled"],
   // CUSTOM(voice-settings)
   ["providers.local", "speech"],
+  // CUSTOM(claude-stt)
+  ["providers.claude", "speech"],
 ]);
 
 function pathBelongsTo(path: string, owner: string): boolean {
@@ -799,31 +803,22 @@ function mergeMutableSpeechPatch(
   const features = { ...persisted.features };
   const dictation = { ...features.dictation };
   const voiceMode = { ...features.voiceMode };
-  // Each site is a strict per-provider variant: switching to local drops the OpenAI fields,
-  // like the Voice page does when the provider changes.
-  if (speech.dictationSttModel !== undefined) {
-    const current = dictation.stt?.provider === "local" ? dictation.stt : undefined;
-    dictation.stt = { ...current, provider: "local", model: speech.dictationSttModel };
-  }
-  if (speech.voiceSttModel !== undefined) {
-    const current = voiceMode.stt?.provider === "local" ? voiceMode.stt : undefined;
-    voiceMode.stt = { ...current, provider: "local", model: speech.voiceSttModel };
-  }
-  // Speaker and speed belong to the local voice; with OpenAI speaking they wait for a local model.
-  const localTts = voiceMode.tts?.provider === "openai" ? undefined : voiceMode.tts;
-  if (
-    speech.voiceTtsModel !== undefined ||
-    (voiceMode.tts?.provider !== "openai" &&
-      (speech.voiceTtsSpeakerId !== undefined || speech.voiceTtsSpeed !== undefined))
-  ) {
-    voiceMode.tts = {
-      ...localTts,
-      provider: "local",
-      ...(speech.voiceTtsModel !== undefined ? { model: speech.voiceTtsModel } : {}),
-      ...(speech.voiceTtsSpeakerId !== undefined ? { speakerId: speech.voiceTtsSpeakerId } : {}),
-      ...(speech.voiceTtsSpeed !== undefined ? { speed: speech.voiceTtsSpeed } : {}),
-    };
-  }
+  // CUSTOM(claude-stt): each site is a strict per-provider variant. A model edit keeps the
+  // provider in place (local unless Claude was picked, where the model is only remembered for
+  // switching back); a provider switch keeps `model` and `language` and drops the OpenAI-only
+  // fields.
+  const dictationStt = mergeSttSite(dictation.stt, {
+    model: speech.dictationSttModel,
+    provider: speech.dictationSttProvider,
+  });
+  if (dictationStt) dictation.stt = dictationStt;
+  const voiceStt = mergeSttSite(voiceMode.stt, {
+    model: speech.voiceSttModel,
+    provider: speech.voiceSttProvider,
+  });
+  if (voiceStt) voiceMode.stt = voiceStt;
+  const tts = mergeVoiceTtsPatch(voiceMode.tts, speech);
+  if (tts) voiceMode.tts = tts;
   if (speech.voiceInstructions !== undefined) {
     const instructions = speech.voiceInstructions.trim();
     if (instructions) voiceMode.instructions = instructions;
@@ -855,7 +850,82 @@ function mergeMutableSpeechPatch(
         : {}),
     };
   }
+  // CUSTOM(claude-stt)
+  const claude = mergeClaudeProviderPatch(providers.claude, speech);
+  if (claude) providers.claude = claude;
+  else delete providers.claude;
   return { features, providers };
+}
+
+type PersistedTtsSite = NonNullable<
+  NonNullable<NonNullable<PersistedConfig["features"]>["voiceMode"]>["tts"]
+>;
+
+// Speaker and speed belong to the local voice; with OpenAI speaking they wait for a local model.
+function mergeVoiceTtsPatch(
+  current: PersistedTtsSite | undefined,
+  speech: NonNullable<SupportedMutableConfigPatch["speech"]>,
+): PersistedTtsSite | undefined {
+  const localTts = current?.provider === "openai" ? undefined : current;
+  if (
+    speech.voiceTtsModel === undefined &&
+    (current?.provider === "openai" ||
+      (speech.voiceTtsSpeakerId === undefined && speech.voiceTtsSpeed === undefined))
+  ) {
+    return undefined;
+  }
+  return {
+    ...localTts,
+    provider: "local",
+    ...(speech.voiceTtsModel !== undefined ? { model: speech.voiceTtsModel } : {}),
+    ...(speech.voiceTtsSpeakerId !== undefined ? { speakerId: speech.voiceTtsSpeakerId } : {}),
+    ...(speech.voiceTtsSpeed !== undefined ? { speed: speech.voiceTtsSpeed } : {}),
+  } as PersistedTtsSite;
+}
+
+// CUSTOM(claude-stt): empty language and config folder go back to the defaults.
+function mergeClaudeProviderPatch(
+  current: NonNullable<PersistedConfig["providers"]>["claude"],
+  speech: NonNullable<SupportedMutableConfigPatch["speech"]>,
+) {
+  const claude = { ...current };
+  if (speech.claudeSttLanguage !== undefined) {
+    const language = speech.claudeSttLanguage.trim();
+    if (language) claude.language = language;
+    else delete claude.language;
+  }
+  if (speech.claudeSttKeyterms !== undefined) claude.keyterms = speech.claudeSttKeyterms;
+  if (speech.claudeSttConfigDir !== undefined) {
+    const configDir = speech.claudeSttConfigDir.trim();
+    if (configDir) claude.configDir = configDir;
+    else delete claude.configDir;
+  }
+  return Object.keys(claude).length > 0 ? claude : undefined;
+}
+
+type PersistedSttSite = NonNullable<
+  NonNullable<NonNullable<PersistedConfig["features"]>["dictation"]>["stt"]
+>;
+
+// CUSTOM(claude-stt)
+function mergeSttSite(
+  current: PersistedSttSite | undefined,
+  edit: { model: string | undefined; provider: string | undefined },
+): PersistedSttSite | undefined {
+  if (edit.model === undefined && edit.provider === undefined) return undefined;
+  if (edit.provider !== undefined && edit.provider !== "local" && edit.provider !== "claude") {
+    throw new Error(`Unsupported speech-to-text provider: ${edit.provider}`);
+  }
+  // An OpenAI site's model id means nothing to the other providers, so it is not carried over.
+  const kept = current?.provider === "openai" ? undefined : current;
+  const provider = edit.provider ?? kept?.provider ?? "local";
+  const model = edit.model ?? kept?.model;
+  const language = current?.language;
+  return {
+    provider,
+    ...(model !== undefined ? { model } : {}),
+    ...(language !== undefined ? { language } : {}),
+  } as PersistedSttSite;
 }
 
 // CUSTOM(dictation-tuning): an empty prompt goes back to the built-in one.

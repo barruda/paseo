@@ -76,9 +76,19 @@ const LocalSpeechProviderSchema = z
   })
   .strict();
 
+// CUSTOM(claude-stt): see speech/providers/claude/config.ts.
+const ClaudeSpeechProviderSchema = z
+  .object({
+    configDir: z.string().min(1).optional(),
+    language: z.string().trim().min(1).optional(),
+    keyterms: z.array(z.string()).optional(),
+  })
+  .strict();
+
 const ProvidersSchema = z
   .object({
     local: LocalSpeechProviderSchema.optional(),
+    claude: ClaudeSpeechProviderSchema.optional(),
   })
   .strict();
 
@@ -103,7 +113,7 @@ const SpeechProviderIdSchema = z
   .string()
   .trim()
   .toLowerCase()
-  .pipe(z.enum(["openai", "local"]));
+  .pipe(z.enum(["openai", "local", "claude"]));
 
 const SpeechModelSchema = z.string().min(1).optional();
 const OpenAiConnectionFields = {
@@ -126,6 +136,14 @@ export const SpeechSttConfigSchema = z.discriminatedUnion("provider", [
       model: SpeechModelSchema,
       language: z.string().trim().min(1).optional(),
       confidenceThreshold: z.number().optional(),
+    })
+    .strict(),
+  // CUSTOM(claude-stt): `model` keeps the local model picked before, for switching back.
+  z
+    .object({
+      provider: z.literal("claude"),
+      model: SpeechModelSchema,
+      language: z.string().trim().min(1).optional(),
     })
     .strict(),
 ]);

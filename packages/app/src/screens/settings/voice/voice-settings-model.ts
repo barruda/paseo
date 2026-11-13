@@ -112,7 +112,12 @@ export type SettingField =
   | "voiceTtsModel"
   | "voiceTtsSpeakerId"
   | "voiceTtsSpeed"
-  | "modelsDir";
+  | "modelsDir"
+  // CUSTOM(claude-stt)
+  | "dictationSttProvider"
+  | "voiceSttProvider"
+  | "claudeSttLanguage"
+  | "claudeSttConfigDir";
 
 export function isEnvControlled(status: SpeechLocalStatus | null, field: SettingField): boolean {
   return status?.envControlled.includes(field) ?? false;

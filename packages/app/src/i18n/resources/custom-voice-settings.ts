@@ -58,6 +58,57 @@ const DICTATION_TUNING_PT_BR: Strings<typeof DICTATION_TUNING_EN> = {
   },
 };
 
+// CUSTOM(claude-stt): Settings > Voice and dictation > Speech-to-text provider. Only English and
+// Brazilian Portuguese are translated; the other locales show the English text.
+const CLAUDE_STT_EN = {
+  title: "Speech-to-text provider",
+  info: "Local STT runs a model on this host. Claude uses the speech service behind Claude Code's /voice and signs in with the Claude.ai login of a Claude Code folder on this host.",
+  dictation: "Dictation",
+  voiceListening: "Voice mode listening",
+  provider: {
+    local: "Local STT",
+    claude: "Claude",
+    openai: "OpenAI",
+  },
+  dictationModelHint:
+    "Claude transcribes dictation. This model is used again if you switch back to Local STT.",
+  voiceModelHint:
+    "Claude transcribes voice mode listening. This model is used again if you switch back to Local STT.",
+  account: "Claude account",
+  signedIn: "Signed in · {{path}}",
+  signedInPlan: "Signed in ({{plan}}) · {{path}}",
+  language: "Claude language",
+  keyterms: "Key terms",
+  keytermsHint: "Names and jargon the recognizer should get right, like project names.",
+  configDir: "Claude config folder",
+  configDirHint: "Folder with the Claude Code login. Empty uses CLAUDE_CONFIG_DIR, then ~/.claude.",
+};
+
+const CLAUDE_STT_PT_BR: Strings<typeof CLAUDE_STT_EN> = {
+  title: "Provedor de voz para texto",
+  info: "O STT local roda um modelo neste host. O Claude usa o serviço de voz por trás do /voice do Claude Code e entra com o login Claude.ai de uma pasta do Claude Code neste host.",
+  dictation: "Ditado",
+  voiceListening: "Modo de voz: ouvir",
+  provider: {
+    local: "STT local",
+    claude: "Claude",
+    openai: "OpenAI",
+  },
+  dictationModelHint:
+    "O Claude transcreve o ditado. Este modelo volta a ser usado se você voltar para o STT local.",
+  voiceModelHint:
+    "O Claude transcreve a escuta do modo de voz. Este modelo volta a ser usado se você voltar para o STT local.",
+  account: "Conta do Claude",
+  signedIn: "Conectado · {{path}}",
+  signedInPlan: "Conectado ({{plan}}) · {{path}}",
+  language: "Idioma do Claude",
+  keyterms: "Termos-chave",
+  keytermsHint: "Nomes e jargões que o reconhecedor deve acertar, como nomes de projetos.",
+  configDir: "Pasta de configuração do Claude",
+  configDirHint:
+    "Pasta com o login do Claude Code. Vazio usa CLAUDE_CONFIG_DIR e, depois, ~/.claude.",
+};
+
 export const VOICE_SETTINGS_EN = {
   dictationListening: "Listening…",
   dictationInterrupted: "Transcription interrupted: {{error}}. Your audio is kept.",
@@ -146,6 +197,7 @@ export const VOICE_SETTINGS_EN = {
     unknown: "Other",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "Voice mode instructions",
     custom: "Custom instructions",
@@ -295,6 +347,7 @@ export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
     unknown: "Outro",
   },
   dictationTuning: DICTATION_TUNING_PT_BR,
+  claudeStt: CLAUDE_STT_PT_BR,
   instructions: {
     title: "Instruções do modo de voz",
     custom: "Instruções personalizadas",
@@ -442,6 +495,7 @@ export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
     unknown: "Otro",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "Instrucciones del modo de voz",
     custom: "Instrucciones personalizadas",
@@ -590,6 +644,7 @@ export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
     unknown: "Autre",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "Instructions du mode vocal",
     custom: "Instructions personnalisées",
@@ -737,6 +792,7 @@ export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
     unknown: "その他",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "音声モードの指示",
     custom: "カスタムの指示",
@@ -884,6 +940,7 @@ export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
     unknown: "기타",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "음성 모드 지침",
     custom: "사용자 지정 지침",
@@ -1031,6 +1088,7 @@ export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
     unknown: "Другой",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "Инструкции голосового режима",
     custom: "Свои инструкции",
@@ -1178,6 +1236,7 @@ export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
     unknown: "其他",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "语音模式指令",
     custom: "自定义指令",
@@ -1325,6 +1384,7 @@ export const VOICE_SETTINGS_AR: VoiceSettingsStrings = {
     unknown: "أخرى",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "تعليمات الوضع الصوتي",
     custom: "تعليمات مخصصة",

@@ -49,6 +49,8 @@ import { useHoldToTalkStore } from "@/voice/hold-to-talk-settings";
 import { useVoiceMicrophoneStore } from "@/voice/microphone-settings";
 import { useLocalSpeechStatus } from "./use-local-speech-status";
 import { DictationTuningSection } from "./dictation-tuning-section";
+import { SttProviderSection } from "./claude-stt-section";
+import { usesClaude } from "./claude-stt-model";
 import {
   deriveEngineState,
   describeSpeaker,
@@ -79,6 +81,11 @@ const ENV_NAME_BY_FIELD: Record<SettingField, string> = {
   voiceTtsSpeakerId: "PASEO_VOICE_LOCAL_TTS_SPEAKER_ID",
   voiceTtsSpeed: "PASEO_VOICE_LOCAL_TTS_SPEED",
   modelsDir: "PASEO_LOCAL_MODELS_DIR",
+  // CUSTOM(claude-stt)
+  dictationSttProvider: "PASEO_DICTATION_STT_PROVIDER",
+  voiceSttProvider: "PASEO_VOICE_STT_PROVIDER",
+  claudeSttLanguage: "PASEO_CLAUDE_STT_LANGUAGE",
+  claudeSttConfigDir: "PASEO_CLAUDE_STT_CONFIG_DIR",
 };
 
 const EMPTY_CUSTOM_MODELS: SpeechCustomModel[] = [];
@@ -169,6 +176,7 @@ export function VoiceSettingsPage({ serverId }: { serverId: string }) {
       ) : null}
       <StatusSection status={status} />
       <EngineSection status={status} speech={speech} save={saveSpeech} />
+      <SttProviderSection status={status} speech={speech} save={saveSpeech} />
       <ModelsSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
       <DictationTuningSection status={status} speech={speech} save={saveSpeech} />
       <VoiceSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
@@ -424,6 +432,9 @@ function ModelsSection({
   const sttOptions = useModelOptions(status, "stt");
   const ttsOptions = useModelOptions(status, "tts");
   const customModels = speech.customModels ?? EMPTY_CUSTOM_MODELS;
+  // CUSTOM(claude-stt)
+  const dictationClaude = usesClaude(speech.dictationSttProvider);
+  const voiceClaude = usesClaude(speech.voiceSttProvider);
   const selectedIds = useMemo(
     () => [speech.dictationSttModel, speech.voiceSttModel, speech.voiceTtsModel],
     [speech.dictationSttModel, speech.voiceSttModel, speech.voiceTtsModel],
@@ -460,20 +471,28 @@ function ModelsSection({
       <SettingsCard testID="voice-settings-models">
         <SettingsSelect
           label={t("settings.voiceSettings.models.dictation")}
-          hint={envHint(status, "dictationSttModel", t)}
+          hint={
+            dictationClaude
+              ? t("settings.voiceSettings.claudeStt.dictationModelHint")
+              : envHint(status, "dictationSttModel", t)
+          }
           value={speech.dictationSttModel ?? ""}
           options={sttOptions}
           onValueChange={selectDictation}
-          disabled={isEnvControlled(status, "dictationSttModel")}
+          disabled={dictationClaude || isEnvControlled(status, "dictationSttModel")}
           testID="voice-settings-dictation-model"
         />
         <SettingsSelect
           label={t("settings.voiceSettings.models.voiceRecognition")}
-          hint={envHint(status, "voiceSttModel", t)}
+          hint={
+            voiceClaude
+              ? t("settings.voiceSettings.claudeStt.voiceModelHint")
+              : envHint(status, "voiceSttModel", t)
+          }
           value={speech.voiceSttModel ?? ""}
           options={sttOptions}
           onValueChange={selectVoiceStt}
-          disabled={isEnvControlled(status, "voiceSttModel")}
+          disabled={voiceClaude || isEnvControlled(status, "voiceSttModel")}
           testID="voice-settings-voice-stt-model"
         />
         <SettingsSelect

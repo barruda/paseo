@@ -20,6 +20,7 @@ import {
   initializeOpenAiSpeechServices,
   validateOpenAiCredentialRequirements,
 } from "./providers/openai/runtime.js";
+import { initializeClaudeSpeechServices } from "./providers/claude/runtime.js";
 import type { SpeechToTextProvider, TextToSpeechProvider } from "./speech-provider.js";
 import type { RequestedSpeechProviders } from "./speech-types.js";
 import type { TurnDetectionProvider } from "./turn-detection-provider.js";
@@ -534,11 +535,19 @@ export function createSpeechService(
       logger,
     });
 
+    // CUSTOM(claude-stt)
+    const nextSpeech = initializeClaudeSpeechServices({
+      providers,
+      claudeConfig: speechConfig?.claude,
+      existing: nextOpenAiSpeech,
+      logger,
+    });
+
     const previousLocalCleanup = localCleanup;
-    turnDetectionService = nextOpenAiSpeech.turnDetectionService;
-    sttService = nextOpenAiSpeech.sttService;
-    ttsService = nextOpenAiSpeech.ttsService;
-    dictationSttService = nextOpenAiSpeech.dictationSttService;
+    turnDetectionService = nextSpeech.turnDetectionService;
+    sttService = nextSpeech.sttService;
+    ttsService = nextSpeech.ttsService;
+    dictationSttService = nextSpeech.dictationSttService;
     localModelConfig = nextLocalSpeech.localModelConfig;
     localVoiceTtsProvider = nextLocalSpeech.localVoiceTtsProvider;
     localCleanup = nextLocalSpeech.cleanup;

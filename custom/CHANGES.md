@@ -5190,3 +5190,54 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Verify:** `cd packages/server && npx vitest run src/server/session/voice/ --bail=1` and
   `cd packages/app && npx vitest run src/voice/voice-runtime.test.ts --bail=1`. Restart the
   daemon, then in voice mode hold Enter, talk with pauses, release: one utterance is sent.
+
+## claude-stt: Claude as the speech-to-text provider for dictation and voice mode
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: Claude speech-to-text provider (Claude Code's /voice service)`
+- **Why:** Claude Code's `/voice` transcribes through Anthropic with the Claude.ai login, streams
+  partial text, and ends utterances on the server. The local Parakeet model re-transcribes the
+  whole open segment every 350 ms and costs GPU/CPU; Claude costs nothing extra on a
+  subscription.
+- **What:** A third STT provider, `claude`, next to `local` (labeled "Local STT") and `openai`.
+  Settings > Voice and dictation gets a "Speech-to-text provider" section: a provider per
+  feature (Dictation, Voice mode listening), the Claude login state, the language (default `en`),
+  key terms, and the Claude Code config folder. A feature on Claude locks its local model picker,
+  which keeps the remembered model for switching back.
+  - Protocol, read from claude-cli 2.1.322 (`/api/ws/speech_to_text/voice_stream`):
+    `speech/providers/claude/stt.ts` has it in its header comment. It is undocumented; a Claude
+    Code update can change it. To re-read it, search the binary
+    (`~/.local/share/claude/versions/<v>`) for `[voice_stream] Connecting to`.
+  - One Paseo segment (between `commit()`s) is one WebSocket; the server splits it into
+    utterances, so the segment's text is its ended utterances plus the open one. `commit()`
+    sends CloseStream and the final text comes on the next endpoint or close (1.5 s with no data,
+    5 s at most). The next audio opens a new socket, buffering while it connects.
+  - Login: `<config dir>/.credentials.json` (`claudeAiOauth`); config dir is the setting, then
+    `CLAUDE_CONFIG_DIR` of the daemon (`~/.claude-personal` on the personal daemon), then
+    `~/.claude`. Claude Code keeps the token fresh while it runs; when it expired, the provider
+    refreshes it with Claude Code's OAuth client and writes the file back atomically, keeping the
+    other keys, and takes another process's token if that one won the race.
+  - Persisted as `features.{dictation,voiceMode}.stt.provider: "claude"` (its `model` is the
+    remembered local model) and `providers.claude.{configDir,language,keyterms}`. Env overrides:
+    `PASEO_DICTATION_STT_PROVIDER`, `PASEO_VOICE_STT_PROVIDER`, `PASEO_CLAUDE_STT_LANGUAGE`,
+    `PASEO_CLAUDE_STT_CONFIG_DIR`. Turn detection and TTS stay local.
+- **Core files touched:** protocol `speech-settings.ts` (five optional fields on the mutable speech
+  config, optional `claudeStt` status). Server: `persisted-config.ts` (`providers.claude`, the
+  `claude` STT site), `speech/speech-types.ts` (enum), `speech/speech-config-resolver.ts`,
+  `speech/speech-runtime.ts` (chains `initializeClaudeSpeechServices` after OpenAI),
+  `bootstrap.ts` (`PaseoSpeechConfig.claude`, `buildMutableSttProviderConfig`; the mutable config
+  builders take the persisted config), `daemon-config-store.ts` (`mergeSttSite`,
+  `mergeClaudeProviderPatch`, `mergeVoiceTtsPatch`, `providers.claude` reloadable),
+  `speech/speech-settings-service.ts` (env names, `claudeStt` status); new
+  `speech/providers/claude/{config,credentials,stt,runtime}.ts`. App:
+  `voice-settings-page.tsx`, `voice-settings-model.ts`, `dictation-tuning-model.ts`,
+  `i18n/resources/custom-voice-settings.ts`; new `claude-stt-section.tsx`, `claude-stt-model.ts`.
+- **Re-apply:** Add `claude` to both STT provider enums and the persisted STT union, then chain
+  `initializeClaudeSpeechServices` after the OpenAI services in `reconcileServices`. In the config
+  store, a model edit keeps the site's provider and a provider edit keeps its model. Render
+  `<SttProviderSection>` before `ModelsSection`.
+- **Verify:** `cd packages/server && npx vitest run src/server/speech/providers/claude src/server/daemon-config-store.test.ts --bail=1`
+  and `cd packages/app && npx vitest run src/screens/settings/voice/claude-stt-model.test.ts --bail=1`
+  (both in the update script). Needs a daemon restart. In Settings > Voice and dictation, the
+  provider section shows "Signed in (max)"; pick Claude for Dictation, set Português, dictate:
+  the words appear as you speak and the local model picker is locked.

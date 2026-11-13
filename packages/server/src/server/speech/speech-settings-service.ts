@@ -27,6 +27,10 @@ import {
   DICTATION_TUNING_ENV,
   dictationTuningSupport,
 } from "./dictation-tuning.js";
+import {
+  getClaudeCredentialStatus,
+  resolveClaudeConfigDir,
+} from "./providers/claude/credentials.js";
 import { checkCudaAvailability, resolveCudaLibDir } from "./providers/local/local-speech-gpu.js";
 import {
   countKokoroVoices,
@@ -61,6 +65,11 @@ const ENV_CONTROLLED_SETTINGS: ReadonlyArray<[string, string]> = [
   ["PASEO_VOICE_LOCAL_TTS_SPEAKER_ID", "voiceTtsSpeakerId"],
   ["PASEO_VOICE_LOCAL_TTS_SPEED", "voiceTtsSpeed"],
   ["PASEO_LOCAL_MODELS_DIR", "modelsDir"],
+  // CUSTOM(claude-stt)
+  ["PASEO_DICTATION_STT_PROVIDER", "dictationSttProvider"],
+  ["PASEO_VOICE_STT_PROVIDER", "voiceSttProvider"],
+  ["PASEO_CLAUDE_STT_LANGUAGE", "claudeSttLanguage"],
+  ["PASEO_CLAUDE_STT_CONFIG_DIR", "claudeSttConfigDir"],
 ];
 
 const SIZE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -442,10 +451,14 @@ export function createSpeechSettingsService(params: {
   };
 
   const getStatus: SpeechSettingsService["getStatus"] = async ({ includeLogs }) => {
-    const [runtime, gpu, models] = await Promise.all([
+    const [runtime, gpu, models, claudeStt] = await Promise.all([
       speech.getLocalStatus(),
       probeGpu(),
       listModels(),
+      // CUSTOM(claude-stt)
+      getClaudeCredentialStatus(
+        resolveClaudeConfigDir(speech.resolveSpeechConfig()?.claude?.configDir, env),
+      ),
     ]);
     return {
       engine: engineStatus(runtime),
@@ -458,6 +471,7 @@ export function createSpeechSettingsService(params: {
       ),
       defaultVoiceInstructions: VOICE_AGENT_SYSTEM_INSTRUCTION,
       dictationTuning: dictationTuningStatus(),
+      claudeStt: { ...claudeStt },
       logs: includeLogs ? readSpeechLogs(paseoHome) : [],
     };
   };

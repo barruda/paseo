@@ -57,6 +57,7 @@ export function dictationTuningRowState(
 /** The dictation model's name as the Models section shows it. */
 export function dictationModelLabel(status: SpeechLocalStatus, tuning: DictationTuningStatus) {
   if (tuning.provider === "openai") return "OpenAI";
+  if (tuning.provider === "claude") return "Claude"; // CUSTOM(claude-stt)
   const model = tuning.model ? status.models.find((entry) => entry.id === tuning.model) : undefined;
   return model?.label ?? tuning.model ?? tuning.provider;
 }

@@ -142,6 +142,7 @@ import type { RequestedSpeechProviders } from "./speech/speech-types.js";
 import { createSpeechService, type SpeechService } from "./speech/speech-runtime.js";
 import { createSpeechSettingsOwner } from "./speech/speech-settings.js";
 import { DEFAULT_DICTATION_TUNING, type DictationTuning } from "./speech/dictation-tuning.js";
+import type { ClaudeSpeechConfig } from "./speech/providers/claude/config.js";
 import { AgentManager } from "./agent/agent-manager.js";
 import { AgentStorage } from "./agent/agent-storage.js";
 import { attachAgentStoragePersistence } from "./persistence-hooks.js";
@@ -401,6 +402,8 @@ export interface PaseoSpeechConfig {
   voiceInstructions?: string;
   // CUSTOM(dictation-tuning): absent only in configs built by hand (tests).
   dictationTuning?: DictationTuning;
+  // CUSTOM(claude-stt): absent only in configs built by hand (tests).
+  claude?: ClaudeSpeechConfig;
 }
 
 export type DaemonLifecycleIntent =
@@ -568,17 +571,56 @@ function resolveExpressTrustProxySetting(config: PaseoDaemonConfig): true | stri
   return config.trustedProxies ?? ["loopback"];
 }
 
+// CUSTOM(claude-stt): the provider each feature uses, the Claude settings, and the speech
+// recognition models. With Claude picked, the model shown is the local one remembered in the
+// persisted site for switching back.
+function buildMutableSttProviderConfig(
+  speech: PaseoSpeechConfig | undefined,
+  persisted: PersistedConfig | undefined,
+): NonNullable<MutableDaemonConfig["speech"]> {
+  if (!speech) return {};
+  const shownModel = (
+    provider: string,
+    site: { model?: string } | undefined,
+    current: string | undefined,
+  ): string | undefined => (provider === "local" ? current : (site?.model ?? current));
+  const dictationProvider = speech.providers.dictationStt.provider;
+  const voiceProvider = speech.providers.voiceStt.provider;
+  const dictationSttModel = shownModel(
+    dictationProvider,
+    persisted?.features?.dictation?.stt,
+    speech.local?.models.dictationStt,
+  );
+  const voiceSttModel = shownModel(
+    voiceProvider,
+    persisted?.features?.voiceMode?.stt,
+    speech.local?.models.voiceStt,
+  );
+  return {
+    dictationSttProvider: dictationProvider,
+    voiceSttProvider: voiceProvider,
+    ...(dictationSttModel !== undefined ? { dictationSttModel } : {}),
+    ...(voiceSttModel !== undefined ? { voiceSttModel } : {}),
+    ...(speech.claude
+      ? {
+          claudeSttLanguage: speech.claude.language,
+          claudeSttKeyterms: speech.claude.keyterms,
+          claudeSttConfigDir: speech.claude.configDir ?? "",
+        }
+      : {}),
+  };
+}
+
 // CUSTOM(voice-settings): the effective speech settings, as Settings shows them.
 function buildMutableSpeechConfig(
   speech: PaseoSpeechConfig | undefined,
+  persisted: PersistedConfig | undefined,
 ): NonNullable<MutableDaemonConfig["speech"]> {
   const local = speech?.local;
   return {
     ...(local
       ? {
           executionProvider: local.executionProvider,
-          dictationSttModel: local.models.dictationStt,
-          voiceSttModel: local.models.voiceStt,
           voiceTtsModel: local.models.voiceTts,
           ...(local.models.voiceTtsSpeakerId !== undefined
             ? { voiceTtsSpeakerId: local.models.voiceTtsSpeakerId }
@@ -596,6 +638,7 @@ function buildMutableSpeechConfig(
           ),
         }
       : {}),
+    ...buildMutableSttProviderConfig(speech, persisted),
     voiceInstructions: speech?.voiceInstructions ?? "",
     // CUSTOM(dictation-tuning): the effective values; the built-in prompt shows as empty.
     ...(speech?.dictationTuning
@@ -628,6 +671,7 @@ function resolveReloadEnv(config: PaseoDaemonConfig): NodeJS.ProcessEnv {
 function createInitialMutableDaemonConfig(
   config: ResolvedDaemonSettings,
   speech: PaseoSpeechConfig | undefined,
+  persisted?: PersistedConfig,
 ): MutableDaemonConfig {
   const providers = config.providerOverrides ?? {};
 
@@ -658,7 +702,7 @@ function createInitialMutableDaemonConfig(
     plugins: config.plugins ?? {},
     skills: { selection: config.skillSelection },
     // CUSTOM(voice-settings)
-    speech: buildMutableSpeechConfig(speech),
+    speech: buildMutableSpeechConfig(speech, persisted),
   };
 
   if (config.terminalProfiles !== undefined) {
@@ -689,7 +733,11 @@ export async function createPaseoDaemon(
   const bootstrapStart = performance.now();
   const elapsed = () => `${(performance.now() - bootstrapStart).toFixed(0)}ms`;
   const daemonVersion = config.daemonVersion ?? resolveDaemonVersion(import.meta.url);
-  const initialMutableConfig = createInitialMutableDaemonConfig(config, config.speech);
+  const initialMutableConfig = createInitialMutableDaemonConfig(
+    config,
+    config.speech,
+    config.configReload?.startupPersisted,
+  );
   const speechService = createSpeechService({
     logger,
     openaiConfig: config.openai,
@@ -736,6 +784,7 @@ export async function createPaseoDaemon(
               env: resolveReloadEnv(config),
               persisted,
             }).speech,
+            persisted,
           ),
           overrideControlledPaths: reloaded.overrideControlledPaths,
         };

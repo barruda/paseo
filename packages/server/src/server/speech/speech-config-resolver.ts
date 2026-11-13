@@ -3,6 +3,7 @@ import { z } from "zod";
 import type { PersistedConfig } from "../persisted-config.js";
 import type { PaseoOpenAIConfig, PaseoSpeechConfig } from "../bootstrap.js";
 import { resolveDictationTuning } from "./dictation-tuning.js";
+import { resolveClaudeSpeechConfig } from "./providers/claude/config.js";
 import { resolveLocalSpeechConfig } from "./providers/local/config.js";
 import { resolveOpenAiSpeechConfig } from "./providers/openai/config.js";
 import {
@@ -189,6 +190,8 @@ export function resolveSpeechConfig(params: {
         env: params.env,
         saved: params.persisted.features?.dictation?.tuning,
       }),
+      // CUSTOM(claude-stt)
+      claude: resolveClaudeSpeechConfig({ env: params.env, persisted: params.persisted }),
       // CUSTOM(voice-settings)
       ...(params.persisted.features?.voiceMode?.instructions?.trim()
         ? { voiceInstructions: params.persisted.features.voiceMode.instructions.trim() }

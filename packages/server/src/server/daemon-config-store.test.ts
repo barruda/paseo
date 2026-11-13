@@ -222,6 +222,110 @@ describe("DaemonConfigStore", () => {
     });
   });
 
+  // CUSTOM(claude-stt)
+  test("switching the STT provider keeps the model and a model edit keeps the provider", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+      speech: { voiceInstructions: "" },
+    });
+
+    await store.patch({ speech: { dictationSttModel: "model-a" } });
+    expect(loadPersistedConfig(paseoHome).features?.dictation?.stt).toEqual({
+      provider: "local",
+      model: "model-a",
+    });
+
+    await store.patch({ speech: { dictationSttProvider: "claude", voiceSttProvider: "claude" } });
+    expect(loadPersistedConfig(paseoHome).features?.dictation?.stt).toEqual({
+      provider: "claude",
+      model: "model-a",
+    });
+    expect(loadPersistedConfig(paseoHome).features?.voiceMode?.stt).toEqual({
+      provider: "claude",
+    });
+
+    await store.patch({ speech: { dictationSttModel: "model-b" } });
+    expect(loadPersistedConfig(paseoHome).features?.dictation?.stt).toEqual({
+      provider: "claude",
+      model: "model-b",
+    });
+
+    await store.patch({ speech: { dictationSttProvider: "local" } });
+    expect(loadPersistedConfig(paseoHome).features?.dictation?.stt).toEqual({
+      provider: "local",
+      model: "model-b",
+    });
+  });
+
+  // CUSTOM(claude-stt)
+  test("an unknown STT provider is rejected without persisting", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+      speech: { voiceInstructions: "" },
+    });
+
+    await expect(store.patch({ speech: { dictationSttProvider: "openai" } })).rejects.toThrow(
+      /Unsupported/,
+    );
+    expect(loadPersistedConfig(paseoHome).features?.dictation?.stt).toBeUndefined();
+  });
+
+  // CUSTOM(claude-stt)
+  test("Claude settings land in providers.claude and empty values remove them", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+      speech: { voiceInstructions: "" },
+    });
+    const changes: unknown[] = [];
+    store.onFieldChange("speech", (value) => changes.push(value));
+
+    await store.patch({
+      speech: {
+        claudeSttLanguage: "pt",
+        claudeSttKeyterms: ["Paseo", "Unity"],
+        claudeSttConfigDir: "/home/me/.claude-personal",
+      },
+    });
+    expect(loadPersistedConfig(paseoHome).providers?.claude).toEqual({
+      language: "pt",
+      keyterms: ["Paseo", "Unity"],
+      configDir: "/home/me/.claude-personal",
+    });
+    expect(changes).toHaveLength(1);
+
+    await store.patch({ speech: { claudeSttConfigDir: "", claudeSttLanguage: "" } });
+    expect(loadPersistedConfig(paseoHome).providers?.claude).toEqual({
+      keyterms: ["Paseo", "Unity"],
+    });
+  });
+
   test("a speech engine that rejects the new settings rolls config.json back", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

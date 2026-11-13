@@ -36,6 +36,15 @@ export const MutableSpeechConfigSchema = z
     dictationDecodeIntervalMs: z.number().int().min(0).optional(),
     // Empty means the built-in prompt.
     dictationPrompt: z.string().optional(),
+    // CUSTOM(claude-stt): which speech-to-text provider each feature uses. Plain strings so a
+    // provider added later doesn't break older clients; known values are "local", "claude"
+    // and (hand-edited config) "openai".
+    dictationSttProvider: z.string().optional(),
+    voiceSttProvider: z.string().optional(),
+    claudeSttLanguage: z.string().optional(),
+    claudeSttKeyterms: z.array(z.string()).optional(),
+    // Empty means the default Claude Code config folder.
+    claudeSttConfigDir: z.string().optional(),
   })
   .passthrough();
 
@@ -63,6 +72,18 @@ export const DictationTuningStatusSchema = z
         prompt: z.string(),
       })
       .passthrough(),
+  })
+  .passthrough();
+
+// CUSTOM(claude-stt)
+export const ClaudeSttStatusSchema = z
+  .object({
+    configDir: z.string(),
+    credentialsPath: z.string(),
+    signedIn: z.boolean(),
+    subscriptionType: z.string().nullable(),
+    expiresAt: z.string().nullable(),
+    error: z.string().nullable(),
   })
   .passthrough();
 
@@ -138,6 +159,8 @@ export const SpeechLocalStatusSchema = z
     defaultVoiceInstructions: z.string(),
     // CUSTOM(dictation-tuning): absent on daemons without the dictation tuning settings.
     dictationTuning: DictationTuningStatusSchema.optional(),
+    // CUSTOM(claude-stt): the Claude login the Claude provider would use.
+    claudeStt: ClaudeSttStatusSchema.optional(),
     logs: z.array(
       z
         .object({
@@ -211,6 +234,7 @@ export type MutableSpeechConfig = z.infer<typeof MutableSpeechConfigSchema>;
 export type SpeechCustomModel = z.infer<typeof SpeechCustomModelSchema>;
 export type SpeechModelInfo = z.infer<typeof SpeechModelInfoSchema>;
 export type DictationTuningStatus = z.infer<typeof DictationTuningStatusSchema>;
+export type ClaudeSttStatus = z.infer<typeof ClaudeSttStatusSchema>;
 export type SpeechLocalStatus = z.infer<typeof SpeechLocalStatusSchema>;
 export type SpeechLocalGetStatusResponse = z.infer<typeof SpeechLocalGetStatusResponseSchema>;
 export type SpeechLocalPreviewVoiceResponse = z.infer<typeof SpeechLocalPreviewVoiceResponseSchema>;
