@@ -28,6 +28,7 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useSettings } from "@/hooks/use-settings";
 import { movableChatOptions, orderChatOptions } from "@/composer/chat-options";
+import { ComposerAttachmentSlotProvider } from "@/composer/attachment-slot";
 import { useTranslation } from "react-i18next";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
@@ -2221,6 +2222,19 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       ],
     );
     const toolbar = useMemo(() => {
+      const placeAttachmentInControls =
+        !isCompact && leftContent !== null && leftContent !== undefined;
+      const attachmentNode = (
+        <AttachmentDropdown
+          visible={mode.showAttachments}
+          isConnected={isConnected}
+          disabled={disabled}
+          attachButtonStyle={attachButtonStyle}
+          renderAttachButtonIcon={renderAttachButtonIcon}
+          attachmentMenuItems={attachmentMenuItems}
+          addAttachmentLabel={t("composer.input.addAttachment")}
+        />
+      );
       const rightItems: Record<string, React.ReactNode> = {
         project: projectContent,
         "context-meter": beforeVoiceContent,
@@ -2246,16 +2260,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         <View style={styles.buttonRow}>
           {/* Toolbar left: attachment button + agent controls */}
           <View style={styles.leftButtonGroup}>
-            <AttachmentDropdown
-              visible={mode.showAttachments}
-              isConnected={isConnected}
-              disabled={disabled}
-              attachButtonStyle={attachButtonStyle}
-              renderAttachButtonIcon={renderAttachButtonIcon}
-              attachmentMenuItems={attachmentMenuItems}
-              addAttachmentLabel={t("composer.input.addAttachment")}
-            />
-            {leftContent}
+            {/* CUSTOM(chat-options): on desktop the agent controls place the "+" in their order. */}
+            {attachmentNode && !placeAttachmentInControls ? attachmentNode : null}
+            <ComposerAttachmentSlotProvider
+              value={placeAttachmentInControls ? attachmentNode : null}
+            >
+              {leftContent}
+            </ComposerAttachmentSlotProvider>
           </View>
 
           {/* Right: voice button, contextual button (realtime/send/cancel) */}
@@ -2280,6 +2291,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       projectContent,
       beforeVoiceContent,
       rightOrder,
+      isCompact,
       mode.showVoice,
       handleVoicePress,
       isDictationStartEnabled,

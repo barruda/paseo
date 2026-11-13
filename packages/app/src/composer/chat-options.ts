@@ -13,6 +13,9 @@ export const CHAT_OPTIONS = [
   ["worktree", "Worktree"],
   ["git-sync", "Git sync"],
   ["reading", "Reading mode"],
+  ["attachments", "Attachments (+)"],
+  ["model", "Model"],
+  ["effort", "Effort"],
   ["mode", "Agent permissions"],
   ["feature:fast_mode", "Fast mode"],
   ["feature:plan_mode", "Plan mode"],
@@ -66,19 +69,39 @@ const MOVABLE_CHAT_OPTIONS: Record<ChatOptionGroup, readonly string[]> = {
     "git-sync",
     "reading",
   ],
-  left: ["model-shortcut", "cache-warmup", "critic", "jev", "delegation"],
+  left: [
+    "attachments",
+    "model",
+    "effort",
+    "mode",
+    "feature:fast_mode",
+    "feature:plan_mode",
+    "feature:other",
+    "model-shortcut",
+    "cache-warmup",
+    "critic",
+    "jev",
+    "delegation",
+  ],
   right: ["project", "context-meter", "dictation", "voice"],
 };
 
-/** Not draggable: the left ones live inside the model/mode control, the right ones are drawn last. */
+/** Not draggable: the right ones are drawn last. */
 const FIXED_CHAT_OPTIONS: Record<
   ChatOptionGroup,
   { before: readonly string[]; after: readonly string[] }
 > = {
   above: { before: [], after: [] },
-  left: { before: ["mode", "feature:fast_mode", "feature:plan_mode", "feature:other"], after: [] },
+  left: { before: [], after: [] },
   right: { before: [], after: ["branch", "send", "stop"] },
 };
+
+/** Always shown: no switch on the Chat Options page. */
+export const UNHIDEABLE_CHAT_OPTIONS: ReadonlySet<string> = new Set([
+  "attachments",
+  "model",
+  "effort",
+]);
 
 export const FIXED_CHAT_OPTION_HINTS: Record<string, string> = {
   branch: "Shown inside the project icon",

@@ -10,9 +10,11 @@ import type { PluginIcon } from "@getpaseo/plugin/client";
 import { SettingsRow, SettingsSection } from "@/components/settings";
 import { DraggableList, type DraggableRenderItemInfo } from "@/components/draggable-list";
 import { Switch } from "@/components/ui/switch";
+import { createControlGeometry } from "@/components/ui/control-geometry";
 import {
   CHAT_OPTIONS,
   FIXED_CHAT_OPTION_HINTS,
+  UNHIDEABLE_CHAT_OPTIONS,
   chatOptionEnabled,
   defaultAboveOrder,
   fixedChatOptions,
@@ -43,6 +45,9 @@ const OPTION_ICONS: Record<string, PluginIcon> = {
   worktree: "GitBranch",
   "git-sync": "GitMerge",
   reading: "Columns3",
+  attachments: "Plus",
+  model: "Sparkle",
+  effort: "Brain",
   mode: "ShieldOff",
   "feature:fast_mode": "Zap",
   "feature:plan_mode": "ListTodo",
@@ -156,6 +161,7 @@ function OptionGroup({
             optionKey={item}
             label={labels.get(item) ?? item}
             icon={OPTION_ICONS[item] ?? icons.get(item) ?? "Settings2"}
+            hideable={!UNHIDEABLE_CHAT_OPTIONS.has(item)}
           />
         </View>
       </View>
@@ -199,11 +205,13 @@ const ChatOptionRow = memo(function ChatOptionRow({
   label,
   icon,
   hint,
+  hideable = true,
 }: {
   optionKey: string;
   label: string;
   icon: PluginIcon;
   hint?: string;
+  hideable?: boolean;
 }) {
   const { settings, updateSettings } = useAppSettings();
   const accessory = useMemo(
@@ -231,7 +239,12 @@ const ChatOptionRow = memo(function ChatOptionRow({
   );
   return (
     <SettingsRow label={label} labelAccessory={accessory} hint={hint}>
-      <Switch accessibilityLabel={label} value={enabled} onValueChange={onChange} />
+      {hideable ? (
+        <Switch accessibilityLabel={label} value={enabled} onValueChange={onChange} />
+      ) : (
+        // Keeps the row as tall as the ones with a switch.
+        <View style={styles.switchPlaceholder} />
+      )}
     </SettingsRow>
   );
 });
@@ -251,6 +264,9 @@ const styles = StyleSheet.create((theme) => ({
   },
   rowBody: {
     flex: 1,
+  },
+  switchPlaceholder: {
+    minHeight: createControlGeometry(theme).switchControl.minHeight,
   },
   // Lines fixed rows up with the movable ones, which start after the grip handle.
   fixedRow: {

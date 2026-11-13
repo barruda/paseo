@@ -331,4 +331,15 @@ describe("orderChatOptions", () => {
   it("ignores stale and duplicate saved keys", () => {
     expect(orderChatOptions(keys, ["x", "d", "d", "a"])).toEqual(["d", "a", "b", "c"]);
   });
+  it("puts keys added later at the start of an order saved before them", () => {
+    const left = ["attachments", "model", "effort", "mode", "model-shortcut", "cache-warmup"];
+    expect(orderChatOptions(left, ["cache-warmup", "model-shortcut"])).toEqual([
+      "attachments",
+      "model",
+      "effort",
+      "mode",
+      "cache-warmup",
+      "model-shortcut",
+    ]);
+  });
 });

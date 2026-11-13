@@ -95,6 +95,7 @@ import { useLockedCycleKeys } from "@/jev-router/use-locked-cycle-keys"; // CUST
 import { ChangeFlash } from "@/composer/agent-controls/change-flash"; // CUSTOM(jev-router)
 import { useJevChipSignal } from "@/jev-router/flash-signal"; // CUSTOM(jev-router)
 import { useAppSettings } from "@/hooks/use-settings"; // CUSTOM(bruno-customizations)
+import { useComposerAttachmentSlot } from "@/composer/attachment-slot"; // CUSTOM(chat-options)
 import {
   chatOptionEnabled,
   featureChatOptionKey,
@@ -858,6 +859,7 @@ function ControlledAgentControls({
   );
   // CUSTOM(bruno-customizations): Settings > Bruno's Customizations > Composer.
   const chatSettings = useAppSettings().settings;
+  const attachmentSlot = useComposerAttachmentSlot(); // CUSTOM(chat-options)
   const options = chatSettings.chatOptions;
   const showCriticToggle = chatSettings.showCriticToggle;
   const showJevRouterToggle = chatSettings.showJevRouterToggle;
@@ -867,10 +869,12 @@ function ControlledAgentControls({
   const visibleModeControl = chatOptionEnabled(options, "mode") ? modeControl : null;
 
   if (!hasAnyControl) {
-    return null;
+    // CUSTOM(chat-options): the "+" never disappears with the controls.
+    return attachmentSlot ? <View style={styles.attachmentOnly}>{attachmentSlot}</View> : null;
   }
 
   // CUSTOM(chat-options): the trailing chips follow Settings > Chat Options > Inside left.
+  // eslint-disable-next-line react-perf/jsx-no-new-object-as-prop -- rebuilt with the settings each render
   const trailingChips: Record<string, ReactNode> = {
     // CUSTOM(model-picker)
     "model-shortcut":
@@ -909,10 +913,8 @@ function ControlledAgentControls({
       <DelegationToggle serverId={modelSelectorServerId} />
     ) : null,
   };
-  const trailingKeys = orderChatOptions(
-    movableChatOptions("left"),
-    chatSettings.chatOptionOrder.left,
-  );
+  const leftKeys = orderChatOptions(movableChatOptions("left"), chatSettings.chatOptionOrder.left);
+  const trailingKeys = leftKeys.filter((key) => key in trailingChips);
 
   return (
     <ComposerControlLayoutProvider value={layoutContextValue}>
@@ -973,6 +975,9 @@ function ControlledAgentControls({
             handleCloseSheet={handleCloseSheet}
             modelSelectorServerId={modelSelectorServerId}
             draftKey={draftKey} // CUSTOM(jev-router): the green flash of a new tab moved by Jev
+            order={leftKeys}
+            chips={trailingChips}
+            attachment={attachmentSlot}
           />
         ) : (
           <SheetAgentControlsContent
@@ -1012,15 +1017,19 @@ function ControlledAgentControls({
             canSwitchProvider={Boolean(onSelectProviderAndModel)}
           />
         )}
-        {trailingKeys.map((key) => (
-          <Fragment key={key}>{trailingChips[key]}</Fragment>
-        ))}
+        {isCompact
+          ? trailingKeys.map((key) => <Fragment key={key}>{trailingChips[key]}</Fragment>)
+          : null}
       </View>
     </ComposerControlLayoutProvider>
   );
 }
 
 interface DesktopAgentControlsContentProps {
+  /** CUSTOM(chat-options): the whole left row in this order; chips and the "+" come from the parent. */
+  order: string[];
+  chips: Record<string, ReactNode>;
+  attachment: ReactNode;
   provider: string;
   // CUSTOM(jev-router): a draft's key, for the green flash when Jev moves a new tab.
   draftKey?: string;
@@ -1085,6 +1094,8 @@ interface DesktopAgentControlsContentProps {
 
 const DESKTOP_SEARCH_THRESHOLD = 6;
 
+// One branch per optional control.
+// eslint-disable-next-line complexity
 function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
   const { theme } = useUnistyles();
   const { t } = useTranslation();
@@ -1144,6 +1155,9 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     handleOpenSheet,
     handleCloseSheet,
     modelSelectorServerId,
+    order,
+    chips,
+    attachment,
   } = props;
   const modelToolbar = useMemo(
     () => ({ glyphSize, showCaret: presentation.showCarets }),
@@ -1154,78 +1168,84 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
     [t],
   );
   const handleOpenFeatures = useCallback(() => handleOpenSheet("features"), [handleOpenSheet]);
-  return (
-    <>
-      {providerOptions && providerOptions.length > 0 ? (
-        <>
-          <ComboboxTrigger
-            ref={providerAnchorRef}
-            collapsable={false}
-            disabled={disabled || !canSelectProvider}
-            onPress={handleProviderPress}
-            style={providerPressableStyle}
-            accessibilityRole="button"
-            accessibilityLabel={t("agentControls.provider.select")}
-            testID="agent-provider-selector"
+  const featureKeys = new Set((features ?? []).map((feature) => featureChatOptionKey(feature.id)));
+  const nodes: Record<string, ReactNode> = {
+    ...chips,
+    attachments: attachment ? <View style={styles.attachmentSlot}>{attachment}</View> : null,
+    // CUSTOM(chat-options): the provider chip and the model selector are one slot.
+    model: (
+      <>
+        {providerOptions && providerOptions.length > 0 ? (
+          <>
+            <ComboboxTrigger
+              ref={providerAnchorRef}
+              collapsable={false}
+              disabled={disabled || !canSelectProvider}
+              onPress={handleProviderPress}
+              style={providerPressableStyle}
+              accessibilityRole="button"
+              accessibilityLabel={t("agentControls.provider.select")}
+              testID="agent-provider-selector"
+            >
+              <Text style={styles.modeBadgeText}>{displayProvider}</Text>
+            </ComboboxTrigger>
+            <Combobox
+              options={comboboxProviderOptions}
+              value={selectedProviderId ?? ""}
+              onSelect={handleProviderSelect}
+              searchable={comboboxProviderOptions.length > DESKTOP_SEARCH_THRESHOLD}
+              open={openSelector === "provider"}
+              onOpenChange={handleProviderOpenChange}
+              anchorRef={providerAnchorRef}
+              desktopPlacement="top-start"
+            />
+          </>
+        ) : null}
+        {canSelectModel ? (
+          // CUSTOM(jev-router): the chip flashes when the model changes.
+          <ChangeFlash
+            value={selectedModelId}
+            jevSignal={jevModelFlash.signal}
+            onJevSignalShown={jevModelFlash.consume}
           >
-            <Text style={styles.modeBadgeText}>{displayProvider}</Text>
-          </ComboboxTrigger>
-          <Combobox
-            options={comboboxProviderOptions}
-            value={selectedProviderId ?? ""}
-            onSelect={handleProviderSelect}
-            searchable={comboboxProviderOptions.length > DESKTOP_SEARCH_THRESHOLD}
-            open={openSelector === "provider"}
-            onOpenChange={handleProviderOpenChange}
-            anchorRef={providerAnchorRef}
-            desktopPlacement="top-start"
-          />
-        </>
-      ) : null}
-
-      {canSelectModel ? (
-        // CUSTOM(jev-router): the chip flashes when the model changes.
-        <ChangeFlash
-          value={selectedModelId}
-          jevSignal={jevModelFlash.signal}
-          onJevSignalShown={jevModelFlash.consume}
-        >
-          <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
-            <TooltipTrigger asChild triggerRefProp="ref">
-              <View style={styles.modelControl}>
-                <CombinedModelSelector
-                  providers={modelSelectorProviders}
-                  selectedProvider={provider}
-                  selectedModel={selectedModelId ?? ""}
-                  onSelect={handleDesktopModelSelect}
-                  profiles={agentProfiles}
-                  onApplyProfile={onApplyAgentProfile}
-                  onEditProfiles={onEditAgentProfiles}
-                  onCreateProfile={onCreateAgentProfile}
-                  onEditProfile={onEditAgentProfile}
-                  isLoading={isModelLoading}
-                  disabled={modelDisabled}
-                  onOpen={onModelSelectorOpen}
-                  onTriggerPress={onOpenModelPicker}
-                  onBodyPress={onCycleModel}
-                  onClose={onDropdownClose}
-                  onRetryProvider={onRetryModelProvider}
-                  isRetryingProvider={isRetryingModelProvider}
-                  serverId={modelSelectorServerId}
-                  desktopPlacement="top-start"
-                  desktopMinWidth={360}
-                  toolbar={modelToolbar}
-                />
-              </View>
-            </TooltipTrigger>
-            <TooltipContent side="top" align="center" offset={8}>
-              <Text style={styles.tooltipText}>{t(getAgentControlHintKey("model"))}</Text>
-            </TooltipContent>
-          </Tooltip>
-        </ChangeFlash>
-      ) : null}
-
-      {thinkingOptions && thinkingOptions.length > 0 ? (
+            <Tooltip delayDuration={0} enabledOnDesktop enabledOnMobile={false}>
+              <TooltipTrigger asChild triggerRefProp="ref">
+                <View style={styles.modelControl}>
+                  <CombinedModelSelector
+                    providers={modelSelectorProviders}
+                    selectedProvider={provider}
+                    selectedModel={selectedModelId ?? ""}
+                    onSelect={handleDesktopModelSelect}
+                    profiles={agentProfiles}
+                    onApplyProfile={onApplyAgentProfile}
+                    onEditProfiles={onEditAgentProfiles}
+                    onCreateProfile={onCreateAgentProfile}
+                    onEditProfile={onEditAgentProfile}
+                    isLoading={isModelLoading}
+                    disabled={modelDisabled}
+                    onOpen={onModelSelectorOpen}
+                    onTriggerPress={onOpenModelPicker}
+                    onBodyPress={onCycleModel}
+                    onClose={onDropdownClose}
+                    onRetryProvider={onRetryModelProvider}
+                    isRetryingProvider={isRetryingModelProvider}
+                    serverId={modelSelectorServerId}
+                    desktopPlacement="top-start"
+                    desktopMinWidth={360}
+                    toolbar={modelToolbar}
+                  />
+                </View>
+              </TooltipTrigger>
+              <TooltipContent side="top" align="center" offset={8}>
+                <Text style={styles.tooltipText}>{t(getAgentControlHintKey("model"))}</Text>
+              </TooltipContent>
+            </Tooltip>
+          </ChangeFlash>
+        ) : null}
+      </>
+    ),
+    effort:
+      thinkingOptions && thinkingOptions.length > 0 ? (
         <>
           {/* CUSTOM(jev-router): the chip flashes when the effort changes. */}
           <ChangeFlash
@@ -1271,11 +1291,32 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
             renderOption={renderThinkingOption}
           />
         </>
-      ) : null}
-
-      {modeControl ? <AgentModeControl {...modeControl} onClose={onDropdownClose} /> : null}
-
-      {presentation.aggregateFeatures && features?.length ? (
+      ) : null,
+    mode: modeControl ? <AgentModeControl {...modeControl} onClose={onDropdownClose} /> : null,
+  };
+  // CUSTOM(chat-options): features share a slot per key (several `feature:other` stay together);
+  // the aggregated button sits at the earliest feature key present.
+  const featureSlots = new Map<string, ReactElement[]>();
+  for (const feature of features ?? []) {
+    const key = featureChatOptionKey(feature.id);
+    const items = featureSlots.get(key) ?? [];
+    items.push(
+      <DesktopFeatureItem
+        key={`feature-${feature.id}`}
+        feature={feature}
+        disabled={disabled}
+        openSelector={openSelector}
+        handleOpenChange={handleOpenChange}
+        onSetFeature={onSetFeature}
+        onActionComplete={onDropdownClose}
+      />,
+    );
+    featureSlots.set(key, items);
+  }
+  if (presentation.aggregateFeatures && features?.length) {
+    const first = order.find((key) => featureKeys.has(key));
+    if (first) {
+      nodes[first] = (
         <>
           <Pressable
             onPress={handleOpenFeatures}
@@ -1307,19 +1348,16 @@ function DesktopAgentControlsContent(props: DesktopAgentControlsContentProps) {
             ))}
           </AdaptiveModalSheet>
         </>
-      ) : (
-        features?.map((feature) => (
-          <DesktopFeatureItem
-            key={`feature-${feature.id}`}
-            feature={feature}
-            disabled={disabled}
-            openSelector={openSelector}
-            handleOpenChange={handleOpenChange}
-            onSetFeature={onSetFeature}
-            onActionComplete={onDropdownClose}
-          />
-        ))
-      )}
+      );
+    }
+  } else {
+    for (const [key, items] of featureSlots) nodes[key] = items;
+  }
+  return (
+    <>
+      {order.map((key) => (
+        <Fragment key={key}>{nodes[key]}</Fragment>
+      ))}
     </>
   );
 }
@@ -1797,6 +1835,12 @@ function ThinkingComboboxOption({
   );
 }
 
+/** CUSTOM(chat-options): the attachment "+" alone, when there are no controls to order it with. */
+function AttachmentSlotOnly() {
+  const attachmentSlot = useComposerAttachmentSlot();
+  return attachmentSlot ? <View style={styles.attachmentOnly}>{attachmentSlot}</View> : null;
+}
+
 export const AgentControls = memo(function AgentControls({
   agentId,
   serverId,
@@ -2044,7 +2088,8 @@ export const AgentControls = memo(function AgentControls({
   );
 
   if (!agent) {
-    return null;
+    // CUSTOM(chat-options): the "+" stays while the agent loads.
+    return <AttachmentSlotOnly />;
   }
 
   return (
@@ -2265,6 +2310,15 @@ export function DraftAgentControls({
 }
 
 const styles = StyleSheet.create((theme) => ({
+  // CUSTOM(chat-options): the container gap is wider than the input's left group; the margin keeps
+  // the "+" as close to its neighbour as before.
+  attachmentSlot: {
+    marginRight: -theme.spacing[1],
+  },
+  attachmentOnly: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   container: {
     minWidth: 0,
     flexGrow: 1,

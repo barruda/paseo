@@ -4084,25 +4084,32 @@ waiting` tests in `agent-manager.test.ts`.
   Inside a block the movable rows have a grip handle and can be dragged; the composer renders
   the items in that order (app setting `chatOptionOrder`, `{above?, left?, right?}` lists of keys;
   `orderChatOptions` puts keys missing from the saved list after their default predecessor, so new
-  items and plugin pills appear in place). Fixed rows stay put: left has Agent permissions and
-  the Fast/Plan/Other features first (they live in the model/mode control); right has Git branch
-  (drawn inside the project icon), Send and Stop last. A done Worktree pill still leads the row.
+  items and plugin pills appear in place, and an order saved before the attachments, model, effort,
+  mode and feature keys existed gets them at the start). In "Inside left" every control moves:
+  the attachment "+", Model (provider chip and model selector together), Effort, Agent
+  permissions, the features (several `feature:other` features share one slot; the aggregated
+  features button sits at the earliest feature key present) and the trailing chips. "+", Model and
+  Effort have no switch. Only the right block has fixed rows: Git branch (drawn inside the project
+  icon), Send and Stop last. A done Worktree pill still leads the row.
   Plugin pills are individually orderable and default to right after TokenLedger.
 - **Core files touched:** `composer/chat-options.ts` (groups, `orderChatOptions`),
   `hooks/use-settings/storage.ts` (`chatOptions`, `chatOptionOrder`),
   `screens/settings/bruno-customizations/chat-options-page.tsx` (the page, `DraggableList`),
   `panels/agent-tracks.tsx` (keyed pills sorted by `above`), `panels/agent-panel.tsx`,
   `plugins/buttons/view.tsx` (`usePluginComposerPillEntries` and `PluginComposerPill` replace
-  `PluginComposerPills`), `composer/agent-controls/index.tsx` (trailing chips sorted by `left`),
+  `PluginComposerPills`), `composer/agent-controls/index.tsx` (the whole left row sorted by `left`; desktop only, compact
+  keeps its internals and sorts the trailing chips),
+  `composer/attachment-slot.tsx` (context carrying the "+" from the input to the agent controls),
   `composer/index.tsx` (project icon and context meter as separate nodes),
-  `composer/input/input.tsx` (`projectContent` prop; project, meter, dictation and voice sorted by
+  `composer/input/input.tsx` (provides the "+" through the slot on desktop; `projectContent` prop; project, meter, dictation and voice sorted by
   `right`, then Send), and `composer/project-icon.tsx`.
 - **Re-apply:** Store the visibility map and the order lists in app settings; apply them to each
   built-in pill and plugin composer contribution, build each group as keyed nodes sorted with
   `orderChatOptions`, and list the controls in the Chat Options page. Normalize agent-specific
   plugin pill IDs before looking them up.
 - **Verify:** Run `storage.test.ts` and `plugins/buttons/model.test.ts`; toggle pills in a chat;
-  drag a row in each block and check the composer follows, also after a reload.
+  drag a row in each block (also Model, Effort, Mode and the "+" on the left) and check the composer
+  follows, also after a reload; compact layout keeps the "+" first.
 
 ## mouse-tab-nav: the mouse's back/forward buttons switch tabs
 
