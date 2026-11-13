@@ -299,6 +299,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/composer/draft/composer-extras.test.ts --bail=1)
   # An agent's tab keeps working while a subagent runs.
   (cd packages/app && npx vitest run src/subagents/running.test.ts --bail=1)
+  # The Tasks sidebar lists provider subagents under their agent.
+  (cd packages/app && npx vitest run src/task-navigation/provider-subagent-rows.test.ts --bail=1)
   # Token ledger fork: MLflow trace links, turn jumps, Claude cache writes.
   (cd custom/plugins/token-ledger && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npm test)
   (cd packages/app && npx vitest run src/turn-jump/model.test.ts src/plugins/host-navigation.test.ts --bail=1)

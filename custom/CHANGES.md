@@ -5268,3 +5268,31 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Verify:** `cd packages/app && npx vitest run src/subagents/running.test.ts --bail=1` (in the
   update script). In the app: ask an agent to start a background subagent and finish its turn;
   its tab keeps the working spinner until the subagent finishes, then turns finished.
+
+## task-provider-subagents: Tasks sidebar lists provider subagents under their agent
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: Tasks sidebar lists provider subagents under their agent`
+- **Why:** The Tasks list showed only managed Paseo children. Subagents owned by Claude Code, Codex
+  or OpenCode appeared only in the agent pane's subagents track, so an agent that ended its turn
+  while a subagent worked looked idle in the list.
+- **What:** An agent whose direct provider subagent runs counts as working (state dot, filters,
+  counts). Under each task row with subagents, a collapsed row reads "3 subagents · 1 working";
+  clicking it lists the subagents (oldest first, status dot, label, provider subtitle), and a
+  click opens the read-only `provider_subagent` tab in the parent's workspace (Desks or plain
+  workspace route, like `openTask`). Rows are hidden in the Archived filter and stay out of the
+  numbered shortcuts. Each mounted task row lists its subagents once per app session
+  (`refreshProviderSubagents`), skipping parents already tracked. Features follow
+  `serverInfo.features.providerSubagents` per server.
+- **Core files touched:** `packages/app/src/task-navigation/sidebar.tsx` (new `ListRow` kinds,
+  `agents` merge, `rows` post-processing, `TaskRow` refresh hook, two row components, styles);
+  new `packages/app/src/task-navigation/provider-subagent-rows.ts` and `.test.ts`.
+- **Re-apply:** In `TaskNavigationSidebar`, rename upstream's `agents` selector result to
+  `ownAgents` and derive `agents` by setting `running: true` for parents in `runningParentKeys`.
+  Rename the `rows` memo to `taskRows` and add the `rows` memo that appends
+  `buildProviderSubagentRows` after each `task` row. Add `useRefreshProviderSubagentsOnce` to
+  `TaskRow` and the two row components to `renderRow`.
+- **Verify:** `cd packages/app && npx vitest run src/task-navigation/provider-subagent-rows.test.ts --bail=1`
+  (in the update script). In the app, Tasks mode: an agent with a running subagent shows the
+  working dot and a collapsed "N subagents · 1 working" row; click expands it, click a subagent
+  opens its tab.

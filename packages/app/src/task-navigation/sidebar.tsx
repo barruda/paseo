@@ -1,7 +1,7 @@
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
-import { memo, useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { FlatList, Text, View, type ListRenderItemInfo } from "react-native";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
@@ -39,6 +39,15 @@ import { useSessionStore } from "@/stores/session-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useTaskNavigationStore } from "./store";
+// CUSTOM(task-provider-subagents): provider subagents under their agent in the Tasks list.
+import { refreshProviderSubagents, useProviderSubagentStore } from "@/subagents/provider-store";
+import {
+  buildProviderSubagentRows,
+  groupProviderSubagentsByParent,
+  runningParentKeys,
+  type ProviderSubagentListRow,
+  type ProviderSubagentServerFlags,
+} from "./provider-subagent-rows";
 import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
 import { TaskRowContextMenu, useTaskRowActions, type TaskRowActions } from "./task-row-menu";
@@ -73,7 +82,8 @@ type ListRow =
       hiddenCount: number;
       onPress: () => void;
     }
-  | { key: string; kind: "load-more"; loading: boolean };
+  | { key: string; kind: "load-more"; loading: boolean }
+  | ProviderSubagentListRow;
 const FILTERS: readonly { key: TaskFilter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "needs-you", label: "Needs you" },
@@ -146,6 +156,20 @@ function selectAgents(state: ReturnType<typeof useSessionStore.getState>): TaskA
         updatedAt: agent.updatedAt,
       });
     }
+  }
+  return result;
+}
+
+// CUSTOM(task-provider-subagents): per-server feature flags, as one small comparable record.
+function selectProviderSubagentFlags(
+  state: ReturnType<typeof useSessionStore.getState>,
+): Record<string, ProviderSubagentServerFlags> {
+  const result: Record<string, ProviderSubagentServerFlags> = {};
+  for (const [serverId, session] of Object.entries(state.sessions)) {
+    result[serverId] = {
+      supported: session.serverInfo?.features?.providerSubagents === true,
+      nesting: session.serverInfo?.features?.providerSubagentNesting === true,
+    };
   }
   return result;
 }
@@ -223,7 +247,40 @@ function rowKey(row: ListRow) {
 export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?: () => void }) {
   const { allWorkspaceEntriesByKey, isInitialLoad } = useSidebarModel();
   const showBackground = useSidebarViewStore((state) => state.showBackground);
-  const agents = useStoreWithEqualityFn(useSessionStore, selectAgents, equal);
+  const ownAgents = useStoreWithEqualityFn(useSessionStore, selectAgents, equal);
+  // CUSTOM(task-provider-subagents): an agent whose provider subagent runs counts as working.
+  const providerSubagentFlags = useStoreWithEqualityFn(
+    useSessionStore,
+    selectProviderSubagentFlags,
+    equal,
+  );
+  const providerSubagents = useStoreWithEqualityFn(
+    useProviderSubagentStore,
+    (state) => groupProviderSubagentsByParent(state, providerSubagentFlags, taskKey),
+    equal,
+  );
+  const runningParents = useMemo(() => runningParentKeys(providerSubagents), [providerSubagents]);
+  const agents = useMemo(
+    () =>
+      runningParents.size === 0
+        ? ownAgents
+        : ownAgents.map((agent) =>
+            !agent.running && runningParents.has(taskKey(agent.serverId, agent.id))
+              ? { ...agent, running: true }
+              : agent,
+          ),
+    [ownAgents, runningParents],
+  );
+  const [expandedSubagents, setExpandedSubagents] = useState<ReadonlySet<string>>(new Set());
+  const toggleSubagents = useCallback(
+    (key: string) =>
+      setExpandedSubagents((current) => {
+        const next = new Set(current);
+        if (!next.delete(key)) next.add(key);
+        return next;
+      }),
+    [],
+  );
   const hosts = useHosts();
   const [query, setQuery] = useState("");
   const projectKeys = useDesksStore((s) => s.projectKeys);
@@ -322,7 +379,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   }
   // CUSTOM(task-idle-limit): searching or choosing the Idle filter shows every idle task.
   const limitsIdle = !query && filter !== "idle";
-  const rows = useMemo(() => {
+  const taskRows = useMemo(() => {
     if (filter === "archived") {
       const result: ListRow[] = flattenTaskTree(archivedRoots, EMPTY_COLLAPSED).map((row) => ({
         kind: "task",
@@ -417,6 +474,48 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     idleShown,
     limitsIdle,
   ]);
+  // CUSTOM(task-provider-subagents): the toggle row (and the subagents when open) follows its
+  // task row, ahead of the managed children. Archived sessions have none.
+  const rows = useMemo(() => {
+    if (filter === "archived" || providerSubagents.size === 0) return taskRows;
+    return taskRows.flatMap((row): ListRow[] => {
+      if (row.kind !== "task") return [row];
+      return [
+        row,
+        ...buildProviderSubagentRows({
+          node: row.node,
+          depth: row.depth,
+          subagents: providerSubagents.get(row.node.key),
+          expanded: expandedSubagents.has(row.node.key),
+        }),
+      ];
+    });
+  }, [taskRows, filter, providerSubagents, expandedSubagents]);
+  const openProviderSubagent = useCallback(
+    (row: Extract<ListRow, { kind: "provider-subagent" }>) => {
+      onBeforeNavigate?.();
+      const target = {
+        kind: "provider_subagent" as const,
+        parentAgentId: row.parentAgentId,
+        subagentId: row.subagentId,
+      };
+      if (!useTaskNavigationStore.getState().enabled) {
+        navigateToWorkspace({
+          serverId: row.serverId,
+          workspaceId: row.workspaceId,
+          target,
+          pin: true,
+        });
+        return;
+      }
+      useDesksStore
+        .getState()
+        .openTab({ serverId: row.serverId, workspaceId: row.workspaceId, target }, true);
+      if (!pathname.includes("/workspace/"))
+        navigateToWorkspace({ serverId: row.serverId, workspaceId: row.workspaceId });
+    },
+    [onBeforeNavigate, pathname],
+  );
   const openTask = useCallback(
     (node: TaskNode, pin = false) => {
       onBeforeNavigate?.();
@@ -521,6 +620,10 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
             testID="task-idle-toggle"
           />
         );
+      if (item.kind === "provider-subagents-toggle")
+        return <ProviderSubagentsToggleRow row={item} onToggle={toggleSubagents} />;
+      if (item.kind === "provider-subagent")
+        return <ProviderSubagentItemRow row={item} onOpen={openProviderSubagent} />;
       if (item.kind === "load-more")
         return (
           <Button
@@ -554,6 +657,8 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       );
     },
     [
+      toggleSubagents,
+      openProviderSubagent,
       loadMoreArchived,
       pinnedSet,
       entriesByWorkspace,
@@ -839,6 +944,7 @@ const TaskRow = memo(function TaskRow({
   /** Pinned copies use their own test ids so the original row stays unique. */
   testIDPrefix?: string;
 }) {
+  useRefreshProviderSubagentsOnce(node.agent.serverId, node.agent.id);
   const showBadges = useShowShortcutBadges();
   const age = useCompactTimeAgo(node.agent.updatedAt);
   const crossWorkspace = depth > 0;
@@ -963,6 +1069,104 @@ const TaskRow = memo(function TaskRow({
     </TaskSummaryHoverCard>
   );
 });
+// CUSTOM(task-provider-subagents): list each (server, agent) once per app session, from rows that
+// are mounted, so subagents started before the app connected show up without listing every agent.
+const refreshedProviderSubagentParents = new Set<string>();
+function useRefreshProviderSubagentsOnce(serverId: string, agentId: string) {
+  const supported = useSessionStore(
+    (state) => state.sessions[serverId]?.serverInfo?.features?.providerSubagents === true,
+  );
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
+  useEffect(() => {
+    if (!client || !supported) return;
+    const key = taskKey(serverId, agentId);
+    if (refreshedProviderSubagentParents.has(key)) return;
+    refreshedProviderSubagentParents.add(key);
+    if (useProviderSubagentStore.getState().trackedParents.has(`${serverId}\0${agentId}\0`)) return;
+    void refreshProviderSubagents(client, serverId, agentId).catch(() => {
+      refreshedProviderSubagentParents.delete(key);
+    });
+  }, [client, supported, serverId, agentId]);
+}
+
+function ProviderSubagentsToggleRow({
+  row,
+  onToggle,
+}: {
+  row: Extract<ListRow, { kind: "provider-subagents-toggle" }>;
+  onToggle(key: string): void;
+}) {
+  const press = useCallback(() => onToggle(row.parentKey), [onToggle, row.parentKey]);
+  const expandedState = useMemo(() => ({ expanded: row.expanded }), [row.expanded]);
+  const buttonStyle = useCallback(
+    ({ hovered }: { hovered?: boolean }) => [styles.subagentButton, hovered && styles.hovered],
+    [],
+  );
+  return (
+    <View style={[styles.subagentRow, { marginLeft: Math.min(row.depth, 5) * 12 }]}>
+      <PressHighlight
+        style={buttonStyle}
+        onPress={press}
+        accessibilityRole="button"
+        accessibilityLabel={`${row.expanded ? "Collapse" : "Expand"} ${row.label}`}
+        accessibilityState={expandedState}
+        testID={`task-subagents-toggle-${row.parentKey}`}
+      >
+        <DensityIcon
+          icon={row.expanded ? ChevronDown : ChevronRight}
+          size="sm"
+          color="foregroundMuted"
+        />
+        <Text numberOfLines={1} style={styles.subagentLabel}>
+          {row.label}
+        </Text>
+      </PressHighlight>
+    </View>
+  );
+}
+
+function ProviderSubagentItemRow({
+  row,
+  onOpen,
+}: {
+  row: Extract<ListRow, { kind: "provider-subagent" }>;
+  onOpen(row: Extract<ListRow, { kind: "provider-subagent" }>): void;
+}) {
+  const press = useCallback(() => onOpen(row), [onOpen, row]);
+  const buttonStyle = useCallback(
+    ({ hovered }: { hovered?: boolean }) => [styles.subagentButton, hovered && styles.hovered],
+    [],
+  );
+  let state: TaskNode["state"] = "idle";
+  if (row.bucket === "running") state = "working";
+  if (row.bucket === "failed") state = "failed";
+  return (
+    <View style={[styles.subagentRow, { marginLeft: Math.min(row.depth, 5) * 12 }]}>
+      <PressHighlight
+        style={buttonStyle}
+        onPress={press}
+        accessibilityRole="button"
+        accessibilityLabel={`${row.label || "Subagent"}, ${TASK_STATE_LABELS[state]}`}
+        testID={`task-subagent-${row.subagentId}`}
+      >
+        <View style={styles.subagentDot}>
+          <TaskSignal state={state} />
+        </View>
+        <View style={styles.subagentText}>
+          <Text numberOfLines={1} style={styles.subagentTitle}>
+            {row.label || "Subagent"}
+          </Text>
+          {row.subtitle ? (
+            <Text numberOfLines={1} style={styles.subagentMeta}>
+              {row.subtitle}
+            </Text>
+          ) : null}
+        </View>
+      </PressHighlight>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create((theme) => ({
   container: { flex: 1, minHeight: 0 },
   compactModeSwitch: {
@@ -1044,6 +1248,24 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
   },
   hovered: { backgroundColor: theme.colors.surface2 },
+  // CUSTOM(task-provider-subagents)
+  subagentRow: { flexDirection: "row", marginBottom: theme.spacing[1] },
+  subagentButton: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: theme.spacing[2],
+    paddingVertical: theme.spacing[1],
+    paddingLeft: theme.spacing[1],
+    paddingRight: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+  },
+  subagentLabel: { flex: 1, color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  subagentDot: { paddingTop: 1 },
+  subagentText: { flex: 1, minWidth: 0 },
+  subagentTitle: { color: theme.colors.foreground, fontSize: theme.fontSize.sm },
+  subagentMeta: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   taskTop: { flexDirection: "row", alignItems: "flex-start", gap: theme.spacing[2] },
   taskTitle: { flex: 1, color: theme.colors.foreground, fontSize: theme.fontSize.sm },
   contextTitle: { color: theme.colors.foregroundMuted },
