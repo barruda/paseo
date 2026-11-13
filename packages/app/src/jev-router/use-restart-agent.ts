@@ -1,7 +1,8 @@
 // CUSTOM(jev-router): starts an agent over on another model. It creates a session like the agent's
 // (provider, folder, mode, features) on `model`/`thinkingOptionId` with `prompt` as its first
-// message, opens it, and archives the agent (archived agents leave the workspace tabs). Used by the
-// router card's button (plugins) and the composer's Jev chip.
+// message, puts it in the agent's own workspace tab (a new tab only when the agent was not open in
+// one), and archives the agent. Archiving closes tabs by agent id, and that tab already points at
+// the new agent. Used by the router card's button (plugins), the composer's Jev chip and Esc 3×.
 
 import { useCallback, useState } from "react";
 import { useToast } from "@/contexts/toast-context";
@@ -9,6 +10,7 @@ import { useArchiveAgent } from "@/hooks/use-archive-agent";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore } from "@/stores/session-store";
 import { toErrorMessage } from "@/utils/error-messages";
+import { replaceAgentTabInPlace } from "./replace-agent-tab";
 
 export interface RestartAgentRequest {
   prompt: string;
@@ -46,7 +48,15 @@ export function useRestartAgent(serverId: string, agentId: string) {
           ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
           initialPrompt: request.prompt,
         });
-        if (agent.workspaceId)
+        if (
+          agent.workspaceId &&
+          !replaceAgentTabInPlace({
+            serverId,
+            workspaceId: agent.workspaceId,
+            oldAgentId: agentId,
+            newAgentId: created.id,
+          })
+        )
           navigateToWorkspace({
             serverId,
             workspaceId: agent.workspaceId,

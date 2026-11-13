@@ -4350,22 +4350,36 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     começou em Haiku 5.5 · low (você escolheu Opus 5.5 · high)", and **Ignorar recomendação e
     reiniciar com modelo selecionado**. That button turns Jev off, creates a session like the
     agent's (provider, folder, mode, features) on the selected model and effort with the same
-    first prompt (text only; attached images are not resent), opens it and archives the routed
-    one. A first prompt over 30k characters is not kept, and its card has no button.
+    first prompt (text only; attached images are not resent), puts it in the routed agent's own
+    tab (since 2026-11-13: the tab showing that agent is retargeted, so it keeps its id, pane and
+    focus: with Desks on, `useDesksStore.updateTab` on the desk tab, in any Desk, plus the
+    sidebar's `openedAt` entry moved to the new agent; with Desks off, the workspace layout's
+    `replaceTab`; a new tab only when the agent was open in neither) and archives the routed
+    one (workspace tabs close by agent id and that tab already shows the new agent; the desks store never closes tabs on archive). Same for
+    the composer chip and Esc 3×. `jev-router/replace-agent-tab.ts` + test, called from
+    `use-restart-agent.ts` before `archiveAgent`; it falls back to `navigateToWorkspace`. A first prompt over 30k characters is not kept, and its card has no button.
   - Esc 3× (since 2026-11-13): one more plain Esc within `CHORD_TIMEOUT_MS` (1.5 s) after the
     keyboard `agent.interrupt` does what the card's button does (Jev off, restart on the selected
     model/effort with the first prompt), whether interrupt is bound to `Escape` or `Escape Escape`.
     Only when the agent has a card with a prompt; otherwise the Esc does what it always did, and
-    nothing is delayed or swallowed. The card shows a muted "· 3× Esc" after its button on web.
+    nothing is delayed or swallowed.
+    Esc storm: once the restart fires, every Escape keydown (modifiers and repeats included) is
+    swallowed (preventDefault + stopImmediatePropagation: no chord progress, no interrupt, no
+    composer focus) until 2 s (`ESC_STORM_QUIET_MS`) pass since the last Escape; each Escape
+    extends the window, other keys neither extend nor end it, and the Escape that triggers the
+    restart is swallowed too. The swallow only starts when a restart actually began. The card shows a muted "· 3× Esc" after its button on web.
     `jev-router/triple-esc.ts` + test (pure `shouldRestartOnEscape`, last-interrupt memory, a
     listener), `turn-off.ts` (saves `enabled: false` from the app), `use-esc-restart.ts`
     (`useJevEscRestart`, mounted in `AgentPanel`, interactive panel only, a ref guards double
     triggers). The interrupt is recorded in `composer/index.tsx` (`dispatchComposerKeyboardAction`,
-    after `handleCancelAgent()`, via `onKeyboardInterrupt`); the next Esc is seen in
-    `hooks/use-keyboard-shortcuts.ts` (`handleKeyDown`, before chord resolution). Re-apply: call
-    `recordKeyboardInterrupt(serverId, agentId)` where the composer handles `agent.interrupt`, call
-    `noteKeydownAfterInterrupt(event)` at the top of the global keydown handler (after the popover
-    guards), and mount `useJevEscRestart` in `AgentPanel`.
+    after `handleCancelAgent()`, via `onKeyboardInterrupt`); the next Esc is seen by a
+    window capture keydown listener that `triple-esc.ts` adds when it loads (before any component
+    effect, so it runs ahead of the shortcut handler, overlays, browser pane, recent tabs and the
+    chat-esc-focus bubble listener). `hooks/use-keyboard-shortcuts.ts` only subscribes
+    (`subscribeEscapeSwallowed`) to reset a half-typed chord, like `handlePointerDown`. Re-apply:
+    call `recordKeyboardInterrupt(serverId, agentId)` where the composer handles
+    `agent.interrupt`, keep the listener at the bottom of `triple-esc.ts`, subscribe the shortcut
+    hook's chord reset to `subscribeEscapeSwallowed`, and mount `useJevEscRestart` in `AgentPanel`.
   - Installed on both daemons. It was personal-only at first, to keep work prompts away from
     TypeSafe; on 2026-11-09 the user had it installed on paseo-telus too, still on TypeSafe. Each
     host keeps its own settings, TypeSafe provider included; the sessions it routes use that
@@ -4397,7 +4411,8 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   "Jev answered: …" with the saved key and endpoint. By hand: on the personal Paseo,
   send "rename count to total in utils.ts" from Opus/high in a draft; the session starts on
   Haiku/low with the Jev card; its button turns the icon off and reopens the prompt on Opus/high
-  in a new session, the routed one archived.
+  in the same tab, the routed one archived. Esc 3×: after the restart, keep pressing Esc; nothing
+  interrupts the new session until 2 s after the last press.
 
 ## bruno-customizations: one Settings section for the fork's own settings
 

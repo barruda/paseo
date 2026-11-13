@@ -39,7 +39,7 @@ export function useJevEscRestart(serverId: string, agentId: string, isInteractiv
   useEffect(() => {
     if (!isInteractive) return;
     return subscribeJevEscRestart((target) => {
-      if (target.serverId !== serverId || target.agentId !== agentId || fired.current) return;
+      if (target.serverId !== serverId || target.agentId !== agentId || fired.current) return false;
       const current = latest.current;
       const parsed = JevRouteCardDataSchema.safeParse(current.rawCard);
       if (!parsed.success || parsed.data.prompt === null || !current.plugin || !current.ready) {
@@ -53,6 +53,7 @@ export function useJevEscRestart(serverId: string, agentId: string, isInteractiv
         thinkingOptionId: parsed.data.homeThinkingOptionId,
         onBeforeRestart: () => turnJevRouterOff(installed),
       });
+      return true;
     });
   }, [agentId, isInteractive, serverId]);
 }

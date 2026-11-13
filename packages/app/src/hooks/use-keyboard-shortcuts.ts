@@ -49,7 +49,7 @@ import {
   useActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
 import { dispatchTopWebOverlayKeyDown, keyBelongsToDomPopover } from "@/lib/overlay-root";
-import { noteKeydownAfterInterrupt } from "@/jev-router/triple-esc"; // CUSTOM(jev-router)
+import { subscribeEscapeSwallowed } from "@/jev-router/triple-esc"; // CUSTOM(jev-router)
 
 export function useKeyboardShortcuts({
   enabled,
@@ -357,9 +357,6 @@ export function useKeyboardShortcuts({
       return;
     }
 
-    // CUSTOM(jev-router): Esc 3×, an Esc right after a keyboard interrupt (it still runs below).
-    noteKeydownAfterInterrupt(event);
-
     const key = event.key ?? "";
     if (
       key === "Escape" &&
@@ -430,6 +427,10 @@ export function useKeyboardShortcuts({
     if (!enabled) return;
     if (!shortcutsAvailable) return;
 
+    // CUSTOM(jev-router): Esc 3×. Escapes swallowed after the restart never reach handleKeyDown
+    // (triple-esc.ts stops them first), so a chord left half-typed is dropped here.
+    const unsubscribeEscapeSwallowed = subscribeEscapeSwallowed(handlePointerDown);
+
     const handleBlurOrHide = () => {
       resetModifiers();
     };
@@ -444,6 +445,7 @@ export function useKeyboardShortcuts({
       ? getDesktopHost()?.events?.on?.("browser-shortcut-input", handleBrowserShortcutInput)
       : null;
     return () => {
+      unsubscribeEscapeSwallowed();
       if (chordStateRef.current.timeoutId !== null) {
         clearTimeout(chordStateRef.current.timeoutId);
         chordStateRef.current = {
