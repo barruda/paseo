@@ -48,6 +48,15 @@ Agents (Claude Code, Codex) have a skill for this workflow: `.agents/skills/pase
    none, so create one whose `Exec=` runs `~/Applications/Paseo-builds/<newest>/Paseo`; later
    installs keep it current.
 4. Open Paseo once so it starts its daemon, then do the plugin setup below for each daemon home.
+5. Point every daemon home at the shared local speech models folder, `.llm/` in this checkout
+   (gitignored), so the personal and TELUS daemons keep one copy:
+   ```bash
+   for h in ~/.paseo ~/.paseo-telus; do
+     python3 -c "import json,sys; p=sys.argv[1]+'/config.json'; d=json.load(open(p)); d.setdefault('providers',{}).setdefault('local',{})['modelsDir']='$HOME/projetos/paseo/.llm'; json.dump(d,open(p,'w'),indent=2)" "$h"
+   done
+   ```
+   The models download there the first time dictation or voice mode needs them. Restart the
+   daemons afterwards (`kill-paseos-and-daemons.sh`): the folder is read once at startup.
 
 ## Updating
 

@@ -5480,3 +5480,20 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
   tool call (`sleep 60`), send a message in steer mode: the bubble shows "pending" and an X.
   X before the tool ends: the bubble disappears and the text returns to an empty composer.
   Without pressing X, the badge goes away when Claude picks the message up.
+
+## local-models-dir: one local speech models folder for every daemon, in `.llm/`
+
+- **Added:** 2026-11-13
+- **Commit:** `custom: ignore .llm, the local speech models folder` (plus this entry)
+- **Why:** Each daemon home kept its own `models/local-speech` (4.3 GB personal, 985 MB TELUS,
+  the TELUS models byte-identical copies), and the TELUS Local STT had only the English models.
+- **What:** Machine setup, no code. `providers.local.modelsDir` in `~/.paseo/config.json` and
+  `~/.paseo-telus/config.json` is `/home/bruno/projetos/paseo/.llm`; `.llm/` is gitignored. The
+  old `~/.paseo*/models/local-speech` paths were left as symlinks to `.llm` so daemons started
+  before the change kept working; they can go once every daemon restarted. The daemon reads
+  `modelsDir` once at startup, so a change needs `kill-paseos-and-daemons.sh`. Both daemons
+  downloading the same missing model at once could collide in `.llm/.downloads`.
+- **Core files touched:** `.gitignore`; `custom/README.md` (New machine step 5).
+- **Re-apply:** Keep `.llm/` in `.gitignore`.
+- **Verify:** `ls ~/projetos/paseo/.llm` lists the Parakeet, Kokoro and Silero folders. After a
+  daemon restart, Settings > Voice and Dictation > Status shows the models directory as `.llm`.
