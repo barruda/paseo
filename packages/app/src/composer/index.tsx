@@ -557,6 +557,25 @@ interface DispatchComposerKeyboardActionArgs {
   focusMessageInputForKeyboardAction: () => void;
   exitVoiceMode?: () => boolean;
   onKeyboardInterrupt?: () => void; // CUSTOM(jev-router): Esc 3×
+  hasAgent: boolean;
+  onStartVoice?: () => void;
+}
+
+// Returns null when the action is not a voice shortcut this level handles.
+function dispatchVoiceShortcut(
+  action: KeyboardActionDefinition,
+  hasAgent: boolean,
+  onStartVoice: (() => void) | undefined,
+  exitVoiceMode: (() => boolean) | undefined,
+): boolean | null {
+  if (action.id === "message-input.voice-exit") return exitVoiceMode?.() ?? false;
+  // CUSTOM(voice-new-agent): a draft's agentId is its tab id, not an agent. The shortcut takes the
+  // voice button's path, which creates the agent first; the daemon rejects anything else.
+  if (action.id === "message-input.voice-toggle" && !hasAgent) {
+    onStartVoice?.();
+    return true;
+  }
+  return null;
 }
 
 function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs): boolean {
@@ -571,10 +590,12 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
     focusMessageInputForKeyboardAction,
     exitVoiceMode,
     onKeyboardInterrupt,
+    hasAgent,
+    onStartVoice,
   } = args;
   if (!isPaneFocused) return false;
-
-  if (action.id === "message-input.voice-exit") return exitVoiceMode?.() ?? false;
+  const voiceResult = dispatchVoiceShortcut(action, hasAgent, onStartVoice, exitVoiceMode);
+  if (voiceResult !== null) return voiceResult;
 
   if (action.id === "agent.interrupt") {
     if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) return true;
@@ -609,6 +630,8 @@ function ComposerKeyboardRegistration({
   focusMessageInputForKeyboardAction,
   exitVoiceMode,
   onKeyboardInterrupt,
+  hasAgent,
+  onStartVoice,
   isMessageInputFocused,
   handlerId,
 }: Omit<DispatchComposerKeyboardActionArgs, "action" | "isPaneFocused"> & {
@@ -629,10 +652,14 @@ function ComposerKeyboardRegistration({
         focusMessageInputForKeyboardAction,
         exitVoiceMode,
         onKeyboardInterrupt,
+        hasAgent,
+        onStartVoice,
       }),
     [
       exitVoiceMode,
       onKeyboardInterrupt,
+      hasAgent,
+      onStartVoice,
       focusMessageInputForKeyboardAction,
       handleCancelAgent,
       isActiveComposer,
@@ -2640,6 +2667,8 @@ function ComposerContentImpl({
         focusMessageInputForKeyboardAction={focusMessageInputForKeyboardAction}
         exitVoiceMode={exitVoiceMode}
         onKeyboardInterrupt={handleKeyboardInterrupt}
+        hasAgent={hasAgent}
+        onStartVoice={onStartVoice}
         isMessageInputFocused={isMessageInputFocused}
       />
       <View

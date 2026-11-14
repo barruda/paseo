@@ -69,7 +69,6 @@ describe("describeJevRouter", () => {
     ).toEqual([
       "Jev router: on · Model focused",
       "Small first prompts start on a cheaper model.",
-      "Click for the router settings.",
     ]);
     expect(
       describeJevRouter({ settings: { enabled: true, mode: "effort" }, session: null })[1],
@@ -84,7 +83,7 @@ describe("describeJevRouter", () => {
       describeJevRouter({
         settings: { enabled: true, mode: "model" },
         session: readJevLabels(raw),
-      })[3];
+      })[2];
     expect(line(labels("sonnet/low", true))).toBe(
       "This session: started on sonnet/low (small), not opus/high",
     );

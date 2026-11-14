@@ -44,7 +44,6 @@ export function describeJevRouter(input: {
           : "Small first prompts start on a cheaper model.",
       ]
     : [`Jev router: off · ${mode}`, "New sessions start on the model you pick."];
-  lines.push("Click for the router settings.");
   const session = input.session;
   if (!session) return lines;
   if (session.why === "error") lines.push(`This session: router failed, kept ${session.home}`);
