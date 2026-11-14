@@ -21,6 +21,7 @@ import {
   getWorkspaceIndexJumpModifierKey,
 } from "@/keyboard/keyboard-shortcuts";
 import { dispatchVoiceEscape } from "@/keyboard/voice-escape";
+import { isVoiceHoldKeyEvent } from "@/voice/use-voice-hold-key"; // CUSTOM(voice-hold-to-talk)
 import { resolveKeyboardFocusScope } from "@/keyboard/focus-scope";
 import {
   buildBrowserKeyboardPolicy,
@@ -262,10 +263,19 @@ export function useKeyboardShortcuts({
     browserFocusRestoreElement?: HTMLElement | null;
   }) => {
     const store = useKeyboardShortcutsStore.getState();
-    // CUSTOM(voice-exit): exit before chord matching, while preserving the second Esc.
-    const exitedVoice =
+    // CUSTOM(voice-exit): the Esc that leaves voice mode never counts toward the interrupt chord.
+    if (
       !store.commandCenterOpen &&
-      dispatchVoiceEscape(input.event, (action) => keyboardActionDispatcher.dispatch(action));
+      dispatchVoiceEscape(input.event, (action) => keyboardActionDispatcher.dispatch(action))
+    ) {
+      const pendingChord = chordStateRef.current;
+      if (pendingChord.timeoutId) clearTimeout(pendingChord.timeoutId);
+      chordStateRef.current = { candidateIndices: [], step: 0, timeoutId: null };
+      if (pendingChord.step > 0) publishBrowserShortcutPolicy();
+      input.domEvent?.preventDefault();
+      input.domEvent?.stopPropagation();
+      return;
+    }
     const previousChordState = chordStateRef.current;
     const result = resolveKeyboardShortcut({
       event: input.event,
@@ -303,11 +313,6 @@ export function useKeyboardShortcuts({
       input.domEvent.stopPropagation();
     }
 
-    if (exitedVoice) {
-      input.domEvent?.preventDefault();
-      input.domEvent?.stopPropagation();
-      return;
-    }
     if (!result.match) {
       return;
     }
@@ -339,6 +344,11 @@ export function useKeyboardShortcuts({
     }
 
     if (dispatchTopWebOverlayKeyDown(event)) {
+      return;
+    }
+
+    // CUSTOM(voice-hold-to-talk): Enter and Space are the hold-to-talk keys in voice mode.
+    if (isVoiceHoldKeyEvent(event)) {
       return;
     }
 

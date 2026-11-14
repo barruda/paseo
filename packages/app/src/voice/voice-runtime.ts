@@ -78,8 +78,6 @@ export interface VoiceRuntimeDeps {
   deactivateKeepAwake(tag: string): Promise<void>;
   // CUSTOM(voice-settings): the thinking tone's on/off and volume from Settings.
   getThinkingTone?(): ThinkingToneSettings;
-  // CUSTOM(voice-hold-to-talk): Settings > Voice "Hold to talk": audio outside a hold is not sent.
-  getHoldToTalkOnly?(): boolean;
 }
 
 interface RuntimeSessionState {
@@ -104,9 +102,8 @@ interface RuntimeState {
   serverSpeechStartedAt: number | null;
   // CUSTOM(voice-reply-mute): messages that stay silent to their end, even after unmuting.
   mutedUtteranceIds: Set<string>;
-  // CUSTOM(voice-hold-to-talk): audio keeps flowing until holdTailUntil after a release, because
-  // the capture buffer still holds the last words.
-  holdTailUntil: number;
+  // CUSTOM(voice-hold-to-talk): the release reaches the host after a short tail, because the
+  // capture buffer still holds the last words.
   holdReleaseTimer: ReturnType<typeof setTimeout> | null;
 }
 
@@ -208,6 +205,8 @@ export interface VoiceRuntime {
   toggleReplyMute(): void;
   // CUSTOM(voice-hold-to-talk): no-op unless the host advertises features.voiceHold.
   setHold(held: boolean): void;
+  // CUSTOM(voice-hold-to-talk): voice mode is on and its host can hold a turn open.
+  canHold(): boolean;
   isVoiceModeForAgent(serverId: string, agentId: string): boolean;
   shouldPlayVoiceAudio(serverId: string): boolean;
   onAssistantAudioStarted(serverId: string): void;
@@ -233,7 +232,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     lastDisplayVolumePublishMs: 0,
     serverSpeechStartedAt: null,
     mutedUtteranceIds: new Set(),
-    holdTailUntil: 0,
     holdReleaseTimer: null,
   };
   const playback: RuntimePlaybackState = {
@@ -558,16 +556,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
         return;
       }
 
-      // CUSTOM(voice-hold-to-talk)
-      if (
-        deps.getHoldToTalkOnly?.() &&
-        hostSupportsHold(activeSession.adapter.serverId) &&
-        !state.telemetry.isHolding &&
-        Date.now() >= state.holdTailUntil
-      ) {
-        return;
-      }
-
       const base64 = Buffer.from(chunk).toString("base64");
 
       void activeSession.adapter.sendVoiceAudioChunk(base64, PCM_MIME_TYPE).catch((error) => {
@@ -585,6 +573,16 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       clearTimeout(state.holdReleaseTimer);
       state.holdReleaseTimer = null;
     }
+  }
+
+  function canHold(): boolean {
+    const activeSession = getActiveSession();
+    return (
+      activeSession !== null &&
+      state.snapshot.isVoiceMode &&
+      activeSession.adapter.setVoiceHold !== undefined &&
+      hostSupportsHold(activeSession.adapter.serverId)
+    );
   }
 
   // CUSTOM(voice-hold-to-talk): holding keeps one turn open on the host; releasing ends it.
@@ -615,7 +613,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
       send(true);
       return;
     }
-    state.holdTailUntil = Date.now() + HOLD_RELEASE_TAIL_MS;
     state.holdReleaseTimer = setTimeout(() => {
       state.holdReleaseTimer = null;
       send(false);
@@ -624,7 +621,6 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
 
   function resetToDisabledState(): void {
     clearHoldReleaseTimer();
-    state.holdTailUntil = 0;
     state.transportReady = false;
     state.turnInProgress = false;
     state.serverSpeechDetected = false;
@@ -963,6 +959,7 @@ export function createVoiceRuntime(deps: VoiceRuntimeDeps): VoiceRuntime {
     // the rest of the reply pass unplayed (still confirmed, so the speak tool returns);
     // unmuting takes effect from the agent's next message.
     setHold,
+    canHold,
 
     toggleReplyMute() {
       if (state.snapshot.isReplyMuted) {

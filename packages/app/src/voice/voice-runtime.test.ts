@@ -75,7 +75,6 @@ function createRuntime(options?: {
   engine?: AudioEngine;
   getServerInfo?: (serverId: string) => DaemonServerInfo | null;
   getThinkingTone?: () => ThinkingToneSettings;
-  getHoldToTalkOnly?: () => boolean;
 }) {
   const engine = options?.engine ?? createAudioEngineMock();
   const runtime = createVoiceRuntime({
@@ -84,7 +83,6 @@ function createRuntime(options?: {
     activateKeepAwake: vi.fn().mockResolvedValue(undefined),
     deactivateKeepAwake: vi.fn().mockResolvedValue(undefined),
     getThinkingTone: options?.getThinkingTone,
-    getHoldToTalkOnly: options?.getHoldToTalkOnly,
   });
 
   return { runtime, engine };
@@ -724,7 +722,9 @@ describe("voice runtime", () => {
         getServerInfo: () => createServerInfo({ voiceHold: true }),
       });
       runtime.registerSession(adapter);
+      expect(runtime.canHold()).toBe(false);
       await runtime.startVoice("server-1", "agent-1");
+      expect(runtime.canHold()).toBe(true);
 
       runtime.setHold(true);
       expect(adapter.setVoiceHold).toHaveBeenLastCalledWith(true);
@@ -743,34 +743,10 @@ describe("voice runtime", () => {
       runtime.registerSession(adapter);
       await runtime.startVoice("server-1", "agent-1");
 
+      expect(runtime.canHold()).toBe(false);
       runtime.setHold(true);
       expect(adapter.setVoiceHold).not.toHaveBeenCalled();
       expect(runtime.getTelemetrySnapshot().isHolding).toBe(false);
-    });
-
-    it("in hold-to-talk mode sends audio only while held, plus the release tail", async () => {
-      const adapter = createSessionAdapter();
-      const { runtime } = createRuntime({
-        getServerInfo: () => createServerInfo({ voiceHold: true }),
-        getHoldToTalkOnly: () => true,
-      });
-      runtime.registerSession(adapter);
-      await runtime.startVoice("server-1", "agent-1");
-
-      runtime.handleCapturePcm(new Uint8Array(3200));
-      expect(adapter.sendVoiceAudioChunk).not.toHaveBeenCalled();
-
-      runtime.setHold(true);
-      runtime.handleCapturePcm(new Uint8Array(3200));
-      expect(adapter.sendVoiceAudioChunk).toHaveBeenCalledTimes(1);
-
-      runtime.setHold(false);
-      runtime.handleCapturePcm(new Uint8Array(3200));
-      expect(adapter.sendVoiceAudioChunk).toHaveBeenCalledTimes(2);
-
-      vi.advanceTimersByTime(250);
-      runtime.handleCapturePcm(new Uint8Array(3200));
-      expect(adapter.sendVoiceAudioChunk).toHaveBeenCalledTimes(2);
     });
   });
 });

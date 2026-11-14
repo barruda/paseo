@@ -7,9 +7,9 @@ import {
 } from "./keyboard-shortcuts";
 import { dispatchVoiceEscape } from "./voice-escape";
 
-it.each(["Escape", "Escape Escape"])(
-  "exits on first Escape and interrupts on second with %s",
-  (combo) => {
+it("the Escape that exits voice never starts the Escape Escape interrupt chord", () => {
+  const combo = "Escape Escape";
+  {
     const dispatcher = createKeyboardActionDispatcher();
     const calls: string[] = [];
     let voiceActive = true;
@@ -41,7 +41,11 @@ it.each(["Escape", "Escape Escape"])(
       shiftKey: false,
     };
     function press() {
-      const exited = dispatchVoiceEscape(event, (action) => dispatcher.dispatch(action));
+      if (dispatchVoiceEscape(event, (action) => dispatcher.dispatch(action))) {
+        if (chordState.timeoutId) clearTimeout(chordState.timeoutId);
+        chordState = { candidateIndices: [], step: 0, timeoutId: null };
+        return;
+      }
       const result = resolveKeyboardShortcut({
         event,
         context: {
@@ -55,16 +59,18 @@ it.each(["Escape", "Escape Escape"])(
         bindings: buildEffectiveBindings({ "agent-interrupt": combo }),
       });
       chordState = result.nextChordState;
-      if (!exited && result.match?.action === "agent.interrupt")
+      if (result.match?.action === "agent.interrupt")
         dispatcher.dispatch({ id: "agent.interrupt", scope: "global" });
     }
     press();
     expect(calls).toEqual(["exit"]);
     press();
+    expect(calls).toEqual(["exit"]);
+    press();
     expect(calls).toEqual(["exit", "interrupt"]);
     if (chordState.timeoutId) clearTimeout(chordState.timeoutId);
-  },
-);
+  }
+});
 
 it("leaves modified Escape and key repeat alone", () => {
   let calls = 0;

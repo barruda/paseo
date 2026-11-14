@@ -7,6 +7,7 @@ import { Ear, EarOff, Hand, Mic, MicOff, Square, X } from "lucide-react-native";
 import { FOOTER_HEIGHT } from "@/constants/layout";
 import { useVoiceTelemetry } from "@/contexts/voice-context";
 import { VolumeMeter } from "./volume-meter";
+import { VOICE_OVERLAY_TEST_ID } from "@/voice/use-voice-hold-key";
 
 interface RealtimeVoiceOverlayProps {
   isMuted: boolean;
@@ -77,7 +78,8 @@ export function RealtimeVoiceOverlay({
     [isSwitching],
   );
   return (
-    <View style={styles.container}>
+    // CUSTOM(voice-hold-to-talk): use-voice-hold-key finds the composer this overlay covers.
+    <View style={styles.container} testID={VOICE_OVERLAY_TEST_ID}>
       <View style={styles.meterContainer}>
         {liveTranscript ? (
           // CUSTOM(voice-live-transcript): head-truncated so the newest words stay visible.

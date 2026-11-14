@@ -1,4 +1,3 @@
-import { CHORD_TIMEOUT_MS } from "@/keyboard/keyboard-shortcuts";
 import type { AgentSessionConfig } from "@getpaseo/protocol/agent-types";
 import type { VoiceRuntime, VoiceRuntimeSnapshot } from "@/voice/voice-runtime";
 
@@ -18,7 +17,6 @@ export interface SidebarVoicePorts {
   resolveAgent(serverId: string, config: AgentSessionConfig): Promise<VoiceSessionTarget>;
   voice: Pick<VoiceRuntime, "getSnapshot" | "startVoice" | "stopVoice">;
   cancelAgent(target: VoiceSessionTarget): Promise<unknown>;
-  now(): number;
 }
 
 export function ownsSidebarVoice(
@@ -38,7 +36,6 @@ export function createSidebarVoiceSession(ports: SidebarVoicePorts) {
   let snapshot: SidebarVoiceSnapshot = { operation: "idle", target: null, error: null };
   const listeners = new Set<() => void>();
   let operationId = 0;
-  let lastExit: { target: VoiceSessionTarget; at: number } | null = null;
   function publish(next: SidebarVoiceSnapshot) {
     snapshot = next;
     for (const listener of listeners) listener();
@@ -77,7 +74,6 @@ export function createSidebarVoiceSession(ports: SidebarVoicePorts) {
     },
     async start(serverId: string, config: AgentSessionConfig) {
       if (snapshot.operation !== "idle" || ports.voice.getSnapshot().isVoiceSwitching) return;
-      lastExit = null;
       publish({ ...snapshot, operation: "starting", error: null });
       try {
         const target = await ports.resolveAgent(serverId, config);
@@ -88,30 +84,19 @@ export function createSidebarVoiceSession(ports: SidebarVoicePorts) {
         fail(error);
       }
     },
+    // CUSTOM(voice-exit): Esc only ever leaves voice mode. While the exit is still stopping, a
+    // repeated Esc is swallowed here instead of reaching the agent's interrupt.
     exit(): boolean {
       const target = snapshot.target;
-      if (
-        !target ||
-        !ownsSidebarVoice(target, ports.voice.getSnapshot()) ||
-        snapshot.operation !== "idle"
-      )
+      if (!target) return false;
+      if (snapshot.operation === "stopping") return true;
+      if (!ownsSidebarVoice(target, ports.voice.getSnapshot()) || snapshot.operation !== "idle")
         return false;
-      lastExit = { target, at: ports.now() };
       void stop(target, false);
-      return true;
-    },
-    interruptAfterExit(): boolean {
-      const exit = lastExit;
-      if (!exit || ports.now() - exit.at > CHORD_TIMEOUT_MS) return false;
-      const currentVoice = ports.voice.getSnapshot();
-      if (currentVoice.activeAgentId && !ownsSidebarVoice(exit.target, currentVoice)) return false;
-      lastExit = null;
-      void stop(exit.target, true);
       return true;
     },
     async stopAndInterrupt() {
       if (!snapshot.target) return;
-      lastExit = null;
       await stop(snapshot.target, true);
     },
   };

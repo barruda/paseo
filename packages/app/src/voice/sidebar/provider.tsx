@@ -30,7 +30,6 @@ export function SidebarVoiceProvider({ children }: { children: ReactNode }) {
     const resolveAgent = createSidebarVoiceHost(randomUUID);
     return createSidebarVoiceSession({
       voice,
-      now: Date.now,
       resolveAgent: (serverId, config) => resolveAgent(connectedClient(serverId), serverId, config),
       cancelAgent: async (target) => connectedClient(target.serverId).cancelAgent(target.agentId),
     });
@@ -62,10 +61,8 @@ export function SidebarVoiceProvider({ children }: { children: ReactNode }) {
     actions: ["message-input.voice-exit", "agent.interrupt"],
     priority: 10000,
     enabled: true,
-    handle: (action) =>
-      action.id === "message-input.voice-exit"
-        ? session.exit() || session.interruptAfterExit()
-        : session.interruptAfterExit(),
+    // CUSTOM(voice-exit): either Esc action only leaves voice mode; the agent keeps working.
+    handle: () => session.exit(),
   });
   return <SidebarVoiceContext.Provider value={session}>{children}</SidebarVoiceContext.Provider>;
 }

@@ -292,9 +292,6 @@ export const VOICE_SETTINGS_EN = {
     exit: "Leave voice mode (Esc). The agent keeps working.",
     muteReplies: "Silence the agent's voice",
     unmuteReplies: "Hear the agent again from its next message",
-    holdToTalk: "Hold to talk",
-    holdToTalkHint:
-      "Hold Enter (or the mic button) to talk; releasing it sends. Silence never ends your turn, and speech outside a hold is ignored.",
     holding: "Release to send",
     holdPrompt: "Hold to talk",
   },
@@ -435,9 +432,6 @@ export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
     exit: "Sair do modo de voz (Esc). O agente continua trabalhando.",
     muteReplies: "Silenciar a voz do agente",
     unmuteReplies: "Ouvir o agente de novo a partir da próxima mensagem",
-    holdToTalk: "Segurar para falar",
-    holdToTalkHint:
-      "Segure Enter (ou o botão do microfone) para falar; soltar envia. O silêncio nunca encerra a sua vez, e fala fora do segurar é ignorada.",
     holding: "Solte para enviar",
     holdPrompt: "Segure para falar",
   },
@@ -576,9 +570,6 @@ export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
     exit: "Salir del modo de voz (Esc). El agente sigue trabajando.",
     muteReplies: "Silenciar la voz del agente",
     unmuteReplies: "Volver a oír al agente desde su próximo mensaje",
-    holdToTalk: "Mantener para hablar",
-    holdToTalkHint:
-      "Mantén Enter (o el botón del micrófono) para hablar; al soltar se envía. El silencio nunca termina tu turno y el habla fuera de la pulsación se ignora.",
     holding: "Suelta para enviar",
     holdPrompt: "Mantén para hablar",
   },
@@ -718,9 +709,6 @@ export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
     exit: "Quitter le mode vocal (Échap). L'agent continue de travailler.",
     muteReplies: "Couper la voix de l'agent",
     unmuteReplies: "Réentendre l'agent dès son prochain message",
-    holdToTalk: "Maintenir pour parler",
-    holdToTalkHint:
-      "Maintenez Entrée (ou le bouton du micro) pour parler ; relâcher envoie. Le silence ne termine jamais votre tour et la parole hors maintien est ignorée.",
     holding: "Relâchez pour envoyer",
     holdPrompt: "Maintenez pour parler",
   },
@@ -859,9 +847,6 @@ export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
     exit: "ボイスモードを終了 (Esc)。エージェントは作業を続けます。",
     muteReplies: "エージェントの音声をミュート",
     unmuteReplies: "次のメッセージからエージェントの音声を再開",
-    holdToTalk: "押している間だけ話す",
-    holdToTalkHint:
-      "Enter(またはマイクボタン)を押している間話します。離すと送信されます。無音で発話が終わることはなく、押していない間の音声は無視されます。",
     holding: "離すと送信",
     holdPrompt: "押して話す",
   },
@@ -1000,9 +985,6 @@ export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
     exit: "음성 모드 종료 (Esc). 에이전트는 계속 작업합니다.",
     muteReplies: "에이전트 음성 끄기",
     unmuteReplies: "다음 메시지부터 에이전트 음성 다시 듣기",
-    holdToTalk: "누르고 말하기",
-    holdToTalkHint:
-      "Enter(또는 마이크 버튼)를 누르고 있는 동안 말합니다. 놓으면 전송됩니다. 침묵으로 발화가 끝나지 않으며 누르지 않은 동안의 음성은 무시됩니다.",
     holding: "놓으면 전송",
     holdPrompt: "누르고 말하기",
   },
@@ -1141,9 +1123,6 @@ export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
     exit: "Выйти из голосового режима (Esc). Агент продолжит работу.",
     muteReplies: "Отключить голос агента",
     unmuteReplies: "Снова слышать агента со следующего сообщения",
-    holdToTalk: "Удерживать, чтобы говорить",
-    holdToTalkHint:
-      "Удерживайте Enter (или кнопку микрофона), чтобы говорить; отпустите, чтобы отправить. Тишина не завершает реплику, речь вне удержания игнорируется.",
     holding: "Отпустите, чтобы отправить",
     holdPrompt: "Удерживайте, чтобы говорить",
   },
@@ -1282,9 +1261,6 @@ export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
     exit: "退出语音模式 (Esc)。智能体会继续工作。",
     muteReplies: "静音智能体语音",
     unmuteReplies: "从下一条消息起恢复智能体语音",
-    holdToTalk: "按住说话",
-    holdToTalkHint:
-      "按住 Enter(或麦克风按钮)说话,松开即发送。静音不会结束你的发言,未按住时的语音会被忽略。",
     holding: "松开发送",
     holdPrompt: "按住说话",
   },
@@ -1423,9 +1399,6 @@ export const VOICE_SETTINGS_AR: VoiceSettingsStrings = {
     exit: "الخروج من وضع الصوت (Esc). يواصل الوكيل العمل.",
     muteReplies: "كتم صوت الوكيل",
     unmuteReplies: "سماع الوكيل مجددًا من رسالته التالية",
-    holdToTalk: "اضغط مطولًا للتحدث",
-    holdToTalkHint:
-      "اضغط مطولًا على Enter (أو زر الميكروفون) للتحدث، والإفلات يرسل. الصمت لا ينهي دورك، ويُتجاهل الكلام خارج الضغط.",
     holding: "أفلت للإرسال",
     holdPrompt: "اضغط مطولًا للتحدث",
   },

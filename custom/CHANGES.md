@@ -974,9 +974,10 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   refused. Both reloaded the agent to swap the voice instructions, and a reload cancels the run.
 - **What:**
   - The voice overlay has an X beside the stop button: it leaves voice mode and the agent keeps
-    working. Esc exits before shortcut resolution, including when interrupt is bound to Esc Esc;
-    the same key still advances that chord so the second Esc interrupts. The stop button still
-    leaves and interrupts.
+    working. Esc only leaves voice mode: it exits before shortcut resolution and resets the
+    shortcut chord, so it never counts toward Esc Esc (interrupt), and a repeated Esc while voice
+    mode is still closing is swallowed. Only the stop button leaves and interrupts. (Until
+    2026-11-13 a second Esc interrupted the agent; the user found that it stopped work by accident.)
   - The voice-mode button shows while the agent works, and entering voice mode doesn't
     interrupt it.
   - Daemon: while the agent runs, the system prompt change waits and applies once the run ends,
@@ -994,11 +995,11 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   change, check `host.hasActiveAgentRun`; if running, keep the change pending and apply it when
   the run ends. Add the overlay X calling `voice.stopVoice()` only, and make the composer's
   `agent.interrupt` handler leave voice mode first when it is on for that agent. Dispatch the
-  dedicated voice-exit action before resolving Esc shortcuts, preserving chord advancement but
-  suppressing any interrupt on that first keypress.
+  dedicated voice-exit action before resolving Esc shortcuts; when it handled the key, reset the
+  chord state and stop there. `exitVoiceMode` returns true (swallows) while the exit is pending.
 - **Verify:** `npx vitest run src/server/session/voice/voice-session.test.ts --bail=1` (server),
   in the update script. In the app, ask for a long task in voice mode, press Esc: voice mode
-  ends, the agent keeps going; Esc again interrupts it.
+  ends, the agent keeps going; pressing Esc again right away doesn't interrupt it.
 
 ## voice-new-agent: voice mode from New agent and New workspace
 
@@ -1302,8 +1303,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   or resumes a labeled assistant in a background workspace under `~/.paseo-voice`, using the
   saved provider/model preference on first creation. The row shows status, microphone and reply
   mute controls, exit, interrupt, and a link to its conversation. Navigation and sidebar unmounts
-  do not stop it. First Esc exits; a second within the shortcut chord window interrupts that
-  assistant, even when a different chat or terminal has focus. Startup errors remain in the row
+  do not stop it. Esc exits it (never interrupts), even when a different chat or terminal has
+  focus; a repeated Esc while it is still stopping is swallowed. Startup errors remain in the row
   with Retry. Microphone capture is never started automatically on app launch.
 - **Core files touched:** `packages/app/src/app/_layout.tsx`,
   `components/sidebar/sidebar-nav-rows.tsx`, `keyboard/keyboard-shortcuts.ts`;
@@ -1312,13 +1313,13 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **Re-apply:** Mount `SidebarVoiceProvider` inside the global `VoiceProvider`, above route content.
   Add `SidebarVoiceRow` after the navigation items in their shared sidebar group. Keep the agent
   lookup label `custom.sidebar-voice=true` and background-workspace ownership separate from the
-  selected workspace. Register Escape handling above composer priority, preserving the voice
-  target through the second keypress. Share the keyboard chord timeout.
+  selected workspace. Register Escape handling (`voice-exit` and `agent.interrupt`) above composer
+  priority, calling only `session.exit()`.
 - **Verify:** `cd packages/app && npx vitest run src/voice/sidebar/session.test.ts --bail=1`
   (included in the update script). Targeted browser check:
   `npx playwright test e2e/browser/sidebar-workspace.spec.ts --project=browser --grep 'sidebar voice has' --workers=1`.
   In desktop, start Voice, switch workspace and tab, and check that listening continues and
-  double Esc interrupts the Voice assistant rather than the selected chat.
+  Esc leaves Voice without interrupting the assistant or the selected chat.
 
 ## sidebar-shortcut-settings: direct access and forgiving shortcut search
 
@@ -5256,7 +5257,7 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Verify:** `cd packages/server && npx vitest run src/server/session/voice/voice-session.test.ts --bail=1`.
   In voice mode, say "okay" while a reply plays: it stops, the agent keeps working, no prompt.
 
-## voice-hold-to-talk: hold Enter to talk, release to send
+## voice-hold-to-talk: hold Enter, Space or the hand button to talk, release to send
 
 - **Added:** 2026-11-11
 - **Commit:** (uncommitted when written)
@@ -5267,27 +5268,32 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   present. Host: `held=true` is a full barge-in (stops playback, interrupts the agent) and opens a
   capture turn through `VoiceTurnController.beginHold()`; while held the detector's `speech_stopped`
   is ignored; `held=false` (`endHold()`) ends the turn like `handleSpeechStopped`. App: Enter
-  (web/desktop, not repeating, not in a text field, released on blur) and a new hand button in
-  the voice overlay (press and hold, works on native) call `runtime.setHold`; release is sent
-  200 ms late so the capture buffer's last words arrive first. The overlay shows "Release to
-  send" while held. Settings > Voice > Microphone gets "Hold to talk" (per device,
-  `voice/hold-to-talk-settings.ts`): when on, the app streams audio only while held (client-side
-  gate, so the host needs no setting). Muting releases the hold.
+  and Space (web/desktop, released on blur) and a new hand button in the voice overlay (press and
+  hold, works on native) call `runtime.setHold`; release is sent 200 ms late so the capture
+  buffer's last words arrive first. The keys are claimed in the window capture phase whenever
+  `runtime.canHold()` (voice mode on a host with `voiceHold`), including when focus is in the
+  composer text field hidden under the overlay (found by the overlay's `realtime-voice-overlay`
+  testID inside `message-input-root`); any other text field or control keeps its keys. The
+  global shortcut hook skips those events (`isVoiceHoldKeyEvent`), so on such hosts Space no
+  longer toggles mute in voice mode. The overlay shows "Release to send" while held. Muting
+  releases the hold. Open mic keeps working beside the hold; the "Hold to talk only" setting
+  was removed on 2026-11-13 at the user's request.
 - **Core files touched:** `packages/protocol/src/messages.ts` (`VoiceSetHoldRequestSchema`,
   `features.voiceHold`), `packages/server/src/server/websocket-server.ts`, `session.ts`,
   `authorization/operation-permissions.ts`, `session/voice/index.ts`, `voice-session.ts`
   (`handleHold`), `voice-turn-controller.ts`, `packages/client/src/daemon-client.ts`
   (`setVoiceHold`), app `voice-runtime.ts`, `contexts/voice-context.tsx`,
   `contexts/session-context.tsx`, `components/realtime-voice-overlay.tsx`,
-  `composer/input/input.tsx`, `screens/settings/voice/voice-settings-page.tsx`,
-  `i18n/resources/custom-voice-settings.ts`; new `voice/hold-to-talk-settings.ts`,
-  `voice/use-voice-hold-key.ts`.
+  `composer/input/input.tsx`, `hooks/use-keyboard-shortcuts.ts`,
+  `i18n/resources/custom-voice-settings.ts`; new `voice/use-voice-hold-key.ts`.
 - **Re-apply:** Re-add the schema, flag and dispatch; `beginHold`/`endHold` plus the `held` guard
-  on `speech_stopped`; `VoiceSession.handleHold`; then the runtime `setHold`, upload gate, key
-  hook, overlay button and settings switch.
+  on `speech_stopped`; `VoiceSession.handleHold`; then the runtime `setHold`/`canHold`, the key
+  hook (capture phase, plus the skip at the top of the shortcut hook's keydown) and the overlay
+  button with its testID.
 - **Verify:** `cd packages/server && npx vitest run src/server/session/voice/ --bail=1` and
   `cd packages/app && npx vitest run src/voice/voice-runtime.test.ts --bail=1`. Restart the
-  daemon, then in voice mode hold Enter, talk with pauses, release: one utterance is sent.
+  daemon, then in voice mode hold Enter or Space (focus in the composer is fine), talk with
+  pauses, release: one utterance is sent, and no space or Enter reaches the composer.
 
 ## claude-stt: Claude as the speech-to-text provider for dictation and voice mode
 

@@ -21,12 +21,10 @@ const disabled: VoiceRuntimeSnapshot = {
 };
 function setup() {
   let voice = disabled;
-  let now = 100;
   const calls: string[] = [];
   let failure: Error | null = null;
   let pendingStop: Promise<void> = Promise.resolve();
   const session = createSidebarVoiceSession({
-    now: () => now,
     resolveAgent: async () => {
       calls.push("resolve");
       if (failure) throw failure;
@@ -62,9 +60,6 @@ function setup() {
     setVoice: (value: VoiceRuntimeSnapshot) => {
       voice = value;
     },
-    advance: () => {
-      now += 1501;
-    },
     fail: (value: Error | null) => {
       failure = value;
     },
@@ -84,7 +79,7 @@ it("keeps the independent voice session alive when sidebar subscribers unmount",
   expect(f.calls).toEqual(["resolve", "start:host:voice-agent"]);
 });
 
-it("first Escape exits only voice; the second interrupts its agent while exit is pending", async () => {
+it("Escape exits only voice and swallows repeats while the exit is pending", async () => {
   const f = setup();
   let finishStop = () => {};
   f.holdStop(
@@ -94,18 +89,17 @@ it("first Escape exits only voice; the second interrupts its agent while exit is
   );
   await f.session.start("host", config);
   expect(f.session.exit()).toBe(true);
+  expect(f.session.exit()).toBe(true);
   expect(f.calls).toEqual(["resolve", "start:host:voice-agent", "stop"]);
-  expect(f.session.interruptAfterExit()).toBe(true);
-  expect(f.calls).toEqual(["resolve", "start:host:voice-agent", "stop", "cancel:voice-agent"]);
   finishStop();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  expect(f.session.exit()).toBe(false);
+  expect(f.calls).toEqual(["resolve", "start:host:voice-agent", "stop"]);
 });
 
-it("does not steal later interrupts or an unrelated conversation's voice controls", async () => {
+it("does not steal an unrelated conversation's voice controls", async () => {
   const f = setup();
   await f.session.start("host", config);
-  f.session.exit();
-  f.advance();
-  expect(f.session.interruptAfterExit()).toBe(false);
   f.setVoice({
     ...disabled,
     phase: "listening",
@@ -144,7 +138,7 @@ it("the stop control exits and interrupts the dedicated agent", async () => {
   expect(f.calls).toEqual(["resolve", "start:host:voice-agent", "stop", "cancel:voice-agent"]);
 });
 
-it("both Escapes reach voice before the current conversation's interrupt handler", async () => {
+it("Escape reaches voice before the current conversation's interrupt handler", async () => {
   const f = setup();
   await f.session.start("host", config);
   const dispatcher = createKeyboardActionDispatcher();
@@ -159,10 +153,10 @@ it("both Escapes reach voice before the current conversation's interrupt handler
   });
   dispatcher.registerHandler({
     handlerId: "global-voice",
-    actions: ["message-input.voice-exit"],
+    actions: ["message-input.voice-exit", "agent.interrupt"],
     priority: 10000,
     enabled: true,
-    handle: () => f.session.exit() || f.session.interruptAfterExit(),
+    handle: () => f.session.exit(),
   });
   const key = {
     key: "Escape",
@@ -174,6 +168,6 @@ it("both Escapes reach voice before the current conversation's interrupt handler
     altKey: false,
   };
   expect(dispatchVoiceEscape(key, (action) => dispatcher.dispatch(action))).toBe(true);
-  expect(dispatchVoiceEscape(key, (action) => dispatcher.dispatch(action))).toBe(true);
-  expect(f.calls).toEqual(["resolve", "start:host:voice-agent", "stop", "cancel:voice-agent"]);
+  expect(dispatcher.dispatch({ id: "agent.interrupt", scope: "global" })).toBe(true);
+  expect(f.calls).toEqual(["resolve", "start:host:voice-agent", "stop"]);
 });

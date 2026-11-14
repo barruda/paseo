@@ -599,7 +599,7 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
 
   if (action.id === "agent.interrupt") {
     if (messageInputRef.current?.runKeyboardAction("dictation-cancel")) return true;
-    // CUSTOM(voice-exit): Esc leaves voice mode; a second Esc interrupts the agent.
+    // CUSTOM(voice-exit): in voice mode, Esc only leaves it; the agent keeps working.
     if (exitVoiceMode?.()) return true;
     if (!isAgentRunning || isCancellingAgent || !isConnected) return false;
     handleCancelAgent();
@@ -2034,8 +2034,9 @@ function ComposerContentImpl({
   // CUSTOM(voice-exit): Esc in voice mode leaves it without interrupting the agent.
   const voiceExitPendingRef = useRef(false);
   const exitVoiceMode = useCallback((): boolean => {
-    if (!voice || !isVoiceModeForAgent || voice.isVoiceSwitching || voiceExitPendingRef.current)
-      return false;
+    if (!voice || !isVoiceModeForAgent) return false;
+    // A repeated Esc while voice mode is still closing is swallowed, never an interrupt.
+    if (voice.isVoiceSwitching || voiceExitPendingRef.current) return true;
     voiceExitPendingRef.current = true;
     void voice
       .stopVoice()

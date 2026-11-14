@@ -9,7 +9,6 @@ import {
 } from "react";
 // CUSTOM(voice-settings)
 import { useThinkingToneStore } from "@/voice/thinking-tone-settings";
-import { useHoldToTalkStore } from "@/voice/hold-to-talk-settings";
 import { useVoiceHoldKey } from "@/voice/use-voice-hold-key";
 import { activateKeepAwakeAsync, deactivateKeepAwake } from "expo-keep-awake";
 import { useSessionStore } from "@/stores/session-store";
@@ -173,7 +172,6 @@ export function VoiceProvider({ children }: VoiceProviderProps) {
       // CUSTOM(voice-settings)
       getThinkingTone: () => useThinkingToneStore.getState(),
       // CUSTOM(voice-hold-to-talk)
-      getHoldToTalkOnly: () => useHoldToTalkStore.getState().holdToTalkOnly,
     });
 
     engineRef.current = engine;
