@@ -39,11 +39,16 @@ rules agents get wrong.
 
 ## Shipping a change to the user's running Paseo
 
-- **Clients are yours, daemons are the user's.** Rebuilding, reinstalling and reopening the Paseo
-  clients is yours to do whenever a change needs it, without asking. Restarting a daemon never
-  is: don't run anything that stops or restarts one (ports 6767 and 6768, the `Paseo Supervisor`,
-  a client whose daemon stops with its window). When a change needs a daemon restart, end your
-  report with the command for the user to run (below).
+- **Clients are yours, daemons are the user's.** In the main checkout, build and install every
+  change without asking, daemon-side ones included; never end a report with "should I
+  build/install it?". Then:
+  - **No daemon restart needed:** reopen the clients and test the change in the running app.
+  - **Daemon restart needed:** stop after the install. Don't reopen the clients: the restart
+    command (below) closes and reopens them itself. End the report with that command.
+
+  Restarting a daemon is the one step that isn't yours: don't run anything that stops or restarts
+  one (ports 6767 and 6768, the `Paseo Supervisor`, a client whose daemon stops with its window).
+
 - Only the main checkout (`/home/bruno/projetos/paseo`) ships. In a git worktree (any other
   `git rev-parse --show-toplevel`, such as `~/projetos/worktrees/paseo-*`), don't build, install,
   reload plugins, run `custom/reopen-paseo-clients.sh`, or start `npm run dev`, `dev:app`, or
@@ -60,17 +65,18 @@ rules agents get wrong.
   files went into the build.
 - Core change: `npm run build:desktop -- --linux dir` (only the folder the install copies; the
   full build fails at rpm on Ubuntu), then
-  `custom/update-paseo-source-and-apply-customization.sh --install-only`. Then run
-  `custom/reopen-paseo-clients.sh` yourself, without asking: it closes each open Paseo window and
+  `custom/update-paseo-source-and-apply-customization.sh --install-only`. If no daemon restart is
+  needed, run `custom/reopen-paseo-clients.sh` yourself, without asking: it closes each open Paseo window and
   reopens it from its launcher (so it keeps its dock slot). It skips clients whose daemon stops on
   quit (`paseo-telus`, `keepRunningAfterQuit` off): reopening those stops their running agents, so
   never pass `--include-daemon-restart` unless the user asks; say in your report that paseo-telus
   still runs the old build until they reopen it. Then **test the change in the running app** (or
   an isolated dev stack driven by Playwright) before reporting; unit tests passing is not enough.
-  For daemon-side changes that is not enough: with an unchanged version the
-  `Paseo Supervisor` keeps respawning the daemon from the old build, even after Settings >
-  Restart daemon. Don't run the restart script yourself: it stops the daemon your own session
-  runs under (see "Updating" in `custom/README.md`).
+  For daemon-side changes, build and install, skip `reopen-paseo-clients.sh`, and end with the
+  daemon restart: with an unchanged version the `Paseo Supervisor` keeps respawning the daemon
+  from the old build, even after Settings > Restart daemon. Don't run the restart script yourself:
+  it stops the daemon your own session runs under (see "Updating" in `custom/README.md`). Say
+  which behavior you could not test yet because it waits on that restart.
 - Whenever the user's daemons need a restart (a daemon-side change, a protocol or server change, a
   customization whose **Verify** says so), end your final report with the command, in its own code
   block, so the user can copy it:

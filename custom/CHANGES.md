@@ -5612,3 +5612,33 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
   the switch on, Save and check the file has no `github`, provider or `apiKey`; set a different
   TypeSafe key on the host, Load: the key stays. Test also covers `stripAccountSettings` and
   `mergePluginValues`.
+
+## claude-tts-whole-text: Claude speaks a whole reply as one stream, no pause between sentences
+
+- **Added:** 2026-11-13
+- **Commit:** (not committed yet)
+- **Why:** `tts-manager` split every reply into segments of up to 260 characters, synthesized each
+  with its own `synthesizeSpeech` call (a new WebSocket per segment for Claude, about 600 ms to
+  open), sent one `audio_output` per segment and waited for the client to confirm it before the
+  next. Every segment boundary was a separate clip with its own silence plus a round trip, heard
+  as a pause between sentences. The split exists for the local engine and stays for it.
+- **What:** `TextToSpeechProvider.streamsWholeText` (optional). `ClaudeTTS` sets it. When set,
+  `TTSManager` makes one segment with the whole normalized text (one synthesis call, no prefetch)
+  and emits audio progressively in one group (`groupId` = audioId, ids `audioId:N`): the first
+  chunk about 0.5 s, then about 2 s each, each cut at the quietest 10 ms window of the last 0.5 s
+  before the target, on a 2-byte boundary. Low-water rule: Claude audio arrives in bursts with stalls, so `PcmChunker.push(data, nowMs)`
+  also estimates the audio still queued in the app (`emitted seconds - time since the first
+emit`) and, below 1 s, releases everything buffered except a 10 ms holdback (cut at the quietest
+  window of the last 0.25 s), instead of waiting for 2 s. The last emitted chunk carries `isLastChunk: true`
+  and is never empty; `streamEnded` is set after it is emitted. The sample rate comes from the
+  `pcm;rate=N` format (default 24000). Other providers take the old path unchanged. No app or
+  protocol change: the app already plays multi-chunk groups by `chunkIndex` and acks each id.
+- **Core files touched:** `packages/server/src/server/speech/speech-provider.ts`,
+  `speech/providers/claude/tts.ts`, `agent/tts-manager.ts`; new `agent/pcm-chunker.ts` and
+  `agent/pcm-chunker.test.ts`; tests added to `agent/tts-manager.test.ts`.
+- **Re-apply:** `rg "CUSTOM\(claude-tts-whole-text\)"`. Add the optional flag, set it in
+  `ClaudeTTS`, and in `generateAndWaitForPlayback` use one segment plus the `progressive` branch
+  of `emitPreparedSegment` (PcmChunker push per stream chunk, flush as the last chunk).
+- **Verify:** `cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts src/server/agent/pcm-chunker.test.ts src/server/speech/providers/claude/tts.test.ts --bail=1`.
+  Needs a daemon restart. In voice mode with the Claude voice, a multi-sentence answer plays
+  without gaps between sentences.

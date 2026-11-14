@@ -67,5 +67,8 @@ export interface SpeechStreamResult {
 }
 
 export interface TextToSpeechProvider {
+  // CUSTOM(claude-tts-whole-text): the provider takes the whole reply in one request and
+  // streams PCM16 audio, so the TTS manager must not split the text into segments.
+  streamsWholeText?: boolean;
   synthesizeSpeech(text: string): Promise<SpeechStreamResult>;
 }

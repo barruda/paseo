@@ -325,3 +325,94 @@ describe("TTSManager", () => {
     expect(warnSpy).not.toHaveBeenCalled();
   });
 });
+
+class WholeTextTts implements TextToSpeechProvider {
+  readonly streamsWholeText = true;
+  readonly calls: string[] = [];
+  constructor(private readonly pcm: Buffer) {}
+  async synthesizeSpeech(text: string): Promise<{ stream: Readable; format: string }> {
+    this.calls.push(text);
+    const parts: Buffer[] = [];
+    for (let offset = 0; offset < this.pcm.length; offset += 7000) {
+      parts.push(this.pcm.subarray(offset, offset + 7000));
+    }
+    return { stream: Readable.from(parts), format: "pcm;rate=24000" };
+  }
+}
+
+function makePcm(): Buffer {
+  // 6 s of audio with a silent gap near 1.8 s.
+  const samples = 24000 * 6;
+  const pcm = Buffer.alloc(samples * 2);
+  for (let i = 0; i < samples; i += 1) {
+    const silent = i > 24000 * 1.7 && i < 24000 * 1.9;
+    const loud = i % 2 === 0 ? 6000 : -6000;
+    pcm.writeInt16LE(silent ? 0 : loud, i * 2);
+  }
+  return pcm;
+}
+
+describe("TTSManager with a whole-text provider", () => {
+  it("makes one synthesis call and streams ordered chunks", async () => {
+    const pcm = makePcm();
+    const tts = new WholeTextTts(pcm);
+    const manager = new TTSManager("s1", pino({ level: "silent" }), tts);
+    const emitted: AudioOutputMessage[] = [];
+    const text = "One sentence. Another sentence. " + "word ".repeat(200);
+
+    await manager.generateAndWaitForPlayback(
+      text,
+      (msg) => {
+        if (isAudioOutputMessage(msg)) {
+          emitted.push(msg);
+          manager.confirmAudioPlayed(msg.payload.id);
+        }
+      },
+      new AbortController().signal,
+      true,
+    );
+
+    expect(tts.calls).toEqual([text.trim().replace(/\s+/g, " ")]);
+    expect(emitted.length).toBeGreaterThan(2);
+    expect(emitted.map((m) => m.payload.chunkIndex)).toEqual(emitted.map((_, i) => i));
+    expect(emitted.map((m) => m.payload.isLastChunk)).toEqual(
+      emitted.map((_, i) => i === emitted.length - 1),
+    );
+    expect(new Set(emitted.map((m) => m.payload.groupId)).size).toBe(1);
+    const buffers = emitted.map((m) => Buffer.from(m.payload.audio, "base64"));
+    expect(buffers.every((b) => b.length > 0)).toBe(true);
+    expect(Buffer.concat(buffers).equals(pcm)).toBe(true);
+    expect(buffers.slice(0, -1).every((b) => b.length % 2 === 0)).toBe(true);
+    // The first chunk is short (about 0.5 s of audio) so speech starts fast.
+    expect(buffers[0].length).toBeLessThanOrEqual(24000);
+  });
+
+  it("resolves only after every chunk is confirmed", async () => {
+    const manager = new TTSManager("s1", pino({ level: "silent" }), new WholeTextTts(makePcm()));
+    const ids: string[] = [];
+    let resolved = false;
+    const task = manager.generateAndWaitForPlayback(
+      "hello",
+      (msg) => {
+        if (isAudioOutputMessage(msg)) {
+          ids.push(msg.payload.id);
+        }
+      },
+      new AbortController().signal,
+      true,
+    );
+    void task.finally(() => {
+      resolved = true;
+    });
+
+    await vi.waitFor(() => expect(ids.length).toBeGreaterThan(2));
+    for (const id of ids.slice(0, -1)) {
+      manager.confirmAudioPlayed(id);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(resolved).toBe(false);
+    manager.confirmAudioPlayed(ids[ids.length - 1]);
+    await task;
+    expect(resolved).toBe(true);
+  });
+});

@@ -125,6 +125,7 @@ and updating `next`, integrating it after a release, and releasing a hotfix from
 
 - **NEVER restart the main Paseo daemon on port 6767 without permission** — it manages all running agents. If you're an agent, restarting it kills your own process.
 - **NEVER assume a timeout means the service needs restarting** — timeouts can be transient.
+- **In the main checkout (`/home/bruno/projetos/paseo`), every change you make ends built, installed and tested, without asking.** Build and install yourself; never ask "should I build/install?". If the change needs no daemon restart, also reopen the clients and test in the running app. If it needs one, stop after the install and end with `kill-paseos-and-daemons.sh`: that command reopens the clients itself, so don't reopen them first. Load the `paseo-customizations` skill before shipping; it has the commands.
 - **In a git worktree, never build, install, or launch Paseo unless the user asks.** If `git rev-parse --show-toplevel` is not `/home/bruno/projetos/paseo`, finish with typecheck, lint, and targeted tests, then offer the build. A build, dev daemon, or app started from a worktree runs beside the main checkout's and the user can't tell which one they are looking at. See the `paseo-customizations` skill.
 - **NEVER add auth checks to tests** — agent providers handle their own auth.
 - **Before changing app routes, startup routing, remembered workspace restore, or active workspace selection, read [docs/expo-router.md](docs/expo-router.md).**

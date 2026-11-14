@@ -98,6 +98,8 @@ function toError(error: unknown): Error {
 
 export class ClaudeTTS implements TextToSpeechProvider {
   public readonly id = "claude" as const;
+  // CUSTOM(claude-tts-whole-text): one WebSocket per reply; the TTS manager must not segment.
+  public readonly streamsWholeText = true;
   private readonly logger: pino.Logger;
 
   constructor(

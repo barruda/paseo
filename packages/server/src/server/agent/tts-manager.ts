@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from "uuid";
 import type { TextToSpeechProvider } from "../speech/speech-provider.js";
 import { toResolver, type Resolvable } from "../speech/provider-resolver.js";
 import type { SessionOutboundMessage } from "../messages.js";
+import { PcmChunker, parsePcmSampleRate } from "./pcm-chunker.js";
 
 interface PendingPlayback {
   resolve: () => void;
@@ -124,6 +125,15 @@ function splitTextForTts(text: string): TtsSegment[] {
   return parts;
 }
 
+// CUSTOM(claude-tts-whole-text)
+function wholeTextSegment(text: string): TtsSegment[] {
+  const normalized = text.trim().replace(/\s+/g, " ");
+  if (!normalized) {
+    throw new Error("Cannot synthesize empty text");
+  }
+  return [{ index: 0, text: normalized }];
+}
+
 /**
  * Per-session TTS manager
  * Handles TTS audio generation and playback confirmation tracking
@@ -163,7 +173,9 @@ export class TTSManager {
       "TTS input text",
     );
 
-    const segments = splitTextForTts(text);
+    // CUSTOM(claude-tts-whole-text): a provider that streams the whole reply gets one segment.
+    const wholeText = this.resolveTts()?.streamsWholeText === true;
+    const segments = wholeText ? wholeTextSegment(text) : splitTextForTts(text);
     this.logger.info(
       {
         segmentCount: segments.length,
@@ -229,6 +241,7 @@ export class TTSManager {
           abortSignal,
           isVoiceMode,
           utteranceId,
+          progressive: wholeText,
         });
         this.logger.info(
           {
@@ -351,8 +364,9 @@ export class TTSManager {
     abortSignal: AbortSignal;
     isVoiceMode: boolean;
     utteranceId: string;
+    progressive?: boolean;
   }): Promise<void> {
-    const { prepared, emitMessage, abortSignal, isVoiceMode, utteranceId } = params;
+    const { prepared, emitMessage, abortSignal, isVoiceMode, utteranceId, progressive } = params;
     const { stream, format, text } = prepared;
 
     const audioId = uuidv4();
@@ -388,33 +402,72 @@ export class TTSManager {
     abortSignal.addEventListener("abort", onAbort, { once: true });
 
     try {
-      const buffers: Buffer[] = [];
-      for await (const chunk of stream) {
-        if (abortSignal.aborted) {
-          this.logger.debug("Aborted during stream collection");
-          break;
+      if (progressive) {
+        // CUSTOM(claude-tts-whole-text): emit audio as it streams, in one group.
+        const chunker = new PcmChunker(parsePcmSampleRate(format));
+        let chunkIndex = 0;
+        const emitChunk = (audio: Buffer, isLastChunk: boolean) => {
+          pendingPlayback.pendingChunks += 1;
+          emitMessage({
+            type: "audio_output",
+            payload: {
+              id: `${audioId}:${chunkIndex}`,
+              groupId: audioId,
+              chunkIndex,
+              isLastChunk,
+              audio: audio.toString("base64"),
+              format,
+              isVoiceMode,
+              utteranceId,
+            },
+          });
+          chunkIndex += 1;
+        };
+        for await (const chunk of stream) {
+          if (abortSignal.aborted) {
+            this.logger.debug("Aborted during stream collection");
+            break;
+          }
+          const data = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+          for (const ready of chunker.push(data, Date.now())) {
+            emitChunk(ready, false);
+          }
         }
-        buffers.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-      }
+        if (!abortSignal.aborted) {
+          const rest = chunker.flush();
+          if (rest) {
+            emitChunk(rest, true);
+          }
+        }
+      } else {
+        const buffers: Buffer[] = [];
+        for await (const chunk of stream) {
+          if (abortSignal.aborted) {
+            this.logger.debug("Aborted during stream collection");
+            break;
+          }
+          buffers.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
 
-      if (!abortSignal.aborted && buffers.length > 0) {
-        const fullBuffer = Buffer.concat(buffers);
-        const chunkId = `${audioId}:0`;
-        pendingPlayback.pendingChunks = 1;
+        if (!abortSignal.aborted && buffers.length > 0) {
+          const fullBuffer = Buffer.concat(buffers);
+          const chunkId = `${audioId}:0`;
+          pendingPlayback.pendingChunks = 1;
 
-        emitMessage({
-          type: "audio_output",
-          payload: {
-            id: chunkId,
-            groupId: audioId,
-            chunkIndex: 0,
-            isLastChunk: true,
-            audio: fullBuffer.toString("base64"),
-            format,
-            isVoiceMode,
-            utteranceId,
-          },
-        });
+          emitMessage({
+            type: "audio_output",
+            payload: {
+              id: chunkId,
+              groupId: audioId,
+              chunkIndex: 0,
+              isLastChunk: true,
+              audio: fullBuffer.toString("base64"),
+              format,
+              isVoiceMode,
+              utteranceId,
+            },
+          });
+        }
       }
 
       pendingPlayback.streamEnded = true;
