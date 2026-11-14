@@ -5,6 +5,7 @@ import { settingsRpc } from "@getpaseo/plugin";
 import {
   JEV_ROUTER_EFFORTS,
   JEV_ROUTER_SETTINGS_ID,
+  JEV_UPGRADE_EFFORTS,
   JevRouterSettingsSchema,
   formatClaudeModel,
   type JevRouterMode,
@@ -135,6 +136,7 @@ export function JevRouterSheet({
           ) : (
             <EffortFocusedFields form={form} />
           )}
+          <UpgradeEffortFields form={form} />
           <View style={styles.resetRow}>
             <Button
               variant="ghost"
@@ -366,14 +368,54 @@ function PickFields({
   );
 }
 
+// CUSTOM(jev-router): "Upgrade effort mid-session", in both modes. Restoring a mode's defaults
+// leaves it alone.
+function UpgradeEffortFields({ form }: { form: JevRouterFormModel }) {
+  const state = useSyncExternalStore(form.subscribe, form.getState, form.getState);
+  const setting = state.draft.upgradeEffort;
+  return (
+    <View style={styles.section}>
+      <Row
+        title="Upgrade effort mid-session"
+        hint="Before a follow-up to an idle Claude session, Jev reads it; if it is hard, the effort goes up to the checked level (never down, same model, so the cache stays on 5.5 models)."
+      >
+        <Switch
+          value={setting.enabled}
+          onValueChange={form.setUpgradeEnabled}
+          accessibilityLabel="Upgrade effort mid-session"
+          testID="jev-upgrade-enabled"
+        />
+      </Row>
+      {setting.enabled ? (
+        <View style={styles.effortChips}>
+          {JEV_UPGRADE_EFFORTS.map((effort) => (
+            <EffortChip
+              key={effort}
+              effort={effort}
+              checked={setting.efforts.includes(effort)}
+              onToggle={form.toggleUpgradeEffort}
+              testIdPrefix="jev-upgrade-effort"
+            />
+          ))}
+        </View>
+      ) : null}
+      {setting.enabled && setting.efforts.length === 0 ? (
+        <Text style={styles.errorText}>Check at least one effort.</Text>
+      ) : null}
+    </View>
+  );
+}
+
 function EffortChip({
   effort,
   checked,
   onToggle,
+  testIdPrefix = "jev-operational-effort",
 }: {
   effort: string;
   checked: boolean;
   onToggle: (effort: string) => void;
+  testIdPrefix?: string;
 }) {
   const handlePress = useCallback(() => onToggle(effort), [effort, onToggle]);
   return (
@@ -382,7 +424,7 @@ function EffortChip({
       size="sm"
       onPress={handlePress}
       accessibilityLabel={`${effort}${checked ? ", checked" : ""}`}
-      testID={`jev-operational-effort-${effort}`}
+      testID={`${testIdPrefix}-${effort}`}
     >
       {effort}
     </Button>

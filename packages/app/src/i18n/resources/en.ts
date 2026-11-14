@@ -1,3 +1,4 @@
+import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { VOICE_SETTINGS_EN } from "./custom-voice-settings";
 import { SHORTCUT_FILE_EN } from "./custom-shortcut-file";
 import { CONTENT_SEARCH_EN } from "./custom-content-search";
@@ -78,6 +79,7 @@ export const en = {
       idle: "Idle",
     },
   },
+  steerPending: STEER_PENDING_EN, // CUSTOM(steer-pending)
   shell: {
     menu: {
       toggleSidebar: "Toggle sidebar",

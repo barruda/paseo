@@ -1,3 +1,4 @@
+import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_JA } from "./custom-voice-settings";
 import { SHORTCUT_FILE_JA } from "./custom-shortcut-file";
@@ -82,6 +83,7 @@ export const ja: TranslationResources = {
       idle: "アイドル",
     },
   },
+  steerPending: STEER_PENDING_EN, // CUSTOM(steer-pending)
   shell: {
     menu: {
       toggleSidebar: "サイドバーを切り替え",

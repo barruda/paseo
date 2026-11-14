@@ -134,6 +134,7 @@ import type { MessageInputKeyboardActionKind } from "@/keyboard/actions";
 import { submitAgentInput } from "@/composer/submit";
 import { ComposerRecall } from "@/composer/recall";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
+import { upgradeEffortBeforeSend } from "@/jev-router/upgrade"; // CUSTOM(jev-router)
 import { ComposerKeyboardScopeProvider, useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { useAppSettings } from "@/hooks/use-settings";
 import { RenderProfile } from "@/utils/render-profiler";
@@ -1681,6 +1682,21 @@ function ComposerContentImpl({
                 useSessionStore.getState().sessions[serverId],
                 targetAgentId,
               ).turnId ?? undefined)
+            : undefined,
+        // CUSTOM(jev-router): follow-ups to an idle agent may raise its effort first.
+        beforeSend:
+          activeTurnBehavior !== "steer" &&
+          !selectAgentTurnPresentation(useSessionStore.getState().sessions[serverId], targetAgentId)
+            .isActive
+            ? () =>
+                upgradeEffortBeforeSend({
+                  serverId,
+                  agentId: targetAgentId,
+                  client,
+                  prompt: text,
+                  images: sendAttachments.filter((attachment) => attachment.kind === "image")
+                    .length,
+                })
             : undefined,
       });
       onAttentionPromptSend?.();

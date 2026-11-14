@@ -421,6 +421,17 @@ describe("toAgentPayload", () => {
     });
   });
 
+  // CUSTOM(usage-persist)
+  it("carries stored context usage onto the payload", () => {
+    const usage = { contextWindowMaxTokens: 200000, contextWindowUsedTokens: 1234 };
+    const record = toStoredAgentRecord(
+      createManagedAgent({ provider: "codex", config: { provider: "codex" }, lastUsage: usage }),
+    );
+
+    expect(record.lastUsage).toEqual(usage);
+    expect(buildStoredAgentPayload(record, ["codex"]).lastUsage).toEqual(usage);
+  });
+
   it("carries a stored lastError onto the payload", () => {
     const record = toStoredAgentRecord(
       createManagedAgent({ provider: "codex", config: { provider: "codex" }, lastError: "boom" }),

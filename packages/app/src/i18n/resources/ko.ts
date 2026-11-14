@@ -1,3 +1,4 @@
+import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_KO } from "./custom-voice-settings";
 import { SHORTCUT_FILE_KO } from "./custom-shortcut-file";
@@ -81,6 +82,7 @@ export const ko: TranslationResources = {
       idle: "대기 중",
     },
   },
+  steerPending: STEER_PENDING_EN, // CUSTOM(steer-pending)
   shell: {
     menu: {
       toggleSidebar: "사이드바 토글",

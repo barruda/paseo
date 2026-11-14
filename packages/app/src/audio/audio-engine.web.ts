@@ -8,6 +8,7 @@ import type {
 } from "./audio-engine-types";
 
 import { createPlaybackQueue } from "./playback";
+import { computeEarlyResolveDelayMs, computeStartAt } from "./pcm-schedule";
 import {
   getVoiceMicrophoneSettings,
   sameVoiceMicrophoneSettings,
@@ -69,6 +70,9 @@ export function createAudioEngine(
     started: boolean;
     muted: boolean;
     microphone: VoiceMicrophoneSettings | null;
+    // CUSTOM(claude-tts-whole-text): sources scheduled gaplessly on the playback context.
+    liveSources: Set<AudioBufferSourceNode>;
+    nextStartAt: number;
   } = {
     playbackContext: null,
     captureContext: null,
@@ -79,7 +83,23 @@ export function createAudioEngine(
     started: false,
     muted: false,
     microphone: null,
+    liveSources: new Set(),
+    nextStartAt: 0,
   };
+
+  // CUSTOM(claude-tts-whole-text): silence every scheduled source at once (barge-in, mute, leave).
+  function stopAllSources() {
+    for (const live of refs.liveSources) {
+      try {
+        live.stop();
+        live.disconnect();
+      } catch {
+        // Already stopped.
+      }
+    }
+    refs.liveSources.clear();
+    refs.nextStartAt = 0;
+  }
 
   async function ensurePlaybackContext(): Promise<AudioContext> {
     if (!refs.playbackContext) {
@@ -146,24 +166,39 @@ export function createAudioEngine(
     source.buffer = audioBuffer;
     source.connect(context.destination);
 
+    // CUSTOM(claude-tts-whole-text): schedule back to back on the audio clock and resolve early
+    // so the queue hands over the next chunk while this one still plays (no gap, no click).
     return await new Promise<number>((resolve, reject) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
       const abort = () => {
-        source.stop();
-        source.disconnect();
+        clearTimeout(timer);
+        stopAllSources();
         reject(new Error("Playback stopped"));
       };
       signal.addEventListener("abort", abort, { once: true });
       source.addEventListener(
         "ended",
         () => {
+          clearTimeout(timer);
           signal.removeEventListener("abort", abort);
+          refs.liveSources.delete(source);
           source.disconnect();
           resolve(durationSec);
         },
         { once: true },
       );
       try {
-        source.start();
+        const startAt = computeStartAt(context.currentTime, refs.nextStartAt);
+        source.start(startAt);
+        refs.liveSources.add(source);
+        refs.nextStartAt = startAt + durationSec;
+        timer = setTimeout(
+          () => {
+            signal.removeEventListener("abort", abort);
+            resolve(durationSec);
+          },
+          computeEarlyResolveDelayMs(context.currentTime, startAt, durationSec),
+        );
       } catch (error) {
         signal.removeEventListener("abort", abort);
         source.disconnect();
@@ -220,6 +255,7 @@ export function createAudioEngine(
       unsubscribeMicrophone?.();
       unsubscribeMicrophone = null;
       playback.destroy();
+      stopAllSources();
       await stopCapture();
 
       const playbackContext = refs.playbackContext;
@@ -324,9 +360,12 @@ export function createAudioEngine(
     },
 
     play: playback.play,
-    stop: playback.stop,
+    stop: () => {
+      playback.stop();
+      stopAllSources();
+    },
     clearQueue: playback.clearQueue,
-    isPlaying: playback.isPlaying,
+    isPlaying: () => playback.isPlaying() || refs.liveSources.size > 0,
   };
 
   // CUSTOM(voice-settings): reopen the microphone when its processing changes in Settings,

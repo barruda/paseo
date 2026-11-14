@@ -2,8 +2,12 @@
 
 import {
   JEV_LABELS,
+  readJevUsage,
   JEV_TIMELINE_KIND,
+  JEV_UPGRADE_TIMELINE_KIND,
   JevRouteCardDataSchema,
+  JevUpgradeCardDataSchema,
+  estimateJevUsd,
   JevRouteOutputSchema,
   formatClaudeModel,
   type JevRouteCardData,
@@ -30,10 +34,26 @@ export function readJevLabels(labels: Record<string, string> | undefined): JevSe
   };
 }
 
+/** "2.7k" for 2650 tokens, the plain number below 1000. */
+export function formatJevTokens(tokens: number): string {
+  return tokens >= 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
+}
+
+/** The tooltip's consumption line, or null while Jev has not been called in this session. */
+export function describeJevUsage(labels: Record<string, string> | undefined): string | null {
+  const usage = readJevUsage(labels);
+  if (usage.calls === 0) return null;
+  const tokens = usage.inputTokens + usage.outputTokens;
+  const calls = `${usage.calls} ${usage.calls === 1 ? "call" : "calls"}`;
+  return `Jev this session: ${calls} · ${formatJevTokens(tokens)} tokens (≈ US$ ${estimateJevUsd(tokens).toFixed(5)})`;
+}
+
 /** Tooltip lines: on or off and the mode, what a click does, and what happened to this session. */
 export function describeJevRouter(input: {
   settings: Pick<JevRouterSettings, "enabled" | "mode">;
   session: JevSessionLabels | null;
+  /** What Jev has cost in this session (its labels), one more line when it was called. */
+  usageLine?: string | null;
 }): string[] {
   const mode = input.settings.mode === "effort" ? "Effort focused" : "Model focused";
   const lines = input.settings.enabled
@@ -45,11 +65,13 @@ export function describeJevRouter(input: {
       ]
     : [`Jev router: off · ${mode}`, "New sessions start on the model you pick."];
   const session = input.session;
-  if (!session) return lines;
-  if (session.why === "error") lines.push(`This session: router failed, kept ${session.home}`);
-  else if (session.applied)
-    lines.push(`This session: started on ${session.pick} (${session.why}), not ${session.home}`);
-  else lines.push(`This session: kept ${session.home}`);
+  if (session) {
+    if (session.why === "error") lines.push(`This session: router failed, kept ${session.home}`);
+    else if (session.applied)
+      lines.push(`This session: started on ${session.pick} (${session.why}), not ${session.home}`);
+    else lines.push(`This session: kept ${session.home}`);
+  }
+  if (input.usageLine) lines.push(input.usageLine);
   return lines;
 }
 
@@ -135,4 +157,60 @@ export function describeRouteChip(
     previousEffort: card.homeThinkingOptionId,
     prompt: card.prompt,
   };
+}
+
+/** The latest Jev card (session start or effort upgrade) in the loaded timeline, oldest first. */
+export function findLatestJevCard(
+  items: readonly StreamItem[],
+): { kind: "route" | "upgrade"; data: unknown } | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.kind !== "plugin") continue;
+    if (item.itemKind === JEV_UPGRADE_TIMELINE_KIND) return { kind: "upgrade", data: item.data };
+    if (item.itemKind === JEV_TIMELINE_KIND) return { kind: "route", data: item.data };
+  }
+  return null;
+}
+
+export interface JevUpgradeChipModel {
+  /** "Effort: high". */
+  label: string;
+  /** The effort the chip's menu goes back to. */
+  fromEffort: string;
+  toEffort: string;
+}
+
+/** The chip for an effort upgrade: shown while the agent is still on the effort Jev raised it to. */
+export function describeUpgradeChip(
+  rawCard: unknown,
+  current: { effort: string | null | undefined },
+): JevUpgradeChipModel | null {
+  const parsed = JevUpgradeCardDataSchema.safeParse(rawCard);
+  if (!parsed.success || current.effort !== parsed.data.toEffort) return null;
+  return {
+    label: `Effort: ${parsed.data.toEffort}`,
+    fromEffort: parsed.data.fromEffort,
+    toEffort: parsed.data.toEffort,
+  };
+}
+
+export type JevChipModel =
+  | ({ kind: "route" } & JevRouteChipModel)
+  | ({ kind: "upgrade" } & JevUpgradeChipModel);
+
+/**
+ * The chip beside the route icon: an upgrade card, when it is the latest Jev card and the agent
+ * is still on its effort; otherwise the session-start route card's chip (today's behavior).
+ */
+export function describeJevChip(
+  latest: { kind: "route" | "upgrade"; data: unknown } | null,
+  current: { model: string | null | undefined; effort: string | null | undefined },
+): JevChipModel | null {
+  if (!latest) return null;
+  if (latest.kind === "upgrade") {
+    const chip = describeUpgradeChip(latest.data, current);
+    return chip ? { kind: "upgrade", ...chip } : null;
+  }
+  const chip = describeRouteChip(latest.data, current);
+  return chip ? { kind: "route", ...chip } : null;
 }

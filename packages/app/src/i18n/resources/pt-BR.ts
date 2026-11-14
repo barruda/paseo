@@ -1,3 +1,4 @@
+import { STEER_PENDING_PT_BR } from "./custom-steer-pending";
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_PT_BR } from "./custom-voice-settings";
 import { SHORTCUT_FILE_PT_BR } from "./custom-shortcut-file";
@@ -82,6 +83,7 @@ export const ptBR: TranslationResources = {
       idle: "Ocioso",
     },
   },
+  steerPending: STEER_PENDING_PT_BR, // CUSTOM(steer-pending)
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",

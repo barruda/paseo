@@ -36,3 +36,21 @@ export function hideCancelledSteers(
   );
   return kept.length === items.length ? items : kept;
 }
+
+/**
+ * The text a user message was sent with. The chat shows a projection (the spoken-input envelope is
+ * stripped), so re-sending the displayed text would lose it. Looks the row up by id in the
+ * unprojected lists and falls back to the displayed text.
+ */
+export function findSourceUserMessageText(
+  sources: readonly (readonly StreamItem[])[],
+  itemId: string,
+  fallback: string,
+): string {
+  for (const list of sources) {
+    for (const item of list) {
+      if (item.kind === "user_message" && item.id === itemId) return item.text;
+    }
+  }
+  return fallback;
+}

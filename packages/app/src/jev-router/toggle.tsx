@@ -16,7 +16,7 @@ import { pluginSettingsKey } from "@/plugins/settings/use-settings";
 import type { InstalledPlugin } from "@/plugins/types";
 import { useSessionStore } from "@/stores/session-store";
 import { useJevRouterSettingsStore } from "./cycle";
-import { describeJevRouter, readJevLabels } from "./model";
+import { describeJevRouter, describeJevUsage, readJevLabels } from "./model";
 import { JevRouteChip } from "./route-chip";
 import { JevRouterSheet } from "./sheet";
 
@@ -112,7 +112,11 @@ function PluginJevRouterToggle({
 
   if (!settings) return null;
   const iconState = describeIconState(settings.enabled);
-  const lines = describeJevRouter({ settings, session: readJevLabels(labels) });
+  const lines = describeJevRouter({
+    settings,
+    session: readJevLabels(labels),
+    usageLine: describeJevUsage(labels),
+  });
   return (
     <>
       {showIcon ? (

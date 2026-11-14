@@ -323,7 +323,7 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/agent-status-summary.test.ts src/server/lean-claude.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/worktree-merge-status.test.ts --bail=1)
   # The status summary survives daemon restarts; New Agent tab names; pinned tabs.
-  (cd packages/server && npx vitest run src/server/agent/agent-storage.test.ts -t "keeps the status summary" --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/agent-storage.test.ts -t "keeps the status summary|persists context usage" --bail=1)
   (cd packages/app && npx vitest run src/panels/agent-panel-descriptor.test.tsx src/tab-pins/model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/draft-worktree/model.test.ts src/composer/worktree-pill-model.test.ts src/composer/commit-wip-pill-model.test.ts --bail=1)
   (cd packages/app && npx vitest run src/projects/remove-project-section.test.tsx --bail=1)
@@ -384,6 +384,8 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/speech/providers/local/local-speech-gpu.test.ts src/server/speech/providers/local/model-files.test.ts src/server/speech/speech-config-resolver.test.ts src/server/speech/speech-settings-service.test.ts src/server/daemon-config-store.test.ts src/server/voice-config.test.ts src/server/speech/providers/local/sherpa/silero-vad-session.test.ts src/server/speech/providers/local/sherpa/sherpa-parakeet-stt.test.ts src/server/session/voice/voice-session.test.ts src/server/session/voice/voice-turn-controller.test.ts --bail=1)
   (cd packages/app && npx vitest run src/screens/settings/voice src/voice src/i18n/resources.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts src/server/agent/pcm-chunker.test.ts src/server/agent/mcp-server.test.ts --bail=1)
+  # Claude TTS chunks play gapless on web/Electron.
+  (cd packages/app && npx vitest run src/audio/pcm-schedule.test.ts --bail=1)
   (cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts --bail=1)
   # Big idle Claude sessions get a keep-alive ping before their prompt cache expires.
   (cd packages/app && npx vitest run src/cache-warmup/model.test.ts --bail=1)

@@ -133,6 +133,7 @@ import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store"
 import { shouldLoadChatOutline } from "@/turn-jump/model";
 import { useTurnJump, useTurnJumpRequest } from "@/turn-jump/use-turn-jump";
 import { useStableEvent } from "@/hooks/use-stable-event";
+import { encodeImages } from "@/utils/encode-images"; // CUSTOM(steer-pending)
 import { useForkAgent } from "@/hooks/use-fork-agent";
 import { isWeb } from "@/constants/platform";
 import type { Theme } from "@/styles/theme";
@@ -143,7 +144,11 @@ import { PluginTimelineItemView, useInstalledTimelineTransform } from "@/plugins
 import { findTurnUsageItem, isTurnUsageItem } from "./turn-usage"; // CUSTOM(turn-usage-inline)
 import { hideCacheWarmupTurns } from "@/cache-warmup/model"; // CUSTOM(cache-warmup)
 import { hideCriticRounds } from "@/critic/model"; // CUSTOM(critic)
-import { hideCancelledSteers, resolveSteerMessageState } from "@/agent-stream/steer-pending"; // CUSTOM(steer-pending)
+import {
+  findSourceUserMessageText,
+  hideCancelledSteers,
+  resolveSteerMessageState,
+} from "@/agent-stream/steer-pending"; // CUSTOM(steer-pending)
 import { useRewindComposerRestore } from "@/components/rewind/composer-restore"; // CUSTOM(steer-pending)
 
 const NO_CHAT_LINKS: ChatLink[] = []; // CUSTOM(chat-links)
@@ -986,6 +991,35 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
       [agentId, client, composerRestore],
     );
 
+    // CUSTOM(steer-pending): arrow on a pending steer. Withdraws it, then re-sends the same message
+    // as an interrupt. The source text keeps the spoken-input envelope the chat strips. If Claude
+    // already took the message nothing is re-sent.
+    const interruptSteer = useStableEvent(
+      (item: Extract<StreamItem, { kind: "user_message" }>, clientMessageId: string) => {
+        if (!client) return;
+        const text = findSourceUserMessageText(
+          [visibleStream.tail, visibleStream.head],
+          item.id,
+          item.text,
+        );
+        client
+          .cancelAgentSteer(agentId, clientMessageId)
+          .then(async (cancelled) => {
+            if (!cancelled) return;
+            const images = await encodeImages(item.images);
+            await client.sendAgentMessage(agentId, text, {
+              activeTurnBehavior: "interrupt",
+              images: images ?? [],
+              attachments: item.attachments,
+            });
+            return undefined;
+          })
+          .catch((error: unknown) => {
+            console.warn("[steer-pending] interrupt failed", error);
+          });
+      },
+    );
+
     const renderUserMessageItem = useCallback(
       (layoutItem: StreamLayoutItem, item: Extract<StreamItem, { kind: "user_message" }>) => {
         const collapsedTurn = getCollapsedTurn(item.id);
@@ -996,6 +1030,9 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         });
         const handleSteerCancel = () => {
           if (item.clientMessageId) cancelSteer(item.clientMessageId, item.text);
+        };
+        const handleSteerInterrupt = () => {
+          if (item.clientMessageId) interruptSteer(item, item.clientMessageId);
         };
         const message = (
           <UserMessage
@@ -1017,6 +1054,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             }
             steerPending={steerState === "pending"}
             onSteerCancel={supportsSteerPending && !readOnly ? handleSteerCancel : undefined}
+            onSteerInterrupt={supportsSteerPending && !readOnly ? handleSteerInterrupt : undefined}
           />
         );
         if (!collapsedTurn) {
@@ -1042,6 +1080,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         supportsSteerPending,
         readOnly,
         cancelSteer,
+        interruptSteer,
       ],
     );
 

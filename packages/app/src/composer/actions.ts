@@ -199,6 +199,8 @@ export interface DispatchComposerAgentMessageInput {
   submission: MessageSubmissionWriter;
   activeTurnBehavior?: ActiveTurnBehavior;
   activeTurnId?: string;
+  /** CUSTOM(jev-router): awaited after the bubble shows, before the message is sent. */
+  beforeSend?: () => Promise<void>;
 }
 
 export async function dispatchComposerAgentMessage(
@@ -220,6 +222,8 @@ export async function dispatchComposerAgentMessage(
   });
   input.submission.begin(input.agentId, userMessage);
   try {
+    // CUSTOM(jev-router): "Upgrade effort mid-session" may raise the effort before this message.
+    await input.beforeSend?.();
     const imagesData = await input.encodeImages(wirePayload.images);
     // CUSTOM(critic): after a critic toggle, the next message tells the agent; the chat strips it.
     const criticNotice = useCriticStore.getState().peekNotice(input.agentId);

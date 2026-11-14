@@ -4198,7 +4198,9 @@ export class Session {
         agentStorage: this.agentStorage,
         agentId,
         prompt,
-        messageId,
+        // CUSTOM(voice-steer-barge-in): a steer is recorded in the timeline only with a client
+        // message id, so spoken input gets one; it then shows as a bubble with the pending badge.
+        messageId: messageId ?? (options?.spokenInput ? uuidv4() : undefined),
         runOptions,
         activeTurnBehavior: options?.activeTurnBehavior,
         // A typed or spoken message from the human answers any permission the

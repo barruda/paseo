@@ -98,6 +98,26 @@ describe("jev router form", () => {
     });
   });
 
+  it("edits the effort upgrade, needs a target when on, and keeps it on a mode reset", () => {
+    const form = loaded();
+    expect(form.getState().draft.upgradeEffort).toEqual({ enabled: false, efforts: ["high"] });
+    form.setUpgradeEnabled(true);
+    form.toggleUpgradeEffort("max");
+    form.toggleUpgradeEffort("xhigh");
+    expect(form.getState().draft.upgradeEffort.efforts).toEqual(["high", "xhigh", "max"]);
+    form.toggleUpgradeEffort("high");
+    form.toggleUpgradeEffort("xhigh");
+    form.toggleUpgradeEffort("max");
+    expect(form.getState().draft.upgradeEffort.efforts).toEqual([]);
+    expect(form.getState().canSave).toBe(false);
+    form.setUpgradeEnabled(false);
+    expect(form.getState().canSave).toBe(true);
+    form.toggleUpgradeEffort("xhigh");
+    form.setUpgradeEnabled(true);
+    form.resetMode();
+    expect(form.getState().draft.upgradeEffort).toEqual({ enabled: true, efforts: ["xhigh"] });
+  });
+
   it("parses thresholds from 0 to 1", () => {
     expect(parseThreshold("0.7")).toBe(0.7);
     expect(parseThreshold(".5")).toBe(0.5);

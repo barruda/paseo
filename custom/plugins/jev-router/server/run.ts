@@ -22,6 +22,8 @@ export function runRouter(input: {
   cwd: string;
   images: number;
   test: boolean;
+  /** Effort-focused policy and no log, for "Upgrade effort mid-session". */
+  upgrade?: boolean;
 }): Promise<JevDecision> {
   const homeDir = os.homedir();
   const args = buildRouterArgs({ ...input, homeDir });

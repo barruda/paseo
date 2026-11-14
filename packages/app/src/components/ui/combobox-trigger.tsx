@@ -77,7 +77,11 @@ export const ComboboxTrigger = forwardRef<View, ComboboxTriggerProps>(function C
     [onBlur],
   );
 
-  const rowStyle = useMemo(() => [styles.row, block && styles.rowBlock], [block]);
+  const isSplit = chevron !== null && onChevronPress !== undefined;
+  const rowStyle = useMemo(
+    () => [styles.row, block && styles.rowBlock, isSplit && styles.rowSplit],
+    [block, isSplit],
+  );
 
   return (
     <Pressable
@@ -90,21 +94,22 @@ export const ComboboxTrigger = forwardRef<View, ComboboxTriggerProps>(function C
     >
       <View style={rowStyle}>
         {children}
-        {chevron !== null && onChevronPress ? (
+        {isSplit ? (
           <Pressable
             focusable={false}
-            hitSlop={6}
             onPress={onChevronPress}
             style={styles.chevronButton}
             accessibilityRole="button"
             accessibilityLabel="Open menu"
             testID={props.testID ? `${props.testID}-chevron` : undefined}
           >
-            {chevron ?? <ThemedChevronDown size={ICON_SIZE.sm} uniProps={chevronColorMapping} />}
+            <View style={styles.chevronContainer}>
+              {chevron ?? <ThemedChevronDown size={ICON_SIZE.sm} uniProps={chevronColorMapping} />}
+            </View>
           </Pressable>
         ) : null}
         {chevron !== null &&
-          !onChevronPress &&
+          !isSplit &&
           (chevron ?? (
             <View style={styles.chevronContainer}>
               <ThemedChevronDown size={ICON_SIZE.sm} uniProps={chevronColorMapping} />
@@ -132,10 +137,19 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 0,
     transform: [{ translateY: 1 }],
   },
+  // CUSTOM(chip-cycle): the chevron owns a full-height band, from 2px before the glyph to the
+  // chip's trailing edge. The negative margins assume the split chips' 28px height and
+  // spacing[2] horizontal padding (toolbar controls and the model chip).
+  rowSplit: {
+    alignSelf: "stretch",
+  },
   chevronButton: {
     flexShrink: 0,
-    transform: [{ translateY: 1 }],
-    marginHorizontal: -theme.spacing[1],
-    paddingHorizontal: theme.spacing[1],
+    alignSelf: "stretch",
+    justifyContent: "center",
+    marginLeft: -2,
+    paddingLeft: 2,
+    marginRight: -theme.spacing[2],
+    paddingRight: theme.spacing[2],
   },
 }));

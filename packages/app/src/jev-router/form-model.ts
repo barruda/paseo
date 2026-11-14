@@ -5,6 +5,7 @@ import {
   DEFAULT_JEV_EFFORT_FOCUSED,
   DEFAULT_JEV_MODEL_FOCUSED,
   JEV_ROUTER_EFFORTS,
+  JEV_UPGRADE_EFFORTS,
   JevRouterSettingsSchema,
   type JevRouterMode,
   type JevRouterSettings,
@@ -61,6 +62,9 @@ export interface JevRouterFormModel {
   setLockCycling(lockCycling: boolean): void;
   setUseSonnet(useSonnet: boolean): void;
   setProviderField(field: JevProviderField, text: string): void;
+  /** "Upgrade effort mid-session", in both modes; "Restore this mode's defaults" leaves it alone. */
+  setUpgradeEnabled(enabled: boolean): void;
+  toggleUpgradeEffort(effort: string): void;
   /** Puts the selected mode's models, efforts and thresholds back to their defaults. */
   resetMode(): void;
   beginSave(): void;
@@ -169,7 +173,8 @@ export function openJevRouterForm(): JevRouterFormModel {
         Object.keys(thresholdErrors).length === 0 &&
         apiUrlError === null &&
         (!next.draft.effortFocused.operationalEnabled ||
-          next.draft.effortFocused.operationalEfforts.length > 0),
+          next.draft.effortFocused.operationalEfforts.length > 0) &&
+        (!next.draft.upgradeEffort.enabled || next.draft.upgradeEffort.efforts.length > 0),
     };
   }
 
@@ -233,6 +238,15 @@ export function openJevRouterForm(): JevRouterFormModel {
     setUseSonnet: (useSonnet) =>
       edit({ ...state.draft, modelFocused: { ...state.draft.modelFocused, useSonnet } }),
     setProviderField: (field, text) => edit({ ...state.draft, [field]: text }),
+    setUpgradeEnabled: (enabled) =>
+      edit({ ...state.draft, upgradeEffort: { ...state.draft.upgradeEffort, enabled } }),
+    toggleUpgradeEffort(effort) {
+      const current = state.draft.upgradeEffort.efforts;
+      const next = JEV_UPGRADE_EFFORTS.filter((item) =>
+        item === effort ? !current.includes(item) : current.includes(item),
+      );
+      edit({ ...state.draft, upgradeEffort: { ...state.draft.upgradeEffort, efforts: next } });
+    },
     resetMode() {
       const draft =
         state.draft.mode === "effort"

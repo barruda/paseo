@@ -8,6 +8,7 @@ import {
   JEV_ROUTER_RPC,
   JEV_ROUTER_SETTINGS_ID,
   JEV_TIMELINE_KIND,
+  JEV_UPGRADE_TIMELINE_KIND,
   type JevRouterSettings,
 } from "@getpaseo/protocol/jev-router";
 import { afterEach, expect, test } from "vitest";
@@ -34,7 +35,9 @@ prompt = sys.stdin.read()
 json.dump({"argv": sys.argv[1:], "prompt": prompt, "key": os.environ.get("TYPESAFE_API_KEY"),
            "url": os.environ.get("TYPESAFE_API_URL"), "jev": os.environ.get("JEV_MODEL")},
           open(os.environ["FAKE_ROUTER_RECORD"], "w"))
-print(json.dumps({"model": "sonnet", "model_id": "claude-sonnet-5-5", "effort": "low", "why": "small",
+print(json.dumps({"model": "sonnet", "model_id": "claude-sonnet-5-5", "effort": "low",
+                  "why": os.environ.get("FAKE_ROUTER_WHY", "small"), "jev_effort": "medium",
+                  "usage": {"input_tokens": 900, "output_tokens": 12},
                   "changed": True, "latency_ms": 5}))
 `;
 
@@ -73,12 +76,23 @@ async function startRouter(values: Partial<JevRouterSettings>) {
       thinkingOptionId: "high",
       ...input,
     });
+  const upgrade = (input: Record<string, unknown>) =>
+    client.invokePluginRpc(JEV_ROUTER_PLUGIN_ID, JEV_ROUTER_RPC.upgrade, {
+      prompt: "why does the build hang?",
+      cwd: root,
+      images: 0,
+      provider: "claude",
+      model: "claude-opus-5-5",
+      thinkingOptionId: "low",
+      availableEfforts: ["low", "medium", "high", "xhigh", "max"],
+      ...input,
+    });
   const recorded = async () => JSON.parse(await readFile(record, "utf8"));
   const close = async () => {
     await client.close();
     await daemon.close();
   };
-  return { route, recorded, close, root, client };
+  return { route, upgrade, recorded, close, root, client };
 }
 
 async function waitForCard(client: DaemonClient, agentId: string): Promise<unknown> {
@@ -169,6 +183,67 @@ test("a script that can't run keeps the selected model", async () => {
       applied: false,
       model: null,
       labels: { "custom.jev.why": "error", "custom.jev.pick": "opus/high" },
+    });
+  } finally {
+    await router.close();
+  }
+}, 60_000);
+
+test("upgrade raises the effort for a hard follow-up and cards the agent, never when off", async () => {
+  process.env.FAKE_ROUTER_WHY = "hard";
+  const router = await startRouter({ upgradeEffort: { enabled: true, efforts: ["high", "max"] } });
+  try {
+    const agent = await router.client.createAgent({ provider: "claude", cwd: router.root });
+    const output = await router.upgrade({ agentId: agent.id });
+    expect(output).toMatchObject({
+      status: "checked",
+      upgraded: true,
+      from: "low",
+      to: "high",
+      decision: { why: "hard", usage: { inputTokens: 900, outputTokens: 12 } },
+    });
+    const call = await router.recorded();
+    expect(call.argv).toEqual(
+      expect.arrayContaining(["--policy", "effort_focused", "--home", "opus/low", "--no-log"]),
+    );
+    const deadline = Date.now() + 10_000;
+    let card: unknown;
+    while (!card && Date.now() < deadline) {
+      const timeline = await router.client.fetchAgentTimeline(agent.id, {
+        projection: "projected",
+      });
+      const entry = timeline.entries.find(
+        (item) => item.item.type === "plugin" && item.item.kind === JEV_UPGRADE_TIMELINE_KIND,
+      );
+      if (entry?.item.type === "plugin") card = entry.item.data;
+      else await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    expect(card).toEqual({
+      modelId: "claude-opus-5-5",
+      fromEffort: "low",
+      toEffort: "high",
+      why: "hard",
+      jevEffort: "medium",
+    });
+    await expect(router.upgrade({ agentId: agent.id, thinkingOptionId: "max" })).resolves.toEqual({
+      status: "skipped",
+      reason: "nothing to raise",
+    });
+    await expect(router.upgrade({ agentId: agent.id, provider: "codex" })).resolves.toMatchObject({
+      status: "skipped",
+    });
+  } finally {
+    delete process.env.FAKE_ROUTER_WHY;
+    await router.close();
+  }
+}, 60_000);
+
+test("upgrade is skipped while the setting is off", async () => {
+  const router = await startRouter({});
+  try {
+    await expect(router.upgrade({ agentId: "x" })).resolves.toEqual({
+      status: "skipped",
+      reason: "off",
     });
   } finally {
     await router.close();

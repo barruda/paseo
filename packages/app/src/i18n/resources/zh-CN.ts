@@ -1,3 +1,4 @@
+import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_ZH_CN } from "./custom-voice-settings";
 import { SHORTCUT_FILE_ZH_CN } from "./custom-shortcut-file";
@@ -81,6 +82,7 @@ export const zhCN: TranslationResources = {
       idle: "空闲",
     },
   },
+  steerPending: STEER_PENDING_EN, // CUSTOM(steer-pending)
   shell: {
     menu: {
       toggleSidebar: "切换侧边栏",

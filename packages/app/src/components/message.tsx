@@ -112,6 +112,7 @@ interface UserMessageProps {
   // CUSTOM(steer-pending): Claude has not started this steered message. Shows the badge and X.
   steerPending?: boolean;
   onSteerCancel?: () => void;
+  onSteerInterrupt?: () => void; // CUSTOM(steer-pending)
   disableOuterSpacing?: boolean;
 }
 
@@ -420,6 +421,7 @@ export const UserMessage = memo(function UserMessage({
   isPending = false,
   steerPending,
   onSteerCancel,
+  onSteerInterrupt, // CUSTOM(steer-pending)
   disableOuterSpacing,
 }: UserMessageProps) {
   const isCompact = useIsCompactFormFactor();
@@ -544,7 +546,11 @@ export const UserMessage = memo(function UserMessage({
             ) : null}
           </MessagePreview>
         </View>
-        <SteerPendingRow active={steerPending} onCancel={onSteerCancel} />
+        <SteerPendingRow
+          active={steerPending}
+          onCancel={onSteerCancel}
+          onInterrupt={onSteerInterrupt}
+        />
         {hasActions ? (
           <View
             style={trailingRowStyle}

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { StreamItem } from "@/types/stream";
-import { hideCancelledSteers, resolveSteerMessageState } from "./steer-pending";
+import {
+  findSourceUserMessageText,
+  hideCancelledSteers,
+  resolveSteerMessageState,
+} from "./steer-pending";
 
 const at = new Date("2026-11-13T12:00:00Z");
 const user = (id: string, clientMessageId?: string): StreamItem => ({
@@ -63,5 +67,19 @@ describe("hideCancelledSteers", () => {
     expect(hideCancelledSteers(items, undefined)).toBe(items);
     expect(hideCancelledSteers(items, [])).toBe(items);
     expect(hideCancelledSteers(items, ["zzz"])).toBe(items);
+  });
+});
+
+describe("findSourceUserMessageText", () => {
+  const spoken =
+    "<spoken-input>\nhello\n</spoken-input>\n<instruction>This message was spoken by the user.</instruction>";
+  const source = { ...user("u1", "c1"), text: spoken } as StreamItem;
+
+  it("returns the unprojected text, envelope intact", () => {
+    expect(findSourceUserMessageText([[reply("a")], [source]], "u1", "hello")).toBe(spoken);
+  });
+
+  it("falls back to the displayed text when the row is not found", () => {
+    expect(findSourceUserMessageText([[reply("a")]], "u1", "hello")).toBe("hello");
   });
 });

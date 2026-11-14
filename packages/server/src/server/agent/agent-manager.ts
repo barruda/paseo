@@ -1558,6 +1558,8 @@ export class AgentManager {
       ...options,
       persistence: handle,
       restoring: true,
+      // CUSTOM(usage-persist): the Context window hover keeps its data after a daemon restart.
+      lastUsage: record?.lastUsage,
     });
   }
 

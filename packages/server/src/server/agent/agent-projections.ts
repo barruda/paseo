@@ -81,6 +81,8 @@ export function toStoredAgentRecord(
   const persistence = sanitizePersistenceHandle(agent.persistence);
   const runtimeInfo = sanitizeRuntimeInfo(agent.runtimeInfo);
 
+  const lastUsage = sanitizeUsage(agent.lastUsage); // CUSTOM(usage-persist)
+
   return {
     id: agent.id,
     provider: agent.provider,
@@ -106,6 +108,7 @@ export function toStoredAgentRecord(
       : null,
     internal: options?.internal,
     owner: agent.owner,
+    ...(lastUsage ? { lastUsage } : {}), // CUSTOM(usage-persist): kept for the next daemon start
   } satisfies StoredAgentRecord;
 }
 
@@ -227,8 +230,12 @@ function buildStoredPersistenceHandle(
 // CUSTOM(agent-status-summary-persist)
 function storedStatusSummary(
   record: StoredAgentRecord,
-): Pick<AgentSnapshotPayload, "statusSummary"> {
-  return record.statusSummary ? { statusSummary: record.statusSummary } : {};
+): Pick<AgentSnapshotPayload, "statusSummary" | "lastUsage"> {
+  return {
+    ...(record.statusSummary ? { statusSummary: record.statusSummary } : {}),
+    // CUSTOM(usage-persist)
+    ...(record.lastUsage ? { lastUsage: record.lastUsage } : {}),
+  };
 }
 
 export function buildStoredAgentPayload(

@@ -1,10 +1,15 @@
 import {
+  addJevUsage,
   effortFocusedCycle,
   effortFocusedPick,
   formatClaudeModel,
   type JevDecision,
   JevRouterSettingsSchema,
+  needsUpgradeCheck,
   nearestEffort,
+  planEffortUpgrade,
+  readJevUsage,
+  upgradeCandidates,
 } from "@getpaseo/protocol/jev-router";
 import { RouteCardStash } from "../server/stash";
 import { describe, expect, it } from "vitest";
@@ -28,6 +33,7 @@ const decision = (model: string, effort = "low", why = "small"): JevDecision => 
   why,
   latencyMs: 190,
   error: null,
+  usage: { inputTokens: 900, outputTokens: 12 },
 });
 const opusHigh = { family: "opus", effort: "high" };
 
@@ -112,6 +118,22 @@ describe("buildRouterArgs", () => {
     ]);
   });
 
+  it("asks for the effort-focused policy and no log for an effort upgrade, in model mode too", () => {
+    const args = buildRouterArgs({
+      settings,
+      home: { family: "opus", effort: "low" },
+      cwd: "/repo",
+      images: 0,
+      test: false,
+      homeDir: "/h",
+      upgrade: true,
+    });
+    expect(args).toContain("--policy");
+    expect(args[args.indexOf("--policy") + 1]).toBe("effort_focused");
+    expect(args[args.indexOf("--home") + 1]).toBe("opus/low");
+    expect(args).toContain("--no-log");
+  });
+
   it("skips the log for tests and when logging is off", () => {
     const base = { home: opusHigh, cwd: "/r", images: 0, homeDir: "/h" };
     expect(buildRouterArgs({ ...base, settings, test: true })).toContain("--no-log");
@@ -155,6 +177,7 @@ describe("parseRouterOutput", () => {
       why: "small",
       latency_ms: 193,
       jev_effort: "medium",
+      usage: { input_tokens: 900, output_tokens: 12 },
       changed: true,
     });
     expect(parseRouterOutput(`warning\n${line}\n`)).toEqual({
@@ -165,7 +188,13 @@ describe("parseRouterOutput", () => {
       latencyMs: 193,
       error: null,
       jevEffort: "medium",
+      usage: { inputTokens: 900, outputTokens: 12 },
     });
+  });
+
+  it("has no usage when route.py reports none", () => {
+    const line = JSON.stringify({ model: "opus", model_id: "claude-opus-5-5", effort: "low" });
+    expect(parseRouterOutput(line).usage).toBeNull();
   });
 
   it("throws on output without a model", () => {
@@ -192,7 +221,17 @@ describe("planRoute", () => {
       "custom.jev.why": "small",
       "custom.jev.applied": "true",
       "custom.jev.route-id": "r1",
+      "custom.jev.calls": "1",
+      "custom.jev.input-tokens": "900",
+      "custom.jev.output-tokens": "12",
     });
+  });
+
+  it("counts Jev's call even when the pick is not applied, but not for a Test or an error", () => {
+    expect(plan(decision("opus", "high", "home")).labels["custom.jev.calls"]).toBe("1");
+    expect(plan(decision("sonnet"), opusHigh, true).labels["custom.jev.calls"]).toBeUndefined();
+    const failed = plan({ ...decision("haiku"), why: "error", error: "boom" });
+    expect(failed.labels["custom.jev.calls"]).toBeUndefined();
   });
 
   it("only reports the pick for the settings test", () => {
@@ -408,5 +447,75 @@ describe("model focused Sonnet step", () => {
       applied: true,
       model: "claude-haiku-5-5",
     });
+  });
+});
+
+describe("Jev usage labels", () => {
+  it("adds a call and its tokens to what the session already has", () => {
+    const first = addJevUsage({}, { inputTokens: 900, outputTokens: 12 });
+    expect(first).toEqual({
+      "custom.jev.calls": "1",
+      "custom.jev.input-tokens": "900",
+      "custom.jev.output-tokens": "12",
+    });
+    const second = addJevUsage({ other: "x", ...first }, { inputTokens: 100, outputTokens: 8 });
+    expect(readJevUsage(second)).toEqual({ calls: 2, inputTokens: 1000, outputTokens: 20 });
+    expect(addJevUsage(second, null)["custom.jev.calls"]).toBe("3");
+    expect(readJevUsage({ "custom.jev.calls": "abc" }).calls).toBe(0);
+  });
+});
+
+describe("upgrade effort", () => {
+  const all = ["low", "medium", "high", "xhigh", "max"];
+
+  it("defaults to off and high, for documents saved before it existed", () => {
+    expect(JevRouterSettingsSchema.parse({}).upgradeEffort).toEqual({
+      enabled: false,
+      efforts: ["high"],
+    });
+    expect(
+      JevRouterSettingsSchema.safeParse({ upgradeEffort: { enabled: true, efforts: [] } }).success,
+    ).toBe(false);
+  });
+
+  it("lists the selected targets the model supports, in order", () => {
+    const setting = { efforts: ["max", "high", "xhigh"] as ("high" | "xhigh" | "max")[] };
+    expect(upgradeCandidates(setting, all)).toEqual(["high", "xhigh", "max"]);
+    expect(upgradeCandidates(setting, ["low", "medium", "high"])).toEqual(["high"]);
+    expect(upgradeCandidates(setting, ["low"])).toEqual([]);
+  });
+
+  it("checks only when on and the session is below the highest candidate", () => {
+    const setting = { enabled: true, efforts: ["high", "xhigh"] as ("high" | "xhigh" | "max")[] };
+    const check = (currentEffort: string | null, overrides = {}) =>
+      needsUpgradeCheck({ setting, currentEffort, availableEfforts: all, ...overrides });
+    expect(check("low")).toBe(true);
+    expect(check("high")).toBe(true);
+    expect(check("xhigh")).toBe(false);
+    expect(check("max")).toBe(false);
+    expect(check("low", { setting: { ...setting, enabled: false } })).toBe(false);
+    expect(check("low", { availableEfforts: ["low", "medium"] })).toBe(false);
+  });
+
+  it("plans a raise by bucket, never lowering", () => {
+    const plan = (
+      currentEffort: string,
+      why: string,
+      jevEffort: string | null,
+      candidates = ["high", "xhigh", "max"],
+    ) => planEffortUpgrade({ currentEffort, candidates, why, jevEffort });
+    expect(plan("low", "hard", "medium")).toBe("high");
+    expect(plan("low", "hard", "xhigh")).toBe("xhigh");
+    expect(plan("low", "hard", null)).toBe("high");
+    expect(plan("low", "default", "xhigh")).toBe("xhigh");
+    expect(plan("low", "default", "high")).toBeNull();
+    expect(plan("low", "operational", "max")).toBe("max");
+    expect(plan("low", "chat", "low")).toBeNull();
+    expect(plan("low", "hard", "max", ["high"])).toBe("high");
+    expect(plan("low", "hard", "medium", ["xhigh", "max"])).toBe("xhigh");
+    expect(plan("high", "hard", "medium")).toBeNull();
+    expect(plan("xhigh", "hard", "xhigh")).toBeNull();
+    expect(plan("xhigh", "hard", "max")).toBe("max");
+    expect(plan("low", "hard", "medium", [])).toBeNull();
   });
 });

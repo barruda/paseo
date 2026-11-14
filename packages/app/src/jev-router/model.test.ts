@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   applyJevRoute,
   describeJevRouter,
+  describeJevChip,
+  describeJevUsage,
   describeRouteChip,
+  findLatestJevCard,
   findJevRouteCardData,
   isThreadDraft,
   readJevLabels,
@@ -66,10 +69,7 @@ describe("describeJevRouter", () => {
   it("says on or off, the mode and what a click does", () => {
     expect(
       describeJevRouter({ settings: { enabled: true, mode: "model" }, session: null }),
-    ).toEqual([
-      "Jev router: on · Model focused",
-      "Small first prompts start on a cheaper model.",
-    ]);
+    ).toEqual(["Jev router: on · Model focused", "Small first prompts start on a cheaper model."]);
     expect(
       describeJevRouter({ settings: { enabled: true, mode: "effort" }, session: null })[1],
     ).toBe("New sessions start on Haiku, Opus low or Opus high, by their first prompt.");
@@ -170,5 +170,97 @@ describe("isThreadDraft", () => {
     expect(isThreadDraft([])).toBe(false);
     expect(isThreadDraft(undefined)).toBe(false);
     expect(isThreadDraft([null, "x"])).toBe(false);
+  });
+});
+
+describe("describeJevUsage", () => {
+  const usage = (calls: string, input: string, output: string) => ({
+    "custom.jev.calls": calls,
+    "custom.jev.input-tokens": input,
+    "custom.jev.output-tokens": output,
+  });
+
+  it("has no line until Jev was called", () => {
+    expect(describeJevUsage(undefined)).toBeNull();
+    expect(describeJevUsage({ other: "x" })).toBeNull();
+  });
+
+  it("counts calls and tokens with an estimated price", () => {
+    expect(describeJevUsage(usage("3", "2650", "50"))).toBe(
+      "Jev this session: 3 calls · 2.7k tokens (≈ US$ 0.00014)",
+    );
+    expect(describeJevUsage(usage("1", "900", "12"))).toBe(
+      "Jev this session: 1 call · 912 tokens (≈ US$ 0.00005)",
+    );
+  });
+
+  it("adds the line after the session's own", () => {
+    const lines = describeJevRouter({
+      settings: { enabled: true, mode: "model" },
+      session: null,
+      usageLine: describeJevUsage(usage("2", "1000", "0")),
+    });
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toMatch(/^Jev this session: 2 calls/);
+  });
+});
+
+describe("the chip after an effort upgrade", () => {
+  const route = {
+    pickModelId: "claude-haiku-5-5",
+    pickEffort: "low",
+    why: "operational",
+    homeModelId: "claude-opus-5-5",
+    homeThinkingOptionId: "high",
+    prompt: "rename it",
+  };
+  const upgrade = {
+    modelId: "claude-opus-5-5",
+    fromEffort: "low",
+    toEffort: "high",
+    why: "hard",
+    jevEffort: "medium",
+  };
+  const item = (itemKind: string, data: unknown, id: string) => ({
+    kind: "plugin",
+    id,
+    pluginId: "jev-router",
+    pluginItemId: id,
+    itemKind,
+    version: 1,
+    data,
+    timestamp: new Date(),
+  });
+  const items = (...list: ReturnType<typeof item>[]) =>
+    list as unknown as Parameters<typeof findLatestJevCard>[0];
+
+  it("finds the latest Jev card of either kind", () => {
+    const stream = items(item("jev-route", route, "a"), item("jev-upgrade", upgrade, "b"));
+    expect(findLatestJevCard(stream)).toEqual({ kind: "upgrade", data: upgrade });
+    expect(findLatestJevCard(items(item("jev-route", route, "a")))).toEqual({
+      kind: "route",
+      data: route,
+    });
+    expect(findLatestJevCard([])).toBeNull();
+  });
+
+  it("shows Effort: high while the agent is on it, with the effort to go back to", () => {
+    const latest = { kind: "upgrade" as const, data: upgrade };
+    expect(describeJevChip(latest, { model: "claude-opus-5-5", effort: "high" })).toEqual({
+      kind: "upgrade",
+      label: "Effort: high",
+      fromEffort: "low",
+      toEffort: "high",
+    });
+    expect(describeJevChip(latest, { model: "claude-opus-5-5", effort: "low" })).toBeNull();
+  });
+
+  it("keeps the session-start chip without a later upgrade card", () => {
+    const chip = describeJevChip(
+      { kind: "route", data: route },
+      { model: "claude-haiku-5-5", effort: "low" },
+    );
+    expect(chip).toMatchObject({ kind: "route", label: "Model: Haiku 5.5 Effort: low" });
+    expect(describeJevChip(null, { model: "x", effort: "low" })).toBeNull();
   });
 });

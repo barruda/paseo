@@ -1,3 +1,4 @@
+import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_FR } from "./custom-voice-settings";
 import { SHORTCUT_FILE_FR } from "./custom-shortcut-file";
@@ -82,6 +83,7 @@ export const fr: TranslationResources = {
       idle: "Inactif",
     },
   },
+  steerPending: STEER_PENDING_EN, // CUSTOM(steer-pending)
   shell: {
     menu: {
       toggleSidebar: "Afficher/masquer la barre latérale",

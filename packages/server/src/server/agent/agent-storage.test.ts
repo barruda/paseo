@@ -336,6 +336,24 @@ describe("AgentStorage", () => {
     expect(persisted?.lastStatus).toBe("idle");
   });
 
+  // CUSTOM(usage-persist)
+  test("persists context usage and keeps it when a later snapshot has none", async () => {
+    const agentId = "agent-usage";
+    const usage = {
+      inputTokens: 10,
+      outputTokens: 5,
+      contextWindowMaxTokens: 200000,
+      contextWindowUsedTokens: 1234,
+    };
+    await storage.applySnapshot(createManagedAgent({ id: agentId, lastUsage: usage }));
+    expect((await storage.get(agentId))?.lastUsage).toEqual(usage);
+
+    await storage.applySnapshot(createManagedAgent({ id: agentId, lifecycle: "running" }));
+
+    const reloaded = new AgentStorage(storagePath, logger);
+    expect((await reloaded.get(agentId))?.lastUsage).toEqual(usage);
+  });
+
   test("setTitle throws when the agent record does not exist", async () => {
     await expect(storage.setTitle("missing-agent", "Impossible")).rejects.toThrow(
       "Agent missing-agent not found",

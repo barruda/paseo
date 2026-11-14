@@ -3301,9 +3301,14 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
     ones when any are starred ([effort-favorites](#effort-favorites-star-effort-levels--cycles-only-the-starred-ones)).
   - The ⌄ is its own button and opens the menu the chip opened before (the Ctrl+M picker for the
     model, the effort menu for effort).
+  - The ⌄ button covers the chip's full height, from 2px before the glyph to the chip's right
+    edge, so a click anywhere right of that line opens the menu (follow-up, 2026-11-14). The same
+    split serves the Jev router and Delegation toggles.
 - **Files:** none new.
 - **Core files touched** (marked `CUSTOM(chip-cycle)`):
-  - `components/ui/combobox-trigger.tsx`: `onChevronPress` makes the chevron a nested button.
+  - `components/ui/combobox-trigger.tsx`: `onChevronPress` makes the chevron a nested button;
+    `rowSplit` / `chevronButton` stretch it to the full height and, with negative margins sized for
+    the 28px chips' `spacing[2]` padding, to the right edge.
   - `components/combined-model-selector.tsx`: `onBodyPress` (returns false to fall back to
     opening) and `splitTriggerPress`.
   - `composer/agent-controls/index.tsx`: `cycleFavoriteModel` / `cycleFavoriteEffort` /
@@ -4370,6 +4375,14 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   - Fail-open: a missing plugin, an error, a script failure or no answer in 15 s creates the
     session as selected.
   - Every routed session gets `custom.jev.pick`, `.home`, `.why` and `.applied` labels.
+  - Consumption on hover (since 2026-11-14): the route icon's tooltip adds "Jev this session: 3
+    calls · 2.7k tokens (≈ US$ 0.00014)". route.py reports `usage` (input/output tokens); the first
+    route labels the session `custom.jev.calls`, `.input-tokens` and `.output-tokens` whenever Jev
+    answered (applied or not, never for a Test), and each later call
+    ([jev-upgrade-effort](#jev-upgrade-effort-jev-raises-the-effort-mid-session-when-a-follow-up-is-hard))
+    adds to them (`addJevUsage`, `readJevUsage` in the protocol; `describeJevUsage` in the app's
+    `model.ts`). The price is an estimate, `JEV_USD_PER_MILLION_TOKENS` = 0.05: the gateway gives no
+    price, only tokens.
   - When the model changed, the RPC also stashes a card (by `custom.jev.route-id`, in memory for
     10 min) and the plugin's `agent.created` hook appends it to the new agent: one line, "Jev
     começou em Haiku 5.5 · low (você escolheu Opus 5.5 · high)", and **Ignorar recomendação e
@@ -5513,6 +5526,13 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
   pending. The timeline store is append-only, so a cancelled row stays there and the app hides
   it through `cancelledSteerMessageIds` (the last 50 per agent, in daemon memory); the CLI never
   writes it to Claude's transcript, so a history reload does not show it either.
+  - Interrupt and send: an ArrowUp button ("Interrupt and send" / "Interromper e enviar") sits
+    before the X. It cancels the steer the same way, and only when the daemon withdrew it
+    re-sends the message with `activeTurnBehavior: "interrupt"` (images re-encoded, attachments
+    as stored; nothing goes back to the composer). The text is the unprojected one, found by id in
+    the stream before `presentStream`, so a spoken message keeps its `<spoken-input>` envelope
+    (`findSourceUserMessageText`). The row strings ("pending", "Cancel message", "Interrupt and
+    send") live in `i18n/resources/custom-steer-pending.ts` (en and pt-BR translated).
   - Wire: agent snapshots gain optional `pendingSteerMessageIds` and `cancelledSteerMessageIds`;
     new RPC `agent.cancel_steer.request` `{agentId, clientMessageId}` -> `.response`
     `{cancelled, error}` (dotted name per `docs/rpc-namespacing.md`); `server_info.features.steerPending`
@@ -5527,8 +5547,10 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
   `agent-projections.ts`, `session.ts` (handler), `authorization/operation-permissions.ts`,
   `websocket-server.ts` (feature flag); app `stores/session-store.ts`, `utils/agent-snapshots.ts`,
   `agent-stream/view.tsx` (selectors, `hideCancelledSteers` next to `hideCriticRounds`,
-  `cancelSteer`, `steerPending` prop), `components/message.tsx` (one prop and one element). New:
-  `agent-stream/steer-pending.ts`, `components/steer-pending-row.tsx`.
+  `cancelSteer`, `interruptSteer`, `steerPending` prop), `components/message.tsx` (two props and one element),
+  each `i18n/resources/<locale>.ts` (import plus `steerPending:` key). New:
+  `agent-stream/steer-pending.ts`, `components/steer-pending-row.tsx`,
+  `i18n/resources/custom-steer-pending.ts`.
 - **Re-apply:** In `ClaudeSession.enqueueSteer`, record `uuid -> clientMessageId` after
   `input.push`; drop the entry wherever the uuid leaves `unstartedMessageUuids`, and clear all of
   them on turn end. Expose the three session methods, mirror them into the manager's agent
@@ -5660,19 +5682,32 @@ session,websocket-server}.ts`, `authorization/operation-permissions.ts`,
   before the target, on a 2-byte boundary. Low-water rule: Claude audio arrives in bursts with stalls, so `PcmChunker.push(data, nowMs)`
   also estimates the audio still queued in the app (`emitted seconds - time since the first
 emit`) and, below 1 s, releases everything buffered except a 10 ms holdback (cut at the quietest
-  window of the last 0.25 s), instead of waiting for 2 s. The last emitted chunk carries `isLastChunk: true`
+  window of the last 0.25 s), instead of waiting for 2 s. It only releases when at least 0.25 s
+  (`MIN_LOW_WATER_SECONDS`) is buffered beyond the holdback; smaller remainders wait for more audio
+  or for `flush()`, because tens-of-ms chunks crackled. The last emitted chunk carries `isLastChunk: true`
   and is never empty; `streamEnded` is set after it is emitted. The sample rate comes from the
   `pcm;rate=N` format (default 24000). Other providers take the old path unchanged. No app or
   protocol change: the app already plays multi-chunk groups by `chunkIndex` and acks each id.
+  Gapless web/Electron playback: `audio-engine.web.ts` used to start each chunk with
+  `source.start()` and wait for `ended` before the queue started the next, so every chunk boundary
+  was a gap of several ms plus a waveform cut (crackle). Now each source is scheduled at
+  `max(currentTime, nextStartAt)` (`audio/pcm-schedule.ts`), the play promise resolves 0.15 s before
+  the scheduled end so the next chunk is queued back to back, live sources sit in a Set, and
+  `stop()`/abort/`destroy()` stop all of them and reset `nextStartAt`; `isPlaying()` stays true
+  while a scheduled source is audible. Side effect: a chunk is acked up to 0.15 s before it ends.
+  The native engine is unchanged.
 - **Core files touched:** `packages/server/src/server/speech/speech-provider.ts`,
   `speech/providers/claude/tts.ts`, `agent/tts-manager.ts`; new `agent/pcm-chunker.ts` and
-  `agent/pcm-chunker.test.ts`; tests added to `agent/tts-manager.test.ts`.
+  `agent/pcm-chunker.test.ts`; tests added to `agent/tts-manager.test.ts`;
+  `packages/app/src/audio/audio-engine.web.ts`; new `audio/pcm-schedule.ts` and its test.
 - **Re-apply:** `rg "CUSTOM\(claude-tts-whole-text\)"`. Add the optional flag, set it in
   `ClaudeTTS`, and in `generateAndWaitForPlayback` use one segment plus the `progressive` branch
-  of `emitPreparedSegment` (PcmChunker push per stream chunk, flush as the last chunk).
-- **Verify:** `cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts src/server/agent/pcm-chunker.test.ts src/server/speech/providers/claude/tts.test.ts --bail=1`.
-  Needs a daemon restart. In voice mode with the Claude voice, a multi-sentence answer plays
-  without gaps between sentences.
+  of `emitPreparedSegment` (PcmChunker push per stream chunk, flush as the last chunk). In
+  `audio-engine.web.ts` keep the `nextStartAt` scheduling, the live-source Set and `stopAllSources`.
+- **Verify:** `cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts src/server/agent/pcm-chunker.test.ts src/server/speech/providers/claude/tts.test.ts --bail=1`
+  and `cd packages/app && npx vitest run src/audio/pcm-schedule.test.ts --bail=1`.
+  Needs a daemon restart and an app rebuild. In voice mode with the Claude voice, a multi-sentence
+  answer plays without gaps between sentences and without crackle.
 
 ## delegation-implementer-agent: a lean `paseo-implementer` agent for delegated work
 
@@ -5768,7 +5803,11 @@ src/screens/settings/voice/voice-turn-silence-model.test.ts --bail=1`. Needs a d
   run it was steered into. An empty transcript renews the aborted abort controller so the
   running agent's later `speak` calls still play. The client `abort_request` still interrupts.
   `VoiceSessionHost.sendSpokenInput` takes the behavior; `Session.handleSendAgentMessage` passes
-  it to `sendPromptToAgent`.
+  it to `sendPromptToAgent` and gives spoken input a message id: the manager records an accepted
+  steer in the timeline only when it has a client message id, so without one a spoken steer had
+  no bubble. With it, the steer shows as a normal bubble with the
+  [steer-pending](#steer-pending-a-steered-message-shows-pending-until-claude-takes-it-with-an-x-to-cancel)
+  badge.
 - **Core files touched:** `packages/server/src/server/session/voice/voice-session.ts`,
   `packages/server/src/server/session.ts` (`sendSpokenInput` host wiring and
   `handleSendAgentMessage` options), the voice-session test.
@@ -5818,3 +5857,69 @@ src/server/plugins/lifecycle/handlers.test.ts --bail=1`. Needs a daemon restart.
   for a multi-file change: the session calls `create_agent` with that provider/model, and the new
   subagent's system prompt has no delegation rule. Also `cd packages/app && npx vitest run
   src/delegation/paseo-catalog.test.ts`.
+
+## usage-persist: context usage survives daemon restarts
+
+- **Added:** 2026-11-14
+- **Commit:** not committed yet
+- **Why:** The composer's "Context window" hover read `ManagedAgent.lastUsage`, which lived only in
+  daemon memory. After a restart every agent said "No context data" until its next turn.
+- **What:** The agent's last usage (tokens, cost, context window) is written to its JSON record
+  (`lastUsage`). A resumed agent starts with the stored usage, and payloads built from a record
+  carry it. A snapshot without usage keeps the stored one.
+- **Core files touched** (marked `CUSTOM(usage-persist)`):
+  - Server `agent/agent-storage.ts`: optional `lastUsage` in the stored schema; `applySnapshot`
+    keeps the existing one when the new record has none.
+  - `agent/agent-projections.ts`: `toStoredAgentRecord` writes it; `buildStoredAgentPayload` copies it.
+  - `agent/agent-manager.ts`: `resumeAgentFromPersistenceInternal` passes `record.lastUsage` to
+    `registerSession`.
+- **Re-apply:** Add an optional `lastUsage` object (the `AgentUsage` number fields) to the stored
+  record, write it in `toStoredAgentRecord`, keep it across `applySnapshot`, copy it in
+  `buildStoredAgentPayload`, and seed `registerSession` with it when resuming. No protocol change.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent/agent-storage.test.ts src/server/agent/agent-projections.test.ts --bail=1)`
+  (in the update script). Needs a daemon restart; after `kill-paseos-and-daemons.sh` the Context
+  window hover still shows usage before the agent runs again.
+
+## jev-upgrade-effort: Jev raises the effort mid-session when a follow-up is hard
+
+- **Added:** 2026-11-14
+- **Commit:** not committed yet
+- **Why:** A session starts on Opus low (Effort focused) and a later message may be a hard one. On
+  5.5 models an effort change keeps the prompt cache, so raising it mid-session costs nothing, and
+  the user no longer has to notice and press → himself.
+- **What:** New router setting **Upgrade effort mid-session** (both modes, off by default, in the
+  router sheet after the mode's settings, with high / xhigh / max toggles; Save needs one when on;
+  "Restore this mode's defaults" leaves it alone; `upgradeEffort` in the settings document, old
+  documents parse).
+  - Before each follow-up the user types to an idle Claude agent (not steer, not while running),
+    when the agent's effort is below the highest checked level its model supports
+    (`needsUpgradeCheck`), the composer asks the plugin's `upgrade` RPC about that message. The
+    plugin runs route.py with `--policy effort_focused`, the effort-focused thresholds, `--home
+    <family>/<current effort>` and `--no-log`. A `hard` bucket wants at least high (or Jev's own
+    effort when above); other buckets only xhigh or max from Jev. The target is the smallest checked
+    level at or above that, else the highest checked; only when above the current effort
+    (`planEffortUpgrade`). Never lowers, never changes the model.
+  - The send waits for Jev (the bubble shows at once; at most the Jev timeout + 4 s), then the app
+    sets the effort the way the effort chip does (`client.setAgentThinkingOption` + the saved
+    preference). The plugin appends a card (`jev-upgrade`): "Jev subiu o effort: low → high (pedido
+    difícil)", and the green chip shows "Effort: high" while the agent stays on it; its menu offers
+    "Voltar para low". A session-start card keeps its chip when no upgrade card follows it.
+  - Fail-open: any error, a missing plugin or a timeout sends the message as is. Jev's tokens are
+    added to the agent's usage labels (`update_agent` merges labels).
+- **Files:** `packages/protocol/src/jev-router.ts` (`JevUpgradeEffortSchema`, `upgradeCandidates`,
+  `needsUpgradeCheck`, `planEffortUpgrade`, the `upgrade` RPC schemas, card schema, usage labels and
+  helpers); `custom/plugins/jev-router/` (`index.server.ts` handler, `shared/settings.ts`
+  `upgradeRpc`, `shared/decision.ts` `upgrade` flag and `usage`, `client/upgrade-card.tsx`,
+  `index.client.tsx`); `packages/app/src/jev-router/` (`upgrade.ts`, `model.ts` chip and usage
+  line, `route-chip.tsx`, `sheet.tsx`, `form-model.ts`); e2e test with a fake route.py.
+- **Core files touched** (marked `CUSTOM(jev-router)`): app `composer/actions.ts`
+  (`beforeSend` in `dispatchComposerAgentMessage`, awaited after `submission.begin`),
+  `composer/index.tsx` (passes `upgradeEffortBeforeSend` when not steering and not running).
+- **Re-apply:** Add `beforeSend?: () => Promise<void>` to `dispatchComposerAgentMessage`, awaited
+  right after `input.submission.begin(...)`, and pass it from the composer's send. Don't touch the
+  queue drain in host-runtime.ts.
+- **Verify:** `npx vitest run custom/plugins/jev-router`, `cd packages/app && npx vitest run
+  src/jev-router`, and the e2e `custom-jev-router-plugin.e2e.test.ts` (all in the update script).
+  By hand: turn Upgrade effort on, on an Opus low session send a hard follow-up ("why does the
+  build hang only in CI?"): the effort goes to high before the answer, a card and the green chip
+  show, the chip's menu goes back to low, and the route icon's tooltip counts Jev's calls.

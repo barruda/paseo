@@ -14,27 +14,37 @@ import {
   DropdownMenuTrigger,
   type DropdownMenuTriggerProps,
 } from "@/components/ui/dropdown-menu";
-import { useSessionStore } from "@/stores/session-store";
-import { describeRouteChip } from "./model";
-import { selectJevRouteCardData as selectRouteCardData } from "./use-esc-restart";
+import { useShallow } from "zustand/react/shallow";
+import { useToast } from "@/contexts/toast-context";
+import { useSessionStore, type SessionState } from "@/stores/session-store";
+import { toErrorMessage } from "@/utils/error-messages";
+import { describeJevChip, findLatestJevCard } from "./model";
+import { setAgentEffort } from "./upgrade";
 import { useRestartAgent } from "./use-restart-agent";
 
-export function JevRouteChip({ serverId, agentId }: { serverId: string; agentId: string }) {
-  const rawCard = useSessionStore((state) =>
-    selectRouteCardData(state.sessions[serverId], agentId),
+function selectLatestJevCard(session: SessionState | undefined, agentId: string) {
+  if (!session) return null;
+  return (
+    findLatestJevCard(session.agentStreamHead.get(agentId) ?? []) ??
+    findLatestJevCard(session.agentStreamTail.get(agentId) ?? [])
   );
+}
+
+export function JevRouteChip({ serverId, agentId }: { serverId: string; agentId: string }) {
+  const toast = useToast();
+  const latest = useSessionStore(
+    useShallow((state) => selectLatestJevCard(state.sessions[serverId], agentId)),
+  );
+  const client = useSessionStore((state) => state.sessions[serverId]?.client ?? null);
   const model = useSessionStore((state) => state.sessions[serverId]?.agents.get(agentId)?.model);
   const effort = useSessionStore(
     (state) => state.sessions[serverId]?.agents.get(agentId)?.thinkingOptionId,
   );
-  const chip = useMemo(
-    () => describeRouteChip(rawCard, { model, effort }),
-    [effort, model, rawCard],
-  );
+  const chip = useMemo(() => describeJevChip(latest, { model, effort }), [effort, latest, model]);
   const { restart, busy } = useRestartAgent(serverId, agentId);
 
   const handleRestart = useCallback(() => {
-    if (!chip?.prompt) return;
+    if (chip?.kind !== "route" || !chip.prompt) return;
     void restart({
       prompt: chip.prompt,
       model: chip.previousModelId,
@@ -42,7 +52,46 @@ export function JevRouteChip({ serverId, agentId }: { serverId: string; agentId:
     });
   }, [chip, restart]);
 
+  // An effort upgrade's menu sets the effort back to what the session had.
+  const handleGoBack = useCallback(() => {
+    if (chip?.kind !== "upgrade" || !client) return;
+    setAgentEffort({ client, agentId, modelId: model ?? null, effort: chip.fromEffort }).catch(
+      (error) => toast.error(toErrorMessage(error)),
+    );
+  }, [agentId, chip, client, model, toast]);
+
   if (!chip) return null;
+  if (chip.kind === "upgrade")
+    return (
+      <ChangeFlash value={chip.label} flashOnMount overlayStyle={styles.flash}>
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            style={triggerStyle}
+            accessibilityRole="button"
+            accessibilityLabel={`Jev: ${chip.label}. Back to ${chip.fromEffort}`}
+            testID="jev-upgrade-chip"
+          >
+            <Text style={styles.label} numberOfLines={1}>
+              {chip.label}
+            </Text>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            side="top"
+            align="start"
+            minWidth={240}
+            testID="jev-upgrade-chip-menu"
+          >
+            <DropdownMenuItem
+              onSelect={handleGoBack}
+              description="Jev raised the effort for this follow-up; this sets it back."
+              testID="jev-upgrade-chip-back"
+            >
+              {`Voltar para ${chip.fromEffort}`}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </ChangeFlash>
+    );
   return (
     <ChangeFlash value={chip.label} flashOnMount overlayStyle={styles.flash}>
       <DropdownMenu>

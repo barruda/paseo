@@ -1,3 +1,4 @@
+import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_RU } from "./custom-voice-settings";
 import { SHORTCUT_FILE_RU } from "./custom-shortcut-file";
@@ -82,6 +83,7 @@ export const ru: TranslationResources = {
       idle: "Ожидание",
     },
   },
+  steerPending: STEER_PENDING_EN, // CUSTOM(steer-pending)
   shell: {
     menu: {
       toggleSidebar: "Переключить боковую панель",

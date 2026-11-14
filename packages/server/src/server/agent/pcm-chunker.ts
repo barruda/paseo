@@ -8,6 +8,9 @@ const QUIET_SEARCH_SECONDS = 0.5;
 const QUIET_WINDOW_SECONDS = 0.01;
 // When the app has less than this queued, release whatever is buffered (minus the holdback).
 const LOW_WATER_SECONDS = 1;
+// CUSTOM(claude-tts-whole-text): never release less than this at low water; tiny chunks leave
+// gaps and clicks between clips. Smaller remainders wait for more audio or for flush().
+const MIN_LOW_WATER_SECONDS = 0.25;
 const LOW_WATER_QUIET_SEARCH_SECONDS = 0.25;
 const HOLDBACK_SECONDS = 0.01;
 
@@ -72,10 +75,12 @@ export class PcmChunker {
   private readonly bytesPerSecond: number;
   private readonly windowSamples: number;
   private readonly holdbackBytes: number;
+  private readonly minLowWaterBytes: number;
 
   constructor(sampleRate: number = DEFAULT_SAMPLE_RATE) {
     this.bytesPerSecond = sampleRate * BYTES_PER_SAMPLE;
     this.windowSamples = Math.max(1, Math.round(sampleRate * QUIET_WINDOW_SECONDS));
+    this.minLowWaterBytes = Math.floor(this.bytesPerSecond * MIN_LOW_WATER_SECONDS) & ~1;
     this.holdbackBytes = Math.max(2, Math.floor(this.bytesPerSecond * HOLDBACK_SECONDS) & ~1);
   }
 
@@ -94,10 +99,14 @@ export class PcmChunker {
         continue;
       }
       const end = (this.pending.length - this.holdbackBytes) & ~1;
-      if (this.emitted > 0 && end > 0 && this.queuedAheadSeconds(nowMs) < LOW_WATER_SECONDS) {
+      if (
+        this.emitted > 0 &&
+        end >= this.minLowWaterBytes &&
+        this.queuedAheadSeconds(nowMs) < LOW_WATER_SECONDS
+      ) {
         const search = Math.min(
           Math.floor(this.bytesPerSecond * LOW_WATER_QUIET_SEARCH_SECONDS),
-          end >> 1,
+          end - this.minLowWaterBytes,
         );
         const cut = findQuietCutOffset(this.pending, end, search, this.windowSamples);
         out.push(this.take(cut > 0 ? cut : end, nowMs));

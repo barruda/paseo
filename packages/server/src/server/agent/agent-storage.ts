@@ -82,6 +82,18 @@ const STORED_AGENT_SCHEMA = z.object({
   owner: AgentOwnerSchema.optional(),
   // CUSTOM(agent-status-summary-persist): the line under the composer survives daemon restarts.
   statusSummary: AgentStatusSummaryPayloadSchema.optional(),
+  // CUSTOM(usage-persist): context usage survives daemon restarts (Context window hover).
+  lastUsage: z
+    .object({
+      inputTokens: z.number().optional(),
+      cachedInputTokens: z.number().optional(),
+      cacheWriteInputTokens: z.number().optional(),
+      outputTokens: z.number().optional(),
+      totalCostUsd: z.number().optional(),
+      contextWindowMaxTokens: z.number().optional(),
+      contextWindowUsedTokens: z.number().optional(),
+    })
+    .optional(),
 });
 
 export type SerializableAgentConfig = Pick<
@@ -269,6 +281,10 @@ export class AgentStorage {
       // CUSTOM(agent-status-summary-persist): written only by setStatusSummary.
       if (existing?.statusSummary) {
         record.statusSummary = existing.statusSummary;
+      }
+      // CUSTOM(usage-persist): a freshly resumed agent snapshots before its first turn.
+      if (!record.lastUsage && existing?.lastUsage) {
+        record.lastUsage = existing.lastUsage;
       }
       return record;
     });

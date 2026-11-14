@@ -79,8 +79,9 @@ describe("PcmChunker", () => {
       }
       fed = end;
       if (ms >= 1099 && ms <= 2416) {
-        // While the app is near dry, everything that arrived is out except the 10 ms holdback.
-        expect(fed - emittedBytes).toBeLessThanOrEqual(bytesPerSecond * 0.02);
+        // While the app is near dry, what arrived is out except the holdback and less than the
+        // 0.25 s minimum release.
+        expect(fed - emittedBytes).toBeLessThanOrEqual(bytesPerSecond * 0.27);
       }
       if (ms === 1287) {
         expect(emittedBytes / bytesPerSecond).toBeGreaterThanOrEqual(1.5);
@@ -91,5 +92,19 @@ describe("PcmChunker", () => {
     chunks.push(rest!);
     expect(chunks.slice(0, -1).every((c) => c.length % 2 === 0)).toBe(true);
     expect(Buffer.concat(chunks).equals(input)).toBe(true);
+  });
+
+  it("does not emit tiny chunks for small bursts at low water", () => {
+    const chunker = new PcmChunker(24000);
+    const sizes: number[] = [];
+    const burst = tone(1200, 4000); // 50 ms
+    for (let i = 0; i < 40; i += 1) {
+      for (const chunk of chunker.push(burst, 100 + i * 10)) sizes.push(chunk.length);
+    }
+    expect(sizes.length).toBeGreaterThan(0);
+    // The first chunk is cut at the 0.5 s target; every other one is at least 0.25 s.
+    for (const size of sizes.slice(1)) {
+      expect(size).toBeGreaterThanOrEqual(48000 * 0.2);
+    }
   });
 });

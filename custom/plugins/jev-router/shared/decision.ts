@@ -1,5 +1,6 @@
 import {
   JEV_LABELS,
+  addJevUsage,
   effortFocusedPick,
   type JevDecision,
   type JevRouteCardData,
@@ -77,6 +78,11 @@ export function buildRouterArgs(input: {
   images: number;
   test: boolean;
   homeDir: string;
+  /**
+   * "Upgrade effort mid-session": always the effort-focused policy and thresholds, whatever the
+   * mode, and nothing is logged.
+   */
+  upgrade?: boolean;
 }): string[] {
   const args = [
     expandHome(input.settings.routerScript, input.homeDir),
@@ -90,7 +96,7 @@ export function buildRouterArgs(input: {
     String(input.settings.timeoutSeconds),
   ];
   const { mode, modelFocused, effortFocused } = input.settings;
-  if (mode === "effort") {
+  if (mode === "effort" || input.upgrade) {
     args.push(
       "--policy",
       "effort_focused",
@@ -109,8 +115,18 @@ export function buildRouterArgs(input: {
       String(modelFocused.hardThreshold),
     );
   }
-  if (input.test || !input.settings.logDecisions) args.push("--no-log");
+  if (input.test || input.upgrade || !input.settings.logDecisions) args.push("--no-log");
   return args;
+}
+
+function readUsage(value: unknown): JevDecision["usage"] {
+  if (typeof value !== "object" || value === null) return null;
+  const { input_tokens: input, output_tokens: output } = value as Record<string, unknown>;
+  if (typeof input !== "number" && typeof output !== "number") return null;
+  return {
+    inputTokens: typeof input === "number" ? input : 0,
+    outputTokens: typeof output === "number" ? output : 0,
+  };
 }
 
 /** Reads route.py's stdout: one JSON object on the last non-empty line. */
@@ -130,6 +146,7 @@ export function parseRouterOutput(stdout: string): JevDecision {
     latencyMs: typeof raw.latency_ms === "number" ? raw.latency_ms : null,
     error: text("error"),
     jevEffort: text("jev_effort"),
+    usage: readUsage(raw.usage),
   };
 }
 
@@ -198,6 +215,8 @@ export function planRoute(input: {
       [JEV_LABELS.why]: decision.error ? "error" : decision.why,
       [JEV_LABELS.applied]: applied ? "true" : "false",
       ...(applied ? { [JEV_LABELS.routeId]: input.routeId } : {}),
+      // Jev answered (no error) and it is not a Test: this session's first call counts.
+      ...(!decision.error && !input.test ? addJevUsage({}, decision.usage) : {}),
     },
   };
 }

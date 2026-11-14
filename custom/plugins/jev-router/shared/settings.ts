@@ -4,6 +4,8 @@ import {
   JEV_ROUTER_SETTINGS_ID,
   JevRouteInputSchema,
   JevRouteOutputSchema,
+  JevUpgradeInputSchema,
+  JevUpgradeOutputSchema,
   JevRouterSettingsSchema,
 } from "@getpaseo/protocol/jev-router";
 
@@ -18,4 +20,10 @@ export const routeRpc = defineRpc({
   name: JEV_ROUTER_RPC.route,
   input: JevRouteInputSchema,
   output: JevRouteOutputSchema,
+});
+
+export const upgradeRpc = defineRpc({
+  name: JEV_ROUTER_RPC.upgrade,
+  input: JevUpgradeInputSchema,
+  output: JevUpgradeOutputSchema,
 });
