@@ -209,6 +209,8 @@ const FeatureVoiceModeSchema = z
     turnDetection: z
       .object({
         provider: SpeechProviderIdSchema.optional(),
+        // CUSTOM(voice-turn-silence): silence after speech that ends a voice-mode turn.
+        silenceMs: z.number().int().min(0).optional(),
       })
       .strict()
       .optional(),

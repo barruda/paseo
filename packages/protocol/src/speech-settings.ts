@@ -29,6 +29,9 @@ export const MutableSpeechConfigSchema = z
     // Empty means the built-in instructions.
     voiceInstructions: z.string().optional(),
     customModels: z.array(SpeechCustomModelSchema).optional(),
+    // CUSTOM(voice-turn-silence): milliseconds of silence after speech that end a voice-mode turn.
+    // The daemon reports the effective value (env var, then config, then default).
+    voiceTurnSilenceMs: z.number().int().min(0).optional(),
     // CUSTOM(dictation-tuning): how dictation cuts and re-transcribes its audio. The daemon
     // reports the effective values (env var, then config, then default).
     dictationAutoCommitSeconds: z.number().min(0).optional(),

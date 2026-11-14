@@ -53,6 +53,8 @@ export type LocalSpeechWorkerRequest =
       kind: LocalSpeechSessionKind;
       // CUSTOM(dictation-tuning): minimum time between re-transcriptions of a dictation segment.
       decodeIntervalMs?: number;
+      // CUSTOM(voice-turn-silence): silence after speech that ends a voice-mode turn (vad sessions).
+      silenceMs?: number;
     }
   | {
       type: "session.append";

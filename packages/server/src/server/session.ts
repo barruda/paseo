@@ -562,6 +562,8 @@ export interface SessionOptions {
   resolveScriptHealth?: (hostname: string) => ScriptHealthState | null;
   voice?: {
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
+    // CUSTOM(voice-turn-silence)
+    turnSilenceMs?: () => number | undefined;
     // CUSTOM(voice-settings)
     instructions?: () => string | undefined;
   };
@@ -1279,7 +1281,7 @@ export class Session {
             }),
           reloadAgentSession: (agentId, overrides) =>
             this.agentManager.reloadAgentSession(agentId, overrides),
-          sendSpokenInput: async (agentId, text) => {
+          sendSpokenInput: async (agentId, text, behavior) => {
             await this.handleSendAgentMessage(
               agentId,
               text,
@@ -1287,7 +1289,8 @@ export class Session {
               undefined,
               undefined,
               undefined,
-              { spokenInput: true },
+              // CUSTOM(voice-steer-barge-in)
+              { spokenInput: true, activeTurnBehavior: behavior },
             );
           },
           interruptAgentIfRunning: (agentId) => this.interruptAgentIfRunning(agentId),
@@ -4168,7 +4171,7 @@ export class Session {
     images?: Array<{ data: string; mimeType: string }>,
     attachments?: AgentAttachment[],
     runOptions?: AgentRunOptions,
-    options?: { spokenInput?: boolean },
+    options?: { spokenInput?: boolean; activeTurnBehavior?: "interrupt" | "steer" },
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     this.sessionLogger.info(
       {
@@ -4197,6 +4200,7 @@ export class Session {
         prompt,
         messageId,
         runOptions,
+        activeTurnBehavior: options?.activeTurnBehavior,
         // A typed or spoken message from the human answers any permission the
         // agent is blocked on.
         clearPendingPermissions: true,

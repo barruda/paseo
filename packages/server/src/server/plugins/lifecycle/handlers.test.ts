@@ -131,3 +131,32 @@ test.each([{ title: "Changed" }, { labels: { changed: "true" } }])(
     ).rejects.toThrow("agent.session_open hooks can only change env, tools, and mcpServers");
   },
 );
+
+// CUSTOM(delegation-paseo-runner): agent.create hooks see the new agent's labels, read-only.
+test("agent.create hooks see the labels and cannot change them", async () => {
+  const hooks = new PluginHookHandlers(() => {});
+  const seen: unknown[] = [];
+  hooks.before("agent.create", ({ request }) => {
+    seen.push(request.labels);
+    return { ...request, env: { A: "1" } };
+  });
+  const input = {
+    config: { provider: "claude", cwd: "/project" },
+    labels: { "paseo.parent-agent-id": "p1" },
+  };
+  const output = await hooks.invoke("operation", "before", "agent.create", input, paseo);
+  expect(seen).toEqual([{ "paseo.parent-agent-id": "p1" }]);
+  expect(output).toMatchObject({ labels: input.labels, env: { A: "1" } });
+
+  const tampering = new PluginHookHandlers(() => {});
+  tampering.before("agent.create", ({ request }) => ({ ...request, labels: {} }));
+  await expect(
+    tampering.invoke("operation", "before", "agent.create", input, paseo),
+  ).rejects.toThrow(/labels/);
+
+  const dropping = new PluginHookHandlers(() => {});
+  dropping.before("agent.create", ({ request }) => ({ config: request.config, env: request.env }));
+  await expect(
+    dropping.invoke("operation", "before", "agent.create", input, paseo),
+  ).resolves.toBeDefined();
+});

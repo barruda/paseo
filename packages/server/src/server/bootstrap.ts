@@ -404,6 +404,8 @@ export interface PaseoSpeechConfig {
   voiceInstructions?: string;
   // CUSTOM(dictation-tuning): absent only in configs built by hand (tests).
   dictationTuning?: DictationTuning;
+  // CUSTOM(voice-turn-silence): absent only in configs built by hand (tests).
+  voiceTurnSilenceMs?: number;
   // CUSTOM(claude-stt): absent only in configs built by hand (tests).
   claude?: ClaudeSpeechConfig;
 }
@@ -668,6 +670,10 @@ function buildMutableSpeechConfig(
     ...buildMutableSttProviderConfig(speech, persisted),
     ...buildMutableTtsProviderConfig(speech, persisted),
     voiceInstructions: speech?.voiceInstructions ?? "",
+    // CUSTOM(voice-turn-silence): the effective value.
+    ...(speech?.voiceTurnSilenceMs !== undefined
+      ? { voiceTurnSilenceMs: speech.voiceTurnSilenceMs }
+      : {}),
     // CUSTOM(dictation-tuning): the effective values; the built-in prompt shows as empty.
     ...(speech?.dictationTuning
       ? {

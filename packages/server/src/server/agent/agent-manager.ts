@@ -1391,6 +1391,8 @@ export class AgentManager {
       const request = await this.pluginLifecycle.before("agent.create", {
         config,
         env: options.env,
+        // CUSTOM(delegation-paseo-runner): lets a hook tell a subagent from a top-level agent. Read-only.
+        labels: options.labels,
       });
       config = { ...request.config, internal: config.internal };
       options = { ...options, env: request.env };

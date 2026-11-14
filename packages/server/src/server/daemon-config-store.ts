@@ -858,6 +858,10 @@ function mergeMutableSpeechPatch(
     if (instructions) voiceMode.instructions = instructions;
     else delete voiceMode.instructions;
   }
+  // CUSTOM(voice-turn-silence)
+  if (speech.voiceTurnSilenceMs !== undefined) {
+    voiceMode.turnDetection = { ...voiceMode.turnDetection, silenceMs: speech.voiceTurnSilenceMs };
+  }
   // CUSTOM(dictation-tuning)
   const tuning = mergeDictationTuningPatch(dictation.tuning, speech);
   if (tuning) dictation.tuning = tuning;

@@ -3,7 +3,6 @@
 // the sheet.
 
 import {
-  DEFAULT_DELEGATION,
   DelegationSettingsSchema,
   MAX_DELEGATION_EXTRA_CHARS,
   type DelegationSettings,
@@ -18,7 +17,7 @@ export interface DelegationFormState {
   load: DelegationFormLoad;
   revision: string | null;
   draft: DelegationSettings;
-  /** Bumped when the draft is replaced (load, reset): the uncontrolled text input remounts on it. */
+  /** Bumped when the draft is replaced (load): the uncontrolled text input remounts on it. */
   textsVersion: number;
   extraError: string | null;
   subagentInstructionsError: string | null;
@@ -34,8 +33,10 @@ export interface DelegationFormModel {
   applyLoadError(message: string): void;
   /** Sets one field of the draft; the sheet's controls each own one. */
   set<Key extends keyof DelegationSettings>(key: Key, value: DelegationSettings[Key]): void;
-  /** Everything back to the defaults except on/off (the Subagents tab included). */
-  resetDefaults(): void;
+  /** A new provider has its own models: the model and thinking option go back to the default. */
+  setPaseoProvider(provider: string): void;
+  /** `offeredThinkingIds`: the new model's thinking options; the draft's is kept only if offered. */
+  setPaseoModel(model: string, offeredThinkingIds: readonly string[]): void;
   beginSave(): void;
   saveFailed(message: string): void;
   saveSucceeded(revision: string): void;
@@ -104,10 +105,26 @@ export function openDelegationForm(): DelegationFormModel {
     set(key, value) {
       publish({ draft: { ...state.draft, [key]: value }, error: null });
     },
-    resetDefaults() {
+    setPaseoProvider(provider) {
+      if (provider === state.draft.paseoProvider) return;
       publish({
-        draft: { ...DEFAULT_DELEGATION, enabled: state.draft.enabled },
-        textsVersion: state.textsVersion + 1,
+        draft: {
+          ...state.draft,
+          paseoProvider: provider,
+          paseoModel: "",
+          paseoThinkingOptionId: "",
+        },
+        error: null,
+      });
+    },
+    setPaseoModel(model, offeredThinkingIds) {
+      const kept = state.draft.paseoThinkingOptionId;
+      publish({
+        draft: {
+          ...state.draft,
+          paseoModel: model,
+          paseoThinkingOptionId: offeredThinkingIds.includes(kept) ? kept : "",
+        },
         error: null,
       });
     },

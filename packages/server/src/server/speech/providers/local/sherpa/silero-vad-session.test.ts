@@ -77,4 +77,29 @@ describe("SherpaSileroVadSession", () => {
     expect(await speechStartsAfter(200, true)).toBe(false);
     expect(await speechStartsAfter(500, true)).toBe(true);
   });
+
+  // CUSTOM(voice-turn-silence)
+  it("ends the turn after the configured silence", async () => {
+    async function stoppedAfterSilence(silenceMs: number | undefined, silentWindows: number) {
+      const session = new SherpaSileroVadSession({
+        logger: { debug: () => {} },
+        config: silenceMs === undefined ? {} : { silenceMs },
+      });
+      await session.connect();
+      const stopped = vi.fn();
+      session.on("speech_stopped", stopped);
+      const speechWindows = Math.ceil(900 / WINDOW_MS);
+      detections.length = 0;
+      detections.push(...Array<boolean>(speechWindows).fill(true));
+      detections.push(...Array<boolean>(silentWindows).fill(false));
+      session.appendPcm16(Buffer.alloc((speechWindows + silentWindows + 2) * 512 * 2));
+      return stopped.mock.calls.length > 0;
+    }
+
+    const windowsFor = (ms: number) => Math.ceil(ms / WINDOW_MS) + 2;
+    expect(await stoppedAfterSilence(undefined, windowsFor(600))).toBe(false);
+    expect(await stoppedAfterSilence(500, windowsFor(600))).toBe(true);
+    expect(await stoppedAfterSilence(undefined, windowsFor(1100))).toBe(true);
+    expect(await stoppedAfterSilence(3000, windowsFor(1100))).toBe(false);
+  });
 });

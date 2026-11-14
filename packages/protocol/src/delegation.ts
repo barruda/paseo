@@ -33,16 +33,32 @@ export type DelegationSearch = (typeof DELEGATION_SEARCH)[number];
 export const DELEGATION_SUBAGENT_CONTEXT = ["full", "project", "none"] as const;
 export type DelegationSubagentContext = (typeof DELEGATION_SUBAGENT_CONTEXT)[number];
 
+/** Prompt-cache TTL for Claude subagents: 5 minutes is cheaper to write, 1 hour survives breaks. */
+export const DELEGATION_CACHE_TTLS = ["5m", "1h"] as const;
+export type DelegationCacheTtl = (typeof DELEGATION_CACHE_TTLS)[number];
+
+/**
+ * How the implementer runs: `claude` is a lean Claude Code subagent (Agent tool, read-only in the
+ * subagents track); `paseo` is a full Paseo agent made with the Paseo `create_agent` tool.
+ */
+export const DELEGATION_RUNNERS = ["claude", "paseo"] as const;
+export type DelegationRunner = (typeof DELEGATION_RUNNERS)[number];
+
 export const DEFAULT_DELEGATION = {
   enabled: false,
+  implementerRunner: "claude",
   implementerModel: "sonnet",
   implementerEffort: "medium",
+  paseoProvider: "claude",
+  paseoModel: "",
+  paseoThinkingOptionId: "",
   when: "balanced",
   review: true,
   searchModel: "off",
   extraInstructions: "",
   subagentContext: "full",
   subagentInstructions: "",
+  subagentCacheTtl: "5m",
 } as const;
 
 export const MAX_DELEGATION_EXTRA_CHARS = 4000;
@@ -50,8 +66,18 @@ export const MAX_DELEGATION_EXTRA_CHARS = 4000;
 export const DelegationSettingsSchema = z.object({
   /** New Opus/Fable Claude sessions get the rule. Sessions already open keep what they had. */
   enabled: z.boolean().default(DEFAULT_DELEGATION.enabled),
+  /** Absent in settings saved before the runner existed: they keep running as Claude subagents. */
+  implementerRunner: z.enum(DELEGATION_RUNNERS).default(DEFAULT_DELEGATION.implementerRunner),
   implementerModel: z.enum(DELEGATION_MODELS).default(DEFAULT_DELEGATION.implementerModel),
   implementerEffort: z.enum(DELEGATION_EFFORTS).default(DEFAULT_DELEGATION.implementerEffort),
+  /**
+   * Runner `paseo` only: the provider, model and thinking option of the Paseo subagent, any
+   * provider the host runs. They are independent of the Claude subagent's model and effort above.
+   * An empty model is the provider's default model; an empty thinking option is the model's default.
+   */
+  paseoProvider: z.string().max(100).default(DEFAULT_DELEGATION.paseoProvider),
+  paseoModel: z.string().max(200).default(DEFAULT_DELEGATION.paseoModel),
+  paseoThinkingOptionId: z.string().max(100).default(DEFAULT_DELEGATION.paseoThinkingOptionId),
   when: z.enum(DELEGATION_WHEN).default(DEFAULT_DELEGATION.when),
   /** The session reads the diff, reruns the checks and sends fixes back to the same subagent. */
   review: z.boolean().default(DEFAULT_DELEGATION.review),
@@ -71,6 +97,11 @@ export const DelegationSettingsSchema = z.object({
     .string()
     .max(MAX_DELEGATION_EXTRA_CHARS)
     .default(DEFAULT_DELEGATION.subagentInstructions),
+  /**
+   * Prompt-cache TTL of Claude's own subagents (Agent tool) and of Paseo-created Claude subagents.
+   * Applies on every launch.
+   */
+  subagentCacheTtl: z.enum(DELEGATION_CACHE_TTLS).default(DEFAULT_DELEGATION.subagentCacheTtl),
 });
 export type DelegationSettings = z.infer<typeof DelegationSettingsSchema>;
 
@@ -79,13 +110,23 @@ export const DELEGATION_TIMELINE_KIND = "delegation-policy";
 export const DELEGATION_TIMELINE_VERSION = 1;
 
 export const DelegationCardDataSchema = z.object({
+  /** Absent on cards written before the runner existed (those ran as Claude subagents). */
+  implementerRunner: z.enum(DELEGATION_RUNNERS).optional(),
   implementerModel: z.enum(DELEGATION_MODELS),
   implementerEffort: z.enum(DELEGATION_EFFORTS),
+  /** Absent on cards written before the Paseo subagent had its own provider and model. */
+  paseoProvider: z.string().optional(),
+  paseoModel: z.string().optional(),
   when: z.enum(DELEGATION_WHEN),
   review: z.boolean(),
   searchModel: z.enum(DELEGATION_SEARCH),
 });
 export type DelegationCardData = z.infer<typeof DelegationCardDataSchema>;
+
+/** `provider/model`, or just the provider for its default model: what `create_agent` takes. */
+export function formatPaseoSubagentProvider(provider: string, model: string): string {
+  return model ? `${provider}/${model}` : provider;
+}
 
 const MODEL_NAMES: Record<DelegationModel, string> = {
   sonnet: "Sonnet",

@@ -46,7 +46,10 @@ export const lifecycleEventNames = [
 export const beforeHookNames = ["agent.create", "agent.session_open", "workspace.create"] as const;
 
 const beforeSchemas = {
-  "agent.create": CreateAgentRequestMessageSchema.pick({ config: true, env: true }).strict(),
+  "agent.create": CreateAgentRequestMessageSchema.pick({ config: true, env: true })
+    // CUSTOM(delegation-paseo-runner): labels are input only; validateBeforeResult rejects a change.
+    .extend({ labels: z.record(z.string(), z.string()).optional() })
+    .strict(),
   "agent.session_open": z
     .object({
       agentId: z.string(),
@@ -190,6 +193,11 @@ export function validateBeforeResult<Name extends keyof PluginWireBeforeRequests
     const next = beforeSchemas["agent.create"].parse(result);
     if (previous.config.cwd !== next.config.cwd) {
       throw new Error("agent.create hooks cannot change the workspace directory");
+    }
+    // CUSTOM(delegation-paseo-runner): labels are read-only for agent.create hooks. A hook that
+    // returns a fresh object without them is fine: the caller never reads labels from the result.
+    if (next.labels !== undefined && !isDeepStrictEqual(previous.labels, next.labels)) {
+      throw new Error("agent.create hooks cannot change labels");
     }
   }
   return result;

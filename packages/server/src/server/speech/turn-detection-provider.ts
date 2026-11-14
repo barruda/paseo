@@ -22,5 +22,9 @@ export interface TurnDetectionSession {
 
 export interface TurnDetectionProvider {
   id: "openai" | "local" | (string & {});
-  createSession(params: { logger: pino.Logger }): TurnDetectionSession;
+  createSession(params: {
+    logger: pino.Logger;
+    // CUSTOM(voice-turn-silence): silence after speech that ends the turn; the provider default when absent.
+    silenceMs?: number;
+  }): TurnDetectionSession;
 }

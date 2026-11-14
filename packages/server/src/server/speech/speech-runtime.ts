@@ -346,6 +346,8 @@ export interface SpeechService {
   resolveVoiceInstructions: () => string | undefined;
   // CUSTOM(dictation-tuning)
   resolveDictationTuning: () => DictationTuning | undefined;
+  // CUSTOM(voice-turn-silence)
+  resolveVoiceTurnSilenceMs: () => number | undefined;
   resolveSpeechConfig: () => PaseoSpeechConfig | null;
   resolveStt: () => SpeechToTextProvider | null;
   resolveSttLanguage: () => string;
@@ -842,6 +844,8 @@ export function createSpeechService(
     previewVoice,
     resolveVoiceInstructions: () => speechConfig?.voiceInstructions,
     resolveDictationTuning: () => speechConfig?.dictationTuning,
+    // CUSTOM(voice-turn-silence)
+    resolveVoiceTurnSilenceMs: () => speechConfig?.voiceTurnSilenceMs,
     resolveSpeechConfig: () => speechConfig,
     resolveTurnDetection: () => turnDetectionService,
     resolveStt: () => sttService,

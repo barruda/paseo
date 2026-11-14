@@ -27,6 +27,7 @@ import {
   DICTATION_TUNING_ENV,
   dictationTuningSupport,
 } from "./dictation-tuning.js";
+import { VOICE_TURN_SILENCE_ENV } from "./voice-turn-silence.js";
 import {
   getClaudeCredentialStatus,
   resolveClaudeConfigDir,
@@ -54,6 +55,8 @@ export interface SpeechSettingsService {
 }
 
 const ENV_CONTROLLED_SETTINGS: ReadonlyArray<[string, string]> = [
+  // CUSTOM(voice-turn-silence)
+  [VOICE_TURN_SILENCE_ENV, "voiceTurnSilenceMs"],
   // CUSTOM(dictation-tuning)
   [DICTATION_TUNING_ENV.autoCommitSeconds, "dictationAutoCommitSeconds"],
   [DICTATION_TUNING_ENV.silencePeakThreshold, "dictationSilencePeakThreshold"],

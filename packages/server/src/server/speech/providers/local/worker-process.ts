@@ -268,7 +268,11 @@ async function createSession(
     } catch (err) {
       logger.warn({ err }, "Failed to provision Silero VAD model, falling back to bundled");
     }
-    const provider = new SherpaSileroTurnDetectionProvider({ modelPath: vadModelPath }, logger);
+    const provider = new SherpaSileroTurnDetectionProvider(
+      // CUSTOM(voice-turn-silence)
+      { modelPath: vadModelPath, silenceMs: message.silenceMs },
+      logger,
+    );
     const session = provider.createSession({ logger });
     trackTurnDetectionSession(message.sessionId, session);
     await session.connect();

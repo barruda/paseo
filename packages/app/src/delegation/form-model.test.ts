@@ -33,6 +33,53 @@ describe("delegation form", () => {
     });
   });
 
+  it("runs the implementer as a Claude subagent by default", () => {
+    const form = loaded();
+    expect(form.getState().draft.implementerRunner).toBe("claude");
+    form.set("implementerRunner", "paseo");
+    expect(form.getState().draft.implementerRunner).toBe("paseo");
+  });
+
+  it("starts the Paseo subagent on Claude's default model and thinking", () => {
+    expect(loaded().getState().draft).toMatchObject({
+      paseoProvider: "claude",
+      paseoModel: "",
+      paseoThinkingOptionId: "",
+    });
+  });
+
+  it("resets the Paseo model and thinking when the provider changes", () => {
+    const form = loaded();
+    form.set("paseoModel", "sonnet");
+    form.set("paseoThinkingOptionId", "high");
+    form.setPaseoProvider("codex");
+    expect(form.getState().draft).toMatchObject({
+      paseoProvider: "codex",
+      paseoModel: "",
+      paseoThinkingOptionId: "",
+    });
+  });
+
+  it("keeps the Paseo model and thinking when the same provider is chosen again", () => {
+    const form = loaded();
+    form.set("paseoModel", "sonnet");
+    form.set("paseoThinkingOptionId", "high");
+    form.setPaseoProvider("claude");
+    expect(form.getState().draft).toMatchObject({
+      paseoModel: "sonnet",
+      paseoThinkingOptionId: "high",
+    });
+  });
+
+  it("keeps the Paseo thinking option only when the new model offers it", () => {
+    const form = loaded();
+    form.set("paseoThinkingOptionId", "high");
+    form.setPaseoModel("a", ["low", "high"]);
+    expect(form.getState().draft).toMatchObject({ paseoModel: "a", paseoThinkingOptionId: "high" });
+    form.setPaseoModel("b", ["low"]);
+    expect(form.getState().draft).toMatchObject({ paseoModel: "b", paseoThinkingOptionId: "" });
+  });
+
   it("blocks saving extra instructions that are too long", () => {
     const form = loaded();
     form.set("extraInstructions", "x".repeat(MAX_DELEGATION_EXTRA_CHARS + 1));
@@ -40,38 +87,33 @@ describe("delegation form", () => {
     expect(form.getState().canSave).toBe(false);
   });
 
-  it("blocks saving subagent instructions that are too long, and restores them to empty", () => {
+  it("blocks saving subagent instructions that are too long", () => {
     const form = loaded();
     expect(form.getState().draft.subagentInstructions).toBe("");
     form.set("subagentInstructions", "x".repeat(MAX_DELEGATION_EXTRA_CHARS + 1));
     expect(form.getState().subagentInstructionsError).toBeTruthy();
     expect(form.getState().canSave).toBe(false);
-    form.resetDefaults();
-    expect(form.getState().draft.subagentInstructions).toBe("");
+    form.set("subagentInstructions", "");
     expect(form.getState().canSave).toBe(true);
   });
 
-  it("restores the defaults but keeps on/off", () => {
-    const form = loaded();
-    form.set("when", "aggressive");
-    form.set("review", false);
-    const version = form.getState().textsVersion;
-    form.resetDefaults();
-    expect(form.getState().draft).toMatchObject({ enabled: true, when: "balanced", review: true });
-    expect(form.getState().textsVersion).toBe(version + 1);
-  });
-
-  it("edits and restores the subagent context", () => {
+  it("edits the subagent context", () => {
     const form = loaded();
     expect(form.getState().draft.subagentContext).toBe("full");
     form.set("subagentContext", "project");
     expect(form.getState().draft.subagentContext).toBe("project");
-    form.resetDefaults();
-    expect(form.getState().draft.subagentContext).toBe("full");
   });
 
   it("reads stored settings without a subagent context as full", () => {
     expect(DelegationSettingsSchema.parse({ enabled: true }).subagentContext).toBe("full");
+  });
+
+  it("edits the subagent cache TTL, defaulting to 5m", () => {
+    const form = loaded();
+    expect(form.getState().draft.subagentCacheTtl).toBe("5m");
+    form.set("subagentCacheTtl", "1h");
+    expect(form.getState().draft.subagentCacheTtl).toBe("1h");
+    expect(DelegationSettingsSchema.parse({ enabled: true }).subagentCacheTtl).toBe("5m");
   });
 
   it("ignores edits after closing", () => {

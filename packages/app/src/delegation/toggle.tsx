@@ -9,6 +9,7 @@ import {
   DELEGATION_WHEN_LABELS,
   DelegationSettingsSchema,
   formatDelegationModel,
+  formatPaseoSubagentProvider,
   type DelegationSettings,
 } from "@getpaseo/protocol/delegation";
 import { AgentControlTrigger } from "@/composer/agent-controls/control";
@@ -43,12 +44,23 @@ const SUBAGENT_CONTEXT_LINES = {
 export function describeDelegation(settings: DelegationSettings): string[] {
   const subagents =
     settings.subagentContext === "full" ? [] : [SUBAGENT_CONTEXT_LINES[settings.subagentContext]];
-  return [...describeDelegationRule(settings), ...subagents];
+  const cache = settings.subagentCacheTtl === "1h" ? ["Subagents: 1 hour cache"] : [];
+  return [...describeDelegationRule(settings), ...subagents, ...cache];
+}
+
+function describePaseoSubagent(settings: DelegationSettings): string {
+  const model = settings.paseoModel
+    ? formatPaseoSubagentProvider(settings.paseoProvider, settings.paseoModel)
+    : `${settings.paseoProvider} (default model)`;
+  return settings.paseoThinkingOptionId ? `${model} · ${settings.paseoThinkingOptionId}` : model;
 }
 
 function describeDelegationRule(settings: DelegationSettings): string[] {
   if (!settings.enabled) return ["Delegation: off"];
-  const implementer = `${formatDelegationModel(settings.implementerModel)} · ${settings.implementerEffort}`;
+  const implementer =
+    settings.implementerRunner === "paseo"
+      ? `a Paseo subagent on ${describePaseoSubagent(settings)}`
+      : `${formatDelegationModel(settings.implementerModel)} · ${settings.implementerEffort}`;
   return [
     `Delegation: on. New Opus/Fable sessions hand the code to ${implementer} (${DELEGATION_WHEN_LABELS[settings.when].toLowerCase()}).`,
     "Applies when a session is created; open sessions keep what they started with.",

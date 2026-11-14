@@ -97,12 +97,15 @@ interface FinalizingVoiceTurn {
 export function createVoiceTurnController(params: {
   logger: Logger;
   turnDetection: TurnDetectionProvider;
+  // CUSTOM(voice-turn-silence): read once, when the controller starts listening.
+  turnSilenceMs?: number;
   stt: SpeechToTextProvider;
   sttLanguage?: string;
   callbacks: VoiceTurnControllerCallbacks;
 }): VoiceTurnController {
   const detector = params.turnDetection.createSession({
     logger: params.logger.child({ component: "turn-detection" }),
+    ...(params.turnSilenceMs !== undefined ? { silenceMs: params.turnSilenceMs } : {}),
   });
 
   let state: VoiceInputState = { status: "idle" };

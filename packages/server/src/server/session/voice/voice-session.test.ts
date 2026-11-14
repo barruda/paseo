@@ -4,7 +4,12 @@ import { EventEmitter } from "node:events";
 import pino from "pino";
 import { describe, expect, test, vi } from "vitest";
 
-import { VoiceSession, isAcknowledgementOnly, type VoiceSessionHost } from "./voice-session.js";
+import {
+  VoiceSession,
+  isAcknowledgementOnly,
+  type SpokenInputBehavior,
+  type VoiceSessionHost,
+} from "./voice-session.js";
 import { buildVoiceModeSystemPrompt } from "../../voice-config.js";
 import type { ManagedAgent } from "../../agent/agent-manager.js";
 import type { SessionOutboundMessage } from "../../messages.js";
@@ -61,22 +66,27 @@ class FakeVoiceSttSession extends EventEmitter implements StreamingTranscription
 interface FakeVoiceHost extends VoiceSessionHost {
   readonly emitted: SessionOutboundMessage[];
   readonly spokenInput: Array<{ agentId: string; text: string }>;
+  // CUSTOM(voice-steer-barge-in)
+  readonly spokenBehaviors: SpokenInputBehavior[];
 }
 
 function createFakeHost(): FakeVoiceHost {
   const emitted: SessionOutboundMessage[] = [];
   const spokenInput: Array<{ agentId: string; text: string }> = [];
+  const spokenBehaviors: SpokenInputBehavior[] = [];
   return {
     emitted,
     spokenInput,
+    spokenBehaviors,
     emit: (msg) => {
       emitted.push(msg);
     },
     loadAgent: async (agentId) =>
       ({ id: agentId, config: { systemPrompt: undefined } }) as unknown as ManagedAgent,
     reloadAgentSession: async (agentId) => ({ id: agentId }) as unknown as ManagedAgent,
-    sendSpokenInput: async (agentId, text) => {
+    sendSpokenInput: async (agentId, text, behavior) => {
       spokenInput.push({ agentId, text });
+      spokenBehaviors.push(behavior);
     },
     interruptAgentIfRunning: async () => {},
     hasActiveAgentRun: () => false,
@@ -85,7 +95,7 @@ function createFakeHost(): FakeVoiceHost {
 
 function createVoiceSession(
   tts: TextToSpeechProvider | null = null,
-  options: { bargeInConfirmMs?: number } = {},
+  options: { bargeInConfirmMs?: number; followUpWindowMs?: number } = {},
 ) {
   let speakHandler: VoiceSpeakHandler | undefined;
   const detector = new FakeVoiceTurnDetectionSession();
@@ -111,7 +121,11 @@ function createVoiceSession(
       },
     },
     stt,
-    voice: { turnDetection, bargeInConfirmMs: options.bargeInConfirmMs ?? 20 },
+    voice: {
+      turnDetection,
+      bargeInConfirmMs: options.bargeInConfirmMs ?? 20,
+      followUpWindowMs: options.followUpWindowMs,
+    },
   });
   return {
     voiceSession,
@@ -137,6 +151,19 @@ async function waitForAudioOutput(host: FakeVoiceHost): Promise<void> {
   await vi.waitFor(() => expect(host.emitted.filter(isAudioOutput)).toHaveLength(1));
 }
 
+// The detector's callbacks run one after another, so the turn ends only after earlier
+// callbacks (a barge-in on a partial transcript) finish.
+async function waitForTurnEnd(host: FakeVoiceHost): Promise<void> {
+  await vi.waitFor(() =>
+    expect(host.emitted).toContainEqual(
+      expect.objectContaining({
+        type: "activity_log",
+        payload: expect.objectContaining({ content: "Transcribing audio..." }),
+      }),
+    ),
+  );
+}
+
 async function settle(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -145,33 +172,51 @@ async function settle(): Promise<void> {
 
 describe("VoiceSession streaming transcription", () => {
   // CUSTOM(confirmed-barge-in)
-  function createSpeakingSession(bargeInConfirmMs: number) {
+  function createSpeakingSession(bargeInConfirmMs: number, followUpWindowMs?: number) {
     const tts: TextToSpeechProvider = {
       async synthesizeSpeech() {
         return { stream: Readable.from([Buffer.from("audio")]), format: "pcm;rate=24000" };
       },
     };
-    const session = createVoiceSession(tts, { bargeInConfirmMs });
+    const session = createVoiceSession(tts, { bargeInConfirmMs, followUpWindowMs });
     const interrupted: string[] = [];
     async function recordInterruption(agentId: string) {
       interrupted.push(agentId);
     }
     session.host.interruptAgentIfRunning = recordInterruption;
-    return { ...session, interrupted };
+    let segment = 0;
+    // One whole utterance, from the detector's start to the final transcript reaching the agent.
+    async function utter(text: string) {
+      segment += 1;
+      const segmentId = `utterance-${segment}`;
+      const sent = session.host.spokenInput.length;
+      session.detector.emit("speech_started");
+      await settle();
+      session.detector.emit("speech_stopped");
+      await settle();
+      session.sttSession.emitCommitted({ segmentId, previousSegmentId: null });
+      session.sttSession.emitTranscript({
+        segmentId,
+        transcript: text,
+        isFinal: true,
+        isLowConfidence: false,
+      });
+      await vi.waitFor(() => expect(session.host.spokenInput).toHaveLength(sent + 1));
+    }
+    return { ...session, interrupted, utter };
   }
 
   const SPEAKING = { type: "voice_input_state", payload: { isSpeaking: true } };
 
-  test("interrupts the agent once speech lasts past the confirm window", async () => {
+  test("speech past the confirm window barges in without interrupting the agent", async () => {
     const { voiceSession, detector, host, interrupted } = createSpeakingSession(20);
     await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
     try {
       detector.emit("speech_started");
       await settle();
       expect(host.emitted).not.toContainEqual(SPEAKING);
+      await vi.waitFor(() => expect(host.emitted).toContainEqual(SPEAKING));
       expect(interrupted).toEqual([]);
-      await vi.waitFor(() => expect(interrupted).toEqual([VOICE_AGENT_ID]));
-      expect(host.emitted).toContainEqual(SPEAKING);
     } finally {
       await voiceSession.cleanup();
     }
@@ -221,7 +266,7 @@ describe("VoiceSession streaming transcription", () => {
     }
   });
 
-  test("a short word interrupts once it is transcribed", async () => {
+  test("a short word barges in once it is transcribed and reaches the agent as a steer", async () => {
     const { voiceSession, detector, sttSession, host, speak, interrupted } =
       createSpeakingSession(60_000);
     await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
@@ -240,8 +285,8 @@ describe("VoiceSession streaming transcription", () => {
         isFinal: true,
         isLowConfidence: false,
       });
-      await vi.waitFor(() => expect(interrupted).toEqual([VOICE_AGENT_ID]));
       await playback;
+      expect(interrupted).toEqual([]);
       const speechStates = host.emitted.filter((message) => message.type === "voice_input_state");
       expect(speechStates.at(-2)).toEqual(SPEAKING);
       expect(speechStates.at(-1)).toEqual({
@@ -251,6 +296,7 @@ describe("VoiceSession streaming transcription", () => {
       await vi.waitFor(() =>
         expect(host.spokenInput).toEqual([{ agentId: VOICE_AGENT_ID, text: "Stop." }]),
       );
+      expect(host.spokenBehaviors).toEqual(["steer"]);
     } finally {
       await voiceSession.cleanup();
       await playback.catch(() => {});
@@ -258,7 +304,7 @@ describe("VoiceSession streaming transcription", () => {
   });
 
   // CUSTOM(voice-live-transcript)
-  test("words in a partial transcript interrupt a playing reply and are sent live", async () => {
+  test("words in a partial transcript stop a playing reply and are sent live", async () => {
     const { voiceSession, detector, sttSession, host, speak, interrupted } =
       createSpeakingSession(60_000);
     await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
@@ -272,7 +318,8 @@ describe("VoiceSession streaming transcription", () => {
       expect(interrupted).toEqual([]);
       expect(host.emitted).not.toContainEqual(SPEAKING);
       sttSession.emitTranscript({ segmentId: "segment-1", transcript: "wait a", isFinal: false });
-      await vi.waitFor(() => expect(interrupted).toEqual([VOICE_AGENT_ID]));
+      await vi.waitFor(() => expect(host.emitted).toContainEqual(SPEAKING));
+      await playback;
       sttSession.emitTranscript({
         segmentId: "segment-1",
         transcript: "wait a second",
@@ -288,7 +335,7 @@ describe("VoiceSession streaming transcription", () => {
         type: "voice_input_state",
         payload: { isSpeaking: true, transcript: "wait a" },
       });
-      expect(interrupted).toEqual([VOICE_AGENT_ID]);
+      expect(interrupted).toEqual([]);
     } finally {
       await voiceSession.cleanup();
       await playback.catch(() => {});
@@ -329,7 +376,7 @@ describe("VoiceSession streaming transcription", () => {
     }
   });
 
-  test("an acknowledgement that grows into words still interrupts the agent", async () => {
+  test("an acknowledgement that grows into words still reaches the agent", async () => {
     const { voiceSession, detector, sttSession, host, speak, interrupted } =
       createSpeakingSession(60_000);
     await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
@@ -346,10 +393,86 @@ describe("VoiceSession streaming transcription", () => {
         transcript: "ok but wait",
         isFinal: false,
       });
-      await vi.waitFor(() => expect(interrupted).toEqual([VOICE_AGENT_ID]));
+      detector.emit("speech_stopped");
+      await waitForTurnEnd(host);
+      sttSession.emitCommitted({ segmentId: "segment-1", previousSegmentId: null });
+      sttSession.emitTranscript({
+        segmentId: "segment-1",
+        transcript: "ok but wait",
+        isFinal: true,
+        isLowConfidence: false,
+      });
+      await vi.waitFor(() =>
+        expect(host.spokenInput).toEqual([{ agentId: VOICE_AGENT_ID, text: "ok but wait" }]),
+      );
+      expect(host.spokenBehaviors).toEqual(["steer"]);
+      expect(interrupted).toEqual([]);
     } finally {
       await voiceSession.cleanup();
       await playback.catch(() => {});
+    }
+  });
+
+  // CUSTOM(voice-steer-barge-in)
+  test("speech that continues an unanswered utterance interrupts the run it started", async () => {
+    const { voiceSession, detector, host, interrupted, utter } = createSpeakingSession(20);
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    try {
+      await utter("run the");
+      detector.emit("speech_started");
+      await vi.waitFor(() => expect(interrupted).toEqual([VOICE_AGENT_ID]));
+      detector.emit("speech_stopped");
+      await settle();
+      await utter("tests");
+      expect(host.spokenBehaviors).toEqual(["steer", "interrupt"]);
+    } finally {
+      await voiceSession.cleanup();
+    }
+  });
+
+  test("speech after the agent answered aloud steers instead of interrupting", async () => {
+    const { voiceSession, host, speak, interrupted, utter } = createSpeakingSession(20);
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    try {
+      await utter("run the tests");
+      const playback = speak({ text: "On it." });
+      await waitForAudioOutput(host);
+      const audio = host.emitted.find(isAudioOutput);
+      if (audio?.type !== "audio_output") throw new Error("No reply audio");
+      voiceSession.handleAudioPlayed(audio.payload.id);
+      await playback;
+      await utter("and the lint");
+      expect(host.spokenBehaviors).toEqual(["steer", "steer"]);
+      expect(interrupted).toEqual([]);
+    } finally {
+      await voiceSession.cleanup();
+    }
+  });
+
+  test("speech after the follow-up window steers instead of interrupting", async () => {
+    const { voiceSession, host, interrupted, utter } = createSpeakingSession(20, 0);
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    try {
+      await utter("run the tests");
+      await utter("and the lint");
+      expect(host.spokenBehaviors).toEqual(["steer", "steer"]);
+      expect(interrupted).toEqual([]);
+    } finally {
+      await voiceSession.cleanup();
+    }
+  });
+
+  test("speech that continues a steer into a running agent steers too", async () => {
+    const { voiceSession, host, interrupted, utter } = createSpeakingSession(20);
+    host.hasActiveAgentRun = () => true;
+    await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
+    try {
+      await utter("also check the");
+      await utter("migrations");
+      expect(host.spokenBehaviors).toEqual(["steer", "steer"]);
+      expect(interrupted).toEqual([]);
+    } finally {
+      await voiceSession.cleanup();
     }
   });
 
@@ -363,12 +486,12 @@ describe("VoiceSession streaming transcription", () => {
   });
 
   // CUSTOM(voice-hold-to-talk)
-  test("pressing hold interrupts the agent and releasing it ends the utterance", async () => {
+  test("pressing hold barges in and releasing it ends the utterance", async () => {
     const { voiceSession, sttSession, host, interrupted } = createSpeakingSession(60_000);
     await voiceSession.handleSetVoiceMode(true, VOICE_AGENT_ID);
     try {
       await voiceSession.handleHold(true);
-      expect(interrupted).toEqual([VOICE_AGENT_ID]);
+      expect(interrupted).toEqual([]);
       expect(host.emitted).toContainEqual(SPEAKING);
       expect(sttSession.commitCount).toBe(0);
 

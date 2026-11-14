@@ -58,6 +58,24 @@ const DICTATION_TUNING_PT_BR: Strings<typeof DICTATION_TUNING_EN> = {
   },
 };
 
+// CUSTOM(voice-turn-silence): Settings > Voice and dictation > Voice mode > Listening. Only English
+// and Brazilian Portuguese are translated; the other locales show the English text.
+const VOICE_TURN_SILENCE_EN = {
+  title: "Listening",
+  label: "Pause before sending",
+  hint: "How long you stay quiet before your turn is sent. Applies the next time you turn voice mode on.",
+  info: "The timer starts once the voice detector stops hearing speech. A short pause sends your turn as soon as you stop, but it can cut in during a pause mid-sentence. A long pause waits for you to finish, but the reply starts later.",
+  defaultValue: "{{value}} (default)",
+};
+
+const VOICE_TURN_SILENCE_PT_BR: Strings<typeof VOICE_TURN_SILENCE_EN> = {
+  title: "Escuta",
+  label: "Pausa antes de enviar",
+  hint: "Quanto tempo você fica em silêncio antes de a sua fala ser enviada. Vale na próxima vez que você ligar o modo de voz.",
+  info: "O tempo começa a contar quando o detector de voz para de ouvir fala. Uma pausa curta envia a sua fala assim que você para, mas pode cortar você numa pausa no meio da frase. Uma pausa longa espera você terminar, mas a resposta demora mais para começar.",
+  defaultValue: "{{value}} (padrão)",
+};
+
 // CUSTOM(claude-stt): Settings > Voice and Dictation: the provider rows, the Claude section and
 // the section titles that moved with them. Only English and Brazilian Portuguese are
 // translated; the other locales show the English text.
@@ -260,6 +278,7 @@ export const VOICE_SETTINGS_EN = {
     unknown: "Other",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  voiceTurnSilence: VOICE_TURN_SILENCE_EN,
   claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "Voice mode instructions",
@@ -400,6 +419,7 @@ export const VOICE_SETTINGS_PT_BR: VoiceSettingsStrings = {
     unknown: "Outro",
   },
   dictationTuning: DICTATION_TUNING_PT_BR,
+  voiceTurnSilence: VOICE_TURN_SILENCE_PT_BR,
   claudeStt: CLAUDE_STT_PT_BR,
   instructions: {
     title: "Instruções do modo de voz",
@@ -538,6 +558,7 @@ export const VOICE_SETTINGS_ES: VoiceSettingsStrings = {
     unknown: "Otro",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  voiceTurnSilence: VOICE_TURN_SILENCE_EN,
   claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "Instrucciones del modo de voz",
@@ -677,6 +698,7 @@ export const VOICE_SETTINGS_FR: VoiceSettingsStrings = {
     unknown: "Autre",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  voiceTurnSilence: VOICE_TURN_SILENCE_EN,
   claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "Instructions du mode vocal",
@@ -815,6 +837,7 @@ export const VOICE_SETTINGS_JA: VoiceSettingsStrings = {
     unknown: "その他",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  voiceTurnSilence: VOICE_TURN_SILENCE_EN,
   claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "音声モードの指示",
@@ -953,6 +976,7 @@ export const VOICE_SETTINGS_KO: VoiceSettingsStrings = {
     unknown: "기타",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  voiceTurnSilence: VOICE_TURN_SILENCE_EN,
   claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "음성 모드 지침",
@@ -1091,6 +1115,7 @@ export const VOICE_SETTINGS_RU: VoiceSettingsStrings = {
     unknown: "Другой",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  voiceTurnSilence: VOICE_TURN_SILENCE_EN,
   claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "Инструкции голосового режима",
@@ -1229,6 +1254,7 @@ export const VOICE_SETTINGS_ZH_CN: VoiceSettingsStrings = {
     unknown: "其他",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  voiceTurnSilence: VOICE_TURN_SILENCE_EN,
   claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "语音模式指令",
@@ -1367,6 +1393,7 @@ export const VOICE_SETTINGS_AR: VoiceSettingsStrings = {
     unknown: "أخرى",
   },
   dictationTuning: DICTATION_TUNING_EN,
+  voiceTurnSilence: VOICE_TURN_SILENCE_EN,
   claudeStt: CLAUDE_STT_EN,
   instructions: {
     title: "تعليمات الوضع الصوتي",

@@ -1,5 +1,6 @@
 import { setImmediate } from "node:timers/promises";
 import { parseClaudeMdExcludes } from "./claude-md-excludes.js"; // CUSTOM(delegation-subagent-context)
+import { parseClaudeAgentsEnv } from "./claude-agents-env.js"; // CUSTOM(delegation-implementer-agent)
 import { ClaudeRuntimeSafety } from "./runtime-safety.js";
 import { validateProviderOptions } from "../../provider-options.js";
 import type { ChildProcess } from "node:child_process";
@@ -3751,6 +3752,13 @@ class ClaudeAgentSession implements AgentSession {
     });
   }
 
+  // CUSTOM(delegation-implementer-agent): the defaults' agents plus those the delegation plugin
+  // passes in the launch env (env wins on a name clash).
+  private mergeEnvAgents(): Record<string, AgentDefinition> | undefined {
+    const merged = { ...this.defaults?.agents, ...parseClaudeAgentsEnv(this.launchEnv) };
+    return Object.keys(merged).length > 0 ? merged : undefined;
+  }
+
   private async buildOptions(permissionMode: PermissionMode): Promise<ClaudeOptions> {
     const { thinking, effort, ultracode } = this.resolveThinkingConfig();
     const appendedSystemPrompt = this.buildAppendedSystemPrompt();
@@ -3788,7 +3796,7 @@ class ClaudeAgentSession implements AgentSession {
       // bypass launch capability available so later setPermissionMode("bypassPermissions")
       // calls do not fail after a model/thinking/rewind-driven restart.
       allowDangerouslySkipPermissions: true,
-      agents: this.defaults?.agents,
+      agents: this.mergeEnvAgents(), // CUSTOM(delegation-implementer-agent)
       canUseTool: this.handlePermissionRequest,
       pathToClaudeCodeExecutable: claudeBinary,
       // Use Claude Code preset system prompt and load CLAUDE.md files

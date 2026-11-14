@@ -5056,7 +5056,7 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
     caret opens the sheet: **Delegate in new sessions**, implementer model (Sonnet/Opus/Haiku,
     default Sonnet) and effort (default medium), **When to delegate** (Conservative, Balanced,
     Aggressive), **Review in the session**, **Broad searches** (Off/Haiku/Sonnet, an Explore
-    subagent), **Extra instructions**, Restore defaults. Off by default. The same sheet opens from
+    subagent), **Extra instructions**. Off by default. The same sheet opens from
     Settings > Bruno's Customizations > Composer > Delegation; Chat options > Delegation hides
     the icon.
   - The plugin's `agent.create` hook appends the rule (`shared/policy.ts`) to the saved
@@ -5067,7 +5067,7 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
     Sonnet/Haiku sessions, other providers and daemon-internal agents are skipped; a prompt that
     already has the rule (a restart copying the config) doesn't get it twice.
   - **Sheet tabs** (2026-11-13): Delegation (switch, **Implementer**, **Policy**), Subagents,
-    Advanced (Extra instructions, Restore defaults), Reports. One Save (footer on the first
+    Advanced (Extra instructions), Reports. One Save (footer on the first
     three tabs) writes everything.
   - **Additional instructions** (setting `subagentInstructions`, Subagents tab, empty by default):
     text added to every subagent's instructions, in two places. (a) Paseo subagents (label
@@ -5273,7 +5273,8 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   buffer's last words arrive first. The keys are claimed in the window capture phase whenever
   `runtime.canHold()` (voice mode on a host with `voiceHold`), including when focus is in the
   composer text field hidden under the overlay (found by the overlay's `realtime-voice-overlay`
-  testID inside `message-input-root`); any other text field or control keeps its keys. The
+  testID inside `message-input-root`); any other text field (terminal, search box) keeps its keys.
+  A focused button does not: focus often sits on a sidebar row the user clicked last. The
   global shortcut hook skips those events (`isVoiceHoldKeyEvent`), so on such hosts Space no
   longer toggles mute in voice mode. The overlay shows "Release to send" while held. Muting
   releases the hold. Open mic keeps working beside the hold; the "Hold to talk only" setting
@@ -5291,7 +5292,7 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   hook (capture phase, plus the skip at the top of the shortcut hook's keydown) and the overlay
   button with its testID.
 - **Verify:** `cd packages/server && npx vitest run src/server/session/voice/ --bail=1` and
-  `cd packages/app && npx vitest run src/voice/voice-runtime.test.ts --bail=1`. Restart the
+  `cd packages/app && npx vitest run src/voice/voice-runtime.test.ts src/voice/use-voice-hold-key.test.ts --bail=1`. Restart the
   daemon, then in voice mode hold Enter or Space (focus in the composer is fine), talk with
   pauses, release: one utterance is sent, and no space or Enter reaches the composer.
 
@@ -5672,3 +5673,148 @@ emit`) and, below 1 s, releases everything buffered except a 10 ms holdback (cut
 - **Verify:** `cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts src/server/agent/pcm-chunker.test.ts src/server/speech/providers/claude/tts.test.ts --bail=1`.
   Needs a daemon restart. In voice mode with the Claude voice, a multi-sentence answer plays
   without gaps between sentences.
+
+## delegation-implementer-agent: a lean `paseo-implementer` agent for delegated work
+
+- **Added:** 2026-11-14
+- **Commit:** (not committed yet)
+- **Why:** The delegation rule sent Opus to a `general-purpose` subagent, which starts with about
+  31k tokens of context (every tool incl. all MCP tools, the whole skill listing, all CLAUDE.md
+  files). The lean definition starts at about 4.6k.
+- **What:** The rule now names `subagent_type "paseo-implementer"`. In `agent.session_open`, every
+  Claude session (delegation on or off, subagent or not, since a resumed session keeps the rule in
+  its system prompt) gets `PASEO_CLAUDE_AGENTS`, a JSON map with that definition (tools Bash, Read,
+  Edit, Write, Glob, Grep; model and effort from the settings; `omitClaudeMd` unless Subagent
+  context is `full`; in `project` mode the prompt tells it to read the repo's CLAUDE.md and
+  AGENTS.md). The Claude provider merges it into the SDK `agents` option (env wins on a name
+  clash). Nothing is written to `~/.claude/agents`. The same map holds `paseo-search` (tools Bash,
+  Read, Glob, Grep; `omitClaudeMd`; model from the Search setting, haiku when it is off, since a
+  resumed session may still carry the "Search:" line). The rule's Search line now names it instead
+  of `Explore`, which still loads the full skill listing and every tool (~20k tokens vs ~4-5k).
+- **Core files touched:** `packages/server/src/server/agent/providers/claude/agent.ts` (`agents:`
+  line and `mergeEnvAgents`); new `claude-agents-env.ts` and its test next to it.
+- **Re-apply:** `rg "CUSTOM\(delegation-implementer-agent\)"`. Parse the env var and merge it with
+  `this.defaults?.agents` where the SDK options are built.
+- **Verify:** `npx vitest run custom/plugins/delegation/server/implementer-agent.test.ts
+custom/plugins/delegation/shared/policy.test.ts --bail=1` and `cd packages/server && npx vitest
+run src/server/agent/providers/claude/claude-agents-env.test.ts --bail=1`. Needs a daemon
+  restart. A new Opus session with delegation on delegates to `paseo-implementer`; with Search
+  on, broad searches go to `paseo-search`.
+
+## delegation-subagent-cache-ttl: prompt-cache TTL setting for subagents
+
+- **Added:** 2026-11-14
+- **Commit:** (not committed yet)
+- **Why:** Claude Code's subagents write 1-hour cache entries on a subscription, which cost more
+  than 5-minute ones; most subagent runs finish well inside 5 minutes.
+- **What:** New delegation setting `subagentCacheTtl` (`5m` default, `1h`), shown as "Subagent cache"
+  in the sheet's Subagents tab. In `agent.session_open`, every Claude session gets
+  `CLAUDE_CODE_SUBAGENT_PROMPT_CACHE_TTL` (its own Agent-tool subagents); a Claude session that is a
+  Paseo subagent also gets `CLAUDE_CODE_PROMPT_CACHE_TTL` (its main conversation). Other providers
+  get nothing. Applies delegation on or off.
+- **Core files touched:** `packages/protocol/src/delegation.ts` (additive, defaulted field). The rest
+  is in `custom/plugins/delegation` (`server/session-open-env.ts`) and `packages/app/src/delegation`.
+- **Re-apply:** `rg "subagentCacheTtl"`.
+- **Verify:** `npx vitest run custom/plugins/delegation --bail=1` and `cd packages/app && npx vitest
+run src/delegation/form-model.test.ts --bail=1`. Needs a daemon restart. Then run a subagent and
+  check its transcript: assistant `usage.cache_creation.ephemeral_5m_input_tokens` > 0 and
+  `ephemeral_1h_input_tokens` == 0.
+
+## voice-turn-silence: how long a silence ends a voice-mode turn
+
+- **Added:** 2026-11-14
+- **Commit:** (not committed yet)
+- **Why:** The local Silero VAD ended a voice turn after a hardcoded 1000 ms of silence. Slow
+  speakers got cut off mid-thought; fast ones waited for nothing.
+- **What:** Settings > Voice and dictation > Voice mode > Listening > "Pause before sending"
+  (0.5, 0.8, 1, 1.5, 2, 3, 5 s; the current value is added when it is not a preset). Persists in
+  `features.voiceMode.turnDetection.silenceMs`; env `PASEO_VOICE_TURN_SILENCE_MS` wins and locks the
+  row; default 1000 ms. The daemon resolves it each time voice mode starts listening, so a change
+  applies then, with no restart. The row is hidden when the daemon reports no value (old daemon).
+  The OpenAI provider reuses the local detector, so it needs no code. Only en and pt-BR are
+  translated.
+- **Core files touched:** protocol `speech-settings.ts` (optional `voiceTurnSilenceMs`). Server:
+  `persisted-config.ts`, `bootstrap.ts`, `daemon-config-store.ts`, `speech/speech-config-resolver.ts`,
+  `speech/speech-runtime.ts`, `speech/speech-settings-service.ts` (env lock),
+  `speech/turn-detection-provider.ts` (`silenceMs` on `createSession`), `websocket-server.ts`,
+  `session.ts`, `session/voice/voice-session.ts`, `session/voice/voice-turn-controller.ts`,
+  `speech/providers/local/worker-{protocol,client,process}.ts`,
+  `speech/providers/local/sherpa/silero-vad-provider.ts`; new `speech/voice-turn-silence.ts`. App:
+  `voice-settings-page.tsx` (one line), `i18n/resources/custom-voice-settings.ts`; new
+  `screens/settings/voice/voice-turn-silence-*.ts(x)`.
+- **Re-apply:** `rg "CUSTOM\(voice-turn-silence\)"`. Keep `speech/voice-turn-silence.ts` as the one
+  place for the default and env name. The value rides on `createSession` and the worker's
+  `session.create` message into `SherpaSileroVadSessionConfig.silenceMs`.
+- **Verify:** `cd packages/server && npx vitest run src/server/speech/voice-turn-silence.test.ts
+src/server/speech/providers/local/sherpa/silero-vad-session.test.ts
+src/server/daemon-config-store.test.ts --bail=1` and `cd packages/app && npx vitest run
+src/screens/settings/voice/voice-turn-silence-model.test.ts --bail=1`. Needs a daemon restart. In
+  Settings > host > Voice and dictation > Voice mode, Listening shows "1 s (default)".
+
+## voice-steer-barge-in: talking over a working agent steers it, a continued sentence interrupts
+
+- **Added:** 2026-11-14
+- **Commit:** (uncommitted when written)
+- **Why:** Every barge-in in voice mode cancelled the agent's run, even when it had been working
+  for minutes, while a typed message steers into the running turn. Only a sentence the turn
+  detector cut in the middle should replace the run it started.
+- **What:** `VoiceSession.confirmBargeIn` decides once per utterance whether it is a follow-up:
+  the last utterance went to the agent less than `FOLLOW_UP_WINDOW_MS` (10 s) ago, started the
+  turn (the agent was idle, or it was itself a follow-up) and the agent has not called `speak`
+  since. A follow-up keeps the old behavior: `handleAbort` interrupts the run and the transcript
+  goes with `activeTurnBehavior: "interrupt"`. Anything else only stops the reply audio
+  (`handleAbort({ interruptAgent: false })`) and the transcript goes as a steer, which starts a
+  new turn when the agent is idle. The continuation of a steer steers too, so it never kills the
+  run it was steered into. An empty transcript renews the aborted abort controller so the
+  running agent's later `speak` calls still play. The client `abort_request` still interrupts.
+  `VoiceSessionHost.sendSpokenInput` takes the behavior; `Session.handleSendAgentMessage` passes
+  it to `sendPromptToAgent`.
+- **Core files touched:** `packages/server/src/server/session/voice/voice-session.ts`,
+  `packages/server/src/server/session.ts` (`sendSpokenInput` host wiring and
+  `handleSendAgentMessage` options), the voice-session test.
+- **Re-apply:** Add the behavior argument to `sendSpokenInput` and forward it as
+  `activeTurnBehavior`. In `voice-session.ts`, track `lastSpokenInput` (set where the transcript
+  is sent, `answered` set in the speak handler), compute the follow-up in `confirmBargeIn`, and
+  pass `interruptAgent` from it to `handleAbort` in `handleVoiceSpeechStart`.
+- **Verify:** `cd packages/server && npx vitest run src/server/session/voice/voice-session.test.ts --bail=1`.
+  Needs a daemon restart. In voice mode, give the agent a long task, then talk while it works:
+  it keeps working and picks the message up as a steer. Stop mid-sentence, finish it a second
+  later: the run restarts with both parts.
+
+## delegation-paseo-runner: the implementer can run as a Paseo subagent
+
+- **Added:** 2026-11-14
+- **Commit:** (not committed yet)
+- **Why:** The implementer ran only as a Claude Code Agent-tool subagent: lean, but read-only in the
+  subagents track and not something you can open or message. A delegated Opus Paseo subagent also
+  got the delegation rule itself, because `agent.create` hooks could not tell a subagent apart.
+- **What:** New delegation settings `implementerRunner` (`claude` default, `paseo`) and, for the
+  Paseo runner, `paseoProvider` (default `claude`), `paseoModel` and `paseoThinkingOptionId` ("" =
+  the provider's default model / the model's default thinking). "Runs as" in the sheet's
+  Implementer section picks the runner and shows only its controls: Model and Effort (Claude
+  aliases, unchanged, they still drive paseo-implementer) for `claude`; Provider, Model and
+  Thinking for `paseo`, fed by the host's provider catalog (`useProvidersSnapshot`, the data the
+  agent form uses; changing the provider resets model and thinking, changing the model keeps the
+  thinking option only if the new model offers it; a catalog that cannot load shows the saved
+  values and an inline error). With `paseo` the rule tells the session to use the Paseo
+  `create_agent` tool (provider `<paseoProvider>[/<paseoModel>]`, `settings.thinkingOptionId` only
+  when set, `notifyOnFinish`) and `send_agent_prompt` for review fixes, and drops the "Subagent
+  instructions" line (a Paseo subagent gets that text in its own system prompt). The chat card and
+  the composer tooltip say "Paseo subagent" with the provider/model. `agent.create` hooks now
+  receive the new agent's `labels` (read-only), and the plugin skips sessions that have
+  `paseo.parent-agent-id`: a Paseo subagent never gets the rule or the card. Sheet text updated to
+  say what Context, Subagent cache and Additional instructions apply to.
+- **Core files touched:** `packages/protocol/src/delegation.ts` (additive, defaulted/optional
+  fields), `packages/plugin/src/server/lifecycle.ts` (`labels?` on `agent.create`),
+  `packages/server/src/server/agent/agent-manager.ts` (passes `options.labels` to the hook),
+  `packages/server/src/server/plugins/lifecycle/index.ts` (schema accepts `labels`, result check
+  rejects a change) and its `handlers.test.ts`. The rest is in `custom/plugins/delegation` and
+  `packages/app/src/delegation` (`paseo-catalog.ts` builds the select options).
+- **Re-apply:** `rg "CUSTOM\(delegation-paseo-runner\)"` and `rg "implementerRunner"`.
+- **Verify:** `npx vitest run custom/plugins/delegation --bail=1`, `cd packages/app && npx vitest
+run src/delegation/ --bail=1`, `cd packages/server && npx vitest run
+src/server/plugins/lifecycle/handlers.test.ts --bail=1`. Needs a daemon restart. Set "Runs as" to
+  Paseo subagent, pick a provider (try codex) and model in the sheet, start an Opus session, ask
+  for a multi-file change: the session calls `create_agent` with that provider/model, and the new
+  subagent's system prompt has no delegation rule. Also `cd packages/app && npx vitest run
+  src/delegation/paseo-catalog.test.ts`.

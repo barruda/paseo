@@ -282,7 +282,7 @@ export class LocalSpeechWorkerClient {
   async createSession(
     kind: LocalSpeechSessionKind,
     emitter: EventEmitter,
-    options: { decodeIntervalMs?: number } = {},
+    options: { decodeIntervalMs?: number; silenceMs?: number } = {},
   ): Promise<{ sessionId: string; requiredSampleRate: number }> {
     const sessionId = randomUUID();
     this.activeSessionIds.add(sessionId);
@@ -296,6 +296,8 @@ export class LocalSpeechWorkerClient {
         ...(options.decodeIntervalMs !== undefined
           ? { decodeIntervalMs: options.decodeIntervalMs }
           : {}),
+        // CUSTOM(voice-turn-silence)
+        ...(options.silenceMs !== undefined ? { silenceMs: options.silenceMs } : {}),
       });
       return { sessionId, requiredSampleRate: result.requiredSampleRate };
     } catch (err) {
@@ -700,8 +702,8 @@ export class WorkerBackedTurnDetectionProvider implements TurnDetectionProvider 
 
   constructor(private readonly client: LocalSpeechWorkerClient) {}
 
-  createSession(_params: { logger: pino.Logger }): TurnDetectionSession {
-    return new WorkerBackedTurnDetectionSession(this.client);
+  createSession(params: { logger: pino.Logger; silenceMs?: number }): TurnDetectionSession {
+    return new WorkerBackedTurnDetectionSession(this.client, params.silenceMs);
   }
 }
 
@@ -780,7 +782,11 @@ class WorkerBackedTurnDetectionSession extends EventEmitter implements TurnDetec
   private connectedSessionId: string | null = null;
   private connecting: Promise<void> | null = null;
 
-  constructor(private readonly client: LocalSpeechWorkerClient) {
+  constructor(
+    private readonly client: LocalSpeechWorkerClient,
+    // CUSTOM(voice-turn-silence)
+    private readonly silenceMs?: number,
+  ) {
     super();
   }
 
@@ -796,7 +802,12 @@ class WorkerBackedTurnDetectionSession extends EventEmitter implements TurnDetec
 
   private async connectRemoteSession(): Promise<void> {
     try {
-      const result = await this.client.createSession("vad", this);
+      const result = await this.client.createSession(
+        "vad",
+        this,
+        // CUSTOM(voice-turn-silence)
+        this.silenceMs !== undefined ? { silenceMs: this.silenceMs } : {},
+      );
       this.connectedSessionId = result.sessionId;
       this.requiredSampleRate = result.requiredSampleRate;
     } finally {

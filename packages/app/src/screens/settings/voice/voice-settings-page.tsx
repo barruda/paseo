@@ -49,6 +49,8 @@ import { useVoiceSettingsTabStore } from "@/voice/voice-settings-tab";
 import { useVoiceMicrophoneStore } from "@/voice/microphone-settings";
 import { useLocalSpeechStatus } from "./use-local-speech-status";
 import { DictationTuningSection } from "./dictation-tuning-section";
+// CUSTOM(voice-turn-silence)
+import { VoiceTurnSilenceSection } from "./voice-turn-silence-section";
 import { VOICE_SETTINGS_TABS, type VoiceSettingsTab } from "./voice-settings-tabs";
 import { ClaudeSttSection, SttProviderRow } from "./claude-stt-section";
 import { showsLocalModel, usesClaude } from "./claude-stt-model";
@@ -202,6 +204,8 @@ export function VoiceSettingsPage({ serverId }: { serverId: string }) {
           ) : null}
           <VoiceModeSection status={status} speech={speech} save={saveSpeech} />
           <VoiceSection serverId={serverId} status={status} speech={speech} save={saveSpeech} />
+          {/* CUSTOM(voice-turn-silence) */}
+          <VoiceTurnSilenceSection status={status} speech={speech} save={saveSpeech} />
           <InstructionsSection status={status} speech={speech} save={saveSpeech} />
           <ThinkingToneSection />
           {isWeb ? <MicrophoneSection /> : null}

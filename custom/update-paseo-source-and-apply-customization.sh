@@ -280,7 +280,7 @@ if $VERIFY; then
   (cd packages/desktop && npx vitest run src/features/opener.test.ts --bail=1)
   (cd packages/app && npx vitest run src/keyboard/shortcut-help-search.test.ts src/keyboard/shortcut-override-store.test.ts --bail=1)
   npm run test:e2e:renderer --workspace=@getpaseo/desktop -- e2e/keyboard-shortcut-unassign.spec.ts --grep 'sidebar shortcut settings|shortcut settings search|additional shortcuts' --workers=1
-  (cd packages/app && npx vitest run src/voice/sidebar/session.test.ts src/voice/voice-runtime.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/voice/sidebar/session.test.ts src/voice/voice-runtime.test.ts src/voice/use-voice-hold-key.test.ts --bail=1)
   (cd packages/app && npx vitest run src/content-width-boost/store.test.ts --bail=1)
   # The chat's scroll arrows fade after 3 s without scrolling; scrolling up shows a top arrow.
   (cd packages/app && npx vitest run src/agent-stream/scroll-arrows.test.ts --bail=1)
@@ -305,7 +305,7 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "pending steers" --bail=1)
   (cd packages/protocol && npx vitest run src/messages.test.ts -t "cancel steer" --bail=1)
   # Delegation: CLAUDE.md / AGENTS.md trimming for Paseo-created subagents.
-  (cd packages/server && npx vitest run src/server/agent/providers/claude/claude-md-excludes.test.ts src/server/agent/providers/codex-agents-md.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/providers/claude/claude-md-excludes.test.ts src/server/agent/providers/claude/claude-agents-env.test.ts src/server/agent/providers/codex-agents-md.test.ts --bail=1)
   # Delegation: instructions for Paseo subagents folded into the launch config's appended prompt.
   (cd packages/server && npx vitest run src/server/agent/subagent-append-prompt.test.ts --bail=1)
   # An agent's tab keeps working while a subagent runs.
@@ -334,6 +334,8 @@ if $VERIFY; then
   # Dictation tuning settings.
   (cd packages/server && npx vitest run src/server/speech/dictation-tuning.test.ts src/server/dictation/dictation-stream-manager.test.ts --bail=1)
   (cd packages/app && npx vitest run src/screens/settings/voice/dictation-tuning-model.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/speech/voice-turn-silence.test.ts src/server/speech/providers/local/sherpa/silero-vad-session.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/screens/settings/voice/voice-turn-silence-model.test.ts --bail=1)
   # Claude speech-to-text provider.
   (cd packages/server && npx vitest run src/server/speech/providers/claude src/server/daemon-config-store.test.ts --bail=1)
   (cd packages/app && npx vitest run src/screens/settings/voice/claude-stt-model.test.ts src/screens/settings/voice/claude-tts-model.test.ts --bail=1)

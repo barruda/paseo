@@ -4,6 +4,7 @@ import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import {
   formatDelegationModel,
+  formatPaseoSubagentProvider,
   type DelegationCardData,
   type DelegationWhen,
 } from "@getpaseo/protocol/delegation";
@@ -17,11 +18,22 @@ const WHEN_PT: Record<DelegationWhen, string> = {
   aggressive: "modo agressivo",
 };
 
+function describeImplementer(data: DelegationCardData): string {
+  if (data.implementerRunner !== "paseo") {
+    return `${formatDelegationModel(data.implementerModel)} · ${data.implementerEffort}`;
+  }
+  // Cards written before the Paseo subagent had its own provider fall back to the Claude pair.
+  if (!data.paseoProvider) {
+    return `${formatDelegationModel(data.implementerModel)} · ${data.implementerEffort} (subagente Paseo)`;
+  }
+  const model = data.paseoModel
+    ? formatPaseoSubagentProvider(data.paseoProvider, data.paseoModel)
+    : `${data.paseoProvider} (modelo padrão)`;
+  return `${model} (subagente Paseo)`;
+}
+
 export function describeDelegationCard(data: DelegationCardData): string {
-  const parts = [
-    `implementação vai para ${formatDelegationModel(data.implementerModel)} · ${data.implementerEffort}`,
-    WHEN_PT[data.when],
-  ];
+  const parts = [`implementação vai para ${describeImplementer(data)}`, WHEN_PT[data.when]];
   if (data.review) parts.push("revisão nesta sessão");
   if (data.searchModel !== "off") parts.push(`busca em ${formatDelegationModel(data.searchModel)}`);
   return `Delegação ligada: ${parts.join(", ")}`;

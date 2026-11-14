@@ -1,7 +1,7 @@
 // CUSTOM(voice-hold-to-talk): on web and desktop, holding Enter or Space in voice mode does what
 // holding the hand button does: the voice turn stays open and releasing it sends. The composer's
 // text field sits hidden under the voice overlay and usually keeps focus, so it counts as part of
-// the overlay; any other text field or control keeps its keys.
+// the overlay; any other text field keeps its keys. A focused button doesn't.
 import { useEffect } from "react";
 
 import { isWeb } from "@/constants/platform";
@@ -10,17 +10,19 @@ import type { VoiceRuntime } from "@/voice/voice-runtime";
 export const VOICE_OVERLAY_TEST_ID = "realtime-voice-overlay";
 
 const HOLD_KEYS = new Set(["Enter", " "]);
-const CONTROL_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT", "BUTTON", "A"]);
-const CONTROL_ROLES = new Set([
+// Inputs that take Enter or Space as a click, not as text.
+const NON_TEXT_INPUT_TYPES = new Set([
   "button",
-  "link",
-  "menuitem",
-  "option",
   "checkbox",
-  "switch",
-  "tab",
-  "textbox",
+  "color",
+  "file",
+  "image",
+  "radio",
+  "range",
+  "reset",
+  "submit",
 ]);
+const TEXT_ROLES = new Set(["textbox", "searchbox", "combobox"]);
 
 let activeRuntime: VoiceRuntime | null = null;
 
@@ -29,15 +31,23 @@ function isUnderVoiceOverlay(target: HTMLElement): boolean {
   return composer?.querySelector(`[data-testid="${VOICE_OVERLAY_TEST_ID}"]`) != null;
 }
 
-function belongsToOtherControl(target: EventTarget | null): boolean {
+function isTextEntry(target: HTMLElement): boolean {
+  if (target.isContentEditable || target.tagName === "TEXTAREA" || target.tagName === "SELECT") {
+    return true;
+  }
+  if (target.tagName === "INPUT") {
+    return !NON_TEXT_INPUT_TYPES.has((target as HTMLInputElement).type);
+  }
+  return TEXT_ROLES.has(target.getAttribute("role") ?? "");
+}
+
+// A focused button (a sidebar row, say) doesn't keep the keys: in voice mode they hold. Only a
+// text field the user can see, such as a terminal or a search box, keeps them.
+function belongsToOtherTextField(target: EventTarget | null): boolean {
   if (typeof HTMLElement === "undefined" || !(target instanceof HTMLElement)) {
     return false;
   }
-  const isControl =
-    target.isContentEditable ||
-    CONTROL_TAGS.has(target.tagName) ||
-    CONTROL_ROLES.has(target.getAttribute("role") ?? "");
-  return isControl && !isUnderVoiceOverlay(target);
+  return isTextEntry(target) && !isUnderVoiceOverlay(target);
 }
 
 function isHoldKey(event: KeyboardEvent): boolean {
@@ -57,7 +67,7 @@ export function isVoiceHoldKeyEvent(event: KeyboardEvent): boolean {
     activeRuntime !== null &&
     isHoldKey(event) &&
     activeRuntime.canHold() &&
-    !belongsToOtherControl(event.target)
+    !belongsToOtherTextField(event.target)
   );
 }
 

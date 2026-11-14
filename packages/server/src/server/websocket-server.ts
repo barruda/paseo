@@ -1650,6 +1650,8 @@ export class VoiceAssistantWebSocketServer {
       resolveScriptHealth: this.resolveScriptHealth ?? undefined,
       voice: {
         turnDetection: () => this.speech?.resolveTurnDetection() ?? null,
+        // CUSTOM(voice-turn-silence)
+        turnSilenceMs: () => this.speech?.resolveVoiceTurnSilenceMs(),
         // CUSTOM(voice-settings)
         instructions: () => this.speech?.resolveVoiceInstructions(),
       },

@@ -177,6 +177,30 @@ describe("DaemonConfigStore", () => {
     expect(store.get().speech?.customModels).toEqual([]);
   });
 
+  // CUSTOM(voice-turn-silence)
+  test("voice turn silence lands in features.voiceMode.turnDetection.silenceMs", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    const store = new DaemonConfigStore(paseoHome, {
+      relay: { enabled: false },
+      mcp: { injectIntoAgents: false },
+      browserTools: { enabled: false },
+      providers: {},
+      metadataGeneration: { providers: [] },
+      autoArchiveAfterMerge: false,
+      enableTerminalAgentHooks: false,
+      appendSystemPrompt: "",
+      speech: { voiceTurnSilenceMs: 1000 },
+    });
+
+    await store.patch({ speech: { voiceTurnSilenceMs: 2000 } });
+
+    expect(loadPersistedConfig(paseoHome).features?.voiceMode?.turnDetection).toEqual({
+      silenceMs: 2000,
+    });
+    expect(store.get().speech?.voiceTurnSilenceMs).toBe(2000);
+  });
+
   // CUSTOM(dictation-tuning)
   test("dictation tuning lands in features.dictation.tuning and an empty prompt clears it", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));

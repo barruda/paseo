@@ -134,6 +134,18 @@ function convertPCMToWavBuffer(
 // CUSTOM(confirmed-barge-in): speech this long interrupts even before it is transcribed.
 const BARGE_IN_CONFIRM_MS = 1000;
 
+// CUSTOM(voice-steer-barge-in): speech that starts this soon after the last utterance was sent,
+// before the agent answered it aloud, continues that utterance (the turn detector cut a pause in
+// the middle of a sentence), so it interrupts the run that utterance started. Any other speech
+// reaches a running agent as a steer, the way a typed message does, and the agent keeps working.
+const FOLLOW_UP_WINDOW_MS = 10_000;
+
+export type SpokenInputBehavior = "interrupt" | "steer";
+
+function resolveFollowUpWindowMs(voice: VoiceSessionOptions["voice"]): number {
+  return voice?.followUpWindowMs ?? FOLLOW_UP_WINDOW_MS;
+}
+
 /**
  * The agent-facing operations VoiceSession needs from the session that owns it.
  * VoiceSession owns all voice/audio state; it reaches back through this narrow
@@ -165,7 +177,7 @@ export interface VoiceSessionHost {
     agentId: string,
     overrides: Partial<AgentSessionConfig>,
   ): Promise<ManagedAgent>;
-  sendSpokenInput(agentId: string, text: string): Promise<void>;
+  sendSpokenInput(agentId: string, text: string, behavior: SpokenInputBehavior): Promise<void>;
   interruptAgentIfRunning(agentId: string): Promise<void>;
   hasActiveAgentRun(agentId: string | null): boolean;
 }
@@ -180,10 +192,14 @@ export interface VoiceSessionOptions {
   stt: Resolvable<SpeechToTextProvider | null>;
   voice?: {
     turnDetection?: Resolvable<TurnDetectionProvider | null>;
+    // CUSTOM(voice-turn-silence): Settings value, read each time voice mode turns on.
+    turnSilenceMs?: () => number | undefined;
     // CUSTOM(voice-settings): instructions edited in Settings, read at each enable.
     instructions?: () => string | undefined;
     // CUSTOM(confirmed-barge-in): how long speech must last before it interrupts.
     bargeInConfirmMs?: number;
+    // CUSTOM(voice-steer-barge-in)
+    followUpWindowMs?: number;
   };
   voiceBridge?: {
     registerVoiceSpeakHandler?: (agentId: string, handler: VoiceSpeakHandler) => void;
@@ -227,6 +243,12 @@ export class VoiceSession {
   // CUSTOM(voice-live-transcript): words are recognized live (partial transcripts), so they
   // interrupt as soon as they appear instead of after the user stops talking.
   private readonly bargeInConfirmMs: number;
+  // CUSTOM(voice-steer-barge-in): when the last utterance went to the agent and whether the
+  // agent spoke since, and whether the current utterance continues it.
+  private readonly followUpWindowMs: number;
+  private lastSpokenInput: { sentAt: number; startedTurn: boolean; answered: boolean } | null =
+    null;
+  private utteranceIsFollowUp = false;
   private bargeInTimer: ReturnType<typeof setTimeout> | null = null;
   private bargeInConfirmed = false;
   private vadSpeechActive = false;
@@ -240,6 +262,8 @@ export class VoiceSession {
 
   private readonly dictationStreamManager: DictationStreamManager;
   private readonly resolveVoiceTurnDetection: () => TurnDetectionProvider | null;
+  // CUSTOM(voice-turn-silence)
+  private readonly resolveVoiceTurnSilenceMs: (() => number | undefined) | undefined;
   private voiceTurnController: VoiceTurnController | null = null;
   private voiceInputChunkCount = 0;
   private voiceInputBytes = 0;
@@ -282,8 +306,11 @@ export class VoiceSession {
     this.sttLanguage = sttLanguage ?? "en";
     this.abortController = new AbortController();
     this.bargeInConfirmMs = voice?.bargeInConfirmMs ?? BARGE_IN_CONFIRM_MS;
+    this.followUpWindowMs = resolveFollowUpWindowMs(voice);
 
     this.resolveVoiceTurnDetection = toResolver(voice?.turnDetection ?? null);
+    // CUSTOM(voice-turn-silence)
+    this.resolveVoiceTurnSilenceMs = voice?.turnSilenceMs;
     this.registerVoiceSpeakHandler = voiceBridge?.registerVoiceSpeakHandler;
     this.unregisterVoiceSpeakHandler = voiceBridge?.unregisterVoiceSpeakHandler;
     this.registerVoiceCallerContext = voiceBridge?.registerVoiceCallerContext;
@@ -502,6 +529,7 @@ export class VoiceSession {
       );
       await this.disableVoiceModeForActiveAgent(true);
       this.isVoiceMode = false;
+      this.lastSpokenInput = null;
       this.sessionLogger.info({ elapsedMs: Date.now() - startedAt }, "Voice mode disabled");
       if (requestId) {
         this.emit({
@@ -698,6 +726,8 @@ export class VoiceSession {
     const controller = createVoiceTurnController({
       logger: this.sessionLogger.child({ component: "voice-turn-controller" }),
       turnDetection,
+      // CUSTOM(voice-turn-silence)
+      turnSilenceMs: this.resolveVoiceTurnSilenceMs?.(),
       stt,
       sttLanguage: this.sttLanguage,
       callbacks: {
@@ -866,7 +896,12 @@ export class VoiceSession {
     if (this.bargeInConfirmed || this.closed) return;
     this.bargeInConfirmed = true;
     this.clearBargeInTimer();
-    this.sessionLogger.info({ reason }, "voice_turn.barge_in_confirmed");
+    // CUSTOM(voice-steer-barge-in)
+    this.utteranceIsFollowUp = this.isFollowUp();
+    this.sessionLogger.info(
+      { reason, followUp: this.utteranceIsFollowUp },
+      "voice_turn.barge_in_confirmed",
+    );
     this.emit({
       type: "voice_input_state",
       payload: {
@@ -877,6 +912,13 @@ export class VoiceSession {
     if (!this.vadSpeechActive) {
       this.handleVoiceSpeechStopped();
     }
+  }
+
+  // CUSTOM(voice-steer-barge-in)
+  private isFollowUp(): boolean {
+    const last = this.lastSpokenInput;
+    if (!last || !last.startedTurn || last.answered) return false;
+    return Date.now() - last.sentAt < this.followUpWindowMs;
   }
 
   private handleVoiceSpeechStopped(): void {
@@ -1191,6 +1233,9 @@ export class VoiceSession {
 
     if (!transcriptText) {
       this.sessionLogger.debug("Empty transcription (false positive), not aborting");
+      // CUSTOM(voice-steer-barge-in): a barge-in that left the agent running aborted the reply
+      // audio; later speak calls of that run must still play.
+      if (this.abortController.signal.aborted) this.createAbortController();
       this.setPhase("idle");
       this.clearSpeechInProgress("empty transcription");
       await this.flushPendingAudioSegments("empty transcription");
@@ -1252,7 +1297,15 @@ export class VoiceSession {
       return;
     }
 
-    await this.host.sendSpokenInput(agentId, result.text);
+    // CUSTOM(voice-steer-barge-in)
+    const behavior: SpokenInputBehavior = this.utteranceIsFollowUp ? "interrupt" : "steer";
+    this.utteranceIsFollowUp = false;
+    // A steer into a run that was already going does not own that run, so the utterance that
+    // continues it steers too.
+    const startedTurn = behavior === "interrupt" || !this.host.hasActiveAgentRun(agentId);
+    this.lastSpokenInput = { sentAt: Date.now(), startedTurn, answered: false };
+    this.sessionLogger.info({ behavior }, "voice_turn.spoken_input_sent");
+    await this.host.sendSpokenInput(agentId, result.text, behavior);
     await this.flushPendingAudioSegments("transcription complete");
   }
 
@@ -1273,6 +1326,9 @@ export class VoiceSession {
       this.voiceTurnController?.setAssistantSpeaking(true);
       // CUSTOM(confirmed-barge-in)
       this.replyPlaying = true;
+      // CUSTOM(voice-steer-barge-in): speech after a reply answers it, it does not continue
+      // the utterance before it.
+      if (this.lastSpokenInput) this.lastSpokenInput.answered = true;
       try {
         await this.ttsManager.generateAndWaitForPlayback(
           text,
@@ -1309,7 +1365,9 @@ export class VoiceSession {
   /**
    * Handle abort request from client
    */
-  async handleAbort(): Promise<void> {
+  async handleAbort(
+    options: { interruptAgent: boolean } = { interruptAgent: true },
+  ): Promise<void> {
     this.sessionLogger.info(
       { phase: this.processingPhase },
       `Abort request, phase: ${this.processingPhase}`,
@@ -1319,7 +1377,8 @@ export class VoiceSession {
     this.ttsManager.cancelPendingPlaybacks("abort request");
 
     // Voice abort should always interrupt active agent output immediately.
-    if (this.isVoiceMode && this.voiceModeAgentId) {
+    // CUSTOM(voice-steer-barge-in): except a barge-in that will reach the agent as a steer.
+    if (options.interruptAgent && this.isVoiceMode && this.voiceModeAgentId) {
       try {
         await this.host.interruptAgentIfRunning(this.voiceModeAgentId);
       } catch (error) {
@@ -1394,7 +1453,7 @@ export class VoiceSession {
     this.clearBufferTimeout();
 
     this.abortController.abort();
-    await this.handleAbort();
+    await this.handleAbort({ interruptAgent: this.utteranceIsFollowUp });
 
     const latencyMs = Date.now() - chunkReceivedAt;
     this.sessionLogger.debug(
