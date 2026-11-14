@@ -1209,6 +1209,30 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   (in the update script). In voice mode, the first reply's tool calls start with Speak, with
   no Toolsearch row before it.
 
+## voice-speak-turn-end: one spoken reply per question, no text summary
+
+- **Added:** 2026-11-13
+- **Commit:** pending
+- **Why:** In voice mode Claude sometimes called `speak` twice in a row: the second call recapped
+  the question it had just asked, instead of stopping to listen. After an interruption it also
+  ended the turn with a Markdown summary in the chat, which nobody reads in voice mode. In the
+  transcripts the first `speak` returned `{"ok":true}` with no hint that the user had heard it,
+  and the model had to end its turn somehow while the instructions forbade text replies.
+- **What:** `speak` returns a text result telling the model the user heard it and that it should
+  end the turn without another `speak` or a text summary (`SPEAK_DELIVERED_RESULT`). The
+  built-in voice instructions gain two sentences with the same rule. Custom instructions saved
+  in Settings > Voice replace the built-in ones, so they need the rule too: the user's
+  `~/.paseo` and `~/.paseo-telus` configs got a "Turn ending rules" section by hand.
+- **Core files touched:** server `agent/tools/paseo-tools.ts` (`SPEAK_DELIVERED_RESULT`, speak
+  result), `voice-config.ts` (`VOICE_AGENT_SYSTEM_INSTRUCTION`), test in
+  `agent/mcp-server.test.ts`.
+- **Re-apply:** Make the `speak` tool handler return a text content block with the hand-off
+  sentence instead of empty content, and append the two turn-ending sentences to the default
+  voice instructions.
+- **Verify:** `cd packages/server && npx vitest run src/server/agent/mcp-server.test.ts -t "speak MCP tool" --bail=1`
+  (in the update script). In voice mode, ask the agent something that ends in a question: one
+  Spoke row, then the turn ends; the transcript shows the speak result as the hand-off sentence.
+
 ## voice-reply-mute: the ear button silences the agent's voice
 
 - **Added:** 2026-10-13

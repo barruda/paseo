@@ -24,6 +24,7 @@ import { z } from "zod";
 
 import { createTestLogger } from "../../test-utils/test-logger.js";
 import { createAgentMcpServer as createAgentMcpServerWithDependencies } from "./mcp-server.js";
+import { SPEAK_DELIVERED_RESULT } from "./tools/paseo-tools.js";
 import { AgentManager, type ManagedAgent } from "./agent-manager.js";
 import { AgentStorage, type StoredAgentRecord } from "./agent-storage.js";
 import { createTestAgentClients } from "../test-utils/fake-agent-client.js";
@@ -6048,7 +6049,9 @@ describe("speak MCP tool", () => {
     const tool = registeredTool(server, "speak");
     expect(tool).toBeDefined();
 
-    await tool.handler({ text: "Hello from voice agent." });
+    const result = await tool.handler({ text: "Hello from voice agent." });
+    // CUSTOM(voice-speak-turn-end): the model reads that the user heard it and the turn can end.
+    expect(result.content).toEqual([{ type: "text", text: SPEAK_DELIVERED_RESULT }]);
     expect(speak).toHaveBeenCalledWith(
       expect.objectContaining({
         text: "Hello from voice agent.",

@@ -186,6 +186,10 @@ interface ProviderSummary {
   error?: string;
 }
 
+// CUSTOM(voice-speak-turn-end): what the model reads after a spoken reply finishes playing.
+export const SPEAK_DELIVERED_RESULT =
+  "The user heard this. If you asked a question or have nothing left to do, end your turn now: don't call speak again and don't write a text reply or summary.";
+
 const WorkspaceAutomationSummarySchema = z.object({
   workspaceId: z.string(),
   projectId: z.string(),
@@ -1349,7 +1353,9 @@ function createToolCatalog(
           signal: context?.signal,
         });
         return {
-          content: [],
+          // CUSTOM(voice-speak-turn-end): a bare {"ok":true} left Claude ending its turn with
+          // a second speak that recapped the first, or a text summary nobody reads.
+          content: [{ type: "text", text: SPEAK_DELIVERED_RESULT }],
           structuredContent: ensureValidJson({ ok: true }),
         };
       },
