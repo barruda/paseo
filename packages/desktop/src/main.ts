@@ -29,6 +29,11 @@ import {
   shell,
   webContents,
 } from "electron";
+// CUSTOM(html-preview-url)
+import {
+  HTML_PREVIEW_SCHEME,
+  registerHtmlPreviewProtocol,
+} from "./features/html-preview-protocol.js";
 import { registerDaemonManager } from "./daemon/daemon-manager.js";
 import { parsePassthroughCliArgsFromArgv, runPassthroughCli } from "./daemon/cli/passthrough.js";
 import { closeAllTransportSessions } from "./daemon/local-transport.js";
@@ -575,6 +580,11 @@ protocol.registerSchemesAsPrivileged([
     scheme: APP_SCHEME,
     privileges: { standard: true, secure: true, supportFetchAPI: true },
   },
+  // CUSTOM(html-preview-url): HTML file previews load from this scheme.
+  {
+    scheme: HTML_PREVIEW_SCHEME,
+    privileges: { standard: true, secure: true, corsEnabled: true },
+  },
 ]);
 
 // ---------------------------------------------------------------------------
@@ -943,6 +953,9 @@ async function bootstrap(): Promise<void> {
   await app.whenReady();
 
   const appDistDir = getAppDistDir();
+  // CUSTOM(html-preview-url): global `protocol` is the default session only, so the Paseo
+  // browser webviews (separate partition) cannot reach this scheme.
+  registerHtmlPreviewProtocol({ ipcMain, protocol, webContents });
   protocol.handle(APP_SCHEME, (request) => {
     const { pathname, search, hash } = new URL(request.url);
     const decodedPath = decodeURIComponent(pathname);

@@ -2,6 +2,7 @@ import { useCallback, useMemo, useRef } from "react";
 import { StyleSheet } from "react-native-unistyles";
 import { WebView } from "react-native-webview";
 import { withPreviewCsp } from "./html-preview-csp";
+import type { HtmlPreviewSource } from "./html-preview-url";
 import type { PreviewAssetLoader } from "./html-preview-assets";
 import { htmlPreviewNavigationKind } from "./html-preview-navigation";
 
@@ -44,6 +45,8 @@ export function FileHtmlPreview({
   loadAsset?: PreviewAssetLoader;
   onOpenHtmlLink?: (url: string) => void;
   fileName?: string;
+  // CUSTOM(html-preview-url): used by the desktop implementation only.
+  source?: HtmlPreviewSource | null;
 }) {
   const document = useMemo(() => withPreviewCsp(html), [html]);
   const source = useMemo(() => ({ html: document, baseUrl: BASE_URL }), [document]);

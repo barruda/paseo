@@ -103,6 +103,28 @@ contextBridge.exposeInMainWorld("paseoDesktop", {
     setCaptureActive: (active: boolean) =>
       ipcRenderer.invoke("paseo:media:setCaptureActive", active),
   },
+  // CUSTOM(html-preview-url): HTML previews load from paseo-preview://<token>/..., read by the renderer.
+  htmlPreview: {
+    open: (): Promise<string> => ipcRenderer.invoke("paseo:html-preview:open"),
+    close: (token: string): Promise<void> => ipcRenderer.invoke("paseo:html-preview:close", token),
+    onReadRequest: (
+      handler: (request: { requestId: string; token: string; path: string }) => void,
+    ) => {
+      const listener = (
+        _event: unknown,
+        request: { requestId: string; token: string; path: string },
+      ) => handler(request);
+      ipcRenderer.on("paseo:html-preview:read-request", listener);
+      return () => {
+        ipcRenderer.removeListener("paseo:html-preview:read-request", listener);
+      };
+    },
+    respond: (
+      payload:
+        | { requestId: string; status: "ok"; bytes: Uint8Array }
+        | { requestId: string; status: "not-found" },
+    ): Promise<void> => ipcRenderer.invoke("paseo:html-preview:read-response", payload),
+  },
   editor: {
     listTargets: (input?: { workspacePath?: string }) =>
       ipcRenderer.invoke("paseo:editor:listTargets", input),

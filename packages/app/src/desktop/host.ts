@@ -71,6 +71,26 @@ export interface DesktopMediaBridge {
   setCaptureActive?: (active: boolean) => Promise<void>;
 }
 
+// CUSTOM(html-preview-url)
+export interface DesktopHtmlPreviewReadRequest {
+  requestId: string;
+  token: string;
+  path: string;
+}
+
+// CUSTOM(html-preview-url)
+export type DesktopHtmlPreviewReadResponse =
+  | { requestId: string; status: "ok"; bytes: Uint8Array }
+  | { requestId: string; status: "not-found" };
+
+// CUSTOM(html-preview-url)
+export interface DesktopHtmlPreviewBridge {
+  open: () => Promise<string>;
+  close: (token: string) => Promise<void>;
+  onReadRequest: (handler: (request: DesktopHtmlPreviewReadRequest) => void) => () => void;
+  respond: (payload: DesktopHtmlPreviewReadResponse) => Promise<void>;
+}
+
 export interface DesktopEditorTargetDescriptor {
   id: string;
   label: string;
@@ -194,6 +214,8 @@ export interface DesktopHostBridge {
   opener?: DesktopOpenerBridge;
   // CUSTOM(media-pause)
   media?: DesktopMediaBridge;
+  // CUSTOM(html-preview-url)
+  htmlPreview?: DesktopHtmlPreviewBridge;
   editor?: DesktopEditorBridge;
   webUtils?: DesktopWebUtilsBridge;
   menu?: DesktopMenuBridge;

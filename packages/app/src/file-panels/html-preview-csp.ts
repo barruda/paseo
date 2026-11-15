@@ -46,13 +46,18 @@ const META = `<meta http-equiv="Content-Security-Policy" content="${POLICY}">`;
 // the parser ignores wherever it appears. Standards mode is guaranteed, the policy
 // is always the first element and therefore always in the head, and no part of the
 // document has to be parsed to place it.
-const PROLOGUE = `<!doctype html>${META}`;
-
 // Left where it is, a BOM would sit mid-document and render as a zero-width space.
 const BOM = "\uFEFF";
 
 // CUSTOM(html-preview-assets): `headMarkup` lands right after the policy, so it is
 // in the head and bound by it. The web preview passes the asset bridge here.
 export function withPreviewCsp(html: string, headMarkup = ""): string {
-  return PROLOGUE + headMarkup + (html.startsWith(BOM) ? html.slice(BOM.length) : html);
+  return withPreviewPrologue(html, META + headMarkup);
+}
+
+// CUSTOM(html-preview-url): the same doctype-first prologue without the meta policy. Desktop
+// serves the page from a URL whose response header carries the policy; a meta policy on top
+// would intersect with it and block the page's own origin scripts.
+export function withPreviewPrologue(html: string, headMarkup = ""): string {
+  return "<!doctype html>" + headMarkup + (html.startsWith(BOM) ? html.slice(BOM.length) : html);
 }

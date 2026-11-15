@@ -1519,6 +1519,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   Resolve against the source file’s folder and open another isolated preview. Inline scripts,
   modules, and blob workers keep the existing policy; external script dependencies still require
   the Browser panel with an HTTP server.
+- **Note:** Desktop now uses `html-preview-url`; these bridges serve plain web only.
 - **Core files touched:** `file-panels/html-preview-navigation.ts`, `html-preview-assets.ts`,
   `html-preview.web.tsx`, `html-preview.tsx`, `builtin.tsx` (`HtmlPreview` passes
   `onOpenHtmlLink`, built from `usePaneContext().openFileInWorkspace` and
@@ -1541,6 +1542,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 - **What:** Web/desktop previews inject an anchor script before the link script. It handles `#x`
   and `<this file>#x` clicks by scrolling to the id/name (or top), and leaves other links alone.
   Native already handles `#` and is unchanged.
+- **Note:** Desktop now uses `html-preview-url`; this script serves plain web only.
 - **Core files touched:** `file-panels/html-preview-navigation.ts` (`previewAnchorScript`),
   `html-preview.web.tsx` (`fileName` prop, injection), `html-preview.tsx` (prop type only),
   `builtin.tsx` (`HtmlPreview` passes the basename of `params.path`).
@@ -1548,6 +1550,40 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   `preventDefault` makes the link script skip self-links, and pass the file's basename down.
 - **Verify:** `html-preview-assets.browser.test.ts` suite, then open a docs page with a TOC in a
   narrow pane and click a TOC entry.
+
+## html-preview-url: real URL for HTML previews on desktop
+
+- **Added:** 2026-11-15
+- **Commit:** `custom: serve HTML previews from a real URL on desktop`
+- **Why:** The srcdoc preview has no URL, so links, anchors, CSS, scripts and images each needed a
+  hand-written bridge, and a link to another page opened a new pane.
+- **What:** On desktop the file pane iframe loads `paseo-preview://<token>/<path>`. The main
+  process asks the renderer that opened the session for each file; the renderer reads it through
+  its daemon client (remote hosts work) and answers over IPC. The page behaves like a browser
+  page: relative links navigate the frame in place, anchors scroll, relative CSS/JS/images/fonts
+  load, back/forward works. The policy is a response header plus `sandbox allow-scripts`; no meta
+  policy. Workspace files resolve from the workspace root, files outside it from their own
+  folder. Editing the file reloads the frame to it. Plain web and native keep their
+  implementations.
+- **Files:** `packages/desktop/src/features/html-preview-protocol.ts` (+ test),
+  `packages/app/src/file-panels/html-preview-url.ts` (+ test), `html-preview.electron.tsx`.
+  New files; no conflict risk.
+- **Core files touched** (each marked `CUSTOM(html-preview-url)`):
+  - `packages/desktop/src/main.ts`: scheme privileges and `registerHtmlPreviewProtocol` in
+    `bootstrap()`.
+  - `packages/desktop/src/preload.ts`: `htmlPreview` bridge.
+  - `packages/app/src/desktop/host.ts`: `DesktopHtmlPreviewBridge`.
+  - `packages/app/src/file-panels/html-preview-csp.ts`: `withPreviewPrologue`.
+  - `html-preview.web.tsx`, `html-preview.tsx`: accept `source` (type only).
+  - `builtin.tsx`: `HtmlPreview` computes `source` with `resolveHtmlPreviewSource`.
+  - `SECURITY.md`: HTML file preview section.
+- **Re-apply:** Add the scheme to the single `registerSchemesAsPrivileged` call, register the
+  protocol in `bootstrap()`, expose `htmlPreview` in the preload, and keep the `.electron.tsx`
+  preview next to the web one.
+- **Verify:** `(cd packages/app && npx vitest run src/file-panels/html-preview-url.test.ts)` and
+  `(cd packages/desktop && npx vitest run src/features/html-preview-protocol.test.ts)`. On desktop
+  open a docs page, click a nav link (same pane navigates), click a TOC link (scrolls), press
+  Alt+Left (goes back).
 
 ## desk-bottom-panel: bottom terminals in Tasks mode
 

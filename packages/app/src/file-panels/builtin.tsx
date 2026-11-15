@@ -9,6 +9,7 @@ import { usePaneContext } from "@/panels/pane-context";
 import { createPreviewAssetLoader } from "./html-preview-assets";
 import { resolvePreviewHtmlLink } from "./html-preview-navigation";
 import { FileHtmlPreview } from "./html-preview";
+import { resolveHtmlPreviewSource } from "./html-preview-url";
 import { FilePanelLoading } from "./loading";
 import { FileMarkdownPreview } from "./markdown-preview";
 import { TextFilePanel, type TextFilePreviewProps } from "./source/panel";
@@ -77,10 +78,16 @@ function HtmlPreview({ text, params, workspaceId, host }: TextFilePreviewProps) 
     },
     [htmlPath, openFileInWorkspace],
   );
+  // CUSTOM(html-preview-url): desktop serves the page from a real URL read through the daemon.
+  const source = useMemo(
+    () => resolveHtmlPreviewSource({ client, htmlPath, workspaceRoot: workspaceRoot ?? undefined }),
+    [client, htmlPath, workspaceRoot],
+  );
   return (
     <View style={styles.container}>
       <FileHtmlPreview
         html={text}
+        source={source}
         testID="file-html-preview"
         loadAsset={loadAsset}
         onOpenHtmlLink={openHtmlLink}

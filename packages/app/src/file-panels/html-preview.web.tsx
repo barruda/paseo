@@ -6,6 +6,7 @@ import {
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { withPreviewCsp } from "./html-preview-csp";
+import type { HtmlPreviewSource } from "./html-preview-url";
 import {
   PREVIEW_ASSET_BRIDGE_SCRIPT,
   parsePreviewAssetRequest,
@@ -48,6 +49,8 @@ export function FileHtmlPreview({
   loadAsset?: PreviewAssetLoader;
   onOpenHtmlLink?: (url: string) => void;
   fileName?: string;
+  // CUSTOM(html-preview-url): used by the desktop implementation only.
+  source?: HtmlPreviewSource | null;
 }) {
   const { t } = useTranslation();
   const frameRef = useRef<HTMLIFrameElement>(null);
