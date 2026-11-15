@@ -90,7 +90,11 @@ describe("buildProviderSubagentRows", () => {
       "running",
       "failed",
     ]);
-    expect(items[2]).toMatchObject({ label: "general-purpose", subtitle: "haiku", depth: 2 });
+    expect(items[2]).toMatchObject({
+      label: "general-purpose",
+      subtitle: "Claude subagent · haiku",
+      depth: 2,
+    });
   });
 });
 

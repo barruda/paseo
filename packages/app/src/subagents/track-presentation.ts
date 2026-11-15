@@ -30,19 +30,32 @@ export function buildSubagentRowPresentationData(row: SubagentRow): SubagentRowP
   const title = resolveRowLabel(row.title);
   const label = description ?? title;
   const providerSubtitle = row.kind === "provider" ? resolveRowLabel(row.subtitle) : null;
-  const subtitle = providerSubtitle ?? (description ? title : null);
+  const context = providerSubtitle ?? (description ? title : null);
+  // CUSTOM(subagent-runner-label): show whether the child is a Claude or a Paseo subagent.
+  const subtitle = [runnerLabel(row), context].filter(Boolean).join(" · ");
   const status = presentationStatus(row);
   return {
     key: `${row.kind}_subagent_${row.id}`,
     kind: "agent",
     label: label ?? "",
-    subtitle: subtitle ?? "",
+    subtitle,
     titleState: label ? "ready" : "loading",
     statusBucket: deriveSidebarStateBucket({
       status,
       requiresAttention: false,
     }),
   };
+}
+
+/**
+ * Says how the child runs, with the wording of the Delegation sheet's "Runs as" select: a provider
+ * row is a subagent inside the parent's own session (Claude Code's Agent tool), a paseo row is a
+ * separate Paseo agent. It is read from the row, so changing the setting never relabels old rows.
+ */
+function runnerLabel(row: SubagentRow): string {
+  if (row.kind === "paseo") return "Paseo subagent";
+  const provider = row.provider === "claude" ? "Claude" : row.provider;
+  return `${provider} subagent`;
 }
 
 type ActiveStatusBucket = Exclude<SidebarStateBucket, "done">;

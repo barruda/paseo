@@ -213,7 +213,7 @@ describe("buildSubagentRowPresentationData for provider rows", () => {
       kind: "provider",
       id: overrides.id ?? "toolu_1",
       parentAgentId: "parent",
-      provider: "claude",
+      provider: overrides.provider ?? "claude",
       title: "title" in overrides ? (overrides.title ?? null) : "general-purpose",
       description: overrides.description ?? null,
       subtitle: overrides.subtitle ?? null,
@@ -228,7 +228,7 @@ describe("buildSubagentRowPresentationData for provider rows", () => {
       providerRow({ title: "general-purpose", description: "Reply with banana" }),
     );
     expect(presentation.label).toBe("Reply with banana");
-    expect(presentation.subtitle).toBe("general-purpose");
+    expect(presentation.subtitle).toBe("Claude subagent · general-purpose");
   });
 
   it("tells two siblings of the same type apart", () => {
@@ -241,12 +241,12 @@ describe("buildSubagentRowPresentationData for provider rows", () => {
     expect(left.label).not.toBe(right.label);
   });
 
-  it("keeps type-as-label and an empty subtitle when a provider reports no task", () => {
+  it("keeps type-as-label and only the runner when a provider reports no task", () => {
     const presentation = buildSubagentRowPresentationData(
       providerRow({ title: "Provider child", description: null }),
     );
     expect(presentation.label).toBe("Provider child");
-    expect(presentation.subtitle).toBe("");
+    expect(presentation.subtitle).toBe("Claude subagent");
   });
 
   it("stays in the loading state when neither field is known", () => {
@@ -256,8 +256,17 @@ describe("buildSubagentRowPresentationData for provider rows", () => {
     expect(presentation.titleState).toBe("loading");
   });
 
-  it("leaves managed subagent rows with no subtitle", () => {
-    expect(buildSubagentRowPresentationData(row({ id: "a", title: "Managed" })).subtitle).toBe("");
+  it("labels managed subagent rows as Paseo subagents", () => {
+    expect(buildSubagentRowPresentationData(row({ id: "a", title: "Managed" })).subtitle).toBe(
+      "Paseo subagent",
+    );
+  });
+
+  it("names a non-Claude provider as the runner", () => {
+    expect(
+      buildSubagentRowPresentationData(providerRow({ provider: "codex", description: "Task" }))
+        .subtitle,
+    ).toBe("codex subagent · general-purpose");
   });
 });
 
@@ -283,11 +292,13 @@ describe("provider-owned row subtitles", () => {
       buildSubagentRowPresentationData(
         providerRow({ subtitle: "general-purpose · Opus 5 · High · 16.5k tokens" }),
       ).subtitle,
-    ).toBe("general-purpose · Opus 5 · High · 16.5k tokens");
+    ).toBe("Claude subagent · general-purpose · Opus 5 · High · 16.5k tokens");
   });
 
   it("falls back to the type when an older provider sends no subtitle", () => {
-    expect(buildSubagentRowPresentationData(providerRow()).subtitle).toBe("general-purpose");
+    expect(buildSubagentRowPresentationData(providerRow()).subtitle).toBe(
+      "Claude subagent · general-purpose",
+    );
   });
 
   it("does not duplicate the type when it is already the primary label", () => {
@@ -295,6 +306,6 @@ describe("provider-owned row subtitles", () => {
       buildSubagentRowPresentationData(
         providerRow({ description: null, subtitle: null, title: "general-purpose" }),
       ).subtitle,
-    ).toBe("");
+    ).toBe("Claude subagent");
   });
 });

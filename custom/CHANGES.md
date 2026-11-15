@@ -5923,3 +5923,23 @@ src/server/plugins/lifecycle/handlers.test.ts --bail=1`. Needs a daemon restart.
   By hand: turn Upgrade effort on, on an Opus low session send a hard follow-up ("why does the
   build hang only in CI?"): the effort goes to high before the answer, a card and the green chip
   show, the chip's menu goes back to low, and the route icon's tooltip counts Jev's calls.
+
+## Subagent rows say how the child runs
+
+- **Added:** 2026-11-14
+- **Commit:** not committed yet
+- **Why:** With Delegation's **Runs as** on "Claude subagent" the track still shows
+  `paseo-implementer`, the agent type, so you can't tell from a row whether the child is a subagent
+  inside the session or a separate Paseo agent.
+- **What:** The subagent row subtitle (track, sheet and sidebar rows) starts with the runner, in
+  the Delegation sheet's wording: "Claude subagent · paseo-implementer · Sonnet 5.5 · …" for
+  provider rows (another provider shows its id, e.g. "codex subagent"), "Paseo subagent" for
+  managed child agents. It comes from the row's `kind`, so changing the setting never relabels old
+  rows.
+- **Core files touched** (marked `CUSTOM(subagent-runner-label)`): app
+  `subagents/track-presentation.ts` (`runnerLabel`, used by `buildSubagentRowPresentationData`).
+- **Re-apply:** In `buildSubagentRowPresentationData`, build the subtitle as
+  `[runnerLabel(row), <upstream subtitle>].filter(Boolean).join(" · ")`.
+- **Verify:** `cd packages/app && npx vitest run src/subagents/track-presentation.test.ts
+  src/task-navigation/provider-subagent-rows.test.ts` (in the update script). By hand: open a
+  session with subagents; each row's second line starts with "Claude subagent" or "Paseo subagent".
