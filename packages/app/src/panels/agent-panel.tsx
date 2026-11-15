@@ -25,6 +25,7 @@ import { AgentStreamView, type AgentStreamViewHandle } from "@/agent-stream/view
 import { ChatCodeRunProvider } from "@/chat-code-run/context";
 import { ArchivedAgentCallout } from "@/components/archived-agent-callout";
 import { ComposerDock } from "@/composer/dock";
+import { isEmbedMode } from "@/embed/embed-mode";
 import { ContentWidthBoostControls } from "@/content-width-boost/controls";
 import { FileDropZone } from "@/components/file-drop/file-drop-zone";
 import { useRetainedPanelActive } from "@/components/retained-panel";
@@ -495,7 +496,8 @@ type AgentLookupState =
   | { tag: "not_found"; message: string }
   | { tag: "error"; message: string };
 
-function AgentPanelContent({
+// CUSTOM(agent-embed): exported so the embedded screen skips tab-only hooks.
+export function AgentPanelContent({
   serverId,
   workspaceId,
   agentId,
@@ -1285,7 +1287,8 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
     <View style={styles.contentContainer}>
       {streamContent}
       {/* CUSTOM(content-width-boost) */}
-      <ContentWidthBoostControls />
+      {/* CUSTOM(agent-embed): pointless in a narrow iframe. */}
+      {isEmbedMode() ? null : <ContentWidthBoostControls />}
 
       {showHistorySyncError ? (
         <TimelineSyncErrorCallout isRetrying={isRetryingHistorySync} onRetry={retryTimelineSync} />

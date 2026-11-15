@@ -73,6 +73,7 @@ function createApp(options: {
   enabled: boolean;
   distDir: string | null;
   publicDir?: string;
+  embedAllowedOrigins?: string[];
 }): express.Application {
   const app = express();
   app.use(
@@ -81,6 +82,7 @@ function createApp(options: {
       distDir: options.distDir,
       label: "test-label",
       logger,
+      embedAllowedOrigins: options.embedAllowedOrigins ?? [],
     }),
   );
   app.get("/api/health", (_req, res) => res.json({ ok: true }));
@@ -302,5 +304,41 @@ describe("daemon web UI route module", () => {
 
     expect(res.status).toBe(200);
     expect(res.body).toBe("");
+  });
+
+  // CUSTOM(agent-embed): frame-ancestors headers.
+  test("sends frame-ancestors with configured origins and no X-Frame-Options", async () => {
+    const app = createApp({
+      enabled: true,
+      distDir,
+      publicDir,
+      embedAllowedOrigins: ["http://127.0.0.1:5178"],
+    });
+
+    for (const requestPath of [
+      "/",
+      "/_expo/static/js/web/index-abc123def4567890.js",
+      "/styles.css",
+    ]) {
+      const res = await request(app, "GET", requestPath);
+      expect(res.headers["content-security-policy"]).toBe(
+        "frame-ancestors 'self' http://127.0.0.1:5178",
+      );
+      expect(res.headers["x-frame-options"]).toBeUndefined();
+    }
+    const head = await request(app, "HEAD", "/");
+    expect(head.headers["content-security-policy"]).toBe(
+      "frame-ancestors 'self' http://127.0.0.1:5178",
+    );
+  });
+
+  test("falls back to same-origin framing when no origins are configured", async () => {
+    const app = createApp({ enabled: true, distDir, publicDir });
+
+    for (const requestPath of ["/", "/styles.css"]) {
+      const res = await request(app, "GET", requestPath);
+      expect(res.headers["content-security-policy"]).toBe("frame-ancestors 'self'");
+      expect(res.headers["x-frame-options"]).toBe("SAMEORIGIN");
+    }
   });
 });

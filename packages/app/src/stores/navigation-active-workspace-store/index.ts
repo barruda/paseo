@@ -1,3 +1,5 @@
+import { isEmbedMode } from "@/embed/embed-mode";
+import { notifyEmbedOpenInApp } from "@/embed/embed-notice";
 // CUSTOM(desks): search and external session navigation open references in the current Desk.
 import { openDeskTarget } from "@/task-navigation/open-desk-target";
 // CUSTOM(recent-workspaces): navigation origin controls duplicate row highlighting.
@@ -79,6 +81,11 @@ export function getIsLastWorkspaceSelectionHydrated(): boolean {
 export function navigateToWorkspace(
   input: NavigateToWorkspaceInput & { sidebarHighlight?: "recent" },
 ): string {
+  // CUSTOM(agent-embed): an embedded page never leaves its agent.
+  if (isEmbedMode()) {
+    notifyEmbedOpenInApp();
+    return "";
+  }
   useRecentHighlightStore.setState({
     target: input.sidebarHighlight === "recent" ? input : null,
   });

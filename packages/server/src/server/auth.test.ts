@@ -12,6 +12,7 @@ import {
   isBearerTokenValidAsync,
   shouldBypassBearerAuth,
 } from "./auth.js";
+import { createEmbedTicketStore } from "./embed-credential.js";
 import { resolveSessionAdmission } from "./session-admission-auth.js";
 import {
   deleteLocalCredential,
@@ -137,6 +138,41 @@ describe("hello admission", () => {
       }),
     ).toMatchObject({ admission: { principalId: "owner" } });
   });
+  // CUSTOM(agent-embed): embed tickets admit the owner exactly once.
+  test("admits a valid embed ticket once and refuses unknown tokens", async () => {
+    const store = createEmbedTicketStore();
+    const { ticket } = store.issue();
+    const input = {
+      passwordHash: CORRECT_PASSWORD_HASH,
+      localCredential: "current",
+      consumeEmbedTicket: store.consume,
+    };
+    expect(
+      await resolveSessionAdmission({
+        ...input,
+        credential: { kind: "localCredential", token: ticket },
+      }),
+    ).toMatchObject({ admission: { principalId: "owner" } });
+    expect(
+      await resolveSessionAdmission({
+        ...input,
+        credential: { kind: "localCredential", token: ticket },
+      }),
+    ).toEqual({ rejection: "incorrect_password" });
+    expect(
+      await resolveSessionAdmission({
+        ...input,
+        credential: { kind: "localCredential", token: "unknown" },
+      }),
+    ).toEqual({ rejection: "incorrect_password" });
+    expect(
+      await resolveSessionAdmission({
+        ...input,
+        credential: { kind: "localCredential", token: "current" },
+      }),
+    ).toMatchObject({ admission: { principalId: "owner" } });
+  });
+
   test("accepts a password and current local credential, but rejects old and wrong credentials", async () => {
     const home = await mkdtemp(join(tmpdir(), "paseo-local-auth-"));
     try {

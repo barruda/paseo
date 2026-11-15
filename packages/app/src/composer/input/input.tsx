@@ -1,4 +1,5 @@
 import type { SendShortcut } from "@/hooks/use-settings";
+import { isEmbedMode } from "@/embed/embed-mode";
 import {
   useComposerEditingSession,
   useComposerFullscreen,
@@ -1871,7 +1872,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
     const shouldSubmitOnEnter = resolveSubmitOnEnter({
       isWeb,
       isElectron: getIsElectron(),
-      isCompact,
+      // CUSTOM(agent-embed): the embed is a narrow iframe on a desktop page, so Enter sends.
+      isCompact: isCompact && !isEmbedMode(),
     });
 
     const handleDesktopKeyPress = useCallback(

@@ -4,6 +4,13 @@ import { SHORTCUT_FILE_EN } from "./custom-shortcut-file";
 import { CONTENT_SEARCH_EN } from "./custom-content-search";
 
 export const en = {
+  // CUSTOM(agent-embed)
+  embed: {
+    openInApp: "Open this in the Paseo app",
+    connecting: "Connecting to Paseo…",
+    hostNotServing: "This Paseo host is not the one serving this page.",
+    agentNotFound: "This agent could not be found.",
+  },
   paneFind: {
     connectionFailure: "Could not search this chat. Check the host connection and retry.",
     historyChangedFailure: "The chat changed while searching. Search again.",

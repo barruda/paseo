@@ -1838,6 +1838,8 @@ export class VoiceAssistantWebSocketServer {
         credential: message.auth,
         passwordHash: this.passwordHash,
         localCredential: this.credentialSource?.localCredential?.() ?? null,
+        // CUSTOM(agent-embed): accept single-use embed tickets.
+        consumeEmbedTicket: this.credentialSource?.consumeEmbedTicket,
       });
       if (this.pendingConnections.get(ws) !== pending) return false;
       if ("rejection" in resolved) {

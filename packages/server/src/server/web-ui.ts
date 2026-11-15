@@ -144,10 +144,12 @@ export interface WebUiMiddlewareOptions {
   distDir: string | null;
   label: string;
   logger: Logger;
+  // CUSTOM(agent-embed): origins allowed to frame the web UI.
+  embedAllowedOrigins: string[];
 }
 
 export function createWebUiMiddleware(options: WebUiMiddlewareOptions): RequestHandler {
-  const { enabled, distDir, label, logger } = options;
+  const { enabled, distDir, label, logger, embedAllowedOrigins } = options;
   const childLogger = logger.child({ module: "web-ui" });
 
   if (!enabled || !distDir) {
@@ -175,7 +177,7 @@ export function createWebUiMiddleware(options: WebUiMiddlewareOptions): RequestH
       return;
     }
 
-    serveWebUiFile({ distDir, requestPath: req.path, label, req, res });
+    serveWebUiFile({ distDir, requestPath: req.path, label, embedAllowedOrigins, req, res });
   };
 }
 
@@ -183,12 +185,25 @@ interface ServeWebUiFileOptions {
   distDir: string;
   requestPath: string;
   label: string;
+  embedAllowedOrigins: string[];
   req: Parameters<RequestHandler>[0];
   res: Parameters<RequestHandler>[1];
 }
 
+// CUSTOM(agent-embed): restrict framing to self plus the configured origins. XFO cannot
+// list origins, so it is only sent when no origin is configured.
+function setFrameHeaders(res: Response, embedAllowedOrigins: string[]): void {
+  res.setHeader(
+    "Content-Security-Policy",
+    ["frame-ancestors 'self'", ...embedAllowedOrigins].join(" "),
+  );
+  if (embedAllowedOrigins.length === 0) {
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  }
+}
+
 function serveWebUiFile(options: ServeWebUiFileOptions): void {
-  const { distDir, requestPath, label, req, res } = options;
+  const { distDir, requestPath, label, embedAllowedOrigins, req, res } = options;
 
   const target = resolveTargetFile(distDir, requestPath);
   if (!target) {
@@ -200,6 +215,7 @@ function serveWebUiFile(options: ServeWebUiFileOptions): void {
   const acceptEncoding = isIndexHtml ? undefined : req.headers["accept-encoding"];
   const { finalFile, contentEncoding } = resolveContentEncoding(resolvedFile, acceptEncoding);
 
+  setFrameHeaders(res, embedAllowedOrigins);
   res.setHeader("Content-Type", getContentType(resolvedFile));
   if (contentEncoding) {
     res.setHeader("Content-Encoding", contentEncoding);

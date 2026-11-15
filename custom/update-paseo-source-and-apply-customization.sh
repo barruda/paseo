@@ -443,6 +443,9 @@ if $VERIFY; then
   (cd packages/desktop && npx vitest run src/settings/desktop-settings.test.ts --bail=1)
   # Skills/MCPs popover: what the agent's session file says is loaded (skills-loaded).
   (cd custom/plugins/skills && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npm test)
+  # Embed mode: one agent's conversation in an iframe, frame-ancestors and the embed ticket (agent-embed).
+  (cd packages/server && npx vitest run src/server/embed-allowed-origins.test.ts src/server/embed-credential.test.ts src/server/web-ui.test.ts src/server/auth.test.ts src/server/config-web-ui.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/embed src/utils/navigate-to-agent/embed-guard.test.ts --bail=1)
 fi
 
 step "Building the desktop app"

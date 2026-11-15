@@ -8,6 +8,8 @@ export const DAEMON_PASSWORD_BCRYPT_COST = 12;
 export interface DaemonAuthConfig {
   password?: string;
   localCredential?: () => string | null;
+  // CUSTOM(agent-embed): single-use embed ticket check for WebSocket admission.
+  consumeEmbedTicket?: (token: string) => boolean;
 }
 
 export interface BearerAuthRejectContext {

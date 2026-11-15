@@ -6,6 +6,13 @@ import { CONTENT_SEARCH_RU } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const ru: TranslationResources = {
+  // CUSTOM(agent-embed)
+  embed: {
+    openInApp: "Откройте это в приложении Paseo",
+    connecting: "Подключение к Paseo…",
+    hostNotServing: "Этот хост Paseo не обслуживает эту страницу.",
+    agentNotFound: "Этот агент не найден.",
+  },
   paneFind: {
     connectionFailure:
       "Не удалось выполнить поиск в чате. Проверьте подключение к хосту и повторите попытку.",

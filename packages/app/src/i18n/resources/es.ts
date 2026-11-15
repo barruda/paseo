@@ -6,6 +6,13 @@ import { CONTENT_SEARCH_ES } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const es: TranslationResources = {
+  // CUSTOM(agent-embed)
+  embed: {
+    openInApp: "Ábrelo en la app de Paseo",
+    connecting: "Conectando con Paseo…",
+    hostNotServing: "Este host de Paseo no es el que sirve esta página.",
+    agentNotFound: "No se encontró este agente.",
+  },
   paneFind: {
     connectionFailure:
       "No se pudo buscar en este chat. Comprueba la conexión con el host y vuelve a intentarlo.",

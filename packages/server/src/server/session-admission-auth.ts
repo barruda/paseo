@@ -12,8 +12,10 @@ export async function resolveSessionAdmission(input: {
   credential: WSHelloMessage["auth"];
   passwordHash: string | undefined;
   localCredential: string | null;
+  // CUSTOM(agent-embed): single-use ticket issued to the embedded web UI.
+  consumeEmbedTicket?: (token: string) => boolean;
 }): Promise<AdmissionResolution> {
-  const { credential, passwordHash, localCredential } = input;
+  const { credential, passwordHash, localCredential, consumeEmbedTicket } = input;
   if (!passwordHash) {
     return { admission: { principalId: "owner", permissions: OWNER_PERMISSIONS } };
   }
@@ -22,6 +24,9 @@ export async function resolveSessionAdmission(input: {
   }
   if (credential.kind === "localCredential") {
     if (localCredential && matchesLocalCredential(localCredential, credential.token)) {
+      return { admission: { principalId: "owner", permissions: OWNER_PERMISSIONS } };
+    }
+    if (consumeEmbedTicket?.(credential.token)) {
       return { admission: { principalId: "owner", permissions: OWNER_PERMISSIONS } };
     }
     return { rejection: "incorrect_password" };

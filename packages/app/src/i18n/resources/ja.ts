@@ -6,6 +6,13 @@ import { CONTENT_SEARCH_JA } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const ja: TranslationResources = {
+  // CUSTOM(agent-embed)
+  embed: {
+    openInApp: "Paseo アプリで開いてください",
+    connecting: "Paseo に接続しています…",
+    hostNotServing: "この Paseo ホストは、このページを配信しているホストではありません。",
+    agentNotFound: "このエージェントが見つかりません。",
+  },
   paneFind: {
     connectionFailure:
       "このチャットを検索できませんでした。ホストへの接続を確認して再試行してください。",

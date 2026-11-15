@@ -11,7 +11,41 @@ import { useSessionStore } from "@/stores/session-store";
 import { getHostRuntimeStore, useHostRuntimeSnapshot, useHosts } from "@/runtime/host-runtime";
 import { buildHostRootRoute, buildSettingsHostRoute } from "@/utils/host-routes";
 import { toErrorMessage } from "@/utils/error-messages";
+import { useTranslation } from "react-i18next";
+import { isEmbedMode } from "@/embed/embed-mode";
+import { EmbeddedAgentScreen } from "@/embed/embedded-agent-screen";
+import { EmbedStatusView } from "@/embed/embed-status-view";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
+
+// CUSTOM(agent-embed): resolved agents render in place; a missing agent shows a message.
+function renderEmbedResolution(
+  embedMode: boolean,
+  resolution: ReturnType<typeof resolveAgentRoute>,
+  serverId: string,
+  agentId: string,
+  t: (key: string) => string,
+) {
+  if (!embedMode) {
+    return null;
+  }
+  if (resolution.kind === "resolved") {
+    return (
+      <EmbeddedAgentScreen
+        serverId={serverId}
+        workspaceId={resolution.workspaceId}
+        agentId={agentId}
+      />
+    );
+  }
+  if (resolution.kind === "notFound" || resolution.kind === "invalid") {
+    return <EmbedStatusView message={t("embed.agentNotFound")} testID="embed-agent-not-found" />;
+  }
+  return null;
+}
+
+function resolveHostName(hosts: { serverId: string; label: string }[], serverId: string): string {
+  return hosts.find((host) => host.serverId === serverId)?.label ?? serverId;
+}
 
 export default function HostAgentReadyRoute() {
   return (
@@ -34,7 +68,7 @@ function HostAgentReadyRouteContent() {
   const runtimeSnapshot = useHostRuntimeSnapshot(serverId);
   const client = runtimeSnapshot?.client ?? null;
   const connectionStatus = runtimeSnapshot?.connectionStatus ?? "connecting";
-  const hostName = hosts.find((host) => host.serverId === serverId)?.label ?? serverId;
+  const hostName = resolveHostName(hosts, serverId);
   const agentWorkspaceId = useSessionStore((state) => {
     if (!serverId || !agentId) {
       return null;
@@ -99,7 +133,11 @@ function HostAgentReadyRouteContent() {
     lookup,
   });
 
+  const embedMode = isEmbedMode();
+  const { t } = useTranslation();
   useEffect(() => {
+    // CUSTOM(agent-embed): an embedded page never navigates away from its agent.
+    if (embedMode) return;
     let navigationKey: string | null = null;
     if (resolution.kind === "invalid") {
       navigationKey = "invalid";
@@ -118,7 +156,7 @@ function HostAgentReadyRouteContent() {
       return;
     }
     router.replace(resolution.kind === "invalid" ? ("/" as Href) : buildHostRootRoute(serverId));
-  }, [agentId, resolution, router, serverId]);
+  }, [agentId, embedMode, resolution, router, serverId]);
 
   const handleRetry = useCallback(() => {
     if (resolution.kind === "lookupError") {
@@ -141,6 +179,11 @@ function HostAgentReadyRouteContent() {
     }
     router.replace(serverId ? buildHostRootRoute(serverId) : ("/" as Href));
   }, [router, serverId]);
+
+  const embedView = renderEmbedResolution(embedMode, resolution, serverId, agentId, t);
+  if (embedView) {
+    return embedView;
+  }
 
   if (
     resolution.kind === "waitingForHost" ||

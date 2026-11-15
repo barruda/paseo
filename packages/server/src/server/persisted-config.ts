@@ -224,6 +224,8 @@ const FeatureWebUiSchema = z
   .object({
     enabled: z.boolean().optional(),
     distDir: z.string().min(1).optional(),
+    // CUSTOM(agent-embed): origins allowed to frame the web UI.
+    embedAllowedOrigins: z.array(z.string()).optional(),
   })
   .strict();
 

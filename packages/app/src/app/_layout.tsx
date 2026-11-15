@@ -68,6 +68,7 @@ import { HorizontalScrollProvider } from "@/contexts/horizontal-scroll-context";
 import { SessionProvider } from "@/contexts/session-context";
 import { SidebarCalloutProvider } from "@/contexts/sidebar-callout-context";
 import { ToastProvider } from "@/contexts/toast-context";
+import { isEmbedMode } from "@/embed/embed-mode";
 import { SidebarVoiceProvider } from "@/voice/sidebar/provider";
 import { VoiceProvider } from "@/contexts/voice-context";
 import {
@@ -799,7 +800,30 @@ function AppWithSidebar({ children }: { children: ReactNode }) {
       pathname === "/schedules" ||
       routeHasKnownHost);
 
+  // CUSTOM(agent-embed): the iframe shows one conversation, no app chrome or overlay hosts.
+  if (isEmbedMode()) {
+    return <EmbedContainer>{children}</EmbedContainer>;
+  }
+
   return <AppContainer chromeEnabled={shouldShowAppChrome}>{children}</AppContainer>;
+}
+
+function EmbedContainer({ children }: { children: ReactNode }) {
+  const isCompactLayout = useIsCompactFormFactor();
+  return (
+    <ComposerEditingSessionsProvider>
+      <CommandCenterProvider>
+        <SheetHostScope enabled={isCompactLayout}>
+          <View style={layoutStyles.surfaceFill} testID="embed-shell">
+            <View style={flexStyle}>{children}</View>
+            <AppearanceStyleBoundary>
+              <FloatingPanelPortalHost />
+            </AppearanceStyleBoundary>
+          </View>
+        </SheetHostScope>
+      </CommandCenterProvider>
+    </ComposerEditingSessionsProvider>
+  );
 }
 
 function FaviconStatusSync() {

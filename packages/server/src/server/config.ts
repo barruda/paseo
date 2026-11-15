@@ -25,6 +25,8 @@ import { resolveSpeechConfig } from "./speech/speech-config-resolver.js";
 import { readSpeechSettings } from "./speech/speech-settings.js";
 import { mergeHostnames, parseHostnamesEnv, type HostnamesConfig } from "./hostnames.js";
 import { resolveGitProcessPolicy } from "../utils/git-process-scheduler.js";
+// CUSTOM(agent-embed): validates features.webUi.embedAllowedOrigins.
+import { normalizeEmbedAllowedOrigins } from "./embed-allowed-origins.js";
 
 export {
   loadPersistedConfig,
@@ -390,6 +392,8 @@ function resolveServiceProxyConfig(
 interface ResolvedWebUi {
   enabled: boolean;
   distDir: string | null;
+  // CUSTOM(agent-embed): validated origins allowed to frame the web UI.
+  embedAllowedOrigins: string[];
 }
 
 function resolveWebUiConfig(
@@ -408,9 +412,13 @@ function resolveWebUiConfig(
   const distDir = trimmedDistDir
     ? path.resolve(path.isAbsolute(trimmedDistDir) ? trimmedDistDir : paseoHome, trimmedDistDir)
     : BUNDLED_WEB_UI_DIST_DIR;
+  const embedAllowedOrigins = normalizeEmbedAllowedOrigins(
+    persisted.features?.webUi?.embedAllowedOrigins ?? [],
+  ).origins;
   return {
     enabled,
     distDir,
+    embedAllowedOrigins,
   };
 }
 

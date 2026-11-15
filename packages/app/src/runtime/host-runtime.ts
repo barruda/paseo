@@ -53,6 +53,7 @@ import {
 } from "@/desktop/daemon/desktop-daemon-transport";
 import { getDesktopHost } from "@/desktop/host";
 import { readDesktopManagedLocalCredential } from "@/desktop/daemon/local-credential";
+import { resolveLocalCredentialForConnection } from "@/embed/embed-credential";
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 import { BROWSER_AUTOMATION_COMMAND_NAMES } from "@getpaseo/protocol/browser-automation/rpc-schemas";
 import {
@@ -590,7 +591,9 @@ function createDefaultDeps(
         trace: createPerformanceTrace({ host: host.serverId, connection: connection.id }),
         providerSnapshots: "wire",
         ...(host.password ? { password: host.password } : {}),
-        localCredential: () => readDesktopManagedLocalCredential(connection),
+        // CUSTOM(agent-embed): embed pages get a ticket from the serving daemon.
+        localCredential: () =>
+          resolveLocalCredentialForConnection(connection, readDesktopManagedLocalCredential),
       } satisfies Omit<DaemonClientConfig, "url">;
       if (connection.type === "routed") {
         const origin = resolveOrigin(connection.originServerId);
@@ -680,7 +683,9 @@ function createDefaultDeps(
       return connectToDaemon(connection, {
         ...(host.serverId ? { serverId: host.serverId } : {}),
         ...(host.password ? { password: host.password } : {}),
-        localCredential: () => readDesktopManagedLocalCredential(connection),
+        // CUSTOM(agent-embed): embed pages get a ticket from the serving daemon.
+        localCredential: () =>
+          resolveLocalCredentialForConnection(connection, readDesktopManagedLocalCredential),
         ...(timeoutMs !== undefined ? { timeoutMs } : {}),
         capabilities: appCapabilities,
         trace: createPerformanceTrace({ host: host.serverId, connection: connection.id }),

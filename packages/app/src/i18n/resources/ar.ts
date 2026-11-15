@@ -6,6 +6,13 @@ import { CONTENT_SEARCH_AR } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
+  // CUSTOM(agent-embed)
+  embed: {
+    openInApp: "افتح هذا في تطبيق Paseo",
+    connecting: "جارٍ الاتصال بـ Paseo…",
+    hostNotServing: "مضيف Paseo هذا ليس الذي يخدم هذه الصفحة.",
+    agentNotFound: "تعذّر العثور على هذا الوكيل.",
+  },
   paneFind: {
     connectionFailure: "تعذر البحث في هذه المحادثة. تحقق من الاتصال بالمضيف وأعد المحاولة.",
     historyChangedFailure: "تغيّرت المحادثة أثناء البحث. أعد البحث.",

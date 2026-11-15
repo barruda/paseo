@@ -35,6 +35,21 @@ describe("daemon web UI config", () => {
     expectBundledWebUiDistDir(config.webUi.distDir);
   });
 
+  test("keeps only valid embedAllowedOrigins", async () => {
+    const home = await createPaseoHome({
+      version: 1,
+      features: {
+        webUi: { embedAllowedOrigins: ["http://127.0.0.1:5178", "*", "http://x.test/path"] },
+      },
+    });
+
+    expect(loadConfig(home, { env: {} }).webUi.embedAllowedOrigins).toEqual([
+      "http://127.0.0.1:5178",
+    ]);
+    const empty = await createPaseoHome({ version: 1 });
+    expect(loadConfig(empty, { env: {} }).webUi.embedAllowedOrigins).toEqual([]);
+  });
+
   test("enables web UI from persisted config", async () => {
     const home = await createPaseoHome({
       version: 1,

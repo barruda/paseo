@@ -6,6 +6,13 @@ import { CONTENT_SEARCH_KO } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const ko: TranslationResources = {
+  // CUSTOM(agent-embed)
+  embed: {
+    openInApp: "Paseo 앱에서 여세요",
+    connecting: "Paseo에 연결하는 중…",
+    hostNotServing: "이 Paseo 호스트는 이 페이지를 제공하는 호스트가 아닙니다.",
+    agentNotFound: "이 에이전트를 찾을 수 없습니다.",
+  },
   paneFind: {
     connectionFailure: "이 채팅을 검색할 수 없습니다. 호스트 연결을 확인하고 다시 시도하세요.",
     historyChangedFailure: "검색 중에 채팅이 변경되었습니다. 다시 검색하세요.",

@@ -232,6 +232,10 @@ import {
 } from "./auth.js";
 import { deleteLocalCredential, writeLocalCredential } from "./local-credential.js";
 import { createWebUiMiddleware } from "./web-ui.js";
+// CUSTOM(agent-embed): loopback helper shared with the embed credential route.
+import { isLoopbackRemoteAddress } from "./loopback-address.js";
+import { createEmbedCredentialRouteHandler, createEmbedTicketStore } from "./embed-credential.js";
+import { normalizeEmbedAllowedOrigins } from "./embed-allowed-origins.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
 // CUSTOM(agent-status-summary)
 import { AgentStatusSummaries, createLeanClaudeStatusGenerate } from "./agent-status-summary.js";
@@ -314,12 +318,6 @@ const TERMINAL_ACTIVITY_STATE_MAP = {
   idle: "idle",
   "needs-input": "attention",
 } as const;
-
-const LOOPBACK_REMOTE_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
-
-function isLoopbackRemoteAddress(remoteAddress: string | undefined): boolean {
-  return remoteAddress !== undefined && LOOPBACK_REMOTE_ADDRESSES.has(remoteAddress);
-}
 
 export function createTerminalActivityRouteHandler(
   terminalManager: TerminalManager,
@@ -472,6 +470,8 @@ export interface PaseoDaemonConfig {
   webUi?: {
     enabled: boolean;
     distDir: string | null;
+    // CUSTOM(agent-embed): origins allowed to frame the web UI.
+    embedAllowedOrigins?: string[];
   };
   appBaseUrl?: string;
   auth?: DaemonAuthConfig;
@@ -563,10 +563,19 @@ async function reconcileManagedProcessLedger(
 }
 
 function mountWebUi(app: express.Application, config: PaseoDaemonConfig, logger: Logger): void {
+  // CUSTOM(agent-embed): frame-ancestors allowlist for the embedded app.
+  const embedOrigins = normalizeEmbedAllowedOrigins(config.webUi?.embedAllowedOrigins ?? []);
+  if (embedOrigins.rejected.length > 0) {
+    logger.warn(
+      { rejected: embedOrigins.rejected },
+      "Ignoring invalid features.webUi.embedAllowedOrigins entries",
+    );
+  }
   app.use(
     createWebUiMiddleware({
       enabled: config.webUi?.enabled ?? false,
       distDir: config.webUi?.distDir ?? null,
+      embedAllowedOrigins: embedOrigins.origins,
       label: getHostName(),
       logger,
     }),
@@ -986,11 +995,24 @@ export async function createPaseoDaemon(
     next();
   });
 
+  const embedTicketStore = createEmbedTicketStore();
+
   // Local, harmless, and token-gated; deliberately skips daemon auth.
   app.post(
     "/api/terminal-activity",
     express.json(),
     createTerminalActivityRouteHandler(terminalManager),
+  );
+
+  // CUSTOM(agent-embed): hands the embedded web UI a single-use WebSocket ticket. Strictly
+  // loopback + same-origin; deliberately skips daemon auth like the route above.
+  app.post(
+    "/api/embed/credential",
+    createEmbedCredentialRouteHandler({
+      store: embedTicketStore,
+      isWebUiEnabled: () => config.webUi?.enabled ?? false,
+      logger,
+    }),
   );
 
   // Serve the bundled browser web UI when enabled. Mounted after service-proxy
@@ -1000,7 +1022,12 @@ export async function createPaseoDaemon(
   mountWebUi(app, config, logger);
 
   let localCredential: string | null = null;
-  const daemonAuth = { ...config.auth, localCredential: () => localCredential };
+  const daemonAuth = {
+    ...config.auth,
+    localCredential: () => localCredential,
+    // CUSTOM(agent-embed): lets the embedded web UI authenticate with a single-use ticket.
+    consumeEmbedTicket: (token: string) => embedTicketStore.consume(token),
+  };
   app.use(
     createRequireBearerMiddleware(daemonAuth, (context) => {
       logger.warn(context, "Rejected HTTP request with invalid daemon password");

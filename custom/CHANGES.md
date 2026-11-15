@@ -5997,3 +5997,39 @@ src/jev-router`, and the e2e `custom-jev-router-plugin.e2e.test.ts` (all in the 
 - **Verify:** `cd packages/app && npx vitest run src/subagents/track-presentation.test.ts
 src/task-navigation/provider-subagent-rows.test.ts` (in the update script). By hand: open a
   session with subagents; each row's second line starts with "Claude subagent" or "Paseo subagent".
+
+## agent-embed: one agent's conversation in an iframe, for the Assets Board panel
+
+- **Added:** 2026-11-15
+- **Commit:** see `git log --grep "agent-embed"`
+- **Why:** Talk to a Paseo agent from the Assets Board's Power-workspace without leaving the wiki:
+  a side panel embeds the agent's conversation from the daemon-served web app.
+- **What:** `/h/<serverId>/agent/<agentId>?embed=1` renders only the conversation, with no app
+  navigation. The daemon sends `frame-ancestors` limited to `features.webUi.embedAllowedOrigins`
+  and hands its own page a 60 s single-use ticket at `POST /api/embed/credential`, accepted in the
+  WebSocket hello as a local credential. Design, threat table and limits: `docs/custom-agent-embed.md`.
+- **Core files touched** (marked `CUSTOM(agent-embed)`):
+  - Server: `persisted-config.ts` and `config.ts` (the new option), `web-ui.ts` (frame headers),
+    `bootstrap.ts` (mounts the endpoint before the bearer middleware, passes origins and the ticket
+    check), `auth.ts` (`consumeEmbedTicket` on `DaemonAuthConfig`), `session-admission-auth.ts`
+    and `websocket-server.ts` (ticket admission). New: `embed-allowed-origins.ts`,
+    `embed-credential.ts`, `loopback-address.ts` (the loopback check moved out of bootstrap).
+  - App: `app/_layout.tsx` (`EmbedContainer` instead of the chrome), `app/h/[serverId]/_layout.tsx`
+    (no redirect for an unknown host), `app/h/[serverId]/agent/[agentId].tsx` (renders the embed
+    screen instead of navigating), `panels/agent-panel.tsx` (exports `AgentPanelContent`, hides the
+    width boost), `runtime/host-runtime.ts` (credential resolver), `utils/navigate-to-agent/index.ts`
+    and `stores/navigation-active-workspace-store/index.ts` (link guards), `composer/input/input.tsx`
+    (Enter sends), `i18n/resources/*.ts` (`embed.*`). New: `src/embed/`.
+- **Re-apply:** Server: add the option, set the frame headers on every web UI response, mount the
+  endpoint (loopback, own Origin, `Sec-Fetch-*`, `X-Paseo-Embed`) before daemon auth, and accept a
+  consumed ticket in the `localCredential` branch of `resolveSessionAdmission`. App: keep
+  `src/embed/`; gate the root chrome, the host route redirect and the agent route navigation on
+  `isEmbedMode()`; route both `localCredential` resolvers in host-runtime through
+  `resolveLocalCredentialForConnection`; guard `navigateToAgent`/`navigateToWorkspace`. The embed
+  screen must keep calling `prepareAgentTimeline` + `viewedTimelineSync.replaceVisibleAgentIds`
+  and provide `SheetPaneHostProvider` + `DiffDocumentWorkspaceCacheProvider`, or the panel spins
+  forever or the subagent track throws.
+- **Verify:** the server and app test lines in the update script. By hand: needs a daemon restart
+  and the config in `docs/custom-agent-embed.md`; then load the embed URL in an iframe on
+  `http://127.0.0.1:5178` (conversation shows, Enter sends, reply streams) and on another origin
+  (blocked by CSP).

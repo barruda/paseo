@@ -6,6 +6,13 @@ import { CONTENT_SEARCH_ZH_CN } from "./custom-content-search";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
+  // CUSTOM(agent-embed)
+  embed: {
+    openInApp: "请在 Paseo 应用中打开",
+    connecting: "正在连接 Paseo…",
+    hostNotServing: "此 Paseo 主机不是提供本页面的主机。",
+    agentNotFound: "找不到此智能体。",
+  },
   paneFind: {
     connectionFailure: "无法搜索此聊天。请检查主机连接后重试。",
     historyChangedFailure: "搜索期间聊天已更改。请重新搜索。",
