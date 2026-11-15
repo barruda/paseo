@@ -3274,19 +3274,29 @@ head -3 $S/out.txt` and expand the tool call: **Logs: out.txt** opens the full l
 - **What:** Each row of the effort menu has a star at the right. Clicking it stars the level
   (yellow) without selecting it or closing the menu. When any level offered by the current model
   is starred, → cycles only through starred levels; with none starred it cycles all of them.
-  Stars are keyed by effort id (`high`, `max`), so they apply to every provider, and are saved
-  in app storage.
-- **Files:** `packages/app/src/composer/effort-favorites-store.ts`.
+  Stars are per model since 2026-11-15, keyed `${provider}:${modelId}` like the model favorites
+  (store version 2; the old global stars are dropped), so Haiku and Opus keep their own; the
+  effort chip click cycles the same way. With the Jev router on and its lock
+  ([jev-router-modes](#jev-router-modes-model-focused-or-effort-focused-and-a-locked--)), → walks
+  the starred efforts the lock allows. Saved in app storage.
+- **Files:** `packages/app/src/composer/effort-favorites-store.ts` (`effortFavoriteKey`,
+  `toggleEffortFavorite`, `getEffortFavorites`).
 - **Core files touched** (marked `CUSTOM(effort-favorites)`):
-  - `composer/empty-shortcuts.ts`: `nextEffortId` takes `favoriteIds` (+ test).
+  - `composer/empty-shortcuts.ts`: `nextEffortId` takes `favoriteIds`; `resolveDraftModelId`
+    (an untouched draft runs the provider default) (+ test).
   - `composer/agent-controls/index.tsx`: `ThinkingComboboxOption` passes a star `trailingSlot`
-    to `ComboboxItem`; the agent → handler passes the favorites.
-  - `composer/draft/workspace-tab.tsx`: the draft → handler passes the favorites.
-- **Re-apply:** Give the effort menu rows a star toggle bound to the store and pass the store's ids
-  into whatever picks the next effort level for →.
+    to `ComboboxItem`, keyed by the model of `cycleControls` (the same resolved model the →
+    handlers read); the agent → handler and the chip click pass that model's favorites; the
+    draft picker controls resolve the model with `resolveDraftModelId`.
+  - `composer/draft/workspace-tab.tsx`: the draft → handler passes the favorites of
+    `resolveDraftModelId(selectedModel, models)`.
+- **Re-apply:** Give the effort menu rows a star toggle bound to the store under the current
+  model's key, and pass that model's ids into whatever picks the next effort level for →. Key
+  the star and the handlers with the same resolved model id, or an untouched draft stars one key
+  and cycles another.
 - **Verify:** `(cd packages/app && npx vitest run src/composer/empty-shortcuts.test.ts)` (in the
-  update script). In the app, star Medium and Max, empty the composer, press →: it goes
-  Medium → Max → Medium.
+  update script). In the app, on Haiku star Medium and Max, empty the composer, press →: it goes
+  Medium → Max → Medium; switch to Opus: no stars there, → walks every level.
 
 ## worktree-pill-merged: a done worktree session already merged gets a filled pill with a check
 
@@ -4573,13 +4583,16 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     pick can be dropped without unchecking every effort, which blocks Save). On the
     78 labeled real prompts (cached Jev answers) it picked ~47% Opus low, ~41% Opus high, ~12%
     Haiku.
-  - **Lock models/effort fast cycling**, on by default, in Effort focused (it follows the mode,
-    not the router's on/off): in a Claude composer, ← moves between the picks' models (keeping
+  - **Lock models/effort fast cycling**, on by default, in Effort focused, and only while the
+    router is on: in a Claude composer, ← moves between the picks' models (keeping
     the effort when the new model allows it, else the nearest allowed one) and → between the
-    current model's allowed efforts. Defaults: Haiku low/medium/high, Opus low/high. A model
-    outside the lock leaves → to the regular cycling, and so does a model whose lock allows only
-    the effort it is on (added 2026-11-15: with Operational efforts = low, → on Haiku did nothing,
-    since the locked list wrapped back to low and the key was swallowed).
+    current model's allowed efforts, narrowed to the model's starred efforts
+    ([effort-favorites](#effort-favorites-star-effort-levels--cycles-only-the-starred-ones)) when
+    any allowed one is starred. Defaults: Haiku low/medium/high, Opus low/high. A model outside
+    the lock leaves → to the regular cycling. A one-effort lock stays on that effort. Until
+    2026-11-15 the lock followed the mode even with the router off, so with Operational efforts =
+    low, → on Haiku never left low although Jev was off; the user wants the router's limits only
+    while it routes.
   - With the router on in Effort focused, a new agent tab (no inherited setup: not a fork, /clear
     or resolve-conflicts tab) starts on **Default** (Opus low) instead of the last session's
     model and effort, and the chips that differ from the session you came from flash green (the
@@ -4632,8 +4645,9 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   `AgentPanel`, call `useRecordViewedAgent(serverId, agentId, isInteractive)`.
 - **Verify:** `npx vitest run custom/plugins/jev-router packages/app/src/jev-router` and the e2e
   `custom-jev-router-plugin.e2e.test.ts` (in the update script). By hand, on the personal Paseo:
-  click the route icon, pick Effort focused, Save; Operational > Off hides its efforts and
-  still saves, ← no longer lands on its model; in a draft on Opus high, ← goes to Haiku high
+  click the route icon, pick Effort focused, turn Route new sessions on, Save; Operational > Off
+  hides its efforts and still saves, ← no longer lands on its model; turn routing off and ←/→
+  cycle the favorites again; on again, in a draft on Opus high, ← goes to Haiku high
   and → walks Haiku's efforts, ← again Opus high, → Opus low; type text and press → at its end:
   the effort changes; each change flashes its chip. With the router on, from an Opus high
   session open a new agent tab: it shows Opus low and only the effort chip flashes green. Send "rename count to total in utils.ts": the

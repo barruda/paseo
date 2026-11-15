@@ -10,8 +10,10 @@ import {
   nextEffortId,
   nextModelSelection,
   previousModelSelection,
+  resolveDraftModelId,
   useComposerRewindSelection,
 } from "./empty-shortcuts";
+import { effortFavoriteKey, toggleEffortFavorite } from "./effort-favorites-store";
 import type { StreamItem } from "@/types/stream";
 
 function message(messageId?: string): StreamItem {
@@ -185,6 +187,28 @@ it("cycles only favorite effort levels when any are present", () => {
   expect(nextEffortId(options, "max", ["max", "medium"])).toBe("medium");
   expect(nextEffortId(options, "low", ["max", "medium"])).toBe("medium");
   expect(nextEffortId(options, "low", ["ultra"])).toBe("medium");
+});
+
+it("keeps effort favorites per model", () => {
+  let byModel = toggleEffortFavorite({}, "claude:claude-haiku-5-5", "high");
+  byModel = toggleEffortFavorite(byModel, "claude:claude-opus-5-5", "low");
+  byModel = toggleEffortFavorite(byModel, "claude:claude-haiku-5-5", "low");
+  expect(byModel).toEqual({
+    "claude:claude-haiku-5-5": ["high", "low"],
+    "claude:claude-opus-5-5": ["low"],
+  });
+  byModel = toggleEffortFavorite(byModel, "claude:claude-opus-5-5", "low");
+  expect(byModel).toEqual({ "claude:claude-haiku-5-5": ["high", "low"] });
+  expect(effortFavoriteKey("claude", "claude-haiku-5-5")).toBe("claude:claude-haiku-5-5");
+  expect(effortFavoriteKey("claude", null)).toBeNull();
+});
+
+it("resolves an untouched draft's model to the provider default", () => {
+  const models = [{ id: "a" }, { id: "b", isDefault: true }];
+  expect(resolveDraftModelId("  ", models)).toBe("b");
+  expect(resolveDraftModelId("a", models)).toBe("a");
+  expect(resolveDraftModelId("", [{ id: "a" }])).toBe("a");
+  expect(resolveDraftModelId("", [])).toBeNull();
 });
 
 it("cycles only favorite projects when any are present", () => {

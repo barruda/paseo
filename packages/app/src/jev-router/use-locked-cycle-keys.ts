@@ -1,8 +1,10 @@
 // CUSTOM(jev-router): registers Effort focused's locked ←/→ on one composer (a running agent's or
-// a draft's). It runs before the regular cycling handlers and only claims the key while the lock
-// is on; otherwise they cycle favorites as before.
+// a draft's). It runs before the regular cycling handlers and only claims the key while the router
+// and the lock are on; otherwise they cycle favorites as before. Under the lock, → walks the
+// model's starred efforts that the lock allows.
 
 import type { AgentControlCommandCenterSource } from "@/command-center/agent-control-registration";
+import { getEffortFavorites } from "@/composer/effort-favorites-store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { PENDING_EFFORT_TTL_MS, useModelPickerStore } from "@/model-picker/store";
 import { handleLockedCycleKey, isFocusedComposerCaretAtEnd, isFocusedComposerEmpty } from "./cycle";
@@ -32,6 +34,10 @@ export function useLockedCycleKeys(input: {
         provider: controls.models.selectedProvider,
         modelId: controls.models.selectedModelId ?? null,
         effortId: controls.thinking.selectedId ?? null,
+        effortFavorites: getEffortFavorites(
+          controls.models.selectedProvider,
+          controls.models.selectedModelId,
+        ),
         selectModelAndEffort: (model, effort) => {
           // The effort applies once the composer reports the new model (as Ctrl+M does).
           useModelPickerStore.getState().setPendingEffort({

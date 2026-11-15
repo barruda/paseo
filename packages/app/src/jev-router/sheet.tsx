@@ -316,7 +316,7 @@ function EffortFocusedFields({ form }: { form: JevRouterFormModel }) {
       />
       <Row
         title="Lock models/effort fast cycling"
-        hint="← and → in the composer only move between the models and efforts above."
+        hint="While routing is on, ← and → in the composer only move between the models and efforts above."
       >
         <Switch
           value={config.lockCycling}

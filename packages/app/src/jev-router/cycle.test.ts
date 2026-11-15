@@ -35,9 +35,9 @@ describe("lockedCycleFor", () => {
     expect(lockedCycleFor("s1", "claude")).toBeNull();
   });
 
-  it("follows the mode even with the router off", () => {
+  it("is off while the router is off, even in Effort focused", () => {
     storeSettings({ mode: "effort", enabled: false });
-    expect(lockedCycleFor("s1", "claude")).toEqual(cycle);
+    expect(lockedCycleFor("s1", "claude")).toBeNull();
   });
 });
 
@@ -68,9 +68,18 @@ describe("lockedNextEffort", () => {
     expect(lockedNextEffort(cycle, "claude-sonnet-5-5", "low")).toBeNull();
   });
 
-  it("leaves a model whose lock allows only its current effort to the regular cycling", () => {
+  it("narrows the allowed efforts to the model's starred ones", () => {
+    expect(lockedNextEffort(cycle, HAIKU, "low", ["low", "high", "max"])).toBe("high");
+    expect(lockedNextEffort(cycle, HAIKU, "high", ["low", "high", "max"])).toBe("low");
+  });
+
+  it("ignores stars the lock doesn't allow", () => {
+    expect(lockedNextEffort(cycle, HAIKU, "low", ["max"])).toBe("medium");
+  });
+
+  it("stays on a one-effort lock while the router is on", () => {
     const oneEffort = [{ model: HAIKU, efforts: ["low"] }];
-    expect(lockedNextEffort(oneEffort, HAIKU, "low")).toBeNull();
+    expect(lockedNextEffort(oneEffort, HAIKU, "low")).toBe("low");
   });
 });
 

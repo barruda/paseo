@@ -82,8 +82,13 @@ import {
   nextEffortId,
   nextModelSelection,
   previousModelSelection,
+  resolveDraftModelId,
 } from "@/composer/empty-shortcuts";
-import { useEffortFavoritesStore } from "@/composer/effort-favorites-store";
+import {
+  effortFavoriteKey,
+  getEffortFavorites,
+  useEffortFavoritesStore,
+} from "@/composer/effort-favorites-store";
 import type { ModelPickerProjectSource } from "@/model-picker/project";
 import { ModelPickerShortcutChip } from "@/model-picker/shortcut-chip";
 import { CacheWarmupToggle } from "@/cache-warmup/toggle"; // CUSTOM(cache-warmup)
@@ -234,7 +239,7 @@ function cycleFavoriteEffort(controls: AgentControlCommandCenterSource): void {
   const next = nextEffortId(
     controls.thinking.options,
     controls.thinking.selectedId,
-    useEffortFavoritesStore.getState().ids,
+    getEffortFavorites(controls.models.selectedProvider, controls.models.selectedModelId),
   );
   if (next) void controls.thinking.select(next);
 }
@@ -298,7 +303,7 @@ function AgentControlCommandCenterRegistration({
         const next = nextEffortId(
           controls.thinking.options,
           controls.thinking.selectedId,
-          useEffortFavoritesStore.getState().ids,
+          getEffortFavorites(controls.models.selectedProvider, controls.models.selectedModelId),
         );
         if (!next) return false;
         void controls.thinking.select(next);
@@ -757,6 +762,12 @@ function ControlledAgentControls({
     [formattedThinkingOptions],
   );
 
+  // CUSTOM(effort-favorites): stars belong to the model the → handlers cycle, so they read the
+  // same resolved model as `cycleControls`.
+  const effortFavoritesModelKey = effortFavoriteKey(
+    cycleControls?.models.selectedProvider,
+    cycleControls?.models.selectedModelId,
+  );
   const renderThinkingOption = useCallback(
     (args: { option: ComboboxOption; selected: boolean; active: boolean; onPress: () => void }) => (
       <ThinkingComboboxOption
@@ -765,9 +776,10 @@ function ControlledAgentControls({
         active={args.active}
         onPress={args.onPress}
         iconColor={theme.colors.foreground}
+        favoritesModelKey={effortFavoritesModelKey}
       />
     ),
-    [theme.colors.foreground],
+    [effortFavoritesModelKey, theme.colors.foreground],
   );
 
   const handleOpenChange = useCallback(
@@ -1793,35 +1805,39 @@ function ThinkingComboboxOption({
   active,
   onPress,
   iconColor,
+  favoritesModelKey,
 }: {
   option: ComboboxOption;
   selected: boolean;
   active: boolean;
   onPress: () => void;
   iconColor: string;
+  favoritesModelKey: string | null;
 }) {
   const leadingSlot = useMemo(() => <ThinkingIcon size={16} color={iconColor} />, [iconColor]);
-  // CUSTOM(effort-favorites): the star picks which levels → cycles through.
-  const favorite = useEffortFavoritesStore((state) => state.ids.includes(option.id));
-  const toggleFavorite = useEffortFavoritesStore((state) => state.toggle);
-  const handleToggleFavorite = useCallback(
-    () => toggleFavorite(option.id),
-    [option.id, toggleFavorite],
+  // CUSTOM(effort-favorites): the star picks which levels → cycles through for this model.
+  const favorite = useEffortFavoritesStore((state) =>
+    favoritesModelKey ? (state.byModel[favoritesModelKey]?.includes(option.id) ?? false) : false,
   );
+  const toggleFavorite = useEffortFavoritesStore((state) => state.toggle);
+  const handleToggleFavorite = useCallback(() => {
+    if (favoritesModelKey) toggleFavorite(favoritesModelKey, option.id);
+  }, [favoritesModelKey, option.id, toggleFavorite]);
   const trailingSlot = useMemo(
-    () => (
-      <Pressable
-        focusable={false}
-        hitSlop={6}
-        onPress={handleToggleFavorite}
-        accessibilityRole="button"
-        accessibilityLabel={favorite ? "Remove from favorites" : "Add to favorites"}
-        testID={`effort-favorite-${option.id}`}
-      >
-        {favorite ? <ThemedFavoriteStar size={14} /> : <ThemedStar size={14} />}
-      </Pressable>
-    ),
-    [favorite, handleToggleFavorite, option.id],
+    () =>
+      favoritesModelKey ? (
+        <Pressable
+          focusable={false}
+          hitSlop={6}
+          onPress={handleToggleFavorite}
+          accessibilityRole="button"
+          accessibilityLabel={favorite ? "Remove from favorites" : "Add to favorites"}
+          testID={`effort-favorite-${option.id}`}
+        >
+          {favorite ? <ThemedFavoriteStar size={14} /> : <ThemedStar size={14} />}
+        </Pressable>
+      ) : undefined,
+    [favorite, favoritesModelKey, handleToggleFavorite, option.id],
   );
   return (
     <ComboboxItem
@@ -2230,11 +2246,7 @@ export function DraftAgentControls({
         providers: modelSelectorProviders,
         selectedProvider,
         // An untouched draft leaves the model empty and runs the provider's default.
-        selectedModelId:
-          selectedModel.trim() ||
-          models.find((model) => model.isDefault)?.id ||
-          models[0]?.id ||
-          null,
+        selectedModelId: resolveDraftModelId(selectedModel, models),
         select: onSelectProviderAndModel,
       },
       thinking: {

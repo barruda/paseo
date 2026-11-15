@@ -1,6 +1,6 @@
 import { isFocusedComposerCaretAtEnd } from "@/jev-router/cycle"; // CUSTOM(jev-router)
 import { useModelFavoritesStore } from "@/model-picker/favorites-store";
-import { useEffortFavoritesStore } from "@/composer/effort-favorites-store";
+import { getEffortFavorites } from "@/composer/effort-favorites-store";
 import { useProjectFavoritesStore } from "@/composer/project-favorites-store";
 import {
   nextProjectId,
@@ -8,6 +8,7 @@ import {
   projectCycleIds,
   nextEffortId,
   previousModelSelection,
+  resolveDraftModelId,
 } from "@/composer/empty-shortcuts";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -849,7 +850,11 @@ export function WorkspaceDraftAgentTab({
         const next = nextEffortId(
           controls.thinkingOptions,
           composerState.effectiveThinkingOptionId,
-          useEffortFavoritesStore.getState().ids, // CUSTOM(effort-favorites)
+          // CUSTOM(effort-favorites): the stars of the model the draft runs.
+          getEffortFavorites(
+            controls.selectedProvider,
+            resolveDraftModelId(controls.selectedModel, controls.models),
+          ),
         );
         if (!next) return false;
         controls.onSelectThinkingOption(next);

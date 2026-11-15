@@ -184,8 +184,22 @@ export function nextModelSelection(
 }
 
 /**
+ * CUSTOM(effort-favorites): the model a draft composer runs, for keying its effort favorites. An
+ * untouched draft leaves the model empty and runs the provider's default.
+ */
+export function resolveDraftModelId(
+  selectedModel: string,
+  models: readonly { id: string; isDefault?: boolean }[],
+): string | null {
+  return (
+    selectedModel.trim() || models.find((model) => model.isDefault)?.id || models[0]?.id || null
+  );
+}
+
+/**
  * The next effort level, wrapping from the last back to the first. CUSTOM(effort-favorites): when
- * any of the options are favorites, only those are cycled.
+ * any of the options are favorites (the current model's, see `getEffortFavorites`), only those
+ * are cycled.
  */
 export function nextEffortId(
   options: readonly { id: string }[] | null | undefined,

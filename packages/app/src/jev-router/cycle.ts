@@ -1,4 +1,5 @@
-// CUSTOM(jev-router): ←/→ in the composer with Effort focused's "Lock models/effort fast cycling".
+// CUSTOM(jev-router): ←/→ in the composer with Effort focused's "Lock models/effort fast cycling",
+// only while the router is on.
 // The composer icon keeps each host's router settings here, so the key handlers can read them
 // synchronously. The pure functions below pick the next model or effort inside the locked set.
 
@@ -30,8 +31,8 @@ export interface LockedCycle {
 
 /**
  * The models and efforts ←/→ may land on for a Claude composer on `serverId`, or null when the
- * lock is off (not Effort focused, the option unchecked, another provider or no router plugin).
- * The lock follows the mode, not the router's on/off.
+ * lock is off (router off, not Effort focused, the option unchecked, another provider or no
+ * router plugin). With the router off, ←/→ cycle only the model and effort favorites.
  */
 export function lockedCycleFor(
   serverId: string | null | undefined,
@@ -39,7 +40,8 @@ export function lockedCycleFor(
 ): LockedCycle[] | null {
   if (!serverId || provider !== "claude") return null;
   const settings = useJevRouterSettingsStore.getState().byServer[serverId];
-  if (!settings || settings.mode !== "effort" || !settings.effortFocused.lockCycling) return null;
+  if (!settings?.enabled || settings.mode !== "effort" || !settings.effortFocused.lockCycling)
+    return null;
   const cycle = effortFocusedCycle(settings.effortFocused);
   return cycle.length ? cycle : null;
 }
@@ -64,21 +66,22 @@ export function lockedPreviousModel(
 }
 
 /**
- * → in the lock: the next allowed effort of the current model, wrapping. A model outside the
- * lock, or one whose lock allows only the effort it is on, answers null, so → falls back to the
- * regular effort cycling. Otherwise a one-effort lock (Operational efforts = low) would swallow →
- * and never let the user leave that effort.
+ * → in the lock: the next allowed effort of the current model, wrapping. The model's starred
+ * efforts narrow the allowed ones when any of them is starred. A model outside the lock answers
+ * null, so → falls back to the regular (favorites) effort cycling.
  */
 export function lockedNextEffort(
   cycle: readonly LockedCycle[],
   modelId: string | null,
   effortId: string | null,
+  favoriteIds: readonly string[] = [],
 ): string | null {
   const entry = cycle.find((item) => item.model === modelId);
   if (!entry || entry.efforts.length === 0) return null;
-  const index = entry.efforts.indexOf(effortId ?? "");
-  const next = entry.efforts[(index + 1) % entry.efforts.length];
-  return next === effortId ? null : next;
+  const starred = entry.efforts.filter((effort) => favoriteIds.includes(effort));
+  const efforts = starred.length ? starred : entry.efforts;
+  const index = efforts.indexOf(effortId ?? "");
+  return efforts[(index + 1) % efforts.length];
 }
 
 /**
@@ -116,6 +119,8 @@ export function handleLockedCycleKey(input: {
   provider: string | null | undefined;
   modelId: string | null;
   effortId: string | null;
+  /** The current model's starred efforts (CUSTOM(effort-favorites)). */
+  effortFavorites?: readonly string[];
   selectModelAndEffort: (model: string, effort: string) => void;
   selectEffort: (effort: string) => void;
 }): boolean {
@@ -128,7 +133,7 @@ export function handleLockedCycleKey(input: {
     return true;
   }
   if (input.actionId === "task.draft.effort") {
-    const next = lockedNextEffort(cycle, input.modelId, input.effortId);
+    const next = lockedNextEffort(cycle, input.modelId, input.effortId, input.effortFavorites);
     if (!next) return false;
     if (next !== input.effortId) input.selectEffort(next);
     return true;
