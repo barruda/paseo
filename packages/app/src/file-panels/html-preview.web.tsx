@@ -1,4 +1,8 @@
-import { PREVIEW_HTML_LINK_SCRIPT, parsePreviewHtmlLink } from "./html-preview-navigation";
+import {
+  PREVIEW_HTML_LINK_SCRIPT,
+  parsePreviewHtmlLink,
+  previewAnchorScript,
+} from "./html-preview-navigation";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { withPreviewCsp } from "./html-preview-csp";
@@ -37,11 +41,13 @@ export function FileHtmlPreview({
   testID,
   loadAsset,
   onOpenHtmlLink,
+  fileName,
 }: {
   html: string;
   testID?: string;
   loadAsset?: PreviewAssetLoader;
   onOpenHtmlLink?: (url: string) => void;
+  fileName?: string;
 }) {
   const { t } = useTranslation();
   const frameRef = useRef<HTMLIFrameElement>(null);
@@ -54,10 +60,12 @@ export function FileHtmlPreview({
         html,
         // CUSTOM(html-preview-keys): forward shortcuts typed in the frame.
         PREVIEW_KEY_BRIDGE_SCRIPT +
+          // CUSTOM(html-preview-anchors): before the link script so self-links skip it.
+          previewAnchorScript(fileName ?? "") +
           (hasHtmlLinks ? PREVIEW_HTML_LINK_SCRIPT : "") +
           (hasAssets ? PREVIEW_ASSET_BRIDGE_SCRIPT : ""),
       ),
-    [html, hasAssets, hasHtmlLinks],
+    [html, hasAssets, hasHtmlLinks, fileName],
   );
   useEffect(() => {
     if (!loadAsset) return;

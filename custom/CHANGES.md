@@ -1531,6 +1531,24 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   script. Click “Open prototype” in the diagram-libraries report, then switch All/Ops/Names and
   toggle the theme in the opened prototype.
 
+## html-preview-anchors: in-page anchors in HTML previews
+
+- **Added:** 2026-11-15
+- **Commit:** `custom: scroll to in-page anchors in HTML previews`
+- **Why:** A srcdoc document resolves `#section` against the app's URL, so clicking a TOC entry
+  navigated the frame to the Paseo app and it went blank. Links to the file itself with a fragment
+  were forwarded to the parent, which opened the same file in a new pane and lost the anchor.
+- **What:** Web/desktop previews inject an anchor script before the link script. It handles `#x`
+  and `<this file>#x` clicks by scrolling to the id/name (or top), and leaves other links alone.
+  Native already handles `#` and is unchanged.
+- **Core files touched:** `file-panels/html-preview-navigation.ts` (`previewAnchorScript`),
+  `html-preview.web.tsx` (`fileName` prop, injection), `html-preview.tsx` (prop type only),
+  `builtin.tsx` (`HtmlPreview` passes the basename of `params.path`).
+- **Re-apply:** Inject `previewAnchorScript(fileName)` ahead of `PREVIEW_HTML_LINK_SCRIPT` so its
+  `preventDefault` makes the link script skip self-links, and pass the file's basename down.
+- **Verify:** `html-preview-assets.browser.test.ts` suite, then open a docs page with a TOC in a
+  narrow pane and click a TOC entry.
+
 ## desk-bottom-panel: bottom terminals in Tasks mode
 
 - **Added:** 2026-10-16
@@ -5895,7 +5913,7 @@ src/server/plugins/lifecycle/handlers.test.ts --bail=1`. Needs a daemon restart.
     when the agent's effort is below the highest checked level its model supports
     (`needsUpgradeCheck`), the composer asks the plugin's `upgrade` RPC about that message. The
     plugin runs route.py with `--policy effort_focused`, the effort-focused thresholds, `--home
-    <family>/<current effort>` and `--no-log`. A `hard` bucket wants at least high (or Jev's own
+<family>/<current effort>` and `--no-log`. A `hard` bucket wants at least high (or Jev's own
     effort when above); other buckets only xhigh or max from Jev. The target is the smallest checked
     level at or above that, else the highest checked; only when above the current effort
     (`planEffortUpgrade`). Never lowers, never changes the model.
@@ -5919,7 +5937,7 @@ src/server/plugins/lifecycle/handlers.test.ts --bail=1`. Needs a daemon restart.
   right after `input.submission.begin(...)`, and pass it from the composer's send. Don't touch the
   queue drain in host-runtime.ts.
 - **Verify:** `npx vitest run custom/plugins/jev-router`, `cd packages/app && npx vitest run
-  src/jev-router`, and the e2e `custom-jev-router-plugin.e2e.test.ts` (all in the update script).
+src/jev-router`, and the e2e `custom-jev-router-plugin.e2e.test.ts` (all in the update script).
   By hand: turn Upgrade effort on, on an Opus low session send a hard follow-up ("why does the
   build hang only in CI?"): the effort goes to high before the answer, a card and the green chip
   show, the chip's menu goes back to low, and the route icon's tooltip counts Jev's calls.
@@ -5941,5 +5959,5 @@ src/server/plugins/lifecycle/handlers.test.ts --bail=1`. Needs a daemon restart.
 - **Re-apply:** In `buildSubagentRowPresentationData`, build the subtitle as
   `[runnerLabel(row), <upstream subtitle>].filter(Boolean).join(" · ")`.
 - **Verify:** `cd packages/app && npx vitest run src/subagents/track-presentation.test.ts
-  src/task-navigation/provider-subagent-rows.test.ts` (in the update script). By hand: open a
+src/task-navigation/provider-subagent-rows.test.ts` (in the update script). By hand: open a
   session with subagents; each row's second line starts with "Claude subagent" or "Paseo subagent".

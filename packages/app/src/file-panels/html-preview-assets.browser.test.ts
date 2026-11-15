@@ -1,5 +1,9 @@
 import { userEvent } from "vitest/browser";
-import { PREVIEW_HTML_LINK_SCRIPT, parsePreviewHtmlLink } from "./html-preview-navigation";
+import {
+  PREVIEW_HTML_LINK_SCRIPT,
+  parsePreviewHtmlLink,
+  previewAnchorScript,
+} from "./html-preview-navigation";
 import { afterEach, describe, expect, it } from "vitest";
 import { withPreviewCsp } from "./html-preview-csp";
 import {
@@ -117,5 +121,60 @@ describe("preview HTML links", () => {
     } finally {
       window.removeEventListener("message", receive!);
     }
+  });
+});
+
+describe("preview in-page anchors", () => {
+  async function clickAnchor(href: string) {
+    const frame = document.createElement("iframe");
+    frame.sandbox.add("allow-scripts");
+    frame.style.width = "300px";
+    frame.style.height = "200px";
+    mountedFrames.push(frame);
+    const ready = new Promise<void>((resolve) =>
+      frame.addEventListener("load", () => resolve(), { once: true }),
+    );
+    const messages: { type?: string; href?: string; scrolled?: boolean }[] = [];
+    const receive = (event: MessageEvent) => {
+      if (event.source === frame.contentWindow) messages.push(event.data);
+    };
+    window.addEventListener("message", receive);
+    const page = `<a href="${href}" style="position:fixed;inset:0;display:block;z-index:1">Go</a>
+<div style="height:3000px"></div><h2 id="far">Far</h2><div style="height:3000px"></div>
+<script>
+addEventListener("click", function () {
+  setTimeout(function () {
+    parent.postMessage({ type: "after-click", href: location.href, scrolled: scrollY > 1000 }, "*");
+  }, 300);
+});
+</script>`;
+    frame.srcdoc = withPreviewCsp(
+      page,
+      previewAnchorScript("report.html") + PREVIEW_HTML_LINK_SCRIPT,
+    );
+    document.body.append(frame);
+    try {
+      await ready;
+      await userEvent.click(frame);
+      await expect.poll(() => messages.find((m) => m?.type === "after-click")).toBeTruthy();
+      return messages;
+    } finally {
+      window.removeEventListener("message", receive);
+    }
+  }
+
+  it("scrolls to a bare fragment without navigating the frame", async () => {
+    const messages = await clickAnchor("#far");
+    const after = messages.find((m) => m?.type === "after-click");
+    expect(after?.href).toBe("about:srcdoc");
+    expect(after?.scrolled).toBe(true);
+  });
+
+  it("scrolls for a self link with a fragment and does not open a new pane", async () => {
+    const messages = await clickAnchor("report.html#far");
+    const after = messages.find((m) => m?.type === "after-click");
+    expect(after?.href).toBe("about:srcdoc");
+    expect(after?.scrolled).toBe(true);
+    expect(messages.some((m) => parsePreviewHtmlLink(m) !== null)).toBe(false);
   });
 });

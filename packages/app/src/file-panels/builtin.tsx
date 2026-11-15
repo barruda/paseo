@@ -84,6 +84,7 @@ function HtmlPreview({ text, params, workspaceId, host }: TextFilePreviewProps) 
         testID="file-html-preview"
         loadAsset={loadAsset}
         onOpenHtmlLink={openHtmlLink}
+        fileName={htmlPath.split(/[\\/]/).pop()}
       />
     </View>
   );

@@ -43,6 +43,7 @@ export function FileHtmlPreview({
   testID?: string;
   loadAsset?: PreviewAssetLoader;
   onOpenHtmlLink?: (url: string) => void;
+  fileName?: string;
 }) {
   const document = useMemo(() => withPreviewCsp(html), [html]);
   const source = useMemo(() => ({ html: document, baseUrl: BASE_URL }), [document]);

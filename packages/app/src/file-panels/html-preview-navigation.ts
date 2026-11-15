@@ -33,3 +33,32 @@ addEventListener("click",function(e){
   parent.postMessage({type:"paseo-preview-html-link",url:u},"*");
 });
 })();</script>`;
+
+// CUSTOM(html-preview-anchors): a srcdoc document resolves `#x` against the app's URL, so
+// clicking an in-page link navigates the frame to the app instead of scrolling. Handle
+// `#x` and `<this file>#x` here; every other link is left to the link script/browser.
+export function previewAnchorScript(fileName: string): string {
+  const name = JSON.stringify(fileName).replace(/</g, "\\u003c");
+  return `<script>(function(){
+var self=${name};
+function dec(s){try{return decodeURIComponent(s);}catch(_){return s;}}
+addEventListener("click",function(e){
+  if(!e.isTrusted||e.defaultPrevented||e.button!==0)return;
+  var a=e.target.closest&&e.target.closest("a[href]");
+  if(!a||a.hasAttribute("download"))return;
+  var u=(a.getAttribute("href")||"").trim();
+  var i=u.indexOf("#");
+  if(i<0)return;
+  var p=u.slice(0,i).split("?")[0].replace(/^[.]\\//,"");
+  if(p&&dec(p)!==self)return;
+  e.preventDefault();
+  var id=dec(u.slice(i+1));
+  if(!id||id.toLowerCase()==="top"){
+    if(document.documentElement.scrollIntoView)document.documentElement.scrollIntoView();else scrollTo(0,0);
+    return;
+  }
+  var t=document.getElementById(id)||document.getElementsByName(id)[0];
+  if(t)t.scrollIntoView();
+});
+})();</script>`;
+}
