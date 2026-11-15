@@ -65,7 +65,9 @@ export function lockedPreviousModel(
 
 /**
  * → in the lock: the next allowed effort of the current model, wrapping. A model outside the
- * lock answers null, so → falls back to the regular effort cycling.
+ * lock, or one whose lock allows only the effort it is on, answers null, so → falls back to the
+ * regular effort cycling. Otherwise a one-effort lock (Operational efforts = low) would swallow →
+ * and never let the user leave that effort.
  */
 export function lockedNextEffort(
   cycle: readonly LockedCycle[],
@@ -75,7 +77,8 @@ export function lockedNextEffort(
   const entry = cycle.find((item) => item.model === modelId);
   if (!entry || entry.efforts.length === 0) return null;
   const index = entry.efforts.indexOf(effortId ?? "");
-  return entry.efforts[(index + 1) % entry.efforts.length];
+  const next = entry.efforts[(index + 1) % entry.efforts.length];
+  return next === effortId ? null : next;
 }
 
 /**

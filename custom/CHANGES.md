@@ -4577,7 +4577,9 @@ notification"` (all in the update script). By hand: turn the critic on with a st
     not the router's on/off): in a Claude composer, ← moves between the picks' models (keeping
     the effort when the new model allows it, else the nearest allowed one) and → between the
     current model's allowed efforts. Defaults: Haiku low/medium/high, Opus low/high. A model
-    outside the lock leaves → to the regular cycling.
+    outside the lock leaves → to the regular cycling, and so does a model whose lock allows only
+    the effort it is on (added 2026-11-15: with Operational efforts = low, → on Haiku did nothing,
+    since the locked list wrapped back to low and the key was swallowed).
   - With the router on in Effort focused, a new agent tab (no inherited setup: not a fork, /clear
     or resolve-conflicts tab) starts on **Default** (Opus low) instead of the last session's
     model and effort, and the chips that differ from the session you came from flash green (the

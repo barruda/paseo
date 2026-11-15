@@ -67,6 +67,11 @@ describe("lockedNextEffort", () => {
   it("leaves a model outside the lock to the regular cycling", () => {
     expect(lockedNextEffort(cycle, "claude-sonnet-5-5", "low")).toBeNull();
   });
+
+  it("leaves a model whose lock allows only its current effort to the regular cycling", () => {
+    const oneEffort = [{ model: HAIKU, efforts: ["low"] }];
+    expect(lockedNextEffort(oneEffort, HAIKU, "low")).toBeNull();
+  });
 });
 
 describe("handleLockedCycleKey", () => {
