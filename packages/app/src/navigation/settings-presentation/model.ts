@@ -7,14 +7,21 @@ interface SettingsRouteEntry {
 
 interface SettingsSelectionState {
   selectedServerId: string | null;
+  // CUSTOM(settings-filter): survives the sibling-route remounts of the sidebar.
+  filterQuery: string;
 }
 
 export function createSettingsPresentation() {
-  const store = createStore<SettingsSelectionState>(() => ({ selectedServerId: null }));
+  const store = createStore<SettingsSelectionState>(() => ({
+    selectedServerId: null,
+    filterQuery: "",
+  }));
   const enteredRoutes = new Map<string, string>();
   let inSettings = false;
   let sidebarOffset = 0;
   let sidebarOwner: object | null = null;
+  // CUSTOM(settings-last-page): in-memory, deliberately not reset when leaving Settings.
+  let lastPathname: string | null = null;
 
   function attachSidebar() {
     const owner = {};
@@ -38,12 +45,15 @@ export function createSettingsPresentation() {
   ): void {
     const isSettings = pathname === "/settings" || pathname.startsWith("/settings/");
     if (!isSettings) {
-      sidebarOffset = 0;
+      // CUSTOM(settings-last-page): keep sidebarOffset so the scroll position comes back.
       sidebarOwner = null;
+      store.setState({ filterQuery: "" }); // CUSTOM(settings-filter)
       inSettings = false;
       enteredRoutes.clear();
       return;
     }
+    // CUSTOM(settings-last-page)
+    if (pathname !== "/settings") lastPathname = pathname;
     // A retained route returning through Back must not replay its old host intent.
     if (enteredRoutes.get(key) === pathname) return;
     const isNewVisit = !inSettings;
@@ -62,5 +72,22 @@ export function createSettingsPresentation() {
     store.setState({ selectedServerId: serverId });
   }
 
-  return { store, enterRoute, selectHost, attachSidebar };
+  // CUSTOM(settings-filter)
+  function setFilterQuery(query: string): void {
+    store.setState({ filterQuery: query });
+  }
+
+  // CUSTOM(settings-last-page)
+  function getLastSettingsPathname(): string | null {
+    return lastPathname;
+  }
+
+  return {
+    store,
+    enterRoute,
+    selectHost,
+    attachSidebar,
+    setFilterQuery,
+    getLastSettingsPathname,
+  };
 }

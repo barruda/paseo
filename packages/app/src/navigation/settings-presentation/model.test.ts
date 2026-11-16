@@ -119,14 +119,43 @@ describe("Settings sidebar presentation", () => {
     expect(settings.attachSidebar().offset).toBe(190);
   });
 
-  it("resets on leaving Settings and rejects callbacks from a previous visit", () => {
+  it("keeps the offset on leaving Settings and rejects callbacks from a previous visit", () => {
     const settings = createSettingsPresentation();
     settings.enterRoute({ key: "app", pathname: "/settings/general" }, "host");
     const previousVisit = settings.attachSidebar();
     previousVisit.remember(246);
     settings.enterRoute({ key: "workspace", pathname: "/h/host/workspace/workspace" }, "host");
     settings.enterRoute({ key: "app", pathname: "/settings/general" }, "host");
-    previousVisit.remember(246);
-    expect(settings.attachSidebar().offset).toBe(0);
+    previousVisit.remember(10);
+    // CUSTOM(settings-last-page): the offset survives leaving Settings.
+    expect(settings.attachSidebar().offset).toBe(246);
+  });
+});
+
+// CUSTOM(settings-last-page)
+describe("Settings last page", () => {
+  it("records the last settings page and keeps it after leaving Settings", () => {
+    const settings = createSettingsPresentation();
+    expect(settings.getLastSettingsPathname()).toBeNull();
+    settings.enterRoute({ key: "a", pathname: "/settings/hosts/h1/projects" }, "h1");
+    expect(settings.getLastSettingsPathname()).toBe("/settings/hosts/h1/projects");
+    settings.enterRoute({ key: "w", pathname: "/h/h1/workspace/w" }, "h1");
+    expect(settings.getLastSettingsPathname()).toBe("/settings/hosts/h1/projects");
+  });
+
+  it("does not record the bare /settings root", () => {
+    const settings = createSettingsPresentation();
+    settings.enterRoute({ key: "a", pathname: "/settings/appearance" }, null);
+    settings.enterRoute({ key: "b", pathname: "/settings" }, null);
+    expect(settings.getLastSettingsPathname()).toBe("/settings/appearance");
+  });
+
+  it("clears the filter query on leaving Settings", () => {
+    const settings = createSettingsPresentation();
+    settings.enterRoute({ key: "a", pathname: "/settings/general" }, null);
+    settings.setFilterQuery("font");
+    expect(settings.store.getState().filterQuery).toBe("font");
+    settings.enterRoute({ key: "w", pathname: "/h/h1/workspace/w" }, null);
+    expect(settings.store.getState().filterQuery).toBe("");
   });
 });

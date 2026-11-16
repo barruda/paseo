@@ -32,6 +32,16 @@ export function useSettingsHostSelection(): string | null {
 
 export const selectSettingsHost = selection.selectHost;
 
+// CUSTOM(settings-filter): the sidebar filter text lives here so it survives route remounts.
+export function useSettingsSidebarFilter(): string {
+  return useStore(selection.store, (state) => state.filterQuery);
+}
+
+export const setSettingsSidebarFilter = selection.setFilterQuery;
+
+// CUSTOM(settings-last-page)
+export const getLastSettingsPathname = selection.getLastSettingsPathname;
+
 // Sibling routes remount the wide sidebar. Only the current mount owns its
 // offset: RN Web can deliver its final scroll callback after unmount.
 export function useSettingsSidebarScroll(enabled: boolean) {

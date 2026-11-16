@@ -6076,3 +6076,45 @@ src/task-navigation/provider-subagent-rows.test.ts` (in the update script). By h
   its row on desktop and check the X. Click it, press Cancel in the dialog (the run keeps going),
   then click again and confirm "Stop run". The run should stop and the tool row should show as
   canceled. On a completed tool there should be no X.
+
+## settings-filter, settings-last-page, project-path: Settings sidebar filter, reopen the last page, project paths
+
+- **Added:** 2026-11-16 (based on upstream 0.14.0)
+- **Commit:** `custom: Settings sidebar filter, reopen the last Settings page, project paths`
+- **Why:** The Settings sidebar has ~35 pages and the setting you want is often inside one whose
+  name doesn't say so. Leaving Settings with Back and coming back always landed on General. The
+  Projects list showed only names, so two checkouts of the same repo looked identical.
+- **What:**
+  - **settings-filter:** a "Filter settings" field above the sidebar list. Every word of the query
+    has to match the page name (fuzzy: subsequence and typos), a word start of the group name
+    (App, Bruno's Customizations, Host), or a setting inside the page (substring or typo, no
+    subsequence, to keep noise down). A page found through its content shows the matched setting
+    under its name. Enter opens the first match. The query lives in the settings presentation
+    store, because each sidebar click remounts the screen; it clears when you leave Settings.
+    The content terms come from `settings-search-index.ts`: i18n keys or key prefixes per page,
+    resolved in the current language, plus English literals for Bruno's pages.
+  - **settings-last-page:** the presentation model remembers the last Settings path (in memory,
+    not across restarts) and keeps the sidebar scroll offset after you leave. On desktop,
+    `/settings` redirects there instead of General. The compact root list is unchanged.
+  - **project-path:** each row of Settings > Host > Projects shows `shortenPath(repoRoot)` under
+    the name.
+- **Core files touched:** `packages/app/src/screens/settings-screen.tsx` (`SidebarItemText`,
+  `subtitle` prop on both sidebar buttons, the filter field and `filteredBody` in
+  `SettingsSidebar`, styles `labelColumn`/`subtitle`/`filterBox`/`noMatches`),
+  `packages/app/src/navigation/settings-presentation/{model.ts,index.ts}` (`filterQuery`,
+  `lastPathname`, no offset reset on leave), `packages/app/src/app/settings/index.tsx` (redirect),
+  `packages/app/src/screens/projects-screen.tsx` (`ProjectRow`). New files:
+  `packages/app/src/screens/settings/{settings-search.ts,settings-search-index.ts,use-settings-filter-groups.ts}`.
+- **Re-apply:** Add `filterQuery` to the settings presentation store and clear it in the
+  leaving-Settings branch of `enterRoute`; record `lastPathname` for every settings path except
+  `/settings` and stop resetting `sidebarOffset` there. In `SettingsSidebar`, build the groups with
+  `useSettingsFilterGroups`, run `filterSettingsSidebar`, render the `SearchField` above the
+  `ScrollView` (desktop) or at the top of the list (compact), and render the filtered groups while
+  the query is non-empty. Point the desktop redirect in `app/settings/index.tsx` at
+  `getLastSettingsPathname() ?? general`. When a settings page gains a setting, add its key or
+  English label to `settings-search-index.ts`.
+- **Verify:** `cd packages/app && npx vitest run src/screens/settings/settings-search.test.ts
+src/navigation/settings-presentation/model.test.ts`. In the app: type "font" in the sidebar
+  filter and see Appearance with the matched setting under it; "ntfc" finds Notifications; open
+  Host > Projects, click Back, reopen Settings and land on Projects; each project row shows its
+  path.

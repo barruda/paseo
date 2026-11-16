@@ -301,6 +301,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/git-sync/model.test.ts --bail=1)
   # A New Agent tab's flame and critic carry over to the session it creates.
   (cd packages/app && npx vitest run src/composer/draft/composer-extras.test.ts --bail=1)
+  # Settings sidebar filter and reopening the last Settings page.
+  (cd packages/app && npx vitest run src/screens/settings/settings-search.test.ts src/navigation/settings-presentation/model.test.ts --bail=1)
   # A steered message shows pending until Claude starts it, with an X to cancel.
   (cd packages/app && npx vitest run src/agent-stream/steer-pending.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.steer-pending.test.ts --bail=1)

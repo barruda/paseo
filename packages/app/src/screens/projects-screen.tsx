@@ -10,6 +10,7 @@ import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
 import { settingsStyles } from "@/styles/settings";
 import { openProjectSettings } from "@/navigation/settings-navigation";
+import { shortenPath } from "@/utils/shorten-path"; // CUSTOM(project-path)
 import type { ProjectHostEntry, ProjectSummary } from "@/utils/projects";
 
 interface ProjectsScreenProps {
@@ -111,6 +112,7 @@ function ProjectRow({ project, host, isFirst, iconDataUri }: ProjectRowProps) {
   const { theme } = useUnistyles();
   const { viewKey } = project;
   const { projectName } = host;
+  const projectPath = shortenPath(host.repoRoot); // CUSTOM(project-path)
   const handleNavigate = useCallback(() => {
     openProjectSettings(host.serverId, host.projectId);
   }, [host.projectId, host.serverId]);
@@ -142,9 +144,17 @@ function ProjectRow({ project, host, isFirst, iconDataUri }: ProjectRowProps) {
             projectViewKey={viewKey}
           />
         </View>
-        <Text style={settingsStyles.rowTitle} numberOfLines={1}>
-          {projectName}
-        </Text>
+        {/* CUSTOM(project-path): the project's path under its name */}
+        <View style={styles.rowText}>
+          <Text style={settingsStyles.rowTitle} numberOfLines={1}>
+            {projectName}
+          </Text>
+          {projectPath ? (
+            <Text style={settingsStyles.rowHint} numberOfLines={1} ellipsizeMode="middle">
+              {projectPath}
+            </Text>
+          ) : null}
+        </View>
       </View>
       <ChevronRight size={theme.iconSize.sm} color={theme.colors.foregroundMuted} />
     </Pressable>
@@ -204,6 +214,10 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[3],
+  },
+  rowText: {
+    flex: 1,
+    minWidth: 0,
   },
   rowHovered: {
     backgroundColor: theme.colors.surface2,

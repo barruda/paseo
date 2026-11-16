@@ -7,6 +7,8 @@ import {
   Text,
   View,
   type PressableStateCallbackType,
+  type StyleProp,
+  type TextStyle,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "expo-router/react-navigation";
@@ -158,9 +160,15 @@ import {
 } from "@/utils/host-routes";
 import {
   selectSettingsHost,
+  setSettingsSidebarFilter, // CUSTOM(settings-filter)
   useSettingsHostSelection,
+  useSettingsSidebarFilter, // CUSTOM(settings-filter)
   useSettingsSidebarScroll,
 } from "@/navigation/settings-presentation";
+// CUSTOM(settings-filter)
+import { SearchField } from "@/components/ui/search-field";
+import { filterSettingsSidebar } from "@/screens/settings/settings-search";
+import { useSettingsFilterGroups } from "@/screens/settings/use-settings-filter-groups";
 import { returnFromSettings, type SettingsView } from "@/navigation/settings-navigation";
 import { isWeb } from "@/constants/platform";
 
@@ -781,12 +789,42 @@ function useSortedHosts(hosts: HostProfile[], localServerId: string | null): Hos
   return useMemo(() => orderHostsLocalFirst(hosts, localServerId), [hosts, localServerId]);
 }
 
+// CUSTOM(settings-filter): the label, with the matched content term under it while filtering.
+function SidebarItemText({
+  label,
+  labelStyle,
+  subtitle,
+}: {
+  label: string;
+  labelStyle: StyleProp<TextStyle>;
+  subtitle?: string | null;
+}) {
+  if (!subtitle) {
+    return (
+      <Text style={labelStyle} numberOfLines={1}>
+        {label}
+      </Text>
+    );
+  }
+  return (
+    <View style={sidebarStyles.labelColumn}>
+      <Text style={labelStyle} numberOfLines={1}>
+        {label}
+      </Text>
+      <Text style={sidebarStyles.subtitle} numberOfLines={1}>
+        {subtitle}
+      </Text>
+    </View>
+  );
+}
+
 interface SidebarSectionButtonProps {
   itemId: SettingsSectionSlug;
   label: string;
   icon: ComponentType<{ size: number; color: string; strokeWidth?: number }>;
   isSelected: boolean;
   onSelect: (section: SettingsSectionSlug) => void;
+  subtitle?: string | null; // CUSTOM(settings-filter)
 }
 
 // Lighter than lucide's default 2px stroke so the nav reads quieter than the content.
@@ -798,6 +836,7 @@ function SidebarSectionButton({
   icon: IconComponent,
   isSelected,
   onSelect,
+  subtitle,
 }: SidebarSectionButtonProps) {
   const { theme, rt } = useUnistyles();
   const handlePress = useCallback(() => {
@@ -820,9 +859,7 @@ function SidebarSectionButton({
         color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
         strokeWidth={SIDEBAR_ICON_STROKE_WIDTH}
       />
-      <Text style={labelStyle} numberOfLines={1}>
-        {label}
-      </Text>
+      <SidebarItemText label={label} labelStyle={labelStyle} subtitle={subtitle} />
     </Pressable>
   );
 }
@@ -833,6 +870,7 @@ interface SidebarHostSectionButtonProps {
   icon: ComponentType<{ size: number; color: string; strokeWidth?: number }>;
   isSelected: boolean;
   onSelect: (section: HostSectionSlug) => void;
+  subtitle?: string | null; // CUSTOM(settings-filter)
 }
 
 function SidebarHostSectionButton({
@@ -841,6 +879,7 @@ function SidebarHostSectionButton({
   icon: IconComponent,
   isSelected,
   onSelect,
+  subtitle,
 }: SidebarHostSectionButtonProps) {
   const { theme, rt } = useUnistyles();
   const handlePress = useCallback(() => {
@@ -864,9 +903,7 @@ function SidebarHostSectionButton({
         color={isSelected ? theme.colors.foreground : theme.colors.foregroundMuted}
         strokeWidth={SIDEBAR_ICON_STROKE_WIDTH}
       />
-      <Text style={labelStyle} numberOfLines={1}>
-        {label}
-      </Text>
+      <SidebarItemText label={label} labelStyle={labelStyle} subtitle={subtitle} />
     </Pressable>
   );
 }
@@ -993,7 +1030,10 @@ function SettingsSidebar({
   const hasHosts = sortedHosts.length > 0;
   const enableBuiltInDaemonOption = useEnableBuiltInDaemonOption();
   const isDesktopApp = isElectronRuntime();
-  const items = SIDEBAR_SECTION_ITEMS.filter((item) => isSectionAvailable(item, isDesktopApp));
+  const items = useMemo(
+    () => SIDEBAR_SECTION_ITEMS.filter((item) => isSectionAvailable(item, isDesktopApp)),
+    [isDesktopApp],
+  );
   const insets = useSafeAreaInsets();
   const isDesktop = layout === "desktop";
   const sidebarScroll = useSettingsSidebarScroll(isDesktop);
@@ -1011,7 +1051,101 @@ function SettingsSidebar({
   if (view.kind === "project") selectedHostSection = "projects";
   if (view.kind === "plugin") selectedHostSection = "plugins";
 
-  const sidebarBody = (
+  // CUSTOM(settings-filter)
+  const filterQuery = useSettingsSidebarFilter();
+  const isFiltering = filterQuery.trim().length > 0;
+  const filterAppItems = useMemo(
+    () => items.map((item) => ({ id: item.id, label: t(item.labelKey), icon: item.icon })),
+    [items, t],
+  );
+  const filterHostItems = useMemo(
+    () =>
+      hasHosts
+        ? HOST_SECTION_ITEMS.map((item) => ({
+            id: item.id,
+            label: t(item.labelKey),
+            icon: item.icon,
+          }))
+        : null,
+    [hasHosts, t],
+  );
+  const filterGroups = useSettingsFilterGroups(
+    filterAppItems,
+    BRUNO_SECTION_ITEMS,
+    filterHostItems,
+  );
+  const filteredGroups = useMemo(
+    () => filterSettingsSidebar(filterGroups, filterQuery),
+    [filterGroups, filterQuery],
+  );
+  const handleFilterSubmit = useCallback(() => {
+    // A page whose name matched beats one that matched only through a setting inside it, in any group.
+    const candidates = filteredGroups.flatMap((g) => g.items.map((item) => ({ group: g, item })));
+    const pick = candidates.find((c) => c.item.matchedTerm === null) ?? candidates[0];
+    if (!pick) return;
+    const { group, item: first } = pick;
+    if (group.id === "host") onSelectHostSection(first.id as HostSectionSlug);
+    else onSelectSection(first.id as SettingsSectionSlug);
+  }, [filteredGroups, onSelectHostSection, onSelectSection]);
+  const filterField = (
+    <View style={sidebarStyles.filterBox}>
+      <SearchField
+        value={filterQuery}
+        onChangeText={setSettingsSidebarFilter}
+        onSubmit={handleFilterSubmit}
+        placeholder="Filter settings"
+        clearAccessibilityLabel="Clear filter"
+        testID="settings-sidebar-filter"
+      />
+    </View>
+  );
+  const filteredBody = (
+    <>
+      {filteredGroups.length === 0 ? (
+        <Text style={sidebarStyles.noMatches}>No matching settings</Text>
+      ) : null}
+      {filteredGroups.map((group) => (
+        <SidebarGroup key={group.id} label={group.label}>
+          {group.id === "host" ? (
+            <HostPicker
+              activeServerId={activeHostServerId}
+              sortedHosts={sortedHosts}
+              onSelectHost={onSelectHost}
+              onAddHost={onAddHost}
+              enableBuiltInDaemonOption={enableBuiltInDaemonOption}
+            />
+          ) : null}
+          {group.items.map((item) =>
+            group.id === "host" ? (
+              <SidebarHostSectionButton
+                key={item.id}
+                itemId={item.id as HostSectionSlug}
+                label={item.label}
+                icon={item.icon}
+                isSelected={selectedHostSection === item.id}
+                onSelect={onSelectHostSection}
+                subtitle={item.matchedTerm}
+              />
+            ) : (
+              <SidebarSectionButton
+                key={item.id}
+                itemId={item.id as SettingsSectionSlug}
+                label={item.label}
+                icon={item.icon}
+                isSelected={selectedSectionId === item.id}
+                onSelect={onSelectSection}
+                subtitle={item.matchedTerm}
+              />
+            ),
+          )}
+        </SidebarGroup>
+      ))}
+    </>
+  );
+
+  const sidebarBody = isFiltering ? (
+    filteredBody
+  ) : (
     <>
       <SidebarGroup label={t("settings.groups.app")}>
         {items.map((item) => (
@@ -1118,6 +1252,7 @@ function SettingsSidebar({
               testID="settings-back-to-workspace"
             />
           </View>
+          {filterField}
           <ScrollView
             style={sidebarStyles.scrollBody}
             showsVerticalScrollIndicator={false}
@@ -1128,7 +1263,10 @@ function SettingsSidebar({
           </ScrollView>
         </View>
       ) : (
-        sidebarBody
+        <>
+          {filterField}
+          {sidebarBody}
+        </>
       )}
     </View>
   );
@@ -1687,6 +1825,25 @@ const sidebarStyles = StyleSheet.create((theme) => ({
     color: theme.colors.foregroundMuted,
     fontWeight: theme.fontWeight.normal,
     flex: 1,
+  },
+  // CUSTOM(settings-filter)
+  labelColumn: {
+    flex: 1,
+    minWidth: 0,
+  },
+  subtitle: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
+  },
+  filterBox: {
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[2],
+  },
+  noMatches: {
+    fontSize: theme.fontSize.sm,
+    color: theme.colors.foregroundMuted,
+    paddingVertical: theme.spacing[2],
+    paddingHorizontal: theme.spacing[4],
   },
   pickerTrigger: {
     flexDirection: "row",
