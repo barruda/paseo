@@ -698,6 +698,8 @@ export interface AgentSession {
   subscribePendingSteers?(callback: () => void): () => void;
   /** Withdraw one pending steer. True only when the provider confirmed it never took the message. */
   cancelSteer?(clientMessageId: string): Promise<boolean>;
+  // CUSTOM(background-tools): stop one live background task by id. True when the provider stopped it.
+  stopBackgroundTask?(taskId: string): Promise<boolean>;
   subscribe(callback: (event: AgentStreamEvent) => void): () => void;
   streamHistory(): AsyncGenerator<AgentStreamEvent>;
   getRuntimeInfo(): Promise<AgentRuntimeInfo>;

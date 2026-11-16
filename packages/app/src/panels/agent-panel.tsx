@@ -107,7 +107,7 @@ import type { PendingPermission } from "@/types/shared";
 import type { StreamItem, TodoEntry } from "@/types/stream";
 import type { ViewedTimelineStatus, ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import { useArchiveFinishedSubagents, useSubagentsForParent } from "@/subagents";
-import { hasBackgroundTools } from "@/background-tools/presentation"; // CUSTOM(background-tools)
+import { hasWakingBackgroundTools } from "@/background-tools/presentation"; // CUSTOM(background-tools)
 import { useAgentBackgroundTools } from "@/background-tools/track"; // CUSTOM(background-tools)
 import { useHasRunningSubagent, withRunningSubagents } from "@/subagents/running"; // CUSTOM(subagent-tab-status)
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -327,8 +327,9 @@ function useAgentPanelDescriptor(
   const upstreamDescriptor = useAgentDescriptor(target, context);
   const projectIcon = useAgentProjectTabIcon(context.serverId, target.agentId);
   // CUSTOM(subagent-tab-status): the tab keeps working while a subagent runs.
-  // CUSTOM(background-tools): so does a live background shell or monitor.
-  const backgroundToolsRunning = hasBackgroundTools(
+  // CUSTOM(background-tools): so does a live Monitor. Background shells do not: a dev server
+  // never ends, and a shell does not wake the agent.
+  const backgroundToolsRunning = hasWakingBackgroundTools(
     useAgentBackgroundTools(context.serverId, target.agentId),
   );
   const subagentRunning =

@@ -3,14 +3,42 @@ import { describe, expect, test } from "vitest";
 import {
   backgroundToolCopyText,
   backgroundToolKindLabel,
-  formatBackgroundToolCount,
+  buildBackgroundToolsSegments,
   hasBackgroundTools,
+  hasWakingBackgroundTools,
 } from "./presentation";
 
 describe("background tools presentation", () => {
-  test("pluralizes the count", () => {
-    expect(formatBackgroundToolCount(1)).toBe("1 tool");
-    expect(formatBackgroundToolCount(2)).toBe("2 tools");
+  test("splits the chip into running monitors and plain shells", () => {
+    const shell = { id: "s", kind: "shell", description: "dev" };
+    const monitor = { id: "m", kind: "monitor", description: "watch" };
+    expect(buildBackgroundToolsSegments([shell])).toEqual([{ bucket: null, text: "1 shell" }]);
+    expect(buildBackgroundToolsSegments([monitor, { ...monitor, id: "m2" }])).toEqual([
+      { bucket: "running", text: "2 monitors" },
+    ]);
+    expect(
+      buildBackgroundToolsSegments([
+        shell,
+        monitor,
+        { ...shell, id: "s2" },
+        { ...shell, kind: "other" },
+      ]),
+    ).toEqual([
+      { bucket: "running", text: "1 monitor" },
+      { bucket: null, text: "3 shells" },
+    ]);
+    expect(buildBackgroundToolsSegments([])).toEqual([]);
+  });
+
+  test("only monitors count as waking work", () => {
+    expect(hasWakingBackgroundTools(undefined)).toBe(false);
+    expect(hasWakingBackgroundTools([{ id: "a", kind: "shell", description: "x" }])).toBe(false);
+    expect(
+      hasWakingBackgroundTools([
+        { id: "a", kind: "shell", description: "x" },
+        { id: "b", kind: "monitor", description: "y" },
+      ]),
+    ).toBe(true);
   });
 
   test("labels each kind", () => {

@@ -3400,6 +3400,22 @@ export class DaemonClient {
     return payload.cancelled;
   }
 
+  // CUSTOM(background-tools): only call when `server_info.features.backgroundTaskStop` is set.
+  async stopAgentBackgroundTask(agentId: string, taskId: string): Promise<boolean> {
+    const payload =
+      await this.sendNamespacedCorrelatedSessionRequest<"agent.background_task.stop.response">({
+        message: {
+          type: "agent.background_task.stop.request",
+          agentId,
+          taskId,
+        },
+      });
+    if (payload.error) {
+      throw new Error(payload.error);
+    }
+    return payload.stopped;
+  }
+
   async updateAgent(
     agentId: string,
     updates: { name?: string; labels?: Record<string, string> },

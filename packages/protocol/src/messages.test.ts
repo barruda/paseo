@@ -572,6 +572,40 @@ test.each(["all", "base", "uncommitted"] as const)(
   },
 );
 
+// CUSTOM(background-tools)
+describe("agent background task stop RPC", () => {
+  test("parses the request and response", () => {
+    const request = SessionInboundMessageSchema.parse({
+      type: "agent.background_task.stop.request",
+      agentId: "agent-1",
+      taskId: "task-1",
+      requestId: "req-1",
+    });
+    expect(request.type).toBe("agent.background_task.stop.request");
+
+    const response = SessionOutboundMessageSchema.parse({
+      type: "agent.background_task.stop.response",
+      payload: {
+        requestId: "req-1",
+        agentId: "agent-1",
+        taskId: "task-1",
+        stopped: true,
+        error: null,
+      },
+    });
+    expect(response.type).toBe("agent.background_task.stop.response");
+  });
+
+  test("parses the backgroundTaskStop server feature gate", () => {
+    const parsed = parseServerInfoStatusPayload({
+      status: "server_info",
+      serverId: "srv-test",
+      features: { backgroundTaskStop: true },
+    });
+    expect(parsed?.features?.backgroundTaskStop).toBe(true);
+  });
+});
+
 // CUSTOM(steer-pending)
 describe("agent cancel steer RPC", () => {
   test("parses the request and response", () => {

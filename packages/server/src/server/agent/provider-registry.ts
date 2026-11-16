@@ -458,6 +458,8 @@ export function wrapSessionProvider(provider: AgentProvider, inner: AgentSession
     getPendingSteerMessageIds: inner.getPendingSteerMessageIds?.bind(inner),
     subscribePendingSteers: inner.subscribePendingSteers?.bind(inner),
     cancelSteer: inner.cancelSteer?.bind(inner),
+    // CUSTOM(background-tools)
+    stopBackgroundTask: inner.stopBackgroundTask?.bind(inner),
     subscribe: (callback) => inner.subscribe((event) => callback(mapStreamEvent(provider, event))),
     async *streamHistory() {
       for await (const event of inner.streamHistory()) {

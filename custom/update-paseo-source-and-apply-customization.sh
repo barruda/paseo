@@ -317,6 +317,8 @@ if $VERIFY; then
   # Background tools chip (shells and monitors left running) and the working tab.
   (cd packages/app && npx vitest run src/background-tools/presentation.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.background-subagent.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.background-stop.test.ts --bail=1)
+  (cd packages/protocol && npx vitest run src/messages.test.ts -t "background task stop" --bail=1)
   # The Tasks sidebar lists provider subagents under their agent.
   (cd packages/app && npx vitest run src/task-navigation/provider-subagent-rows.test.ts --bail=1)
   # Token ledger fork: MLflow trace links, turn jumps, Claude cache writes.

@@ -2802,6 +2802,9 @@ export class Session {
       // CUSTOM(steer-pending)
       case "agent.cancel_steer.request":
         return this.handleCancelAgentSteerRequest(msg.agentId, msg.clientMessageId, msg.requestId);
+      // CUSTOM(background-tools)
+      case "agent.background_task.stop.request":
+        return this.handleStopAgentBackgroundTaskRequest(msg.agentId, msg.taskId, msg.requestId);
       default:
         return undefined;
     }
@@ -3534,6 +3537,36 @@ export class Session {
     }
 
     return { agentId, archivedAt };
+  }
+
+  // CUSTOM(background-tools)
+  private async handleStopAgentBackgroundTaskRequest(
+    agentId: string,
+    taskId: string,
+    requestId: string,
+  ): Promise<void> {
+    try {
+      const stopped = await this.agentManager.stopAgentBackgroundTask(agentId, taskId);
+      this.emit({
+        type: "agent.background_task.stop.response",
+        payload: { requestId, agentId, taskId, stopped, error: null },
+      });
+    } catch (error) {
+      this.sessionLogger.warn(
+        { err: error, agentId, taskId, requestId },
+        "Failed to stop agent background task",
+      );
+      this.emit({
+        type: "agent.background_task.stop.response",
+        payload: {
+          requestId,
+          agentId,
+          taskId,
+          stopped: false,
+          error: getErrorMessageOr(error, "Failed to stop agent background task"),
+        },
+      });
+    }
   }
 
   // CUSTOM(steer-pending)

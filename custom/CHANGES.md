@@ -5525,12 +5525,18 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   session emits an internal `background_tasks_changed` stream event, and an empty one when the
   process restarts. The agent manager keeps it on the agent (not on the client event stream), and
   `toAgentPayload` sends it as the optional `backgroundTasks` field. In the app, a `2 tools` chip
-  (`1 tool`) sits next to the subagents pill; its panel lists kind, description and command, and a
-  click copies the command (or the description). The agent tab and the Tasks sidebar count such an
-  agent as working. A new chat option, "Background tools", hides or moves the chip. Wording is
-  English only.
+  sits next to the subagents pill, split into `1 monitor` (running spinner) and `2 shells` (plain
+  dot, since a dev server never ends); its panel lists kind, description and command, and a click
+  copies the command (or the description). Each row has an X on the left that stops that task
+  (`agent.background_task.stop.request/.response`, gated on `features.backgroundTaskStop`; the
+  Claude session calls `query.stopTask` for ids in its last task list, and the refreshed list
+  arrives through `background_tasks_changed`). Only monitors keep the agent tab and the Tasks
+  sidebar working, same rule as the daemon's wake tasks; shells do not. A new chat option,
+  "Background tools", hides or moves the chip. Wording is English only.
 - **Core files touched:** protocol `messages.ts` (`AgentBackgroundTaskPayloadSchema`, `backgroundTasks`);
-  server `agent-sdk-types.ts`, `agent-manager.ts`, `agent-projections.ts`,
+  the stop RPC and feature flag; client `daemon-client.ts` (`stopAgentBackgroundTask`); server
+  `agent-sdk-types.ts`, `agent-manager.ts`, `agent-projections.ts`, `provider-registry.ts`,
+  `session.ts`, `websocket-server.ts`, `authorization/operation-permissions.ts`,
   `providers/claude/agent.ts`, `providers/claude/wake-tasks.ts`; app `stores/session-store.ts`,
   `utils/agent-snapshots.ts`, `panels/agent-tracks.tsx`, `panels/agent-panel.tsx`,
   `task-navigation/sidebar.tsx`, `composer/chat-options.ts`; new `background-tools/`.
@@ -5539,12 +5545,15 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
   session hooks (`observeBackgroundToolStart`, the emit beside `wakeTaskCount`, `resetBackgroundTools`
   where `wakeTaskCount` resets). In the app, carry the field through both snapshot normalizers, add
   the chip node to `AgentTracks` and `hasAgentTracks`, and OR the tools into the tab and sidebar
-  running checks.
-- **Verify:** Needs a daemon restart (the server sends the new field). Tests are in the update
-  script (`background-tools/presentation.test.ts`, `wake-tasks.test.ts`,
-  `agent.background-subagent.test.ts`). In the app: ask an agent to start a background `sleep 600`
-  and end its turn; the tab keeps the working spinner, a `1 tool` chip appears, and clicking a row
-  copies the command.
+  running checks (monitors only). Mirror `agent.cancel_steer` for the stop RPC (schemas, unions,
+  permissions, session handler, manager, provider-registry bind, client method, feature flag) and
+  add `stopBackgroundTask` to the Claude session.
+- **Verify:** Needs a daemon restart (the server sends the new field and the stop RPC). Tests are
+  in the update script (`background-tools/presentation.test.ts`, `wake-tasks.test.ts`,
+  `agent.background-subagent.test.ts`, `agent.background-stop.test.ts`, `messages.test.ts`
+  "background task stop"). In the app: ask an agent to start a background `sleep 600` and end its
+  turn; the tab goes idle, a `1 shell` chip appears, clicking a row copies the command and the X
+  stops it. A `Monitor` shows `1 monitor` and keeps the tab working.
 
 ## github-account: GitHub account per host in Bruno's Customizations
 

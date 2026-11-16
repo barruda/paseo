@@ -2670,6 +2670,27 @@ class ClaudeAgentSession implements AgentSession {
     return cancelled;
   }
 
+  /**
+   * CUSTOM(background-tools): stop one live background task. Only ids in the last reported list
+   * are accepted. Claude then reports the shrunken list through background_tasks_changed.
+   */
+  async stopBackgroundTask(taskId: string): Promise<boolean> {
+    const query = this.query;
+    if (!query) return false;
+    const known = mapClaudeBackgroundTools(
+      this.lastBackgroundTasksMessage,
+      this.backgroundTaskCommands,
+    ).some((task) => task.id === taskId);
+    if (!known) return false;
+    try {
+      await query.stopTask(taskId);
+      return true;
+    } catch (error) {
+      this.logger.warn({ err: error, taskId }, "Failed to stop a Claude background task");
+      return false;
+    }
+  }
+
   private findPendingSteerUuid(clientMessageId: string): string | null {
     for (const [uuid, id] of this.pendingSteerClientIds) {
       if (id === clientMessageId) return uuid;

@@ -176,7 +176,7 @@ export const AgentTracks = memo(function AgentTracks({
     ) : null,
     // CUSTOM(background-tools): live background shells and monitors, right of the subagents pill.
     "background-tools": show("background-tools") ? (
-      <BackgroundToolsTrack tasks={backgroundTools} />
+      <BackgroundToolsTrack serverId={serverId} agentId={agentId} tasks={backgroundTools} />
     ) : null,
     // CUSTOM(commit-wip): commits everything as "wip".
     commit: show("commit") ? (

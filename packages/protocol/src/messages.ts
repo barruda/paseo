@@ -2192,6 +2192,25 @@ export const AgentCancelSteerResponseMessageSchema = z.object({
   }),
 });
 
+// CUSTOM(background-tools): only send when `server_info.features.backgroundTaskStop` is set.
+export const AgentBackgroundTaskStopRequestMessageSchema = z.object({
+  type: z.literal("agent.background_task.stop.request"),
+  agentId: z.string(),
+  taskId: z.string(),
+  requestId: z.string(),
+});
+
+export const AgentBackgroundTaskStopResponseMessageSchema = z.object({
+  type: z.literal("agent.background_task.stop.response"),
+  payload: z.object({
+    requestId: z.string(),
+    agentId: z.string(),
+    taskId: z.string(),
+    stopped: z.boolean(),
+    error: z.string().nullable().optional(),
+  }),
+});
+
 export const AgentRewindModeSchema = z.enum(["conversation", "files", "both"]);
 
 export const AgentRewindRequestMessageSchema = z.object({
@@ -3510,6 +3529,7 @@ export const SessionInboundMessageSchema = z.discriminatedUnion("type", [
   AgentConfigApplyRequestMessageSchema,
   AgentDetachRequestMessageSchema,
   AgentCancelSteerRequestMessageSchema,
+  AgentBackgroundTaskStopRequestMessageSchema, // CUSTOM(background-tools)
   AgentRewindRequestMessageSchema,
   AgentPermissionResponseMessageSchema,
   CheckoutStatusRequestSchema,
@@ -3975,6 +3995,8 @@ export const ServerInfoStatusPayloadSchema = z
         // CUSTOM(steer-pending): the daemon accepts `agent.cancel_steer.request` and reports
         // `pendingSteerMessageIds` on agent snapshots.
         steerPending: z.boolean().optional(),
+        // CUSTOM(background-tools): the daemon accepts `agent.background_task.stop.request`.
+        backgroundTaskStop: z.boolean().optional(),
         workspaceSetupObservation: z.boolean().optional(),
         workspaceSortTimes: z.boolean().optional(),
         // COMPAT(canonicalSubmittedPrompts): added in v0.2.6, remove gate after 2027-01-30.
@@ -7333,6 +7355,7 @@ export const SessionOutboundMessageSchema = z.discriminatedUnion("type", [
   AgentConfigApplyResponseMessageSchema,
   AgentDetachResponseMessageSchema,
   AgentCancelSteerResponseMessageSchema,
+  AgentBackgroundTaskStopResponseMessageSchema, // CUSTOM(background-tools)
   AgentRewindResponseMessageSchema,
   UpdateAgentResponseMessageSchema,
   ProjectRenameResponseSchema,
@@ -7718,6 +7741,13 @@ export type SetAgentThinkingRequestMessage = z.infer<typeof SetAgentThinkingRequ
 export type SetAgentFeatureRequestMessage = z.infer<typeof SetAgentFeatureRequestMessageSchema>;
 export type AgentConfigApplyRequestMessage = z.infer<typeof AgentConfigApplyRequestMessageSchema>;
 export type AgentDetachRequestMessage = z.infer<typeof AgentDetachRequestMessageSchema>;
+// CUSTOM(background-tools)
+export type AgentBackgroundTaskStopResponseMessage = z.infer<
+  typeof AgentBackgroundTaskStopResponseMessageSchema
+>;
+export type AgentBackgroundTaskStopRequestMessage = z.infer<
+  typeof AgentBackgroundTaskStopRequestMessageSchema
+>;
 export type AgentCancelSteerRequestMessage = z.infer<typeof AgentCancelSteerRequestMessageSchema>;
 export type AgentPermissionResponseMessage = z.infer<typeof AgentPermissionResponseMessageSchema>;
 export type CheckoutStatusRequest = z.infer<typeof CheckoutStatusRequestSchema>;

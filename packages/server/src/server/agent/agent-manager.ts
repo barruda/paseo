@@ -4153,6 +4153,14 @@ export class AgentManager {
     this.emitState(agent, { persist: false });
   }
 
+  // CUSTOM(background-tools): stop one live background task. The provider reports the shrunken
+  // list itself (background_tasks_changed), which refreshes clients.
+  async stopAgentBackgroundTask(agentId: string, taskId: string): Promise<boolean> {
+    const agent = this.requireSessionAgent(agentId);
+    if (!agent.session.stopBackgroundTask) return false;
+    return agent.session.stopBackgroundTask(taskId);
+  }
+
   // CUSTOM(steer-pending): cancel one steer Claude has not started. The message row stays in the
   // append-only timeline; clients hide it through cancelledSteerMessageIds.
   async cancelAgentSteer(agentId: string, clientMessageId: string): Promise<boolean> {

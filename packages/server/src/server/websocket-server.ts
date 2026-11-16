@@ -1978,6 +1978,8 @@ export class VoiceAssistantWebSocketServer {
         voiceHold: true,
         // CUSTOM(steer-pending)
         steerPending: true,
+        // CUSTOM(background-tools)
+        backgroundTaskStop: true,
         agentRequestReceipts: true,
         workspaceRequestReceipts: true,
         creationLifecycle: true,
