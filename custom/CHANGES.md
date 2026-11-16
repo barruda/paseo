@@ -6049,3 +6049,30 @@ src/task-navigation/provider-subagent-rows.test.ts` (in the update script). By h
   and the config in `docs/custom-agent-embed.md`; then load the embed URL in an iframe on
   `http://127.0.0.1:5178` (conversation shows, Enter sends, reply streams) and on another origin
   (blocked by CSP).
+
+## tool-cancel: X on a running tool stops the agent's run
+
+- **Added:** 2026-11-15 (based on upstream 0.14.0)
+- **Commit:** pending (uncommitted when this entry was written; subject `custom: X on a running tool cancels the run`)
+- **Why:** A tool that hangs (a dev daemon start, a long shell) had no way to stop it from the chat;
+  the only stop was the composer's interrupt for the whole turn.
+- **What:** While a tool row is running (`executing`/`running`), an X sits beside its label. Click it,
+  confirm "Are you sure?", and the app calls `client.cancelAgent(agentId)`, the same per-agent
+  interrupt as the composer stop. Providers cancel per agent run, not per tool, so this stops the
+  whole current run and the confirmation says so. Native and compact layouts show the X always;
+  desktop shows it on hover. Completed tools have no X.
+- **Core files touched:** `packages/app/src/components/message.tsx` (`ExpandableBadge`,
+  `ExpandableBadgeCancelButton`, `shouldShowToolCancelButton`, `ToolCall` `onCancel` prop and memo
+  comparators), `packages/app/src/agent-stream/view.tsx` (`cancelToolCall` in `AgentStreamView`,
+  passed to the two `ToolCallSlot`s in `renderSingleToolCallItem`), and the locale files, which
+  import `custom-tool-cancel.ts`. Strings live in `packages/app/src/i18n/resources/custom-tool-cancel.ts`.
+- **Re-apply:** Add an optional `onCancel` to `ToolCall` and `ExpandableBadge`. Render a small X
+  Pressable in the label row when `onCancel` is set, `isLoading` is true, and the row is hovered,
+  native, or compact. Its press calls `event.stopPropagation()` so the header does not toggle. In
+  `AgentStreamView`, define a callback that runs `confirmDialog` (destructive) and then
+  `client.cancelAgent(agentId)`, and pass it as `onCancel` from `renderSingleToolCallItem`. Add
+  `toolCancel` to each locale with `toolCancel: TOOL_CANCEL_EN` (or `_PT_BR` for pt-BR).
+- **Verify:** Start a tool that runs for a while (for example `sleep 60` through the shell). Hover
+  its row on desktop and check the X. Click it, press Cancel in the dialog (the run keeps going),
+  then click again and confirm "Stop run". The run should stop and the tool row should show as
+  canceled. On a completed tool there should be no X.

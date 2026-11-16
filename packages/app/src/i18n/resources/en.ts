@@ -1,3 +1,4 @@
+import { TOOL_CANCEL_EN } from "./custom-tool-cancel";
 import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { VOICE_SETTINGS_EN } from "./custom-voice-settings";
 import { SHORTCUT_FILE_EN } from "./custom-shortcut-file";
@@ -87,6 +88,7 @@ export const en = {
     },
   },
   steerPending: STEER_PENDING_EN, // CUSTOM(steer-pending)
+  toolCancel: TOOL_CANCEL_EN, // CUSTOM(tool-cancel)
   shell: {
     menu: {
       toggleSidebar: "Toggle sidebar",

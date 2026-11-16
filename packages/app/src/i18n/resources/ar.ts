@@ -1,3 +1,4 @@
+import { TOOL_CANCEL_EN } from "./custom-tool-cancel";
 import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_AR } from "./custom-voice-settings";
@@ -90,6 +91,7 @@ export const ar: TranslationResources = {
     },
   },
   steerPending: STEER_PENDING_EN, // CUSTOM(steer-pending)
+  toolCancel: TOOL_CANCEL_EN, // CUSTOM(tool-cancel)
   shell: {
     menu: {
       toggleSidebar: "تبديل الشريط الجانبي",

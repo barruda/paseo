@@ -33,6 +33,7 @@ import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { Check, ChevronDown, ChevronUp, X } from "lucide-react-native";
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model";
 import { isAbsolutePath } from "@/utils/path";
+import { confirmDialog } from "@/utils/confirm-dialog"; // CUSTOM(tool-cancel)
 import { openExplorerSidebarView } from "@/workspace-tabs/explorer-sidebar";
 import {
   absoluteInlinePath,
@@ -973,6 +974,25 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
 
     const setToolCallGroupExpanded = toolCallExpansion.setGroupExpanded;
 
+    // CUSTOM(tool-cancel): the X on a running tool. Daemon cancel is per agent run, so this stops
+    // the whole current run, and the confirmation says so.
+    const cancelToolCall = useCallback(() => {
+      if (!client) return;
+      const cancelRun = async () => {
+        const confirmed = await confirmDialog({
+          title: t("toolCancel.confirmTitle"),
+          message: t("toolCancel.confirmMessage"),
+          confirmLabel: t("toolCancel.confirmAction"),
+          cancelLabel: t("common.actions.cancel"),
+          destructive: true,
+        });
+        if (confirmed) await client.cancelAgent(agentId);
+      };
+      cancelRun().catch((error: unknown) => {
+        console.error("[tool-cancel] cancel failed", error);
+      });
+    }, [agentId, client, t]);
+
     // CUSTOM(steer-pending): X on a pending steer. A cancel Claude refuses means it already took
     // the message; the daemon then drops the badge by itself.
     const cancelSteer = useCallback(
@@ -1176,6 +1196,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
               agentMessage={data.agentMessage}
               isLastInSequence={isLastInSequence}
               onOpenFilePath={handleToolCallOpenFile}
+              onCancel={cancelToolCall}
               standalone={options.standalone}
               maxDetailHeight={options.maxDetailHeight}
             />
@@ -1208,12 +1229,14 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             status={data.status}
             isLastInSequence={isLastInSequence}
             onOpenFilePath={handleToolCallOpenFile}
+            onCancel={cancelToolCall}
             standalone={options.standalone}
             maxDetailHeight={options.maxDetailHeight}
           />
         );
       },
       [
+        cancelToolCall,
         client,
         context.cwd,
         handleInlinePathPress,

@@ -51,6 +51,7 @@ import {
   Plus,
   Scissors,
   TriangleAlertIcon,
+  X,
   XCircle,
 } from "lucide-react-native";
 import type { ComponentType, ReactNode } from "react";
@@ -141,6 +142,7 @@ const WEB_TOOLCALL_SHIMMER_KEYFRAME_ID = "paseo-toolcall-shimmer-keyframes";
 const WEB_TOOLCALL_SHIMMER_ANIMATION_NAME = "paseo-toolcall-shimmer";
 const ThemedMicVocal = withUnistyles(MicVocal);
 const ThemedFileSymlinkIcon = withUnistyles(FileSymlink);
+const ThemedToolCancelIcon = withUnistyles(X);
 const ThemedTriangleAlertIcon = withUnistyles(TriangleAlertIcon);
 const ThemedChevronRightIcon = withUnistyles(ChevronRight);
 const ThemedNotificationInfo = withUnistyles(Info);
@@ -1561,6 +1563,8 @@ interface ExpandableBadgeProps {
   style?: StyleProp<ViewStyle>;
   onToggle?: () => void;
   onOpenFile?: () => void;
+  /** Shown as an X while the badge is loading. Stops the agent's current run. */
+  onCancel?: () => void;
   onDetailHoverChange?: (hovered: boolean) => void;
   renderDetails?: () => ReactNode;
   isLoading?: boolean;
@@ -1659,6 +1663,52 @@ interface ExpandableBadgeLabelRowProps {
   onOpenFilePress: (event: GestureResponderEvent) => void;
   onOpenFileHoverIn: () => void;
   onOpenFileHoverOut: () => void;
+  showCancelButton: boolean;
+  onCancel?: () => void;
+}
+
+// CUSTOM(tool-cancel): the X shows while a tool runs. Native and compact layouts have no hover, so
+// it stays visible there.
+function shouldShowToolCancelButton(input: {
+  hasCancel: boolean;
+  isLoading: boolean;
+  isHovered: boolean;
+  isCompact: boolean;
+}): boolean {
+  return input.hasCancel && input.isLoading && (input.isHovered || isNative || input.isCompact);
+}
+
+function ExpandableBadgeCancelButton({
+  visible,
+  onCancel,
+}: {
+  visible: boolean;
+  onCancel?: () => void;
+}) {
+  const { t } = useTranslation();
+  const handlePress = useCallback(
+    (event: GestureResponderEvent) => {
+      // The row's header is the toggle; the X must not expand or collapse it.
+      event.stopPropagation?.();
+      onCancel?.();
+    },
+    [onCancel],
+  );
+  if (!visible || !onCancel) {
+    return null;
+  }
+  return (
+    <Pressable
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={t("toolCancel.button")}
+      testID="tool-call-cancel"
+      style={expandableBadgeStylesheet.openFileButton}
+      hitSlop={6}
+    >
+      <ThemedToolCancelIcon size={14} uniProps={foregroundMutedColorMapping} />
+    </Pressable>
+  );
 }
 
 function ExpandableBadgeLabelRow({
@@ -1685,6 +1735,8 @@ function ExpandableBadgeLabelRow({
   onOpenFilePress,
   onOpenFileHoverIn,
   onOpenFileHoverOut,
+  showCancelButton,
+  onCancel,
 }: ExpandableBadgeLabelRowProps) {
   const { t } = useTranslation();
   return (
@@ -1722,6 +1774,7 @@ function ExpandableBadgeLabelRow({
           />
         </Pressable>
       ) : null}
+      <ExpandableBadgeCancelButton visible={showCancelButton} onCancel={onCancel} />
       {isWebShimmer ? (
         <ExpandableBadgeWebShimmerOverlay
           label={label}
@@ -1924,6 +1977,7 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   isExpanded,
   onToggle,
   onOpenFile,
+  onCancel,
   onDetailHoverChange,
   renderDetails,
   isLoading = false,
@@ -1963,6 +2017,13 @@ export const ExpandableBadge = memo(function ExpandableBadge({
   );
   const handleOpenFileHoverIn = useCallback(() => setIsOpenFileHovered(true), []);
   const handleOpenFileHoverOut = useCallback(() => setIsOpenFileHovered(false), []);
+  const isCompact = useIsCompactFormFactor();
+  const showCancelButton = shouldShowToolCancelButton({
+    hasCancel: Boolean(onCancel),
+    isLoading,
+    isHovered,
+    isCompact,
+  });
 
   const nativeGradientIdRef = useRef(
     `shimmer-gradient-${Math.random().toString(36).substring(2, 9)}`,
@@ -2227,6 +2288,8 @@ export const ExpandableBadge = memo(function ExpandableBadge({
             onOpenFilePress={handleOpenFilePress}
             onOpenFileHoverIn={handleOpenFileHoverIn}
             onOpenFileHoverOut={handleOpenFileHoverOut}
+            showCancelButton={showCancelButton}
+            onCancel={onCancel}
           />
         </View>
       </Pressable>
@@ -2258,6 +2321,7 @@ function areExpandableBadgePropsEqual(previous: ExpandableBadgeProps, next: Expa
   if (previous.testID !== next.testID) return false;
   if (previous.onToggle !== next.onToggle) return false;
   if (previous.onOpenFile !== next.onOpenFile) return false;
+  if (previous.onCancel !== next.onCancel) return false;
   if (previous.onDetailHoverChange !== next.onDetailHoverChange) return false;
   if (previous.renderDetails !== next.renderDetails) return false;
   return true;
@@ -2279,6 +2343,8 @@ interface ToolCallProps {
   onInlineDetailsHoverChange?: (hovered: boolean) => void;
   onInlineDetailsExpandedChange?: (expanded: boolean) => void;
   onOpenFilePath?: (filePath: string) => void;
+  /** Stops the agent's current run from this tool row. Shown only while the tool runs. */
+  onCancel?: () => void;
   defaultExpanded?: boolean;
   forceInline?: boolean;
   maxDetailHeight?: number;
@@ -2303,6 +2369,7 @@ export const ToolCall = memo(function ToolCall({
   onInlineDetailsHoverChange,
   onInlineDetailsExpandedChange,
   onOpenFilePath,
+  onCancel,
   defaultExpanded,
   forceInline = false,
   maxDetailHeight = 400,
@@ -2452,6 +2519,7 @@ export const ToolCall = memo(function ToolCall({
       isExpanded={shouldRenderInline && isExpanded}
       onToggle={presentation.canOpenDetails ? handleToggle : undefined}
       onOpenFile={handleOpenFile}
+      onCancel={onCancel}
       renderDetails={presentation.canOpenDetails && shouldRenderInline ? renderDetails : undefined}
       isLoading={status === "running" || status === "executing"}
       isError={status === "failed"}
@@ -2476,6 +2544,7 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.isLastInSequence !== next.isLastInSequence) return false;
   if (previous.disableOuterSpacing !== next.disableOuterSpacing) return false;
   if (previous.onOpenFilePath !== next.onOpenFilePath) return false;
+  if (previous.onCancel !== next.onCancel) return false;
   if (previous.defaultExpanded !== next.defaultExpanded) return false;
   if (previous.forceInline !== next.forceInline) return false;
   if (previous.maxDetailHeight !== next.maxDetailHeight) return false;
