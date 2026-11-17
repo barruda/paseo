@@ -6237,3 +6237,26 @@ src/server/daemon-config-store.test.ts` and `cd packages/app && npx vitest run
 src/task-navigation/idle-open-tab-labels.test.ts`. In the app it needs a daemon restart (new
   protocol fields and feature flag): then close an agent's tab in Tasks mode, set the no-open-tab
   period to 5 min, and see the agent released after 5 minutes while one with a tab stays.
+
+## resume-not-activity: resume events no longer bump an idle agent's activity time
+
+- **Added:** 2026-11-17
+- **Commit:** 75d62b83a
+- **Why:** Idle agents untouched for weeks jumped to the top of the Tasks sidebar with "now". On
+  every (re)connect the app sends `agent.provider_subagents.list.request` per visible row, the
+  daemon resumes the agent to answer it, and Codex sends `thread/started` on resume.
+  `handleStreamEvent` treated it as live activity and bumped `updatedAt` (persisted as
+  `lastActivityAt`, and it restarts the idle-runtime-cleanup clock).
+- **What:** `thread_started` and `usage_updated` stream events no longer call `touchUpdatedAt`.
+  The rest of the block (coalescer) is unchanged. The listing handler still resumes the agent:
+  resume replays provider history into the in-memory subagent registry, so listing without
+  loading would drop finished subagents. Only the false activity signal is removed.
+- **Core files touched:** `packages/server/src/server/agent/agent-manager.ts`
+  (`handleStreamEvent`), test in `agent-manager.test.ts`.
+- **Re-apply:** In `handleStreamEvent`, guard the `touchUpdatedAt(agent)` call under
+  `!options?.fromHistory` with `event.type !== "thread_started" && event.type !== "usage_updated"`.
+  Grep `CUSTOM(resume-not-activity)`.
+- **Verify:** `cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t
+"do not bump updatedAt"`. Needs a daemon restart: after `kill-paseos-and-daemons.sh`, idle Codex
+  agents keep their old time in the Tasks sidebar. The resume itself still happens at connect, so
+  the daemon log still shows "Agent resumed from persistence" for them.
