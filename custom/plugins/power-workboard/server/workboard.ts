@@ -59,6 +59,12 @@ import {
 } from "../shared/assistant";
 import { parseReport } from "./assistant/report";
 import {
+  CHAT_INSTRUCTIONS,
+  CHAT_LABEL,
+  defaultChatDirectory,
+} from "./assistant/chat";
+import { mkdir } from "node:fs/promises";
+import {
   KeyedLock,
   classifyMergeError,
   isUpToDate,
@@ -91,6 +97,8 @@ export interface AssistantOptions {
   verify?: VerifyRunner;
   /** Waits before each "Continue the task where you stopped." after an agent error. */
   retryDelaysMs?: number[];
+  /** Folder the chat agent works in; defaults to the plugin-data folder. */
+  chatDirectory?: string;
 }
 type AttemptOutcome = Attempt["outcome"]; // CUSTOM(projects-assistant)
 const DEFAULT_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
@@ -2465,6 +2473,34 @@ export class Workboard {
       agents: this.inventory.agents,
       now: new Date(),
     };
+  }
+  /**
+   * The Projects Assistant chat agent: the stored one while it exists and is not archived,
+   * otherwise (or with `fresh`) a new one.
+   */
+  openChat(fresh: boolean): Promise<{ agentId: string; created: boolean }> {
+    return this.serial(async () => {
+      const assistant = this.store.current.assistant;
+      const current = assistant.chatAgentId;
+      if (!fresh && current && (await this.host.agentAlive(current)))
+        return { agentId: current, created: false };
+      const directory =
+        this.assistantOptions.chatDirectory ?? defaultChatDirectory();
+      await mkdir(directory, { recursive: true });
+      const chat = assistant.settings.chat;
+      const agentId = await this.host.startAgentIn(directory, {
+        provider: chat.provider,
+        modeId: chat.modeId,
+        thinkingOptionId: chat.thinkingOptionId,
+        title: "Projects Assistant",
+        prompt: CHAT_INSTRUCTIONS,
+        labels: { [CHAT_LABEL]: "true" },
+      });
+      await this.store.update((data) => {
+        data.assistant.chatAgentId = agentId;
+      });
+      return { agentId, created: true };
+    });
   }
   assistantTimeline(agentId: string) {
     return this.host.timeline(agentId);

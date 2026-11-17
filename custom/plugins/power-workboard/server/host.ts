@@ -97,6 +97,7 @@ export interface AgentStart {
   thinkingOptionId: string | null;
   title: string;
   prompt: string;
+  labels?: Record<string, string>; // CUSTOM(projects-assistant)
 }
 // CUSTOM(projects-assistant)
 export interface MergeOptions {
@@ -587,6 +588,7 @@ export class PaseoHost implements Host {
       },
       title: start.title,
       prompt: start.prompt,
+      ...(start.labels ? { labels: start.labels } : {}), // CUSTOM(projects-assistant)
     });
     return agent.id;
   }

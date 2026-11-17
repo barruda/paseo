@@ -188,7 +188,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
           <SettingsCard testID="projects-assistant-chat">
             <SettingsInput
               label="Model"
-              hint="Used for new conversations"
+              hint="Used for new conversations. Its board tools need Agents > Enable Paseo tools on this host."
               initialValue={draft.chat.provider}
               onChangeText={handleModel}
               placeholder="claude/claude-opus-5-5"

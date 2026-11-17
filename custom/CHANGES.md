@@ -6468,7 +6468,9 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     log for the task, a composer and quick actions; Open in Desk opens the real chat.
   - **Projects Assistant chat** (surface `projects-assistant-chat`): a real Paseo agent (model,
     thinking and mode from the page's Chat section, default `claude/claude-opus-5-5`, `high`,
-    `bypassPermissions`) that uses the board's tools; its chip calls an RPC and then
+    `bypassPermissions`) that uses the board's tools (`board_*`, attached on `agent.session_open`
+    to agents labeled `pwb/assistant-chat`; they reach the agent through Paseo's injected MCP, so
+    the host needs **Enable Paseo tools** on, or the agent finds no board tools); its chip calls an RPC and then
     `navigation.openAgent`, which opens the agent as a Desk tab and returns from the chip to the
     Desk (the Desk's navigation wrapper deselects the chip even if that tab was already active).
   - **Tasks mode only:** the pages are chips in the Desk header next to Power Workboard (see

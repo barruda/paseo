@@ -6,9 +6,11 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WorkboardScreen } from "./client/WorkboardScreen";
 import { writeTicketRpc } from "./shared/rpc";
 // CUSTOM(projects-assistant)
+import { ChatLauncher } from "./client/assistant/ChatLauncher";
 import { ConversationsScreen } from "./client/assistant/ConversationsScreen";
 import { DashboardScreen } from "./client/assistant/DashboardScreen";
 import {
+  CHAT_SURFACE_ID,
   CONVERSATIONS_SURFACE_ID,
   DASHBOARD_SURFACE_ID,
 } from "./client/assistant/nav";
@@ -50,6 +52,12 @@ const ConversationsSurface = (
   </QueryClientProvider>
 );
 
+const ChatSurface = (props: Parameters<typeof ChatLauncher>[0]) => (
+  <QueryClientProvider client={queryClient}>
+    <ChatLauncher {...props} />
+  </QueryClientProvider>
+);
+
 export default function contribute(client: PluginClientContext) {
   const removeSurface = client.addSurface("power-workboard", Surface);
   // CUSTOM(projects-assistant)
@@ -61,6 +69,7 @@ export default function contribute(client: PluginClientContext) {
     CONVERSATIONS_SURFACE_ID,
     ConversationsSurface,
   );
+  const removeChat = client.addSurface(CHAT_SURFACE_ID, ChatSurface);
   const removeSidebar = client.addSidebarItem({
     id: "power-workboard",
     title: "Power Workboard",
@@ -115,6 +124,7 @@ export default function contribute(client: PluginClientContext) {
     removeCommand();
     removeSettings();
     removeSidebar();
+    removeChat();
     removeConversations();
     removeDashboard();
     removeSurface();

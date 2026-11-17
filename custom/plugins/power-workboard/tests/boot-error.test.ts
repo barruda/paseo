@@ -75,6 +75,8 @@ function startup(read: () => Promise<unknown>) {
     registerSettings,
     handle: (rpc: { name: string }, handler: () => unknown) =>
       handlers.set(rpc.name, handler),
+    // CUSTOM(projects-assistant): the chat's agent.session_open hook.
+    before: () => () => undefined,
   } as unknown as PluginServerContext;
   const stop = contribute(server);
   return {

@@ -17,6 +17,7 @@ import {
 // CUSTOM(projects-assistant)
 import {
   assistantActionRpc,
+  assistantChatOpenRpc,
   assistantConversationRpc,
   assistantHistoryRpc,
   assistantOverviewRpc,
@@ -29,6 +30,7 @@ import {
   HistoryStore,
   defaultHistoryDirectory,
 } from "./server/assistant/history";
+import { attachChatTools, chatTools } from "./server/assistant/chat";
 import {
   buildOverview,
   buildStats,
@@ -187,6 +189,12 @@ export default function contribute(server: PluginServerContext) {
     await ready().assistantAction(input);
     return { ok: true as const };
   });
+  server.handle(assistantChatOpenRpc, (input) => ready().openChat(input.fresh));
+  // The chat agent gets the board tools on every session open (create and resume).
+  const boardTools = chatTools(ready, history);
+  const removeChatTools = server.before("agent.session_open", ({ request }) =>
+    attachChatTools(request, boardTools),
+  );
   // CUSTOM(workboard-images): independent of the board, so images work while it boots.
   const images = new ImageStore(defaultImageDirectory());
   server.handle(saveImageRpc, (input) => images.save(input));
@@ -200,6 +208,7 @@ export default function contribute(server: PluginServerContext) {
     clearImmediate(immediate);
     clearTimeout(retry);
     stopChange();
+    removeChatTools(); // CUSTOM(projects-assistant)
     board?.dispose();
     compat.dispose();
   };
