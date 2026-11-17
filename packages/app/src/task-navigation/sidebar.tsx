@@ -372,11 +372,14 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     [roots, query, projectKeys],
   );
   const counts = useMemo(() => {
-    const nodes = flattenTaskTree(scopedRoots)
-      .map((row) => row.node)
-      .filter((node) => !node.contextOnly);
+    // CUSTOM(task-count-roots): count top-level tasks only, each by its crew's state, so a
+    // crew's subagents don't inflate the numbers.
+    const nodes = scopedRoots.filter((node) => !node.contextOnly || node.children.length > 0);
     return Object.fromEntries(
-      FILTERS.map((f) => [f.key, nodes.filter((n) => matchesTaskFilter(n.state, f.key)).length]),
+      FILTERS.map((f) => [
+        f.key,
+        nodes.filter((n) => matchesTaskFilter(n.crewState, f.key)).length,
+      ]),
     );
   }, [scopedRoots]);
   const archivedRoots = useMemo(
