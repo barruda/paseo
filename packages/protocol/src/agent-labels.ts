@@ -11,6 +11,20 @@ export function isOpenAgentTabLabel(label: string): boolean {
   return label.startsWith(OPEN_AGENT_TAB_LABEL_PREFIX);
 }
 
+// CUSTOM(idle-closed-tab): clients label each agent "true" while they have a tab open for it and
+// "false" after. Separate from the open-agent-tab label, which drives the subagent archive cascade.
+export const IDLE_TAB_LABEL_PREFIX = "paseo.idle-open-tab.";
+
+export function getIdleOpenTabLabel(clientId: string): string {
+  return `${IDLE_TAB_LABEL_PREFIX}${clientId}`;
+}
+
+export function hasIdleOpenTab(labels: Record<string, unknown> | null | undefined): boolean {
+  return Object.entries(labels ?? {}).some(
+    ([label, value]) => label.startsWith(IDLE_TAB_LABEL_PREFIX) && value === "true",
+  );
+}
+
 export interface AgentLabelSource {
   labels?: Record<string, unknown> | null;
 }

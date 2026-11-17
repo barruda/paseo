@@ -30,6 +30,7 @@ interface SupportedMutableConfigPatch {
   enableTerminalAgentHooks?: boolean;
   idleRuntimeCleanup?: boolean;
   idleRuntimeCleanupMinutes?: number; // CUSTOM(idle-cleanup-period)
+  idleRuntimeCleanupClosedTabMinutes?: number; // CUSTOM(idle-closed-tab)
   appendSystemPrompt?: string;
   // CUSTOM(github-account)
   github?: { configDir?: string };
@@ -201,6 +202,7 @@ const RELOADABLE_PATHS = [
   "app.baseUrl",
   "agents.idleRuntimeCleanup",
   "agents.idleRuntimeCleanupMinutes", // CUSTOM(idle-cleanup-period)
+  "agents.idleRuntimeCleanupClosedTabMinutes", // CUSTOM(idle-closed-tab)
   "agents.providers",
   "agents.catalogRefreshTimeoutMs",
   "agents.metadataGeneration",
@@ -234,6 +236,7 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["app.baseUrl", "app.baseUrl"],
   ["agents.idleRuntimeCleanup", "idleRuntimeCleanup"],
   ["agents.idleRuntimeCleanupMinutes", "idleRuntimeCleanupMinutes"], // CUSTOM(idle-cleanup-period)
+  ["agents.idleRuntimeCleanupClosedTabMinutes", "idleRuntimeCleanupClosedTabMinutes"], // CUSTOM(idle-closed-tab)
   ["agents.providers", "providers"],
   ["agents.catalogRefreshTimeoutMs", "catalogRefreshTimeoutMs"],
   ["agents.metadataGeneration", "metadataGeneration"],
@@ -315,10 +318,7 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
     ...(patch.idleRuntimeCleanup !== undefined
       ? { idleRuntimeCleanup: patch.idleRuntimeCleanup }
       : {}),
-    // CUSTOM(idle-cleanup-period)
-    ...(patch.idleRuntimeCleanupMinutes !== undefined
-      ? { idleRuntimeCleanupMinutes: clampIdleCleanupMinutes(patch.idleRuntimeCleanupMinutes) }
-      : {}),
+    ...pickIdleMinutesPatch(patch), // CUSTOM(idle-cleanup-period, idle-closed-tab)
     ...(patch.appendSystemPrompt !== undefined
       ? { appendSystemPrompt: patch.appendSystemPrompt }
       : {}),
@@ -756,7 +756,7 @@ function mergeMutableAgentPatch(
     patch.metadataGeneration === undefined &&
     patch.skills === undefined &&
     patch.idleRuntimeCleanup === undefined &&
-    patch.idleRuntimeCleanupMinutes === undefined &&
+    !hasIdleMinutesPatch(patch) &&
     removeProviders.length === 0
   ) {
     return persistedAgents;
@@ -793,10 +793,7 @@ function mergeMutableAgentPatch(
     next["idleRuntimeCleanup"] = patch.idleRuntimeCleanup;
   }
 
-  // CUSTOM(idle-cleanup-period)
-  if (patch.idleRuntimeCleanupMinutes !== undefined) {
-    next["idleRuntimeCleanupMinutes"] = clampIdleCleanupMinutes(patch.idleRuntimeCleanupMinutes);
-  }
+  Object.assign(next, pickIdleMinutesPatch(patch)); // CUSTOM(idle-cleanup-period, idle-closed-tab)
 
   return Object.keys(next).length > 0 ? (next as PersistedConfig["agents"]) : undefined;
 }
@@ -1032,6 +1029,39 @@ function mergeDictationTuningPatch(
 
 // CUSTOM(idle-cleanup-period): the persisted schema rejects values outside 5..1440 on load, so a
 // patch is clamped before it is saved.
+function hasIdleMinutesPatch(
+  patch: Pick<
+    SupportedMutableConfigPatch,
+    "idleRuntimeCleanupMinutes" | "idleRuntimeCleanupClosedTabMinutes"
+  >,
+): boolean {
+  return (
+    patch.idleRuntimeCleanupMinutes !== undefined ||
+    patch.idleRuntimeCleanupClosedTabMinutes !== undefined
+  );
+}
+
+// CUSTOM(idle-cleanup-period, idle-closed-tab): the clamped idle periods present in a patch.
+function pickIdleMinutesPatch(
+  patch: Pick<
+    SupportedMutableConfigPatch,
+    "idleRuntimeCleanupMinutes" | "idleRuntimeCleanupClosedTabMinutes"
+  >,
+) {
+  return {
+    ...(patch.idleRuntimeCleanupMinutes !== undefined
+      ? { idleRuntimeCleanupMinutes: clampIdleCleanupMinutes(patch.idleRuntimeCleanupMinutes) }
+      : {}),
+    ...(patch.idleRuntimeCleanupClosedTabMinutes !== undefined
+      ? {
+          idleRuntimeCleanupClosedTabMinutes: clampIdleCleanupMinutes(
+            patch.idleRuntimeCleanupClosedTabMinutes,
+          ),
+        }
+      : {}),
+  };
+}
+
 function clampIdleCleanupMinutes(minutes: number): number {
   return Math.min(1440, Math.max(5, Math.round(minutes)));
 }

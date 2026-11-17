@@ -102,6 +102,7 @@ function liveCleanupHost() {
     sessionId: "session",
     parentAgentId: undefined,
     lastActivityAt: 0,
+    hasOpenTab: () => true,
     isEligible: () => !closed,
     closeIfEligible: async (eligible) => {
       if (!eligible()) return false;

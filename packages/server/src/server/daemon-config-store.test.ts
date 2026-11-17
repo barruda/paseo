@@ -1312,6 +1312,41 @@ describe("DaemonConfigStore", () => {
     expect(changes).toEqual([120]);
   });
 
+  // CUSTOM(idle-closed-tab)
+  test("patch persists the closed-tab idle period, clamped to 5..1440", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    writeFileSync(path.join(paseoHome, "config.json"), "{}\n");
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        metadataGeneration: { providers: [] },
+      },
+      undefined,
+    );
+    const changes: unknown[] = [];
+    store.onFieldChange("idleRuntimeCleanupClosedTabMinutes", (value) => changes.push(value));
+
+    expect(
+      (await store.patch({ idleRuntimeCleanupClosedTabMinutes: 30 }))
+        .idleRuntimeCleanupClosedTabMinutes,
+    ).toBe(30);
+    expect(loadPersistedConfig(paseoHome).agents?.idleRuntimeCleanupClosedTabMinutes).toBe(30);
+    expect(loadConfig(paseoHome, { env: {} }).idleRuntimeCleanupClosedTabMinutes).toBe(30);
+
+    await store.patch({ idleRuntimeCleanupClosedTabMinutes: 1 });
+    expect(loadPersistedConfig(paseoHome).agents?.idleRuntimeCleanupClosedTabMinutes).toBe(5);
+    await store.patch({ idleRuntimeCleanupClosedTabMinutes: 99999 });
+    expect(loadPersistedConfig(paseoHome).agents?.idleRuntimeCleanupClosedTabMinutes).toBe(1440);
+    expect(changes).toEqual([30, 5, 1440]);
+  });
+
   test("patch persists custom ACP provider overrides into config.json", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

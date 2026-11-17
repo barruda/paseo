@@ -12,6 +12,7 @@ function deferred<T>() {
 class Runtime {
   readonly identity = {};
   busy = false;
+  openTab = true; // CUSTOM(idle-closed-tab)
   closed = false;
   resumable = true;
   activity = 0;
@@ -29,6 +30,7 @@ class Runtime {
       provider: "test",
       sessionId: this.resumable ? this.id : null,
       lastActivityAt: activity,
+      hasOpenTab: () => this.openTab,
       isEligible: () => !this.closed && !this.busy && this.activity === activity,
       canStopRuntime: this.probe,
       closeIfEligible: async (eligible) => {
@@ -41,7 +43,7 @@ class Runtime {
     };
   }
 }
-function scenario(enabled = true, idlePeriodMs?: number) {
+function scenario(enabled = true, idlePeriodMs?: number, closedTabPeriodMs?: number) {
   const runtime = new Runtime();
   const runtimes = [runtime];
   let time = 0;
@@ -50,6 +52,7 @@ function scenario(enabled = true, idlePeriodMs?: number) {
   const cleanup = createIdleRuntimeCleanup({
     enabled,
     idlePeriodMs,
+    closedTabPeriodMs,
     logger: createTestLogger(),
     now: () => time,
     runtimes: () => runtimes.filter((item) => !item.closed).map((item) => item.capture()),
@@ -97,6 +100,33 @@ test("setIdlePeriodMs applies on the next sweep without resetting idle clocks", 
   expect((await s.sweep(30)).collected).toEqual([]);
   s.cleanup.setIdlePeriodMs(30 * 60_000);
   expect((await s.sweep(30)).collected).toHaveLength(1);
+});
+
+// CUSTOM(idle-closed-tab)
+test("an agent with no open tab uses the shorter closed-tab period", async () => {
+  const s = scenario();
+  s.runtime.openTab = false;
+  expect((await s.sweep(14)).collected).toEqual([]);
+  expect((await s.sweep(15)).collected).toHaveLength(1);
+});
+
+// CUSTOM(idle-closed-tab)
+test("an agent with an open tab keeps the open-tab period", async () => {
+  const s = scenario(true, 60 * 60_000, 5 * 60_000);
+  expect((await s.sweep(59)).collected).toEqual([]);
+  expect((await s.sweep(60)).collected).toHaveLength(1);
+});
+
+// CUSTOM(idle-closed-tab)
+test("setClosedTabPeriodMs applies on the next sweep, and a tab opened later extends the wait", async () => {
+  const s = scenario();
+  s.runtime.openTab = false;
+  expect((await s.sweep(10)).collected).toEqual([]);
+  s.cleanup.setClosedTabPeriodMs(10 * 60_000);
+  s.runtime.openTab = true;
+  expect((await s.sweep(10)).collected).toEqual([]);
+  s.runtime.openTab = false;
+  expect((await s.sweep(10)).collected).toHaveLength(1);
 });
 
 test("activity restarts the single one-hour idle period", async () => {

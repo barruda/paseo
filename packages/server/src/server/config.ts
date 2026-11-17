@@ -610,6 +610,7 @@ export type ResolvedDaemonSettings = Pick<
   | "appBaseUrl"
   | "idleRuntimeCleanup"
   | "idleRuntimeCleanupMinutes" // CUSTOM(idle-cleanup-period)
+  | "idleRuntimeCleanupClosedTabMinutes" // CUSTOM(idle-closed-tab)
   | "providerCatalogRefreshTimeoutMs"
   | "metadataGeneration"
   | "providerOverrides"
@@ -697,7 +698,7 @@ export function resolveReloadableConfig(
     relayEnabled: relay.enabled,
     relayRequireProtectedSecurity: relay.requireProtectedSecurity,
     idleRuntimeCleanup: persisted.agents?.idleRuntimeCleanup ?? true,
-    idleRuntimeCleanupMinutes: persisted.agents?.idleRuntimeCleanupMinutes, // CUSTOM(idle-cleanup-period)
+    ...idleCleanupMinutes(persisted), // CUSTOM(idle-cleanup-period, idle-closed-tab)
     providerCatalogRefreshTimeoutMs: persisted.agents?.catalogRefreshTimeoutMs,
     metadataGeneration: persisted.agents?.metadataGeneration,
     providerOverrides: extractProviderOverrides(
@@ -847,4 +848,13 @@ function resolveSpeechOverrideControlledPaths(
   if (env.PASEO_VOICE_LLM_PROVIDER !== undefined) paths.push("features.voiceMode.llm.provider");
   if (env.PASEO_LOCAL_MODELS_DIR !== undefined) paths.push("providers.local.modelsDir");
   return paths;
+}
+
+// CUSTOM(idle-cleanup-period, idle-closed-tab): both idle periods, in minutes. A helper keeps
+// resolveReloadableConfig under the complexity limit.
+function idleCleanupMinutes(persisted: PersistedConfig) {
+  return {
+    idleRuntimeCleanupMinutes: persisted.agents?.idleRuntimeCleanupMinutes,
+    idleRuntimeCleanupClosedTabMinutes: persisted.agents?.idleRuntimeCleanupClosedTabMinutes,
+  };
 }

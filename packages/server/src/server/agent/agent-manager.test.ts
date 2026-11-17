@@ -33,7 +33,11 @@ import {
   CRITIC_TIMELINE_VERSION,
   type CriticReviewStatus,
 } from "@getpaseo/protocol/critic";
-import { getOpenAgentTabLabel, PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
+import {
+  getIdleOpenTabLabel,
+  getOpenAgentTabLabel,
+  PARENT_AGENT_ID_LABEL,
+} from "@getpaseo/protocol/agent-labels";
 import { startAgentRun } from "./agent-prompt.js";
 import { StaleProviderSessionError } from "./stale-provider-session-error.js";
 import { ensureAgentLoaded, ensureUnarchivedAgentLoaded } from "./agent-loading.js";
@@ -12721,6 +12725,48 @@ test("pending steers reach the agent snapshot and clear when the provider starts
     await first;
   } finally {
     await manager.closeAgent(agent.id).catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+// CUSTOM(idle-closed-tab)
+test("an idle-tab label write keeps updatedAt for live and released agents; other labels bump it", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-idle-tab-label-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    const idleLabel = getIdleOpenTabLabel("client-a");
+
+    const liveBefore = manager.getAgent(agent.id)!.updatedAt.getTime();
+    await manager.updateAgentMetadata(agent.id, { labels: { [idleLabel]: "true" } });
+    const live = manager.getAgent(agent.id)!;
+    expect(live.labels[idleLabel]).toBe("true");
+    expect(live.updatedAt.getTime()).toBe(liveBefore);
+
+    await manager.updateAgentMetadata(agent.id, {
+      labels: { [getOpenAgentTabLabel("c")]: "true" },
+    });
+    expect(manager.getAgent(agent.id)!.updatedAt.getTime()).toBeGreaterThan(liveBefore);
+
+    await manager.closeAgent(agent.id);
+    const stored = (await storage.get(agent.id))!;
+    await manager.updateAgentMetadata(agent.id, { labels: { [idleLabel]: "false" } });
+    const afterIdle = (await storage.get(agent.id))!;
+    expect(afterIdle.labels[idleLabel]).toBe("false");
+    expect(afterIdle.updatedAt).toBe(stored.updatedAt);
+
+    await manager.updateAgentMetadata(agent.id, { labels: { role: "worker" } });
+    const afterNormal = (await storage.get(agent.id))!;
+    expect(Date.parse(afterNormal.updatedAt)).toBeGreaterThan(Date.parse(stored.updatedAt));
+  } finally {
+    await storage.flush();
     rmSync(workdir, { recursive: true, force: true });
   }
 });

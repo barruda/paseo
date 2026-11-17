@@ -485,6 +485,7 @@ export interface PaseoDaemonConfig {
   agentProviderSettings?: AgentProviderRuntimeSettingsMap;
   idleRuntimeCleanup?: boolean;
   idleRuntimeCleanupMinutes?: number; // CUSTOM(idle-cleanup-period)
+  idleRuntimeCleanupClosedTabMinutes?: number; // CUSTOM(idle-closed-tab)
   providerCatalogRefreshTimeoutMs?: number;
   metadataGeneration?: {
     providers?: Array<{
@@ -742,6 +743,7 @@ function createInitialMutableDaemonConfig(
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
     idleRuntimeCleanup: config.idleRuntimeCleanup !== false,
     idleRuntimeCleanupMinutes: config.idleRuntimeCleanupMinutes, // CUSTOM(idle-cleanup-period)
+    idleRuntimeCleanupClosedTabMinutes: config.idleRuntimeCleanupClosedTabMinutes, // CUSTOM(idle-closed-tab)
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     // CUSTOM(github-account)
     ...(config.githubConfigDir ? { github: { configDir: config.githubConfigDir } } : {}),
@@ -1723,6 +1725,11 @@ export async function createPaseoDaemon(
   const idleRuntimeCleanup = createIdleRuntimeCleanup({
     enabled: daemonConfigStore.get().idleRuntimeCleanup !== false,
     idlePeriodMs: idleRuntimeCleanupPeriodMs(daemonConfigStore.get().idleRuntimeCleanupMinutes), // CUSTOM(idle-cleanup-period)
+    // CUSTOM(idle-closed-tab)
+    closedTabPeriodMs: idleRuntimeCleanupPeriodMs(
+      daemonConfigStore.get().idleRuntimeCleanupClosedTabMinutes,
+      15,
+    ),
     runtimes: () => agentManager.getRuntimeCleanupCandidates(),
     isProtected: (agentId) =>
       finishSubscriptions.hasPendingForCaller(agentId) ||
@@ -2307,7 +2314,10 @@ async function closeAllAgents(logger: Logger, agentManager: AgentManager): Promi
 
 export function connectIdleRuntimeCleanupConfig(
   store: DaemonConfigStore,
-  cleanup: Pick<ReturnType<typeof createIdleRuntimeCleanup>, "setEnabled" | "setIdlePeriodMs">,
+  cleanup: Pick<
+    ReturnType<typeof createIdleRuntimeCleanup>,
+    "setEnabled" | "setIdlePeriodMs" | "setClosedTabPeriodMs"
+  >,
 ): () => void {
   cleanup.setEnabled(store.get().idleRuntimeCleanup !== false);
   cleanup.setIdlePeriodMs(idleRuntimeCleanupPeriodMs(store.get().idleRuntimeCleanupMinutes));
@@ -2318,13 +2328,21 @@ export function connectIdleRuntimeCleanupConfig(
   const unsubscribePeriod = store.onFieldChange("idleRuntimeCleanupMinutes", (value) =>
     cleanup.setIdlePeriodMs(idleRuntimeCleanupPeriodMs(value)),
   );
+  // CUSTOM(idle-closed-tab)
+  cleanup.setClosedTabPeriodMs(
+    idleRuntimeCleanupPeriodMs(store.get().idleRuntimeCleanupClosedTabMinutes, 15),
+  );
+  const unsubscribeClosedTab = store.onFieldChange("idleRuntimeCleanupClosedTabMinutes", (value) =>
+    cleanup.setClosedTabPeriodMs(idleRuntimeCleanupPeriodMs(value, 15)),
+  );
   return () => {
     unsubscribeEnabled();
     unsubscribePeriod();
+    unsubscribeClosedTab();
   };
 }
 
 // CUSTOM(idle-cleanup-period): minutes (default 60) to milliseconds.
-function idleRuntimeCleanupPeriodMs(minutes: unknown): number {
-  return (typeof minutes === "number" && minutes > 0 ? minutes : 60) * 60_000;
+function idleRuntimeCleanupPeriodMs(minutes: unknown, fallbackMinutes = 60): number {
+  return (typeof minutes === "number" && minutes > 0 ? minutes : fallbackMinutes) * 60_000;
 }

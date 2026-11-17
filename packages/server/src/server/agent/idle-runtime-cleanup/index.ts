@@ -9,6 +9,8 @@ export interface RuntimeCleanupCandidate {
   readonly provider: string;
   readonly sessionId: string | null;
   readonly lastActivityAt: number;
+  // CUSTOM(idle-closed-tab): read live at sweep time; picks the idle period.
+  hasOpenTab(): boolean;
   isEligible(): boolean;
   canStopRuntime?(): Promise<boolean>;
   closeIfEligible(revalidate: () => boolean): Promise<boolean>;
@@ -21,6 +23,8 @@ interface Options {
   now?: () => number;
   // CUSTOM(idle-cleanup-period): idle period in ms, default 60 minutes.
   idlePeriodMs?: number;
+  // CUSTOM(idle-closed-tab): idle period in ms when no client has a tab open, default 15 minutes.
+  closedTabPeriodMs?: number;
   schedule?: (tick: () => void, intervalMs: number) => () => void;
 }
 interface CollectionEntry {
@@ -33,6 +37,7 @@ interface CollectionResult {
   failures: Array<{ agentId: string; error: unknown }>;
 }
 const DEFAULT_IDLE_PERIOD_MS = 60 * 60_000;
+const DEFAULT_CLOSED_TAB_PERIOD_MS = 15 * 60_000; // CUSTOM(idle-closed-tab)
 
 /** Owns idle clocks, baseline eligibility, optional provider vetoes and the sweep lifetime. */
 export function createIdleRuntimeCleanup(options: Options) {
@@ -43,6 +48,8 @@ export function createIdleRuntimeCleanup(options: Options) {
   let generation = 0;
   // CUSTOM(idle-cleanup-period): read on every sweep, so a change applies on the next one.
   let idlePeriodMs = options.idlePeriodMs ?? DEFAULT_IDLE_PERIOD_MS;
+  // CUSTOM(idle-closed-tab)
+  let closedTabPeriodMs = options.closedTabPeriodMs ?? DEFAULT_CLOSED_TAB_PERIOD_MS;
   const isProtected = options.isProtected ?? (() => false);
   const now = options.now ?? Date.now;
 
@@ -103,7 +110,8 @@ export function createIdleRuntimeCleanup(options: Options) {
           runtime.lastActivityAt,
           protectedAt.get(runtime.identity)?.at ?? 0,
         );
-        if (timestamp - idleSince < idlePeriodMs) continue;
+        if (timestamp - idleSince < (runtime.hasOpenTab() ? idlePeriodMs : closedTabPeriodMs))
+          continue;
         const revalidate = () => {
           const currentFamily = familyOf(runtime, options.runtimes());
           return (
@@ -165,6 +173,10 @@ export function createIdleRuntimeCleanup(options: Options) {
     // CUSTOM(idle-cleanup-period)
     setIdlePeriodMs(ms: number) {
       idlePeriodMs = ms;
+    },
+    // CUSTOM(idle-closed-tab)
+    setClosedTabPeriodMs(ms: number) {
+      closedTabPeriodMs = ms;
     },
     async close() {
       stopped = true;

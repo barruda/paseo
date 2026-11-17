@@ -1,4 +1,6 @@
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+// CUSTOM(idle-closed-tab)
+import { useIdleOpenTabLabels } from "@/task-navigation/use-idle-open-tab-labels";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useIsExplorerSidebarOpen } from "@/workspace-tabs/explorer-sidebar";
 import { ComposerEditingSessionsProvider } from "@/composer/editing-session";
@@ -875,6 +877,12 @@ function WorkspaceRouteNavigationBridge() {
   return null;
 }
 
+// CUSTOM(idle-closed-tab): reports this client's open agent tabs to every host.
+function IdleOpenTabLabelsReporter() {
+  useIdleOpenTabLabels();
+  return null;
+}
+
 function AppShell() {
   useEffect(() => {
     if (getDesktopHost()) void ensureOsNotificationPermission();
@@ -884,6 +892,7 @@ function AppShell() {
       <HorizontalScrollProvider>
         <OpenProjectListener />
         <AgentNavigationListener />
+        <IdleOpenTabLabelsReporter />
         <AppWithSidebar>
           <WorkspaceRouteNavigationBridge />
           <RootStack />

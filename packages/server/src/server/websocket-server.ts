@@ -2055,6 +2055,8 @@ export class VoiceAssistantWebSocketServer {
         idleRuntimeCleanupSetting: true,
         // CUSTOM(idle-cleanup-period)
         idleRuntimeCleanupPeriodSetting: true,
+        // CUSTOM(idle-closed-tab)
+        idleRuntimeCleanupClosedTabSetting: true,
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": true,
         // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.

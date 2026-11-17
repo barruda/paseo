@@ -249,6 +249,8 @@ export const MutableDaemonConfigSchema = z
     idleRuntimeCleanup: z.boolean().optional(),
     // CUSTOM(idle-cleanup-period): idle period in minutes; absent means 60.
     idleRuntimeCleanupMinutes: z.number().int().optional(),
+    // CUSTOM(idle-closed-tab): minutes for an agent no client has a tab open for; absent means 15.
+    idleRuntimeCleanupClosedTabMinutes: z.number().int().optional(),
     appendSystemPrompt: z.string().default(""),
     // CUSTOM(github-account): the gh config directory this host uses; absent = the launcher's.
     github: z.object({ configDir: z.string().optional() }).optional(),
@@ -280,6 +282,8 @@ export const MutableDaemonConfigPatchSchema = z
     idleRuntimeCleanup: z.boolean().optional(),
     // CUSTOM(idle-cleanup-period): the daemon validates the 5..1440 range.
     idleRuntimeCleanupMinutes: z.number().int().optional(),
+    // CUSTOM(idle-closed-tab): the daemon clamps to 5..1440.
+    idleRuntimeCleanupClosedTabMinutes: z.number().int().optional(),
     appendSystemPrompt: z.string().optional(),
     // CUSTOM(github-account): an empty configDir clears it.
     github: z.object({ configDir: z.string().optional() }).optional(),
@@ -3909,6 +3913,8 @@ export const ServerInfoStatusPayloadSchema = z
         idleRuntimeCleanupSetting: z.boolean().optional(),
         // CUSTOM(idle-cleanup-period): the idle period is configurable.
         idleRuntimeCleanupPeriodSetting: z.boolean().optional(),
+        // CUSTOM(idle-closed-tab): a second period for agents with no open tab.
+        idleRuntimeCleanupClosedTabSetting: z.boolean().optional(),
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": z.boolean().optional(),
         // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.

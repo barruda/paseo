@@ -26,8 +26,20 @@ still own an exclusive writer. A close failure retains that runtime for cleanup 
 replacement. Once closure succeeds, a failed resume leaves the durable agent closed and retryable.
 
 Idle resumable runtimes are collected after an idle period without activity, checked once a minute.
-The period is `agents.idleRuntimeCleanupMinutes` (5 to 1440, default 60). It applies live on the
-next check, and changing it keeps the existing idle timestamps.
+There are two periods. An agent with a tab open in any client uses
+`agents.idleRuntimeCleanupMinutes` (5 to 1440, default 60). An agent no client has a tab open for
+uses `agents.idleRuntimeCleanupClosedTabMinutes` (5 to 1440, default 15). Both apply live on the
+next check, and changing one keeps the existing idle timestamps.
+
+The daemon cannot see client tabs, so each client labels agents with
+`paseo.idle-open-tab.<client-id>` (`true` while a tab is open, `false` after). The sweep reads the
+live labels: any `true` counts as open. The label is separate from `paseo.open-agent-tab.*`, which
+drives the subagent archive cascade below. A client reports only the tabs of its active mode (Desks
+in Tasks mode, workspace layouts otherwise). A client that disappears leaves its labels `true`, so
+its agents keep the longer period. A label write on a released agent only edits the stored record;
+it never resumes the runtime. Unlike other label writes it does not bump `updatedAt`, so opening
+or closing a tab neither restarts the idle clock nor reorders the Tasks sidebar.
+
 Collection releases the process and preserves the agent record, conversation, relationships, and
 provider session. The next prompt resumes that session. Set `agents.idleRuntimeCleanup: false` in
 host config to disable automatic collection. The host setting applies immediately; config-file edits

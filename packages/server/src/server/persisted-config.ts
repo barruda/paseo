@@ -412,6 +412,8 @@ export const PersistedConfigSchema = z
         idleRuntimeCleanup: z.boolean().optional(),
         // CUSTOM(idle-cleanup-period): idle period in minutes.
         idleRuntimeCleanupMinutes: z.number().int().min(5).max(1440).optional(),
+        // CUSTOM(idle-closed-tab)
+        idleRuntimeCleanupClosedTabMinutes: z.number().int().min(5).max(1440).optional(),
         catalogRefreshTimeoutMs: z.number().int().positive().max(2_147_483_647).optional(),
         metadataGeneration: AgentMetadataGenerationSchema.optional(),
         skills: z.object({ selection: AgentSkillSelectionSchema.optional() }).strict().optional(),

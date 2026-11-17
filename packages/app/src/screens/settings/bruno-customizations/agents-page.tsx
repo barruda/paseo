@@ -14,6 +14,9 @@ import { toErrorMessage } from "@/utils/error-messages";
 
 const PERIOD_PRESETS = [15, 30, 60, 120, 240, 480, 1440];
 const DEFAULT_PERIOD_MINUTES = 60;
+// CUSTOM(idle-closed-tab)
+const CLOSED_TAB_PRESETS = [5, 10, 15, 30, 60, 120];
+const DEFAULT_CLOSED_TAB_MINUTES = 15;
 
 function periodLabel(minutes: number): string {
   return minutes % 60 === 0 ? `${minutes / 60} h` : `${minutes} min`;
@@ -31,24 +34,33 @@ export function BrunoAgentsPage({ serverId }: { serverId: string | null }) {
 function IdlePeriodSettings({ serverId }: { serverId: string }) {
   const isConnected = useHostRuntimeIsConnected(serverId);
   const supported = useHostFeature(serverId, "idleRuntimeCleanupPeriodSetting");
+  // CUSTOM(idle-closed-tab)
+  const supportsClosedTab = useHostFeature(serverId, "idleRuntimeCleanupClosedTabSetting");
   const { config, patchConfig } = useDaemonConfig(serverId);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const minutes = config?.idleRuntimeCleanupMinutes ?? DEFAULT_PERIOD_MINUTES;
-  const options = useMemo(
-    () =>
-      PERIOD_PRESETS.includes(minutes)
-        ? PERIOD_PRESETS
-        : [...PERIOD_PRESETS, minutes].sort((a, b) => a - b),
-    [minutes],
-  );
 
-  const handleSelect = useCallback(
+  const saveOpenTab = useCallback(
     async (next: number) => {
       setPending(true);
       setFailure(null);
       try {
         await patchConfig({ idleRuntimeCleanupMinutes: next });
+      } catch (error) {
+        setFailure(toErrorMessage(error));
+      } finally {
+        setPending(false);
+      }
+    },
+    [patchConfig],
+  );
+  // CUSTOM(idle-closed-tab)
+  const saveClosedTab = useCallback(
+    async (next: number) => {
+      setPending(true);
+      setFailure(null);
+      try {
+        await patchConfig({ idleRuntimeCleanupClosedTabMinutes: next });
       } catch (error) {
         setFailure(toErrorMessage(error));
       } finally {
@@ -68,37 +80,80 @@ function IdlePeriodSettings({ serverId }: { serverId: string }) {
   }
 
   const releaseOff = config?.idleRuntimeCleanup === false;
-  const hint = `Stops an idle agent's process after this long and keeps its conversation. The on/off switch is in Host > Agents.${
-    releaseOff ? " Release is turned off on this host." : ""
-  }`;
+  const offNote = releaseOff ? " Release is turned off on this host." : "";
   return (
     <SettingsSection title="Agents">
       <SettingsCard testID="bruno-agents-idle-period">
-        <SettingsRow label="Release idle agents after" hint={hint}>
-          <DropdownMenu>
-            <DropdownTrigger
-              disabled={pending || !config}
-              accessibilityRole="button"
-              accessibilityLabel={`Release idle agents after: ${periodLabel(minutes)}`}
-              testID="bruno-agents-idle-period-trigger"
-            >
-              {periodLabel(minutes)}
-            </DropdownTrigger>
-            <DropdownMenuContent side="bottom" align="end" width={160}>
-              {options.map((option) => (
-                <PeriodOption
-                  key={option}
-                  minutes={option}
-                  selected={option === minutes}
-                  onSelect={handleSelect}
-                />
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </SettingsRow>
+        <PeriodRow
+          label="Release idle agents with an open tab after"
+          hint={`Stops an idle agent's process after this long and keeps its conversation. The on/off switch is in Host > Agents.${offNote}`}
+          minutes={config?.idleRuntimeCleanupMinutes ?? DEFAULT_PERIOD_MINUTES}
+          presets={PERIOD_PRESETS}
+          disabled={pending || !config}
+          onSelect={saveOpenTab}
+          testID="bruno-agents-idle-period-trigger"
+        />
+        {supportsClosedTab ? (
+          <PeriodRow
+            label="Release idle agents with no open tab after"
+            hint={`No tab open on any device. In normal mode, closing a tab already archives the agent, so this mostly applies to Tasks mode.${offNote}`}
+            minutes={config?.idleRuntimeCleanupClosedTabMinutes ?? DEFAULT_CLOSED_TAB_MINUTES}
+            presets={CLOSED_TAB_PRESETS}
+            disabled={pending || !config}
+            onSelect={saveClosedTab}
+            testID="bruno-agents-idle-closed-tab-trigger"
+          />
+        ) : null}
       </SettingsCard>
       {failure ? <Text style={settingsStyles.rowError}>{failure}</Text> : null}
     </SettingsSection>
+  );
+}
+
+function PeriodRow({
+  label,
+  hint,
+  minutes,
+  presets,
+  disabled,
+  onSelect,
+  testID,
+}: {
+  label: string;
+  hint: string;
+  minutes: number;
+  presets: readonly number[];
+  disabled: boolean;
+  onSelect: (minutes: number) => void;
+  testID: string;
+}) {
+  const options = useMemo(
+    () => (presets.includes(minutes) ? presets : [...presets, minutes].sort((a, b) => a - b)),
+    [presets, minutes],
+  );
+  return (
+    <SettingsRow label={label} hint={hint}>
+      <DropdownMenu>
+        <DropdownTrigger
+          disabled={disabled}
+          accessibilityRole="button"
+          accessibilityLabel={`${label}: ${periodLabel(minutes)}`}
+          testID={testID}
+        >
+          {periodLabel(minutes)}
+        </DropdownTrigger>
+        <DropdownMenuContent side="bottom" align="end" width={160}>
+          {options.map((option) => (
+            <PeriodOption
+              key={option}
+              minutes={option}
+              selected={option === minutes}
+              onSelect={onSelect}
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </SettingsRow>
   );
 }
 

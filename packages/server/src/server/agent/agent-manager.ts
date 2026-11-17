@@ -17,6 +17,8 @@ import {
 import {
   getParentAgentIdFromLabels,
   hasOpenAgentTab,
+  hasIdleOpenTab,
+  IDLE_TAB_LABEL_PREFIX,
   isDelegatedAgent,
   isOpenAgentTabLabel,
   PARENT_AGENT_ID_LABEL,
@@ -730,6 +732,14 @@ function getFirstUserMessageTextFromRows(rows: readonly AgentTimelineRow[]): str
     }
   }
   return null;
+}
+
+// CUSTOM(idle-closed-tab): the idle-open-tab label changes on every tab click. It must not bump
+// updatedAt: the Tasks sidebar sorts by it and shows its age, and the idle clock follows it.
+function isIdleTabLabelOnlyPatch(patch: { title?: string; labels?: AgentLabelPatch }): boolean {
+  if (patch.title || !patch.labels) return false;
+  const keys = Object.keys(patch.labels);
+  return keys.length > 0 && keys.every((key) => key.startsWith(IDLE_TAB_LABEL_PREFIX));
 }
 
 function shouldDetachFromArchivedParent(
@@ -1898,6 +1908,8 @@ export class AgentManager {
         provider: agent.provider,
         sessionId: agent.persistence?.sessionId ?? null,
         lastActivityAt: updatedAt.getTime(),
+        // CUSTOM(idle-closed-tab): live labels, so a tab opened or closed after capture counts.
+        hasOpenTab: () => hasIdleOpenTab(this.agents.get(agent.id)?.labels ?? agent.labels),
         isEligible,
         canStopRuntime: agent.session.canStopRuntime?.bind(agent.session),
         closeIfEligible: async (revalidate) => {
@@ -2343,7 +2355,8 @@ export class AgentManager {
     const liveAgent = this.agents.get(agentId);
     if (liveAgent) {
       liveAgent.labels = applyLabelPatch(liveAgent.labels, patch);
-      this.touchUpdatedAt(liveAgent);
+      // CUSTOM(idle-closed-tab)
+      if (!isIdleTabLabelOnlyPatch({ labels: patch })) this.touchUpdatedAt(liveAgent);
       await this.persistSnapshot(liveAgent);
       this.emitState(liveAgent, { persist: false });
       const record = this.registry ? await this.registry.get(agentId) : null;
@@ -2368,7 +2381,10 @@ export class AgentManager {
       ...record,
       ...(patch.title ? { title: patch.title } : {}),
       ...(patch.labels ? { labels: applyLabelPatch(record.labels, patch.labels) } : {}),
-      updatedAt: this.nextStoredUpdatedAt(record),
+      // CUSTOM(idle-closed-tab)
+      updatedAt: isIdleTabLabelOnlyPatch(patch)
+        ? record.updatedAt
+        : this.nextStoredUpdatedAt(record),
     };
     await registry.upsert(nextRecord);
     return nextRecord;
