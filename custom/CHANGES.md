@@ -6260,3 +6260,92 @@ src/task-navigation/idle-open-tab-labels.test.ts`. In the app it needs a daemon 
 "do not bump updatedAt"`. Needs a daemon restart: after `kill-paseos-and-daemons.sh`, idle Codex
   agents keep their old time in the Tasks sidebar. The resume itself still happens at connect, so
   the daemon log still shows "Agent resumed from persistence" for them.
+
+## search-expand-archived: "Expand search into archived" in the Search palette
+
+- **Added:** 2026-11-17
+- **Commit:** `eec81a5c1`
+- **Why:** Ctrl+K searches only the active agent directory, so an archived agent could never be
+  found from Search; you had to go to History.
+- **What:** With a query typed and the agent list loaded, the Agents section ends with an
+  "Expand search into archived" row (arrow keys + Enter like any row; the palette stays open).
+  Pressing it fetches archived sessions through `useAgentHistory` with the same query and lists
+  them after the active matches, with an "Archived" badge. Opening one opens its agent view (with
+  Unarchive). Nothing archived is fetched before the press; the expansion resets when the query
+  is cleared or the palette closes. The visibility and reset rules are pure functions in
+  `command-center/expand-archived.ts`.
+- **Core files touched:** `packages/app/src/command-center/command-center.tsx`
+  (`useBuiltInSections`, `useCommandCenterState`, `ExpandArchivedContent`, `AgentResultContent`
+  badge), `command-center/results.ts` (`expand-archived` result kind), the nine locale files in
+  `i18n/resources/` (`shell.commandCenter.expandArchived`). New files:
+  `command-center/expand-archived.ts` (+ test), `i18n/resources/custom-search-expand-archived.ts`.
+- **Re-apply:** Add the `expand-archived` result kind, append it to the `agents` section in
+  `useBuiltInSections` when `shouldOfferArchivedExpansion`, keep the palette open on select, and
+  merge `selectArchivedAgents(useAgentHistory({enabled, search}).agents, ...)` into that section.
+  Grep `CUSTOM(search-expand-archived)`.
+- **Verify:** `cd packages/app && npx vitest run src/command-center/expand-archived.test.ts`.
+  In the app (client-only): Ctrl+K, type part of an archived agent's title, press the row, see it
+  listed with an Archived badge; clear the query and retype: the row is back.
+
+## history-archived-tab: History splits into Active and Archived sub-tabs
+
+- **Added:** 2026-11-17
+- **Commit:** `eec81a5c1`
+- **Why:** The History panel loaded archived and unarchived agents together, which is the bulk of
+  the list and costs a large fetch on every open.
+- **What:** A segmented control (Active / Archived) at the top of the History panel. Active
+  (default) sends `filter.includeArchived: false`, so archived agents are never fetched. Archived
+  is fetched only once selected, with `filter.includeArchived: true` plus the new request field
+  `archivedOnly`, which the server applies before the cursor and page limit (pages are never
+  sparse). The search box is shared: the same query runs over whichever view is selected. The
+  selected view lives in module memory (per app session, default Active). A host without
+  `features.historyArchivedOnly` shows "Update this host to browse archived sessions." on the
+  Archived tab.
+- **Core files touched:** `packages/protocol/src/messages.ts` (`archivedOnly` on
+  `FetchAgentHistoryRequestMessageSchema`, `historyArchivedOnly` feature),
+  `packages/server/src/server/session.ts` (`listFetchAgentsEntries`),
+  `packages/server/src/server/websocket-server.ts` (feature flag),
+  `packages/client/src/daemon-client.ts` (`fetchAgentHistory` forwards it),
+  `packages/app/src/hooks/use-agent-history.ts` (`view`, `historyViewRequestParams`,
+  `isArchivedSupported`), `packages/app/src/screens/sessions-screen.tsx` (control).
+  Tests: `use-agent-history.test.ts`, `session.workspaces.test.ts`.
+- **Re-apply:** Add `archivedOnly` and the feature flag to the protocol; in
+  `listFetchAgentsEntries` treat it as `includeArchived` and filter `agents` by `archivedAt`
+  before the cursor. Pass a `view` through `useAgentHistory` into the request and query key, and
+  render a `SegmentedControl` in `SessionsScreenContent`. Grep `CUSTOM(history-archived-tab)`.
+- **Verify:** `cd packages/app && npx vitest run src/hooks/use-agent-history.test.ts` and
+  `cd packages/server && npx vitest run src/server/session.workspaces.test.ts -t
+"fetch_agent_history_request"`. Needs a daemon restart (new protocol field and feature flag): then
+  History opens on Active with no archived rows, and Archived lists only archived sessions.
+
+## auto-archive-closed: archive sessions that stay closed for days
+
+- **Added:** 2026-11-17
+- **Commit:** `eec81a5c1`
+- **Why:** Closed sessions (no runtime, released by idle cleanup or never loaded since boot) pile
+  up in the active lists. After a couple of days nobody is coming back to them soon.
+- **What:** The daemon archives an agent that is unarchived, has no runtime, and whose `updatedAt`
+  is older than `agents.autoArchiveClosedDays` (0 off, 1 to 365, default 2 when absent). It is
+  skipped while an idle-open-tab label is `true`, and while any unarchived descendant is live, open
+  in a tab, or recently active (archive cascades). An eligible parent is archived once and its
+  children ride the cascade. The sweep runs 10 min after boot (clients report open tabs first), then hourly, one agent at a time
+  through `AgentManager.archiveSnapshot` (stored-only archive: provider hook, cascade and client
+  events, but no workspace or worktree change). Each archive is logged with agent id and age.
+  Edited in Settings > Bruno's Customizations > Agents ("Auto-archive closed sessions after": Off,
+  1, 2, 3, 7, 14, 30 days). Gated by the `autoArchiveClosedSetting` server_info feature. The
+  setting applies on the next sweep.
+- **Core files touched:** `packages/protocol/src/messages.ts` (config, patch, feature),
+  `packages/server/src/server/persisted-config.ts`, `config.ts`, `daemon-config-store.ts`,
+  `bootstrap.ts` (creates and closes the sweep), `websocket-server.ts` (feature flag),
+  `packages/app/src/screens/settings/bruno-customizations/agents-page.tsx`,
+  `docs/agent-lifecycle.md`. New files: `packages/server/src/server/agent/auto-archive-closed/`
+  (`index.ts`, `auto-archive-closed.test.ts`).
+- **Re-apply:** Mirror the `idleRuntimeCleanupMinutes` plumbing for `autoArchiveClosedDays`, create
+  `createAutoArchiveClosed` in bootstrap after the idle cleanup (records from `agentStorage.list()`,
+  live from `agentManager.getAgent`, archive with `agentManager.archiveSnapshot`) and close it on
+  shutdown. Grep `CUSTOM(auto-archive-closed)`.
+- **Verify:** `cd packages/server && npx vitest run
+src/server/agent/auto-archive-closed/auto-archive-closed.test.ts
+src/server/daemon-config-store.test.ts`. In the app it needs a daemon restart (new protocol field
+  and feature flag): then the daemon log shows "Auto-archived closed agent" about 10 minutes after
+  boot for sessions closed longer than the setting, and they appear in History > Archived.
