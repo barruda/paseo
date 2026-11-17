@@ -17,6 +17,11 @@ export const DESK_SURFACES: readonly DeskSurfaceDefinition[] = [
     identity: { kind: "sidebar", id: "power-workboard" },
   },
   {
+    id: "projects-assistant-chat",
+    label: "Projects Assistant",
+    identity: { kind: "surface", id: "projects-assistant-chat" },
+  },
+  {
     id: "projects-dashboard",
     label: "Projects Dashboard",
     identity: { kind: "surface", id: "projects-dashboard" },

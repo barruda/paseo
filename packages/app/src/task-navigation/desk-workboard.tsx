@@ -169,6 +169,12 @@ function Board({
   const navigation = useMemo(
     () => ({
       ...hostNavigation,
+      // CUSTOM(projects-assistant): opening an agent returns to the Desk even when that agent's
+      // tab is already the active one (then the tab-change deselect would not fire).
+      openAgent: (input: Parameters<typeof hostNavigation.openAgent>[0]) => {
+        hostNavigation.openAgent(input);
+        useDeskWorkboardStore.getState().deselect();
+      },
       openDeskSurface: (id: string) => useDeskWorkboardStore.getState().reopen(id),
     }),
     [hostNavigation],

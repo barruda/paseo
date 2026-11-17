@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   assistantSettingsResponseSchema,
+  chatSettingsValid,
   clampAutoFixes,
+  patchChatSettings,
   patchProjectPolicy,
   resetProjectPolicy,
   setProjectAction,
@@ -18,7 +20,24 @@ describe("projects assistant settings model", () => {
       enabled: true,
       defaultAction: "notify",
       projects: {},
+      chat: {
+        provider: "claude/claude-opus-5-5",
+        thinkingOptionId: "high",
+        modeId: "bypassPermissions",
+      },
     });
+  });
+
+  it("edits the chat settings, empty thinking and mode meaning the provider default", () => {
+    const base = assistantSettingsSchema.parse({});
+    const edited = patchChatSettings(base, {
+      provider: " codex/gpt-5 ",
+      thinkingOptionId: "",
+      modeId: "",
+    });
+    expect(edited.chat).toEqual({ provider: "codex/gpt-5", thinkingOptionId: null, modeId: null });
+    expect(chatSettingsValid(edited)).toBe(true);
+    expect(chatSettingsValid(patchChatSettings(base, { provider: "" }))).toBe(false);
   });
 
   it("rejects merge as the default action", () => {

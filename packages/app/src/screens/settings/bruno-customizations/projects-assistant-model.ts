@@ -18,10 +18,19 @@ export const projectPolicySchema = z.object({
 });
 export type ProjectPolicy = z.infer<typeof projectPolicySchema>;
 
+export const assistantChatSettingsSchema = z.object({
+  /** `provider/model`. */
+  provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
+  thinkingOptionId: z.string().trim().min(1).nullable().default("high"),
+  modeId: z.string().trim().min(1).nullable().default("bypassPermissions"),
+});
+export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
+
 export const assistantSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   defaultAction: defaultActionSchema.default("notify"),
   projects: z.record(z.string(), projectPolicySchema).default({}),
+  chat: assistantChatSettingsSchema.default(() => assistantChatSettingsSchema.parse({})),
 });
 export type AssistantSettings = z.infer<typeof assistantSettingsSchema>;
 export type AssistantAction = z.infer<typeof actionSchema>;
@@ -94,6 +103,23 @@ export function resetProjectPolicy(
   const projects = { ...settings.projects };
   delete projects[projectId];
   return { ...settings, projects };
+}
+
+/** Empty thinking/mode means the provider's default (null); an empty model keeps the saved one. */
+export function patchChatSettings(
+  settings: AssistantSettings,
+  patch: { provider?: string; thinkingOptionId?: string; modeId?: string },
+): AssistantSettings {
+  const chat = { ...settings.chat };
+  if (patch.provider !== undefined) chat.provider = patch.provider.trim();
+  if (patch.thinkingOptionId !== undefined)
+    chat.thinkingOptionId = patch.thinkingOptionId.trim() || null;
+  if (patch.modeId !== undefined) chat.modeId = patch.modeId.trim() || null;
+  return { ...settings, chat };
+}
+
+export function chatSettingsValid(settings: AssistantSettings): boolean {
+  return assistantChatSettingsSchema.safeParse(settings.chat).success;
 }
 
 export function clampAutoFixes(value: number): number {

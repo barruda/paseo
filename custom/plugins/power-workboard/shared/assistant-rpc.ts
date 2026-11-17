@@ -86,3 +86,13 @@ export const assistantActionRpc = defineRpc({
   input: assistantActionInputSchema,
   output: z.object({ ok: z.literal(true) }),
 });
+
+/**
+ * Opens the Projects Assistant chat: returns the current chat agent, creating one when there is
+ * none, it is archived or gone, or `fresh` asks for a new conversation.
+ */
+export const assistantChatOpenRpc = defineRpc({
+  name: "workboard.assistant.chat.open",
+  input: z.object({ fresh: z.boolean().default(false) }),
+  output: z.object({ agentId: z.string(), created: z.boolean() }),
+});

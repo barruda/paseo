@@ -38,12 +38,25 @@ export const projectPolicySchema = z.object({
 });
 export type ProjectPolicy = z.infer<typeof projectPolicySchema>;
 
+/** The agent behind the Projects Assistant chat (a real Paseo agent with board tools). */
+export const assistantChatSettingsSchema = z.object({
+  /** `provider/model`. */
+  provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
+  thinkingOptionId: z.string().trim().min(1).nullable().default("high"),
+  /** It only uses the board's tools and runs in an empty folder, so it doesn't stop to ask. */
+  modeId: z.string().trim().min(1).nullable().default("bypassPermissions"),
+});
+export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
+
 export const assistantSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   /** For projects with no policy of their own. */
   defaultAction: assistantDefaultActionSchema.default("notify"),
   /** Keyed by project id. */
   projects: z.record(z.string(), projectPolicySchema).default({}),
+  chat: assistantChatSettingsSchema.default(() =>
+    assistantChatSettingsSchema.parse({}),
+  ),
 });
 export type AssistantSettings = z.infer<typeof assistantSettingsSchema>;
 
@@ -159,6 +172,8 @@ export const assistantDataSchema = z.object({
   deliveries: z.record(z.string(), deliverySchema).default({}),
   /** Keyed by task id, oldest first. */
   attempts: z.record(z.string(), z.array(attemptSchema)).default({}),
+  /** The current Projects Assistant chat agent; a new conversation replaces it. */
+  chatAgentId: z.string().nullable().default(null),
 });
 export type AssistantData = z.infer<typeof assistantDataSchema>;
 

@@ -24,6 +24,8 @@ import {
   MAX_AUTO_FIXES,
   actionNeedsGit,
   assistantSettingsResponseSchema,
+  chatSettingsValid,
+  patchChatSettings,
   patchProjectPolicy,
   policyActs,
   resetProjectPolicy,
@@ -118,6 +120,17 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
       setDraft((current) => (current ? { ...current, defaultAction } : current)),
     [],
   );
+  const handleChat = useCallback(
+    (patch: Parameters<typeof patchChatSettings>[1]) =>
+      setDraft((current) => (current ? patchChatSettings(current, patch) : current)),
+    [],
+  );
+  const handleModel = useCallback((provider: string) => handleChat({ provider }), [handleChat]);
+  const handleThinking = useCallback(
+    (thinkingOptionId: string) => handleChat({ thinkingOptionId }),
+    [handleChat],
+  );
+  const handleMode = useCallback((modeId: string) => handleChat({ modeId }), [handleChat]);
   const handleProjectChange = useCallback(
     (update: (settings: AssistantSettings) => AssistantSettings) =>
       setDraft((current) => (current ? update(current) : current)),
@@ -171,6 +184,30 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               onValueChange={handleDefaultAction}
             />
           </SettingsCard>
+          <Text style={settingsStyles.sectionHeaderTitle}>Chat</Text>
+          <SettingsCard testID="projects-assistant-chat">
+            <SettingsInput
+              label="Model"
+              hint="Used for new conversations"
+              initialValue={draft.chat.provider}
+              onChangeText={handleModel}
+              placeholder="claude/claude-opus-5-5"
+            />
+            <SettingsInput
+              label="Thinking"
+              hint="Empty uses the provider's default."
+              initialValue={draft.chat.thinkingOptionId ?? ""}
+              onChangeText={handleThinking}
+              placeholder="high"
+            />
+            <SettingsInput
+              label="Mode"
+              hint="It only uses the board's tools, in an empty folder"
+              initialValue={draft.chat.modeId ?? ""}
+              onChangeText={handleMode}
+              placeholder="bypassPermissions"
+            />
+          </SettingsCard>
           <Text style={settingsStyles.sectionHeaderTitle}>Per project</Text>
           {load.saved.projects.length === 0 ? (
             <Text style={settingsStyles.rowHint}>This host has no projects yet.</Text>
@@ -191,7 +228,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               variant="default"
               size="sm"
               onPress={handleSavePress}
-              disabled={saving || !dirty}
+              disabled={saving || !dirty || !chatSettingsValid(draft)}
               testID="projects-assistant-save"
             >
               {saving ? "Saving…" : "Save"}

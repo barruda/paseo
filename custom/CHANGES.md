@@ -3059,8 +3059,9 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   Desks, without leaving them.
 - **What:** In Tasks mode the header shows one chip per plugin surface that a connected host has
   (the local daemon's copy first), before the Desk chips, in this order: **Power Workboard**
-  (`sidebar` identity `power-workboard`), **Projects Dashboard** and **Projects Conversations**
-  (`surface` identities of the same ids). Clicking a chip shows that surface under the Desk
+  (`sidebar` identity `power-workboard`), **Projects Assistant**, **Projects Dashboard** and
+  **Projects Conversations** (`surface` identities `projects-assistant-chat`,
+  `projects-dashboard`, `projects-conversations`). Clicking a chip shows that surface under the Desk
   header; at most one is selected, and the Desk stays mounted underneath, hidden, so its tabs
   keep their state. Clicking a Desk chip, switching Desks or opening another tab (a task in the
   sidebar, or a workspace/agent a surface opens) returns to the Desk. Each chip's × or
@@ -6443,7 +6444,8 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     push or open PRs and to end with `<report>{json}</report>` (status done / blocked /
     needs_input / failed, summary, files, checks, risks, question). The reviewer's summary is the
     reply without that block. No valid report means "Needs you".
-  - **Delivery per project** (Settings > Bruno's Customizations > Projects Assistant): Merge,
+  - **Delivery per project** (Settings > Bruno's Customizations > Projects Assistant, which also has a **Chat** section for
+    the assistant chat's model, thinking and mode, used by new conversations): Merge,
     Prepare PR, Tell me (default) or Nothing. **Merge is never a default**; it runs only in a
     project where it was chosen. Merge: optional check command in the worktree (a failure goes
     back to the same agent up to the project's auto-fix count), commit, then `checkout_merge` into
@@ -6464,7 +6466,12 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     agents it started (never their subagents), the selected agent's conversation read through the
     timeline API (plugins cannot embed the real chat), report card, attempts, the orchestrator's
     log for the task, a composer and quick actions; Open in Desk opens the real chat.
-  - **Tasks mode only:** both pages are chips in the Desk header next to Power Workboard (see
+  - **Projects Assistant chat** (surface `projects-assistant-chat`): a real Paseo agent (model,
+    thinking and mode from the page's Chat section, default `claude/claude-opus-5-5`, `high`,
+    `bypassPermissions`) that uses the board's tools; its chip calls an RPC and then
+    `navigation.openAgent`, which opens the agent as a Desk tab and returns from the chip to the
+    Desk (the Desk's navigation wrapper deselects the chip even if that tab was already active).
+  - **Tasks mode only:** the pages are chips in the Desk header next to Power Workboard (see
     [desk-workboard](#desk-workboard-the-power-workboard-plugins-surfaces-as-tabs-beside-the-desks)); no sidebar item
     or workspace tab. The Desk passes `navigation.openDeskSurface(id)` so the dashboard can jump
     to a conversation.
@@ -6479,7 +6486,7 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   complexity limit), `utils/host-routes.ts` (slug `customizations-projects-assistant`),
   `screens/settings/settings-search-index.ts` (search terms), the desk-workboard files, and
   `header-shortcuts/{fit.ts,strip.tsx,layout.tsx}` (a `leftReservePx` the Desk header passes from
-  its chips' estimated width, so shortcut hints drop out before they overlap three surface chips).
+  its chips' estimated width, so shortcut hints drop out before they overlap the surface chips).
 - **Re-apply:** plugin-only except the Settings page and the Desk chips; for those add the slug,
   the `BRUNO_SECTION_ITEMS` entry and the `renderBrunoSection` case, and follow desk-workboard's
   Re-apply.
@@ -6487,5 +6494,5 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts src/screens/settings/bruno-customizations/projects-assistant-model.test.ts --bail=1)`
   (both in the update script). In the app: Settings > Bruno's Customizations > Projects Assistant
   lists the board's projects and keeps a saved rule after reload; in Tasks mode the Desk header
-  shows Power Workboard, Projects Dashboard and Projects Conversations chips; a task finished by an
+  shows Power Workboard, Projects Assistant, Projects Dashboard and Projects Conversations chips; a task finished by an
   orchestrator shows in Needs you with its report.
