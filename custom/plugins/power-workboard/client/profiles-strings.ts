@@ -1,0 +1,106 @@
+// CUSTOM(agent-profiles): strings of the profile editor (agent pickers, skills, prompt, memory).
+import type { Language } from "./strings";
+
+const zh = {
+  assistantName: "Projects Assistant",
+  assistantHint:
+    "助手聊天的配置档案：模型、系统提示、技能和记忆。只影响新的对话。",
+  assistantLoadFailed: "无法读取助手设置",
+  provider: "提供方",
+  model: "模型",
+  mode: "模式",
+  thinking: "思考强度",
+  providerDefault: "默认",
+  catalogFailed: "无法读取 Paseo 的模型目录，改为手动输入。",
+  catalogLoading: "正在读取模型目录…",
+  freeProvider: "提供方/模型",
+  freeMode: "模式",
+  freeThinking: "思考强度",
+  skills: "技能",
+  skillsAll: "全部",
+  skillsHint: "决定新 agent 能看到哪些技能。只影响新的 agent。",
+  allSkills: "全部技能",
+  allSkillsHint: "关闭后可只选择部分技能。",
+  searchSkills: "搜索技能",
+  groupProfile: "此配置档案",
+  groupPersonal: "个人技能",
+  groupPlugins: "已安装的插件",
+  fromProfile: "来自此配置档案",
+  noSkills: "没有技能",
+  skillsLoadFailed: "无法读取技能列表",
+  nonClaude: "技能和记忆只对 Claude 生效；其他提供方只使用系统提示。",
+  systemPrompt: "系统提示",
+  systemPromptHint:
+    "追加到 agent 的系统提示。随表单的保存按钮一起保存，只影响新的 agent，已有 agent 保持创建时的设置。",
+  systemPromptPlaceholder: "留空则不追加",
+  promptLoading: "正在读取…",
+  promptLoadFailed: "无法读取系统提示",
+  memory: "记忆",
+  memoryHint: "开启后 Claude 把自动记忆写入下面的文件夹。只影响新的 agent。",
+  memoryFolder: "记忆文件夹",
+  profileFolder: "配置档案文件夹",
+  profileFolderHint:
+    "这个文件夹是一个 Claude Code 插件：自己的技能放在 skills/<名称>/SKILL.md。删除编排器不会删除它。",
+  copy: "复制",
+  copied: "已复制",
+  copyFailed: "无法复制",
+  instructionsHint: "加在每个任务的第一条消息前面；与系统提示不同。",
+  save: "保存",
+  saveFailed: "保存失败",
+  done: "完成",
+};
+const en: typeof zh = {
+  assistantName: "Projects Assistant",
+  assistantHint:
+    "The assistant chat's profile: model, system prompt, skills and memory. Affects new conversations only.",
+  assistantLoadFailed: "Could not read the assistant's settings",
+  provider: "Provider",
+  model: "Model",
+  mode: "Mode",
+  thinking: "Thinking",
+  providerDefault: "Default",
+  catalogFailed:
+    "Could not load Paseo's model catalog, so these are free text.",
+  catalogLoading: "Loading the model catalog…",
+  freeProvider: "provider/model",
+  freeMode: "Mode",
+  freeThinking: "Thinking",
+  skills: "Skills",
+  skillsAll: "All",
+  skillsHint: "Which skills a new agent sees. Affects new agents only.",
+  allSkills: "All skills",
+  allSkillsHint: "Turn off to pick only some.",
+  searchSkills: "Search skills",
+  groupProfile: "This profile",
+  groupPersonal: "Personal",
+  groupPlugins: "Installed plugins",
+  fromProfile: "from this profile",
+  noSkills: "No skills",
+  skillsLoadFailed: "Could not read the skill list",
+  nonClaude:
+    "Skills and memory only apply to Claude; other providers only get the system prompt.",
+  systemPrompt: "System prompt",
+  systemPromptHint:
+    "Appended to the agent's system prompt. Saved with the form's Save; only new agents get it, existing agents keep what they were created with.",
+  systemPromptPlaceholder: "Empty adds nothing",
+  promptLoading: "Loading…",
+  promptLoadFailed: "Could not read the system prompt",
+  memory: "Memory",
+  memoryHint:
+    "Claude keeps its auto-memory in the folder below. Affects new agents only.",
+  memoryFolder: "Memory folder",
+  profileFolder: "Profile folder",
+  profileFolderHint:
+    "This folder is a Claude Code plugin: the profile's own skills go in skills/<name>/SKILL.md. Deleting the orchestrator does not delete it.",
+  copy: "Copy",
+  copied: "Copied",
+  copyFailed: "Could not copy",
+  instructionsHint:
+    "Added to the task's first message, before it; not the system prompt.",
+  save: "Save",
+  saveFailed: "Could not save",
+  done: "Done",
+};
+export const profileStrings = (language: Language) =>
+  language === "en" ? en : zh;
+export type ProfileStrings = ReturnType<typeof profileStrings>;

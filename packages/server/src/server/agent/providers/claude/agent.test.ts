@@ -936,6 +936,70 @@ describe("ClaudeAgentSession features", () => {
     await session.close();
   });
 
+  // CUSTOM(agent-profiles)
+  describe("agent profile provider options", () => {
+    const profile = {
+      plugins: [{ type: "local" as const, path: "/profiles/a" }],
+      skills: ["a:review"],
+      settings: { autoMemoryDirectory: "/profiles/a/memory" },
+    };
+
+    test("passes plugins, skills and autoMemoryDirectory to the SDK", async () => {
+      const { queryFactory, launches } = createQueryMock();
+      const client = new ClaudeAgentClient({
+        logger,
+        queryFactory,
+        resolveBinary: async () => "/test/claude/bin",
+      });
+      const session = await client.createSession({
+        provider: "claude",
+        cwd: process.cwd(),
+        providerOptions: profile,
+      });
+      await session.startTurn("hello");
+      expect(launches[0]?.options.plugins).toEqual(profile.plugins);
+      expect(launches[0]?.options.skills).toEqual(["a:review"]);
+      expect(launches[0]?.options.settings).toMatchObject({
+        autoMemoryDirectory: "/profiles/a/memory",
+      });
+      await session.close();
+    });
+
+    test("keeps them after a restart: stored record config -> resumeSession overrides", async () => {
+      const { queryFactory, launches } = createQueryMock();
+      const client = new ClaudeAgentClient({
+        logger,
+        queryFactory,
+        resolveBinary: async () => "/test/claude/bin",
+      });
+      const stored = JSON.parse(JSON.stringify({ providerOptions: profile }));
+      const handle = {
+        provider: "claude",
+        sessionId: "sess-1",
+        nativeHandle: "sess-1",
+        metadata: { provider: "claude", cwd: process.cwd() },
+      };
+      const session = await client.resumeSession(handle, {
+        cwd: process.cwd(),
+        providerOptions: stored.providerOptions,
+      });
+      await session.startTurn("hello");
+      expect(launches[0]?.options.plugins).toEqual(profile.plugins);
+      expect(launches[0]?.options.skills).toEqual(["a:review"]);
+      expect(launches[0]?.options.settings).toMatchObject(profile.settings);
+      await session.close();
+
+      // Metadata-carried providerOptions are also restored.
+      const viaMetadata = await client.resumeSession(
+        { ...handle, metadata: { ...handle.metadata, providerOptions: profile } },
+        { cwd: process.cwd() },
+      );
+      await viaMetadata.startTurn("hello");
+      expect(launches[1]?.options.plugins).toEqual(profile.plugins);
+      await viaMetadata.close();
+    });
+  });
+
   test("lists fast mode only for supported Opus models", async () => {
     const client = new ClaudeAgentClient({ logger, resolveBinary: async () => "/test/claude/bin" });
 

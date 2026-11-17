@@ -6573,3 +6573,44 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   and the plugin suite (both in the update script). Needs a daemon restart. In the app: a board
   task whose agent delegates to a background subagent stays In progress until the agent's final
   turn, then shows its report.
+
+## agent-profiles: orchestrators and the Projects Assistant get their own prompt, skills and memory
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Power Workboard agent profiles (system prompt, skills, memory)`
+- **Why:** Every orchestrator agent and the Projects Assistant chat ran with the same global
+  setup. Their memory was keyed by cwd, and task agents run in a new worktree each time, so
+  nothing they learned reached the next task. The assistant's role was a first chat message, not
+  a system prompt.
+- **What:**
+  - Daemon: Claude's `providerOptions` accept `plugins` (`[{type:"local", path}]`), `skills` (an
+    allowlist, or `"all"`) and `settings.autoMemoryDirectory`, passed to the Agent SDK as is.
+  - Plugin: settings (skills mode and names, memory on/off) live in the board store, on each
+    orchestrator and on `assistant.settings.chat`. Content lives in
+    `<PASEO_HOME>/plugin-data/power-workboard/profiles/<orchestrator id | assistant>/`, a Claude
+    Code plugin folder: `.claude-plugin/plugin.json` (name fixed at creation), `skills/` (own
+    skills, `<plugin-name>:<skill>`), `memory/` (auto-memory) and `system-prompt.md` (appended to
+    the system prompt). Folders are created lazily and never deleted by the plugin, not even with
+    their orchestrator. The assistant's file is seeded with its role; its first message is now
+    only "reply that you're ready".
+  - A new agent of the profile (task start, a continuation that starts a new agent, the assistant
+    chat) gets the prompt, the plugin folder, the skill allowlist (selected skills plus the
+    profile's own) and the memory folder. Other providers get the prompt only. A profile change
+    affects new agents only.
+  - UI: the orchestrator editor picks provider/model, mode and thinking from the daemon's catalog,
+    has a Skills chip in the style of the composer's Skills/MCPs pill (All skills, or a selection
+    from the profile's, personal and installed-plugin skills), the system prompt, a memory switch
+    and the folder paths. A fixed **Projects Assistant** entry at the top of the Orchestrators
+    list opens the same editor for the assistant (no project or schedule).
+- **Core files touched:** `packages/server/src/server/agent/providers/claude/options.ts`
+  (`ClaudeProviderOptionsSchema`, `CUSTOM(agent-profiles)`). App:
+  `projects-assistant-model.ts` mirrors the two new chat fields.
+- **Gotcha:** the skill list does not include a project's own `.claude/skills`; with a selection,
+  those are hidden from the agent unless named.
+- **Re-apply:** add the three fields to the Claude provider options schema; the SDK option builder
+  already spreads `providerOptions`. The rest is plugin-only.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent/provider-options.test.ts --bail=1)`
+  and the plugin suite (`tests/profiles.test.ts`), both in the update script. Needs a daemon
+  restart. In the app: Power Workboard > Orchestrators shows Projects Assistant first; an edited
+  system prompt lands in `profiles/<id>/system-prompt.md`; a new task agent lists the profile
+  plugin's skills.

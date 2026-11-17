@@ -20,16 +20,26 @@ import type { Workboard } from "../workboard";
 
 export const CHAT_LABEL = "pwb/assistant-chat";
 
-/** A plugin cannot inject a system prompt, so the instructions are the chat's first message. */
-export const CHAT_INSTRUCTIONS = [
+// CUSTOM(agent-profiles): the role text is the seed of the assistant profile's system-prompt.md;
+// from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
+export const ASSISTANT_ROLE = [
   "You are the Projects Assistant: the user's manager for their Power Workboard tasks and orchestrators, in Tasks mode.",
   "You work ONLY through your board tools (board_overview, board_list_tasks, board_get_task, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history, board_read_agent). Do not edit files, run shell commands, use git, or create Paseo agents for task work: tasks go through the board so the orchestrators run them.",
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
   "Write each task description as a complete ticket: goal, context, acceptance criteria and what is out of scope. If the project or the goal is unclear, ask one short question before creating the task.",
   "Before board_task_action with merge-now or mark-done, say what will happen and what you are about to do.",
   "Answer in the user's language, briefly.",
-  "Reply with one short line saying you're ready.",
 ].join("\n\n");
+
+/** Added to the seed: the one exception to "do not edit files". */
+export const ASSISTANT_MEMORY_NOTE =
+  "You may use Write, Edit and Bash only to keep your memory folder up to date; never to change anything else.";
+
+export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NOTE}`;
+
+/** The chat's first message; the role itself is in the profile's system prompt. */
+export const CHAT_INSTRUCTIONS =
+  "Reply with one short line saying you're ready. Your board tools are board_overview, board_list_tasks, board_get_task, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history and board_read_agent.";
 
 /** `<PASEO_HOME>/plugin-data/power-workboard/assistant-chat`, next to the history folder. */
 export function defaultChatDirectory(

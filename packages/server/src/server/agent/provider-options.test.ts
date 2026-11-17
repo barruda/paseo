@@ -74,6 +74,30 @@ describe("provider-owned option schemas", () => {
     });
   });
 
+  // CUSTOM(agent-profiles)
+  test("accepts Claude plugins, skills and settings.autoMemoryDirectory", () => {
+    const options = {
+      plugins: [{ type: "local", path: "/p/a" }],
+      skills: ["a:review"],
+      settings: { autoMemoryDirectory: "/p/a/memory" },
+    };
+    expect(validateProviderOptions("claude", ClaudeProviderOptionsSchema, options)).toEqual(
+      options,
+    );
+    expect(ClaudeProviderOptionsSchema.parse({ skills: "all" })).toEqual({ skills: "all" });
+  });
+
+  test.each([
+    { plugins: [{ type: "remote", path: "/p" }] },
+    { plugins: [{ type: "local" }] },
+    { plugins: [{ type: "local", path: "/p", extra: 1 }] },
+    { skills: "some" },
+    { skills: [1] },
+    { settings: { autoMemoryDirectory: 5 } },
+  ])("rejects invalid Claude profile options: %j", (options) => {
+    expect(() => validateProviderOptions("claude", ClaudeProviderOptionsSchema, options)).toThrow();
+  });
+
   test.each([true, 42, ["x"]])("rejects invalid Claude extra argument values: %j", (value) => {
     expect(() =>
       validateProviderOptions("claude", ClaudeProviderOptionsSchema, {

@@ -59,11 +59,22 @@ import {
 } from "../shared/assistant";
 import { parseReport } from "./assistant/report";
 import {
+  ASSISTANT_SEED_PROMPT,
   CHAT_INSTRUCTIONS,
   CHAT_LABEL,
   defaultChatDirectory,
 } from "./assistant/chat";
 import { mkdir } from "node:fs/promises";
+// CUSTOM(agent-profiles)
+import { ASSISTANT_PROFILE, type SkillSelection } from "../shared/profiles";
+import {
+  Profiles,
+  buildAgentProfile,
+  defaultProfilesDirectory,
+  type AgentProfile,
+  type ProfileRef,
+} from "./profiles";
+import { listSkills } from "./profile-skills";
 import {
   KeyedLock,
   classifyMergeError,
@@ -99,6 +110,8 @@ export interface AssistantOptions {
   retryDelaysMs?: number[];
   /** Folder the chat agent works in; defaults to the plugin-data folder. */
   chatDirectory?: string;
+  /** CUSTOM(agent-profiles): where the profiles live; defaults to the plugin-data folder. */
+  profilesDirectory?: string;
 }
 type AttemptOutcome = Attempt["outcome"]; // CUSTOM(projects-assistant)
 /** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
@@ -207,6 +220,67 @@ export class Workboard {
     private interval = 60000,
     private assistantOptions: AssistantOptions = {}, // CUSTOM(projects-assistant)
   ) {}
+  // CUSTOM(agent-profiles)
+  private profilesStore?: Profiles;
+  private get profiles(): Profiles {
+    return (this.profilesStore ??= new Profiles(
+      this.assistantOptions.profilesDirectory ?? defaultProfilesDirectory(),
+    ));
+  }
+  private profileRef(profile: string): ProfileRef {
+    if (profile === ASSISTANT_PROFILE)
+      return {
+        id: ASSISTANT_PROFILE,
+        label: "Projects Assistant",
+        seedPrompt: ASSISTANT_SEED_PROMPT,
+      };
+    return {
+      id: this.orchestratorConfig(profile).id,
+      label: this.orchestratorConfig(profile).name,
+    };
+  }
+  async profileView(profile: string) {
+    return this.profiles.read(this.profileRef(profile));
+  }
+  async setProfilePrompt(profile: string, text: string) {
+    return this.profiles.setSystemPrompt(this.profileRef(profile), text);
+  }
+  async profileSkills(profile: string) {
+    const { directory, pluginName } = await this.profiles.ensure(
+      this.profileRef(profile),
+    );
+    return listSkills({ profileDirectory: directory, pluginName });
+  }
+  /**
+   * The system prompt and provider options a new agent of this profile starts with. A profile
+   * that cannot be read must not stop a task, so the agent then starts without one.
+   */
+  private async agentProfile(
+    ref: ProfileRef,
+    provider: string,
+    skills: SkillSelection,
+    memory: boolean,
+  ): Promise<AgentProfile> {
+    try {
+      return buildAgentProfile({
+        provider,
+        profile: await this.profiles.read(ref),
+        skills,
+        memory,
+      });
+    } catch (error) {
+      console.error(`Profile ${ref.id} could not be read:`, message(error));
+      return {};
+    }
+  }
+  private orchestratorProfile(config: OrchestratorConfig) {
+    return this.agentProfile(
+      { id: config.id, label: config.name },
+      config.provider,
+      config.skills,
+      config.memory,
+    );
+  }
   // CUSTOM(projects-assistant)
   private delivering = new Set<string>();
   private retryAt = new Map<string, number>();
@@ -2507,6 +2581,13 @@ export class Workboard {
       await mkdir(directory, { recursive: true });
       const chat = assistant.settings.chat;
       const agentId = await this.host.startAgentIn(directory, {
+        // CUSTOM(agent-profiles)
+        ...(await this.agentProfile(
+          this.profileRef(ASSISTANT_PROFILE),
+          chat.provider,
+          chat.skills,
+          chat.memory,
+        )),
         provider: chat.provider,
         modeId: chat.modeId,
         thinkingOptionId: chat.thinkingOptionId,
@@ -2987,6 +3068,7 @@ export class Workboard {
         workspaceId: task.workspaceId,
       });
       const agentId = await this.host.startAgent(task.workspaceId, {
+        ...(await this.orchestratorProfile(config)), // CUSTOM(agent-profiles)
         provider: config.provider,
         modeId: config.modeId,
         thinkingOptionId: config.thinkingOptionId,
@@ -3058,6 +3140,7 @@ export class Workboard {
         );
       else
         agentId = await this.host.startAgent(task.workspaceId!, {
+          ...(await this.orchestratorProfile(settings)), // CUSTOM(agent-profiles)
           provider: settings.provider,
           modeId: settings.modeId,
           thinkingOptionId: settings.thinkingOptionId,

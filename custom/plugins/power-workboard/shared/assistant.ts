@@ -6,6 +6,7 @@
 // settings schemas). Ideas taken from deepseek-ai/dsh-superagent: a structured report instead of
 // reading free text, an observe mode, delivery owned by the assistant and not by the task's agent.
 import { z } from "zod";
+import { skillSelectionSchema } from "./profiles";
 
 /** What happens to a task's work when its agent finishes with a `done` report. */
 export const ASSISTANT_ACTIONS = [
@@ -45,6 +46,9 @@ export const assistantChatSettingsSchema = z.object({
   thinkingOptionId: z.string().trim().min(1).nullable().default("high"),
   /** It only uses the board's tools and runs in an empty folder, so it doesn't stop to ask. */
   modeId: z.string().trim().min(1).nullable().default("bypassPermissions"),
+  // CUSTOM(agent-profiles): the assistant's profile settings; its content is in the profile folder.
+  skills: skillSelectionSchema.default(() => skillSelectionSchema.parse({})),
+  memory: z.boolean().default(true),
 });
 export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
 

@@ -68,6 +68,7 @@ import {
 import { FilterPanel } from "./FilterPanel";
 import {
   newOrchestrator,
+  ASSISTANT_TAB,
   OrchestratorsPanel,
   OrchestratorTab,
   WorkboardTabs,
@@ -75,6 +76,7 @@ import {
 import { QuickCreate } from "./QuickCreate";
 import { HintButton, HintProvider } from "./Hint";
 import { usePaseoLanguage } from "./paseo-language";
+import { AssistantProfileTab } from "./Profiles"; // CUSTOM(agent-profiles)
 import { ConfirmationModal } from "./ConfirmationModal";
 // CUSTOM(workboard-images)
 import { DescriptionImages } from "./DescriptionImages";
@@ -352,8 +354,9 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       t={t}
       theme={props.theme}
       tab={tab}
-      open={openOrchestrators.filter((id) =>
-        board.orchestrators.some((o) => o.id === id),
+      open={openOrchestrators.filter(
+        (id) =>
+          id === ASSISTANT_TAB || board.orchestrators.some((o) => o.id === id),
       )}
       onSelect={setTab}
       onClose={closeOrchestrator}
@@ -392,6 +395,8 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               if (created) openOrchestrator(created.id);
             }}
           />
+        ) : tab === ASSISTANT_TAB ? (
+          <AssistantProfileTab theme={props.theme} disabled={writesDisabled} /> // CUSTOM(agent-profiles)
         ) : (
           <OrchestratorTab
             key={tab}

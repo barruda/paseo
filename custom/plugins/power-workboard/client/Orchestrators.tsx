@@ -17,10 +17,17 @@ import { ConfirmationModal } from "./ConfirmationModal";
 import { HintButton } from "./Hint";
 import type { strings } from "./strings";
 import { toggleButtonState } from "./web";
+// CUSTOM(agent-profiles)
+import { AgentFields, ProfileFields, useProfileContent } from "./Profiles";
+import { usePaseoLanguage } from "./paseo-language";
+import { profileStrings } from "./profiles-strings";
+import { ASSISTANT_PROFILE, type SkillSelection } from "../shared/profiles";
 
 type Theme = PluginSurfaceProps["theme"];
 type Strings = ReturnType<typeof strings>;
 type Mutate = (input: Mutation) => Promise<Board | undefined>;
+/** CUSTOM(agent-profiles): the tab id of the Projects Assistant's profile. */
+export const ASSISTANT_TAB = ASSISTANT_PROFILE;
 interface Shared {
   board: Board;
   t: Strings;
@@ -78,6 +85,7 @@ export function OrchestratorsPanel(
 ) {
   const { board, t, theme, disabled, mutate } = props;
   const panel = t.panel;
+  const profileText = profileStrings(usePaseoLanguage()); // CUSTOM(agent-profiles)
   return (
     <ScrollView contentContainerStyle={styles.page}>
       <View style={styles.header}>
@@ -105,6 +113,33 @@ export function OrchestratorsPanel(
       <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
         {panel.intro}
       </Text>
+      {/* CUSTOM(agent-profiles): the assistant's profile, always first */}
+      <View
+        style={[
+          styles.row,
+          {
+            borderColor: theme.colors.border,
+            backgroundColor: theme.colors.surface1,
+          },
+        ]}
+      >
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`${panel.open}: ${profileText.assistantName}`}
+          onPress={() => props.onOpen(ASSISTANT_TAB)}
+          style={styles.rowMain}
+        >
+          <View style={styles.inline}>
+            <Icon name="Sparkles" size={16} color={theme.colors.accent} />
+            <Text style={[styles.rowTitle, { color: theme.colors.foreground }]}>
+              {profileText.assistantName}
+            </Text>
+          </View>
+          <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+            {profileText.assistantHint}
+          </Text>
+        </Pressable>
+      </View>
       {board.orchestrators.length === 0 && (
         <Text style={[styles.empty, { color: theme.colors.foregroundMuted }]}>
           {panel.empty}
@@ -240,6 +275,8 @@ type Draft = {
   thinkingOptionId: string;
   useWorktree: boolean;
   instructions: string;
+  skills: SkillSelection; // CUSTOM(agent-profiles)
+  memory: boolean;
 };
 function toDraft(config: OrchestratorConfig): Draft {
   const schedule = config.schedule;
@@ -259,6 +296,8 @@ function toDraft(config: OrchestratorConfig): Draft {
     thinkingOptionId: config.thinkingOptionId ?? "",
     useWorktree: config.useWorktree,
     instructions: config.instructions,
+    skills: config.skills,
+    memory: config.memory,
   };
 }
 function fromDraft(id: string, draft: Draft) {
@@ -293,6 +332,8 @@ function fromDraft(id: string, draft: Draft) {
     thinkingOptionId: draft.thinkingOptionId.trim() || null,
     useWorktree: draft.useWorktree,
     instructions: draft.instructions,
+    skills: draft.skills,
+    memory: draft.memory,
   });
 }
 
@@ -308,6 +349,8 @@ export function OrchestratorTab(
   );
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const ps = profileStrings(usePaseoLanguage()); // CUSTOM(agent-profiles)
+  const content = useProfileContent(props.id);
   // Pick up a save from another window only while nothing is being edited here.
   const [dirty, setDirty] = useState(false);
   useEffect(() => {
@@ -336,8 +379,17 @@ export function OrchestratorTab(
     setError(null);
     if (
       await mutate({ action: "orchestrator-save", orchestrator: parsed.data })
-    )
+    ) {
       setDirty(false);
+      // CUSTOM(agent-profiles): the system prompt is saved with the form.
+      try {
+        await content.save();
+      } catch (failure) {
+        setError(
+          `${ps.saveFailed}: ${failure instanceof Error ? failure.message : String(failure)}`,
+        );
+      }
+    }
   };
   const runs = Object.entries(board.orchestrations)
     .filter(
@@ -417,13 +469,18 @@ export function OrchestratorTab(
           <RunControls config={config} {...props} />
           <Pressable
             accessibilityRole="button"
-            disabled={disabled || !dirty}
+            disabled={disabled || !(dirty || content.touched)}
             onPress={() => void save()}
             style={({ pressed }) => [
               styles.button,
               {
                 backgroundColor: theme.colors.accent,
-                opacity: disabled || !dirty ? 0.5 : pressed ? 0.8 : 1,
+                opacity:
+                  disabled || !(dirty || content.touched)
+                    ? 0.5
+                    : pressed
+                      ? 0.8
+                      : 1,
               },
             ]}
           >
@@ -543,24 +600,20 @@ export function OrchestratorTab(
               }),
             )}
           </View>
+          {/* CUSTOM(agent-profiles): selects backed by the daemon's catalog */}
           {field(
             panel.agent,
-            <View style={styles.inline}>
-              {input(draft.provider, (provider) => edit({ provider }), {
-                label: panel.provider,
-                placeholder: "claude/claude-opus-5-5",
-              })}
-              {input(draft.modeId, (modeId) => edit({ modeId }), {
-                label: panel.mode,
-                placeholder: "bypassPermissions",
-              })}
-              {input(
-                draft.thinkingOptionId,
-                (thinkingOptionId) => edit({ thinkingOptionId }),
-                { label: panel.thinking, placeholder: "medium" },
-              )}
-            </View>,
-            panel.agentHint,
+            <AgentFields
+              value={{
+                provider: draft.provider,
+                modeId: draft.modeId,
+                thinkingOptionId: draft.thinkingOptionId,
+              }}
+              onChange={(agent) => edit(agent)}
+              disabled={disabled}
+              theme={theme}
+              s={ps}
+            />,
           )}
           {field(
             panel.workspace,
@@ -584,7 +637,21 @@ export function OrchestratorTab(
                 placeholder: panel.instructionsPlaceholder,
               },
             ),
+            ps.instructionsHint, // CUSTOM(agent-profiles)
           )}
+          {/* CUSTOM(agent-profiles) */}
+          <ProfileFields
+            profile={config.id}
+            content={content}
+            skills={draft.skills}
+            memory={draft.memory}
+            provider={draft.provider}
+            onSkills={(skills) => edit({ skills })}
+            onMemory={(memory) => edit({ memory })}
+            disabled={disabled}
+            theme={theme}
+            s={ps}
+          />
           <Pressable
             accessibilityRole="button"
             disabled={disabled}
@@ -743,6 +810,7 @@ export function WorkboardTabs({
   onSelect(tab: string): void;
   onClose(id: string): void;
 }) {
+  const language = usePaseoLanguage(); // CUSTOM(agent-profiles)
   const active = Object.values(board.orchestratorStatus).filter(
     (status) => status.active,
   ).length;
@@ -758,8 +826,11 @@ export function WorkboardTabs({
     },
     ...open.map((id) => ({
       id,
-      label: board.orchestrators.find((o) => o.id === id)?.name ?? "?",
-      icon: "Bot",
+      label:
+        id === ASSISTANT_TAB
+          ? profileStrings(language).assistantName
+          : (board.orchestrators.find((o) => o.id === id)?.name ?? "?"),
+      icon: id === ASSISTANT_TAB ? "Sparkles" : "Bot", // CUSTOM(agent-profiles)
       closable: true,
     })),
   ];

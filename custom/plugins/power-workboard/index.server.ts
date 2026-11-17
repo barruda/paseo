@@ -37,6 +37,12 @@ import {
   buildTree,
   readConversation,
 } from "./server/assistant/views";
+// CUSTOM(agent-profiles)
+import {
+  profilesGetRpc,
+  profilesSetSystemPromptRpc,
+  profilesSkillsRpc,
+} from "./shared/profiles";
 import { ImageStore, defaultImageDirectory } from "./server/images";
 import { PaseoCompat } from "./server/paseo-compat";
 import { PaseoHost } from "./server/host";
@@ -190,6 +196,15 @@ export default function contribute(server: PluginServerContext) {
     return { ok: true as const };
   });
   server.handle(assistantChatOpenRpc, (input) => ready().openChat(input.fresh));
+  // CUSTOM(agent-profiles): the profile of an orchestrator or of the assistant chat.
+  server.handle(profilesGetRpc, (input) => ready().profileView(input.profile));
+  server.handle(profilesSetSystemPromptRpc, async (input) => {
+    await ready().setProfilePrompt(input.profile, input.text);
+    return { ok: true as const };
+  });
+  server.handle(profilesSkillsRpc, async (input) => ({
+    skills: await ready().profileSkills(input.profile),
+  }));
   // The chat agent gets the board tools on every session open (create and resume).
   const boardTools = chatTools(ready, history);
   const removeChatTools = server.before("agent.session_open", ({ request }) =>

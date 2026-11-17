@@ -7,6 +7,7 @@ import {
   patchProjectPolicy,
   resetProjectPolicy,
   setProjectAction,
+  assistantChatSettingsSchema,
   assistantSettingsSchema,
 } from "./projects-assistant-model";
 
@@ -24,6 +25,8 @@ describe("projects assistant settings model", () => {
         provider: "claude/claude-opus-5-5",
         thinkingOptionId: "high",
         modeId: "bypassPermissions",
+        skills: { mode: "all", names: [] },
+        memory: true,
       },
     });
   });
@@ -35,9 +38,26 @@ describe("projects assistant settings model", () => {
       thinkingOptionId: "",
       modeId: "",
     });
-    expect(edited.chat).toEqual({ provider: "codex/gpt-5", thinkingOptionId: null, modeId: null });
+    expect(edited.chat).toEqual({
+      provider: "codex/gpt-5",
+      thinkingOptionId: null,
+      modeId: null,
+      skills: { mode: "all", names: [] },
+      memory: true,
+    });
     expect(chatSettingsValid(edited)).toBe(true);
     expect(chatSettingsValid(patchChatSettings(base, { provider: "" }))).toBe(false);
+  });
+
+  // CUSTOM(agent-profiles)
+  it("keeps the profile settings of the chat through an edit and parses data without them", () => {
+    const stored = assistantSettingsSchema.parse({
+      chat: { provider: "claude/x", skills: { mode: "selected", names: ["a:b"] }, memory: false },
+    });
+    const edited = patchChatSettings(stored, { thinkingOptionId: "low" });
+    expect(edited.chat.skills).toEqual({ mode: "selected", names: ["a:b"] });
+    expect(edited.chat.memory).toBe(false);
+    expect(assistantChatSettingsSchema.parse({ provider: "claude/x" }).memory).toBe(true);
   });
 
   it("rejects merge as the default action", () => {

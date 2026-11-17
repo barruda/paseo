@@ -18,11 +18,20 @@ export const projectPolicySchema = z.object({
 });
 export type ProjectPolicy = z.infer<typeof projectPolicySchema>;
 
+// CUSTOM(agent-profiles): mirrors skillSelectionSchema in the plugin's shared/profiles.ts.
+export const skillSelectionSchema = z.object({
+  mode: z.enum(["all", "selected"]).default("all"),
+  names: z.array(z.string().trim().min(1).max(200)).max(500).default([]),
+});
+
 export const assistantChatSettingsSchema = z.object({
   /** `provider/model`. */
   provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
   thinkingOptionId: z.string().trim().min(1).nullable().default("high"),
   modeId: z.string().trim().min(1).nullable().default("bypassPermissions"),
+  // CUSTOM(agent-profiles): edited in the plugin's Orchestrators tab; kept here so saving keeps them.
+  skills: skillSelectionSchema.default(() => skillSelectionSchema.parse({})),
+  memory: z.boolean().default(true),
 });
 export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
 

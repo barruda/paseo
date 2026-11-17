@@ -98,7 +98,17 @@ export interface AgentStart {
   title: string;
   prompt: string;
   labels?: Record<string, string>; // CUSTOM(projects-assistant)
+  /** CUSTOM(agent-profiles): appended to the agent's system prompt. */
+  systemPrompt?: string;
+  /** CUSTOM(agent-profiles): provider options (Claude: plugins, skills, memory folder). */
+  providerOptions?: Record<string, unknown>;
 }
+// CUSTOM(agent-profiles): the plugin compiles against its pinned @getpaseo/client, whose create
+// config may lack these fields; the daemon accepts them.
+const profileConfig = (start: AgentStart) => ({
+  ...(start.systemPrompt ? { systemPrompt: start.systemPrompt } : {}),
+  ...(start.providerOptions ? { providerOptions: start.providerOptions } : {}),
+});
 // CUSTOM(projects-assistant)
 export interface MergeOptions {
   baseRef?: string;
@@ -576,6 +586,7 @@ export class PaseoHost implements Host {
         ...(start.thinkingOptionId
           ? { thinkingOptionId: start.thinkingOptionId }
           : {}),
+        ...profileConfig(start), // CUSTOM(agent-profiles)
       },
       title: start.title,
       prompt: start.prompt,
@@ -591,6 +602,7 @@ export class PaseoHost implements Host {
         ...(start.thinkingOptionId
           ? { thinkingOptionId: start.thinkingOptionId }
           : {}),
+        ...profileConfig(start), // CUSTOM(agent-profiles)
       },
       title: start.title,
       prompt: start.prompt,

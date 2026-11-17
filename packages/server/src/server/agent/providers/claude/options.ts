@@ -49,6 +49,10 @@ export const ClaudeProviderOptionsSchema = z
     disallowedTools: z.array(z.string()).optional(),
     additionalDirectories: z.array(z.string()).optional(),
     extraArgs: z.record(z.string(), z.string().nullable()).optional(),
+    // CUSTOM(agent-profiles): local Claude Code plugin dirs (their skills/ load as <plugin>:<skill>).
+    plugins: z.array(z.object({ type: z.literal("local"), path: z.string() }).strict()).optional(),
+    // CUSTOM(agent-profiles): allowlist of skills the main session sees.
+    skills: z.union([z.array(z.string()), z.literal("all")]).optional(),
     sandbox: z
       .object({
         enabled: z.boolean().optional(),
@@ -70,6 +74,8 @@ export const ClaudeProviderOptionsSchema = z
     settings: z
       .object({
         permissions: PermissionRulesSchema.optional(),
+        // CUSTOM(agent-profiles): per-agent auto-memory folder, forwarded with the SDK settings.
+        autoMemoryDirectory: z.string().optional(),
         sandbox: z
           .object({
             enabled: z.boolean().optional(),

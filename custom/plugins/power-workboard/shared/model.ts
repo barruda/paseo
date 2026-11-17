@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { scheduleSchema } from "./schedule";
 import { assistantDataSchema } from "./assistant"; // CUSTOM(projects-assistant)
+import { skillSelectionSchema } from "./profiles"; // CUSTOM(agent-profiles)
 
 export const STAGES = [
   "inbox",
@@ -448,6 +449,9 @@ export const orchestratorConfigSchema = z.object({
   thinkingOptionId: z.string().trim().min(1).nullable().default("medium"),
   useWorktree: z.boolean().default(true),
   instructions: z.string().max(20000).default(""),
+  // CUSTOM(agent-profiles): the profile's settings; its content lives in the profile folder.
+  skills: skillSelectionSchema.default(() => skillSelectionSchema.parse({})),
+  memory: z.boolean().default(true),
 });
 export type OrchestratorConfig = z.infer<typeof orchestratorConfigSchema>;
 /** What a run still may start, and when the schedule last fired. */
