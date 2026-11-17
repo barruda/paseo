@@ -6371,3 +6371,17 @@ src/server/daemon-config-store.test.ts`. In the app it needs a daemon restart (n
 - **Verify:** `cd packages/app && npx vitest run src/task-navigation/provider-subagent-rows.test.ts`.
   In the app: Tasks rows have no project line; clicking "N subagents" expands without opening the
   task.
+
+## task-count-roots: Tasks filter counts leave out subagents
+
+- **Added:** 2026-11-17
+- **Commit:** `0c4e4df02`
+- **Why:** the All/Idle/... numbers counted every Paseo subagent as its own task, so a few crews
+  with many delegated tasks inflated them.
+- **What:** the counts use the top-level tasks only, each counted under its crew's state
+  (`crewState`: a crew with a child needing you counts under Needs you). Provider subagents were
+  never counted. The Archived count is unchanged.
+- **Core files touched:** none (`packages/app/src/task-navigation/sidebar.tsx`, the `counts` memo).
+- **Re-apply:** in the Tasks sidebar's `counts` memo, count `scopedRoots` (skip context-only roots
+  without children) with `matchesTaskFilter(node.crewState, key)` instead of flattening the tree.
+- **Verify:** with a crew of several subagents, All grows by one for the crew, not one per member.
