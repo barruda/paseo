@@ -354,3 +354,15 @@ test("disabling lets a started close finish but prevents the next closure in tha
     { agentId: "sibling", provider: "test", sessionId: "sibling" },
   ]);
 });
+
+// CUSTOM(archive-promptless)
+test("a runtime with no session is released only when no tab shows it", async () => {
+  const s = scenario(true, 60 * 60_000, 15 * 60_000);
+  s.runtime.resumable = false;
+  expect((await s.sweep(61)).collected).toEqual([]);
+  s.runtime.openTab = false;
+  expect((await s.sweep(62)).collected).toEqual([
+    { agentId: "agent", provider: "test", sessionId: null },
+  ]);
+  expect(s.runtime.closed).toBe(true);
+});

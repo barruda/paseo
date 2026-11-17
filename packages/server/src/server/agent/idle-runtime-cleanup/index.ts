@@ -32,7 +32,7 @@ interface Options {
 interface CollectionEntry {
   agentId: string;
   provider: string;
-  sessionId: string;
+  sessionId: string | null;
 }
 interface CollectionResult {
   collected: CollectionEntry[];
@@ -40,6 +40,13 @@ interface CollectionResult {
 }
 const DEFAULT_IDLE_PERIOD_MS = 60 * 60_000;
 const DEFAULT_CLOSED_TAB_PERIOD_MS = 15 * 60_000; // CUSTOM(idle-closed-tab)
+
+// CUSTOM(archive-promptless): a runtime with no session has nothing to resume. It stays while a tab
+// shows it, and is released like any other once no tab does, so the never-prompted agent can be
+// auto-archived.
+function keepsSessionlessRuntime(runtime: RuntimeCleanupCandidate): boolean {
+  return !runtime.sessionId && runtime.hasOpenTab();
+}
 
 /** Owns idle clocks, baseline eligibility, optional provider vetoes and the sweep lifetime. */
 export function createIdleRuntimeCleanup(options: Options) {
@@ -92,7 +99,7 @@ export function createIdleRuntimeCleanup(options: Options) {
     const runtimes = options.runtimes();
     for (const runtime of runtimes) {
       if (!isCurrent()) break;
-      if (!runtime.sessionId) continue;
+      if (keepsSessionlessRuntime(runtime)) continue; // CUSTOM(archive-promptless)
       const family = familyOf(runtime, runtimes);
       try {
         const allowed = baselineAllows(family) && (await providersAllow(family, isCurrent));

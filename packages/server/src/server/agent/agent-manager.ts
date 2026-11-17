@@ -1913,7 +1913,12 @@ export class AgentManager {
         isEligible,
         canStopRuntime: agent.session.canStopRuntime?.bind(agent.session),
         closeIfEligible: async (revalidate) => {
-          if (!agent.persistence?.sessionId) return false;
+          // CUSTOM(archive-promptless): a session-less runtime may close only with no tab open.
+          if (
+            !agent.persistence?.sessionId &&
+            hasIdleOpenTab(this.agents.get(agent.id)?.labels ?? agent.labels)
+          )
+            return false;
           // Block prompt admission before entering the close lane. A skipped close also
           // releases this barrier, so the waiting prompt keeps the existing runtime.
           this.collectingRuntimes.add(agent.id);
