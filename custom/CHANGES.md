@@ -6406,8 +6406,8 @@ src/server/daemon-config-store.test.ts`. In the app it needs a daemon restart (n
   minutes after it is released (about 15 minutes after going idle).
 - **Session-less runtimes:** upstream's idle cleanup never released a runtime with no provider
   session (nothing to resume), so a never-prompted agent restored live at boot never closed and
-  never reached the archive rule. \`keepsSessionlessRuntime\` in \`idle-runtime-cleanup/index.ts\` and
-  the matching check in AgentManager's \`closeIfEligible\` now release it once no tab shows it.
+  never reached the archive rule. `keepsSessionlessRuntime` in `idle-runtime-cleanup/index.ts` and
+  the matching check in AgentManager's `closeIfEligible` now release it once no tab shows it.
 - **Core files touched:** `packages/server/src/server/agent/auto-archive-closed/index.ts`
   (`prompted`), `agent/idle-runtime-cleanup/index.ts` (`onCollected`), `bootstrap.ts` (record
   mapping and the callback), `docs/agent-lifecycle.md`. Tests in `auto-archive-closed.test.ts` and
