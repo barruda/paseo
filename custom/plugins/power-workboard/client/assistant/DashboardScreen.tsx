@@ -308,7 +308,10 @@ export function NeedsYouCard({
   const text = { color: theme.colors.foreground };
   const muted = { color: theme.colors.foregroundMuted };
   const report = item.report;
-  const reportText = report?.question ?? report?.summary ?? null;
+  const candidate = report?.question ?? report?.summary ?? null;
+  // The detail often is the question itself; don't show it twice.
+  const reportText =
+    candidate && candidate.trim() !== item.detail?.trim() ? candidate : null;
 
   return (
     <View

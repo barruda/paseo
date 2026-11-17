@@ -52,7 +52,7 @@ export function ConversationsTree(props: {
   empty: boolean;
   search: string;
   onSearch(value: string): void;
-  expandedOrchestrators: Set<string>;
+  collapsedOrchestrators: Set<string>;
   expandedTasks: Set<string>;
   onToggleOrchestrator(key: string): void;
   onToggleTask(id: string): void;
@@ -120,7 +120,7 @@ export function ConversationsTree(props: {
         ) : (
           props.filtered.orchestrators.map((orchestrator) => {
             const key = orchestratorKey(orchestrator);
-            const open = searching || props.expandedOrchestrators.has(key);
+            const open = searching || !props.collapsedOrchestrators.has(key);
             return (
               <View key={key}>
                 <Pressable

@@ -30,6 +30,7 @@ import {
   mergeItems,
   pollInterval,
   splitFences,
+  stripReport,
 } from "./conversations-format";
 import type { ConversationsStrings } from "./conversations-strings";
 import { Badge, Dot, statusColor } from "./conversations-tree";
@@ -465,7 +466,15 @@ export function ConversationThread(props: {
   }, [agentId]);
 
   const mine = older && older.agentId === agentId ? older : null;
-  const items = data ? mergeItems(mine?.items ?? [], data.items) : [];
+  const items = (data ? mergeItems(mine?.items ?? [], data.items) : []).flatMap(
+    (item) => {
+      if (item.kind !== "assistant") return [item];
+      const stripped = stripReport(item.text);
+      return stripped
+        ? [stripped === item.text ? item : { ...item, text: stripped }]
+        : [];
+    },
+  );
   const hasOlder = mine ? mine.hasOlder : (data?.hasOlder ?? false);
   const cursor = mine ? mine.cursor : (data?.cursor ?? null);
   const taskId = data?.taskId ?? props.taskId;

@@ -6477,7 +6477,9 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Core files touched:** `screens/settings-screen.tsx` (`CUSTOM(projects-assistant)`: sidebar
   item and route; the Bruno page switch moved into `renderBrunoSection` to stay under the
   complexity limit), `utils/host-routes.ts` (slug `customizations-projects-assistant`),
-  `screens/settings/settings-search-index.ts` (search terms), and the desk-workboard files.
+  `screens/settings/settings-search-index.ts` (search terms), the desk-workboard files, and
+  `header-shortcuts/{fit.ts,strip.tsx,layout.tsx}` (a `leftReservePx` the Desk header passes from
+  its chips' estimated width, so shortcut hints drop out before they overlap three surface chips).
 - **Re-apply:** plugin-only except the Settings page and the Desk chips; for those add the slug,
   the `BRUNO_SECTION_ITEMS` entry and the `renderBrunoSection` case, and follow desk-workboard's
   Re-apply.

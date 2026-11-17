@@ -9,6 +9,7 @@ import { usePaseoLanguage } from "../paseo-language";
 import {
   filterTree,
   firstRunningAgent,
+  latestAgent,
   locate,
   treeIsEmpty,
 } from "./conversations-format";
@@ -37,52 +38,35 @@ export function ConversationsScreen(props: PluginSurfaceProps) {
     refetchInterval: 5_000,
   });
   const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState(shared);
-  const [expandedOrchestrators, setExpandedOrchestrators] = useState(
+  // The shared store is the only selection state, so the tree and the dashboard cannot disagree.
+  const selected = shared;
+  const [collapsedOrchestrators, setCollapsedOrchestrators] = useState(
     () => new Set<string>(),
   );
   const [expandedTasks, setExpandedTasks] = useState(() => new Set<string>());
   const [showThread, setShowThread] = useState(shared.agentId !== null);
   const data = tree.data;
 
-  const expandFor = (agentId: string | null, taskId: string | null) => {
+  // Expand the selected task once the tree knows it.
+  useEffect(() => {
     if (!data) return;
-    const place = locate(data, agentId, taskId);
+    const place = locate(data, selected.agentId, selected.taskId);
     if (!place) return;
-    setExpandedOrchestrators((s) =>
-      s.has(place.orchestratorKey) ? s : toggled(s, place.orchestratorKey),
-    );
     setExpandedTasks((s) =>
       s.has(place.taskId) ? s : toggled(s, place.taskId),
     );
-  };
-
-  // A selection made on the dashboard.
-  useEffect(() => {
-    if (
-      shared.agentId === selected.agentId &&
-      shared.taskId === selected.taskId
-    )
-      return;
-    setSelected(shared);
-    if (shared.agentId) setShowThread(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shared.agentId, shared.taskId]);
-
-  // Expand the selection once the tree knows it.
-  useEffect(() => {
-    expandFor(selected.agentId, selected.taskId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected.agentId, selected.taskId, data]);
 
-  // Nothing selected: the first running agent.
+  // A dashboard selection opens the conversation on compact layouts.
+  useEffect(() => {
+    if (shared.agentId) setShowThread(true);
+  }, [shared.agentId, shared.taskId]);
+
+  // Nothing selected: the first running agent, else the latest task's current agent.
   useEffect(() => {
     if (!data || selected.agentId) return;
-    const first = firstRunningAgent(data);
-    if (first) {
-      setSelected(first);
-      selectConversation(first);
-    }
+    const first = firstRunningAgent(data) ?? latestAgent(data);
+    if (first) selectConversation(first);
   }, [data, selected.agentId]);
 
   const filtered = useMemo(
@@ -102,9 +86,7 @@ export function ConversationsScreen(props: PluginSurfaceProps) {
   }, [data, selected]);
 
   const select = (agentId: string, taskId: string | null) => {
-    const next = { agentId, taskId };
-    setSelected(next);
-    selectConversation(next);
+    selectConversation({ agentId, taskId });
     setShowThread(true);
   };
 
@@ -117,10 +99,10 @@ export function ConversationsScreen(props: PluginSurfaceProps) {
       empty={data ? treeIsEmpty(data) : false}
       search={search}
       onSearch={setSearch}
-      expandedOrchestrators={expandedOrchestrators}
+      collapsedOrchestrators={collapsedOrchestrators}
       expandedTasks={expandedTasks}
       onToggleOrchestrator={(key) =>
-        setExpandedOrchestrators((s) => toggled(s, key))
+        setCollapsedOrchestrators((s) => toggled(s, key))
       }
       onToggleTask={(id) => setExpandedTasks((s) => toggled(s, id))}
       selectedAgentId={selected.agentId}

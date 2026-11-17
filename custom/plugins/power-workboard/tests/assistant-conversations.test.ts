@@ -10,8 +10,10 @@ import {
   locate,
   mergeItems,
   pollInterval,
+  latestAgent,
   relativeTime,
   splitFences,
+  stripReport,
 } from "../client/assistant/conversations-format";
 import { conversationsStrings } from "../client/assistant/conversations-strings";
 
@@ -155,5 +157,21 @@ describe("formatting", () => {
         (i) => i.id,
       ),
     ).toEqual(["a", "b", "c"]);
+  });
+});
+
+describe("latestAgent and stripReport", () => {
+  it("picks the current agent of the most recently updated task", () => {
+    const older = task("a", "A", [agent("a1")]);
+    const newer = { ...task("b", "B", [agent("b1"), { ...agent("b2"), current: true }]), updatedAt: "2026-02-01T00:00:00Z" };
+    const out = latestAgent({ orchestrators: [{ id: "o", name: "O", projectName: null, active: true, tasks: [older, newer] }] });
+    expect(out).toEqual({ agentId: "b2", taskId: "b" });
+    expect(latestAgent({ orchestrators: [] })).toBeNull();
+  });
+  it("hides report blocks and keeps the rest", () => {
+    expect(stripReport('Done.\n<report>{"status":"done"}</report>')).toBe("Done.");
+    expect(stripReport('<report>{"a":1}</report>')).toBe("");
+    expect(stripReport("hi <report>{partial")).toBe("hi");
+    expect(stripReport("plain")).toBe("plain");
   });
 });

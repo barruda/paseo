@@ -152,3 +152,29 @@ export function mergeItems(
 export function pollInterval(status: string | undefined): number {
   return status === "running" ? 3_000 : 15_000;
 }
+
+/** The current agent (else the last one) of the most recently updated task. */
+export function latestAgent(
+  tree: Tree,
+): { agentId: string; taskId: string } | null {
+  let best: { at: number; agentId: string; taskId: string } | null = null;
+  for (const orchestrator of tree.orchestrators)
+    for (const task of orchestrator.tasks) {
+      const agent =
+        task.agents.find((a) => a.current) ??
+        task.agents[task.agents.length - 1];
+      if (!agent) continue;
+      const at = Date.parse(task.updatedAt) || 0;
+      if (!best || at > best.at)
+        best = { at, agentId: agent.agentId, taskId: task.taskId };
+    }
+  return best && { agentId: best.agentId, taskId: best.taskId };
+}
+
+/** Remove `<report>...</report>` blocks (the report card shows them); an unclosed block runs to the end. */
+export function stripReport(text: string): string {
+  return text
+    .replace(/<report>[\s\S]*?<\/report>/gi, "")
+    .replace(/<report>[\s\S]*$/i, "")
+    .trim();
+}

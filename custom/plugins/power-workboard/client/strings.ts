@@ -416,6 +416,14 @@ const zh = {
     "Add a Done group first": "请先添加 Done 分组。",
     "Only a Done task with a workspace can be finished":
       "只有带 workspace 的 Done 任务可以收尾。",
+    // CUSTOM(projects-assistant)
+    "A delivery step is already running for this task":
+      "该任务已有交付步骤在运行。",
+    "Nothing to dismiss for this task": "该任务没有可忽略的事项。",
+    "Only a task in review or done with a workspace can be delivered":
+      "只有带 workspace 且处于审核或完成的任务可以交付。",
+    "This agent is not managed by the Projects Assistant":
+      "该 agent 不由 Projects Assistant 管理。",
     "This task's project is not a git repository":
       "该任务的项目不是 git 仓库。",
     "A git action is already running for this task":
@@ -997,6 +1005,14 @@ const en: typeof zh = {
     "Add a Done group first": "Add a Done group first.",
     "Only a Done task with a workspace can be finished":
       "Only a Done task with a workspace can be finished.",
+    // CUSTOM(projects-assistant)
+    "A delivery step is already running for this task":
+      "A delivery step is already running for this task.",
+    "Nothing to dismiss for this task": "Nothing to dismiss for this task.",
+    "Only a task in review or done with a workspace can be delivered":
+      "Only a task in review or done with a workspace can be delivered.",
+    "This agent is not managed by the Projects Assistant":
+      "This agent is not managed by the Projects Assistant.",
     "This task's project is not a git repository":
       "This task's project is not a git repository.",
     "A git action is already running for this task":
