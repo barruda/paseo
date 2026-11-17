@@ -8,7 +8,7 @@ import { useTranslation } from "react-i18next";
 import invariant from "tiny-invariant";
 import { getPanelRegistration, type PanelIconProps } from "@/panels/panel-registry";
 import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-types";
-import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import type { AgentDisplayBucket } from "@/utils/sidebar-agent-state";
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
 import { usePanelInstanceAttributes } from "@/panels/panel-instance-attributes";
 
@@ -22,7 +22,7 @@ export interface WorkspaceTabPresentation {
   showCloseButton: boolean;
   titleState: "ready" | "loading";
   icon: React.ComponentType<PanelIconProps>;
-  statusBucket: SidebarStateBucket | null;
+  statusBucket: AgentDisplayBucket | null;
 }
 
 interface WorkspaceTabPresentationResolverProps {

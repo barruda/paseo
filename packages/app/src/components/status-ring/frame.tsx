@@ -12,6 +12,10 @@ import {
 } from "@/components/status-ring/geometry";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
 
+// CUSTOM(background-waiting): "waiting" is the violet, slower ring for an agent whose background
+// shell will wake it. Each variant reads its own colour from the theme, for the reason below.
+export type StatusRingVariant = "running" | "waiting";
+
 export interface StatusRingProps {
   // The surface the ring is drawn on top of, named rather than resolved, because theme colours
   // are only legible inside `StyleSheet.create` — see docs/unistyles.md. The frame fills itself
@@ -19,6 +23,7 @@ export interface StatusRingProps {
   // tab dot, the project tile under a sidebar badge. Leave it out where the ring sits on flat
   // background and has nothing to knock out.
   backdrop?: SurfaceBackdrop | null;
+  variant?: StatusRingVariant;
 }
 
 /**
@@ -30,12 +35,16 @@ export interface StatusRingProps {
  * site, outside anything Unistyles tracks, and leave the mark in the old theme until something
  * incidental re-rendered the row.
  */
-export function StatusRingFrame({ backdrop, children }: StatusRingProps & { children: ReactNode }) {
+export function StatusRingFrame({
+  backdrop,
+  variant = "running",
+  children,
+}: StatusRingProps & { children: ReactNode }) {
   return (
     <View style={[styles.frame, getBackdropStyle(backdrop)]}>
-      <View style={styles.track} />
+      <View style={variant === "waiting" ? styles.trackWaiting : styles.track} />
       {children}
-      <View style={styles.centerDot} />
+      <View style={variant === "waiting" ? styles.centerDotWaiting : styles.centerDot} />
     </View>
   );
 }
@@ -80,6 +89,7 @@ export const styles = StyleSheet.create((theme) => {
     borderWidth: STATUS_RING_STROKE,
   } as const;
   const runningColor = getStatusDotColor({ theme, bucket: "running" }) ?? undefined;
+  const waitingColor = getStatusDotColor({ theme, bucket: "waiting" }) ?? undefined;
 
   return {
     frame: {
@@ -103,6 +113,25 @@ export const styles = StyleSheet.create((theme) => {
       position: "absolute",
       borderColor: runningColor,
       opacity: STATUS_RING_TRACK_OPACITY,
+    },
+
+    trackWaiting: {
+      ...circle,
+      position: "absolute",
+      borderColor: waitingColor,
+      opacity: STATUS_RING_TRACK_OPACITY,
+    },
+    arcWaiting: {
+      ...circle,
+      borderColor: "transparent",
+      borderTopColor: waitingColor,
+      opacity: STATUS_RING_HEAD_OPACITY,
+    },
+    centerDotWaiting: {
+      width: STATUS_INDICATOR_FILLED_DOT_SIZE,
+      height: STATUS_INDICATOR_FILLED_DOT_SIZE,
+      borderRadius: theme.borderRadius.full,
+      backgroundColor: waitingColor,
     },
 
     // The moving quarter. Three sides transparent leaves the top border alone, which on a fully

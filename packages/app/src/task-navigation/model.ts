@@ -1,7 +1,15 @@
 // CUSTOM(task-navigation): a task projection independent of workspace ordering and tab placement.
 import type { Agent } from "@/stores/session-store";
 
-export type TaskState = "needs-you" | "failed" | "review" | "working" | "idle" | "closed";
+export type TaskState =
+  | "needs-you"
+  | "failed"
+  | "review"
+  | "working"
+  | "waiting"
+  | "idle"
+  | "closed";
+// CUSTOM(background-waiting): "waiting" tasks are filed under the "working" filter.
 export type TaskFilter = "all" | "needs-you" | "review" | "working" | "idle" | "archived";
 export interface TaskAgent {
   serverId: string;
@@ -12,6 +20,8 @@ export interface TaskAgent {
   model: string | null;
   status: Agent["status"];
   running: boolean;
+  /** CUSTOM(background-waiting): a background shell is waiting and will wake the agent. */
+  waiting?: boolean;
   pendingPermissionCount: number;
   requiresAttention: boolean;
   attentionReason: Agent["attentionReason"];
@@ -40,6 +50,7 @@ export const TASK_STATE_ORDER: readonly TaskState[] = [
   "failed",
   "review",
   "working",
+  "waiting",
   "idle",
   "closed",
 ];
@@ -48,6 +59,7 @@ export const TASK_STATE_LABELS: Record<TaskState, string> = {
   failed: "Failed",
   review: "Ready to review",
   working: "Working",
+  waiting: "Waiting",
   idle: "Idle",
   closed: "Closed",
 };
@@ -63,6 +75,7 @@ export function taskState(agent: TaskAgent): TaskState {
   )
     return "needs-you";
   if (agent.running || agent.status === "initializing") return "working";
+  if (agent.waiting) return "waiting"; // CUSTOM(background-waiting)
   // CUSTOM(subagent-no-review): a finished subagent is its parent's to review, so the sidebar
   // shows it idle. Its attention flag stays set for the orchestrator.
   if (agent.requiresAttention && agent.attentionReason === "finished")
@@ -74,6 +87,7 @@ export function matchesTaskFilter(state: TaskState, filter: TaskFilter): boolean
   // Archived sessions are a separate list; no live task matches it.
   if (filter === "archived") return false;
   if (filter === "needs-you") return state === "needs-you" || state === "failed";
+  if (filter === "working") return state === "working" || state === "waiting";
   if (filter === "idle") return state === "idle" || state === "closed";
   return state === filter;
 }
@@ -292,7 +306,8 @@ export function markableUnreadTaskKeys(agents: readonly TaskAgent[]): Set<string
   for (const agent of agents) {
     if (!agent.workspaceId || agent.parentAgentId) continue;
     if (agent.requiresAttention || agent.pendingPermissionCount > 0) continue;
-    if (agent.running || (agent.status !== "idle" && agent.status !== "closed")) continue;
+    if (agent.running || agent.waiting || (agent.status !== "idle" && agent.status !== "closed"))
+      continue;
     const workspace = taskKey(agent.serverId, agent.workspaceId);
     const current = newest.get(workspace);
     if (!current || agent.updatedAt.getTime() > current.updatedAt.getTime())

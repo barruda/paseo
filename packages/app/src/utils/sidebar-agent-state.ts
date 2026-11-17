@@ -5,6 +5,9 @@ import {
 } from "@getpaseo/protocol/agent-state-bucket";
 
 export type SidebarStateBucket = "needs_input" | "failed" | "running" | "attention" | "done";
+// CUSTOM(background-waiting): the agent tab's bucket, plus "waiting" (a background shell will
+// wake the agent). Kept out of SidebarStateBucket to leave the upstream surface small.
+export type AgentDisplayBucket = SidebarStateBucket | "waiting";
 export type SidebarAttentionReason = AgentAttentionReason;
 
 export function deriveSidebarStateBucket(input: AgentStateBucketInput): SidebarStateBucket {

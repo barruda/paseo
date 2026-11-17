@@ -61,6 +61,10 @@ import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list"
 import { TaskRowContextMenu, useTaskRowActions, type TaskRowActions } from "./task-row-menu";
 import { useArchivedTasks } from "./use-archived-tasks";
 import { useSettledTaskStates } from "./use-settled-task-states";
+import {
+  hasWaitingBackgroundTools,
+  hasWakingBackgroundTools,
+} from "@/background-tools/presentation"; // CUSTOM(background-waiting)
 import { usePinnedTasksStore } from "./pinned-tasks-store";
 import { TaskSummaryHoverCard } from "./task-summary-hover-card";
 import {
@@ -156,8 +160,10 @@ function selectAgents(state: ReturnType<typeof useSessionStore.getState>): TaskA
         provider: agent.provider,
         model: agent.model,
         status: agent.status,
-        // CUSTOM(background-tools): a live background shell or monitor keeps the agent working.
-        running: agent.turn.phase === "open" || (agent.backgroundTasks?.length ?? 0) > 0,
+        // CUSTOM(background-tools): a live monitor keeps the agent working; a shell does not.
+        // CUSTOM(background-waiting): a shell that waits for something shows as "waiting".
+        running: agent.turn.phase === "open" || hasWakingBackgroundTools(agent.backgroundTasks),
+        waiting: hasWaitingBackgroundTools(agent.backgroundTasks),
         pendingPermissionCount: agent.pendingPermissions.length,
         requiresAttention: agent.requiresAttention === true,
         attentionReason: agent.attentionReason,
@@ -445,7 +451,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     const groups = [
       { label: "Needs you", states: ["needs-you", "failed"], attention: true },
       { label: "Ready to review", states: ["review"], attention: true },
-      { label: "In progress", states: ["working"], attention: false },
+      { label: "In progress", states: ["working", "waiting"], attention: false },
       { label: "Idle · ready to resume", states: IDLE_CREW_STATES, attention: false },
     ];
     for (const group of groups) {
@@ -916,6 +922,7 @@ function TaskSignal({ state }: { state: TaskNode["state"] }) {
       style={[
         styles.dot,
         state === "working" && styles.workingDot,
+        state === "waiting" && styles.waitingDot, // CUSTOM(background-waiting)
         state === "needs-you" && styles.inputDot,
         state === "failed" && styles.failedDot,
         state === "review" && styles.reviewDot,
@@ -1358,6 +1365,7 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.foregroundMuted,
   },
   workingDot: { backgroundColor: theme.colors.statusDotRunning },
+  waitingDot: { backgroundColor: theme.colors.statusDotWaiting }, // CUSTOM(background-waiting)
   inputDot: { backgroundColor: theme.colors.statusDotWarning },
   failedDot: { backgroundColor: theme.colors.statusDotDanger },
   reviewDot: { backgroundColor: theme.colors.statusDotSuccess },

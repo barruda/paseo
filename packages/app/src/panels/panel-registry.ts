@@ -5,7 +5,7 @@ import invariant from "tiny-invariant";
 import { getPanelManifest, type PanelManifest } from "@/panels/panel-manifest";
 export type { PaneHost } from "@/panels/panel-manifest";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
-import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import type { AgentDisplayBucket } from "@/utils/sidebar-agent-state";
 
 export interface PanelIconProps {
   size: number;
@@ -19,7 +19,7 @@ export interface PanelDescriptor {
   tooltip: string;
   titleState: "ready" | "loading";
   icon: ComponentType<PanelIconProps>;
-  statusBucket: SidebarStateBucket | null;
+  statusBucket: AgentDisplayBucket | null;
 }
 
 export interface PanelDescriptorContext {

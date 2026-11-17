@@ -5563,9 +5563,52 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Verify:** Needs a daemon restart (the server sends the new field and the stop RPC). Tests are
   in the update script (`background-tools/presentation.test.ts`, `wake-tasks.test.ts`,
   `agent.background-subagent.test.ts`, `agent.background-stop.test.ts`, `messages.test.ts`
-  "background task stop"). In the app: ask an agent to start a background `sleep 600` and end its
-  turn; the tab goes idle, a `1 shell` chip appears, clicking a row copies the command and the X
-  stops it. A `Monitor` shows `1 monitor` and keeps the tab working.
+  "background task stop"). In the app: ask an agent to start a background `python3 -m http.server`
+  and end its turn; the tab goes idle, a `1 shell` chip appears, clicking a row copies the command
+  and the X stops it. A `Monitor` shows `1 monitor` and keeps the tab working. A shell that waits
+  (`sleep 600`) is the next entry's violet state.
+
+## background-waiting: a violet "waiting" state while a background shell waits for something
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: violet waiting state for background shells that poll`
+- **Why:** An agent often ends its turn on a background `until …; do sleep 10; done` and Claude
+  Code wakes it when that shell exits. The tab showed it finished, with nothing in the timeline
+  saying it would come back.
+- **What:** App only; the daemon still sends the plain `backgroundTasks` list. A shell counts as
+  waiting when its command is a wait (`until … do`, `while … sleep`, a leading `sleep N`,
+  `tail --pid`, `inotifywait`, `gh run watch`, `gh pr checks --watch`, bash `wait`) or its
+  description starts with wait/aguard/esper, and the command is not a service (`npm run dev`,
+  `dev-daemon`, `serve`, `vite`, `expo start`, `--watch`, `tail -f`, `docker compose up` without
+  `-d`), which always vetoes. The heuristic lives in `background-tools/presentation.ts`; add a
+  pattern there when an agent's wait is missed. A waiting shell lifts a done or unread agent tab to
+  `waiting`: the status ring in violet (`statusDotWaiting`, hue 300, same generation rule as the
+  dot band) turning 2.5× slower. needs_input, failed and running still win. The Tasks sidebar gets
+  a `Waiting` state (violet dot) under "In progress" and the "working" filter, and is no longer
+  marked read by "mark all read". The chip splits `N waiting` from `N shells`. The Tasks sidebar
+  used to count every background shell as working, a dev server included; now only monitors do,
+  matching background-tools' rule. The OS "finished" notification still fires at turn end: it is
+  daemon-side.
+- **Core files touched:** app `styles/theme.ts`, `utils/status-dot-color.ts`,
+  `utils/sidebar-agent-state.ts` (`AgentDisplayBucket`, kept out of `SidebarStateBucket` so
+  upstream's bucket users stay untouched), `panels/panel-registry.ts`, `panels/agent-panel.tsx`,
+  `screens/workspace/workspace-tab-presentation.tsx`, `components/status-icon.tsx`,
+  `components/status-ring/*` (`variant` prop), `composer/tracks.tsx`,
+  `subagents/running.ts` (generic), `subagents/parent/use-parent-agent.ts`,
+  `task-navigation/model.ts`, `task-navigation/sidebar.tsx`.
+- **Re-apply:** Add the `statusDotWaiting` pair to both dot bands and map `"waiting"` in
+  `getStatusDotColor`. Widen the tab's `statusBucket` (panel descriptor, tab presentation,
+  `StatusIcon`) to `AgentDisplayBucket`. Give `StatusRing` a `variant`: its colour goes on the
+  Unistyles `track`/`arc`/`centerDot` styles, never on the Reanimated view; the native clock
+  publishes wall-clock ms and each ring computes its angle with its own period, the web one passes
+  the period to `element.animate`. In `useAgentPanelDescriptor`, apply
+  `withWaitingBackgroundTools` after `withRunningSubagents`. In the Tasks sidebar, set `running`
+  from `hasWakingBackgroundTools`, add `waiting`, the `waiting` TaskState and its dot.
+- **Verify:** No daemon restart. Tests: `background-tools/presentation.test.ts`,
+  `task-navigation/model.test.ts`, `subagents/running.test.ts` (already in the update script). In
+  the app: ask an agent to run `sleep 120` in the background and end its turn; the tab shows the
+  violet slow ring, the chip says `1 waiting`, the Tasks row has a violet dot under "In progress";
+  when the shell exits the agent wakes and the ring turns blue.
 
 ## github-account: GitHub account per host in Bruno's Customizations
 

@@ -107,7 +107,11 @@ import type { PendingPermission } from "@/types/shared";
 import type { StreamItem, TodoEntry } from "@/types/stream";
 import type { ViewedTimelineStatus, ViewedTimelineUiBridge } from "@/timeline/viewed-timeline-sync";
 import { useArchiveFinishedSubagents, useSubagentsForParent } from "@/subagents";
-import { hasWakingBackgroundTools } from "@/background-tools/presentation"; // CUSTOM(background-tools)
+import {
+  hasWaitingBackgroundTools,
+  hasWakingBackgroundTools,
+  withWaitingBackgroundTools,
+} from "@/background-tools/presentation"; // CUSTOM(background-tools)
 import { useAgentBackgroundTools } from "@/background-tools/track"; // CUSTOM(background-tools)
 import { useHasRunningSubagent, withRunningSubagents } from "@/subagents/running"; // CUSTOM(subagent-tab-status)
 import { getInitDeferred, getInitKey } from "@/utils/agent-initialization";
@@ -329,12 +333,14 @@ function useAgentPanelDescriptor(
   // CUSTOM(subagent-tab-status): the tab keeps working while a subagent runs.
   // CUSTOM(background-tools): so does a live Monitor. Background shells do not: a dev server
   // never ends, and a shell does not wake the agent.
-  const backgroundToolsRunning = hasWakingBackgroundTools(
-    useAgentBackgroundTools(context.serverId, target.agentId),
-  );
+  const backgroundTools = useAgentBackgroundTools(context.serverId, target.agentId);
+  const backgroundToolsRunning = hasWakingBackgroundTools(backgroundTools);
+  const backgroundToolsWaiting = hasWaitingBackgroundTools(backgroundTools);
   const subagentRunning =
     useHasRunningSubagent(context.serverId, target.agentId) || backgroundToolsRunning;
-  const statusBucket = withRunningSubagents(upstreamDescriptor.statusBucket, subagentRunning);
+  const runningBucket = withRunningSubagents(upstreamDescriptor.statusBucket, subagentRunning);
+  // CUSTOM(background-waiting): a finished agent with a waiting background shell is not done.
+  const statusBucket = withWaitingBackgroundTools(runningBucket, backgroundToolsWaiting);
   const descriptor =
     statusBucket === upstreamDescriptor.statusBucket
       ? upstreamDescriptor

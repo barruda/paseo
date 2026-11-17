@@ -9,6 +9,8 @@ import {
   settleTaskStates,
   markableUnreadTaskKeys,
   pinnedTaskNodes,
+  taskState,
+  matchesTaskFilter,
   taskKey,
   sortTaskTree,
   type TaskAgent,
@@ -58,6 +60,24 @@ function childKey(node: { key: string }) {
 }
 
 describe("task navigation", () => {
+  // CUSTOM(background-waiting)
+  it("shows an agent with a waiting background shell as waiting, below running", () => {
+    expect(taskState(agent("w", { waiting: true }))).toBe("waiting");
+    expect(taskState(agent("w", { waiting: true, running: true }))).toBe("working");
+    expect(
+      taskState(
+        agent("w", { waiting: true, requiresAttention: true, attentionReason: "finished" }),
+      ),
+    ).toBe("waiting");
+    expect(taskState(agent("w", { waiting: true, pendingPermissionCount: 1 }))).toBe("needs-you");
+    expect(matchesTaskFilter("waiting", "working")).toBe(true);
+    expect(matchesTaskFilter("waiting", "idle")).toBe(false);
+  });
+
+  it("does not offer unread marking for a waiting agent", () => {
+    expect(markableUnreadTaskKeys([agent("w", { waiting: true })]).size).toBe(0);
+  });
+
   it("separates unread completions from input requests, running agents and read sessions", () => {
     const tree = buildTaskTree({
       workspaces,

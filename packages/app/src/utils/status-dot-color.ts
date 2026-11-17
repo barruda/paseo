@@ -1,9 +1,9 @@
 import type { Theme } from "@/styles/theme";
-import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import type { AgentDisplayBucket } from "@/utils/sidebar-agent-state";
 
 export function getStatusDotColor(input: {
   theme: Theme;
-  bucket: SidebarStateBucket;
+  bucket: AgentDisplayBucket;
   showDoneAsInactive?: boolean;
 }): string | null {
   const { theme, bucket, showDoneAsInactive = false } = input;
@@ -23,6 +23,10 @@ export function getStatusDotColor(input: {
   }
   if (bucket === "running") {
     return theme.colors.statusDotRunning;
+  }
+  // CUSTOM(background-waiting): violet, the agent ended its turn but a background shell will wake it.
+  if (bucket === "waiting") {
+    return theme.colors.statusDotWaiting;
   }
   if (bucket === "attention") {
     return theme.colors.statusDotSuccess;

@@ -201,12 +201,15 @@ const darkStatusTints = statusTints(darkStatusColors, "29"); // 16%
 // at hue 250, clear of
 // identity-colors' blue at 256.6 so a blue host badge and a working dot on the same row do not
 // read as related.
+// CUSTOM(background-waiting): waiting is violet at hue 300, the merged family's hue, which no
+// other dot uses.
 const lightStatusDotColors = {
   // L=0.62, chroma 90% of gamut max
   statusDotSuccess: "#299f51",
   statusDotDanger: "#f12e2f",
   statusDotWarning: "#b37824",
   statusDotRunning: "#268ae0",
+  statusDotWaiting: "#9d5bf3", // CUSTOM(background-waiting)
 };
 
 const darkStatusDotColors = {
@@ -215,6 +218,7 @@ const darkStatusDotColors = {
   statusDotDanger: "#f7796d",
   statusDotWarning: "#db932e",
   statusDotRunning: "#5caaf6",
+  statusDotWaiting: "#b48cf6", // CUSTOM(background-waiting)
 };
 
 export interface LightThemeConfig {

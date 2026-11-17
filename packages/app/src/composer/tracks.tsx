@@ -18,7 +18,7 @@ import { STATUS_RING_HALO_INSET } from "@/components/status-ring/geometry";
 import { isWeb } from "@/constants/platform";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { STATUS_INDICATOR_FILLED_DOT_SIZE } from "@/utils/status-indicator-geometry";
-import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import type { AgentDisplayBucket, SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { COMPOSER_PILL_CLEARANCE, composerPillStyles } from "./pill-styles";
 
 /**
@@ -46,7 +46,7 @@ export function ComposerTrackBar({ children }: { children: ReactNode }): ReactEl
 
 export interface ComposerTrackPillSegment {
   /** Leading mark — a dot, or the running ring. `null` draws the text on its own. */
-  bucket: SidebarStateBucket | null;
+  bucket: AgentDisplayBucket | null;
   /** Short enough to stay on one line alongside its siblings: "1 failed", "2/7 tasks", "3". */
   text: string;
 }
@@ -303,7 +303,7 @@ export function ComposerTrackRow({
 export function ComposerTrackMark({
   bucket,
 }: {
-  bucket: SidebarStateBucket | null;
+  bucket: AgentDisplayBucket | null;
 }): ReactElement | null {
   if (!bucket) {
     return null;
@@ -312,6 +312,14 @@ export function ComposerTrackMark({
     return (
       <View style={styles.ringMark}>
         <StatusRing />
+      </View>
+    );
+  }
+  // CUSTOM(background-waiting): the violet, slower ring.
+  if (bucket === "waiting") {
+    return (
+      <View style={styles.ringMark}>
+        <StatusRing variant="waiting" />
       </View>
     );
   }

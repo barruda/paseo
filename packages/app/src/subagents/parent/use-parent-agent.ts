@@ -3,14 +3,14 @@ import { useAgentDescriptor } from "@/agent-presentation";
 import type { PanelDescriptor } from "@/panels/panel-registry";
 import { useLeaveSheet } from "@/screens/workspace/sheet-pane";
 import { useSessionStore } from "@/stores/session-store";
-import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import type { AgentDisplayBucket } from "@/utils/sidebar-agent-state";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 
 export interface ParentAgent {
   /** The parent's title, or null while it has none — callers fall back to a generic name. */
   label: string | null;
   icon: PanelDescriptor["icon"];
-  statusBucket: SidebarStateBucket | null;
+  statusBucket: AgentDisplayBucket | null;
   open: () => void;
 }
 

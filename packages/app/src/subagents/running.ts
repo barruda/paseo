@@ -4,7 +4,6 @@
 import { useMemo } from "react";
 import { usePendingArchiveAgentKeys } from "@/hooks/use-archive-agent";
 import { useSessionStore } from "@/stores/session-store";
-import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
 import { useProviderSubagentStore } from "./provider-store";
 import {
   createSubagentsForParentSelector,
@@ -22,10 +21,11 @@ export function hasRunningSubagent(rows: readonly SubagentRow[]): boolean {
  * The agent's own bucket, raised to `running` while a subagent works. The agent's own
  * needs_input and failed still win, the same priority a collapsed project row uses.
  */
-export function withRunningSubagents(
-  bucket: SidebarStateBucket | null,
+// CUSTOM(background-waiting): generic so the tab's wider AgentDisplayBucket passes through.
+export function withRunningSubagents<T extends string>(
+  bucket: T | null,
   subagentRunning: boolean,
-): SidebarStateBucket | null {
+): T | "running" | null {
   if (!subagentRunning) return bucket;
   if (bucket === "done" || bucket === "attention") return "running";
   return bucket;

@@ -2,7 +2,7 @@ import { useMemo, type ReactElement, type ReactNode } from "react";
 import { View } from "react-native";
 import { CircleAlert } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import type { SidebarStateBucket } from "@/utils/sidebar-agent-state";
+import type { AgentDisplayBucket } from "@/utils/sidebar-agent-state";
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
 import { getStatusDotColor } from "@/utils/status-dot-color";
 import { StatusRing } from "@/components/status-ring";
@@ -15,7 +15,7 @@ import type { Theme } from "@/styles/theme";
 
 interface StatusIconProps {
   children: ReactNode;
-  statusBucket: SidebarStateBucket | null;
+  statusBucket: AgentDisplayBucket | null;
   size?: number;
   statusDotBorderColor?: string;
   backdrop: SurfaceBackdrop;
@@ -36,7 +36,8 @@ export function StatusIcon({
   backdrop,
 }: StatusIconProps): ReactElement {
   const bucket = statusBucket;
-  const isRunning = bucket === "running";
+  // CUSTOM(background-waiting): waiting is the same ring, violet and slower.
+  const isRunning = bucket === "running" || bucket === "waiting";
   let statusDotColor: string | undefined;
   if (bucket === "failed") statusDotColor = styles.statusDotFailed.color;
   else if (bucket === "attention") statusDotColor = styles.statusDotAttention.color;
@@ -63,9 +64,9 @@ export function StatusIcon({
         <View
           style={styles.statusRing}
           accessibilityRole="progressbar"
-          accessibilityLabel="Agent running"
+          accessibilityLabel={bucket === "waiting" ? "Agent waiting" : "Agent running"}
         >
-          <StatusRing backdrop={backdrop} />
+          <StatusRing backdrop={backdrop} variant={bucket === "waiting" ? "waiting" : "running"} />
         </View>
       ) : null}
       {statusDotColor ? <View style={statusDotStyle} /> : null}
