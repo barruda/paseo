@@ -5,7 +5,7 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode
 import { FlatList, Text, View, type ListRenderItemInfo } from "react-native";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import { ChevronDown, ChevronRight, ChevronUp } from "lucide-react-native";
+import { ChevronDown, ChevronRight } from "lucide-react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Button } from "@/components/ui/button";
 import { PressHighlight } from "@/components/ui/press-highlight";
@@ -831,7 +831,11 @@ function TaskListDivider({
         accessibilityState={accessibilityState}
         testID="task-idle-divider-toggle"
       >
-        <DensityIcon icon={expanded ? ChevronUp : ChevronDown} size="sm" color="foregroundMuted" />
+        <DensityIcon
+          icon={expanded ? ChevronDown : ChevronRight}
+          size="sm"
+          color="foregroundMuted"
+        />
         <Text style={styles.dividerLabel}>{expanded ? "Collapse" : `Expand ${hiddenCount}`}</Text>
       </PressHighlight>
       <View style={styles.dividerFill} />
