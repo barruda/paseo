@@ -273,6 +273,7 @@ function useBuiltInSections(
   const history = useAgentHistory({
     enabled: isArchivedExpansionActive({ open, query, expanded: archivedExpanded }),
     search: query,
+    view: "archived",
   });
   const archivedRows = useMemo<CommandCenterAgentResult[]>(() => {
     if (!open || !archivedExpanded) return [];

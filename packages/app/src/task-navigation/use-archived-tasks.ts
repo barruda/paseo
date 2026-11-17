@@ -70,7 +70,8 @@ export function useArchivedTasks(
   enabled: boolean,
   workspaces: readonly TaskWorkspace[],
 ): ArchivedTasks {
-  const history = useAgentHistory({ enabled });
+  // CUSTOM(history-archived-tab): ask the daemon for archived sessions only.
+  const history = useAgentHistory({ enabled, view: "archived" });
   const sessionArchived = useStoreWithEqualityFn(
     useSessionStore,
     (state) => (enabled ? selectArchivedInSession(state) : NO_ENTRIES),
