@@ -381,6 +381,10 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/task-navigation/model.test.ts src/task-navigation/store.test.ts src/workspace-tabs/open-supporting-view.test.ts --bail=1)
   # Ctrl+Z reopens the Desk tab you just closed.
   (cd packages/app && npx vitest run src/task-navigation/reopen-closed-tab.test.ts --bail=1)
+  # A Desk tab closes when its agent gets archived while the app watches.
+  (cd packages/app && npx vitest run src/task-navigation/desk-archive-close.test.ts --bail=1)
+  # Idle runtime cleanup period (host setting, applied live).
+  (cd packages/server && npx vitest run src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts src/server/daemon-config-store.test.ts --bail=1)
   # Search in files (Ctrl+Shift+F); its browser check is in e2e/task-navigation.spec.ts.
   (cd packages/server && npx vitest run src/utils/workspace-content-search.test.ts --bail=1)
   (cd packages/app && npx vitest run src/keyboard/route-shortcut.test.ts src/keyboard/keyboard-shortcuts.test.ts --bail=1)

@@ -6127,3 +6127,70 @@ src/navigation/settings-presentation/model.test.ts`. In the app: type "font" in 
   filter and see Appearance with the matched setting under it; "ntfc" finds Notifications; open
   Host > Projects, click Back, reopen Settings and land on Projects; each project row shows its
   path.
+
+## idle-cleanup-period: configurable idle agent release time
+
+- **Added:** 2026-11-17
+- **Commit:** `640bae931`
+- **Why:** The daemon released idle agent runtimes after a hard-coded hour. Memory-tight hosts want
+  shorter, long-running work wants longer.
+- **What:** Host setting `agents.idleRuntimeCleanupMinutes` (integer 5 to 1440, absent means 60),
+  persisted in `config.json` and applied live: the next sweep uses the new value and idle clocks
+  are not reset. Edited in Settings > Bruno's Customizations > Agents (presets 15 min, 30 min, 1 h,
+  2 h, 4 h, 8 h, 24 h, plus a stored custom value). The on/off switch stays in Host > Agents. The
+  daemon clamps a patched value to 5..1440. Gated by the `idleRuntimeCleanupPeriodSetting`
+  server_info feature, so an old daemon shows "Update this host".
+- **Core files touched:** `packages/server/src/server/agent/idle-runtime-cleanup/index.ts`
+  (`idlePeriodMs`, `setIdlePeriodMs`), `persisted-config.ts`, `config.ts`, `daemon-config-store.ts`
+  (field, patch merge, persisted path map, `clampIdleCleanupMinutes`), `bootstrap.ts`
+  (`connectIdleRuntimeCleanupConfig`, `idleRuntimeCleanupPeriodMs`), `websocket-server.ts` (feature
+  flag), `packages/protocol/src/messages.ts` (config, patch and feature schemas),
+  `packages/app/src/screens/settings-screen.tsx`, `utils/host-routes.ts` and
+  `screens/settings/settings-search-index.ts` (the `customizations-agents` page). New file:
+  `packages/app/src/screens/settings/bruno-customizations/agents-page.tsx`. Tests in
+  `idle-runtime-cleanup.test.ts` and `daemon-config-store.test.ts`. Docs: `docs/agent-lifecycle.md`.
+- **Re-apply:** Replace the `IDLE_PERIOD_MS` constant in the cleanup module with a mutable value
+  read at each sweep. Mirror every place `idleRuntimeCleanup` flows (persisted schema, resolved
+  config, store field/patch/path map, bootstrap initial config) for `idleRuntimeCleanupMinutes`, and
+  subscribe with `store.onFieldChange("idleRuntimeCleanupMinutes", ...)` to call `setIdlePeriodMs`.
+  Add the field and the feature flag to the protocol schemas, then regenerate validators
+  (`build:client`). Grep `CUSTOM(idle-cleanup-period)`.
+- **Verify:** `cd packages/server && npx vitest run
+src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts
+src/server/daemon-config-store.test.ts`. In the app it needs a daemon restart (new protocol field
+  and feature flag): then pick 15 min in Bruno's Customizations > Agents, and see it persist in
+  `config.json` under `agents.idleRuntimeCleanupMinutes`.
+
+## subagent-no-review: a finished subagent never shows "Ready to review"
+
+- **Added:** 2026-11-17
+- **Commit:** `7ae1118a1`
+- **Why:** A subagent's result is its orchestrator's to review. Showing "Ready to review" for it
+  cluttered the Tasks sidebar and lifted its whole crew to review.
+- **What:** `taskState()` returns `idle` instead of `review` for a finished agent that has a
+  `parentAgentId`. Its attention flag stays set, so the orchestrator still gets notified.
+- **Core files touched:** `packages/app/src/task-navigation/model.ts` (`taskState`),
+  `model.test.ts` ("shows a finished subagent as idle...").
+- **Re-apply:** In `taskState()`, where `requiresAttention && attentionReason === "finished"`
+  returns `review`, return `idle` when `agent.parentAgentId` is set.
+- **Verify:** `cd packages/app && npx vitest run src/task-navigation/model.test.ts`. In the app, a
+  finished subagent shows as idle in Tasks.
+
+## desk-archive-close: a Desk tab closes when its agent is archived
+
+- **Added:** 2026-11-17
+- **Commit:** `2b55b9aa0`
+- **Why:** In Tasks mode, an agent that archives itself (the `archive_agent` MCP tool) left its tab
+  open on a dead agent. Normal layout already closes it through `reconcileWorkspaceTabs`.
+- **What:** While the app watches, a Desk tab closes when its agent goes from unarchived to
+  archived. Agents already archived when first seen keep their tab, so opening archived sessions
+  from History still works.
+- **Files:** `packages/app/src/task-navigation/desk-archive-close.ts` (+ `.test.ts`).
+- **Core files touched:** none outside `task-navigation/`: `desks-store.ts` (`closeAgentTabs`),
+  `desk-screen.tsx` (`DeskArchivedAgentTabs`, rescans only when an agents map is replaced),
+  a case in `store.test.ts`.
+- **Re-apply:** Render `DeskArchivedAgentTabs` in the Desk screen. It compares each agents map
+  against the previous one, collects agents that turned archived, and calls `closeAgentTabs`.
+- **Verify:** `cd packages/app && npx vitest run src/task-navigation/desk-archive-close.test.ts
+src/task-navigation/store.test.ts`. In the app, have an agent call `archive_agent` on itself in
+  Tasks mode and see its Desk tab close.
