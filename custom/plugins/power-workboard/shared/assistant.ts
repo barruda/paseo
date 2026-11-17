@@ -49,6 +49,8 @@ export const assistantChatSettingsSchema = z.object({
   // CUSTOM(agent-profiles): the assistant's profile settings; its content is in the profile folder.
   skills: skillSelectionSchema.default(() => skillSelectionSchema.parse({})),
   memory: z.boolean().default(true),
+  /** CUSTOM(assistant-wake): tell the chat agent, in a batch, when a task needs the user. */
+  wakeOnNeedsYou: z.boolean().default(true),
 });
 export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
 
@@ -193,6 +195,7 @@ export const HISTORY_EVENT_KINDS = [
   "merged",
   "pr-prepared",
   "needs-you",
+  "told-assistant",
   "observed",
   "failed",
   "done",

@@ -108,6 +108,10 @@ export function fixture(initial: Partial<Data> = {}) {
     agentAlive: vi.fn(async (id: string) =>
       inventory.agents.some((a) => a.id === id && !a.archivedAt),
     ),
+    agentActivity: vi.fn(async (id: string) => {
+      const agent = inventory.agents.find((a) => a.id === id);
+      return agent && !agent.archivedAt ? agent.activity : null;
+    }),
     runAgent: vi.fn(
       async (_id: string, _text: string) =>
         "<ticket>\n# Ticket\n\nBody\n</ticket>",

@@ -6507,8 +6507,12 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     (one JSONL per day, 90 days).
   - **Projects Dashboard** (surface `projects-dashboard`): Needs you first (Merge now, Continue
     with feedback, Mark done, Dismiss, Open conversation), running now, numbers and per-day /
-    per-project / per-orchestrator bars for 7/14/30 days, filterable history. Told only here: no
-    notification, no badge.
+    per-project / per-orchestrator bars for 7/14/30 days, filterable history. No badge.
+  - **Told in the chat** (`assistant.settings.chat.wakeOnNeedsYou`, default on, a switch in the
+    Projects Assistant profile): tasks entering Needs you are batched for 90 s and sent as one
+    `[Board]` message to the assistant chat agent (`assistant.chatAgentId`), which reads them and
+    answers; its reply raises Paseo's usual "finished" notification. A busy chat is retried later,
+    never interrupted; without a chat nothing is sent. History records "Told the assistant".
   - **Projects Conversations** (surface `projects-conversations`): orchestrator > task > the
     agents it started (never their subagents), the selected agent's conversation read through the
     timeline API (plugins cannot embed the real chat), report card, attempts, the orchestrator's

@@ -31,6 +31,7 @@ export const KIND_LABELS: Record<HistoryEventKind, string> = {
   merged: "Merged",
   "pr-prepared": "PR prepared",
   "needs-you": "Needs you",
+  "told-assistant": "Told the assistant",
   observed: "Observed",
   failed: "Failed",
   done: "Done",

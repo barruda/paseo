@@ -736,3 +736,137 @@ it("a delivery interrupted at merging resumes on start", async () => {
     s.board.dispose();
   }
 });
+
+// CUSTOM(assistant-wake): tasks that need the user are told to the chat agent in one batch.
+async function wake(options: { chat?: boolean; setting?: boolean } = {}) {
+  const s = await scenario({
+    settings: { chat: { wakeOnNeedsYou: options.setting ?? true } },
+    assistant: { wakeDelayMs: 5 },
+  });
+  let chatId: string | null = null;
+  if (options.chat ?? true) {
+    chatId = await s.host.startAgentIn("/chat", {
+      provider: "claude/x",
+      modeId: null,
+      thinkingOptionId: null,
+      title: "Projects Assistant",
+      prompt: "hi",
+    });
+    s.inventory.agents.find((a) => a.id === chatId)!.activity = "idle";
+    await s.store.update((data) => {
+      data.assistant.chatAgentId = chatId;
+    });
+  }
+  const sent = () =>
+    (s.host.sendAgent as any).mock.calls.filter(
+      ([id]: [string]) => id === chatId,
+    ) as [string, string][];
+  /** A second task whose delivery needs the user. */
+  const another = async () => {
+    await s.board.mutate({
+      action: "create",
+      title: "Second",
+      description: "x",
+      projectId: "p",
+    });
+    const id = s.board.snapshot().cards.find((c) => c.title === "Second")!.id;
+    await s.store.update((data) => {
+      data.assistant.deliveries[id] = {
+        ...data.assistant.deliveries[s.taskId]!,
+      };
+    });
+    await (s.board as any).markNeedsYou(id, "failed", "It broke\nbadly");
+    return id;
+  };
+  const blocked = async () => {
+    s.reply(
+      `x\n<report>${JSON.stringify({ status: "blocked", summary: "Stuck" })}</report>`,
+    );
+    await s.finishTurn();
+    await s.settled("needs-you");
+  };
+  return { ...s, chatId, sent, another, blocked };
+}
+
+it("two tasks that need the user are told in one prompt, and the batch is recorded", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    const second = await s.another();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+    const text = s.sent()[0]![1];
+    expect(text.startsWith("[Board] These tasks now need the user:")).toBe(
+      true,
+    );
+    expect(text).toContain(`${s.taskId} | Task | Project | blocked`);
+    expect(text).toContain(`${second} | Second | `);
+    expect(text).toContain("failed: It broke badly");
+    expect(text).toContain("Do not merge or mark done.");
+    await vi.waitFor(() =>
+      expect(s.history.kinds()).toContain("told-assistant"),
+    );
+    expect(
+      s.history.events.filter((e) => e.kind === "told-assistant"),
+    ).toHaveLength(1);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a busy chat agent is not interrupted; the batch goes when it is idle", async () => {
+  const s = await wake();
+  try {
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "running";
+    await s.blocked();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(0);
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("with no chat agent nothing is sent", async () => {
+  const s = await wake({ chat: false });
+  try {
+    await s.blocked();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.host.sendAgent).not.toHaveBeenCalled();
+    expect(s.history.kinds()).not.toContain("told-assistant");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("with the setting off nothing is sent", async () => {
+  const s = await wake({ setting: false });
+  try {
+    await s.blocked();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(0);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a task that left needs-you before the timer fired is skipped", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await s.store.update((data) => {
+      data.assistant.deliveries[s.taskId]!.stage = "dismissed";
+    });
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(0);
+    expect(s.history.kinds()).not.toContain("told-assistant");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("assistant settings stored without the field wake the chat", () => {
+  expect(
+    assistantDataSchema.parse({ settings: { chat: {} } }).settings.chat,
+  ).toMatchObject({ wakeOnNeedsYou: true });
+});

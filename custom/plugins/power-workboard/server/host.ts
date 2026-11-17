@@ -142,6 +142,8 @@ export interface Host {
   startAgentIn(cwd: string, start: AgentStart): Promise<string>;
   /** Whether the agent still exists and is not archived. */
   agentAlive(agentId: string): Promise<boolean>;
+  /** CUSTOM(assistant-wake): the agent's activity, or null when it is gone or archived. */
+  agentActivity(agentId: string): Promise<Card["activity"] | null>;
   /** Send a message and wait for that turn; resolves with the agent's last message. */
   runAgent(agentId: string, text: string): Promise<string>;
   /** Send a message to an agent without waiting for its turn. */
@@ -616,6 +618,14 @@ export class PaseoHost implements Host {
       return !!result && !result.agent.archivedAt;
     } catch {
       return false;
+    }
+  }
+  async agentActivity(agentId: string): Promise<Card["activity"] | null> {
+    try {
+      const result = await this.api.agents.ref(agentId).refresh();
+      return result && !result.agent.archivedAt ? activity(result.agent) : null;
+    } catch {
+      return null;
     }
   }
   async runAgent(agentId: string, text: string): Promise<string> {

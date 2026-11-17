@@ -706,6 +706,7 @@ const draftOf = (chat: AssistantChatSettings) => ({
   },
   skills: chat.skills,
   memory: chat.memory,
+  wakeOnNeedsYou: chat.wakeOnNeedsYou, // CUSTOM(assistant-wake)
 });
 
 /** The Projects Assistant's fixed entry: the same editor, without project or schedule fields. */
@@ -756,6 +757,7 @@ export function AssistantProfileTab({
       thinkingOptionId: draft.agent.thinkingOptionId.trim() || null,
       skills: draft.skills,
       memory: draft.memory,
+      wakeOnNeedsYou: draft.wakeOnNeedsYou,
     });
     if (!chat.success) {
       setError(
@@ -809,6 +811,15 @@ export function AssistantProfileTab({
         </Text>
       )}
       <View style={styles.column}>
+        <SettingsCard>
+          <SettingsSwitch
+            label={s.wake}
+            hint={s.wakeHint}
+            value={draft.wakeOnNeedsYou}
+            onValueChange={(wakeOnNeedsYou) => change({ wakeOnNeedsYou })}
+            disabled={disabled}
+          />
+        </SettingsCard>
         <AgentFields
           value={draft.agent}
           onChange={(agent) => change({ agent })}

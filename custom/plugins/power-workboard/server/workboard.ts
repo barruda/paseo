@@ -112,6 +112,8 @@ export interface AssistantOptions {
   chatDirectory?: string;
   /** CUSTOM(agent-profiles): where the profiles live; defaults to the plugin-data folder. */
   profilesDirectory?: string;
+  /** CUSTOM(assistant-wake): quiet time before the chat agent is told about tasks that need the user. */
+  wakeDelayMs?: number;
 }
 type AttemptOutcome = Attempt["outcome"]; // CUSTOM(projects-assistant)
 /** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
@@ -2021,6 +2023,92 @@ export class Workboard {
       reason,
       detail,
     });
+    // CUSTOM(assistant-wake)
+    if (this.store.current.assistant.settings.chat.wakeOnNeedsYou) {
+      this.wakePending.add(taskId);
+      this.armWake();
+    }
+  }
+  // CUSTOM(assistant-wake): tasks that need the user are told to the chat agent in one batch.
+  private wakePending = new Set<string>();
+  private wakeTimer: ReturnType<typeof setTimeout> | undefined;
+  private armWake(): void {
+    if (this.stopped) return;
+    clearTimeout(this.wakeTimer);
+    this.wakeTimer = setTimeout(
+      () => void this.wakeAssistant(),
+      this.assistantOptions.wakeDelayMs ?? 90_000,
+    );
+  }
+  private async wakeAssistant(): Promise<void> {
+    this.wakeTimer = undefined;
+    if (this.stopped) return;
+    try {
+      const assistant = this.store.current.assistant;
+      const agentId = assistant.chatAgentId;
+      // No chat, or it was turned off: the dashboard still shows the tasks.
+      const activity =
+        assistant.settings.chat.wakeOnNeedsYou && agentId
+          ? await this.host.agentActivity(agentId)
+          : null;
+      if (!agentId || activity === null) {
+        this.wakePending.clear();
+        return;
+      }
+      // Never interrupt it: try again later.
+      if (activity === "running" || activity === "waiting") {
+        this.armWake();
+        return;
+      }
+      const clean = (value: string, max: number) => {
+        const line = value.replace(/\s+/g, " ").trim();
+        return line.length > max ? `${line.slice(0, max)}...` : line;
+      };
+      const tasks = [...this.wakePending]
+        .map((id) => ({
+          id,
+          task: this.store.current.tasks.find((t) => t.id === id),
+          delivery: this.store.current.assistant.deliveries[id],
+        }))
+        .filter((entry) => entry.task && entry.delivery?.stage === "needs-you");
+      this.wakePending.clear();
+      if (!tasks.length) return;
+      const lines = tasks.map(({ id, task, delivery }) => {
+        const project =
+          task!.projectName ||
+          this.inventory.projects.find((p) => p.id === this.projectIdOf(task!))
+            ?.name ||
+          "";
+        const reason = delivery!.reason ?? "unknown";
+        return [
+          id,
+          clean(task!.title, 200),
+          clean(project, 100),
+          delivery!.detail
+            ? `${reason}: ${clean(delivery!.detail, 300)}`
+            : reason,
+        ].join(" | ");
+      });
+      await this.host.sendAgent(
+        agentId,
+        [
+          "[Board] These tasks now need the user:",
+          ...lines,
+          "Look at them with your board tools (read the agent for no-report) and tell the user in 2-4 lines what happened and what they need to decide, in the language the user writes to you in. Do not merge or mark done.",
+        ].join("\n"),
+      );
+      await this.record(
+        tasks[0]!.id,
+        "told-assistant",
+        `Told the assistant: ${tasks.length} task${tasks.length === 1 ? "" : "s"} need the user`,
+        {
+          agentId,
+          detail: tasks.map((entry) => entry.task!.title).join("\n"),
+        },
+      );
+    } catch (error) {
+      console.error("Could not tell the assistant:", message(error));
+    }
   }
   private async createDelivery(
     taskId: string,
@@ -3479,6 +3567,7 @@ export class Workboard {
     clearInterval(this.timer);
     clearTimeout(this.debounce);
     clearTimeout(this.settleTimer);
+    clearTimeout(this.wakeTimer); // CUSTOM(assistant-wake)
     this.host.dispose();
   }
 }

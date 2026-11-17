@@ -45,6 +45,8 @@ const zh = {
   copied: "已复制",
   copyFailed: "无法复制",
   instructionsHint: "加在每个任务的第一条消息前面；与系统提示不同。",
+  wake: "有任务需要我时在聊天里告诉我",
+  wakeHint: "每一批消耗助手的一轮对话。",
   save: "保存",
   saveFailed: "保存失败",
   done: "完成",
@@ -97,6 +99,8 @@ const en: typeof zh = {
   copyFailed: "Could not copy",
   instructionsHint:
     "Added to the task's first message, before it; not the system prompt.",
+  wake: "Tell me in the chat when a task needs me",
+  wakeHint: "Costs one assistant turn per batch.",
   save: "Save",
   saveFailed: "Could not save",
   done: "Done",

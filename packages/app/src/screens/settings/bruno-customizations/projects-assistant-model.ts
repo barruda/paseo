@@ -32,6 +32,8 @@ export const assistantChatSettingsSchema = z.object({
   // CUSTOM(agent-profiles): edited in the plugin's Orchestrators tab; kept here so saving keeps them.
   skills: skillSelectionSchema.default(() => skillSelectionSchema.parse({})),
   memory: z.boolean().default(true),
+  // CUSTOM(assistant-wake)
+  wakeOnNeedsYou: z.boolean().default(true),
 });
 export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
 

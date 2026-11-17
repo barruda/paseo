@@ -27,6 +27,7 @@ describe("projects assistant settings model", () => {
         modeId: "bypassPermissions",
         skills: { mode: "all", names: [] },
         memory: true,
+        wakeOnNeedsYou: true,
       },
     });
   });
@@ -44,6 +45,7 @@ describe("projects assistant settings model", () => {
       modeId: null,
       skills: { mode: "all", names: [] },
       memory: true,
+      wakeOnNeedsYou: true,
     });
     expect(chatSettingsValid(edited)).toBe(true);
     expect(chatSettingsValid(patchChatSettings(base, { provider: "" }))).toBe(false);
