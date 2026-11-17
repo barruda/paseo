@@ -6349,3 +6349,25 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts
 src/server/daemon-config-store.test.ts`. In the app it needs a daemon restart (new protocol field
   and feature flag): then the daemon log shows "Auto-archived closed agent" about 10 minutes after
   boot for sessions closed longer than the setting, and they appear in History > Archived.
+
+## task-row-compact: tighter Tasks rows
+
+- **Added:** 2026-11-17
+- **Commit:** `a6261ea81`
+- **Why:** The Tasks list spent a line on the project name (the project icon already says it) and
+  a whole list row on each "N subagents" toggle.
+- **What:** Task rows no longer show the project name (the host label still shows alone on
+  multi-host setups; the accessibility label keeps the project). The provider subagents toggle
+  (`› 3 subagents` / `⌄ 3 subagents`) is a separate press target inside the task row, on the second
+  line; it toggles and never opens the task. The separate toggle list row is gone; the expanded
+  subagent rows still follow the task row. A task without subagents is one title line.
+- **Core files touched:** `packages/app/src/task-navigation/sidebar.tsx` (`TaskRow` body,
+  `InlineSubagentsToggle`, `renderRow`), `provider-subagent-rows.ts` (no toggle row kind, new
+  `providerSubagentsToggleLabel`), `provider-subagent-rows.test.ts`.
+- **Re-apply:** Grep `CUSTOM(task-row-compact)`. Drop the project-name `Text` from `TaskRow`'s body,
+  render `InlineSubagentsToggle` there from `subagentsLabel` / `subagentsExpanded` props
+  (`providerSubagentsToggleLabel(providerSubagents.get(key))`), and keep
+  `buildProviderSubagentRows` emitting only the `provider-subagent` rows when expanded.
+- **Verify:** `cd packages/app && npx vitest run src/task-navigation/provider-subagent-rows.test.ts`.
+  In the app: Tasks rows have no project line; clicking "N subagents" expands without opening the
+  task.
