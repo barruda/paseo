@@ -176,14 +176,20 @@ export async function allPages<T>(
     cursor = next;
   } while (true);
 }
-function activity(agent: PaseoAgent): Card["activity"] {
+// CUSTOM(board-turn-end): the plugin compiles against its installed, pinned @getpaseo/client,
+// which predates this optional snapshot field; older daemons simply never send it.
+function activity(
+  agent: PaseoAgent & { awaitingBackgroundWork?: boolean },
+): Card["activity"] {
   if (agent.archivedAt) return "idle";
   if (agent.pendingPermissions.length || agent.attentionReason === "permission")
     return "waiting";
   if (
     agent.status === "running" ||
     agent.status === "initializing" ||
-    agent.activeTurn
+    agent.activeTurn ||
+    // CUSTOM(board-turn-end): the turn ended but background subagents will wake the agent.
+    agent.awaitingBackgroundWork
   )
     return "running";
   if (

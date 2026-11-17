@@ -507,6 +507,18 @@ describe("toAgentPayload", () => {
 
     expect(payload.features).toEqual(features);
   });
+
+  // CUSTOM(board-turn-end)
+  it("flags awaitingBackgroundWork only while the session has pending wake work", () => {
+    let pending = true;
+    const session = { hasPendingWakeWork: () => pending } as unknown as AgentSession;
+    const agent = createManagedAgent({ session });
+
+    expect(toAgentPayload(agent).awaitingBackgroundWork).toBe(true);
+    pending = false;
+    expect("awaitingBackgroundWork" in toAgentPayload(agent)).toBe(false);
+    expect("awaitingBackgroundWork" in toAgentPayload(createManagedAgent())).toBe(false);
+  });
 });
 
 describe("toRecentProviderSessionDescriptorPayload", () => {

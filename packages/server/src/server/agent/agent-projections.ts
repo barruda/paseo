@@ -126,6 +126,11 @@ function steerPayloadFields(
   };
 }
 
+// CUSTOM(board-turn-end): present only while live background work will wake the agent.
+function awaitingWorkFields(agent: ManagedAgent): { awaitingBackgroundWork?: true } {
+  return agent.session?.hasPendingWakeWork?.() ? { awaitingBackgroundWork: true } : {};
+}
+
 export function toAgentPayload(
   agent: ManagedAgent,
   options?: ProjectionOptions,
@@ -171,6 +176,7 @@ export function toAgentPayload(
     // CUSTOM(background-tools)
     ...(agent.backgroundTasks?.length ? { backgroundTasks: agent.backgroundTasks } : {}),
     ...steerPayloadFields(agent), // CUSTOM(steer-pending)
+    ...awaitingWorkFields(agent), // CUSTOM(board-turn-end)
   };
 
   const usage = sanitizeUsage(agent.lastUsage);

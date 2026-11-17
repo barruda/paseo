@@ -960,6 +960,9 @@ export const AgentSnapshotPayloadSchema = z.object({
   statusSummary: AgentStatusSummaryPayloadSchema.optional(),
   // CUSTOM(background-tools): absent means none.
   backgroundTasks: z.array(AgentBackgroundTaskPayloadSchema).optional(),
+  // CUSTOM(board-turn-end): true while the turn ended but live background subagents/workflows/
+  // monitors will wake the agent again. Absent means false.
+  awaitingBackgroundWork: z.boolean().optional(),
   // CUSTOM(steer-pending): client message ids of steers Claude has not started yet, and of steers
   // the user cancelled (the app hides those bubbles). Claude only; absent elsewhere.
   pendingSteerMessageIds: z.array(z.string()).optional(),

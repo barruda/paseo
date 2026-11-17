@@ -101,6 +101,8 @@ export interface AssistantOptions {
   chatDirectory?: string;
 }
 type AttemptOutcome = Attempt["outcome"]; // CUSTOM(projects-assistant)
+/** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
+const IDLE_SETTLE_MS = 20_000;
 const DEFAULT_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
 const DELIVERY_STEPS: ReadonlySet<string> = new Set([
   "verifying",
@@ -174,6 +176,12 @@ export class Workboard {
   // null means a full refresh; undefined means no work is waiting.
   private pendingRefresh: Set<string> | null | undefined;
   private stopped = false;
+  /** CUSTOM(board-turn-end): per finished task, since when its agent has been idle again. */
+  private lateIdleSince = new Map<string, number>();
+  /** CUSTOM(board-turn-end): the agent `updatedAt` whose reply was last re-read for a late report. */
+  private lateChecked = new Map<string, string>();
+  /** CUSTOM(board-turn-end): one pending refresh for when an idle settle window ends. */
+  private settleTimer: ReturnType<typeof setTimeout> | undefined;
   private pendingMutations = 0;
   private connectionGeneration = 0;
   private epoch = 0;
@@ -379,6 +387,14 @@ export class Workboard {
       this.pendingRefresh.add(workspaceId);
     }
     this.scheduleRefresh();
+  }
+  /** CUSTOM(board-turn-end): re-run the tick once the idle settle window has passed. */
+  private scheduleSettleCheck(): void {
+    if (this.stopped || this.settleTimer) return;
+    this.settleTimer = setTimeout(() => {
+      this.settleTimer = undefined;
+      void this.refresh().catch(() => undefined);
+    }, IDLE_SETTLE_MS + 1000);
   }
   private scheduleRefresh(): void {
     if (this.stopped || this.debounce || this.refreshing) return;
@@ -2089,6 +2105,7 @@ export class Workboard {
     await this.setOrchestration(taskId, {
       startedAt: this.stamp(),
       sawRunning: false,
+      idleSince: null,
     });
     await this.log(
       record.orchestratorId,
@@ -2351,6 +2368,7 @@ export class Workboard {
       startedAt: this.stamp(),
       finishedAt: null,
       sawRunning: false,
+      idleSince: null,
       error: null,
     });
     await this.record(
@@ -2506,6 +2524,76 @@ export class Workboard {
     return this.host.timeline(agentId);
   }
   // End CUSTOM(projects-assistant) -------------------------------------------------------------
+  /**
+   * CUSTOM(board-turn-end): the agent ended another turn after the task settled as no-report
+   * (typically a background subagent handed back). Re-read its reply once per turn and, when it
+   * is now a valid report, deliver as if it had arrived on time. Runs inside `serial`.
+   */
+  private async recoverLateReport(
+    taskId: string,
+    record: Orchestration,
+  ): Promise<void> {
+    const delivery = this.store.current.assistant.deliveries[taskId];
+    if (delivery?.stage !== "needs-you" || delivery.reason !== "no-report")
+      return;
+    const agent = this.inventory.agents.find((a) => a.id === record.agentId);
+    if (!agent) return;
+    if (
+      agent.activity === "running" ||
+      agent.activity === "waiting" ||
+      agent.activity === "error"
+    ) {
+      this.lateIdleSince.delete(taskId);
+      return;
+    }
+    const since = this.lateIdleSince.get(taskId);
+    if (since === undefined) {
+      this.lateIdleSince.set(taskId, this.now());
+      this.scheduleSettleCheck();
+      return;
+    }
+    if (this.now() - since < IDLE_SETTLE_MS) {
+      this.scheduleSettleCheck();
+      return;
+    }
+    if (
+      !record.finishedAt ||
+      Date.parse(agent.updatedAt) <= Date.parse(record.finishedAt) ||
+      this.lateChecked.get(taskId) === agent.updatedAt
+    )
+      return;
+    this.lateChecked.set(taskId, agent.updatedAt);
+    const reply = await this.host.lastReply(record.agentId!);
+    const parsed = reply ? parseReport(reply) : null;
+    if (!reply || !parsed?.report) return;
+    const task = this.task(taskId);
+    // Reopen the attempt that ended as no-report so the report closes it with its real outcome.
+    await this.store.update((data) => {
+      const last = data.assistant.attempts[taskId]?.at(-1);
+      if (last?.outcome === "no-report") {
+        last.finishedAt = null;
+        last.outcome = "running";
+      }
+    });
+    await this.setOrchestration(taskId, { finishedAt: this.stamp() });
+    const launch = await this.assistantFinished(
+      taskId,
+      this.store.current.orchestrations[taskId],
+      reply,
+    );
+    await this.record(taskId, "report", "The report arrived late", {
+      attempt: this.store.current.assistant.deliveries[taskId]?.attempt,
+      detail: parsed.report.summary.split("\n")[0].slice(0, 200),
+    });
+    await this.log(
+      record.orchestratorId,
+      "info",
+      `"${task.title}": the report arrived late`,
+      taskId,
+      record.agentId,
+    );
+    if (launch) this.launch(taskId);
+  }
   private setOrchestration(
     taskId: string,
     change: Partial<Orchestration>,
@@ -2520,6 +2608,7 @@ export class Workboard {
           startedAt: this.stamp(),
           finishedAt: null,
           sawRunning: false,
+          idleSince: null,
           error: null,
         }),
         ...change,
@@ -2548,6 +2637,9 @@ export class Workboard {
         });
         continue;
       }
+      // CUSTOM(board-turn-end): a task settled as no-report may still get its report later.
+      if (record.status === "finished" && record.agentId && this.assistantOn())
+        await this.recoverLateReport(taskId, record);
       if (record.status !== "running" || !record.agentId) continue;
       const agent = this.inventory.agents.find((a) => a.id === record.agentId);
       const elapsed = this.now() - Date.parse(record.startedAt);
@@ -2572,8 +2664,11 @@ export class Workboard {
         continue;
       }
       if (agent.activity === "running" || agent.activity === "waiting") {
-        if (!record.sawRunning)
-          await this.setOrchestration(taskId, { sawRunning: true });
+        if (!record.sawRunning || record.idleSince)
+          await this.setOrchestration(taskId, {
+            sawRunning: true,
+            idleSince: null,
+          });
         continue;
       }
       if (agent.activity === "error") {
@@ -2603,6 +2698,16 @@ export class Workboard {
       }
       // Idle before it was ever seen running means it may not have started yet.
       if (!record.sawRunning && elapsed < 90_000) continue;
+      // CUSTOM(board-turn-end): idle must hold for a while; a subagent may be about to hand back.
+      if (!record.idleSince) {
+        await this.setOrchestration(taskId, { idleSince: this.stamp() });
+        this.scheduleSettleCheck();
+        continue;
+      }
+      if (this.now() - Date.parse(record.idleSince) < IDLE_SETTLE_MS) {
+        this.scheduleSettleCheck();
+        continue;
+      }
       await this.setOrchestration(taskId, {
         status: "finished",
         finishedAt: this.stamp(),
@@ -2968,6 +3073,7 @@ export class Workboard {
         startedAt: this.stamp(),
         finishedAt: null,
         sawRunning: false,
+        idleSince: null,
         summary: null,
         feedback: null,
         error: null,
@@ -3289,6 +3395,7 @@ export class Workboard {
     this.epoch++;
     clearInterval(this.timer);
     clearTimeout(this.debounce);
+    clearTimeout(this.settleTimer);
     this.host.dispose();
   }
 }

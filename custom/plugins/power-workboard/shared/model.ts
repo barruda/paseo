@@ -407,6 +407,8 @@ export const orchestrationSchema = z.object({
   startedAt: z.string(),
   finishedAt: z.string().nullable().default(null),
   sawRunning: z.boolean().default(false),
+  /** CUSTOM(board-turn-end): since when the agent has been continuously idle; null while it runs. */
+  idleSince: z.string().nullable().default(null),
   error: z.string().nullable().default(null),
   /** The agent's last reply when it finished, shown to the reviewer. */
   summary: z.string().nullable().default(null),

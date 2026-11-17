@@ -6486,7 +6486,11 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   - **Report:** with the assistant on, task and continuation prompts tell the agent not to merge,
     push or open PRs and to end with `<report>{json}</report>` (status done / blocked /
     needs_input / failed, summary, files, checks, risks, question). The reviewer's summary is the
-    reply without that block. No valid report means "Needs you".
+    reply without that block. No valid report means "Needs you". A turn is over only when the
+    agent is idle, not waiting on background work (see
+    [board-turn-end](#board-turn-end-a-turn-that-waits-on-a-background-subagent-is-not-the-end)),
+    and has stayed idle for 20 s. A task settled as `no-report` whose agent later ends a turn with
+    a valid report is delivered as if the report had come on time ("The report arrived late").
   - **Delivery per project** (Settings > Bruno's Customizations > Projects Assistant, which also has a **Chat** section for
     the assistant chat's model, thinking and mode, used by new conversations): Merge,
     Prepare PR, Tell me (default) or Nothing. **Merge is never a default**; it runs only in a
@@ -6513,7 +6517,10 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     thinking and mode from the page's Chat section, default `claude/claude-opus-5-5`, `high`,
     `bypassPermissions`) that uses the board's tools (`board_*`, attached on `agent.session_open`
     to agents labeled `pwb/assistant-chat`; they reach the agent through Paseo's injected MCP, so
-    the host needs **Enable Paseo tools** on, or the agent finds no board tools); its chip calls an RPC and then
+    the host needs **Enable Paseo tools** on, or the agent finds no board tools). The tools return
+    plain text only: Claude Code shows the model only `structuredContent` when a result has it,
+    which hid the overview's projects and orchestrators. Projects and orchestrators can be given
+    by id or name; an unknown one is an error that lists the valid ones. Its chip calls an RPC and then
     `navigation.openAgent`, which opens the agent as a Desk tab and returns from the chip to the
     Desk (the Desk's navigation wrapper deselects the chip even if that tab was already active).
   - **Tasks mode only:** the pages are chips in the Desk header next to Power Workboard (see
@@ -6541,3 +6548,28 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   lists the board's projects and keeps a saved rule after reload; in Tasks mode the Desk header
   shows Power Workboard, Projects Assistant, Projects Dashboard and Projects Conversations chips; a task finished by an
   orchestrator shows in Needs you with its report.
+
+## board-turn-end: a turn that waits on a background subagent is not the end
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Power Workboard waits for background subagents before reading the report`
+- **Why:** Task agents hand code to a background subagent and end their turn waiting for it. The
+  board read that waiting reply as the final one, found no `<report>`, and settled the task as
+  `no-report`; the real report came a turn later and was never read. The daemon already knew
+  (`hasPendingWakeWork`, `monitor-quiet-finish`), but plugins could not see it.
+- **What:** the agent snapshot gets an optional `awaitingBackgroundWork: true` while live
+  background subagents, workflows or monitors will wake the agent. Power Workboard's `activity()`
+  counts it as running, finishes a task only after its agent stayed idle 20 s (a one-shot timer
+  re-runs the check), and delivers a late valid report of a `no-report` task (see
+  [projects-assistant](#projects-assistant-a-delivery-manager-for-power-workboard-tasks-in-tasks-mode)).
+- **Core files touched:** `packages/protocol/src/messages.ts` (`AgentSnapshotPayloadSchema`),
+  `packages/server/src/server/agent/agent-projections.ts` (`awaitingWorkFields`). The plugin types
+  the field locally in `server/host.ts` because it compiles against its own pinned
+  `@getpaseo/*`.
+- **Re-apply:** add the optional field next to `backgroundTasks` in the snapshot schema and spread
+  `awaitingWorkFields(agent)` in `toAgentPayload`. The broadcast needs nothing: a wake-count change
+  comes with `background_tasks_changed`, which already emits the agent state.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent/agent-projections.test.ts --bail=1)`
+  and the plugin suite (both in the update script). Needs a daemon restart. In the app: a board
+  task whose agent delegates to a background subagent stays In progress until the agent's final
+  turn, then shows its report.

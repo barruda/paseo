@@ -94,7 +94,9 @@ async function scenario(options: Options = {}) {
     await board.refresh(); // sees it running
     agent.activity = "idle";
     advance(1000);
-    await board.refresh();
+    await board.refresh(); // sees it idle
+    advance(20_000);
+    await board.refresh(); // idle long enough to settle
   };
   return {
     ...setup,
@@ -173,6 +175,110 @@ it("a reply without a report needs you (no-report) and the task goes to review",
       "I changed things.",
     );
     expect(s.history.kinds()).toEqual(["task-started", "report", "needs-you"]);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("an agent awaiting background work is not finished, and idle must settle for 20 s", async () => {
+  const s = await scenario();
+  try {
+    s.reply(report());
+    await s.board.refresh(); // sees it running
+    (s.agent as any).activity = "running"; // awaitingBackgroundWork maps to running
+    s.advance(60_000);
+    await s.board.refresh();
+    expect(s.delivery()).toBeUndefined();
+    s.agent.activity = "idle";
+    s.advance(1000);
+    await s.board.refresh(); // idle starts
+    s.advance(19_000);
+    await s.board.refresh();
+    expect(s.delivery()).toBeUndefined();
+    s.advance(1500);
+    await s.board.refresh();
+    expect(s.delivery()).toBeDefined();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a turn that resumes within the settle window resets it", async () => {
+  const s = await scenario();
+  try {
+    s.reply(report());
+    await s.board.refresh();
+    s.agent.activity = "idle";
+    s.advance(1000);
+    await s.board.refresh();
+    s.advance(15_000);
+    s.agent.activity = "running";
+    await s.board.refresh();
+    s.agent.activity = "idle";
+    s.advance(1000);
+    await s.board.refresh();
+    s.advance(15_000);
+    await s.board.refresh();
+    expect(s.delivery()).toBeUndefined();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a report that arrives in a later turn is picked up after a no-report finish", async () => {
+  const s = await scenario();
+  try {
+    s.reply("Waiting for the subagent.");
+    await s.finishTurn();
+    expect(s.delivery()).toMatchObject({ reason: "no-report" });
+    const reads = (s.host.lastReply as any).mock.calls.length;
+    // The subagent returns and the agent runs another turn.
+    s.agent.activity = "running";
+    await s.board.refresh();
+    s.reply(report());
+    s.agent.activity = "idle";
+    s.agent.updatedAt = "2026-09-23T00:05:00Z";
+    s.advance(10_000);
+    await s.board.refresh();
+    s.advance(21_000);
+    await s.board.refresh();
+    expect(s.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "notify",
+    });
+    expect((s.host.lastReply as any).mock.calls.length).toBeGreaterThan(reads);
+    expect(s.attempts()).toMatchObject([{ index: 1, outcome: "done" }]);
+    expect(s.history.events.at(-1)).toMatchObject({
+      kind: "report",
+      text: "The report arrived late",
+    });
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a later turn still without a report stays no-report and is read once", async () => {
+  const s = await scenario();
+  try {
+    s.reply("Waiting for the subagent.");
+    await s.finishTurn();
+    s.agent.activity = "running";
+    await s.board.refresh();
+    s.agent.activity = "idle";
+    s.agent.updatedAt = "2026-09-23T00:05:00Z";
+    s.advance(10_000);
+    await s.board.refresh();
+    s.advance(21_000);
+    await s.board.refresh();
+    const reads = (s.host.lastReply as any).mock.calls.length;
+    s.advance(30_000);
+    await s.board.refresh();
+    await s.board.refresh();
+    expect((s.host.lastReply as any).mock.calls.length).toBe(reads);
+    expect(s.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "no-report",
+    });
   } finally {
     s.board.dispose();
   }

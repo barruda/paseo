@@ -177,6 +177,8 @@ it("orchestrates Ready to start tasks up to the limit and moves finished ones to
     agent.activity = "attention";
     advance(1000);
     await board.refresh();
+    advance(20_000);
+    await board.refresh();
     expect(stageOf(board, finished.title)).toBe("review");
     expect(board.snapshot().orchestrations[finished.id].status).toBe(
       "finished",
@@ -317,6 +319,8 @@ async function reviewed() {
   agent.activity = "idle";
   setup.advance(1000);
   await setup.board.refresh();
+  setup.advance(20_000);
+  await setup.board.refresh();
   return { ...setup, task, agent, orchestratorId };
 }
 
@@ -365,6 +369,8 @@ it("Continue sends the feedback to the same agent, right away while its window i
     await board.refresh();
     agent.activity = "idle";
     advance(1000);
+    await board.refresh();
+    advance(20_000);
     await board.refresh();
     expect(stageOf(board, "Task")).toBe("review");
   } finally {
@@ -427,6 +433,8 @@ const finish = async (
   inventory.agents.find((a) => a.workspaceId === card.workspaceId)!.activity =
     "idle";
   advance(1000);
+  await board.refresh();
+  advance(20_000);
   await board.refresh();
 };
 
