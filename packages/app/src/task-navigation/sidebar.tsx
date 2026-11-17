@@ -923,16 +923,11 @@ function TaskSignal({ state }: { state: TaskNode["state"] }) {
     />
   );
 }
+// CUSTOM(task-row-compact): no "Ready to review" line; the green dot already says it.
 function TaskStateLabel({ state }: { state: TaskNode["state"] }) {
-  if (state !== "review" && state !== "failed" && state !== "needs-you") return null;
+  if (state !== "failed" && state !== "needs-you") return null;
   return (
-    <Text
-      style={[
-        styles.stateLabel,
-        state === "review" && styles.reviewText,
-        state === "failed" && styles.failedText,
-      ]}
-    >
+    <Text style={[styles.stateLabel, state === "failed" && styles.failedText]}>
       {TASK_STATE_LABELS[state]}
     </Text>
   );
@@ -1355,7 +1350,6 @@ const styles = StyleSheet.create((theme) => ({
     marginTop: theme.spacing[1],
   },
   failedText: { color: theme.colors.statusDanger },
-  reviewText: { color: theme.colors.statusDotSuccess },
   dot: {
     width: 6,
     height: 6,
