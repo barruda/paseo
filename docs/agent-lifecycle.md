@@ -209,7 +209,7 @@ children.
 
 The daemon also archives closed agents on its own: unarchived, no runtime (never loaded since boot,
 or released by idle cleanup), and no activity for more than `agents.autoArchiveClosedDays` days
-(default 2, 0 turns it off). It sweeps shortly after boot and then hourly, one agent at a time,
+(default 2, 0 turns it off). It sweeps 10 minutes after boot, hourly, and 5 minutes after the setting changes, one agent at a time,
 through the stored-only archive, so workspaces and worktrees are untouched. An agent is skipped
 while a client has a tab open for it (`paseo.idle-open-tab.*` label) or while any unarchived
 descendant is live, open in a tab, or recently active, because the cascade would archive it.

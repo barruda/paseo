@@ -1775,6 +1775,10 @@ export async function createPaseoDaemon(
     },
     logger,
   });
+  // CUSTOM(auto-archive-closed): a changed threshold applies within minutes, not at the next hour.
+  const stopAutoArchiveClosedConfig = daemonConfigStore.onFieldChange("autoArchiveClosedDays", () =>
+    autoArchiveClosed.sweepSoon(),
+  );
 
   const createAgentToolHostDependencies = (
     runtime: PaseoToolRuntimeContext,
@@ -2254,6 +2258,7 @@ export async function createPaseoDaemon(
     worktreeMergeStatus.stop(); // CUSTOM(worktree-pill-merged)
     unsubscribeIdleRuntimeCleanup();
     await idleRuntimeCleanup.close();
+    stopAutoArchiveClosedConfig(); // CUSTOM(auto-archive-closed)
     await autoArchiveClosed.close(); // CUSTOM(auto-archive-closed)
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();

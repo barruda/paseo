@@ -6328,7 +6328,7 @@ src/task-navigation/idle-open-tab-labels.test.ts`. In the app it needs a daemon 
   is older than `agents.autoArchiveClosedDays` (0 off, 1 to 365, default 2 when absent). It is
   skipped while an idle-open-tab label is `true`, and while any unarchived descendant is live, open
   in a tab, or recently active (archive cascades). An eligible parent is archived once and its
-  children ride the cascade. The sweep runs 10 min after boot (clients report open tabs first), then hourly, one agent at a time
+  children ride the cascade. The sweep runs 10 min after boot (clients report open tabs first), then hourly, and 5 min after the setting changes (`sweepSoon`), one agent at a time
   through `AgentManager.archiveSnapshot` (stored-only archive: provider hook, cascade and client
   events, but no workspace or worktree change). Each archive is logged with agent id and age.
   Edited in Settings > Bruno's Customizations > Agents ("Auto-archive closed sessions after": Off,

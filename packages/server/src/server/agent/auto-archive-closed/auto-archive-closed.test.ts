@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import {
   createAutoArchiveClosed,
@@ -104,5 +104,36 @@ test("the sweep archives sequentially, reads days live and rechecks each agent",
     expect(archived).toEqual(["a", "c"]);
   } finally {
     await auto.close();
+  }
+});
+
+test("sweepSoon sweeps once after the delay, restarting the wait on each call", async () => {
+  vi.useFakeTimers();
+  try {
+    let sweeps = 0;
+    const auto = createAutoArchiveClosed({
+      days: () => 2,
+      records: async () => {
+        sweeps++;
+        return [];
+      },
+      stillEligible: async () => true,
+      archive: async () => {},
+      logger: createTestLogger(),
+      now: () => NOW,
+      initialDelayMs: 10 * DAY,
+      intervalMs: 10 * DAY,
+      soonDelayMs: 1000,
+    });
+    auto.sweepSoon();
+    await vi.advanceTimersByTimeAsync(600);
+    auto.sweepSoon();
+    await vi.advanceTimersByTimeAsync(600);
+    expect(sweeps).toBe(0);
+    await vi.advanceTimersByTimeAsync(500);
+    expect(sweeps).toBe(1);
+    await auto.close();
+  } finally {
+    vi.useRealTimers();
   }
 });

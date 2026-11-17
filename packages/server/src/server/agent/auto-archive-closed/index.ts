@@ -6,6 +6,8 @@ const DAY_MS = 24 * 60 * 60_000;
 // CUSTOM(auto-archive-closed): give clients time to report their open tabs after a restart.
 const DEFAULT_INITIAL_DELAY_MS = 10 * 60_000;
 const DEFAULT_INTERVAL_MS = 60 * 60_000;
+// CUSTOM(auto-archive-closed): a setting change is applied this long after the last edit.
+const DEFAULT_SOON_DELAY_MS = 5 * 60_000;
 
 export interface AutoArchiveRecord {
   id: string;
@@ -75,6 +77,7 @@ interface Options {
   now?: () => number;
   initialDelayMs?: number;
   intervalMs?: number;
+  soonDelayMs?: number;
 }
 
 export function createAutoArchiveClosed(options: Options) {
@@ -120,12 +123,24 @@ export function createAutoArchiveClosed(options: Options) {
   const timer = setInterval(() => void sweep(), options.intervalMs ?? DEFAULT_INTERVAL_MS);
   first.unref();
   timer.unref();
+  let soon: ReturnType<typeof setTimeout> | null = null;
   return {
     sweep,
+    /** Sweeps once, a few minutes after the last call; each call restarts the wait. */
+    sweepSoon() {
+      if (stopped) return;
+      if (soon) clearTimeout(soon);
+      soon = setTimeout(() => {
+        soon = null;
+        void sweep();
+      }, options.soonDelayMs ?? DEFAULT_SOON_DELAY_MS);
+      soon.unref();
+    },
     async close() {
       stopped = true;
       clearTimeout(first);
       clearInterval(timer);
+      if (soon) clearTimeout(soon);
       await running;
     },
   };
