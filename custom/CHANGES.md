@@ -6198,3 +6198,42 @@ src/server/daemon-config-store.test.ts`. In the app it needs a daemon restart (n
 - **Verify:** `cd packages/app && npx vitest run src/task-navigation/desk-archive-close.test.ts
 src/task-navigation/store.test.ts`. In the app, have an agent call `archive_agent` on itself in
   Tasks mode and see its Desk tab close.
+
+## idle-closed-tab: a shorter idle release time for agents with no open tab
+
+- **Added:** 2026-11-17
+- **Commit:** `5439d97bf`
+- **Why:** An agent nobody has open (common in Tasks mode, where finished agents stay around)
+  doesn't need to keep a provider process for an hour. An agent with a tab open does.
+- **What:** The idle release uses two periods. With a tab open in any client:
+  `agents.idleRuntimeCleanupMinutes` (default 60). With none:
+  `agents.idleRuntimeCleanupClosedTabMinutes` (5 to 1440, default 15, clamped by the config store).
+  All existing vetoes apply to both. Clients report tabs with the label
+  `paseo.idle-open-tab.<client-id>` (`true`/`false`), separate from `paseo.open-agent-tab.*`
+  because that one drives the subagent archive cascade. The app reports only the tabs of the
+  active mode (Desks in Tasks mode, workspace layouts otherwise), writes only labels that differ
+  (missing means closed), and waits for the stores to hydrate. A label write on a released agent edits the stored record without resuming it. Unlike other
+  label writes it does not bump `updatedAt` (`isIdleTabLabelOnlyPatch` in `agent-manager.ts`), so tab
+  clicks neither restart the idle clock nor reorder the Tasks sidebar, which sorts by it. A client that disappears leaves its labels `true`, so its agents keep the longer period.
+  A client that never reports (an old app) leaves every agent on the shorter period.
+  Edited in Settings > Bruno's Customizations > Agents. Gated by the
+  `idleRuntimeCleanupClosedTabSetting` server_info feature.
+- **Core files touched:** `packages/protocol/src/agent-labels.ts` (`getIdleOpenTabLabel`,
+  `hasIdleOpenTab`), `packages/protocol/src/messages.ts` (config, patch, feature),
+  `packages/server/src/server/agent/idle-runtime-cleanup/index.ts` (`hasOpenTab`,
+  `closedTabPeriodMs`, `setClosedTabPeriodMs`), `agent/agent-manager.ts`
+  (`getRuntimeCleanupCandidates`, `isIdleTabLabelOnlyPatch`, `writeLabels`, `writeStoredMetadata`), `persisted-config.ts`, `config.ts`, `daemon-config-store.ts`,
+  `bootstrap.ts`, `websocket-server.ts`, `packages/app/src/app/_layout.tsx` (mounts the reporter
+  in `AppShell`), `screens/settings/bruno-customizations/agents-page.tsx`,
+  `docs/agent-lifecycle.md`. New files in `packages/app/src/task-navigation/`:
+  `idle-open-tab-labels.ts` (+ test), `use-idle-open-tab-labels.ts`.
+- **Re-apply:** Add `hasOpenTab()` to `RuntimeCleanupCandidate`, implemented from the live labels
+  in `getRuntimeCleanupCandidates`, and pick the period per runtime in the sweep. Mirror the
+  `idleRuntimeCleanupMinutes` plumbing for the new field. Mount `useIdleOpenTabLabels()` once in
+  `AppShell`. Grep `CUSTOM(idle-closed-tab)`.
+- **Verify:** `cd packages/server && npx vitest run
+src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts
+src/server/daemon-config-store.test.ts` and `cd packages/app && npx vitest run
+src/task-navigation/idle-open-tab-labels.test.ts`. In the app it needs a daemon restart (new
+  protocol fields and feature flag): then close an agent's tab in Tasks mode, set the no-open-tab
+  period to 5 min, and see the agent released after 5 minutes while one with a tab stays.
