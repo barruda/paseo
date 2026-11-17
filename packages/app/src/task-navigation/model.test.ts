@@ -75,6 +75,23 @@ describe("task navigation", () => {
       ["read", "idle"],
     ]);
   });
+  it("shows a finished subagent as idle so it never lifts its crew to Ready to review", () => {
+    const tree = buildTaskTree({
+      workspaces,
+      agents: [
+        agent("parent"),
+        agent("child", {
+          parentAgentId: "parent",
+          requiresAttention: true,
+          attentionReason: "finished",
+        }),
+      ],
+    });
+    expect(tree.map((t) => [t.agent.id, t.state, t.crewState])).toEqual([
+      ["parent", "idle", "idle"],
+    ]);
+    expect(tree[0]?.children.map((c) => [c.agent.id, c.state])).toEqual([["child", "idle"]]);
+  });
   it("moves a read completion to Idle without dismissing pending permissions", () => {
     const unread = agent("finished", { requiresAttention: true, attentionReason: "finished" });
     const pending = agent("approval", {

@@ -63,7 +63,10 @@ export function taskState(agent: TaskAgent): TaskState {
   )
     return "needs-you";
   if (agent.running || agent.status === "initializing") return "working";
-  if (agent.requiresAttention && agent.attentionReason === "finished") return "review";
+  // CUSTOM(subagent-no-review): a finished subagent is its parent's to review, so the sidebar
+  // shows it idle. Its attention flag stays set for the orchestrator.
+  if (agent.requiresAttention && agent.attentionReason === "finished")
+    return agent.parentAgentId ? "idle" : "review";
   return agent.status === "closed" ? "closed" : "idle";
 }
 export function matchesTaskFilter(state: TaskState, filter: TaskFilter): boolean {
