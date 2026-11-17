@@ -4629,7 +4629,10 @@ export class AgentManager {
 
     // Only update timestamp for live events, not history replay
     if (!options?.fromHistory) {
-      this.touchUpdatedAt(agent);
+      // CUSTOM(resume-not-activity): thread_started (Codex sends it on every resume) and usage_updated aren't activity.
+      if (event.type !== "thread_started" && event.type !== "usage_updated") {
+        this.touchUpdatedAt(agent);
+      }
       if (this.agentStreamCoalescer.handle(agent.id, event)) {
         this.traceCoalescerBuffered(agent, event, eventTurnId);
         return false;

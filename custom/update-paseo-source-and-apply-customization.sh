@@ -442,6 +442,8 @@ if $VERIFY; then
   # No "finished" notification while a Monitor or background subagent will wake the agent.
   (cd packages/server && npx vitest run src/server/agent/providers/claude/wake-tasks.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "waiting on a Monitor" --bail=1)
+  # thread_started / usage_updated are not activity (no sidebar "now" on resume).
+  (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "do not bump updatedAt" --bail=1)
   # The bottom panel's ⌄⌄ button is checked in e2e/task-navigation.spec.ts.
   # Compact, Newspaper and Cards reading modes.
   (cd packages/app && npx vitest run src/agent-stream/reading-modes/model.test.ts src/agent-stream/reading-modes/column-flow.test.ts --bail=1)

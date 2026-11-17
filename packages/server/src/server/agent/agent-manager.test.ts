@@ -12770,3 +12770,36 @@ test("an idle-tab label write keeps updatedAt for live and released agents; othe
     rmSync(workdir, { recursive: true, force: true });
   }
 });
+
+// CUSTOM(resume-not-activity)
+test("thread_started and usage_updated live events do not bump updatedAt; real activity does", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-no-wake-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const client = new SessionRecordingAgentClient();
+  const manager = new AgentManager({ clients: { codex: client }, registry: storage, logger });
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    const session = client.sessions[client.sessions.length - 1]!;
+    const before = manager.getAgent(agent.id)!.updatedAt.getTime();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    session.pushEvent({ type: "thread_started", provider: "codex", sessionId: "s1" });
+    session.pushEvent({
+      type: "usage_updated",
+      provider: "codex",
+      usage: { inputTokens: 1, outputTokens: 1 },
+    });
+    await manager.flush();
+    expect(manager.getAgent(agent.id)!.updatedAt.getTime()).toBe(before);
+
+    session.pushEvent({ type: "turn_started", provider: "codex", turnId: "t1" });
+    await manager.flush();
+    expect(manager.getAgent(agent.id)!.updatedAt.getTime()).toBeGreaterThan(before);
+  } finally {
+    await manager.closeAgent("missing").catch(() => undefined);
+    await storage.flush();
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
