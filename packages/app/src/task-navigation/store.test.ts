@@ -218,6 +218,17 @@ describe("Desks", () => {
       .closeDeadTerminalTabs({ serverId: "home", workspaceId: "paseo" }, live);
     expect(useDesksStore.getState().desks).toBe(before);
   });
+  it("closes an archived agent's tabs in every Desk and keeps the others", () => {
+    const store = useDesksStore.getState();
+    store.openTab(firstTab, true);
+    store.openTab(secondTab, true);
+    store.createDesk("Second");
+    useDesksStore.getState().openTab(secondTab, true);
+    useDesksStore.getState().closeAgentTabs({ serverId: "home", agentIds: new Set(["two"]) });
+    const targetsOf = (entry: Desk) => deskTabs(entry).map((tab) => tab.target);
+    const targets = useDesksStore.getState().desks.map(targetsOf);
+    expect(targets).toEqual([[firstTab.target], []]);
+  });
   it("replaces the preview across projects while pinned tabs keep their source workspace", () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);

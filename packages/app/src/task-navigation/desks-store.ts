@@ -96,6 +96,11 @@ interface DesksState {
    * terminal the daemon no longer runs (the shell exited, or the daemon restarted on boot).
    */
   closeDeadTerminalTabs(owner: DeskTabOwner, liveTerminalIds: ReadonlySet<string>): void;
+  /**
+   * CUSTOM(desk-archive-close): closes, in every Desk, the tabs of agents archived while the app
+   * was watching. Like closeTab, but never archives anything.
+   */
+  closeAgentTabs(input: { serverId: string; agentIds: ReadonlySet<string> }): void;
   /** Moves a tab of the active Desk into another Desk as a kept tab, leaving that Desk unselected. */
   moveTabToDesk(id: string, deskId: string): void;
   keepPreview(): void;
@@ -545,6 +550,24 @@ export const useDesksStore = create<DesksState>()(
                 if (tab.serverId !== owner.serverId || tab.workspaceId !== owner.workspaceId) {
                   continue;
                 }
+                layout =
+                  closeTabInLayout({ layout, tabId: tab.id, explorerSidebarPaneId: null }) ??
+                  layout;
+              }
+              if (layout === desk.layout) return desk;
+              changed = true;
+              return withLayout(desk, layout);
+            });
+            return changed ? { desks } : {};
+          }),
+        closeAgentTabs: ({ serverId, agentIds }) =>
+          set((state) => {
+            let changed = false;
+            const desks = state.desks.map((desk) => {
+              let layout = desk.layout;
+              for (const tab of deskTabs(desk)) {
+                if (tab.target.kind !== "agent" || tab.serverId !== serverId) continue;
+                if (!agentIds.has(tab.target.agentId)) continue;
                 layout =
                   closeTabInLayout({ layout, tabId: tab.id, explorerSidebarPaneId: null }) ??
                   layout;

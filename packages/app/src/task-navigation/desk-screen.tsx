@@ -48,6 +48,7 @@ import { WorkspaceTabDragScope } from "@/components/workspace-tab-drag-scope";
 import { useToast } from "@/contexts/toast-context";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { useSessionStore } from "@/stores/session-store";
+import { detectNewlyArchived } from "./desk-archive-close";
 import { useWorkspace, useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import {
   collectAllPanes,
@@ -927,6 +928,7 @@ export function DeskScreen() {
         </DeskWorkboardCover>
         <DeskVisibleAgents desk={desk} visible={isFocused} covered={workboardSelected} />
         <DeskTerminalTabs />
+        <DeskArchivedAgentTabs />
         <FloatingPanelPortalHost name={portalHost} />
         <DeskNameModal naming={naming} desks={desks} onClose={closeNaming} onSubmit={submitName} />
         {renaming ? (
@@ -979,6 +981,40 @@ function DeskProviders({
       </WorkspaceTabMoveProvider>
     </WorkspaceTabOwnerProvider>
   );
+}
+
+/** CUSTOM(desk-archive-close): closes tabs of agents archived by someone else while watched. */
+function DeskArchivedAgentTabs() {
+  const seen = useRef(new Map<string, boolean>());
+  useEffect(() => {
+    // The session store changes many times a second while agents stream; rescan only when an
+    // agents map was replaced.
+    let lastMaps: unknown[] = [];
+    const check = () => {
+      const byServer = new Map<string, ReadonlyMap<string, { archivedAt?: Date | null }>>();
+      for (const [serverId, session] of Object.entries(useSessionStore.getState().sessions)) {
+        if (session.hasHydratedAgents) byServer.set(serverId, session.agents);
+      }
+      const maps = [...byServer.values()];
+      if (maps.length === lastMaps.length && maps.every((map, index) => map === lastMaps[index]))
+        return;
+      lastMaps = maps;
+      const { next, newlyArchived } = detectNewlyArchived(seen.current, byServer);
+      seen.current = next;
+      const byId = new Map<string, Set<string>>();
+      for (const key of newlyArchived) {
+        const split = key.indexOf(":");
+        const serverId = key.slice(0, split);
+        byId.set(serverId, (byId.get(serverId) ?? new Set()).add(key.slice(split + 1)));
+      }
+      for (const [serverId, agentIds] of byId) {
+        useDesksStore.getState().closeAgentTabs({ serverId, agentIds });
+      }
+    };
+    check();
+    return useSessionStore.subscribe(check);
+  }, []);
+  return null;
 }
 
 /** Marks each pane's visible agent as viewed, on whichever host it lives. */
