@@ -58,7 +58,6 @@ export interface ChatTool {
 }
 export interface ChatToolResult {
   text?: string;
-  structuredContent?: unknown;
   isError?: boolean;
 }
 
@@ -82,10 +81,9 @@ export interface ChatHistory {
   ): Promise<{ events: HistoryEvent[]; nextCursor: string | null }>;
 }
 
-const text = (value: string, structuredContent?: unknown): ChatToolResult => ({
-  text: value,
-  ...(structuredContent === undefined ? {} : { structuredContent }),
-});
+// Claude Code hands the model only `structuredContent` when it is present, so the tools return
+// plain text and never structured content.
+const text = (value: string): ChatToolResult => ({ text: value });
 
 function define<Input extends z.ZodType>(tool: {
   name: string;
@@ -135,6 +133,55 @@ export function chatTools(
         `No column "${reference}". Columns: ${groups.map((g) => `${g.id} (${g.kind})`).join(", ")}`,
       );
     return found;
+  };
+  const choices = (items: { id: string; name: string }[]) =>
+    items.map((i) => `${i.id} (${i.name})`).join(", ") || "none";
+  /** A project by id, name or directory basename; throws listing the valid choices. */
+  const resolveProject = (reference: string): string => {
+    const projects = board().snapshot().projects;
+    const wanted = reference.trim().toLowerCase();
+    const byId = projects.find((p) => p.id === reference);
+    if (byId) return byId.id;
+    const pick = (matches: typeof projects, how: string) => {
+      if (matches.length === 1) return matches[0].id;
+      if (matches.length > 1)
+        throw new Error(
+          `Project "${reference}" is ambiguous (${how}). Use one of: ${choices(matches)}`,
+        );
+      return null;
+    };
+    const resolved =
+      pick(
+        projects.filter((p) => p.name.toLowerCase() === wanted),
+        "name",
+      ) ??
+      pick(
+        projects.filter(
+          (p) => path.basename(p.directory).toLowerCase() === wanted,
+        ),
+        "directory",
+      );
+    if (resolved) return resolved;
+    throw new Error(
+      `No project "${reference}". Projects: ${choices(projects)}`,
+    );
+  };
+  /** An orchestrator by id or name; throws listing the valid choices. */
+  const resolveOrchestrator = (reference: string): string => {
+    const orchestrators = board().snapshot().orchestrators;
+    const byId = orchestrators.find((o) => o.id === reference);
+    if (byId) return byId.id;
+    const matches = orchestrators.filter(
+      (o) => o.name.toLowerCase() === reference.trim().toLowerCase(),
+    );
+    if (matches.length === 1) return matches[0].id;
+    if (matches.length > 1)
+      throw new Error(
+        `Orchestrator "${reference}" is ambiguous. Use one of: ${choices(matches)}`,
+      );
+    throw new Error(
+      `No orchestrator "${reference}". Orchestrators: ${choices(orchestrators)}`,
+    );
   };
   const card = (taskId: string): Card => {
     const found = board()
@@ -203,7 +250,7 @@ export function chatTools(
                 `- ${g.id} | ${groupName(g)} | ${g.kind} | ${snapshot.cards.filter((c) => c.stage === g.id).length} tasks`,
             )
             .join("\n")}`,
-          `Needs you:\n${needsYou.map((n) => `- ${n.taskId} | ${n.title} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
+          `Needs you:\n${needsYou.map((n) => `- ${n.taskId} | ${n.title} | project: ${n.projectName || n.projectId || "-"} | orchestrator: ${n.orchestratorName ?? "-"} | agent: ${n.agentId ?? "-"} | attempt: ${n.attempt ?? "-"} | since: ${n.since} | can merge: ${n.canMerge ? "yes" : "no"} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
           `Assistant: ${settings.enabled ? "on" : "off"}, default action ${settings.defaultAction}; per project: ${
             Object.entries(settings.projects)
               .map(
@@ -213,24 +260,27 @@ export function chatTools(
               .join(", ") || "none"
           }`,
         ];
-        return text(lines.join("\n\n"), { needsYou });
+        return text(lines.join("\n\n"));
       },
     }),
     define({
       name: "board_list_tasks",
       description:
-        "List tasks, newest update first. Filter by column (group id or kind), project id or a text query.",
+        "List tasks, newest update first. Filter by column (group id or kind), project (id or name) or a text query.",
       input: z.object({
         column: z
           .string()
           .optional()
           .describe("A column's group id or kind, such as todo or ready"),
-        projectId: z.string().optional(),
+        projectId: z.string().optional().describe("A project's id or name"),
         query: z.string().optional(),
         limit: z.number().int().min(1).max(100).default(30),
       }),
       async execute(input) {
         const stage = input.column ? resolveGroup(input.column).id : null;
+        const project = input.projectId
+          ? resolveProject(input.projectId)
+          : null;
         const query = input.query?.toLowerCase();
         const cards = board()
           .snapshot()
@@ -238,19 +288,13 @@ export function chatTools(
             (c) =>
               !c.archived &&
               (!stage || c.stage === stage) &&
-              (!input.projectId || c.projectId === input.projectId) &&
+              (!project || c.projectId === project) &&
               (!query ||
                 `${c.title}\n${c.description}`.toLowerCase().includes(query)),
           )
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           .slice(0, input.limit);
-        return text(cards.map(line).join("\n") || "No tasks.", {
-          tasks: cards.map((c) => ({
-            id: c.id,
-            title: c.title,
-            column: c.stage,
-          })),
-        });
+        return text(cards.map(line).join("\n") || "No tasks.");
       },
     }),
     define({
@@ -289,8 +333,14 @@ export function chatTools(
       input: z.object({
         title: z.string().min(1).max(1000),
         description: z.string().max(50000).default(""),
-        projectId: z.string().optional(),
-        orchestratorId: z.string().optional(),
+        projectId: z
+          .string()
+          .optional()
+          .describe("A project's id or name, as listed by board_overview"),
+        orchestratorId: z
+          .string()
+          .optional()
+          .describe("An orchestrator's id or name"),
         start: z.boolean().default(false),
       }),
       async execute(input) {
@@ -301,32 +351,32 @@ export function chatTools(
               snapshot.settings.groups,
               snapshot.settings.defaultDraftGroup,
             );
+        const projectId = input.projectId
+          ? resolveProject(input.projectId)
+          : null;
+        const orchestratorId = input.orchestratorId
+          ? resolveOrchestrator(input.orchestratorId)
+          : null;
         const before = new Set(snapshot.cards.map((c) => c.id));
         const after = await board().mutate({
           action: "create",
           title: input.title,
           description: input.description,
-          projectId: input.projectId ?? null,
-          ...(input.orchestratorId
-            ? { orchestratorId: input.orchestratorId }
-            : {}),
+          projectId,
+          ...(orchestratorId ? { orchestratorId } : {}),
           stage,
         });
         const created = after.cards.find((c) => !before.has(c.id));
         if (!created) throw new Error("The task was not created");
         return text(
-          `Created ${created.id} "${created.title}" in ${columnOf(created)}.`,
-          {
-            taskId: created.id,
-            column: created.stage,
-          },
+          `Created ${created.id} "${created.title}" in ${columnOf(created)} (${created.stage}), project: ${created.projectName || created.projectId || "-"}.`,
         );
       },
     }),
     define({
       name: "board_update_task",
       description:
-        "Change a task's title, description, project or orchestrator. Omitted fields stay as they are.",
+        "Change a task's title, description, project (id or name) or orchestrator (id or name). Omitted fields stay as they are; null clears the project or orchestrator.",
       input: z.object({
         taskId: z.string(),
         title: z.string().min(1).max(1000).optional(),
@@ -336,17 +386,22 @@ export function chatTools(
       }),
       async execute(input) {
         const c = card(input.taskId);
+        const projectId =
+          input.projectId === undefined || input.projectId === null
+            ? input.projectId
+            : resolveProject(input.projectId);
+        const orchestratorId =
+          input.orchestratorId === undefined || input.orchestratorId === null
+            ? input.orchestratorId
+            : resolveOrchestrator(input.orchestratorId);
         await board().mutate({
           action: "edit",
           taskId: c.id,
           updatedAt: c.updatedAt,
           title: input.title ?? c.title,
           description: input.description ?? c.description,
-          projectId:
-            input.projectId !== undefined ? input.projectId : c.projectId,
-          ...(input.orchestratorId !== undefined
-            ? { orchestratorId: input.orchestratorId }
-            : {}),
+          projectId: projectId !== undefined ? projectId : c.projectId,
+          ...(orchestratorId !== undefined ? { orchestratorId } : {}),
         });
         return text(`Updated ${c.id}.`);
       },
@@ -422,13 +477,16 @@ export function chatTools(
       input: z.object({
         limit: z.number().int().min(1).max(50).default(20),
         taskId: z.string().optional(),
-        projectId: z.string().optional(),
+        projectId: z.string().optional().describe("A project's id or name"),
       }),
       async execute(input) {
+        const projectId = input.projectId
+          ? resolveProject(input.projectId)
+          : null;
         const page = await history.list({
           cursor: null,
           limit: input.limit,
-          projectId: input.projectId ?? null,
+          projectId,
           orchestratorId: null,
           taskId: input.taskId ?? null,
           kinds: [],

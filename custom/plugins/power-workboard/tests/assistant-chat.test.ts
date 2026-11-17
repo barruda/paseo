@@ -58,7 +58,10 @@ const create = async (c: Awaited<ReturnType<typeof chat>>, input = {}) => {
     ...input,
   });
   expect(result.isError).toBeUndefined();
-  return result.structuredContent as { taskId: string; column: string };
+  expect(result).not.toHaveProperty("structuredContent");
+  const match = /^Created (\S+) ".*" in .* \((\S+)\)/.exec(result.text ?? "");
+  if (!match) throw new Error(`Unexpected create result: ${result.text}`);
+  return { taskId: match[1], column: match[2] };
 };
 
 it("chat.open creates the chat agent once, reuses it, and recreates it when archived, gone or fresh", async () => {
@@ -264,6 +267,112 @@ it("read_agent refuses agents the board did not start", async () => {
     });
     const allowed = await c.run("board_read_agent", { agentId: "mine" });
     expect(allowed.text ?? "").not.toContain("not managed");
+  } finally {
+    c.board.dispose();
+  }
+});
+
+it("no board tool returns structuredContent and board_overview text carries everything", async () => {
+  const c = await chat();
+  try {
+    const { taskId } = await create(c);
+    await c.store.update((data) => {
+      data.assistant.deliveries[taskId] = {
+        stage: "needs-you",
+        action: "notify",
+        observe: false,
+        attempt: 2,
+        report: null,
+        reason: "notify",
+        detail: null,
+        verifyOutput: null,
+        fixesUsed: 0,
+        startedAt: "2026-09-23T00:00:00Z",
+        updatedAt: "2026-09-23T00:00:00Z",
+      };
+    });
+    for (const [name, input] of [
+      ["board_overview", {}],
+      ["board_list_tasks", {}],
+      ["board_get_task", { taskId }],
+      ["board_history", {}],
+    ] as const) {
+      expect(await c.run(name, input)).not.toHaveProperty("structuredContent");
+    }
+    const overview = (await c.run("board_overview")).text!;
+    expect(overview).toContain("Projects:");
+    expect(overview).toContain("Orchestrators:");
+    expect(overview).toContain("Columns:");
+    expect(overview).toContain("Assistant:");
+    expect(overview).toMatch(
+      new RegExp(`${taskId} \\| Fix it \\|.*attempt: 2.*since: .*can merge: `),
+    );
+    expect(overview).toContain("agent: ");
+  } finally {
+    c.board.dispose();
+  }
+});
+
+it("project and orchestrator references resolve by id or name; unknown ones list the choices", async () => {
+  const c = await chat();
+  try {
+    const byName = await create(c, { projectId: "project" });
+    const byDirectory = await create(c, { projectId: "FIXTURE" });
+    const cards = () => c.board.snapshot().cards;
+    expect(cards().find((x) => x.id === byName.taskId)?.projectId).toBe("p");
+    expect(cards().find((x) => x.id === byDirectory.taskId)?.projectId).toBe(
+      "p",
+    );
+
+    const bad = await c.run("board_create_task", {
+      title: "Lost",
+      projectId: "nope",
+    });
+    expect(bad.isError).toBe(true);
+    expect(bad.text).toContain("p (Project)");
+    expect(cards().some((x) => x.title === "Lost")).toBe(false);
+
+    await c.board.mutate({
+      action: "orchestrator-save",
+      orchestrator: { name: "Night Shift", enabled: false },
+    } as any);
+    const orchestrator = c.board.snapshot().orchestrators[0];
+    expect(orchestrator.name).toBe("Night Shift");
+    const badOrchestrator = await c.run("board_create_task", {
+      title: "Lost",
+      orchestratorId: "nope",
+    });
+    expect(badOrchestrator.isError).toBe(true);
+    expect(badOrchestrator.text).toContain(
+      `${orchestrator.id} (${orchestrator.name})`,
+    );
+    const named = await c.run("board_create_task", {
+      title: "Named",
+      orchestratorId: orchestrator.name.toUpperCase(),
+    });
+    expect(named.isError).toBeUndefined();
+
+    const { taskId } = await create(c, { projectId: undefined });
+    expect(
+      (await c.run("board_update_task", { taskId, projectId: "Project" }))
+        .isError,
+    ).toBeUndefined();
+    expect(cards().find((x) => x.id === taskId)?.projectId).toBe("p");
+    const refused = await c.run("board_update_task", {
+      taskId,
+      projectId: "power-workspace",
+    });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toContain("p (Project)");
+    expect(cards().find((x) => x.id === taskId)?.projectId).toBe("p");
+    await c.run("board_update_task", { taskId, projectId: null });
+    expect(cards().find((x) => x.id === taskId)?.projectId).toBeNull();
+
+    const list = await c.run("board_list_tasks", { projectId: "project" });
+    expect(list.text).toContain(byName.taskId);
+    expect(
+      (await c.run("board_list_tasks", { projectId: "nope" })).isError,
+    ).toBe(true);
   } finally {
     c.board.dispose();
   }
