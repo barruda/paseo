@@ -6385,3 +6385,31 @@ src/server/daemon-config-store.test.ts`. In the app it needs a daemon restart (n
 - **Re-apply:** in the Tasks sidebar's `counts` memo, count `scopedRoots` (skip context-only roots
   without children) with `matchesTaskFilter(node.crewState, key)` instead of flattening the tree.
 - **Verify:** with a crew of several subagents, All grows by one for the crew, not one per member.
+
+## archive-promptless: archive a closed agent that never got a user message
+
+- **Added:** 2026-11-17
+- **Commit:** `8d532929f`
+- **Why:** Some creation paths leave an agent nobody ever prompted: voice start, a `!` or `/sh`
+  command in a draft, an empty new-workspace submit, a failed first send. Those paths are
+  deliberate customizations (voice-new-agent, draft-composer-ready). Archiving such an agent once
+  it is closed keeps a `!` command's output, which deleting it would lose, and doesn't leave
+  empty sessions in the lists for days.
+- **What:** In auto-archive-closed, an agent with no stored `lastUserMessageAt` and no provider session (`persistence` / `runtimeInfo.sessionId`; agents started by another agent have a session but no `lastUserMessageAt`) counts as
+  quiet as soon as it has no runtime and no open tab, with no N-day wait. The descendant rule is
+  unchanged, and Off (`autoArchiveClosedDays: 0`) disables this too. Idle cleanup calls a new
+  `onCollected` option after a sweep that released a runtime, and bootstrap wires it to
+  `autoArchiveClosed.sweepSoon()`, so a promptless agent whose tab is closed is archived a few
+  minutes after it is released (about 15 minutes after going idle).
+- **Core files touched:** `packages/server/src/server/agent/auto-archive-closed/index.ts`
+  (`prompted`), `agent/idle-runtime-cleanup/index.ts` (`onCollected`), `bootstrap.ts` (record
+  mapping and the callback), `docs/agent-lifecycle.md`. Tests in `auto-archive-closed.test.ts` and
+  `idle-runtime-cleanup.test.ts`.
+- **Re-apply:** Add `prompted: boolean` to `AutoArchiveRecord` and use it in `quiet()`; map it from
+  `lastUserMessageAt != null || persistence != null || runtimeInfo.sessionId != null` in bootstrap; add `onCollected` to the idle cleanup options and call
+  it when a sweep collected something. Grep `CUSTOM(archive-promptless)`.
+- **Verify:** `cd packages/server && npx vitest run
+src/server/agent/auto-archive-closed/auto-archive-closed.test.ts
+src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a daemon restart. Then
+  start a voice session or run `!ls` in a draft, close its tab, and see it in History > Archived
+  after idle cleanup releases it.
