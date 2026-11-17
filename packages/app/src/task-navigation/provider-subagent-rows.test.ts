@@ -5,6 +5,7 @@ import type { TaskNode } from "./model";
 import {
   buildProviderSubagentRows,
   equalProviderSubagentGroups,
+  providerSubagentsToggleLabel,
   runningParentKeys,
 } from "./provider-subagent-rows";
 
@@ -50,36 +51,20 @@ describe("buildProviderSubagentRows", () => {
     );
   });
 
-  it("shows only the toggle row when collapsed", () => {
-    const result = buildProviderSubagentRows({ node, depth: 1, subagents: rows, expanded: false });
-    expect(result).toHaveLength(1);
-    expect(result[0]).toMatchObject({
-      kind: "provider-subagents-toggle",
-      depth: 2,
-      expanded: false,
-      label: "3 subagents · 1 working · 1 failed",
-    });
-  });
-
-  it("uses the singular and omits the working part when none run", () => {
-    const result = buildProviderSubagentRows({
-      node,
-      depth: 0,
-      subagents: [sub("a", "completed", "2026-11-13T00:00:01Z")],
-      expanded: false,
-    });
-    expect(result[0]).toMatchObject({ label: "1 subagent" });
+  it("adds no rows when collapsed (the toggle is on the task row)", () => {
+    expect(buildProviderSubagentRows({ node, depth: 1, subagents: rows, expanded: false })).toEqual(
+      [],
+    );
   });
 
   it("lists subagents oldest first with labels and buckets when expanded", () => {
     const result = buildProviderSubagentRows({ node, depth: 0, subagents: rows, expanded: true });
     expect(result.map((row) => row.kind)).toEqual([
-      "provider-subagents-toggle",
       "provider-subagent",
       "provider-subagent",
       "provider-subagent",
     ]);
-    const items = result.slice(1);
+    const items = result;
     expect(items.map((row) => (row.kind === "provider-subagent" ? row.subagentId : ""))).toEqual([
       "a",
       "b",
@@ -95,6 +80,20 @@ describe("buildProviderSubagentRows", () => {
       subtitle: "Claude subagent · haiku",
       depth: 2,
     });
+  });
+});
+
+describe("providerSubagentsToggleLabel", () => {
+  it("is undefined without subagents", () => {
+    expect(providerSubagentsToggleLabel(undefined)).toBeUndefined();
+    expect(providerSubagentsToggleLabel([])).toBeUndefined();
+  });
+
+  it("counts, with working and failed parts", () => {
+    expect(providerSubagentsToggleLabel(rows)).toBe("3 subagents · 1 working · 1 failed");
+    expect(providerSubagentsToggleLabel([sub("a", "completed", "2026-11-13T00:00:01Z")])).toBe(
+      "1 subagent",
+    );
   });
 });
 

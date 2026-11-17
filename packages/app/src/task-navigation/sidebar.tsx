@@ -2,7 +2,13 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { FlatList, Text, View, type ListRenderItemInfo } from "react-native";
+import {
+  FlatList,
+  Text,
+  View,
+  type GestureResponderEvent,
+  type ListRenderItemInfo,
+} from "react-native";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
 import { ChevronDown, ChevronRight } from "lucide-react-native";
@@ -45,6 +51,7 @@ import {
   buildProviderSubagentRows,
   groupProviderSubagentsByParent,
   equalProviderSubagentGroups,
+  providerSubagentsToggleLabel,
   runningParentKeys,
   type ProviderSubagentListRow,
   type ProviderSubagentServerFlags,
@@ -485,7 +492,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     idleShown,
     limitsIdle,
   ]);
-  // CUSTOM(task-provider-subagents): the toggle row (and the subagents when open) follows its
+  // CUSTOM(task-provider-subagents): the subagents (when open; the toggle is on the task row) follow its
   // task row, ahead of the managed children. Archived sessions have none.
   const rows = useMemo(() => {
     if (filter === "archived" || providerSubagents.size === 0) return taskRows;
@@ -631,8 +638,6 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
             testID="task-idle-toggle"
           />
         );
-      if (item.kind === "provider-subagents-toggle")
-        return <ProviderSubagentsToggleRow row={item} onToggle={toggleSubagents} />;
       if (item.kind === "provider-subagent")
         return <ProviderSubagentItemRow row={item} onOpen={openProviderSubagent} />;
       if (item.kind === "load-more")
@@ -657,6 +662,13 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
           onOpen={openListTask}
           onToggle={toggle}
           hostLabel={hosts.length > 1 ? hostNames.get(item.node.agent.serverId) : undefined}
+          subagentsLabel={
+            filter === "archived"
+              ? undefined
+              : providerSubagentsToggleLabel(providerSubagents.get(item.key))
+          }
+          subagentsExpanded={expandedSubagents.has(item.key)}
+          onToggleSubagents={toggleSubagents}
           entry={entriesByWorkspace.get(
             taskKey(item.node.agent.serverId, item.node.workspace.workspaceId),
           )}
@@ -669,6 +681,8 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     },
     [
       toggleSubagents,
+      providerSubagents,
+      expandedSubagents,
       openProviderSubagent,
       loadMoreArchived,
       pinnedSet,
@@ -936,6 +950,9 @@ const TaskRow = memo(function TaskRow({
   onOpen,
   onToggle,
   hostLabel,
+  subagentsLabel,
+  subagentsExpanded,
+  onToggleSubagents,
   entry,
   archived,
   canMarkUnread,
@@ -951,6 +968,10 @@ const TaskRow = memo(function TaskRow({
   onOpen(node: TaskNode, pin?: boolean): void;
   onToggle(key: string): void;
   hostLabel?: string;
+  // CUSTOM(task-row-compact): the provider subagents toggle, inline on the row's second line.
+  subagentsLabel?: string;
+  subagentsExpanded?: boolean;
+  onToggleSubagents?(key: string): void;
   entry: SidebarWorkspaceEntry | undefined;
   archived: boolean;
   canMarkUnread: boolean;
@@ -1008,10 +1029,18 @@ const TaskRow = memo(function TaskRow({
           <Text style={styles.age}>{age}</Text>
         )}
       </View>
-      <Text numberOfLines={1} style={styles.metadata}>
-        {node.workspace.projectName}
-        {hostLabel ? ` · ${hostLabel}` : ""}
-      </Text>
+      {/* CUSTOM(task-row-compact): no project name line (the project icon says it). */}
+      {hostLabel ? (
+        <Text numberOfLines={1} style={styles.metadata}>
+          {hostLabel}
+        </Text>
+      ) : null}
+      <InlineSubagentsToggle
+        parentKey={node.key}
+        label={subagentsLabel}
+        expanded={subagentsExpanded === true}
+        onToggle={onToggleSubagents}
+      />
       <TaskStateLabel state={node.state} />
       {node.children.length || crossWorkspace ? (
         <Text numberOfLines={1} style={styles.metadata}>
@@ -1104,39 +1133,49 @@ function useRefreshProviderSubagentsOnce(serverId: string, agentId: string) {
   }, [client, supported, serverId, agentId]);
 }
 
-function ProviderSubagentsToggleRow({
-  row,
+// CUSTOM(task-row-compact): its own press target inside the task button; it toggles and never
+// opens the task.
+function InlineSubagentsToggle({
+  parentKey,
+  label,
+  expanded,
   onToggle,
 }: {
-  row: Extract<ListRow, { kind: "provider-subagents-toggle" }>;
-  onToggle(key: string): void;
+  parentKey: string;
+  label: string | undefined;
+  expanded: boolean;
+  onToggle: ((key: string) => void) | undefined;
 }) {
-  const press = useCallback(() => onToggle(row.parentKey), [onToggle, row.parentKey]);
-  const expandedState = useMemo(() => ({ expanded: row.expanded }), [row.expanded]);
+  const press = useCallback(
+    (event?: GestureResponderEvent) => {
+      event?.stopPropagation?.();
+      onToggle?.(parentKey);
+    },
+    [onToggle, parentKey],
+  );
+  const expandedState = useMemo(() => ({ expanded }), [expanded]);
   const buttonStyle = useCallback(
-    ({ hovered }: { hovered?: boolean }) => [styles.subagentButton, hovered && styles.hovered],
+    ({ hovered }: { hovered?: boolean }) => [
+      styles.inlineSubagentToggle,
+      hovered && styles.hovered,
+    ],
     [],
   );
+  if (!label) return null;
   return (
-    <View style={[styles.subagentRow, { marginLeft: Math.min(row.depth, 5) * 12 }]}>
-      <PressHighlight
-        style={buttonStyle}
-        onPress={press}
-        accessibilityRole="button"
-        accessibilityLabel={`${row.expanded ? "Collapse" : "Expand"} ${row.label}`}
-        accessibilityState={expandedState}
-        testID={`task-subagents-toggle-${row.parentKey}`}
-      >
-        <DensityIcon
-          icon={row.expanded ? ChevronDown : ChevronRight}
-          size="sm"
-          color="foregroundMuted"
-        />
-        <Text numberOfLines={1} style={styles.subagentLabel}>
-          {row.label}
-        </Text>
-      </PressHighlight>
-    </View>
+    <PressHighlight
+      style={buttonStyle}
+      onPress={press}
+      accessibilityRole="button"
+      accessibilityLabel={`${expanded ? "Collapse" : "Expand"} ${label}`}
+      accessibilityState={expandedState}
+      testID={`task-subagents-toggle-${parentKey}`}
+    >
+      <DensityIcon icon={expanded ? ChevronDown : ChevronRight} size="sm" color="foregroundMuted" />
+      <Text numberOfLines={1} style={styles.subagentLabel}>
+        {label}
+      </Text>
+    </PressHighlight>
   );
 }
 
@@ -1274,6 +1313,14 @@ const styles = StyleSheet.create((theme) => ({
     paddingVertical: theme.spacing[1],
     paddingLeft: theme.spacing[1],
     paddingRight: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+  },
+  inlineSubagentToggle: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    alignSelf: "flex-start",
+    maxWidth: "100%",
     borderRadius: theme.borderRadius.md,
   },
   subagentLabel: { flex: 1, color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },

@@ -12,28 +12,19 @@ export interface ProviderSubagentServerFlags {
   nesting: boolean;
 }
 
-export type ProviderSubagentListRow =
-  | {
-      kind: "provider-subagents-toggle";
-      key: string;
-      parentKey: string;
-      depth: number;
-      label: string;
-      expanded: boolean;
-    }
-  | {
-      kind: "provider-subagent";
-      key: string;
-      parentKey: string;
-      depth: number;
-      serverId: string;
-      workspaceId: string;
-      parentAgentId: string;
-      subagentId: string;
-      label: string;
-      subtitle: string;
-      bucket: SidebarStateBucket | null;
-    };
+export interface ProviderSubagentListRow {
+  kind: "provider-subagent";
+  key: string;
+  parentKey: string;
+  depth: number;
+  serverId: string;
+  workspaceId: string;
+  parentAgentId: string;
+  subagentId: string;
+  label: string;
+  subtitle: string;
+  bucket: SidebarStateBucket | null;
+}
 
 type ProviderSubagentStoreSnapshot = ReturnType<typeof useProviderSubagentStore.getState>;
 
@@ -88,7 +79,15 @@ function toggleLabel(rows: readonly ProviderSubagentRow[]): string {
   return label;
 }
 
-/** The rows that follow one task row: the collapsed toggle, then the subagents when expanded. */
+// CUSTOM(task-row-compact): the "N subagents" toggle lives on the task row's second line (see
+// TaskRow), so no list row of its own: undefined when the task has no provider subagents.
+export function providerSubagentsToggleLabel(
+  subagents: readonly ProviderSubagentRow[] | undefined,
+): string | undefined {
+  return subagents && subagents.length > 0 ? toggleLabel(subagents) : undefined;
+}
+
+/** The rows that follow one task row: the subagents when expanded (the toggle is on the task row). */
 export function buildProviderSubagentRows(input: {
   node: TaskNode;
   depth: number;
@@ -96,18 +95,8 @@ export function buildProviderSubagentRows(input: {
   expanded: boolean;
 }): ProviderSubagentListRow[] {
   const { node, depth, subagents, expanded } = input;
-  if (!subagents || subagents.length === 0) return [];
-  const rows: ProviderSubagentListRow[] = [
-    {
-      kind: "provider-subagents-toggle",
-      key: `${node.key}\0subagents`,
-      parentKey: node.key,
-      depth: depth + 1,
-      label: toggleLabel(subagents),
-      expanded,
-    },
-  ];
-  if (!expanded) return rows;
+  if (!subagents || subagents.length === 0 || !expanded) return [];
+  const rows: ProviderSubagentListRow[] = [];
   const ordered = [...subagents].sort(
     (left, right) => left.createdAt.getTime() - right.createdAt.getTime(),
   );
