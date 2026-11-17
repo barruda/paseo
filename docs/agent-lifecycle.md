@@ -213,6 +213,9 @@ or released by idle cleanup), and no activity for more than `agents.autoArchiveC
 through the stored-only archive, so workspaces and worktrees are untouched. An agent is skipped
 while a client has a tab open for it (`paseo.idle-open-tab.*` label) or while any unarchived
 descendant is live, open in a tab, or recently active, because the cascade would archive it.
+An agent that never had a conversation (no `lastUserMessageAt` and no provider session; agents started by another agent have a session but no `lastUserMessageAt`) does not wait: it is
+archived as soon as it is closed and unwatched, and idle cleanup triggers a sweep a few minutes
+after it releases a runtime.
 
 `create_agent_request` can opt an agent into `autoArchive`. In that mode the daemon archives the agent after the first terminal turn event (`turn_completed`, `turn_failed`, or `turn_canceled`). When the agent owns an isolated workspace, auto-archive archives that workspace too; the managed worktree is removed when its final workspace reference is gone.
 

@@ -1735,6 +1735,8 @@ export async function createPaseoDaemon(
       daemonConfigStore.get().idleRuntimeCleanupClosedTabMinutes,
       15,
     ),
+    // CUSTOM(archive-promptless)
+    onCollected: () => autoArchiveClosed.sweepSoon(),
     runtimes: () => agentManager.getRuntimeCleanupCandidates(),
     isProtected: (agentId) =>
       finishSubscriptions.hasPendingForCaller(agentId) ||
@@ -1760,6 +1762,12 @@ export async function createPaseoDaemon(
         live: agentManager.getAgent(record.id) !== null,
         hasOpenTab: hasIdleOpenTab(record.labels),
         updatedAt: Date.parse(record.updatedAt),
+        // CUSTOM(archive-promptless): agents started by another agent have a provider session but
+        // no lastUserMessageAt, so a session also counts as having had a conversation.
+        prompted:
+          record.lastUserMessageAt != null ||
+          record.persistence != null ||
+          record.runtimeInfo?.sessionId != null,
       })),
     stillEligible: async (id) => {
       const record = await agentStorage.get(id);

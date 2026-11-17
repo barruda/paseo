@@ -25,6 +25,8 @@ interface Options {
   idlePeriodMs?: number;
   // CUSTOM(idle-closed-tab): idle period in ms when no client has a tab open, default 15 minutes.
   closedTabPeriodMs?: number;
+  // CUSTOM(archive-promptless): called after a sweep that released at least one runtime.
+  onCollected?(entries: readonly CollectionEntry[]): void;
   schedule?: (tick: () => void, intervalMs: number) => () => void;
 }
 interface CollectionEntry {
@@ -144,6 +146,8 @@ export function createIdleRuntimeCleanup(options: Options) {
         );
       }
     }
+    // CUSTOM(archive-promptless)
+    if (result.collected.length > 0) options.onCollected?.(result.collected);
     return result;
   }
   function sweep(): Promise<CollectionResult> {

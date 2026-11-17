@@ -43,7 +43,12 @@ class Runtime {
     };
   }
 }
-function scenario(enabled = true, idlePeriodMs?: number, closedTabPeriodMs?: number) {
+function scenario(
+  enabled = true,
+  idlePeriodMs?: number,
+  closedTabPeriodMs?: number,
+  onCollected?: (entries: readonly unknown[]) => void,
+) {
   const runtime = new Runtime();
   const runtimes = [runtime];
   let time = 0;
@@ -53,6 +58,7 @@ function scenario(enabled = true, idlePeriodMs?: number, closedTabPeriodMs?: num
     enabled,
     idlePeriodMs,
     closedTabPeriodMs,
+    onCollected,
     logger: createTestLogger(),
     now: () => time,
     runtimes: () => runtimes.filter((item) => !item.closed).map((item) => item.capture()),
@@ -127,6 +133,16 @@ test("setClosedTabPeriodMs applies on the next sweep, and a tab opened later ext
   expect((await s.sweep(10)).collected).toEqual([]);
   s.runtime.openTab = false;
   expect((await s.sweep(10)).collected).toHaveLength(1);
+});
+
+// CUSTOM(archive-promptless)
+test("onCollected fires with the collected entries, and not when nothing was collected", async () => {
+  const calls: unknown[][] = [];
+  const s = scenario(true, undefined, undefined, (entries) => calls.push([...entries]));
+  await s.sweep(30);
+  expect(calls).toEqual([]);
+  await s.sweep(60);
+  expect(calls).toEqual([[{ agentId: "agent", provider: "test", sessionId: "agent" }]]);
 });
 
 test("activity restarts the single one-hour idle period", async () => {

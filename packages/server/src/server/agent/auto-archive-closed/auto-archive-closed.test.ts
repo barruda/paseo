@@ -17,6 +17,7 @@ function rec(id: string, patch: Partial<AutoArchiveRecord> & { ageDays?: number 
     archived: false,
     live: false,
     hasOpenTab: false,
+    prompted: true,
     updatedAt: NOW - ageDays * DAY,
     ...rest,
   } satisfies AutoArchiveRecord;
@@ -24,6 +25,30 @@ function rec(id: string, patch: Partial<AutoArchiveRecord> & { ageDays?: number 
 
 test("off selects nothing", () => {
   expect(selectAgentsToAutoArchive([rec("a", { ageDays: 90 })], NOW, 0)).toEqual([]);
+});
+
+// CUSTOM(archive-promptless)
+test("an agent that never got a user message is selected as soon as it is closed", () => {
+  expect(selectAgentsToAutoArchive([rec("p", { ageDays: 0, prompted: false })], NOW, 2)).toEqual([
+    "p",
+  ]);
+});
+
+// CUSTOM(archive-promptless)
+test("a promptless agent that is live or open in a tab, or a young prompted one, is kept", () => {
+  const records = [
+    rec("live", { ageDays: 0, prompted: false, live: true }),
+    rec("open", { ageDays: 0, prompted: false, hasOpenTab: true }),
+    rec("young", { ageDays: 0 }),
+  ];
+  expect(selectAgentsToAutoArchive(records, NOW, 2)).toEqual([]);
+});
+
+// CUSTOM(archive-promptless)
+test("off disables the promptless rule too", () => {
+  expect(selectAgentsToAutoArchive([rec("p", { ageDays: 0, prompted: false })], NOW, 0)).toEqual(
+    [],
+  );
 });
 
 test("only agents idle for more than the threshold are selected", () => {

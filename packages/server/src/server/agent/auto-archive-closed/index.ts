@@ -18,6 +18,8 @@ export interface AutoArchiveRecord {
   /** Some client has a tab open for it (idle-open-tab label "true"). */
   hasOpenTab: boolean;
   updatedAt: number;
+  // CUSTOM(archive-promptless): the user has sent it a message. An unprompted agent is archived as soon as it is quiet.
+  prompted: boolean;
 }
 
 /**
@@ -39,7 +41,7 @@ export function selectAgentsToAutoArchive(
     byParent.set(record.parentAgentId, [...(byParent.get(record.parentAgentId) ?? []), record]);
   }
   const quiet = (record: AutoArchiveRecord) =>
-    !record.live && !record.hasOpenTab && nowMs - record.updatedAt > cutoff;
+    !record.live && !record.hasOpenTab && (!record.prompted || nowMs - record.updatedAt > cutoff);
   const qualifies = (record: AutoArchiveRecord, seen: Set<string>): boolean => {
     if (seen.has(record.id)) return true;
     seen.add(record.id);
