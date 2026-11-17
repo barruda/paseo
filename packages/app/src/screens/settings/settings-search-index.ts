@@ -125,6 +125,18 @@ export const SETTINGS_SEARCH_INDEX: Partial<
   "customizations-github": {
     terms: ["GitHub account", "Signed in as", "gh config directory", "GH_CONFIG_DIR", "Refresh"],
   },
+  // CUSTOM(projects-assistant)
+  "customizations-projects-assistant": {
+    terms: [
+      "Projects Assistant",
+      "Default action",
+      "Prepare PR",
+      "Observe only",
+      "Check command",
+      "Auto-fix attempts",
+      "Base branch",
+    ],
+  },
   "customizations-config-file": {
     terms: [
       "Configuration file",

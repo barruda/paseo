@@ -123,7 +123,11 @@ export function fixture(initial: Partial<Data> = {}) {
     ),
     gitDirty: vi.fn(async (_directory: string) => true),
     commit: vi.fn(async (_directory: string) => {}),
-    mergeToBase: vi.fn(async (_directory: string) => {}),
+    mergeToBase: vi.fn(async (_directory: string, _options?: unknown) => {}),
+    // CUSTOM(projects-assistant)
+    timeline: vi.fn(() => async () => {
+      throw new Error("no timeline in the fixture");
+    }),
     setLabel: vi.fn(async (id, name, _color, assigned) => {
       const w = inventory.workspaces.find((w) => w.id === id)!;
       w.labels = w.labels.filter((label) => label !== name);

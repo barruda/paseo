@@ -3050,36 +3050,43 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   `@getpaseo/plugin` (`npm run build:plugin`) before typechecking the app.
 - **Verify:** In Power Workboard, New task opens at 80% of the window.
 
-## desk-workboard: Power Workboard as a tab beside the Desks
+## desk-workboard: the Power Workboard plugin's surfaces as tabs beside the Desks
 
-- **Added:** 2026-10-25 (based on upstream 0.11.2)
+- **Added:** 2026-10-25 (based on upstream 0.11.2); generalized to several surfaces 2026-11-17
 - **Commit:** `custom: Power Workboard replaces Workboard, with a review step and a tab beside the Desks`
-- **Why:** The board is where tasks get handed out and reviewed; it should be one click away in
-  Tasks mode, next to the Desks, without leaving them.
-- **What:** In Tasks mode the header shows a **Power Workboard** chip before the Desk chips
-  whenever a connected host has the plugin (the local daemon's copy first). Clicking it shows the
-  plugin's board under the Desk header; the Desk stays mounted underneath, hidden, so its tabs
+- **Why:** The board, and the Projects Assistant's dashboard and conversations, are where tasks get
+  handed out, reviewed and followed; they should be one click away in Tasks mode, next to the
+  Desks, without leaving them.
+- **What:** In Tasks mode the header shows one chip per plugin surface that a connected host has
+  (the local daemon's copy first), before the Desk chips, in this order: **Power Workboard**
+  (`sidebar` identity `power-workboard`), **Projects Dashboard** and **Projects Conversations**
+  (`surface` identities of the same ids). Clicking a chip shows that surface under the Desk
+  header; at most one is selected, and the Desk stays mounted underneath, hidden, so its tabs
   keep their state. Clicking a Desk chip, switching Desks or opening another tab (a task in the
-  sidebar, or a workspace/agent the board opens) returns to the Desk. The chip's × or
-  right-click > Close removes it; then **+** opens a menu with **New Desk** and **Power
-  Workboard**, which brings it back. Open/closed and selected are kept in this app's storage
-  (`custom-desk-workboard`).
-- **Files:** `packages/app/src/task-navigation/desk-workboard.tsx` (store, the installation
-  lookup, the cover that swaps the board in, and the surface renderer modeled on
-  `plugins/surface-screen.tsx`).
+  sidebar, or a workspace/agent a surface opens) returns to the Desk. Each chip's × or
+  right-click > Close removes it; then **+** opens a menu with **New Desk** and every closed
+  surface, which brings it back. The rendered surface also gets
+  `navigation.openDeskSurface(surfaceId)` (not in `packages/plugin` types; the plugin reads it
+  with a cast) which opens, re-opens and selects that surface's chip. Open flags per surface and
+  the selected surface are kept in this app's storage (`custom-desk-workboard`, version 2;
+  version 1's `open`/`selected` migrate to Power Workboard, new surfaces start open).
+- **Files:** `packages/app/src/task-navigation/desk-workboard.tsx` (store, the installation lookup
+  per surface, the cover that swaps the surface in, and the surface renderer modeled on
+  `plugins/surface-screen.tsx`) and `desk-workboard-model.ts` (the surface list, the persisted
+  schema and its migration; tested in `desk-workboard.test.ts`).
 - **Core files touched:** `packages/app/src/task-navigation/desk-screen.tsx`
-  (`CUSTOM(desk-workboard)`): the chip and the + menu in the header, Desk chips unselected while
-  the board shows, the Desk content wrapped in `DeskWorkboardCover`, and `DeskVisibleAgents`
-  stops marking agents visible while covered.
-- **Re-apply:** In `DeskScreen`, call `useDeskWorkboard(desk.id, active)`. In the header, render
-  `DeskWorkboardChip` before the Desk chips when `open`, and `DeskCreateMenu` instead of the New
-  Desk button when the plugin exists but its tab is closed. Wrap everything inside the root view
-  up to the bottom-panel expand button in `DeskWorkboardCover` with `plugin` set only while
-  `selected`. If upstream changes how plugin screens render, follow `SurfaceRenderer` in
-  `plugins/surface-screen.tsx`.
-- **Verify:** Typecheck and lint. In Tasks mode with the plugin installed: the chip shows and opens
-  the board; clicking a task in the sidebar returns to the Desk; × hides it and + > Power
-  Workboard brings it back.
+  (`CUSTOM(desk-workboard)`): the chips and the + menu in the header, Desk chips unselected while
+  a surface shows, the Desk content wrapped in `DeskWorkboardCover`, and `DeskVisibleAgents`
+  stops marking agents visible while covered. `desk-docs/open.ts` calls `deselect()`.
+- **Re-apply:** In `DeskScreen`, call `useDeskWorkboard(desk.id, active)`. In the header, render a
+  `DeskWorkboardChip` per open entry before the Desk chips, and `DeskCreateMenu` instead of the
+  New Desk button when some entry is closed. Wrap everything inside the root view up to the
+  bottom-panel expand button in `DeskWorkboardCover` with `surface` set to the selected entry. If
+  upstream changes how plugin screens render, follow `SurfaceRenderer` in
+  `plugins/surface-screen.tsx`. To add a surface, add it to `DESK_SURFACES`.
+- **Verify:** Typecheck, lint, `vitest run src/task-navigation/desk-workboard.test.ts`. In Tasks
+  mode with the plugin installed: the chips show and open their surfaces; clicking a task in the
+  sidebar returns to the Desk; × hides a chip and + > its name brings it back.
 
 ## task-summary-hover: hovering a Tasks sidebar row shows the agent's status summary
 
@@ -6420,3 +6427,63 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts
 src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a daemon restart. Then
   start a voice session or run `!ls` in a draft, close its tab, and see it in History > Archived
   after idle cleanup releases it.
+
+## projects-assistant: a delivery manager for Power Workboard tasks, in Tasks mode
+
+- **Added:** 2026-11-17 (upstream 0.11.x line of `custom`). Modeled on ideas from
+  [deepseek-ai/dsh-superagent](https://github.com/deepseek-ai/dsh-superagent-prototype): a
+  structured report instead of reading prose, an observe mode, delivery owned by the assistant and
+  not by the task's agent, the user's attention spent only where action is needed.
+- **Commit:** `custom: Projects Assistant for Power Workboard tasks (delivery, dashboard, conversations)`
+- **Why:** When an orchestrator's agent finishes a task, the next step (check, commit, merge, PR
+  text, telling the user) was manual for every task. We want it decided per project, with a
+  history, and one place to follow the orchestrators' agents.
+- **What:**
+  - **Report:** with the assistant on, task and continuation prompts tell the agent not to merge,
+    push or open PRs and to end with `<report>{json}</report>` (status done / blocked /
+    needs_input / failed, summary, files, checks, risks, question). The reviewer's summary is the
+    reply without that block. No valid report means "Needs you".
+  - **Delivery per project** (Settings > Bruno's Customizations > Projects Assistant): Merge,
+    Prepare PR, Tell me (default) or Nothing. **Merge is never a default**; it runs only in a
+    project where it was chosen. Merge: optional check command in the worktree (a failure goes
+    back to the same agent up to the project's auto-fix count), commit, then `checkout_merge` into
+    the base branch with `requireCleanTarget`, one merge per project at a time; the task moves to
+    Done. Prepare PR: commit and the agent's PR title/body (no PR is created; GitHub stays out for
+    now). Observe only records "would merge" instead. blocked / needs_input / failed reports,
+    conflicts, a dirty main checkout, failed checks and agent errors (after 3 "continue" nudges at
+    30 s / 60 s / 120 s) land in **Needs you**. Nothing is archived. Each step is persisted
+    (`data.assistant.deliveries`) and resumed after a daemon restart.
+  - **Attempts and history:** each start, feedback continuation and auto-fix is an attempt
+    (`data.assistant.attempts`). Events go to `<PASEO_HOME>/plugin-data/power-workboard/history/`
+    (one JSONL per day, 90 days).
+  - **Projects Dashboard** (surface `projects-dashboard`): Needs you first (Merge now, Continue
+    with feedback, Mark done, Dismiss, Open conversation), running now, numbers and per-day /
+    per-project / per-orchestrator bars for 7/14/30 days, filterable history. Told only here: no
+    notification, no badge.
+  - **Projects Conversations** (surface `projects-conversations`): orchestrator > task > the
+    agents it started (never their subagents), the selected agent's conversation read through the
+    timeline API (plugins cannot embed the real chat), report card, attempts, the orchestrator's
+    log for the task, a composer and quick actions; Open in Desk opens the real chat.
+  - **Tasks mode only:** both pages are chips in the Desk header next to Power Workboard (see
+    [desk-workboard](#desk-workboard-the-power-workboard-plugins-surfaces-as-tabs-beside-the-desks)); no sidebar item
+    or workspace tab. The Desk passes `navigation.openDeskSurface(id)` so the dashboard can jump
+    to a conversation.
+- **Files:** plugin `custom/plugins/power-workboard/`: contract `shared/assistant.ts` and
+  `shared/assistant-rpc.ts` (`workboard.assistant.*` RPCs), engine in `server/workboard.ts`
+  (`assistantFinished`, `advance`, actions) with `server/assistant/{report,delivery}.ts`, read side
+  `server/assistant/{history,views}.ts`, pages in `client/assistant/`, tests
+  `tests/assistant-*.test.ts`. App: `screens/settings/bruno-customizations/projects-assistant-page.tsx`
+  and `projects-assistant-model.ts` (zod mirror of the plugin's settings schemas; keep in step).
+- **Core files touched:** `screens/settings-screen.tsx` (`CUSTOM(projects-assistant)`: sidebar
+  item and route; the Bruno page switch moved into `renderBrunoSection` to stay under the
+  complexity limit), `utils/host-routes.ts` (slug `customizations-projects-assistant`),
+  `screens/settings/settings-search-index.ts` (search terms), and the desk-workboard files.
+- **Re-apply:** plugin-only except the Settings page and the Desk chips; for those add the slug,
+  the `BRUNO_SECTION_ITEMS` entry and the `renderBrunoSection` case, and follow desk-workboard's
+  Re-apply.
+- **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run)` and
+  `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts src/screens/settings/bruno-customizations/projects-assistant-model.test.ts --bail=1)`
+  (both in the update script). In the app: Settings > Bruno's Customizations > Projects Assistant
+  lists the board's projects and keeps a saved rule after reload; in Tasks mode the Desk header
+  shows Power Workboard, Projects Dashboard and Projects Conversations chips; a task finished by an
+  orchestrator shows in Needs you with its report.

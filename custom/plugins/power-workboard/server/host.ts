@@ -98,6 +98,12 @@ export interface AgentStart {
   title: string;
   prompt: string;
 }
+// CUSTOM(projects-assistant)
+export interface MergeOptions {
+  baseRef?: string;
+  strategy?: "merge" | "squash";
+  requireCleanTarget?: boolean;
+}
 export interface Host {
   identity: { serverId: string; version: string };
   /** With `tracked`, only those workspaces (and their agents) are listed and observed. */
@@ -138,7 +144,10 @@ export interface Host {
   /** Commit everything in the checkout with a generated message, as the app's Git menu does. */
   commit(directory: string): Promise<void>;
   /** Merge the checkout's branch into its base branch in the main checkout. */
-  mergeToBase(directory: string): Promise<void>;
+  // CUSTOM(projects-assistant): optional target and strictness for the assistant's merge.
+  mergeToBase(directory: string, options?: MergeOptions): Promise<void>;
+  /** CUSTOM(projects-assistant): reads one agent's timeline, for the Projects Conversations page. */
+  timeline(agentId: string): TimelineReader;
   safety(workspace: Workspace): Promise<string | null>;
   archive(
     id: string,
@@ -652,11 +661,21 @@ export class PaseoHost implements Host {
   async commit(directory: string): Promise<void> {
     await this.checkout("checkout_commit", { cwd: directory, addAll: true });
   }
-  async mergeToBase(directory: string): Promise<void> {
+  // CUSTOM(projects-assistant): options default to the old behavior.
+  async mergeToBase(
+    directory: string,
+    options: MergeOptions = {},
+  ): Promise<void> {
     await this.checkout("checkout_merge", {
       cwd: directory,
-      strategy: "merge",
+      strategy: options.strategy ?? "merge",
+      ...(options.baseRef ? { baseRef: options.baseRef } : {}),
+      ...(options.requireCleanTarget ? { requireCleanTarget: true } : {}),
     });
+  }
+  // CUSTOM(projects-assistant)
+  timeline(agentId: string): TimelineReader {
+    return (options) => this.api.agents.ref(agentId).timeline.refetch(options);
   }
   private async checkout(name: string, fields: Record<string, unknown>) {
     const result = z

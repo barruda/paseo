@@ -49,6 +49,7 @@ import {
   MessageSquare,
   ChevronRight,
   GitBranch, // CUSTOM(github-account)
+  ListChecks, // CUSTOM(projects-assistant)
   FileJson, // CUSTOM(bruno-config-file)
 } from "lucide-react-native";
 import { DropdownTrigger } from "@/components/ui/dropdown-trigger";
@@ -99,6 +100,7 @@ import { BrunoChatOptionsPage } from "@/screens/settings/bruno-customizations/ch
 // CUSTOM(idle-cleanup-period)
 import { BrunoAgentsPage } from "@/screens/settings/bruno-customizations/agents-page";
 import { BrunoGithubPage } from "@/screens/settings/bruno-customizations/github-page";
+import { BrunoProjectsAssistantPage } from "@/screens/settings/bruno-customizations/projects-assistant-page"; // CUSTOM(projects-assistant)
 import { BrunoConfigFilePage } from "@/screens/settings/bruno-customizations/config-file-page"; // CUSTOM(bruno-config-file)
 // CUSTOM(voice-settings)
 import { VoiceSettingsPage } from "@/screens/settings/voice/voice-settings-page";
@@ -272,9 +274,41 @@ const BRUNO_SECTION_ITEMS: {
   { id: "customizations-agents", label: "Agents", icon: Bot },
   // CUSTOM(github-account)
   { id: "customizations-github", label: "GitHub", icon: GitBranch },
+  // CUSTOM(projects-assistant)
+  { id: "customizations-projects-assistant", label: "Projects Assistant", icon: ListChecks },
   // CUSTOM(bruno-config-file): save and load every setting above as one JSON file.
   { id: "customizations-config-file", label: "Save and Load", icon: FileJson },
 ];
+
+// CUSTOM(bruno-customizations): the page of a Bruno's Customizations item, null for other sections.
+function renderBrunoSection(section: SettingsSectionSlug, activeHostServerId: string | null) {
+  switch (section) {
+    case "customizations-composer":
+      return <BrunoComposerPage serverId={activeHostServerId} />;
+    case "customizations-chat":
+      return <BrunoChatPage />;
+    case "customizations-chat-options":
+      return <BrunoChatOptionsPage />;
+    case "customizations-tabs":
+      return <BrunoTabsPage />;
+    case "customizations-voice":
+      return <BrunoVoicePage serverId={activeHostServerId} />;
+    // CUSTOM(idle-cleanup-period)
+    case "customizations-agents":
+      return <BrunoAgentsPage serverId={activeHostServerId} />;
+    // CUSTOM(github-account)
+    case "customizations-github":
+      return <BrunoGithubPage serverId={activeHostServerId} />;
+    // CUSTOM(projects-assistant)
+    case "customizations-projects-assistant":
+      return <BrunoProjectsAssistantPage serverId={activeHostServerId} />;
+    // CUSTOM(bruno-config-file)
+    case "customizations-config-file":
+      return <BrunoConfigFilePage serverId={activeHostServerId} />;
+    default:
+      return null;
+  }
+}
 
 function isSectionAvailable(item: SidebarSectionItem, isDesktopApp: boolean): boolean {
   return (!item.desktopOnly || isDesktopApp) && (!item.webOnly || isWeb);
@@ -1541,29 +1575,8 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
     }
     if (view.kind === "section") {
       // CUSTOM(bruno-customizations)
-      switch (view.section) {
-        case "customizations-composer":
-          return <BrunoComposerPage serverId={activeHostServerId} />;
-        case "customizations-chat":
-          return <BrunoChatPage />;
-        case "customizations-chat-options":
-          return <BrunoChatOptionsPage />;
-        case "customizations-tabs":
-          return <BrunoTabsPage />;
-        case "customizations-voice":
-          return <BrunoVoicePage serverId={activeHostServerId} />;
-        // CUSTOM(idle-cleanup-period)
-        case "customizations-agents":
-          return <BrunoAgentsPage serverId={activeHostServerId} />;
-        // CUSTOM(github-account)
-        case "customizations-github":
-          return <BrunoGithubPage serverId={activeHostServerId} />;
-        // CUSTOM(bruno-config-file)
-        case "customizations-config-file":
-          return <BrunoConfigFilePage serverId={activeHostServerId} />;
-        default:
-          break;
-      }
+      const brunoPage = renderBrunoSection(view.section, activeHostServerId);
+      if (brunoPage) return brunoPage;
       const item = SIDEBAR_SECTION_ITEMS.find((candidate) => candidate.id === view.section);
       if (!item || !isSectionAvailable(item, isDesktopApp)) return null;
       switch (view.section) {

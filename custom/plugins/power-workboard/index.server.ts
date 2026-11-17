@@ -14,6 +14,27 @@ import {
   snapshotRpc,
   writeTicketRpc,
 } from "./shared/rpc";
+// CUSTOM(projects-assistant)
+import {
+  assistantActionRpc,
+  assistantConversationRpc,
+  assistantHistoryRpc,
+  assistantOverviewRpc,
+  assistantSettingsGetRpc,
+  assistantSettingsSetRpc,
+  assistantStatsRpc,
+  assistantTreeRpc,
+} from "./shared/assistant-rpc";
+import {
+  HistoryStore,
+  defaultHistoryDirectory,
+} from "./server/assistant/history";
+import {
+  buildOverview,
+  buildStats,
+  buildTree,
+  readConversation,
+} from "./server/assistant/views";
 import { ImageStore, defaultImageDirectory } from "./server/images";
 import { PaseoCompat } from "./server/paseo-compat";
 import { PaseoHost } from "./server/host";
@@ -68,6 +89,9 @@ export default function contribute(server: PluginServerContext) {
     write: (revision, values) =>
       compat.invoke("settings.workboard-data.write", { revision, values }),
   });
+  // CUSTOM(projects-assistant): created once; the board gets it on every (re)boot.
+  const history = new HistoryStore(defaultHistoryDirectory());
+  void history.prune().catch(() => undefined);
   let board: Workboard | undefined;
   let disposed = false;
   let error = "Workboard is starting";
@@ -92,7 +116,7 @@ export default function contribute(server: PluginServerContext) {
       const host = new PaseoHost(api, compat, identity, (id) =>
         board?.changed(id),
       );
-      board = new Workboard(host, store);
+      board = new Workboard(host, store, Date.now, 60000, { history }); // CUSTOM(projects-assistant)
       await board.start();
     } catch (failure) {
       const classified = classifyBootFailure(failure);
@@ -123,6 +147,44 @@ export default function contribute(server: PluginServerContext) {
   server.handle(writeTicketRpc, async (input) => {
     if (!board) throw new Error(error);
     await board.writeTicket(input.agentId, input.focus);
+    return { ok: true as const };
+  });
+  // CUSTOM(projects-assistant): the Projects Assistant's settings, views and actions.
+  const ready = () => {
+    if (!board) throw new Error(error);
+    return board;
+  };
+  server.handle(assistantSettingsGetRpc, () => ready().assistantSettings());
+  server.handle(assistantSettingsSetRpc, (input) =>
+    ready().setAssistantSettings(input.settings),
+  );
+  server.handle(assistantOverviewRpc, () =>
+    buildOverview(ready().assistantSource()),
+  );
+  server.handle(assistantStatsRpc, async (input) => {
+    const source = ready().assistantSource();
+    const from = new Date(source.now);
+    from.setHours(0, 0, 0, 0);
+    from.setDate(from.getDate() - (input.days - 1));
+    return buildStats(
+      source,
+      await history.since(from.toISOString()),
+      input.days,
+    );
+  });
+  server.handle(assistantHistoryRpc, (input) => history.list(input));
+  server.handle(assistantTreeRpc, () => buildTree(ready().assistantSource()));
+  server.handle(assistantConversationRpc, (input) => {
+    const current = ready();
+    return readConversation(
+      current.assistantSource(),
+      input.agentId,
+      current.assistantTimeline(input.agentId),
+      { before: input.before, limit: input.limit },
+    );
+  });
+  server.handle(assistantActionRpc, async (input) => {
+    await ready().assistantAction(input);
     return { ok: true as const };
   });
   // CUSTOM(workboard-images): independent of the board, so images work while it boots.

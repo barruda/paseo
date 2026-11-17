@@ -43,8 +43,33 @@ import {
 } from "../shared/model";
 import { dueTrigger, nextRunAt, windowOpen } from "../shared/schedule";
 import { CANCEL_BINDING_BUSY_ERROR_CODE, type Mutation } from "../shared/rpc";
+// CUSTOM(projects-assistant)
+import {
+  deliverySchema,
+  attemptSchema,
+  projectPolicySchema,
+  assistantSettingsSchema,
+  type AssistantActionInput,
+  type Attempt,
+  type Delivery,
+  type HistoryEventKind,
+  type NeedsYouReason,
+  type ProjectPolicy,
+  type AssistantSettings,
+} from "../shared/assistant";
+import { parseReport } from "./assistant/report";
+import {
+  KeyedLock,
+  classifyMergeError,
+  isUpToDate,
+  runVerify,
+  type VerifyRunner,
+} from "./assistant/delivery";
+import type { HistoryEventInput, HistoryStore } from "./assistant/history";
+import type { ViewSource } from "./assistant/views";
 import {
   continuationPrompt,
+  fixPrompt,
   orchestratorPrompt,
   parseTicket,
   pullRequestPrompt,
@@ -59,6 +84,22 @@ import type {
   Workspace,
 } from "./host";
 import type { Store } from "./store";
+
+// CUSTOM(projects-assistant): what the engine needs from the history and the outside world.
+export interface AssistantOptions {
+  history?: Pick<HistoryStore, "append">;
+  verify?: VerifyRunner;
+  /** Waits before each "Continue the task where you stopped." after an agent error. */
+  retryDelaysMs?: number[];
+}
+type AttemptOutcome = Attempt["outcome"]; // CUSTOM(projects-assistant)
+const DEFAULT_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
+const DELIVERY_STEPS: ReadonlySet<string> = new Set([
+  "verifying",
+  "committing",
+  "merging",
+  "preparing-pr",
+]);
 
 /** One workspace's combined conversation evidence. */
 interface WorkspaceConversation {
@@ -148,7 +189,12 @@ export class Workboard {
     private store: Store,
     private now: () => number = Date.now,
     private interval = 60000,
+    private assistantOptions: AssistantOptions = {}, // CUSTOM(projects-assistant)
   ) {}
+  // CUSTOM(projects-assistant)
+  private delivering = new Set<string>();
+  private retryAt = new Map<string, number>();
+  private mergeLock = new KeyedLock();
   private serial<T>(run: () => Promise<T>): Promise<T> {
     const work = this.queue.then(() => {
       if (this.stopped) throw new Error("Workboard stopped");
@@ -206,6 +252,11 @@ export class Workboard {
       await this.reconcile();
       await this.scan();
       await this.orchestrate();
+      // CUSTOM(projects-assistant): a delivery interrupted by a restart resumes at its step.
+      for (const [taskId, delivery] of Object.entries(
+        this.store.current.assistant.deliveries,
+      ))
+        if (DELIVERY_STEPS.has(delivery.stage)) this.launch(taskId);
     });
     if (!this.stopped)
       this.timer = setInterval(() => {
@@ -1693,8 +1744,14 @@ export class Workboard {
     if (outcome === "done") {
       if (this.store.current.orchestrations[taskId])
         await this.setOrchestration(taskId, { feedback: null });
+      await this.closeDelivery(taskId); // CUSTOM(projects-assistant)
       return;
     }
+    // CUSTOM(projects-assistant): the task leaves Needs you when it goes back to its agent.
+    if (this.store.current.assistant.deliveries[taskId])
+      await this.store.update((data) => {
+        delete data.assistant.deliveries[taskId];
+      });
     await this.setOrchestration(taskId, {
       status: "queued",
       feedback: feedback.trim(),
@@ -1704,6 +1761,715 @@ export class Workboard {
     this.changed(task.workspaceId);
     await this.orchestrate();
   }
+  // CUSTOM(projects-assistant): the Projects Assistant engine. ----------------------------------
+  private assistantOn(): boolean {
+    return this.store.current.assistant.settings.enabled;
+  }
+  private projectIdOf(task: Task): string | null {
+    return (
+      task.projectId ??
+      this.inventory.workspaces.find((w) => w.id === task.workspaceId)
+        ?.projectId ??
+      null
+    );
+  }
+  private policy(
+    projectId: string | null,
+  ): ProjectPolicy & { action: Delivery["action"] } {
+    const settings = this.store.current.assistant.settings;
+    const own = projectId ? settings.projects[projectId] : undefined;
+    return own ?? projectPolicySchema.parse({ action: settings.defaultAction });
+  }
+  /** Append to the history; a history failure never stops the engine. */
+  private async record(
+    taskId: string,
+    kind: HistoryEventKind,
+    text: string,
+    extra: Partial<
+      Pick<
+        HistoryEventInput,
+        "reason" | "detail" | "attempt" | "action" | "agentId"
+      >
+    > = {},
+  ): Promise<void> {
+    try {
+      const data = this.store.current;
+      const task = data.tasks.find((t) => t.id === taskId);
+      if (!task || !this.assistantOptions.history) return;
+      const run = data.orchestrations[taskId];
+      const attempts = data.assistant.attempts[taskId] ?? [];
+      const delivery = data.assistant.deliveries[taskId];
+      const projectId = this.projectIdOf(task);
+      const config = data.orchestrators.find(
+        (o) => o.id === run?.orchestratorId,
+      );
+      await this.assistantOptions.history.append({
+        kind,
+        taskId,
+        taskTitle: task.title,
+        projectId,
+        projectName:
+          task.projectName ||
+          this.inventory.projects.find((p) => p.id === projectId)?.name ||
+          "",
+        orchestratorId: run?.orchestratorId ?? null,
+        orchestratorName: config?.name ?? null,
+        agentId:
+          extra.agentId !== undefined ? extra.agentId : (run?.agentId ?? null),
+        attempt:
+          extra.attempt !== undefined
+            ? extra.attempt
+            : (delivery?.attempt ?? attempts.at(-1)?.index ?? null),
+        action:
+          extra.action !== undefined
+            ? extra.action
+            : (delivery?.action ?? null),
+        reason: extra.reason ?? null,
+        text: text.slice(0, 2000),
+        detail: extra.detail ?? null,
+      });
+    } catch {
+      // The history is a log; the board does not depend on it.
+    }
+  }
+  /** Start an attempt, closing any attempt left open. Returns its index. */
+  private async openAttempt(
+    taskId: string,
+    trigger: Attempt["trigger"],
+    agentId: string | null,
+    orchestratorId: string | null,
+    feedback: string | null,
+  ): Promise<number> {
+    let index = 1;
+    const at = this.stamp();
+    await this.store.update((data) => {
+      const list = (data.assistant.attempts[taskId] ??= []);
+      for (const open of list)
+        if (!open.finishedAt) {
+          open.finishedAt = at;
+          open.outcome = "failed";
+        }
+      index = (list.at(-1)?.index ?? 0) + 1;
+      list.push(
+        attemptSchema.parse({
+          index,
+          agentId,
+          orchestratorId,
+          startedAt: at,
+          trigger,
+          feedback,
+        }),
+      );
+    });
+    return index;
+  }
+  /** The open attempt of a task, created when none is (the task started before the assistant). */
+  private async ensureAttempt(
+    taskId: string,
+    record: Orchestration,
+  ): Promise<Attempt> {
+    const last = this.store.current.assistant.attempts[taskId]?.at(-1);
+    if (last && !last.finishedAt) return last;
+    await this.openAttempt(
+      taskId,
+      "start",
+      record.agentId,
+      record.orchestratorId,
+      null,
+    );
+    return this.store.current.assistant.attempts[taskId]!.at(-1)!;
+  }
+  /** Close the open attempt with an outcome. Returns its index. */
+  private async closeAttempt(
+    taskId: string,
+    outcome: AttemptOutcome,
+    record: Orchestration,
+  ): Promise<number> {
+    await this.ensureAttempt(taskId, record);
+    const at = this.stamp();
+    let index = 1;
+    await this.store.update((data) => {
+      const last = data.assistant.attempts[taskId]!.at(-1)!;
+      index = last.index;
+      if (last.finishedAt) return;
+      last.finishedAt = at;
+      last.outcome = outcome;
+    });
+    return index;
+  }
+  private patchDelivery(
+    taskId: string,
+    change: Partial<Delivery>,
+  ): Promise<void> {
+    return this.store.update((data) => {
+      const delivery = data.assistant.deliveries[taskId];
+      if (!delivery) return;
+      data.assistant.deliveries[taskId] = {
+        ...delivery,
+        ...change,
+        updatedAt: this.stamp(delivery.updatedAt),
+      };
+    });
+  }
+  /** Puts the task on Needs you. Runs inside `serial` (or from a caller that is). */
+  private async markNeedsYou(
+    taskId: string,
+    reason: NeedsYouReason,
+    detail: string | null,
+  ): Promise<void> {
+    if (!this.store.current.assistant.deliveries[taskId]) return;
+    await this.patchDelivery(taskId, { stage: "needs-you", reason, detail });
+    await this.record(taskId, "needs-you", `Needs you: ${reason}`, {
+      reason,
+      detail,
+    });
+  }
+  private async createDelivery(
+    taskId: string,
+    init: Partial<Delivery> & Pick<Delivery, "action" | "attempt">,
+  ): Promise<void> {
+    const at = this.stamp();
+    await this.store.update((data) => {
+      data.assistant.deliveries[taskId] = deliverySchema.parse({
+        stage: "reported",
+        observe: false,
+        startedAt: at,
+        updatedAt: at,
+        ...init,
+      });
+    });
+  }
+  /**
+   * The agent's turn ended: read its report, store the summary without the block, create the
+   * delivery and settle everything that needs no git work. Returns whether an asynchronous
+   * delivery step (verify, merge or PR) must run. Runs inside `serial`.
+   */
+  private async assistantFinished(
+    taskId: string,
+    record: Orchestration,
+    reply: string | null,
+  ): Promise<boolean> {
+    const task = this.task(taskId);
+    const parsed = reply ? parseReport(reply) : { report: null, text: "" };
+    const report = parsed.report;
+    const summary = parsed.text || report?.summary || "";
+    if (summary) await this.setOrchestration(taskId, { summary });
+    const attempt = await this.closeAttempt(
+      taskId,
+      report ? report.status : "no-report",
+      record,
+    );
+    const policy = this.policy(this.projectIdOf(task));
+    const previous = this.store.current.assistant.deliveries[taskId];
+    const afterFix = previous?.stage === "fixing" ? previous : null;
+    await this.createDelivery(taskId, {
+      action: policy.action,
+      observe: policy.observe,
+      attempt,
+      report,
+      fixesUsed: afterFix?.fixesUsed ?? 0,
+      verifyOutput: afterFix?.verifyOutput ?? null,
+    });
+    await this.record(
+      taskId,
+      "report",
+      report
+        ? `Reported ${report.status}: ${report.summary.split("\n")[0].slice(0, 200)}`
+        : "Finished without a valid report",
+      { attempt, detail: summary || null },
+    );
+    if (!report) return this.settle(taskId, "no-report", null);
+    if (report.status === "blocked")
+      return this.settle(taskId, "blocked", report.question);
+    if (report.status === "needs_input")
+      return this.settle(taskId, "needs-input", report.question);
+    if (report.status === "failed") {
+      await this.record(taskId, "failed", "The agent reported it failed", {
+        attempt,
+        detail: report.question,
+      });
+      return this.settle(taskId, "failed", report.question);
+    }
+    if (policy.action === "nothing") {
+      await this.patchDelivery(taskId, { stage: "delivered" });
+      return false;
+    }
+    if (policy.action === "notify") return this.settle(taskId, "notify", null);
+    if (policy.observe) {
+      const would =
+        policy.action === "merge" ? "Would merge" : "Would prepare a PR";
+      await this.record(taskId, "observed", would, { detail: would });
+      return this.settle(taskId, "observed", would);
+    }
+    if (policy.action === "prepare-pr") {
+      await this.patchDelivery(taskId, { stage: "preparing-pr" });
+      return true;
+    }
+    const workspace = this.inventory.workspaces.find(
+      (w) => w.id === task.workspaceId,
+    );
+    if (workspace?.projectKind !== "git")
+      return this.settle(
+        taskId,
+        "merge-error",
+        "This task's project is not a git repository",
+      );
+    await this.patchDelivery(taskId, {
+      stage: policy.verifyCommand.trim() ? "verifying" : "committing",
+    });
+    return true;
+  }
+  private async settle(
+    taskId: string,
+    reason: NeedsYouReason,
+    detail: string | null,
+  ): Promise<false> {
+    await this.markNeedsYou(taskId, reason, detail);
+    return false;
+  }
+  /** An agent that errored or vanished: close its attempt and tell the user. Inside `serial`. */
+  private async assistantFailed(
+    taskId: string,
+    record: Orchestration,
+    detail: string,
+  ): Promise<void> {
+    const task = this.task(taskId);
+    const attempt = await this.closeAttempt(taskId, "agent-error", record);
+    const policy = this.policy(this.projectIdOf(task));
+    await this.createDelivery(taskId, {
+      action: policy.action,
+      observe: policy.observe,
+      attempt,
+    });
+    await this.record(taskId, "failed", detail, { attempt });
+    await this.markNeedsYou(taskId, "agent-error", detail);
+  }
+  /** Whether an agent in error is still being waited on or nudged. Inside `serial`. */
+  private async retryAgent(
+    taskId: string,
+    record: Orchestration,
+    task: Task,
+  ): Promise<boolean> {
+    const delays =
+      this.assistantOptions.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
+    const attempt = await this.ensureAttempt(taskId, record);
+    if (attempt.retries >= delays.length) {
+      this.retryAt.delete(taskId);
+      return false;
+    }
+    const due = this.retryAt.get(taskId);
+    if (due === undefined) {
+      this.retryAt.set(taskId, this.now() + delays[attempt.retries]);
+      return true;
+    }
+    if (this.now() < due) return true;
+    this.retryAt.delete(taskId);
+    const retries = attempt.retries + 1;
+    await this.store.update((data) => {
+      const last = data.assistant.attempts[taskId]?.at(-1);
+      if (last) last.retries = retries;
+    });
+    let note = `asked it to continue (${retries}/${delays.length})`;
+    try {
+      await this.host.sendAgent(
+        record.agentId!,
+        "Continue the task where you stopped.",
+      );
+    } catch (error) {
+      note = `could not ask it to continue: ${message(error)}`;
+    }
+    await this.setOrchestration(taskId, {
+      startedAt: this.stamp(),
+      sawRunning: false,
+    });
+    await this.log(
+      record.orchestratorId,
+      "warn",
+      `"${task.title}": the agent stopped with an error; ${note}`,
+      taskId,
+      record.agentId,
+    );
+    return true;
+  }
+  /** The user accepted the task on the board: close its delivery. Inside `serial`. */
+  private async closeDelivery(taskId: string): Promise<void> {
+    if (!this.assistantOn()) return;
+    const delivery = this.store.current.assistant.deliveries[taskId];
+    if (delivery?.stage === "delivered") return;
+    if (!delivery && !this.store.current.assistant.attempts[taskId]) return;
+    if (delivery)
+      await this.patchDelivery(taskId, {
+        stage: "delivered",
+        reason: null,
+        detail: null,
+      });
+    await this.record(taskId, "done", "Marked done");
+  }
+  /** Runs the delivery's asynchronous steps, one task at a time. Never blocks `orchestrate`. */
+  private launch(taskId: string): void {
+    if (this.stopped || this.delivering.has(taskId)) return;
+    this.delivering.add(taskId);
+    const workspaceId = this.store.current.tasks.find(
+      (t) => t.id === taskId,
+    )?.workspaceId;
+    void this.advance(taskId)
+      .catch((error) =>
+        this.serial(() =>
+          this.markNeedsYou(taskId, "merge-error", message(error)),
+        ),
+      )
+      .catch(() => undefined)
+      .finally(() => {
+        this.delivering.delete(taskId);
+        if (workspaceId) this.changed(workspaceId);
+      });
+  }
+  private async advance(taskId: string): Promise<void> {
+    const stageNow = () =>
+      this.store.current.assistant.deliveries[taskId]?.stage;
+    const needsYou = (reason: NeedsYouReason, detail: string | null) =>
+      this.serial(() => this.markNeedsYou(taskId, reason, detail));
+    const to = (stage: Delivery["stage"]) =>
+      this.serial(() => this.patchDelivery(taskId, { stage }));
+    for (;;) {
+      if (this.stopped) return;
+      const delivery = this.store.current.assistant.deliveries[taskId];
+      const task = this.store.current.tasks.find((t) => t.id === taskId);
+      if (!delivery || !task) return;
+      const stage = delivery.stage;
+      const workspace = this.inventory.workspaces.find(
+        (w) => w.id === task.workspaceId,
+      );
+      const policy = this.policy(this.projectIdOf(task));
+      const reason: NeedsYouReason =
+        stage === "preparing-pr" ? "pr-error" : "merge-error";
+      try {
+        if (stage === "reported") {
+          if (delivery.action === "merge")
+            await to(policy.verifyCommand.trim() ? "verifying" : "committing");
+          else if (delivery.action === "prepare-pr") await to("preparing-pr");
+          else return;
+          continue;
+        }
+        if (!DELIVERY_STEPS.has(stage)) return;
+        if (!workspace)
+          return await needsYou(
+            reason,
+            "Workspace is unavailable or archiving",
+          );
+        const directory = workspace.workspaceDirectory;
+        const agentId =
+          this.store.current.orchestrations[taskId]?.agentId ??
+          this.store.current.assistant.attempts[taskId]?.at(-1)?.agentId ??
+          null;
+        if (stage === "verifying") {
+          const command = policy.verifyCommand.trim();
+          if (!command) {
+            await to("committing");
+            continue;
+          }
+          const result = await (this.assistantOptions.verify ?? runVerify)(
+            command,
+            directory,
+          );
+          if (stageNow() !== "verifying") return;
+          await this.serial(() =>
+            this.patchDelivery(taskId, { verifyOutput: result.output }),
+          );
+          if (result.passed) {
+            await this.record(
+              taskId,
+              "verify-passed",
+              `Check passed: ${command}`,
+            );
+            await to("committing");
+            continue;
+          }
+          await this.record(
+            taskId,
+            "verify-failed",
+            `Check failed: ${command}`,
+            {
+              detail: result.output.slice(-4000),
+            },
+          );
+          if (delivery.fixesUsed < policy.autoFixes)
+            await this.serial(() =>
+              this.requestFix(taskId, command, result.output),
+            );
+          else await needsYou("verify-failed", `Check failed: ${command}`);
+          return;
+        }
+        if (stage === "committing") {
+          if (await this.host.gitDirty(directory)) {
+            await this.host.commit(directory);
+            await this.serial(() =>
+              this.setFinish(taskId, { committedAt: this.stamp() }),
+            );
+            await this.record(
+              taskId,
+              "committed",
+              "Committed the task's changes",
+            );
+          }
+          if (stageNow() !== "committing") return;
+          await to("merging");
+          continue;
+        }
+        if (stage === "merging") {
+          let failure: string | null = null;
+          try {
+            await this.mergeLock.run(this.projectIdOf(task) ?? directory, () =>
+              this.host.mergeToBase(directory, {
+                baseRef: policy.baseBranch.trim() || undefined,
+                requireCleanTarget: true,
+                strategy: "merge",
+              }),
+            );
+          } catch (error) {
+            failure = message(error);
+          }
+          if (failure !== null && !isUpToDate(failure))
+            return await needsYou(classifyMergeError(failure), failure);
+          await this.serial(() => this.completeMerge(taskId));
+          await this.record(taskId, "merged", "Merged into the base branch");
+          await this.record(taskId, "done", "Done");
+          return;
+        }
+        // preparing-pr
+        if (!agentId)
+          throw new Error("No agent of this task can write the description");
+        if (await this.host.gitDirty(directory)) {
+          await this.host.commit(directory);
+          await this.serial(() =>
+            this.setFinish(taskId, { committedAt: this.stamp() }),
+          );
+          await this.record(
+            taskId,
+            "committed",
+            "Committed the task's changes",
+          );
+        }
+        const reply = await this.host.askAgent(
+          agentId,
+          pullRequestPrompt(task),
+        );
+        const text = parseTicket(reply, "pr");
+        await this.serial(() =>
+          this.setFinish(taskId, {
+            prTitle: text.title,
+            prBody: text.description,
+          }),
+        );
+        await this.record(
+          taskId,
+          "pr-prepared",
+          "Pull request description ready",
+          {
+            detail: text.title,
+          },
+        );
+        await needsYou("notify", "PR description ready");
+        return;
+      } catch (error) {
+        await needsYou(reason, message(error));
+        return;
+      }
+    }
+  }
+  /** The merge landed: remember it and move the task to Done. Inside `serial`. */
+  private async completeMerge(taskId: string): Promise<void> {
+    const at = this.stamp();
+    await this.store.update((data) => {
+      data.finishes[taskId] = finishSchema.parse({
+        ...data.finishes[taskId],
+        running: null,
+        mergedAt: at,
+        error: null,
+      });
+    });
+    const done = orderedGroups(this.store.current.settings).find(
+      (group) => group.kind === "done",
+    );
+    if (done) {
+      try {
+        await this.moveBound(taskId, done.id);
+      } catch (error) {
+        await this.setFinish(taskId, {
+          error: `Merged, but the task could not move to Done: ${message(error)}`,
+        });
+      }
+    }
+    await this.patchDelivery(taskId, {
+      stage: "delivered",
+      reason: null,
+      detail: null,
+    });
+  }
+  /** A failed check goes back to the same agent. Inside `serial`. */
+  private async requestFix(
+    taskId: string,
+    command: string,
+    output: string,
+  ): Promise<void> {
+    const delivery = this.store.current.assistant.deliveries[taskId];
+    const record = this.store.current.orchestrations[taskId];
+    if (!delivery) return;
+    if (!record?.agentId)
+      return this.markNeedsYou(
+        taskId,
+        "verify-failed",
+        "No agent to send the failure to",
+      );
+    try {
+      await this.host.sendAgent(record.agentId, fixPrompt(command, output));
+    } catch (error) {
+      return this.markNeedsYou(taskId, "verify-failed", message(error));
+    }
+    await this.patchDelivery(taskId, {
+      stage: "fixing",
+      fixesUsed: delivery.fixesUsed + 1,
+      verifyOutput: output,
+    });
+    const attempt = await this.openAttempt(
+      taskId,
+      "auto-fix",
+      record.agentId,
+      record.orchestratorId,
+      output.slice(-4000),
+    );
+    await this.setOrchestration(taskId, {
+      status: "running",
+      startedAt: this.stamp(),
+      finishedAt: null,
+      sawRunning: false,
+      error: null,
+    });
+    await this.record(
+      taskId,
+      "fix-requested",
+      "Sent the failed check back to the agent",
+      {
+        attempt,
+        detail: command,
+      },
+    );
+  }
+  /** Creates or resets the delivery for an action of the user. Inside `serial`. */
+  private async actionDelivery(
+    taskId: string,
+    action: Delivery["action"],
+    stage: Delivery["stage"],
+  ): Promise<void> {
+    const existing = this.store.current.assistant.deliveries[taskId];
+    if (existing && this.delivering.has(taskId))
+      throw new Error("A delivery step is already running for this task");
+    if (existing)
+      await this.patchDelivery(taskId, {
+        action,
+        stage,
+        reason: null,
+        detail: null,
+      });
+    else
+      await this.createDelivery(taskId, {
+        action,
+        stage,
+        attempt:
+          this.store.current.assistant.attempts[taskId]?.at(-1)?.index ?? 1,
+      });
+  }
+  private reviewable(taskId: string): { task: Task; workspace: Workspace } {
+    const task = this.task(taskId);
+    const card = this.snapshot().cards.find((c) => c.id === taskId);
+    const kind = card
+      ? groupKind(card.stage, this.store.current.settings.groups)
+      : null;
+    if (!task.workspaceId || (kind !== "review" && kind !== "done"))
+      throw new Error(
+        "Only a task in review or done with a workspace can be delivered",
+      );
+    const workspace = this.inventory.workspaces.find(
+      (w) => w.id === task.workspaceId,
+    );
+    if (!workspace) throw new Error("Workspace is unavailable or archiving");
+    if (workspace.projectKind !== "git")
+      throw new Error("This task's project is not a git repository");
+    return { task, workspace };
+  }
+  /** What the user can do from the Projects Dashboard. */
+  assistantAction(input: AssistantActionInput): Promise<void> {
+    return this.serial(async () => {
+      if (!this.connected)
+        throw new Error(this.error ?? "Paseo is disconnected");
+      if (input.type === "send") {
+        const data = this.store.current;
+        const managed =
+          Object.values(data.orchestrations).some(
+            (o) => o.agentId === input.agentId,
+          ) ||
+          Object.values(data.assistant.attempts).some((list) =>
+            list.some((a) => a.agentId === input.agentId),
+          );
+        if (!managed)
+          throw new Error(
+            "This agent is not managed by the Projects Assistant",
+          );
+        await this.host.sendAgent(input.agentId, input.text);
+        return;
+      }
+      const taskId = input.taskId;
+      if (input.type === "merge-now") {
+        this.reviewable(taskId);
+        await this.actionDelivery(taskId, "merge", "committing");
+        this.launch(taskId);
+      } else if (input.type === "prepare-pr") {
+        this.reviewable(taskId);
+        await this.actionDelivery(taskId, "prepare-pr", "preparing-pr");
+        this.launch(taskId);
+      } else if (input.type === "continue") {
+        await this.review(taskId, "continue", input.feedback);
+      } else if (input.type === "mark-done") {
+        await this.review(taskId, "done", "");
+      } else {
+        if (!this.store.current.assistant.deliveries[taskId])
+          throw new Error("Nothing to dismiss for this task");
+        await this.patchDelivery(taskId, { stage: "dismissed" });
+        await this.record(taskId, "dismissed", "Dismissed by the user");
+      }
+    });
+  }
+  assistantSettings(): {
+    settings: AssistantSettings;
+    projects: Board["projects"];
+  } {
+    return {
+      settings: this.store.current.assistant.settings,
+      projects: this.inventory.projects,
+    };
+  }
+  async setAssistantSettings(input: AssistantSettings) {
+    const settings = assistantSettingsSchema.parse(input);
+    await this.serial(() =>
+      this.store.update((data) => {
+        data.assistant.settings = settings;
+      }),
+    );
+    return this.assistantSettings();
+  }
+  /** The inputs of the read-side views. */
+  assistantSource(): ViewSource {
+    return {
+      data: this.store.current,
+      board: this.snapshot(),
+      agents: this.inventory.agents,
+      now: new Date(),
+    };
+  }
+  assistantTimeline(agentId: string) {
+    return this.host.timeline(agentId);
+  }
+  // End CUSTOM(projects-assistant) -------------------------------------------------------------
   private setOrchestration(
     taskId: string,
     change: Partial<Orchestration>,
@@ -1742,6 +2508,7 @@ export class Workboard {
       if (!task || hidden(task)) {
         await this.store.update((data) => {
           delete data.orchestrations[taskId];
+          delete data.assistant.deliveries[taskId]; // CUSTOM(projects-assistant)
         });
         continue;
       }
@@ -1762,6 +2529,9 @@ export class Workboard {
             taskId,
             record.agentId,
           );
+          // CUSTOM(projects-assistant)
+          if (this.assistantOn())
+            await this.assistantFailed(taskId, record, "The agent is gone");
         }
         continue;
       }
@@ -1771,6 +2541,9 @@ export class Workboard {
         continue;
       }
       if (agent.activity === "error") {
+        // CUSTOM(projects-assistant): a transient error gets up to three "continue" nudges first.
+        if (this.assistantOn() && (await this.retryAgent(taskId, record, task)))
+          continue;
         await this.setOrchestration(taskId, {
           status: "failed",
           finishedAt: this.stamp(),
@@ -1783,6 +2556,13 @@ export class Workboard {
           taskId,
           record.agentId,
         );
+        // CUSTOM(projects-assistant)
+        if (this.assistantOn())
+          await this.assistantFailed(
+            taskId,
+            record,
+            "The agent stopped with an error",
+          );
         continue;
       }
       // Idle before it was ever seen running means it may not have started yet.
@@ -1795,7 +2575,11 @@ export class Workboard {
         (w) => w.id === task.workspaceId,
       );
       const summary = await this.host.lastReply(record.agentId);
-      if (summary) await this.setOrchestration(taskId, { summary });
+      // CUSTOM(projects-assistant): with the assistant on, the report decides what happens next.
+      let launch = false;
+      if (this.assistantOn())
+        launch = await this.assistantFinished(taskId, record, summary);
+      else if (summary) await this.setOrchestration(taskId, { summary });
       await this.log(
         record.orchestratorId,
         "info",
@@ -1814,6 +2598,7 @@ export class Workboard {
           await this.setOrchestration(taskId, { error: message(error) });
         }
       }
+      if (launch) this.launch(taskId); // CUSTOM(projects-assistant)
     }
     const stage = defaultStartWorkGroup(
       groups,
@@ -2065,13 +2850,31 @@ export class Workboard {
         modeId: config.modeId,
         thinkingOptionId: config.thinkingOptionId,
         title: task.title,
-        prompt: orchestratorPrompt(task, config.instructions),
+        prompt: orchestratorPrompt(
+          task,
+          config.instructions,
+          this.assistantOn(),
+        ), // CUSTOM(projects-assistant)
       });
       await this.setOrchestration(card.id, {
         status: "running",
         agentId,
         startedAt: this.stamp(),
       });
+      // CUSTOM(projects-assistant)
+      if (this.assistantOn()) {
+        const attempt = await this.openAttempt(
+          card.id,
+          "start",
+          agentId,
+          config.id,
+          null,
+        );
+        await this.record(card.id, "task-started", `Started "${task.title}"`, {
+          attempt,
+          agentId,
+        });
+      }
       await this.log(
         config.id,
         "info",
@@ -2108,7 +2911,10 @@ export class Workboard {
       const task = this.task(taskId);
       let agentId = record.agentId;
       if (agentId && (await this.host.agentAlive(agentId)))
-        await this.host.sendAgent(agentId, continuationPrompt(feedback));
+        await this.host.sendAgent(
+          agentId,
+          continuationPrompt(feedback, this.assistantOn()), // CUSTOM(projects-assistant)
+        );
       else
         agentId = await this.host.startAgent(task.workspaceId!, {
           provider: settings.provider,
@@ -2117,7 +2923,7 @@ export class Workboard {
           title: task.title,
           prompt: [
             orchestratorPrompt(task, settings.instructions),
-            continuationPrompt(feedback),
+            continuationPrompt(feedback, this.assistantOn()), // CUSTOM(projects-assistant)
           ].join("\n\n"),
         });
       await this.setOrchestration(taskId, {
@@ -2131,6 +2937,22 @@ export class Workboard {
         error: null,
         orchestratorId: settings.id,
       });
+      // CUSTOM(projects-assistant)
+      if (this.assistantOn()) {
+        const attempt = await this.openAttempt(
+          taskId,
+          "feedback",
+          agentId,
+          settings.id,
+          feedback.trim() || null,
+        );
+        await this.record(
+          taskId,
+          "task-continued",
+          `Continued "${task.title}" with the review feedback`,
+          { attempt, agentId, detail: feedback.trim() || null },
+        );
+      }
       await this.log(
         settings.id,
         "info",

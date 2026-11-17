@@ -130,8 +130,8 @@ import {
 } from "./desks-store";
 // CUSTOM(desk-workboard)
 import {
-  DESK_WORKBOARD_LABEL,
   DeskWorkboardCover,
+  type DeskSurfaceEntry,
   useDeskWorkboard,
   useDeskWorkboardStore,
 } from "./desk-workboard";
@@ -180,11 +180,8 @@ export function DeskScreen() {
   const [hydrated, setHydrated] = useState(useDesksStore.persist.hasHydrated());
   const [naming, setNaming] = useState<DeskNaming | null>(null);
   // CUSTOM(desk-workboard)
-  const {
-    plugin: workboard,
-    open: workboardOpen,
-    selected: workboardSelected,
-  } = useDeskWorkboard(desk.id, active);
+  const { entries: surfaceEntries, selected: selectedSurface } = useDeskWorkboard(desk.id, active);
+  const workboardSelected = selectedSurface !== null;
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
   const [renaming, setRenaming] = useState<{
     tab: WorkspaceTabDescriptor;
@@ -697,6 +694,19 @@ export function DeskScreen() {
     useTabLanesStore.getState().retain(`desk:${desk.id}`, new Set(uiTabs.map((tab) => tab.tabId)));
   }, [desk.id, uiTabs]);
 
+  const closedSurfaces = useMemo(
+    () => surfaceEntries.filter((entry) => !entry.open),
+    [surfaceEntries],
+  );
+  // CUSTOM(projects-assistant): what the chips need beside the sidebar toggle and +, so the header
+  // shortcut hints drop out before they would sit under the chips (a rough width, errs wide).
+  const leftReservePx = useMemo(() => {
+    const chips = surfaceEntries
+      .filter((entry) => entry.open)
+      .reduce((sum, entry) => sum + entry.definition.label.length * 7 + 40, 0);
+    const deskChips = desks.reduce((sum, entry) => sum + entry.name.length * 7 + 28, 0);
+    return 110 + chips + deskChips + (activeIsPreview && !workboardSelected ? 90 : 0);
+  }, [activeIsPreview, desks, surfaceEntries, workboardSelected]);
   const headerLeft = useMemo(
     () => (
       <View style={styles.headerLeft}>
@@ -704,8 +714,8 @@ export function DeskScreen() {
         {/* CUSTOM(desk-header): no project name (every tab shows its project's icon), and the
           New Desk + sits before the Desks so it isn't mistaken for the tab row's +. */}
         <View style={styles.deskTabs}>
-          {workboard && !workboardOpen ? (
-            <DeskCreateMenu onCreateDesk={create} />
+          {closedSurfaces.length > 0 ? (
+            <DeskCreateMenu onCreateDesk={create} closed={closedSurfaces} />
           ) : (
             <ToolbarButton
               label="New Desk"
@@ -717,7 +727,16 @@ export function DeskScreen() {
             </ToolbarButton>
           )}
           <View style={styles.newDeskDivider} />
-          {workboardOpen ? <DeskWorkboardChip selected={workboardSelected} /> : null}
+          {surfaceEntries
+            .filter((entry) => entry.open)
+            .map((entry) => (
+              <DeskWorkboardChip
+                key={entry.definition.id}
+                id={entry.definition.id}
+                label={entry.definition.label}
+                selected={selectedSurface?.definition.id === entry.definition.id}
+              />
+            ))}
           {desks.map((entry) => (
             <DeskTabChip
               key={entry.id}
@@ -750,8 +769,9 @@ export function DeskScreen() {
       desks,
       keep,
       renameDesk,
-      workboard,
-      workboardOpen,
+      closedSurfaces,
+      surfaceEntries,
+      selectedSurface,
       workboardSelected,
     ],
   );
@@ -770,11 +790,15 @@ export function DeskScreen() {
   );
   const headerRight = useMemo(
     () => (
-      <HeaderShortcutsRightRow layoutKey={screenId} style={styles.headerLeft}>
+      <HeaderShortcutsRightRow
+        layoutKey={screenId}
+        style={styles.headerLeft}
+        leftReservePx={leftReservePx}
+      >
         {contextTab ? <DeskWorkspaceActions tab={contextTab} focused={active} /> : null}
       </HeaderShortcutsRightRow>
     ),
-    [active, contextTab, screenId],
+    [active, contextTab, leftReservePx, screenId],
   );
   // CUSTOM(explorer-toggle-tab-row): the Explorer toggle sits in the top-right pane's tab row.
   const renderTabRowExplorerToggle = useCallback(
@@ -847,7 +871,7 @@ export function DeskScreen() {
     <FloatingPanelPortalHostNameProvider hostName={portalHost}>
       <View style={styles.root} testID="desk-screen">
         {/* CUSTOM(desk-workboard): the board covers the Desk, which stays mounted underneath. */}
-        <DeskWorkboardCover plugin={workboardSelected ? workboard : null} headerLeft={headerLeft}>
+        <DeskWorkboardCover surface={selectedSurface} headerLeft={headerLeft}>
           {scope ? (
             <DeskProviders
               resolveOwner={resolveOwner}
@@ -1259,18 +1283,26 @@ function DeskTabChip({
     </ContextMenu>
   );
 }
-/** CUSTOM(desk-workboard): the board's tab; × or right-click > Close moves it into +. */
-function DeskWorkboardChip({ selected }: { selected: boolean }) {
-  const select = useCallback(() => useDeskWorkboardStore.getState().select(), []);
-  const close = useCallback(() => useDeskWorkboardStore.getState().close(), []);
+/** CUSTOM(desk-workboard): a plugin surface's tab; × or right-click > Close moves it into +. */
+function DeskWorkboardChip({
+  id,
+  label,
+  selected,
+}: {
+  id: string;
+  label: string;
+  selected: boolean;
+}) {
+  const select = useCallback(() => useDeskWorkboardStore.getState().select(id), [id]);
+  const close = useCallback(() => useDeskWorkboardStore.getState().close(id), [id]);
   const accessibilityState = useMemo(() => ({ selected }), [selected]);
   return (
     <ContextMenu>
       <View style={[styles.workboardTab, selected && styles.deskTabSelected]}>
         <ContextMenuTrigger
-          testID="desk-workboard-choice"
+          testID={`desk-surface-choice-${id}`}
           accessibilityRole="button"
-          accessibilityLabel={DESK_WORKBOARD_LABEL}
+          accessibilityLabel={label}
           accessibilityState={accessibilityState}
           aria-selected={selected}
           style={styles.workboardTabLabel}
@@ -1280,20 +1312,20 @@ function DeskWorkboardChip({ selected }: { selected: boolean }) {
             style={[styles.deskTabText, selected && styles.deskTabTextSelected]}
             numberOfLines={1}
           >
-            {DESK_WORKBOARD_LABEL}
+            {label}
           </Text>
         </ContextMenuTrigger>
         <ToolbarButton
-          label={`Close ${DESK_WORKBOARD_LABEL}`}
+          label={`Close ${label}`}
           onPress={close}
           style={styles.workboardClose}
-          testID="desk-workboard-close"
+          testID={`desk-surface-close-${id}`}
         >
           <ThemedX size={12} uniProps={extraMutedColorMapping} />
         </ToolbarButton>
       </View>
       <ContextMenuContent align="start">
-        <ContextMenuItem testID="desk-workboard-close-menu" onSelect={close}>
+        <ContextMenuItem testID={`desk-surface-close-menu-${id}`} onSelect={close}>
           Close
         </ContextMenuItem>
       </ContextMenuContent>
@@ -1301,28 +1333,46 @@ function DeskWorkboardChip({ selected }: { selected: boolean }) {
   );
 }
 
-/** CUSTOM(desk-workboard): + while the board is closed: a new Desk or the board again. */
-function DeskCreateMenu({ onCreateDesk }: { onCreateDesk: () => void }) {
-  const reopen = useCallback(() => useDeskWorkboardStore.getState().reopen(), []);
+/** CUSTOM(desk-workboard): + while some surface is closed: a new Desk or a closed surface again. */
+function DeskCreateMenu({
+  onCreateDesk,
+  closed,
+}: {
+  onCreateDesk: () => void;
+  closed: DeskSurfaceEntry[];
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         testID="desk-create"
         accessibilityRole="button"
-        accessibilityLabel="New Desk or Power Workboard"
+        accessibilityLabel="New Desk or plugin tab"
         style={styles.newDeskMenuTrigger}
       >
         <ThemedPlus size={14} uniProps={extraMutedColorMapping} />
       </DropdownMenuTrigger>
-      <DropdownMenuContent side="bottom" align="start" width={200} testID="desk-create-menu">
+      <DropdownMenuContent side="bottom" align="start" width={220} testID="desk-create-menu">
         <DropdownMenuItem testID="desk-create-desk" onSelect={onCreateDesk}>
           New Desk
         </DropdownMenuItem>
-        <DropdownMenuItem testID="desk-create-workboard" onSelect={reopen}>
-          {DESK_WORKBOARD_LABEL}
-        </DropdownMenuItem>
+        {closed.map((entry) => (
+          <ReopenSurfaceItem
+            key={entry.definition.id}
+            id={entry.definition.id}
+            label={entry.definition.label}
+          />
+        ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+function ReopenSurfaceItem({ id, label }: { id: string; label: string }) {
+  const reopen = useCallback(() => useDeskWorkboardStore.getState().reopen(id), [id]);
+  return (
+    <DropdownMenuItem testID={`desk-create-surface-${id}`} onSelect={reopen}>
+      {label}
+    </DropdownMenuItem>
   );
 }
 

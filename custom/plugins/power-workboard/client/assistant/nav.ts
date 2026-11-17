@@ -1,0 +1,61 @@
+// CUSTOM(projects-assistant): state shared by the Projects Dashboard and Projects Conversations
+// surfaces. Both come from this plugin's bundle, so a module-level store is enough to hand the
+// selected agent from one page to the other.
+import { useSyncExternalStore } from "react";
+import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
+
+export const DASHBOARD_SURFACE_ID = "projects-dashboard";
+export const CONVERSATIONS_SURFACE_ID = "projects-conversations";
+
+interface Selection {
+  agentId: string | null;
+  taskId: string | null;
+}
+
+let selection: Selection = { agentId: null, taskId: null };
+const listeners = new Set<() => void>();
+
+export function selectConversation(next: Selection): void {
+  selection = next;
+  for (const listener of listeners) listener();
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function useConversationSelection(): Selection {
+  return useSyncExternalStore(
+    subscribe,
+    () => selection,
+    () => selection,
+  );
+}
+
+/**
+ * The Desk header (packages/app/src/task-navigation/desk-workboard.tsx, CUSTOM(projects-assistant))
+ * passes `navigation.openDeskSurface` to the surfaces it shows. It is not in the published plugin
+ * types, hence the cast. Returns false when the host has no such navigation.
+ */
+export function openDeskSurface(
+  navigation: PluginSurfaceProps["navigation"],
+  surfaceId: string,
+): boolean {
+  const open = (
+    navigation as { openDeskSurface?: (id: string) => void } | undefined
+  )?.openDeskSurface;
+  if (!open) return false;
+  open(surfaceId);
+  return true;
+}
+
+/** Select an agent and show it in Projects Conversations. */
+export function showConversation(
+  navigation: PluginSurfaceProps["navigation"],
+  agentId: string,
+  taskId: string | null,
+): void {
+  selectConversation({ agentId, taskId });
+  openDeskSurface(navigation, CONVERSATIONS_SURFACE_ID);
+}

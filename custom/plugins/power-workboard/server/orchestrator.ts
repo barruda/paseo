@@ -1,27 +1,58 @@
 import type { Task } from "../shared/model";
 
+// CUSTOM(projects-assistant): what the agent must know when the Projects Assistant delivers its work.
+export function assistantSection(): string {
+  return [
+    "## Delivery",
+    "The Projects Assistant delivers the work of this task. Do not merge, push, rebase onto the base branch or open pull requests; leave your changes in this workspace.",
+    'End your final reply with a report between <report> and </report>, as JSON: {"status": "done" | "blocked" | "needs_input" | "failed", "summary": string, "filesChanged": string[], "checks": [{"command": string, "passed": boolean}], "risks": string[], "question": string | null}. Use `question` for what the user must answer or do when the status is blocked or needs_input.',
+    'Example: <report>{"status":"done","summary":"Added the retry button.","filesChanged":["src/button.tsx"],"checks":[{"command":"npm test","passed":true}],"risks":[],"question":null}</report>',
+  ].join("\n\n");
+}
+
+/** What the agent receives when a check the Projects Assistant ran on its work failed. */
+export function fixPrompt(command: string, output: string): string {
+  return [
+    "The Projects Assistant ran a check on your work before delivering it, and it failed. Fix the problem in this workspace without waiting for confirmation.",
+    `Command: ${command}`,
+    `Output (tail):\n\n${output.trim() || "(no output)"}`,
+    assistantSection(),
+  ].join("\n\n");
+}
+
 /** The first message an orchestrated agent receives. */
-export function orchestratorPrompt(task: Task, instructions: string): string {
+export function orchestratorPrompt(
+  task: Task,
+  instructions: string,
+  assistant = false, // CUSTOM(projects-assistant)
+): string {
   return [
     instructions.trim(),
     `# ${task.title}`,
     task.description.trim(),
     "---",
     "You were started by the Power Workboard orchestrator for the task above. Do the whole task in this workspace without waiting for confirmation. When you are done, reply with a short summary of what you changed and what a reviewer should check.",
+    assistant ? assistantSection() : "", // CUSTOM(projects-assistant)
   ]
     .filter(Boolean)
     .join("\n\n");
 }
 
 /** What the agent receives when the reviewer sends its task back with feedback. */
-export function continuationPrompt(feedback: string): string {
+export function continuationPrompt(
+  feedback: string,
+  assistant = false, // CUSTOM(projects-assistant)
+): string {
   return [
     "The reviewer sent this task back to you from the Power Workboard. Continue it in this workspace without waiting for confirmation.",
     feedback.trim()
       ? `Reviewer feedback:\n\n${feedback.trim()}`
       : "The reviewer left no notes: finish what is still missing.",
     "When you are done, reply with a short summary of what you changed and what a reviewer should check.",
-  ].join("\n\n");
+    assistant ? assistantSection() : "", // CUSTOM(projects-assistant)
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /** The first message of a refinement chat. */

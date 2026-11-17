@@ -510,6 +510,7 @@ export const SETTINGS_SECTION_SLUGS = [
   "customizations-voice",
   "customizations-agents", // CUSTOM(idle-cleanup-period)
   "customizations-github", // CUSTOM(github-account)
+  "customizations-projects-assistant", // CUSTOM(projects-assistant)
   "customizations-config-file", // CUSTOM(bruno-config-file)
   "diagnostics",
   "about",

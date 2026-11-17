@@ -1,5 +1,5 @@
-// CUSTOM(desk-workboard): the Power Workboard plugin as a fixed tab beside the Desks. Shown by
-// default; closing it moves it into the + menu until it is reopened. The board is the plugin's own
+// CUSTOM(desk-workboard): the Power Workboard plugin's surfaces as fixed tabs beside the Desks. Shown
+// by default; closing one moves it into the + menu until it is reopened. Each is the plugin's own
 // screen, rendered here instead of on its route so the Desk header stays.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
@@ -7,7 +7,6 @@ import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { z } from "zod";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import type { ComponentType } from "react";
 import type { PluginTheme } from "@getpaseo/plugin";
@@ -25,66 +24,95 @@ import { toPluginTheme } from "@/plugins/theme";
 import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
 import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 import type { Theme } from "@/styles/theme";
+import {
+  DESK_SURFACES,
+  deskSurfacesStorageSchema,
+  isDeskSurfaceOpen,
+  migrateDeskSurfaces,
+  type DeskSurfaceDefinition,
+} from "./desk-workboard-model";
 
-export const DESK_WORKBOARD_LABEL = "Power Workboard";
+export const DESK_WORKBOARD_LABEL = DESK_SURFACES[0].label;
 const PLUGIN_ID = "power-workboard";
-const IDENTITY = { kind: "sidebar", id: "power-workboard" } as const;
 
 interface DeskWorkboardState {
-  /** The tab is in the header; false once closed, until reopened from +. */
-  open: boolean;
-  /** The board shows instead of the Desk's tabs. */
-  selected: boolean;
-  select(): void;
+  /** Surface id -> its tab is in the header; closed ones are reopened from +. Missing means open. */
+  open: Record<string, boolean>;
+  /** The surface showing instead of the Desk's tabs. */
+  selected: string | null;
+  select(id: string): void;
   deselect(): void;
-  close(): void;
-  reopen(): void;
+  close(id: string): void;
+  reopen(id: string): void;
 }
 export const useDeskWorkboardStore = create<DeskWorkboardState>()(
   persist(
     (set) => ({
-      open: true,
-      selected: false,
-      select: () => set({ open: true, selected: true }),
-      deselect: () => set((state) => (state.selected ? { selected: false } : state)),
-      close: () => set({ open: false, selected: false }),
-      reopen: () => set({ open: true, selected: true }),
+      open: {},
+      selected: null,
+      select: (id) => set((state) => ({ open: { ...state.open, [id]: true }, selected: id })),
+      deselect: () => set((state) => (state.selected ? { selected: null } : state)),
+      close: (id) =>
+        set((state) => ({
+          open: { ...state.open, [id]: false },
+          selected: state.selected === id ? null : state.selected,
+        })),
+      reopen: (id) => set((state) => ({ open: { ...state.open, [id]: true }, selected: id })),
     }),
     {
       name: "custom-desk-workboard",
-      version: 1,
-      storage: createValidatedPersistStorage(
-        AsyncStorage,
-        z.object({ open: z.boolean(), selected: z.boolean() }),
-      ),
+      version: 2,
+      migrate: (persisted) => migrateDeskSurfaces(persisted),
+      storage: createValidatedPersistStorage(AsyncStorage, deskSurfacesStorageSchema),
       partialize: (state) => ({ open: state.open, selected: state.selected }),
     },
   ),
 );
 
-/** The installation that shows the board: the local daemon's when it has the plugin. */
-export function useDeskWorkboardInstallation(): InstalledPlugin | null {
+export interface DeskSurfaceEntry {
+  definition: DeskSurfaceDefinition;
+  /** The installation that shows it: the local daemon's when it has the surface. */
+  plugin: InstalledPlugin;
+  open: boolean;
+}
+
+/** Surfaces that exist on some installation, in `DESK_SURFACES` order. */
+export function useDeskSurfaceEntries(): DeskSurfaceEntry[] {
   const installations = usePluginInstallations(PLUGIN_ID);
   const localServerId = useLocalDaemonServerId();
+  const open = useDeskWorkboardStore((s) => s.open);
   return useMemo(() => {
-    const usable = installations.filter(
-      (plugin) => resolvePluginSurfaceContribution(plugin, IDENTITY).surface !== null,
-    );
-    return usable.find((plugin) => plugin.serverId === localServerId) ?? usable[0] ?? null;
-  }, [installations, localServerId]);
+    const entries: DeskSurfaceEntry[] = [];
+    for (const definition of DESK_SURFACES) {
+      const usable = installations.filter(
+        (plugin) => resolvePluginSurfaceContribution(plugin, definition.identity).surface !== null,
+      );
+      const plugin = usable.find((p) => p.serverId === localServerId) ?? usable[0] ?? null;
+      if (plugin)
+        entries.push({
+          definition,
+          plugin,
+          open: isDeskSurfaceOpen(open, definition.id),
+        });
+    }
+    return entries;
+  }, [installations, localServerId, open]);
 }
 
 /**
- * Whether the board's tab is in the header and showing. Opening a tab or switching Desks while
- * the board shows returns to the Desk.
+ * The surface tabs and which one shows. Opening a tab or switching Desks while a surface shows
+ * returns to the Desk.
  */
 export function useDeskWorkboard(
   deskId: string,
   activeTab: { id: string } | null,
-): { plugin: InstalledPlugin | null; open: boolean; selected: boolean } {
-  const plugin = useDeskWorkboardInstallation();
-  const open = useDeskWorkboardStore((s) => s.open) && plugin !== null;
-  const selected = useDeskWorkboardStore((s) => s.selected) && open;
+): { entries: DeskSurfaceEntry[]; selected: DeskSurfaceEntry | null } {
+  const entries = useDeskSurfaceEntries();
+  const selectedId = useDeskWorkboardStore((s) => s.selected);
+  const selected = useMemo(
+    () => entries.find((entry) => entry.open && entry.definition.id === selectedId) ?? null,
+    [entries, selectedId],
+  );
   const activeTabId = activeTab?.id ?? null;
   const previous = useRef({ deskId, activeTabId });
   useEffect(() => {
@@ -94,28 +122,28 @@ export function useDeskWorkboard(
       useDeskWorkboardStore.getState().deselect();
     }
   }, [deskId, activeTabId]);
-  return { plugin, open, selected };
+  return { entries, selected };
 }
 
 /** With a plugin, the Desk header and the board replace `children`, which stay mounted but hidden. */
 export function DeskWorkboardCover({
-  plugin,
+  surface,
   headerLeft,
   children,
 }: {
-  plugin: InstalledPlugin | null;
+  surface: DeskSurfaceEntry | null;
   headerLeft: ReactNode;
   children: ReactNode;
 }) {
   return (
     <>
-      {plugin ? (
+      {surface ? (
         <>
           <ScreenHeader left={headerLeft} />
-          <DeskWorkboardView plugin={plugin} />
+          <DeskWorkboardView plugin={surface.plugin} definition={surface.definition} />
         </>
       ) : null}
-      <View style={plugin ? styles.hidden : styles.body}>{children}</View>
+      <View style={surface ? styles.hidden : styles.body}>{children}</View>
     </>
   );
 }
@@ -125,43 +153,72 @@ const pluginThemeMapping = (theme: Theme) => ({ theme: toPluginTheme(theme) });
 function Board({
   Surface,
   plugin,
+  surfaceId,
   theme,
 }: {
   Surface: ComponentType<PluginScreenProps>;
   plugin: InstalledPlugin;
+  surfaceId: string;
   theme: PluginTheme;
 }) {
   const compact = useIsCompactFormFactor();
   const hosts = useHosts();
-  const navigation = usePluginHostNavigation(plugin.serverId);
+  const hostNavigation = usePluginHostNavigation(plugin.serverId);
+  // CUSTOM(projects-assistant): surfaces switch between the Desk's plugin tabs with this; the
+  // plugin reads it with a cast, it is not part of the published navigation type.
+  const navigation = useMemo(
+    () => ({
+      ...hostNavigation,
+      openDeskSurface: (id: string) => useDeskWorkboardStore.getState().reopen(id),
+    }),
+    [hostNavigation],
+  );
   const label = hosts.find((host) => host.serverId === plugin.serverId)?.label ?? plugin.serverId;
   const host = useMemo(() => ({ id: plugin.serverId, label }), [label, plugin.serverId]);
   const layout = useMemo(() => ({ compact, platform: resolvePluginPlatform() }), [compact]);
   const params = useMemo(() => ({}), []);
   return (
     <PluginInstallationProvider plugin={plugin}>
-      <Surface theme={theme} host={host} layout={layout} navigation={navigation} params={params} />
+      <Surface
+        key={surfaceId}
+        theme={theme}
+        host={host}
+        layout={layout}
+        navigation={navigation}
+        params={params}
+      />
     </PluginInstallationProvider>
   );
 }
 const ThemedBoard = withUnistyles(Board);
 
-export function DeskWorkboardView({ plugin }: { plugin: InstalledPlugin }) {
+export function DeskWorkboardView({
+  plugin,
+  definition,
+}: {
+  plugin: InstalledPlugin;
+  definition: DeskSurfaceDefinition;
+}) {
   const client = useHostRuntimeClient(plugin.serverId);
-  const { surface } = resolvePluginSurfaceContribution(plugin, IDENTITY);
+  const { surface } = resolvePluginSurfaceContribution(plugin, definition.identity);
   return (
     <View style={styles.body} testID="desk-workboard">
       {surface && client ? (
         <SurfaceErrorBoundary
-          key={plugin.serverId}
+          key={`${plugin.serverId}:${definition.id}`}
           installation={plugin}
           Surface={surface.Component}
         >
-          <ThemedBoard Surface={surface.Component} plugin={plugin} uniProps={pluginThemeMapping} />
+          <ThemedBoard
+            Surface={surface.Component}
+            plugin={plugin}
+            surfaceId={definition.id}
+            uniProps={pluginThemeMapping}
+          />
         </SurfaceErrorBoundary>
       ) : (
         <Text style={styles.error}>
-          {surface ? "Plugin host is offline." : "Power Workboard is unavailable."}
+          {surface ? "Plugin host is offline." : `${definition.label} is unavailable.`}
         </Text>
       )}
     </View>

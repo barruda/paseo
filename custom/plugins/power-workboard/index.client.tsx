@@ -5,6 +5,13 @@ import type {
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { WorkboardScreen } from "./client/WorkboardScreen";
 import { writeTicketRpc } from "./shared/rpc";
+// CUSTOM(projects-assistant)
+import { ConversationsScreen } from "./client/assistant/ConversationsScreen";
+import { DashboardScreen } from "./client/assistant/DashboardScreen";
+import {
+  CONVERSATIONS_SURFACE_ID,
+  DASHBOARD_SURFACE_ID,
+} from "./client/assistant/nav";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 2_000 } },
@@ -28,8 +35,32 @@ const SettingsSurface = (props: Parameters<typeof WorkboardScreen>[0]) => (
   </QueryClientProvider>
 );
 
+// CUSTOM(projects-assistant): Tasks mode only. The Desk header opens these as chips
+// (packages/app/src/task-navigation/desk-workboard.tsx); they have no sidebar item or tab.
+const DashboardSurface = (props: Parameters<typeof DashboardScreen>[0]) => (
+  <QueryClientProvider client={queryClient}>
+    <DashboardScreen {...props} />
+  </QueryClientProvider>
+);
+const ConversationsSurface = (
+  props: Parameters<typeof ConversationsScreen>[0],
+) => (
+  <QueryClientProvider client={queryClient}>
+    <ConversationsScreen {...props} />
+  </QueryClientProvider>
+);
+
 export default function contribute(client: PluginClientContext) {
   const removeSurface = client.addSurface("power-workboard", Surface);
+  // CUSTOM(projects-assistant)
+  const removeDashboard = client.addSurface(
+    DASHBOARD_SURFACE_ID,
+    DashboardSurface,
+  );
+  const removeConversations = client.addSurface(
+    CONVERSATIONS_SURFACE_ID,
+    ConversationsSurface,
+  );
   const removeSidebar = client.addSidebarItem({
     id: "power-workboard",
     title: "Power Workboard",
@@ -84,6 +115,8 @@ export default function contribute(client: PluginClientContext) {
     removeCommand();
     removeSettings();
     removeSidebar();
+    removeConversations();
+    removeDashboard();
     removeSurface();
   };
 }

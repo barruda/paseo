@@ -62,16 +62,19 @@ export function useHeaderShortcutsRowLayout(layoutKey: string | null) {
 export function HeaderShortcutsRightRow({
   layoutKey,
   style,
+  leftReservePx,
   children,
 }: {
   layoutKey: string | null;
+  /** CUSTOM(projects-assistant): width the header's left side needs, so hints drop before overlap. */
+  leftReservePx?: number;
   style: StyleProp<ViewStyle>;
   children: ReactNode;
 }) {
   const onButtonsLayout = useReportWidth(layoutKey, "buttons");
   return (
     <View style={styles.right}>
-      <HeaderShortcutsStrip layoutKey={layoutKey} />
+      <HeaderShortcutsStrip layoutKey={layoutKey} leftReservePx={leftReservePx} />
       <View style={style} onLayout={onButtonsLayout}>
         <TaskNavigationToggle />
         {children}

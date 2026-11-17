@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { scheduleSchema } from "./schedule";
+import { assistantDataSchema } from "./assistant"; // CUSTOM(projects-assistant)
 
 export const STAGES = [
   "inbox",
@@ -520,6 +521,8 @@ export const dataSchema = z
     /** Set once the default orchestrator was created, so deleting it sticks. */
     defaultOrchestratorSeeded: z.boolean().default(false),
     finishes: z.record(z.string(), finishSchema).default({}),
+    // CUSTOM(projects-assistant): delivery policy, per-task delivery state and attempts.
+    assistant: assistantDataSchema.default(() => assistantDataSchema.parse({})),
   })
   .superRefine((data, context) => {
     const ids = new Set<string>();

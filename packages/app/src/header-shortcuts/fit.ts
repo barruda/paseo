@@ -14,8 +14,11 @@ export function countFittingShortcuts(input: {
   headerWidth: number;
   buttonsWidth: number;
   itemWidths: readonly number[];
+  /** CUSTOM(projects-assistant): the left side's own estimate (Desk and plugin chips), when larger. */
+  leftReservePx?: number;
 }): number {
-  const budget = input.headerWidth - input.buttonsWidth - TITLE_RESERVE_PX - STRIP_MARGIN_PX;
+  const reserve = Math.max(TITLE_RESERVE_PX, input.leftReservePx ?? 0);
+  const budget = input.headerWidth - input.buttonsWidth - reserve - STRIP_MARGIN_PX;
   let used = 0;
   let count = 0;
   for (const width of input.itemWidths) {

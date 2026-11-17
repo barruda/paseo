@@ -30,7 +30,13 @@ export const HEADER_SHORTCUTS: readonly { id: string; label: string }[] = [
  * The everyday shortcuts, in the workspace header left of the header buttons. Desktop layout only.
  * Each shows its current binding, overrides included; one with no binding is left out.
  */
-export function HeaderShortcutsStrip({ layoutKey }: { layoutKey: string | null }) {
+export function HeaderShortcutsStrip({
+  layoutKey,
+  leftReservePx,
+}: {
+  layoutKey: string | null;
+  leftReservePx?: number;
+}) {
   const desks = useTaskNavigationStore((s) => s.enabled);
   const compact = useIsCompactFormFactor();
   const available = useKeyboardShortcutsAvailable();
@@ -59,6 +65,7 @@ export function HeaderShortcutsStrip({ layoutKey }: { layoutKey: string | null }
   const count = countFittingShortcuts({
     headerWidth: widths.header,
     buttonsWidth: widths.buttons,
+    leftReservePx, // CUSTOM(projects-assistant)
     itemWidths: entries.map((entry) => estimateShortcutWidth(keysText(entry.keys), entry.label)),
   });
   if (count === 0) return null;
