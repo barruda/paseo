@@ -4,6 +4,7 @@ import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_ZH_CN } from "./custom-voice-settings";
 import { SHORTCUT_FILE_ZH_CN } from "./custom-shortcut-file";
 import { CONTENT_SEARCH_ZH_CN } from "./custom-content-search";
+import { EXPAND_ARCHIVED_ZH_CN } from "./custom-search-expand-archived";
 import { pluginSettings } from "./plugin-settings";
 
 export const zhCN: TranslationResources = {
@@ -100,6 +101,7 @@ export const zhCN: TranslationResources = {
     },
     commandCenter: {
       contentSearch: CONTENT_SEARCH_ZH_CN,
+      expandArchived: EXPAND_ARCHIVED_ZH_CN,
       placeholder: "搜索命令、文件、工作区和 Agent...",
       filePlaceholder: "搜索文件...",
       searchingFiles: "正在搜索文件...",

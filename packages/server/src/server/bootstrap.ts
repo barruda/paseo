@@ -1,4 +1,7 @@
 import { createIdleRuntimeCleanup } from "./agent/idle-runtime-cleanup/index.js";
+// CUSTOM(auto-archive-closed)
+import { getParentAgentIdFromLabels, hasIdleOpenTab } from "@getpaseo/protocol/agent-labels";
+import { createAutoArchiveClosed } from "./agent/auto-archive-closed/index.js";
 import {
   createFinishSubscriptions,
   createFinishObservation,
@@ -486,6 +489,7 @@ export interface PaseoDaemonConfig {
   idleRuntimeCleanup?: boolean;
   idleRuntimeCleanupMinutes?: number; // CUSTOM(idle-cleanup-period)
   idleRuntimeCleanupClosedTabMinutes?: number; // CUSTOM(idle-closed-tab)
+  autoArchiveClosedDays?: number; // CUSTOM(auto-archive-closed)
   providerCatalogRefreshTimeoutMs?: number;
   metadataGeneration?: {
     providers?: Array<{
@@ -744,6 +748,7 @@ function createInitialMutableDaemonConfig(
     idleRuntimeCleanup: config.idleRuntimeCleanup !== false,
     idleRuntimeCleanupMinutes: config.idleRuntimeCleanupMinutes, // CUSTOM(idle-cleanup-period)
     idleRuntimeCleanupClosedTabMinutes: config.idleRuntimeCleanupClosedTabMinutes, // CUSTOM(idle-closed-tab)
+    autoArchiveClosedDays: config.autoArchiveClosedDays, // CUSTOM(auto-archive-closed)
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     // CUSTOM(github-account)
     ...(config.githubConfigDir ? { github: { configDir: config.githubConfigDir } } : {}),
@@ -1742,6 +1747,35 @@ export async function createPaseoDaemon(
     idleRuntimeCleanup,
   );
 
+  // CUSTOM(auto-archive-closed): archives sessions closed for days. Stored-only archive
+  // (archiveSnapshot) keeps workspaces and worktrees untouched; only the autoArchive create mode
+  // archives a workspace.
+  const autoArchiveClosed = createAutoArchiveClosed({
+    days: () => autoArchiveClosedDays(daemonConfigStore.get().autoArchiveClosedDays),
+    records: async () =>
+      (await agentStorage.list()).map((record) => ({
+        id: record.id,
+        parentAgentId: getParentAgentIdFromLabels(record.labels),
+        archived: Boolean(record.archivedAt) || record.internal === true,
+        live: agentManager.getAgent(record.id) !== null,
+        hasOpenTab: hasIdleOpenTab(record.labels),
+        updatedAt: Date.parse(record.updatedAt),
+      })),
+    stillEligible: async (id) => {
+      const record = await agentStorage.get(id);
+      return (
+        record !== null &&
+        !record.archivedAt &&
+        agentManager.getAgent(id) === null &&
+        !hasIdleOpenTab(record.labels)
+      );
+    },
+    archive: async (id) => {
+      await agentManager.archiveSnapshot(id, new Date().toISOString());
+    },
+    logger,
+  });
+
   const createAgentToolHostDependencies = (
     runtime: PaseoToolRuntimeContext,
   ): PaseoToolHostDependencies => ({
@@ -2220,6 +2254,7 @@ export async function createPaseoDaemon(
     worktreeMergeStatus.stop(); // CUSTOM(worktree-pill-merged)
     unsubscribeIdleRuntimeCleanup();
     await idleRuntimeCleanup.close();
+    await autoArchiveClosed.close(); // CUSTOM(auto-archive-closed)
     // Freeze both ingress and registration before taking the agent closure snapshot.
     wsServer?.prepareForShutdown();
     await finishSubscriptions.close();
@@ -2345,4 +2380,9 @@ export function connectIdleRuntimeCleanupConfig(
 // CUSTOM(idle-cleanup-period): minutes (default 60) to milliseconds.
 function idleRuntimeCleanupPeriodMs(minutes: unknown, fallbackMinutes = 60): number {
   return (typeof minutes === "number" && minutes > 0 ? minutes : fallbackMinutes) * 60_000;
+}
+
+// CUSTOM(auto-archive-closed): days of being closed before auto-archive; 0 is off, absent is 2.
+function autoArchiveClosedDays(value: unknown): number {
+  return typeof value === "number" && value >= 0 ? value : 2;
 }

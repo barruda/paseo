@@ -4,6 +4,7 @@ import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_FR } from "./custom-voice-settings";
 import { SHORTCUT_FILE_FR } from "./custom-shortcut-file";
 import { CONTENT_SEARCH_FR } from "./custom-content-search";
+import { EXPAND_ARCHIVED_FR } from "./custom-search-expand-archived";
 import { pluginSettings } from "./plugin-settings";
 
 export const fr: TranslationResources = {
@@ -101,6 +102,7 @@ export const fr: TranslationResources = {
     },
     commandCenter: {
       contentSearch: CONTENT_SEARCH_FR,
+      expandArchived: EXPAND_ARCHIVED_FR,
       placeholder: "Rechercher des commandes, fichiers, espaces de travail et agents…",
       filePlaceholder: "Rechercher des fichiers…",
       searchingFiles: "Recherche de fichiers…",

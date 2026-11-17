@@ -24,7 +24,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { TFunction } from "i18next";
-import { Check, ChevronRight, Folder, X } from "lucide-react-native";
+import { Archive, Check, ChevronRight, Folder, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { BottomSheetFlatList, type BottomSheetFlatListMethods } from "@gorhom/bottom-sheet";
 import { useAgentDescriptor, resolveAgentLabel } from "@/agent-presentation";
@@ -49,6 +49,9 @@ import {
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
 import { useAggregatedAgents } from "@/hooks/use-aggregated-agents";
+// CUSTOM(search-expand-archived)
+import { useAgentHistory } from "@/hooks/use-agent-history";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { useProjects } from "@/hooks/use-projects";
 import { useTimeAgo } from "@/hooks/use-time-ago";
 import { createProjectIconTarget } from "@/projects/icon-target";
@@ -96,6 +99,13 @@ import {
   type CommandCenterWorkspaceResult,
 } from "./results";
 import { createCommandCenterInteraction, type CommandCenterInteraction } from "./interaction";
+// CUSTOM(search-expand-archived)
+import {
+  isArchivedExpansionActive,
+  selectArchivedAgents,
+  shouldOfferArchivedExpansion,
+  shouldResetArchivedExpansion,
+} from "./expand-archived";
 import { useWorkspaceContentSearch } from "./workspace-content-search";
 import { useWorkspaceFileSearch } from "./workspace-file-search";
 import { describeWorkspaceFilePath } from "./workspace-file-search-model";
@@ -109,6 +119,9 @@ const ThemedTextInput = withUnistyles(TextInput, (theme) => ({
 const ThemedFolder = withUnistyles(Folder, (theme) => ({ color: theme.colors.foregroundMuted }));
 const ThemedCheck = withUnistyles(Check, (theme) => ({ color: theme.colors.foreground }));
 const ThemedChevronRight = withUnistyles(ChevronRight, (theme) => ({
+  color: theme.colors.foregroundMuted,
+}));
+const ThemedArchive = withUnistyles(Archive, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 const ThemedX = withUnistyles(X, (theme) => ({ color: theme.colors.foregroundMuted }));
@@ -144,12 +157,15 @@ function createAgentResultAction(serverId: string, agentId: string) {
 function useBuiltInRows(open: boolean): {
   workspaces: CommandCenterWorkspaceResult[];
   agents: CommandCenterAgentResult[];
+  // CUSTOM(search-expand-archived)
+  agentsLoading: boolean;
+  shownAgents: readonly { id: string; serverId: string }[];
 } {
   const { t } = useTranslation();
   const previousRows = useRef(
     new Map<string, CommandCenterAgentResult | CommandCenterWorkspaceResult>(),
   );
-  const { agents } = useAggregatedAgents({ demand: open });
+  const { agents, isLoading: agentsLoading } = useAggregatedAgents({ demand: open });
   const { projects } = useProjects({ enabled: open });
   const showHost = useHosts().length > 1;
   const iconTargets = useMemo(
@@ -172,7 +188,7 @@ function useBuiltInRows(open: boolean): {
   return useMemo(() => {
     if (!open) {
       previousRows.current.clear();
-      return { workspaces: [], agents: [] };
+      return { workspaces: [], agents: [], agentsLoading, shownAgents: agents };
     }
     // Built-in IDs identify immutable navigation targets. Reuse their callbacks and unchanged
     // row data so a directory update does not invalidate every mounted ResultRow.
@@ -238,13 +254,42 @@ function useBuiltInRows(open: boolean): {
       });
     });
     previousRows.current = nextRows;
-    return { workspaces: allWorkspaces, agents: agentRows };
-  }, [agents, iconDataByProjectViewKey, open, projects, showHost, t]);
+    return { workspaces: allWorkspaces, agents: agentRows, agentsLoading, shownAgents: agents };
+  }, [agents, agentsLoading, iconDataByProjectViewKey, open, projects, showHost, t]);
 }
 
-function useBuiltInSections(open: boolean, query: string): CommandCenterResultSection[] {
+function useBuiltInSections(
+  open: boolean,
+  query: string,
+  scoped: boolean,
+  archivedExpanded: boolean,
+  expandArchived: () => void,
+): CommandCenterResultSection[] {
   const { t } = useTranslation();
   const rows = useBuiltInRows(open);
+  // CUSTOM(search-expand-archived): archived sessions come from agent history, and only after
+  // the user pressed the button, so nothing archived is fetched before then.
+  const showHost = useHosts().length > 1;
+  const history = useAgentHistory({
+    enabled: isArchivedExpansionActive({ open, query, expanded: archivedExpanded }),
+    search: query,
+  });
+  const archivedRows = useMemo<CommandCenterAgentResult[]>(() => {
+    if (!open || !archivedExpanded) return [];
+    return selectArchivedAgents(history.agents, rows.shownAgents).map((agent) => ({
+      kind: "agent",
+      id: `agent:${agent.serverId}:${agent.id}`,
+      agent,
+      title: resolveAgentLabel(agent.title) ?? t("workspace.tabs.loading"),
+      subtitle: joinSubtitleParts([showHost ? agent.serverLabel : null, shortenPath(agent.cwd)]),
+      activityAt: agent.lastActivityAt,
+      run: createAgentResultAction(agent.serverId, agent.id),
+    }));
+  }, [archivedExpanded, history.agents, open, rows.shownAgents, showHost, t]);
+  const expandRow = useMemo<CommandCenterResult>(
+    () => ({ kind: "expand-archived", id: "expand-archived", run: expandArchived }),
+    [expandArchived],
+  );
 
   return useMemo(() => {
     if (!open) return [];
@@ -261,10 +306,34 @@ function useBuiltInSections(open: boolean, query: string): CommandCenterResultSe
         band: PINNED_SECTION_BAND,
         rank: 3,
         title: t("shell.commandCenter.agents"),
-        results: filterAndRankBuiltInResults(rows.agents, query, agentSearchFields),
+        results: [
+          ...filterAndRankBuiltInResults(rows.agents, query, agentSearchFields),
+          // The server already ranked archived matches when it supports history search.
+          ...(history.isSearchSupported
+            ? archivedRows
+            : filterAndRankBuiltInResults(archivedRows, query, agentSearchFields)),
+          ...(shouldOfferArchivedExpansion({
+            query,
+            scoped,
+            agentsLoading: rows.agentsLoading,
+            expanded: archivedExpanded,
+          })
+            ? [expandRow]
+            : []),
+        ],
       },
     ];
-  }, [open, query, rows, t]);
+  }, [
+    archivedExpanded,
+    archivedRows,
+    expandRow,
+    history.isSearchSupported,
+    open,
+    query,
+    rows,
+    scoped,
+    t,
+  ]);
 }
 
 interface CommandCenterState {
@@ -333,7 +402,19 @@ function useCommandCenterState(
   const inputRef = useRef<EditingTextInputHandle>(null);
   const previousOpenRef = useRef(open);
   const { query, activeId } = useSyncExternalStore(interaction.subscribe, interaction.getSnapshot);
-  const builtInSections = useBuiltInSections(open, query);
+  // CUSTOM(search-expand-archived)
+  const [archivedExpanded, setArchivedExpanded] = useState(false);
+  const expandArchived = useCallback(() => setArchivedExpanded(true), []);
+  useEffect(() => {
+    if (shouldResetArchivedExpansion({ open, query })) setArchivedExpanded(false);
+  }, [open, query]);
+  const builtInSections = useBuiltInSections(
+    open,
+    query,
+    scope !== null,
+    archivedExpanded,
+    expandArchived,
+  );
   const {
     entries: fileSearchEntries,
     loading: fileSearchLoading,
@@ -396,6 +477,11 @@ function useCommandCenterState(
   const close = useCallback(() => setOpen(false), [setOpen]);
   const select = useCallback(
     (result: CommandCenterResult) => {
+      // CUSTOM(search-expand-archived): the button widens the search; the palette stays open.
+      if (result.kind === "expand-archived") {
+        result.run();
+        return;
+      }
       setOpen(false);
       void result.run();
     },
@@ -600,6 +686,7 @@ function AgentResultContent({
   query: string;
   backdrop: SurfaceBackdrop;
 }) {
+  const { t } = useTranslation();
   const agent = result.agent;
   const descriptor = useAgentDescriptor(
     { kind: "agent", agentId: agent.id },
@@ -633,6 +720,25 @@ function AgentResultContent({
             testID="command-center-agent-subtitle"
           />
         </View>
+      </View>
+      {/* CUSTOM(search-expand-archived) */}
+      {agent.archivedAt ? <StatusBadge label={t("agentList.badges.archived")} size="xs" /> : null}
+    </View>
+  );
+}
+
+// CUSTOM(search-expand-archived)
+function ExpandArchivedContent() {
+  const { t } = useTranslation();
+  return (
+    <View style={styles.rowContent} testID="command-center-expand-archived">
+      <View style={styles.rowMain}>
+        <View style={styles.iconSlot}>
+          <ThemedArchive size={16} />
+        </View>
+        <Text style={styles.title} numberOfLines={1}>
+          {t("shell.commandCenter.expandArchived")}
+        </Text>
       </View>
     </View>
   );
@@ -750,6 +856,7 @@ function ResultContent({
       </View>
     );
   }
+  if (result.kind === "expand-archived") return <ExpandArchivedContent />;
   if (result.kind === "agent") {
     return <AgentResultContent result={result} query={query} backdrop={backdrop} />;
   }

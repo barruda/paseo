@@ -2994,6 +2994,74 @@ test("fetch_agent_history_request pages archived historical rows separately", as
   expect(session.agentUpdates.hasSubscription()).toBe(false);
 });
 
+// CUSTOM(history-archived-tab)
+async function fetchIds(request: Record<string, unknown>): Promise<string[]> {
+  const emitted: SessionOutboundMessage[] = [];
+  const session = createSessionForWorkspaceTests();
+  const historyCwd = path.resolve("/tmp/history");
+  const project = createPersistedProjectRecord({
+    projectId: "proj-history",
+    rootPath: historyCwd,
+    kind: "non_git",
+    displayName: "history",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "ws-history",
+    projectId: project.projectId,
+    cwd: historyCwd,
+    kind: "directory",
+    displayName: "history",
+    createdAt: "2026-03-01T12:00:00.000Z",
+    updatedAt: "2026-03-01T12:00:00.000Z",
+  });
+  session.emit = (message) => {
+    if (isSessionOutboundMessage(message)) emitted.push(message);
+  };
+  session.projectRegistry.get = async () => project;
+  session.workspaceRegistry.list = async () => [workspace];
+  session.workspaceRegistry.get = async () => workspace;
+  const agents = [
+    makeAgent({
+      id: "live-open",
+      cwd: historyCwd,
+      workspaceId: "ws-history",
+      status: "idle",
+      updatedAt: "2026-03-03T12:00:00.000Z",
+    }),
+    {
+      ...makeAgent({
+        id: "gone-archived",
+        cwd: historyCwd,
+        workspaceId: "ws-history",
+        status: "idle",
+        updatedAt: "2026-03-02T12:00:00.000Z",
+      }),
+      archivedAt: "2026-03-02T13:00:00.000Z",
+    },
+  ];
+  session.listAgentPayloads = async (filter?: { includeArchived?: boolean }) =>
+    agents.filter((agent) => filter?.includeArchived || !agent.archivedAt);
+
+  await session.handleMessage({
+    type: "fetch_agent_history_request",
+    requestId: "req-view",
+    page: { limit: 25 },
+    ...request,
+  });
+  const response = filterByType(emitted, "fetch_agent_history_response")[0];
+  return response.payload.entries.map((entry) => entry.agent.id);
+}
+
+test("fetch_agent_history_request archivedOnly returns only archived agents", async () => {
+  expect(await fetchIds({ archivedOnly: true })).toEqual(["gone-archived"]);
+});
+
+test("fetch_agent_history_request includeArchived false excludes archived agents", async () => {
+  expect(await fetchIds({ filter: { includeArchived: false } })).toEqual(["live-open"]);
+});
+
 test("fetch_agent_history_request filters across history and paginates chronologically", async () => {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests();

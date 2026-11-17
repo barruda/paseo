@@ -16,7 +16,13 @@ import { HistorySearchSyntax } from "@/components/history-search-syntax";
 import { HistoryAiSearchPanel } from "@/components/history-ai-search";
 import { HostFilter } from "@/components/hosts/host-filter";
 import { ALL_HOSTS_OPTION_ID } from "@/components/hosts/host-picker";
-import { type AgentHistoryHostError, useAgentHistory } from "@/hooks/use-agent-history";
+import {
+  type AgentHistoryHostError,
+  type AgentHistoryView,
+  useAgentHistory,
+} from "@/hooks/use-agent-history";
+// CUSTOM(history-archived-tab)
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { useImportSession } from "@/hooks/use-import-session";
 import { useHosts } from "@/runtime/host-runtime";
@@ -31,6 +37,15 @@ import {
 /** Long enough that a typed word is one request, short enough to feel live. */
 const SEARCH_DEBOUNCE_MS = 200;
 
+// CUSTOM(history-archived-tab): English only, like the other custom surfaces.
+const HISTORY_VIEW_OPTIONS: SegmentedControlOption<AgentHistoryView>[] = [
+  { value: "active", label: "Active", testID: "sessions-view-active" },
+  { value: "archived", label: "Archived", testID: "sessions-view-archived" },
+];
+const ARCHIVED_UNSUPPORTED_TEXT = "Update this host to browse archived sessions.";
+/** The selected sub-tab lasts for the app session only: module memory, never persisted. */
+let rememberedHistoryView: AgentHistoryView = "active";
+
 const sessionsHostOptionTestID = (serverId: string) => `sessions-host-filter-item-${serverId}`;
 
 /**
@@ -44,7 +59,8 @@ function SessionHostErrorsBanner({
 }: {
   errors: AgentHistoryHostError[];
   t: TFunction;
-}): ReactElement {
+}): ReactElement | null {
+  if (errors.length === 0) return null;
   return (
     <View style={styles.errorsBannerWrap}>
       <View style={styles.errorsBanner} testID="sessions-host-errors">
@@ -93,6 +109,11 @@ export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }
   const [searchInput, setSearchInput] = useState(() => initialHistorySearchInput(tab));
   const search = useDebouncedValue(searchInput, SEARCH_DEBOUNCE_MS).trim();
   const historyServerId = selectedHost === ALL_HOSTS_OPTION_ID ? null : selectedHost;
+  const [view, setViewState] = useState<AgentHistoryView>(rememberedHistoryView);
+  const setView = useCallback((next: AgentHistoryView) => {
+    rememberedHistoryView = next;
+    setViewState(next);
+  }, []);
   const {
     agents,
     hasMore,
@@ -100,6 +121,7 @@ export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }
     isLoadingMore,
     isError,
     isSearchSupported,
+    isArchivedUnavailable,
     isSearchTruncated,
     hostErrors,
     loadMore,
@@ -107,6 +129,7 @@ export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }
   } = useAgentHistory({
     serverId: historyServerId,
     search,
+    view,
   });
   const isSearching = isSearchSupported && search.length > 0;
   // CUSTOM(history-ai-search): a submitted question replaces the list with the AI's picks.
@@ -174,6 +197,15 @@ export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }
   return (
     <View style={styles.container}>
       <SessionsHeader isTab={tab !== undefined} title={t("sessions.title")} />
+      <View style={styles.viewRow}>
+        <SegmentedControl
+          options={HISTORY_VIEW_OPTIONS}
+          value={view}
+          onValueChange={setView}
+          size="sm"
+          testID="sessions-view"
+        />
+      </View>
       {showFilterRow ? (
         <View style={styles.filterContainer}>
           {isSearchSupported ? (
@@ -201,49 +233,57 @@ export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }
       {/* CUSTOM(history-content-search): the query operators, under the search field. */}
       <HistorySearchSyntax isVisible={isSearchSupported} />
       <HistoryAiSearchPanel aiSearch={aiSearch} initialQuestion={initialAiQuestion}>
-        {hostErrors.length > 0 ? <SessionHostErrorsBanner errors={hostErrors} t={t} /> : null}
-        {isInitialLoad ? (
-          <View style={styles.loadingContainer}>
-            <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
+        {isArchivedUnavailable ? (
+          <View style={styles.emptyContainer} testID="sessions-archived-unsupported">
+            <Text style={styles.emptyText}>{ARCHIVED_UNSUPPORTED_TEXT}</Text>
           </View>
-        ) : null}
-        {!isInitialLoad && showLoadError ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>Unable to load sessions</Text>
-            <Button variant="ghost" onPress={handleRefresh}>
-              Try again
-            </Button>
-          </View>
-        ) : null}
-        {!isInitialLoad && !showLoadError && agents.length === 0 ? (
-          <View style={styles.emptyContainer} testID="sessions-empty">
-            <Text style={styles.emptyText}>{emptyText}</Text>
-            {isSearching ? (
-              <Button variant="ghost" onPress={handleClearSearch}>
-                {t("sessions.actions.clearSearch")}
-              </Button>
-            ) : (
-              <Button variant="ghost" leftIcon={ChevronLeft} onPress={handleBack}>
-                Back
-              </Button>
-            )}
-            <Button variant="ghost" leftIcon={Import} onPress={importSession.open}>
-              {t("importSession.title")}
-            </Button>
-          </View>
-        ) : null}
-        {!isInitialLoad && !showLoadError && agents.length > 0 ? (
-          <AgentList
-            agents={agents}
-            showCheckoutInfo={false}
-            isRefreshing={isManualRefresh}
-            onRefresh={handleRefresh}
-            listFooterComponent={listFooterComponent}
-            showAttentionIndicator={false}
-            showHostColumn
-            search={isSearching ? search : undefined}
-          />
-        ) : null}
+        ) : (
+          <>
+            <SessionHostErrorsBanner errors={hostErrors} t={t} />
+            {isInitialLoad ? (
+              <View style={styles.loadingContainer}>
+                <LoadingSpinner size="large" color={theme.colors.foregroundMuted} />
+              </View>
+            ) : null}
+            {!isInitialLoad && showLoadError ? (
+              <View style={styles.emptyContainer}>
+                <Text style={styles.emptyText}>Unable to load sessions</Text>
+                <Button variant="ghost" onPress={handleRefresh}>
+                  Try again
+                </Button>
+              </View>
+            ) : null}
+            {!isInitialLoad && !showLoadError && agents.length === 0 ? (
+              <View style={styles.emptyContainer} testID="sessions-empty">
+                <Text style={styles.emptyText}>{emptyText}</Text>
+                {isSearching ? (
+                  <Button variant="ghost" onPress={handleClearSearch}>
+                    {t("sessions.actions.clearSearch")}
+                  </Button>
+                ) : (
+                  <Button variant="ghost" leftIcon={ChevronLeft} onPress={handleBack}>
+                    Back
+                  </Button>
+                )}
+                <Button variant="ghost" leftIcon={Import} onPress={importSession.open}>
+                  {t("importSession.title")}
+                </Button>
+              </View>
+            ) : null}
+            {!isInitialLoad && !showLoadError && agents.length > 0 ? (
+              <AgentList
+                agents={agents}
+                showCheckoutInfo={false}
+                isRefreshing={isManualRefresh}
+                onRefresh={handleRefresh}
+                listFooterComponent={listFooterComponent}
+                showAttentionIndicator={false}
+                showHostColumn
+                search={isSearching ? search : undefined}
+              />
+            ) : null}
+          </>
+        )}
       </HistoryAiSearchPanel>
       {importSession.sheet}
     </View>
@@ -255,6 +295,14 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     backgroundColor: theme.colors.surface0,
   },
+  viewRow: {
+    alignItems: "flex-start",
+    paddingHorizontal: {
+      xs: theme.spacing[3],
+      md: theme.spacing[6],
+    },
+    paddingTop: theme.spacing[4],
+  },
   filterContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -263,7 +311,7 @@ const styles = StyleSheet.create((theme) => ({
       xs: theme.spacing[3],
       md: theme.spacing[6],
     },
-    paddingTop: theme.spacing[4],
+    paddingTop: theme.spacing[2],
   },
   emptyContainer: {
     flex: 1,

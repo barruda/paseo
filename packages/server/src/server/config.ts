@@ -611,6 +611,7 @@ export type ResolvedDaemonSettings = Pick<
   | "idleRuntimeCleanup"
   | "idleRuntimeCleanupMinutes" // CUSTOM(idle-cleanup-period)
   | "idleRuntimeCleanupClosedTabMinutes" // CUSTOM(idle-closed-tab)
+  | "autoArchiveClosedDays" // CUSTOM(auto-archive-closed)
   | "providerCatalogRefreshTimeoutMs"
   | "metadataGeneration"
   | "providerOverrides"
@@ -856,5 +857,6 @@ function idleCleanupMinutes(persisted: PersistedConfig) {
   return {
     idleRuntimeCleanupMinutes: persisted.agents?.idleRuntimeCleanupMinutes,
     idleRuntimeCleanupClosedTabMinutes: persisted.agents?.idleRuntimeCleanupClosedTabMinutes,
+    autoArchiveClosedDays: persisted.agents?.autoArchiveClosedDays, // CUSTOM(auto-archive-closed)
   };
 }

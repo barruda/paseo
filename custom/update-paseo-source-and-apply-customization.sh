@@ -316,6 +316,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/subagents/running.test.ts --bail=1)
   # Background tools chip (shells and monitors left running) and the working tab.
   (cd packages/app && npx vitest run src/background-tools/presentation.test.ts --bail=1)
+  # Search palette: "Expand search into archived".
+  (cd packages/app && npx vitest run src/command-center/expand-archived.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.background-subagent.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.background-stop.test.ts --bail=1)
   (cd packages/protocol && npx vitest run src/messages.test.ts -t "background task stop" --bail=1)
@@ -385,6 +387,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/task-navigation/desk-archive-close.test.ts src/task-navigation/idle-open-tab-labels.test.ts --bail=1)
   # Idle runtime cleanup period (host setting, applied live).
   (cd packages/server && npx vitest run src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts src/server/daemon-config-store.test.ts --bail=1)
+  # Auto-archive of closed sessions (host setting).
+  (cd packages/server && npx vitest run src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)
   # Search in files (Ctrl+Shift+F); its browser check is in e2e/task-navigation.spec.ts.
   (cd packages/server && npx vitest run src/utils/workspace-content-search.test.ts --bail=1)
   (cd packages/app && npx vitest run src/keyboard/route-shortcut.test.ts src/keyboard/keyboard-shortcuts.test.ts --bail=1)
@@ -431,6 +435,9 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/history-content-index.test.ts src/server/agent-history-search.test.ts src/server/history-ai-search.test.ts --bail=1)
   # GitHub account per host (config dir precedence, daemon config readback).
   (cd packages/server && npx vitest run src/server/github-account.test.ts src/server/daemon-config-store.test.ts --bail=1)
+  # History Archived sub-tab: request params per view, and the server's archivedOnly filter.
+  (cd packages/app && npx vitest run src/hooks/use-agent-history.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/session.workspaces.test.ts -t "fetch_agent_history_request" --bail=1)
   (cd packages/protocol && npx vitest run src/search/history-query.test.ts --bail=1)
   (cd packages/cli && npx vitest run src/commands/speech/shared.test.ts --bail=1)
   (cd packages/client && npx vitest run src/wake-dictation.test.ts --bail=1)

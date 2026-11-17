@@ -371,6 +371,23 @@ type FetchAgentHistoryRequestMessage = Extract<
 >;
 type AgentDirectoryRequestMessage = FetchAgentsRequestMessage | FetchAgentHistoryRequestMessage;
 
+// History lists archived agents unless asked otherwise.
+// CUSTOM(history-archived-tab): archivedOnly implies includeArchived.
+function resolveDirectoryArchiveFilter(request: AgentDirectoryRequestMessage): {
+  filter: AgentDirectoryRequestMessage["filter"];
+  archivedOnly: boolean;
+} {
+  if (request.type !== "fetch_agent_history_request") {
+    return { filter: request.filter, archivedOnly: false };
+  }
+  const archivedOnly = request.archivedOnly === true;
+  const filter =
+    archivedOnly || request.filter?.includeArchived === undefined
+      ? { ...request.filter, includeArchived: true }
+      : request.filter;
+  return { filter, archivedOnly };
+}
+
 /**
  * Only history carries a query. The active-agents directory filters on
  * structure and never ranks, so it always reads as no query at all.
@@ -5721,11 +5738,7 @@ export class Session {
     pageInfo: FetchAgentsResponsePageInfo;
     searchTruncated?: boolean;
   }> {
-    const filter =
-      request.type === "fetch_agent_history_request" &&
-      request.filter?.includeArchived === undefined
-        ? { ...request.filter, includeArchived: true }
-        : request.filter;
+    const { filter, archivedOnly } = resolveDirectoryArchiveFilter(request);
     const scope = request.type === "fetch_agents_request" ? request.scope : undefined;
     const sort = this.agentsPager.normalizeSort(request.sort);
 
@@ -5737,6 +5750,10 @@ export class Session {
         (request.type === "fetch_agents_request" && request.includeBackground),
       includeUnavailablePersisted: request.type === "fetch_agent_history_request",
     });
+    // CUSTOM(history-archived-tab): filtered before cursor and paging, so pages are never sparse.
+    if (archivedOnly) {
+      agents = agents.filter((agent) => Boolean(agent.archivedAt));
+    }
     const activePlacementsByWorkspaceId =
       scope === "active" ? await this.buildActiveProjectPlacementsByWorkspaceId() : null;
     if (activePlacementsByWorkspaceId) {

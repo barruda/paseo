@@ -1312,6 +1312,37 @@ describe("DaemonConfigStore", () => {
     expect(changes).toEqual([120]);
   });
 
+  // CUSTOM(auto-archive-closed)
+  test("patch persists the auto-archive days, 0 meaning off, clamped to 0..365", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    writeFileSync(path.join(paseoHome, "config.json"), "{}\n");
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        metadataGeneration: { providers: [] },
+      },
+      undefined,
+    );
+    const changes: unknown[] = [];
+    store.onFieldChange("autoArchiveClosedDays", (value) => changes.push(value));
+
+    await store.patch({ autoArchiveClosedDays: 7 });
+    expect(loadPersistedConfig(paseoHome).agents?.autoArchiveClosedDays).toBe(7);
+    expect(loadConfig(paseoHome, { env: {} }).autoArchiveClosedDays).toBe(7);
+    await store.patch({ autoArchiveClosedDays: 0 });
+    expect(loadPersistedConfig(paseoHome).agents?.autoArchiveClosedDays).toBe(0);
+    await store.patch({ autoArchiveClosedDays: 9999 });
+    expect(loadPersistedConfig(paseoHome).agents?.autoArchiveClosedDays).toBe(365);
+    expect(changes).toEqual([7, 0, 365]);
+  });
+
   // CUSTOM(idle-closed-tab)
   test("patch persists the closed-tab idle period, clamped to 5..1440", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));

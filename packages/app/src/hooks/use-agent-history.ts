@@ -19,6 +19,18 @@ const AGENT_HISTORY_SORT: NonNullable<FetchAgentHistoryOptions["sort"]> = [
 ];
 const AGENT_HISTORY_ALL_HOSTS_FAILED_MESSAGE = "No connected hosts could load agent history";
 
+// CUSTOM(history-archived-tab): the History panel loads one of two views, never both.
+export type AgentHistoryView = "active" | "archived";
+
+/** Request fields for a view. Active never asks for archived agents; Archived asks for only them. */
+export function historyViewRequestParams(
+  view: AgentHistoryView,
+): Pick<FetchAgentHistoryOptions, "filter" | "archivedOnly"> {
+  return view === "archived"
+    ? { filter: { includeArchived: true }, archivedOnly: true }
+    : { filter: { includeArchived: false } };
+}
+
 export interface AgentHistoryResult {
   agents: AggregatedAgent[];
   isLoading: boolean;
@@ -29,6 +41,8 @@ export interface AgentHistoryResult {
   isLoadingMore: boolean;
   /** False when any target host predates search; the screen hides the field. */
   isSearchSupported: boolean;
+  /** The Archived view is selected but a target host predates it, so nothing is fetched. */
+  isArchivedUnavailable: boolean;
   /** More sessions matched than the ranked page holds. Narrow the query. */
   isSearchTruncated: boolean;
   /** Hosts that failed while others succeeded. The list still renders. */
@@ -115,8 +129,10 @@ export async function fetchAgentHistoryPage(input: {
   serverId: string;
   cursor: string | null;
   search?: string;
+  view?: AgentHistoryView;
 }): Promise<AgentHistoryPage> {
   const payload = await input.client.fetchAgentHistory({
+    ...historyViewRequestParams(input.view ?? "active"),
     ...(input.search ? { search: input.search } : {}),
     sort: AGENT_HISTORY_SORT,
     page: input.cursor
@@ -177,6 +193,7 @@ export async function fetchAgentHistoryBatch(input: {
   hosts: readonly AgentHistoryHost[];
   cursorByServerId: AgentHistoryCursorByServerId | null;
   search?: string;
+  view?: AgentHistoryView;
 }): Promise<AgentHistoryBatchPage> {
   const cursorByServerId = input.cursorByServerId ?? {};
   const hasCursorFilter = Object.keys(cursorByServerId).length > 0;
@@ -190,6 +207,7 @@ export async function fetchAgentHistoryBatch(input: {
         client: host.client,
         serverId: host.serverId,
         cursor: cursorByServerId[host.serverId] ?? null,
+        ...(input.view ? { view: input.view } : {}),
         ...(input.search ? { search: input.search } : {}),
       });
       return { host, page };
@@ -234,6 +252,7 @@ export function useAgentHistory(options: {
   serverId?: string | null;
   enabled?: boolean;
   search?: string;
+  view?: AgentHistoryView;
 }): AgentHistoryResult {
   const { t } = useTranslation();
   const daemons = useHosts();
@@ -247,7 +266,8 @@ export function useAgentHistory(options: {
     const value = options.serverId;
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
   }, [options.serverId]);
-  const enabled = options.enabled ?? true;
+  const view = options.view ?? "active";
+  const enabledOption = options.enabled ?? true;
   // A host the user asked about splits two ways: one this fetch can reach, and
   // one whose sessions will be missing from the answer. Both come out of here,
   // because dropping the unreachable ones silently is what lets the list — and
@@ -286,6 +306,18 @@ export function useAgentHistory(options: {
       [targetServerIds],
     ),
   );
+  // CUSTOM(history-archived-tab): an old host cannot filter to archived, so it is never asked.
+  const isArchivedSupported = useSessionStore(
+    useCallback(
+      (state) =>
+        targetServerIds.length > 0 &&
+        targetServerIds.every(
+          (id) => state.sessions[id]?.serverInfo?.features?.historyArchivedOnly === true,
+        ),
+      [targetServerIds],
+    ),
+  );
+  const enabled = enabledOption && (view === "active" || isArchivedSupported);
   const search = useMemo(() => {
     const trimmed = options.search?.trim() ?? "";
     return isSearchSupported ? trimmed : "";
@@ -294,8 +326,9 @@ export function useAgentHistory(options: {
     () => [
       ...(serverId ? agentHistoryQueryKey(serverId) : allAgentHistoryQueryKey(targetServerIds)),
       search,
+      view,
     ],
-    [search, serverId, targetServerIds],
+    [search, serverId, targetServerIds, view],
   );
   const serverLabelById = useMemo(
     () => new Map(daemons.map((daemon) => [daemon.serverId, daemon.label])),
@@ -321,6 +354,7 @@ export function useAgentHistory(options: {
       return fetchAgentHistoryBatch({
         hosts: targetHosts,
         cursorByServerId: pageParam,
+        view,
         ...(search ? { search } : {}),
       });
     },
@@ -377,6 +411,7 @@ export function useAgentHistory(options: {
     hasMore: hasNextPage,
     isLoadingMore: isFetchingNextPage,
     isSearchSupported,
+    isArchivedUnavailable: view === "archived" && !isArchivedSupported,
     isSearchTruncated,
     hostErrors,
     refreshAll,

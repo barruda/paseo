@@ -3,6 +3,7 @@ import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { VOICE_SETTINGS_EN } from "./custom-voice-settings";
 import { SHORTCUT_FILE_EN } from "./custom-shortcut-file";
 import { CONTENT_SEARCH_EN } from "./custom-content-search";
+import { EXPAND_ARCHIVED_EN } from "./custom-search-expand-archived";
 
 export const en = {
   // CUSTOM(agent-embed)
@@ -97,6 +98,7 @@ export const en = {
     },
     commandCenter: {
       contentSearch: CONTENT_SEARCH_EN,
+      expandArchived: EXPAND_ARCHIVED_EN,
       placeholder: "Search commands, files, workspaces, and agents...",
       filePlaceholder: "Search files...",
       searchingFiles: "Searching files...",

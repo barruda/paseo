@@ -166,6 +166,7 @@ describe("fetchAgentHistoryPage", () => {
 
     expect(client.calls).toEqual([
       {
+        filter: { includeArchived: false },
         sort: [{ key: "updated_at", direction: "desc" }],
         page: { limit: 200 },
       } satisfies FetchAgentHistoryOptions,
@@ -195,6 +196,7 @@ describe("fetchAgentHistoryPage", () => {
     await fetchAgentHistoryPage({ client, serverId: "server-1", cursor: "cursor-2" });
 
     expect(client.calls.at(-1)).toEqual({
+      filter: { includeArchived: false },
       sort: [{ key: "updated_at", direction: "desc" }],
       page: { limit: 200, cursor: "cursor-2" },
     } satisfies FetchAgentHistoryOptions);
@@ -590,6 +592,7 @@ describe("fetchAgentHistoryPage", () => {
     expect(serverAClient.calls).toEqual([]);
     expect(serverBClient.calls).toEqual([
       {
+        filter: { includeArchived: false },
         sort: [{ key: "updated_at", direction: "desc" }],
         page: { limit: 200, cursor: "cursor-b" },
         search: "match",
@@ -643,5 +646,38 @@ describe("fetchAgentHistoryPage", () => {
         cursorByServerId: null,
       }),
     ).rejects.toThrow("No connected hosts could load agent history");
+  });
+});
+
+// CUSTOM(history-archived-tab)
+describe("history views", () => {
+  const emptyPage: FetchAgentHistoryResult = {
+    requestId: "r",
+    entries: [],
+    pageInfo: { nextCursor: null, prevCursor: null, hasMore: false },
+  } as FetchAgentHistoryResult;
+
+  it("Active never asks for archived agents and keeps the search", async () => {
+    const client = createClient([emptyPage]);
+    await fetchAgentHistoryPage({ client, serverId: "s", cursor: null, search: "bug" });
+    expect(client.calls[0]).toMatchObject({ filter: { includeArchived: false }, search: "bug" });
+    expect(client.calls[0]?.archivedOnly).toBeUndefined();
+  });
+
+  it("Archived asks for only archived agents with the same search", async () => {
+    const client = createClient([emptyPage]);
+    await fetchAgentHistoryPage({
+      client,
+      serverId: "s",
+      cursor: "c1",
+      search: "bug",
+      view: "archived",
+    });
+    expect(client.calls[0]).toMatchObject({
+      filter: { includeArchived: true },
+      archivedOnly: true,
+      search: "bug",
+      page: { cursor: "c1" },
+    });
   });
 });

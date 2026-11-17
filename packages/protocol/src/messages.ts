@@ -251,6 +251,8 @@ export const MutableDaemonConfigSchema = z
     idleRuntimeCleanupMinutes: z.number().int().optional(),
     // CUSTOM(idle-closed-tab): minutes for an agent no client has a tab open for; absent means 15.
     idleRuntimeCleanupClosedTabMinutes: z.number().int().optional(),
+    // CUSTOM(auto-archive-closed): days a closed session waits before it is archived; 0 is off, absent means 2.
+    autoArchiveClosedDays: z.number().int().optional(),
     appendSystemPrompt: z.string().default(""),
     // CUSTOM(github-account): the gh config directory this host uses; absent = the launcher's.
     github: z.object({ configDir: z.string().optional() }).optional(),
@@ -284,6 +286,8 @@ export const MutableDaemonConfigPatchSchema = z
     idleRuntimeCleanupMinutes: z.number().int().optional(),
     // CUSTOM(idle-closed-tab): the daemon clamps to 5..1440.
     idleRuntimeCleanupClosedTabMinutes: z.number().int().optional(),
+    // CUSTOM(auto-archive-closed): the daemon clamps to 0..365.
+    autoArchiveClosedDays: z.number().int().optional(),
     appendSystemPrompt: z.string().optional(),
     // CUSTOM(github-account): an empty configDir clears it.
     github: z.object({ configDir: z.string().optional() }).optional(),
@@ -1454,6 +1458,8 @@ export const FetchAgentHistoryRequestMessageSchema = z.object({
   // A free-text filter over agent title, workspace name, branch, and project name.
   // Matching rows follow the requested sort and cursor pagination.
   search: z.string().optional(),
+  // CUSTOM(history-archived-tab): with includeArchived, return only archived agents, before paging.
+  archivedOnly: z.boolean().optional(),
   sort: z
     .array(
       z.object({
@@ -3915,6 +3921,8 @@ export const ServerInfoStatusPayloadSchema = z
         idleRuntimeCleanupPeriodSetting: z.boolean().optional(),
         // CUSTOM(idle-closed-tab): a second period for agents with no open tab.
         idleRuntimeCleanupClosedTabSetting: z.boolean().optional(),
+        // CUSTOM(auto-archive-closed)
+        autoArchiveClosedSetting: z.boolean().optional(),
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": z.boolean().optional(),
         // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.
@@ -3927,6 +3935,8 @@ export const ServerInfoStatusPayloadSchema = z
         agentTimelinePromptIndex: z.boolean().optional(),
         // COMPAT(agentHistorySearch): added in v0.3.0, remove gate after 2027-02-07.
         agentHistorySearch: z.boolean().optional(),
+        // CUSTOM(history-archived-tab): the History Archived tab needs `archivedOnly`.
+        historyArchivedOnly: z.boolean().optional(),
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: z.boolean().optional(),
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97

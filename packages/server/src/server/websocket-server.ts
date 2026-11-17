@@ -2057,6 +2057,8 @@ export class VoiceAssistantWebSocketServer {
         idleRuntimeCleanupPeriodSetting: true,
         // CUSTOM(idle-closed-tab)
         idleRuntimeCleanupClosedTabSetting: true,
+        // CUSTOM(auto-archive-closed)
+        autoArchiveClosedSetting: true,
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": true,
         // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.
@@ -2070,6 +2072,8 @@ export class VoiceAssistantWebSocketServer {
         agentTimelinePromptIndex: true,
         // COMPAT(agentHistorySearch): added in v0.3.0, remove gate after 2027-02-07.
         agentHistorySearch: true,
+        // CUSTOM(history-archived-tab): fetch_agent_history_request accepts archivedOnly.
+        historyArchivedOnly: true,
         // COMPAT(checkoutRefresh): added in v0.1.86, remove gate after 2026-11-29.
         checkoutRefresh: true,
         // COMPAT(workspaceMultiplicity): added in v0.1.97, drop the gate when floor >= v0.1.97

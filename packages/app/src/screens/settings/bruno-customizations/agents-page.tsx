@@ -17,6 +17,14 @@ const DEFAULT_PERIOD_MINUTES = 60;
 // CUSTOM(idle-closed-tab)
 const CLOSED_TAB_PRESETS = [5, 10, 15, 30, 60, 120];
 const DEFAULT_CLOSED_TAB_MINUTES = 15;
+// CUSTOM(auto-archive-closed): days, 0 is off.
+const AUTO_ARCHIVE_PRESETS = [0, 1, 2, 3, 7, 14, 30];
+const DEFAULT_AUTO_ARCHIVE_DAYS = 2;
+
+function daysLabel(days: number): string {
+  if (days === 0) return "Off";
+  return days === 1 ? "1 day" : `${days} days`;
+}
 
 function periodLabel(minutes: number): string {
   return minutes % 60 === 0 ? `${minutes / 60} h` : `${minutes} min`;
@@ -36,6 +44,8 @@ function IdlePeriodSettings({ serverId }: { serverId: string }) {
   const supported = useHostFeature(serverId, "idleRuntimeCleanupPeriodSetting");
   // CUSTOM(idle-closed-tab)
   const supportsClosedTab = useHostFeature(serverId, "idleRuntimeCleanupClosedTabSetting");
+  // CUSTOM(auto-archive-closed)
+  const supportsAutoArchive = useHostFeature(serverId, "autoArchiveClosedSetting");
   const { config, patchConfig } = useDaemonConfig(serverId);
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
@@ -61,6 +71,22 @@ function IdlePeriodSettings({ serverId }: { serverId: string }) {
       setFailure(null);
       try {
         await patchConfig({ idleRuntimeCleanupClosedTabMinutes: next });
+      } catch (error) {
+        setFailure(toErrorMessage(error));
+      } finally {
+        setPending(false);
+      }
+    },
+    [patchConfig],
+  );
+
+  // CUSTOM(auto-archive-closed)
+  const saveAutoArchive = useCallback(
+    async (next: number) => {
+      setPending(true);
+      setFailure(null);
+      try {
+        await patchConfig({ autoArchiveClosedDays: next });
       } catch (error) {
         setFailure(toErrorMessage(error));
       } finally {
@@ -104,6 +130,18 @@ function IdlePeriodSettings({ serverId }: { serverId: string }) {
             testID="bruno-agents-idle-closed-tab-trigger"
           />
         ) : null}
+        {supportsAutoArchive ? (
+          <PeriodRow
+            label="Auto-archive closed sessions after"
+            hint="Archives a session with no running process and no open tab after this long without activity. Archived sessions stay in History > Archived."
+            minutes={config?.autoArchiveClosedDays ?? DEFAULT_AUTO_ARCHIVE_DAYS}
+            presets={AUTO_ARCHIVE_PRESETS}
+            format={daysLabel}
+            disabled={pending || !config}
+            onSelect={saveAutoArchive}
+            testID="bruno-agents-auto-archive-trigger"
+          />
+        ) : null}
       </SettingsCard>
       {failure ? <Text style={settingsStyles.rowError}>{failure}</Text> : null}
     </SettingsSection>
@@ -118,6 +156,7 @@ function PeriodRow({
   disabled,
   onSelect,
   testID,
+  format = periodLabel,
 }: {
   label: string;
   hint: string;
@@ -126,6 +165,7 @@ function PeriodRow({
   disabled: boolean;
   onSelect: (minutes: number) => void;
   testID: string;
+  format?: (value: number) => string;
 }) {
   const options = useMemo(
     () => (presets.includes(minutes) ? presets : [...presets, minutes].sort((a, b) => a - b)),
@@ -137,16 +177,17 @@ function PeriodRow({
         <DropdownTrigger
           disabled={disabled}
           accessibilityRole="button"
-          accessibilityLabel={`${label}: ${periodLabel(minutes)}`}
+          accessibilityLabel={`${label}: ${format(minutes)}`}
           testID={testID}
         >
-          {periodLabel(minutes)}
+          {format(minutes)}
         </DropdownTrigger>
         <DropdownMenuContent side="bottom" align="end" width={160}>
           {options.map((option) => (
             <PeriodOption
               key={option}
               minutes={option}
+              label={format(option)}
               selected={option === minutes}
               onSelect={onSelect}
             />
@@ -159,17 +200,19 @@ function PeriodRow({
 
 function PeriodOption({
   minutes,
+  label,
   selected,
   onSelect,
 }: {
   minutes: number;
+  label: string;
   selected: boolean;
   onSelect: (minutes: number) => void;
 }) {
   const select = useCallback(() => onSelect(minutes), [onSelect, minutes]);
   return (
     <DropdownMenuItem selected={selected} onSelect={select}>
-      {periodLabel(minutes)}
+      {label}
     </DropdownMenuItem>
   );
 }

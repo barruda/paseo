@@ -2705,6 +2705,8 @@ export class DaemonClient {
       requestId: resolvedRequestId,
       ...(options?.filter ? { filter: options.filter } : {}),
       ...(options?.search ? { search: options.search } : {}),
+      // CUSTOM(history-archived-tab)
+      ...(options?.archivedOnly ? { archivedOnly: true } : {}),
       ...(options?.sort ? { sort: options.sort } : {}),
       ...(options?.page ? { page: options.page } : {}),
     });

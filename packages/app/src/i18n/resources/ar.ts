@@ -4,6 +4,7 @@ import { en, type TranslationResources } from "./en";
 import { VOICE_SETTINGS_AR } from "./custom-voice-settings";
 import { SHORTCUT_FILE_AR } from "./custom-shortcut-file";
 import { CONTENT_SEARCH_AR } from "./custom-content-search";
+import { EXPAND_ARCHIVED_AR } from "./custom-search-expand-archived";
 import { pluginSettings } from "./plugin-settings";
 
 export const ar: TranslationResources = {
@@ -100,6 +101,7 @@ export const ar: TranslationResources = {
     },
     commandCenter: {
       contentSearch: CONTENT_SEARCH_AR,
+      expandArchived: EXPAND_ARCHIVED_AR,
       placeholder: "ابحث في الأوامر والملفات ومساحات العمل والوكلاء...",
       filePlaceholder: "البحث في الملفات...",
       searchingFiles: "جارٍ البحث في الملفات...",

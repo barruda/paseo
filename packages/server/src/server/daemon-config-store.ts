@@ -31,6 +31,7 @@ interface SupportedMutableConfigPatch {
   idleRuntimeCleanup?: boolean;
   idleRuntimeCleanupMinutes?: number; // CUSTOM(idle-cleanup-period)
   idleRuntimeCleanupClosedTabMinutes?: number; // CUSTOM(idle-closed-tab)
+  autoArchiveClosedDays?: number; // CUSTOM(auto-archive-closed)
   appendSystemPrompt?: string;
   // CUSTOM(github-account)
   github?: { configDir?: string };
@@ -203,6 +204,7 @@ const RELOADABLE_PATHS = [
   "agents.idleRuntimeCleanup",
   "agents.idleRuntimeCleanupMinutes", // CUSTOM(idle-cleanup-period)
   "agents.idleRuntimeCleanupClosedTabMinutes", // CUSTOM(idle-closed-tab)
+  "agents.autoArchiveClosedDays", // CUSTOM(auto-archive-closed)
   "agents.providers",
   "agents.catalogRefreshTimeoutMs",
   "agents.metadataGeneration",
@@ -237,6 +239,7 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["agents.idleRuntimeCleanup", "idleRuntimeCleanup"],
   ["agents.idleRuntimeCleanupMinutes", "idleRuntimeCleanupMinutes"], // CUSTOM(idle-cleanup-period)
   ["agents.idleRuntimeCleanupClosedTabMinutes", "idleRuntimeCleanupClosedTabMinutes"], // CUSTOM(idle-closed-tab)
+  ["agents.autoArchiveClosedDays", "autoArchiveClosedDays"], // CUSTOM(auto-archive-closed)
   ["agents.providers", "providers"],
   ["agents.catalogRefreshTimeoutMs", "catalogRefreshTimeoutMs"],
   ["agents.metadataGeneration", "metadataGeneration"],
@@ -1032,12 +1035,13 @@ function mergeDictationTuningPatch(
 function hasIdleMinutesPatch(
   patch: Pick<
     SupportedMutableConfigPatch,
-    "idleRuntimeCleanupMinutes" | "idleRuntimeCleanupClosedTabMinutes"
+    "idleRuntimeCleanupMinutes" | "idleRuntimeCleanupClosedTabMinutes" | "autoArchiveClosedDays"
   >,
 ): boolean {
   return (
     patch.idleRuntimeCleanupMinutes !== undefined ||
-    patch.idleRuntimeCleanupClosedTabMinutes !== undefined
+    patch.idleRuntimeCleanupClosedTabMinutes !== undefined ||
+    patch.autoArchiveClosedDays !== undefined
   );
 }
 
@@ -1045,10 +1049,19 @@ function hasIdleMinutesPatch(
 function pickIdleMinutesPatch(
   patch: Pick<
     SupportedMutableConfigPatch,
-    "idleRuntimeCleanupMinutes" | "idleRuntimeCleanupClosedTabMinutes"
+    "idleRuntimeCleanupMinutes" | "idleRuntimeCleanupClosedTabMinutes" | "autoArchiveClosedDays"
   >,
 ) {
   return {
+    // CUSTOM(auto-archive-closed): days, 0 (off) to 365.
+    ...(patch.autoArchiveClosedDays !== undefined
+      ? {
+          autoArchiveClosedDays: Math.min(
+            365,
+            Math.max(0, Math.round(patch.autoArchiveClosedDays)),
+          ),
+        }
+      : {}),
     ...(patch.idleRuntimeCleanupMinutes !== undefined
       ? { idleRuntimeCleanupMinutes: clampIdleCleanupMinutes(patch.idleRuntimeCleanupMinutes) }
       : {}),
