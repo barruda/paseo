@@ -5096,6 +5096,10 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
     cache), then the rest with a description, then name-only. Each row shows its badge and
     category. MCP servers show status, tool count, full schema vs name only, and whether their
     instructions are in context.
+  - The **Search Skill** tab scans Claude's personal skills in `$CLAUDE_CONFIG_DIR/skills`, falling
+    back to `~/.claude/skills`, like it already did with `$CODEX_HOME` for Codex
+    (`server/skills.ts`, `CUSTOM(skills-claude-config-dir)`). Upstream hard-codes `~/.claude`, so
+    the personal daemon (`CLAUDE_CONFIG_DIR=~/.claude-personal`) listed the TELUS skills.
 - **Files:** plugin-only. New: `server/loaded/` (`claude.ts`, `codex.ts`, `report.ts`,
   `sources.ts`, `handler.ts`, tests and trimmed fixtures), `client/loaded.tsx`, `tsconfig.json`,
   `.gitignore`, `package-lock.json`. Changed: `shared/skills.ts` (RPC), `index.server.ts`,

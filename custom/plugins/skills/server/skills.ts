@@ -13,6 +13,7 @@ import type { ReportedSkill } from "./resolve/reported";
 import type { SkillEntry } from "./resolve/skill-entry";
 
 export interface SkillRoots {
+  /** `$CLAUDE_CONFIG_DIR` or `~/.claude`. */
   claudeHome: string;
   codexHome: string;
   agentsHome: string;
@@ -29,7 +30,9 @@ export interface SkillRoots {
 export function defaultSkillRoots(env: NodeJS.ProcessEnv = process.env): SkillRoots {
   const home = os.homedir();
   return {
-    claudeHome: path.join(home, ".claude"),
+    // CUSTOM(skills-claude-config-dir): a daemon launched with CLAUDE_CONFIG_DIR runs its Claude
+    // agents from that folder, so their personal skills live there too.
+    claudeHome: env.CLAUDE_CONFIG_DIR || path.join(home, ".claude"),
     codexHome: env.CODEX_HOME ?? path.join(home, ".codex"),
     agentsHome: path.join(home, ".agents"),
     adminSkillsDir: path.join(path.sep, "etc", "codex", "skills"),
