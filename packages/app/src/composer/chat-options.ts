@@ -10,6 +10,7 @@ export const CHAT_OPTIONS = [
   ["plugin:skills:skills", "Skills/MCPs"],
   ["plugin:tell-agent:message-agent", "Tell agent"],
   ["plugin:token-ledger:ledger-pill", "TokenLedger"],
+  ["plugin:vitals:pressure", "Vitals: RAM/disk warning"],
   ["diff", "Changes"],
   ["worktree", "Worktree"],
   ["git-sync", "Git sync"],
@@ -66,6 +67,7 @@ const MOVABLE_CHAT_OPTIONS: Record<ChatOptionGroup, readonly string[]> = {
     "plugin:skills:skills",
     "plugin:tell-agent:message-agent",
     "plugin:token-ledger:ledger-pill",
+    "plugin:vitals:pressure",
     "diff",
     "worktree",
     "git-sync",
@@ -123,7 +125,7 @@ export function fixedChatOptions(group: ChatOptionGroup): {
 }
 
 /** The last default-order plugin key: any other `plugin:*` key is inserted right after it. */
-const LAST_DEFAULT_PLUGIN_KEY = "plugin:token-ledger:ledger-pill";
+const LAST_DEFAULT_PLUGIN_KEY = "plugin:vitals:pressure";
 
 /** Default position of a key for the "above" group; unknown plugin keys go after the last plugin. */
 export function defaultAboveOrder(extraPluginKeys: readonly string[]): string[] {

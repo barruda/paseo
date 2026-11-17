@@ -4193,7 +4193,10 @@ waiting` tests in `agent-manager.test.ts`.
   features button sits at the earliest feature key present) and the trailing chips. "+", Model and
   Effort have no switch. Only the right block has fixed rows: Git branch (drawn inside the project
   icon), Send and Stop last. A done Worktree pill still leads the row.
-  Plugin pills are individually orderable and default to right after TokenLedger.
+  Plugin pills are individually orderable and default to right after the last known plugin pill
+  (`LAST_DEFAULT_PLUGIN_KEY`). A plugin pill that only exists sometimes gets a fixed `CHAT_OPTIONS`
+  entry so its row is listed even while the pill is absent: the Vitals RAM/disk warning
+  (`plugin:vitals:pressure`, only shown above 90% RAM or disk) is one.
 - **Core files touched:** `composer/chat-options.ts` (groups, `orderChatOptions`),
   `hooks/use-settings/storage.ts` (`chatOptions`, `chatOptionOrder`),
   `screens/settings/bruno-customizations/chat-options-page.tsx` (the page, `DraggableList`),

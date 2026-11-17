@@ -41,6 +41,7 @@ const OPTION_ICONS: Record<string, PluginIcon> = {
   "plugin:skills:skills": "Sparkles",
   "plugin:tell-agent:message-agent": "MessagesSquare",
   "plugin:token-ledger:ledger-pill": "Coins",
+  "plugin:vitals:pressure": "Gauge",
   diff: "FileDiff",
   worktree: "GitBranch",
   "git-sync": "GitMerge",
