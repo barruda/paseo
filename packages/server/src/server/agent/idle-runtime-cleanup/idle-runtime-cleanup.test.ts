@@ -41,7 +41,7 @@ class Runtime {
     };
   }
 }
-function scenario(enabled = true) {
+function scenario(enabled = true, idlePeriodMs?: number) {
   const runtime = new Runtime();
   const runtimes = [runtime];
   let time = 0;
@@ -49,6 +49,7 @@ function scenario(enabled = true) {
   let tick!: () => void;
   const cleanup = createIdleRuntimeCleanup({
     enabled,
+    idlePeriodMs,
     logger: createTestLogger(),
     now: () => time,
     runtimes: () => runtimes.filter((item) => !item.closed).map((item) => item.capture()),
@@ -81,6 +82,21 @@ test("a runtime without a provider check is collected at exactly one hour", asyn
   expect((await s.sweep(60)).collected).toEqual([
     { agentId: "agent", provider: "test", sessionId: "agent" },
   ]);
+});
+
+// CUSTOM(idle-cleanup-period)
+test("a custom idle period replaces the one-hour default", async () => {
+  const s = scenario(true, 15 * 60_000);
+  expect((await s.sweep(14)).collected).toEqual([]);
+  expect((await s.sweep(15)).collected).toHaveLength(1);
+});
+
+// CUSTOM(idle-cleanup-period)
+test("setIdlePeriodMs applies on the next sweep without resetting idle clocks", async () => {
+  const s = scenario();
+  expect((await s.sweep(30)).collected).toEqual([]);
+  s.cleanup.setIdlePeriodMs(30 * 60_000);
+  expect((await s.sweep(30)).collected).toHaveLength(1);
 });
 
 test("activity restarts the single one-hour idle period", async () => {

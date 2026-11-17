@@ -19,6 +19,8 @@ interface Options {
   isProtected?(agentId: string): boolean;
   logger: Pick<Logger, "debug" | "info" | "warn">;
   now?: () => number;
+  // CUSTOM(idle-cleanup-period): idle period in ms, default 60 minutes.
+  idlePeriodMs?: number;
   schedule?: (tick: () => void, intervalMs: number) => () => void;
 }
 interface CollectionEntry {
@@ -30,7 +32,7 @@ interface CollectionResult {
   collected: CollectionEntry[];
   failures: Array<{ agentId: string; error: unknown }>;
 }
-const IDLE_PERIOD_MS = 60 * 60_000;
+const DEFAULT_IDLE_PERIOD_MS = 60 * 60_000;
 
 /** Owns idle clocks, baseline eligibility, optional provider vetoes and the sweep lifetime. */
 export function createIdleRuntimeCleanup(options: Options) {
@@ -39,6 +41,8 @@ export function createIdleRuntimeCleanup(options: Options) {
   let stopped = false;
   let enabled = options.enabled;
   let generation = 0;
+  // CUSTOM(idle-cleanup-period): read on every sweep, so a change applies on the next one.
+  let idlePeriodMs = options.idlePeriodMs ?? DEFAULT_IDLE_PERIOD_MS;
   const isProtected = options.isProtected ?? (() => false);
   const now = options.now ?? Date.now;
 
@@ -99,7 +103,7 @@ export function createIdleRuntimeCleanup(options: Options) {
           runtime.lastActivityAt,
           protectedAt.get(runtime.identity)?.at ?? 0,
         );
-        if (timestamp - idleSince < IDLE_PERIOD_MS) continue;
+        if (timestamp - idleSince < idlePeriodMs) continue;
         const revalidate = () => {
           const currentFamily = familyOf(runtime, options.runtimes());
           return (
@@ -157,6 +161,10 @@ export function createIdleRuntimeCleanup(options: Options) {
       if (enabled === value) return;
       enabled = value;
       generation++;
+    },
+    // CUSTOM(idle-cleanup-period)
+    setIdlePeriodMs(ms: number) {
+      idlePeriodMs = ms;
     },
     async close() {
       stopped = true;

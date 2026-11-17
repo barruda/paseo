@@ -484,6 +484,7 @@ export interface PaseoDaemonConfig {
   downloadTokenTtlMs?: number;
   agentProviderSettings?: AgentProviderRuntimeSettingsMap;
   idleRuntimeCleanup?: boolean;
+  idleRuntimeCleanupMinutes?: number; // CUSTOM(idle-cleanup-period)
   providerCatalogRefreshTimeoutMs?: number;
   metadataGeneration?: {
     providers?: Array<{
@@ -740,6 +741,7 @@ function createInitialMutableDaemonConfig(
     autoArchiveAfterMerge: config.autoArchiveAfterMerge ?? false,
     enableTerminalAgentHooks: config.enableTerminalAgentHooks ?? false,
     idleRuntimeCleanup: config.idleRuntimeCleanup !== false,
+    idleRuntimeCleanupMinutes: config.idleRuntimeCleanupMinutes, // CUSTOM(idle-cleanup-period)
     appendSystemPrompt: config.appendSystemPrompt ?? "",
     // CUSTOM(github-account)
     ...(config.githubConfigDir ? { github: { configDir: config.githubConfigDir } } : {}),
@@ -1720,6 +1722,7 @@ export async function createPaseoDaemon(
 
   const idleRuntimeCleanup = createIdleRuntimeCleanup({
     enabled: daemonConfigStore.get().idleRuntimeCleanup !== false,
+    idlePeriodMs: idleRuntimeCleanupPeriodMs(daemonConfigStore.get().idleRuntimeCleanupMinutes), // CUSTOM(idle-cleanup-period)
     runtimes: () => agentManager.getRuntimeCleanupCandidates(),
     isProtected: (agentId) =>
       finishSubscriptions.hasPendingForCaller(agentId) ||
@@ -2304,8 +2307,24 @@ async function closeAllAgents(logger: Logger, agentManager: AgentManager): Promi
 
 export function connectIdleRuntimeCleanupConfig(
   store: DaemonConfigStore,
-  cleanup: Pick<ReturnType<typeof createIdleRuntimeCleanup>, "setEnabled">,
+  cleanup: Pick<ReturnType<typeof createIdleRuntimeCleanup>, "setEnabled" | "setIdlePeriodMs">,
 ): () => void {
   cleanup.setEnabled(store.get().idleRuntimeCleanup !== false);
-  return store.onFieldChange("idleRuntimeCleanup", (value) => cleanup.setEnabled(value !== false));
+  cleanup.setIdlePeriodMs(idleRuntimeCleanupPeriodMs(store.get().idleRuntimeCleanupMinutes));
+  const unsubscribeEnabled = store.onFieldChange("idleRuntimeCleanup", (value) =>
+    cleanup.setEnabled(value !== false),
+  );
+  // CUSTOM(idle-cleanup-period)
+  const unsubscribePeriod = store.onFieldChange("idleRuntimeCleanupMinutes", (value) =>
+    cleanup.setIdlePeriodMs(idleRuntimeCleanupPeriodMs(value)),
+  );
+  return () => {
+    unsubscribeEnabled();
+    unsubscribePeriod();
+  };
+}
+
+// CUSTOM(idle-cleanup-period): minutes (default 60) to milliseconds.
+function idleRuntimeCleanupPeriodMs(minutes: unknown): number {
+  return (typeof minutes === "number" && minutes > 0 ? minutes : 60) * 60_000;
 }

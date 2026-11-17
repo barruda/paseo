@@ -508,6 +508,7 @@ export const SETTINGS_SECTION_SLUGS = [
   "customizations-chat-options",
   "customizations-tabs",
   "customizations-voice",
+  "customizations-agents", // CUSTOM(idle-cleanup-period)
   "customizations-github", // CUSTOM(github-account)
   "customizations-config-file", // CUSTOM(bruno-config-file)
   "diagnostics",

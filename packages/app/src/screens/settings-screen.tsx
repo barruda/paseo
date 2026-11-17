@@ -96,6 +96,8 @@ import {
 } from "@/screens/settings/bruno-customizations/section";
 import { BrunoChatOptionsPage } from "@/screens/settings/bruno-customizations/chat-options-page";
 // CUSTOM(github-account)
+// CUSTOM(idle-cleanup-period)
+import { BrunoAgentsPage } from "@/screens/settings/bruno-customizations/agents-page";
 import { BrunoGithubPage } from "@/screens/settings/bruno-customizations/github-page";
 import { BrunoConfigFilePage } from "@/screens/settings/bruno-customizations/config-file-page"; // CUSTOM(bruno-config-file)
 // CUSTOM(voice-settings)
@@ -266,6 +268,8 @@ const BRUNO_SECTION_ITEMS: {
   { id: "customizations-chat-options", label: "Chat Options", icon: SlidersHorizontal },
   { id: "customizations-tabs", label: "Tabs", icon: PanelsTopLeft },
   { id: "customizations-voice", label: "Voice and Dictation", icon: AudioLines },
+  // CUSTOM(idle-cleanup-period)
+  { id: "customizations-agents", label: "Agents", icon: Bot },
   // CUSTOM(github-account)
   { id: "customizations-github", label: "GitHub", icon: GitBranch },
   // CUSTOM(bruno-config-file): save and load every setting above as one JSON file.
@@ -1548,6 +1552,9 @@ export default function SettingsScreen({ view, openAddHostIntent = null }: Setti
           return <BrunoTabsPage />;
         case "customizations-voice":
           return <BrunoVoicePage serverId={activeHostServerId} />;
+        // CUSTOM(idle-cleanup-period)
+        case "customizations-agents":
+          return <BrunoAgentsPage serverId={activeHostServerId} />;
         // CUSTOM(github-account)
         case "customizations-github":
           return <BrunoGithubPage serverId={activeHostServerId} />;

@@ -1282,6 +1282,36 @@ describe("DaemonConfigStore", () => {
     expect(loadConfig(paseoHome, { env: {} }).idleRuntimeCleanup).toBe(true);
   });
 
+  // CUSTOM(idle-cleanup-period)
+  test("patch persists the idle runtime cleanup period", async () => {
+    const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
+    tempDirs.push(paseoHome);
+    writeFileSync(path.join(paseoHome, "config.json"), "{}\n");
+    const store = new DaemonConfigStore(
+      paseoHome,
+      {
+        mcp: { injectIntoAgents: false },
+        browserTools: { enabled: false },
+        providers: {},
+        autoArchiveAfterMerge: false,
+        enableTerminalAgentHooks: false,
+        appendSystemPrompt: "",
+        metadataGeneration: { providers: [] },
+      },
+      undefined,
+    );
+    const changes: unknown[] = [];
+    store.onFieldChange("idleRuntimeCleanupMinutes", (value) => changes.push(value));
+
+    expect((await store.patch({ idleRuntimeCleanupMinutes: 120 })).idleRuntimeCleanupMinutes).toBe(
+      120,
+    );
+
+    expect(loadPersistedConfig(paseoHome).agents?.idleRuntimeCleanupMinutes).toBe(120);
+    expect(loadConfig(paseoHome, { env: {} }).idleRuntimeCleanupMinutes).toBe(120);
+    expect(changes).toEqual([120]);
+  });
+
   test("patch persists custom ACP provider overrides into config.json", async () => {
     const paseoHome = mkdtempSync(path.join(tmpdir(), "paseo-daemon-config-store-"));
     tempDirs.push(paseoHome);

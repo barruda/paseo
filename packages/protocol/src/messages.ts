@@ -247,6 +247,8 @@ export const MutableDaemonConfigSchema = z
     // COMPAT(idleRuntimeCleanupSetting): added in v0.13.0, keep optional while old daemons are supported.
     // Persisted host-wide value, applied live by the daemon.
     idleRuntimeCleanup: z.boolean().optional(),
+    // CUSTOM(idle-cleanup-period): idle period in minutes; absent means 60.
+    idleRuntimeCleanupMinutes: z.number().int().optional(),
     appendSystemPrompt: z.string().default(""),
     // CUSTOM(github-account): the gh config directory this host uses; absent = the launcher's.
     github: z.object({ configDir: z.string().optional() }).optional(),
@@ -276,6 +278,8 @@ export const MutableDaemonConfigPatchSchema = z
     autoArchiveAfterMerge: z.boolean().optional(),
     enableTerminalAgentHooks: z.boolean().optional(),
     idleRuntimeCleanup: z.boolean().optional(),
+    // CUSTOM(idle-cleanup-period): the daemon validates the 5..1440 range.
+    idleRuntimeCleanupMinutes: z.number().int().optional(),
     appendSystemPrompt: z.string().optional(),
     // CUSTOM(github-account): an empty configDir clears it.
     github: z.object({ configDir: z.string().optional() }).optional(),
@@ -3903,6 +3907,8 @@ export const ServerInfoStatusPayloadSchema = z
         skillManagement: z.boolean().optional(),
         // COMPAT(idleRuntimeCleanupSetting): added in v0.13.0, remove gate after 2027-04-26.
         idleRuntimeCleanupSetting: z.boolean().optional(),
+        // CUSTOM(idle-cleanup-period): the idle period is configurable.
+        idleRuntimeCleanupPeriodSetting: z.boolean().optional(),
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": z.boolean().optional(),
         // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.

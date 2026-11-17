@@ -118,6 +118,10 @@ export const SETTINGS_SEARCH_INDEX: Partial<
     ],
   },
   "customizations-voice": { i18nKeys: ["settings.voiceSettings", "settings.voice"] },
+  // CUSTOM(idle-cleanup-period)
+  "customizations-agents": {
+    terms: ["Release idle agents after", "Idle agent release", "Idle period"],
+  },
   "customizations-github": {
     terms: ["GitHub account", "Signed in as", "gh config directory", "GH_CONFIG_DIR", "Refresh"],
   },
