@@ -8,6 +8,7 @@ import { writeTicketRpc } from "./shared/rpc";
 // CUSTOM(projects-assistant)
 import { ChatLauncher } from "./client/assistant/ChatLauncher";
 import { ConversationsScreen } from "./client/assistant/ConversationsScreen";
+import { contributeRestartChatPill } from "./client/assistant/RestartChatPill"; // CUSTOM(assistant-restart-pill)
 import { DashboardScreen } from "./client/assistant/DashboardScreen";
 import {
   CHAT_SURFACE_ID,
@@ -70,6 +71,7 @@ export default function contribute(client: PluginClientContext) {
     ConversationsSurface,
   );
   const removeChat = client.addSurface(CHAT_SURFACE_ID, ChatSurface);
+  const removeRestartPill = contributeRestartChatPill(client); // CUSTOM(assistant-restart-pill)
   const removeSidebar = client.addSidebarItem({
     id: "power-workboard",
     title: "Power Workboard",
@@ -124,6 +126,7 @@ export default function contribute(client: PluginClientContext) {
     removeCommand();
     removeSettings();
     removeSidebar();
+    removeRestartPill(); // CUSTOM(assistant-restart-pill)
     removeChat();
     removeConversations();
     removeDashboard();

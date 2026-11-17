@@ -1,5 +1,7 @@
 import type { AgentAddress } from "@getpaseo/protocol/addresses";
 import { Fragment, memo, useCallback, type ReactElement } from "react";
+import { View } from "react-native";
+import { StyleSheet } from "react-native-unistyles";
 import { COMMIT_WIP_PILL_ALWAYS_SHOWN, CommitWipPill } from "@/composer/commit-wip-pill";
 import { WorkspaceDiffStatPill } from "@/composer/diff-stat-pill";
 import { RenameSessionPill } from "@/composer/rename-session-pill";
@@ -33,6 +35,13 @@ import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/work
 import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
 import { openComposerChanges } from "@/workspace-tabs/open-supporting-view";
 import { chatOptionEnabled, defaultAboveOrder, orderChatOptions } from "@/composer/chat-options";
+
+// CUSTOM(assistant-restart-pill): drawn last, pushed right, restart pill just left of reading mode.
+const RIGHT_ALIGNED_KEYS: ReadonlySet<string> = new Set([
+  "plugin:power-workboard:restart-chat",
+  "reading",
+]);
+const RIGHT_ALIGNED_ORDER = ["plugin:power-workboard:restart-chat", "reading"];
 
 /**
  * The pane's ambient context — workspace changes, subagents, and tasks — as a row of pills above
@@ -221,6 +230,7 @@ export const AgentTracks = memo(function AgentTracks({
     defaultAboveOrder(pluginPills.map(({ optionKey }) => optionKey)),
     orderSetting.above,
   ).filter((key) => nodes[key]);
+  const rightKeys = RIGHT_ALIGNED_ORDER.filter((key) => orderedKeys.includes(key));
 
   return (
     <ComposerTrackBar>
@@ -236,9 +246,19 @@ export const AgentTracks = memo(function AgentTracks({
           gitSync={gitSync}
         />
       ) : null}
-      {orderedKeys.map((key) => (
-        <Fragment key={key}>{nodes[key]}</Fragment>
-      ))}
+      {orderedKeys
+        .filter((key) => !RIGHT_ALIGNED_KEYS.has(key))
+        .map((key) => (
+          <Fragment key={key}>{nodes[key]}</Fragment>
+        ))}
+      {/* CUSTOM(assistant-restart-pill) */}
+      {rightKeys.length > 0 ? (
+        <View style={styles.rightGroup}>
+          {rightKeys.map((key) => (
+            <Fragment key={key}>{nodes[key]}</Fragment>
+          ))}
+        </View>
+      ) : null}
     </ComposerTrackBar>
   );
 });
@@ -275,3 +295,14 @@ export function hasAgentTracks({
     hasPluginComposerPills
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  // CUSTOM(assistant-restart-pill): same gap as the track bar; the reading pill's own
+  // `marginLeft: "auto"` has no free space left inside this wrapper, so it stays inert.
+  rightGroup: {
+    flexDirection: "row",
+    marginLeft: "auto",
+    alignItems: "center",
+    gap: theme.spacing[1],
+  },
+}));

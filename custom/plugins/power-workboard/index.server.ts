@@ -195,7 +195,9 @@ export default function contribute(server: PluginServerContext) {
     await ready().assistantAction(input);
     return { ok: true as const };
   });
-  server.handle(assistantChatOpenRpc, (input) => ready().openChat(input.fresh));
+  server.handle(assistantChatOpenRpc, (input) =>
+    ready().openChat(input.fresh, input.archivePrevious),
+  );
   // CUSTOM(agent-profiles): the profile of an orchestrator or of the assistant chat.
   server.handle(profilesGetRpc, (input) => ready().profileView(input.profile));
   server.handle(profilesSetSystemPromptRpc, async (input) => {

@@ -45,6 +45,7 @@ const OPTION_ICONS: Record<string, PluginIcon> = {
   diff: "FileDiff",
   worktree: "GitBranch",
   "git-sync": "GitMerge",
+  "plugin:power-workboard:restart-chat": "RotateCcw", // CUSTOM(assistant-restart-pill)
   reading: "Columns3",
   attachments: "Plus",
   model: "Sparkle",

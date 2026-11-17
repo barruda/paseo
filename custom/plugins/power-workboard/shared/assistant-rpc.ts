@@ -93,6 +93,10 @@ export const assistantActionRpc = defineRpc({
  */
 export const assistantChatOpenRpc = defineRpc({
   name: "workboard.assistant.chat.open",
-  input: z.object({ fresh: z.boolean().default(false) }),
+  // CUSTOM(assistant-restart-pill): `archivePrevious` archives the chat a `fresh` open replaces.
+  input: z.object({
+    fresh: z.boolean().default(false),
+    archivePrevious: z.boolean().default(false),
+  }),
   output: z.object({ agentId: z.string(), created: z.boolean() }),
 });

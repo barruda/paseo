@@ -147,6 +147,11 @@ export function fixture(initial: Partial<Data> = {}) {
       inventory.workspaces = inventory.workspaces.filter((w) => w.id !== id);
       return { archivedAt: new Date(now()).toISOString(), error: null };
     }),
+    // CUSTOM(assistant-restart-pill)
+    archiveAgent: vi.fn(async (id: string) => {
+      const agent = inventory.agents.find((a) => a.id === id);
+      if (agent) agent.archivedAt = new Date(now()).toISOString();
+    }),
     safety: async () => null,
     dispose: vi.fn(),
   };

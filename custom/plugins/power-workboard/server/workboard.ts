@@ -2658,7 +2658,10 @@ export class Workboard {
    * The Projects Assistant chat agent: the stored one while it exists and is not archived,
    * otherwise (or with `fresh`) a new one.
    */
-  openChat(fresh: boolean): Promise<{ agentId: string; created: boolean }> {
+  openChat(
+    fresh: boolean,
+    archivePrevious = false, // CUSTOM(assistant-restart-pill)
+  ): Promise<{ agentId: string; created: boolean }> {
     return this.serial(async () => {
       const assistant = this.store.current.assistant;
       const current = assistant.chatAgentId;
@@ -2686,6 +2689,9 @@ export class Workboard {
       await this.store.update((data) => {
         data.assistant.chatAgentId = agentId;
       });
+      // CUSTOM(assistant-restart-pill): the replaced chat is archived only once the new one exists.
+      if (fresh && archivePrevious && current && current !== agentId)
+        await this.host.archiveAgent(current).catch(() => undefined);
       return { agentId, created: true };
     });
   }

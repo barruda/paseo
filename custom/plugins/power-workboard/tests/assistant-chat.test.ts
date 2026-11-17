@@ -64,6 +64,28 @@ const create = async (c: Awaited<ReturnType<typeof chat>>, input = {}) => {
   return { taskId: match[1], column: match[2] };
 };
 
+// CUSTOM(assistant-restart-pill)
+it("chat.open with fresh and archivePrevious archives the replaced chat; plain fresh does not", async () => {
+  const c = await chat();
+  try {
+    const first = await c.board.openChat(false);
+    const plain = await c.board.openChat(true);
+    expect(plain.agentId).not.toBe(first.agentId);
+    expect(c.host.archiveAgent).not.toHaveBeenCalled();
+
+    const restarted = await c.board.openChat(true, true);
+    expect(restarted.created).toBe(true);
+    expect(restarted.agentId).not.toBe(plain.agentId);
+    expect(c.store.current.assistant.chatAgentId).toBe(restarted.agentId);
+    expect(c.host.archiveAgent).toHaveBeenCalledTimes(1);
+    expect(c.host.archiveAgent).toHaveBeenCalledWith(plain.agentId);
+    expect(await c.host.agentAlive(plain.agentId)).toBe(false);
+    expect(await c.host.agentAlive(restarted.agentId)).toBe(true);
+  } finally {
+    c.board.dispose();
+  }
+});
+
 it("chat.open creates the chat agent once, reuses it, and recreates it when archived, gone or fresh", async () => {
   const c = await chat();
   try {

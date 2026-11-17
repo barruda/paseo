@@ -7,6 +7,7 @@ import type { InstalledPlugin } from "../types";
 import { PluginButtonStore, buttonMatches } from "./model";
 import {
   CHAT_OPTIONS,
+  defaultAboveOrder,
   chatOptionEnabled,
   pluginChatOptionKey,
   featureChatOptionKey,
@@ -28,6 +29,14 @@ describe("chat pill preferences", () => {
     expect(pluginChatOptionKey("tell-agent", "message-agent", "agent-b")).toBe(
       "plugin:tell-agent:message-agent",
     );
+  });
+  // CUSTOM(assistant-restart-pill)
+  it("lists the restart-chat pill key right before reading mode, matching its plugin id", () => {
+    const key = pluginChatOptionKey("power-workboard", "restart-chat-agent-a", "agent-a");
+    expect(key).toBe("plugin:power-workboard:restart-chat");
+    expect(CHAT_OPTIONS.some(([option]) => option === key)).toBe(true);
+    const above = defaultAboveOrder([]);
+    expect(above.indexOf(key)).toBe(above.indexOf("reading") - 1);
   });
   it("controls fast, plan and other provider features separately", () => {
     expect(featureChatOptionKey("fast_mode")).toBe("feature:fast_mode");

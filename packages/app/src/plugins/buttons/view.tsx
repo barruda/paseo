@@ -3,7 +3,11 @@ import type {
   ResolvedPluginButtonBehavior as PluginButtonBehavior,
   ResolvedPluginButtonMenuEntry as PluginButtonMenuEntry,
 } from "./validation";
-import type { PluginButtonIcon, PluginHostProps } from "@getpaseo/plugin/client";
+import type {
+  PluginButtonIcon,
+  PluginHostProps,
+  PluginSurfaceProps,
+} from "@getpaseo/plugin/client";
 import type { PluginTheme } from "@getpaseo/plugin";
 import {
   useCallback,
@@ -37,6 +41,8 @@ import { COMPOSER_PILL_MIN_HEIGHT, composerPillStyles } from "@/composer/pill-st
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useToast } from "@/contexts/toast-context";
 import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
+// CUSTOM(assistant-restart-pill): buttons and pills get the same navigation surfaces get.
+import { usePluginHostNavigation } from "@/plugins/host-navigation";
 import type { Theme } from "@/styles/theme";
 import { createPluginClientStateSource } from "../client-state/source";
 import { pluginIconComponent } from "../icons";
@@ -56,7 +62,9 @@ import { resolvePluginPlatform } from "../platform";
 
 interface ButtonView {
   entry: RegisteredPluginButton;
-  props: PluginHostProps & RegisteredPluginButton["context"];
+  props: PluginHostProps &
+    Pick<PluginSurfaceProps, "navigation"> & // CUSTOM(assistant-restart-pill)
+    RegisteredPluginButton["context"];
   environment: PluginEnvironment;
   toast: ReturnType<typeof useToast>;
 }
@@ -435,6 +443,7 @@ function createButtonView({
   compact,
   hostLabel,
   theme,
+  navigation,
 }: {
   entry: RegisteredPluginButton;
   client: ReturnType<typeof useHostRuntimeClient>;
@@ -442,6 +451,7 @@ function createButtonView({
   compact: boolean;
   hostLabel: string;
   theme: PluginTheme;
+  navigation: PluginSurfaceProps["navigation"];
 }): ButtonView | null {
   if (!client) return null;
   return {
@@ -457,6 +467,7 @@ function createButtonView({
       theme,
       host: { id: entry.installation.serverId, label: hostLabel },
       layout: { compact, platform: resolvePluginPlatform() },
+      navigation, // CUSTOM(assistant-restart-pill)
     },
   };
 }
@@ -474,9 +485,10 @@ function PluginButtonHost({
 }) {
   const client = useHostRuntimeClient(entry.installation.serverId);
   const toast = useToast();
+  const navigation = usePluginHostNavigation(entry.installation.serverId); // CUSTOM(assistant-restart-pill)
   const view = useMemo(
-    () => createButtonView({ entry, client, toast, compact, hostLabel, theme }),
-    [entry, client, toast, compact, hostLabel, theme],
+    () => createButtonView({ entry, client, toast, compact, hostLabel, theme, navigation }),
+    [entry, client, toast, compact, hostLabel, theme, navigation],
   );
   const renderError = useCallback(
     (error: string) => <BrokenButton title={entry.button.title} error={error} compact={compact} />,
@@ -509,9 +521,10 @@ function useMenuButtonView(entry: RegisteredPluginButton, theme: PluginTheme): B
   const hosts = useHosts();
   const serverId = entry.installation.serverId;
   const hostLabel = hosts.find((host) => host.serverId === serverId)?.label ?? serverId;
+  const navigation = usePluginHostNavigation(serverId); // CUSTOM(assistant-restart-pill)
   return useMemo(
-    () => createButtonView({ entry, client, toast, compact, hostLabel, theme }),
-    [entry, client, toast, compact, hostLabel, theme],
+    () => createButtonView({ entry, client, toast, compact, hostLabel, theme, navigation }),
+    [entry, client, toast, compact, hostLabel, theme, navigation],
   );
 }
 

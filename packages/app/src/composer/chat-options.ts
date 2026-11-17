@@ -14,6 +14,7 @@ export const CHAT_OPTIONS = [
   ["diff", "Changes"],
   ["worktree", "Worktree"],
   ["git-sync", "Git sync"],
+  ["plugin:power-workboard:restart-chat", "Projects Assistant: restart chat"], // CUSTOM(assistant-restart-pill)
   ["reading", "Reading mode"],
   ["attachments", "Attachments (+)"],
   ["model", "Model"],
@@ -71,6 +72,7 @@ const MOVABLE_CHAT_OPTIONS: Record<ChatOptionGroup, readonly string[]> = {
     "diff",
     "worktree",
     "git-sync",
+    "plugin:power-workboard:restart-chat", // CUSTOM(assistant-restart-pill)
     "reading",
   ],
   left: [

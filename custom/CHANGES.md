@@ -6621,3 +6621,27 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   restart. In the app: Power Workboard > Orchestrators shows Projects Assistant first; an edited
   system prompt lands in `profiles/<id>/system-prompt.md`; a new task agent lists the profile
   plugin's skills.
+
+## assistant-restart-pill: a Restart chat pill on the Projects Assistant chat
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Restart chat pill for the Projects Assistant`
+- **Why:** The Desk chip always reopens the current assistant chat, so there was no way to start
+  over, for example to pick up a changed profile.
+- **What:** Power Workboard registers a composer pill `restart-chat` only on agents labeled
+  `pwb/assistant-chat`. Its popover asks for confirmation; Restart creates a new chat
+  (`assistantChatOpenRpc` with `fresh` and `archivePrevious`), archives the old one and opens the
+  new one. In the row above the composer, the pill and the reading-mode pill sit together on the
+  right, the pill first. Plugin popover and menu content now get the host `navigation` that
+  surfaces get.
+- **Core files touched:** `packages/plugin/src/client/buttons.ts` (`PluginButtonContentProps`
+  gains optional `navigation`), `packages/app/src/plugins/buttons/view.tsx`
+  (`usePluginHostNavigation` into button props), `panels/agent-tracks.tsx`
+  (`RIGHT_ALIGNED_KEYS` wrapper), `composer/chat-options.ts` and `chat-options-page.tsx` (the
+  key, before `reading`, with its icon).
+- **Re-apply:** pass `usePluginHostNavigation(serverId)` into `createButtonView`'s props; in
+  `AgentTracks`, render the right-aligned keys in one `marginLeft: "auto"` row after the others;
+  add the chat option key before `reading`.
+- **Verify:** `(cd packages/app && npx vitest run src/plugins/buttons/model.test.ts --bail=1)` and
+  the plugin suite. In the app: the assistant chat shows Restart chat left of Columns/Compact;
+  other agents don't; Restart opens a new chat and the old one is archived.

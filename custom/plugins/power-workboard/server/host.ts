@@ -165,6 +165,8 @@ export interface Host {
   archive(
     id: string,
   ): Promise<{ archivedAt: string | null; error: string | null }>;
+  /** CUSTOM(assistant-restart-pill): archive one agent. */
+  archiveAgent(agentId: string): Promise<void>;
   dispose(): void;
 }
 interface Page<T> {
@@ -619,6 +621,10 @@ export class PaseoHost implements Host {
     } catch {
       return false;
     }
+  }
+  // CUSTOM(assistant-restart-pill)
+  async archiveAgent(agentId: string): Promise<void> {
+    await this.api.agents.ref(agentId).archive();
   }
   async agentActivity(agentId: string): Promise<Card["activity"] | null> {
     try {
