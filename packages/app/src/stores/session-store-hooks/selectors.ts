@@ -7,7 +7,8 @@ import {
 } from "@/projects/workspace-structure";
 import type { DesktopBadgeWorkspaceStatus } from "@/utils/desktop-badge-state";
 import { resolveWorkspaceMapKeyByIdentity } from "@/utils/workspace-identity";
-import type { ProjectDescriptor, WorkspaceDescriptor } from "../session-store";
+import type { Agent, ProjectDescriptor, WorkspaceDescriptor } from "../session-store";
+import { workspaceStatusesWithoutBoardAgents } from "@/board-agents/badges"; // CUSTOM(hidden-board-agents)
 
 export type { DesktopBadgeWorkspaceStatus } from "@/utils/desktop-badge-state";
 export type { WorkspaceStructure, WorkspaceStructureProject } from "@/projects/workspace-structure";
@@ -20,6 +21,9 @@ export interface SessionsSnapshot {
       hasWorkspaceDirectorySnapshot?: boolean;
       workspaces: Map<string, WorkspaceDescriptor>;
       projects?: Map<string, ProjectDescriptor>;
+      // CUSTOM(hidden-board-agents): the badge selector skips board agents.
+      agents?: Map<string, Agent>;
+      agentDetails?: Map<string, Agent>;
     }
   >;
 }
@@ -319,9 +323,8 @@ export function selectWorkspaceStatusesForBadges(
 ): DesktopBadgeWorkspaceStatus[] {
   const statuses: DesktopBadgeWorkspaceStatus[] = [];
   for (const session of Object.values(state.sessions)) {
-    for (const workspace of session.workspaces.values()) {
-      statuses.push(workspace.status);
-    }
+    // CUSTOM(hidden-board-agents): workspaces with only board agents don't count.
+    statuses.push(...workspaceStatusesWithoutBoardAgents(session));
   }
   return statuses;
 }

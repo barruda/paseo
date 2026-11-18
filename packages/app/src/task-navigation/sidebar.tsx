@@ -385,7 +385,8 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
     () => buildTaskTree({ agents, workspaces, states }),
     [agents, workspaces, states],
   );
-  const archived = useArchivedTasks(filter === "archived", workspaces);
+  // CUSTOM(hidden-board-agents): the Archived filter follows "Show board agents" too.
+  const archived = useArchivedTasks(filter === "archived", workspaces, showBoardAgents);
   // CUSTOM(task-pins): pinned sessions show under the filters whatever the search, project or filter.
   const pinnedKeys = usePinnedTasksStore((s) => s.keys);
   const pinnedSet = useMemo(() => new Set(pinnedKeys), [pinnedKeys]);

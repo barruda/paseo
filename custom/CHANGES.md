@@ -7203,7 +7203,15 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     them out of `autoOpenAgentIds` but in `activeAgentIds`, so a tab the user opens stays); the
     Tasks sidebar hides them unless **Show board agents** is on in its Projects menu
     (persisted, off by default); `notifyAgentAttention` never sends an OS notification for them.
-    Command Center search and the board card link still open them.
+    Command Center search and the board card link still open them. The Archived filter of the
+    Tasks sidebar follows the same toggle (`mergeArchivedAgents` in `use-archived-tasks.ts`
+    checks the labels, and a history entry's parent chain against the other history entries).
+  - Dock badge and favicon ignore board agents, whatever the toggle says. The daemon's workspace
+    status counts every agent, so `workspaceStatusesWithoutBoardAgents` (`board-agents/badges.ts`)
+    drops a workspace whose live agents are all board agents and derives a shared workspace's
+    status again from its other agents, with the daemon's rule (roots give their bucket,
+    same-workspace children only `running`). The favicon filters the aggregated agents by
+    `selectBoardAgentKeys`.
   - Daemon: `broadcastAgentAttention` sends no push and `shouldNotify: false` for board agents.
     This part needs a daemon restart; the app gate works without it.
 - **Core files touched:** each marked `CUSTOM(hidden-board-agents)`.
@@ -7211,6 +7219,14 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     `isBoardAgent`) and its test.
   - app (new): `src/board-agents/visibility.ts` (`isBoardAgentInSession`), `store.ts`
     (persisted `showBoardAgents`, key `paseo-board-agents`), with tests.
+  - app (new): `src/board-agents/badges.ts` (`workspaceStatusesWithoutBoardAgents`,
+    `selectBoardAgentKeys`, `withoutBoardAgents`) with a test;
+    `task-navigation/use-archived-tasks.test.ts`.
+  - app: `stores/session-store-hooks/selectors.ts` (`selectWorkspaceStatusesForBadges` calls
+    `workspaceStatusesWithoutBoardAgents`; `SessionsSnapshot` gets optional `agents` and
+    `agentDetails`); `hooks/use-favicon-status.ts` (filters the agents with
+    `withoutBoardAgents`); `task-navigation/use-archived-tasks.ts` (`board` on each entry,
+    `mergeArchivedAgents`, an `includeBoardAgents` argument the sidebar passes).
   - app: `workspace-tabs/agent-visibility.ts` (`isAutoOpenAgent`) and a case in its test;
     `task-navigation/sidebar.tsx` (`collectAgents` with the two selectors `selectAgents` /
     `selectAgentsWithBoard`, and `BoardAgentsChoice` at the end of the Projects menu, since the
@@ -7229,15 +7245,20 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   (keep the selectors module-level: an inline one loops renders) and add the "Show board agents"
   item to a sidebar menu; return early from `notifyAgentAttention` for a board agent; in
   `broadcastAgentAttention` skip the push and send `shouldNotify: false` when
-  `isBoardAgent(agent.labels, id => agentManager.getAgent(id)?.labels)`.
+  `isBoardAgent(agent.labels, id => agentManager.getAgent(id)?.labels)`. Pass
+  `showBoardAgents` to `useArchivedTasks` and skip board entries there; route
+  `selectWorkspaceStatusesForBadges` through `workspaceStatusesWithoutBoardAgents` and filter the
+  favicon's agents with `withoutBoardAgents(agents, selectBoardAgentKeys(state))`.
 - **Verify:** `(cd packages/protocol && npx vitest run src/board-agents.test.ts)`,
-  `(cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts)`,
+  `(cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts src/task-navigation/use-archived-tasks.test.ts)`,
   `(cd packages/server && npx vitest run src/server/websocket-server.notifications.test.ts)`
   (all in the update script), and the plugin suite. Needs a desktop build and install plus
   `plugin reload power-workboard`; the app part needs no daemon restart. The push gate
   runs from the next daemon restart. In the app: start a board task; no tab opens, it is not in
   the Tasks sidebar and finishing sends no GNOME notification. Projects menu > Show board agents
-  lists it. The card's agent link and Command Center still open it. The Projects Assistant chat
+  lists it, and with it on the Archived filter lists archived board agents too (off: none). A
+  board agent waiting for input lights neither the favicon nor the dock badge. The card's agent
+  link and Command Center still open it. The Projects Assistant chat
   still shows and notifies.
 
 ## status-bar: an IDE-style status bar at the bottom of the window, starting with the Projects Assistant
