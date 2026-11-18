@@ -7209,3 +7209,28 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   `cd packages/server && npx vitest run src/server/session.workspaces.test.ts -t
 "fetch_agent_history_request"`. Needs a daemon restart: then History lists no sub-agents on either
   tab until the box is ticked, and Ask AI never cites one while it is off.
+
+## tasks-mode-hide-workspace: in Tasks mode, search results lead with the session, not the workspace
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: Tasks mode drops the workspace from History rows and Ctrl+K`
+- **Why:** Tasks mode navigates by session, not by workspace, so the workspace name in front of
+  every History row ("Set git origin remote › …") was noise, often the same name on every row.
+- **What:** With Tasks mode on (`useTaskNavigationStore().enabled`), History rows (Active,
+  Archived, search tabs and Ask AI results, all `AgentList`) drop the workspace name and the `›`,
+  and start with the provider icon and session title; project, branch and time columns stay. In the
+  Command Center (Ctrl+K), the Workspaces section is gone and a session row's subtitle names its
+  project instead of its workspace.
+  Workspaces mode is unchanged.
+- **Core files touched:** `packages/app/src/components/agent-list.tsx` (`SessionRow` reads the
+  store; new `SessionRowLead`), `packages/app/src/command-center/command-center.tsx`
+  (`useBuiltInRows`: `workspaceTitleByKey` maps to the project name in Tasks mode).
+- **Re-apply:** In `SessionRow`, wrap the workspace `HighlightedText` + `ChevronRight` + title in a
+  component that renders only the title when Tasks mode is on, and don't render the phone's second
+  title line then. In `useBuiltInRows`, read `tasksMode` and use `workspace.project.name` instead
+  of `workspace.title` for the agent subtitle map (add it to the memo deps); in
+  `useBuiltInSections`, leave out the `workspaces` section when Tasks mode is on. Grep
+  `CUSTOM(tasks-mode-hide-workspace)`.
+- **Verify:** `cd packages/app && npx vitest run src/command-center`. In the app, turn Tasks mode
+  on: History rows begin with the session title; Ctrl+K has no Workspaces section and its session
+  rows show the project under the title.
