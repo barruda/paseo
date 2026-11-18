@@ -2672,6 +2672,16 @@ export class Workboard {
       now: new Date(),
     };
   }
+  // CUSTOM(assistant-quick): what the quick-message inbox needs from the chat agent.
+  chatSend(agentId: string, text: string): Promise<void> {
+    return this.host.sendAgent(agentId, text);
+  }
+  chatActivity(agentId: string) {
+    return this.host.agentActivity(agentId);
+  }
+  chatLastReply(agentId: string): Promise<string | null> {
+    return this.host.lastReply(agentId);
+  }
   /**
    * The Projects Assistant chat agent: the stored one while it exists and is not archived,
    * otherwise (or with `fresh`) a new one.

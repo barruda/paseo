@@ -17,6 +17,9 @@ import type {
 import type { HistoryQuery } from "./history";
 import { buildOverview, readConversation } from "./views";
 import type { Workboard } from "../workboard";
+// CUSTOM(assistant-quick)
+import { ACK_MESSAGE_MAX, normalizeAckStatus } from "../../shared/quick";
+import type { QuickInbox } from "./quick";
 
 export const CHAT_LABEL = "pwb/assistant-chat";
 
@@ -24,7 +27,7 @@ export const CHAT_LABEL = "pwb/assistant-chat";
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
 export const ASSISTANT_ROLE = [
   "You are the Projects Assistant: the user's manager for their Power Workboard tasks and orchestrators, in Tasks mode.",
-  "You work ONLY through your board tools (board_overview, board_list_tasks, board_get_task, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history, board_read_agent). Do not edit files, run shell commands, use git, or create Paseo agents for task work: tasks go through the board so the orchestrators run them.",
+  "You work ONLY through your board tools (board_overview, board_list_tasks, board_get_task, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history, board_read_agent, board_ack). Do not edit files, run shell commands, use git, or create Paseo agents for task work: tasks go through the board so the orchestrators run them.",
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
   "Write each task description as a complete ticket: goal, context, acceptance criteria and what is out of scope. If the project or the goal is unclear, ask one short question before creating the task.",
   "Before board_task_action with merge-now or mark-done, say what will happen and what you are about to do.",
@@ -39,7 +42,7 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS =
-  "Reply with one short line saying you're ready. Your board tools are board_overview, board_list_tasks, board_get_task, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history and board_read_agent.";
+  "Reply with one short line saying you're ready. Your board tools are board_overview, board_list_tasks, board_get_task, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history, board_read_agent and board_ack. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool.";
 
 /** `<PASEO_HOME>/plugin-data/power-workboard/assistant-chat`, next to the history folder. */
 export function defaultChatDirectory(
@@ -119,6 +122,32 @@ function define<Input extends z.ZodType>(tool: {
       }
     },
   };
+}
+
+/** CUSTOM(assistant-quick): the assistant's short ack of a quick message. */
+export function quickAckTool(inbox: Pick<QuickInbox, "ack">): ChatTool {
+  return define({
+    name: "board_ack",
+    description:
+      'Call this FIRST, before any other tool, when a user message starts with "[Quick message <id> ...]". status "ok" = understood and you will do it (message: one short sentence of what you will do, in the user\'s language); "needs-input" = you need something from the user first (message: the question); "error" = you cannot do it (message: why). You may call it again later with the same id to update the state.',
+    input: z.object({
+      id: z.string().optional(),
+      status: z.string(),
+      message: z
+        .string()
+        .min(1)
+        .max(ACK_MESSAGE_MAX * 2),
+    }),
+    async execute({ id, status, message }) {
+      const normalized = normalizeAckStatus(status);
+      if (!normalized)
+        throw new Error(
+          `Unknown status "${status}". Use ok, needs-input or error.`,
+        );
+      const entry = inbox.ack(id, normalized, message);
+      return text(`Acknowledged ${entry.id}: ${normalized}.`);
+    },
+  });
 }
 
 const groupName = (group: Group) => group.name ?? group.label;

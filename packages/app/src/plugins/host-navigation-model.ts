@@ -61,3 +61,21 @@ export function createPluginHostNavigation(
       : undefined,
   };
 }
+
+// CUSTOM(assistant-quick): sidebar items run a hook (close popover/overlay) before navigating.
+export function withBeforeNavigate(
+  navigation: NonNullable<PluginSurfaceProps["navigation"]>,
+  before: () => void,
+): NonNullable<PluginSurfaceProps["navigation"]> {
+  return {
+    openAgent: (input) => {
+      before();
+      navigation.openAgent(input);
+    },
+    openWorkspace: (input) => {
+      before();
+      navigation.openWorkspace(input);
+    },
+    ...(navigation.openBrowser ? { openBrowser: navigation.openBrowser } : {}),
+  };
+}

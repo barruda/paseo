@@ -6689,3 +6689,47 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `(cd custom/plugins/paseo-background && npx tsc --noEmit && npm test)`. In the app:
   Settings > Appearance > Backgrounds > Choose local image…, pick a photo, see the preview, Save,
   reload the app and the background is still there.
+
+## assistant-quick: talk to the Projects Assistant from any screen, with a clickable ack status row
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Projects Assistant quick messages with an ack status row`
+- **Why:** The Projects Assistant could only be reached from its chat in Tasks mode. The user
+  wants to send it a line from anywhere (a workspace, another agent, a desktop button) and see at
+  a glance whether it took the job, needs something, or failed. The OpenDeck voice button
+  (gnome-custom) uses the same contract.
+- **What:**
+  - **Ack:** a quick message reaches the assistant chat as `[Quick message <id> from <source>]`
+    plus an instruction to call the new `board_ack` tool first (status `ok`, `needs-input` or
+    `error`, one short sentence). If the turn ends without it, the reply's first sentence is
+    classified (a question is `needs-input`, failure words are `error`, else `ok`) and marked
+    `inferred`. An errored or vanished chat settles it as `error`. Messages live in memory
+    (`server/assistant/quick.ts`, last 30); a daemon restart empties the row.
+  - **Status row:** a sidebar footer item, "Projects Assistant status", in both sidebar modes:
+    the newest message's icon (green check, yellow warning, red X, grey clock while pending) and
+    its sentence. Pressing it opens the assistant chat scrolled to that message (`openAgent` with
+    `turnStartedAt`, see [turn-jump](#turn-jump-plugins-can-open-an-agent-at-one-of-its-turns));
+    its + opens a popover to write a message and lists the last five.
+  - **`/assistant <message>`** in any agent's composer sends without leaving that chat.
+  - **External contract:** RPCs `workboard.assistant.ask` (waits up to 25 s, the daemon's plugin
+    RPC limit is 30 s), `workboard.assistant.quick.get` and `workboard.assistant.quick.list`,
+    reachable through the new generic CLI command `paseo plugin rpc <id> <method> [json|-]`.
+    `custom/plugins/power-workboard/bin/ask-assistant` wraps them: it polls until the ack or
+    `--timeout` (90 s), prints `{id, status, message, agentId, sentAt, link}` and exits 0 / 2 / 1
+    for ok / needs-input / error. `link` is the app's `paseo://h/<server>/agent/<agent>` deep link.
+    Documented in the plugin README, "Quick messages and the ack contract".
+- **Core files touched** (marked `CUSTOM(assistant-quick)`): `packages/plugin/src/client/contracts.ts`
+  (`PluginSidebarItemProps` and `PluginPopoverProps` get the optional `navigation`),
+  `packages/app/src/plugins/sidebar-items/index.tsx` and `plugins/host-navigation-model.ts`
+  (`withBeforeNavigate`: navigating from a sidebar item closes its popover and the mobile
+  sidebar), `packages/cli/src/commands/plugin/index.ts` (`plugin rpc`) and `cli-surface.test.ts`.
+- **Re-apply:** give sidebar items and their popovers `usePluginHostNavigation(plugin.serverId)`
+  wrapped so it first closes the popover and calls `onBeforeNavigate`; add the `rpc` subcommand
+  calling `DaemonClient.invokePluginRpc`. The rest is plugin-only.
+- **Verify:** the plugin suite (`tests/assistant-quick.test.ts`),
+  `(cd packages/app && npx vitest run src/plugins/host-navigation.test.ts --bail=1)` and
+  `(cd packages/cli && npx vitest run src/commands/plugin/index.test.ts src/cli-surface.test.ts --bail=1)`,
+  all in the update script. Needs an app build and install (sidebar navigation, CLI) and a plugin reload.
+  In the app: the sidebar footer shows "Projects Assistant"; + > type "list my tasks" > Send: the
+  row turns green with a short sentence; click it and the assistant chat opens at that message.
+  From a terminal: `custom/plugins/power-workboard/bin/ask-assistant "what needs me?"`.
