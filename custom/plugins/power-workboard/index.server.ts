@@ -28,6 +28,8 @@ import {
   assistantSettingsSetRpc,
   assistantStatsRpc,
   assistantTreeRpc,
+  assistantReportsTaskRpc,
+  assistantReportsTasksRpc,
 } from "./shared/assistant-rpc";
 import {
   HistoryStore,
@@ -35,9 +37,17 @@ import {
 } from "./server/assistant/history";
 import {
   attachChatTools,
+  boardReportTool,
   chatTools,
   quickAckTool,
 } from "./server/assistant/chat";
+// CUSTOM(assistant-reports)
+import {
+  ReportStore,
+  buildReportTasks,
+  buildReportTimeline,
+  defaultReportsDirectory,
+} from "./server/assistant/reports";
 import { QuickInbox } from "./server/assistant/quick"; // CUSTOM(assistant-quick)
 import {
   buildOverview,
@@ -108,6 +118,9 @@ export default function contribute(server: PluginServerContext) {
   // CUSTOM(projects-assistant): created once; the board gets it on every (re)boot.
   const history = new HistoryStore(defaultHistoryDirectory());
   void history.prune().catch(() => undefined);
+  // CUSTOM(assistant-reports): the assistant's report entries, kept as long as the history.
+  const reports = new ReportStore(defaultReportsDirectory());
+  void reports.prune().catch(() => undefined);
   // CUSTOM(assistant-quick): outside `boot`, so it survives board reboots.
   let serverId: string | null = null;
   const inbox = new QuickInbox({
@@ -222,6 +235,25 @@ export default function contribute(server: PluginServerContext) {
     inbox.get(input.id, input.waitMs),
   );
   server.handle(assistantQuickListRpc, () => ({ items: inbox.list() }));
+  // CUSTOM(assistant-reports): the Projects Reports page.
+  server.handle(assistantReportsTasksRpc, async () => {
+    const source = ready().assistantSource();
+    const [events, entries] = await Promise.all([
+      history.since(null),
+      reports.since(null),
+    ]);
+    return { tasks: buildReportTasks(source, events, entries) };
+  });
+  server.handle(assistantReportsTaskRpc, async (input) => {
+    const source = ready().assistantSource();
+    const [events, entries] = await Promise.all([
+      history.since(null),
+      reports.since(null),
+    ]);
+    return {
+      timeline: buildReportTimeline(source, input.taskId, events, entries),
+    };
+  });
   // CUSTOM(agent-profiles): the profile of an orchestrator or of the assistant chat.
   server.handle(profilesGetRpc, (input) => ready().profileView(input.profile));
   server.handle(profilesSetSystemPromptRpc, async (input) => {
@@ -232,7 +264,11 @@ export default function contribute(server: PluginServerContext) {
     skills: await ready().profileSkills(input.profile),
   }));
   // The chat agent gets the board tools on every session open (create and resume).
-  const boardTools = [...chatTools(ready, history), quickAckTool(inbox)]; // CUSTOM(assistant-quick)
+  const boardTools = [
+    ...chatTools(ready, history),
+    quickAckTool(inbox), // CUSTOM(assistant-quick)
+    boardReportTool(ready, reports, inbox), // CUSTOM(assistant-reports)
+  ];
   const removeChatTools = server.before("agent.session_open", ({ request }) =>
     attachChatTools(request, boardTools),
   );

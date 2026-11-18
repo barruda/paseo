@@ -47,11 +47,13 @@ export { SidebarRow, SidebarSeparator } from "./kit";
 
 type PopoverContent = ComponentType<PluginPopoverProps>;
 
-const pluginThemeMapping = (theme: Theme) => ({ theme: toPluginTheme(theme) });
+// CUSTOM(status-bar): shared with the status bar host.
+export const pluginThemeMapping = (theme: Theme) => ({ theme: toPluginTheme(theme) });
 
 type PluginItemGroup = Extract<PluginSidebarGroup, { kind: "item" }>;
 
-function renderNothing() {
+// CUSTOM(status-bar): shared with the status bar host.
+export function renderNothing() {
   return null;
 }
 

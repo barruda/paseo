@@ -635,6 +635,7 @@ export class PaseoHost implements Host {
       },
       title: start.title,
       prompt: start.prompt,
+      ...(start.labels ? { labels: { ...start.labels } } : {}), // CUSTOM(hidden-board-agents)
     });
     return agent.id;
   }

@@ -6820,7 +6820,10 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     the newest message's icon (green check, yellow warning, red X, grey clock while pending) and
     its sentence. Pressing it opens the assistant chat scrolled to that message (`openAgent` with
     `turnStartedAt`, see [turn-jump](#turn-jump-plugins-can-open-an-agent-at-one-of-its-turns));
-    its + opens a popover to write a message and lists the last five.
+    its + opens a popover to write a message and lists the last five. Since
+    [status-bar](#status-bar-an-ide-style-status-bar-at-the-bottom-of-the-window-starting-with-the-projects-assistant)
+    this lives in the app's status bar; the sidebar row is only the fallback for app builds
+    without one.
   - **`/assistant <message>`** in any agent's composer sends without leaving that chat.
   - **External contract:** RPCs `workboard.assistant.ask` (waits up to 25 s, the daemon's plugin
     RPC limit is 30 s), `workboard.assistant.quick.get` and `workboard.assistant.quick.list`,
@@ -7135,6 +7138,183 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   the update script). In the desktop app, Ctrl+D, speak, tap Enter: the text lands in the box.
   Ctrl+D, speak, hold Enter: after half a second the bar stops recording; release and the message
   is sent. Needs an app build, no daemon restart.
+
+## assistant-reports: a Projects Reports page per ticket, fed by one `board_report` record per action
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: Projects Reports page and the board_report protocol`
+- **Why:** the user could not see at a glance what the Projects Assistant did on each ticket, and
+  the assistant wrote the same thing in several places (chat reply, quick-message ack). One record
+  per action now feeds the page, the status row and the chat reply.
+- **What:**
+  - **Protocol:** `shared/assistant-reports.ts` defines the entry (`taskId`, `kind`, a one-line
+    `summary`, `detail`, `decisions`, `orchestrator {agentId, prompt, reply}`, `quickMessageId`,
+    `quickStatus`). The chat tool `board_report` (`server/assistant/chat.ts`) refuses an invalid
+    entry or an unknown task with the zod reason, fills the project and time, stores the task
+    agent's last reply when `reply` is left out, and parses its `<report>` with
+    `server/assistant/report.ts`. With `quickMessageId` it acks that quick message with the summary.
+    Entries live in `plugin-data/power-workboard/reports/YYYY-MM-DD.jsonl`; `server/assistant/history.ts`
+    now has a generic day-file store (`DayJsonlStore`) that the history and the reports share.
+  - **Automatic items:** the history gets `task-created` and `task-moved` (create and move
+    mutations, while the assistant is on). `server/assistant/reports.ts` merges the history with the
+    entries: an event up to 2 min after an entry, else up to 15 min before one, folds into it; the
+    rest stand alone, a `report` event carrying the delivery's parsed report.
+  - **Page:** surface `projects-reports` (`client/assistant/ReportsScreen.tsx`, `reports-timeline.tsx`,
+    `reports-format.ts`, `reports-strings.ts`) over RPCs `workboard.assistant.reports.tasks` and
+    `workboard.assistant.reports.task`. Sidebar of tickets (search, project chips), header with what
+    was asked, one collapsed toggle per action, an inner toggle for the agent interaction with an
+    Open conversation link. Compact layouts show the list, then the ticket. Strings in en and
+    pt-BR: `client/paseo-language.ts` gets `readPaseoLocale`/`usePaseoLocale`, which tell pt-BR
+    apart (the rest of the plugin still maps it to en).
+  - **Instructions:** `ASSISTANT_ROLE` (the profile seed), `CHAT_INSTRUCTIONS` and the tool
+    description ask for one `board_report` per action and the summary reused as the chat reply.
+- **Core files touched:** `packages/app/src/task-navigation/desk-workboard-model.ts` (the
+  "Projects Reports" chip in `DESK_SURFACES`), marked `CUSTOM(assistant-reports)`.
+- **Re-apply:** plugin-only, plus one `DESK_SURFACES` entry `{ id: "projects-reports", kind: "surface" }`.
+  An existing assistant profile keeps its own `system-prompt.md`; add the `board_report` paragraph
+  of `ASSISTANT_ROLE` to it by hand (Settings > the assistant's profile) if it predates this.
+- **Verify:** the plugin suite (`tests/assistant-reports.test.ts`,
+  `tests/assistant-reports-format.test.ts`, `tests/paseo-language.test.ts`) and
+  `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts --bail=1)`, both
+  already in the update script. Needs a plugin reload and an app build and install (the chip). In
+  Tasks mode, click "Projects Reports" in the Desk header: tickets the board touched are listed;
+  open one and expand a row. Send a quick message that makes the assistant act: its
+  `board_report` summary shows in the status row and as a row on that ticket.
+
+## hidden-board-agents: board agents stay out of the sidebar and never notify
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: board agents stay hidden and silent by default`
+- **Why:** the agents that Power Workboard and the Projects Assistant start and watch (orchestrator
+  runs, reviews, auto-fixes, the ship agent) opened as tabs, filled the sidebar and sent GNOME
+  notifications. The Projects Assistant already reports on them in its chat, its bar and the Needs
+  you column, so the extra noise only interrupted the user.
+- **What:**
+  - Label `paseo.board-agent: "true"` (`BOARD_AGENT_LABEL`, in `@getpaseo/protocol/board-agents`
+    and, as the same string, in the plugin's `shared/model.ts`). The board puts it on every agent
+    it starts through `startAgent` (orchestrator runs, continuations, review tasks; auto-fixes reuse
+    the same agent). The refinement chat and the assistant chat stay unlabeled: the user talks to
+    them.
+  - The assistant's seed prompt (`ASSISTANT_ROLE`) and its first message (`CHAT_INSTRUCTIONS`) tell
+    it to pass the label to every agent it creates with `create_agent` (the ship agent).
+  - `isBoardAgent` also counts an agent whose parent chain reaches a board agent or the assistant
+    chat (`pwb/assistant-chat`), so the ship agent is hidden even if the assistant forgets the label.
+  - App: board agents never auto-open as a workspace tab (`deriveWorkspaceAgentVisibility` keeps
+    them out of `autoOpenAgentIds` but in `activeAgentIds`, so a tab the user opens stays); the
+    Tasks sidebar hides them unless **Show board agents** is on in its Projects menu
+    (persisted, off by default); `notifyAgentAttention` never sends an OS notification for them.
+    Command Center search and the board card link still open them.
+  - Daemon: `broadcastAgentAttention` sends no push and `shouldNotify: false` for board agents.
+    This part needs a daemon restart; the app gate works without it.
+- **Core files touched:** each marked `CUSTOM(hidden-board-agents)`.
+  - protocol (new): `src/board-agents.ts` (`BOARD_AGENT_LABEL`, `ASSISTANT_CHAT_LABEL`,
+    `isBoardAgent`) and its test.
+  - app (new): `src/board-agents/visibility.ts` (`isBoardAgentInSession`), `store.ts`
+    (persisted `showBoardAgents`, key `paseo-board-agents`), with tests.
+  - app: `workspace-tabs/agent-visibility.ts` (`isAutoOpenAgent`) and a case in its test;
+    `task-navigation/sidebar.tsx` (`collectAgents` with the two selectors `selectAgents` /
+    `selectAgentsWithBoard`, and `BoardAgentsChoice` at the end of the Projects menu, since the
+    Tasks sidebar has no display menu); `contexts/session-context.tsx` (`isBoardAgentAttention`
+    at the top of `notifyAgentAttention`).
+  - server: `src/server/websocket-server.ts` (`broadcastAgentAttention`) and two cases in
+    `websocket-server.notifications.test.ts`.
+  - plugin power-workboard: `shared/model.ts` (`BOARD_AGENT_LABELS`), `server/host.ts`
+    (`startAgent` forwards `labels`), `server/workboard.ts` (both orchestrator `startAgent`
+    calls), `server/assistant/chat.ts` (prompt text), tests in `host`, `power-workboard` and
+    `assistant-chat`.
+- **Re-apply:** the protocol file and `packages/app/src/board-agents/` are new. Then: in
+  `deriveWorkspaceAgentVisibility` add an agent to `autoOpenAgentIds` only when it is a workspace
+  root and not `isBoardAgentInSession(agent, sessionAgents, agentDetails)`; in the Tasks
+  sidebar's agent selector skip board agents unless `useBoardAgentsStore().showBoardAgents`
+  (keep the selectors module-level: an inline one loops renders) and add the "Show board agents"
+  item to a sidebar menu; return early from `notifyAgentAttention` for a board agent; in
+  `broadcastAgentAttention` skip the push and send `shouldNotify: false` when
+  `isBoardAgent(agent.labels, id => agentManager.getAgent(id)?.labels)`.
+- **Verify:** `(cd packages/protocol && npx vitest run src/board-agents.test.ts)`,
+  `(cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts)`,
+  `(cd packages/server && npx vitest run src/server/websocket-server.notifications.test.ts)`
+  (all in the update script), and the plugin suite. Needs a desktop build and install plus
+  `plugin reload power-workboard`; the app part needs no daemon restart. The push gate
+  runs from the next daemon restart. In the app: start a board task; no tab opens, it is not in
+  the Tasks sidebar and finishing sends no GNOME notification. Projects menu > Show board agents
+  lists it. The card's agent link and Command Center still open it. The Projects Assistant chat
+  still shows and notifies.
+
+## status-bar: an IDE-style status bar at the bottom of the window, starting with the Projects Assistant
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: IDE-style status bar with plugin items, Projects Assistant moved there`
+- **Why:** The Projects Assistant status row from [assistant-quick](#assistant-quick-talk-to-the-projects-assistant-from-any-screen-with-a-clickable-ack-status-row)
+  was squeezed into the left sidebar's footer. The user wants it in a bar of its own, like an
+  IDE's status bar, which other items (git, tokens, network) can join later.
+- **What:**
+  - **The bar:** 24 px, at the bottom of the window on wide layouts. It starts at the left
+    sidebar's right edge and runs to the window's right edge, under the route (content, bottom
+    panel, right sidebar), which shrinks for it; the left sidebar still reaches the window bottom.
+    Sidebar background with a top border, both themes. It renders only when some plugin has an
+    item. Compact layouts have no bar (the phone keyboard and safe-area code assume the content
+    reaches the screen bottom); the same items render as a row at the top of the mobile sidebar's
+    footer (`placement: "drawer"`).
+  - **Plugin API:** `client.addStatusBarItem({ id, title, side?, priority?, agentLabel?, Component })`.
+    `side` is `left` (default) or `right`; a higher `priority` sits nearer the outer edge of its
+    side. The `Component` gets the sidebar item props (`openScreen`, `openPopover`, `navigation`,
+    `currentScreen`) plus `placement`, and renders one or more `StatusBarItem` kit entries
+    (`@getpaseo/plugin/client/ui`: icon, icon color, label, tooltip, onPress, max label width).
+    A popover opens above the pressed entry (a sheet on compact layouts). Like sidebar items, one
+    contribution from several hosts shows once, from the current route's host.
+  - **`agentLabel`:** agents carrying that label show their status in the item, so the status line
+    under their composer ([agent-status-summary](#agent-status-summary-what-each-agent-was-asked-and-where-it-stands-under-the-composer))
+    is hidden for them.
+  - **Power Workboard:** the Projects Assistant item, leftmost (priority 100): a colored
+    `MessageSquarePlus` that opens the quick message popover (the old **+**), the newest message's
+    ack icon and sentence (press: the conversation at that message), and the assistant chat's
+    status summary topic (press: the chat; hover: its status). It reads the chat agent through an
+    agent subscription filtered by the `pwb/assistant-chat` label and claims that label, so the
+    line under the assistant chat's composer is gone. On an app without `addStatusBarItem` the
+    plugin still registers the old sidebar footer row.
+- **Core files touched** (marked `CUSTOM(status-bar)`): `packages/plugin/src/client/contracts.ts`,
+  `client/index.ts`, `client/ui.ts` (types); `packages/app/src/plugins/types.ts`, `evaluate.ts`,
+  `react-native/ui.ts`, `sidebar-items/index.tsx` (two helpers exported); new
+  `packages/app/src/plugins/status-bar/` (`model.ts`, `frame.ts`, `kit.tsx`, `index.tsx`);
+  `packages/app/src/app/_layout.tsx` (`WorkspaceContentColumn`), `components/left-sidebar.tsx`
+  (`statusBarInDrawer` on `SidebarFooter`), `composer/agent-status-line.tsx`; `.oxlintrc.json`
+  (`status-bar/kit.tsx` on the `no-raw-pressable` allow-list, like `sidebar-header-row.tsx`).
+- **Re-apply:** restore the SDK types and `addStatusBarItem` in `evaluate.ts` next to
+  `addSidebarFooterItem`; copy `plugins/status-bar/` back (it mirrors `plugins/sidebar-items/`:
+  environment, error boundary, popover root and anchor, host navigation); in `_layout.tsx` wrap
+  the content `View` of `workspaceChrome` in a column with `<PluginStatusBar placement="bar" />`
+  under it on wide layouts; render `<PluginStatusBar placement="drawer" />` at the top of the
+  mobile sidebar's footer; make `AgentStatusLine` return null when
+  `statusBarOwnsAgentStatusLine(plugins, labels)`.
+- **Verify:** `(cd packages/app && npx vitest run src/plugins/evaluate.test.ts src/plugins/status-bar/model.test.ts --bail=1)`
+  (in the update script) and the plugin suite (`tests/assistant-quick.test.ts`). Needs an app
+  build and install, then a `plugin reload power-workboard`. In the app: a thin bar runs along the
+  bottom right of the left sidebar, in light and dark themes, with or without the right sidebar
+  and the bottom panel; the sidebar footer no longer has "Projects Assistant status". In the bar:
+  the colored message icon opens the message box; after Send the check/warning/X and the sentence
+  appear; pressing the sentence opens the assistant chat at that message; the topic after it opens
+  the chat, and that chat has no line under its composer.
+
+## plugin-sync: install the fork's plugins on every update
+
+- **Added:** 2026-11-18 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: install the fork's plugins on every update`
+- **Why:** Only Power Workboard was installed automatically; the rest was a manual README list that
+  drifted from what the daemons actually run.
+- **What:** `custom/plugins.json` lists every plugin with its source (directory, registry, npm
+  version, or git `ref`). `custom/scripts/sync-plugins.mjs --home <home>` installs what a home
+  lacks, and the update script runs it for each home in `PASEO_HOMES`. A running daemon installs
+  through the CLI; a stopped one gets directory plugins written into `config.json`, and npm, registry,
+  and git sources wait for a run with the daemon up. Plugins already in `config.json` are left as
+  they are, enabled or not. A plugin the user removed stays removed through
+  `<home>/custom-plugins-applied.json`. `warp` installs only where the Warp web checkout exists.
+  Turns `pluginsEnabled` on (and reloads a running daemon) when it was off.
+- **Core files touched:** none.
+- **Re-apply:** Re-add the "Installing the fork's plugins on each daemon" loop in
+  `custom/update-paseo-source-and-apply-customization.sh` and the sync test in its customization
+  tests step.
+- **Verify:** `node --test custom/scripts/sync-plugins.test.mjs`, then
+  `node custom/scripts/sync-plugins.mjs --home ~/.paseo --dry-run`.
 
 ## auto-archive-skip-pinned: pinned sessions are never auto-archived
 

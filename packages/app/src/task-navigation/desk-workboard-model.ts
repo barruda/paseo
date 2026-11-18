@@ -31,6 +31,12 @@ export const DESK_SURFACES: readonly DeskSurfaceDefinition[] = [
     label: "Projects Conversations",
     identity: { kind: "surface", id: "projects-conversations" },
   },
+  // CUSTOM(assistant-reports): Projects Reports page, from the Power Workboard plugin.
+  {
+    id: "projects-reports",
+    label: "Projects Reports",
+    identity: { kind: "surface", id: "projects-reports" },
+  },
 ];
 
 export interface DeskSurfacesPersisted {

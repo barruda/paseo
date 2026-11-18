@@ -1,3 +1,4 @@
+import { isBoardAgentInSession } from "@/board-agents/visibility"; // CUSTOM(hidden-board-agents)
 import type { Agent } from "@/stores/session-store";
 import type { WorkspaceTabSnapshot } from "@/stores/workspace-layout-actions";
 import { isWorkspaceRootAgent } from "@/subagents/policies";
@@ -7,6 +8,19 @@ export interface WorkspaceAgentVisibility {
   activeAgentIds: Set<string>;
   autoOpenAgentIds: Set<string>;
   foreignAgentIds: Set<string>;
+}
+
+// CUSTOM(hidden-board-agents): a root agent opens a tab by itself unless it is a board agent.
+function isAutoOpenAgent(
+  agent: Agent,
+  parentAgent: Agent | undefined,
+  sessionAgents: Map<string, Agent> | undefined,
+  agentDetails: Map<string, Agent> | undefined,
+): boolean {
+  return (
+    isWorkspaceRootAgent(agent, parentAgent) &&
+    !isBoardAgentInSession(agent, sessionAgents, agentDetails)
+  );
 }
 
 export function deriveWorkspaceAgentVisibility(input: {
@@ -40,7 +54,9 @@ export function deriveWorkspaceAgentVisibility(input: {
       const parentAgent = agent.parentAgentId
         ? (sessionAgents?.get(agent.parentAgentId) ?? agentDetails?.get(agent.parentAgentId))
         : undefined;
-      if (isWorkspaceRootAgent(agent, parentAgent)) {
+      // CUSTOM(hidden-board-agents): board agents never open a tab by themselves; a tab the user
+      // opened by hand stays because the agent is still in activeAgentIds.
+      if (isAutoOpenAgent(agent, parentAgent, sessionAgents, agentDetails)) {
         autoOpenAgentIds.add(agent.id);
       }
     }

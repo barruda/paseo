@@ -1,8 +1,15 @@
 // CUSTOM(assistant-quick): the "Projects Assistant status" row of the app's sidebar footer, and
 // the popover to write a message to the assistant from any screen. The row shows the assistant's
 // short ack of the newest message (ok, needs input, error, or pending); pressing it opens the
-// assistant conversation at that message.
-import { useMemo, useState, type ComponentType, type ReactNode } from "react";
+// assistant conversation at that message. CUSTOM(status-bar): on hosts with the app status bar,
+// `QuickStatusBarItem` shows the same status there and the sidebar row is not registered.
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   useMutation,
@@ -11,6 +18,7 @@ import {
   QueryClientProvider,
 } from "@tanstack/react-query";
 import {
+  usePaseo,
   useRpc,
   type PluginHostProps,
   type PluginSurfaceProps,
@@ -27,11 +35,15 @@ import { usePaseoLanguage } from "../paseo-language";
 import { queryClient } from "../query-client";
 import type { Language } from "../strings";
 import {
+  assistantTopic,
   conversationTarget,
+  pickAssistantAgent,
   quickLabel,
   quickPollMs,
   quickVisual,
+  type AssistantAgentEntry,
 } from "./quick-format";
+import { ASSISTANT_CHAT_LABEL } from "./RestartChatPill";
 
 const strings = {
   en: {
@@ -43,6 +55,7 @@ const strings = {
     sending: "Sending…",
     recent: "Recent",
     none: "No messages yet.",
+    openMessage: "Open the conversation at this message",
   },
   zh: {
     idle: "项目助手",
@@ -53,6 +66,7 @@ const strings = {
     sending: "发送中…",
     recent: "最近",
     none: "还没有消息。",
+    openMessage: "在此消息处打开对话",
   },
 } satisfies Record<Language, Record<string, string>>;
 
@@ -91,6 +105,20 @@ interface SidebarRowLikeProps {
 const SidebarRow = (
   hostUi as unknown as { SidebarRow: ComponentType<SidebarRowLikeProps> }
 ).SidebarRow;
+
+// CUSTOM(status-bar): one entry of the app's status bar; the pinned types predate it too.
+interface StatusBarItemLikeProps {
+  id?: string;
+  icon?: string | ComponentType<{ size: number; color: string }>;
+  iconColor?: string;
+  label?: string;
+  tooltip?: string;
+  onPress?(): void;
+  maxLabelWidth?: number;
+}
+const StatusBarItem = (
+  hostUi as unknown as { StatusBarItem: ComponentType<StatusBarItemLikeProps> }
+).StatusBarItem;
 
 const LIST_KEY = ["power-workboard", "assistant", "quick", "list"] as const;
 
@@ -172,6 +200,131 @@ export function QuickStatusItem(props: QuickSidebarItemProps) {
   return (
     <QueryClientProvider client={queryClient}>
       <SidebarItem {...props} />
+    </QueryClientProvider>
+  );
+}
+
+// CUSTOM(status-bar): the same status in the app's status bar, from the left: a colored icon that
+// opens the message popover, the newest message's ack, and what the assistant chat is on now (its
+// status summary topic). Older hosts without a status bar get the sidebar row above instead.
+
+type AgentUpdate =
+  | { kind: "remove"; agentId: string }
+  | { kind: "upsert"; agent: AssistantAgentEntry };
+
+/** The live assistant chat agent, from an owned agent subscription filtered by its label. */
+function useAssistantChatAgent(): AssistantAgentEntry | null {
+  const paseo = usePaseo();
+  const [agents, setAgents] = useState<
+    ReadonlyMap<string, AssistantAgentEntry>
+  >(() => new Map());
+  useEffect(() => {
+    const lifetime = new AbortController();
+    let stopped = false;
+    void (
+      paseo.agents.list as unknown as (options: {
+        filter: { labels: Record<string, string> };
+        subscribe: Record<string, never>;
+        signal: AbortSignal;
+      }) => Promise<{
+        subscription: {
+          subscribe(handlers: {
+            snapshot(input: {
+              entries: { agent: AssistantAgentEntry }[];
+            }): void;
+            update(message: { type: string; payload: AgentUpdate }): void;
+          }): void;
+        };
+      }>
+    )({
+      filter: { labels: { [ASSISTANT_CHAT_LABEL]: "true" } },
+      subscribe: {},
+      signal: lifetime.signal,
+    })
+      .then(({ subscription }) => {
+        subscription.subscribe({
+          snapshot: ({ entries }) => {
+            if (stopped) return;
+            setAgents(new Map(entries.map(({ agent }) => [agent.id, agent])));
+          },
+          update: (message) => {
+            if (stopped || message.type !== "agent_update") return;
+            const update = message.payload;
+            setAgents((current) => {
+              const next = new Map(current);
+              if (update.kind === "remove") next.delete(update.agentId);
+              else next.set(update.agent.id, update.agent);
+              return next;
+            });
+          },
+        });
+        return undefined;
+      })
+      .catch((error) => {
+        if (!stopped) console.error("Assistant chat observation failed", error);
+      });
+    return () => {
+      stopped = true;
+      lifetime.abort();
+    };
+  }, [paseo]);
+  return useMemo(
+    () => pickAssistantAgent(agents.values(), ASSISTANT_CHAT_LABEL),
+    [agents],
+  );
+}
+
+function StatusBarEntries(props: QuickSidebarItemProps) {
+  const { theme, navigation, openPopover } = props;
+  const s = strings[usePaseoLanguage()];
+  const items = useQuickList().data ?? [];
+  const newest = items[0] ?? null;
+  const visual = quickVisual(newest?.status ?? "pending");
+  const assistant = useAssistantChatAgent();
+  const topic = assistantTopic(assistant?.statusSummary);
+  const compose = () => openPopover(QuickAskPopover);
+  const label = quickLabel(newest, s);
+  return (
+    <View style={styles.bar}>
+      <StatusBarItem
+        id="compose"
+        icon="MessageSquarePlus"
+        iconColor={theme.colors.accent}
+        tooltip={s.newMessage}
+        onPress={compose}
+      />
+      <StatusBarItem
+        id="status"
+        icon={newest ? visual.icon : "MessageSquare"}
+        iconColor={theme.colors[newest ? visual.color : "foregroundMuted"]}
+        label={label}
+        tooltip={newest ? `${s.openMessage}: ${label}` : s.newMessage}
+        maxLabelWidth={360}
+        onPress={() => {
+          if (!newest || !openTarget(navigation, newest)) compose();
+        }}
+      />
+      {topic && assistant ? (
+        <StatusBarItem
+          id="topic"
+          label={topic}
+          tooltip={assistant.statusSummary?.status ?? topic}
+          maxLabelWidth={480}
+          onPress={
+            navigation
+              ? () => navigation.openAgent({ agentId: assistant.id })
+              : undefined
+          }
+        />
+      ) : null}
+    </View>
+  );
+}
+
+export function QuickStatusBarItem(props: QuickSidebarItemProps) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <StatusBarEntries {...props} />
     </QueryClientProvider>
   );
 }
@@ -324,4 +477,12 @@ const styles = StyleSheet.create({
   },
   line: { flexDirection: "row", alignItems: "center", gap: 8, padding: 4 },
   lineText: { flex: 1, fontSize: 13 },
+  // CUSTOM(status-bar): the entries shrink so long sentences end in an ellipsis.
+  bar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    flexShrink: 1,
+    minWidth: 0,
+  },
 });

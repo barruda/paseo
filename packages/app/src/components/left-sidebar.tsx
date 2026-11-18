@@ -85,6 +85,7 @@ import type { SidebarProjectIconTarget } from "@/utils/sidebar-project-row-model
 import { type SidebarGroupMode, useSidebarViewStore } from "@/stores/sidebar-view-store";
 import { useHosts } from "@/runtime/host-runtime";
 import { PluginSidebarItem } from "@/plugins/sidebar-items";
+import { PluginStatusBar } from "@/plugins/status-bar"; // CUSTOM(status-bar)
 import { builtinSidebarNavLabelKey } from "@/sidebar-nav/model";
 import { useSidebarNavItems } from "@/sidebar-nav/use-sidebar-nav-items";
 import { usePanelStore } from "@/stores/panel-store";
@@ -491,6 +492,7 @@ function SidebarFooter({
   handleAddHost,
   handleOpenHostSettings,
   onBeforeNavigate,
+  statusBarInDrawer = false,
 }: {
   handleOpenProject: () => void;
   handleSettings: () => void;
@@ -504,6 +506,8 @@ function SidebarFooter({
   handleAddHost: () => void;
   handleOpenHostSettings: (serverId: string) => void;
   onBeforeNavigate?: () => void;
+  /** CUSTOM(status-bar): compact layouts only, where the window has no status bar. */
+  statusBarInDrawer?: boolean;
 }) {
   const newAgentKeys = useShortcutKeys("new-agent");
   const settingsKeys = useShortcutKeys("toggle-settings");
@@ -518,6 +522,10 @@ function SidebarFooter({
   return (
     <UsageSidebarRoot>
       <View style={styles.footerContainer} testID="sidebar-footer">
+        {/* CUSTOM(status-bar): phones reach the status bar's items from here. */}
+        {statusBarInDrawer ? (
+          <PluginStatusBar placement="drawer" onBeforeNavigate={onBeforeNavigate} />
+        ) : null}
         <SidebarFooterRows onBeforeNavigate={onBeforeNavigate} />
         <View style={styles.sidebarFooter} testID="sidebar-footer-bottom-line">
           <FooterIconButton
@@ -719,6 +727,7 @@ function MobileSidebar({
           handleAddHost={handleAddHost}
           handleOpenHostSettings={handleOpenHostSettings}
           onBeforeNavigate={closeSidebar}
+          statusBarInDrawer
         />
       </View>
     </MobilePanelOverlay>

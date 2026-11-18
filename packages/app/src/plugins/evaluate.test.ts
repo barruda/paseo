@@ -259,6 +259,63 @@ describe("evaluatePluginClientBundle", () => {
     ).toThrow("Sidebar item main has no title");
   });
 
+  // CUSTOM(status-bar)
+  it("registers a normalized status bar item", () => {
+    const plugin = evaluatePluginClientBundle(
+      "example",
+      bundle(`
+        function Item() { return null; }
+        plugin.addStatusBarItem({ id: " work ", title: " Work ", side: "right", priority: 3, agentLabel: "workboard", Component: Item });
+        plugin.addStatusBarItem({ id: "plain", title: "Plain", Component: Item });
+      `),
+    );
+
+    expect(
+      plugin.statusBarItems?.map(({ id, title, side, priority, agentLabel }) => ({
+        id,
+        title,
+        side,
+        priority,
+        agentLabel,
+      })),
+    ).toEqual([
+      { id: "work", title: "Work", side: "right", priority: 3, agentLabel: "workboard" },
+      { id: "plain", title: "Plain", side: undefined, priority: undefined, agentLabel: undefined },
+    ]);
+  });
+
+  it.each([
+    [
+      `plugin.addStatusBarItem({ id: "a", title: "A", Component: Item });
+       plugin.addStatusBarItem({ id: "a", title: "B", Component: Item });`,
+      "Duplicate status bar item: a",
+    ],
+    [
+      `plugin.addStatusBarItem({ id: "a", title: "A", side: "middle", Component: Item });`,
+      "Status bar item a has an invalid side",
+    ],
+    [
+      `plugin.addStatusBarItem({ id: "a", title: "A", priority: Infinity, Component: Item });`,
+      "Status bar item a has an invalid priority",
+    ],
+    [
+      `plugin.addStatusBarItem({ id: "a", title: "A", agentLabel: " ", Component: Item });`,
+      "Status bar item a has an invalid agentLabel",
+    ],
+    [
+      `plugin.addStatusBarItem({ id: "a", title: " ", Component: Item });`,
+      "Status bar item a has no title",
+    ],
+    [
+      `plugin.addStatusBarItem({ id: "a", title: "A", Component: "A" });`,
+      "Status bar item a is not a component",
+    ],
+  ])("rejects a malformed status bar item: %s", (call, message) => {
+    expect(() =>
+      evaluatePluginClientBundle("example", bundle(`function Item() { return null; } ${call}`)),
+    ).toThrow(message);
+  });
+
   it("expands the addSurface and addSidebarItem aliases to a screen and a legacy header item", () => {
     const plugin = evaluatePluginClientBundle(
       "example",

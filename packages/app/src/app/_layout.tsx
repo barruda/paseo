@@ -144,6 +144,7 @@ import {
   parseServerIdFromPathname,
 } from "@/utils/host-routes";
 import { PluginCatalogSync } from "@/plugins";
+import { PluginStatusBar } from "@/plugins/status-bar"; // CUSTOM(status-bar)
 // CUSTOM(mouse-tab-nav)
 import { useMouseTabNavigation } from "@/hooks/use-mouse-tab-navigation";
 import { NotificationOpenRouter } from "@/notification-open/react";
@@ -483,7 +484,9 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
         <WindowChromeRegion
           corners={isCompactLayout && chromeEnabled ? "both" : appChromeLayout.contentCorners}
         >
-          <View style={flexStyle}>{children}</View>
+          <WorkspaceContentColumn isCompactLayout={isCompactLayout}>
+            {children}
+          </WorkspaceContentColumn>
         </WindowChromeRegion>
       </WorkspaceExplorerOpenGesture>
     </View>
@@ -544,6 +547,27 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     <AppContainerLifetime compactGesturesEnabled={chromeEnabled && isCompactLayout}>
       <SheetHostScope enabled={isCompactLayout}>{surface}</SheetHostScope>
     </AppContainerLifetime>
+  );
+}
+
+// CUSTOM(status-bar): wide layouts stack the window's status bar under the route, so it spans from
+// the left sidebar's edge to the window's and nothing is covered. Compact layouts render none: the
+// phone keyboard and safe-area handling assume content reaches the screen bottom.
+function WorkspaceContentColumn({
+  isCompactLayout,
+  children,
+}: {
+  isCompactLayout: boolean;
+  children: ReactNode;
+}) {
+  if (isCompactLayout) return <View style={flexStyle}>{children}</View>;
+  return (
+    <View style={flexStyle}>
+      <View style={flexStyle}>{children}</View>
+      <AppearanceStyleBoundary>
+        <PluginStatusBar placement="bar" />
+      </AppearanceStyleBoundary>
+    </View>
   );
 }
 

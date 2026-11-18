@@ -42,6 +42,7 @@ import type {
   PluginSidebarContribution,
   PluginScreenContribution,
   PluginSidebarItemContribution,
+  PluginStatusBarItemContribution, // CUSTOM(status-bar)
   PluginWorkspacePanelContribution,
 } from "./types";
 import type { ComponentType } from "react";
@@ -158,6 +159,9 @@ export function runPluginClientBundle(
     header: new Set(),
     footer: new Set(),
   };
+  // CUSTOM(status-bar)
+  const statusBarItems: PluginStatusBarItemContribution[] = [];
+  const statusBarItemIds = new Set<string>();
   const filePanelIds = new Set<string>();
   const workspacePanelIds = new Set<string>();
   const commandCenterItemIds = new Set<string>();
@@ -226,6 +230,34 @@ export function runPluginClientBundle(
       () => ids.delete(normalizedId),
     );
   }
+  // CUSTOM(status-bar): validates and registers one status bar item.
+  function addStatusBarItem(contribution: PluginStatusBarItemContribution): PluginCleanup {
+    const normalizedId = requireId(contribution.id, "status bar item id");
+    if (statusBarItemIds.has(normalizedId)) {
+      throw new Error(`Duplicate status bar item: ${normalizedId}`);
+    }
+    const title = normalizePluginText(contribution.title);
+    if (!title) throw new Error(`Status bar item ${normalizedId} has no title`);
+    if (!isComponentType(contribution.Component)) {
+      throw new Error(`Status bar item ${normalizedId} is not a component`);
+    }
+    const { side, priority, agentLabel } = contribution;
+    if (side !== undefined && side !== "left" && side !== "right") {
+      throw new Error(`Status bar item ${normalizedId} has an invalid side`);
+    }
+    if (priority !== undefined && !(typeof priority === "number" && Number.isFinite(priority))) {
+      throw new Error(`Status bar item ${normalizedId} has an invalid priority`);
+    }
+    if (agentLabel !== undefined && (typeof agentLabel !== "string" || agentLabel.trim() === "")) {
+      throw new Error(`Status bar item ${normalizedId} has an invalid agentLabel`);
+    }
+    statusBarItemIds.add(normalizedId);
+    return register(
+      statusBarItems,
+      { id: normalizedId, title, side, priority, agentLabel, Component: contribution.Component },
+      () => statusBarItemIds.delete(normalizedId),
+    );
+  }
   function registerPanel(contribution: PluginWorkspacePanelContribution): PluginCleanup {
     const normalizedId = requireId(contribution.id, "workspace panel id");
     if (workspacePanelIds.has(normalizedId)) {
@@ -287,6 +319,10 @@ export function runPluginClientBundle(
     },
     addSidebarFooterItem(contribution: PluginSidebarItemContribution) {
       return addSidebarItem("footer", contribution);
+    },
+    // CUSTOM(status-bar)
+    addStatusBarItem(contribution: PluginStatusBarItemContribution) {
+      return addStatusBarItem(contribution);
     },
     // COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
     // Titled by its id; a legacy item pointing at it lends the header its own title instead.
@@ -597,6 +633,7 @@ export function runPluginClientBundle(
     settingsScreens: collector.settingsScreens,
     sidebarItems: collector.sidebarItems,
     legacySidebarItems: collector.legacySidebarItems,
+    statusBarItems, // CUSTOM(status-bar)
     filePanels: collector.filePanels,
     workspacePanels: collector.workspacePanels as EvaluatedPlugin["workspacePanels"],
     commandCenterItems: collector.commandCenterItems,

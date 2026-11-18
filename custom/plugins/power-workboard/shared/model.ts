@@ -754,3 +754,13 @@ export function cardsForStage(
         left.id.localeCompare(right.id),
     );
 }
+
+// CUSTOM(hidden-board-agents): every agent the board starts (orchestrator runs, reviews, auto-fixes)
+// carries this label. The app keeps them out of the sidebar and never notifies for them; the
+// Projects Assistant reports on them instead. Same string as BOARD_AGENT_LABEL in
+// packages/protocol/src/board-agents.ts (the plugin builds against a pinned client).
+export const BOARD_AGENT_LABEL = "paseo.board-agent";
+export const BOARD_AGENT_LABELS: Readonly<Record<string, string>> =
+  Object.freeze({
+    [BOARD_AGENT_LABEL]: "true",
+  });

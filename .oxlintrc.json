@@ -598,6 +598,7 @@
         "packages/app/src/panels/new-tab-panel.tsx",
         "packages/app/src/panels/setup-panel.tsx",
         "packages/app/src/plugins/buttons/view.tsx",
+        "packages/app/src/plugins/status-bar/kit.tsx",
         "packages/app/src/review/surface.tsx",
         "packages/app/src/screens/open-project-screen.tsx",
         "packages/app/src/screens/project-settings-screen.tsx",

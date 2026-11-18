@@ -178,6 +178,28 @@ export declare const SidebarRow: ComponentType<SidebarRowProps>;
 /** A line between groups of rows. Render it from a sidebar item's `Component`. */
 export declare const SidebarSeparator: ComponentType;
 
+// CUSTOM(status-bar)
+export interface StatusBarItemProps {
+  /** Tells several entries of one item apart ("status", "compose"). Unique within the item. */
+  id?: string;
+  /** A Lucide icon name, inline SVG, or a component. */
+  icon?: PluginIcon;
+  /** Icon color; defaults to the muted foreground. */
+  iconColor?: string;
+  /**
+   * Defaults to the item's registered title when there is no icon; with an icon and no label the
+   * entry is icon-only. Pass an empty string to force an icon-only entry.
+   */
+  label?: string;
+  /** Hover text (web/desktop). Defaults to the label, else the item's title. */
+  tooltip?: string;
+  onPress?(): void;
+  /** Caps the label width; a longer label ends in an ellipsis. */
+  maxLabelWidth?: number;
+}
+/** One entry of the status bar. Render it from a status bar item's `Component`; an item may render several. */
+export declare const StatusBarItem: ComponentType<StatusBarItemProps>;
+
 /** Paseo's loading state. Fills the panel; the panel decides when to show it. */
 export declare const Loading: ComponentType;
 

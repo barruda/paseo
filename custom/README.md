@@ -134,30 +134,21 @@ already complete by then, so `--install-only` still works.
 
 ## One-time setup: plugins
 
-Each daemon must have plugins enabled and each plugin installed once. The daemon keeps the source
-path in its `config.json` and recompiles the plugin from disk on every start, so updates need no
-reinstall. Plugins are unsandboxed code that runs with your user's permissions.
+The update script installs every plugin in [plugins.json](plugins.json) on each daemon home
+(`~/.paseo`, `~/.paseo-telus`, or `PASEO_HOMES`) and turns plugins on where they are off. The
+daemon keeps the source path in its `config.json` and recompiles the plugin from disk on every
+start, so updates need no reinstall. Plugins are unsandboxed code that runs with your user's
+permissions. [current-used-plugins.md](current-used-plugins.md) lists what is installed and why.
 
-Run this once per daemon home (`~/.paseo`, `~/.paseo-telus`) while that Paseo is running. Don't use
-`npm run cli` here: it targets the checkout's dev daemon.
+To run only this step, with the daemon running (npm and git sources need it):
 
 ```bash
-paseo() { npx tsx packages/cli/src/index.js "$@"; }
-# set "pluginsEnabled": true in ~/.paseo/config.json, then:
-paseo reload --home ~/.paseo
-paseo plugin install "$PWD/custom/plugins/shell-command" --home ~/.paseo
-paseo plugin install "$PWD/custom/plugins/workspace-tasks" --home ~/.paseo
-paseo plugin install "$PWD/custom/plugins/warp" --home ~/.paseo
-paseo plugin install "$PWD/custom/plugins/beautiful-chat" --home ~/.paseo
-paseo plugin install "$PWD/custom/plugins/power-workboard" --home ~/.paseo  # the update script also does this
-paseo plugin install "$PWD/custom/plugins/tldr" --home ~/.paseo
-paseo plugin install "$PWD/custom/plugins/btw" --home ~/.paseo
-paseo plugin install "$PWD/custom/plugins/critic" --home ~/.paseo
-paseo plugin install "$PWD/custom/plugins/jev-router" --home ~/.paseo  # personal only: work prompts never go to TypeSafe
-paseo plugin install "$PWD/custom/plugins/delegation" --home ~/.paseo  # and ~/.paseo-telus; off until its composer icon turns it on
-paseo plugin install "$PWD/custom/plugins/later" --home ~/.paseo  # and ~/.paseo-telus; needs the daemon built with the `schedules` client API (CHANGES.md)
-paseo plugin install "$PWD/custom/plugins/token-ledger" --home ~/.paseo  # back up its data before replacing an npm install (CHANGES.md)
-paseo plugin install "$PWD/custom/plugins/skills" --home ~/.paseo  # after `paseo plugin remove skills` if the npm version is installed
+node custom/scripts/sync-plugins.mjs --home ~/.paseo            # add --dry-run to preview
 ```
+
+The script leaves alone any plugin already in the home's `config.json`, enabled or not, so to opt
+out, disable it or remove it. A removed plugin does not come back: the script records what it has
+applied in `<home>/custom-plugins-applied.json`; delete the id from that file to get it again.
+`warp` waits until the Warp web checkout exists.
 
 After editing a plugin's source: `paseo plugin reload <id> --home ~/.paseo`.
