@@ -1208,6 +1208,20 @@ interface TimelineMessageState {
   stopped: boolean;
 }
 
+// CUSTOM(claude-block-dedupe): the SDK sends one assistant message per content block, so a
+// message's second thinking or text block arrives alone after its deltas were already
+// accumulated with the first. Resetting on a non-prefix re-emitted that block in the timeline.
+/** Folds an assistant message snapshot into the text already accumulated from stream deltas. */
+function mergeAbsoluteText(accumulated: string, absolute: string): string {
+  if (absolute.length === 0 || accumulated.includes(absolute)) {
+    return accumulated;
+  }
+  if (absolute.startsWith(accumulated)) {
+    return absolute;
+  }
+  return accumulated + absolute;
+}
+
 class TimelineAssembler {
   private readonly messages = new Map<string, TimelineMessageState>();
   private readonly finalizedMessageIds = new Set<string>();
@@ -1341,18 +1355,8 @@ class TimelineAssembler {
       .map((fragment) => fragment.text)
       .join("");
 
-    if (assistantText.length > 0) {
-      if (!assistantText.startsWith(state.assistantText)) {
-        state.emittedAssistantLength = 0;
-      }
-      state.assistantText = assistantText;
-    }
-    if (reasoningText.length > 0) {
-      if (!reasoningText.startsWith(state.reasoningText)) {
-        state.emittedReasoningLength = 0;
-      }
-      state.reasoningText = reasoningText;
-    }
+    state.assistantText = mergeAbsoluteText(state.assistantText, assistantText);
+    state.reasoningText = mergeAbsoluteText(state.reasoningText, reasoningText);
     return this.emitNewContent(state);
   }
 

@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import { parseReport } from "../server/assistant/report";
+import { assistantSection } from "../server/orchestrator";
 
 const ok = { status: "done", summary: "Added X", filesChanged: ["a.ts"] };
 
@@ -61,4 +62,10 @@ it("an invalid last block does not fall back to an earlier valid one", () => {
     `<report>${JSON.stringify(ok)}</report> <report>oops</report>`,
   );
   expect(report).toBeNull();
+});
+
+it("tells the task's agent to keep its installed dependencies for the review", () => {
+  const section = assistantSection();
+  expect(section).toContain("never delete `node_modules`");
+  expect(section).toContain("Do not symlink another checkout's `node_modules`");
 });

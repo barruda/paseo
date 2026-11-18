@@ -6496,6 +6496,11 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     [board-turn-end](#board-turn-end-a-turn-that-waits-on-a-background-subagent-is-not-the-end)),
     and has stayed idle for 20 s. A task settled as `no-report` whose agent later ends a turn with
     a valid report is delivered as if the report had come on time ("The report arrived late").
+    The same section tells the agent that review and delivery run the checks in its worktree: install
+    missing dependencies there, never delete `node_modules` or builds as cleanup, and never symlink
+    another checkout's `node_modules` (the `node_modules/` ignore rule skips symlinks, and the
+    delivery commit stages every untracked file). An agent with no profile prompt deleted its
+    symlink and the review could not run the tests.
   - **Delivery per project** (Settings > Bruno's Customizations > Projects Assistant, which also has a **Chat** section for
     the assistant chat's model, thinking and mode, used by new conversations): Merge,
     Prepare PR, Tell me (default) or Nothing. **Merge is never a default**; it runs only in a
@@ -6828,6 +6833,26 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   After `plugin reload power-workboard`: the board shows a Scheduled column; New task > When >
   Night puts the card there with a moon chip; At a time shows a clock chip and the card moves to
   Ready to start at that time. Orchestrators tab > Night tasks: set the window and Save.
+
+## claude-block-dedupe: a message's second thinking block shows once
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: show each Claude thinking block once in the timeline`
+- **Why:** The Projects Assistant chat showed the same thinking text twice. The Claude SDK sends
+  one `assistant` message per content block. The timeline assembler had already added that
+  block's text from the stream deltas, appended to the first block's text. The block's own
+  message is not a prefix of that total, so the assembler reset and emitted it again.
+- **What:** `mergeAbsoluteText` in the assembler: a snapshot already in the accumulated text adds
+  nothing, a snapshot that extends it replaces it, and any other snapshot is appended. The same
+  applies to assistant text.
+- **Core files touched:** `packages/server/src/server/agent/providers/claude/agent.ts`
+  (`CUSTOM(claude-block-dedupe)`, `TimelineAssembler.applyAbsoluteFragments`), test in
+  `agent.redesign.test.ts`.
+- **Re-apply:** if upstream still resets `emittedReasoningLength`/`emittedAssistantLength` on a
+  non-prefix snapshot in `applyAbsoluteFragments`, replace both branches with `mergeAbsoluteText`.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent/providers/claude/agent.redesign.test.ts -t "thinking block once" --bail=1)`
+  (in the update script). In the app: a Claude agent with thinking on whose reply has two thinking
+  blocks shows each block once while it streams.
 
 ## worktree-base: a task's worktree starts from the project's base branch
 

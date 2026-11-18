@@ -308,6 +308,8 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.steer-pending.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "pending steers" --bail=1)
   (cd packages/protocol && npx vitest run src/messages.test.ts -t "cancel steer" --bail=1)
+  # A message's second thinking block shows once in the timeline, not twice.
+  (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.redesign.test.ts -t "thinking block once" --bail=1)
   # Delegation: CLAUDE.md / AGENTS.md trimming for Paseo-created subagents.
   (cd packages/server && npx vitest run src/server/agent/providers/claude/claude-md-excludes.test.ts src/server/agent/providers/claude/claude-agents-env.test.ts src/server/agent/providers/codex-agents-md.test.ts --bail=1)
   # Delegation: instructions for Paseo subagents folded into the launch config's appended prompt.
