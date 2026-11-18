@@ -56,9 +56,13 @@ function interleave(lists: AggregatedAgent[][]): AggregatedAgent[] {
 async function searchHosts(
   hosts: readonly AiSearchHost[],
   question: string,
+  includeSubagents: boolean,
 ): Promise<Extract<HistoryAiSearchState, { status: "done" }>> {
   const settled = await Promise.allSettled(
-    hosts.map(async (host) => ({ host, payload: await host.client.searchHistoryWithAi(question) })),
+    hosts.map(async (host) => ({
+      host,
+      payload: await host.client.searchHistoryWithAi(question, undefined, includeSubagents),
+    })),
   );
   const lists: AggregatedAgent[][] = [];
   const outcomes: HistoryAiSearchHostOutcome[] = [];
@@ -107,7 +111,10 @@ export function useHistoryAiSearch(options: {
   serverId: string | null;
   /** CUSTOM(history-search-tabs): an AI History search tab starts with its question submitted. */
   initialQuestion?: string;
+  /** CUSTOM(history-subagents-toggle): off by default; the daemon drops sub-agents from candidates. */
+  includeSubagents?: boolean;
 }): HistoryAiSearchResult {
+  const includeSubagents = options.includeSubagents ?? false;
   const [submitted, setSubmitted] = useState(options.initialQuestion ?? "");
   const clear = useCallback(() => setSubmitted(""), []);
   const daemons = useHosts();
@@ -140,12 +147,12 @@ export function useHistoryAiSearch(options: {
   );
   const question = submitted.trim();
   const query = useFetchQuery({
-    queryKey: ["historyAiSearch", ...serverIds, question],
+    queryKey: ["historyAiSearch", ...serverIds, question, includeSubagents],
     enabled: isSupported && question.length > 0,
     dataShape: "value",
     staleTimeMs: 5 * 60_000,
     retry: false,
-    queryFn: () => searchHosts(hosts, question),
+    queryFn: () => searchHosts(hosts, question, includeSubagents),
   });
   const { refetch } = query;
   const retry = useCallback(() => {

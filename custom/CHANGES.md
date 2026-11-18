@@ -7175,3 +7175,37 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   Tasks mode, click "Projects Reports" in the Desk header: tickets the board touched are listed;
   open one and expand a row. Send a quick message that makes the assistant act: its
   `board_report` summary shows in the status row and as a row on that ticket.
+
+## history-subagents-toggle: History hides delegated sub-agents unless asked
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: History "Include sub-agents" checkbox, off by default`
+- **Why:** Delegated sub-agents (labels carrying `paseo.parent-agent-id`) appeared in History as
+  their own rows, mixed with top-level sessions and drowning them.
+- **What:** An "Include sub-agents" checkbox under the History search field, off by default
+  (English only, state per History screen). Off hides sub-agents on the Active and Archived tabs,
+  in name/content search results, and from the "Ask AI" candidates; on shows them. The app sends
+  `includeSubagents` on `fetch_agent_history_request` (part of the query key, so toggling
+  refetches) and on `history.ai_search.request`. The daemon drops delegated agents only when the
+  field is explicitly `false`, before the cursor and page limit (pages are never sparse) and
+  before the AI candidate collection; CLI, MCP and older clients that omit it keep today's
+  behaviour. A host that predates the field ignores it and still lists sub-agents.
+- **Core files touched:** `packages/protocol/src/messages.ts` (`includeSubagents` on
+  `FetchAgentHistoryRequestMessageSchema` and `HistoryAiSearchRequestSchema`),
+  `packages/server/src/server/session.ts` (`listFetchAgentsEntries`, `handleHistoryAiSearch`,
+  `isDelegatedAgent` import), `packages/client/src/daemon-client.ts` (`fetchAgentHistory`,
+  `searchHistoryWithAi` forward it), `packages/app/src/hooks/use-agent-history.ts`,
+  `hooks/use-history-ai-search.ts`, `history-search-tabs/use-history-search-tabs.ts`,
+  `screens/sessions-screen.tsx`. New file: `components/history-include-subagents.tsx`.
+  Tests: `session.workspaces.test.ts`, `use-agent-history.test.ts`.
+- **Re-apply:** Add the optional boolean to both request schemas and forward it in the client. In
+  `listFetchAgentsEntries`, right after the `archivedOnly` filter, drop
+  `isDelegatedAgent(agent)` when `request.includeSubagents === false`; do the same on the agents
+  list in `handleHistoryAiSearch`. In `useAgentHistory` / `useHistoryAiSearch` take
+  `includeSubagents` (default false), add it to the query keys and requests, and keep a
+  `useState(false)` in `SessionsScreenContent` feeding both plus the checkbox. Grep
+  `CUSTOM(history-subagents-toggle)`.
+- **Verify:** `cd packages/app && npx vitest run src/hooks/use-agent-history.test.ts` and
+  `cd packages/server && npx vitest run src/server/session.workspaces.test.ts -t
+"fetch_agent_history_request"`. Needs a daemon restart: then History lists no sub-agents on either
+  tab until the box is ticked, and Ask AI never cites one while it is off.

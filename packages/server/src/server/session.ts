@@ -91,7 +91,7 @@ import type { DaemonConfigStore } from "./daemon-config-store.js";
 import { releaseWorkspaceServicePortPlan } from "./workspace-service-port-registry.js";
 import { getErrorMessage, getErrorMessageOr } from "@getpaseo/protocol/error-utils";
 import { getAgentStatusPriority } from "@getpaseo/protocol/agent-state-bucket";
-import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
+import { getParentAgentIdFromLabels, isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
 import type { WorkspaceGitRuntimeSnapshot, WorkspaceGitService } from "./workspace-git-service.js";
 import type { ProjectUpdate } from "./workspace-reconciliation-service.js";
 import {
@@ -5754,6 +5754,10 @@ export class Session {
     if (archivedOnly) {
       agents = agents.filter((agent) => Boolean(agent.archivedAt));
     }
+    // CUSTOM(history-subagents-toggle): explicit false only; absent keeps today's behaviour.
+    if (request.type === "fetch_agent_history_request" && request.includeSubagents === false) {
+      agents = agents.filter((agent) => !isDelegatedAgent(agent));
+    }
     const activePlacementsByWorkspaceId =
       scope === "active" ? await this.buildActiveProjectPlacementsByWorkspaceId() : null;
     if (activePlacementsByWorkspaceId) {
@@ -6612,10 +6616,14 @@ export class Session {
     try {
       const question = request.question.trim();
       if (!question) throw new Error("Type a question to search History with AI.");
-      const agents = await this.listAgentPayloads({
+      let agents = await this.listAgentPayloads({
         includeArchived: true,
         includeUnavailablePersisted: true,
       });
+      // CUSTOM(history-subagents-toggle): the AI only sees sessions the list would show.
+      if (request.includeSubagents === false) {
+        agents = agents.filter((agent) => !isDelegatedAgent(agent));
+      }
       const generation = createAgentStructuredTextGeneration({
         agentManager: this.agentManager,
         providerSnapshotManager: this.providerSnapshotManager,

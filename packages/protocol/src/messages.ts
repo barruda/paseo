@@ -1463,6 +1463,9 @@ export const FetchAgentHistoryRequestMessageSchema = z.object({
   search: z.string().optional(),
   // CUSTOM(history-archived-tab): with includeArchived, return only archived agents, before paging.
   archivedOnly: z.boolean().optional(),
+  // CUSTOM(history-subagents-toggle): false hides delegated sub-agents, before paging.
+  // Absent keeps them, so CLI, MCP and older clients are unchanged.
+  includeSubagents: z.boolean().optional(),
   sort: z
     .array(
       z.object({
@@ -1496,6 +1499,8 @@ export const HistoryAiSearchRequestSchema = z.object({
   type: z.literal("history.ai_search.request"),
   requestId: z.string(),
   question: z.string(),
+  // CUSTOM(history-subagents-toggle): false drops delegated sub-agents from the candidates.
+  includeSubagents: z.boolean().optional(),
 });
 
 // CUSTOM(github-account): which gh account the host uses; `configDir` tests a candidate.

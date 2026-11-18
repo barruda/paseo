@@ -12,6 +12,8 @@ import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { AgentList } from "@/components/agent-list";
 import { SearchField } from "@/components/ui/search-field";
 import { HistorySearchSyntax } from "@/components/history-search-syntax";
+// CUSTOM(history-subagents-toggle)
+import { HistoryIncludeSubagents } from "@/components/history-include-subagents";
 // CUSTOM(history-ai-search)
 import { HistoryAiSearchPanel } from "@/components/history-ai-search";
 import { HostFilter } from "@/components/hosts/host-filter";
@@ -114,6 +116,8 @@ export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }
     rememberedHistoryView = next;
     setViewState(next);
   }, []);
+  // CUSTOM(history-subagents-toggle): delegated sub-agents are hidden unless asked for.
+  const [includeSubagents, setIncludeSubagents] = useState(false);
   const {
     agents,
     hasMore,
@@ -130,6 +134,7 @@ export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }
     serverId: historyServerId,
     search,
     view,
+    includeSubagents,
   });
   const isSearching = isSearchSupported && search.length > 0;
   // CUSTOM(history-ai-search): a submitted question replaces the list with the AI's picks.
@@ -138,6 +143,7 @@ export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }
     tab,
     searchInput,
     serverId: historyServerId,
+    includeSubagents,
   });
 
   useEffect(() => {
@@ -230,6 +236,8 @@ export function SessionsScreenContent({ tab }: { tab?: HistorySearchTabBinding }
           ) : null}
         </View>
       ) : null}
+      {/* CUSTOM(history-subagents-toggle) */}
+      <HistoryIncludeSubagents value={includeSubagents} onValueChange={setIncludeSubagents} />
       {/* CUSTOM(history-content-search): the query operators, under the search field. */}
       <HistorySearchSyntax isVisible={isSearchSupported} />
       <HistoryAiSearchPanel aiSearch={aiSearch} initialQuestion={initialAiQuestion}>

@@ -25,10 +25,12 @@ export type AgentHistoryView = "active" | "archived";
 /** Request fields for a view. Active never asks for archived agents; Archived asks for only them. */
 export function historyViewRequestParams(
   view: AgentHistoryView,
-): Pick<FetchAgentHistoryOptions, "filter" | "archivedOnly"> {
+  // CUSTOM(history-subagents-toggle): sent explicitly so the daemon drops sub-agents by default.
+  includeSubagents = false,
+): Pick<FetchAgentHistoryOptions, "filter" | "archivedOnly" | "includeSubagents"> {
   return view === "archived"
-    ? { filter: { includeArchived: true }, archivedOnly: true }
-    : { filter: { includeArchived: false } };
+    ? { filter: { includeArchived: true }, archivedOnly: true, includeSubagents }
+    : { filter: { includeArchived: false }, includeSubagents };
 }
 
 export interface AgentHistoryResult {
@@ -130,9 +132,10 @@ export async function fetchAgentHistoryPage(input: {
   cursor: string | null;
   search?: string;
   view?: AgentHistoryView;
+  includeSubagents?: boolean;
 }): Promise<AgentHistoryPage> {
   const payload = await input.client.fetchAgentHistory({
-    ...historyViewRequestParams(input.view ?? "active"),
+    ...historyViewRequestParams(input.view ?? "active", input.includeSubagents),
     ...(input.search ? { search: input.search } : {}),
     sort: AGENT_HISTORY_SORT,
     page: input.cursor
@@ -194,6 +197,7 @@ export async function fetchAgentHistoryBatch(input: {
   cursorByServerId: AgentHistoryCursorByServerId | null;
   search?: string;
   view?: AgentHistoryView;
+  includeSubagents?: boolean;
 }): Promise<AgentHistoryBatchPage> {
   const cursorByServerId = input.cursorByServerId ?? {};
   const hasCursorFilter = Object.keys(cursorByServerId).length > 0;
@@ -208,6 +212,9 @@ export async function fetchAgentHistoryBatch(input: {
         serverId: host.serverId,
         cursor: cursorByServerId[host.serverId] ?? null,
         ...(input.view ? { view: input.view } : {}),
+        ...(input.includeSubagents !== undefined
+          ? { includeSubagents: input.includeSubagents }
+          : {}),
         ...(input.search ? { search: input.search } : {}),
       });
       return { host, page };
@@ -253,6 +260,7 @@ export function useAgentHistory(options: {
   enabled?: boolean;
   search?: string;
   view?: AgentHistoryView;
+  includeSubagents?: boolean;
 }): AgentHistoryResult {
   const { t } = useTranslation();
   const daemons = useHosts();
@@ -267,6 +275,7 @@ export function useAgentHistory(options: {
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
   }, [options.serverId]);
   const view = options.view ?? "active";
+  const includeSubagents = options.includeSubagents ?? false;
   const enabledOption = options.enabled ?? true;
   // A host the user asked about splits two ways: one this fetch can reach, and
   // one whose sessions will be missing from the answer. Both come out of here,
@@ -327,8 +336,9 @@ export function useAgentHistory(options: {
       ...(serverId ? agentHistoryQueryKey(serverId) : allAgentHistoryQueryKey(targetServerIds)),
       search,
       view,
+      includeSubagents,
     ],
-    [search, serverId, targetServerIds, view],
+    [includeSubagents, search, serverId, targetServerIds, view],
   );
   const serverLabelById = useMemo(
     () => new Map(daemons.map((daemon) => [daemon.serverId, daemon.label])),
@@ -355,6 +365,7 @@ export function useAgentHistory(options: {
         hosts: targetHosts,
         cursorByServerId: pageParam,
         view,
+        includeSubagents,
         ...(search ? { search } : {}),
       });
     },

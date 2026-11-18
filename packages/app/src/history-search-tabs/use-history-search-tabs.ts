@@ -21,6 +21,8 @@ export function useHistorySearchTabs(input: {
   tab: HistorySearchTabBinding | undefined;
   searchInput: string;
   serverId: string | null;
+  /** CUSTOM(history-subagents-toggle) */
+  includeSubagents: boolean;
 }): {
   aiSearch: HistoryAiSearchResult;
   initialAiQuestion: string | undefined;
@@ -31,6 +33,7 @@ export function useHistorySearchTabs(input: {
   const baseAiSearch = useHistoryAiSearch({
     serverId: input.serverId,
     initialQuestion: initialAiQuestion,
+    includeSubagents: input.includeSubagents,
   });
   const openSearch = tab?.openSearch;
   const open = useCallback(
