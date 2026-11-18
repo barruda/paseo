@@ -2392,8 +2392,10 @@ commit, then offers Git push`
   heading and a divider below, whatever the search, project selection or filter. They also stay
   in their usual place in the list. Only the copy you clicked shows as selected; a session
   opened another way (a tab, Ctrl+1..9) selects its list row. A pinned crew member shows on its own, without its children.
-  Pins are task keys (`serverId:agentId`) kept in this app's storage (`custom-task-pins`); the
-  daemon knows nothing about them. A pin whose session is archived or gone is skipped.
+  Pins are task keys (`serverId:agentId`) kept in this app's storage (`custom-task-pins`). The
+  daemon only sees them as agent labels, for auto-archive (see
+  [auto-archive-skip-pinned](#auto-archive-skip-pinned-pinned-sessions-are-never-auto-archived)).
+  A pin whose session is archived or gone is skipped.
 - **Files:** `task-navigation/pinned-tasks-store.ts`, `pinnedTaskNodes` in
   `task-navigation/model.ts`, `togglePin` in `task-navigation/task-row-menu.tsx`, the
   `ListHeaderComponent` in `task-navigation/sidebar.tsx`, `task-navigation/agent-tab-pin.ts`.
@@ -7133,3 +7135,45 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   the update script). In the desktop app, Ctrl+D, speak, tap Enter: the text lands in the box.
   Ctrl+D, speak, hold Enter: after half a second the bar stops recording; release and the message
   is sent. Needs an app build, no daemon restart.
+
+## auto-archive-skip-pinned: pinned sessions are never auto-archived
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: auto-archive skips sessions pinned in the Tasks sidebar`
+- **Why:** [auto-archive-closed](#auto-archive-closed-archive-sessions-that-stay-closed-for-days)
+  and [auto-archive-worktrees](#auto-archive-worktrees-a-worktree-whose-chats-are-all-archived-and-whose-branch-is-merged-is-archived)
+  archived sessions the user pinned on purpose. The pins lived only in the app, so the daemon
+  could not tell.
+- **What:**
+  - Each app reports its [task-pins](#task-pins-pinned-sessions-under-the-tasks-filters) to every
+    host as the agent label `paseo.pinned.<clientId>` (`true`/`false`), the same way
+    `idle-open-tab` reports open tabs. Per-client labels let desktop and phone keep their own pins
+    on one daemon; each host only gets labels for its own agents (Personal and TELUS stay apart).
+    An archived agent still marked `true` gets `false`, so a pinned chat the user archives by hand
+    releases its worktree; unarchiving writes `true` again. Gated on the `autoArchiveSkipPinned`
+    server_info feature.
+  - The daemon skips an agent while any pin label is `true` (also in the pre-archive re-check),
+    and a pinned child keeps its parent out of the cascade. The worktree pass keeps a worktree
+    while any of its chats, archived or not, has a pin label `true`.
+  - Pin-only label patches don't bump `updatedAt`, so pinning doesn't move the session in Tasks.
+    When a patch removes the last pin, `applyLabelPatch` stamps `paseo.unpinned-at` (ISO), and the
+    sweep waits a full threshold from it, unprompted agents included.
+  - Manual archive ignores pins.
+- **Core files touched:** `packages/protocol/src/agent-labels.ts` (label helpers, `stampUnpin`),
+  `packages/protocol/src/messages.ts` (feature flag), `packages/server/src/server/websocket-server.ts`
+  (feature flag), `agent/agent-manager.ts` (`applyLabelPatch`, `isIdleTabLabelOnlyPatch`),
+  `agent/auto-archive-closed/index.ts`, `bootstrap.ts` (facts), `packages/app/src/app/_layout.tsx`
+  (`PinnedTaskLabelsReporter`), `docs/agent-lifecycle.md`. New files:
+  `packages/app/src/task-navigation/pinned-task-labels.ts` (+ test), `use-pinned-task-labels.ts`.
+- **Re-apply:** add the pin label helpers next to `IDLE_TAB_LABEL_PREFIX`, call `stampUnpin` at the
+  end of `applyLabelPatch`, accept the pin prefix in `isIdleTabLabelOnlyPatch`, add `pinned` and
+  `unpinnedAt` to `AutoArchiveRecord` and `pinned` to `AutoArchiveWorkspaceAgent` and fill them from
+  the labels in bootstrap. In the app, copy the idle-open-tab reporter with the pinned-tasks store
+  as input. Grep `CUSTOM(auto-archive-skip-pinned)`.
+- **Verify:** `(cd packages/server && npx vitest run
+src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
+  `(cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "pin label")`,
+  `(cd packages/app && npx vitest run src/task-navigation/pinned-task-labels.test.ts)`. Needs an
+  app build and a daemon restart. Then pin a session and run
+  `paseo inspect <id>`: its labels show `paseo.pinned.<clientId>: true`; unpin and
+  `paseo.unpinned-at` appears.

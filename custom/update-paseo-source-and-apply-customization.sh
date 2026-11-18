@@ -399,6 +399,9 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts src/server/daemon-config-store.test.ts --bail=1)
   # Auto-archive of closed sessions (host setting).
   (cd packages/server && npx vitest run src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)
+  # Auto-archive skips pinned sessions: the app reports pins as agent labels.
+  (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "pin label" --bail=1)
+  (cd packages/app && npx vitest run src/task-navigation/pinned-task-labels.test.ts --bail=1)
   # Search in files (Ctrl+Shift+F); its browser check is in e2e/task-navigation.spec.ts.
   (cd packages/server && npx vitest run src/utils/workspace-content-search.test.ts --bail=1)
   (cd packages/app && npx vitest run src/keyboard/route-shortcut.test.ts src/keyboard/keyboard-shortcuts.test.ts --bail=1)

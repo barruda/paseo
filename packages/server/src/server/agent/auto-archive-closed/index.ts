@@ -20,6 +20,10 @@ export interface AutoArchiveRecord {
   updatedAt: number;
   // CUSTOM(archive-promptless): the user has sent it a message. An unprompted agent is archived as soon as it is quiet.
   prompted: boolean;
+  // CUSTOM(auto-archive-skip-pinned): some client pinned it in the Tasks sidebar; never archived.
+  pinned: boolean;
+  /** CUSTOM(auto-archive-skip-pinned): last unpin; the idle clock restarts there. */
+  unpinnedAt: number | null;
 }
 
 /**
@@ -41,7 +45,13 @@ export function selectAgentsToAutoArchive(
     byParent.set(record.parentAgentId, [...(byParent.get(record.parentAgentId) ?? []), record]);
   }
   const quiet = (record: AutoArchiveRecord) =>
-    !record.live && !record.hasOpenTab && (!record.prompted || nowMs - record.updatedAt > cutoff);
+    !record.live &&
+    !record.hasOpenTab &&
+    // CUSTOM(auto-archive-skip-pinned): an unpinned session gets `days` before it can go, even an
+    // unprompted one, so it doesn't vanish the moment it is unpinned.
+    !record.pinned &&
+    (record.unpinnedAt === null || nowMs - record.unpinnedAt > cutoff) &&
+    (!record.prompted || nowMs - record.updatedAt > cutoff);
   const qualifies = (record: AutoArchiveRecord, seen: Set<string>): boolean => {
     if (seen.has(record.id)) return true;
     seen.add(record.id);
@@ -84,11 +94,14 @@ export interface AutoArchiveWorkspaceAgent {
   archived: boolean;
   live: boolean;
   hasOpenTab: boolean;
+  /** CUSTOM(auto-archive-skip-pinned): pinned by some client, archived or not. */
+  pinned: boolean;
 }
 
 /**
  * CUSTOM(auto-archive-worktrees): candidate Paseo worktrees. Active, daemon-owned, not busy, with
- * at least one agent and every agent archived, closed and unwatched. Git safety is checked apart.
+ * at least one agent and every agent archived, closed, unwatched and unpinned. Git safety is
+ * checked apart.
  */
 export function selectWorktreesToAutoArchive(
   workspaces: readonly AutoArchiveWorkspace[],
@@ -104,7 +117,9 @@ export function selectWorktreesToAutoArchive(
         return false;
       if (workspace.busy) return false;
       const own = byWorkspace.get(workspace.id) ?? [];
-      return own.length > 0 && own.every((a) => a.archived && !a.live && !a.hasOpenTab);
+      return (
+        own.length > 0 && own.every((a) => a.archived && !a.live && !a.hasOpenTab && !a.pinned)
+      );
     })
     .map((workspace) => workspace.id);
 }

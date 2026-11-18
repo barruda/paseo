@@ -36,6 +36,8 @@ import {
 import {
   getIdleOpenTabLabel,
   getOpenAgentTabLabel,
+  getPinnedLabel, // CUSTOM(auto-archive-skip-pinned)
+  getUnpinnedAt, // CUSTOM(auto-archive-skip-pinned)
   PARENT_AGENT_ID_LABEL,
 } from "@getpaseo/protocol/agent-labels";
 import { startAgentRun } from "./agent-prompt.js";
@@ -12765,6 +12767,39 @@ test("an idle-tab label write keeps updatedAt for live and released agents; othe
     await manager.updateAgentMetadata(agent.id, { labels: { role: "worker" } });
     const afterNormal = (await storage.get(agent.id))!;
     expect(Date.parse(afterNormal.updatedAt)).toBeGreaterThan(Date.parse(stored.updatedAt));
+  } finally {
+    await storage.flush();
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
+// CUSTOM(auto-archive-skip-pinned)
+test("a pin label write keeps updatedAt, and removing the last pin stamps the unpin time", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-pin-label-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const manager = new AgentManager({
+    clients: { codex: new TestAgentClient() },
+    registry: storage,
+    logger,
+  });
+  try {
+    const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    const pinLabel = getPinnedLabel("client-a");
+    const liveBefore = manager.getAgent(agent.id)!.updatedAt.getTime();
+    await manager.updateAgentMetadata(agent.id, { labels: { [pinLabel]: "true" } });
+    expect(manager.getAgent(agent.id)!.labels[pinLabel]).toBe("true");
+    expect(manager.getAgent(agent.id)!.updatedAt.getTime()).toBe(liveBefore);
+
+    await manager.closeAgent(agent.id);
+    const stored = (await storage.get(agent.id))!;
+    expect(getUnpinnedAt(stored.labels)).toBeNull();
+    const beforeUnpin = Date.now();
+    await manager.updateAgentMetadata(agent.id, { labels: { [pinLabel]: "false" } });
+    const afterUnpin = (await storage.get(agent.id))!;
+    expect(afterUnpin.updatedAt).toBe(stored.updatedAt);
+    expect(getUnpinnedAt(afterUnpin.labels)).toBeGreaterThanOrEqual(beforeUnpin);
   } finally {
     await storage.flush();
     rmSync(workdir, { recursive: true, force: true });

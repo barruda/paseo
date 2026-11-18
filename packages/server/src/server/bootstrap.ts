@@ -1,6 +1,11 @@
 import { createIdleRuntimeCleanup } from "./agent/idle-runtime-cleanup/index.js";
 // CUSTOM(auto-archive-closed)
-import { getParentAgentIdFromLabels, hasIdleOpenTab } from "@getpaseo/protocol/agent-labels";
+import {
+  getParentAgentIdFromLabels,
+  getUnpinnedAt, // CUSTOM(auto-archive-skip-pinned)
+  hasIdleOpenTab,
+  hasPinnedLabel, // CUSTOM(auto-archive-skip-pinned)
+} from "@getpaseo/protocol/agent-labels";
 import {
   createAutoArchiveClosed,
   selectWorktreesToAutoArchive,
@@ -1776,6 +1781,7 @@ export async function createPaseoDaemon(
           archived: Boolean(record.archivedAt) || record.internal === true,
           live: agentManager.getAgent(record.id) !== null,
           hasOpenTab: hasIdleOpenTab(record.labels),
+          pinned: hasPinnedLabel(record.labels), // CUSTOM(auto-archive-skip-pinned)
         });
       }
     }
@@ -1814,6 +1820,9 @@ export async function createPaseoDaemon(
           record.lastUserMessageAt != null ||
           record.persistence != null ||
           record.runtimeInfo?.sessionId != null,
+        // CUSTOM(auto-archive-skip-pinned)
+        pinned: hasPinnedLabel(record.labels),
+        unpinnedAt: getUnpinnedAt(record.labels),
       })),
     stillEligible: async (id) => {
       const record = await agentStorage.get(id);
@@ -1821,7 +1830,8 @@ export async function createPaseoDaemon(
         record !== null &&
         !record.archivedAt &&
         agentManager.getAgent(id) === null &&
-        !hasIdleOpenTab(record.labels)
+        !hasIdleOpenTab(record.labels) &&
+        !hasPinnedLabel(record.labels) // CUSTOM(auto-archive-skip-pinned)
       );
     },
     archive: async (id) => {

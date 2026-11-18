@@ -217,9 +217,17 @@ An agent that never had a conversation (no `lastUserMessageAt` and no provider s
 archived as soon as it is closed and unwatched, and idle cleanup triggers a sweep a few minutes
 after it releases a runtime.
 
+Pinned sessions are never auto-archived. Pins live in each app, so each client labels the agents it
+pinned with `paseo.pinned.<client-id>` (`true` while pinned, `false` after), and the agent counts as
+pinned while any client's label is `true`. Pin labels don't bump `updatedAt`. When the last pin
+goes, the daemon stamps `paseo.unpinned-at`, and the agent stays for another full threshold from
+that moment, unprompted agents included, so unpinning never archives on the spot. Manual archive
+ignores pins. A label from a client that is gone for good stays `true`; clear it with
+`paseo agent update <id> --label paseo.pinned.<client-id>=false`.
+
 After the agent pass, the same sweep archives Paseo worktrees whose work is done. A worktree
 workspace qualifies when it has at least one agent, every agent is archived (internal agents count
-as archived) and none is live or open in a tab, and no terminal or workspace script is running in
+as archived) and none is live, open in a tab or pinned (archived ones included), and no terminal or workspace script is running in
 it. It is archived only if the directory exists, `git status --porcelain --untracked-files=all` is
 empty (ignored files such as `node_modules` don't count), and `HEAD` is an ancestor of its base
 (the workspace's stored base ref, else the `baseRef` in the worktree metadata). A missing or

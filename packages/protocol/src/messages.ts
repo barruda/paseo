@@ -3926,6 +3926,8 @@ export const ServerInfoStatusPayloadSchema = z
         idleRuntimeCleanupClosedTabSetting: z.boolean().optional(),
         // CUSTOM(auto-archive-closed)
         autoArchiveClosedSetting: z.boolean().optional(),
+        // CUSTOM(auto-archive-skip-pinned): reads the paseo.pinned.<clientId> agent labels.
+        autoArchiveSkipPinned: z.boolean().optional(),
         // COMPAT(terminalRestoreModes): added in v0.1.81, remove gate after 2026-11-23.
         "terminal-restore-modes": z.boolean().optional(),
         // COMPAT(terminalInputModeReplay): added in v0.2.6, remove gate after 2027-02-02.

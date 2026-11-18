@@ -20,6 +20,8 @@ import {
   hasIdleOpenTab,
   IDLE_TAB_LABEL_PREFIX,
   isDelegatedAgent,
+  PINNED_LABEL_PREFIX, // CUSTOM(auto-archive-skip-pinned)
+  stampUnpin, // CUSTOM(auto-archive-skip-pinned)
   isOpenAgentTabLabel,
   PARENT_AGENT_ID_LABEL,
 } from "@getpaseo/protocol/agent-labels";
@@ -662,7 +664,8 @@ function applyLabelPatch(
       nextLabels[key] = value;
     }
   }
-  return nextLabels;
+  // CUSTOM(auto-archive-skip-pinned): the auto-archive idle clock restarts when the last pin goes.
+  return stampUnpin(labels, nextLabels, new Date().toISOString());
 }
 
 function buildExplicitTimelineSeedForRegister(
@@ -736,10 +739,16 @@ function getFirstUserMessageTextFromRows(rows: readonly AgentTimelineRow[]): str
 
 // CUSTOM(idle-closed-tab): the idle-open-tab label changes on every tab click. It must not bump
 // updatedAt: the Tasks sidebar sorts by it and shows its age, and the idle clock follows it.
+// CUSTOM(auto-archive-skip-pinned): pin labels neither; pinning must not move the session.
 function isIdleTabLabelOnlyPatch(patch: { title?: string; labels?: AgentLabelPatch }): boolean {
   if (patch.title || !patch.labels) return false;
   const keys = Object.keys(patch.labels);
-  return keys.length > 0 && keys.every((key) => key.startsWith(IDLE_TAB_LABEL_PREFIX));
+  return (
+    keys.length > 0 &&
+    keys.every(
+      (key) => key.startsWith(IDLE_TAB_LABEL_PREFIX) || key.startsWith(PINNED_LABEL_PREFIX),
+    )
+  );
 }
 
 function shouldDetachFromArchivedParent(

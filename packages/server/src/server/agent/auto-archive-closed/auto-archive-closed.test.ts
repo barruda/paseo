@@ -3,6 +3,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { expect, test, vi } from "vitest";
+// CUSTOM(auto-archive-skip-pinned)
+import { getUnpinnedAt, hasPinnedLabel, stampUnpin } from "@getpaseo/protocol/agent-labels";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import {
   createAutoArchiveClosed,
@@ -26,6 +28,8 @@ function rec(id: string, patch: Partial<AutoArchiveRecord> & { ageDays?: number 
     live: false,
     hasOpenTab: false,
     prompted: true,
+    pinned: false,
+    unpinnedAt: null,
     updatedAt: NOW - ageDays * DAY,
     ...rest,
   } satisfies AutoArchiveRecord;
@@ -179,7 +183,7 @@ function wsAgent(
   workspaceId: string,
   patch: Partial<AutoArchiveWorkspaceAgent> = {},
 ): AutoArchiveWorkspaceAgent {
-  return { workspaceId, archived: true, live: false, hasOpenTab: false, ...patch };
+  return { workspaceId, archived: true, live: false, hasOpenTab: false, pinned: false, ...patch };
 }
 
 test("a worktree whose agents are all archived is selected", () => {
@@ -192,6 +196,13 @@ test("a worktree is kept while an agent is unarchived, live or open in a tab", (
   ).toEqual([]);
   expect(selectWorktreesToAutoArchive([ws("w")], [wsAgent("w", { live: true })])).toEqual([]);
   expect(selectWorktreesToAutoArchive([ws("w")], [wsAgent("w", { hasOpenTab: true })])).toEqual([]);
+});
+
+// CUSTOM(auto-archive-skip-pinned)
+test("a worktree with a pinned chat is kept, even when the chat is archived", () => {
+  expect(
+    selectWorktreesToAutoArchive([ws("w")], [wsAgent("w"), wsAgent("w", { pinned: true })]),
+  ).toEqual([]);
 });
 
 test("a worktree with no agents is never selected", () => {
@@ -345,3 +356,46 @@ test(
     ).toBe(false);
   }),
 );
+
+// CUSTOM(auto-archive-skip-pinned)
+test("a closed pinned agent older than the threshold is kept; an unpinned one is archived", () => {
+  const records = [
+    rec("pinned", { ageDays: 30, pinned: true }),
+    rec("pinned-promptless", { ageDays: 0, prompted: false, pinned: true }),
+    rec("plain", { ageDays: 30 }),
+  ];
+  expect(selectAgentsToAutoArchive(records, NOW, 2)).toEqual(["plain"]);
+});
+
+// CUSTOM(auto-archive-skip-pinned)
+test("a pinned child keeps its parent out of the cascade", () => {
+  const records = [
+    rec("parent", { ageDays: 30 }),
+    rec("child", { ageDays: 30, parentAgentId: "parent", pinned: true }),
+  ];
+  expect(selectAgentsToAutoArchive(records, NOW, 2)).toEqual([]);
+});
+
+// CUSTOM(auto-archive-skip-pinned)
+test("unpinning restarts the clock: an old session is kept for the threshold after the unpin", () => {
+  const justUnpinned = [
+    rec("old", { ageDays: 30, unpinnedAt: NOW }),
+    rec("promptless", { ageDays: 30, prompted: false, unpinnedAt: NOW - 1 * DAY }),
+  ];
+  expect(selectAgentsToAutoArchive(justUnpinned, NOW, 2)).toEqual([]);
+  const unpinnedLongAgo = [rec("old", { ageDays: 30, unpinnedAt: NOW - 2.5 * DAY })];
+  expect(selectAgentsToAutoArchive(unpinnedLongAgo, NOW, 2)).toEqual(["old"]);
+});
+
+// CUSTOM(auto-archive-skip-pinned)
+test("the unpin stamp is set only when the last pin label goes", () => {
+  const iso = new Date(NOW).toISOString();
+  const pinnedTwice = { "paseo.pinned.desktop": "true", "paseo.pinned.phone": "true" };
+  const oneLeft = stampUnpin(pinnedTwice, { ...pinnedTwice, "paseo.pinned.phone": "false" }, iso);
+  expect(hasPinnedLabel(oneLeft)).toBe(true);
+  expect(getUnpinnedAt(oneLeft)).toBeNull();
+  const none = stampUnpin(oneLeft, { ...oneLeft, "paseo.pinned.desktop": "false" }, iso);
+  expect(hasPinnedLabel(none)).toBe(false);
+  expect(getUnpinnedAt(none)).toBe(NOW);
+  expect(stampUnpin({}, { other: "x" }, iso)).toEqual({ other: "x" });
+});

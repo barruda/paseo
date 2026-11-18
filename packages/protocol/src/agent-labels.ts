@@ -25,6 +25,40 @@ export function hasIdleOpenTab(labels: Record<string, unknown> | null | undefine
   );
 }
 
+// CUSTOM(auto-archive-skip-pinned): clients label each agent "true" while they have it pinned in the
+// Tasks sidebar and "false" after. The daemon never auto-archives a pinned agent or its worktree,
+// and stamps UNPINNED_AT_LABEL when the last pin goes so the idle clock restarts from the unpin.
+export const PINNED_LABEL_PREFIX = "paseo.pinned.";
+export const UNPINNED_AT_LABEL = "paseo.unpinned-at";
+
+export function getPinnedLabel(clientId: string): string {
+  return `${PINNED_LABEL_PREFIX}${clientId}`;
+}
+
+export function hasPinnedLabel(labels: Record<string, unknown> | null | undefined): boolean {
+  return Object.entries(labels ?? {}).some(
+    ([label, value]) => label.startsWith(PINNED_LABEL_PREFIX) && value === "true",
+  );
+}
+
+/** Milliseconds of the last unpin, or null when the agent was never unpinned. */
+export function getUnpinnedAt(labels: Record<string, unknown> | null | undefined): number | null {
+  const value = labels?.[UNPINNED_AT_LABEL];
+  if (typeof value !== "string") return null;
+  const ms = Date.parse(value);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+/** `after` with UNPINNED_AT_LABEL set to `nowIso` when this change removed the last pin. */
+export function stampUnpin(
+  before: Record<string, string>,
+  after: Record<string, string>,
+  nowIso: string,
+): Record<string, string> {
+  if (!hasPinnedLabel(before) || hasPinnedLabel(after)) return after;
+  return { ...after, [UNPINNED_AT_LABEL]: nowIso };
+}
+
 export interface AgentLabelSource {
   labels?: Record<string, unknown> | null;
 }

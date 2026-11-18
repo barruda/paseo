@@ -1,6 +1,8 @@
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 // CUSTOM(idle-closed-tab)
 import { useIdleOpenTabLabels } from "@/task-navigation/use-idle-open-tab-labels";
+// CUSTOM(auto-archive-skip-pinned)
+import { usePinnedTaskLabels } from "@/task-navigation/use-pinned-task-labels";
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useIsExplorerSidebarOpen } from "@/workspace-tabs/explorer-sidebar";
 import { ComposerEditingSessionsProvider } from "@/composer/editing-session";
@@ -894,6 +896,12 @@ function IdleOpenTabLabelsReporter() {
   return null;
 }
 
+// CUSTOM(auto-archive-skip-pinned): reports this client's pinned sessions to every host.
+function PinnedTaskLabelsReporter() {
+  usePinnedTaskLabels();
+  return null;
+}
+
 function AppShell() {
   useEffect(() => {
     if (getDesktopHost()) void ensureOsNotificationPermission();
@@ -904,6 +912,7 @@ function AppShell() {
         <OpenProjectListener />
         <AgentNavigationListener />
         <IdleOpenTabLabelsReporter />
+        <PinnedTaskLabelsReporter />
         <AppWithSidebar>
           <WorkspaceRouteNavigationBridge />
           <RootStack />
