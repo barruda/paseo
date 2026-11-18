@@ -340,6 +340,8 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/paseo-worktree-service.test.ts -t "keeps a branch name the caller typed|worktrees folder beside the project" src/utils/project-worktrees-root.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts src/server/plugins/custom-btw-plugin.e2e.test.ts src/server/plugins/custom-critic-plugin.e2e.test.ts src/server/plugins/custom-jev-router-plugin.e2e.test.ts src/server/plugins/custom-delegation-plugin.e2e.test.ts --bail=1)
   (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
+  # Backgrounds plugin (vendored from upstream) with the local image picker.
+  (cd custom/plugins/paseo-background && { [ -d node_modules ] || npm ci --no-audit --no-fund --ignore-scripts; } && npx tsc --noEmit && npm test)
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts --bail=1)
   # Dictation tuning settings.
   (cd packages/server && npx vitest run src/server/speech/dictation-tuning.test.ts src/server/dictation/dictation-stream-manager.test.ts --bail=1)
@@ -532,6 +534,37 @@ for home in $HOMES; do
           c.plugins = { ...c.plugins, "power-workboard": { source: "directory", path: process.argv[2], enabled: true } };
           fs.writeFileSync(process.argv[1], JSON.stringify(c, null, 2) + "\n");
         ' "$config" "$workboard_dir" && echo "  $home: power-workboard added; it starts with the daemon"
+      fi
+      ;;
+  esac
+done
+
+# Backgrounds (paseo-background) is vendored here with a local image picker. Only homes that
+# already have the plugin switch to this copy. "plugin remove" would delete the saved settings
+# (plugin-settings/paseo-background), so the source is switched in config.json instead, which
+# needs the daemon stopped (a running daemon rewrites config.json from memory).
+background_dir="$ROOT/custom/plugins/paseo-background"
+for home in $HOMES; do
+  config="$home/config.json"
+  [[ -f "$config" ]] || continue
+  state="$(node -e '
+    const c = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+    const p = c.plugins?.["paseo-background"];
+    console.log(!p ? "absent" : p.source === "directory" && p.path === process.argv[2] ? "ok" : "other");
+  ' "$config" "$background_dir")"
+  case "$state" in
+    ok) echo "  $home: paseo-background uses the custom copy" ;;
+    absent) ;;
+    other)
+      if npx tsx packages/cli/src/index.js plugin ls --home "$home" >/dev/null 2>&1; then
+        warn "$home: paseo-background still uses the upstream copy. Stop the daemon and run this script again to switch (see custom/CHANGES.md, paseo-background-local-image)."
+      else
+        node -e '
+          const fs = require("fs");
+          const c = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+          c.plugins["paseo-background"] = { ...c.plugins["paseo-background"], source: "directory", path: process.argv[2] };
+          fs.writeFileSync(process.argv[1], JSON.stringify(c, null, 2) + "\n");
+        ' "$config" "$background_dir" && echo "  $home: paseo-background switched to the custom copy; settings kept"
       fi
       ;;
   esac

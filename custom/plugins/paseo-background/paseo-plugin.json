@@ -1,0 +1,9 @@
+{
+  "id": "paseo-background",
+  "name": "Backgrounds",
+  "description": "Choose a background and tune opacity, blur, and placement in desktop and web.",
+  "icon": "assets/icon.png",
+  "requirements": {
+    "paseo": ">=0.12.0"
+  }
+}

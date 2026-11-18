@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="tile" x2=".8" y2="1"><stop stop-color="#173d46"/><stop offset="1" stop-color="#0e242e"/></linearGradient>
+    <linearGradient id="sky" x2=".6" y2="1"><stop stop-color="#a1c4ba"/><stop offset="1" stop-color="#426e73"/></linearGradient>
+    <clipPath id="view"><rect x="32" y="43" width="192" height="170" rx="19"/></clipPath>
+  </defs>
+  <rect width="256" height="256" rx="54" fill="url(#tile)"/>
+  <g clip-path="url(#view)">
+    <rect x="32" y="43" width="192" height="170" fill="url(#sky)"/>
+    <circle cx="174" cy="94" r="23" fill="#ece3b7"/>
+    <path d="M25 158Q75 68 123 143T238 132V226H25Z" fill="#507f80"/>
+    <path d="M25 199Q88 119 150 176T238 152V226H25Z" fill="#24505c"/>
+    <path d="M25 219Q117 169 238 211V226H25Z" fill="#163844"/>
+    <path d="M32 43h45v170H32Z" fill="#122e3b" opacity=".65"/>
+    <g stroke="#d6e5dc" stroke-width="4" stroke-linecap="round" opacity=".8"><path d="M46 68h17M46 83h12M46 98h17"/></g>
+  </g>
+  <rect x="32.5" y="43.5" width="191" height="169" rx="18.5" fill="none" stroke="#d7e7dd" stroke-opacity=".24"/>
+</svg>

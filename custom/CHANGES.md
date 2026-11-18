@@ -6664,3 +6664,28 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
   In the app: open an orchestrator, flip Enabled off (Run greys out, pill says Disabled), switch
   through the sub-tabs, edit a field and Save.
+
+## paseo-background-local-image: Backgrounds plugin vendored, with a file picker
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Backgrounds plugin vendored, with a local image picker`
+- **Why:** The upstream Backgrounds plugin only takes a preset or an HTTPS image URL. We want to
+  pick an image from this computer.
+- **What:** `custom/plugins/paseo-background/` is upstream v0.1.5 (commit 77cf7a0) with a third
+  source kind, `file`. "Choose local image…" opens a file dialog (web/desktop), shrinks big images
+  to 2560 px JPEG, saves them on the daemon host under `<home>/plugin-data/paseo-background/images/`
+  and previews them like a preset; Save keeps them. The plugin id is unchanged, so saved settings
+  carry over. The update script switches a home's existing `paseo-background` from the git
+  checkout to this folder (only on homes that already have it).
+- **Core files touched:** `.oxlintrc.json` and `.oxfmtrc.json` (ignore the folder),
+  `custom/update-paseo-source-and-apply-customization.sh` (tests + source switch).
+- **Re-apply:** to take a newer upstream, copy its tracked files over the folder (skip
+  `verification/`, `scripts/`, `.github/`, screenshots), then re-add what is marked
+  `CUSTOM(background-local-image)`: `shared/images.ts`, `shared/file-cache.ts`, `shared/rpc.ts`,
+  `server/images.ts`, the `file` kind and `sourceUri` branch in `shared/settings.ts`, the RPC
+  handlers in `index.server.ts`, the loader in `client/controller.ts`, the empty-uri case and
+  `pickImage` in `client/web.ts`, and the button in `client/settings-screen.tsx`.
+  Run `npm install --ignore-scripts` in the folder.
+- **Verify:** `(cd custom/plugins/paseo-background && npx tsc --noEmit && npm test)`. In the app:
+  Settings > Appearance > Backgrounds > Choose local image…, pick a photo, see the preview, Save,
+  reload the app and the background is still there.

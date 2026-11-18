@@ -1,0 +1,43 @@
+{
+  "name": "paseo-background-plugins",
+  "version": "0.1.5",
+  "description": "Choose backgrounds and adjust image and surface opacity in Paseo desktop and web.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MinLeeV5/paseo-background-plugins.git"
+  },
+  "files": [
+    "paseo-plugin.json",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/",
+    "shared/",
+    "OVERVIEW.md",
+    "OVERVIEW.zh-CN.md",
+    "README.md",
+    "LICENSE",
+    "server/",
+    "assets/icon.png"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "check": "npm run typecheck && npm test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.13.0-beta.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "~19.2.0",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "tsx": "^4.20.0",
+    "typescript": "5.9.3",
+    "zod": "^4.4.3",
+    "jsdom": "^26.1.0"
+  }
+}
