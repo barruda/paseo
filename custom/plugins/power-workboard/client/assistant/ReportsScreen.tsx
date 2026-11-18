@@ -19,10 +19,19 @@ import {
   assistantReportsTaskRpc,
   assistantReportsTasksRpc,
 } from "../../shared/assistant-rpc";
-import { projectColor } from "../colors";
+import { groupColorValue, projectColor } from "../colors";
 import { usePaseoLocale } from "../paseo-language";
 import { relativeTime } from "./conversations-format";
-import { filterReportTasks, reportProjects } from "./reports-format";
+import {
+  defaultHiddenColumns,
+  filterReportTasks,
+  reportProjects,
+  toggleHiddenColumn,
+} from "./reports-format";
+import {
+  loadReportHiddenColumns,
+  saveReportHiddenColumns,
+} from "./reports-preferences";
 import { reportsStrings } from "./reports-strings";
 import { ReportContent } from "./reports-timeline";
 
@@ -46,19 +55,42 @@ export function ReportsScreen(props: PluginSurfaceProps) {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showContent, setShowContent] = useState(false);
-
-  const all = useMemo(() => tasks.data?.tasks ?? [], [tasks.data]);
-  const projects = useMemo(() => reportProjects(all), [all]);
-  const filtered = useMemo(
-    () => filterReportTasks(all, search, projectId),
-    [all, search, projectId],
+  // The viewer's saved status filter; null until they toggle a status, so the default applies.
+  const [savedHidden, setSavedHidden] = useState<string[] | null>(() =>
+    loadReportHiddenColumns(hostId),
   );
 
-  // Wide layouts always show a ticket: the newest one until the user picks another.
+  const all = useMemo(() => tasks.data?.tasks ?? [], [tasks.data]);
+  const columns = useMemo(() => tasks.data?.columns ?? [], [tasks.data]);
+  const hiddenColumns = useMemo(
+    () => savedHidden ?? defaultHiddenColumns(columns),
+    [savedHidden, columns],
+  );
+  const projects = useMemo(() => reportProjects(all), [all]);
+  const filtered = useMemo(
+    () => filterReportTasks(all, search, projectId, hiddenColumns),
+    [all, search, projectId, hiddenColumns],
+  );
+  const hiddenByStatus = useMemo(
+    () =>
+      filtered.length === 0 &&
+      filterReportTasks(all, search, projectId).length > 0,
+    [filtered, all, search, projectId],
+  );
+  const toggleColumn = (columnId: string) => {
+    const next = toggleHiddenColumn(hiddenColumns, columnId);
+    setSavedHidden(next);
+    saveReportHiddenColumns(hostId, next);
+  };
+
+  // Wide layouts always show a ticket: the newest visible one until the user picks another, and
+  // again when the filters hide the one that was selected.
   useEffect(() => {
-    if (compact || selectedId || all.length === 0) return;
-    setSelectedId(all[0].taskId);
-  }, [compact, selectedId, all]);
+    if (compact || filtered.length === 0) return;
+    if (selectedId && filtered.some((task) => task.taskId === selectedId))
+      return;
+    setSelectedId(filtered[0].taskId);
+  }, [compact, selectedId, filtered]);
 
   const timeline = useQuery({
     queryKey: ["power-workboard", "assistant-report", hostId, selectedId],
@@ -122,6 +154,24 @@ export function ReportsScreen(props: PluginSurfaceProps) {
           ))}
         </View>
       ) : null}
+      {columns.length > 0 ? (
+        <View style={styles.chips} accessibilityLabel={t.statusFilter}>
+          {columns.map((column) => {
+            const shown = !hiddenColumns.includes(column.id);
+            return (
+              <Chip
+                key={column.id}
+                label={column.name}
+                color={groupColorValue(column.color, props.theme)}
+                active={shown}
+                dimmed={!shown}
+                onPress={() => toggleColumn(column.id)}
+                theme={props.theme}
+              />
+            );
+          })}
+        </View>
+      ) : null}
       <ScrollView contentContainerStyle={styles.list}>
         {tasks.isError && !tasks.data ? (
           <Text style={[styles.note, { color: c.statusDanger }]}>
@@ -137,7 +187,7 @@ export function ReportsScreen(props: PluginSurfaceProps) {
           </Text>
         ) : filtered.length === 0 ? (
           <Text style={[styles.note, { color: c.foregroundMuted }]}>
-            {t.noMatches}
+            {hiddenByStatus ? t.statusFilterHidesAll : t.noMatches}
           </Text>
         ) : (
           filtered.map((task) => {
@@ -237,6 +287,8 @@ function Chip(props: {
   label: string;
   color: string;
   active: boolean;
+  /** An unchecked toggle chip: drawn faded. */
+  dimmed?: boolean;
   onPress(): void;
   theme: PluginSurfaceProps["theme"];
 }) {
@@ -250,6 +302,7 @@ function Chip(props: {
         styles.chip,
         { borderColor: props.color },
         props.active && { backgroundColor: c.surface2 },
+        props.dimmed && styles.chipDimmed,
       ]}
     >
       <Text style={[styles.chipText, { color: props.color }]} numberOfLines={1}>
@@ -290,6 +343,7 @@ const styles = StyleSheet.create({
     paddingVertical: 3,
   },
   chipText: { fontSize: 11, fontWeight: "600" },
+  chipDimmed: { opacity: 0.5 },
   list: { paddingBottom: 16 },
   row: { paddingHorizontal: 10, paddingVertical: 8, gap: 2 },
   name: { fontSize: 13, fontWeight: "500" },

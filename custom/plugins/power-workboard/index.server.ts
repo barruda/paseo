@@ -44,6 +44,7 @@ import {
 // CUSTOM(assistant-reports)
 import {
   ReportStore,
+  buildReportColumns,
   buildReportTasks,
   buildReportTimeline,
   defaultReportsDirectory,
@@ -242,7 +243,10 @@ export default function contribute(server: PluginServerContext) {
       history.since(null),
       reports.since(null),
     ]);
-    return { tasks: buildReportTasks(source, events, entries) };
+    return {
+      tasks: buildReportTasks(source, events, entries),
+      columns: buildReportColumns(source),
+    };
   });
   server.handle(assistantReportsTaskRpc, async (input) => {
     const source = ready().assistantSource();

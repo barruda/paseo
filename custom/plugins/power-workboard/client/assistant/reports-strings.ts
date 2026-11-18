@@ -12,6 +12,9 @@ const en = {
   noTickets:
     "No tickets yet. Tickets appear here once the assistant or the board acts on them.",
   noMatches: "No ticket matches your search.",
+  statusFilterHidesAll:
+    "The status filter hides every ticket. Turn on more statuses above.",
+  statusFilter: "Show status",
   nothingSelected: "Select a ticket to read its report.",
   loading: "Loading…",
   loadFailed: "Could not load the reports.",
@@ -85,6 +88,9 @@ const pt: ReportsStrings = {
   noTickets:
     "Nenhum ticket ainda. Os tickets aparecem aqui quando o assistente ou o quadro agirem sobre eles.",
   noMatches: "Nenhum ticket corresponde à busca.",
+  statusFilterHidesAll:
+    "O filtro de status escondeu todos os tickets. Marque mais status acima.",
+  statusFilter: "Mostrar status",
   nothingSelected: "Selecione um ticket para ler o relatório.",
   loading: "Carregando…",
   loadFailed: "Não foi possível carregar os relatórios.",

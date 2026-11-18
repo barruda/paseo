@@ -14,6 +14,7 @@ import {
   ATTACH_AFTER_MS,
   ATTACH_BEFORE_MS,
   ReportStore,
+  buildReportColumns,
   buildReportTasks,
   buildReportTimeline,
   defaultReportsDirectory,
@@ -326,6 +327,7 @@ const source = (tasks: Record<string, unknown>[]): ViewSource => ({
         { id: "ready", kind: "ready", name: "Ready to start", label: "r" },
         { id: "review", kind: "review", name: null, label: "pwb:review" },
       ],
+      groupOrder: [],
     },
     cards: tasks.map((t) => ({
       id: t.id,
@@ -370,6 +372,7 @@ describe("Reports views", () => {
         projectId: "p1",
         projectName: "Proj",
         column: "pwb:review",
+        columnId: "review",
         lastAt: at(20),
         lastSummary: "Reviewed and merged.",
         items: 2,
@@ -378,6 +381,7 @@ describe("Reports views", () => {
       expect.objectContaining({
         taskId: "t2",
         column: "Ready to start",
+        columnId: "ready",
         assistantItems: 0,
       }),
       expect.objectContaining({
@@ -385,7 +389,17 @@ describe("Reports views", () => {
         title: "Old task",
         projectName: "Old",
         column: null,
+        columnId: null,
       }),
+    ]);
+  });
+
+  it("lists the board's columns in board order, with name, kind and color", () => {
+    const view = source([task("t1")]);
+    view.board.settings.groupOrder = ["review", "ready"];
+    expect(buildReportColumns(view)).toEqual([
+      { id: "review", name: "pwb:review", kind: "review", color: "orange" },
+      { id: "ready", name: "Ready to start", kind: "ready", color: "violet" },
     ]);
   });
 

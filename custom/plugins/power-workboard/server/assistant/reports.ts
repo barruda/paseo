@@ -10,12 +10,14 @@ import {
   REPORT_REPLY_MAX,
   assistantReportSchema,
   type AssistantReport,
+  type ReportColumn,
   type ReportEvent,
   type ReportOrchestrator,
   type ReportTask,
   type ReportTimeline,
   type ReportTimelineItem,
 } from "../../shared/assistant-reports";
+import { groupColorKey, orderedGroups } from "../../shared/model";
 import { DayJsonlStore } from "./history";
 import { parseReport } from "./report";
 import type { ViewSource } from "./views";
@@ -204,6 +206,7 @@ interface TaskInfo {
   projectId: string | null;
   projectName: string;
   column: string | null;
+  columnId: string | null;
   description: string;
 }
 
@@ -235,6 +238,7 @@ function taskInfo(
     projectId: projectId ?? null,
     projectName,
     column: card ? (group ? (group.name ?? group.label) : card.stage) : null,
+    columnId: card ? card.stage : null,
     description: task?.description ?? "",
   };
 }
@@ -255,6 +259,16 @@ function recordsOf(
   reports: readonly AssistantReport[],
 ) {
   return [...events, ...reports].sort(oldestFirst);
+}
+
+/** The board's columns in board order, for the status filter. */
+export function buildReportColumns(source: ViewSource): ReportColumn[] {
+  return orderedGroups(source.board.settings).map((group) => ({
+    id: group.id,
+    name: group.name ?? group.label,
+    kind: group.kind,
+    color: groupColorKey(group),
+  }));
 }
 
 /** Every ticket with at least one item, newest action first. */
@@ -284,6 +298,7 @@ export function buildReportTasks(
       projectId: info.projectId,
       projectName: info.projectName,
       column: info.column,
+      columnId: info.columnId,
       lastAt: last.at,
       lastSummary: last.summary,
       items: items.length,
@@ -312,6 +327,10 @@ export function buildReportTimeline(
     source.data.assistant.deliveries[taskId],
   );
   if (!items.length) return null;
-  const info = taskInfo(source, taskId, recordsOf(taskEvents, taskReports));
+  const { columnId: _columnId, ...info } = taskInfo(
+    source,
+    taskId,
+    recordsOf(taskEvents, taskReports),
+  );
   return { task: { taskId, ...info }, items };
 }

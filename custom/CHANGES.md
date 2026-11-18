@@ -7163,7 +7163,13 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     `reports-format.ts`, `reports-strings.ts`) over RPCs `workboard.assistant.reports.tasks` and
     `workboard.assistant.reports.task`. Sidebar of tickets (search, project chips), header with what
     was asked, one collapsed toggle per action, an inner toggle for the agent interaction with an
-    Open conversation link. Compact layouts show the list, then the ticket. Strings in en and
+    Open conversation link. Compact layouts show the list, then the ticket.
+    A row of status chips (one per board column, name and color from the board settings, sent by
+    the tasks RPC as `columns`) filters the list with the project chips and the search. Backlog
+    (the `todo` kind) starts off; the viewer's choice is saved in `localStorage`
+    (`power-workboard:reports-hidden-columns:<host>`, `client/assistant/reports-preferences.ts`).
+    Tickets off the board always show. Wide layouts move the selection to the first visible
+    ticket when the filters hide the selected one. Strings in en and
     pt-BR: `client/paseo-language.ts` gets `readPaseoLocale`/`usePaseoLocale`, which tell pt-BR
     apart (the rest of the plugin still maps it to en).
   - **Instructions:** `ASSISTANT_ROLE` (the profile seed), `CHAT_INSTRUCTIONS` and the tool
@@ -7178,7 +7184,8 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts --bail=1)`, both
   already in the update script. Needs a plugin reload and an app build and install (the chip). In
   Tasks mode, click "Projects Reports" in the Desk header: tickets the board touched are listed;
-  open one and expand a row. Send a quick message that makes the assistant act: its
+  open one and expand a row. Backlog tickets are hidden until you turn on the Backlog chip, and
+  the chips keep their state after a reload. Send a quick message that makes the assistant act: its
   `board_report` summary shows in the status row and as a row on that ticket.
 
 ## hidden-board-agents: board agents stay out of the sidebar and never notify

@@ -1,19 +1,26 @@
 // CUSTOM(assistant-reports): pure helpers of the Projects Reports page.
 import type {
+  ReportColumn,
   ReportTask,
   ReportTimelineItem,
 } from "../../shared/assistant-reports";
 
 export type Tone = "success" | "warning" | "danger" | "accent" | "muted";
 
-/** Case-insensitive match on title and project name; `projectId` null shows every project. */
+/**
+ * Case-insensitive match on title and project name; `projectId` null shows every project. A task
+ * in one of `hiddenColumns` is left out; a task off the board (no column) always passes.
+ */
 export function filterReportTasks(
   tasks: ReportTask[],
   query: string,
   projectId: string | null,
+  hiddenColumns: readonly string[] = [],
 ): ReportTask[] {
   const q = query.trim().toLowerCase();
+  const hidden = new Set(hiddenColumns);
   return tasks.filter((task) => {
+    if (task.columnId !== null && hidden.has(task.columnId)) return false;
     if (
       projectId !== null &&
       (task.projectId ?? task.projectName) !== projectId
@@ -25,6 +32,25 @@ export function filterReportTasks(
       task.projectName.toLowerCase().includes(q)
     );
   });
+}
+
+/** The status filter's default: every column on except the Backlog (To do) ones. */
+export function defaultHiddenColumns(
+  columns: readonly ReportColumn[],
+): string[] {
+  return columns
+    .filter((column) => column.kind === "todo")
+    .map((column) => column.id);
+}
+
+/** `hidden` with `columnId` switched on or off. */
+export function toggleHiddenColumn(
+  hidden: readonly string[],
+  columnId: string,
+): string[] {
+  return hidden.includes(columnId)
+    ? hidden.filter((id) => id !== columnId)
+    : [...hidden, columnId];
 }
 
 /** Distinct projects by name, for the filter chips. The id is the name when the project has none. */
