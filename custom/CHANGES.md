@@ -6527,7 +6527,13 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     the host needs **Enable Paseo tools** on, or the agent finds no board tools). The tools return
     plain text only: Claude Code shows the model only `structuredContent` when a result has it,
     which hid the overview's projects and orchestrators. Projects and orchestrators can be given
-    by id or name; an unknown one is an error that lists the valid ones. Its chip calls an RPC and then
+    by id or name; an unknown one is an error that lists the valid ones. `board_get_task` also shows
+    the task's worktree (path, branch, base, commits ahead, diffstat with new untracked files) and
+    the read-only `board_task_diff` returns its diff, cut at `maxBytes` with a notice, so the
+    assistant reviews a task without guessing paths. The base is the project's `baseBranch` policy,
+    else the `baseRef` the daemon stored in `<git dir>/paseo/worktree.json`, the same order
+    `checkout_merge` uses. The git calls run with `GIT_OPTIONAL_LOCKS=0` and never stage (no
+    `add -N`), so a review never touches the worktree or its index. Its chip calls an RPC and then
     `navigation.openAgent`, which opens the agent as a Desk tab and returns from the chip to the
     Desk (the Desk's navigation wrapper deselects the chip even if that tab was already active).
   - **Tasks mode only:** the pages are chips in the Desk header next to Power Workboard (see
@@ -6537,8 +6543,8 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Files:** plugin `custom/plugins/power-workboard/`: contract `shared/assistant.ts` and
   `shared/assistant-rpc.ts` (`workboard.assistant.*` RPCs), engine in `server/workboard.ts`
   (`assistantFinished`, `advance`, actions) with `server/assistant/{report,delivery}.ts`, read side
-  `server/assistant/{history,views}.ts`, pages in `client/assistant/`, tests
-  `tests/assistant-*.test.ts`. App: `screens/settings/bruno-customizations/projects-assistant-page.tsx`
+  `server/assistant/{history,views}.ts`, chat tools `server/assistant/{chat,task-git}.ts`, pages
+  in `client/assistant/`, tests `tests/assistant-*.test.ts`. App: `screens/settings/bruno-customizations/projects-assistant-page.tsx`
   and `projects-assistant-model.ts` (zod mirror of the plugin's settings schemas; keep in step).
 - **Core files touched:** `screens/settings-screen.tsx` (`CUSTOM(projects-assistant)`: sidebar
   item and route; the Bruno page switch moved into `renderBrunoSection` to stay under the

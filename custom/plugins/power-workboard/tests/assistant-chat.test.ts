@@ -1,4 +1,5 @@
-import { mkdtempSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -10,7 +11,7 @@ import {
   attachChatTools,
   chatTools,
 } from "../server/assistant/chat";
-import { fixture } from "./fixtures";
+import { fixture, workspace } from "./fixtures";
 
 const project = {
   id: "p",
@@ -145,6 +146,7 @@ it("the session_open hook attaches the tools only to the chat agent's own sessio
       "board_overview",
       "board_list_tasks",
       "board_get_task",
+      "board_task_diff",
       "board_create_task",
       "board_update_task",
       "board_move_task",
@@ -395,6 +397,178 @@ it("project and orchestrator references resolve by id or name; unknown ones list
     expect(
       (await c.run("board_list_tasks", { projectId: "nope" })).isError,
     ).toBe(true);
+  } finally {
+    c.board.dispose();
+  }
+});
+
+it("board_overview counts only the tasks that are not archived, like board_list_tasks", async () => {
+  const c = await chat();
+  try {
+    const kept = await create(c, { title: "Kept" });
+    const gone = await create(c, { title: "Gone" });
+    expect(gone.column).toBe(kept.column);
+    await c.store.update((data) => {
+      data.tasks.find((t) => t.id === gone.taskId)!.archived = {
+        operationId: "op",
+        status: "archived",
+        kind: "draft",
+        stage: gone.column,
+        group: null,
+        startedAt: "2026-09-23T00:00:00Z",
+        archivedAt: "2026-09-23T00:00:00Z",
+        lastConversationAt: null,
+        detail: "Draft archived",
+      };
+    });
+    const overview = (await c.run("board_overview")).text!;
+    expect(overview).toMatch(new RegExp(`- ${kept.column} \\|.*\\| 1 tasks`));
+    const listed = (await c.run("board_list_tasks", { column: kept.column }))
+      .text!;
+    expect(listed).toContain(kept.taskId);
+    expect(listed).not.toContain(gone.taskId);
+  } finally {
+    c.board.dispose();
+  }
+});
+
+/** A repo on `task`, one commit ahead of `main`, with an uncommitted edit and a new file. */
+function taskRepo() {
+  const root = mkdtempSync(path.join(os.tmpdir(), "pwb-task-git-"));
+  const git = (...args: string[]) =>
+    execFileSync("git", ["-C", root, ...args], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "t",
+        GIT_AUTHOR_EMAIL: "t@t",
+        GIT_COMMITTER_NAME: "t",
+        GIT_COMMITTER_EMAIL: "t@t",
+      },
+    });
+  git("init", "-q", "-b", "main");
+  writeFileSync(path.join(root, "a.txt"), "one\n");
+  writeFileSync(path.join(root, "b.txt"), "two\n");
+  git("add", "a.txt", "b.txt");
+  git("commit", "-q", "-m", "base");
+  git("checkout", "-q", "-b", "task");
+  writeFileSync(path.join(root, "a.txt"), "one\nmore\n");
+  git("commit", "-q", "-am", "task: change a");
+  writeFileSync(path.join(root, "b.txt"), "two\nedited\n");
+  writeFileSync(
+    path.join(root, "new.txt"),
+    Array.from({ length: 400 }, (_, i) => `new line ${i}`).join("\n") + "\n",
+  );
+  // What the daemon writes when it creates a worktree.
+  mkdirSync(path.join(root, ".git", "paseo"));
+  writeFileSync(
+    path.join(root, ".git", "paseo", "worktree.json"),
+    JSON.stringify({
+      version: 2,
+      baseRefName: "main",
+      baseRef: "refs/heads/main",
+    }),
+  );
+  return { root, git };
+}
+
+async function taskWithWorktree(c: Awaited<ReturnType<typeof chat>>) {
+  const repo = taskRepo();
+  const { taskId } = await create(c);
+  c.inventory.workspaces.push({
+    ...workspace("wgit"),
+    workspaceDirectory: repo.root,
+    projectKind: "git",
+    workspaceKind: "worktree",
+  });
+  await c.store.update((data) => {
+    data.tasks.find((t) => t.id === taskId)!.workspaceId = "wgit";
+  });
+  await c.board.refresh();
+  return { taskId, repo };
+}
+
+it("board_get_task shows the worktree, branch, base, commits ahead and the diffstat", async () => {
+  const c = await chat();
+  try {
+    const bare = await create(c, { title: "No workspace" });
+    expect((await c.run("board_get_task", bare)).text).toContain(
+      "Worktree: none",
+    );
+    const { taskId, repo } = await taskWithWorktree(c);
+    const info = (await c.run("board_get_task", { taskId })).text!;
+    expect(info).toContain(`Worktree: ${repo.root}`);
+    expect(info).toContain("Branch: task");
+    expect(info).toContain("Base: main (worktree metadata)");
+    expect(info).toMatch(
+      /Commits ahead of base: 1 \(behind: 0\)\n- \w+ task: change a/,
+    );
+    expect(info).toContain("Uncommitted: 2 files");
+    expect(info).toContain("- a.txt | +1 -0");
+    expect(info).toContain("- b.txt | +1 -0");
+    expect(info).toContain("- new.txt | +400 -0 (new, untracked)");
+
+    // The project's base branch policy wins over the worktree's own base.
+    repo.git("branch", "release", "task~1");
+    await c.store.update((data) => {
+      data.assistant.settings.projects.p = {
+        ...(data.assistant.settings.projects.p ?? {
+          action: data.assistant.settings.defaultAction,
+        }),
+        baseBranch: "release",
+      } as any;
+    });
+    expect((await c.run("board_get_task", { taskId })).text).toContain(
+      "Base: release (project policy)",
+    );
+  } finally {
+    c.board.dispose();
+  }
+});
+
+it("board_task_diff returns the diff against the base, truncates with a notice and never touches the worktree", async () => {
+  const c = await chat();
+  try {
+    const bare = await create(c, { title: "No workspace" });
+    expect((await c.run("board_task_diff", bare)).text).toContain(
+      "Worktree: none",
+    );
+    const { taskId, repo } = await taskWithWorktree(c);
+    const indexFile = path.join(repo.root, ".git", "index");
+    const before = {
+      status: repo.git("status", "--porcelain=v1", "--untracked-files=all"),
+      head: repo.git("rev-parse", "HEAD"),
+      index: readFileSync(indexFile),
+    };
+
+    const full = (await c.run("board_task_diff", { taskId, maxBytes: 100000 }))
+      .text!;
+    expect(full).toContain("Branch: task");
+    expect(full).toContain("+++ b/a.txt");
+    expect(full).toContain("+more");
+    expect(full).toContain("+edited");
+    expect(full).toContain("+++ b/new.txt");
+    expect(full).toContain("+new line 399");
+    expect(full).not.toContain("[Truncated");
+
+    const cut = (await c.run("board_task_diff", { taskId, maxBytes: 1000 }))
+      .text!;
+    expect(cut).toContain("[Truncated: showed ");
+    expect(cut).toContain("with path set to one file or folder");
+    expect(cut).not.toContain("+new line 399");
+
+    const one = (await c.run("board_task_diff", { taskId, path: "b.txt" }))
+      .text!;
+    expect(one).toContain("Path filter: b.txt");
+    expect(one).toContain("+edited");
+    expect(one).not.toContain("+++ b/a.txt");
+    expect(one).not.toContain("new.txt");
+
+    expect(repo.git("status", "--porcelain=v1", "--untracked-files=all")).toBe(
+      before.status,
+    );
+    expect(repo.git("rev-parse", "HEAD")).toBe(before.head);
+    expect(readFileSync(indexFile).equals(before.index)).toBe(true);
   } finally {
     c.board.dispose();
   }

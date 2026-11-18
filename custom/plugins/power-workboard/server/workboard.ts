@@ -2716,6 +2716,24 @@ export class Workboard {
   assistantTimeline(agentId: string) {
     return this.host.timeline(agentId);
   }
+  /**
+   * The task's workspace for the chat's read-only git views: its directory and the base branch
+   * the delivery policy would merge into. Undefined when the task has no workspace or the board
+   * no longer sees it.
+   */
+  assistantTaskCheckout(
+    taskId: string,
+  ): { directory: string; policyBase: string | null } | undefined {
+    const task = this.store.current.tasks.find((t) => t.id === taskId);
+    const workspace = task?.workspaceId
+      ? this.inventory.workspaces.find((w) => w.id === task.workspaceId)
+      : undefined;
+    if (!task || !workspace) return undefined;
+    return {
+      directory: workspace.workspaceDirectory,
+      policyBase: this.policy(this.projectIdOf(task)).baseBranch.trim() || null,
+    };
+  }
   // End CUSTOM(projects-assistant) -------------------------------------------------------------
   /**
    * CUSTOM(board-turn-end): the agent ended another turn after the task settled as no-report

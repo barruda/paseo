@@ -16,6 +16,13 @@ import type {
 } from "../../shared/assistant";
 import type { HistoryQuery } from "./history";
 import { buildOverview, readConversation } from "./views";
+import {
+  DEFAULT_DIFF_BYTES,
+  MAX_DIFF_BYTES,
+  describeGitState,
+  taskDiff,
+  taskGitState,
+} from "./task-git";
 import type { Workboard } from "../workboard";
 
 export const CHAT_LABEL = "pwb/assistant-chat";
@@ -39,7 +46,7 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS =
-  "Reply with one short line saying you're ready. Your board tools are board_overview, board_list_tasks, board_get_task, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history and board_read_agent.";
+  "Reply with one short line saying you're ready. Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history and board_read_agent.";
 
 /** `<PASEO_HOME>/plugin-data/power-workboard/assistant-chat`, next to the history folder. */
 export function defaultChatDirectory(
@@ -226,6 +233,22 @@ export function chatTools(
     );
   };
 
+  const checkout = (taskId: string) => {
+    card(taskId);
+    return board().assistantTaskCheckout(taskId);
+  };
+  const NO_WORKTREE =
+    "Worktree: none. This task has no workspace yet (or it was archived), so there is nothing to diff.";
+  const worktreeSection = async (taskId: string) => {
+    const found = checkout(taskId);
+    if (!found) return NO_WORKTREE;
+    try {
+      return describeGitState(await taskGitState(found));
+    } catch (error) {
+      return `Worktree: ${found.directory}\nGit: unavailable (${error instanceof Error ? error.message : String(error)})`;
+    }
+  };
+
   return [
     define({
       name: "board_overview",
@@ -257,7 +280,7 @@ export function chatTools(
           `Columns:\n${groups
             .map(
               (g) =>
-                `- ${g.id} | ${groupName(g)} | ${g.kind} | ${snapshot.cards.filter((c) => c.stage === g.id).length} tasks`,
+                `- ${g.id} | ${groupName(g)} | ${g.kind} | ${snapshot.cards.filter((c) => !c.archived && c.stage === g.id).length} tasks`,
             )
             .join("\n")}`,
           `Needs you:\n${needsYou.map((n) => `- ${n.taskId} | ${n.title} | project: ${n.projectName || n.projectId || "-"} | orchestrator: ${n.orchestratorName ?? "-"} | agent: ${n.agentId ?? "-"} | attempt: ${n.attempt ?? "-"} | since: ${n.since} | can merge: ${n.canMerge ? "yes" : "no"} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
@@ -310,7 +333,7 @@ export function chatTools(
     define({
       name: "board_get_task",
       description:
-        "Everything about one task: description, column, attempts, delivery, last summary, PR text.",
+        "Everything about one task: description, column, attempts, delivery, last summary, PR text, and its worktree (path, branch, base branch, commits ahead and diffstat including new uncommitted files).",
       input: z.object({ taskId: z.string() }),
       async execute({ taskId }) {
         const c = card(taskId);
@@ -332,8 +355,43 @@ export function chatTools(
             ? `Prepared PR: ${finish.prTitle ?? ""}\n${finish.prBody ?? ""}`
             : "",
           finish?.mergedAt ? `Merged at ${finish.mergedAt}` : "",
+          await worktreeSection(taskId),
         ];
         return text(parts.filter(Boolean).join("\n\n"));
+      },
+    }),
+    define({
+      name: "board_task_diff",
+      description: `Read only. The task's diff against its base branch: its commits, uncommitted edits and new untracked files, after a header with the worktree, branch, base and diffstat. Output is cut at maxBytes (default ${DEFAULT_DIFF_BYTES}); when it is cut, call again with path set to one file or folder from the diffstat.`,
+      input: z.object({
+        taskId: z.string(),
+        path: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Only this file or folder, relative to the worktree root"),
+        maxBytes: z
+          .number()
+          .int()
+          .min(1000)
+          .max(MAX_DIFF_BYTES)
+          .default(DEFAULT_DIFF_BYTES),
+      }),
+      async execute(input) {
+        const found = checkout(input.taskId);
+        if (!found) return text(NO_WORKTREE);
+        const result = await taskDiff(found, {
+          path: input.path,
+          maxBytes: input.maxBytes,
+        });
+        const header = describeGitState(result.state);
+        const body = result.diff || "(no changes)";
+        const notice = result.truncated
+          ? `\n[Truncated: showed ${Buffer.byteLength(result.diff, "utf8")} of ${result.totalBytes ?? `more than ${input.maxBytes}`} bytes. Call board_task_diff again with path set to one file or folder from the diffstat${input.maxBytes < MAX_DIFF_BYTES ? `, or a larger maxBytes (up to ${MAX_DIFF_BYTES})` : ""}.]`
+          : "";
+        return text(
+          `${header}${input.path ? `\nPath filter: ${input.path}` : ""}\n\nDiff:\n${body}${notice}`,
+        );
       },
     }),
     define({
