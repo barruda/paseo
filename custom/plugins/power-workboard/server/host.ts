@@ -70,6 +70,11 @@ export type Agent = Pick<
   | "archivedAt"
 > & {
   activity: Card["activity"];
+  /**
+   * CUSTOM(resource-pools): false when `activity` is "running" only because the agent awaits
+   * background work, with no turn of its own. Absent means unknown (treated as a turn).
+   */
+  turnActive?: boolean;
   parentAgentId?: string;
   subagentId?: string;
   /** Whether this parent's provider children could be listed in this inventory. */
@@ -228,6 +233,14 @@ function activity(
     return "error";
   return agent.requiresAttention ? "attention" : "idle";
 }
+/** CUSTOM(resource-pools): the agent is in a turn (not just waiting on background work). */
+function turnActive(agent: PaseoAgent): boolean {
+  return (
+    agent.status === "running" ||
+    agent.status === "initializing" ||
+    Boolean(agent.activeTurn)
+  );
+}
 const normalize = (workspace: PaseoWorkspace): Workspace => ({
   ...workspace,
   labels: workspace.labels ?? [],
@@ -278,6 +291,7 @@ export class PaseoHost implements Host {
         this.agentUpdates.set(change.agent.id, {
           ...change.agent,
           activity: activity(change.agent),
+          turnActive: turnActive(change.agent),
         });
         this.changed(change.agent.workspaceId);
       } else {
@@ -363,7 +377,7 @@ export class PaseoHost implements Host {
     const agentMap = new Map<string, Agent>(
       agents.map(({ agent }) => [
         agent.id,
-        { ...agent, activity: activity(agent) },
+        { ...agent, activity: activity(agent), turnActive: turnActive(agent) },
       ]),
     );
     for (const [id, value] of this.workspaceUpdates) {

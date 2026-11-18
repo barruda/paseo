@@ -228,6 +228,17 @@ export const deliverySchema = z.object({
   /** CUSTOM(assistant-autonomy): times the merge waited for the base checkout to be clean. */
   dirtyRetries: z.number().int().min(0).default(0),
   /**
+   * CUSTOM(resource-pools): a fix (failed check or merge conflict) waiting for a free slot in its
+   * orchestrator and pool. The delivery is in `fixing`; the next pass with room sends `prompt`.
+   */
+  queuedFix: z
+    .object({
+      prompt: z.string(),
+      reason: z.enum(["verify-failed", "merge-conflict"]),
+    })
+    .nullable()
+    .optional(),
+  /**
    * CUSTOM(assistant-wake): when the chat agent was told this task waits for it; absent or
    * null means not yet. Each entry to needs-you clears it; a new Workboard (plugin reload,
    * daemon restart) tells the chat about every needs-you task still without it.

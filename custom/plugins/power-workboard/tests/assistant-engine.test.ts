@@ -1431,6 +1431,9 @@ it("a checkpoint with resumeAfter waits without holding a slot and resumes at th
     await s.store.update((data) => {
       data.orchestrations[second].status = "finished";
     });
+    s.inventory.agents.find(
+      (a) => a.id === s.store.current.orchestrations[second].agentId,
+    )!.activity = "idle";
     await s.board.refresh();
     expect(s.board.snapshot().orchestrations[s.taskId].status).toBe("running");
     expect(lastSent(s)[1]).toContain("You were waiting for: CI");

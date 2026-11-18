@@ -21,7 +21,10 @@ this repo) with these differences:
 - **Resource pools.** Orchestrators can share a pool (Orchestrators tab, **Resource pools**): a
   task starts only with a free slot in its orchestrator and in its pool, and nothing of a pool
   starts while the machine's free RAM (`MemAvailable` in `/proc/meminfo`) is under the pool's
-  floor. The orchestrator's status and log say which one holds it.
+  floor; after each start a pool with a floor waits 5 minutes for the RAM to settle. A free
+  slot goes to the top card of the column. A task keeps its pool slot while its delivery checks,
+  merges or fixes, so a failed check goes back to its agent without losing its turn.
+  The orchestrator's status and log say what holds it.
 - **Review.** A Ready to review card shows the agent's last reply with **Done** and **Continue
   task**. Continue takes optional feedback and sends the task back to Ready to start; the
   orchestrator's next pass gives the feedback to the same agent.

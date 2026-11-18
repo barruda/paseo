@@ -1,7 +1,16 @@
-import { expect, it } from "vitest";
-import { Workboard } from "../server/workboard";
+import { expect, it, vi } from "vitest";
+import {
+  RAM_SETTLE_MS,
+  Workboard,
+  type AssistantOptions,
+} from "../server/workboard";
 import { parseMeminfo, type MemoryReading } from "../server/resources";
-import { dataSchema, orchestratorConfigSchema } from "../shared/model";
+import {
+  cardsForStage,
+  dataSchema,
+  orchestratorConfigSchema,
+} from "../shared/model";
+import { assistantDataSchema } from "../shared/assistant";
 import { holdSummary } from "../client/Orchestrators";
 import { strings } from "../client/strings";
 import { fixture } from "./fixtures";
@@ -17,7 +26,10 @@ const projects = ["p", "q", "r"].map((id) => ({
 const GiB = 1024 ** 3;
 const always = { kind: "window", start: "00:00", end: "00:00" } as const;
 
-function setup(initial: Parameters<typeof fixture>[0] = {}) {
+function setup(
+  initial: Parameters<typeof fixture>[0] = {},
+  options: AssistantOptions = {},
+) {
   const base = fixture(initial);
   base.inventory.projects.push(...projects);
   let now = Date.parse("2026-11-18T12:00:00.000Z");
@@ -26,6 +38,7 @@ function setup(initial: Parameters<typeof fixture>[0] = {}) {
   };
   const board = new Workboard(base.host, base.store, () => now, 60_000, {
     memory: async () => memory.reading,
+    ...options,
   });
   return {
     ...base,
@@ -296,6 +309,7 @@ it("formats the reason an orchestrator's tasks wait", () => {
     maxConcurrent: 1,
     freeRamPercent: 12,
     minFreeRamPercent: 20,
+    until: null,
   };
   for (const language of ["en", "zh"] as const) {
     const t = strings(language);
@@ -313,4 +327,389 @@ it("formats the reason an orchestrator's tasks wait", () => {
   expect(holdSummary({ ...hold, kind: "ram", freeRamPercent: null }, en)).toBe(
     "Waiting for RAM: ?% free, pool “Unity” needs 20%",
   );
+});
+
+// Review follow-ups (task 77c52211).
+
+const running = (s: Setup) =>
+  Object.values(s.board.snapshot().orchestrations).filter(
+    (r) => r.status === "starting" || r.status === "running",
+  ).length;
+
+it("a pool with a RAM floor starts one agent, then waits for the RAM to settle", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  await s.board.start();
+  try {
+    await savePools(s.board, [
+      { id: "unity", name: "Unity", maxConcurrent: 2, minFreeRamPercent: 20 },
+    ]);
+    const pooled = await addOrchestrator(s.board, {
+      projectId: "p",
+      poolId: "unity",
+      maxConcurrent: 2,
+    });
+    await create(s, "P1", "p");
+    await create(s, "P2", "p");
+    // 50% free is well above the floor, but the first agent's Unity doesn't show yet.
+    expect(running(s)).toBe(1);
+    const hold = s.board.snapshot().orchestratorStatus[pooled]?.hold;
+    expect(hold).toMatchObject({ kind: "settle", poolId: "unity" });
+    const startedAt =
+      s.board.snapshot().orchestrations[card(s.board, "P1").id]!.startedAt;
+    expect(hold!.until).toBe(
+      new Date(Date.parse(startedAt) + RAM_SETTLE_MS).toISOString(),
+    );
+    // Routine: the settle wait is in the status, not in the log.
+    expect(
+      logOf(s.board, pooled).filter((t) => t.startsWith("Waiting")),
+    ).toEqual([]);
+    s.advance(RAM_SETTLE_MS - 2000);
+    await s.board.refresh();
+    expect(running(s)).toBe(1);
+    // The first agent took RAM meanwhile: the floor holds now.
+    s.memory.reading = { availableBytes: 9 * GiB, totalBytes: 60 * GiB };
+    s.advance(5000);
+    await s.board.refresh();
+    expect(running(s)).toBe(1);
+    expect(s.board.snapshot().orchestratorStatus[pooled]?.hold).toMatchObject({
+      kind: "ram",
+      freeRamPercent: 15,
+    });
+    s.memory.reading = { availableBytes: 30 * GiB, totalBytes: 60 * GiB };
+    await s.board.refresh();
+    expect(running(s)).toBe(2);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a pool without a RAM floor starts all its free slots at once", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  await s.board.start();
+  try {
+    await savePools(s.board, [{ id: "gpu", name: "GPU", maxConcurrent: 2 }]);
+    await addOrchestrator(s.board, { projectId: "p", poolId: "gpu" });
+    await addOrchestrator(s.board, { projectId: "q", poolId: "gpu" });
+    await create(s, "P1", "p");
+    await create(s, "Q1", "q");
+    expect(running(s)).toBe(2);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("the status shows a hold only when the orchestrator would take the task now, with the RAM of now", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  s.memory.reading = { availableBytes: 6 * GiB, totalBytes: 60 * GiB };
+  await s.board.start();
+  try {
+    await savePools(s.board, [
+      { id: "unity", name: "Unity", maxConcurrent: 1, minFreeRamPercent: 20 },
+    ]);
+    const manual = await addOrchestrator(s.board, {
+      projectId: "p",
+      poolId: "unity",
+      schedule: { kind: "manual" },
+    });
+    const windowed = await addOrchestrator(s.board, {
+      projectId: "q",
+      poolId: "unity",
+    });
+    await create(s, "In p", "p");
+    await create(s, "In q", "q");
+    const status = () => s.board.snapshot().orchestratorStatus;
+    // Manual without a run: its task waits for Run now, not for the pool.
+    expect(status()[manual]).toMatchObject({ waiting: 1, hold: null });
+    expect(status()[windowed]?.hold).toMatchObject({
+      kind: "ram",
+      freeRamPercent: 10,
+    });
+    // The snapshot RPC rereads the RAM; the status follows without a pass.
+    s.memory.reading = { availableBytes: 9 * GiB, totalBytes: 60 * GiB };
+    await s.board.readPoolMemory();
+    expect(status()[windowed]?.hold).toMatchObject({
+      kind: "ram",
+      freeRamPercent: 15,
+    });
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a pool's free slot goes to the top card of the column, whichever orchestrator owns it", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  s.memory.reading = { availableBytes: 6 * GiB, totalBytes: 60 * GiB };
+  await s.board.start();
+  try {
+    await savePools(s.board, [
+      { id: "unity", name: "Unity", maxConcurrent: 1, minFreeRamPercent: 20 },
+    ]);
+    await addOrchestrator(s.board, { projectId: "p", poolId: "unity" });
+    const second = await addOrchestrator(s.board, {
+      projectId: "q",
+      poolId: "unity",
+    });
+    await create(s, "P1", "p");
+    await create(s, "Q1", "q");
+    const board = s.board.snapshot();
+    const top = cardsForStage(board.cards, "ready", board.cardOrderByStage)[0]!;
+    expect(top.title).toBe("Q1");
+    s.memory.reading = { availableBytes: 30 * GiB, totalBytes: 60 * GiB };
+    await s.board.refresh();
+    expect(running(s)).toBe(1);
+    expect(runBy(s.board, "Q1")).toBe(second);
+    expect(runBy(s.board, "P1")).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a second orchestrator of the same project doesn't take the task the pool holds back", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  s.memory.reading = { availableBytes: 6 * GiB, totalBytes: 60 * GiB };
+  await s.board.start();
+  try {
+    await savePools(s.board, [
+      { id: "unity", name: "Unity", minFreeRamPercent: 20 },
+    ]);
+    const first = await addOrchestrator(s.board, {
+      projectId: "p",
+      poolId: "unity",
+    });
+    const second = await addOrchestrator(s.board, { projectId: "p" });
+    await create(s, "In p", "p");
+    expect(runBy(s.board, "In p")).toBeNull();
+    expect(s.board.snapshot().orchestratorStatus[second]?.waiting).toBe(0);
+    // A task chosen for the second one is still its own.
+    s.advance(1000);
+    await s.board.mutate({
+      action: "create",
+      title: "Chosen",
+      description: "Do it",
+      projectId: "p",
+      orchestratorId: second,
+      stage: "ready",
+    } as never);
+    expect(runBy(s.board, "Chosen")).toBe(second);
+    s.memory.reading = { availableBytes: 30 * GiB, totalBytes: 60 * GiB };
+    await s.board.refresh();
+    expect(runBy(s.board, "In p")).toBe(first);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+const report = `Did it.\n<report>${JSON.stringify({ status: "done", summary: "Added X" })}</report>`;
+
+/** A board whose project "p" merges after `npm test`, with one fix allowed. */
+function mergeSetup(verify: AssistantOptions["verify"]) {
+  const s = setup(
+    {
+      defaultOrchestratorSeeded: true,
+      assistant: assistantDataSchema.parse({
+        settings: {
+          projects: {
+            p: { action: "merge", verifyCommand: "npm test", autoFixes: 1 },
+          },
+        },
+      }),
+    },
+    { verify },
+  );
+  (s.host.lastReply as any).mockResolvedValue(report);
+  const agentOf = (title: string) =>
+    s.inventory.agents.find(
+      (a) => a.workspaceId === card(s.board, title).workspaceId,
+    )!;
+  const makeGit = (title: string) =>
+    (s.inventory.workspaces.find(
+      (w) => w.id === card(s.board, title).workspaceId,
+    )!.projectKind = "git");
+  const delivery = (title: string) =>
+    s.store.current.assistant.deliveries[card(s.board, title).id];
+  const sentTo = () =>
+    (s.host.sendAgent as any).mock.calls.map((call: unknown[]) => call[0]);
+  return { ...s, agentOf, makeGit, delivery, sentTo };
+}
+const failOnce = () =>
+  vi
+    .fn<NonNullable<AssistantOptions["verify"]>>()
+    .mockResolvedValueOnce({ passed: false, output: "1 test failed" })
+    .mockResolvedValue({ passed: true, output: "ok" });
+
+it("without a pool a failed check goes back to the agent at once, even with tasks in Ready", async () => {
+  const s = mergeSetup(failOnce());
+  await s.board.start();
+  try {
+    const own = await addOrchestrator(s.board, {
+      projectId: "p",
+      maxConcurrent: 1,
+    });
+    await create(s, "A", "p");
+    await create(s, "B", "p");
+    await create(s, "C", "p");
+    const agentA = s.agentOf("A");
+    s.makeGit("A");
+    await finish(s, "A");
+    // A's slot went to the next card in the same pass, as before the pools.
+    expect(runBy(s.board, "B") ?? runBy(s.board, "C")).toBe(own);
+    await vi.waitFor(() => expect(s.sentTo()).toContain(agentA.id));
+    expect(s.delivery("A")).toMatchObject({ stage: "fixing", fixesUsed: 1 });
+    expect(s.delivery("A")?.queuedFix ?? null).toBeNull();
+    expect(
+      s.board.snapshot().orchestrations[card(s.board, "A").id],
+    ).toMatchObject({ status: "running" });
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("in a pool the delivering task keeps its slot, and its fix waits only for the RAM", async () => {
+  const s = mergeSetup(failOnce());
+  await s.board.start();
+  try {
+    await savePools(s.board, [
+      { id: "unity", name: "Unity", maxConcurrent: 1, minFreeRamPercent: 20 },
+    ]);
+    const own = await addOrchestrator(s.board, {
+      projectId: "p",
+      poolId: "unity",
+      maxConcurrent: 2,
+    });
+    await create(s, "A", "p");
+    await create(s, "B", "p");
+    expect(runBy(s.board, "A")).toBe(own);
+    expect(runBy(s.board, "B")).toBeNull();
+    const agentA = s.agentOf("A");
+    s.makeGit("A");
+    // A's agent took the RAM: its failed check can't wake it yet.
+    s.advance(RAM_SETTLE_MS);
+    s.memory.reading = { availableBytes: 6 * GiB, totalBytes: 60 * GiB };
+    await finish(s, "A");
+    await vi.waitFor(() =>
+      expect(s.delivery("A")?.queuedFix).toMatchObject({
+        reason: "verify-failed",
+      }),
+    );
+    expect(s.delivery("A")).toMatchObject({
+      stage: "fixing",
+      fixesUsed: 1,
+      detail: 'Waiting for RAM: 10% free, pool "Unity" needs 20%',
+    });
+    expect(s.sentTo()).not.toContain(agentA.id);
+    // The slot stays A's: B doesn't take it while A's fix waits.
+    s.memory.reading = { availableBytes: 30 * GiB, totalBytes: 60 * GiB };
+    await s.board.refresh();
+    expect(s.sentTo()).toContain(agentA.id);
+    expect(runBy(s.board, "B")).toBeNull();
+    expect(s.delivery("A")).toMatchObject({
+      stage: "fixing",
+      queuedFix: null,
+      detail: null,
+    });
+    expect(
+      s.board.snapshot().orchestrations[card(s.board, "A").id],
+    ).toMatchObject({ status: "running" });
+    expect(logOf(s.board, own)).toContain('Sent the waiting fix to "A"');
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("in a pool a new task doesn't take the slot of a task whose check is running", async () => {
+  let checked!: (result: { passed: boolean; output: string }) => void;
+  const verify = vi.fn<NonNullable<AssistantOptions["verify"]>>(
+    () => new Promise((resolve) => (checked = resolve)),
+  );
+  const s = mergeSetup(verify);
+  await s.board.start();
+  try {
+    await savePools(s.board, [
+      { id: "unity", name: "Unity", maxConcurrent: 1 },
+    ]);
+    const own = await addOrchestrator(s.board, {
+      projectId: "p",
+      poolId: "unity",
+      maxConcurrent: 2,
+    });
+    await create(s, "A", "p");
+    await create(s, "B", "p");
+    const agentA = s.agentOf("A");
+    s.makeGit("A");
+    await finish(s, "A");
+    await vi.waitFor(() => expect(verify).toHaveBeenCalled());
+    expect(s.delivery("A")?.stage).toBe("verifying");
+    await s.board.refresh();
+    expect(runBy(s.board, "B")).toBeNull();
+    expect(s.board.snapshot().orchestratorStatus[own]?.hold).toMatchObject({
+      kind: "pool",
+      running: 1,
+    });
+    // The check fails: the fix goes at once, on the slot A kept.
+    checked({ passed: false, output: "1 test failed" });
+    await vi.waitFor(() => expect(s.sentTo()).toContain(agentA.id));
+    expect(s.delivery("A")?.queuedFix ?? null).toBeNull();
+    await s.board.refresh();
+    expect(runBy(s.board, "B")).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a finished task's agent takes a slot only while it is in a turn", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  await s.board.start();
+  try {
+    const own = await addOrchestrator(s.board, {
+      projectId: "p",
+      maxConcurrent: 1,
+    });
+    await create(s, "A", "p");
+    await finish(s, "A");
+    expect(
+      s.board.snapshot().orchestrations[card(s.board, "A").id]?.status,
+    ).toBe("finished");
+    const agentA = s.inventory.agents.find(
+      (a) => a.workspaceId === card(s.board, "A").workspaceId,
+    )!;
+    await s.board.assistantAction({
+      type: "send",
+      agentId: agentA.id,
+      text: "One more thing",
+    });
+    expect(agentA.activity).toBe("running");
+    await s.board.refresh(); // Paseo reports the agent running
+    await create(s, "B", "p");
+    expect(runBy(s.board, "B")).toBeNull();
+    expect(s.board.snapshot().orchestratorStatus[own]?.running).toBe(1);
+    // Running only because of background work: no turn, no slot.
+    agentA.turnActive = false;
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestratorStatus[own]?.running).toBe(1); // B
+    expect(runBy(s.board, "B")).toBe(own);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a finished task's agent waiting on a permission doesn't hold the slot", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  await s.board.start();
+  try {
+    const own = await addOrchestrator(s.board, {
+      projectId: "p",
+      maxConcurrent: 1,
+    });
+    await create(s, "A", "p");
+    await finish(s, "A");
+    const agentA = s.inventory.agents.find(
+      (a) => a.workspaceId === card(s.board, "A").workspaceId,
+    )!;
+    agentA.activity = "waiting";
+    await s.board.refresh();
+    await create(s, "B", "p");
+    expect(runBy(s.board, "B")).toBe(own);
+  } finally {
+    s.board.dispose();
+  }
 });
