@@ -103,7 +103,7 @@ it("chat.open creates the chat agent once, reuses it, and recreates it when arch
       prompt: CHAT_INSTRUCTIONS,
     });
     expect(
-      start.prompt.startsWith("Reply with one short line saying you're ready."), // CUSTOM(agent-profiles): the role is the system prompt now
+      start.prompt.startsWith("Call board_overview, then reply in one line"), // CUSTOM(agent-profiles): the role is the system prompt now
     ).toBe(true);
     expect(c.store.current.assistant.chatAgentId).toBe(first.agentId);
 

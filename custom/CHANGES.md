@@ -6598,8 +6598,18 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     Code plugin folder: `.claude-plugin/plugin.json` (name fixed at creation), `skills/` (own
     skills, `<plugin-name>:<skill>`), `memory/` (auto-memory) and `system-prompt.md` (appended to
     the system prompt). Folders are created lazily and never deleted by the plugin, not even with
-    their orchestrator. The assistant's file is seeded with its role; its first message is now
-    only "reply that you're ready".
+    their orchestrator. The assistant's file is seeded with its role; its first message
+    (`CHAT_INSTRUCTIONS`) only asks it to call `board_overview` and reply in one line: ready, plus
+    what is in Needs you.
+  - The assistant's role (`ASSISTANT_ROLE` in `server/assistant/chat.ts`): it manages tasks only
+    through the board and never edits, commits or merges outside `board_task_action`, but reads
+    freely to review (git log/diff/show, files, the task's tests in its worktree) and may use a
+    read-only reviewer subagent. Reviews are sized by risk: low risk is reviewed and merged without
+    asking, then reported; critical (DreamMMO, DreamMMO-android, big or risky changes) gets a
+    review task for a fresh agent and the user's ok before merge. After `merge-now` it checks the
+    commit on the base branch, and it does the default next step instead of asking. Changing the
+    seed does not touch an existing `system-prompt.md`: copy the new text there by hand (the
+    live one is `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md`).
   - A new agent of the profile (task start, a continuation that starts a new agent, the assistant
     chat) gets the prompt, the plugin folder, the skill allowlist (selected skills plus the
     profile's own) and the memory folder. Other providers get the prompt only. A profile change

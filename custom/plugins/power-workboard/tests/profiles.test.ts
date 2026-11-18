@@ -89,8 +89,29 @@ describe("profile folders", () => {
     );
     expect(view.systemPrompt).toContain("memory folder");
     expect(view.systemPrompt).not.toContain("saying you're ready");
-    expect(CHAT_INSTRUCTIONS).toContain("Reply with one short line");
-    expect(CHAT_INSTRUCTIONS).toContain("board_overview");
+    expect(CHAT_INSTRUCTIONS).toMatch(/^Call board_overview/);
+    expect(CHAT_INSTRUCTIONS).toContain("Needs you");
+  });
+
+  it("seeds the assistant with free reading for reviews and the review policy by risk", () => {
+    // Reading git and files to review is allowed; changing code outside the board is not.
+    expect(ASSISTANT_SEED_PROMPT).not.toMatch(
+      /You work ONLY through|do not .*use git|no shell/i,
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain("git log, git diff and git show");
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "Never edit code, commit or merge outside board_task_action.",
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain("read-only reviewer subagent");
+    expect(ASSISTANT_SEED_PROMPT).toContain("run merge-now without asking");
+    expect(ASSISTANT_SEED_PROMPT).toContain("DreamMMO or DreamMMO-android");
+    expect(ASSISTANT_SEED_PROMPT).toContain("board_task_action continue");
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "confirm the commit is on the project's base branch",
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "instead of ending with a question",
+    );
   });
 
   it("rejects ids that could leave the profiles folder", async () => {
