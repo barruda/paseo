@@ -68,4 +68,5 @@ it("tells the task's agent to keep its installed dependencies for the review", (
   const section = assistantSection();
   expect(section).toContain("never delete `node_modules`");
   expect(section).toContain("Do not symlink another checkout's `node_modules`");
+  expect(section).toContain("Never edit or patch files inside `node_modules` in place");
 });

@@ -6928,3 +6928,31 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   plugin reload: a new paseo task's worktree is on `custom`'s tip and its
   `<git dir>/paseo/worktree.json` has `"baseRef": "refs/heads/custom"`; its Merge delivery merges
   into `custom` with no manual step.
+
+## worktree-shared-deps: worktrees share the main checkout's node_modules through hardlinks
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: worktrees hardlink the main checkout's node_modules instead of npm ci`
+- **Why:** every worktree's setup ran `npm ci`, about 5 GB each (the disk is ext4, so no
+  copy-on-write). With Power Workboard tasks and subagents, 13 worktrees held 59 GB with the disk at
+  92%. Symlinking `node_modules` doesn't work: git sees the symlink as an untracked file, and the
+  `@getpaseo/*` links inside it would resolve to the main checkout's `packages/`.
+- **What:** `paseo.json`'s first setup step runs `custom/scripts/worktree-deps.sh` in place of
+  `npm ci`. When `package-lock.json`, `package.json`, `patches/` and
+  `scripts/postinstall-patches.mjs` match the source checkout (`PASEO_SOURCE_CHECKOUT_PATH`), and
+  the source's install matches its own lockfile (`node-modules-in-sync.cjs` compares the contents of
+  `node_modules/.package-lock.json`; mtimes don't work because git touches the lockfile on every
+  merge), it runs `cp -al` on the root and each workspace's `node_modules`. The directories are
+  real and the files are hardlinks: about 4 s and 175 MB, against 29 s and 5 GB. Files that tools
+  rewrite in place are not shared: the hidden lockfile is copied, and `.cache` and `.vite` are
+  dropped. Custom plugins whose lockfile matches get their `node_modules` linked too. Anything else
+  (deps changed, patches changed, stale source install, other filesystem, no source,
+  `PASEO_WORKTREE_DEPS=install`) runs `npm ci` as before. Power Workboard's delivery section tells
+  the task agent not to edit files inside `node_modules` in place, since that would change the
+  main checkout too.
+- **Core files touched:** `paseo.json` (one setup step).
+- **Re-apply:** replace the `"npm ci"` setup step in `paseo.json` with
+  `"bash ./custom/scripts/worktree-deps.sh"`. The script and its test live in `custom/scripts/`.
+- **Verify:** `bash custom/scripts/worktree-deps.test.sh`. Create a paseo worktree from Paseo: the
+  setup log says `[worktree-deps] linked node_modules`, `stat -c %h node_modules/react/package.json`
+  is 2 or more, and `npm run typecheck` passes there.

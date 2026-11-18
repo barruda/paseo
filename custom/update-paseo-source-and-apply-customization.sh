@@ -341,6 +341,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/projects/remove-project-section.test.tsx --bail=1)
   (cd packages/server && npx vitest run src/server/paseo-worktree-service.test.ts -t "keeps a branch name the caller typed|worktrees folder beside the project" src/utils/project-worktrees-root.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts src/server/plugins/custom-btw-plugin.e2e.test.ts src/server/plugins/custom-critic-plugin.e2e.test.ts src/server/plugins/custom-jev-router-plugin.e2e.test.ts src/server/plugins/custom-delegation-plugin.e2e.test.ts --bail=1)
+  # Worktree setup hardlinks the main checkout's node_modules when the lockfiles match.
+  bash custom/scripts/worktree-deps.test.sh
   (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
   # Backgrounds plugin (vendored from upstream) with the local image picker.
   (cd custom/plugins/paseo-background && { [ -d node_modules ] || npm ci --no-audit --no-fund --ignore-scripts; } && npx tsc --noEmit && npm test)
