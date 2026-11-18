@@ -207,6 +207,12 @@ export const deliverySchema = z.object({
   conflictFixes: z.number().int().min(0).default(0),
   /** CUSTOM(assistant-autonomy): times the merge waited for the base checkout to be clean. */
   dirtyRetries: z.number().int().min(0).default(0),
+  /**
+   * CUSTOM(assistant-wake): when the chat agent was told this task waits for it; absent or
+   * null means not yet. Each entry to needs-you clears it; a new Workboard (plugin reload,
+   * daemon restart) tells the chat about every needs-you task still without it.
+   */
+  toldAt: z.string().nullable().optional(),
   startedAt: z.string(),
   updatedAt: z.string(),
 });

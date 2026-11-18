@@ -937,6 +937,65 @@ it("a task that left needs-you before the timer fired is skipped", async () => {
   }
 });
 
+/** A new Workboard on the same store and host, as a plugin reload or daemon restart makes. */
+async function reload(s: Awaited<ReturnType<typeof wake>>) {
+  s.board.dispose();
+  const board = new Workboard(
+    s.host,
+    s.store,
+    () => Date.parse("2026-09-23T01:00:00Z"),
+    60000,
+    { history: s.history, wakeDelayMs: 5 },
+  );
+  await board.start();
+  return board;
+}
+
+it("a needs-you task the chat was not told about is told after the Workboard is recreated", async () => {
+  const s = await wake();
+  let board = s.board;
+  try {
+    // Busy chat: the batch waits, then the reload drops the in-memory queue.
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "running";
+    await s.blocked();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(0);
+    expect(s.delivery()?.toldAt).toBeNull();
+    board = await reload(s);
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    await board.refresh();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+    expect(s.sent()[0]![1]).toContain(`${s.taskId} | Task | Project | blocked`);
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a needs-you task already told is not told again after the Workboard is recreated", async () => {
+  const s = await wake();
+  let board = s.board;
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+    expect(s.sent()).toHaveLength(1);
+    board = await reload(s);
+    await board.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(1);
+    expect(
+      s.history.events.filter((e) => e.kind === "told-assistant"),
+    ).toHaveLength(1);
+    // Entering needs-you again clears the mark, so the chat hears about it once more.
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    await (board as any).markNeedsYou(s.taskId, "failed", "Again");
+    expect(s.delivery()?.toldAt).toBeNull();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(2));
+  } finally {
+    board.dispose();
+  }
+});
+
 it("assistant settings stored without the field wake the chat", () => {
   expect(
     assistantDataSchema.parse({ settings: { chat: {} } }).settings.chat,

@@ -392,6 +392,7 @@ export class Workboard {
       await this.reconcile();
       await this.scan();
       await this.orchestrate();
+      this.requeueUntold(); // CUSTOM(assistant-wake)
       // CUSTOM(projects-assistant): a delivery interrupted by a restart resumes at its step.
       for (const [taskId, delivery] of Object.entries(
         this.store.current.assistant.deliveries,
@@ -477,6 +478,7 @@ export class Workboard {
         await this.reconcile(scope);
         await this.scan(scope);
         await this.orchestrate();
+        this.requeueUntold(); // CUSTOM(assistant-wake)
       } catch (error) {
         this.connected = false;
         this.error = message(error);
@@ -2220,7 +2222,12 @@ export class Workboard {
     detail: string | null,
   ): Promise<void> {
     if (!this.store.current.assistant.deliveries[taskId]) return;
-    await this.patchDelivery(taskId, { stage: "needs-you", reason, detail });
+    await this.patchDelivery(taskId, {
+      stage: "needs-you",
+      reason,
+      detail,
+      toldAt: null, // CUSTOM(assistant-wake)
+    });
     await this.record(taskId, "needs-you", `Needs you: ${reason}`, {
       reason,
       detail,
@@ -2233,7 +2240,33 @@ export class Workboard {
   }
   // CUSTOM(assistant-wake): tasks that need the user are told to the chat agent in one batch.
   private wakePending = new Set<string>();
+  /** Tasks in the prompt being sent; their `toldAt` is not stored yet. */
+  private wakeSending = new Set<string>();
   private wakeTimer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The queue lives in memory, so a new Workboard (plugin reload, daemon restart) starts
+   * empty. Put back every needs-you task the chat was not told about yet; one already told
+   * stays out until it enters needs-you again.
+   */
+  private requeueUntold(): void {
+    const { settings, chatAgentId, deliveries } = this.store.current.assistant;
+    if (!settings.chat.wakeOnNeedsYou || !chatAgentId) return;
+    let added = false;
+    for (const [taskId, delivery] of Object.entries(deliveries)) {
+      if (
+        delivery.stage !== "needs-you" ||
+        delivery.toldAt ||
+        this.wakePending.has(taskId) ||
+        this.wakeSending.has(taskId) ||
+        !this.store.current.tasks.some((t) => t.id === taskId)
+      )
+        continue;
+      this.wakePending.add(taskId);
+      added = true;
+    }
+    // A timer already armed takes the new tasks with it; re-arming would push it back.
+    if (added && !this.wakeTimer) this.armWake();
+  }
   private armWake(): void {
     if (this.stopped) return;
     clearTimeout(this.wakeTimer);
@@ -2245,6 +2278,7 @@ export class Workboard {
   private async wakeAssistant(): Promise<void> {
     this.wakeTimer = undefined;
     if (this.stopped) return;
+    let sending: string[] = [];
     try {
       const assistant = this.store.current.assistant;
       const agentId = assistant.chatAgentId;
@@ -2275,6 +2309,8 @@ export class Workboard {
         .filter((entry) => entry.task && entry.delivery?.stage === "needs-you");
       this.wakePending.clear();
       if (!tasks.length) return;
+      sending = tasks.map((entry) => entry.id);
+      for (const id of sending) this.wakeSending.add(id);
       const lines = tasks.map(({ id, task, delivery }) => {
         const project =
           task!.projectName ||
@@ -2300,6 +2336,13 @@ export class Workboard {
           "Handle each one as your instructions say: review and merge-now (reason review), send feedback with continue, answer the agent's question or give the ok yourself when you can do it with reasonable precision and no real risk, and fix small reversible blockers. Leave to the user only what is really theirs: the ok before merging a fresh-agent project, real product decisions, anything risky or hard to undo. Then tell the user in 2-4 lines, in the language they write to you in, what you did and what is left for them (or that nothing is).",
         ].join("\n"),
       );
+      const toldAt = this.stamp();
+      await this.store.update((data) => {
+        for (const { id } of tasks) {
+          const delivery = data.assistant.deliveries[id];
+          if (delivery?.stage === "needs-you") delivery.toldAt = toldAt;
+        }
+      });
       await this.record(
         tasks[0]!.id,
         "told-assistant",
@@ -2310,7 +2353,10 @@ export class Workboard {
         },
       );
     } catch (error) {
+      // A task whose `toldAt` was not stored goes back on the next refresh.
       console.error("Could not tell the assistant:", message(error));
+    } finally {
+      for (const id of sending) this.wakeSending.delete(id);
     }
   }
   private async createDelivery(
