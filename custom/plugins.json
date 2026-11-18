@@ -1,0 +1,99 @@
+{
+  "plugins": [
+    {
+      "id": "shell-command",
+      "source": "custom/plugins/shell-command",
+      "what": "Run !<command> from the chat"
+    },
+    {
+      "id": "workspace-tasks",
+      "source": "custom/plugins/workspace-tasks",
+      "what": "Workspace task list"
+    },
+    {
+      "id": "warp",
+      "source": "custom/plugins/warp",
+      "requiresDir": "~/projetos/warp-web-custom",
+      "requiresDirEnv": "PASEO_WARP_WEB_DIR",
+      "what": "Warp web integration; installed only where the Warp web checkout exists"
+    },
+    {
+      "id": "beautiful-chat",
+      "source": "custom/plugins/beautiful-chat",
+      "what": "Restyled chat timeline"
+    },
+    {
+      "id": "power-workboard",
+      "source": "custom/plugins/power-workboard",
+      "what": "Board of registered tasks with an agent orchestrator"
+    },
+    { "id": "tldr", "source": "custom/plugins/tldr", "what": "Short summaries of agent turns" },
+    { "id": "btw", "source": "custom/plugins/btw", "what": "Side questions to an agent" },
+    { "id": "critic", "source": "custom/plugins/critic", "what": "Critic review of agent work" },
+    { "id": "jev-router", "source": "custom/plugins/jev-router", "what": "Prompt router" },
+    {
+      "id": "token-ledger",
+      "source": "custom/plugins/token-ledger",
+      "what": "Token usage ledger with turn jumps and MLflow links"
+    },
+    {
+      "id": "skills",
+      "source": "custom/plugins/skills",
+      "what": "Lists and invokes the skills an agent can use"
+    },
+    {
+      "id": "delegation",
+      "source": "custom/plugins/delegation",
+      "what": "Delegation to other agents"
+    },
+    { "id": "later", "source": "custom/plugins/later", "what": "Schedules for later" },
+    {
+      "id": "paseo-background",
+      "source": "custom/plugins/paseo-background",
+      "what": "Backgrounds with a local image picker"
+    },
+    {
+      "id": "zerosub",
+      "source": "kapybara-org/zerosub",
+      "what": "Several Claude and Codex subscriptions side by side"
+    },
+    {
+      "id": "agent-crew",
+      "source": "npm:@omercnet/paseo-agent-crew@4.1.0",
+      "what": "Explorer panel for managed agent crews"
+    },
+    {
+      "id": "tell-agent",
+      "source": "npm:@omercnet/paseo-tell-agent@2.0.0",
+      "what": "Message agents in other workspaces"
+    },
+    {
+      "id": "agent-monitor",
+      "source": "npm:@omercnet/paseo-agent-monitor@4.3.0",
+      "what": "Host-wide agent triage roster"
+    },
+    {
+      "id": "progress",
+      "source": "stevecastaneda/progress",
+      "what": "Live progress dashboard per worktree"
+    },
+    {
+      "id": "paseo-bots",
+      "source": "oliexe/bots",
+      "what": "Personal bots with instructions, memory, and routines"
+    },
+    {
+      "id": "lobby",
+      "source": "https://github.com/linhmh8/agent-lobby.git",
+      "ref": "e23536c1dd5493d422579d833a77658403b1b4a9",
+      "what": "Agent lobby"
+    },
+    { "id": "vitals", "source": "tomgrin10/vitals", "what": "Host vitals" },
+    {
+      "id": "paseo-chat-polish",
+      "source": "https://github.com/lthieu96/paseo-chat-polish.git",
+      "ref": "4e68486185382920b6963e8d95766e72f0ddfa63",
+      "what": "Chat polish"
+    }
+  ]
+}

@@ -7292,3 +7292,24 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   the colored message icon opens the message box; after Send the check/warning/X and the sentence
   appear; pressing the sentence opens the assistant chat at that message; the topic after it opens
   the chat, and that chat has no line under its composer.
+
+## plugin-sync: install the fork's plugins on every update
+
+- **Added:** 2026-11-18 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
+- **Commit:** `custom: install the fork's plugins on every update`
+- **Why:** Only Power Workboard was installed automatically; the rest was a manual README list that
+  drifted from what the daemons actually run.
+- **What:** `custom/plugins.json` lists every plugin with its source (directory, registry, npm
+  version, or git `ref`). `custom/scripts/sync-plugins.mjs --home <home>` installs what a home
+  lacks, and the update script runs it for each home in `PASEO_HOMES`. A running daemon installs
+  through the CLI; a stopped one gets directory plugins written into `config.json`, and npm, registry,
+  and git sources wait for a run with the daemon up. Plugins already in `config.json` are left as
+  they are, enabled or not. A plugin the user removed stays removed through
+  `<home>/custom-plugins-applied.json`. `warp` installs only where the Warp web checkout exists.
+  Turns `pluginsEnabled` on (and reloads a running daemon) when it was off.
+- **Core files touched:** none.
+- **Re-apply:** Re-add the "Installing the fork's plugins on each daemon" loop in
+  `custom/update-paseo-source-and-apply-customization.sh` and the sync test in its customization
+  tests step.
+- **Verify:** `node --test custom/scripts/sync-plugins.test.mjs`, then
+  `node custom/scripts/sync-plugins.mjs --home ~/.paseo --dry-run`.
