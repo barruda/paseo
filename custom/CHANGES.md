@@ -2985,9 +2985,11 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     side question, which stays out of its history, and shows the title and body with **Copy
     description**; no PR is created), and **Merge into project** (commits what is left, then merges
     the branch into the project's base branch in the main checkout). The card shows the step
-    running, Committed or Merged, or the git error. Commit and merge are the daemon's own
-    `checkout_commit` and `checkout_merge` requests, the same as the app's Git menu; results are in
-    `finishes`. The workspace is not archived.
+    running, Committed or Merged with its date, or the git error. Once merged, Commit and Merge
+    are gone and PR description stays as a plain button; the board does not watch the worktree
+    after the merge, so later changes there are not offered for another merge. Commit and merge
+    are the daemon's own `checkout_commit` and `checkout_merge` requests, the same as the app's Git
+    menu; results are in `finishes`. The workspace is not archived.
   - **Task editor:** New task and Edit open at 80% of the window (see
     [plugin-modal-size](#plugin-modal-size-plugin-modals-at-80-of-the-window)), with a bold title,
     a description that takes the free height, and Ctrl+Enter to save. A **+** under the
@@ -3017,9 +3019,9 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   orchestrator limits, disable, project retry, Run now batches, daily time and Stop, task
   assignment and delete, refinement and `/write-ticket`, review Done, Continue while active and
   while disabled, the default orchestrator, Commit, Merge and PR description, creating in Ready to
-  start) and `tests/schedule.test.ts` (windows across midnight, daily triggers, next
-  run). The upstream Workboard suites that assume import and the old groups
-  were moved to `tests/upstream-workboard/` and are not run. The update script runs
+  start), `tests/finish-buttons.test.ts` (the Done card's buttons before and after the merge)
+  and `tests/schedule.test.ts` (windows across midnight, daily triggers, next run). The upstream
+  Workboard suites that assume import and the old groups were moved to `tests/upstream-workboard/` and are not run. The update script runs
   `tsc` and `vitest` in the plugin folder.
 - **Setup:** automatic (see On by default). By hand:
   `paseo plugin install "$PWD/custom/plugins/power-workboard" --home <home>`. **Don't
