@@ -99,6 +99,7 @@ export const dashboardStrings = {
   markDone: "Mark done",
   dismiss: "Dismiss",
   openConversation: "Open conversation",
+  openReport: "Open report",
   showMore: "Show more",
   showLess: "Show less",
   question: "Question",

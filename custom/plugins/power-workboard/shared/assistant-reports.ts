@@ -129,6 +129,8 @@ export const reportEventSchema = z.object({
   text: z.string(),
   detail: z.string().nullable(),
   agentId: z.string().nullable(),
+  /** The task's agent for this event, with its report when the event is that report. */
+  orchestrator: reportOrchestratorSchema.nullable().default(null),
 });
 export type ReportEvent = z.infer<typeof reportEventSchema>;
 

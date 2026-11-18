@@ -139,6 +139,15 @@ export default function contribute(client: PluginClientContext) {
     context: "global",
     onSelect: (context) => context.openSurface("power-workboard"),
   });
+  // CUSTOM(assistant-reports): Projects Reports from anywhere, as a full page.
+  const removeReportsCommand = client.addCommandCenterItem({
+    id: "projects-reports-open",
+    title: "Projects Reports",
+    icon: "FileText",
+    keywords: ["projects", "reports", "assistant", "timeline", "tickets"],
+    context: "global",
+    onSelect: (context) => context.openSurface(REPORTS_SURFACE_ID),
+  });
   const removeWriteTicket = client.addSlashCommand({
     name: "write-ticket",
     description:
@@ -228,6 +237,7 @@ export default function contribute(client: PluginClientContext) {
     removeTabCommand();
     removePanel();
     removeCommand();
+    removeReportsCommand(); // CUSTOM(assistant-reports)
     removeSettings();
     removeSidebar();
     removeRestartPill(); // CUSTOM(assistant-restart-pill)

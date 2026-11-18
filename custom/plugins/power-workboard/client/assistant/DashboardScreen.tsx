@@ -33,7 +33,7 @@ import {
   assistantStatsRpc,
 } from "../../shared/assistant-rpc";
 import { projectColor } from "../colors";
-import { showConversation } from "./nav";
+import { showConversation, showReport } from "./nav";
 import { DayChart, HorizontalBars } from "./dashboard-charts";
 import {
   COLLAPSED_DETAIL_LINES,
@@ -441,6 +441,11 @@ export function NeedsYouCard({
           label={s.dismiss}
           disabled={busy}
           onPress={() => run({ type: "dismiss", taskId: item.taskId })}
+        />
+        <Button
+          theme={theme}
+          label={s.openReport}
+          onPress={() => showReport(props.navigation, item.taskId)}
         />
         {item.agentId ? (
           <Button
