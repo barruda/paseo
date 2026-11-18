@@ -446,6 +446,8 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/session.workspaces.test.ts -t "fetch_agent_history_request" --bail=1)
   (cd packages/protocol && npx vitest run src/search/history-query.test.ts --bail=1)
   (cd packages/cli && npx vitest run src/commands/speech/shared.test.ts --bail=1)
+  # CUSTOM(assistant-quick): `paseo plugin rpc`
+  (cd packages/cli && npx vitest run src/commands/plugin/index.test.ts src/cli-surface.test.ts --bail=1)
   (cd packages/client && npx vitest run src/wake-dictation.test.ts --bail=1)
   # The + menu's Agent flyout (its browser check is in e2e/task-navigation.spec.ts).
   (cd packages/app && npx vitest run src/new-agent-projects/model.test.ts --bail=1)

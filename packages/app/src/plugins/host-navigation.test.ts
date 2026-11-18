@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPluginHostNavigation } from "./host-navigation-model";
+import { createPluginHostNavigation, withBeforeNavigate } from "./host-navigation-model";
 
 describe("plugin host navigation", () => {
   function setup(electron = true) {
@@ -156,5 +156,23 @@ describe("plugin host navigation", () => {
       "workspaceId",
     );
     expect(browsers).toEqual([]);
+  });
+
+  it("runs the before hook ahead of openAgent and openWorkspace, and passes openBrowser through", () => {
+    const { navigation, destinations } = setup();
+    const order: string[] = [];
+    const wrapped = withBeforeNavigate(navigation, () =>
+      order.push(`before:${destinations.length}`),
+    );
+    wrapped.openAgent({ agentId: "a1" });
+    wrapped.openWorkspace({ workspaceId: "one" });
+    expect(order).toEqual(["before:0", "before:1"]);
+    expect(destinations).toHaveLength(2);
+    expect(wrapped.openBrowser).toBe(navigation.openBrowser);
+  });
+
+  it("omits openBrowser when the host has none", () => {
+    const { navigation } = setup(false);
+    expect(withBeforeNavigate(navigation, () => {}).openBrowser).toBeUndefined();
   });
 });

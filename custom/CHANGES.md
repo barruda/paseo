@@ -6529,7 +6529,13 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     the host needs **Enable Paseo tools** on, or the agent finds no board tools). The tools return
     plain text only: Claude Code shows the model only `structuredContent` when a result has it,
     which hid the overview's projects and orchestrators. Projects and orchestrators can be given
-    by id or name; an unknown one is an error that lists the valid ones. Its chip calls an RPC and then
+    by id or name; an unknown one is an error that lists the valid ones. `board_get_task` also shows
+    the task's worktree (path, branch, base, commits ahead, diffstat with new untracked files) and
+    the read-only `board_task_diff` returns its diff, cut at `maxBytes` with a notice, so the
+    assistant reviews a task without guessing paths. The base is the project's `baseBranch` policy,
+    else the `baseRef` the daemon stored in `<git dir>/paseo/worktree.json`, the same order
+    `checkout_merge` uses. The git calls run with `GIT_OPTIONAL_LOCKS=0` and never stage (no
+    `add -N`), so a review never touches the worktree or its index. Its chip calls an RPC and then
     `navigation.openAgent`, which opens the agent as a Desk tab and returns from the chip to the
     Desk (the Desk's navigation wrapper deselects the chip even if that tab was already active).
   - **Tasks mode only:** the pages are chips in the Desk header next to Power Workboard (see
@@ -6539,8 +6545,8 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Files:** plugin `custom/plugins/power-workboard/`: contract `shared/assistant.ts` and
   `shared/assistant-rpc.ts` (`workboard.assistant.*` RPCs), engine in `server/workboard.ts`
   (`assistantFinished`, `advance`, actions) with `server/assistant/{report,delivery}.ts`, read side
-  `server/assistant/{history,views}.ts`, pages in `client/assistant/`, tests
-  `tests/assistant-*.test.ts`. App: `screens/settings/bruno-customizations/projects-assistant-page.tsx`
+  `server/assistant/{history,views}.ts`, chat tools `server/assistant/{chat,task-git}.ts`, pages
+  in `client/assistant/`, tests `tests/assistant-*.test.ts`. App: `screens/settings/bruno-customizations/projects-assistant-page.tsx`
   and `projects-assistant-model.ts` (zod mirror of the plugin's settings schemas; keep in step).
 - **Core files touched:** `screens/settings-screen.tsx` (`CUSTOM(projects-assistant)`: sidebar
   item and route; the Bruno page switch moved into `renderBrunoSection` to stay under the
@@ -6733,6 +6739,95 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   shows Review = A fresh agent on DreamMMO and DreamMMO-android and The assistant elsewhere;
   change one, Save, reopen the page and it stuck; ask the assistant for `board_overview` and the
   project lines say `review: …`.
+
+## assistant-quick: talk to the Projects Assistant from any screen, with a clickable ack status row
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Projects Assistant quick messages with an ack status row`
+- **Why:** The Projects Assistant could only be reached from its chat in Tasks mode. The user
+  wants to send it a line from anywhere (a workspace, another agent, a desktop button) and see at
+  a glance whether it took the job, needs something, or failed. The OpenDeck voice button
+  (gnome-custom) uses the same contract.
+- **What:**
+  - **Ack:** a quick message reaches the assistant chat as `[Quick message <id> from <source>]`
+    plus an instruction to call the new `board_ack` tool first (status `ok`, `needs-input` or
+    `error`, one short sentence). If the turn ends without it, the reply's first sentence is
+    classified (a question is `needs-input`, failure words are `error`, else `ok`) and marked
+    `inferred`. An errored or vanished chat settles it as `error`. Messages live in memory
+    (`server/assistant/quick.ts`, last 30); a daemon restart empties the row.
+  - **Status row:** a sidebar footer item, "Projects Assistant status", in both sidebar modes:
+    the newest message's icon (green check, yellow warning, red X, grey clock while pending) and
+    its sentence. Pressing it opens the assistant chat scrolled to that message (`openAgent` with
+    `turnStartedAt`, see [turn-jump](#turn-jump-plugins-can-open-an-agent-at-one-of-its-turns));
+    its + opens a popover to write a message and lists the last five.
+  - **`/assistant <message>`** in any agent's composer sends without leaving that chat.
+  - **External contract:** RPCs `workboard.assistant.ask` (waits up to 25 s, the daemon's plugin
+    RPC limit is 30 s), `workboard.assistant.quick.get` and `workboard.assistant.quick.list`,
+    reachable through the new generic CLI command `paseo plugin rpc <id> <method> [json|-]`.
+    `custom/plugins/power-workboard/bin/ask-assistant` wraps them: it polls until the ack or
+    `--timeout` (90 s), prints `{id, status, message, agentId, sentAt, link}` and exits 0 / 2 / 1
+    for ok / needs-input / error. `link` is the app's `paseo://h/<server>/agent/<agent>` deep link.
+    Documented in the plugin README, "Quick messages and the ack contract".
+- **Core files touched** (marked `CUSTOM(assistant-quick)`): `packages/plugin/src/client/contracts.ts`
+  (`PluginSidebarItemProps` and `PluginPopoverProps` get the optional `navigation`),
+  `packages/app/src/plugins/sidebar-items/index.tsx` and `plugins/host-navigation-model.ts`
+  (`withBeforeNavigate`: navigating from a sidebar item closes its popover and the mobile
+  sidebar), `packages/cli/src/commands/plugin/index.ts` (`plugin rpc`) and `cli-surface.test.ts`.
+- **Re-apply:** give sidebar items and their popovers `usePluginHostNavigation(plugin.serverId)`
+  wrapped so it first closes the popover and calls `onBeforeNavigate`; add the `rpc` subcommand
+  calling `DaemonClient.invokePluginRpc`. The rest is plugin-only.
+- **Verify:** the plugin suite (`tests/assistant-quick.test.ts`),
+  `(cd packages/app && npx vitest run src/plugins/host-navigation.test.ts --bail=1)` and
+  `(cd packages/cli && npx vitest run src/commands/plugin/index.test.ts src/cli-surface.test.ts --bail=1)`,
+  all in the update script. Needs an app build and install (sidebar navigation, CLI) and a plugin reload.
+  In the app: the sidebar footer shows "Projects Assistant"; + > type "list my tasks" > Send: the
+  row turns green with a short sentence; click it and the assistant chat opens at that message.
+  From a terminal: `custom/plugins/power-workboard/bin/ask-assistant "what needs me?"`.
+
+## night-tasks: Power Workboard night tasks, tasks with a start time, and power-off when done
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Power Workboard night tasks, scheduled tasks and power-off when done`
+- **Why:** Tasks should run while the user is away: at night, or at a time the user picks, and
+  the computer can turn itself off when the night's work is done.
+- **What:**
+  - A new draft group kind, **Scheduled** (`scheduled`, label `pwb:scheduled`), between Backlog and
+    Ready to start. Boards saved before it get it on load, right before Ready to start (same
+    mechanism as Ready to start). It holds drafts only.
+  - A task's `timing` is `{kind:"night"}` or `{kind:"at", at}`. The task editor's **When** row
+    (Not scheduled / Night / At a time, with a local `YYYY-MM-DD HH:MM` field) sets it and moves
+    the draft into Scheduled; Not scheduled moves it back to Backlog. Dropping a draft into
+    Scheduled makes it a night task; dragging it out clears the timing. Starting work by hand
+    clears it too.
+  - **At a time:** each orchestrator pass moves due tasks to Ready to start. Passes run every
+    minute, and a timer wakes the board at the exact time when it is sooner, so the tolerance is
+    well under a minute. A time missed while the daemon was down moves on the next pass.
+  - **Night:** the night window (Orchestrators tab, **Night tasks** section; default 22:00–06:00,
+    daemon host's local time, an end before the start crosses midnight). While it is open, every
+    enabled orchestrator takes its night tasks from Scheduled, column order, up to its limit,
+    whatever its own schedule, without using its run's batch. The orchestration record carries
+    `night: true`; the card keeps a moon chip.
+  - **Power off when done** (off by default) and an optional command (empty: `systemctl poweroff`
+    on Linux). When a night that started tasks has none running and none an enabled orchestrator
+    could still start (or its window closed), no delivery step is running, and no agent on the
+    daemon is running or waiting on a permission, a 5-minute countdown starts: a desktop
+    notification (`notify-send`) and a banner with **Cancel** on every board tab. Anything that
+    starts meanwhile cancels it; Cancel drops that night's power-off. A countdown arms only up
+    to 15 minutes after the night was last active (window open or a night task running), so
+    turning the option on by day does nothing, and a countdown that ended while Paseo was off
+    is dropped instead of run. The last 30 events are in `nightRuntime.log`, shown in the section.
+  - Paseo's own schedules (`create_schedule`) were not used: they start agent runs on a cron, and
+    the board already owns a minute tick for orchestrator windows.
+- **Core files touched:** none (plugin only).
+- **Re-apply:** nothing to re-apply; the plugin is self-contained.
+- **Tests:** `tests/night-tasks.test.ts` (fake clock: start time, timer wake-up with Vitest fake
+  timers, night window only, disabled orchestrator, Scheduled drag and edit, power-off off/on,
+  agent during the countdown, Cancel, option turned on by day, stale countdown),
+  `tests/schedule.test.ts` (night window start), `tests/timing.test.ts` (date-time field).
+- **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
+  After `plugin reload power-workboard`: the board shows a Scheduled column; New task > When >
+  Night puts the card there with a moon chip; At a time shows a clock chip and the card moves to
+  Ready to start at that time. Orchestrators tab > Night tasks: set the window and Save.
 
 ## worktree-base: a task's worktree starts from the project's base branch
 

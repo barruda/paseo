@@ -157,6 +157,16 @@ export function fixture(initial: Partial<Data> = {}) {
       if (agent) agent.archivedAt = new Date(now()).toISOString();
     }),
     safety: async () => null,
+    // CUSTOM(night-tasks)
+    busyAgents: vi.fn(async () =>
+      inventory.agents
+        .filter(
+          (a) =>
+            !a.archivedAt &&
+            (a.activity === "running" || a.activity === "waiting"),
+        )
+        .map((a) => ({ id: a.id, workspaceId: a.workspaceId ?? null })),
+    ),
     dispose: vi.fn(),
   };
   const now = () => Date.parse("2026-09-23T00:00:00Z");
