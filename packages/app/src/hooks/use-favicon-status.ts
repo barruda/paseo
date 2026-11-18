@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import equal from "fast-deep-equal";
+import { useStoreWithEqualityFn } from "zustand/traditional";
 import { getIsElectronRuntimeMac } from "@/constants/layout";
 import { useAggregatedAgents } from "./use-aggregated-agents";
 import { getDesktopHost } from "@/desktop/host";
 import { useWorkspaceStatusesForBadges } from "@/stores/session-store-hooks";
 import { deriveMacDockBadgeCountFromWorkspaceStatuses } from "@/utils/desktop-badge-state";
 import { isNative } from "@/constants/platform";
+// CUSTOM(hidden-board-agents)
+import { selectBoardAgentKeys, withoutBoardAgents } from "@/board-agents/badges";
+import { useSessionStore } from "@/stores/session-store";
 
 type FaviconStatus = "none" | "running" | "attention";
 type ColorScheme = "dark" | "light";
@@ -94,7 +99,13 @@ async function updateMacDockBadge(count?: number) {
 }
 
 export function useFaviconStatus() {
-  const { agents } = useAggregatedAgents({ demand: !isNative });
+  const { agents: allAgents } = useAggregatedAgents({ demand: !isNative });
+  // CUSTOM(hidden-board-agents): board agents never light the favicon.
+  const boardAgentKeys = useStoreWithEqualityFn(useSessionStore, selectBoardAgentKeys, equal);
+  const agents = useMemo(
+    () => withoutBoardAgents(allAgents, boardAgentKeys),
+    [allAgents, boardAgentKeys],
+  );
   const workspaceStatuses = useWorkspaceStatusesForBadges();
   const [colorScheme, setColorScheme] = useState<ColorScheme>(getSystemColorScheme);
   const lastDockBadgeCountRef = useRef<number | undefined>(undefined);
