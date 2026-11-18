@@ -2,6 +2,7 @@ import path from "node:path";
 import { existsSync } from "node:fs";
 import { app, BrowserWindow, Notification, ipcMain, nativeImage } from "electron";
 import { getDesktopSettingsStore } from "../settings/desktop-settings-electron.js";
+import { isDoNotDisturbActiveNow } from "./do-not-disturb.js"; // CUSTOM(do-not-disturb)
 
 interface NotificationInput {
   title?: unknown;
@@ -85,6 +86,10 @@ export function registerNotificationHandlers(): void {
 
   ipcMain.handle("paseo:notification:send", async (event, rawInput?: NotificationInput) => {
     if (!Notification.isSupported()) {
+      return false;
+    }
+    // CUSTOM(do-not-disturb): no system notification (or its sound) while Do Not Disturb is on.
+    if (await isDoNotDisturbActiveNow()) {
       return false;
     }
 

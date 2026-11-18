@@ -74,6 +74,8 @@ export type KeyboardActionId =
   | "workspace.tab.rename-current"
   | "view.toggle.focus"
   | "theme.cycle"
+  // CUSTOM(do-not-disturb): toggle notification silencing
+  | "do-not-disturb.toggle"
   | "message-input.action";
 
 export type KeyboardShortcutPayload =

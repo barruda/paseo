@@ -183,6 +183,8 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "show-shortcuts",
     "toggle-settings",
     "cycle-theme",
+    // CUSTOM(do-not-disturb)
+    "toggle-do-not-disturb",
   ],
   workspaces: [
     "new-agent",
@@ -1253,6 +1255,31 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "cycle-theme",
       section: "general",
       label: "Cycle theme",
+    },
+  },
+
+  // CUSTOM(do-not-disturb): silence notifications and toasts
+  {
+    // Cmd+Alt+N stays unbound: upstream retired it (see "does not keep old Mod+Alt+N binding").
+    id: "do-not-disturb-toggle-cmd-alt-shift-n-mac",
+    action: "do-not-disturb.toggle",
+    combo: "Cmd+Alt+Shift+N",
+    when: { mac: true, commandCenter: false },
+    help: {
+      id: "toggle-do-not-disturb",
+      section: "general",
+      label: "Toggle Do Not Disturb",
+    },
+  },
+  {
+    id: "do-not-disturb-toggle-ctrl-alt-n-non-mac",
+    action: "do-not-disturb.toggle",
+    combo: "Ctrl+Alt+N",
+    when: { mac: false, commandCenter: false, terminal: false },
+    help: {
+      id: "toggle-do-not-disturb",
+      section: "general",
+      label: "Toggle Do Not Disturb",
     },
   },
 

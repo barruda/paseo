@@ -7036,3 +7036,66 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   toggle row to `BrunoTabsPage`.
 - **Verify:** on desktop, the header shows no shortcut hints; turn on Settings > Bruno's
   Customizations > Tabs > Header shortcuts and they come back. No daemon restart.
+
+## do-not-disturb: one toggle silences system notifications and toasts
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: Do Not Disturb silences system notifications and toasts, from the sidebar, Command Center, Ctrl+Alt+N or paseo dnd`
+- **Why:** the user presents the screen with many agents running and wants nothing to pop up
+  until they turn it back on.
+- **What:** Do Not Disturb (DND) is desktop-only state in `$PASEO_HOME/do-not-disturb.json`
+  (`{enabled, until}`), so each launcher profile (personal, TELUS) has its own and a script can
+  flip it without the app or the daemon. While it is on:
+  - the Electron main process sends no system (GNOME) notification and so no sound;
+  - the app's toast host drops every toast except errors (errors report a failure of something
+    the user just did). Plugin toasts, Power Workboard's included, go through the same host.
+  - Nothing else changes: badges, counters, the Needs you column, history and sidebar callouts
+    keep updating.
+
+  It turns on "until turned off", for 1 hour, or until 8:00 tomorrow, and an expired end reads
+  as off everywhere (main gate, app, CLI). Ways to flip it: the bell in the sidebar footer (one
+  click toggles; a red crossed bell while on, tooltip says until when), the
+  Command Center ("Turn on Do Not Disturb", "... for 1 hour", "... until tomorrow (8:00)", "Turn
+  off Do Not Disturb"; also found by "não perturbe"), the shortcut Toggle Do Not Disturb
+  (Ctrl+Alt+N; Cmd+Alt+Shift+N on macOS, because upstream retired Cmd+Alt+N; rebindable in
+  Settings > Shortcuts), and
+  `paseo dnd on [--for indefinite|1h|tomorrow] | off | toggle | status [--home <path>]`. The
+  main process polls the file every 2 s and sends `do-not-disturb-changed` to every window, so
+  a CLI change reaches the app.
+
+  Not silenced on purpose: Power Workboard's night power-off warning (`server/night.ts`,
+  `notify-send` from the daemon), a safety prompt that lets the user cancel a shutdown; and push
+  notifications on the phone.
+
+- **Core files touched:** each marked `CUSTOM(do-not-disturb)`.
+  - protocol (new): `src/do-not-disturb.ts` (state, expiry, durations; safe for the app) and
+    `src/do-not-disturb-file.ts` (Node-only file read/write).
+  - desktop: `src/features/do-not-disturb.ts` (new: controller, `get_do_not_disturb` /
+    `set_do_not_disturb` commands, file poll and broadcast), `src/features/notifications.ts`
+    (gate in `paseo:notification:send`), `src/daemon/daemon-manager.ts` (command handlers),
+    `src/main.ts` (`watchDoNotDisturbFile()` after `registerNotificationHandlers()`).
+  - cli: `src/commands/dnd.ts` (new), `src/cli.ts` (`createDndCommand()`).
+  - app: `src/do-not-disturb/` (new: store, toast gate, tooltip labels, `DoNotDisturbRuntime`
+    with the state sync, expiry timer and Command Center entries),
+    `components/toast-host.tsx` (gate in `useToastHost().show`), `components/left-sidebar.tsx`
+    (`DoNotDisturbButton`, `iconColor` on `FooterIconButton`), `app/_layout.tsx` (mounts the
+    runtime, passes the shortcut callback), `hooks/use-keyboard-shortcuts.ts`,
+    `keyboard/actions.ts`, `keyboard/route-shortcut.ts`, `keyboard/keyboard-shortcuts.ts`, plus
+    cases in `keyboard/route-shortcut.test.ts` and `keyboard/keyboard-shortcuts.test.ts`.
+- **Re-apply:** the protocol, desktop feature, CLI command and `packages/app/src/do-not-disturb/`
+  are new files. Then: in `notifications.ts` return false from the send handler when
+  `isDoNotDisturbActiveNow()`; spread `createDoNotDisturbCommandHandlers()` into
+  `createDaemonCommandHandlers`; call `watchDoNotDisturbFile()` in `bootstrap`; add the `dnd`
+  command to `createCli`; in `useToastHost().show` return `noopDismiss` when
+  `shouldSuppressToast(variant, isDoNotDisturbActiveNow())`; mount `DoNotDisturbRuntime` next
+  to `CommandCenterRootActions`; wire `do-not-disturb.toggle` like `theme.cycle` (action id,
+  `SIMPLE_CALLBACKS`, `useKeyboardShortcuts` option, two bindings, `general` help section); add
+  the bell next to the bottom panel toggle in `SidebarFooter`.
+- **Verify:** `cd packages/protocol && npx vitest run src/do-not-disturb.test.ts`,
+  `cd packages/desktop && npx vitest run src/features/do-not-disturb.test.ts`,
+  `cd packages/cli && npx vitest run src/commands/dnd.test.ts`,
+  `cd packages/app && npx vitest run src/do-not-disturb src/keyboard/route-shortcut.test.ts src/keyboard/keyboard-shortcuts.test.ts`.
+  Needs a desktop build and install; no daemon restart. In the app, click the bell in the
+  sidebar footer: it turns into a crossed bell; finishing an agent then shows no GNOME
+  notification and no toast; click again and the next one notifies. `paseo dnd on` flips the
+  bell within 2 seconds.

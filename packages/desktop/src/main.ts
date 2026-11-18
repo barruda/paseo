@@ -58,6 +58,7 @@ import {
   registerNotificationHandlers,
   ensureNotificationCenterRegistration,
 } from "./features/notifications.js";
+import { watchDoNotDisturbFile } from "./features/do-not-disturb.js"; // CUSTOM(do-not-disturb)
 import { createFileOpener } from "./features/file-opener.js";
 import { createExternalUrlOpener } from "./features/opener.js";
 // CUSTOM(media-pause)
@@ -995,6 +996,7 @@ async function bootstrap(): Promise<void> {
   registerWindowManager({ mode: DESKTOP_WINDOW_CHROME_MODE });
   registerDialogHandlers();
   registerNotificationHandlers();
+  watchDoNotDisturbFile(); // CUSTOM(do-not-disturb): relays `paseo dnd` changes to the windows
   const openExternalUrl = createExternalUrlOpener({ open: shell.openExternal });
   ipcMain.handle("paseo:opener:openUrl", (_event, value: unknown) => openExternalUrl(value));
   // CUSTOM(open-file-externally): separate IPC preserves the HTTP(S)-only URL opener.

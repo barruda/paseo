@@ -30,6 +30,10 @@ import { CommandCenter } from "@/command-center/command-center";
 // CUSTOM(model-picker)
 import { ModelPicker } from "@/model-picker/model-picker";
 import { CommandCenterRootActions } from "@/command-center/root-registration";
+// CUSTOM(do-not-disturb)
+import { DoNotDisturbRuntime } from "@/do-not-disturb/runtime";
+// CUSTOM(do-not-disturb)
+import { setDoNotDisturb } from "@/do-not-disturb/store";
 import { CommandCenterProvider } from "@/command-center/provider";
 import { CommandCenterWorkspaceActions } from "@/command-center/workspace-registration";
 import { PluginCommandCenterActions } from "@/plugins/command-center/registration";
@@ -372,6 +376,9 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     void updateSettings({ theme: getNextThemePreference(settings.theme) });
   }, [settings.theme, updateSettings]);
 
+  // CUSTOM(do-not-disturb): stable callback for the toggle shortcut
+  const toggleDoNotDisturb = useCallback(() => void setDoNotDisturb({ action: "toggle" }), []);
+
   const isCompactLayout = useIsCompactFormFactor();
   useCompactWebViewportZoomLock(isCompactLayout);
   const pathname = usePathname();
@@ -411,6 +418,8 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
     toggleBothSidebars: toggleDesktopSidebars,
     exitFocusMode,
     cycleTheme,
+    // CUSTOM(do-not-disturb)
+    toggleDoNotDisturb,
   });
 
   useActiveWorktreeNewAction();
@@ -507,6 +516,8 @@ function AppContainer({ children, chromeEnabled: chromeEnabledOverride }: AppCon
         <LegacyAgentSkillsMigration />
         <WorktreeSetupCalloutSource />
         <CommandCenterRootActions />
+        {/* CUSTOM(do-not-disturb) */}
+        <DoNotDisturbRuntime />
         <CommandCenterWorkspaceActions />
         <PluginCommandCenterActions />
         <WorkspacePinShortcutHandler />

@@ -23,6 +23,11 @@ import {
   HEADER_TOP_PADDING_MOBILE,
 } from "@/constants/layout";
 
+// CUSTOM(do-not-disturb)
+import { shouldSuppressToast } from "@/do-not-disturb/toast-gate";
+// CUSTOM(do-not-disturb)
+import { isDoNotDisturbActiveNow } from "@/do-not-disturb/store";
+
 export type ToastVariant = "default" | "info" | "success" | "warning" | "error";
 
 export interface ToastShowOptions {
@@ -80,6 +85,10 @@ export function useToastHost(): {
   const show = useCallback((content: ReactNode, options?: ToastShowOptions): DismissToast => {
     const nativeMessage = typeof content === "string" ? content.trim() : null;
     if (!content || nativeMessage === "") {
+      return noopDismiss;
+    }
+    // CUSTOM(do-not-disturb): silence non-error toasts (plugin toasts included) while DND is on
+    if (shouldSuppressToast(options?.variant ?? "default", isDoNotDisturbActiveNow())) {
       return noopDismiss;
     }
 

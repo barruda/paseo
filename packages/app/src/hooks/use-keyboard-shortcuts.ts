@@ -60,6 +60,8 @@ export function useKeyboardShortcuts({
   toggleBothSidebars,
   exitFocusMode,
   cycleTheme,
+  // CUSTOM(do-not-disturb): toggle notification silencing
+  toggleDoNotDisturb,
 }: {
   enabled: boolean;
   isMobile: boolean;
@@ -68,6 +70,8 @@ export function useKeyboardShortcuts({
   toggleBothSidebars?: () => void;
   exitFocusMode: () => void;
   cycleTheme?: () => void;
+  // CUSTOM(do-not-disturb): toggle notification silencing
+  toggleDoNotDisturb?: () => void;
 }) {
   const tasksMode = useTaskNavigationStore((s) => s.enabled);
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
@@ -167,6 +171,8 @@ export function useKeyboardShortcuts({
     "toggle-agent-list": toggleAgentList,
     "toggle-both-sidebars": toggleBothSidebars,
     "cycle-theme": cycleTheme,
+    // CUSTOM(do-not-disturb): toggle notification silencing
+    "toggle-do-not-disturb": toggleDoNotDisturb,
   };
 
   const performShortcutAction = (

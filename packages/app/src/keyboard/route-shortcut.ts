@@ -20,7 +20,12 @@ export interface ShortcutRoutingInput {
   payload: KeyboardShortcutPayload;
 }
 
-export type ShortcutCallbackName = "toggle-agent-list" | "toggle-both-sidebars" | "cycle-theme";
+export type ShortcutCallbackName =
+  | "toggle-agent-list"
+  | "toggle-both-sidebars"
+  | "cycle-theme"
+  // CUSTOM(do-not-disturb): toggle notification silencing
+  | "toggle-do-not-disturb";
 
 export type ShortcutAction =
   | { kind: "none" }
@@ -82,6 +87,8 @@ const SIMPLE_CALLBACKS: Record<string, ShortcutCallbackName> = {
   "sidebar.toggle.left": "toggle-agent-list",
   "sidebar.toggle.both": "toggle-both-sidebars",
   "theme.cycle": "cycle-theme",
+  // CUSTOM(do-not-disturb): toggle notification silencing
+  "do-not-disturb.toggle": "toggle-do-not-disturb",
 };
 
 const MESSAGE_INPUT_DISPATCH: Record<

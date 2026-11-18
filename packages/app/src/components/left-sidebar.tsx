@@ -1,5 +1,9 @@
 import { router } from "expo-router";
 import {
+  // CUSTOM(do-not-disturb)
+  Bell,
+  // CUSTOM(do-not-disturb)
+  BellOff,
   CircleGauge,
   FolderPlus,
   GitBranch,
@@ -11,7 +15,16 @@ import {
   type LucideIcon,
 } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
-import { memo, useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ComponentProps,
+  type RefObject,
+} from "react";
 import {
   Pressable,
   StyleSheet as RNStyleSheet,
@@ -51,6 +64,12 @@ import { useOpenAddProject } from "@/hooks/use-open-add-project";
 import { useImportSession } from "@/hooks/use-import-session";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
 import { getIsElectron } from "@/constants/platform";
+// CUSTOM(do-not-disturb)
+import { buildDoNotDisturbLabel } from "@/do-not-disturb/labels";
+// CUSTOM(do-not-disturb)
+import { useDoNotDisturb } from "@/do-not-disturb/runtime";
+// CUSTOM(do-not-disturb)
+import { setDoNotDisturb } from "@/do-not-disturb/store";
 // CUSTOM(bottom-panel)
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import {
@@ -308,6 +327,8 @@ function FooterIconButton({
   icon,
   iconSizeAdjustment = 0,
   shortcutKeys,
+  // CUSTOM(do-not-disturb)
+  iconColor,
 }: {
   onPress: () => void;
   testID: string;
@@ -317,6 +338,8 @@ function FooterIconButton({
   iconSizeAdjustment?: number;
   shortcutKeys?: ReturnType<typeof useShortcutKeys>;
   buttonRef?: RefObject<View | null>;
+  // CUSTOM(do-not-disturb): fixed color regardless of hover, to flag an active state
+  iconColor?: ComponentProps<typeof DensityIcon>["color"];
 }) {
   return (
     <Tooltip delayDuration={300}>
@@ -339,7 +362,7 @@ function FooterIconButton({
                 icon={icon}
                 size="md"
                 sizeAdjustment={iconSizeAdjustment}
-                color={hovered ? "foreground" : "foregroundMuted"}
+                color={iconColor ?? (hovered ? "foreground" : "foregroundMuted")}
               />
             </>
           )}
@@ -426,6 +449,26 @@ function BottomPanelToggleButton() {
   );
 }
 
+// CUSTOM(do-not-disturb): desktop only; one click toggles, the icon turns red while it is on.
+function DoNotDisturbButton() {
+  const { active, state } = useDoNotDisturb();
+  const shortcutKeys = useShortcutKeys("toggle-do-not-disturb");
+  const handlePress = useCallback(() => {
+    void setDoNotDisturb({ action: "toggle" });
+  }, []);
+  if (!getIsElectron()) return null;
+  return (
+    <FooterIconButton
+      onPress={handlePress}
+      testID={active ? "sidebar-do-not-disturb-on" : "sidebar-do-not-disturb"}
+      label={buildDoNotDisturbLabel(state, active)}
+      icon={active ? BellOff : Bell}
+      iconColor={active ? "destructive" : undefined}
+      shortcutKeys={shortcutKeys}
+    />
+  );
+}
+
 function IconTooltipContent({
   label,
   shortcutKeys,
@@ -492,6 +535,8 @@ function SidebarFooter({
           />
           {/* CUSTOM(bottom-panel) */}
           <BottomPanelToggleButton />
+          {/* CUSTOM(do-not-disturb) */}
+          <DoNotDisturbButton />
           <View style={styles.footerSpacer} />
           <SidebarHelpMenu />
           {/* CUSTOM(sidebar-shortcut-settings): direct access to editing keyboard bindings. */}

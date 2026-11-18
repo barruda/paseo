@@ -1538,6 +1538,25 @@ describe("task mode shortcuts", () => {
   });
 });
 
+// CUSTOM(do-not-disturb)
+describe("do not disturb shortcut", () => {
+  it("Ctrl+Alt+N resolves to do-not-disturb.toggle on non-mac", () => {
+    expectShortcutResolution({
+      event: { key: "n", code: "KeyN", ctrlKey: true, altKey: true },
+      context: { isMac: false, isDesktop: true },
+      action: "do-not-disturb.toggle",
+    });
+  });
+
+  it("Cmd+Alt+Shift+N resolves to do-not-disturb.toggle on mac", () => {
+    expectShortcutResolution({
+      event: { key: "N", code: "KeyN", metaKey: true, altKey: true, shiftKey: true },
+      context: { isMac: true, isDesktop: true },
+      action: "do-not-disturb.toggle",
+    });
+  });
+});
+
 // CUSTOM(shortcut-additional-bindings)
 describe("additional shortcuts", () => {
   const TAB_NEW_BINDING = "workspace-tab-new-ctrl-t-non-mac";
