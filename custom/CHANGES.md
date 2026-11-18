@@ -6697,6 +6697,29 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   the plugin suite. In the app: the assistant chat shows Restart chat left of Columns/Compact;
   other agents don't; Restart opens a new chat and the old one is archived.
 
+## appearance-plugin-tabs: plugin settings as tabs in Settings > Appearance
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Backgrounds plugin as a tab in Settings > Appearance`
+- **Why:** The Backgrounds plugin (`paseo-background`) put a link in the left sidebar footer. The
+  appearance options should live together in Settings > Appearance instead.
+- **What:** Settings > Appearance shows tabs when a listed plugin is installed: "General" (the
+  stock content) and one tab per plugin, rendering that plugin's settings screen. The plugin's
+  sidebar footer link is hidden in the sidebar and in Settings > Sidebar. With no listed plugin
+  installed there is no tab bar. The list is `APPEARANCE_PLUGIN_TABS`.
+- **Core files touched:** `packages/app/src/sidebar-nav/use-sidebar-nav-items.ts` (wraps
+  `groupPluginSidebarItems`), `packages/app/src/screens/settings-screen.tsx` (the `appearance`
+  item's `Content`). New files: `packages/app/src/plugins/relocated-settings.ts` (+ test),
+  `packages/app/src/screens/settings/appearance/appearance-tabs.tsx`.
+- **Re-apply:** in `use-sidebar-nav-items.ts`, wrap the `groupPluginSidebarItems(plugins, section)`
+  result in `withoutRelocatedSidebarGroups(..., section)`; in `settings-screen.tsx`, set the
+  `appearance` item's `Content` to `AppearanceTabs` (a `SegmentedControl` over
+  `resolveAppearancePluginTabs(useInstalledPlugins())`, showing `AppearanceSection` or
+  `PluginSettingsContent` with `showBackToPlugins={false}`).
+- **Verify:** `(cd packages/app && npx vitest run src/plugins/relocated-settings.test.ts --bail=1)`.
+  In the desktop app with the plugin installed: Settings > Appearance shows General/Backgrounds
+  tabs; the sidebar footer has no Backgrounds link; uninstalling the plugin removes the tab bar.
+
 ## power-workboard-orchestrator-editor: sub-tabs and an Enabled switch
 
 - **Added:** 2026-11-17

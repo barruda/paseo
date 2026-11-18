@@ -473,6 +473,8 @@ if $VERIFY; then
   # Embed mode: one agent's conversation in an iframe, frame-ancestors and the embed ticket (agent-embed).
   (cd packages/server && npx vitest run src/server/embed-allowed-origins.test.ts src/server/embed-credential.test.ts src/server/web-ui.test.ts src/server/auth.test.ts src/server/config-web-ui.test.ts --bail=1)
   (cd packages/app && npx vitest run src/embed src/utils/navigate-to-agent/embed-guard.test.ts --bail=1)
+  # Backgrounds plugin settings as a tab in Settings > Appearance, its sidebar link hidden (appearance-plugin-tabs).
+  (cd packages/app && npx vitest run src/plugins/relocated-settings.test.ts --bail=1)
 fi
 
 step "Building the desktop app"

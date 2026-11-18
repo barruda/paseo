@@ -58,7 +58,7 @@ import { SidebarHeaderRow } from "@/components/sidebar/sidebar-header-row";
 import { HostPicker as SharedHostPicker } from "@/components/hosts/host-picker";
 import { HostStatusDot } from "@/components/host-status-dot";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
-import { AppearanceSection } from "@/screens/settings/appearance/appearance-section";
+import { AppearanceTabs } from "@/screens/settings/appearance/appearance-tabs";
 import { OpenLocationSection } from "@/screens/settings/open-location/open-location-section";
 import { TerminalSection } from "@/screens/settings/terminal/terminal-section";
 import { ChatSection } from "@/screens/settings/chat/chat-section";
@@ -196,7 +196,8 @@ const SIDEBAR_SECTION_ITEMS: SidebarSectionItem[] = [
     id: "appearance",
     labelKey: "settings.sections.appearance",
     icon: Palette,
-    Content: AppearanceSection,
+    // CUSTOM(appearance-plugin-tabs): General + plugin tabs.
+    Content: AppearanceTabs,
   },
   {
     id: "sidebar",

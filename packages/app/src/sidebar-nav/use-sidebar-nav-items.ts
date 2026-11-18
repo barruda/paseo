@@ -2,6 +2,7 @@ import { useCallback, useMemo } from "react";
 import { useAppSettings } from "@/hooks/use-settings";
 import type { AppSettings } from "@/hooks/use-settings/storage";
 import { useInstalledPlugins } from "@/plugins/registry";
+import { withoutRelocatedSidebarGroups } from "@/plugins/relocated-settings";
 import { groupPluginSidebarItems } from "@/plugins/sidebar-groups";
 import {
   moveSidebarNavItem,
@@ -30,7 +31,11 @@ export function useSidebarNavItems<Section extends SidebarSection>(
   const { settings, updateSettings } = useAppSettings();
   const field = PREFERENCE_FIELDS[section];
   const preferences = settings[field];
-  const pluginGroups = useMemo(() => groupPluginSidebarItems(plugins, section), [plugins, section]);
+  // CUSTOM(appearance-plugin-tabs): links relocated into Settings > Appearance are not listed.
+  const pluginGroups = useMemo(
+    () => withoutRelocatedSidebarGroups(groupPluginSidebarItems(plugins, section), section),
+    [plugins, section],
+  );
 
   const items = useMemo(
     () => resolveSidebarNavItems({ section, pluginGroups, preferences }),
