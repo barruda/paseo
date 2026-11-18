@@ -27,6 +27,19 @@ import {
   DASHBOARD_SURFACE_ID,
   REPORTS_SURFACE_ID, // CUSTOM(assistant-reports)
 } from "./client/assistant/nav";
+// CUSTOM(report-card)
+import {
+  TaskReportCard,
+  TaskReportText,
+} from "./client/assistant/TaskReportCard";
+import {
+  REPORT_CARD_KIND,
+  REPORT_ITEM_VERSION,
+  REPORT_TEXT_KIND,
+  reportCardDataSchema,
+  reportTextDataSchema,
+  reportTimelineItems,
+} from "./shared/task-report";
 
 const Surface = (props: Parameters<typeof WorkboardScreen>[0]) => (
   <QueryClientProvider client={queryClient}>
@@ -183,7 +196,32 @@ export default function contribute(client: PluginClientContext) {
       await rpc(assistantAskRpc, { text: args, source: "slash", waitMs: 0 });
     },
   });
+  // CUSTOM(report-card): an agent reply ending in a valid `<report>` block shows a card instead of
+  // the raw JSON. Any agent qualifies when the block parses; anything else keeps the reply as is.
+  const removeReportTransformer = client.addTimelineTransformer({
+    id: "task-report",
+    query: { itemType: "assistant_message" },
+    transform: ({ item }) => {
+      const items = reportTimelineItems(item.text);
+      return items ? { items } : undefined;
+    },
+  });
+  const removeReportCard = client.addTimelineRenderer({
+    kind: REPORT_CARD_KIND,
+    version: REPORT_ITEM_VERSION,
+    schema: reportCardDataSchema,
+    Component: TaskReportCard,
+  });
+  const removeReportText = client.addTimelineRenderer({
+    kind: REPORT_TEXT_KIND,
+    version: REPORT_ITEM_VERSION,
+    schema: reportTextDataSchema,
+    Component: TaskReportText,
+  });
   return () => {
+    removeReportText();
+    removeReportCard();
+    removeReportTransformer();
     removeAssistantCommand();
     removeStatus();
     removeWriteTicket();

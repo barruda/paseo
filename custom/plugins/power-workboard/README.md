@@ -23,6 +23,9 @@ this repo) with these differences:
 - **Done.** A Done card in a git project has **Commit**, **PR description** (written by the
   task's agent, to copy; no PR is created) and **Merge into project**. Once merged, only PR
   description is left.
+- **Report card.** In any agent chat, a reply ending in a valid `<report>` block shows the block
+  as a card (status, summary, question, checks, collapsed changed files, risks) instead of JSON
+  (`shared/task-report.ts`). An invalid block leaves the reply as it was.
 
 - **Night tasks and start times.** A draft's **When** (task editor) puts it in Scheduled: a
   night task starts inside the night window (Orchestrators tab, Night tasks), taken by any
