@@ -18,7 +18,12 @@ import { HintButton } from "./Hint";
 import type { strings } from "./strings";
 import { toggleButtonState } from "./web";
 // CUSTOM(agent-profiles)
-import { AgentFields, ProfileFields, useProfileContent } from "./Profiles";
+import {
+  AgentFields,
+  ProfilePromptField,
+  ProfileSkillsMemory,
+  useProfileContent,
+} from "./Profiles";
 import { usePaseoLanguage } from "./paseo-language";
 import { profileStrings } from "./profiles-strings";
 import { ASSISTANT_PROFILE, type SkillSelection } from "../shared/profiles";
@@ -164,7 +169,7 @@ export function OrchestratorsPanel(
               accessibilityRole="button"
               accessibilityLabel={`${panel.open}: ${config.name}`}
               onPress={() => props.onOpen(config.id)}
-              style={styles.rowMain}
+              style={[styles.rowMain, !config.enabled && styles.dim]}
             >
               <View style={styles.inline}>
                 <Icon
@@ -207,6 +212,7 @@ export function OrchestratorsPanel(
                   .join(" · ")}
               </Text>
             </Pressable>
+            <EnableToggle config={config} {...props} />
             <RunControls config={config} {...props} />
           </View>
         );
@@ -225,9 +231,17 @@ function RunControls({
 }: Shared & { config: OrchestratorConfig }) {
   const runtime = board.orchestratorRuntime[config.id];
   const running = (runtime?.quota ?? 0) > 0;
+  const off = !config.enabled;
+  disabled = disabled || off;
   return (
     <HintButton
-      hint={running ? t.panel.stopHint : t.panel.runHint}
+      hint={
+        off
+          ? t.panel.disabledRunHint
+          : running
+            ? t.panel.stopHint
+            : t.panel.runHint
+      }
       accessibilityRole="button"
       accessibilityLabel={running ? t.panel.stop : t.panel.run}
       disabled={disabled}
@@ -259,10 +273,69 @@ function RunControls({
   );
 }
 
+/** A compact on/off switch that saves right away; it is not part of the editor form. */
+function EnableToggle({
+  config,
+  t,
+  theme,
+  disabled,
+  mutate,
+}: Shared & { config: OrchestratorConfig }) {
+  const on = config.enabled;
+  return (
+    <HintButton
+      hint={t.panel.enableHint}
+      accessibilityRole="switch"
+      accessibilityLabel={t.panel.enabled}
+      {...toggleButtonState(on)}
+      disabled={disabled}
+      onPress={() =>
+        void mutate({
+          action: "orchestrator-enable",
+          id: config.id,
+          enabled: !on,
+        })
+      }
+      style={[styles.toggle, disabled && styles.disabled]}
+    >
+      <View
+        style={[
+          styles.track,
+          {
+            backgroundColor: on ? theme.colors.accent : theme.colors.surface2,
+            borderColor: on ? theme.colors.accent : theme.colors.border,
+            alignItems: on ? "flex-end" : "flex-start",
+          },
+        ]}
+      >
+        <View
+          style={[
+            styles.knob,
+            {
+              backgroundColor: on
+                ? theme.colors.accentForeground
+                : theme.colors.foregroundMuted,
+            },
+          ]}
+        />
+      </View>
+      <Text style={{ color: theme.colors.foreground }}>{t.panel.enabled}</Text>
+    </HintButton>
+  );
+}
+
+type SubTab = "overview" | "general" | "schedule" | "agent" | "prompts";
+const SUB_TABS: SubTab[] = [
+  "overview",
+  "general",
+  "schedule",
+  "agent",
+  "prompts",
+];
+
 type Draft = {
   name: string;
   projectId: string | null;
-  enabled: boolean;
   kind: Schedule["kind"];
   days: number[];
   start: string;
@@ -283,7 +356,6 @@ function toDraft(config: OrchestratorConfig): Draft {
   return {
     name: config.name,
     projectId: config.projectId,
-    enabled: config.enabled,
     kind: schedule.kind,
     days: schedule.kind === "manual" ? [0, 1, 2, 3, 4, 5, 6] : schedule.days,
     start: schedule.kind === "window" ? schedule.start : "22:00",
@@ -300,7 +372,8 @@ function toDraft(config: OrchestratorConfig): Draft {
     memory: config.memory,
   };
 }
-function fromDraft(id: string, draft: Draft) {
+/** Enabled is not part of the form: Save keeps the switch as it is. */
+function fromDraft(id: string, draft: Draft, enabled: boolean) {
   const schedule =
     draft.kind === "manual"
       ? { kind: "manual" }
@@ -323,7 +396,7 @@ function fromDraft(id: string, draft: Draft) {
     id,
     name: draft.name,
     projectId: draft.projectId,
-    enabled: draft.enabled,
+    enabled,
     schedule,
     maxConcurrent: Number(draft.maxConcurrent),
     batchSize: Number(draft.batchSize),
@@ -349,6 +422,7 @@ export function OrchestratorTab(
   );
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [subTab, setSubTab] = useState<SubTab>("overview");
   const ps = profileStrings(usePaseoLanguage()); // CUSTOM(agent-profiles)
   const content = useProfileContent(props.id);
   // Pick up a save from another window only while nothing is being edited here.
@@ -367,7 +441,7 @@ export function OrchestratorTab(
     setDraft({ ...draft, ...change });
   };
   const save = async () => {
-    const parsed = fromDraft(config.id, draft);
+    const parsed = fromDraft(config.id, draft, config.enabled);
     if (!parsed.success) {
       setError(
         parsed.error.issues
@@ -459,49 +533,140 @@ export function OrchestratorTab(
       <Text style={{ color: theme.colors.foreground }}>{label}</Text>
     </Pressable>
   );
-  return (
-    <ScrollView contentContainerStyle={styles.page}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: theme.colors.foreground }]}>
-          {config.name}
+  const state = board.orchestratorStatus[config.id];
+  const pill = !config.enabled
+    ? { text: panel.disabled, color: theme.colors.statusWarning }
+    : state?.active
+      ? { text: panel.active, color: theme.colors.accent }
+      : state?.nextRunAt
+        ? {
+            text: panel.nextRun.replace(
+              "{time}",
+              time(state.nextRunAt, t.locale),
+            ),
+            color: theme.colors.foregroundMuted,
+          }
+        : { text: panel.idle, color: theme.colors.foregroundMuted };
+  const unsaved = dirty || content.touched;
+  const section = (title: string, children: ReactNode) => (
+    <View
+      style={[
+        styles.section,
+        {
+          backgroundColor: theme.colors.surface1,
+          borderColor: theme.colors.border,
+        },
+      ]}
+    >
+      <Text style={[styles.label, { color: theme.colors.foreground }]}>
+        {title}
+      </Text>
+      {children}
+    </View>
+  );
+  const stat = (label: string, value: string, color?: string) => (
+    <View
+      key={label}
+      style={[
+        styles.stat,
+        {
+          backgroundColor: theme.colors.surface1,
+          borderColor: theme.colors.border,
+        },
+      ]}
+    >
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+        {label.charAt(0).toUpperCase() + label.slice(1)}
+      </Text>
+      <Text
+        style={[styles.statValue, { color: color ?? theme.colors.foreground }]}
+        numberOfLines={1}
+      >
+        {value}
+      </Text>
+    </View>
+  );
+  const overview = (
+    <View style={styles.stack}>
+      <View style={styles.stats}>
+        {stat(
+          panel.running,
+          `${state?.running ?? runs.length}/${config.maxConcurrent}`,
+        )}
+        {stat(panel.waiting, String(state?.waiting ?? 0))}
+        {config.enabled && !state?.active && state?.nextRunAt
+          ? stat(panel.statNext, time(state.nextRunAt, t.locale))
+          : stat(panel.statState, pill.text, pill.color)}
+      </View>
+      <Text style={[styles.label, { color: theme.colors.foreground }]}>
+        {panel.runningNow} ({runs.length}/{config.maxConcurrent})
+      </Text>
+      {runs.length === 0 && (
+        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+          {panel.nothingRunning}
         </Text>
-        <View style={styles.inline}>
-          <RunControls config={config} {...props} />
-          <Pressable
-            accessibilityRole="button"
-            disabled={disabled || !(dirty || content.touched)}
-            onPress={() => void save()}
-            style={({ pressed }) => [
-              styles.button,
+      )}
+      {runs.map(({ record, card }) => (
+        <View key={record.agentId ?? record.startedAt} style={styles.inline}>
+          <Text
+            style={[styles.meta, { color: theme.colors.foreground, flex: 1 }]}
+            numberOfLines={1}
+          >
+            {card?.title ?? "?"} · {t.orchestrationStatus[record.status]}
+          </Text>
+          {record.agentId && <AgentLink agentId={record.agentId} {...props} />}
+        </View>
+      ))}
+      <Text
+        style={[
+          styles.label,
+          styles.logTitle,
+          { color: theme.colors.foreground },
+        ]}
+      >
+        {panel.log}
+      </Text>
+      {log.length === 0 && (
+        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+          {panel.logEmpty}
+        </Text>
+      )}
+      {log.map((entry, index) => (
+        <View key={`${entry.at}:${index}`} style={styles.logRow}>
+          <Text
+            style={[styles.logTime, { color: theme.colors.foregroundMuted }]}
+          >
+            {time(entry.at, t.locale)}
+          </Text>
+          <Text
+            style={[
+              styles.meta,
               {
-                backgroundColor: theme.colors.accent,
-                opacity:
-                  disabled || !(dirty || content.touched)
-                    ? 0.5
-                    : pressed
-                      ? 0.8
-                      : 1,
+                flex: 1,
+                color:
+                  entry.level === "error"
+                    ? theme.colors.statusDanger
+                    : entry.level === "warn"
+                      ? theme.colors.statusWarning
+                      : theme.colors.foreground,
               },
             ]}
           >
-            <Text style={{ color: theme.colors.accentForeground }}>
-              {panel.save}
-            </Text>
-          </Pressable>
+            {entry.text}
+          </Text>
+          {entry.agentId && <AgentLink agentId={entry.agentId} {...props} />}
         </View>
-      </View>
-      {error && (
-        <Text style={[styles.meta, { color: theme.colors.statusDanger }]}>
-          {error}
-        </Text>
-      )}
-      <View style={styles.columns}>
-        <View style={styles.column}>
+      ))}
+    </View>
+  );
+  const general = (
+    <>
+      {section(
+        panel.sections.identity,
+        <>
           {field(
             panel.name,
-            input(draft.name, (name) => edit({ name }), {
-              label: panel.name,
-            }),
+            input(draft.name, (name) => edit({ name }), { label: panel.name }),
           )}
           {field(
             panel.project,
@@ -521,18 +686,51 @@ export function OrchestratorTab(
             panel.projectHint,
           )}
           {field(
+            panel.workspace,
+            <View style={styles.chips}>
+              {chip("worktree", panel.worktree, draft.useWorktree, () =>
+                edit({ useWorktree: true }),
+              )}
+              {chip("folder", panel.folder, !draft.useWorktree, () =>
+                edit({ useWorktree: false }),
+              )}
+            </View>,
+          )}
+        </>,
+      )}
+      {section(
+        panel.dangerZone,
+        <>
+          <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+            {panel.dangerHint}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            disabled={disabled}
+            onPress={() => setDeleting(true)}
+            style={[styles.button, styles.deleteButton]}
+          >
+            <Icon name="Trash2" size={14} color={theme.colors.statusDanger} />
+            <Text style={{ color: theme.colors.statusDanger }}>
+              {panel.delete}
+            </Text>
+          </Pressable>
+        </>,
+      )}
+    </>
+  );
+  const schedule = (
+    <>
+      {section(
+        panel.sections.scheduleWhen,
+        <>
+          {field(
             panel.schedule,
             <View style={styles.chips}>
               {(["manual", "window", "daily"] as const).map((kind) =>
                 chip(kind, panel.scheduleKinds[kind], draft.kind === kind, () =>
                   edit({ kind }),
                 ),
-              )}
-              {chip(
-                "enabled",
-                draft.enabled ? panel.enabled : panel.disabled,
-                draft.enabled,
-                () => edit({ enabled: !draft.enabled }),
               )}
             </View>,
             panel.scheduleHints[draft.kind],
@@ -582,167 +780,166 @@ export function OrchestratorTab(
                 placeholder: "09:00, 18:00",
               }),
             )}
-          <View style={styles.inline}>
-            {field(
-              panel.maxConcurrent,
-              input(
-                draft.maxConcurrent,
-                (maxConcurrent) => edit({ maxConcurrent }),
-                {
-                  label: panel.maxConcurrent,
-                },
-              ),
-            )}
-            {field(
-              panel.batchSize,
-              input(draft.batchSize, (batchSize) => edit({ batchSize }), {
-                label: panel.batchSize,
-              }),
-            )}
-          </View>
-          {/* CUSTOM(agent-profiles): selects backed by the daemon's catalog */}
+        </>,
+      )}
+      {section(
+        panel.sections.scheduleHow,
+        <View style={styles.inline}>
           {field(
-            panel.agent,
-            <AgentFields
-              value={{
-                provider: draft.provider,
-                modeId: draft.modeId,
-                thinkingOptionId: draft.thinkingOptionId,
-              }}
-              onChange={(agent) => edit(agent)}
-              disabled={disabled}
-              theme={theme}
-              s={ps}
-            />,
-          )}
-          {field(
-            panel.workspace,
-            <View style={styles.chips}>
-              {chip("worktree", panel.worktree, draft.useWorktree, () =>
-                edit({ useWorktree: true }),
-              )}
-              {chip("folder", panel.folder, !draft.useWorktree, () =>
-                edit({ useWorktree: false }),
-              )}
-            </View>,
-          )}
-          {field(
-            panel.instructions,
+            panel.maxConcurrent,
             input(
-              draft.instructions,
-              (instructions) => edit({ instructions }),
-              {
-                label: panel.instructions,
-                multiline: true,
-                placeholder: panel.instructionsPlaceholder,
-              },
+              draft.maxConcurrent,
+              (maxConcurrent) => edit({ maxConcurrent }),
+              { label: panel.maxConcurrent },
             ),
-            ps.instructionsHint, // CUSTOM(agent-profiles)
           )}
-          {/* CUSTOM(agent-profiles) */}
-          <ProfileFields
-            profile={config.id}
-            content={content}
-            skills={draft.skills}
-            memory={draft.memory}
-            provider={draft.provider}
-            onSkills={(skills) => edit({ skills })}
-            onMemory={(memory) => edit({ memory })}
-            disabled={disabled}
-            theme={theme}
-            s={ps}
-          />
+          {field(
+            panel.batchSize,
+            input(draft.batchSize, (batchSize) => edit({ batchSize }), {
+              label: panel.batchSize,
+            }),
+          )}
+        </View>,
+      )}
+    </>
+  );
+  const profileProps = {
+    profile: config.id,
+    content,
+    skills: draft.skills,
+    memory: draft.memory,
+    provider: draft.provider,
+    onSkills: (skills: SkillSelection) => edit({ skills }),
+    onMemory: (memory: boolean) => edit({ memory }),
+    disabled,
+    theme,
+    s: ps,
+  };
+  const agent = (
+    <>
+      {section(
+        panel.sections.agent,
+        /* CUSTOM(agent-profiles): selects backed by the daemon's catalog */
+        <AgentFields
+          value={{
+            provider: draft.provider,
+            modeId: draft.modeId,
+            thinkingOptionId: draft.thinkingOptionId,
+          }}
+          onChange={(change) => edit(change)}
+          disabled={disabled}
+          theme={theme}
+          s={ps}
+        />,
+      )}
+      {section(
+        panel.sections.skillsMemory,
+        <ProfileSkillsMemory {...profileProps} />,
+      )}
+    </>
+  );
+  const prompts = (
+    <>
+      {section(
+        panel.sections.instructions,
+        field(
+          panel.instructions,
+          input(draft.instructions, (instructions) => edit({ instructions }), {
+            label: panel.instructions,
+            multiline: true,
+            placeholder: panel.instructionsPlaceholder,
+          }),
+          ps.instructionsHint, // CUSTOM(agent-profiles)
+        ),
+      )}
+      {section(
+        panel.sections.systemPrompt,
+        <ProfilePromptField {...profileProps} />,
+      )}
+    </>
+  );
+  const pages = { general, schedule, agent, prompts };
+  return (
+    <ScrollView contentContainerStyle={styles.page}>
+      <View style={styles.header}>
+        <View style={styles.inline}>
+          <Text style={[styles.title, { color: theme.colors.foreground }]}>
+            {config.name}
+          </Text>
+          <Text
+            style={[
+              styles.pill,
+              { color: pill.color, borderColor: pill.color },
+            ]}
+          >
+            {pill.text}
+          </Text>
+        </View>
+        <View style={styles.inline}>
+          <EnableToggle config={config} {...props} />
+          <RunControls config={config} {...props} />
+          {unsaved && (
+            <Text
+              style={[styles.meta, { color: theme.colors.foregroundMuted }]}
+            >
+              {panel.unsaved}
+            </Text>
+          )}
           <Pressable
             accessibilityRole="button"
-            disabled={disabled}
-            onPress={() => setDeleting(true)}
-            style={[styles.button, styles.deleteButton]}
+            disabled={disabled || !unsaved}
+            onPress={() => void save()}
+            style={({ pressed }) => [
+              styles.button,
+              {
+                backgroundColor: theme.colors.accent,
+                opacity: disabled || !unsaved ? 0.5 : pressed ? 0.8 : 1,
+              },
+            ]}
           >
-            <Icon name="Trash2" size={14} color={theme.colors.statusDanger} />
-            <Text style={{ color: theme.colors.statusDanger }}>
-              {panel.delete}
+            <Text style={{ color: theme.colors.accentForeground }}>
+              {panel.save}
             </Text>
           </Pressable>
         </View>
-        <View style={styles.column}>
-          <Text style={[styles.label, { color: theme.colors.foreground }]}>
-            {panel.runningNow} ({runs.length}/{config.maxConcurrent})
-          </Text>
-          {runs.length === 0 && (
-            <Text
-              style={[styles.meta, { color: theme.colors.foregroundMuted }]}
-            >
-              {panel.nothingRunning}
-            </Text>
-          )}
-          {runs.map(({ record, card }) => (
-            <View
-              key={record.agentId ?? record.startedAt}
-              style={styles.inline}
-            >
-              <Text
-                style={[
-                  styles.meta,
-                  { color: theme.colors.foreground, flex: 1 },
-                ]}
-                numberOfLines={1}
-              >
-                {card?.title ?? "?"} · {t.orchestrationStatus[record.status]}
-              </Text>
-              {record.agentId && (
-                <AgentLink agentId={record.agentId} {...props} />
-              )}
-            </View>
-          ))}
-          <Text
-            style={[
-              styles.label,
-              styles.logTitle,
-              { color: theme.colors.foreground },
-            ]}
-          >
-            {panel.log}
-          </Text>
-          {log.length === 0 && (
-            <Text
-              style={[styles.meta, { color: theme.colors.foregroundMuted }]}
-            >
-              {panel.logEmpty}
-            </Text>
-          )}
-          {log.map((entry, index) => (
-            <View key={`${entry.at}:${index}`} style={styles.logRow}>
-              <Text
-                style={[
-                  styles.logTime,
-                  { color: theme.colors.foregroundMuted },
-                ]}
-              >
-                {time(entry.at, t.locale)}
-              </Text>
-              <Text
-                style={[
-                  styles.meta,
-                  {
-                    flex: 1,
-                    color:
-                      entry.level === "error"
-                        ? theme.colors.statusDanger
-                        : entry.level === "warn"
-                          ? theme.colors.statusWarning
-                          : theme.colors.foreground,
-                  },
-                ]}
-              >
-                {entry.text}
-              </Text>
-              {entry.agentId && (
-                <AgentLink agentId={entry.agentId} {...props} />
-              )}
-            </View>
-          ))}
-        </View>
       </View>
+      {error && (
+        <Text style={[styles.meta, { color: theme.colors.statusDanger }]}>
+          {error}
+        </Text>
+      )}
+      <View style={[styles.subTabs, { borderColor: theme.colors.border }]}>
+        {SUB_TABS.map((id) => {
+          const selected = id === subTab;
+          return (
+            <Pressable
+              key={id}
+              accessibilityRole="tab"
+              {...toggleButtonState(selected)}
+              onPress={() => setSubTab(id)}
+              style={[
+                styles.subTab,
+                selected && { borderColor: theme.colors.accent },
+              ]}
+            >
+              <Text
+                style={{
+                  color: selected
+                    ? theme.colors.foreground
+                    : theme.colors.foregroundMuted,
+                }}
+              >
+                {panel.subTabs[id]}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </View>
+      {subTab === "overview" ? (
+        overview
+      ) : (
+        <View style={styles.settings}>{pages[subTab]}</View>
+      )}
       {deleting && (
         <ConfirmationModal
           title={panel.delete}
@@ -911,7 +1108,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 6,
   },
-  deleteButton: { alignSelf: "flex-start", marginTop: 12 },
+  deleteButton: { alignSelf: "flex-start" },
   row: {
     borderWidth: 1,
     borderRadius: 10,
@@ -928,8 +1125,49 @@ const styles = StyleSheet.create({
     gap: 8,
     flexWrap: "wrap",
   },
-  columns: { flexDirection: "row", flexWrap: "wrap", gap: 24 },
-  column: { flexGrow: 1, flexBasis: 360, minWidth: 280, gap: 12 },
+  stack: { gap: 10 },
+  dim: { opacity: 0.6 },
+  settings: { width: "100%", maxWidth: 760, alignSelf: "center", gap: 14 },
+  section: { borderWidth: 1, borderRadius: 10, padding: 16, gap: 14 },
+  stats: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
+  stat: {
+    flexGrow: 1,
+    flexBasis: 140,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    gap: 4,
+  },
+  statValue: { fontSize: 18, fontWeight: "600" },
+  pill: {
+    fontSize: 12,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  toggle: { flexDirection: "row", alignItems: "center", gap: 6 },
+  track: {
+    width: 34,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 2,
+    justifyContent: "center",
+  },
+  knob: { width: 14, height: 14, borderRadius: 7 },
+  subTabs: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  subTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderBottomWidth: 2,
+    borderColor: "transparent",
+  },
   field: { gap: 6, flexGrow: 1 },
   label: { fontSize: 13, fontWeight: "600" },
   input: {

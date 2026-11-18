@@ -582,18 +582,7 @@ export function useProfileContent(profile: string) {
 }
 
 /** Skills chip, system prompt, memory and the folder paths. */
-export function ProfileFields({
-  profile,
-  content,
-  skills,
-  memory,
-  provider,
-  onSkills,
-  onMemory,
-  disabled,
-  theme,
-  s,
-}: {
+type ProfileFieldsProps = {
   profile: string;
   content: ReturnType<typeof useProfileContent>;
   skills: SkillSelection;
@@ -604,7 +593,34 @@ export function ProfileFields({
   disabled: boolean;
   theme: Theme;
   s: ProfileStrings;
-}) {
+};
+
+/** Both halves, one after the other: the Projects Assistant tab uses this. */
+export function ProfileFields(props: ProfileFieldsProps) {
+  return (
+    <View style={styles.stack}>
+      <ProfileSkillsMemory
+        {...props}
+        afterSkills={<ProfilePromptField {...props} />}
+      />
+    </View>
+  );
+}
+
+/** Skills, memory and the profile folder. */
+export function ProfileSkillsMemory({
+  profile,
+  content,
+  skills,
+  memory,
+  provider,
+  onSkills,
+  onMemory,
+  disabled,
+  theme,
+  s,
+  afterSkills,
+}: ProfileFieldsProps & { afterSkills?: ReactNode }) {
   const view = content.view;
   return (
     <View style={styles.stack}>
@@ -630,40 +646,7 @@ export function ProfileFields({
           </Text>
         )}
       </View>
-      <View style={styles.field}>
-        <Text style={[styles.label, { color: theme.colors.foreground }]}>
-          {s.systemPrompt}
-        </Text>
-        <TextInput
-          accessibilityLabel={s.systemPrompt}
-          editable={!disabled && content.prompt !== null}
-          multiline
-          value={content.prompt ?? (content.failed ? "" : s.promptLoading)}
-          onChangeText={content.edit}
-          placeholder={s.systemPromptPlaceholder}
-          placeholderTextColor={theme.colors.foregroundMuted}
-          style={[
-            styles.input,
-            styles.textarea,
-            {
-              color: theme.colors.foreground,
-              borderColor: theme.colors.border,
-            },
-          ]}
-        />
-        <Text
-          style={[
-            styles.meta,
-            {
-              color: content.failed
-                ? theme.colors.statusDanger
-                : theme.colors.foregroundMuted,
-            },
-          ]}
-        >
-          {content.failed ? s.promptLoadFailed : s.systemPromptHint}
-        </Text>
-      </View>
+      {afterSkills}
       <SettingsCard>
         <SettingsSwitch
           label={s.memory}
@@ -694,6 +677,51 @@ export function ProfileFields({
           </Text>
         </View>
       )}
+    </View>
+  );
+}
+
+/** The system prompt textarea. */
+export function ProfilePromptField({
+  content,
+  disabled,
+  theme,
+  s,
+}: Pick<ProfileFieldsProps, "content" | "disabled" | "theme" | "s">) {
+  return (
+    <View style={styles.field}>
+      <Text style={[styles.label, { color: theme.colors.foreground }]}>
+        {s.systemPrompt}
+      </Text>
+      <TextInput
+        accessibilityLabel={s.systemPrompt}
+        editable={!disabled && content.prompt !== null}
+        multiline
+        value={content.prompt ?? (content.failed ? "" : s.promptLoading)}
+        onChangeText={content.edit}
+        placeholder={s.systemPromptPlaceholder}
+        placeholderTextColor={theme.colors.foregroundMuted}
+        style={[
+          styles.input,
+          styles.textarea,
+          {
+            color: theme.colors.foreground,
+            borderColor: theme.colors.border,
+          },
+        ]}
+      />
+      <Text
+        style={[
+          styles.meta,
+          {
+            color: content.failed
+              ? theme.colors.statusDanger
+              : theme.colors.foregroundMuted,
+          },
+        ]}
+      >
+        {content.failed ? s.promptLoadFailed : s.systemPromptHint}
+      </Text>
     </View>
   );
 }

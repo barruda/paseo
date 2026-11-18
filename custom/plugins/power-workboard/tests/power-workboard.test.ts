@@ -515,6 +515,66 @@ it("a daily time starts a run once, and Stop ends it", async () => {
   }
 });
 
+it("disabling ends the run and logs it; Run now is refused until it is enabled again", async () => {
+  const { board, host, advance } = orchestrated();
+  await board.start();
+  try {
+    const id = await addOrchestrator(board, {
+      name: "Manual",
+      schedule: { kind: "manual" },
+      maxConcurrent: 1,
+      batchSize: 5,
+    });
+    await readyTasks(board, advance, ["B", "A"]);
+    await board.mutate({ action: "orchestrator-run", id });
+    expect(board.snapshot().orchestratorRuntime[id].quota).toBeGreaterThan(0);
+
+    await board.mutate({ action: "orchestrator-enable", id, enabled: false });
+    expect(board.snapshot().orchestratorRuntime[id].quota).toBe(0);
+    expect(board.snapshot().orchestratorStatus[id].active).toBe(false);
+    expect(logText(board, id)).toEqual(
+      expect.arrayContaining([
+        "Disabled: no new tasks start; running agents keep going",
+        expect.stringContaining("Run finished (disabled)"),
+      ]),
+    );
+    await expect(
+      board.mutate({ action: "orchestrator-run", id }),
+    ).rejects.toThrow("Orchestrator is disabled");
+    expect(host.startAgent).toHaveBeenCalledTimes(1);
+
+    await board.mutate({ action: "orchestrator-enable", id, enabled: true });
+    expect(logText(board, id)).toContain("Enabled");
+    await board.mutate({ action: "orchestrator-run", id });
+    expect(board.snapshot().orchestratorStatus[id].active).toBe(true);
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a disabled orchestrator takes no tasks, even with an open window, until it is enabled", async () => {
+  const { board, host, advance } = orchestrated();
+  await board.start();
+  try {
+    const id = await addOrchestrator(board, { name: "Always" });
+    await board.mutate({ action: "orchestrator-enable", id, enabled: false });
+    await readyTasks(board, advance, ["A"]);
+    await board.refresh();
+    expect(host.startAgent).not.toHaveBeenCalled();
+    expect(stageOf(board, "A")).toBe("ready");
+    expect(board.snapshot().orchestratorStatus[id]).toMatchObject({
+      active: false,
+      nextRunAt: null,
+    });
+
+    await board.mutate({ action: "orchestrator-enable", id, enabled: true });
+    expect(host.startAgent).toHaveBeenCalledTimes(1);
+    expect(stageOf(board, "A")).toBe("in-progress");
+  } finally {
+    board.dispose();
+  }
+});
+
 it("a task chosen for an orchestrator goes to it; others go to their project's orchestrator", async () => {
   const { board, advance } = orchestrated();
   await board.start();

@@ -1177,6 +1177,7 @@ export class Workboard {
           });
         } else if (input.action === "orchestrator-run") {
           const config = this.orchestratorConfig(input.id);
+          if (!config.enabled) throw new Error("Orchestrator is disabled");
           await this.setRuntime(input.id, {
             quota: config.batchSize,
             started: 0,
@@ -1187,6 +1188,23 @@ export class Workboard {
             "info",
             `Run now: up to ${config.batchSize} tasks, ${config.maxConcurrent} at a time`,
           );
+          await this.orchestrate();
+        } else if (input.action === "orchestrator-enable") {
+          this.orchestratorConfig(input.id);
+          await this.store.update((data) => {
+            data.orchestrators = data.orchestrators.map((o) =>
+              o.id === input.id ? { ...o, enabled: input.enabled } : o,
+            );
+          });
+          await this.log(
+            input.id,
+            "info",
+            input.enabled
+              ? "Enabled"
+              : "Disabled: no new tasks start; running agents keep going",
+          );
+          if (!input.enabled && this.runtime(input.id).quota > 0)
+            await this.endRun(input.id, "disabled");
           await this.orchestrate();
         } else if (input.action === "orchestrator-stop") {
           this.orchestratorConfig(input.id);
@@ -2932,27 +2950,30 @@ export class Workboard {
     let started = false;
     for (const config of [...this.store.current.orchestrators]) {
       if (this.stopped) break;
-      if (config.enabled) {
-        const due = dueTrigger(
-          config.schedule,
-          this.runtime(config.id).lastTriggerAt,
-          this.now(),
-        );
-        if (due !== null) {
-          await this.setRuntime(config.id, {
-            quota: config.batchSize,
-            started: 0,
-            runStartedAt: this.stamp(),
-            lastTriggerAt: new Date(due).toISOString(),
-          });
-          await this.log(
-            config.id,
-            "info",
-            `Scheduled run: up to ${config.batchSize} tasks`,
-          );
-        }
+      if (!config.enabled) {
+        if (this.runtime(config.id).quota > 0)
+          await this.endRun(config.id, "disabled");
+        continue;
       }
-      const open = config.enabled && windowOpen(config.schedule, this.now());
+      const due = dueTrigger(
+        config.schedule,
+        this.runtime(config.id).lastTriggerAt,
+        this.now(),
+      );
+      if (due !== null) {
+        await this.setRuntime(config.id, {
+          quota: config.batchSize,
+          started: 0,
+          runStartedAt: this.stamp(),
+          lastTriggerAt: new Date(due).toISOString(),
+        });
+        await this.log(
+          config.id,
+          "info",
+          `Scheduled run: up to ${config.batchSize} tasks`,
+        );
+      }
+      const open = windowOpen(config.schedule, this.now());
       const quota = this.runtime(config.id).quota;
       if (quota <= 0 && !open) continue;
       const mine = ready.filter(
@@ -3092,8 +3113,9 @@ export class Workboard {
     const next = config.enabled ? nextRunAt(config.schedule, this.now()) : null;
     return {
       active:
-        this.runtime(config.id, data).quota > 0 ||
-        (config.enabled && windowOpen(config.schedule, this.now())),
+        config.enabled &&
+        (this.runtime(config.id, data).quota > 0 ||
+          windowOpen(config.schedule, this.now())),
       running: this.runningFor(config.id, data),
       waiting,
       nextRunAt: next === null ? null : new Date(next).toISOString(),

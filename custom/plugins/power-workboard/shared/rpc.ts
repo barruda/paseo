@@ -113,6 +113,11 @@ export const mutationSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("orchestrator-run"), id: z.string() }),
   z.object({ action: z.literal("orchestrator-stop"), id: z.string() }),
   z.object({
+    action: z.literal("orchestrator-enable"),
+    id: z.string(),
+    enabled: z.boolean(),
+  }),
+  z.object({
     action: z.literal("settings"),
     revision: z.number(),
     expectedSettings: settingsSchema

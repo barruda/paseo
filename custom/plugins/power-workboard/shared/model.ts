@@ -438,7 +438,7 @@ export const orchestratorConfigSchema = z.object({
   name: z.string().trim().min(1).max(80),
   /** null takes unassigned tasks of any project. */
   projectId: z.string().nullable().default(null),
-  /** Off: its schedule does not fire; Run now still works. */
+  /** Off: takes no tasks at all (no schedule, no Run now); running agents keep going. */
   enabled: z.boolean().default(true),
   schedule: scheduleSchema.default({ kind: "manual" }),
   maxConcurrent: z.number().int().min(1).max(10).default(2),

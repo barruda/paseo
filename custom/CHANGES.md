@@ -6645,3 +6645,22 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `(cd packages/app && npx vitest run src/plugins/buttons/model.test.ts --bail=1)` and
   the plugin suite. In the app: the assistant chat shows Restart chat left of Columns/Compact;
   other agents don't; Restart opens a new chat and the old one is archived.
+
+## power-workboard-orchestrator-editor: sub-tabs and an Enabled switch
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Power Workboard orchestrator editor in sub-tabs, with an Enabled switch`
+- **Why:** The orchestrator editor was one long column of fields, and "Enabled" was an odd chip in
+  the Schedule row that still let Run now through.
+- **What:** An orchestrator tab has a header (name, status pill, Enabled switch, Run, Save, "Unsaved
+  changes") and sub-tabs: Overview (stats, running now, log), General, Schedule, Agent, Prompts.
+  Settings tabs sit in a centered column of bordered sections; Delete is in a "Danger zone".
+  The Enabled switch saves at once (`orchestrator-enable`) and also sits on each list row. A
+  disabled orchestrator takes no tasks: no schedule, Run now is refused, a run in progress ends;
+  running agents keep going. `ProfileFields` is split into `ProfileSkillsMemory` and
+  `ProfilePromptField` (the Projects Assistant tab still uses the wrapper).
+- **Core files touched:** none (plugin only).
+- **Re-apply:** nothing to re-apply; the plugin is self-contained.
+- **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
+  In the app: open an orchestrator, flip Enabled off (Run greys out, pill says Disabled), switch
+  through the sub-tabs, edit a field and Save.
