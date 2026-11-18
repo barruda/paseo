@@ -6548,7 +6548,10 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     reversible blockers, and leave to the user only what is theirs, then report in 2-4 lines what
     it did and what is left. Its reply raises Paseo's usual "finished" notification. A busy chat
     is retried later, never interrupted; without a chat nothing is sent. History records "Told
-    the assistant".
+    the assistant". The queue lives in memory, so each delivery stores `toldAt` (cleared on every
+    entry to Needs you): on start and on each refresh the board puts back every Needs you task
+    without it, so a `plugin reload` or daemon restart does not drop the message, and a task
+    already told is not told again. A failed send also goes back on the next refresh.
   - **Projects Conversations** (surface `projects-conversations`): orchestrator > task > the
     agents it started (never their subagents), the selected agent's conversation read through the
     timeline API (plugins cannot embed the real chat), report card, attempts, the orchestrator's
