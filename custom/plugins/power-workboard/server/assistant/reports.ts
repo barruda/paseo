@@ -86,6 +86,29 @@ export function orchestratorPart(input: {
  */
 export const ATTACH_BEFORE_MS = 15 * 60_000;
 export const ATTACH_AFTER_MS = 2 * 60_000;
+/**
+ * The user creates and moves tickets by hand too, and the history does not say who did it. The
+ * assistant reports its own create or move right after it, so these kinds join an entry after them
+ * only within this shorter window.
+ */
+export const ATTACH_BEFORE_BOARD_MS = ATTACH_AFTER_MS;
+const BOARD_KINDS: ReadonlySet<HistoryEvent["kind"]> = new Set([
+  "task-created",
+  "task-moved",
+]);
+
+/** Entry kinds an event most likely belongs to, when it could join more than one entry. */
+const AFFINITY: Partial<
+  Record<HistoryEvent["kind"], readonly AssistantReport["kind"][]>
+> = {
+  "task-created": ["created"],
+  "task-moved": ["moved"],
+  "task-started": ["started"],
+  "task-continued": ["feedback", "answered"],
+  committed: ["merged"],
+  merged: ["merged"],
+  "pr-prepared": ["merged"],
+};
 
 /** Kinds whose `agentId` is the task's agent (told-assistant's is the chat's). */
 const AGENT_KINDS: ReadonlySet<HistoryEvent["kind"]> = new Set([
@@ -105,13 +128,46 @@ const time = (iso: string) => {
 const oldestFirst = <T extends { at: string; id: string }>(a: T, b: T) =>
   time(a.at) - time(b.at) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-const toEvent = (event: HistoryEvent): ReportEvent => ({
+/**
+ * A history event's own detail and its agent's part: the report event's text is the agent's reply
+ * (with the delivery's parsed report when it is the same attempt), the continue's is the prompt.
+ */
+function agentSide(
+  event: HistoryEvent,
+  delivery: Delivery | undefined,
+): { detail: string | null; orchestrator: ReportOrchestrator | null } {
+  if (!event.agentId || !AGENT_KINDS.has(event.kind))
+    return { detail: event.detail, orchestrator: null };
+  const orchestrator: ReportOrchestrator = {
+    agentId: event.agentId,
+    prompt: null,
+    reply: null,
+    report: null,
+  };
+  if (event.kind === "report") {
+    orchestrator.reply = event.detail;
+    orchestrator.report =
+      delivery && delivery.attempt === event.attempt ? delivery.report : null;
+    return { detail: null, orchestrator };
+  }
+  if (event.kind === "task-continued" || event.kind === "fix-requested") {
+    orchestrator.prompt = event.detail;
+    return { detail: null, orchestrator };
+  }
+  return { detail: event.detail, orchestrator };
+}
+
+/** A history event folded into an assistant entry. */
+const toEvent = (
+  event: HistoryEvent,
+  delivery: Delivery | undefined,
+): ReportEvent => ({
   id: event.id,
   at: event.at,
   kind: event.kind,
   text: event.text,
-  detail: event.detail,
   agentId: event.agentId,
+  ...agentSide(event, delivery),
 });
 
 /** A history event as an item of its own; the agent's part moves into `orchestrator`. */
@@ -119,43 +175,47 @@ function autoItem(
   event: HistoryEvent,
   delivery: Delivery | undefined,
 ): ReportTimelineItem {
-  let detail = event.detail;
-  let orchestrator: ReportOrchestrator | null = null;
-  if (event.agentId && AGENT_KINDS.has(event.kind)) {
-    orchestrator = {
-      agentId: event.agentId,
-      prompt: null,
-      reply: null,
-      report: null,
-    };
-    if (event.kind === "report") {
-      orchestrator.reply = detail;
-      orchestrator.report =
-        delivery && delivery.attempt === event.attempt ? delivery.report : null;
-      detail = null;
-    } else if (
-      event.kind === "task-continued" ||
-      event.kind === "fix-requested"
-    ) {
-      orchestrator.prompt = detail;
-      detail = null;
-    }
-  }
   return {
     source: "auto",
     id: event.id,
     at: event.at,
     kind: event.kind,
     summary: event.text,
-    detail,
-    orchestrator,
+    ...agentSide(event, delivery),
   };
 }
 
 /**
+ * The entry an event belongs to: among the entries up to ATTACH_AFTER_MS before it and up to
+ * ATTACH_BEFORE_MS after it (ATTACH_BEFORE_BOARD_MS for creates and moves), one of the kinds the
+ * event points to (AFFINITY) wins, then the nearest; on a tie, the one after it.
+ */
+function ownerOf(
+  event: HistoryEvent,
+  entries: readonly AssistantReport[],
+): AssistantReport | undefined {
+  const at = time(event.at);
+  const before = BOARD_KINDS.has(event.kind)
+    ? ATTACH_BEFORE_BOARD_MS
+    : ATTACH_BEFORE_MS;
+  const preferred = AFFINITY[event.kind] ?? [];
+  let best: { entry: AssistantReport; rank: number } | undefined;
+  for (const entry of entries) {
+    const offset = time(entry.at) - at;
+    if (offset > before || -offset > ATTACH_AFTER_MS) continue;
+    // Lower is better: affinity first, then distance, then after-the-event over before it.
+    const rank =
+      (preferred.includes(entry.kind) ? 0 : 1) * 1e12 +
+      Math.abs(offset) * 2 +
+      (offset >= 0 ? 0 : 1);
+    if (!best || rank < best.rank) best = { entry, rank };
+  }
+  return best?.entry;
+}
+
+/**
  * One ticket's items, oldest first. Each assistant entry is an item; each history event joins the
- * entry right before it (within ATTACH_AFTER_MS), else the entry right after it (within
- * ATTACH_BEFORE_MS), else stands as an automatic item.
+ * entry `ownerOf` picks, else stands as an automatic item.
  */
 export function mergeTimeline(
   events: readonly HistoryEvent[],
@@ -166,23 +226,8 @@ export function mergeTimeline(
   const folded = new Map<string, ReportEvent[]>(entries.map((r) => [r.id, []]));
   const items: ReportTimelineItem[] = [];
   for (const event of [...events].sort(oldestFirst)) {
-    const at = time(event.at);
-    let previous: AssistantReport | undefined;
-    let next: AssistantReport | undefined;
-    for (const entry of entries) {
-      if (time(entry.at) <= at) previous = entry;
-      else {
-        next = entry;
-        break;
-      }
-    }
-    const owner =
-      previous && at - time(previous.at) <= ATTACH_AFTER_MS
-        ? previous
-        : next && time(next.at) - at <= ATTACH_BEFORE_MS
-          ? next
-          : undefined;
-    if (owner) folded.get(owner.id)!.push(toEvent(event));
+    const owner = ownerOf(event, entries);
+    if (owner) folded.get(owner.id)!.push(toEvent(event, delivery));
     else items.push(autoItem(event, delivery));
   }
   for (const entry of entries)

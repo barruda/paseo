@@ -3,11 +3,14 @@
 import { useMemo } from "react";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
+import { isBoardAgent } from "@getpaseo/protocol/board-agents";
 import { useAgentHistory } from "@/hooks/use-agent-history";
+import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
+import { isBoardAgentInSession } from "@/board-agents/visibility"; // CUSTOM(hidden-board-agents)
 import { useSessionStore } from "@/stores/session-store";
 import { buildTaskTree, taskKey, type TaskAgent, type TaskNode, type TaskWorkspace } from "./model";
 
-interface ArchivedEntry {
+export interface ArchivedEntry {
   serverId: string;
   id: string;
   workspaceId?: string | null;
@@ -15,6 +18,8 @@ interface ArchivedEntry {
   provider: string;
   status: TaskAgent["status"];
   archivedAt: Date;
+  /** CUSTOM(hidden-board-agents): started by the Power Workboard or the Projects Assistant. */
+  board: boolean;
 }
 
 function toTaskAgent(entry: ArchivedEntry): TaskAgent {
@@ -49,6 +54,7 @@ function selectArchivedInSession(state: ReturnType<typeof useSessionStore.getSta
         provider: agent.provider,
         status: agent.status,
         archivedAt: agent.archivedAt,
+        board: isBoardAgentInSession(agent, session.agents, session.agentDetails),
       });
     }
   }
@@ -56,6 +62,41 @@ function selectArchivedInSession(state: ReturnType<typeof useSessionStore.getSta
 }
 
 const NO_ENTRIES: ArchivedEntry[] = [];
+
+/**
+ * History pages and sessions archived in this app session, one per agent, newest wins from the
+ * session. CUSTOM(hidden-board-agents): board agents stay out unless `includeBoardAgents`; a
+ * history entry's parent chain is resolved against the other history entries of its host.
+ */
+export function mergeArchivedAgents(input: {
+  historyAgents: readonly AggregatedAgent[];
+  sessionArchived: readonly ArchivedEntry[];
+  includeBoardAgents: boolean;
+}): TaskAgent[] {
+  const { historyAgents, sessionArchived, includeBoardAgents } = input;
+  const historyLabels = new Map<string, Record<string, string> | undefined>();
+  for (const agent of historyAgents)
+    historyLabels.set(taskKey(agent.serverId, agent.id), agent.labels);
+  const byKey = new Map<string, TaskAgent>();
+  for (const agent of historyAgents) {
+    if (!agent.archivedAt) continue;
+    const key = taskKey(agent.serverId, agent.id);
+    const board = isBoardAgent(agent.labels, (id) =>
+      historyLabels.get(taskKey(agent.serverId, id)),
+    );
+    if (board && !includeBoardAgents) continue;
+    byKey.set(key, toTaskAgent({ ...agent, archivedAt: agent.archivedAt, board }));
+  }
+  for (const entry of sessionArchived) {
+    const key = taskKey(entry.serverId, entry.id);
+    if (entry.board && !includeBoardAgents) {
+      byKey.delete(key);
+      continue;
+    }
+    byKey.set(key, toTaskAgent(entry));
+  }
+  return [...byKey.values()];
+}
 
 export interface ArchivedTasks {
   roots: TaskNode[];
@@ -69,6 +110,7 @@ export interface ArchivedTasks {
 export function useArchivedTasks(
   enabled: boolean,
   workspaces: readonly TaskWorkspace[],
+  includeBoardAgents: boolean, // CUSTOM(hidden-board-agents)
 ): ArchivedTasks {
   // CUSTOM(history-archived-tab): ask the daemon for archived sessions only.
   const history = useAgentHistory({ enabled, view: "archived" });
@@ -80,21 +122,12 @@ export function useArchivedTasks(
   const historyAgents = history.agents;
   const roots = useMemo(() => {
     if (!enabled) return [];
-    const byKey = new Map<string, TaskAgent>();
-    for (const agent of historyAgents) {
-      if (!agent.archivedAt) continue;
-      byKey.set(
-        taskKey(agent.serverId, agent.id),
-        toTaskAgent({ ...agent, archivedAt: agent.archivedAt }),
-      );
-    }
-    for (const entry of sessionArchived)
-      byKey.set(taskKey(entry.serverId, entry.id), toTaskAgent(entry));
-    return buildTaskTree({ agents: [...byKey.values()], workspaces }).sort(
+    const agents = mergeArchivedAgents({ historyAgents, sessionArchived, includeBoardAgents });
+    return buildTaskTree({ agents, workspaces }).sort(
       (a, b) =>
         b.agent.updatedAt.getTime() - a.agent.updatedAt.getTime() || a.key.localeCompare(b.key),
     );
-  }, [enabled, historyAgents, sessionArchived, workspaces]);
+  }, [enabled, historyAgents, sessionArchived, workspaces, includeBoardAgents]);
   return {
     roots,
     loaded: enabled && !history.isInitialLoad,

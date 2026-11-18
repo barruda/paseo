@@ -33,6 +33,7 @@ import {
   stripReport,
 } from "./conversations-format";
 import type { ConversationsStrings } from "./conversations-strings";
+import { showReport } from "./nav";
 import { Badge, Dot, statusColor } from "./conversations-tree";
 
 type Theme = PluginSurfaceProps["theme"];
@@ -595,6 +596,21 @@ export function ConversationThread(props: {
             </Text>
           </View>
         </View>
+        {taskId ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => showReport(props.navigation, taskId)}
+            style={[
+              styles.quick,
+              { borderColor: c.border, backgroundColor: c.surface1 },
+            ]}
+          >
+            <Icon name="FileText" size={12} color={c.foreground} />
+            <Text style={[styles.meta, { color: c.foreground }]}>
+              {t.openReport}
+            </Text>
+          </Pressable>
+        ) : null}
         {props.navigation?.openAgent ? (
           <Pressable
             accessibilityRole="button"

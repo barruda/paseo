@@ -1,6 +1,13 @@
 // CUSTOM(assistant-reports): the report entry schema, its store, the merge of the history with the
 // assistant's entries, the Reports views and the board_report tool.
-import { mkdtemp, readdir, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  utimes,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,6 +19,7 @@ import {
 } from "../shared/assistant-reports";
 import {
   ATTACH_AFTER_MS,
+  ATTACH_BEFORE_BOARD_MS,
   ATTACH_BEFORE_MS,
   ReportStore,
   buildReportColumns,
@@ -165,6 +173,65 @@ describe("ReportStore", () => {
       "2026-06-10.jsonl",
     ]);
   });
+
+  it("reuses a parsed day file until it changes, and filters while reading", async () => {
+    const now = new Date(2026, 5, 10, 9);
+    const store = new ReportStore(path.join(dir, "reports"), {
+      now: () => now,
+    });
+    const base = {
+      projectId: null,
+      projectName: "",
+      kind: "note" as const,
+      detail: null,
+      decisions: [],
+      orchestrator: null,
+      quickMessageId: null,
+    };
+    await store.append({
+      ...base,
+      taskId: "t1",
+      taskTitle: "One",
+      summary: "aaa",
+      at: new Date(2026, 5, 10, 9, 1).toISOString(),
+    });
+    await store.append({
+      ...base,
+      taskId: "t2",
+      taskTitle: "Two",
+      summary: "two",
+      at: new Date(2026, 5, 10, 9, 2).toISOString(),
+    });
+    // A whole-millisecond mtime, so restoring it below gives back the exact same value.
+    const file = path.join(dir, "reports", "2026-06-10.jsonl");
+    const mtime = new Date(2026, 5, 10, 9, 30);
+    await utimes(file, mtime, mtime);
+    expect((await store.since(null)).map((r) => r.summary)).toEqual([
+      "aaa",
+      "two",
+    ]);
+    // Same size and mtime: the cached parse is served, the file is not read again.
+    await writeFile(
+      file,
+      (await readFile(file, "utf8")).replace('"aaa"', '"bbb"'),
+    );
+    await utimes(file, mtime, mtime);
+    expect((await store.since(null)).map((r) => r.summary)).toEqual([
+      "aaa",
+      "two",
+    ]);
+    // An append changes the file: it is read again.
+    await store.append({
+      ...base,
+      taskId: "t1",
+      taskTitle: "One",
+      summary: "three",
+      at: new Date(2026, 5, 10, 9, 3).toISOString(),
+    });
+    expect(
+      (await store.since(null, (r) => r.taskId === "t1")).map((r) => r.summary),
+    ).toEqual(["bbb", "three"]);
+  });
 });
 
 describe("orchestratorPart", () => {
@@ -220,15 +287,71 @@ describe("mergeTimeline", () => {
     expect(assistant.events.map((e) => e.id)).toEqual(["report", "merged"]);
   });
 
-  it("prefers the entry before an event over the one after it", () => {
+  const owners = (items: ReturnType<typeof mergeTimeline>) =>
+    Object.fromEntries(
+      items.flatMap((item) =>
+        item.source === "assistant"
+          ? item.events.map((e) => [e.id, item.id])
+          : [[item.id, "auto"]],
+      ),
+    );
+
+  it("gives an event to the nearest entry, before or after it", () => {
     const items = mergeTimeline(
-      [event("merged", 1, { kind: "merged" })],
+      [
+        event("near-before", 1, { kind: "verify-passed" }),
+        event("near-after", 4, { kind: "verify-passed" }),
+      ],
       [entry("before", 0), entry("after", 5)],
     );
-    const owners = items.flatMap((item) =>
-      item.source === "assistant" && item.events.length ? [item.id] : [],
+    expect(owners(items)).toEqual({
+      "near-before": "before",
+      "near-after": "after",
+    });
+  });
+
+  it("gives a continue to the feedback entry rather than the review before it", () => {
+    // reviewed at T, the continue at T+60 s, the feedback entry at T+90 s.
+    const items = mergeTimeline(
+      [event("continued", 1, { kind: "task-continued", detail: "Add a test" })],
+      [
+        entry("reviewed", 0, { kind: "reviewed" }),
+        entry("feedback", 1.5, { kind: "feedback" }),
+      ],
     );
-    expect(owners).toEqual(["before"]);
+    expect(owners(items)).toEqual({ continued: "feedback" });
+    // The kind wins over the distance: the review is nearer, the feedback still owns it.
+    const later = mergeTimeline(
+      [event("continued", 0.5, { kind: "task-continued" })],
+      [
+        entry("reviewed", 0, { kind: "reviewed" }),
+        entry("feedback", 2, { kind: "feedback" }),
+      ],
+    );
+    expect(owners(later)).toEqual({ continued: "feedback" });
+  });
+
+  it("keeps a ticket moved by hand minutes before an entry out of that entry", () => {
+    const window = ATTACH_BEFORE_BOARD_MS / 60_000;
+    const items = mergeTimeline(
+      [
+        event("by-hand", -10, { kind: "task-moved", agentId: null }),
+        event("created-by-hand", -window - 1, {
+          kind: "task-created",
+          agentId: null,
+        }),
+        event("by-assistant", -0.5, { kind: "task-moved", agentId: null }),
+        // Other kinds keep the long window.
+        event("report", -10, { kind: "report" }),
+      ],
+      [entry("r1", 0, { kind: "moved" })],
+    );
+    expect(owners(items)).toEqual({
+      "by-hand": "auto",
+      "created-by-hand": "auto",
+      "by-assistant": "r1",
+      report: "r1",
+    });
   });
 
   it("uses the attach windows at their edges", () => {
@@ -297,6 +420,77 @@ describe("mergeTimeline", () => {
       orchestrator: { agentId: "a1", prompt: "Please add a test", reply: null },
     });
     expect(items[2]).toMatchObject({ orchestrator: null });
+  });
+
+  it("keeps the agent's side of the events folded into an entry", () => {
+    const items = mergeTimeline(
+      [
+        event("report", -5, { kind: "report", attempt: 1, detail: "Did it" }),
+        event("verify", -4, {
+          kind: "verify-failed",
+          agentId: null,
+          detail: "1 test failed",
+        }),
+        event("continued", 0.5, {
+          kind: "task-continued",
+          detail: "Please add a test",
+        }),
+      ],
+      [entry("r1", 0, { kind: "feedback" })],
+      {
+        stage: "fixing",
+        action: "review",
+        observe: false,
+        attempt: 1,
+        report: {
+          status: "done",
+          summary: "Did it",
+          filesChanged: [],
+          checks: [],
+          risks: [],
+          question: null,
+        },
+        reason: null,
+        detail: null,
+        verifyOutput: null,
+        fixesUsed: 0,
+        conflictFixes: 0,
+        dirtyRetries: 0,
+        startedAt: at(-10),
+        updatedAt: at(0),
+      },
+    );
+    expect(items).toHaveLength(1);
+    const [item] = items;
+    if (item.source !== "assistant") throw new Error("unreachable");
+    expect(item.events).toEqual([
+      expect.objectContaining({
+        id: "report",
+        text: "event report",
+        detail: null,
+        orchestrator: {
+          agentId: "a1",
+          prompt: null,
+          reply: "Did it",
+          report: expect.objectContaining({ status: "done" }),
+        },
+      }),
+      expect.objectContaining({
+        id: "verify",
+        detail: "1 test failed",
+        orchestrator: null,
+      }),
+      expect.objectContaining({
+        id: "continued",
+        detail: null,
+        orchestrator: {
+          agentId: "a1",
+          prompt: "Please add a test",
+          reply: null,
+          report: null,
+        },
+      }),
+    ]);
   });
 });
 
