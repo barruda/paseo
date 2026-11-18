@@ -25,6 +25,8 @@ import { HighlightedText } from "@/components/ui/highlighted-text";
 import { StatusBadge, type StatusBadgeVariant } from "@/components/ui/status-badge";
 import { findHighlightRanges } from "@/components/ui/highlighted-text-segments";
 import { historyQueryHighlightText } from "@getpaseo/protocol/search/history-query";
+// CUSTOM(tasks-mode-hide-workspace)
+import { useTaskNavigationStore } from "@/task-navigation/store";
 
 interface AgentListProps {
   agents: AggregatedAgent[];
@@ -193,6 +195,8 @@ function SessionRow({
   const workspaceName = agent.projectPlacement?.workspaceName ?? "";
   const ProviderIcon = useProviderIcon(agent.provider, agent.serverId);
   const pendingPermissionCount = agent.pendingPermissionCount ?? 0;
+  // CUSTOM(tasks-mode-hide-workspace): Tasks mode has no workspaces, so rows lead with the session.
+  const showWorkspace = !useTaskNavigationStore((state) => state.enabled);
   const ranges = useMemo(() => {
     // CUSTOM(history-content-search): mark what the query asks for, not its operators.
     const highlight = historyQueryHighlightText(search ?? "");
@@ -250,19 +254,17 @@ function SessionRow({
     >
       <View style={styles.rowContent}>
         <View style={styles.rowTitleRow}>
-          <HighlightedText
+          <SessionRowLead
+            showWorkspace={showWorkspace}
+            isMobile={isMobile}
             text={workspaceName || projectName}
             ranges={workspaceName ? ranges.workspace : ranges.project}
-            style={styles.workspaceTitleText}
-            numberOfLines={1}
+            chevronSize={theme.iconSize.xs}
+            chevronColor={theme.colors.foregroundMuted}
             testID={`agent-row-workspace-${agent.serverId}-${agent.id}`}
-          />
-          {!isMobile ? (
-            <>
-              <ChevronRight size={theme.iconSize.xs} color={theme.colors.foregroundMuted} />
-              {agentTitle}
-            </>
-          ) : null}
+          >
+            {agentTitle}
+          </SessionRowLead>
           <SessionRowBadges
             agent={agent}
             archivedIcon={archivedIcon}
@@ -270,7 +272,7 @@ function SessionRow({
             showDesktopAttention={showDesktopAttention}
           />
         </View>
-        {isMobile ? agentTitle : null}
+        {isMobile && showWorkspace ? agentTitle : null}
         <HistoryContentMatchLine
           match={agent.contentMatch}
           iconSize={theme.iconSize.xs}
@@ -343,6 +345,48 @@ function SessionRow({
         requiresAttention={agent.requiresAttention}
       />
     </Pressable>
+  );
+}
+
+// CUSTOM(tasks-mode-hide-workspace): "workspace › session" on desktop, workspace over session on
+// phones; Tasks mode drops the workspace and leads with the session.
+function SessionRowLead({
+  showWorkspace,
+  isMobile,
+  text,
+  ranges,
+  children,
+  chevronSize,
+  chevronColor,
+  testID,
+}: {
+  showWorkspace: boolean;
+  isMobile: boolean;
+  text: string;
+  ranges: ReturnType<typeof findHighlightRanges>;
+  /** The session title. */
+  children: ReactElement;
+  chevronSize: number;
+  chevronColor: string;
+  testID: string;
+}) {
+  if (!showWorkspace) return children;
+  return (
+    <>
+      <HighlightedText
+        text={text}
+        ranges={ranges}
+        style={styles.workspaceTitleText}
+        numberOfLines={1}
+        testID={testID}
+      />
+      {isMobile ? null : (
+        <>
+          <ChevronRight size={chevronSize} color={chevronColor} />
+          {children}
+        </>
+      )}
+    </>
   );
 }
 

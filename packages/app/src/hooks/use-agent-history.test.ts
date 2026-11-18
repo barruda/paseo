@@ -167,6 +167,7 @@ describe("fetchAgentHistoryPage", () => {
     expect(client.calls).toEqual([
       {
         filter: { includeArchived: false },
+        includeSubagents: false,
         sort: [{ key: "updated_at", direction: "desc" }],
         page: { limit: 200 },
       } satisfies FetchAgentHistoryOptions,
@@ -197,6 +198,7 @@ describe("fetchAgentHistoryPage", () => {
 
     expect(client.calls.at(-1)).toEqual({
       filter: { includeArchived: false },
+      includeSubagents: false,
       sort: [{ key: "updated_at", direction: "desc" }],
       page: { limit: 200, cursor: "cursor-2" },
     } satisfies FetchAgentHistoryOptions);
@@ -593,6 +595,7 @@ describe("fetchAgentHistoryPage", () => {
     expect(serverBClient.calls).toEqual([
       {
         filter: { includeArchived: false },
+        includeSubagents: false,
         sort: [{ key: "updated_at", direction: "desc" }],
         page: { limit: 200, cursor: "cursor-b" },
         search: "match",
@@ -662,6 +665,15 @@ describe("history views", () => {
     await fetchAgentHistoryPage({ client, serverId: "s", cursor: null, search: "bug" });
     expect(client.calls[0]).toMatchObject({ filter: { includeArchived: false }, search: "bug" });
     expect(client.calls[0]?.archivedOnly).toBeUndefined();
+  });
+
+  // CUSTOM(history-subagents-toggle)
+  it("hides sub-agents by default and includes them when asked, on both views", async () => {
+    const client = createClient([emptyPage, emptyPage, emptyPage]);
+    await fetchAgentHistoryPage({ client, serverId: "s", cursor: null });
+    await fetchAgentHistoryPage({ client, serverId: "s", cursor: null, view: "archived" });
+    await fetchAgentHistoryPage({ client, serverId: "s", cursor: null, includeSubagents: true });
+    expect(client.calls.map((call) => call.includeSubagents)).toEqual([false, false, true]);
   });
 
   it("Archived asks for only archived agents with the same search", async () => {

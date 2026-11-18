@@ -2707,6 +2707,10 @@ export class DaemonClient {
       ...(options?.search ? { search: options.search } : {}),
       // CUSTOM(history-archived-tab)
       ...(options?.archivedOnly ? { archivedOnly: true } : {}),
+      // CUSTOM(history-subagents-toggle)
+      ...(options?.includeSubagents !== undefined
+        ? { includeSubagents: options.includeSubagents }
+        : {}),
       ...(options?.sort ? { sort: options.sort } : {}),
       ...(options?.page ? { page: options.page } : {}),
     });
@@ -2752,13 +2756,19 @@ export class DaemonClient {
   async searchHistoryWithAi(
     question: string,
     requestId?: string,
+    // CUSTOM(history-subagents-toggle)
+    includeSubagents?: boolean,
   ): Promise<HistoryAiSearchResponse["payload"]> {
     if (this.lastServerInfoMessage?.features?.historyAiSearch !== true) {
       throw new Error("Update the host to search History with AI.");
     }
     return this.sendNamespacedCorrelatedSessionRequest<"history.ai_search.response">({
       requestId,
-      message: { type: "history.ai_search.request", question },
+      message: {
+        type: "history.ai_search.request",
+        question,
+        ...(includeSubagents !== undefined ? { includeSubagents } : {}),
+      },
       timeout: 180_000,
     });
   }

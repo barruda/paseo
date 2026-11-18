@@ -7357,3 +7357,62 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
   app build and a daemon restart. Then pin a session and run
   `paseo inspect <id>`: its labels show `paseo.pinned.<clientId>: true`; unpin and
   `paseo.unpinned-at` appears.
+
+## history-subagents-toggle: History hides delegated sub-agents unless asked
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: History "Include sub-agents" checkbox, off by default`
+- **Why:** Delegated sub-agents (labels carrying `paseo.parent-agent-id`) appeared in History as
+  their own rows, mixed with top-level sessions and drowning them.
+- **What:** An "Include sub-agents" checkbox under the History search field, off by default
+  (English only, state per History screen). Off hides sub-agents on the Active and Archived tabs,
+  in name/content search results, and from the "Ask AI" candidates; on shows them. The app sends
+  `includeSubagents` on `fetch_agent_history_request` (part of the query key, so toggling
+  refetches) and on `history.ai_search.request`. The daemon drops delegated agents only when the
+  field is explicitly `false`, before the cursor and page limit (pages are never sparse) and
+  before the AI candidate collection; CLI, MCP and older clients that omit it keep today's
+  behaviour. A host that predates the field ignores it and still lists sub-agents.
+- **Core files touched:** `packages/protocol/src/messages.ts` (`includeSubagents` on
+  `FetchAgentHistoryRequestMessageSchema` and `HistoryAiSearchRequestSchema`),
+  `packages/server/src/server/session.ts` (`listFetchAgentsEntries`, `handleHistoryAiSearch`,
+  `isDelegatedAgent` import), `packages/client/src/daemon-client.ts` (`fetchAgentHistory`,
+  `searchHistoryWithAi` forward it), `packages/app/src/hooks/use-agent-history.ts`,
+  `hooks/use-history-ai-search.ts`, `history-search-tabs/use-history-search-tabs.ts`,
+  `screens/sessions-screen.tsx`. New file: `components/history-include-subagents.tsx`.
+  Tests: `session.workspaces.test.ts`, `use-agent-history.test.ts`.
+- **Re-apply:** Add the optional boolean to both request schemas and forward it in the client. In
+  `listFetchAgentsEntries`, right after the `archivedOnly` filter, drop
+  `isDelegatedAgent(agent)` when `request.includeSubagents === false`; do the same on the agents
+  list in `handleHistoryAiSearch`. In `useAgentHistory` / `useHistoryAiSearch` take
+  `includeSubagents` (default false), add it to the query keys and requests, and keep a
+  `useState(false)` in `SessionsScreenContent` feeding both plus the checkbox. Grep
+  `CUSTOM(history-subagents-toggle)`.
+- **Verify:** `cd packages/app && npx vitest run src/hooks/use-agent-history.test.ts` and
+  `cd packages/server && npx vitest run src/server/session.workspaces.test.ts -t
+"fetch_agent_history_request"`. Needs a daemon restart: then History lists no sub-agents on either
+  tab until the box is ticked, and Ask AI never cites one while it is off.
+
+## tasks-mode-hide-workspace: in Tasks mode, search results lead with the session, not the workspace
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: Tasks mode drops the workspace from History rows and Ctrl+K`
+- **Why:** Tasks mode navigates by session, not by workspace, so the workspace name in front of
+  every History row ("Set git origin remote › …") was noise, often the same name on every row.
+- **What:** With Tasks mode on (`useTaskNavigationStore().enabled`), History rows (Active,
+  Archived, search tabs and Ask AI results, all `AgentList`) drop the workspace name and the `›`,
+  and start with the provider icon and session title; project, branch and time columns stay. In the
+  Command Center (Ctrl+K), the Workspaces section is gone and a session row's subtitle names its
+  project instead of its workspace.
+  Workspaces mode is unchanged.
+- **Core files touched:** `packages/app/src/components/agent-list.tsx` (`SessionRow` reads the
+  store; new `SessionRowLead`), `packages/app/src/command-center/command-center.tsx`
+  (`useBuiltInRows`: `workspaceTitleByKey` maps to the project name in Tasks mode).
+- **Re-apply:** In `SessionRow`, wrap the workspace `HighlightedText` + `ChevronRight` + title in a
+  component that renders only the title when Tasks mode is on, and don't render the phone's second
+  title line then. In `useBuiltInRows`, read `tasksMode` and use `workspace.project.name` instead
+  of `workspace.title` for the agent subtitle map (add it to the memo deps); in
+  `useBuiltInSections`, leave out the `workspaces` section when Tasks mode is on. Grep
+  `CUSTOM(tasks-mode-hide-workspace)`.
+- **Verify:** `cd packages/app && npx vitest run src/command-center`. In the app, turn Tasks mode
+  on: History rows begin with the session title; Ctrl+K has no Workspaces section and its session
+  rows show the project under the title.

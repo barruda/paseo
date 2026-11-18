@@ -2995,7 +2995,10 @@ test("fetch_agent_history_request pages archived historical rows separately", as
 });
 
 // CUSTOM(history-archived-tab)
-async function fetchIds(request: Record<string, unknown>): Promise<string[]> {
+async function fetchIds(
+  request: Record<string, unknown>,
+  options: { withChild?: boolean } = {},
+): Promise<string[]> {
   const emitted: SessionOutboundMessage[] = [];
   const session = createSessionForWorkspaceTests();
   const historyCwd = path.resolve("/tmp/history");
@@ -3040,6 +3043,19 @@ async function fetchIds(request: Record<string, unknown>): Promise<string[]> {
       }),
       archivedAt: "2026-03-02T13:00:00.000Z",
     },
+    // CUSTOM(history-subagents-toggle)
+    ...(options.withChild
+      ? [
+          makeAgent({
+            id: "live-child",
+            cwd: historyCwd,
+            workspaceId: "ws-history",
+            status: "idle",
+            updatedAt: "2026-03-03T11:00:00.000Z",
+            labels: { "paseo.parent-agent-id": "live-open" },
+          }),
+        ]
+      : []),
   ];
   session.listAgentPayloads = async (filter?: { includeArchived?: boolean }) =>
     agents.filter((agent) => filter?.includeArchived || !agent.archivedAt);
@@ -3056,6 +3072,20 @@ async function fetchIds(request: Record<string, unknown>): Promise<string[]> {
 
 test("fetch_agent_history_request archivedOnly returns only archived agents", async () => {
   expect(await fetchIds({ archivedOnly: true })).toEqual(["gone-archived"]);
+});
+
+// CUSTOM(history-subagents-toggle)
+test("fetch_agent_history_request includeSubagents false omits delegated sub-agents", async () => {
+  expect(await fetchIds({ includeSubagents: false }, { withChild: true })).toEqual([
+    "live-open",
+    "gone-archived",
+  ]);
+});
+
+test("fetch_agent_history_request keeps sub-agents when includeSubagents is true or absent", async () => {
+  const all = ["live-open", "live-child", "gone-archived"];
+  expect(await fetchIds({ includeSubagents: true }, { withChild: true })).toEqual(all);
+  expect(await fetchIds({}, { withChild: true })).toEqual(all);
 });
 
 test("fetch_agent_history_request includeArchived false excludes archived agents", async () => {

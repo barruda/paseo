@@ -75,6 +75,8 @@ import {
 import { focusWithRetries } from "@/utils/web-focus";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { shortenPath } from "@/utils/shorten-path";
+// CUSTOM(tasks-mode-hide-workspace)
+import { useTaskNavigationStore } from "@/task-navigation/store";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
 import {
   COMMAND_CENTER_LINE_HEIGHT,
@@ -168,6 +170,8 @@ function useBuiltInRows(open: boolean): {
   const { agents, isLoading: agentsLoading } = useAggregatedAgents({ demand: open });
   const { projects } = useProjects({ enabled: open });
   const showHost = useHosts().length > 1;
+  // CUSTOM(tasks-mode-hide-workspace): in Tasks mode a session's subtitle names its project.
+  const tasksMode = useTaskNavigationStore((state) => state.enabled);
   const iconTargets = useMemo(
     () =>
       open
@@ -234,7 +238,10 @@ function useBuiltInRows(open: boolean): {
       }
     }
     const workspaceTitleByKey = new Map(
-      allWorkspaces.map((workspace) => [workspace.id.slice("workspace:".length), workspace.title]),
+      allWorkspaces.map((workspace) => [
+        workspace.id.slice("workspace:".length),
+        tasksMode ? workspace.project.name : workspace.title,
+      ]),
     );
     const agentRows = agents.map<CommandCenterAgentResult>((agent) => {
       const workspaceTitle = agent.workspaceId
@@ -255,7 +262,7 @@ function useBuiltInRows(open: boolean): {
     });
     previousRows.current = nextRows;
     return { workspaces: allWorkspaces, agents: agentRows, agentsLoading, shownAgents: agents };
-  }, [agents, agentsLoading, iconDataByProjectViewKey, open, projects, showHost, t]);
+  }, [agents, agentsLoading, iconDataByProjectViewKey, open, projects, showHost, t, tasksMode]);
 }
 
 function useBuiltInSections(
@@ -291,17 +298,24 @@ function useBuiltInSections(
     () => ({ kind: "expand-archived", id: "expand-archived", run: expandArchived }),
     [expandArchived],
   );
+  // CUSTOM(tasks-mode-hide-workspace): Tasks mode has no workspaces to jump to.
+  const tasksMode = useTaskNavigationStore((state) => state.enabled);
 
   return useMemo(() => {
     if (!open) return [];
+    const workspaceSection: CommandCenterResultSection[] = tasksMode
+      ? []
+      : [
+          {
+            id: "workspaces",
+            band: PINNED_SECTION_BAND,
+            rank: 2,
+            title: t("shell.commandCenter.workspaces"),
+            results: filterAndRankWorkspaces(rows.workspaces, query),
+          },
+        ];
     return [
-      {
-        id: "workspaces",
-        band: PINNED_SECTION_BAND,
-        rank: 2,
-        title: t("shell.commandCenter.workspaces"),
-        results: filterAndRankWorkspaces(rows.workspaces, query),
-      },
+      ...workspaceSection,
       {
         id: "agents",
         band: PINNED_SECTION_BAND,
@@ -334,6 +348,7 @@ function useBuiltInSections(
     rows,
     scoped,
     t,
+    tasksMode,
   ]);
 }
 
