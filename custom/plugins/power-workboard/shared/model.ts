@@ -148,6 +148,22 @@ export const groupOrderSchema = z
         message: "Group order cannot contain duplicates",
       });
   });
+/**
+ * CUSTOM(resource-pools): a limit several orchestrators share, for a resource of this machine
+ * (RAM, a Unity Editor). A task starts only with a free slot in its orchestrator and in its pool.
+ */
+export const poolSchema = z.object({
+  id: z.string().trim().min(1),
+  name: z.string().trim().min(1).max(80),
+  maxConcurrent: z.number().int().min(1).max(10).default(1),
+  /** Nothing of the pool starts while the machine has less free RAM than this; null: no floor. */
+  minFreeRamPercent: z.number().int().min(1).max(95).nullable().default(null),
+});
+export type Pool = z.infer<typeof poolSchema>;
+export const poolsSchema = z.array(poolSchema).superRefine((pools, context) => {
+  if (new Set(pools.map((pool) => pool.id)).size !== pools.length)
+    context.addIssue({ code: "custom", message: "Pool ids must be unique" });
+});
 const preferences = {
   autoArchive: z.boolean().default(true),
   archiveMappingNeedsReview: z.boolean().default(false),
@@ -161,6 +177,7 @@ export const settingsSchema = z.object({
   ...preferences,
   groups: groupsSchema.default(DEFAULT_GROUPS),
   groupOrder: groupOrderSchema.default([]),
+  pools: poolsSchema.default([]), // CUSTOM(resource-pools)
 });
 export type Settings = z.infer<typeof settingsSchema>;
 export function orderedGroups(
@@ -496,6 +513,8 @@ export const orchestratorConfigSchema = z.object({
   // CUSTOM(agent-profiles): the profile's settings; its content lives in the profile folder.
   skills: skillSelectionSchema.default(() => skillSelectionSchema.parse({})),
   memory: z.boolean().default(true),
+  /** CUSTOM(resource-pools): the pool whose limits it shares; null: only its own limit. */
+  poolId: z.string().nullable().default(null),
 });
 export type OrchestratorConfig = z.infer<typeof orchestratorConfigSchema>;
 /** What a run still may start, and when the schedule last fired. */
@@ -521,7 +540,23 @@ export const orchestratorStatusSchema = z.object({
   running: z.number(),
   waiting: z.number(),
   nextRunAt: z.string().nullable(),
+  /** CUSTOM(resource-pools): why waiting tasks don't start although the orchestrator has room. */
+  hold: z
+    .object({
+      kind: z.enum(["pool", "ram"]),
+      poolId: z.string(),
+      poolName: z.string(),
+      running: z.number(),
+      maxConcurrent: z.number(),
+      freeRamPercent: z.number().nullable(),
+      minFreeRamPercent: z.number().nullable(),
+    })
+    .nullable()
+    .default(null),
 });
+export type OrchestratorHold = NonNullable<
+  z.infer<typeof orchestratorStatusSchema>["hold"]
+>;
 /** What the reviewer did with a Done task's work: commit, a PR description, a merge. */
 export const finishSchema = z.object({
   running: z.enum(["commit", "pr", "merge"]).nullable().default(null),
