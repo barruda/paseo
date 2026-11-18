@@ -7527,3 +7527,27 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
 tests/task-report.test.ts`. Needs only `paseo plugin reload power-workboard`: then open a board
   task agent's chat; its final reply ends in the card instead of JSON. Switch theme to check both.
+
+## board-desk-links: Dashboard, Conversations and Reports links in the Power Workboard
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: Power Workboard links to Projects Dashboard, Conversations and Reports`
+- **Why:** The three Projects Assistant pages only opened from their Desk tabs; from the board
+  you had to leave it to reach them.
+- **What:** The end of the board's tab bar (Board | Orchestrators | ...) shows three links:
+  Dashboard, Conversations, Reports (pt-BR: Painel, Conversas, Relatórios; the hint names the
+  page). Each calls `openDeskSurface` with its page's id, the same call the Desk's + menu makes:
+  the Desk keeps one tab per page, so a second click selects that tab instead of adding one. In
+  compact layouts the links are icons only and the bar wraps, so there is no horizontal scroll.
+  The links render only where the host passes `navigation.openDeskSurface` (the board as a Desk
+  tab); the workspace-tab and sidebar-route versions of the board have no Desk tabs to open.
+- **Core files touched:** none. Plugin files: `client/assistant/desk-links.ts` (ids, labels,
+  open helper), `client/assistant/DeskLinks.tsx`, `client/Orchestrators.tsx` (`WorkboardTabs`
+  `trailing` slot), `client/WorkboardScreen.tsx`, `tests/board-desk-links.test.ts`.
+- **Re-apply:** Plugin-only. Grep `CUSTOM(board-desk-links)`. Needs the Desk's
+  `openDeskSurface` from `CUSTOM(projects-assistant)` in
+  `packages/app/src/task-navigation/desk-workboard.tsx`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/board-desk-links.test.ts`. Needs only `paseo plugin reload power-workboard`: open the
+  Power Workboard tab of the Desk, click Dashboard, Conversations and Reports at the right of
+  the Board | Orchestrators bar; each opens its tab, and clicking again focuses the same tab.
