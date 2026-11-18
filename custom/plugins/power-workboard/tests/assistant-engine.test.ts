@@ -1336,9 +1336,22 @@ const checkpoint = (
 const lastSent = (s: { host: any }) =>
   (s.host.sendAgent as any).mock.calls.at(-1) as [string, string];
 
+/** The task's workspace is its own worktree, where a checkpoint may commit. */
+const inWorktree = (s: {
+  inventory: any;
+  taskId: string;
+  board: Workboard;
+}) => {
+  const card = s.board.snapshot().cards.find((c) => c.id === s.taskId)!;
+  s.inventory.workspaces.find(
+    (w: any) => w.id === card.workspaceId,
+  )!.workspaceKind = "worktree";
+};
+
 it("a checkpoint commits in the worktree, keeps the task in progress and resumes it on the same pass", async () => {
   const s = await scenario({ policy: { action: "merge" } });
   try {
+    inWorktree(s);
     s.reply(checkpoint(["Schema"], ["Engine", "UI"]));
     await s.finishTurn();
     expect(s.stage()).toBe("in-progress");
@@ -1496,6 +1509,7 @@ it("with its agent gone, a new agent resumes the checkpoint with the handoff", a
 it("the 6th checkpoint goes to Needs you as stalled", async () => {
   const s = await scenario();
   try {
+    inWorktree(s);
     for (let i = 1; i <= 6; i++) {
       s.reply(checkpoint([`Step ${i}`], ["More"]));
       await s.finishTurn();
@@ -1624,6 +1638,146 @@ it("a waiting checkpoint moved out of In progress by hand does not resume", asyn
       checkpoint: false,
     });
     expect(buildOverview(s.board.assistantSource()).running).toEqual([]);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a checkpoint outside a worktree does not commit and says so in the log", async () => {
+  const s = await scenario();
+  try {
+    s.reply(checkpoint(["Schema"], ["UI"]));
+    await s.finishTurn();
+    expect(s.host.commit).not.toHaveBeenCalled();
+    expect(s.store.current.assistant.progress[s.taskId].log[0].text).toContain(
+      "not committed: the task does not run in a worktree",
+    );
+    expect(s.board.snapshot().orchestrations[s.taskId].status).toBe("running");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a checkpoint resume that cannot reach an agent needs you (agent-error)", async () => {
+  const s = await scenario();
+  try {
+    s.reply(
+      checkpoint(["Schema"], ["UI"], { resumeAfter: "2026-09-23T01:00:00Z" }),
+    );
+    await s.finishTurn();
+    vi.mocked(s.host.sendAgent).mockRejectedValueOnce(
+      new Error("socket closed"),
+    );
+    s.advance(2 * 3_600_000);
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[s.taskId]).toMatchObject({
+      status: "failed",
+      checkpoint: false,
+    });
+    expect(s.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "agent-error",
+    });
+    expect(s.delivery()!.detail).toContain(
+      "Could not resume from the checkpoint: socket closed",
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a checkpoint during an auto-fix ends the fix and resumes from In progress", async () => {
+  const verify = vi
+    .fn()
+    .mockResolvedValue({ passed: false, output: "1 test failed: foo" });
+  const s = await scenario({
+    policy: { action: "merge", verifyCommand: "npm test", autoFixes: 1 },
+    assistant: { verify },
+  });
+  try {
+    s.reply(report());
+    await s.finishTurn();
+    await s.settled("fixing");
+    expect(s.stage()).toBe("review");
+    s.reply(
+      checkpoint(["Fix A"], ["Fix B"], {
+        resumeAfter: "2026-09-23T03:00:00Z",
+        waitingFor: "CI",
+      }),
+    );
+    await s.finishTurn();
+    expect(s.delivery()).toBeUndefined();
+    expect(s.stage()).toBe("in-progress");
+    expect(s.board.snapshot().orchestrations[s.taskId]).toMatchObject({
+      status: "waiting",
+      checkpoint: true,
+    });
+    expect(buildOverview(s.board.assistantSource()).running).toMatchObject([
+      { taskId: s.taskId, stage: "waiting" },
+    ]);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a queued or waiting task whose agent runs a turn anyway uses its slot", async () => {
+  const s = await scenario();
+  try {
+    s.reply(
+      checkpoint(["Push"], ["Read CI"], {
+        resumeAfter: "2026-09-23T05:00:00Z",
+      }),
+    );
+    await s.finishTurn();
+    const id = s.board.snapshot().orchestrators[0].id;
+    expect(s.board.snapshot().orchestratorStatus[id].running).toBe(0);
+    s.agent.activity = "running";
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[s.taskId].status).toBe("waiting");
+    expect(s.board.snapshot().orchestratorStatus[id].running).toBe(1);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a checkpoint that waits for something does not count as a stall", async () => {
+  const s = await scenario();
+  try {
+    for (let i = 0; i < 3; i++) {
+      s.reply(checkpoint(["Push"], ["Read CI"], { waitingFor: "CI" }));
+      await s.finishTurn();
+    }
+    expect(s.delivery()).toBeUndefined();
+    expect(s.store.current.assistant.progress[s.taskId]).toMatchObject({
+      checkpoints: 3,
+      stalls: 0,
+    });
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a night task waiting at a checkpoint holds the power-off and stays a night task", async () => {
+  const s = await scenario();
+  try {
+    await s.store.update((data) => {
+      data.orchestrations[s.taskId].night = true;
+    });
+    s.reply(
+      checkpoint(["Push"], ["Read CI"], {
+        resumeAfter: "2026-09-23T01:00:00Z",
+      }),
+    );
+    await s.finishTurn();
+    expect(
+      await (s.board as any).nightBlocker("2026-09-22T22:00:00.000Z"),
+    ).toBe("night tasks are still running");
+    s.advance(2 * 3_600_000);
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[s.taskId]).toMatchObject({
+      status: "running",
+      night: true,
+    });
   } finally {
     s.board.dispose();
   }

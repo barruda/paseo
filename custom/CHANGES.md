@@ -7642,14 +7642,18 @@ tests/board-desk-links.test.ts`. Needs only `paseo plugin reload power-workboard
   (Notion, 2026-11) picked checkpoints first, before epics with subtasks.
 - **What:** A new report status `checkpoint` with `progress {done[], next[]}`, `resumeAfter?` and
   `waitingFor?`. The engine stores the checklist in `assistant.progress[taskId]`, commits the
-  partial work in the worktree (never a merge into the base), and sets the orchestration to
-  `queued` (next pass) or `waiting` with `resumeAt`. Neither holds a slot. The task stays in In
+  partial work only when the task runs in its own worktree (never a merge into the base; a task
+  in the project checkout logs "not committed"), and sets the orchestration to `queued` (next
+  pass) or `waiting` with `resumeAt`. Neither holds a slot unless its agent runs a turn anyway. A
+  checkpoint during an auto-fix ends that fix's delivery and brings the card back to In progress. The task stays in In
   progress; each pass resumes due tasks before Ready to start ones, whatever the schedule window,
   inside the orchestrator and pool limits. The live agent gets the checklist; a gone agent is
   replaced by one whose prompt carries a handoff (ticket, checklist, last summary, branch).
+  A resume whose agent can't be reached goes to Needs you as `agent-error`.
   `maxCheckpoints` per orchestrator (default 5): the 6th checkpoint, or two in a row without a new
-  done item, goes to Needs you as `stalled`; Continue task resets the count. A waiting task dragged
-  out of In progress stops waiting. UI: card badge and expandable checklist and log, Dashboard
+  done item (one with `waitingFor` doesn't count), goes to Needs you as `stalled`; Continue task
+  resets the count. A waiting task dragged out of In progress stops waiting. A night task waiting
+  at a checkpoint keeps the night power-off waiting and stays a night task when it resumes. UI: card badge and expandable checklist and log, Dashboard
   Running split into running and waiting, the report card's checklist, the orchestrator field.
 - **Core files touched:** none. Plugin files: `shared/assistant.ts`, `shared/model.ts`,
   `shared/task-report.ts`, `server/workboard.ts` (`checkpointReached`, `startReady` resumes,
@@ -7658,7 +7662,12 @@ tests/board-desk-links.test.ts`. Needs only `paseo plugin reload power-workboard
   `client/checkpoint-format.ts`, `client/WorkboardScreen.tsx`, `client/Orchestrators.tsx`,
   `client/assistant/DashboardScreen.tsx`, `client/assistant/TaskReportCard.tsx`, strings, and
   tests (`assistant-engine`, `assistant-report`, `task-report`, `checkpoint-format`).
-- **Re-apply:** Plugin-only. Grep `CUSTOM(task-checkpoints)`.
+- **Re-apply:** Plugin-only. Grep `CUSTOM(task-checkpoints)`. **Rollback:** an older plugin's
+  schema rejects the board file while a task is `waiting`, or an attempt/delivery holds a
+  `checkpoint` value (status, outcome, trigger, reason `stalled`, history kind). Before you
+  reinstall an older plugin, let the waiting tasks resume and finish, or edit
+  `plugin-settings/power-workboard` (after a backup) to turn `waiting` into `queued` and drop
+  `checkpoint`/`stalled` values.
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
 tests/assistant-engine.test.ts tests/checkpoint-format.test.ts`. Needs only `paseo plugin reload
   power-workboard`. Then give an orchestrator a task the agent ends with a `checkpoint` report:

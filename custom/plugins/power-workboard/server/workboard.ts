@@ -191,6 +191,18 @@ const POOL_RESERVING_STAGES: ReadonlySet<string> = new Set([
   "merging",
   "fixing",
 ]);
+/**
+ * CUSTOM(night-tasks): a night task that still keeps the night power-off waiting: running, or
+ * (CUSTOM(task-checkpoints)) queued or waiting to resume after a checkpoint.
+ */
+function nightBusy(record: Orchestration): boolean {
+  return (
+    record.status === "starting" ||
+    record.status === "running" ||
+    (record.checkpoint &&
+      (record.status === "queued" || record.status === "waiting"))
+  );
+}
 const DELIVERY_STEPS: ReadonlySet<string> = new Set([
   "verifying",
   "committing",
@@ -2544,7 +2556,12 @@ export class Workboard {
     const known = new Set((previous?.done ?? []).map(key));
     const advanced = done.some((item) => !known.has(key(item)));
     const checkpoints = (previous?.checkpoints ?? 0) + 1;
-    const stalls = advanced ? 0 : (previous?.stalls ?? 0) + 1;
+    // Waiting for something (CI, a review) is not a stall; the checkpoint limit still applies.
+    const stalls = advanced
+      ? 0
+      : report.waitingFor?.trim()
+        ? (previous?.stalls ?? 0)
+        : (previous?.stalls ?? 0) + 1;
     const commit = await this.commitCheckpoint(task);
     const first = report.summary.split("\n")[0].slice(0, 300);
     const at = this.stamp();
@@ -2585,11 +2602,29 @@ export class Workboard {
           ? `${stalls} checkpoints in a row completed no new item`
           : null;
     if (stalled) return stalled;
-    // A late checkpoint may follow a no-report that already asked for the user.
-    if (this.store.current.assistant.deliveries[taskId]?.stage === "needs-you")
+    // A late checkpoint may follow a no-report that already asked for the user, and one sent
+    // during an auto-fix ends that fix: neither may hold a pool slot or show while it waits.
+    const open = this.store.current.assistant.deliveries[taskId]?.stage;
+    if (open === "needs-you" || open === "fixing")
       await this.store.update((data) => {
         delete data.assistant.deliveries[taskId];
       });
+    // A late checkpoint (after a no-report) or one during an auto-fix finds the card in review.
+    const groups = this.store.current.settings.groups;
+    const back = defaultStartWorkGroup(
+      groups,
+      this.store.current.settings.defaultStartWorkGroup,
+    );
+    if (groupKind(this.currentStage(task), groups) !== "in-progress" && back)
+      await this.moveBound(taskId, back).catch((error) =>
+        this.log(
+          record.orchestratorId,
+          "warn",
+          `"${task.title}": could not move it back to In progress: ${message(error)}`,
+          taskId,
+          record.agentId,
+        ),
+      );
     const resumeAt = this.resumeTime(report.resumeAfter);
     await this.setOrchestration(taskId, {
       status: resumeAt ? "waiting" : "queued",
@@ -2628,6 +2663,9 @@ export class Workboard {
       (w) => w.id === task.workspaceId,
     );
     if (workspace?.projectKind !== "git") return null;
+    // Only a task's own worktree: a task run in the project checkout shares the user's branch.
+    if (workspace.workspaceKind !== "worktree")
+      return "not committed: the task does not run in a worktree";
     const directory = workspace.workspaceDirectory;
     try {
       if (!(await this.host.gitDirty(directory))) return null;
@@ -2648,6 +2686,19 @@ export class Workboard {
       record?.status === "waiting" &&
       (!record.resumeAt || Date.parse(record.resumeAt) <= this.now())
     );
+  }
+  /** The column a task's card is in, read from its workspace labels like the snapshot does. */
+  private currentStage(task: Task): string {
+    const workspace = this.inventory.workspaces.find(
+      (w) => w.id === task.workspaceId,
+    );
+    return workspace
+      ? resolveStage(
+          workspace.labels,
+          this.store.current.settings.groups,
+          this.store.current.settings.defaultStartGroup,
+        )
+      : task.lastStage;
   }
   /** The branch of the task's worktree, or null when unknown. */
   private async taskBranch(task: Task): Promise<string | null> {
@@ -3442,13 +3493,6 @@ export class Workboard {
       attempt: this.store.current.assistant.deliveries[taskId]?.attempt,
       detail: parsed.report.summary.split("\n")[0].slice(0, 200),
     });
-    // CUSTOM(task-checkpoints): a late checkpoint takes the task back to In progress to resume.
-    const back = defaultStartWorkGroup(
-      this.store.current.settings.groups,
-      this.store.current.settings.defaultStartWorkGroup,
-    );
-    if (this.store.current.orchestrations[taskId]?.checkpoint && back)
-      await this.moveBound(taskId, back).catch(() => undefined);
     await this.log(
       record.orchestratorId,
       "info",
@@ -3510,17 +3554,7 @@ export class Workboard {
         record.checkpoint &&
         (record.status === "queued" || record.status === "waiting")
       ) {
-        const workspace = this.inventory.workspaces.find(
-          (w) => w.id === task.workspaceId,
-        );
-        const where = workspace
-          ? resolveStage(
-              workspace.labels,
-              groups,
-              this.store.current.settings.defaultStartGroup,
-            )
-          : task.lastStage;
-        const kind = groupKind(where, groups);
+        const kind = groupKind(this.currentStage(task), groups);
         if (kind !== "in-progress" && kind !== "ready") {
           await this.setOrchestration(taskId, {
             status: "finished",
@@ -3868,9 +3902,7 @@ export class Workboard {
     const data = this.store.current;
     if (
       Object.values(data.orchestrations).some(
-        (record) =>
-          record.night &&
-          (record.status === "starting" || record.status === "running"),
+        (record) => record.night && nightBusy(record),
       )
     )
       return "night tasks are still running";
@@ -3924,9 +3956,7 @@ export class Workboard {
       const open =
         openWindowStart(nightSchedule(night), this.now()) === Date.parse(key);
       const running = Object.values(this.store.current.orchestrations).some(
-        (record) =>
-          record.night &&
-          (record.status === "starting" || record.status === "running"),
+        (record) => record.night && nightBusy(record),
       );
       if (open || running) this.nightActiveAt = this.now();
     }
@@ -4078,7 +4108,13 @@ export class Workboard {
   private usesSlot(record: Orchestration): boolean {
     if (record.status === "starting" || record.status === "running")
       return true;
-    if (record.status !== "finished" && record.status !== "failed")
+    // CUSTOM(task-checkpoints): queued and waiting too, when the agent runs a turn anyway.
+    if (
+      record.status !== "finished" &&
+      record.status !== "failed" &&
+      record.status !== "queued" &&
+      record.status !== "waiting"
+    )
       return false;
     const agent = record.agentId
       ? this.inventory.agents.find((a) => a.id === record.agentId)
@@ -4477,7 +4513,9 @@ export class Workboard {
         feedback: null,
         error: null,
         orchestratorId: settings.id,
-        night: false, // CUSTOM(night-tasks): a continuation runs whenever it is taken
+        // CUSTOM(night-tasks): a continuation runs whenever it is taken.
+        // CUSTOM(task-checkpoints): a resumed night task stays one, for the night power-off.
+        night: checkpoint ? record.night : false,
         checkpoint: false, // CUSTOM(task-checkpoints)
         resumeAt: null,
         waitingFor: null,
@@ -4519,6 +4557,9 @@ export class Workboard {
         status: "failed",
         finishedAt: this.stamp(),
         error: message(error),
+        checkpoint: false, // CUSTOM(task-checkpoints)
+        resumeAt: null,
+        waitingFor: null,
       });
       await this.log(
         settings.id,
@@ -4526,6 +4567,13 @@ export class Workboard {
         `Could not continue the task: ${message(error)}`,
         taskId,
       );
+      // CUSTOM(task-checkpoints): a resume nobody retries goes to the user, not to a dead end.
+      if (checkpoint && this.assistantOn())
+        await this.assistantFailed(
+          taskId,
+          this.store.current.orchestrations[taskId],
+          `Could not resume from the checkpoint: ${message(error)}`,
+        );
       return "failed";
     }
   }
