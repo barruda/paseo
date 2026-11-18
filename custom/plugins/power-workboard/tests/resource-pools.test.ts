@@ -10,8 +10,16 @@ import {
   dataSchema,
   orchestratorConfigSchema,
 } from "../shared/model";
-import { assistantDataSchema } from "../shared/assistant";
-import { holdSummary } from "../client/Orchestrators";
+import { FIX_WAIT_LIMIT_MS, assistantDataSchema } from "../shared/assistant";
+import {
+  firstDisabledWarning,
+  holdSummary,
+  projectRole,
+} from "../client/Orchestrators";
+import {
+  fixHoldText,
+  fixWaitedText,
+} from "../client/assistant/dashboard-strings";
 import { strings } from "../client/strings";
 import { fixture } from "./fixtures";
 
@@ -712,4 +720,224 @@ it("a finished task's agent waiting on a permission doesn't hold the slot", asyn
   } finally {
     s.board.dispose();
   }
+});
+
+// Low-severity follow-ups of review e7e2730a.
+
+/** A board in a pool with a RAM floor whose task "A" has a fix queued for RAM. */
+async function queuedFixSetup() {
+  const s = mergeSetup(failOnce());
+  await s.board.start();
+  await savePools(s.board, [
+    { id: "unity", name: "Unity", maxConcurrent: 1, minFreeRamPercent: 20 },
+  ]);
+  const own = await addOrchestrator(s.board, {
+    projectId: "p",
+    poolId: "unity",
+    maxConcurrent: 2,
+  });
+  await create(s, "A", "p");
+  const agentA = s.agentOf("A");
+  s.makeGit("A");
+  s.advance(RAM_SETTLE_MS);
+  s.memory.reading = { availableBytes: 6 * GiB, totalBytes: 60 * GiB };
+  await finish(s, "A");
+  await vi.waitFor(() =>
+    expect(s.delivery("A")?.queuedFix).toMatchObject({
+      reason: "verify-failed",
+    }),
+  );
+  return { ...s, own, agentA };
+}
+const lastAttempt = (s: Setup, title: string) =>
+  s.store.current.assistant.attempts[card(s.board, title).id]?.at(-1);
+
+it("a fix that waits 30 minutes for a slot goes to Needs you and still goes when one frees", async () => {
+  const s = await queuedFixSetup();
+  try {
+    expect(s.delivery("A")?.queuedFix).toMatchObject({
+      since: expect.any(String),
+      hold: { kind: "ram", poolName: "Unity", freeRamPercent: 10 },
+    });
+    s.advance(FIX_WAIT_LIMIT_MS - 60_000);
+    await s.board.refresh();
+    expect(s.delivery("A")?.stage).toBe("fixing");
+    s.advance(60_000);
+    await s.board.refresh();
+    expect(s.delivery("A")).toMatchObject({
+      stage: "needs-you",
+      reason: "fix-waiting",
+      queuedFix: { reason: "verify-failed" },
+    });
+    expect(s.delivery("A")?.detail).toContain("waited 30 minutes");
+    expect(s.delivery("A")?.detail).toContain('pool "Unity" needs 20%');
+    // On Needs you the hold stays current and the card keeps its age.
+    const since = s.delivery("A")!.updatedAt;
+    s.memory.reading = { availableBytes: 9 * GiB, totalBytes: 60 * GiB };
+    await s.board.refresh();
+    expect(s.delivery("A")?.queuedFix?.hold?.freeRamPercent).toBe(15);
+    expect(s.delivery("A")?.updatedAt).toBe(since);
+    expect(s.sentTo()).not.toContain(s.agentA.id);
+    // A's fix still holds its pool slot: a new task waits for the pool, not only for the RAM.
+    await create(s, "B", "p");
+    expect(s.board.snapshot().orchestratorStatus[s.own]?.hold).toMatchObject({
+      kind: "pool",
+      running: 1,
+    });
+    // RAM frees: the fix goes, and the delivery is back in fixing.
+    s.memory.reading = { availableBytes: 30 * GiB, totalBytes: 60 * GiB };
+    await s.board.refresh();
+    expect(s.sentTo()).toContain(s.agentA.id);
+    expect(s.delivery("A")).toMatchObject({
+      stage: "fixing",
+      reason: null,
+      queuedFix: null,
+      detail: null,
+    });
+    expect(lastAttempt(s, "A")).toMatchObject({
+      trigger: "auto-fix",
+      finishedAt: null,
+    });
+    expect(runBy(s.board, "B")).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a queued fix the user overtakes is dropped and its attempt closed", async () => {
+  const s = await queuedFixSetup();
+  try {
+    expect(lastAttempt(s, "A")).toMatchObject({
+      trigger: "auto-fix",
+      finishedAt: null,
+    });
+    await s.board.assistantAction({
+      type: "dismiss",
+      taskId: card(s.board, "A").id,
+    });
+    await s.board.refresh();
+    expect(s.delivery("A")).toMatchObject({
+      stage: "dismissed",
+      queuedFix: null,
+    });
+    expect(lastAttempt(s, "A")).toMatchObject({
+      trigger: "auto-fix",
+      outcome: "dropped",
+      finishedAt: expect.any(String),
+    });
+    s.memory.reading = { availableBytes: 30 * GiB, totalBytes: 60 * GiB };
+    await s.board.refresh();
+    expect(s.sentTo()).not.toContain(s.agentA.id);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a queued fix whose agent can't be reached closes its attempt and goes to Needs you", async () => {
+  const s = await queuedFixSetup();
+  try {
+    (s.host.sendAgent as any).mockRejectedValueOnce(new Error("Agent gone"));
+    s.memory.reading = { availableBytes: 30 * GiB, totalBytes: 60 * GiB };
+    await s.board.refresh();
+    expect(s.delivery("A")).toMatchObject({
+      stage: "needs-you",
+      reason: "verify-failed",
+      detail: "Agent gone",
+      queuedFix: null,
+    });
+    expect(lastAttempt(s, "A")).toMatchObject({
+      trigger: "auto-fix",
+      outcome: "agent-error",
+    });
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("moving an orchestrator up makes it the project's first, which takes the unassigned tasks", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  await s.board.start();
+  try {
+    const first = await addOrchestrator(s.board, { projectId: "p" });
+    const other = await addOrchestrator(s.board, { projectId: "q" });
+    const second = await addOrchestrator(s.board, { projectId: "p" });
+    await s.board.mutate({
+      action: "orchestrator-enable",
+      id: first,
+      enabled: false,
+    });
+    await create(s, "In p", "p");
+    expect(runBy(s.board, "In p")).toBeNull();
+    const en = strings("en");
+    const config = (id: string) =>
+      s.board.snapshot().orchestrators.find((o) => o.id === id)!;
+    const list = () => s.board.snapshot().orchestrators;
+    expect(projectRole(list(), config(first))).toBe("first");
+    expect(projectRole(list(), config(second))).toBe("other");
+    expect(projectRole(list(), config(other))).toBeNull();
+    expect(firstDisabledWarning(s.board.snapshot(), config(first), en)).toBe(
+      "Disabled, and tasks of Project p wait for it (1): the project's other orchestrators won't take them. Enable it, or move another orchestrator above it.",
+    );
+    expect(
+      firstDisabledWarning(s.board.snapshot(), config(second), en),
+    ).toBeNull();
+    // At the top or bottom a move does nothing.
+    await s.board.mutate({
+      action: "orchestrator-move",
+      id: list()[0]!.id,
+      direction: "up",
+    });
+    expect(list().map((o) => o.id)).toEqual([first, other, second]);
+    await s.board.mutate({
+      action: "orchestrator-move",
+      id: second,
+      direction: "up",
+    });
+    expect(list().map((o) => o.id)).toEqual([first, second, other]);
+    expect(runBy(s.board, "In p")).toBeNull();
+    await s.board.mutate({
+      action: "orchestrator-move",
+      id: second,
+      direction: "up",
+    });
+    expect(list().map((o) => o.id)).toEqual([second, first, other]);
+    expect(projectRole(list(), config(second))).toBe("first");
+    expect(runBy(s.board, "In p")).toBe(second);
+    await s.board.mutate({
+      action: "orchestrator-move",
+      id: other,
+      direction: "down",
+    });
+    expect(list().map((o) => o.id)).toEqual([second, first, other]);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("the waiting fix texts speak English and Brazilian Portuguese", () => {
+  const hold = {
+    kind: "ram" as const,
+    poolId: "u",
+    poolName: "Unity",
+    running: 1,
+    maxConcurrent: 1,
+    freeRamPercent: 12,
+    minFreeRamPercent: 20,
+    until: null,
+  };
+  expect(fixHoldText(hold, "en")).toBe(
+    "Fix waiting for RAM: 12% free, pool “Unity” needs 20%",
+  );
+  expect(fixHoldText(hold, "pt")).toBe(
+    "Correção esperando RAM: 12% livre, o pool “Unity” pede 20%",
+  );
+  expect(fixHoldText({ ...hold, kind: "pool" }, "pt")).toBe(
+    "Correção esperando: o pool “Unity” está cheio (1/1)",
+  );
+  expect(fixHoldText({ ...hold, kind: "pool" }, "zh")).toBe(
+    "Fix waiting: pool “Unity” is full (1/1)",
+  );
+  expect(fixWaitedText(hold, "pt")).toContain("há mais de 30 minutos");
+  expect(fixWaitedText(hold, "pt")).toContain("o pool “Unity” pede 20%");
+  expect(fixWaitedText(null, "en")).toContain("over 30 minutes");
 });

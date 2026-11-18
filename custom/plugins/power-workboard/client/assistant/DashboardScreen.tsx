@@ -53,7 +53,10 @@ import {
   REASON_LABELS,
   STAGE_LABELS,
   dashboardStrings as s,
+  fixHoldText, // CUSTOM(resource-pools)
+  fixWaitedText, // CUSTOM(resource-pools)
 } from "./dashboard-strings";
+import { usePaseoLocale } from "../paseo-language"; // CUSTOM(resource-pools)
 
 type Props = PluginSurfaceProps;
 type Theme = Props["theme"];
@@ -313,6 +316,12 @@ export function NeedsYouCard({
   // The detail often is the question itself; don't show it twice.
   const reportText =
     candidate && candidate.trim() !== item.detail?.trim() ? candidate : null;
+  // CUSTOM(resource-pools): the server's detail is English, for the assistant; this one is translated.
+  const locale = usePaseoLocale();
+  const detail =
+    item.reason === "fix-waiting"
+      ? fixWaitedText(item.hold, locale)
+      : item.detail;
 
   return (
     <View
@@ -339,13 +348,13 @@ export function NeedsYouCard({
         </Text>
         <Text style={[styles.meta, muted]}>{formatAge(item.since)}</Text>
       </View>
-      {item.detail ? (
+      {detail ? (
         <Pressable onPress={() => setExpanded((value) => !value)}>
           <Text
             numberOfLines={expanded ? undefined : COLLAPSED_DETAIL_LINES}
             style={[styles.body, text]}
           >
-            {item.detail}
+            {detail}
           </Text>
           <Text style={[styles.meta, muted]}>
             {expanded ? s.showLess : s.showMore}
@@ -486,6 +495,7 @@ function RunningSection({
   const waiting = running.filter((item) => item.stage === "waiting");
   const active = running.filter((item) => item.stage !== "waiting");
   const now = new Date();
+  const locale = usePaseoLocale(); // CUSTOM(resource-pools)
   const row = (item: RunningItem, meta: (string | null)[]) => (
     <View
       key={item.taskId}
@@ -517,6 +527,8 @@ function RunningSection({
             item.progress
               ? progressBadge(item.progress, s.checkpointWord) || null
               : null,
+            // CUSTOM(resource-pools): a fix waiting for a pool slot says why.
+            item.hold ? fixHoldText(item.hold, locale) : null,
             formatElapsed(item.startedAt),
           ]),
         )

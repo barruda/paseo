@@ -80,6 +80,7 @@ import {
   STALL_LIMIT,
   taskProgressSchema,
   type Report,
+  FIX_WAIT_LIMIT_MS, // CUSTOM(resource-pools)
 } from "../shared/assistant";
 import { worktreeBaseName } from "./assistant/task-git";
 import { parseReport } from "./assistant/report";
@@ -217,6 +218,14 @@ function holdText(hold: OrchestratorHold): string {
   if (hold.kind === "ram")
     return `Waiting for RAM: ${hold.freeRamPercent}% free, pool "${hold.poolName}" needs ${hold.minFreeRamPercent}%`;
   return `Waiting for RAM to settle: pool "${hold.poolName}" started an agent less than ${RAM_SETTLE_MS / 60_000} minutes ago`;
+}
+/** CUSTOM(resource-pools): a queued fix still waits: in `fixing`, or on Needs you because it waited too long. */
+function fixWaits(delivery: Delivery | undefined): boolean {
+  return (
+    !!delivery?.queuedFix &&
+    (delivery.stage === "fixing" ||
+      (delivery.stage === "needs-you" && delivery.reason === "fix-waiting"))
+  );
 }
 /** One workspace's combined conversation evidence. */
 interface WorkspaceConversation {
@@ -1316,6 +1325,20 @@ export class Workboard {
             for (const task of data.tasks)
               if (task.orchestratorId === input.id) task.orchestratorId = null;
           });
+        } else if (input.action === "orchestrator-move") {
+          // CUSTOM(resource-pools): swaps it with its neighbour in the list.
+          this.orchestratorConfig(input.id);
+          const list = this.store.current.orchestrators;
+          const from = list.findIndex((o) => o.id === input.id);
+          const to = input.direction === "up" ? from - 1 : from + 1;
+          if (to >= 0 && to < list.length) {
+            await this.store.update((data) => {
+              const next = [...data.orchestrators];
+              [next[from], next[to]] = [next[to]!, next[from]!];
+              data.orchestrators = next;
+            });
+            await this.orchestrate();
+          }
         } else if (input.action === "pools-save") {
           // CUSTOM(resource-pools)
           await this.store.update((data) => {
@@ -3109,7 +3132,8 @@ export class Workboard {
     const base = await worktreeBaseName(directory, policyBase.trim() || null);
     const prompt = conflictPrompt(base);
     // CUSTOM(resource-pools): with no free slot the fix waits for a pass that has one.
-    const wait = await this.reactivationHold(taskId, record.orchestratorId);
+    const hold = await this.reactivationHold(taskId, record.orchestratorId);
+    const wait = hold && holdText(hold);
     if (!wait)
       try {
         await this.host.sendAgent(record.agentId, prompt);
@@ -3121,7 +3145,9 @@ export class Workboard {
       conflictFixes: delivery.conflictFixes + 1,
       reason: null,
       detail: wait,
-      queuedFix: wait ? { prompt, reason: "merge-conflict" } : null,
+      queuedFix: hold
+        ? { prompt, reason: "merge-conflict", since: this.stamp(), hold }
+        : null,
     });
     const attempt = await this.openAttempt(
       taskId,
@@ -3157,7 +3183,8 @@ export class Workboard {
       );
     const prompt = fixPrompt(command, output);
     // CUSTOM(resource-pools): with no free slot the fix waits for a pass that has one.
-    const wait = await this.reactivationHold(taskId, record.orchestratorId);
+    const hold = await this.reactivationHold(taskId, record.orchestratorId);
+    const wait = hold && holdText(hold);
     if (!wait)
       try {
         await this.host.sendAgent(record.agentId, prompt);
@@ -3169,7 +3196,9 @@ export class Workboard {
       fixesUsed: delivery.fixesUsed + 1,
       verifyOutput: output,
       detail: wait,
-      queuedFix: wait ? { prompt, reason: "verify-failed" } : null,
+      queuedFix: hold
+        ? { prompt, reason: "verify-failed", since: this.stamp(), hold }
+        : null,
     });
     const attempt = await this.openAttempt(
       taskId,
@@ -3205,7 +3234,9 @@ export class Workboard {
   /**
    * CUSTOM(resource-pools): sends the fixes that waited for a slot, oldest delivery first, while
    * their orchestrator and pool have room. A fix the user overtook (another action moved the
-   * delivery, or the task runs again) is dropped. Inside `serial`.
+   * delivery, or the task runs again) is dropped and its attempt closed. A fix that waited
+   * FIX_WAIT_LIMIT_MS goes to Needs you, to wake the Projects Assistant, and keeps waiting there.
+   * Inside `serial`.
    */
   private async sendQueuedFixes(): Promise<void> {
     const queued = Object.entries(this.store.current.assistant.deliveries)
@@ -3216,27 +3247,34 @@ export class Workboard {
       const fix = delivery.queuedFix!;
       const record = this.store.current.orchestrations[taskId];
       if (
-        delivery.stage !== "fixing" ||
+        !fixWaits(delivery) ||
         !record?.agentId ||
         (record.status !== "finished" && record.status !== "failed")
       ) {
         await this.patchDelivery(taskId, { queuedFix: null });
+        await this.closeFixAttempt(taskId, "dropped");
         continue;
       }
-      const wait = await this.reactivationHold(taskId, record.orchestratorId);
-      if (wait) {
-        if (wait !== delivery.detail)
-          await this.patchDelivery(taskId, { detail: wait });
+      const hold = await this.reactivationHold(taskId, record.orchestratorId);
+      if (hold) {
+        await this.holdQueuedFix(taskId, delivery, hold);
         continue;
       }
       try {
         await this.host.sendAgent(record.agentId, fix.prompt);
       } catch (error) {
         await this.patchDelivery(taskId, { queuedFix: null });
+        await this.closeFixAttempt(taskId, "agent-error");
         await this.markNeedsYou(taskId, fix.reason, message(error));
         continue;
       }
-      await this.patchDelivery(taskId, { queuedFix: null, detail: null });
+      // From Needs you (it waited too long) the delivery goes back to fixing.
+      await this.patchDelivery(taskId, {
+        stage: "fixing",
+        reason: null,
+        queuedFix: null,
+        detail: null,
+      });
       await this.fixSent(taskId);
       await this.log(
         record.orchestratorId,
@@ -3246,6 +3284,61 @@ export class Workboard {
         record.agentId,
       );
     }
+  }
+  /**
+   * CUSTOM(resource-pools): a queued fix still held: keep why, and send it to Needs you once it
+   * waited FIX_WAIT_LIMIT_MS. On Needs you only the hold changes, so the card keeps its age.
+   */
+  private async holdQueuedFix(
+    taskId: string,
+    delivery: Delivery,
+    hold: OrchestratorHold,
+  ): Promise<void> {
+    const fix = delivery.queuedFix!;
+    // A fix queued before `since` existed starts its wait now.
+    const since = fix.since ?? this.stamp();
+    const wait = holdText(hold);
+    if (delivery.stage === "needs-you") {
+      if (!isDeepStrictEqual(fix.hold, hold))
+        await this.store.update((data) => {
+          const current = data.assistant.deliveries[taskId];
+          if (current?.queuedFix) current.queuedFix.hold = hold;
+        });
+      return;
+    }
+    if (this.now() - Date.parse(since) < FIX_WAIT_LIMIT_MS) {
+      if (
+        wait !== delivery.detail ||
+        !fix.since ||
+        !isDeepStrictEqual(fix.hold, hold)
+      )
+        await this.patchDelivery(taskId, {
+          detail: wait,
+          queuedFix: { ...fix, since, hold },
+        });
+      return;
+    }
+    await this.patchDelivery(taskId, { queuedFix: { ...fix, since, hold } });
+    const what =
+      fix.reason === "verify-failed" ? "failed check" : "merge conflict";
+    await this.markNeedsYou(
+      taskId,
+      "fix-waiting",
+      `The fix for the ${what} has waited ${FIX_WAIT_LIMIT_MS / 60_000} minutes for a free slot (${wait}). It still goes to the agent when a slot frees; merge-now, continue or dismiss replaces it.`,
+    );
+  }
+  /** CUSTOM(resource-pools): closes the auto-fix attempt opened for a queued fix that never ran. */
+  private async closeFixAttempt(
+    taskId: string,
+    outcome: AttemptOutcome,
+  ): Promise<void> {
+    const at = this.stamp();
+    await this.store.update((data) => {
+      const last = data.assistant.attempts[taskId]?.at(-1);
+      if (!last || last.finishedAt || last.trigger !== "auto-fix") return;
+      last.finishedAt = at;
+      last.outcome = outcome;
+    });
   }
   /** Creates or resets the delivery for an action of the user. Inside `serial`. */
   private async actionDelivery(
@@ -3928,11 +4021,7 @@ export class Workboard {
     )
       return "a delivery is in progress";
     // CUSTOM(resource-pools): a fix waiting for a pool slot is still work to do.
-    if (
-      Object.values(data.assistant.deliveries).some(
-        (delivery) => delivery.stage === "fixing" && delivery.queuedFix,
-      )
-    )
+    if (Object.values(data.assistant.deliveries).some(fixWaits))
       return "a fix waits for a free slot";
     try {
       const busy = await this.host.busyAgents();
@@ -4155,7 +4244,9 @@ export class Workboard {
         (this.usesSlot(record) ||
           POOL_RESERVING_STAGES.has(
             data.assistant.deliveries[taskId]?.stage ?? "",
-          )),
+          ) ||
+          // A fix that waited too long and went to Needs you keeps its slot too.
+          fixWaits(data.assistant.deliveries[taskId])),
     ).length;
   }
   /** Reads the RAM when some pool has a floor; the snapshot RPC calls it so the status is current. */
@@ -4220,18 +4311,17 @@ export class Workboard {
   private async reactivationHold(
     taskId: string,
     orchestratorId: string | null,
-  ): Promise<string | null> {
+  ): Promise<OrchestratorHold | null> {
     const config = this.store.current.orchestrators.find(
       (o) => o.id === orchestratorId,
     );
     const pool = config && this.poolOf(config);
     if (!pool) return null;
     await this.readPoolMemory();
-    const hold = this.poolHold(
+    return this.poolHold(
       pool,
       this.runningInPool(pool.id, this.store.current, taskId),
     );
-    return hold && holdText(hold);
   }
   private async logHold(
     id: string,

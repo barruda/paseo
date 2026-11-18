@@ -2,6 +2,7 @@ import { z } from "zod";
 import { scheduleSchema, timeOfDaySchema } from "./schedule";
 import { assistantDataSchema, taskProgressSchema } from "./assistant"; // CUSTOM(projects-assistant), CUSTOM(task-checkpoints)
 import { skillSelectionSchema } from "./profiles"; // CUSTOM(agent-profiles)
+import { orchestratorHoldSchema, type OrchestratorHold } from "./hold"; // CUSTOM(resource-pools)
 
 export const STAGES = [
   "inbox",
@@ -561,26 +562,11 @@ export const orchestratorStatusSchema = z.object({
   nextRunAt: z.string().nullable(),
   /**
    * CUSTOM(resource-pools): why waiting tasks don't start although the orchestrator would take
-   * them now and has room. `settle`: the pool has a RAM floor and started an agent less than
-   * `RAM_SETTLE_MS` ago, so the RAM it will use doesn't show yet; it waits until `until`.
+   * them now and has room.
    */
-  hold: z
-    .object({
-      kind: z.enum(["pool", "ram", "settle"]),
-      poolId: z.string(),
-      poolName: z.string(),
-      running: z.number(),
-      maxConcurrent: z.number(),
-      freeRamPercent: z.number().nullable(),
-      minFreeRamPercent: z.number().nullable(),
-      until: z.string().nullable().default(null),
-    })
-    .nullable()
-    .default(null),
+  hold: orchestratorHoldSchema.nullable().default(null),
 });
-export type OrchestratorHold = NonNullable<
-  z.infer<typeof orchestratorStatusSchema>["hold"]
->;
+export type { OrchestratorHold };
 /** What the reviewer did with a Done task's work: commit, a PR description, a merge. */
 export const finishSchema = z.object({
   running: z.enum(["commit", "pr", "merge"]).nullable().default(null),

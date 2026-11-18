@@ -136,6 +136,11 @@ export function buildOverview(source: ViewSource): Overview {
           task.projectId !== null &&
           projects.get(task.projectId)?.isGit === true &&
           task.workspaceId !== null,
+        // CUSTOM(resource-pools)
+        hold:
+          delivery.reason === "fix-waiting"
+            ? (delivery.queuedFix?.hold ?? null)
+            : null,
       });
     } else if (ACTIVE_STAGES.has(delivery.stage)) {
       seenRunning.add(taskId);
@@ -149,6 +154,7 @@ export function buildOverview(source: ViewSource): Overview {
         attempt: delivery.attempt,
         startedAt: delivery.startedAt,
         progress: progressOf(data, taskId), // CUSTOM(task-checkpoints)
+        hold: delivery.queuedFix?.hold ?? null, // CUSTOM(resource-pools)
       });
     }
   }

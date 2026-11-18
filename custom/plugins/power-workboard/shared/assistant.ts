@@ -7,6 +7,7 @@
 // reading free text, an observe mode, delivery owned by the assistant and not by the task's agent.
 import { z } from "zod";
 import { skillSelectionSchema } from "./profiles";
+import { orchestratorHoldSchema } from "./hold"; // CUSTOM(resource-pools)
 
 /**
  * What happens to a task's work when its agent finishes with a `done` report. `review` (the
@@ -151,6 +152,8 @@ export const ATTEMPT_OUTCOMES = [
   "no-report",
   "agent-error",
   "checkpoint", // CUSTOM(task-checkpoints)
+  // CUSTOM(resource-pools): a queued fix dropped before it reached the agent.
+  "dropped",
 ] as const;
 export const attemptSchema = z.object({
   index: z.number().int().min(1),
@@ -188,6 +191,8 @@ export const NEEDS_YOU_REASONS = [
   "dependency-files",
   // CUSTOM(task-checkpoints): too many checkpoints, or checkpoints that complete nothing new.
   "stalled",
+  // CUSTOM(resource-pools): a fix has waited FIX_WAIT_LIMIT_MS for a pool slot; it still goes when one frees.
+  "fix-waiting",
 ] as const;
 export const needsYouReasonSchema = z.enum(NEEDS_YOU_REASONS);
 export type NeedsYouReason = z.infer<typeof needsYouReasonSchema>;
@@ -229,12 +234,16 @@ export const deliverySchema = z.object({
   dirtyRetries: z.number().int().min(0).default(0),
   /**
    * CUSTOM(resource-pools): a fix (failed check or merge conflict) waiting for a free slot in its
-   * orchestrator and pool. The delivery is in `fixing`; the next pass with room sends `prompt`.
+   * pool. The delivery is in `fixing`, or in `needs-you` with reason `fix-waiting` once it waited
+   * FIX_WAIT_LIMIT_MS; the next pass with room sends `prompt`. `since`: when it was queued
+   * (absent on fixes queued before it existed). `hold`: why it waits, for the UI to translate.
    */
   queuedFix: z
     .object({
       prompt: z.string(),
       reason: z.enum(["verify-failed", "merge-conflict"]),
+      since: z.string().optional(),
+      hold: orchestratorHoldSchema.nullable().optional(),
     })
     .nullable()
     .optional(),
@@ -248,6 +257,8 @@ export const deliverySchema = z.object({
   updatedAt: z.string(),
 });
 export type Delivery = z.infer<typeof deliverySchema>;
+/** CUSTOM(resource-pools): how long a fix waits for a pool slot before it goes to needs-you. */
+export const FIX_WAIT_LIMIT_MS = 30 * 60_000;
 
 /**
  * CUSTOM(task-checkpoints): a long task's progress across checkpoints. `checkpoints` counts the
@@ -365,6 +376,8 @@ export const needsYouItemSchema = z.object({
   since: z.string(),
   /** A git project whose work can be merged now. */
   canMerge: z.boolean(),
+  /** CUSTOM(resource-pools): for `fix-waiting`: why the fix still waits. */
+  hold: orchestratorHoldSchema.nullable().optional(),
 });
 export type NeedsYouItem = z.infer<typeof needsYouItemSchema>;
 
@@ -397,6 +410,8 @@ export const runningItemSchema = z.object({
     })
     .nullable()
     .optional(),
+  /** CUSTOM(resource-pools): for `fixing`: why the fix waits for a pool slot. */
+  hold: orchestratorHoldSchema.nullable().optional(),
 });
 export type RunningItem = z.infer<typeof runningItemSchema>;
 
