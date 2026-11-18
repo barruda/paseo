@@ -9,6 +9,8 @@ import {
   resolveStage,
   type Board,
   type Card,
+  type Finish,
+  type FinishStep,
   type Settings,
   type Stage,
 } from "../shared/model";
@@ -106,6 +108,20 @@ export function shortDate(value: string, locale: string): string {
     month: "short",
     day: "numeric",
   }).format(new Date(value));
+}
+
+/**
+ * The finish buttons a Done card offers, and the highlighted one. Once the task is merged its work
+ * is in the project, so Commit and Merge go away; the board does not watch the worktree after
+ * that, and a change made there later is not offered for another merge. PR description stays as
+ * a plain button.
+ */
+export function finishButtons(finish: Pick<Finish, "mergedAt"> | undefined): {
+  steps: FinishStep[];
+  primary: FinishStep | null;
+} {
+  if (finish?.mergedAt) return { steps: ["pr"], primary: null };
+  return { steps: ["commit", "pr", "merge"], primary: "merge" };
 }
 
 export function stageAtX(
