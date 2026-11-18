@@ -210,12 +210,23 @@ children.
 The daemon also archives closed agents on its own: unarchived, no runtime (never loaded since boot,
 or released by idle cleanup), and no activity for more than `agents.autoArchiveClosedDays` days
 (default 2, 0 turns it off). It sweeps 10 minutes after boot, hourly, and 5 minutes after the setting changes, one agent at a time,
-through the stored-only archive, so workspaces and worktrees are untouched. An agent is skipped
+through the stored-only archive, so the agent pass leaves workspaces and worktrees untouched. An agent is skipped
 while a client has a tab open for it (`paseo.idle-open-tab.*` label) or while any unarchived
 descendant is live, open in a tab, or recently active, because the cascade would archive it.
 An agent that never had a conversation (no `lastUserMessageAt` and no provider session; agents started by another agent have a session but no `lastUserMessageAt`) does not wait: it is
 archived as soon as it is closed and unwatched, and idle cleanup triggers a sweep a few minutes
 after it releases a runtime.
+
+After the agent pass, the same sweep archives Paseo worktrees whose work is done. A worktree
+workspace qualifies when it has at least one agent, every agent is archived (internal agents count
+as archived) and none is live or open in a tab, and no terminal or workspace script is running in
+it. It is archived only if the directory exists, `git status --porcelain --untracked-files=all` is
+empty (ignored files such as `node_modules` don't count), and `HEAD` is an ancestor of its base
+(the workspace's stored base ref, else the `baseRef` in the worktree metadata). A missing or
+unresolvable base, or any commit not in the base, keeps the worktree. Everything is checked again
+right before each archive, which removes the worktree folder and keeps the branch. A worktree with
+no agents is never archived. With the default setting a worktree goes about 2 days after its last
+chat closes.
 
 `create_agent_request` can opt an agent into `autoArchive`. In that mode the daemon archives the agent after the first terminal turn event (`turn_completed`, `turn_failed`, or `turn_canceled`). When the agent owns an isolated workspace, auto-archive archives that workspace too; the managed worktree is removed when its final workspace reference is gone.
 

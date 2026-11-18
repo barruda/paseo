@@ -1,10 +1,18 @@
+import { execFileSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { expect, test, vi } from "vitest";
 import { createTestLogger } from "../../../test-utils/test-logger.js";
 import {
   createAutoArchiveClosed,
   selectAgentsToAutoArchive,
+  selectWorktreesToAutoArchive,
   type AutoArchiveRecord,
+  type AutoArchiveWorkspace,
+  type AutoArchiveWorkspaceAgent,
 } from "./index.js";
+import { isWorktreeSafeToArchive } from "./worktree-safety.js";
 
 const DAY = 24 * 60 * 60_000;
 const NOW = 100 * DAY;
@@ -162,3 +170,178 @@ test("sweepSoon sweeps once after the delay, restarting the wait on each call", 
     vi.useRealTimers();
   }
 });
+
+// CUSTOM(auto-archive-worktrees)
+function ws(id: string, patch: Partial<AutoArchiveWorkspace> = {}): AutoArchiveWorkspace {
+  return { id, archived: false, kind: "worktree", paseoOwned: true, busy: false, ...patch };
+}
+function wsAgent(
+  workspaceId: string,
+  patch: Partial<AutoArchiveWorkspaceAgent> = {},
+): AutoArchiveWorkspaceAgent {
+  return { workspaceId, archived: true, live: false, hasOpenTab: false, ...patch };
+}
+
+test("a worktree whose agents are all archived is selected", () => {
+  expect(selectWorktreesToAutoArchive([ws("w")], [wsAgent("w"), wsAgent("w")])).toEqual(["w"]);
+});
+
+test("a worktree is kept while an agent is unarchived, live or open in a tab", () => {
+  expect(
+    selectWorktreesToAutoArchive([ws("w")], [wsAgent("w"), wsAgent("w", { archived: false })]),
+  ).toEqual([]);
+  expect(selectWorktreesToAutoArchive([ws("w")], [wsAgent("w", { live: true })])).toEqual([]);
+  expect(selectWorktreesToAutoArchive([ws("w")], [wsAgent("w", { hasOpenTab: true })])).toEqual([]);
+});
+
+test("a worktree with no agents is never selected", () => {
+  expect(selectWorktreesToAutoArchive([ws("w")], [wsAgent("other")])).toEqual([]);
+});
+
+test("only active Paseo-owned worktrees that are not busy are selected", () => {
+  const agents = ["a", "b", "c", "d", "e"].map((id) => wsAgent(id));
+  const workspaces = [
+    ws("a", { kind: "local_checkout" }),
+    ws("b", { kind: "directory" }),
+    ws("c", { archived: true }),
+    ws("d", { paseoOwned: false }),
+    ws("e", { busy: true }),
+  ];
+  expect(selectWorktreesToAutoArchive(workspaces, agents)).toEqual([]);
+});
+
+test("the sweep archives worktrees after the agent pass, only the safe ones", async () => {
+  const order: string[] = [];
+  const auto = createAutoArchiveClosed({
+    days: () => 2,
+    records: async () => [rec("a")],
+    stillEligible: async () => true,
+    archive: async (id) => {
+      order.push(`agent:${id}`);
+    },
+    workspaces: {
+      records: async () => ({
+        workspaces: [ws("w1"), ws("w2")],
+        agents: [wsAgent("w1"), wsAgent("w2")],
+      }),
+      safe: async (id) => id === "w1",
+      archive: async (id) => {
+        order.push(`workspace:${id}`);
+      },
+    },
+    logger: createTestLogger(),
+    now: () => NOW,
+    initialDelayMs: 10 * DAY,
+    intervalMs: 10 * DAY,
+  });
+  try {
+    await auto.sweep();
+    expect(order).toEqual(["agent:a", "workspace:w1"]);
+  } finally {
+    await auto.close();
+  }
+});
+
+test("the workspace pass does not run when the agent sweep is off", async () => {
+  const archive = vi.fn(async () => {});
+  const auto = createAutoArchiveClosed({
+    days: () => 0,
+    records: async () => [],
+    stillEligible: async () => true,
+    archive: async () => {},
+    workspaces: {
+      records: async () => ({ workspaces: [ws("w")], agents: [wsAgent("w")] }),
+      safe: async () => true,
+      archive,
+    },
+    logger: createTestLogger(),
+    now: () => NOW,
+    initialDelayMs: 10 * DAY,
+    intervalMs: 10 * DAY,
+  });
+  try {
+    await auto.sweep();
+    expect(archive).not.toHaveBeenCalled();
+  } finally {
+    await auto.close();
+  }
+});
+
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync("git", args, {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "t",
+      GIT_AUTHOR_EMAIL: "t@example.com",
+      GIT_COMMITTER_NAME: "t",
+      GIT_COMMITTER_EMAIL: "t@example.com",
+    },
+  });
+}
+
+function withWorktree(run: (worktree: string) => Promise<void>): () => Promise<void> {
+  return async () => {
+    const root = realpathSync(mkdtempSync(path.join(tmpdir(), "auto-archive-worktree-")));
+    try {
+      const repo = path.join(root, "repo");
+      mkdirSync(repo);
+      git(repo, "init", "-b", "main");
+      writeFileSync(path.join(repo, ".gitignore"), "node_modules/\n");
+      writeFileSync(path.join(repo, "a.txt"), "a\n");
+      git(repo, "add", ".");
+      git(repo, "commit", "-m", "init");
+      const worktree = path.join(root, "wt");
+      git(repo, "worktree", "add", "-b", "feature", worktree);
+      await run(worktree);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  };
+}
+
+test(
+  "a clean worktree already in its base is safe",
+  withWorktree(async (worktree) => {
+    expect(await isWorktreeSafeToArchive({ worktreeRoot: worktree, baseRef: "main" })).toBe(true);
+  }),
+);
+
+test(
+  "a worktree with an unmerged commit is not safe",
+  withWorktree(async (worktree) => {
+    writeFileSync(path.join(worktree, "b.txt"), "b\n");
+    git(worktree, "add", ".");
+    git(worktree, "commit", "-m", "work");
+    expect(await isWorktreeSafeToArchive({ worktreeRoot: worktree, baseRef: "main" })).toBe(false);
+  }),
+);
+
+test(
+  "a worktree with an untracked file is not safe",
+  withWorktree(async (worktree) => {
+    writeFileSync(path.join(worktree, "scratch.txt"), "x\n");
+    expect(await isWorktreeSafeToArchive({ worktreeRoot: worktree, baseRef: "main" })).toBe(false);
+  }),
+);
+
+test(
+  "ignored node_modules do not make a worktree unsafe",
+  withWorktree(async (worktree) => {
+    mkdirSync(path.join(worktree, "node_modules"));
+    writeFileSync(path.join(worktree, "node_modules", "x.js"), "x\n");
+    expect(await isWorktreeSafeToArchive({ worktreeRoot: worktree, baseRef: "main" })).toBe(true);
+  }),
+);
+
+test(
+  "a missing or unresolvable base, or a missing directory, is not safe",
+  withWorktree(async (worktree) => {
+    expect(await isWorktreeSafeToArchive({ worktreeRoot: worktree, baseRef: null })).toBe(false);
+    expect(await isWorktreeSafeToArchive({ worktreeRoot: worktree, baseRef: "nope" })).toBe(false);
+    expect(
+      await isWorktreeSafeToArchive({ worktreeRoot: path.join(worktree, "gone"), baseRef: "main" }),
+    ).toBe(false);
+  }),
+);

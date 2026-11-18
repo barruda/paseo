@@ -6988,3 +6988,32 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `cd custom/plugins/power-workboard && npm run check`. Merge a task into the base
   branch from its Done card: its workspace is archived within a scan. A Done task with an unmerged
   commit stays, with the issue "Its branch has work that is not merged into the base branch yet".
+
+## auto-archive-worktrees: a worktree whose chats are all archived and whose branch is merged is archived
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: daemon archives a Paseo worktree once its chats are archived and its branch is merged`
+- **Why:** manual worktrees in ~/projetos/worktrees pile up at up to 5 GB each, and Power Workboard's
+  done-auto-archive only covers board tasks (see `## done-auto-archive`).
+- **What:** the `auto-archive-closed` sweep gets a second pass after the agent pass (same schedule,
+  `sweepSoon` included, same `autoArchiveClosedDays` gate, no new setting). A workspace is archived
+  when it is active, `kind === "worktree"`, `isPaseoOwnedWorktree`, has at least one agent and all
+  are archived (internal counts as archived), none is live or open in a tab, no terminal is open in
+  it and no script or service is running, the worktree directory exists, `git status --porcelain
+--untracked-files=all` is empty, and `HEAD` is an ancestor of the base (`baseBranch` on the
+  workspace record, else `baseRef`/`baseRefName` from the worktree metadata). No base, an
+  unresolvable base or a non-ancestor skips it. Everything is re-checked right before archiving
+  through `archiveScheduleWorkspaceExternal` (folder removed, branch kept), one workspace at a time;
+  each archive and failure is logged. Because it rides on auto-archive-closed, a worktree goes about
+  2 days after its last chat closes with the default setting.
+- **Core files touched:** `packages/server/src/server/bootstrap.ts` (facts collector and the
+  `workspaces` option), `docs/agent-lifecycle.md`. In
+  `packages/server/src/server/agent/auto-archive-closed/`: `index.ts` (selector and sweep pass),
+  new `worktree-safety.ts`, and `auto-archive-closed.test.ts`.
+- **Re-apply:** add the optional `workspaces` option and `selectWorktreesToAutoArchive` to
+  `createAutoArchiveClosed`, run it after the agent loop, and pass `workspaces` from bootstrap
+  (records from `workspaceRegistry.list()`, `agentStorage.listByWorkspace`, `terminalManager`,
+  `scriptRuntimeStore`; archive with `archiveScheduleWorkspaceExternal`). Grep
+  `CUSTOM(auto-archive-worktrees)`.
+- **Verify:** `cd packages/server && npx vitest run src/server/agent/auto-archive-closed/`. Needs a
+  daemon restart; the log then shows "Auto-archived merged worktree" for qualifying worktrees.

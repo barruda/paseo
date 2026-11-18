@@ -1,7 +1,14 @@
 import { createIdleRuntimeCleanup } from "./agent/idle-runtime-cleanup/index.js";
 // CUSTOM(auto-archive-closed)
 import { getParentAgentIdFromLabels, hasIdleOpenTab } from "@getpaseo/protocol/agent-labels";
-import { createAutoArchiveClosed } from "./agent/auto-archive-closed/index.js";
+import {
+  createAutoArchiveClosed,
+  selectWorktreesToAutoArchive,
+  type AutoArchiveWorkspaceAgent,
+} from "./agent/auto-archive-closed/index.js";
+// CUSTOM(auto-archive-worktrees)
+import { isWorktreeSafeToArchive } from "./agent/auto-archive-closed/worktree-safety.js";
+import { readPaseoWorktreeMetadata } from "../utils/worktree-metadata.js";
 import {
   createFinishSubscriptions,
   createFinishObservation,
@@ -1749,6 +1756,45 @@ export async function createPaseoDaemon(
     idleRuntimeCleanup,
   );
 
+  // CUSTOM(auto-archive-worktrees): plain facts for the worktree pass (also the pre-archive re-check).
+  const collectAutoArchiveWorkspaceFacts = async () => {
+    const all = await workspaceRegistry.list();
+    const active = all.filter((workspace) => !workspace.archivedAt);
+    const terminalDirectories = terminalManager.listDirectories();
+    const terminalWorkspaceIds = new Set<string>();
+    for (const directory of terminalDirectories) {
+      for (const terminal of await terminalManager.getTerminals(directory)) {
+        if (terminal.workspaceId) terminalWorkspaceIds.add(terminal.workspaceId);
+      }
+    }
+    const agents: AutoArchiveWorkspaceAgent[] = [];
+    for (const workspace of active) {
+      if (workspace.kind !== "worktree") continue;
+      for (const record of await agentStorage.listByWorkspace(workspace.workspaceId)) {
+        agents.push({
+          workspaceId: workspace.workspaceId,
+          archived: Boolean(record.archivedAt) || record.internal === true,
+          live: agentManager.getAgent(record.id) !== null,
+          hasOpenTab: hasIdleOpenTab(record.labels),
+        });
+      }
+    }
+    return {
+      workspaces: active.map((workspace) => ({
+        id: workspace.workspaceId,
+        archived: false,
+        kind: workspace.kind,
+        paseoOwned: workspace.isPaseoOwnedWorktree,
+        cwd: workspace.cwd,
+        busy:
+          terminalWorkspaceIds.has(workspace.workspaceId) ||
+          scriptRuntimeStore
+            .listForWorkspace(workspace.workspaceId)
+            .some((entry) => entry.lifecycle === "running"),
+      })),
+      agents,
+    };
+  };
   // CUSTOM(auto-archive-closed): archives sessions closed for days. Stored-only archive
   // (archiveSnapshot) keeps workspaces and worktrees untouched; only the autoArchive create mode
   // archives a workspace.
@@ -1780,6 +1826,24 @@ export async function createPaseoDaemon(
     },
     archive: async (id) => {
       await agentManager.archiveSnapshot(id, new Date().toISOString());
+    },
+    // CUSTOM(auto-archive-worktrees): a Paseo worktree whose chats are all archived and whose
+    // branch is merged is archived (folder removed, branch kept) after each agent pass.
+    workspaces: {
+      records: collectAutoArchiveWorkspaceFacts,
+      safe: async (id) => {
+        const recheck = await collectAutoArchiveWorkspaceFacts();
+        if (!selectWorktreesToAutoArchive(recheck.workspaces, recheck.agents).includes(id)) {
+          return false;
+        }
+        const workspace = await workspaceRegistry.get(id);
+        if (!workspace) return false;
+        const worktreeRoot = workspace.worktreeRoot ?? workspace.cwd;
+        const metadata = await readPaseoWorktreeMetadata(worktreeRoot).catch(() => null);
+        const baseRef = workspace.baseBranch ?? metadata?.baseRef ?? metadata?.baseRefName ?? null;
+        return isWorktreeSafeToArchive({ worktreeRoot, baseRef });
+      },
+      archive: (id) => archiveScheduleWorkspaceExternal(id),
     },
     logger,
   });

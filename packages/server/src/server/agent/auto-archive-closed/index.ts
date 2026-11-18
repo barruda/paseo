@@ -68,6 +68,47 @@ export function selectAgentsToAutoArchive(
   return selected;
 }
 
+// CUSTOM(auto-archive-worktrees): plain facts about a workspace; terminals and running scripts are
+// folded into `busy` by the caller.
+export interface AutoArchiveWorkspace {
+  id: string;
+  archived: boolean;
+  kind: "local_checkout" | "worktree" | "directory";
+  paseoOwned: boolean;
+  busy: boolean;
+  cwd?: string;
+}
+
+export interface AutoArchiveWorkspaceAgent {
+  workspaceId: string;
+  archived: boolean;
+  live: boolean;
+  hasOpenTab: boolean;
+}
+
+/**
+ * CUSTOM(auto-archive-worktrees): candidate Paseo worktrees. Active, daemon-owned, not busy, with
+ * at least one agent and every agent archived, closed and unwatched. Git safety is checked apart.
+ */
+export function selectWorktreesToAutoArchive(
+  workspaces: readonly AutoArchiveWorkspace[],
+  agents: readonly AutoArchiveWorkspaceAgent[],
+): string[] {
+  const byWorkspace = new Map<string, AutoArchiveWorkspaceAgent[]>();
+  for (const agent of agents) {
+    byWorkspace.set(agent.workspaceId, [...(byWorkspace.get(agent.workspaceId) ?? []), agent]);
+  }
+  return workspaces
+    .filter((workspace) => {
+      if (workspace.archived || workspace.kind !== "worktree" || !workspace.paseoOwned)
+        return false;
+      if (workspace.busy) return false;
+      const own = byWorkspace.get(workspace.id) ?? [];
+      return own.length > 0 && own.every((a) => a.archived && !a.live && !a.hasOpenTab);
+    })
+    .map((workspace) => workspace.id);
+}
+
 interface Options {
   /** Days read at each sweep; 0 means off. */
   days(): number;
@@ -75,6 +116,16 @@ interface Options {
   /** Re-checks the agent right before archiving; false skips it. */
   stillEligible(id: string): Promise<boolean>;
   archive(id: string): Promise<void>;
+  // CUSTOM(auto-archive-worktrees): optional second pass over worktree workspaces.
+  workspaces?: {
+    records(): Promise<{
+      workspaces: readonly AutoArchiveWorkspace[];
+      agents: readonly AutoArchiveWorkspaceAgent[];
+    }>;
+    /** Re-checks everything, git included, right before archiving. */
+    safe(id: string): Promise<boolean>;
+    archive(id: string): Promise<void>;
+  };
   logger: Pick<Logger, "info" | "warn">;
   now?: () => number;
   initialDelayMs?: number;
@@ -107,7 +158,32 @@ export function createAutoArchiveClosed(options: Options) {
       }
     }
     if (archived > 0) options.logger.info({ archived }, "Auto-archive sweep finished");
+    // CUSTOM(auto-archive-worktrees): after the agent pass, so agents archived above count.
+    await runWorkspaces();
     return archived;
+  }
+  async function runWorkspaces(): Promise<void> {
+    const workspaces = options.workspaces;
+    if (!workspaces) return;
+    try {
+      const facts = await workspaces.records();
+      const cwds = new Map(facts.workspaces.map((workspace) => [workspace.id, workspace]));
+      for (const id of selectWorktreesToAutoArchive(facts.workspaces, facts.agents)) {
+        if (stopped || !(options.days() > 0)) break;
+        try {
+          if (!(await workspaces.safe(id))) continue;
+          await workspaces.archive(id);
+          options.logger.info(
+            { workspaceId: id, cwd: cwds.get(id)?.cwd },
+            "Auto-archived merged worktree",
+          );
+        } catch (error) {
+          options.logger.warn({ workspaceId: id, err: error }, "Auto-archive of worktree failed");
+        }
+      }
+    } catch (error) {
+      options.logger.warn({ err: error }, "Auto-archive of worktrees failed");
+    }
   }
   function sweep(): Promise<number> {
     running ??= run()
