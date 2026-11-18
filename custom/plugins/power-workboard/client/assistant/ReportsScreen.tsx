@@ -21,6 +21,7 @@ import {
 } from "../../shared/assistant-rpc";
 import { groupColorValue, projectColor } from "../colors";
 import { usePaseoLocale } from "../paseo-language";
+import { consumeReportTaskRequest, useReportTaskRequest } from "./nav";
 import { relativeTime } from "./conversations-format";
 import {
   defaultHiddenColumns,
@@ -86,11 +87,31 @@ export function ReportsScreen(props: PluginSurfaceProps) {
   // Wide layouts always show a ticket: the newest visible one until the user picks another, and
   // again when the filters hide the one that was selected.
   useEffect(() => {
-    if (compact || filtered.length === 0) return;
+    if (compact) return;
+    if (filtered.length === 0) {
+      if (tasks.data && selectedId !== null) setSelectedId(null);
+      return;
+    }
     if (selectedId && filtered.some((task) => task.taskId === selectedId))
       return;
     setSelectedId(filtered[0].taskId);
-  }, [compact, selectedId, filtered]);
+  }, [compact, selectedId, filtered, tasks.data]);
+
+  // A request from another page (Dashboard, Conversations) to open one ticket. It waits for the
+  // list, clears the search and the project filter, and shows the ticket's column for this visit
+  // when the status filter hides it (not saved), so the selection effect keeps the ticket.
+  const request = useReportTaskRequest();
+  useEffect(() => {
+    if (!request || !tasks.data) return;
+    const columnId = all.find((t) => t.taskId === request.taskId)?.columnId;
+    if (columnId && hiddenColumns.includes(columnId))
+      setSavedHidden(hiddenColumns.filter((id) => id !== columnId));
+    setSearch("");
+    setProjectId(null);
+    setSelectedId(request.taskId);
+    setShowContent(true);
+    consumeReportTaskRequest(request.seq);
+  }, [request, tasks.data, all, hiddenColumns]);
 
   const timeline = useQuery({
     queryKey: ["power-workboard", "assistant-report", hostId, selectedId],

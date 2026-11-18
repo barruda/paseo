@@ -61,3 +61,45 @@ export function showConversation(
   selectConversation({ agentId, taskId });
   openDeskSurface(navigation, CONVERSATIONS_SURFACE_ID);
 }
+
+interface ReportRequest {
+  taskId: string;
+  seq: number;
+}
+
+let reportRequest: ReportRequest | null = null;
+
+let reportSeq = 0;
+
+/**
+ * Ask Projects Reports to show a ticket. The page may mount only after this (the Desk shows one
+ * surface at a time), so the request waits until the page consumes it.
+ */
+export function requestReportTask(taskId: string): void {
+  reportRequest = { taskId, seq: ++reportSeq };
+  for (const listener of listeners) listener();
+}
+
+/** Called by Projects Reports once it showed the ticket, so a later visit starts fresh. */
+export function consumeReportTaskRequest(seq: number): void {
+  if (reportRequest?.seq !== seq) return;
+  reportRequest = null;
+  for (const listener of listeners) listener();
+}
+
+export function useReportTaskRequest(): ReportRequest | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => reportRequest,
+    () => reportRequest,
+  );
+}
+
+/** Show a ticket's timeline in Projects Reports. */
+export function showReport(
+  navigation: PluginSurfaceProps["navigation"],
+  taskId: string,
+): void {
+  requestReportTask(taskId);
+  openDeskSurface(navigation, REPORTS_SURFACE_ID);
+}
