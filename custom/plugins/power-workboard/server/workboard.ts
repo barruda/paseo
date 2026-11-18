@@ -173,6 +173,13 @@ const MAX_DIRTY_RETRIES = 12;
  * reading taken right after a start would still let the next task in.
  */
 export const RAM_SETTLE_MS = 5 * 60_000;
+/** CUSTOM(resource-pools): delivery stages that keep the task's pool slot for a fix. */
+const POOL_RESERVING_STAGES: ReadonlySet<string> = new Set([
+  "verifying",
+  "committing",
+  "merging",
+  "fixing",
+]);
 const DELIVERY_STEPS: ReadonlySet<string> = new Set([
   "verifying",
   "committing",
@@ -2874,7 +2881,7 @@ export class Workboard {
     const base = await worktreeBaseName(directory, policyBase.trim() || null);
     const prompt = conflictPrompt(base);
     // CUSTOM(resource-pools): with no free slot the fix waits for a pass that has one.
-    const wait = await this.reactivationHold(record.orchestratorId);
+    const wait = await this.reactivationHold(taskId, record.orchestratorId);
     if (!wait)
       try {
         await this.host.sendAgent(record.agentId, prompt);
@@ -2922,7 +2929,7 @@ export class Workboard {
       );
     const prompt = fixPrompt(command, output);
     // CUSTOM(resource-pools): with no free slot the fix waits for a pass that has one.
-    const wait = await this.reactivationHold(record.orchestratorId);
+    const wait = await this.reactivationHold(taskId, record.orchestratorId);
     if (!wait)
       try {
         await this.host.sendAgent(record.agentId, prompt);
@@ -2988,7 +2995,7 @@ export class Workboard {
         await this.patchDelivery(taskId, { queuedFix: null });
         continue;
       }
-      const wait = await this.reactivationHold(record.orchestratorId);
+      const wait = await this.reactivationHold(taskId, record.orchestratorId);
       if (wait) {
         if (wait !== delivery.detail)
           await this.patchDelivery(taskId, { detail: wait });
@@ -3640,6 +3647,13 @@ export class Workboard {
       )
     )
       return "a delivery is in progress";
+    // CUSTOM(resource-pools): a fix waiting for a pool slot is still work to do.
+    if (
+      Object.values(data.assistant.deliveries).some(
+        (delivery) => delivery.stage === "fixing" && delivery.queuedFix,
+      )
+    )
+      return "a fix waits for a free slot";
     try {
       const busy = await this.host.busyAgents();
       if (busy.length)
@@ -3798,26 +3812,26 @@ export class Workboard {
       !data.orchestrators.some((o) => o.projectId === task.projectId)
     );
   }
-  /**
-   * The slots an orchestrator uses: its starting and running tasks, and (CUSTOM(resource-pools))
-   * any agent of its finished tasks that is working again, woken by the assistant or the user.
-   */
+  /** The slots an orchestrator uses. */
   private runningFor(id: string, data: Data = this.store.current): number {
     return Object.values(data.orchestrations).filter(
-      (record) =>
-        record.orchestratorId === id &&
-        (record.status === "starting" ||
-          record.status === "running" ||
-          ((record.status === "finished" || record.status === "failed") &&
-            this.agentWorking(record.agentId))),
+      (record) => record.orchestratorId === id && this.usesSlot(record),
     ).length;
   }
-  private agentWorking(agentId: string | null): boolean {
-    if (!agentId) return false;
-    const activity = this.inventory.agents.find(
-      (a) => a.id === agentId,
-    )?.activity;
-    return activity === "running" || activity === "waiting";
+  /**
+   * A starting or running task, or (CUSTOM(resource-pools)) a finished task whose agent is in a
+   * turn again, woken by the assistant or the user. An agent waiting on a permission or only on
+   * background work doesn't count: it could hold the slot for hours.
+   */
+  private usesSlot(record: Orchestration): boolean {
+    if (record.status === "starting" || record.status === "running")
+      return true;
+    if (record.status !== "finished" && record.status !== "failed")
+      return false;
+    const agent = record.agentId
+      ? this.inventory.agents.find((a) => a.id === record.agentId)
+      : undefined;
+    return agent?.activity === "running" && agent.turnActive !== false;
   }
   // CUSTOM(resource-pools) ------------------------------------------------------------------
   /** The last free-RAM reading; refreshed on each pass while a pool has a RAM floor. */
@@ -3832,10 +3846,29 @@ export class Workboard {
       data.settings.pools.find((pool) => pool.id === config.poolId) ?? null
     );
   }
-  private runningInPool(poolId: string, data: Data = this.store.current) {
-    return data.orchestrators
-      .filter((o) => o.poolId === poolId)
-      .reduce((sum, o) => sum + this.runningFor(o.id, data), 0);
+  /**
+   * The pool's used slots: its orchestrators' tasks that use a slot, plus the finished ones whose
+   * delivery is still checking, committing, merging or fixing. That reserved slot keeps a failed
+   * check or a conflict from losing its turn to a new task. `except` leaves one task out.
+   */
+  private runningInPool(
+    poolId: string,
+    data: Data = this.store.current,
+    except?: string,
+  ) {
+    const members = new Set(
+      data.orchestrators.filter((o) => o.poolId === poolId).map((o) => o.id),
+    );
+    return Object.entries(data.orchestrations).filter(
+      ([taskId, record]) =>
+        taskId !== except &&
+        !!record.orchestratorId &&
+        members.has(record.orchestratorId) &&
+        (this.usesSlot(record) ||
+          POOL_RESERVING_STAGES.has(
+            data.assistant.deliveries[taskId]?.stage ?? "",
+          )),
+    ).length;
   }
   /** Reads the RAM when some pool has a floor; the snapshot RPC calls it so the status is current. */
   async readPoolMemory(): Promise<void> {
@@ -3892,23 +3925,24 @@ export class Workboard {
     return null;
   }
   /**
-   * Why an agent of this orchestrator can't be put back to work now (its own limit, then its
-   * pool's), or null. Inside `serial`.
+   * Why this task's agent can't be put back to work now, or null. Only a pool holds it (full,
+   * under its RAM floor, or settling); the task's own reserved slot doesn't count. Without a
+   * pool the fix goes at once, as before. Inside `serial`.
    */
   private async reactivationHold(
+    taskId: string,
     orchestratorId: string | null,
   ): Promise<string | null> {
     const config = this.store.current.orchestrators.find(
       (o) => o.id === orchestratorId,
     );
-    if (!config) return null;
-    const running = this.runningFor(config.id);
-    if (running >= config.maxConcurrent)
-      return `orchestrator "${config.name}" is at its limit (${running}/${config.maxConcurrent})`;
-    const pool = this.poolOf(config);
+    const pool = config && this.poolOf(config);
     if (!pool) return null;
     await this.readPoolMemory();
-    const hold = this.poolHold(pool, this.runningInPool(pool.id));
+    const hold = this.poolHold(
+      pool,
+      this.runningInPool(pool.id, this.store.current, taskId),
+    );
     return hold && holdText(hold);
   }
   private async logHold(

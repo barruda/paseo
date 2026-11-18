@@ -7533,14 +7533,20 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
     removing a pool takes its orchestrators out of it, and saving an orchestrator with an
     unknown pool fails.
   - **Slots:** an orchestrator's slots are its starting and running tasks plus any agent of its
-    finished tasks that is working again (woken by the Projects Assistant's direct message or by
-    the user in the chat), so no new task starts beside it. The assistant's direct message
-    itself is not held back.
-  - **Delivery fixes wait for a slot:** a failed check or a merge conflict goes back to the
-    task's agent only when its orchestrator and pool have room. Otherwise the delivery stays in
-    `fixing` with `queuedFix` (the prompt) and the reason as its detail, and each pass sends the
-    waiting fixes, oldest delivery first, before it starts new tasks. A fix the user overtook
-    (another delivery action, or the task running again) is dropped.
+    finished tasks that is in a turn again (woken by the Projects Assistant's direct message or
+    by the user in the chat), so no new task starts beside it. An agent waiting on a permission,
+    or `running` only because it awaits background work (`turnActive: false` from the host),
+    doesn't count: it could hold a limit of 1 for hours. The assistant's direct message itself
+    is not held back.
+  - **Delivery fixes and pools:** without a pool a failed check or a merge conflict goes back to
+    the task's agent at once, as before; the finished task's slot already went to the next
+    card. In a pool, a finished task keeps its pool slot while its delivery is `verifying`,
+    `committing`, `merging` or `fixing`, so its fix never loses its turn to a new task (a merge
+    waiting for a clean base checkout keeps it too, up to an hour). The fix then waits only for
+    the pool's RAM floor or settle time: the delivery stays in `fixing` with `queuedFix` (the
+    prompt) and the reason as its detail, and each pass sends the waiting fixes, oldest delivery
+    first, before it starts new tasks. A fix the user overtook (another delivery action, or the
+    task running again) is dropped.
   - **RAM floor:** `server/resources.ts` reads `MemAvailable`/`MemTotal` from `/proc/meminfo` once
     per pass when some pool has a floor. Under the floor nothing of the pool starts. An unreadable
     reading (no `/proc/meminfo`) never holds a pool. The agent opens Unity minutes after it starts,
@@ -7556,7 +7562,8 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
     is full (1/1)", "Waiting for RAM: 10% free, pool "Unity" needs 20%"); the routine `settle`
     wait is not logged.
   - **Night power-off:** a night task held by its pool (full or under the RAM floor) still counts
-    as waiting, so the power-off waits until it starts or the night window closes.
+    as waiting, so the power-off waits until it starts or the night window closes. A fix waiting
+    in `queuedFix` also blocks the power-off.
   - **UI:** Orchestrators tab, **Resource pools** section (name, at a time, min. free RAM %, Save
     pools); the orchestrator's General tab gets a **Pool** chip row once a pool exists.
 - **Core files touched:** none (plugin only).
@@ -7566,8 +7573,9 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
   unreadable RAM, removing a pool, settings save keeps pools, v9 data without pools,
   `/proc/meminfo` parsing, hold text; RAM settle with a fake clock, a pool without a floor, no
   hold for a Manual orchestrator and the RAM reread, the slot going to the top card, a second
-  orchestrator of the project, a delivery fix waiting for the slot, an agent woken by the
-  assistant taking a slot).
+  orchestrator of the project, a fix sent at once without a pool, a fix waiting for the RAM on
+  the slot its task kept, a new task kept off the slot of a task whose check runs, an agent in a
+  turn taking a slot and one waiting on a permission or background work not).
 - **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
   After `plugin reload power-workboard`: Orchestrators tab > Resource pools > New pool, set At a
   time 1, Save pools; put two orchestrators in it (General > Pool); with a task Ready to start in

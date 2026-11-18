@@ -501,11 +501,8 @@ it("a second orchestrator of the same project doesn't take the task the pool hol
 
 const report = `Did it.\n<report>${JSON.stringify({ status: "done", summary: "Added X" })}</report>`;
 
-it("a delivery fix waits for a free slot instead of putting a second agent to work", async () => {
-  const verify = vi
-    .fn()
-    .mockResolvedValueOnce({ passed: false, output: "1 test failed" })
-    .mockResolvedValue({ passed: true, output: "ok" });
+/** A board whose project "p" merges after `npm test`, with one fix allowed. */
+function mergeSetup(verify: AssistantOptions["verify"]) {
   const s = setup(
     {
       defaultOrchestratorSeeded: true,
@@ -520,6 +517,28 @@ it("a delivery fix waits for a free slot instead of putting a second agent to wo
     { verify },
   );
   (s.host.lastReply as any).mockResolvedValue(report);
+  const agentOf = (title: string) =>
+    s.inventory.agents.find(
+      (a) => a.workspaceId === card(s.board, title).workspaceId,
+    )!;
+  const makeGit = (title: string) =>
+    (s.inventory.workspaces.find(
+      (w) => w.id === card(s.board, title).workspaceId,
+    )!.projectKind = "git");
+  const delivery = (title: string) =>
+    s.store.current.assistant.deliveries[card(s.board, title).id];
+  const sentTo = () =>
+    (s.host.sendAgent as any).mock.calls.map((call: unknown[]) => call[0]);
+  return { ...s, agentOf, makeGit, delivery, sentTo };
+}
+const failOnce = () =>
+  vi
+    .fn<NonNullable<AssistantOptions["verify"]>>()
+    .mockResolvedValueOnce({ passed: false, output: "1 test failed" })
+    .mockResolvedValue({ passed: true, output: "ok" });
+
+it("without a pool a failed check goes back to the agent at once, even with tasks in Ready", async () => {
+  const s = mergeSetup(failOnce());
   await s.board.start();
   try {
     const own = await addOrchestrator(s.board, {
@@ -528,44 +547,62 @@ it("a delivery fix waits for a free slot instead of putting a second agent to wo
     });
     await create(s, "A", "p");
     await create(s, "B", "p");
+    await create(s, "C", "p");
+    const agentA = s.agentOf("A");
+    s.makeGit("A");
+    await finish(s, "A");
+    // A's slot went to the next card in the same pass, as before the pools.
+    expect(runBy(s.board, "B") ?? runBy(s.board, "C")).toBe(own);
+    await vi.waitFor(() => expect(s.sentTo()).toContain(agentA.id));
+    expect(s.delivery("A")).toMatchObject({ stage: "fixing", fixesUsed: 1 });
+    expect(s.delivery("A")?.queuedFix ?? null).toBeNull();
+    expect(
+      s.board.snapshot().orchestrations[card(s.board, "A").id],
+    ).toMatchObject({ status: "running" });
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("in a pool the delivering task keeps its slot, and its fix waits only for the RAM", async () => {
+  const s = mergeSetup(failOnce());
+  await s.board.start();
+  try {
+    await savePools(s.board, [
+      { id: "unity", name: "Unity", maxConcurrent: 1, minFreeRamPercent: 20 },
+    ]);
+    const own = await addOrchestrator(s.board, {
+      projectId: "p",
+      poolId: "unity",
+      maxConcurrent: 2,
+    });
+    await create(s, "A", "p");
+    await create(s, "B", "p");
     expect(runBy(s.board, "A")).toBe(own);
     expect(runBy(s.board, "B")).toBeNull();
-    const agentOf = (title: string) =>
-      s.inventory.agents.find(
-        (a) => a.workspaceId === card(s.board, title).workspaceId,
-      )!;
-    const agentA = agentOf("A");
-    const makeGit = (title: string) =>
-      (s.inventory.workspaces.find(
-        (w) => w.id === card(s.board, title).workspaceId,
-      )!.projectKind = "git");
-    makeGit("A");
+    const agentA = s.agentOf("A");
+    s.makeGit("A");
+    // A's agent took the RAM: its failed check can't wake it yet.
+    s.advance(RAM_SETTLE_MS);
+    s.memory.reading = { availableBytes: 6 * GiB, totalBytes: 60 * GiB };
     await finish(s, "A");
-    // A finished, so B took the slot; A's failed check then found it taken.
-    expect(runBy(s.board, "B")).toBe(own);
-    const deliveryA = () =>
-      s.store.current.assistant.deliveries[card(s.board, "A").id];
     await vi.waitFor(() =>
-      expect(deliveryA()?.queuedFix).toMatchObject({
+      expect(s.delivery("A")?.queuedFix).toMatchObject({
         reason: "verify-failed",
       }),
     );
-    expect(deliveryA()).toMatchObject({
+    expect(s.delivery("A")).toMatchObject({
       stage: "fixing",
       fixesUsed: 1,
-      detail: 'orchestrator "Orchestrator" is at its limit (1/1)',
+      detail: 'Waiting for RAM: 10% free, pool "Unity" needs 20%',
     });
-    const sentTo = () =>
-      (s.host.sendAgent as any).mock.calls.map((call: unknown[]) => call[0]);
-    expect(sentTo()).not.toContain(agentA.id);
-    expect(running(s)).toBe(1);
+    expect(s.sentTo()).not.toContain(agentA.id);
+    // The slot stays A's: B doesn't take it while A's fix waits.
+    s.memory.reading = { availableBytes: 30 * GiB, totalBytes: 60 * GiB };
     await s.board.refresh();
-    expect(sentTo()).not.toContain(agentA.id);
-    // B ends its turn: the next pass sends A's fix before anything new starts.
-    makeGit("B");
-    await finish(s, "B");
-    expect(sentTo()).toContain(agentA.id);
-    expect(deliveryA()).toMatchObject({
+    expect(s.sentTo()).toContain(agentA.id);
+    expect(runBy(s.board, "B")).toBeNull();
+    expect(s.delivery("A")).toMatchObject({
       stage: "fixing",
       queuedFix: null,
       detail: null,
@@ -579,7 +616,47 @@ it("a delivery fix waits for a free slot instead of putting a second agent to wo
   }
 });
 
-it("a finished task's agent woken by the assistant takes a slot", async () => {
+it("in a pool a new task doesn't take the slot of a task whose check is running", async () => {
+  let checked!: (result: { passed: boolean; output: string }) => void;
+  const verify = vi.fn<NonNullable<AssistantOptions["verify"]>>(
+    () => new Promise((resolve) => (checked = resolve)),
+  );
+  const s = mergeSetup(verify);
+  await s.board.start();
+  try {
+    await savePools(s.board, [
+      { id: "unity", name: "Unity", maxConcurrent: 1 },
+    ]);
+    const own = await addOrchestrator(s.board, {
+      projectId: "p",
+      poolId: "unity",
+      maxConcurrent: 2,
+    });
+    await create(s, "A", "p");
+    await create(s, "B", "p");
+    const agentA = s.agentOf("A");
+    s.makeGit("A");
+    await finish(s, "A");
+    await vi.waitFor(() => expect(verify).toHaveBeenCalled());
+    expect(s.delivery("A")?.stage).toBe("verifying");
+    await s.board.refresh();
+    expect(runBy(s.board, "B")).toBeNull();
+    expect(s.board.snapshot().orchestratorStatus[own]?.hold).toMatchObject({
+      kind: "pool",
+      running: 1,
+    });
+    // The check fails: the fix goes at once, on the slot A kept.
+    checked({ passed: false, output: "1 test failed" });
+    await vi.waitFor(() => expect(s.sentTo()).toContain(agentA.id));
+    expect(s.delivery("A")?.queuedFix ?? null).toBeNull();
+    await s.board.refresh();
+    expect(runBy(s.board, "B")).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a finished task's agent takes a slot only while it is in a turn", async () => {
   const s = setup({ defaultOrchestratorSeeded: true });
   await s.board.start();
   try {
@@ -605,8 +682,32 @@ it("a finished task's agent woken by the assistant takes a slot", async () => {
     await create(s, "B", "p");
     expect(runBy(s.board, "B")).toBeNull();
     expect(s.board.snapshot().orchestratorStatus[own]?.running).toBe(1);
-    agentA.activity = "idle";
+    // Running only because of background work: no turn, no slot.
+    agentA.turnActive = false;
     await s.board.refresh();
+    expect(s.board.snapshot().orchestratorStatus[own]?.running).toBe(1); // B
+    expect(runBy(s.board, "B")).toBe(own);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a finished task's agent waiting on a permission doesn't hold the slot", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  await s.board.start();
+  try {
+    const own = await addOrchestrator(s.board, {
+      projectId: "p",
+      maxConcurrent: 1,
+    });
+    await create(s, "A", "p");
+    await finish(s, "A");
+    const agentA = s.inventory.agents.find(
+      (a) => a.workspaceId === card(s.board, "A").workspaceId,
+    )!;
+    agentA.activity = "waiting";
+    await s.board.refresh();
+    await create(s, "B", "p");
     expect(runBy(s.board, "B")).toBe(own);
   } finally {
     s.board.dispose();
