@@ -1173,13 +1173,9 @@ export class Workboard {
           if (kind !== "todo" && kind !== "ready" && kind !== "scheduled")
             throw new Error("Choose a To do group for a new draft");
           if (kind === "scheduled") timing ??= { kind: "night" };
+          const taskId = randomUUID();
           await this.store.update((data) => {
-            const task = newTask(
-              randomUUID(),
-              input.title,
-              this.stamp(),
-              stage,
-            );
+            const task = newTask(taskId, input.title, this.stamp(), stage);
             task.description = input.description;
             task.projectId = input.projectId;
             task.orchestratorId = input.orchestratorId ?? null;
@@ -1189,6 +1185,14 @@ export class Workboard {
                 ?.name ?? "";
             data.tasks.push(task);
           });
+          // CUSTOM(assistant-reports): an automatic item of the Reports page.
+          if (this.assistantOn())
+            await this.record(
+              taskId,
+              "task-created",
+              `Created "${input.title}" in ${this.groupLabel(stage)}`,
+              { agentId: null, attempt: null, action: null },
+            );
           if (kind === "ready") await this.orchestrate();
           else if (timing) this.armDueTimer(); // CUSTOM(night-tasks)
         } else if (input.action === "night-settings") {
@@ -1478,6 +1482,14 @@ export class Workboard {
               // A draft moved to Ready to start may be taken right away.
               await this.orchestrate();
             }
+            // CUSTOM(assistant-reports): an automatic item of the Reports page.
+            if (this.assistantOn())
+              await this.record(
+                task.id,
+                "task-moved",
+                `Moved to ${this.groupLabel(input.stage)}`,
+                { agentId: null, action: null },
+              );
           } else if (input.action === "archive-draft") {
             if (
               task.workspaceId ||
@@ -2007,6 +2019,13 @@ export class Workboard {
     await this.orchestrate();
   }
   // CUSTOM(projects-assistant): the Projects Assistant engine. ----------------------------------
+  /** CUSTOM(assistant-reports): a column's name as the board shows it. */
+  private groupLabel(groupId: string): string {
+    const group = this.store.current.settings.groups.find(
+      (g) => g.id === groupId,
+    );
+    return group ? (group.name ?? group.label) : groupId;
+  }
   private assistantOn(): boolean {
     return this.store.current.assistant.settings.enabled;
   }

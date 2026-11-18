@@ -35,13 +35,17 @@ import type { Workboard } from "../workboard";
 // CUSTOM(assistant-quick)
 import { ACK_MESSAGE_MAX, normalizeAckStatus } from "../../shared/quick";
 import type { QuickInbox } from "./quick";
+// CUSTOM(assistant-reports)
+import { reportEntryInputSchema } from "../../shared/assistant-reports";
+import type { Data } from "../../shared/model";
+import { orchestratorPart, type ReportStore } from "./reports";
 
 export const CHAT_LABEL = "pwb/assistant-chat";
 
 // CUSTOM(agent-profiles): the role text is the seed of the assistant profile's system-prompt.md;
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
 const BOARD_TOOLS =
-  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack";
+  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report";
 
 export const ASSISTANT_ROLE = [
   "You are the Projects Assistant: the user's manager for their Power Workboard tasks and orchestrators, in Tasks mode. You act for the user: they want decisions made and reported, not questions.",
@@ -59,6 +63,8 @@ export const ASSISTANT_ROLE = [
   "Act for the user. When a board task's agent waits for the user's ok or a decision (a needs_input or blocked report, a question in its reply, the open decisions of a proposal), answer it yourself with board_task_action continue when you can do it with reasonable precision and no real risk. Agents outside the board may refuse an ok that comes from you; then leave that one for the user and don't insist. End with the list of decisions you took.",
   "Fix small blockers yourself. When a delivery is blocked by something small and reversible outside a project's code (your settings, through board_set_project_policy or board_set_default_action; daemon metadata such as a worktree's stored base; a stale lock), fix it, keep a backup in /home/bruno/uprojects/tmp when you change a file, and report it. Merge conflicts and a dirty checkout are retried by the board on its own; step in only when it gives up. Ask before anything destructive or hard to undo.",
   'Ship what you merge in the paseo project. After merging changes under custom/plugins/power-workboard, reload the plugin as the last step of your turn: `cd /home/bruno/projetos/paseo && npx tsx packages/cli/src/index.js plugin reload power-workboard --home ~/.paseo`. When a merged change touches packages/ (the app or the daemon) and no paseo task is still in review or delivering, create one Paseo agent in /home/bruno/projetos/paseo whose only job is to ship: load the paseo-customizations skill, build and install, reopen the clients, and never restart a daemon. Create it with create_agent and labels {"paseo.board-agent": "true"}: that label keeps it out of the user\'s sidebar and notifications, and you report on it instead. Pass the same label to every Paseo agent you create. If the change needs a daemon restart, tell the user once, with the command kill-paseos-and-daemons.sh.',
+  // CUSTOM(assistant-reports)
+  "Report each action on a task once, with board_report: one entry per action (created, started, reviewed, sent feedback, answered an agent, fixed a blocker, merged, escalated to the user), with a one-sentence summary, a short markdown detail, the decisions you took and, when you talked to the task's agent, orchestrator {agentId, prompt: what you asked, reply: its answer, or leave reply out to store its last reply}. For a quick message, pass its id as quickMessageId: the summary becomes the status row's text. Then reuse that same summary as your short chat reply instead of writing it again.",
   "Announce merge-now or mark-done beforehand only for critical tasks; for low-risk ones act first, then report.",
   "After merge-now, confirm the commit is on the project's base branch (git log), not only that the card moved to Done.",
   "When the next step is the default one (a new task to the Backlog, an obvious follow-up), do it and say so instead of ending with a question. Ask only when the decision is the user's.",
@@ -73,7 +79,7 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS =
-  'Call board_overview, then reply in one line: that you\'re ready, plus what is in Needs you (or that nothing is waiting). Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent and board_ack. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
+  'Call board_overview, then reply in one line: that you\'re ready, plus what is in Needs you (or that nothing is waiting). Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack and board_report. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. After each action on a task, record it once with board_report (pass the quick message id when there is one) and reuse its summary as your reply. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
 
 /** `<PASEO_HOME>/plugin-data/power-workboard/assistant-chat`, next to the history folder. */
 export function defaultChatDirectory(
@@ -181,6 +187,91 @@ export function quickAckTool(inbox: Pick<QuickInbox, "ack">): ChatTool {
   });
 }
 
+/** An agent the board started for a task (not the chat, not the user's other agents). */
+export function isManagedAgent(data: Data, agentId: string): boolean {
+  return (
+    Object.values(data.orchestrations).some((o) => o.agentId === agentId) ||
+    Object.values(data.assistant.attempts).some((list) =>
+      list.some((a) => a.agentId === agentId),
+    )
+  );
+}
+
+/**
+ * CUSTOM(assistant-reports): the assistant's one record per action on a task. It feeds the
+ * Projects Reports page and, with `quickMessageId`, the quick message's ack in the status row.
+ */
+export function boardReportTool(
+  getBoard: () => Pick<
+    Workboard,
+    "assistantSource" | "snapshot" | "chatLastReply"
+  >,
+  reports: Pick<ReportStore, "append">,
+  inbox: Pick<QuickInbox, "ack" | "list">,
+): ChatTool {
+  return define({
+    name: "board_report",
+    description:
+      "Record one action you took on a task, once, for the Projects Reports page. kind: created, started, moved, reviewed, feedback, answered, fixed, merged, escalated or note. summary: ONE sentence, in the user's language; it is also your short chat reply and, with quickMessageId, the status row's text (quickStatus ok, needs-input or error; default: the message's current state, ok while pending). detail: short markdown (what you checked, what changed). decisions: the decisions you took, one per item. orchestrator: when you talked to the task's agent, {agentId, prompt: what you asked it, reply: its answer}; leave reply out to store the agent's last reply (its <report> block is read from it). The server fills the project and the time.",
+    input: reportEntryInputSchema,
+    async execute(input) {
+      const board = getBoard();
+      const data = board.assistantSource().data;
+      const task = data.tasks.find((t) => t.id === input.taskId);
+      if (!task)
+        throw new Error(
+          `No task with id ${input.taskId}. Use board_list_tasks to find its id.`,
+        );
+      const snapshot = board.snapshot();
+      const card = snapshot.cards.find((c) => c.id === task.id);
+      const projectId = card?.projectId ?? task.projectId ?? null;
+      let orchestrator = null;
+      if (input.orchestrator) {
+        const { agentId, prompt } = input.orchestrator;
+        const reply =
+          input.orchestrator.reply ??
+          (isManagedAgent(data, agentId)
+            ? await board.chatLastReply(agentId).catch(() => null)
+            : null);
+        orchestrator = orchestratorPart({ agentId, prompt, reply });
+      }
+      const stored = await reports.append({
+        taskId: task.id,
+        taskTitle: task.title,
+        projectId,
+        projectName:
+          card?.projectName ||
+          task.projectName ||
+          snapshot.projects.find((p) => p.id === projectId)?.name ||
+          "",
+        kind: input.kind,
+        summary: input.summary,
+        detail: input.detail || null,
+        decisions: input.decisions ?? [],
+        orchestrator,
+        quickMessageId: input.quickMessageId ?? null,
+      });
+      const lines = [`Recorded ${stored.kind} for "${task.title}".`];
+      if (input.quickMessageId) {
+        const quick = inbox.list().find((q) => q.id === input.quickMessageId);
+        if (!quick)
+          lines.push(
+            `Quick message ${input.quickMessageId} is gone (they live in memory), so the status row was not updated.`,
+          );
+        else {
+          const status =
+            input.quickStatus ??
+            (quick.status === "pending" ? "ok" : quick.status);
+          inbox.ack(quick.id, status, stored.summary);
+          lines.push(`Status row for ${quick.id}: ${status}.`);
+        }
+      }
+      lines.push(`Reply with this summary: ${stored.summary}`);
+      return text(lines.join("\n"));
+    },
+  });
+}
+
 /** How long board_task_action with wait=true waits for a delivery, and how often it looks. */
 const WAIT_LIMIT_MS = 120_000;
 const WAIT_POLL_MS = 200;
@@ -280,15 +371,8 @@ export function chatTools(
       : "-";
   const line = (c: Card) =>
     `${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${columnOf(c)} (${c.stage}) | orchestrator: ${orchestratorName(c.orchestratorId)} | delivery: ${delivery(c.id)?.stage ?? "-"} | updated: ${c.updatedAt}`;
-  const managedAgent = (agentId: string) => {
-    const data = board().assistantSource().data;
-    return (
-      Object.values(data.orchestrations).some((o) => o.agentId === agentId) ||
-      Object.values(data.assistant.attempts).some((list) =>
-        list.some((a) => a.agentId === agentId),
-      )
-    );
-  };
+  const managedAgent = (agentId: string) =>
+    isManagedAgent(board().assistantSource().data, agentId);
 
   const checkout = (taskId: string) => {
     card(taskId);

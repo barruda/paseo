@@ -14,10 +14,12 @@ import { contributeRestartChatPill } from "./client/assistant/RestartChatPill"; 
 import { QuickStatusItem } from "./client/assistant/QuickStatus"; // CUSTOM(assistant-quick)
 import { assistantAskRpc } from "./shared/assistant-rpc";
 import { DashboardScreen } from "./client/assistant/DashboardScreen";
+import { ReportsScreen } from "./client/assistant/ReportsScreen"; // CUSTOM(assistant-reports)
 import {
   CHAT_SURFACE_ID,
   CONVERSATIONS_SURFACE_ID,
   DASHBOARD_SURFACE_ID,
+  REPORTS_SURFACE_ID, // CUSTOM(assistant-reports)
 } from "./client/assistant/nav";
 
 const Surface = (props: Parameters<typeof WorkboardScreen>[0]) => (
@@ -53,6 +55,13 @@ const ConversationsSurface = (
   </QueryClientProvider>
 );
 
+// CUSTOM(assistant-reports)
+const ReportsSurface = (props: Parameters<typeof ReportsScreen>[0]) => (
+  <QueryClientProvider client={queryClient}>
+    <ReportsScreen {...props} />
+  </QueryClientProvider>
+);
+
 const ChatSurface = (props: Parameters<typeof ChatLauncher>[0]) => (
   <QueryClientProvider client={queryClient}>
     <ChatLauncher {...props} />
@@ -70,6 +79,8 @@ export default function contribute(client: PluginClientContext) {
     CONVERSATIONS_SURFACE_ID,
     ConversationsSurface,
   );
+  // CUSTOM(assistant-reports)
+  const removeReports = client.addSurface(REPORTS_SURFACE_ID, ReportsSurface);
   const removeChat = client.addSurface(CHAT_SURFACE_ID, ChatSurface);
   const removeRestartPill = contributeRestartChatPill(client); // CUSTOM(assistant-restart-pill)
   const removeSidebar = client.addSidebarItem({
@@ -158,6 +169,7 @@ export default function contribute(client: PluginClientContext) {
     removeSidebar();
     removeRestartPill(); // CUSTOM(assistant-restart-pill)
     removeChat();
+    removeReports(); // CUSTOM(assistant-reports)
     removeConversations();
     removeDashboard();
     removeSurface();
