@@ -111,6 +111,42 @@ export interface PluginSidebarItemContribution<Text extends PluginText = string>
   Component: ComponentType<PluginSidebarItemProps>;
 }
 
+// CUSTOM(status-bar): an IDE-style status bar at the bottom of the window; plugins add items to it.
+export type PluginStatusBarSide = "left" | "right";
+
+export interface PluginStatusBarItemProps
+  extends PluginHostProps, Pick<PluginSurfaceProps, "navigation"> {
+  /** This plugin's screen open on this item's host, with its params, else null. */
+  currentScreen: PluginScreenLocation | null;
+  openScreen(input: PluginOpenScreenInput): void;
+  /** Anchored above the item on wide layouts; a bottom sheet on compact layouts. */
+  openPopover(Content: ComponentType<PluginPopoverProps>): void;
+  /**
+   * "bar": the window's status bar (wide layouts). "drawer": the compact layout's sidebar footer,
+   * where the bar's items live on phones.
+   */
+  placement: "bar" | "drawer";
+}
+
+export interface PluginStatusBarItemContribution<Text extends PluginText = string> {
+  id: string;
+  /** Accessibility label and default label of StatusBarItem. */
+  title: Text;
+  /** Default "left". */
+  side?: PluginStatusBarSide;
+  /**
+   * Higher sits nearer the bar's outer edge on its side (the left edge for left items, the right
+   * edge for right items). Default 0; ties keep registration order.
+   */
+  priority?: number;
+  /**
+   * Agents carrying this label (any value) show their status in this item, so the status line
+   * under their composer is hidden.
+   */
+  agentLabel?: string;
+  Component: ComponentType<PluginStatusBarItemProps>;
+}
+
 /**
  * A Lucide icon name, inline SVG markup, or a component. Components receive the surface's size
  * and color; buttons widen the props with their host and target context.
@@ -202,6 +238,8 @@ export interface PluginClientContext extends PluginCommandCapabilities, PluginCl
   addScreen(contribution: PluginScreenContribution<PluginText>): PluginCleanup;
   addSidebarHeaderItem(contribution: PluginSidebarItemContribution<PluginText>): PluginCleanup;
   addSidebarFooterItem(contribution: PluginSidebarItemContribution<PluginText>): PluginCleanup;
+  // CUSTOM(status-bar): adds an item to the window's status bar.
+  addStatusBarItem(contribution: PluginStatusBarItemContribution<PluginText>): PluginCleanup;
   addAgentPanel(contribution: PluginAgentPanelContribution<PluginText>): PluginCleanup;
   addWorkspacePanel(contribution: PluginWorkspacePanelContribution<PluginText>): PluginCleanup;
   addCommandCenterItem(

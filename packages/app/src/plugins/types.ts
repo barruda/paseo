@@ -14,6 +14,7 @@ import type {
   PluginComposerPillContribution as SDKPluginComposerPillContribution,
   PluginSidebarContribution as SDKPluginSidebarContribution,
   PluginSidebarItemContribution as SDKPluginSidebarItemContribution,
+  PluginStatusBarItemContribution as SDKPluginStatusBarItemContribution, // CUSTOM(status-bar)
   PluginScreenContribution as SDKPluginScreenContribution,
   PluginSettingsScreenContribution as SDKPluginSettingsScreenContribution,
   PluginTimelineRendererContribution,
@@ -30,6 +31,8 @@ type PluginClientSlashCommandContribution = SDKPluginClientSlashCommandContribut
 type PluginComposerPillContribution = SDKPluginComposerPillContribution<PluginText>;
 type PluginSidebarContribution = SDKPluginSidebarContribution<PluginText>;
 type PluginSidebarItemContribution = SDKPluginSidebarItemContribution<PluginText>;
+// CUSTOM(status-bar)
+type PluginStatusBarItemContribution = SDKPluginStatusBarItemContribution<PluginText>;
 type PluginScreenContribution = SDKPluginScreenContribution<PluginText>;
 type PluginSettingsScreenContribution = SDKPluginSettingsScreenContribution<PluginText>;
 type WorkspacePanelInput = SDKPluginWorkspacePanelContribution<PluginText>;
@@ -52,6 +55,8 @@ export interface EvaluatedPlugin {
   // COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
   /** `addSidebarItem` registrations, so `/plugin/<id>/sidebar/<item>` routes keep resolving. */
   legacySidebarItems: PluginSidebarContribution[];
+  // CUSTOM(status-bar): optional so fixtures that build an EvaluatedPlugin literal need no edit.
+  statusBarItems?: PluginStatusBarItemContribution[];
   filePanels: PluginFilePanelContribution[];
   workspacePanels: EvaluatedPluginWorkspacePanelContribution[];
   commandCenterItems: PluginCommandCenterItemContribution[];
@@ -85,6 +90,7 @@ export type {
   PluginComposerPillContribution,
   PluginSidebarContribution,
   PluginSidebarItemContribution,
+  PluginStatusBarItemContribution, // CUSTOM(status-bar)
   PluginScreenContribution,
   PluginSettingsScreenContribution,
   PluginThemeContribution,

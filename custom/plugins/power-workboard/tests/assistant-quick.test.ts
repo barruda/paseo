@@ -9,10 +9,14 @@ import {
   type QuickMessage,
 } from "../shared/quick";
 import {
+  assistantTopic,
   conversationTarget,
+  pickAssistantAgent,
   quickLabel,
   quickPollMs,
   quickVisual,
+  type AssistantAgentEntry,
+  type AssistantSummary,
 } from "../client/assistant/quick-format";
 
 beforeEach(() => vi.useFakeTimers());
@@ -215,6 +219,46 @@ describe("quick-format", () => {
     expect(quickPollMs([item()])).toBe(2_000);
     expect(quickPollMs([item({ status: "ok" })])).toBe(15_000);
     expect(quickPollMs([])).toBe(15_000);
+  });
+});
+
+// CUSTOM(status-bar)
+describe("status bar assistant topic", () => {
+  const summary = (
+    patch: Partial<AssistantSummary> = {},
+  ): AssistantSummary => ({
+    request: "Check the board",
+    status: "Reading tasks",
+    ...patch,
+  });
+
+  it("breadcrumbs the first topic and the current one", () => {
+    expect(assistantTopic(undefined)).toBeNull();
+    expect(assistantTopic(summary())).toBe("Check the board");
+    expect(assistantTopic(summary({ firstTopic: "Board" }))).toBe("Board");
+    expect(
+      assistantTopic(summary({ topic: "Ready", firstTopic: "Ready" })),
+    ).toBe("Ready");
+    expect(
+      assistantTopic(summary({ topic: "Status bar", firstTopic: "Board" })),
+    ).toBe("Board › Status bar");
+  });
+
+  it("picks the newest unarchived chat agent", () => {
+    const label = "pwb/assistant-chat";
+    const agents: AssistantAgentEntry[] = [
+      { id: "old", updatedAt: "2026-01-01", labels: { [label]: "true" } },
+      { id: "new", updatedAt: "2026-01-03", labels: { [label]: "true" } },
+      {
+        id: "archived",
+        updatedAt: "2026-01-05",
+        archivedAt: "2026-01-05",
+        labels: { [label]: "true" },
+      },
+      { id: "other", updatedAt: "2026-01-09", labels: {} },
+    ];
+    expect(pickAssistantAgent(agents, label)?.id).toBe("new");
+    expect(pickAssistantAgent([], label)).toBeNull();
   });
 });
 

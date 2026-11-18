@@ -10,8 +10,14 @@ import { writeTicketRpc } from "./shared/rpc";
 // CUSTOM(projects-assistant)
 import { ChatLauncher } from "./client/assistant/ChatLauncher";
 import { ConversationsScreen } from "./client/assistant/ConversationsScreen";
-import { contributeRestartChatPill } from "./client/assistant/RestartChatPill"; // CUSTOM(assistant-restart-pill)
-import { QuickStatusItem } from "./client/assistant/QuickStatus"; // CUSTOM(assistant-quick)
+import {
+  ASSISTANT_CHAT_LABEL,
+  contributeRestartChatPill,
+} from "./client/assistant/RestartChatPill"; // CUSTOM(assistant-restart-pill)
+import {
+  QuickStatusBarItem, // CUSTOM(status-bar)
+  QuickStatusItem,
+} from "./client/assistant/QuickStatus"; // CUSTOM(assistant-quick)
 import { assistantAskRpc } from "./shared/assistant-rpc";
 import { DashboardScreen } from "./client/assistant/DashboardScreen";
 import { ReportsScreen } from "./client/assistant/ReportsScreen"; // CUSTOM(assistant-reports)
@@ -130,23 +136,42 @@ export default function contribute(client: PluginClientContext) {
       await rpc(writeTicketRpc, { agentId: agent.id, focus: args });
     },
   });
-  // CUSTOM(assistant-quick): the status row in the sidebar footer and `/assistant`. The pinned
-  // plugin types predate addSidebarFooterItem, hence the cast.
+  // CUSTOM(assistant-quick): the status row and `/assistant`. CUSTOM(status-bar): the row lives in
+  // the app's status bar, leftmost; it owns the assistant chat's status line, so the line under
+  // that chat's composer is hidden. Hosts without a status bar get the sidebar footer row. The
+  // pinned plugin types predate both, hence the cast.
+  const host = client as unknown as {
+    addStatusBarItem?(item: {
+      id: string;
+      title: string;
+      side: "left" | "right";
+      priority: number;
+      agentLabel: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Component: ComponentType<any>;
+    }): () => void;
+    addSidebarFooterItem?(item: {
+      id: string;
+      title: string;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      Component: ComponentType<any>;
+    }): () => void;
+  };
   const removeStatus =
-    (
-      client as unknown as {
-        addSidebarFooterItem?(item: {
-          id: string;
-          title: string;
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          Component: ComponentType<any>;
-        }): () => void;
-      }
-    ).addSidebarFooterItem?.({
-      id: "projects-assistant-status",
-      title: "Projects Assistant status",
-      Component: QuickStatusItem,
-    }) ?? (() => {});
+    (host.addStatusBarItem
+      ? host.addStatusBarItem({
+          id: "projects-assistant-status",
+          title: "Projects Assistant",
+          side: "left",
+          priority: 100,
+          agentLabel: ASSISTANT_CHAT_LABEL,
+          Component: QuickStatusBarItem,
+        })
+      : host.addSidebarFooterItem?.({
+          id: "projects-assistant-status",
+          title: "Projects Assistant status",
+          Component: QuickStatusItem,
+        })) ?? (() => {});
   const removeAssistantCommand = client.addSlashCommand({
     name: "assistant",
     description:

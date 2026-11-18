@@ -7,6 +7,8 @@ import type { AgentStatusSummaryPayload } from "@getpaseo/protocol/messages";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "@/components/ui/hover-card";
 import { MenuRoot, MenuSurface, MenuTrigger, useMenuContext } from "@/components/ui/menu";
 import { isWeb } from "@/constants/platform";
+import { useInstalledPlugins } from "@/plugins/registry"; // CUSTOM(status-bar)
+import { statusBarOwnsAgentStatusLine } from "@/plugins/status-bar/model"; // CUSTOM(status-bar)
 import { useSessionStore } from "@/stores/session-store";
 import { formatTimeAgo } from "@/utils/time";
 
@@ -33,7 +35,10 @@ export function AgentStatusLine({
 }): ReactElement | null {
   const summary = useAgentStatusSummary(serverId, agentId);
   const widthStyle = useContentMaxWidthStyle(); // CUSTOM(content-width-boost)
-  if (!summary) return null;
+  // CUSTOM(status-bar): a status bar item that owns this agent's label shows its status instead.
+  const labels = useSessionStore((state) => state.sessions[serverId]?.agents.get(agentId)?.labels);
+  const plugins = useInstalledPlugins();
+  if (!summary || statusBarOwnsAgentStatusLine(plugins, labels)) return null;
   // Only the topic shows; the request and status wait for a hover. Summaries written before
   // the topic existed fall back to the request.
   const text = formatSummaryTopic(summary) ?? summary.request;

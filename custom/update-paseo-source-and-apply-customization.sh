@@ -452,6 +452,8 @@ if $VERIFY; then
   (cd packages/cli && npx vitest run src/commands/speech/shared.test.ts --bail=1)
   # CUSTOM(assistant-quick): `paseo plugin rpc`
   (cd packages/cli && npx vitest run src/commands/plugin/index.test.ts src/cli-surface.test.ts --bail=1)
+  # CUSTOM(status-bar): addStatusBarItem registration, item grouping and ordering.
+  (cd packages/app && npx vitest run src/plugins/evaluate.test.ts src/plugins/status-bar/model.test.ts --bail=1)
   (cd packages/client && npx vitest run src/wake-dictation.test.ts --bail=1)
   # The + menu's Agent flyout (its browser check is in e2e/task-navigation.spec.ts).
   (cd packages/app && npx vitest run src/new-agent-projects/model.test.ts --bail=1)

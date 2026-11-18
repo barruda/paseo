@@ -42,10 +42,14 @@ from (`claude/claude-opus-5-5`, `bypassPermissions`, `medium`, worktree) and `re
 
 You can write to the Projects Assistant without opening its chat.
 
-- **From the app.** The sidebar footer has a row named "Projects Assistant status". Press the
-  **+** on it to write a message; press the row itself to open the assistant conversation at the
-  newest message. The row shows the assistant's short answer: green for ok, yellow when it needs
-  something from you, red for an error, grey while it has not answered yet.
+- **From the app.** The status bar at the bottom of the window starts with the Projects Assistant:
+  a colored message icon that opens the box to write a message, the assistant's short answer to
+  the newest message (green check for ok, yellow when it needs something from you, red for an
+  error, grey clock while it has not answered yet), then the topic the assistant chat is on now.
+  Press the answer to open the conversation at that message, or the topic to open the chat. The
+  line under the chat's own composer is hidden, since the bar shows it. On phones the same entries
+  sit at the bottom of the sidebar; on app builds without the status bar they are a sidebar footer
+  row named "Projects Assistant status", with a **+** to write.
 - **From any chat.** Type `/assistant <message>` in the composer of any agent. The message goes to
   the assistant and you stay where you are.
 
@@ -82,7 +86,7 @@ unanswered after `--timeout` (90 s) comes out as `error`; it stays in the chat. 
 conversation. It uses `$PASEO_CLI`, else the CLI of the build the paseo-personal launcher runs,
 and talks to the daemon of `$PASEO_HOME` (default `~/.paseo`). It needs `jq`.
 
-Messages live in memory (the last 30). A daemon restart empties the status row.
+Messages live in memory (the last 30). A daemon restart empties the status.
 
 ## Reports and `board_report`
 

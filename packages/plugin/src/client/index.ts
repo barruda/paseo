@@ -16,6 +16,10 @@ export type {
   PluginScreenLocation,
   PluginSidebarItemProps,
   PluginSidebarItemContribution,
+  // CUSTOM(status-bar)
+  PluginStatusBarSide,
+  PluginStatusBarItemProps,
+  PluginStatusBarItemContribution,
   PluginIcon,
   PluginPanelLocation,
   PluginOpenPanelOptions,

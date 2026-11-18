@@ -6818,7 +6818,10 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     the newest message's icon (green check, yellow warning, red X, grey clock while pending) and
     its sentence. Pressing it opens the assistant chat scrolled to that message (`openAgent` with
     `turnStartedAt`, see [turn-jump](#turn-jump-plugins-can-open-an-agent-at-one-of-its-turns));
-    its + opens a popover to write a message and lists the last five.
+    its + opens a popover to write a message and lists the last five. Since
+    [status-bar](#status-bar-an-ide-style-status-bar-at-the-bottom-of-the-window-starting-with-the-projects-assistant)
+    this lives in the app's status bar; the sidebar row is only the fallback for app builds
+    without one.
   - **`/assistant <message>`** in any agent's composer sends without leaving that chat.
   - **External contract:** RPCs `workboard.assistant.ask` (waits up to 25 s, the daemon's plugin
     RPC limit is 30 s), `workboard.assistant.quick.get` and `workboard.assistant.quick.list`,
@@ -7175,3 +7178,58 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   Tasks mode, click "Projects Reports" in the Desk header: tickets the board touched are listed;
   open one and expand a row. Send a quick message that makes the assistant act: its
   `board_report` summary shows in the status row and as a row on that ticket.
+
+## status-bar: an IDE-style status bar at the bottom of the window, starting with the Projects Assistant
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: IDE-style status bar with plugin items, Projects Assistant moved there`
+- **Why:** The Projects Assistant status row from [assistant-quick](#assistant-quick-talk-to-the-projects-assistant-from-any-screen-with-a-clickable-ack-status-row)
+  was squeezed into the left sidebar's footer. The user wants it in a bar of its own, like an
+  IDE's status bar, which other items (git, tokens, network) can join later.
+- **What:**
+  - **The bar:** 24 px, at the bottom of the window on wide layouts. It starts at the left
+    sidebar's right edge and runs to the window's right edge, under the route (content, bottom
+    panel, right sidebar), which shrinks for it; the left sidebar still reaches the window bottom.
+    Sidebar background with a top border, both themes. It renders only when some plugin has an
+    item. Compact layouts have no bar (the phone keyboard and safe-area code assume the content
+    reaches the screen bottom); the same items render as a row at the top of the mobile sidebar's
+    footer (`placement: "drawer"`).
+  - **Plugin API:** `client.addStatusBarItem({ id, title, side?, priority?, agentLabel?, Component })`.
+    `side` is `left` (default) or `right`; a higher `priority` sits nearer the outer edge of its
+    side. The `Component` gets the sidebar item props (`openScreen`, `openPopover`, `navigation`,
+    `currentScreen`) plus `placement`, and renders one or more `StatusBarItem` kit entries
+    (`@getpaseo/plugin/client/ui`: icon, icon color, label, tooltip, onPress, max label width).
+    A popover opens above the pressed entry (a sheet on compact layouts). Like sidebar items, one
+    contribution from several hosts shows once, from the current route's host.
+  - **`agentLabel`:** agents carrying that label show their status in the item, so the status line
+    under their composer ([agent-status-summary](#agent-status-summary-what-each-agent-was-asked-and-where-it-stands-under-the-composer))
+    is hidden for them.
+  - **Power Workboard:** the Projects Assistant item, leftmost (priority 100): a colored
+    `MessageSquarePlus` that opens the quick message popover (the old **+**), the newest message's
+    ack icon and sentence (press: the conversation at that message), and the assistant chat's
+    status summary topic (press: the chat; hover: its status). It reads the chat agent through an
+    agent subscription filtered by the `pwb/assistant-chat` label and claims that label, so the
+    line under the assistant chat's composer is gone. On an app without `addStatusBarItem` the
+    plugin still registers the old sidebar footer row.
+- **Core files touched** (marked `CUSTOM(status-bar)`): `packages/plugin/src/client/contracts.ts`,
+  `client/index.ts`, `client/ui.ts` (types); `packages/app/src/plugins/types.ts`, `evaluate.ts`,
+  `react-native/ui.ts`, `sidebar-items/index.tsx` (two helpers exported); new
+  `packages/app/src/plugins/status-bar/` (`model.ts`, `frame.ts`, `kit.tsx`, `index.tsx`);
+  `packages/app/src/app/_layout.tsx` (`WorkspaceContentColumn`), `components/left-sidebar.tsx`
+  (`statusBarInDrawer` on `SidebarFooter`), `composer/agent-status-line.tsx`; `.oxlintrc.json`
+  (`status-bar/kit.tsx` on the `no-raw-pressable` allow-list, like `sidebar-header-row.tsx`).
+- **Re-apply:** restore the SDK types and `addStatusBarItem` in `evaluate.ts` next to
+  `addSidebarFooterItem`; copy `plugins/status-bar/` back (it mirrors `plugins/sidebar-items/`:
+  environment, error boundary, popover root and anchor, host navigation); in `_layout.tsx` wrap
+  the content `View` of `workspaceChrome` in a column with `<PluginStatusBar placement="bar" />`
+  under it on wide layouts; render `<PluginStatusBar placement="drawer" />` at the top of the
+  mobile sidebar's footer; make `AgentStatusLine` return null when
+  `statusBarOwnsAgentStatusLine(plugins, labels)`.
+- **Verify:** `(cd packages/app && npx vitest run src/plugins/evaluate.test.ts src/plugins/status-bar/model.test.ts --bail=1)`
+  (in the update script) and the plugin suite (`tests/assistant-quick.test.ts`). Needs an app
+  build and install, then a `plugin reload power-workboard`. In the app: a thin bar runs along the
+  bottom right of the left sidebar, in light and dark themes, with or without the right sidebar
+  and the bottom panel; the sidebar footer no longer has "Projects Assistant status". In the bar:
+  the colored message icon opens the message box; after Send the check/warning/X and the sentence
+  appear; pressing the sentence opens the assistant chat at that message; the topic after it opens
+  the chat, and that chat has no line under its composer.
