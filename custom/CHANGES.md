@@ -2958,7 +2958,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     stops its schedule; Run now still works. There is no global Play any more.
   - **Which orchestrator takes a task:** the one chosen in the task editor (a chip row under the
     projects); a task sent back from review stays with the one that ran it; otherwise the first
-    orchestrator in the list whose project matches (or that covers all projects). Tasks are taken
+    orchestrator in the list whose project matches, and only for a project with no orchestrator
+    of its own, the first that covers all projects (see resource-pools). Tasks are taken
     from the top of Ready to start. Moving a task there, or editing it, triggers a pass at once;
     otherwise passes run with the minute refresh. A task without a project takes its
     orchestrator's. A task with no project at all, or whose start fails, shows the error on its
@@ -7461,6 +7462,45 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
 - **Verify:** `cd packages/app && npx vitest run src/command-center`. In the app, turn Tasks mode
   on: History rows begin with the session title; Ctrl+K has no Workspaces section and its session
   rows show the project under the title.
+
+## resource-pools: Power Workboard project orchestrators first, shared pools and a RAM floor
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: Power Workboard project orchestrators come first, with shared resource pools and a RAM floor`
+- **Why:** One orchestrator per project stays the model, but some projects compete for the same
+  machine resource (two Unity checkouts can't both open an Editor; each one eats 10–17 GB of
+  RAM). Limits shared between orchestrators cover that without an orchestrator per group. The
+  Default ("All projects") orchestrator can then stay on for projects that have none of their own.
+- **What:**
+  - **Ownership:** a task with no orchestrator chosen goes to its project's orchestrator (the
+    first in the list), even when it is disabled or outside its schedule; only a project with
+    no orchestrator of its own leaves its tasks to the All projects ones (`owns()` in
+    `server/workboard.ts`).
+  - **Pools:** `settings.pools[{id, name, maxConcurrent, minFreeRamPercent}]` and `poolId` on the
+    orchestrator, both optional with defaults, so stored v9 data loads as is (no schema bump).
+    A task starts only with a free slot in its orchestrator and in its pool; the pass counts the
+    pool's slots across all its orchestrators, night tasks included. Pools are saved with their
+    own `pools-save` mutation; the board settings save keeps them, removing a pool takes its
+    orchestrators out of it, and saving an orchestrator with an unknown pool fails.
+  - **RAM floor:** `server/resources.ts` reads `MemAvailable`/`MemTotal` from `/proc/meminfo` once
+    per pass when some pool has a floor. Under the floor nothing of the pool starts. An unreadable
+    reading (no `/proc/meminfo`) never holds a pool.
+  - **Why it waits:** `orchestratorStatus[id].hold` (`pool` full or `ram`, with the numbers) when
+    the orchestrator has waiting tasks and room of its own; the list row and the orchestrator's
+    Overview show it, and the log gets one line when a hold starts ("Waiting: pool "Unity" is full
+    (1/1)", "Waiting for RAM: 10% free, pool "Unity" needs 20%").
+  - **UI:** Orchestrators tab, **Resource pools** section (name, at a time, min. free RAM %, Save
+    pools); the orchestrator's General tab gets a **Pool** chip row once a pool exists.
+- **Core files touched:** none (plugin only).
+- **Re-apply:** nothing to re-apply; the plugin is self-contained.
+- **Tests:** `tests/resource-pools.test.ts` (project orchestrator before Default, disabled project
+  orchestrator, a pool of 1 across two orchestrators, the RAM floor with a fake reader, an
+  unreadable RAM, removing a pool, settings save keeps pools, v9 data without pools,
+  `/proc/meminfo` parsing, hold text).
+- **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
+  After `plugin reload power-workboard`: Orchestrators tab > Resource pools > New pool, set At a
+  time 1, Save pools; put two orchestrators in it (General > Pool); with a task Ready to start in
+  each project only one starts and the other's row says the pool is full.
 
 ## report-card: a task agent's `<report>` block shows as a card in the agent chat
 
