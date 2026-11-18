@@ -413,6 +413,7 @@ export interface AgentBackgroundTask {
   kind: "shell" | "monitor" | "other";
   description: string;
   command?: string;
+  toolCallId?: string; // CUSTOM(shell-row-loading)
 }
 
 export type AgentStreamEvent =

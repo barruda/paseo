@@ -77,6 +77,70 @@ test("a failing stop returns false", async () => {
   await session.close();
 });
 
+// CUSTOM(shell-row-loading): the tool call that started a task travels with it, whichever of
+// task_started and background_tasks_changed lands first.
+test("background tools carry the tool call that started them", async () => {
+  sdkQueryFactory.mockImplementation(() => createQueryMock());
+  const session = await createClient().createSession({ provider: "claude", cwd: process.cwd() });
+  await session.startTurn("go");
+  const internals = asInternals<StopInternals>(session);
+  await internals.translateMessageToEvents({
+    type: "assistant",
+    message: {
+      id: "m1",
+      role: "assistant",
+      content: [
+        {
+          type: "tool_use",
+          id: "toolu_build",
+          name: "Bash",
+          input: { command: "npm run build", run_in_background: true },
+        },
+      ],
+    },
+    parent_tool_use_id: null,
+    uuid: "a1",
+  });
+  const changed = {
+    type: "system",
+    subtype: "background_tasks_changed",
+    tasks: [{ task_id: "t1", task_type: "local_bash", description: "Build" }],
+  };
+  await expect(internals.translateMessageToEvents(changed)).resolves.toEqual([
+    {
+      type: "background_tasks_changed",
+      provider: "claude",
+      tasks: [{ id: "t1", kind: "shell", description: "Build" }],
+    },
+  ]);
+  await expect(
+    internals.translateMessageToEvents({
+      type: "system",
+      subtype: "task_started",
+      task_id: "t1",
+      tool_use_id: "toolu_build",
+      task_type: "local_bash",
+      description: "Build",
+    }),
+  ).resolves.toContainEqual({
+    type: "background_tasks_changed",
+    provider: "claude",
+    tasks: [
+      {
+        id: "t1",
+        kind: "shell",
+        description: "Build",
+        command: "npm run build",
+        toolCallId: "toolu_build",
+      },
+    ],
+  });
+  await expect(internals.translateMessageToEvents({ ...changed, tasks: [] })).resolves.toEqual([
+    { type: "background_tasks_changed", provider: "claude", tasks: [] },
+  ]);
+  await session.close();
+});
+
 test("without a query nothing is stopped", async () => {
   const session = await createClient().createSession({ provider: "claude", cwd: process.cwd() });
   await expect(session.stopBackgroundTask?.("t1")).resolves.toBe(false);

@@ -46,6 +46,20 @@ export type ToolCallIconResolver = (
   agentMessage: AgentMessage | undefined,
 ) => ToolCallPresentationIcon;
 
+// CUSTOM(shell-row-loading): a tool row shows the loading shimmer while the call runs, and after a
+// completed call while the background task it started (a `run_in_background` shell, a Monitor) is
+// still live. Only the call's own run can be cancelled from the row.
+export function resolveToolCallActivity(input: {
+  status: ToolCallStatus;
+  isBackgroundActive: boolean;
+}): { isLoading: boolean; isCancellable: boolean } {
+  const isRunning = input.status === "running" || input.status === "executing";
+  return {
+    isLoading: isRunning || (input.status === "completed" && input.isBackgroundActive),
+    isCancellable: isRunning,
+  };
+}
+
 function displayStatus(status: ToolCallStatus): ToolCallDisplayInput["status"] {
   return status === "executing" ? "running" : status;
 }

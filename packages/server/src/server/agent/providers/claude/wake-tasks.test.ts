@@ -69,6 +69,31 @@ describe("mapClaudeBackgroundTools", () => {
     ]);
   });
 
+  // CUSTOM(shell-row-loading)
+  test("attaches the tool call that started each task", () => {
+    expect(
+      mapClaudeBackgroundTools(
+        {
+          tasks: [
+            { task_id: "a", task_type: "local_bash", description: "build" },
+            { task_id: "b", task_type: "local_bash", description: "unknown start" },
+          ],
+        },
+        new Map([["a", "npm run build"]]),
+        new Map([["a", "toolu_a"]]),
+      ),
+    ).toEqual([
+      {
+        id: "a",
+        kind: "shell",
+        description: "build",
+        command: "npm run build",
+        toolCallId: "toolu_a",
+      },
+      { id: "b", kind: "shell", description: "unknown start" },
+    ]);
+  });
+
   test("an empty or malformed message gives an empty list", () => {
     expect(mapClaudeBackgroundTools({ tasks: [] }, new Map())).toEqual([]);
     expect(mapClaudeBackgroundTools(null, new Map())).toEqual([]);

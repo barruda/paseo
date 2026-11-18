@@ -324,6 +324,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/command-center/expand-archived.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.background-subagent.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/claude/agent.background-stop.test.ts --bail=1)
+  # A tool row keeps its loading shimmer while the background shell it started runs.
+  (cd packages/app && npx vitest run src/tool-calls/presentation.test.ts -t "resolveToolCallActivity" --bail=1)
   (cd packages/protocol && npx vitest run src/messages.test.ts -t "background task stop" --bail=1)
   # The Tasks sidebar lists provider subagents under their agent.
   (cd packages/app && npx vitest run src/task-navigation/provider-subagent-rows.test.ts --bail=1)

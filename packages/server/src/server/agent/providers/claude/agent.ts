@@ -2322,6 +2322,8 @@ class ClaudeAgentSession implements AgentSession {
   // started a task can leave toolUseCache before the task ends, so the command is kept here.
   private lastBackgroundTasksMessage: unknown = null;
   private readonly backgroundTaskCommands = new Map<string, string>();
+  // CUSTOM(shell-row-loading): task id to the tool call that started it.
+  private readonly backgroundTaskToolCallIds = new Map<string, string>();
   private readonly taskProtocolSource = new ClaudeTaskProtocolSource({
     getToolInput: (toolUseId) => this.toolUseCache.get(toolUseId)?.input ?? null,
     readWorkflowResult: readClaudeWorkflowResultFile,
@@ -4976,9 +4978,13 @@ class ClaudeAgentSession implements AgentSession {
     if (message.type !== "system" || message.subtype !== "task_started") return;
     const { task_id: taskId, tool_use_id: toolUseId } = message;
     if (typeof taskId !== "string" || typeof toolUseId !== "string") return;
+    // CUSTOM(shell-row-loading): the starting tool call lets its row stay loading while the task runs.
+    const newToolCallId = this.backgroundTaskToolCallIds.get(taskId) !== toolUseId;
+    this.backgroundTaskToolCallIds.set(taskId, toolUseId);
     const command = readClaudeToolCommand(this.toolUseCache.get(toolUseId)?.input);
-    if (!command || this.backgroundTaskCommands.get(taskId) === command) return;
-    this.backgroundTaskCommands.set(taskId, command);
+    const newCommand = Boolean(command) && this.backgroundTaskCommands.get(taskId) !== command;
+    if (command) this.backgroundTaskCommands.set(taskId, command);
+    if (!newCommand && !newToolCallId) return;
     if (this.lastBackgroundTasksMessage) {
       events.push(this.buildBackgroundToolsEvent());
     }
@@ -4988,7 +4994,11 @@ class ClaudeAgentSession implements AgentSession {
     return {
       type: "background_tasks_changed",
       provider: "claude",
-      tasks: mapClaudeBackgroundTools(this.lastBackgroundTasksMessage, this.backgroundTaskCommands),
+      tasks: mapClaudeBackgroundTools(
+        this.lastBackgroundTasksMessage,
+        this.backgroundTaskCommands,
+        this.backgroundTaskToolCallIds,
+      ),
     };
   }
 
@@ -5004,6 +5014,9 @@ class ClaudeAgentSession implements AgentSession {
     for (const id of this.backgroundTaskCommands.keys()) {
       if (!live.has(id)) this.backgroundTaskCommands.delete(id);
     }
+    for (const id of this.backgroundTaskToolCallIds.keys()) {
+      if (!live.has(id)) this.backgroundTaskToolCallIds.delete(id);
+    }
   }
 
   // The task set is per process: a new or dead process has none.
@@ -5012,6 +5025,7 @@ class ClaudeAgentSession implements AgentSession {
       this.lastBackgroundTasksMessage !== null || this.backgroundTaskCommands.size > 0;
     this.lastBackgroundTasksMessage = null;
     this.backgroundTaskCommands.clear();
+    this.backgroundTaskToolCallIds.clear(); // CUSTOM(shell-row-loading)
     if (hadTools) {
       this.notifySubscribers({ type: "background_tasks_changed", provider: "claude", tasks: [] });
     }

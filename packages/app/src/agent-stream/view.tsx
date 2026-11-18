@@ -151,6 +151,7 @@ import {
   resolveSteerMessageState,
 } from "@/agent-stream/steer-pending"; // CUSTOM(steer-pending)
 import { useRewindComposerRestore } from "@/components/rewind/composer-restore"; // CUSTOM(steer-pending)
+import { useIsBackgroundToolCallActive } from "@/background-tools/use-active-tool-call"; // CUSTOM(shell-row-loading)
 
 const NO_CHAT_LINKS: ChatLink[] = []; // CUSTOM(chat-links)
 
@@ -1186,6 +1187,8 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
             <ToolCallSlot
               itemId={item.id}
               onInlineDetailsExpandedChangeByItemId={setInlineDetailsExpanded}
+              agentId={agentId}
+              backgroundCallId={data.callId}
               toolName={data.name}
               error={data.error}
               status={data.status}
@@ -1236,6 +1239,7 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
         );
       },
       [
+        agentId,
         cancelToolCall,
         client,
         context.cwd,
@@ -1913,6 +1917,10 @@ interface ToolCallSlotProps extends Omit<
 > {
   itemId: string;
   onInlineDetailsExpandedChangeByItemId: (itemId: string, expanded: boolean) => void;
+  // CUSTOM(shell-row-loading): with both set, the row keeps loading while the background task
+  // this call started is live.
+  agentId?: string;
+  backgroundCallId?: string;
 }
 
 interface ThoughtSlotProps {
@@ -1954,14 +1962,27 @@ function ThoughtSlot({
 function ToolCallSlot({
   itemId,
   onInlineDetailsExpandedChangeByItemId,
+  agentId,
+  backgroundCallId,
   ...rest
 }: ToolCallSlotProps) {
   const handleExpandedChange = useCallback(
     (expanded: boolean) => onInlineDetailsExpandedChangeByItemId(itemId, expanded),
     [onInlineDetailsExpandedChangeByItemId, itemId],
   );
+  // CUSTOM(shell-row-loading)
+  const isBackgroundActive = useIsBackgroundToolCallActive({
+    serverId: rest.serverId,
+    agentId,
+    callId: backgroundCallId,
+  });
   return (
-    <ToolCall {...rest} itemId={itemId} onInlineDetailsExpandedChange={handleExpandedChange} />
+    <ToolCall
+      {...rest}
+      itemId={itemId}
+      onInlineDetailsExpandedChange={handleExpandedChange}
+      isBackgroundActive={isBackgroundActive}
+    />
   );
 }
 

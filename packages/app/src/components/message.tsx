@@ -24,7 +24,10 @@ import { isNative, isWeb } from "@/constants/platform";
 import { useRevealedText, type MarkdownPhase } from "@/hooks/use-revealed-text";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { inlineUnistylesStyle } from "@/styles/unistyles-inline-style";
-import { buildToolCallPresentation } from "@/tool-calls/presentation";
+import {
+  buildToolCallPresentation,
+  resolveToolCallActivity, // CUSTOM(shell-row-loading)
+} from "@/tool-calls/presentation";
 import type { TaskActivity, TodoEntry, UserMessageImageAttachment } from "@/types/stream";
 import { setAssistantMessageHeight } from "@/utils/assistant-message-height-estimate";
 import { isRenderProfileEnabled } from "@/utils/render-profiler";
@@ -2351,6 +2354,8 @@ interface ToolCallProps {
   itemId: string;
   /** Shown as its own row rather than inside a tool call group. */
   standalone?: boolean;
+  // CUSTOM(shell-row-loading): the background task this call started is still live.
+  isBackgroundActive?: boolean;
 }
 
 export const ToolCall = memo(function ToolCall({
@@ -2375,6 +2380,7 @@ export const ToolCall = memo(function ToolCall({
   maxDetailHeight = 400,
   itemId,
   standalone = true,
+  isBackgroundActive = false,
 }: ToolCallProps) {
   const { openToolCall } = useToolCallSheet();
   const { expanded: isExpanded, toggle: toggleExpanded } = useToolCallExpanded({
@@ -2499,6 +2505,9 @@ export const ToolCall = memo(function ToolCall({
     maxDetailHeight,
   ]);
 
+  // CUSTOM(shell-row-loading)
+  const activity = resolveToolCallActivity({ status, isBackgroundActive });
+
   if (presentation.isPlan && effectiveDetail?.type === "plan") {
     return (
       <PlanCard
@@ -2519,9 +2528,9 @@ export const ToolCall = memo(function ToolCall({
       isExpanded={shouldRenderInline && isExpanded}
       onToggle={presentation.canOpenDetails ? handleToggle : undefined}
       onOpenFile={handleOpenFile}
-      onCancel={onCancel}
+      onCancel={activity.isCancellable ? onCancel : undefined}
       renderDetails={presentation.canOpenDetails && shouldRenderInline ? renderDetails : undefined}
-      isLoading={status === "running" || status === "executing"}
+      isLoading={activity.isLoading}
       isError={status === "failed"}
       isLastInSequence={isLastInSequence}
       disableOuterSpacing={disableOuterSpacing}
@@ -2550,5 +2559,5 @@ function areToolCallPropsEqual(previous: ToolCallProps, next: ToolCallProps) {
   if (previous.maxDetailHeight !== next.maxDetailHeight) return false;
   if (previous.itemId !== next.itemId) return false;
   if (previous.standalone !== next.standalone) return false;
-  return true;
+  return previous.isBackgroundActive === next.isBackgroundActive; // CUSTOM(shell-row-loading)
 }

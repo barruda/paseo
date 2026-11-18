@@ -111,3 +111,13 @@ export function withWaitingBackgroundTools<T extends string>(
   if (waiting && (bucket === "done" || bucket === "attention")) return "waiting";
   return bucket;
 }
+
+// CUSTOM(shell-row-loading): whether the tool call that started a background task still runs, so
+// its timeline row keeps the loading shimmer after the call itself returned.
+export function isBackgroundToolCallActive(
+  tasks: readonly AgentBackgroundTaskPayload[] | undefined,
+  callId: string | undefined,
+): boolean {
+  if (!callId || !tasks) return false;
+  return tasks.some((task) => task.toolCallId === callId);
+}

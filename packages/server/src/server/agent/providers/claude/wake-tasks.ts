@@ -47,10 +47,14 @@ export function readClaudeToolCommand(input: unknown): string | undefined {
   return typeof command === "string" && command.trim().length > 0 ? command : undefined;
 }
 
-/** Maps a `background_tasks_changed` message; `commands` is task id to command line. */
+/**
+ * Maps a `background_tasks_changed` message; `commands` is task id to command line, `toolCallIds`
+ * task id to the tool call that started it (CUSTOM(shell-row-loading)).
+ */
 export function mapClaudeBackgroundTools(
   message: unknown,
   commands: ReadonlyMap<string, string>,
+  toolCallIds: ReadonlyMap<string, string> = new Map(),
 ): AgentBackgroundTask[] {
   const tasks = (message as { tasks?: unknown } | null)?.tasks;
   if (!Array.isArray(tasks)) {
@@ -72,11 +76,13 @@ export function mapClaudeBackgroundTools(
       kind = "monitor";
     }
     const command = commands.get(task_id);
+    const toolCallId = toolCallIds.get(task_id);
     result.push({
       id: task_id,
       kind,
       description: typeof description === "string" ? description : "",
       ...(command ? { command } : {}),
+      ...(toolCallId ? { toolCallId } : {}),
     });
   }
   return result;

@@ -7,6 +7,7 @@ import {
   hasBackgroundTools,
   hasWaitingBackgroundTools,
   hasWakingBackgroundTools,
+  isBackgroundToolCallActive,
   isWaitingBackgroundTool,
   withWaitingBackgroundTools,
 } from "./presentation";
@@ -152,5 +153,16 @@ describe("background tools presentation", () => {
       expect(withWaitingBackgroundTools(null, true)).toBeNull();
       expect(withWaitingBackgroundTools("done", false)).toBe("done");
     });
+  });
+
+  // CUSTOM(shell-row-loading)
+  test("a tool call is active while the background task it started is live", () => {
+    const build = { id: "t1", kind: "shell", description: "Build", toolCallId: "toolu_build" };
+    const legacy = { id: "t2", kind: "shell", description: "From an older daemon" };
+    expect(isBackgroundToolCallActive([build, legacy], "toolu_build")).toBe(true);
+    expect(isBackgroundToolCallActive([legacy], "toolu_build")).toBe(false);
+    expect(isBackgroundToolCallActive([], "toolu_build")).toBe(false);
+    expect(isBackgroundToolCallActive(undefined, "toolu_build")).toBe(false);
+    expect(isBackgroundToolCallActive([build], undefined)).toBe(false);
   });
 });

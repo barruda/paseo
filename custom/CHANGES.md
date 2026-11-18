@@ -7416,3 +7416,43 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
 - **Verify:** `cd packages/app && npx vitest run src/command-center`. In the app, turn Tasks mode
   on: History rows begin with the session title; Ctrl+K has no Workspaces section and its session
   rows show the project under the title.
+
+## shell-row-loading: a background shell's row keeps loading while the shell runs
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: a background shell's timeline row keeps loading while the shell runs`
+- **Why:** A Bash with `run_in_background: true` (and a long command Claude Code moves to the
+  background) returns its tool result at once ("Command running in background with ID …"), so the
+  `Shell <command>` row went static while the build still ran; only the `1 shell` chip said
+  otherwise. A foreground Shell already arrives `running` and shimmers like any tool; the
+  probe that showed it: Claude Code sends `task_started` (`local_bash`, `tool_use_id`) for both,
+  and the tool result only at the end for the foreground one.
+- **What:** Each background tool in `backgroundTasks` (see
+  [background-tools](#background-tools-a-chip-for-background-shells-and-monitors-and-the-tab-stays-working))
+  carries the optional `toolCallId` of the call that started it, read from `task_started`. In the
+  app, a tool row whose `callId` is in the agent's live list shows the loading shimmer after the
+  call completed, and stops when the task leaves the list (it ends or is stopped). The X of
+  [tool-cancel](#tool-cancel-x-on-a-running-tool-stops-the-agents-run) stays only on a row whose
+  own call runs: it interrupts the agent's run, which would not stop the background shell. A
+  `Monitor` row gets the same treatment, since it is listed the same way. Inside a collapsed
+  overview group only the group's own status counts.
+- **Core files touched** (marked `CUSTOM(shell-row-loading)`): protocol `messages.ts`
+  (`AgentBackgroundTaskPayloadSchema.toolCallId`), server `agent-sdk-types.ts`,
+  `providers/claude/wake-tasks.ts` (`mapClaudeBackgroundTools` third argument),
+  `providers/claude/agent.ts` (`backgroundTaskToolCallIds`, filled in `observeBackgroundToolStart`,
+  pruned and cleared with the commands); app `tool-calls/presentation.ts`
+  (`resolveToolCallActivity`), `components/message.tsx` (`ToolCall` `isBackgroundActive`),
+  `agent-stream/view.tsx` (`ToolCallSlot` subscribes through `useIsBackgroundToolCallActive`),
+  `background-tools/presentation.ts` (`isBackgroundToolCallActive`); new
+  `background-tools/use-active-tool-call.ts`.
+- **Re-apply:** Add the optional field to the background task schema and type, keep a task id →
+  `tool_use_id` map beside `backgroundTaskCommands` and pass it to `mapClaudeBackgroundTools`. In
+  the app, give `ToolCallSlot` `agentId` and `backgroundCallId` (the agent tool call's `callId`),
+  read the boolean with the store hook, and let `ToolCall` take `isLoading` and the cancel gate
+  from `resolveToolCallActivity`.
+- **Verify:** Needs a daemon restart (the daemon sends the new field) and an app build. Tests:
+  `tool-calls/presentation.test.ts` (in the update script), `background-tools/presentation.test.ts`,
+  `wake-tasks.test.ts`, `agent.background-stop.test.ts`. In the app: ask an agent to run
+  `python3 -c "import time; time.sleep(60)"` in the background; its `Shell` row shimmers until the
+  shell exits (or until you stop it from the chip), then turns static. A foreground run of the same
+  command shimmers until its result arrives, with the X on hover.

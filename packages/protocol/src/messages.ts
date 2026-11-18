@@ -921,6 +921,9 @@ export const AgentBackgroundTaskPayloadSchema = z.object({
   kind: z.string(),
   description: z.string(),
   command: z.string().optional(),
+  // CUSTOM(shell-row-loading): the tool call that started the task, so its timeline row can show
+  // it still runs after the call itself returned.
+  toolCallId: z.string().optional(),
 });
 
 export type AgentBackgroundTaskPayload = z.infer<typeof AgentBackgroundTaskPayloadSchema>;

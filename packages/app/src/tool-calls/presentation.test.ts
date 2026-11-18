@@ -2,7 +2,11 @@ import type { AgentMessage } from "@getpaseo/protocol/agent-message";
 import type { ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import { describe, expect, it } from "vitest";
 
-import { buildToolCallPresentation, type ToolCallPresentationIcon } from "./presentation";
+import {
+  buildToolCallPresentation,
+  resolveToolCallActivity,
+  type ToolCallPresentationIcon,
+} from "./presentation";
 
 const fakeIcons = {
   paseo: (() => null) as ToolCallPresentationIcon,
@@ -153,4 +157,35 @@ it("shows the target agent title as context for Paseo agent tools", () => {
   });
   expect(presentation.displayName).toBe("Kill agent");
   expect(presentation.summary).toBe("Reviewer");
+});
+
+// CUSTOM(shell-row-loading)
+describe("resolveToolCallActivity", () => {
+  it("loads while a shell runs and stops when it finishes", () => {
+    expect(resolveToolCallActivity({ status: "running", isBackgroundActive: false })).toEqual({
+      isLoading: true,
+      isCancellable: true,
+    });
+    expect(resolveToolCallActivity({ status: "executing", isBackgroundActive: false })).toEqual({
+      isLoading: true,
+      isCancellable: true,
+    });
+    for (const status of ["completed", "failed", "canceled"] as const) {
+      expect(resolveToolCallActivity({ status, isBackgroundActive: false })).toEqual({
+        isLoading: false,
+        isCancellable: false,
+      });
+    }
+  });
+
+  it("keeps loading a completed background shell while its task is live, without cancel", () => {
+    expect(resolveToolCallActivity({ status: "completed", isBackgroundActive: true })).toEqual({
+      isLoading: true,
+      isCancellable: false,
+    });
+    expect(resolveToolCallActivity({ status: "failed", isBackgroundActive: true })).toEqual({
+      isLoading: false,
+      isCancellable: false,
+    });
+  });
 });
