@@ -8,9 +8,11 @@ import {
   groupOrderSchema,
   groupsSchema,
   groupSchema,
+  nightSettingsSchema,
   settingsSchema,
   stageSchema,
   startSchema,
+  taskTimingSchema,
 } from "./model";
 
 export const snapshotRpc = defineRpc({
@@ -27,6 +29,8 @@ export const mutationSchema = z.discriminatedUnion("action", [
     projectId: z.string().nullable().default(null),
     orchestratorId: z.string().nullable().optional(),
     stage: stageSchema.optional(),
+    // CUSTOM(night-tasks): a timing puts the new task in Scheduled.
+    timing: taskTimingSchema.nullable().optional(),
   }),
   z.object({
     action: z.literal("edit"),
@@ -36,6 +40,8 @@ export const mutationSchema = z.discriminatedUnion("action", [
     description: z.string().max(50000),
     projectId: z.string().nullable(),
     orchestratorId: z.string().nullable().optional(),
+    // CUSTOM(night-tasks): drafts only; setting one moves the task to Scheduled, null moves it out.
+    timing: taskTimingSchema.nullable().optional(),
   }),
   z.object({ action: z.literal("start"), ...startSchema.shape }),
   z.object({
@@ -117,6 +123,9 @@ export const mutationSchema = z.discriminatedUnion("action", [
     id: z.string(),
     enabled: z.boolean(),
   }),
+  // CUSTOM(night-tasks): the night window and power-off, and canceling a power-off countdown.
+  z.object({ action: z.literal("night-settings"), night: nightSettingsSchema }),
+  z.object({ action: z.literal("night-shutdown-cancel") }),
   z.object({
     action: z.literal("settings"),
     revision: z.number(),

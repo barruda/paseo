@@ -12,7 +12,7 @@ import {
   type OrchestratorConfig,
 } from "../shared/model";
 import type { Mutation } from "../shared/rpc";
-import type { Schedule } from "../shared/schedule";
+import { timeOfDaySchema, type Schedule } from "../shared/schedule";
 import { ConfirmationModal } from "./ConfirmationModal";
 import { HintButton } from "./Hint";
 import type { strings } from "./strings";
@@ -145,6 +145,7 @@ export function OrchestratorsPanel(
           </Text>
         </Pressable>
       </View>
+      <NightSection {...props} />
       {board.orchestrators.length === 0 && (
         <Text style={[styles.empty, { color: theme.colors.foregroundMuted }]}>
           {panel.empty}
@@ -218,6 +219,225 @@ export function OrchestratorsPanel(
         );
       })}
     </ScrollView>
+  );
+}
+
+/** Night window, power-off option and what the night runner did lately. */
+function NightSection({ board, t, theme, disabled, mutate }: Shared) {
+  const night = t.night;
+  const saved = board.night;
+  const [start, setStart] = useState(saved.start);
+  const [end, setEnd] = useState(saved.end);
+  const [shutdown, setShutdown] = useState(saved.shutdownWhenDone);
+  const [command, setCommand] = useState(saved.shutdownCommand);
+  useEffect(() => {
+    setStart(saved.start);
+    setEnd(saved.end);
+    setShutdown(saved.shutdownWhenDone);
+    setCommand(saved.shutdownCommand);
+  }, [saved.start, saved.end, saved.shutdownWhenDone, saved.shutdownCommand]);
+  const valid =
+    timeOfDaySchema.safeParse(start).success &&
+    timeOfDaySchema.safeParse(end).success;
+  const changed =
+    start !== saved.start ||
+    end !== saved.end ||
+    shutdown !== saved.shutdownWhenDone ||
+    command.trim() !== saved.shutdownCommand;
+  const saveDisabled = disabled || !valid || !changed;
+  const status = board.nightStatus;
+  const statusText = [
+    status.open
+      ? night.open
+      : status.nextStartAt
+        ? night.opensAt.replace(
+            "{time}",
+            new Date(status.nextStartAt).toLocaleString(t.locale, {
+              weekday: "short",
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+          )
+        : night.title,
+    night.waiting.replace("{count}", String(status.waiting)),
+  ].join(" · ");
+  const timeInput = (
+    label: string,
+    value: string,
+    onChange: (value: string) => void,
+  ) => (
+    <View style={styles.field}>
+      <Text style={[styles.label, { color: theme.colors.foreground }]}>
+        {label}
+      </Text>
+      <TextInput
+        accessibilityLabel={label}
+        editable={!disabled}
+        value={value}
+        onChangeText={onChange}
+        placeholder="HH:MM"
+        placeholderTextColor={theme.colors.foregroundMuted}
+        style={[
+          styles.input,
+          {
+            color: theme.colors.foreground,
+            borderColor: timeOfDaySchema.safeParse(value).success
+              ? theme.colors.border
+              : theme.colors.statusDanger,
+          },
+        ]}
+      />
+    </View>
+  );
+  return (
+    <View
+      style={[
+        styles.section,
+        {
+          backgroundColor: theme.colors.surface1,
+          borderColor: theme.colors.border,
+        },
+      ]}
+    >
+      <View style={styles.inline}>
+        <Icon name="Moon" size={16} color={theme.colors.foregroundMuted} />
+        <Text style={[styles.label, { color: theme.colors.foreground }]}>
+          {night.title}
+        </Text>
+      </View>
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+        {statusText}
+      </Text>
+      <View style={styles.inline}>
+        {timeInput(night.from, start, setStart)}
+        {timeInput(night.to, end, setEnd)}
+      </View>
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+        {night.windowHint}
+      </Text>
+      <Pressable
+        accessibilityRole="switch"
+        accessibilityLabel={night.shutdown}
+        {...toggleButtonState(shutdown)}
+        disabled={disabled}
+        onPress={() => setShutdown(!shutdown)}
+        style={[styles.toggle, disabled && styles.disabled]}
+      >
+        <View
+          style={[
+            styles.track,
+            {
+              backgroundColor: shutdown
+                ? theme.colors.accent
+                : theme.colors.surface2,
+              borderColor: shutdown ? theme.colors.accent : theme.colors.border,
+              alignItems: shutdown ? "flex-end" : "flex-start",
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.knob,
+              {
+                backgroundColor: shutdown
+                  ? theme.colors.accentForeground
+                  : theme.colors.foregroundMuted,
+              },
+            ]}
+          />
+        </View>
+        <Text style={{ color: theme.colors.foreground }}>{night.shutdown}</Text>
+      </Pressable>
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+        {night.shutdownHint}
+      </Text>
+      {shutdown && (
+        <View style={styles.field}>
+          <Text style={[styles.label, { color: theme.colors.foreground }]}>
+            {night.command}
+          </Text>
+          <TextInput
+            accessibilityLabel={night.command}
+            editable={!disabled}
+            value={command}
+            onChangeText={setCommand}
+            placeholder={night.commandPlaceholder}
+            placeholderTextColor={theme.colors.foregroundMuted}
+            style={[
+              styles.input,
+              {
+                color: theme.colors.foreground,
+                borderColor: theme.colors.border,
+              },
+            ]}
+          />
+        </View>
+      )}
+      <Pressable
+        accessibilityRole="button"
+        disabled={saveDisabled}
+        onPress={() =>
+          void mutate({
+            action: "night-settings",
+            night: {
+              start,
+              end,
+              shutdownWhenDone: shutdown,
+              shutdownCommand: command.trim(),
+            },
+          })
+        }
+        style={[
+          styles.button,
+          styles.deleteButton,
+          {
+            backgroundColor: saveDisabled
+              ? theme.colors.surface2
+              : theme.colors.accent,
+          },
+        ]}
+      >
+        <Text
+          style={{
+            color: saveDisabled
+              ? theme.colors.foregroundMuted
+              : theme.colors.accentForeground,
+          }}
+        >
+          {night.save}
+        </Text>
+      </Pressable>
+      {board.nightRuntime.log.length > 0 && (
+        <View style={styles.stack}>
+          <Text style={[styles.label, { color: theme.colors.foreground }]}>
+            {night.log}
+          </Text>
+          {board.nightRuntime.log
+            .slice(-5)
+            .reverse()
+            .map((entry, index) => (
+              <View key={`${entry.at}-${index}`} style={styles.logRow}>
+                <Text
+                  style={[
+                    styles.logTime,
+                    { color: theme.colors.foregroundMuted },
+                  ]}
+                >
+                  {time(entry.at, t.locale)}
+                </Text>
+                <Text
+                  style={[
+                    styles.meta,
+                    { color: theme.colors.foregroundMuted, flex: 1 },
+                  ]}
+                >
+                  {entry.text}
+                </Text>
+              </View>
+            ))}
+        </View>
+      )}
+    </View>
   );
 }
 

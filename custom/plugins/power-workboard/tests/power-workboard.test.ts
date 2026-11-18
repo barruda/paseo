@@ -59,11 +59,12 @@ const toReady = (board: Workboard, title: string) =>
     expectedLabels: [],
   });
 
-it("starts with Backlog, Ready to start, In progress, Ready to review and Done on its own labels", () => {
+it("starts with Backlog, Scheduled, Ready to start, In progress, Ready to review and Done on its own labels", () => {
   expect(
     DEFAULT_GROUPS.map(({ id, name, label }) => [id, name, label]),
   ).toEqual([
     ["backlog", "Backlog", "pwb:backlog"],
+    ["scheduled", "Scheduled", "pwb:scheduled"],
     ["ready", "Ready to start", "pwb:ready"],
     ["in-progress", "In progress", "pwb:in-progress"],
     ["review", "Ready to review", "pwb:review"],
@@ -119,8 +120,10 @@ it("tracks a workspace once a task starts work on it", async () => {
   }
 });
 
-it("adds Ready to start after Backlog to a board saved before it existed", async () => {
-  const groups = DEFAULT_GROUPS.filter((group) => group.kind !== "ready");
+it("adds Scheduled and Ready to start after Backlog to a board saved before they existed", async () => {
+  const groups = DEFAULT_GROUPS.filter(
+    (group) => group.kind !== "ready" && group.kind !== "scheduled",
+  );
   const { board } = fixture({
     settings: settingsSchema.parse({ groups }),
   });
@@ -130,6 +133,7 @@ it("adds Ready to start after Backlog to a board saved before it existed", async
     expect(settings.groups.map((group) => group.id)).toContain("ready");
     expect(settings.groupOrder).toEqual([
       "backlog",
+      "scheduled",
       "ready",
       "in-progress",
       "review",

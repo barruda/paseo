@@ -39,7 +39,13 @@ import {
   type Settings,
   type Stage,
   type FinishStep,
+  type TaskTiming,
 } from "../shared/model";
+import {
+  defaultAtText,
+  formatLocalDateTime,
+  parseLocalDateTime,
+} from "./timing";
 import {
   CANCEL_BINDING_BUSY_ERROR_CODE,
   mutateRpc,
@@ -102,6 +108,7 @@ type DraftForm = {
   description: string;
   projectId: string | null;
   orchestratorId?: string | null;
+  timing?: TaskTiming | null;
   /** Where a new task goes: a To do group or Ready to start. */
   stage?: Stage;
 } | null;
@@ -349,19 +356,32 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     setOpenOrchestrators((open) => open.filter((item) => item !== id));
     if (tab === id) setTab("orchestrators");
   };
+  const shutdownAt = board.nightRuntime.shutdownAt;
   const tabs = (
-    <WorkboardTabs
-      board={board}
-      t={t}
-      theme={props.theme}
-      tab={tab}
-      open={openOrchestrators.filter(
-        (id) =>
-          id === ASSISTANT_TAB || board.orchestrators.some((o) => o.id === id),
+    <>
+      {shutdownAt && (
+        <ShutdownBanner
+          at={shutdownAt}
+          t={t}
+          theme={props.theme}
+          disabled={writesDisabled}
+          onCancel={() => void mutate({ action: "night-shutdown-cancel" })}
+        />
       )}
-      onSelect={setTab}
-      onClose={closeOrchestrator}
-    />
+      <WorkboardTabs
+        board={board}
+        t={t}
+        theme={props.theme}
+        tab={tab}
+        open={openOrchestrators.filter(
+          (id) =>
+            id === ASSISTANT_TAB ||
+            board.orchestrators.some((o) => o.id === id),
+        )}
+        onSelect={setTab}
+        onClose={closeOrchestrator}
+      />
+    </>
   );
   if (page === "board" && tab !== "board") {
     const shared = {
@@ -1067,6 +1087,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                 description: card.description,
                 projectId: card.projectId,
                 orchestratorId: card.orchestratorId,
+                timing: card.timing,
               })
             }
             onStart={() => setStarting({ card })}
@@ -1152,6 +1173,9 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                   description: form.description,
                   projectId: form.projectId,
                   orchestratorId: form.orchestratorId ?? null,
+                  ...(form.task.workspaceId === null
+                    ? { timing: form.timing ?? null }
+                    : {}),
                 })
               : mutate({
                   action: "create",
@@ -1159,7 +1183,8 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                   description: form.description,
                   orchestratorId: form.orchestratorId ?? null,
                   projectId: form.projectId,
-                  ...(form.stage ? { stage: form.stage } : {}),
+                  ...(form.timing ? { timing: form.timing } : {}),
+                  ...(form.stage && !form.timing ? { stage: form.stage } : {}),
                 })
           ).then((next) => {
             if (!next) return;
@@ -1964,6 +1989,105 @@ function CardAction({
   );
 }
 
+const NIGHT_TONE = "#8b5cf6";
+const TIMED_TONE = "#0d9488";
+
+/** When a scheduled draft starts: the night window, or a set time. */
+function TimingChip({
+  timing,
+  t,
+  theme,
+}: {
+  timing: TaskTiming;
+  t: ReturnType<typeof strings>;
+  theme: PluginSurfaceProps["theme"];
+}) {
+  const night = timing.kind === "night";
+  const tone = supplementalColor(
+    theme,
+    night ? "#6d28d9" : "#0f766e",
+    night ? "#a78bfa" : "#2dd4bf",
+  );
+  return (
+    <View
+      style={[
+        styles.timingChip,
+        {
+          borderColor: tone,
+          backgroundColor: `${night ? NIGHT_TONE : TIMED_TONE}1f`,
+        },
+      ]}
+    >
+      <Icon name={night ? "Moon" : "Clock"} size={12} color={tone} />
+      <Text numberOfLines={1} style={[styles.cardMeta, { color: tone }]}>
+        {timing.kind === "night"
+          ? t.night.badge
+          : new Date(timing.at).toLocaleString(t.locale, {
+              month: "short",
+              day: "numeric",
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+      </Text>
+    </View>
+  );
+}
+
+/** A power-off is counting down; the user can still cancel it. */
+function ShutdownBanner({
+  at,
+  t,
+  theme,
+  disabled,
+  onCancel,
+}: {
+  at: string;
+  t: ReturnType<typeof strings>;
+  theme: PluginSurfaceProps["theme"];
+  disabled: boolean;
+  onCancel(): void;
+}) {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [at]);
+  const seconds = Math.max(0, Math.ceil((new Date(at).getTime() - now) / 1000));
+  const clock = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+  return (
+    <View
+      accessibilityRole="alert"
+      style={[
+        styles.shutdownBanner,
+        {
+          borderColor: theme.colors.statusDanger,
+          backgroundColor: `${theme.colors.statusDanger}22`,
+        },
+      ]}
+    >
+      <Icon name="Power" size={16} color={theme.colors.statusDanger} />
+      <Text style={[styles.shutdownText, { color: theme.colors.foreground }]}>
+        {t.night.poweringOff.replace("{time}", clock)}
+      </Text>
+      <Pressable
+        accessibilityRole="button"
+        disabled={disabled}
+        onPress={onCancel}
+        style={[
+          styles.toolbarButton,
+          disabled && styles.disabledControl,
+          { backgroundColor: theme.colors.statusDanger },
+        ]}
+      >
+        <Text style={{ color: theme.colors.surface0, fontWeight: "600" }}>
+          {t.night.cancel}
+        </Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function TaskCard({
   card,
   board,
@@ -2136,6 +2260,7 @@ export function TaskCard({
         {card.projectName || t.unassigned}
         {normalLabels.length ? ` · ${normalLabels.join(" · ")}` : ""}
       </Text>
+      {card.timing && <TimingChip timing={card.timing} t={t} theme={theme} />}
       {request && (
         <View style={styles.changeRequest}>
           <ExternalLink
@@ -2598,6 +2723,8 @@ function TaskModal({
   const [projectId, setProjectId] = useState<string | null>(null);
   const [orchestratorId, setOrchestratorId] = useState<string | null>(null);
   const [stage, setStage] = useState<Stage | null>(null);
+  const [whenKind, setWhenKind] = useState<"ready" | "night" | "at">("ready");
+  const [atText, setAtText] = useState("");
   const [inserting, setInserting] = useState(false);
   const selection = useRef<{ start: number; end: number } | null>(null);
   // CUSTOM(workboard-images): pasted images upload to the daemon and land in the description as
@@ -2642,6 +2769,13 @@ function TaskModal({
       setProjectId(form.projectId);
       setOrchestratorId(form.orchestratorId ?? null);
       setStage(form.stage ?? null);
+      const now = new Date();
+      setWhenKind(form.timing?.kind ?? "ready");
+      setAtText(
+        form.timing?.kind === "at"
+          ? formatLocalDateTime(form.timing.at)
+          : defaultAtText(now),
+      );
       setInserting(false);
       selection.current = null;
       setImageError(null);
@@ -2649,8 +2783,15 @@ function TaskModal({
   }, [form]);
   if (!form) return null;
   const linked = form.task?.workspaceId !== null && form.task !== undefined;
+  const parsedAt =
+    whenKind === "at" ? parseLocalDateTime(atText, new Date()) : null;
+  const atError = parsedAt && !parsedAt.ok ? parsedAt.error : null;
   const saveDisabled =
-    disabled || pending || uploads > 0 || (!linked && !title.trim());
+    disabled ||
+    pending ||
+    uploads > 0 ||
+    (!linked && !title.trim()) ||
+    (!linked && atError !== null);
   const groups = orderedGroups(board.settings);
   const draftGroup =
     groups.find((group) => group.id === form.stage) ??
@@ -2665,6 +2806,13 @@ function TaskModal({
       projectId,
       orchestratorId,
       stage: stage ?? undefined,
+      timing: linked
+        ? undefined
+        : whenKind === "night"
+          ? { kind: "night" }
+          : parsedAt?.ok
+            ? { kind: "at", at: parsedAt.iso }
+            : null,
     });
   };
   const submitOnCtrlEnter = (event: { nativeEvent: unknown }) => {
@@ -2949,9 +3097,109 @@ function TaskModal({
               </View>
             </>
           )}
+          {!linked && (
+            <>
+              <Text
+                style={[
+                  styles.choiceLabel,
+                  { color: theme.colors.foregroundMuted },
+                ]}
+              >
+                {t.taskModal.when}
+              </Text>
+              <View style={styles.wrapChoices}>
+                {(
+                  [
+                    ["ready", t.taskModal.whenReady, "Play"],
+                    ["night", t.taskModal.whenNight, "Moon"],
+                    ["at", t.taskModal.whenAt, "Clock"],
+                  ] as const
+                ).map(([kind, label, icon]) => {
+                  const selected = whenKind === kind;
+                  return (
+                    <Pressable
+                      accessibilityRole="button"
+                      {...toggleButtonState(selected)}
+                      key={kind}
+                      disabled={disabled}
+                      onPress={() => setWhenKind(kind)}
+                      style={[
+                        styles.chip,
+                        styles.colorChip,
+                        disabled && styles.disabledControl,
+                        {
+                          borderColor: selected
+                            ? theme.colors.accent
+                            : theme.colors.border,
+                          backgroundColor: selected
+                            ? theme.colors.surface2
+                            : "transparent",
+                        },
+                      ]}
+                    >
+                      <Icon
+                        name={icon}
+                        size={13}
+                        color={theme.colors.foregroundMuted}
+                      />
+                      <Text style={{ color: theme.colors.foreground }}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+              {whenKind === "at" && (
+                <>
+                  <TextInput
+                    accessibilityLabel={t.taskModal.whenAt}
+                    editable={!disabled}
+                    value={atText}
+                    onChangeText={setAtText}
+                    placeholder="YYYY-MM-DD HH:MM"
+                    placeholderTextColor={theme.colors.foregroundMuted}
+                    style={[
+                      styles.atInput,
+                      {
+                        color: theme.colors.foreground,
+                        borderColor: atError
+                          ? theme.colors.statusDanger
+                          : theme.colors.border,
+                      },
+                    ]}
+                  />
+                  <Text
+                    style={[
+                      styles.imageHint,
+                      {
+                        color: atError
+                          ? theme.colors.statusDanger
+                          : theme.colors.foregroundMuted,
+                      },
+                    ]}
+                  >
+                    {atError === "invalid"
+                      ? t.taskModal.atInvalid
+                      : atError === "past"
+                        ? t.taskModal.atPast
+                        : t.taskModal.atHint}
+                  </Text>
+                </>
+              )}
+            </>
+          )}
         </ScrollView>
         <View style={styles.taskFooter}>
-          {!form.task && readyGroup ? (
+          {!form.task && readyGroup && whenKind !== "ready" ? (
+            <Text
+              style={[
+                styles.imageHint,
+                { color: theme.colors.foregroundMuted },
+              ]}
+            >
+              {t.taskModal.goesToScheduled}
+            </Text>
+          ) : !form.task && readyGroup ? (
             <View style={styles.wrapChoices}>
               <Text
                 style={[
@@ -4183,6 +4431,27 @@ const styles = StyleSheet.create({
   cardTitlePressable: { flex: 1, minWidth: 0 },
   cardTitle: { fontWeight: "600", fontSize: 14, lineHeight: 18 },
   cardMeta: { fontSize: 12, lineHeight: 16 },
+  timingChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    alignSelf: "flex-start",
+    gap: 5,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+  },
+  shutdownBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 10,
+    margin: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderRadius: 8,
+  },
+  shutdownText: { flex: 1, fontWeight: "600" },
   changeRequest: {
     flexDirection: "row",
     alignItems: "center",
@@ -4320,6 +4589,13 @@ const styles = StyleSheet.create({
     minHeight: 32,
     borderRadius: 16,
     paddingHorizontal: 11,
+  },
+  atInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 8,
+    minHeight: 36,
+    maxWidth: 240,
   },
   colorDot: { width: 8, height: 8, borderRadius: 4 },
   taskFooter: {

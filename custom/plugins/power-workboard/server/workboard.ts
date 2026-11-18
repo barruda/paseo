@@ -14,6 +14,8 @@ import {
   isTerminalGroup,
   labelKey,
   finishSchema,
+  nightSettingsSchema,
+  NIGHT_LOG_LIMIT,
   orchestratorConfigSchema,
   orchestratorSchema,
   newTask,
@@ -40,8 +42,20 @@ import {
   type Settings,
   type Stage,
   type Task,
+  type TaskTiming,
 } from "../shared/model";
-import { dueTrigger, nextRunAt, windowOpen } from "../shared/schedule";
+import {
+  dueTrigger,
+  nextRunAt,
+  nightSchedule,
+  openWindowStart,
+  windowOpen,
+} from "../shared/schedule";
+import {
+  defaultNightSystem,
+  SHUTDOWN_WARNING_MS,
+  type NightSystem,
+} from "./night"; // CUSTOM(night-tasks)
 import { CANCEL_BINDING_BUSY_ERROR_CODE, type Mutation } from "../shared/rpc";
 // CUSTOM(projects-assistant)
 import {
@@ -114,6 +128,19 @@ export interface AssistantOptions {
   profilesDirectory?: string;
   /** CUSTOM(assistant-wake): quiet time before the chat agent is told about tasks that need the user. */
   wakeDelayMs?: number;
+  /** CUSTOM(night-tasks): notifications and the power-off command. */
+  night?: NightSystem;
+}
+/**
+ * CUSTOM(night-tasks): a power-off arms only this soon after the night was last active (its
+ * window open or a night task running), so turning the option on by day never powers off.
+ */
+const NIGHT_SHUTDOWN_GRACE_MS = 15 * 60_000;
+function checkTiming(timing: TaskTiming | null): TaskTiming | null {
+  if (timing?.kind !== "at") return timing;
+  const at = Date.parse(timing.at);
+  if (!Number.isFinite(at)) throw new Error("Choose a valid start time");
+  return { kind: "at", at: new Date(at).toISOString() };
 }
 type AttemptOutcome = Attempt["outcome"]; // CUSTOM(projects-assistant)
 /** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
@@ -384,35 +411,36 @@ export class Workboard {
           }),
         );
       });
-    // Boards saved before Ready to start existed get it right after their first To do group.
-    const ready = DEFAULT_GROUPS.find((group) => group.kind === "ready")!;
+    // Boards saved before Ready to start existed get it right after their first To do group;
+    // CUSTOM(night-tasks): Scheduled goes right before Ready to start.
+    await this.addMissingGroup("ready");
+    await this.addMissingGroup("scheduled");
+  }
+  private async addMissingGroup(kind: "ready" | "scheduled"): Promise<void> {
+    const added = DEFAULT_GROUPS.find((group) => group.kind === kind)!;
     const groups = this.store.current.settings.groups;
     if (
-      !groups.some((group) => group.kind === "ready") &&
-      !groups.some(
+      groups.some(
         (group) =>
-          group.id === ready.id ||
-          labelKey(group.label) === labelKey(ready.label),
+          group.kind === kind ||
+          group.id === added.id ||
+          labelKey(group.label) === labelKey(added.label),
       )
     )
-      await this.store.update((data) => {
-        const settings = data.settings;
-        const ordered = orderedGroups(settings).map((group) => group.id);
-        const after = orderedGroups(settings).findIndex(
-          (group) => group.kind === "todo",
-        );
-        settings.groups.push({ ...ready });
-        if (settings.groupOrder.length) {
-          ordered.splice(after + 1, 0, ready.id);
-          settings.groupOrder = ordered;
-        } else {
-          settings.groupOrder = [
-            ...ordered.slice(0, after + 1),
-            ready.id,
-            ...ordered.slice(after + 1),
-          ];
-        }
-      });
+      return;
+    await this.store.update((data) => {
+      const settings = data.settings;
+      const ordered = orderedGroups(settings);
+      let at =
+        kind === "scheduled"
+          ? ordered.findIndex((group) => group.kind === "ready")
+          : -1;
+      if (at < 0) at = ordered.findIndex((group) => group.kind === "todo") + 1;
+      const ids = ordered.map((group) => group.id);
+      ids.splice(at, 0, added.id);
+      settings.groups.push({ ...added });
+      settings.groupOrder = ids;
+    });
   }
   refresh(): Promise<void> {
     this.pendingRefresh = null;
@@ -499,6 +527,19 @@ export class Workboard {
       orchestrations: data.orchestrations,
       refinements: data.refinements,
       finishes: data.finishes,
+      // CUSTOM(night-tasks)
+      night: data.night,
+      nightRuntime: data.nightRuntime,
+      nightStatus: (() => {
+        const schedule = nightSchedule(data.night);
+        const open = windowOpen(schedule, this.now());
+        const next = open ? null : nextRunAt(schedule, this.now());
+        return {
+          open,
+          nextStartAt: next === null ? null : new Date(next).toISOString(),
+          waiting: this.nightWaiting(data).length,
+        };
+      })(),
       orchestrators: data.orchestrators,
       orchestratorRuntime: data.orchestratorRuntime,
       orchestratorLogs: data.orchestratorLogs,
@@ -1109,16 +1150,20 @@ export class Workboard {
         throw new Error(this.error ?? "Paseo is disconnected");
       try {
         if (input.action === "create") {
-          const stage =
-            input.stage ??
-            defaultGroup(
-              this.store.current.settings.groups,
-              this.store.current.settings.defaultDraftGroup,
-            );
+          // CUSTOM(night-tasks): a timing puts the task in Scheduled.
+          let timing = checkTiming(input.timing ?? null);
+          const stage = timing
+            ? this.scheduledGroup()
+            : (input.stage ??
+              defaultGroup(
+                this.store.current.settings.groups,
+                this.store.current.settings.defaultDraftGroup,
+              ));
           // A new task can also go straight to Ready to start, where an orchestrator takes it.
           const kind = groupKind(stage, this.store.current.settings.groups);
-          if (kind !== "todo" && kind !== "ready")
+          if (kind !== "todo" && kind !== "ready" && kind !== "scheduled")
             throw new Error("Choose a To do group for a new draft");
+          if (kind === "scheduled") timing ??= { kind: "night" };
           await this.store.update((data) => {
             const task = newTask(
               randomUUID(),
@@ -1129,12 +1174,29 @@ export class Workboard {
             task.description = input.description;
             task.projectId = input.projectId;
             task.orchestratorId = input.orchestratorId ?? null;
+            task.timing = timing; // CUSTOM(night-tasks)
             task.projectName =
               this.inventory.projects.find((p) => p.id === input.projectId)
                 ?.name ?? "";
             data.tasks.push(task);
           });
           if (kind === "ready") await this.orchestrate();
+          else if (timing) this.armDueTimer(); // CUSTOM(night-tasks)
+        } else if (input.action === "night-settings") {
+          // CUSTOM(night-tasks)
+          await this.store.update((data) => {
+            data.night = nightSettingsSchema.parse(input.night);
+          });
+          await this.orchestrate();
+        } else if (input.action === "night-shutdown-cancel") {
+          await this.store.update((data) => {
+            const runtime = data.nightRuntime;
+            if (!runtime.shutdownAt) return;
+            runtime.handledFor = runtime.windowStart;
+            runtime.shutdownAt = null;
+            this.nightLog(data, "Power-off canceled");
+          });
+          this.armDueTimer();
         } else if (input.action === "refine") {
           await this.refine(input.taskId);
         } else if (input.action === "review") {
@@ -1276,6 +1338,29 @@ export class Workboard {
               current.description = input.description;
               if (input.orchestratorId !== undefined)
                 current.orchestratorId = input.orchestratorId;
+              // CUSTOM(night-tasks): only a draft can be scheduled; it moves in or out of Scheduled.
+              if (
+                input.timing !== undefined &&
+                !current.workspaceId &&
+                !current.binding
+              ) {
+                const timing = checkTiming(input.timing);
+                const scheduled =
+                  groupKind(current.draftStage, data.settings.groups) ===
+                  "scheduled";
+                const stage =
+                  timing && !scheduled
+                    ? this.scheduledGroup(data)
+                    : !timing && scheduled
+                      ? defaultGroup(
+                          data.settings.groups,
+                          data.settings.defaultDraftGroup,
+                        )
+                      : current.draftStage;
+                current.timing = timing;
+                current.draftStage = stage;
+                current.lastStage = stage;
+              }
               current.updatedAt = this.stamp(current.updatedAt);
             });
             await this.orchestrate();
@@ -1311,12 +1396,14 @@ export class Workboard {
               );
             if (!task.binding)
               await this.store.update((data) => {
-                data.tasks.find((t) => t.id === task.id)!.binding = {
+                const current = data.tasks.find((t) => t.id === task.id)!;
+                current.binding = {
                   operationId: randomUUID(),
                   target: input.target,
                   workspaceId: null,
                   stage,
                 };
+                current.timing = null; // CUSTOM(night-tasks): started by hand
               });
             await this.bind(task.id);
             await this.reconcile();
@@ -1337,6 +1424,14 @@ export class Workboard {
               throw new Error("Group no longer exists");
             if (task.binding)
               throw new Error("Workspace binding is still pending");
+            // CUSTOM(night-tasks): Scheduled holds drafts only.
+            const toScheduled =
+              groupKind(input.stage, this.store.current.settings.groups) ===
+              "scheduled";
+            if (task.workspaceId && toScheduled)
+              throw new Error(
+                "Only a task without a workspace can be scheduled",
+              );
             if (task.workspaceId) {
               const workspace = await this.transition(
                 task.workspaceId,
@@ -1365,6 +1460,10 @@ export class Workboard {
                 this.checkStageExpected(data, input);
                 current.draftStage = input.stage;
                 current.lastStage = input.stage;
+                // CUSTOM(night-tasks): dropped in Scheduled it waits for the night; out of it, no timing.
+                current.timing = toScheduled
+                  ? (current.timing ?? { kind: "night" })
+                  : null;
                 current.updatedAt = this.stamp(current.updatedAt);
               });
               // A draft moved to Ready to start may be taken right away.
@@ -2962,18 +3061,42 @@ export class Workboard {
       }
       if (launch) this.launch(taskId); // CUSTOM(projects-assistant)
     }
+    await this.promoteScheduled(); // CUSTOM(night-tasks)
     const stage = defaultStartWorkGroup(
       groups,
       this.store.current.settings.defaultStartWorkGroup,
     );
-    if (!stage) return;
+    if (stage) await this.startReady(stage);
+    await this.nightShutdown(); // CUSTOM(night-tasks)
+    this.armDueTimer();
+  }
+  /**
+   * Each orchestrator whose window is open, or whose run still has tasks to start, takes its
+   * Ready to start tasks up to its limit. CUSTOM(night-tasks): while the night window is open,
+   * every enabled orchestrator also takes its night tasks from Scheduled, whatever its own
+   * schedule, without using its run's batch.
+   */
+  private async startReady(stage: Stage): Promise<void> {
     const board = this.snapshot();
-    const ready = orderedGroups(this.store.current.settings)
-      .filter((group) => group.kind === "ready")
-      .flatMap((group) =>
-        cardsForStage(board.cards, group.id, board.cardOrderByStage),
+    const nightStart = openWindowStart(
+      nightSchedule(this.store.current.night),
+      this.now(),
+    );
+    const candidates = orderedGroups(this.store.current.settings)
+      .filter(
+        (group) =>
+          group.kind === "ready" ||
+          (group.kind === "scheduled" && nightStart !== null),
       )
-      .filter((card) => this.eligible(card));
+      .flatMap((group) =>
+        cardsForStage(board.cards, group.id, board.cardOrderByStage).map(
+          (card) => ({ card, night: group.kind === "scheduled" }),
+        ),
+      )
+      .filter(
+        ({ card, night }) =>
+          (!night || card.timing?.kind === "night") && this.eligible(card),
+      );
     const taken = new Set<string>();
     let started = false;
     for (const config of [...this.store.current.orchestrators]) {
@@ -3003,25 +3126,31 @@ export class Workboard {
       }
       const open = windowOpen(config.schedule, this.now());
       const quota = this.runtime(config.id).quota;
-      if (quota <= 0 && !open) continue;
-      const mine = ready.filter(
-        (card) => !taken.has(card.id) && this.owns(config, card),
+      const takesReady = quota > 0 || open;
+      if (!takesReady && nightStart === null) continue;
+      const mine = candidates.filter(
+        ({ card, night }) =>
+          !taken.has(card.id) &&
+          (night || takesReady) &&
+          this.owns(config, card),
       );
-      if (!mine.length) {
-        if (quota > 0)
-          await this.endRun(config.id, "nothing left in Ready to start");
-        continue;
-      }
+      if (quota > 0 && !mine.some(({ night }) => !night))
+        await this.endRun(config.id, "nothing left in Ready to start");
       let slots = config.maxConcurrent - this.runningFor(config.id);
-      for (const card of mine) {
+      for (const { card, night } of mine) {
         if (slots <= 0 || this.stopped) break;
         const runtime = this.runtime(config.id);
-        if (!open && runtime.quota <= 0) break;
+        if (!night && !open && runtime.quota <= 0) continue;
         taken.add(card.id);
-        const outcome = await this.startCard(config, card, stage);
+        const outcome = await this.startCard(config, card, stage, night);
         if (outcome === "skipped") continue;
         slots--;
         started = true;
+        if (night) {
+          if (outcome === "started")
+            await this.nightStarted(nightStart!, card.title);
+          continue;
+        }
         if (runtime.quota > 0) {
           await this.setRuntime(config.id, {
             quota: runtime.quota - 1,
@@ -3033,6 +3162,214 @@ export class Workboard {
     }
     if (started) await this.reconcile();
   }
+  // CUSTOM(night-tasks) ---------------------------------------------------------------------
+  private nightActiveAt = -Infinity;
+  private dueTimer: ReturnType<typeof setTimeout> | undefined;
+  private get nightSystem(): NightSystem {
+    return this.assistantOptions.night ?? defaultNightSystem;
+  }
+  /** The first Scheduled group, where night tasks and timed tasks wait. */
+  private scheduledGroup(data: Data = this.store.current): Stage {
+    const group = orderedGroups(data.settings).find(
+      (group) => group.kind === "scheduled",
+    );
+    if (!group) throw new Error("Add a Scheduled group to schedule tasks");
+    return group.id;
+  }
+  private nightLog(data: Data, text: string): void {
+    data.nightRuntime.log = [
+      ...data.nightRuntime.log,
+      { at: this.stamp(), text },
+    ].slice(-NIGHT_LOG_LIMIT);
+  }
+  /** A task whose start time came moves to the first Ready to start group. */
+  private async promoteScheduled(): Promise<void> {
+    const groups = this.store.current.settings.groups;
+    const ready = orderedGroups(this.store.current.settings).find(
+      (group) => group.kind === "ready",
+    );
+    if (!ready) return;
+    const due = (task: Task) =>
+      !task.workspaceId &&
+      !task.binding &&
+      !hidden(task) &&
+      task.timing?.kind === "at" &&
+      Date.parse(task.timing.at) <= this.now() &&
+      groupKind(task.draftStage, groups) === "scheduled";
+    if (!this.store.current.tasks.some(due)) return;
+    await this.store.update((data) => {
+      for (const task of data.tasks.filter(due)) {
+        task.draftStage = ready.id;
+        task.lastStage = ready.id;
+        task.timing = null;
+        task.updatedAt = this.stamp(task.updatedAt);
+      }
+    });
+  }
+  private async nightStarted(windowStart: number, title: string) {
+    const key = new Date(windowStart).toISOString();
+    await this.store.update((data) => {
+      const runtime = data.nightRuntime;
+      if (runtime.windowStart !== key) {
+        runtime.windowStart = key;
+        runtime.started = 0;
+        runtime.shutdownAt = null;
+      }
+      runtime.started++;
+      this.nightLog(data, `Started night task "${title}"`);
+    });
+  }
+  /** Night tasks in Scheduled that an enabled orchestrator would still take. */
+  private nightWaiting(data: Data = this.store.current): Task[] {
+    return data.tasks.filter(
+      (task) =>
+        !task.workspaceId &&
+        !hidden(task) &&
+        task.timing?.kind === "night" &&
+        groupKind(task.draftStage, data.settings.groups) === "scheduled",
+    );
+  }
+  /** Why the night power-off must wait, or null when nothing holds it. */
+  private async nightBlocker(windowStart: string): Promise<string | null> {
+    const data = this.store.current;
+    if (
+      Object.values(data.orchestrations).some(
+        (record) =>
+          record.night &&
+          (record.status === "starting" || record.status === "running"),
+      )
+    )
+      return "night tasks are still running";
+    const open =
+      openWindowStart(nightSchedule(data.night), this.now()) ===
+      Date.parse(windowStart);
+    if (open) {
+      const cards = new Map(this.snapshot().cards.map((c) => [c.id, c]));
+      const startable = this.nightWaiting(data).some((task) => {
+        const card = cards.get(task.id);
+        return (
+          !!card &&
+          this.eligible(card) &&
+          data.orchestrators.some((o) => o.enabled && this.owns(o, task, data))
+        );
+      });
+      if (startable) return "night tasks are still waiting";
+    }
+    if (
+      Object.values(data.assistant.deliveries).some((delivery) =>
+        DELIVERY_STEPS.has(delivery.stage),
+      )
+    )
+      return "a delivery is in progress";
+    try {
+      const busy = await this.host.busyAgents();
+      if (busy.length)
+        return busy.length === 1
+          ? "an agent is running"
+          : `${busy.length} agents are running`;
+    } catch (error) {
+      return `could not list the agents (${message(error)})`;
+    }
+    return null;
+  }
+  /**
+   * With the option on, once the night's tasks are done (or its window closed) and no agent
+   * runs, warn and count down; when the countdown ends and nothing started meanwhile, power off.
+   */
+  private async nightShutdown(): Promise<void> {
+    const { night, nightRuntime: runtime } = this.store.current;
+    const key = runtime.windowStart;
+    if (key) {
+      const open =
+        openWindowStart(nightSchedule(night), this.now()) === Date.parse(key);
+      const running = Object.values(this.store.current.orchestrations).some(
+        (record) =>
+          record.night &&
+          (record.status === "starting" || record.status === "running"),
+      );
+      if (open || running) this.nightActiveAt = this.now();
+    }
+    const armed = runtime.shutdownAt;
+    const disarm = (why: string) =>
+      this.store.update((data) => {
+        data.nightRuntime.shutdownAt = null;
+        this.nightLog(data, `Power-off canceled: ${why}`);
+      });
+    if (
+      !night.shutdownWhenDone ||
+      !key ||
+      runtime.started === 0 ||
+      runtime.handledFor === key
+    ) {
+      if (armed) await disarm("the option is off");
+      return;
+    }
+    if (!armed && this.now() - this.nightActiveAt > NIGHT_SHUTDOWN_GRACE_MS)
+      return;
+    const blocker = await this.nightBlocker(key);
+    if (blocker) {
+      if (armed) await disarm(blocker);
+      return;
+    }
+    if (!armed) {
+      const at = this.now() + SHUTDOWN_WARNING_MS;
+      await this.store.update((data) => {
+        data.nightRuntime.shutdownAt = new Date(at).toISOString();
+        this.nightLog(
+          data,
+          "Night tasks are done; powering off in 5 minutes unless canceled",
+        );
+      });
+      void this.nightSystem
+        .notify(
+          "Paseo will power off this computer in 5 minutes",
+          "The night tasks are done. Open Power Workboard to cancel.",
+        )
+        .catch(() => undefined);
+      return;
+    }
+    if (this.now() < Date.parse(armed)) return;
+    // A countdown that ended long ago (Paseo was off) never powers off without a new warning.
+    if (this.now() - Date.parse(armed) > SHUTDOWN_WARNING_MS) {
+      await disarm("the countdown ended while Paseo was not running");
+      return;
+    }
+    await this.store.update((data) => {
+      data.nightRuntime.shutdownAt = null;
+      data.nightRuntime.handledFor = key;
+      this.nightLog(data, "Powering off");
+    });
+    try {
+      await this.nightSystem.powerOff(night.shutdownCommand);
+    } catch (error) {
+      await this.store.update((data) => {
+        this.nightLog(data, `Power-off failed: ${message(error)}`);
+      });
+    }
+  }
+  /** Wake up for the next start time or the end of a power-off countdown, sooner than the tick. */
+  private armDueTimer(): void {
+    clearTimeout(this.dueTimer);
+    this.dueTimer = undefined;
+    if (this.stopped) return;
+    const data = this.store.current;
+    const times = [
+      ...data.tasks
+        .filter((task) => !hidden(task) && task.timing?.kind === "at")
+        .map((task) => Date.parse((task.timing as { at: string }).at)),
+      ...(data.nightRuntime.shutdownAt
+        ? [Date.parse(data.nightRuntime.shutdownAt)]
+        : []),
+    ].filter((at) => Number.isFinite(at) && at > this.now());
+    if (!times.length) return;
+    const delay = Math.min(...times) - this.now() + 250;
+    if (delay >= this.interval) return;
+    this.dueTimer = setTimeout(() => {
+      this.dueTimer = undefined;
+      void this.refresh().catch(() => undefined);
+    }, delay);
+  }
+  // -----------------------------------------------------------------------------------------
   /** Whether a Ready to start card may be started (or continued) now. */
   private eligible(card: Card): boolean {
     const record = this.store.current.orchestrations[card.id];
@@ -3154,6 +3491,7 @@ export class Workboard {
     config: OrchestratorConfig,
     card: Card,
     stage: Stage,
+    night = false, // CUSTOM(night-tasks)
   ): Promise<"started" | "failed" | "skipped"> {
     if (card.workspaceId) return this.continueTask(card.id, stage, config);
     const project = this.inventory.projects.find(
@@ -3181,6 +3519,7 @@ export class Workboard {
     await this.setOrchestration(card.id, {
       status: "starting",
       orchestratorId: config.id,
+      night,
     });
     try {
       const source =
@@ -3305,6 +3644,7 @@ export class Workboard {
         feedback: null,
         error: null,
         orchestratorId: settings.id,
+        night: false, // CUSTOM(night-tasks): a continuation runs whenever it is taken
       });
       // CUSTOM(projects-assistant)
       if (this.assistantOn()) {
@@ -3624,6 +3964,7 @@ export class Workboard {
     clearTimeout(this.debounce);
     clearTimeout(this.settleTimer);
     clearTimeout(this.wakeTimer); // CUSTOM(assistant-wake)
+    clearTimeout(this.dueTimer); // CUSTOM(night-tasks)
     this.host.dispose();
   }
 }

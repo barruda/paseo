@@ -1,11 +1,13 @@
 import { z } from "zod";
-import { scheduleSchema } from "./schedule";
+import { scheduleSchema, timeOfDaySchema } from "./schedule";
 import { assistantDataSchema } from "./assistant"; // CUSTOM(projects-assistant)
 import { skillSelectionSchema } from "./profiles"; // CUSTOM(agent-profiles)
 
 export const STAGES = [
   "inbox",
   "todo",
+  // CUSTOM(night-tasks): night tasks and tasks with a start time wait here; drafts only.
+  "scheduled",
   // A refined task the orchestrator may start; still a draft without a workspace.
   "ready",
   "in-progress",
@@ -26,6 +28,7 @@ export type BoardStage = Stage | "conflict";
 export const DEFAULT_LABELS: Record<StageKind, string> = {
   inbox: "pwb:inbox",
   todo: "pwb:backlog",
+  scheduled: "pwb:scheduled",
   ready: "pwb:ready",
   "in-progress": "pwb:in-progress",
   review: "pwb:review",
@@ -35,6 +38,7 @@ export const DEFAULT_LABELS: Record<StageKind, string> = {
 export const STAGE_COLORS = {
   inbox: "indigo",
   todo: "sky",
+  scheduled: "indigo",
   ready: "indigo",
   "in-progress": "blue",
   review: "orange",
@@ -97,18 +101,20 @@ export function nextGroupColor(groups: readonly Group[]): GroupColor {
 /** Ready to start feeds the orchestrators; they move a task to In progress and then to Ready to review. */
 const DEFAULT_GROUP_NAMES: Partial<Record<StageKind, string>> = {
   todo: "Backlog",
+  scheduled: "Scheduled",
   ready: "Ready to start",
   "in-progress": "In progress",
   review: "Ready to review",
   done: "Done",
 };
 export const DEFAULT_GROUPS: Group[] = (
-  ["todo", "ready", "in-progress", "review", "done"] as const
+  ["todo", "scheduled", "ready", "in-progress", "review", "done"] as const
 ).map((kind) => ({
   id: kind === "todo" ? "backlog" : kind,
   kind,
   name: DEFAULT_GROUP_NAMES[kind] ?? null,
   label: DEFAULT_LABELS[kind],
+  ...(kind === "scheduled" ? { color: "teal" as const } : {}),
 }));
 export const groupsSchema = z
   .array(groupSchema)
@@ -211,6 +217,7 @@ export const isDraftGroup = (
   return (
     kind === "inbox" ||
     kind === "todo" ||
+    kind === "scheduled" ||
     kind === "ready" ||
     kind === "canceled"
   );
@@ -354,6 +361,40 @@ export type ConversationDisplay = z.infer<typeof conversationDisplaySchema>;
 export type ConversationGate = z.infer<typeof conversationGateSchema>;
 export type ConversationReason = z.infer<typeof conversationReasonSchema>;
 export type ConversationAgent = z.infer<typeof conversationAgentSchema>;
+/**
+ * CUSTOM(night-tasks): when a task in the Scheduled group may start. `night` waits for the night
+ * window; `at` moves to Ready to start at that time (ISO, an absolute instant).
+ */
+export const taskTimingSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("night") }),
+  z.object({ kind: z.literal("at"), at: z.string().min(1) }),
+]);
+export type TaskTiming = z.infer<typeof taskTimingSchema>;
+/** CUSTOM(night-tasks): the night window and what happens when its tasks are done. */
+export const nightSettingsSchema = z.object({
+  /** Daemon host's local time; an end before the start crosses midnight. */
+  start: timeOfDaySchema.default("22:00"),
+  end: timeOfDaySchema.default("06:00"),
+  /** Power the computer off once the night's tasks are done (or the window closed). */
+  shutdownWhenDone: z.boolean().default(false),
+  /** Empty runs the platform default (`systemctl poweroff` on Linux). */
+  shutdownCommand: z.string().trim().max(500).default(""),
+});
+export type NightSettings = z.infer<typeof nightSettingsSchema>;
+export const NIGHT_LOG_LIMIT = 30;
+/** CUSTOM(night-tasks): the current or last night that ran tasks, and its power-off. */
+export const nightRuntimeSchema = z.object({
+  /** Start of the window that night tasks last ran in (ISO). */
+  windowStart: z.string().nullable().default(null),
+  /** Night tasks started in that window. */
+  started: z.number().int().min(0).default(0),
+  /** A power-off is counting down to this time. */
+  shutdownAt: z.string().nullable().default(null),
+  /** The window whose power-off already ran or was canceled; it does not arm again. */
+  handledFor: z.string().nullable().default(null),
+  log: z.array(z.object({ at: z.string(), text: z.string() })).default([]),
+});
+export type NightRuntime = z.infer<typeof nightRuntimeSchema>;
 export const taskSchema = z.object({
   id: z.string(),
   workspaceId: z.string().nullable(),
@@ -389,6 +430,7 @@ export const taskSchema = z.object({
   archived: archiveSchema.nullable(),
   /** The orchestrator that should run this task; null lets any one for its project take it. */
   orchestratorId: z.string().nullable().default(null),
+  timing: taskTimingSchema.nullable().default(null), // CUSTOM(night-tasks)
   binding: z
     .object({
       operationId: z.string(),
@@ -417,6 +459,8 @@ export const orchestrationSchema = z.object({
   feedback: z.string().nullable().default(null),
   /** The orchestrator that started it; its log and limits own this run. */
   orchestratorId: z.string().nullable().default(null),
+  /** CUSTOM(night-tasks): started as a night task, inside the night window. */
+  night: z.boolean().default(false),
 });
 export type Orchestration = z.infer<typeof orchestrationSchema>;
 /** Agent settings new orchestrators start from; refinement chats use them too. */
@@ -529,6 +573,11 @@ export const dataSchema = z
     finishes: z.record(z.string(), finishSchema).default({}),
     // CUSTOM(projects-assistant): delivery policy, per-task delivery state and attempts.
     assistant: assistantDataSchema.default(() => assistantDataSchema.parse({})),
+    // CUSTOM(night-tasks)
+    night: nightSettingsSchema.default(() => nightSettingsSchema.parse({})),
+    nightRuntime: nightRuntimeSchema.default(() =>
+      nightRuntimeSchema.parse({}),
+    ),
   })
   .superRefine((data, context) => {
     const ids = new Set<string>();
@@ -622,6 +671,18 @@ export const boardSchema = z.object({
     .record(z.string(), orchestratorStatusSchema)
     .default({}),
   finishes: z.record(z.string(), finishSchema).default({}),
+  // CUSTOM(night-tasks)
+  night: nightSettingsSchema.default(() => nightSettingsSchema.parse({})),
+  nightRuntime: nightRuntimeSchema.default(() => nightRuntimeSchema.parse({})),
+  nightStatus: z
+    .object({
+      open: z.boolean(),
+      /** Next time the window opens; null while it is open. */
+      nextStartAt: z.string().nullable(),
+      /** Night tasks waiting in Scheduled. */
+      waiting: z.number(),
+    })
+    .default({ open: false, nextStartAt: null, waiting: 0 }),
   projects: z.array(
     z.object({
       id: z.string(),
@@ -661,6 +722,7 @@ export function newTask(
     issue: null,
     archived: null,
     orchestratorId: null,
+    timing: null,
     binding: null,
   };
 }

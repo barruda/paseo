@@ -6789,6 +6789,51 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   row turns green with a short sentence; click it and the assistant chat opens at that message.
   From a terminal: `custom/plugins/power-workboard/bin/ask-assistant "what needs me?"`.
 
+## night-tasks: Power Workboard night tasks, tasks with a start time, and power-off when done
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Power Workboard night tasks, scheduled tasks and power-off when done`
+- **Why:** Tasks should run while the user is away: at night, or at a time the user picks, and
+  the computer can turn itself off when the night's work is done.
+- **What:**
+  - A new draft group kind, **Scheduled** (`scheduled`, label `pwb:scheduled`), between Backlog and
+    Ready to start. Boards saved before it get it on load, right before Ready to start (same
+    mechanism as Ready to start). It holds drafts only.
+  - A task's `timing` is `{kind:"night"}` or `{kind:"at", at}`. The task editor's **When** row
+    (Not scheduled / Night / At a time, with a local `YYYY-MM-DD HH:MM` field) sets it and moves
+    the draft into Scheduled; Not scheduled moves it back to Backlog. Dropping a draft into
+    Scheduled makes it a night task; dragging it out clears the timing. Starting work by hand
+    clears it too.
+  - **At a time:** each orchestrator pass moves due tasks to Ready to start. Passes run every
+    minute, and a timer wakes the board at the exact time when it is sooner, so the tolerance is
+    well under a minute. A time missed while the daemon was down moves on the next pass.
+  - **Night:** the night window (Orchestrators tab, **Night tasks** section; default 22:00–06:00,
+    daemon host's local time, an end before the start crosses midnight). While it is open, every
+    enabled orchestrator takes its night tasks from Scheduled, column order, up to its limit,
+    whatever its own schedule, without using its run's batch. The orchestration record carries
+    `night: true`; the card keeps a moon chip.
+  - **Power off when done** (off by default) and an optional command (empty: `systemctl poweroff`
+    on Linux). When a night that started tasks has none running and none an enabled orchestrator
+    could still start (or its window closed), no delivery step is running, and no agent on the
+    daemon is running or waiting on a permission, a 5-minute countdown starts: a desktop
+    notification (`notify-send`) and a banner with **Cancel** on every board tab. Anything that
+    starts meanwhile cancels it; Cancel drops that night's power-off. A countdown arms only up
+    to 15 minutes after the night was last active (window open or a night task running), so
+    turning the option on by day does nothing, and a countdown that ended while Paseo was off
+    is dropped instead of run. The last 30 events are in `nightRuntime.log`, shown in the section.
+  - Paseo's own schedules (`create_schedule`) were not used: they start agent runs on a cron, and
+    the board already owns a minute tick for orchestrator windows.
+- **Core files touched:** none (plugin only).
+- **Re-apply:** nothing to re-apply; the plugin is self-contained.
+- **Tests:** `tests/night-tasks.test.ts` (fake clock: start time, timer wake-up with Vitest fake
+  timers, night window only, disabled orchestrator, Scheduled drag and edit, power-off off/on,
+  agent during the countdown, Cancel, option turned on by day, stale countdown),
+  `tests/schedule.test.ts` (night window start), `tests/timing.test.ts` (date-time field).
+- **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
+  After `plugin reload power-workboard`: the board shows a Scheduled column; New task > When >
+  Night puts the card there with a moon chip; At a time shows a clock chip and the card moves to
+  Ready to start at that time. Orchestrators tab > Night tasks: set the window and Save.
+
 ## claude-block-dedupe: a message's second thinking block shows once
 
 - **Added:** 2026-11-17

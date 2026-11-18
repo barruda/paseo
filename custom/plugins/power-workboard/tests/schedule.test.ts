@@ -2,6 +2,8 @@ import { expect, it } from "vitest";
 import {
   dueTrigger,
   nextRunAt,
+  nightSchedule,
+  openWindowStart,
   windowOpen,
   type Schedule,
 } from "../shared/schedule";
@@ -41,4 +43,14 @@ it("fires a daily time once, and skips one missed by more than an hour", () => {
   expect(nextRunAt(daily, at(26, 9, 30))).toBe(at(26, 18));
   expect(nextRunAt(daily, at(26, 19))).toBe(at(27, 9));
   expect(nextRunAt({ kind: "manual" }, at(26, 9))).toBeNull();
+});
+
+it("the night window runs every day and knows when it opened", () => {
+  const night = nightSchedule({ start: "22:00", end: "06:00" });
+  expect(openWindowStart(night, at(26, 21, 59))).toBeNull();
+  expect(openWindowStart(night, at(26, 23))).toBe(at(26, 22));
+  // After midnight it is still the window that opened the evening before.
+  expect(openWindowStart(night, at(27, 5, 59))).toBe(at(26, 22));
+  expect(openWindowStart(night, at(27, 6))).toBeNull();
+  expect(nextRunAt(night, at(27, 6))).toBe(at(27, 22));
 });
