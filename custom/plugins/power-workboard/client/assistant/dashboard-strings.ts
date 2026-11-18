@@ -19,6 +19,7 @@ export const REASON_LABELS: Record<NeedsYouReason, string> = {
   "dirty-checkout": "Checkout has uncommitted changes",
   "merge-error": "Merge failed",
   "pr-error": "Could not prepare the PR",
+  "dependency-files": "Dependencies would be committed",
 };
 
 export const KIND_LABELS: Record<HistoryEventKind, string> = {
@@ -98,6 +99,7 @@ export const dashboardStrings = {
   markDone: "Mark done",
   dismiss: "Dismiss",
   openConversation: "Open conversation",
+  openReport: "Open report",
   showMore: "Show more",
   showLess: "Show less",
   question: "Question",

@@ -685,6 +685,22 @@ it("Commit commits a Done task's changes, and refuses a clean checkout", async (
   }
 });
 
+it("Commit refuses an untracked node_modules symlink and commits nothing", async () => {
+  const { board, task, host } = await done();
+  try {
+    (host.gitStatusLines as any).mockResolvedValue(["?? node_modules"]);
+    await board.mutate({ action: "finish", taskId: task.id, step: "merge" });
+    await settle(board);
+    expect(host.commit).not.toHaveBeenCalled();
+    expect(host.mergeToBase).not.toHaveBeenCalled();
+    expect(board.snapshot().finishes[task.id].error).toContain(
+      "untracked dependency paths would enter the commit (node_modules)",
+    );
+  } finally {
+    board.dispose();
+  }
+});
+
 it("Merge commits what is left and merges into the project; PR asks the agent", async () => {
   const { board, task, host, agent } = await done();
   try {

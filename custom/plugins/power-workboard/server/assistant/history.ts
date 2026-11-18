@@ -1,7 +1,14 @@
 // CUSTOM(projects-assistant): append-only history of the Projects Assistant, one JSON object per
 // line in one file per local day (`YYYY-MM-DD.jsonl`), kept HISTORY_RETENTION_DAYS days.
 import { randomUUID } from "node:crypto";
-import { appendFile, mkdir, readdir, readFile, unlink } from "node:fs/promises";
+import {
+  appendFile,
+  mkdir,
+  readdir,
+  readFile,
+  stat,
+  unlink,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { z } from "zod";
@@ -100,6 +107,14 @@ function decodeCursor(cursor: string): { at: string; id: string } | null {
  */
 export class DayJsonlStore<T extends { id: string; at: string }> {
   private chain: Promise<unknown> = Promise.resolve();
+  /**
+   * Parsed day files by name, reused while the file's mtime and size are unchanged. The Reports
+   * page polls every file every few seconds; only the day being written changes.
+   */
+  private readonly cache = new Map<
+    string,
+    { mtimeMs: number; size: number; values: readonly T[] }
+  >();
 
   constructor(
     readonly directory: string,
@@ -138,11 +153,23 @@ export class DayJsonlStore<T extends { id: string; at: string }> {
     }
   }
 
-  protected async readFile(name: string): Promise<T[]> {
+  /** The file's values in file order. Shared with the cache: callers must not mutate it. */
+  protected async readFile(name: string): Promise<readonly T[]> {
+    const file = path.join(this.directory, name);
     let text: string;
+    let info: { mtimeMs: number; size: number };
     try {
-      text = await readFile(path.join(this.directory, name), "utf8");
+      info = await stat(file);
+      const cached = this.cache.get(name);
+      if (
+        cached &&
+        cached.mtimeMs === info.mtimeMs &&
+        cached.size === info.size
+      )
+        return cached.values;
+      text = await readFile(file, "utf8");
     } catch {
+      this.cache.delete(name);
       return [];
     }
     const values: T[] = [];
@@ -155,11 +182,22 @@ export class DayJsonlStore<T extends { id: string; at: string }> {
         // Skip a malformed line.
       }
     }
+    // The size read with the text: an append between stat and read is picked up next time.
+    this.cache.set(name, {
+      mtimeMs: info.mtimeMs,
+      size: Buffer.byteLength(text),
+      values,
+    });
     return values;
   }
 
-  /** Every value at or after `fromIso` (all of them when null), oldest first. */
-  async since(fromIso: string | null): Promise<T[]> {
+  /**
+   * Every value at or after `fromIso` (all of them when null) that passes `filter`, oldest first.
+   */
+  async since(
+    fromIso: string | null,
+    filter?: (value: T) => boolean,
+  ): Promise<T[]> {
     const from = fromIso === null ? null : time(fromIso);
     const fromDay = from === null ? null : localDay(new Date(from));
     const values: T[] = [];
@@ -167,7 +205,9 @@ export class DayJsonlStore<T extends { id: string; at: string }> {
       if (fromDay !== null && name.slice(0, 10) < fromDay) continue;
       values.push(
         ...(await this.readFile(name)).filter(
-          (value) => from === null || time(value.at) >= from,
+          (value) =>
+            (from === null || time(value.at) >= from) &&
+            (!filter || filter(value)),
         ),
       );
     }
@@ -182,8 +222,10 @@ export class DayJsonlStore<T extends { id: string; at: string }> {
     limit.setDate(limit.getDate() - days);
     const oldest = localDay(limit);
     for (const name of await this.files()) {
-      if (name.slice(0, 10) < oldest)
+      if (name.slice(0, 10) < oldest) {
+        this.cache.delete(name);
         await unlink(path.join(this.directory, name)).catch(() => {});
+      }
     }
   }
 }

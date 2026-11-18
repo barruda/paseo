@@ -6521,11 +6521,17 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     assistant, without going through the project's action again. A dirty base checkout is waited
     for: the delivery stays in `merging` and retries every 5 minutes, 12 times, then lands in
     Needs you with the dirty paths. Prepare PR: commit and the agent's PR title/body (no PR is
-    created; GitHub stays out for now). Observe only records "would merge" instead. blocked /
+    created; GitHub stays out for now). Every commit the board makes (Merge, Prepare PR and the
+    task's Commit/Merge buttons) first reads `git status --porcelain`: a new untracked or added
+    path that is or sits in `node_modules`, `.venv`, `venv` or a similar dependency folder (a
+    symlink included) stops it. Nothing is committed and the delivery lands in Needs you with
+    reason `dependency-files` and the paths (`dependencyRefusal` in `server/assistant/delivery.ts`);
+    the buttons show the same text as their error. `commit` sends `addAll`, so a symlinked
+    `node_modules` left by an agent would otherwise reach the base branch. Observe only records "would merge" instead. blocked /
     needs_input / failed reports, conflicts and dirty checkouts that outlast their retries,
     failed checks and agent errors (after 3 "continue" nudges at 30 s / 60 s / 120 s) land in
     **Needs you**. Nothing is archived. Each step is persisted (`data.assistant.deliveries`, with
-    `conflictFixes` and `dirtyRetries`) and resumed after a daemon restart. The review action, conflict hand-back and dirty wait are marked `CUSTOM(assistant-autonomy)`.
+    `conflictFixes` and `dirtyRetries`) and resumed after a daemon restart. The review action, conflict hand-back, dirty wait and dependency check are marked `CUSTOM(assistant-autonomy)`.
   - **Attempts and history:** each start, feedback continuation and auto-fix is an attempt
     (`data.assistant.attempts`). Events go to `<PASEO_HOME>/plugin-data/power-workboard/history/`
     (one JSONL per day, 90 days).
@@ -7157,13 +7163,28 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     now has a generic day-file store (`DayJsonlStore`) that the history and the reports share.
   - **Automatic items:** the history gets `task-created` and `task-moved` (create and move
     mutations, while the assistant is on). `server/assistant/reports.ts` merges the history with the
-    entries: an event up to 2 min after an entry, else up to 15 min before one, folds into it; the
-    rest stand alone, a `report` event carrying the delivery's parsed report.
+    entries: an event folds into the nearest entry up to 2 min before it or up to 15 min after it
+    (2 min for `task-created`/`task-moved`, which the user also does by hand), an entry of the
+    event's own kind first (`AFFINITY`: a continue goes to a `feedback` entry); the rest stand
+    alone, a `report` event carrying the delivery's parsed report. Folded events keep the agent's
+    side too (`orchestrator`: the continue's prompt, the report's reply and `<report>`).
+    `DayJsonlStore` caches each parsed day file by mtime and size, and `since()` takes a filter, so
+    the ticket RPC reads only that ticket's records.
   - **Page:** surface `projects-reports` (`client/assistant/ReportsScreen.tsx`, `reports-timeline.tsx`,
     `reports-format.ts`, `reports-strings.ts`) over RPCs `workboard.assistant.reports.tasks` and
     `workboard.assistant.reports.task`. Sidebar of tickets (search, project chips), header with what
     was asked, one collapsed toggle per action, an inner toggle for the agent interaction with an
-    Open conversation link. Compact layouts show the list, then the ticket. Strings in en and
+    Open conversation link. Compact layouts show the list, then the ticket. Folded events show
+    their detail and their own interaction toggle. Other ways in: a global Command Center item
+    "Projects Reports" (opens the surface as a full page), "Open report" on a Dashboard Needs you
+    card and "Report" in a Conversations thread header (both through `showReport` in
+    `client/assistant/nav.ts`, which opens the Desk chip at that ticket).
+    A row of status chips (one per board column, name and color from the board settings, sent by
+    the tasks RPC as `columns`) filters the list with the project chips and the search. Backlog
+    (the `todo` kind) starts off; the viewer's choice is saved in `localStorage`
+    (`power-workboard:reports-hidden-columns:<host>`, `client/assistant/reports-preferences.ts`).
+    Tickets off the board always show. Wide layouts move the selection to the first visible
+    ticket when the filters hide the selected one, and clear it when no ticket is visible. Strings in en and
     pt-BR: `client/paseo-language.ts` gets `readPaseoLocale`/`usePaseoLocale`, which tell pt-BR
     apart (the rest of the plugin still maps it to en).
   - **Instructions:** `ASSISTANT_ROLE` (the profile seed), `CHAT_INSTRUCTIONS` and the tool
@@ -7178,7 +7199,10 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts --bail=1)`, both
   already in the update script. Needs a plugin reload and an app build and install (the chip). In
   Tasks mode, click "Projects Reports" in the Desk header: tickets the board touched are listed;
-  open one and expand a row. Send a quick message that makes the assistant act: its
+  open one and expand a row; in a row with automatic events, an agent's report shows its own
+  "Interaction with the agent" toggle. Backlog tickets are hidden until you turn on the Backlog
+  chip, and the chips keep their state after a reload. Command Center: "Projects Reports" opens
+  the page; on the Dashboard, "Open report" on a Needs you card opens that ticket. Send a quick message that makes the assistant act: its
   `board_report` summary shows in the status row and as a row on that ticket.
 
 ## hidden-board-agents: board agents stay out of the sidebar and never notify
@@ -7456,3 +7480,29 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
   `python3 -c "import time; time.sleep(60)"` in the background; its `Shell` row shimmers until the
   shell exits (or until you stop it from the chip), then turns static. A foreground run of the same
   command shimmers until its result arrives, with the X on hover.
+
+## report-card: a task agent's `<report>` block shows as a card in the agent chat
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: show task agents' <report> block as a card in the chat`
+- **Why:** Board task agents end every final reply with `<report>{json}</report>`. The chat showed
+  it as a paragraph of raw JSON with the tags stripped and loose path links, at the end of every
+  final reply and again after a TLDR.
+- **What:** The Power Workboard plugin registers a timeline transformer on `assistant_message`.
+  When a reply's last `<report>` block parses against `reportSchema` (and is not quoted in a code
+  fence or inline code), the reply becomes up to three plugin rows: the text before the block
+  (host `Markdown`, same engine and file links as the chat), a card, and any text after. The card
+  has a status badge with its own icon (done green, needs_input amber, blocked and failed red), the
+  summary, the question highlighted, checks with ✓/✗, changed files collapsed with the count in the
+  title (paths as inline code, so the chat links them), and risks with a warning icon. Labels come
+  from the Reports page strings (English, pt-BR). An invalid or missing block keeps the reply as it
+  was. Any agent qualifies when the block parses, not only board agents.
+- **Core files touched:** none. Plugin files: `shared/task-report.ts` (block finder, parser,
+  mapping to rows; `server/assistant/report.ts` now uses its finder),
+  `client/assistant/TaskReportCard.tsx`, `index.client.tsx` (registration),
+  `client/assistant/reports-strings.ts` (`filesChanged`), `tests/task-report.test.ts`.
+- **Re-apply:** Plugin-only. The pinned SDK types lack `Markdown` in `@getpaseo/plugin/client/ui`,
+  so the card reaches it with a cast and falls back to plain text. Grep `CUSTOM(report-card)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/task-report.test.ts`. Needs only `paseo plugin reload power-workboard`: then open a board
+  task agent's chat; its final reply ends in the card instead of JSON. Switch theme to check both.

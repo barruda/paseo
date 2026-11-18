@@ -44,6 +44,7 @@ import {
 // CUSTOM(assistant-reports)
 import {
   ReportStore,
+  buildReportColumns,
   buildReportTasks,
   buildReportTimeline,
   defaultReportsDirectory,
@@ -242,13 +243,17 @@ export default function contribute(server: PluginServerContext) {
       history.since(null),
       reports.since(null),
     ]);
-    return { tasks: buildReportTasks(source, events, entries) };
+    return {
+      tasks: buildReportTasks(source, events, entries),
+      columns: buildReportColumns(source),
+    };
   });
   server.handle(assistantReportsTaskRpc, async (input) => {
     const source = ready().assistantSource();
+    const mine = (value: { taskId: string }) => value.taskId === input.taskId;
     const [events, entries] = await Promise.all([
-      history.since(null),
-      reports.since(null),
+      history.since(null, mine),
+      reports.since(null, mine),
     ]);
     return {
       timeline: buildReportTimeline(source, input.taskId, events, entries),

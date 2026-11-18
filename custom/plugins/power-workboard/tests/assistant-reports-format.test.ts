@@ -1,28 +1,38 @@
 // CUSTOM(assistant-reports)
-import { expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  defaultHiddenColumns,
   descriptionExcerpt,
   filterReportTasks,
   formatClock,
   kindIcon,
   kindTone,
   reportProjects,
+  toggleHiddenColumn,
 } from "../client/assistant/reports-format";
+import {
+  loadReportHiddenColumns,
+  loadReportHiddenColumnsFrom,
+  saveReportHiddenColumns,
+  saveReportHiddenColumnsTo,
+} from "../client/assistant/reports-preferences";
 import { relativeTime } from "../client/assistant/conversations-format";
 import { reportsStrings } from "../client/assistant/reports-strings";
-import type { ReportTask } from "../shared/assistant-reports";
+import type { ReportColumn, ReportTask } from "../shared/assistant-reports";
 
 const task = (
   taskId: string,
   title: string,
   projectId: string | null,
   projectName: string,
+  columnId: string | null = null,
 ): ReportTask => ({
   taskId,
   title,
   projectId,
   projectName,
-  column: null,
+  column: columnId,
+  columnId,
   lastAt: "2026-01-01T00:00:00Z",
   lastSummary: "",
   items: 1,
@@ -49,6 +59,121 @@ it("filters by title and project name, case-insensitively", () => {
     "3",
   ]);
   expect(filterReportTasks(tasks, "login", "p1")).toEqual([]);
+});
+
+const columns: ReportColumn[] = [
+  { id: "backlog", name: "Backlog", kind: "todo", color: "cyan" },
+  { id: "ready", name: "Ready to start", kind: "ready", color: "violet" },
+  { id: "done", name: "Done", kind: "done", color: "green" },
+];
+const boardTasks = [
+  task("b1", "Plan search", "p1", "alpha", "backlog"),
+  task("r1", "Fix search", "p1", "alpha", "ready"),
+  task("d1", "Ship search", "p2", "Zeta", "done"),
+  task("d2", "Ship login", "p1", "alpha", "done"),
+  task("gone", "Old search", "p1", "alpha", null),
+];
+const ids = (list: ReportTask[]) => list.map((t) => t.taskId);
+
+it("hides the Backlog columns by default and shows every other status", () => {
+  const hidden = defaultHiddenColumns(columns);
+  expect(hidden).toEqual(["backlog"]);
+  expect(ids(filterReportTasks(boardTasks, "", null, hidden))).toEqual([
+    "r1",
+    "d1",
+    "d2",
+    "gone",
+  ]);
+  expect(defaultHiddenColumns([])).toEqual([]);
+});
+
+it("toggles statuses: Backlog on shows it, Done off hides it", () => {
+  const withBacklog = toggleHiddenColumn(
+    defaultHiddenColumns(columns),
+    "backlog",
+  );
+  expect(withBacklog).toEqual([]);
+  expect(ids(filterReportTasks(boardTasks, "", null, withBacklog))).toContain(
+    "b1",
+  );
+  const noDone = toggleHiddenColumn(withBacklog, "done");
+  expect(noDone).toEqual(["done"]);
+  expect(ids(filterReportTasks(boardTasks, "", null, noDone))).toEqual([
+    "b1",
+    "r1",
+    "gone",
+  ]);
+});
+
+it("combines the status filter with the project and the search", () => {
+  const hidden = ["backlog"];
+  expect(ids(filterReportTasks(boardTasks, "search", "p1", hidden))).toEqual([
+    "r1",
+    "gone",
+  ]);
+  expect(ids(filterReportTasks(boardTasks, "ship", null, hidden))).toEqual([
+    "d1",
+    "d2",
+  ]);
+  expect(ids(filterReportTasks(boardTasks, "plan", null, hidden))).toEqual([]);
+  expect(ids(filterReportTasks(boardTasks, "ship", "p2", ["done"]))).toEqual(
+    [],
+  );
+});
+
+describe("status filter preference", () => {
+  const storage = () => {
+    const values = new Map<string, string>();
+    return {
+      getItem: (key: string) => values.get(key) ?? null,
+      setItem: (key: string, value: string) => void values.set(key, value),
+    };
+  };
+
+  it("is null until saved, then survives a reload per host", () => {
+    const store = storage();
+    expect(loadReportHiddenColumnsFrom(store, "h1")).toBeNull();
+    expect(saveReportHiddenColumnsTo(store, "h1", ["done", "done"])).toBe(true);
+    expect(loadReportHiddenColumnsFrom(store, "h1")).toEqual(["done"]);
+    expect(saveReportHiddenColumnsTo(store, "h1", [])).toBe(true);
+    expect(loadReportHiddenColumnsFrom(store, "h1")).toEqual([]);
+    expect(loadReportHiddenColumnsFrom(store, "h2")).toBeNull();
+  });
+
+  it("falls back to the default on bad data or denied storage", () => {
+    const store = storage();
+    store.setItem("power-workboard:reports-hidden-columns:h1", "{bad");
+    expect(loadReportHiddenColumnsFrom(store, "h1")).toBeNull();
+    store.setItem("power-workboard:reports-hidden-columns:h1", '{"a":1}');
+    expect(loadReportHiddenColumnsFrom(store, "h1")).toBeNull();
+    const denied = {
+      getItem(): string | null {
+        throw new Error("denied");
+      },
+      setItem() {
+        throw new Error("denied");
+      },
+    };
+    expect(loadReportHiddenColumnsFrom(denied, "h1")).toBeNull();
+    expect(saveReportHiddenColumnsTo(denied, "h1", ["x"])).toBe(false);
+    const previous = Object.getOwnPropertyDescriptor(
+      globalThis,
+      "localStorage",
+    );
+    Object.defineProperty(globalThis, "localStorage", {
+      configurable: true,
+      get() {
+        throw new Error("Storage access denied");
+      },
+    });
+    try {
+      expect(loadReportHiddenColumns("h1")).toBeNull();
+      expect(saveReportHiddenColumns("h1", ["x"])).toBe(false);
+    } finally {
+      if (previous) Object.defineProperty(globalThis, "localStorage", previous);
+      else delete (globalThis as { localStorage?: unknown }).localStorage;
+    }
+  });
 });
 
 it("lists distinct projects sorted by name, using the name when there is no id", () => {

@@ -23,6 +23,9 @@ this repo) with these differences:
 - **Done.** A Done card in a git project has **Commit**, **PR description** (written by the
   task's agent, to copy; no PR is created) and **Merge into project**. Once merged, only PR
   description is left.
+- **Report card.** In any agent chat, a reply ending in a valid `<report>` block shows the block
+  as a card (status, summary, question, checks, collapsed changed files, risks) instead of JSON
+  (`shared/task-report.ts`). An invalid block leaves the reply as it was.
 
 - **Night tasks and start times.** A draft's **When** (task editor) puts it in Scheduled: a
   night task starts inside the night window (Orchestrators tab, Night tasks), taken by any
@@ -90,10 +93,12 @@ Messages live in memory (the last 30). A daemon restart empties the status.
 
 ## Reports and `board_report`
 
-The **Projects Reports** chip in the Desk header shows, per ticket, what the Projects Assistant
+The **Projects Reports** chip in the Desk header (also "Projects Reports" in the Command Center,
+"Open report" on a Dashboard card and "Report" in a Conversations thread) shows, per ticket, what the Projects Assistant
 and the board did. The sidebar lists every ticket with actions, newest first, with a search and a
 project filter; a ticket shows what was asked and a timeline with one collapsed row per action.
-Open a row for its detail, decisions and the automatic events of that iteration; the inner
+Open a row for its detail, decisions and the automatic events of that iteration (each with its
+detail and, for an agent's report or a continue, its own interaction toggle); the inner
 "Interaction with the agent" toggle shows what the assistant asked the task's agent, its answer,
 its `<report>` and a link to the conversation.
 
@@ -122,7 +127,11 @@ summary becomes that quick message's ack (`quickStatus` sets its state; it keeps
 `ok` while pending). Entries go to `plugin-data/power-workboard/reports/YYYY-MM-DD.jsonl`, kept as
 long as the history. The board's own history (created, moved, started, report, merged...) shows
 on the page even when the assistant records nothing: an event up to 2 minutes after an entry, or
-up to 15 minutes before it, folds into that entry; the rest are automatic rows.
+up to 15 minutes before it, folds into the nearest such entry, an entry of its own kind first (a
+continue into a `feedback` entry). Creates and moves fold into an entry after them only within 2
+minutes, since the history does not say whether the user or the assistant made them. The rest are
+automatic rows. The server caches each parsed day file by mtime and size, so the page's polling
+re-reads only the day being written.
 
 See [CHANGES.md](../../CHANGES.md#power-workboard-a-board-of-registered-tasks-with-an-agent-orchestrator)
 for the full description.

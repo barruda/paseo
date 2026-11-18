@@ -8,6 +8,7 @@ import {
   reportSchema,
   type HistoryEventKind,
 } from "./assistant";
+import { GROUP_COLORS, stageKindSchema } from "./model";
 import { ACK_MESSAGE_MAX, ackStatusSchema } from "./quick";
 
 export const REPORT_ENTRY_KINDS = [
@@ -100,6 +101,8 @@ export const reportTaskSchema = z.object({
   projectName: z.string(),
   /** Board column label; null when the task is no longer on the board. */
   column: z.string().nullable(),
+  /** Board column id (its group); null when the task is no longer on the board. */
+  columnId: z.string().nullable(),
   /** The newest item's time and summary. */
   lastAt: z.string(),
   lastSummary: z.string(),
@@ -109,6 +112,15 @@ export const reportTaskSchema = z.object({
 });
 export type ReportTask = z.infer<typeof reportTaskSchema>;
 
+/** A board column, in board order, for the Reports status filter. */
+export const reportColumnSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  kind: stageKindSchema,
+  color: z.enum(GROUP_COLORS),
+});
+export type ReportColumn = z.infer<typeof reportColumnSchema>;
+
 /** A history event folded into an assistant item, or standing alone as an automatic item. */
 export const reportEventSchema = z.object({
   id: z.string(),
@@ -117,6 +129,8 @@ export const reportEventSchema = z.object({
   text: z.string(),
   detail: z.string().nullable(),
   agentId: z.string().nullable(),
+  /** The task's agent for this event, with its report when the event is that report. */
+  orchestrator: reportOrchestratorSchema.nullable().default(null),
 });
 export type ReportEvent = z.infer<typeof reportEventSchema>;
 

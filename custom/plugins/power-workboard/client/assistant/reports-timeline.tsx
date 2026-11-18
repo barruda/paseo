@@ -220,7 +220,8 @@ function ItemRow(props: {
   item: ReportTimelineItem;
   taskId: string;
   open: boolean;
-  interactionOpen: boolean;
+  /** Whether the item's or a folded event's Interaction is open, by id. */
+  isInteractionOpen(id: string): boolean;
   onToggle(id: string): void;
   onToggleInteraction(id: string): void;
   now: number;
@@ -302,14 +303,37 @@ function ItemRow(props: {
                 {t.automaticEvents}
               </Text>
               {item.events.map((event) => (
-                <Text
-                  key={event.id}
-                  selectable
-                  style={[styles.meta, { color: c.foregroundMuted }]}
-                >
-                  {formatClock(event.at, props.now)} · {t.eventKind[event.kind]}{" "}
-                  · {event.text}
-                </Text>
+                <View key={event.id} style={styles.block}>
+                  <Text
+                    selectable
+                    style={[styles.meta, { color: c.foregroundMuted }]}
+                  >
+                    {formatClock(event.at, props.now)} ·{" "}
+                    {t.eventKind[event.kind]} · {event.text}
+                  </Text>
+                  {event.detail || event.orchestrator ? (
+                    <View style={[styles.inner, { borderColor: c.border }]}>
+                      {event.detail ? (
+                        <RichText
+                          text={event.detail}
+                          color={c.foreground}
+                          theme={theme}
+                        />
+                      ) : null}
+                      {event.orchestrator ? (
+                        <Interaction
+                          orchestrator={event.orchestrator}
+                          taskId={props.taskId}
+                          open={props.isInteractionOpen(event.id)}
+                          onToggle={() => props.onToggleInteraction(event.id)}
+                          navigation={props.navigation}
+                          t={t}
+                          theme={theme}
+                        />
+                      ) : null}
+                    </View>
+                  ) : null}
+                </View>
               ))}
             </View>
           ) : null}
@@ -317,7 +341,7 @@ function ItemRow(props: {
             <Interaction
               orchestrator={item.orchestrator}
               taskId={props.taskId}
-              open={props.interactionOpen}
+              open={props.isInteractionOpen(item.id)}
               onToggle={() => props.onToggleInteraction(item.id)}
               navigation={props.navigation}
               t={t}
@@ -452,7 +476,7 @@ export function ReportContent(props: {
                 item={item}
                 taskId={props.taskId}
                 open={open.has(item.id)}
-                interactionOpen={inner.has(item.id)}
+                isInteractionOpen={(id) => inner.has(id)}
                 onToggle={(id) => setOpen((s) => flip(s, id))}
                 onToggleInteraction={(id) => setInner((s) => flip(s, id))}
                 now={props.now}
