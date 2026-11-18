@@ -6694,3 +6694,23 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `(cd custom/plugins/paseo-background && npx tsc --noEmit && npm test)`. In the app:
   Settings > Appearance > Backgrounds > Choose local image…, pick a photo, see the preview, Save,
   reload the app and the background is still there.
+
+## claude-block-dedupe: a message's second thinking block shows once
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: show each Claude thinking block once in the timeline`
+- **Why:** The Projects Assistant chat showed the same thinking text twice. The Claude SDK sends
+  one `assistant` message per content block. The timeline assembler had already added that
+  block's text from the stream deltas, appended to the first block's text. The block's own
+  message is not a prefix of that total, so the assembler reset and emitted it again.
+- **What:** `mergeAbsoluteText` in the assembler: a snapshot already in the accumulated text adds
+  nothing, a snapshot that extends it replaces it, and any other snapshot is appended. The same
+  applies to assistant text.
+- **Core files touched:** `packages/server/src/server/agent/providers/claude/agent.ts`
+  (`CUSTOM(claude-block-dedupe)`, `TimelineAssembler.applyAbsoluteFragments`), test in
+  `agent.redesign.test.ts`.
+- **Re-apply:** if upstream still resets `emittedReasoningLength`/`emittedAssistantLength` on a
+  non-prefix snapshot in `applyAbsoluteFragments`, replace both branches with `mergeAbsoluteText`.
+- **Verify:** `(cd packages/server && npx vitest run src/server/agent/providers/claude/agent.redesign.test.ts -t "thinking block once" --bail=1)`
+  (in the update script). In the app: a Claude agent with thinking on whose reply has two thinking
+  blocks shows each block once while it streams.

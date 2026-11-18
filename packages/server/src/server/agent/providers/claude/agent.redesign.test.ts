@@ -2060,3 +2060,46 @@ test("does not use stream_event uuid as assistant message identity when message_
 
   await session.close();
 });
+
+test("emits each thinking block once when the SDK sends one assistant message per block", async () => {
+  const session = await createSession();
+  const { timelineAssembler } = asInternals<{
+    timelineAssembler: {
+      consume: (input: {
+        message: Record<string, unknown>;
+        runId: string | null;
+      }) => AgentTimelineItem[];
+    };
+  }>(session);
+  const feed = (message: Record<string, unknown>) =>
+    timelineAssembler.consume({ message, runId: "run-1" });
+  const delta = (thinking: string) => ({
+    type: "stream_event",
+    event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking } },
+  });
+  const blockMessage = (thinking: string) => ({
+    type: "assistant",
+    message: { id: "msg-1", role: "assistant", content: [{ type: "thinking", thinking }] },
+  });
+
+  try {
+    const items = [
+      feed({
+        type: "stream_event",
+        event: { type: "message_start", message: { id: "msg-1", role: "assistant" } },
+      }),
+      feed(delta("Searching the code.")),
+      feed(blockMessage("Searching the code.")),
+      feed(delta("The merge is on master.")),
+      feed(blockMessage("The merge is on master.")),
+      feed({ type: "stream_event", event: { type: "message_stop" } }),
+    ].flat();
+
+    expect(items).toEqual([
+      { type: "reasoning", text: "Searching the code." },
+      { type: "reasoning", text: "The merge is on master." },
+    ]);
+  } finally {
+    await session.close();
+  }
+});
