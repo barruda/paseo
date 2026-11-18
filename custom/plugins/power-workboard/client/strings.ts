@@ -22,6 +22,24 @@ const zh = {
   orchestratorAutomatic: "自动（按项目）",
   openAgent: "打开 Agent",
   openAgentHint: "打开这个任务的 Agent 会话",
+  pools: {
+    title: "资源池",
+    intro:
+      "同一资源池中的编排器共享其上限：只有编排器和资源池都有空闲名额时，任务才会开始。内存低于下限时，该资源池的任务都不会开始。",
+    add: "新建资源池",
+    name: "名称",
+    maxConcurrent: "同时运行",
+    minFreeRam: "最低空闲内存（%）",
+    minFreeRamPlaceholder: "无",
+    remove: "移除",
+    save: "保存资源池",
+    empty: "没有资源池。",
+    none: "无资源池",
+    label: "资源池",
+    poolHint: "与同一资源池中的其他编排器共享其上限。",
+    holdPool: "等待中：资源池“{pool}”已满（{running}/{max}）",
+    holdRam: "等待内存：空闲 {free}%，资源池“{pool}”需要 {min}%",
+  },
   night: {
     badge: "夜间",
     title: "夜间任务",
@@ -46,7 +64,7 @@ const zh = {
     title: "编排器",
     boardTab: "看板",
     intro:
-      "每个编排器从 Ready to start 取任务：指定给它的任务，或它所属项目中未指定的任务。",
+      "每个编排器从 Ready to start 取任务：指定给它的任务，以及它所属项目中未指定的任务。项目自己的编排器优先于“所有项目”的编排器。",
     create: "新建编排器",
     newName: "编排器",
     empty: "还没有编排器。新建一个后，Ready to start 的任务才会自动开始。",
@@ -63,7 +81,7 @@ const zh = {
       "删除“{name}”？指定给它的任务会改为自动。运行中的 Agent 不受影响。",
     name: "名称",
     project: "项目",
-    projectHint: "所有项目：接收任何项目中未指定的任务。",
+    projectHint: "所有项目：接收没有自己编排器的项目中未指定的任务。",
     schedule: "计划",
     scheduleKinds: { manual: "手动", window: "时间窗口", daily: "每天定时" },
     scheduleHints: {
@@ -478,6 +496,7 @@ const zh = {
     "No workspace was created": "没有创建 workspace，请重试。",
     "Only a draft can be refined": "只有草稿可以完善。",
     "Orchestrator no longer exists": "编排器已不存在，请刷新。",
+    "Pool no longer exists": "资源池已不存在，请刷新。", // CUSTOM(resource-pools)
     "Add a Done group first": "请先添加 Done 分组。",
     "Only a Done task with a workspace can be finished":
       "只有带 workspace 的 Done 任务可以收尾。",
@@ -644,6 +663,24 @@ const en: typeof zh = {
   orchestratorAutomatic: "Automatic (by project)",
   openAgent: "Open agent",
   openAgentHint: "Open this task's agent chat",
+  pools: {
+    title: "Resource pools",
+    intro:
+      "Orchestrators in a pool share its limit: a task starts only with a free slot in its orchestrator and in its pool. Below the RAM floor nothing of the pool starts.",
+    add: "New pool",
+    name: "Name",
+    maxConcurrent: "At a time",
+    minFreeRam: "Min. free RAM (%)",
+    minFreeRamPlaceholder: "none",
+    remove: "Remove",
+    save: "Save pools",
+    empty: "No pools.",
+    none: "No pool",
+    label: "Pool",
+    poolHint: "Shares the pool's limit with the other orchestrators in it.",
+    holdPool: "Waiting: pool “{pool}” is full ({running}/{max})",
+    holdRam: "Waiting for RAM: {free}% free, pool “{pool}” needs {min}%",
+  },
   night: {
     badge: "Night",
     title: "Night tasks",
@@ -668,7 +705,7 @@ const en: typeof zh = {
     title: "Orchestrators",
     boardTab: "Board",
     intro:
-      "Each orchestrator takes tasks from Ready to start: the ones chosen for it, and unassigned ones of its project.",
+      "Each orchestrator takes tasks from Ready to start: the ones chosen for it, and unassigned ones of its project. A project's own orchestrator comes before an All projects one.",
     create: "New orchestrator",
     newName: "Orchestrator",
     empty:
@@ -686,7 +723,8 @@ const en: typeof zh = {
       "Delete “{name}”? Tasks chosen for it go back to automatic. Running agents are not touched.",
     name: "Name",
     project: "Project",
-    projectHint: "All projects: takes unassigned tasks of any project.",
+    projectHint:
+      "All projects: takes unassigned tasks of projects that have no orchestrator of their own.",
     schedule: "Schedule",
     scheduleKinds: {
       manual: "Manual",
@@ -1136,6 +1174,7 @@ const en: typeof zh = {
       "The task changed. Undo was refused; refresh and verify its current group.",
     "No workspace was created": "No workspace was created. Retry it.",
     "Only a draft can be refined": "Only a draft can be refined.",
+    "Pool no longer exists": "The pool no longer exists. Refresh.", // CUSTOM(resource-pools)
     "Orchestrator no longer exists":
       "The orchestrator no longer exists. Refresh.",
     "Add a Done group first": "Add a Done group first.",

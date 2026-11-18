@@ -32,7 +32,9 @@ import {
   type FinishStep,
   type Orchestration,
   type OrchestratorConfig,
+  type OrchestratorHold, // CUSTOM(resource-pools)
   type OrchestratorRuntime,
+  type Pool, // CUSTOM(resource-pools)
   ORCHESTRATOR_LOG_LIMIT,
   type Refinement,
   type ConversationAgent,
@@ -83,6 +85,13 @@ import {
   defaultChatDirectory,
 } from "./assistant/chat";
 import { mkdir } from "node:fs/promises";
+// CUSTOM(resource-pools)
+import {
+  freeRamPercent,
+  readMemory,
+  type MemoryReader,
+  type MemoryReading,
+} from "./resources";
 // CUSTOM(agent-profiles)
 import { ASSISTANT_PROFILE, type SkillSelection } from "../shared/profiles";
 import {
@@ -138,6 +147,8 @@ export interface AssistantOptions {
   night?: NightSystem;
   /** CUSTOM(assistant-autonomy): wait before retrying a merge blocked by a dirty base checkout. */
   dirtyRetryMs?: number;
+  /** CUSTOM(resource-pools): reads the free RAM for the pools' floor; tests pass a fake. */
+  memory?: MemoryReader;
 }
 /**
  * CUSTOM(night-tasks): a power-off arms only this soon after the night was last active (its
@@ -972,6 +983,7 @@ export class Workboard {
     if (!unchanged(previous))
       throw new Error("Settings changed; refresh before saving");
     const next = settingsSchema.parse(settings);
+    next.pools = previous.settings.pools; // CUSTOM(resource-pools): saved by "pools-save" only
     if (
       next.defaultStartGroup &&
       isTerminalGroup(next.defaultStartGroup, next.groups)
@@ -1228,6 +1240,12 @@ export class Workboard {
             ...input.orchestrator,
             id,
           });
+          // CUSTOM(resource-pools)
+          if (
+            next.poolId !== null &&
+            !this.store.current.settings.pools.some((p) => p.id === next.poolId)
+          )
+            throw new Error("Pool no longer exists");
           const created = !this.store.current.orchestrators.some(
             (o) => o.id === id,
           );
@@ -1251,6 +1269,18 @@ export class Workboard {
             for (const task of data.tasks)
               if (task.orchestratorId === input.id) task.orchestratorId = null;
           });
+        } else if (input.action === "pools-save") {
+          // CUSTOM(resource-pools)
+          await this.store.update((data) => {
+            data.settings.pools = input.pools;
+            for (const config of data.orchestrators)
+              if (
+                config.poolId !== null &&
+                !input.pools.some((pool) => pool.id === config.poolId)
+              )
+                config.poolId = null;
+          });
+          await this.orchestrate();
         } else if (input.action === "orchestrator-run") {
           const config = this.orchestratorConfig(input.id);
           if (!config.enabled) throw new Error("Orchestrator is disabled");
@@ -3305,6 +3335,13 @@ export class Workboard {
       );
     const taken = new Set<string>();
     let started = false;
+    // CUSTOM(resource-pools): slots already used in each pool, kept up to date during this pass.
+    const pools = this.store.current.settings.pools;
+    if (pools.some((pool) => pool.minFreeRamPercent !== null))
+      this.memoryReading = await (this.assistantOptions.memory ?? readMemory)();
+    const poolUsed = new Map(
+      pools.map((pool) => [pool.id, this.runningInPool(pool.id)]),
+    );
     for (const config of [...this.store.current.orchestrators]) {
       if (this.stopped) break;
       if (!config.enabled) {
@@ -3343,14 +3380,20 @@ export class Workboard {
       if (quota > 0 && !mine.some(({ night }) => !night))
         await this.endRun(config.id, "nothing left in Ready to start");
       let slots = config.maxConcurrent - this.runningFor(config.id);
+      const pool = this.poolOf(config); // CUSTOM(resource-pools)
+      let hold: OrchestratorHold | null = null;
       for (const { card, night } of mine) {
         if (slots <= 0 || this.stopped) break;
         const runtime = this.runtime(config.id);
         if (!night && !open && runtime.quota <= 0) continue;
+        // CUSTOM(resource-pools): the pool must have a free slot and enough free RAM too.
+        hold = pool && this.poolHold(pool, poolUsed.get(pool.id) ?? 0);
+        if (hold) break;
         taken.add(card.id);
         const outcome = await this.startCard(config, card, stage, night);
         if (outcome === "skipped") continue;
         slots--;
+        if (pool) poolUsed.set(pool.id, (poolUsed.get(pool.id) ?? 0) + 1);
         started = true;
         if (night) {
           if (outcome === "started")
@@ -3365,6 +3408,7 @@ export class Workboard {
           if (runtime.quota === 1) await this.endRun(config.id, "batch done");
         }
       }
+      await this.logHold(config.id, hold); // CUSTOM(resource-pools)
     }
     if (started) await this.reconcile();
   }
@@ -3598,7 +3642,8 @@ export class Workboard {
   }
   /**
    * A task chosen for an orchestrator belongs to it; one sent back from review stays with the
-   * orchestrator that ran it; any other task goes to the first orchestrator of its project.
+   * orchestrator that ran it; any other task goes to the first orchestrator of its project, and
+   * only a project without one leaves its tasks to the general ("All projects") orchestrators.
    */
   private owns(
     config: OrchestratorConfig,
@@ -3610,7 +3655,12 @@ export class Workboard {
     if (exists(task.orchestratorId)) return task.orchestratorId === config.id;
     const ran = data.orchestrations[task.id]?.orchestratorId;
     if (exists(ran)) return ran === config.id;
-    return config.projectId === null || config.projectId === task.projectId;
+    if (config.projectId !== null) return config.projectId === task.projectId;
+    // CUSTOM(resource-pools): a general orchestrator only takes tasks of projects without one.
+    return (
+      task.projectId === null ||
+      !data.orchestrators.some((o) => o.projectId === task.projectId)
+    );
   }
   private runningFor(id: string, data: Data = this.store.current): number {
     return Object.values(data.orchestrations).filter(
@@ -3619,6 +3669,65 @@ export class Workboard {
         (record.status === "starting" || record.status === "running"),
     ).length;
   }
+  // CUSTOM(resource-pools) ------------------------------------------------------------------
+  /** The last free-RAM reading; refreshed on each pass while a pool has a RAM floor. */
+  private memoryReading: MemoryReading | null = null;
+  /** The hold last written to each orchestrator's log, so a long wait logs once. */
+  private loggedHolds = new Map<string, string>();
+  private poolOf(
+    config: OrchestratorConfig,
+    data: Data = this.store.current,
+  ): Pool | null {
+    return (
+      data.settings.pools.find((pool) => pool.id === config.poolId) ?? null
+    );
+  }
+  private runningInPool(poolId: string, data: Data = this.store.current) {
+    return data.orchestrators
+      .filter((o) => o.poolId === poolId)
+      .reduce((sum, o) => sum + this.runningFor(o.id, data), 0);
+  }
+  /** Why the pool lets nothing start now, or null when it has room. */
+  private poolHold(pool: Pool, running: number): OrchestratorHold | null {
+    const free = this.memoryReading ? freeRamPercent(this.memoryReading) : null;
+    const base = {
+      poolId: pool.id,
+      poolName: pool.name,
+      running,
+      maxConcurrent: pool.maxConcurrent,
+      freeRamPercent: free,
+      minFreeRamPercent: pool.minFreeRamPercent,
+    };
+    if (running >= pool.maxConcurrent) return { kind: "pool", ...base };
+    // An unreadable RAM (no /proc/meminfo) never holds the pool.
+    if (
+      pool.minFreeRamPercent !== null &&
+      free !== null &&
+      free < pool.minFreeRamPercent
+    )
+      return { kind: "ram", ...base };
+    return null;
+  }
+  private async logHold(
+    id: string,
+    hold: OrchestratorHold | null,
+  ): Promise<void> {
+    const key = hold && `${hold.kind}:${hold.poolId}`;
+    if (!key) {
+      this.loggedHolds.delete(id);
+      return;
+    }
+    if (this.loggedHolds.get(id) === key) return;
+    this.loggedHolds.set(id, key);
+    await this.log(
+      id,
+      "info",
+      hold!.kind === "ram"
+        ? `Waiting for RAM: ${hold!.freeRamPercent}% free, pool "${hold!.poolName}" needs ${hold!.minFreeRamPercent}%`
+        : `Waiting: pool "${hold!.poolName}" is full (${hold!.running}/${hold!.maxConcurrent})`,
+    );
+  }
+  // -----------------------------------------------------------------------------------------
   private orchestratorConfig(id: string): OrchestratorConfig {
     const config = this.store.current.orchestrators.find((o) => o.id === id);
     if (!config) throw new Error("Orchestrator no longer exists");
@@ -3682,7 +3791,17 @@ export class Workboard {
         this.owns(config, task, data),
     ).length;
     const next = config.enabled ? nextRunAt(config.schedule, this.now()) : null;
+    // CUSTOM(resource-pools): waiting tasks the orchestrator has room for, but its pool hasn't.
+    const pool = this.poolOf(config, data);
+    const hold =
+      pool &&
+      config.enabled &&
+      waiting > 0 &&
+      this.runningFor(config.id, data) < config.maxConcurrent
+        ? this.poolHold(pool, this.runningInPool(pool.id, data))
+        : null;
     return {
+      hold,
       active:
         config.enabled &&
         (this.runtime(config.id, data).quota > 0 ||

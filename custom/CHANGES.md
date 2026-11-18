@@ -2958,7 +2958,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     stops its schedule; Run now still works. There is no global Play any more.
   - **Which orchestrator takes a task:** the one chosen in the task editor (a chip row under the
     projects); a task sent back from review stays with the one that ran it; otherwise the first
-    orchestrator in the list whose project matches (or that covers all projects). Tasks are taken
+    orchestrator in the list whose project matches, and only for a project with no orchestrator
+    of its own, the first that covers all projects (see resource-pools). Tasks are taken
     from the top of Ready to start. Moving a task there, or editing it, triggers a pass at once;
     otherwise passes run with the minute refresh. A task without a project takes its
     orchestrator's. A task with no project at all, or whose start fails, shows the error on its
@@ -7227,7 +7228,15 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     them out of `autoOpenAgentIds` but in `activeAgentIds`, so a tab the user opens stays); the
     Tasks sidebar hides them unless **Show board agents** is on in its Projects menu
     (persisted, off by default); `notifyAgentAttention` never sends an OS notification for them.
-    Command Center search and the board card link still open them.
+    Command Center search and the board card link still open them. The Archived filter of the
+    Tasks sidebar follows the same toggle (`mergeArchivedAgents` in `use-archived-tasks.ts`
+    checks the labels, and a history entry's parent chain against the other history entries).
+  - Dock badge and favicon ignore board agents, whatever the toggle says. The daemon's workspace
+    status counts every agent, so `workspaceStatusesWithoutBoardAgents` (`board-agents/badges.ts`)
+    drops a workspace whose live agents are all board agents and derives a shared workspace's
+    status again from its other agents, with the daemon's rule (roots give their bucket,
+    same-workspace children only `running`). The favicon filters the aggregated agents by
+    `selectBoardAgentKeys`.
   - Daemon: `broadcastAgentAttention` sends no push and `shouldNotify: false` for board agents.
     This part needs a daemon restart; the app gate works without it.
 - **Core files touched:** each marked `CUSTOM(hidden-board-agents)`.
@@ -7235,6 +7244,14 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     `isBoardAgent`) and its test.
   - app (new): `src/board-agents/visibility.ts` (`isBoardAgentInSession`), `store.ts`
     (persisted `showBoardAgents`, key `paseo-board-agents`), with tests.
+  - app (new): `src/board-agents/badges.ts` (`workspaceStatusesWithoutBoardAgents`,
+    `selectBoardAgentKeys`, `withoutBoardAgents`) with a test;
+    `task-navigation/use-archived-tasks.test.ts`.
+  - app: `stores/session-store-hooks/selectors.ts` (`selectWorkspaceStatusesForBadges` calls
+    `workspaceStatusesWithoutBoardAgents`; `SessionsSnapshot` gets optional `agents` and
+    `agentDetails`); `hooks/use-favicon-status.ts` (filters the agents with
+    `withoutBoardAgents`); `task-navigation/use-archived-tasks.ts` (`board` on each entry,
+    `mergeArchivedAgents`, an `includeBoardAgents` argument the sidebar passes).
   - app: `workspace-tabs/agent-visibility.ts` (`isAutoOpenAgent`) and a case in its test;
     `task-navigation/sidebar.tsx` (`collectAgents` with the two selectors `selectAgents` /
     `selectAgentsWithBoard`, and `BoardAgentsChoice` at the end of the Projects menu, since the
@@ -7253,15 +7270,20 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   (keep the selectors module-level: an inline one loops renders) and add the "Show board agents"
   item to a sidebar menu; return early from `notifyAgentAttention` for a board agent; in
   `broadcastAgentAttention` skip the push and send `shouldNotify: false` when
-  `isBoardAgent(agent.labels, id => agentManager.getAgent(id)?.labels)`.
+  `isBoardAgent(agent.labels, id => agentManager.getAgent(id)?.labels)`. Pass
+  `showBoardAgents` to `useArchivedTasks` and skip board entries there; route
+  `selectWorkspaceStatusesForBadges` through `workspaceStatusesWithoutBoardAgents` and filter the
+  favicon's agents with `withoutBoardAgents(agents, selectBoardAgentKeys(state))`.
 - **Verify:** `(cd packages/protocol && npx vitest run src/board-agents.test.ts)`,
-  `(cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts)`,
+  `(cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts src/task-navigation/use-archived-tasks.test.ts)`,
   `(cd packages/server && npx vitest run src/server/websocket-server.notifications.test.ts)`
   (all in the update script), and the plugin suite. Needs a desktop build and install plus
   `plugin reload power-workboard`; the app part needs no daemon restart. The push gate
   runs from the next daemon restart. In the app: start a board task; no tab opens, it is not in
   the Tasks sidebar and finishing sends no GNOME notification. Projects menu > Show board agents
-  lists it. The card's agent link and Command Center still open it. The Projects Assistant chat
+  lists it, and with it on the Archived filter lists archived board agents too (off: none). A
+  board agent waiting for input lights neither the favicon nor the dock badge. The card's agent
+  link and Command Center still open it. The Projects Assistant chat
   still shows and notifies.
 
 ## status-bar: an IDE-style status bar at the bottom of the window, starting with the Projects Assistant
@@ -7481,6 +7503,45 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
   shell exits (or until you stop it from the chip), then turns static. A foreground run of the same
   command shimmers until its result arrives, with the X on hover.
 
+## resource-pools: Power Workboard project orchestrators first, shared pools and a RAM floor
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: Power Workboard project orchestrators come first, with shared resource pools and a RAM floor`
+- **Why:** One orchestrator per project stays the model, but some projects compete for the same
+  machine resource (two Unity checkouts can't both open an Editor; each one eats 10–17 GB of
+  RAM). Limits shared between orchestrators cover that without an orchestrator per group. The
+  Default ("All projects") orchestrator can then stay on for projects that have none of their own.
+- **What:**
+  - **Ownership:** a task with no orchestrator chosen goes to its project's orchestrator (the
+    first in the list), even when it is disabled or outside its schedule; only a project with
+    no orchestrator of its own leaves its tasks to the All projects ones (`owns()` in
+    `server/workboard.ts`).
+  - **Pools:** `settings.pools[{id, name, maxConcurrent, minFreeRamPercent}]` and `poolId` on the
+    orchestrator, both optional with defaults, so stored v9 data loads as is (no schema bump).
+    A task starts only with a free slot in its orchestrator and in its pool; the pass counts the
+    pool's slots across all its orchestrators, night tasks included. Pools are saved with their
+    own `pools-save` mutation; the board settings save keeps them, removing a pool takes its
+    orchestrators out of it, and saving an orchestrator with an unknown pool fails.
+  - **RAM floor:** `server/resources.ts` reads `MemAvailable`/`MemTotal` from `/proc/meminfo` once
+    per pass when some pool has a floor. Under the floor nothing of the pool starts. An unreadable
+    reading (no `/proc/meminfo`) never holds a pool.
+  - **Why it waits:** `orchestratorStatus[id].hold` (`pool` full or `ram`, with the numbers) when
+    the orchestrator has waiting tasks and room of its own; the list row and the orchestrator's
+    Overview show it, and the log gets one line when a hold starts ("Waiting: pool "Unity" is full
+    (1/1)", "Waiting for RAM: 10% free, pool "Unity" needs 20%").
+  - **UI:** Orchestrators tab, **Resource pools** section (name, at a time, min. free RAM %, Save
+    pools); the orchestrator's General tab gets a **Pool** chip row once a pool exists.
+- **Core files touched:** none (plugin only).
+- **Re-apply:** nothing to re-apply; the plugin is self-contained.
+- **Tests:** `tests/resource-pools.test.ts` (project orchestrator before Default, disabled project
+  orchestrator, a pool of 1 across two orchestrators, the RAM floor with a fake reader, an
+  unreadable RAM, removing a pool, settings save keeps pools, v9 data without pools,
+  `/proc/meminfo` parsing, hold text).
+- **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
+  After `plugin reload power-workboard`: Orchestrators tab > Resource pools > New pool, set At a
+  time 1, Save pools; put two orchestrators in it (General > Pool); with a task Ready to start in
+  each project only one starts and the other's row says the pool is full.
+
 ## report-card: a task agent's `<report>` block shows as a card in the agent chat
 
 - **Added:** 2026-11-18
@@ -7506,3 +7567,27 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
 tests/task-report.test.ts`. Needs only `paseo plugin reload power-workboard`: then open a board
   task agent's chat; its final reply ends in the card instead of JSON. Switch theme to check both.
+
+## board-desk-links: Dashboard, Conversations and Reports links in the Power Workboard
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: Power Workboard links to Projects Dashboard, Conversations and Reports`
+- **Why:** The three Projects Assistant pages only opened from their Desk tabs; from the board
+  you had to leave it to reach them.
+- **What:** The end of the board's tab bar (Board | Orchestrators | ...) shows three links:
+  Dashboard, Conversations, Reports (pt-BR: Painel, Conversas, Relatórios; the hint names the
+  page). Each calls `openDeskSurface` with its page's id, the same call the Desk's + menu makes:
+  the Desk keeps one tab per page, so a second click selects that tab instead of adding one. In
+  compact layouts the links are icons only and the bar wraps, so there is no horizontal scroll.
+  The links render only where the host passes `navigation.openDeskSurface` (the board as a Desk
+  tab); the workspace-tab and sidebar-route versions of the board have no Desk tabs to open.
+- **Core files touched:** none. Plugin files: `client/assistant/desk-links.ts` (ids, labels,
+  open helper), `client/assistant/DeskLinks.tsx`, `client/Orchestrators.tsx` (`WorkboardTabs`
+  `trailing` slot), `client/WorkboardScreen.tsx`, `tests/board-desk-links.test.ts`.
+- **Re-apply:** Plugin-only. Grep `CUSTOM(board-desk-links)`. Needs the Desk's
+  `openDeskSurface` from `CUSTOM(projects-assistant)` in
+  `packages/app/src/task-navigation/desk-workboard.tsx`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/board-desk-links.test.ts`. Needs only `paseo plugin reload power-workboard`: open the
+  Power Workboard tab of the Desk, click Dashboard, Conversations and Reports at the right of
+  the Board | Orchestrators bar; each opens its tab, and clicking again focuses the same tab.

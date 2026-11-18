@@ -10,13 +10,18 @@ this repo) with these differences:
   description; then move it to Ready to start.
 - **Orchestrators.** The Orchestrators tab lists them; each opens in its own tab with its
   settings, running tasks and log. An orchestrator takes Ready to start tasks (the ones chosen for
-  it, or unassigned ones of its project), top of the column first, on a schedule: Manual (Run
+  it, or unassigned ones of its project; an All projects orchestrator only gets the projects
+  that have none of their own), top of the column first, on a schedule: Manual (Run
   now), a time window, or daily times with a batch per run. Each task gets a workspace in its
   project (a worktree for git projects, cut from the Projects Assistant's base branch for that
   project, or else from the branch the project checkout is on), moves to In progress, and gets an
   agent whose first
   message is the task's title and description. When the agent's turn ends the task moves to
   Ready to review. Cards link to the agent's chat.
+- **Resource pools.** Orchestrators can share a pool (Orchestrators tab, **Resource pools**): a
+  task starts only with a free slot in its orchestrator and in its pool, and nothing of a pool
+  starts while the machine's free RAM (`MemAvailable` in `/proc/meminfo`) is under the pool's
+  floor. The orchestrator's status and log say which one holds it.
 - **Review.** A Ready to review card shows the agent's last reply with **Done** and **Continue
   task**. Continue takes optional feedback and sends the task back to Ready to start; the
   orchestrator's next pass gives the feedback to the same agent.
@@ -93,11 +98,12 @@ Messages live in memory (the last 30). A daemon restart empties the status.
 
 ## Reports and `board_report`
 
-The **Projects Reports** chip in the Desk header (also "Projects Reports" in the Command Center,
-"Open report" on a Dashboard card and "Report" in a Conversations thread) shows, per ticket, what the Projects Assistant
-and the board did. The sidebar lists every ticket with actions, newest first, with a search and a
-project filter; a ticket shows what was asked and a timeline with one collapsed row per action.
-Open a row for its detail, decisions and the automatic events of that iteration (each with its
+The **Projects Reports** chip in the Desk header (also the Reports link at the end of the board's
+tab bar, beside Dashboard and Conversations, "Projects Reports" in the Command Center, "Open
+report" on a Dashboard card and "Report" in a Conversations thread) shows, per ticket, what the
+Projects Assistant and the board did. The sidebar lists every ticket with actions, newest first,
+with a search and a project filter; a ticket shows what was asked and a timeline with one collapsed
+row per action. Open a row for its detail, decisions and the automatic events of that iteration (each with its
 detail and, for an agent's report or a continue, its own interaction toggle); the inner
 "Interaction with the agent" toggle shows what the assistant asked the task's agent, its answer,
 its `<report>` and a link to the conversation.

@@ -8,8 +8,11 @@ import {
 } from "@getpaseo/plugin/client/react-native";
 import {
   orchestratorConfigSchema,
+  poolsSchema,
   type Board,
   type OrchestratorConfig,
+  type OrchestratorHold,
+  type Pool,
 } from "../shared/model";
 import type { Mutation } from "../shared/rpc";
 import { timeOfDaySchema, type Schedule } from "../shared/schedule";
@@ -69,6 +72,30 @@ export function scheduleSummary(schedule: Schedule, t: Strings): string {
 function projectName(board: Board, id: string | null, t: Strings): string {
   if (id === null) return t.allProjects;
   return board.projects.find((p) => p.id === id)?.name ?? id;
+}
+
+/** CUSTOM(resource-pools): why this orchestrator's waiting tasks don't start; null when nothing holds them. */
+export function holdSummary(
+  hold: OrchestratorHold | null | undefined,
+  t: Strings,
+): string | null {
+  if (!hold) return null;
+  const pools = t.pools;
+  if (hold.kind === "pool")
+    return pools.holdPool
+      .replace("{pool}", hold.poolName)
+      .replace("{running}", String(hold.running))
+      .replace("{max}", String(hold.maxConcurrent));
+  return pools.holdRam
+    .replace(
+      "{free}",
+      hold.freeRamPercent === null ? "?" : String(hold.freeRamPercent),
+    )
+    .replace("{pool}", hold.poolName)
+    .replace(
+      "{min}",
+      hold.minFreeRamPercent === null ? "?" : String(hold.minFreeRamPercent),
+    );
 }
 
 /** A new orchestrator starts from the board's agent defaults. */
@@ -146,6 +173,7 @@ export function OrchestratorsPanel(
         </Pressable>
       </View>
       <NightSection {...props} />
+      <PoolsSection {...props} />
       {board.orchestrators.length === 0 && (
         <Text style={[styles.empty, { color: theme.colors.foregroundMuted }]}>
           {panel.empty}
@@ -203,6 +231,9 @@ export function OrchestratorsPanel(
                   scheduleSummary(config.schedule, t),
                   `${status?.running ?? 0}/${config.maxConcurrent} ${panel.running}`,
                   `${status?.waiting ?? 0} ${panel.waiting}`,
+                  board.settings.pools.find((pool) => pool.id === config.poolId)
+                    ?.name ?? null,
+                  holdSummary(status?.hold, t),
                   status?.active
                     ? panel.active
                     : status?.nextRunAt
@@ -219,6 +250,186 @@ export function OrchestratorsPanel(
         );
       })}
     </ScrollView>
+  );
+}
+
+type PoolRow = { id: string; name: string; max: string; floor: string };
+const toRows = (pools: Pool[]): PoolRow[] =>
+  pools.map((pool) => ({
+    id: pool.id,
+    name: pool.name,
+    max: String(pool.maxConcurrent),
+    floor:
+      pool.minFreeRamPercent === null ? "" : String(pool.minFreeRamPercent),
+  }));
+const fromRows = (rows: PoolRow[]) =>
+  poolsSchema.safeParse(
+    rows.map((row) => ({
+      id: row.id,
+      name: row.name.trim(),
+      maxConcurrent: Number(row.max),
+      minFreeRamPercent: row.floor.trim() === "" ? null : Number(row.floor),
+    })),
+  );
+
+/** CUSTOM(resource-pools): the limits several orchestrators share. */
+function PoolsSection({ board, t, theme, disabled, mutate }: Shared) {
+  const text = t.pools;
+  const saved = board.settings.pools;
+  const savedKey = JSON.stringify(toRows(saved));
+  const [rows, setRows] = useState<PoolRow[]>(toRows(saved));
+  // Each snapshot brings a new array; only a real change on the host resets the edits.
+  useEffect(() => setRows(JSON.parse(savedKey) as PoolRow[]), [savedKey]);
+  const parsed = fromRows(rows);
+  const changed = JSON.stringify(rows) !== savedKey;
+  const saveDisabled = disabled || !parsed.success || !changed;
+  const update = (id: string, change: Partial<PoolRow>) =>
+    setRows(rows.map((row) => (row.id === id ? { ...row, ...change } : row)));
+  const input = (
+    label: string,
+    value: string,
+    onChange: (value: string) => void,
+    valid: boolean,
+    placeholder?: string,
+  ) => (
+    <View style={styles.field}>
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+        {label}
+      </Text>
+      <TextInput
+        accessibilityLabel={label}
+        editable={!disabled}
+        value={value}
+        onChangeText={onChange}
+        placeholder={placeholder}
+        placeholderTextColor={theme.colors.foregroundMuted}
+        style={[
+          styles.input,
+          {
+            color: theme.colors.foreground,
+            borderColor: valid
+              ? theme.colors.border
+              : theme.colors.statusDanger,
+          },
+        ]}
+      />
+    </View>
+  );
+  const integer = (value: string, min: number, max: number) =>
+    /^\d+$/.test(value.trim()) && Number(value) >= min && Number(value) <= max;
+  return (
+    <View
+      style={[
+        styles.section,
+        {
+          backgroundColor: theme.colors.surface1,
+          borderColor: theme.colors.border,
+        },
+      ]}
+    >
+      <View style={styles.inline}>
+        <Icon name="Gauge" size={16} color={theme.colors.foregroundMuted} />
+        <Text style={[styles.label, { color: theme.colors.foreground }]}>
+          {text.title}
+        </Text>
+      </View>
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+        {text.intro}
+      </Text>
+      {rows.length === 0 && (
+        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+          {text.empty}
+        </Text>
+      )}
+      {rows.map((row) => (
+        <View key={row.id} style={styles.inline}>
+          {input(
+            text.name,
+            row.name,
+            (name) => update(row.id, { name }),
+            row.name.trim() !== "",
+          )}
+          {input(
+            text.maxConcurrent,
+            row.max,
+            (max) => update(row.id, { max }),
+            integer(row.max, 1, 10),
+          )}
+          {input(
+            text.minFreeRam,
+            row.floor,
+            (floor) => update(row.id, { floor }),
+            row.floor.trim() === "" || integer(row.floor, 1, 95),
+            text.minFreeRamPlaceholder,
+          )}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${text.remove}: ${row.name}`}
+            disabled={disabled}
+            onPress={() => setRows(rows.filter((r) => r.id !== row.id))}
+            style={[
+              styles.button,
+              { backgroundColor: theme.colors.surface2 },
+              disabled && styles.disabled,
+            ]}
+          >
+            <Text style={{ color: theme.colors.foreground }}>
+              {text.remove}
+            </Text>
+          </Pressable>
+        </View>
+      ))}
+      <View style={styles.inline}>
+        <Pressable
+          accessibilityRole="button"
+          disabled={disabled}
+          onPress={() =>
+            setRows([
+              ...rows,
+              {
+                id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`,
+                name: "Pool",
+                max: "1",
+                floor: "",
+              },
+            ])
+          }
+          style={[
+            styles.button,
+            { backgroundColor: theme.colors.surface2 },
+            disabled && styles.disabled,
+          ]}
+        >
+          <Text style={{ color: theme.colors.foreground }}>{text.add}</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          disabled={saveDisabled}
+          onPress={() =>
+            parsed.success &&
+            void mutate({ action: "pools-save", pools: parsed.data })
+          }
+          style={[
+            styles.button,
+            {
+              backgroundColor: saveDisabled
+                ? theme.colors.surface2
+                : theme.colors.accent,
+            },
+          ]}
+        >
+          <Text
+            style={{
+              color: saveDisabled
+                ? theme.colors.foregroundMuted
+                : theme.colors.accentForeground,
+            }}
+          >
+            {text.save}
+          </Text>
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -556,6 +767,7 @@ const SUB_TABS: SubTab[] = [
 type Draft = {
   name: string;
   projectId: string | null;
+  poolId: string | null; // CUSTOM(resource-pools)
   kind: Schedule["kind"];
   days: number[];
   start: string;
@@ -576,6 +788,7 @@ function toDraft(config: OrchestratorConfig): Draft {
   return {
     name: config.name,
     projectId: config.projectId,
+    poolId: config.poolId,
     kind: schedule.kind,
     days: schedule.kind === "manual" ? [0, 1, 2, 3, 4, 5, 6] : schedule.days,
     start: schedule.kind === "window" ? schedule.start : "22:00",
@@ -616,6 +829,7 @@ function fromDraft(id: string, draft: Draft, enabled: boolean) {
     id,
     name: draft.name,
     projectId: draft.projectId,
+    poolId: draft.poolId,
     enabled,
     schedule,
     maxConcurrent: Number(draft.maxConcurrent),
@@ -818,6 +1032,11 @@ export function OrchestratorTab(
           ? stat(panel.statNext, time(state.nextRunAt, t.locale))
           : stat(panel.statState, pill.text, pill.color)}
       </View>
+      {holdSummary(state?.hold, t) && (
+        <Text style={[styles.meta, { color: theme.colors.statusWarning }]}>
+          {holdSummary(state?.hold, t)}
+        </Text>
+      )}
       <Text style={[styles.label, { color: theme.colors.foreground }]}>
         {panel.runningNow} ({runs.length}/{config.maxConcurrent})
       </Text>
@@ -905,6 +1124,21 @@ export function OrchestratorTab(
             </View>,
             panel.projectHint,
           )}
+          {board.settings.pools.length > 0 &&
+            field(
+              t.pools.label,
+              <View style={styles.chips}>
+                {chip("no-pool", t.pools.none, draft.poolId === null, () =>
+                  edit({ poolId: null }),
+                )}
+                {board.settings.pools.map((pool) =>
+                  chip(pool.id, pool.name, draft.poolId === pool.id, () =>
+                    edit({ poolId: pool.id }),
+                  ),
+                )}
+              </View>,
+              t.pools.poolHint,
+            )}
           {field(
             panel.workspace,
             <View style={styles.chips}>
@@ -1218,6 +1452,7 @@ export function WorkboardTabs({
   open,
   onSelect,
   onClose,
+  trailing,
 }: {
   board: Board;
   t: Strings;
@@ -1226,6 +1461,8 @@ export function WorkboardTabs({
   open: string[];
   onSelect(tab: string): void;
   onClose(id: string): void;
+  /** Shown after the tabs, at the end of the bar. CUSTOM(board-desk-links) */
+  trailing?: ReactNode;
 }) {
   const language = usePaseoLanguage(); // CUSTOM(agent-profiles)
   const active = Object.values(board.orchestratorStatus).filter(
@@ -1304,6 +1541,7 @@ export function WorkboardTabs({
           </View>
         );
       })}
+      {trailing}
     </View>
   );
 }

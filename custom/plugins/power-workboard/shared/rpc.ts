@@ -9,6 +9,7 @@ import {
   groupsSchema,
   groupSchema,
   nightSettingsSchema,
+  poolsSchema,
   settingsSchema,
   stageSchema,
   startSchema,
@@ -110,6 +111,8 @@ export const mutationSchema = z.discriminatedUnion("action", [
     }),
   }),
   z.object({ action: z.literal("orchestrator-delete"), id: z.string() }),
+  // CUSTOM(resource-pools): replace the pool list; orchestrators of a removed pool leave it.
+  z.object({ action: z.literal("pools-save"), pools: poolsSchema }),
   // A Done task's work: commit it, write a PR description, or merge it into the project.
   z.object({
     action: z.literal("finish"),
