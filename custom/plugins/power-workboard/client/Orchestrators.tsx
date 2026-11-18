@@ -1218,6 +1218,7 @@ export function WorkboardTabs({
   open,
   onSelect,
   onClose,
+  trailing,
 }: {
   board: Board;
   t: Strings;
@@ -1226,6 +1227,8 @@ export function WorkboardTabs({
   open: string[];
   onSelect(tab: string): void;
   onClose(id: string): void;
+  /** Shown after the tabs, at the end of the bar. CUSTOM(board-desk-links) */
+  trailing?: ReactNode;
 }) {
   const language = usePaseoLanguage(); // CUSTOM(agent-profiles)
   const active = Object.values(board.orchestratorStatus).filter(
@@ -1304,6 +1307,7 @@ export function WorkboardTabs({
           </View>
         );
       })}
+      {trailing}
     </View>
   );
 }

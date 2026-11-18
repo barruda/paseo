@@ -85,6 +85,7 @@ import { HintButton, HintProvider } from "./Hint";
 import { usePaseoLanguage } from "./paseo-language";
 import { AssistantProfileTab } from "./Profiles"; // CUSTOM(agent-profiles)
 import { ConfirmationModal } from "./ConfirmationModal";
+import { DeskLinks } from "./assistant/DeskLinks"; // CUSTOM(board-desk-links)
 // CUSTOM(workboard-images)
 import { DescriptionImages } from "./DescriptionImages";
 import {
@@ -380,6 +381,13 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
         )}
         onSelect={setTab}
         onClose={closeOrchestrator}
+        trailing={
+          <DeskLinks
+            navigation={props.navigation}
+            theme={props.theme}
+            compact={props.layout.compact}
+          />
+        }
       />
     </>
   );

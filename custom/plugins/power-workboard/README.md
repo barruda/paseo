@@ -93,7 +93,8 @@ Messages live in memory (the last 30). A daemon restart empties the status.
 
 ## Reports and `board_report`
 
-The **Projects Reports** chip in the Desk header shows, per ticket, what the Projects Assistant
+The **Projects Reports** chip in the Desk header (or the Reports link at the end of the board's
+tab bar, beside Dashboard and Conversations) shows, per ticket, what the Projects Assistant
 and the board did. The sidebar lists every ticket with actions, newest first, with a search and a
 project filter; a ticket shows what was asked and a timeline with one collapsed row per action.
 Open a row for its detail, decisions and the automatic events of that iteration; the inner
