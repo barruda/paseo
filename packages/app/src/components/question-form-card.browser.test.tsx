@@ -39,7 +39,9 @@ afterEach(() => {
   }
 });
 
-function buildPermission(question: Record<string, unknown>): PendingPermission {
+type QuestionInput = Record<string, unknown>;
+
+function buildPermission(questions: QuestionInput[]): PendingPermission {
   return {
     key: "perm-1",
     agentId: "agent-1",
@@ -48,12 +50,13 @@ function buildPermission(question: Record<string, unknown>): PendingPermission {
       provider: "claude",
       name: "AskUserQuestion",
       kind: "question",
-      input: { questions: [question] },
+      input: { questions },
     },
   };
 }
 
-function mountCard(question: Record<string, unknown>) {
+function mountCard(question: QuestionInput | QuestionInput[]) {
+  const questions = Array.isArray(question) ? question : [question];
   const onRespond = vi.fn<(response: AgentPermissionResponse) => void>();
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -61,7 +64,7 @@ function mountCard(question: Record<string, unknown>) {
   act(() =>
     root.render(
       <QuestionFormCard
-        permission={buildPermission(question)}
+        permission={buildPermission(questions)}
         onRespond={onRespond}
         isResponding={false}
         responseError={null}
@@ -71,10 +74,21 @@ function mountCard(question: Record<string, unknown>) {
   mounted.push({ root, container });
 
   const view = within(container);
-  const optionRole = question.multiSelect ? "checkbox" : "radio";
-  const otherInput = () =>
-    view.getByRole<HTMLInputElement>("textbox", { name: String(question.question) });
-  const check = (label: string) => act(() => view.getByRole(optionRole, { name: label }).click());
+  const option = (label: string) =>
+    view.queryByRole("radio", { name: label }) ?? view.getByRole("checkbox", { name: label });
+  const otherInput = () => view.getByRole<HTMLInputElement>("textbox");
+  const check = (label: string) => act(() => option(label).click());
+  const pressEnter = (label: string) => {
+    const target = option(label);
+    act(() => {
+      target.focus();
+      target.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      target.dispatchEvent(new KeyboardEvent("keyup", { key: "Enter", bubbles: true }));
+    });
+  };
+  const currentQuestion = () => view.getByTestId("question-form-current-question").textContent;
+  const openTab = (index: number) =>
+    act(() => view.getByRole("tab", { name: `Question ${index} of ${questions.length}` }).click());
   const type = (text: string) => {
     const input = otherInput();
     const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -90,7 +104,17 @@ function mountCard(question: Record<string, unknown>) {
     if (!response || response.behavior !== "allow") throw new Error("card did not submit");
     return (response.updatedInput as { answers: Record<string, string> }).answers;
   };
-  return { check, type, otherInput, submit, submittedAnswers };
+  return {
+    check,
+    pressEnter,
+    type,
+    otherInput,
+    submit,
+    submittedAnswers,
+    currentQuestion,
+    openTab,
+    onRespond,
+  };
 }
 
 const multiSelectQuestion = {
@@ -133,24 +157,117 @@ describe("QuestionFormCard other answers", () => {
     expect(card.submittedAnswers()).toEqual({ Fruits: "Apple, Banana, durian" });
   });
 
-  it("replaces the selected option with the typed other answer (single-select)", () => {
+  it("sends the typed other answer with Submit (single-select)", () => {
     const card = mountCard(singleSelectQuestion);
 
-    card.check("Codex");
     card.type("OpenCode");
+    expect(card.onRespond).not.toHaveBeenCalled();
     card.submit();
 
     expect(card.submittedAnswers()).toEqual({ Provider: "OpenCode" });
   });
 
-  it("clears the typed other answer on screen when an option is picked afterwards (single-select)", () => {
+  it("clears the typed other answer and sends the option picked afterwards (single-select)", () => {
     const card = mountCard(singleSelectQuestion);
 
     card.type("OpenCode");
     card.check("Codex");
 
     expect(card.otherInput().value).toBe("");
-    card.submit();
+    expect(card.onRespond).toHaveBeenCalledTimes(1);
     expect(card.submittedAnswers()).toEqual({ Provider: "Codex" });
+  });
+});
+
+const surfaceQuestion = {
+  question: "Which surface?",
+  header: "Surface",
+  options: [{ label: "App" }, { label: "CLI" }],
+  multiSelect: false,
+};
+
+const rolloutQuestion = {
+  question: "How to roll out?",
+  header: "Rollout",
+  options: [{ label: "Everyone" }, { label: "Behind flag" }],
+  multiSelect: false,
+};
+
+// CUSTOM(question-click-to-answer): single-select options answer on click, without Submit.
+describe("QuestionFormCard click to answer", () => {
+  it("sends a lone single-select question on the option click", () => {
+    const card = mountCard(surfaceQuestion);
+
+    card.check("CLI");
+
+    expect(card.onRespond).toHaveBeenCalledTimes(1);
+    expect(card.submittedAnswers()).toEqual({ Surface: "CLI" });
+  });
+
+  it("sends a lone single-select question on Enter in the focused option", () => {
+    const card = mountCard(surfaceQuestion);
+
+    card.pressEnter("App");
+
+    expect(card.onRespond).toHaveBeenCalledTimes(1);
+    expect(card.submittedAnswers()).toEqual({ Surface: "App" });
+  });
+
+  it("moves to the next question on click and sends every answer from the last one", () => {
+    const card = mountCard([surfaceQuestion, rolloutQuestion]);
+
+    card.check("App");
+    expect(card.onRespond).not.toHaveBeenCalled();
+    expect(card.currentQuestion()).toBe("How to roll out?");
+
+    card.openTab(1);
+    card.check("CLI");
+    expect(card.onRespond).not.toHaveBeenCalled();
+    expect(card.currentQuestion()).toBe("How to roll out?");
+
+    card.check("Behind flag");
+    expect(card.onRespond).toHaveBeenCalledTimes(1);
+    expect(card.submittedAnswers()).toEqual({ Surface: "CLI", Rollout: "Behind flag" });
+  });
+
+  it("opens the first unanswered question instead of sending when the last is answered first", () => {
+    const card = mountCard([surfaceQuestion, rolloutQuestion]);
+
+    card.openTab(2);
+    card.check("Everyone");
+
+    expect(card.onRespond).not.toHaveBeenCalled();
+    expect(card.currentQuestion()).toBe("Which surface?");
+    card.check("App");
+    expect(card.onRespond).not.toHaveBeenCalled();
+    expect(card.currentQuestion()).toBe("How to roll out?");
+    card.check("Everyone");
+    expect(card.submittedAnswers()).toEqual({ Surface: "App", Rollout: "Everyone" });
+  });
+
+  it("keeps multi-select on Submit", () => {
+    const card = mountCard({ ...multiSelectQuestion, allowOther: false });
+
+    card.check("Apple");
+    card.check("Banana");
+    expect(card.onRespond).not.toHaveBeenCalled();
+
+    card.submit();
+    expect(card.submittedAnswers()).toEqual({ Fruits: "Apple, Banana" });
+  });
+
+  it("waits for Submit on a free-write last question after single-select clicks", () => {
+    const card = mountCard([
+      surfaceQuestion,
+      { question: "Anything else?", header: "Notes", options: [], multiSelect: false },
+    ]);
+
+    card.check("App");
+    expect(card.currentQuestion()).toBe("Anything else?");
+    card.type("Ship it");
+    expect(card.onRespond).not.toHaveBeenCalled();
+
+    card.submit();
+    expect(card.submittedAnswers()).toEqual({ Surface: "App", Notes: "Ship it" });
   });
 });

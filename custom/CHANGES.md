@@ -7673,3 +7673,31 @@ tests/assistant-engine.test.ts tests/checkpoint-format.test.ts`. Needs only `pas
   power-workboard`. Then give an orchestrator a task the agent ends with a `checkpoint` report:
   the card stays in In progress with "1/3 · checkpoint 1" and the same agent continues; with
   `resumeAfter` the card says "waiting until HH:MM" and the Dashboard lists it under Waiting.
+
+## question-click-to-answer: a single-select option answers on click
+
+- **Added:** 2026-11-18 (based on `custom` at `c44169a7e`)
+- **Commit:** `custom: single-select questions answer on the option click`
+- **Why:** In the agent's question card (AskUserQuestion) the user picked an option and then had to
+  click Submit too. In sequences of questions that doubled the clicks on every one.
+- **What:** A click (or Enter on the focused option) on a single-select option is the answer. On a
+  question that isn't the last it moves to the next one, as before. On the last (or only) question
+  it sends every answer; if an earlier question is still unanswered (the user jumped ahead with
+  the tabs), it opens that one instead. Clicking the picked option again keeps it selected (it used
+  to clear it) and moves on or sends. Multi-select, the "Other" text answer and Dismiss still
+  use Submit/Next and Dismiss, which stay on screen (Submit also shows the sending spinner).
+  Enter on a focused option used to throw: react-native-web passes the raw `KeyboardEvent` to
+  `onPress`, without `nativeEvent`.
+- **Core files touched:** `packages/app/src/components/question-form-card.tsx` (`toggleOption`,
+  `submitAnswers`, `isNonAnsweringClick`), `packages/app/src/components/question-form-card-core.ts`
+  (`resolveSingleSelectAnswerStep`), plus tests in `question-form-card-core.test.ts` and
+  `question-form-card.browser.test.tsx`.
+- **Re-apply:** Grep `CUSTOM(question-click-to-answer)`. In the card's option handler, a
+  single-select click always selects (no toggle-off), then calls `resolveSingleSelectAnswerStep`
+  with the new selections: `show` sets the active question, `submit` sends the answers built from
+  those new selections (not from state, which hasn't re-rendered yet). In `isNonAnsweringClick`,
+  return false when `event.nativeEvent` is missing.
+- **Verify:** `cd packages/app && npx vitest run src/components/question-form-card-core.test.ts
+src/components/question-form-card.browser.test.tsx`. App-only: needs a desktop build and install,
+  no daemon restart. In the app, ask an agent a one-question AskUserQuestion: one click on an
+  option sends it. With several questions, each click moves on and the last one sends.

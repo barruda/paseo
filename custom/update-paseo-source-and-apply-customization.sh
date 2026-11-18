@@ -318,6 +318,8 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/agent/subagent-append-prompt.test.ts --bail=1)
   # An agent's tab keeps working while a subagent runs.
   (cd packages/app && npx vitest run src/subagents/running.test.ts --bail=1)
+  # A single-select question answers on the option click (or Enter), without Submit.
+  (cd packages/app && npx vitest run src/components/question-form-card-core.test.ts src/components/question-form-card.browser.test.tsx --bail=1)
   # Background tools chip (shells and monitors left running) and the working tab.
   (cd packages/app && npx vitest run src/background-tools/presentation.test.ts --bail=1)
   # Search palette: "Expand search into archived".

@@ -103,6 +103,26 @@ export function areQuestionsAnswered(
   );
 }
 
+// CUSTOM(question-click-to-answer): a click on a single-select option is the answer. It moves
+// to the next question; on the last one it submits, or opens the first question still unanswered
+// when the user skipped ahead with the tabs.
+export type SingleSelectAnswerStep = { kind: "submit" } | { kind: "show"; index: number };
+
+export function resolveSingleSelectAnswerStep(
+  questions: QuestionFormQuestion[],
+  qIndex: number,
+  selections: QuestionSelections,
+  otherTexts: QuestionOtherTexts,
+): SingleSelectAnswerStep {
+  if (qIndex < questions.length - 1) {
+    return { kind: "show", index: qIndex + 1 };
+  }
+  const firstUnanswered = questions.findIndex(
+    (question, index) => !isQuestionAnswered(question, index, selections, otherTexts),
+  );
+  return firstUnanswered === -1 ? { kind: "submit" } : { kind: "show", index: firstUnanswered };
+}
+
 export function buildQuestionFormAnswers(
   questions: QuestionFormQuestion[],
   selections: QuestionSelections,

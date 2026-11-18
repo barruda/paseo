@@ -5,6 +5,7 @@ import {
   parseQuestionFormQuestions,
   questionShowsTextInput,
   resolveDismissLabel,
+  resolveSingleSelectAnswerStep,
   shouldSubmitEmptyOnDismiss,
 } from "./question-form-card-core";
 
@@ -171,5 +172,28 @@ describe("question form card core", () => {
       { label: "Tabs", description: "One tab per section", preview: "<Tabs>\n  <Tab />\n</Tabs>" },
       { label: "Single page", description: undefined, preview: undefined },
     ]);
+  });
+
+  // CUSTOM(question-click-to-answer)
+  test("a single-select answer moves on, and on the last question submits once all are answered", () => {
+    const questions = parseQuestionFormQuestions({
+      questions: [
+        { question: "First?", header: "One", options: [{ label: "A" }], multiSelect: false },
+        { question: "Second?", header: "Two", options: [{ label: "B" }], multiSelect: false },
+      ],
+    });
+    if (!questions) throw new Error("questions did not parse");
+
+    expect(resolveSingleSelectAnswerStep(questions, 0, { 0: new Set([0]) }, {})).toEqual({
+      kind: "show",
+      index: 1,
+    });
+    expect(resolveSingleSelectAnswerStep(questions, 1, { 1: new Set([0]) }, {})).toEqual({
+      kind: "show",
+      index: 0,
+    });
+    expect(
+      resolveSingleSelectAnswerStep(questions, 1, { 0: new Set([0]), 1: new Set([0]) }, {}),
+    ).toEqual({ kind: "submit" });
   });
 });

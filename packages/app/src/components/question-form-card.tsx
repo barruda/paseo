@@ -26,9 +26,12 @@ import {
   parseQuestionFormQuestions,
   questionShowsTextInput,
   resolveDismissLabel,
+  resolveSingleSelectAnswerStep,
   shouldSubmitEmptyOnDismiss,
   type QuestionFormQuestion,
   type QuestionOption,
+  type QuestionOtherTexts,
+  type QuestionSelections,
 } from "./question-form-card-core";
 
 interface QuestionFormCardProps {
@@ -47,7 +50,10 @@ const OPTION_PREVIEW_MAX_HEIGHT = IS_WEB ? 240 : undefined;
 // second click of a double-click, which would otherwise land on the next question's options.
 function isNonAnsweringClick(event: GestureResponderEvent, description: View | null): boolean {
   if (!IS_WEB) return false;
-  const click = event.nativeEvent as unknown as MouseEvent;
+  // CUSTOM(question-click-to-answer): on Enter, react-native-web hands onPress the raw DOM
+  // KeyboardEvent, which has no nativeEvent. A key press on the focused option always answers.
+  const click = event.nativeEvent as unknown as MouseEvent | undefined;
+  if (!click) return false;
   if (click.detail > 1) return true;
   const target = click.target as Element | null;
   const descriptionElement = description as unknown as Element | null;
@@ -382,6 +388,21 @@ export function QuestionFormCard({
   const [respondingAction, setRespondingAction] = useState<"submit" | "dismiss" | null>(null);
   const [activeQuestionIndex, setActiveQuestionIndex] = useState(0);
 
+  const submitAnswers = useCallback(
+    (answerSelections: QuestionSelections, answerOtherTexts: QuestionOtherTexts) => {
+      if (!questions || isResponding) return;
+      setRespondingAction("submit");
+      onRespond({
+        behavior: "allow",
+        updatedInput: {
+          ...permission.request.input,
+          answers: buildQuestionFormAnswers(questions, answerSelections, answerOtherTexts),
+        },
+      });
+    },
+    [questions, isResponding, onRespond, permission.request.input],
+  );
+
   const toggleOption = useCallback(
     (qIndex: number, optIndex: number, multiSelect: boolean) => {
       const current = selections[qIndex] ?? new Set<number>();
@@ -392,9 +413,9 @@ export function QuestionFormCard({
         } else {
           next.add(optIndex);
         }
-      } else if (next.has(optIndex)) {
-        next.clear();
       } else {
+        // CUSTOM(question-click-to-answer): the click is the answer, so clicking the picked
+        // option again keeps it instead of clearing it.
         next.clear();
         next.add(optIndex);
       }
@@ -405,20 +426,25 @@ export function QuestionFormCard({
       // Multi-select keeps both. The editing surface owns its text and never replays state
       // (docs/forms.md), so clearing state alone would leave stale text on screen that
       // submit ignores; clear the surface explicitly.
+      const nextOtherTexts = { ...otherTexts };
       if (!multiSelect && otherTexts[qIndex]) {
-        setOtherTexts((prev) => {
-          const nextTexts = { ...prev };
-          delete nextTexts[qIndex];
-          return nextTexts;
-        });
+        delete nextOtherTexts[qIndex];
+        setOtherTexts(nextOtherTexts);
         otherInputRef.current?.replaceText("");
       }
 
-      if (!multiSelect && next.size > 0 && qIndex === activeQuestionIndex && questions) {
-        setActiveQuestionIndex(Math.min(qIndex + 1, questions.length - 1));
+      if (multiSelect || !questions) return;
+      // CUSTOM(question-click-to-answer): a single-select click answers without Submit:
+      // it moves to the next question, and on the last one it sends every answer.
+      const nextSelections = { ...selections, [qIndex]: next };
+      const step = resolveSingleSelectAnswerStep(questions, qIndex, nextSelections, nextOtherTexts);
+      if (step.kind === "submit") {
+        submitAnswers(nextSelections, nextOtherTexts);
+      } else {
+        setActiveQuestionIndex(step.index);
       }
     },
-    [activeQuestionIndex, otherTexts, questions, selections],
+    [otherTexts, questions, selections, submitAnswers],
   );
 
   const setOtherText = useCallback(
@@ -446,24 +472,9 @@ export function QuestionFormCard({
   const isLastQuestion = questions ? resolvedActiveQuestionIndex === questions.length - 1 : true;
 
   const handleSubmit = useCallback(() => {
-    if (!questions || !allAnswered || isResponding) return;
-    setRespondingAction("submit");
-    onRespond({
-      behavior: "allow",
-      updatedInput: {
-        ...permission.request.input,
-        answers: buildQuestionFormAnswers(questions, selections, otherTexts),
-      },
-    });
-  }, [
-    questions,
-    allAnswered,
-    isResponding,
-    selections,
-    otherTexts,
-    onRespond,
-    permission.request.input,
-  ]);
+    if (!allAnswered) return;
+    submitAnswers(selections, otherTexts);
+  }, [allAnswered, submitAnswers, selections, otherTexts]);
 
   const handleDeny = useCallback(() => {
     if (!questions || isResponding) return;
