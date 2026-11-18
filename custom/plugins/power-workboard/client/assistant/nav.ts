@@ -6,6 +6,7 @@ import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 
 export const DASHBOARD_SURFACE_ID = "projects-dashboard";
 export const CONVERSATIONS_SURFACE_ID = "projects-conversations";
+export const REPORTS_SURFACE_ID = "projects-reports"; // CUSTOM(assistant-reports)
 export const CHAT_SURFACE_ID = "projects-assistant-chat"; // CUSTOM(projects-assistant)
 
 interface Selection {

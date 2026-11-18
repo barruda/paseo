@@ -12,7 +12,15 @@ declare const navigator: { languages: readonly string[] };
 // never write them. Revalidate these keys and system matching when upgrading.
 const otherLocales = ["ar", "en", "es", "fr", "ja", "ko", "ru"];
 
+// CUSTOM(assistant-reports): the Reports page also speaks Brazilian Portuguese.
+export type PageLocale = Language | "pt";
+
 export function readPaseoLanguage(): Language {
+  const locale = readPaseoLocale();
+  return locale === "pt" ? "en" : locale;
+}
+
+export function readPaseoLocale(): PageLocale {
   if (typeof window === "undefined") return "en";
   try {
     const stored =
@@ -20,17 +28,14 @@ export function readPaseoLanguage(): Language {
       window.localStorage.getItem("@paseo:settings");
     const selected = JSON.parse(stored ?? "{}")?.language;
     if (selected === "zh-CN") return "zh";
-    if (otherLocales.includes(selected) || selected === "pt-BR") return "en";
+    if (selected === "pt-BR") return "pt";
+    if (otherLocales.includes(selected)) return "en";
     // Paseo defaults missing/invalid settings to system, then picks its first
     // supported locale. Do not skip French, for example, to find later Chinese.
     for (const locale of navigator.languages) {
       const normalized = locale.toLowerCase();
-      if (
-        otherLocales.includes(normalized.split("-", 1)[0]) ||
-        normalized === "pt" ||
-        normalized === "pt-br"
-      )
-        return "en";
+      if (normalized === "pt" || normalized === "pt-br") return "pt";
+      if (otherLocales.includes(normalized.split("-", 1)[0])) return "en";
       if (
         normalized === "zh" ||
         normalized === "zh-cn" ||
@@ -65,6 +70,14 @@ export function usePaseoLanguage(): Language {
   return useSyncExternalStore(
     subscribePaseoLanguage,
     readPaseoLanguage,
+    () => "en",
+  );
+}
+
+export function usePaseoLocale(): PageLocale {
+  return useSyncExternalStore(
+    subscribePaseoLanguage,
+    readPaseoLocale,
     () => "en",
   );
 }
