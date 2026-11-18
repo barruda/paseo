@@ -167,6 +167,7 @@ export const NEEDS_YOU_REASONS = [
   "dirty-checkout",
   "merge-error",
   "pr-error",
+  "dependency-files",
 ] as const;
 export const needsYouReasonSchema = z.enum(NEEDS_YOU_REASONS);
 export type NeedsYouReason = z.infer<typeof needsYouReasonSchema>;

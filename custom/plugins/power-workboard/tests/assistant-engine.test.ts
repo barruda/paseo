@@ -610,6 +610,42 @@ it("prepare-pr errors need you (pr-error)", async () => {
   }
 });
 
+it("an untracked node_modules symlink is not committed: the delivery needs you (dependency-files)", async () => {
+  const s = await scenario({ policy: { action: "merge" } });
+  try {
+    (s.host.gitStatusLines as any).mockResolvedValue([
+      " M src/a.ts",
+      "?? node_modules",
+      "?? packages/app/.venv/",
+    ]);
+    s.reply(report());
+    await s.finishTurn();
+    await s.settled("needs-you");
+    expect(s.host.commit).not.toHaveBeenCalled();
+    expect(s.host.mergeToBase).not.toHaveBeenCalled();
+    expect(s.delivery()).toMatchObject({ reason: "dependency-files" });
+    expect(s.delivery()?.detail).toContain("node_modules, packages/app/.venv");
+    expect(s.history.kinds()).not.toContain("committed");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("prepare-pr refuses to commit an untracked dependency folder too", async () => {
+  const s = await scenario({ policy: { action: "prepare-pr" } });
+  try {
+    (s.host.gitStatusLines as any).mockResolvedValue(["?? node_modules"]);
+    s.reply(report());
+    await s.finishTurn();
+    await s.settled("needs-you");
+    expect(s.host.commit).not.toHaveBeenCalled();
+    expect(s.host.askAgent).not.toHaveBeenCalled();
+    expect(s.delivery()).toMatchObject({ reason: "dependency-files" });
+  } finally {
+    s.board.dispose();
+  }
+});
+
 it("an agent that stops with an error is nudged to continue, then needs you", async () => {
   const s = await scenario({ assistant: { retryDelaysMs: [30_000, 60_000] } });
   try {

@@ -79,3 +79,44 @@ export function classifyMergeError(
     return "dirty-checkout";
   return "merge-error";
 }
+
+/** Folders that hold installed dependencies. The delivery never commits one. */
+const DEPENDENCY_DIRS = new Set([
+  "node_modules",
+  "bower_components",
+  "jspm_packages",
+  ".venv",
+  "venv",
+  "__pypackages__",
+  ".tox",
+  ".pnpm-store",
+]);
+
+/**
+ * The new paths in `git status --porcelain` lines (untracked, or added to the index) that are a
+ * dependency folder or sit inside one. A `node_modules/` ignore rule matches directories only, so
+ * a symlinked `node_modules` shows up here as a new file, and the delivery commit stages every
+ * new file.
+ */
+export function newDependencyPaths(lines: string[]): string[] {
+  const found: string[] = [];
+  for (const line of lines) {
+    const code = line.slice(0, 2);
+    if (code !== "??" && code[0] !== "A") continue;
+    let path = line.slice(3).trim();
+    if (path.startsWith('"') && path.endsWith('"')) path = path.slice(1, -1);
+    path = path.replace(/\/+$/, "");
+    if (path.split("/").some((segment) => DEPENDENCY_DIRS.has(segment)))
+      found.push(path);
+  }
+  return found;
+}
+
+/** Why the delivery refuses to commit these status lines, or null when it may. */
+export function dependencyRefusal(lines: string[]): string | null {
+  const paths = newDependencyPaths(lines);
+  if (!paths.length) return null;
+  const shown = paths.slice(0, 5).join(", ");
+  const more = paths.length > 5 ? ` and ${paths.length - 5} more` : "";
+  return `Not committed: untracked dependency paths would enter the commit (${shown}${more}). A symlinked node_modules is a file to git, so a node_modules/ ignore rule misses it. Replace it with a real install in the worktree (or ignore it), then deliver again.`;
+}
