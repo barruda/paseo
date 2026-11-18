@@ -310,6 +310,66 @@ describe("VoiceAssistantWebSocketServer notification payloads", () => {
     expect(getLastAssistantMessage).toHaveBeenCalledWith("agent-2");
   });
 
+  // CUSTOM(hidden-board-agents)
+  it("neither pushes nor notifies for a board agent, but still sends its attention", async () => {
+    const boardAgent = {
+      config: { title: null },
+      cwd: "/tmp/worktree",
+      workspaceId: WORKSPACE_ID,
+      labels: { "paseo.board-agent": "true" },
+      pendingPermissions: new Map(),
+    };
+    const { server, pushNotifications } = createServer({
+      getAgent: vi.fn(() => boardAgent),
+    });
+    const ws = connectClient(server, {
+      deviceType: "web",
+      appVisible: true,
+      focusedAgentId: null,
+      lastActivityAt: new Date(),
+    });
+
+    await asInternals<WebSocketServerInternals>(server).broadcastAgentAttention({
+      agentId: "board-1",
+      provider: "claude",
+      reason: "finished",
+    });
+    expect(readAttentionRequiredMessage(ws).shouldNotify).toBe(false);
+
+    asInternals<WebSocketServerInternals>(server).sessions.clear();
+    await asInternals<WebSocketServerInternals>(server).broadcastAgentAttention({
+      agentId: "board-1",
+      provider: "claude",
+      reason: "finished",
+    });
+    expect(pushNotifications.sent).toEqual([]);
+  });
+
+  // CUSTOM(hidden-board-agents)
+  it("does not push for an agent the Projects Assistant chat created", async () => {
+    const agents: Record<string, unknown> = {
+      chat: { labels: { "pwb/assistant-chat": "true" } },
+      ship: {
+        config: { title: null },
+        cwd: "/tmp/worktree",
+        workspaceId: WORKSPACE_ID,
+        labels: { "paseo.parent-agent-id": "chat" },
+        pendingPermissions: new Map(),
+      },
+    };
+    const { server, pushNotifications } = createServer({
+      getAgent: vi.fn((id: string) => agents[id]),
+    });
+
+    await asInternals<WebSocketServerInternals>(server).broadcastAgentAttention({
+      agentId: "ship",
+      provider: "claude",
+      reason: "finished",
+    });
+
+    expect(pushNotifications.sent).toEqual([]);
+  });
+
   it("routes a hidden stale focused browser tab's notification to the present Electron web client", async () => {
     const { server, pushNotifications } = createServer();
     const nowMs = Date.now();

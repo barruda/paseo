@@ -482,6 +482,10 @@ if $VERIFY; then
   (cd packages/desktop && npx vitest run src/features/do-not-disturb.test.ts --bail=1)
   (cd packages/cli && npx vitest run src/commands/dnd.test.ts --bail=1)
   (cd packages/app && npx vitest run src/do-not-disturb src/keyboard/route-shortcut.test.ts src/keyboard/keyboard-shortcuts.test.ts --bail=1)
+  # Board agents: never a tab, hidden from Tasks, no notification (hidden-board-agents).
+  (cd packages/protocol && npx vitest run src/board-agents.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/websocket-server.notifications.test.ts --bail=1)
 fi
 
 step "Building the desktop app"

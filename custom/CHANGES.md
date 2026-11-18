@@ -7133,3 +7133,62 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   the update script). In the desktop app, Ctrl+D, speak, tap Enter: the text lands in the box.
   Ctrl+D, speak, hold Enter: after half a second the bar stops recording; release and the message
   is sent. Needs an app build, no daemon restart.
+
+## hidden-board-agents: board agents stay out of the sidebar and never notify
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: board agents stay hidden and silent by default`
+- **Why:** the agents that Power Workboard and the Projects Assistant start and watch (orchestrator
+  runs, reviews, auto-fixes, the ship agent) opened as tabs, filled the sidebar and sent GNOME
+  notifications. The Projects Assistant already reports on them in its chat, its bar and the Needs
+  you column, so the extra noise only interrupted the user.
+- **What:**
+  - Label `paseo.board-agent: "true"` (`BOARD_AGENT_LABEL`, in `@getpaseo/protocol/board-agents`
+    and, as the same string, in the plugin's `shared/model.ts`). The board puts it on every agent
+    it starts through `startAgent` (orchestrator runs, continuations, review tasks; auto-fixes reuse
+    the same agent). The refinement chat and the assistant chat stay unlabeled: the user talks to
+    them.
+  - The assistant's seed prompt (`ASSISTANT_ROLE`) and its first message (`CHAT_INSTRUCTIONS`) tell
+    it to pass the label to every agent it creates with `create_agent` (the ship agent).
+  - `isBoardAgent` also counts an agent whose parent chain reaches a board agent or the assistant
+    chat (`pwb/assistant-chat`), so the ship agent is hidden even if the assistant forgets the label.
+  - App: board agents never auto-open as a workspace tab (`deriveWorkspaceAgentVisibility` keeps
+    them out of `autoOpenAgentIds` but in `activeAgentIds`, so a tab the user opens stays); the
+    Tasks sidebar hides them unless **Show board agents** is on in its Projects menu
+    (persisted, off by default); `notifyAgentAttention` never sends an OS notification for them.
+    Command Center search and the board card link still open them.
+  - Daemon: `broadcastAgentAttention` sends no push and `shouldNotify: false` for board agents.
+    This part needs a daemon restart; the app gate works without it.
+- **Core files touched:** each marked `CUSTOM(hidden-board-agents)`.
+  - protocol (new): `src/board-agents.ts` (`BOARD_AGENT_LABEL`, `ASSISTANT_CHAT_LABEL`,
+    `isBoardAgent`) and its test.
+  - app (new): `src/board-agents/visibility.ts` (`isBoardAgentInSession`), `store.ts`
+    (persisted `showBoardAgents`, key `paseo-board-agents`), with tests.
+  - app: `workspace-tabs/agent-visibility.ts` (`isAutoOpenAgent`) and a case in its test;
+    `task-navigation/sidebar.tsx` (`collectAgents` with the two selectors `selectAgents` /
+    `selectAgentsWithBoard`, and `BoardAgentsChoice` at the end of the Projects menu, since the
+    Tasks sidebar has no display menu); `contexts/session-context.tsx` (`isBoardAgentAttention`
+    at the top of `notifyAgentAttention`).
+  - server: `src/server/websocket-server.ts` (`broadcastAgentAttention`) and two cases in
+    `websocket-server.notifications.test.ts`.
+  - plugin power-workboard: `shared/model.ts` (`BOARD_AGENT_LABELS`), `server/host.ts`
+    (`startAgent` forwards `labels`), `server/workboard.ts` (both orchestrator `startAgent`
+    calls), `server/assistant/chat.ts` (prompt text), tests in `host`, `power-workboard` and
+    `assistant-chat`.
+- **Re-apply:** the protocol file and `packages/app/src/board-agents/` are new. Then: in
+  `deriveWorkspaceAgentVisibility` add an agent to `autoOpenAgentIds` only when it is a workspace
+  root and not `isBoardAgentInSession(agent, sessionAgents, agentDetails)`; in the Tasks
+  sidebar's agent selector skip board agents unless `useBoardAgentsStore().showBoardAgents`
+  (keep the selectors module-level: an inline one loops renders) and add the "Show board agents"
+  item to a sidebar menu; return early from `notifyAgentAttention` for a board agent; in
+  `broadcastAgentAttention` skip the push and send `shouldNotify: false` when
+  `isBoardAgent(agent.labels, id => agentManager.getAgent(id)?.labels)`.
+- **Verify:** `(cd packages/protocol && npx vitest run src/board-agents.test.ts)`,
+  `(cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts)`,
+  `(cd packages/server && npx vitest run src/server/websocket-server.notifications.test.ts)`
+  (all in the update script), and the plugin suite. Needs a desktop build and install plus
+  `plugin reload power-workboard`; the app part needs no daemon restart. The push gate
+  runs from the next daemon restart. In the app: start a board task; no tab opens, it is not in
+  the Tasks sidebar and finishing sends no GNOME notification. Projects menu > Show board agents
+  lists it. The card's agent link and Command Center still open it. The Projects Assistant chat
+  still shows and notifies.

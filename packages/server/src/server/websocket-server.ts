@@ -115,6 +115,7 @@ import {
   CLIENT_SHUTDOWN_RPC_REASON,
   normalizeClientRestartRpcReason,
 } from "./lifecycle-reasons.js";
+import { isBoardAgent } from "@getpaseo/protocol/board-agents"; // CUSTOM(hidden-board-agents)
 import { CLIENT_CAPS } from "@getpaseo/protocol/client-capabilities";
 
 import type { SecurityMode } from "@getpaseo/relay/e2ee";
@@ -2881,7 +2882,9 @@ export class VoiceAssistantWebSocketServer {
       nowMs,
     });
 
-    if (plan.shouldPush) {
+    // CUSTOM(hidden-board-agents): board agents never push or notify; status updates still go out.
+    const boardAgent = isBoardAgent(agent.labels, (id) => this.agentManager.getAgent(id)?.labels);
+    if (plan.shouldPush && !boardAgent) {
       void this.pushNotificationSender.send(notification).catch((err) => {
         this.logger.warn({ err, agentId: params.agentId }, "Failed to send push notification");
       });
@@ -2889,6 +2892,7 @@ export class VoiceAssistantWebSocketServer {
 
     for (const { ws } of clientEntries) {
       const shouldNotify =
+        !boardAgent &&
         plan.inAppRecipientIndex !== null &&
         notificationEntries[plan.inAppRecipientIndex]?.ws === ws;
       const timestamp = new Date().toISOString();
