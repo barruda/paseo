@@ -3951,7 +3951,7 @@ export function SettingsPage({
       ? archiveDaysEdit.text
       : String(settings.archiveAfterDays);
   const validDays =
-    /^\d+$/.test(daysText) && Number(daysText) >= 1 && Number(daysText) <= 365;
+    /^\d+$/.test(daysText) && Number(daysText) >= 0 && Number(daysText) <= 365;
   const preview = mappingPreview(board.cards, settings, Date.now());
   const controlDisabled = (id: string) =>
     disabled || !!pendingMutationIds?.has(`settings:${id}`);
@@ -3995,10 +3995,12 @@ export function SettingsPage({
               <SettingsSwitch
                 label={t.autoArchive}
                 hint={[
-                  t.autoArchiveHint.replace(
-                    "{days}",
-                    String(settings.archiveAfterDays),
-                  ),
+                  settings.archiveAfterDays === 0
+                    ? t.autoArchiveHintNow
+                    : t.autoArchiveHint.replace(
+                        "{days}",
+                        String(settings.archiveAfterDays),
+                      ),
                   settings.archiveMappingNeedsReview
                     ? t.autoArchiveMigrationPaused
                     : "",

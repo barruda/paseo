@@ -199,10 +199,31 @@ function migrateV7(values: unknown) {
       settings: preV8Settings.default(() => preV8Settings.parse({})),
     })
     .parse(values);
-  return dataSchema.parse({
+  return migrateV8({
     ...previous,
     schemaVersion: 8,
     cardOrderByStage: {},
+  });
+}
+
+/** CUSTOM(done-auto-archive): a Done task's workspace is archived as soon as it is safe. */
+function migrateV8(values: unknown) {
+  const previous = z
+    .object({
+      ...dataSchema.shape,
+      schemaVersion: z.literal(8).default(8),
+      settings: settingsSchema.default(() => settingsSchema.parse({})),
+    })
+    .parse(values);
+  return dataSchema.parse({
+    ...previous,
+    schemaVersion: 9,
+    settings: {
+      ...previous.settings,
+      autoArchive: true,
+      archiveAfterDays: 0,
+      archiveMappingNeedsReview: false,
+    },
   });
 }
 
@@ -278,6 +299,7 @@ export class InvalidStorageDataError extends Error {
 }
 
 function migrateDataUnsafe(values: unknown, fromVersion: number) {
+  if (fromVersion === 8) return migrateV8(values);
   if (fromVersion === 7) return migrateV7(values);
   if (fromVersion === 6) return migrateV6(values);
   if (fromVersion === 5) return migrateV5(values);

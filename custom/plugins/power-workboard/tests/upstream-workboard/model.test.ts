@@ -84,7 +84,7 @@ describe("task stages and conversation-based expiry", () => {
     expect(conversationStatusFor("unknown")).toBe("unknown");
   });
   it("rejects ambiguous mappings and keeps autoarchive opt-in", () => {
-    expect(settingsSchema.parse({}).autoArchive).toBe(false);
+    expect(settingsSchema.parse({}).autoArchive).toBe(true);
     expect(
       settingsSchema.safeParse({
         groups: DEFAULT_GROUPS.map((group) =>

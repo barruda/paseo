@@ -25,6 +25,7 @@ const attentionIssues = new Set([
   "git-dirty",
   "git-no-upstream",
   "git-unpushed",
+  "git-unmerged",
   "git-detached",
   "git-unknown",
   "directory-unavailable",

@@ -63,7 +63,7 @@ async function git(
  * daemon stored when it created the worktree (`<git dir>/paseo/worktree.json`, the same
  * `baseRef ?? baseRefName` the daemon's checkout_merge falls back to).
  */
-async function resolveBase(
+export async function resolveBase(
   directory: string,
   policyBase: string | null,
 ): Promise<{ ref: string; source: BaseSource } | null> {

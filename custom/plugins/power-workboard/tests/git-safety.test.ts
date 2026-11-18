@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it } from "vitest";
@@ -49,4 +49,73 @@ it("allows an existing non-Git directory but not a missing directory", async () 
     await rm(dir, { recursive: true, force: true });
   }
   expect(await checkGitSafety(dir, false)).toBe("directory-unavailable");
+});
+
+async function mergedRepo() {
+  const root = await mkdtemp(join(tmpdir(), "workboard-merged-"));
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync("git", ["-C", cwd, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  git(root, "init", "-b", "custom");
+  git(root, "config", "user.name", "Workboard fixture");
+  git(root, "config", "user.email", "fixture@example.invalid");
+  await writeFile(join(root, "a"), "initial\n");
+  git(root, "add", "a");
+  git(root, "commit", "-m", "initial");
+  return { root, git };
+}
+
+it("treats a branch already merged into the policy base as safe without an upstream", async () => {
+  const { root, git } = await mergedRepo();
+  try {
+    git(root, "checkout", "-b", "task");
+    expect(await checkGitSafety(root, true, "custom")).toBeNull();
+    await writeFile(join(root, "b"), "work\n");
+    git(root, "add", "b");
+    git(root, "commit", "-m", "unmerged work");
+    expect(await checkGitSafety(root, true, "custom")).toBe("git-unmerged");
+    git(root, "checkout", "custom");
+    git(root, "merge", "--no-ff", "-m", "merge", "task");
+    git(root, "checkout", "task");
+    expect(await checkGitSafety(root, true, "custom")).toBeNull();
+    await writeFile(join(root, "untracked"), "keep\n");
+    expect(await checkGitSafety(root, true, "custom")).toBe("git-dirty");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("falls back to no upstream when no base resolves", async () => {
+  const { root, git } = await mergedRepo();
+  try {
+    git(root, "checkout", "-b", "task");
+    expect(await checkGitSafety(root, true)).toBe("git-no-upstream");
+    expect(await checkGitSafety(root, true, "missing")).toBe("git-no-upstream");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it("reads the base from the worktree metadata under its git dir", async () => {
+  const { root, git } = await mergedRepo();
+  const tree = `${root}-wt`;
+  try {
+    git(root, "worktree", "add", "-b", "task", tree);
+    const gitDir = git(tree, "rev-parse", "--absolute-git-dir").trim();
+    await mkdir(join(gitDir, "paseo"), { recursive: true });
+    await writeFile(
+      join(gitDir, "paseo", "worktree.json"),
+      JSON.stringify({ baseRef: "refs/heads/custom" }),
+    );
+    expect(await checkGitSafety(tree, true)).toBeNull();
+    await writeFile(join(tree, "c"), "work\n");
+    git(tree, "add", "c");
+    git(tree, "commit", "-m", "unmerged work");
+    expect(await checkGitSafety(tree, true)).toBe("git-unmerged");
+  } finally {
+    await rm(tree, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
+  }
 });

@@ -6,7 +6,7 @@ import {
   UnsupportedStorageVersionError,
   migrateData,
 } from "../shared/migrations";
-import { dataSchema } from "../shared/model";
+import { dataSchema, isArchiveDue } from "../shared/model";
 import { snapshotRpc } from "../shared/rpc";
 import { PaseoCompat } from "../server/paseo-compat";
 import { PaseoHost } from "../server/host";
@@ -93,11 +93,11 @@ function startup(read: () => Promise<unknown>) {
 it.each([
   { status: "invalid", revision: "r", error: "unsupported-storage-version" },
   { status: "invalid", revision: "r", error: "Validation failed" },
-  { status: "ready", revision: "r", values: { schemaVersion: 9 } },
+  { status: "ready", revision: "r", values: { schemaVersion: 10 } },
   {
     status: "ready",
     revision: "r",
-    values: { schemaVersion: 8, tasks: "corrupt" },
+    values: { schemaVersion: 9, tasks: "corrupt" },
   },
 ])(
   "stops startup retries for invalid stored data and exposes a localized board error: %j",
@@ -108,7 +108,7 @@ it.each([
       const code =
         (result.status === "invalid" &&
           result.error === "unsupported-storage-version") ||
-        (result.status === "ready" && result.values?.schemaVersion === 9)
+        (result.status === "ready" && result.values?.schemaVersion === 10)
           ? "unsupported-storage-version"
           : "invalid-storage-data";
       expect(test.snapshot()).toMatchObject({ connected: false, error: code });
@@ -159,7 +159,7 @@ it("retries a transient read failure after ten seconds and recovers", async () =
   }
 });
 
-it("registers the same v8 schema and migration that upgrade stored v6 data", async () => {
+it("registers the same v9 schema and migration that upgrade stored v6 data", async () => {
   const test = startup(async () => ({
     status: "ready",
     revision: "r",
@@ -170,11 +170,11 @@ it("registers the same v8 schema and migration that upgrade stored v6 data", asy
       version: number;
       migrate(values: unknown, fromVersion: number): unknown;
     };
-    expect(definition.version).toBe(8);
+    expect(definition.version).toBe(9);
     expect(definition.migrate({ schemaVersion: 6 }, 6)).toMatchObject({
-      schemaVersion: 8,
+      schemaVersion: 9,
       settings: {
-        archiveAfterDays: 30,
+        archiveAfterDays: 0,
         defaultDraftGroup: null,
         defaultStartGroup: null,
       },
@@ -185,4 +185,38 @@ it("registers the same v8 schema and migration that upgrade stored v6 data", asy
   } finally {
     test.stop();
   }
+});
+
+it("migrates v8 data to automatic archive with no delay", () => {
+  const data = migrateData(
+    {
+      schemaVersion: 8,
+      settings: {
+        autoArchive: false,
+        archiveAfterDays: 30,
+        archiveMappingNeedsReview: true,
+      },
+    },
+    8,
+  );
+  expect(data.schemaVersion).toBe(9);
+  expect(data.settings).toMatchObject({
+    autoArchive: true,
+    archiveAfterDays: 0,
+    archiveMappingNeedsReview: false,
+  });
+  expect(
+    migrateData({ schemaVersion: 6, settings: { autoArchive: false } }, 6)
+      .settings,
+  ).toMatchObject({ autoArchive: true, archiveAfterDays: 0 });
+});
+
+it("treats a zero-day archive delay as due once the task is Done or Canceled", () => {
+  const at = "2026-09-20T00:00:00Z";
+  const now = Date.parse(at);
+  expect(isArchiveDue("done", at, now, 0)).toBe(true);
+  expect(isArchiveDue("canceled", at, now + 1, 0)).toBe(true);
+  expect(isArchiveDue("review", at, now + 1, 0)).toBe(false);
+  expect(isArchiveDue("todo", at, now + 1, 0)).toBe(false);
+  expect(isArchiveDue("done", at, now + 86_400_000, 1)).toBe(false);
 });

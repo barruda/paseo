@@ -339,8 +339,9 @@ const zh = {
   autoArchiveMigrationPaused:
     "升级时补建了已废弃分组，其标签可能匹配已有 workspace。自动归档已关闭，请核对到期任务后重新开启；存在到期任务时会先要求确认。",
   archiveAfterDays: "自动归档等待天数",
-  archiveAfterDaysHint: "输入 1–365 的整数，保存后生效。",
-  archiveAfterDaysInvalid: "请输入 1–365 的整数。",
+  archiveAfterDaysHint:
+    "输入 0–365 的整数，保存后生效；0 表示任务一进入已完成或已废弃就归档。",
+  archiveAfterDaysInvalid: "请输入 0–365 的整数。",
   defaultDraftGroupSetting: "新草稿默认分组",
   defaultStartGroupSetting: "未标记 workspace 默认分组",
   defaultStartWorkGroupSetting: "开始工作默认分组（进行中）",
@@ -348,6 +349,13 @@ const zh = {
   detachDraft: "还原合并草稿",
   detachDraftConfirm:
     "将“{name}”还原为独立草稿，并从此任务备注中移除合并时追加的内容？",
+  autoArchiveHintNow:
+    "任务一进入已完成或已废弃，且安全检查通过，就自动归档 workspace。",
+  groupTypeHintsNow: {
+    done: "开启自动归档后，安全检查通过就立即归档 workspace。",
+    canceled:
+      "开启自动归档后，安全检查通过就立即归档 workspace；草稿可手动归档。",
+  },
   autoArchiveHint: "完成或废弃且最后对话超过 {days} 天后，自动归档 workspace。",
   enableAutoArchive: "开启自动归档",
   enableAutoArchiveConfirm:
@@ -439,6 +447,7 @@ const zh = {
     "git-dirty": "Git 有未提交修改",
     "git-no-upstream": "Git 没有可验证的 upstream",
     "git-unpushed": "Git 有未推送提交",
+    "git-unmerged": "分支有尚未合并到基础分支的工作",
     "git-detached": "Git 处于 detached HEAD",
     "git-unknown": "无法核实 Git 状态",
     "directory-unavailable": "目录不可用",
@@ -976,8 +985,9 @@ const en: typeof zh = {
   autoArchiveMigrationPaused:
     "An upgrade added a Canceled group whose label may match existing workspaces. Automatic archive was turned off. Review due tasks before re-enabling it; due tasks require confirmation first.",
   archiveAfterDays: "Days before automatic archive",
-  archiveAfterDaysHint: "Enter an integer from 1 to 365, then save.",
-  archiveAfterDaysInvalid: "Enter an integer from 1 to 365.",
+  archiveAfterDaysHint:
+    "Enter an integer from 0 to 365, then save. 0 archives as soon as the task is Done or Canceled.",
+  archiveAfterDaysInvalid: "Enter an integer from 0 to 365.",
   defaultDraftGroupSetting: "Default group for new drafts",
   defaultStartGroupSetting: "Default group for unlabeled workspaces",
   defaultStartWorkGroupSetting: "Default Start work group (In progress)",
@@ -985,6 +995,13 @@ const en: typeof zh = {
   detachDraft: "Restore merged draft",
   detachDraftConfirm:
     "Restore “{name}” as an independent draft and remove its originally appended text from this task's notes?",
+  autoArchiveHintNow:
+    "Archive a workspace as soon as its task is Done or Canceled and the safety checks pass.",
+  groupTypeHintsNow: {
+    done: "Archives a workspace as soon as automatic archive is enabled and safety checks pass.",
+    canceled:
+      "Archives a workspace as soon as automatic archive is enabled and safety checks pass. Drafts can be archived manually.",
+  },
   autoArchiveHint:
     "Archive a completed or canceled workspace after {days} days since its last conversation.",
   enableAutoArchive: "Enable automatic archive",
@@ -1084,6 +1101,8 @@ const en: typeof zh = {
     "git-dirty": "Git has uncommitted changes",
     "git-no-upstream": "Git has no verifiable upstream",
     "git-unpushed": "Git has unpushed commits",
+    "git-unmerged":
+      "Its branch has work that is not merged into the base branch yet",
     "git-detached": "Git is on a detached HEAD",
     "git-unknown": "Could not verify Git state",
     "directory-unavailable": "Directory is unavailable",

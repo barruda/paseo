@@ -372,10 +372,10 @@ function GroupForm({
           </View>
           <SettingsSelect<StageKind>
             label={t.groupType}
-            hint={t.groupTypeHints[kind].replace(
-              "{days}",
-              String(archiveAfterDays),
-            )}
+            hint={(archiveAfterDays === 0 && kind in t.groupTypeHintsNow
+              ? t.groupTypeHintsNow[kind as keyof typeof t.groupTypeHintsNow]
+              : t.groupTypeHints[kind]
+            ).replace("{days}", String(archiveAfterDays))}
             value={kind}
             options={STAGES.map((value) => ({ value, label: t.stages[value] }))}
             onValueChange={setKind}

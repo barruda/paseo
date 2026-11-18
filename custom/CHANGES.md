@@ -2979,7 +2979,10 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     sends the feedback to the same agent, or starts a new one in the workspace with the task and
     the feedback when the agent is gone, and moves the task to In progress. A queued task takes a
     slot like a new one, in column order.
-  - **Done:** marking a task Done changes only its group; its work stays in the worktree. A Done
+  - **Done:** marking a task Done changes its group, and the workspace is archived once its
+    branch is merged and nothing is uncommitted (see
+    [done-auto-archive](#done-auto-archive-a-done-tasks-worktree-is-archived-as-soon-as-it-is-safe)).
+    Until then its work stays in the worktree. A Done
     card in a git project shows three buttons, each the user's call: **Commit** (everything
     uncommitted, with a generated message), **PR description** (asks the task's agent through a
     side question, which stays out of its history, and shows the title and body with **Copy
@@ -6956,3 +6959,32 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `bash custom/scripts/worktree-deps.test.sh`. Create a paseo worktree from Paseo: the
   setup log says `[worktree-deps] linked node_modules`, `stat -c %h node_modules/react/package.json`
   is 2 or more, and `npm run typecheck` passes there.
+
+## done-auto-archive: a Done task's worktree is archived as soon as it is safe
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Power Workboard archives a Done task's workspace once its branch is merged`
+- **Why:** worktrees of finished tasks piled up at about 5 GB each. The automatic archive existed
+  but was off, waited 30 days, and its git check only accepted a branch pushed to an upstream. Task
+  branches here are merged locally into the project's base branch and have no upstream, so nothing
+  was ever archived.
+- **What:** when a card is in a Done or Canceled group, Power Workboard archives its workspace
+  right away if it is safe. Only worktree workspaces: `scan()` skips a task bound to a local
+  checkout or directory, since that workspace holds your other chats and its branch always counts
+  as merged into itself. The git check (`server/git-safety.ts`) now accepts a clean branch whose
+  HEAD is already contained in the task's base branch (`git merge-base --is-ancestor`), with or
+  without an upstream. The base is the project policy's base branch, else the `baseRef` in
+  `<git dir>/paseo/worktree.json`. A branch with commits not in the base returns `git-unmerged`;
+  with no base and no upstream it still returns `git-no-upstream`. Uncommitted or untracked files,
+  a detached HEAD, busy agents, open terminals and running scripts still defer the archive. The
+  delay setting now accepts 0 (archive as soon as the task is Done or Canceled) and defaults to 0,
+  and automatic archive is on by default. Schema version 9 migrates existing data to automatic
+  archive on with a 0-day delay, once.
+- **Core files touched:** none (plugin only).
+- **Re-apply:** re-apply the plugin changes in `custom/plugins/power-workboard`: `checkGitSafety`
+  takes the policy base, `PaseoHost.safety` passes it, `scan()` supplies it from the task's
+  project policy, the settings defaults and range change, and `migrateV8` in
+  `shared/migrations.ts` sets the new values.
+- **Verify:** `cd custom/plugins/power-workboard && npm run check`. Merge a task into the base
+  branch from its Done card: its workspace is archived within a scan. A Done task with an unmerged
+  commit stays, with the issue "Its branch has work that is not merged into the base branch yet".

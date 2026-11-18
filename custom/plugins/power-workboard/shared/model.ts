@@ -149,9 +149,9 @@ export const groupOrderSchema = z
       });
   });
 const preferences = {
-  autoArchive: z.boolean().default(false),
+  autoArchive: z.boolean().default(true),
   archiveMappingNeedsReview: z.boolean().default(false),
-  archiveAfterDays: z.number().int().min(1).max(365).default(30),
+  archiveAfterDays: z.number().int().min(0).max(365).default(0),
   defaultDraftGroup: stageSchema.nullable().default(null),
   defaultStartGroup: stageSchema.nullable().default(null),
   defaultStartWorkGroup: stageSchema.nullable().default(null),
@@ -269,7 +269,7 @@ export function isArchiveDue(
   return (
     (stage === "done" || stage === "canceled") &&
     due !== null &&
-    now > Date.parse(due)
+    (days === 0 ? now >= Date.parse(due) : now > Date.parse(due))
   );
 }
 
@@ -293,7 +293,7 @@ export function conversationStatusFor(
  * The stored settings version. The plugin registers this same value, because the host only
  * migrates stored settings when the registered version differs from what it finds.
  */
-export const DATA_SCHEMA_VERSION = 8;
+export const DATA_SCHEMA_VERSION = 9;
 
 export const sourceSchema = z.discriminatedUnion("kind", [
   z.object({

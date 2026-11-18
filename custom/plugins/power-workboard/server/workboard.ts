@@ -2705,7 +2705,9 @@ export class Workboard {
       taskId,
       setTimeout(() => {
         this.dirtyTimers.delete(taskId);
-        if (this.store.current.assistant.deliveries[taskId]?.stage === "merging")
+        if (
+          this.store.current.assistant.deliveries[taskId]?.stage === "merging"
+        )
           this.launch(taskId);
       }, this.assistantOptions.dirtyRetryMs ?? 300_000),
     );
@@ -3934,6 +3936,10 @@ export class Workboard {
         !task.archived &&
         !task.binding &&
         task.issue !== "archive-restored-workspace-unavailable" &&
+        // CUSTOM(done-auto-archive): only task worktrees. A local checkout's workspace holds the
+        // user's other chats, and its branch is always "merged" into itself.
+        this.inventory.workspaces.find((w) => w.id === id)?.workspaceKind ===
+          "worktree" &&
         archiveGate(task) !== null &&
         isArchiveDue(
           groupKind(task.lastStage, this.store.current.settings.groups),
@@ -4008,7 +4014,10 @@ export class Workboard {
         this.archiveDeferrals.delete(candidate.id);
         continue;
       }
-      const safety = await this.host.safety(workspace);
+      const safety = await this.host.safety(
+        workspace,
+        this.policy(this.projectIdOf(candidate)).baseBranch.trim() || null,
+      );
       if (safety) {
         await this.deferArchive(candidate, safety, workspace, agents);
         continue;
@@ -4073,7 +4082,11 @@ export class Workboard {
           fingerprint(currentAgents) !== fingerprint(agents)
         )
           finalIssue = "changed-during-check";
-        else finalIssue = await this.host.safety(current);
+        else
+          finalIssue = await this.host.safety(
+            current,
+            this.policy(this.projectIdOf(candidate)).baseBranch.trim() || null,
+          );
       } catch {
         finalIssue = "changed-during-check";
       }

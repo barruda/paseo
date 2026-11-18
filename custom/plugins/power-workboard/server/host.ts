@@ -167,7 +167,10 @@ export interface Host {
   mergeToBase(directory: string, options?: MergeOptions): Promise<void>;
   /** CUSTOM(projects-assistant): reads one agent's timeline, for the Projects Conversations page. */
   timeline(agentId: string): TimelineReader;
-  safety(workspace: Workspace): Promise<string | null>;
+  safety(
+    workspace: Workspace,
+    policyBase?: string | null,
+  ): Promise<string | null>;
   archive(
     id: string,
   ): Promise<{ archivedAt: string | null; error: string | null }>;
@@ -791,7 +794,10 @@ export class PaseoHost implements Host {
     if (!result.success)
       throw new Error(result.error?.message ?? "The git action failed");
   }
-  async safety(workspace: Workspace): Promise<string | null> {
+  async safety(
+    workspace: Workspace,
+    policyBase?: string | null,
+  ): Promise<string | null> {
     if (workspace.scripts.some((script) => script.lifecycle === "running"))
       return "script-running";
     if (
@@ -807,6 +813,7 @@ export class PaseoHost implements Host {
     return checkGitSafety(
       workspace.workspaceDirectory,
       workspace.projectKind === "git",
+      policyBase,
     );
   }
   archive(id: string) {

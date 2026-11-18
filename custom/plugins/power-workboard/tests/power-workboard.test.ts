@@ -1,7 +1,10 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
+import { agentEvidence } from "./fixtures";
 import { Workboard } from "../server/workboard";
 import {
   DEFAULT_GROUPS,
+  dataSchema,
+  newTask,
   orchestratorConfigSchema,
   settingsSchema,
 } from "../shared/model";
@@ -735,5 +738,101 @@ it("a task created in Ready to start goes straight to an active orchestrator", a
     ).rejects.toThrow("Choose a To do group");
   } finally {
     board.dispose();
+  }
+});
+
+// CUSTOM(done-auto-archive)
+function archiveScan(
+  label: string,
+  kind: "worktree" | "directory" = "worktree",
+  baseBranch = "",
+) {
+  const assistant = dataSchema.parse({}).assistant;
+  assistant.settings.projects.p = {
+    action: assistant.settings.defaultAction,
+    baseBranch,
+  } as never;
+  const stage = label.replace("pwb:", "");
+  const test = fixture({
+    assistant,
+    tasks: [
+      {
+        ...newTask("t", "Task", "2026-08-01T00:00:00Z", stage),
+        workspaceId: "w",
+        projectId: "p",
+        conversationGateAt: "2026-08-01T00:00:00.000Z",
+        conversationGateEvidence: "exact",
+        lastConversationAt: "2026-08-01T00:00:00.000Z",
+        conversationStatus: "known",
+        conversationDisplayEvidence: "exact",
+      },
+    ],
+  });
+  test.inventory.projects.push({ ...project, isGit: true });
+  test.inventory.workspaces.push({
+    ...workspace("w", undefined, [label]),
+    workspaceKind: kind,
+  });
+  test.inventory.agents.push({
+    id: "a",
+    workspaceId: "w",
+    title: null,
+    updatedAt: "2026-08-01T00:00:00Z",
+    lastUserMessageAt: "2026-08-01T00:00:00Z",
+    activity: "idle",
+  });
+  test.host.conversation = agentEvidence("2026-08-01T00:00:00Z");
+  return test;
+}
+
+it("archives a Done task's worktree and passes the project's base to safety", async () => {
+  const test = archiveScan("pwb:done", "worktree", "custom");
+  try {
+    await test.board.start();
+    expect(test.host.safety).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "w" }),
+      "custom",
+    );
+    expect(test.host.archive).toHaveBeenCalledExactlyOnceWith("w");
+    expect(test.board.snapshot().cards[0].archived).toMatchObject({
+      status: "archived",
+    });
+  } finally {
+    test.board.dispose();
+  }
+});
+
+it("keeps a Done task's worktree and flags it when its branch is unmerged", async () => {
+  const test = archiveScan("pwb:done");
+  vi.mocked(test.host.safety).mockResolvedValue("git-unmerged");
+  try {
+    await test.board.start();
+    expect(test.host.archive).not.toHaveBeenCalled();
+    expect(test.board.snapshot().cards[0].issue).toBe("git-unmerged");
+  } finally {
+    test.board.dispose();
+  }
+});
+
+it("never archives a Done task's local checkout workspace", async () => {
+  const test = archiveScan("pwb:done", "directory");
+  try {
+    await test.board.start();
+    expect(test.host.archive).not.toHaveBeenCalled();
+    expect(test.host.safety).not.toHaveBeenCalled();
+    expect(test.board.snapshot().cards[0].issue ?? null).toBeNull();
+  } finally {
+    test.board.dispose();
+  }
+});
+
+it("never archives a worktree whose task is not in a done or canceled group", async () => {
+  const test = archiveScan("pwb:in-progress");
+  try {
+    await test.board.start();
+    expect(test.host.archive).not.toHaveBeenCalled();
+    expect(test.board.snapshot().cards[0].archived ?? null).toBeNull();
+  } finally {
+    test.board.dispose();
   }
 });

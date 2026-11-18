@@ -9,8 +9,8 @@ import { migrateData } from "../../shared/migrations";
 import { agentEvidence, fixture, workspace } from "../fixtures";
 
 it("uses the configured archive delay, with bounded integer settings and a strict boundary", async () => {
-  expect(settingsSchema.parse({}).archiveAfterDays).toBe(30);
-  for (const archiveAfterDays of [0, 366, 1.5])
+  expect(settingsSchema.parse({}).archiveAfterDays).toBe(0);
+  for (const archiveAfterDays of [-1, 366, 1.5])
     expect(settingsSchema.safeParse({ archiveAfterDays }).success).toBe(false);
   expect(archiveDueAt("2026-09-20T00:00:00Z", 2)).toBe(
     "2026-09-22T00:00:00.000Z",

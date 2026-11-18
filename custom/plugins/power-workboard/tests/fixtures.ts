@@ -157,7 +157,10 @@ export function fixture(initial: Partial<Data> = {}) {
       const agent = inventory.agents.find((a) => a.id === id);
       if (agent) agent.archivedAt = new Date(now()).toISOString();
     }),
-    safety: async () => null,
+    safety: vi.fn(
+      async (_workspace: Workspace, _policyBase?: string | null) =>
+        null as string | null,
+    ),
     // CUSTOM(night-tasks)
     busyAgents: vi.fn(async () =>
       inventory.agents

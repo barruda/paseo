@@ -2,12 +2,14 @@ import { execFile } from "node:child_process";
 import { stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import { promisify } from "node:util";
+import { resolveBase } from "./assistant/task-git";
 const execute = promisify(execFile);
 
 /** Read only: never fetch, stash, commit, push, or remove a worktree. */
 export async function checkGitSafety(
   directory: string,
   isGit: boolean,
+  policyBase: string | null = null,
 ): Promise<string | null> {
   try {
     if (!isAbsolute(directory) || !(await stat(directory)).isDirectory())
@@ -47,6 +49,23 @@ export async function checkGitSafety(
     } catch {
       return "git-detached";
     }
+    // Work already contained in the task's base branch is safe, upstream or not.
+    // Exit 1 means "not an ancestor"; any other failure means the base is unusable.
+    let unmerged = false;
+    const base = await resolveBase(directory, policyBase);
+    if (base) {
+      try {
+        await git("merge-base", "--is-ancestor", "HEAD", base.ref);
+        return null;
+      } catch (error) {
+        unmerged =
+          !!error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === 1;
+      }
+    }
+    const noUpstream = unmerged ? "git-unmerged" : "git-no-upstream";
     let remote: string;
     let merge: string;
     try {
@@ -54,9 +73,9 @@ export async function checkGitSafety(
       remote = await git("config", `branch.${branch}.remote`);
       merge = await git("config", `branch.${branch}.merge`);
     } catch {
-      return "git-no-upstream";
+      return noUpstream;
     }
-    if (remote === ".") return "git-no-upstream";
+    if (remote === ".") return noUpstream;
     if (Number(await git("rev-list", "--count", "@{upstream}..HEAD")) > 0)
       return "git-unpushed";
     // A stale tracking ref is insufficient evidence that the branch still exists remotely.
