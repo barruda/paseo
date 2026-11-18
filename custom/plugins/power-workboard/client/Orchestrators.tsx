@@ -231,6 +231,10 @@ export function OrchestratorsPanel(
                   scheduleSummary(config.schedule, t),
                   `${status?.running ?? 0}/${config.maxConcurrent} ${panel.running}`,
                   `${status?.waiting ?? 0} ${panel.waiting}`,
+                  // CUSTOM(task-checkpoints)
+                  status?.paused
+                    ? `${status.paused} ${panel.atCheckpoint}`
+                    : null,
                   board.settings.pools.find((pool) => pool.id === config.poolId)
                     ?.name ?? null,
                   holdSummary(status?.hold, t),
@@ -775,6 +779,7 @@ type Draft = {
   times: string;
   maxConcurrent: string;
   batchSize: string;
+  maxCheckpoints: string; // CUSTOM(task-checkpoints)
   provider: string;
   modeId: string;
   thinkingOptionId: string;
@@ -796,6 +801,7 @@ function toDraft(config: OrchestratorConfig): Draft {
     times: schedule.kind === "daily" ? schedule.times.join(", ") : "09:00",
     maxConcurrent: String(config.maxConcurrent),
     batchSize: String(config.batchSize),
+    maxCheckpoints: String(config.maxCheckpoints), // CUSTOM(task-checkpoints)
     provider: config.provider,
     modeId: config.modeId ?? "",
     thinkingOptionId: config.thinkingOptionId ?? "",
@@ -834,6 +840,7 @@ function fromDraft(id: string, draft: Draft, enabled: boolean) {
     schedule,
     maxConcurrent: Number(draft.maxConcurrent),
     batchSize: Number(draft.batchSize),
+    maxCheckpoints: Number(draft.maxCheckpoints), // CUSTOM(task-checkpoints)
     provider: draft.provider,
     modeId: draft.modeId.trim() || null,
     thinkingOptionId: draft.thinkingOptionId.trim() || null,
@@ -1028,6 +1035,10 @@ export function OrchestratorTab(
           `${state?.running ?? runs.length}/${config.maxConcurrent}`,
         )}
         {stat(panel.waiting, String(state?.waiting ?? 0))}
+        {/* CUSTOM(task-checkpoints) */}
+        {state?.paused
+          ? stat(panel.atCheckpointStat, String(state.paused))
+          : null}
         {config.enabled && !state?.active && state?.nextRunAt
           ? stat(panel.statNext, time(state.nextRunAt, t.locale))
           : stat(panel.statState, pill.text, pill.color)}
@@ -1252,6 +1263,16 @@ export function OrchestratorTab(
             input(draft.batchSize, (batchSize) => edit({ batchSize }), {
               label: panel.batchSize,
             }),
+          )}
+          {/* CUSTOM(task-checkpoints) */}
+          {field(
+            panel.maxCheckpoints,
+            input(
+              draft.maxCheckpoints,
+              (maxCheckpoints) => edit({ maxCheckpoints }),
+              { label: panel.maxCheckpoints },
+            ),
+            panel.maxCheckpointsHint,
           )}
         </View>,
       )}

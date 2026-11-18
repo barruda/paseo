@@ -88,6 +88,17 @@ function queuedCount(board: Board): number {
   ).length;
 }
 
+/** CUSTOM(task-checkpoints): a long task's checklist as counts for the Running section. */
+function progressOf(data: Data, taskId: string): RunningItem["progress"] {
+  const progress = data.assistant?.progress?.[taskId];
+  if (!progress) return null;
+  return {
+    done: progress.done.length,
+    total: progress.done.length + progress.next.length,
+    checkpoints: progress.checkpoints,
+  };
+}
+
 export function buildOverview(source: ViewSource): Overview {
   const { data, board } = source;
   const tasks = new Map(data.tasks.map((task) => [task.id, task]));
@@ -137,13 +148,17 @@ export function buildOverview(source: ViewSource): Overview {
         stage: delivery.stage,
         attempt: delivery.attempt,
         startedAt: delivery.startedAt,
+        progress: progressOf(data, taskId), // CUSTOM(task-checkpoints)
       });
     }
   }
   for (const [taskId, run] of Object.entries(data.orchestrations ?? {})) {
+    // CUSTOM(task-checkpoints): a task between checkpoints is listed as waiting.
+    const waiting =
+      run.checkpoint && (run.status === "queued" || run.status === "waiting");
     if (
       seenRunning.has(taskId) ||
-      (run.status !== "running" && run.status !== "starting")
+      (run.status !== "running" && run.status !== "starting" && !waiting)
     )
       continue;
     const task = tasks.get(taskId);
@@ -156,9 +171,13 @@ export function buildOverview(source: ViewSource): Overview {
       projectName: task.projectName,
       orchestratorName: orchestratorName(data, orchestratorId),
       agentId: currentAgentId(data, taskId),
-      stage: "running",
+      stage: waiting ? "waiting" : "running",
       attempt: attempts.length ? attempts[attempts.length - 1].index : null,
-      startedAt: run.startedAt,
+      startedAt: waiting ? (run.finishedAt ?? run.startedAt) : run.startedAt,
+      // CUSTOM(task-checkpoints)
+      resumeAt: waiting ? run.resumeAt : null,
+      waitingFor: waiting ? run.waitingFor : null,
+      progress: progressOf(data, taskId),
     });
   }
   needsYou.sort((left, right) => time(right.since) - time(left.since));
@@ -280,7 +299,9 @@ export function buildStats(
       averageDurationMs: durations.length
         ? durations.reduce((sum, value) => sum + value, 0) / durations.length
         : null,
-      running: overview.running.length,
+      // CUSTOM(task-checkpoints): tasks between checkpoints are not running.
+      running: overview.running.filter((item) => item.stage !== "waiting")
+        .length,
       queued: overview.queued,
       needsYou: overview.needsYou.length,
     },

@@ -75,6 +75,11 @@ import {
   type ProjectPolicy,
   type AssistantSettings,
   reviewPolicyFor,
+  // CUSTOM(task-checkpoints)
+  CHECKPOINT_LOG_LIMIT,
+  STALL_LIMIT,
+  taskProgressSchema,
+  type Report,
 } from "../shared/assistant";
 import { worktreeBaseName } from "./assistant/task-git";
 import { parseReport } from "./assistant/report";
@@ -113,8 +118,10 @@ import {
 import type { HistoryEventInput, HistoryStore } from "./assistant/history";
 import type { ViewSource } from "./assistant/views";
 import {
+  checkpointResumePrompt, // CUSTOM(task-checkpoints)
   continuationPrompt,
   conflictPrompt,
+  handoffSection, // CUSTOM(task-checkpoints)
   fixPrompt,
   orchestratorPrompt,
   parseTicket,
@@ -162,6 +169,10 @@ function checkTiming(timing: TaskTiming | null): TaskTiming | null {
   return { kind: "at", at: new Date(at).toISOString() };
 }
 type AttemptOutcome = Attempt["outcome"]; // CUSTOM(projects-assistant)
+// CUSTOM(task-checkpoints): for tasks started by hand, with no orchestrator setting.
+const DEFAULT_MAX_CHECKPOINTS = 5;
+/** CUSTOM(task-checkpoints): a checkpoint never waits longer than this. */
+const MAX_RESUME_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 /** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
 const IDLE_SETTLE_MS = 20_000;
 const DEFAULT_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
@@ -550,6 +561,7 @@ export class Workboard {
       orchestrations: data.orchestrations,
       refinements: data.refinements,
       finishes: data.finishes,
+      progress: data.assistant.progress, // CUSTOM(task-checkpoints)
       // CUSTOM(night-tasks)
       night: data.night,
       nightRuntime: data.nightRuntime,
@@ -2052,7 +2064,20 @@ export class Workboard {
       feedback: feedback.trim(),
       error: null,
       finishedAt: this.stamp(),
+      // CUSTOM(task-checkpoints): the reviewer's answer is not a checkpoint resume.
+      checkpoint: false,
+      resumeAt: null,
+      waitingFor: null,
     });
+    // CUSTOM(task-checkpoints): sending it back gives a stalled task a new budget of checkpoints.
+    if (this.store.current.assistant.progress[taskId])
+      await this.store.update((data) => {
+        const progress = data.assistant.progress[taskId];
+        if (progress) {
+          progress.checkpoints = 0;
+          progress.stalls = 0;
+        }
+      });
     this.changed(task.workspaceId);
     await this.orchestrate();
   }
@@ -2395,6 +2420,22 @@ export class Workboard {
       report ? report.status : "no-report",
       record,
     );
+    // CUSTOM(task-checkpoints): a checkpoint resumes the task unless it stalled.
+    if (report?.status === "checkpoint") {
+      const stalled = await this.checkpointReached(
+        taskId,
+        record,
+        report,
+        attempt,
+      );
+      if (stalled === null) return false;
+      await this.createDelivery(taskId, {
+        action: this.policy(this.projectIdOf(task)).action,
+        attempt,
+        report,
+      });
+      return this.settle(taskId, "stalled", stalled);
+    }
     const policy = this.policy(this.projectIdOf(task));
     const previous = this.store.current.assistant.deliveries[taskId];
     const afterFix = previous?.stage === "fixing" ? previous : null;
@@ -2462,6 +2503,142 @@ export class Workboard {
     });
     return true;
   }
+  // CUSTOM(task-checkpoints) -----------------------------------------------------------------
+  /**
+   * A checkpoint report: save the checklist, commit the partial work in the worktree and queue
+   * the task to resume (at `resumeAfter` when given). Returns why it stalled, or null when it will
+   * resume. Inside `serial`.
+   */
+  private async checkpointReached(
+    taskId: string,
+    record: Orchestration,
+    report: Report,
+    attempt: number,
+  ): Promise<string | null> {
+    const task = this.task(taskId);
+    const previous = this.store.current.assistant.progress[taskId];
+    const done = report.progress?.done ?? previous?.done ?? [];
+    const next = report.progress?.next ?? previous?.next ?? [];
+    const key = (item: string) => item.trim().toLowerCase();
+    const known = new Set((previous?.done ?? []).map(key));
+    const advanced = done.some((item) => !known.has(key(item)));
+    const checkpoints = (previous?.checkpoints ?? 0) + 1;
+    const stalls = advanced ? 0 : (previous?.stalls ?? 0) + 1;
+    const commit = await this.commitCheckpoint(task);
+    const first = report.summary.split("\n")[0].slice(0, 300);
+    const at = this.stamp();
+    await this.store.update((data) => {
+      const old = data.assistant.progress[taskId];
+      data.assistant.progress[taskId] = taskProgressSchema.parse({
+        done,
+        next,
+        checkpoints,
+        stalls,
+        summary: report.summary,
+        log: [
+          ...(old?.log ?? []),
+          {
+            at,
+            checkpoint: checkpoints,
+            text: commit ? `${first} (${commit})` : first,
+          },
+        ].slice(-CHECKPOINT_LOG_LIMIT),
+        updatedAt: at,
+      });
+    });
+    const max =
+      this.store.current.orchestrators.find(
+        (o) => o.id === record.orchestratorId,
+      )?.maxCheckpoints ?? DEFAULT_MAX_CHECKPOINTS;
+    const total = done.length + next.length;
+    await this.record(
+      taskId,
+      "checkpoint",
+      `Checkpoint ${checkpoints}${total ? ` (${done.length}/${total})` : ""}: ${first}`,
+      { attempt, detail: commit },
+    );
+    const stalled =
+      checkpoints > max
+        ? `Checkpoint ${checkpoints}: over the limit of ${max} automatic resumes`
+        : stalls >= STALL_LIMIT
+          ? `${stalls} checkpoints in a row completed no new item`
+          : null;
+    if (stalled) return stalled;
+    // A late checkpoint may follow a no-report that already asked for the user.
+    if (this.store.current.assistant.deliveries[taskId]?.stage === "needs-you")
+      await this.store.update((data) => {
+        delete data.assistant.deliveries[taskId];
+      });
+    const resumeAt = this.resumeTime(report.resumeAfter);
+    await this.setOrchestration(taskId, {
+      status: resumeAt ? "waiting" : "queued",
+      checkpoint: true,
+      resumeAt,
+      waitingFor: report.waitingFor?.trim() || null,
+      feedback: null,
+      error: null,
+    });
+    await this.log(
+      record.orchestratorId,
+      "info",
+      `"${task.title}": checkpoint ${checkpoints}/${max}; ${
+        resumeAt ? `resumes at ${resumeAt}` : "resumes on the next pass"
+      }${report.waitingFor?.trim() ? ` (waiting for ${report.waitingFor.trim()})` : ""}`,
+      taskId,
+      record.agentId,
+    );
+    return null;
+  }
+  /** A future time from `resumeAfter`, or null (resume on the next pass). */
+  private resumeTime(value: string | null): string | null {
+    if (!value) return null;
+    const at = Date.parse(value);
+    if (!Number.isFinite(at) || at <= this.now()) return null;
+    return new Date(
+      Math.min(at, this.now() + MAX_RESUME_DELAY_MS),
+    ).toISOString();
+  }
+  /**
+   * Commit the task's partial work in its own worktree, never on the base branch. Returns a note
+   * for the log, or null when there was nothing to commit.
+   */
+  private async commitCheckpoint(task: Task): Promise<string | null> {
+    const workspace = this.inventory.workspaces.find(
+      (w) => w.id === task.workspaceId,
+    );
+    if (workspace?.projectKind !== "git") return null;
+    const directory = workspace.workspaceDirectory;
+    try {
+      if (!(await this.host.gitDirty(directory))) return null;
+      const refusal = dependencyRefusal(
+        await this.host.gitStatusLines(directory),
+      );
+      if (refusal) return "not committed: dependency paths are untracked";
+      await this.host.commit(directory);
+      return "committed";
+    } catch (error) {
+      return `not committed: ${message(error)}`;
+    }
+  }
+  /** Whether a queued or waiting task may continue now. */
+  private resumable(record: Orchestration | undefined): boolean {
+    if (record?.status === "queued") return true;
+    return (
+      record?.status === "waiting" &&
+      (!record.resumeAt || Date.parse(record.resumeAt) <= this.now())
+    );
+  }
+  /** The branch of the task's worktree, or null when unknown. */
+  private async taskBranch(task: Task): Promise<string | null> {
+    const workspace = this.inventory.workspaces.find(
+      (w) => w.id === task.workspaceId,
+    );
+    if (!workspace) return null;
+    return this.host
+      .currentBranch(workspace.workspaceDirectory)
+      .catch(() => null);
+  }
+  // End CUSTOM(task-checkpoints) -------------------------------------------------------------
   private async settle(
     taskId: string,
     reason: NeedsYouReason,
@@ -3187,6 +3364,13 @@ export class Workboard {
       attempt: this.store.current.assistant.deliveries[taskId]?.attempt,
       detail: parsed.report.summary.split("\n")[0].slice(0, 200),
     });
+    // CUSTOM(task-checkpoints): a late checkpoint takes the task back to In progress to resume.
+    const back = defaultStartWorkGroup(
+      this.store.current.settings.groups,
+      this.store.current.settings.defaultStartWorkGroup,
+    );
+    if (this.store.current.orchestrations[taskId]?.checkpoint && back)
+      await this.moveBound(taskId, back).catch(() => undefined);
     await this.log(
       record.orchestratorId,
       "info",
@@ -3236,12 +3420,46 @@ export class Workboard {
         await this.store.update((data) => {
           delete data.orchestrations[taskId];
           delete data.assistant.deliveries[taskId]; // CUSTOM(projects-assistant)
+          delete data.assistant.progress[taskId]; // CUSTOM(task-checkpoints)
         });
         continue;
       }
       // CUSTOM(board-turn-end): a task settled as no-report may still get its report later.
       if (record.status === "finished" && record.agentId && this.assistantOn())
         await this.recoverLateReport(taskId, record);
+      // CUSTOM(task-checkpoints): a waiting task moved out of In progress by hand stops there.
+      if (
+        record.checkpoint &&
+        (record.status === "queued" || record.status === "waiting")
+      ) {
+        const workspace = this.inventory.workspaces.find(
+          (w) => w.id === task.workspaceId,
+        );
+        const where = workspace
+          ? resolveStage(
+              workspace.labels,
+              groups,
+              this.store.current.settings.defaultStartGroup,
+            )
+          : task.lastStage;
+        const kind = groupKind(where, groups);
+        if (kind !== "in-progress" && kind !== "ready") {
+          await this.setOrchestration(taskId, {
+            status: "finished",
+            checkpoint: false,
+            resumeAt: null,
+            waitingFor: null,
+          });
+          await this.log(
+            record.orchestratorId,
+            "info",
+            `"${task.title}" left In progress; its checkpoint will not resume`,
+            taskId,
+            record.agentId,
+          );
+        }
+        continue;
+      }
       if (record.status !== "running" || !record.agentId) continue;
       const agent = this.inventory.agents.find((a) => a.id === record.agentId);
       const elapsed = this.now() - Date.parse(record.startedAt);
@@ -3323,6 +3541,8 @@ export class Workboard {
       if (this.assistantOn())
         launch = await this.assistantFinished(taskId, record, summary);
       else if (summary) await this.setOrchestration(taskId, { summary });
+      // CUSTOM(task-checkpoints): the task stays in progress and resumes later.
+      if (this.store.current.orchestrations[taskId]?.checkpoint) continue;
       await this.log(
         record.orchestratorId,
         "info",
@@ -3372,13 +3592,34 @@ export class Workboard {
       )
       .flatMap((group) =>
         cardsForStage(board.cards, group.id, board.cardOrderByStage).map(
-          (card) => ({ card, night: group.kind === "scheduled" }),
+          (card) => ({
+            card,
+            night: group.kind === "scheduled",
+            resume: false,
+          }),
         ),
       )
       .filter(
         ({ card, night }) =>
           (!night || card.timing?.kind === "night") && this.eligible(card),
       );
+    // CUSTOM(task-checkpoints): tasks in progress that a checkpoint queued, whatever the schedule.
+    const resumes = orderedGroups(this.store.current.settings)
+      .filter((group) => group.kind === "in-progress")
+      .flatMap((group) =>
+        cardsForStage(board.cards, group.id, board.cardOrderByStage),
+      )
+      .filter((card) => {
+        const record = this.store.current.orchestrations[card.id];
+        return (
+          !card.binding &&
+          !card.archived &&
+          !!card.workspaceId &&
+          !!record?.checkpoint &&
+          this.resumable(record)
+        );
+      })
+      .map((card) => ({ card, night: false, resume: true }));
     const taken = new Set<string>();
     let started = false;
     // CUSTOM(resource-pools): slots already used in each pool, kept up to date during this pass.
@@ -3416,31 +3657,44 @@ export class Workboard {
       const open = windowOpen(config.schedule, this.now());
       const quota = this.runtime(config.id).quota;
       const takesReady = quota > 0 || open;
-      if (!takesReady && nightStart === null) continue;
-      const mine = candidates.filter(
-        ({ card, night }) =>
-          !taken.has(card.id) &&
-          (night || takesReady) &&
-          this.owns(config, card),
-      );
-      if (quota > 0 && !mine.some(({ night }) => !night))
+      const myResumes = resumes.filter(
+        ({ card }) => !taken.has(card.id) && this.owns(config, card),
+      ); // CUSTOM(task-checkpoints)
+      if (!takesReady && nightStart === null && !myResumes.length) continue;
+      const mine = [
+        ...myResumes,
+        ...candidates.filter(
+          ({ card, night }) =>
+            !taken.has(card.id) &&
+            (night || takesReady) &&
+            this.owns(config, card),
+        ),
+      ];
+      if (quota > 0 && !mine.some(({ night, resume }) => !night && !resume))
         await this.endRun(config.id, "nothing left in Ready to start");
       let slots = config.maxConcurrent - this.runningFor(config.id);
       const pool = this.poolOf(config); // CUSTOM(resource-pools)
       let hold: OrchestratorHold | null = null;
-      for (const { card, night } of mine) {
+      for (const { card, night, resume } of mine) {
         if (slots <= 0 || this.stopped) break;
         const runtime = this.runtime(config.id);
-        if (!night && !open && runtime.quota <= 0) continue;
+        if (!night && !resume && !open && runtime.quota <= 0) continue;
         // CUSTOM(resource-pools): the pool must have a free slot and enough free RAM too.
         hold = pool && this.poolHold(pool, poolUsed.get(pool.id) ?? 0);
         if (hold) break;
         taken.add(card.id);
-        const outcome = await this.startCard(config, card, stage, night);
+        const outcome = await this.startCard(
+          config,
+          card,
+          // CUSTOM(task-checkpoints): a resumed task stays in its In progress column.
+          resume && card.stage !== "conflict" ? card.stage : stage,
+          night,
+        );
         if (outcome === "skipped") continue;
         slots--;
         if (pool) poolUsed.set(pool.id, (poolUsed.get(pool.id) ?? 0) + 1);
         started = true;
+        if (resume) continue; // CUSTOM(task-checkpoints): not part of the run's batch
         if (night) {
           if (outcome === "started")
             await this.nightStarted(nightStart!, card.title);
@@ -3656,6 +3910,10 @@ export class Workboard {
       ...(data.nightRuntime.shutdownAt
         ? [Date.parse(data.nightRuntime.shutdownAt)]
         : []),
+      // CUSTOM(task-checkpoints): a checkpoint that waits until a time.
+      ...Object.values(data.orchestrations)
+        .filter((record) => record.status === "waiting" && record.resumeAt)
+        .map((record) => Date.parse(record.resumeAt!)),
     ].filter((at) => Number.isFinite(at) && at > this.now());
     if (!times.length) return;
     const delay = Math.min(...times) - this.now() + 250;
@@ -3673,7 +3931,7 @@ export class Workboard {
     // A task sent back from review keeps its workspace and waits here.
     if (card.workspaceId)
       return (
-        record?.status === "queued" ||
+        this.resumable(record) || // CUSTOM(task-checkpoints)
         (record?.status === "failed" &&
           record.feedback !== null &&
           Date.parse(card.updatedAt) > Date.parse(record.finishedAt ?? ""))
@@ -3854,6 +4112,13 @@ export class Workboard {
           windowOpen(config.schedule, this.now())),
       running: this.runningFor(config.id, data),
       waiting,
+      // CUSTOM(task-checkpoints)
+      paused: Object.values(data.orchestrations).filter(
+        (record) =>
+          record.orchestratorId === config.id &&
+          record.checkpoint &&
+          (record.status === "queued" || record.status === "waiting"),
+      ).length,
       nextRunAt: next === null ? null : new Date(next).toISOString(),
     };
   }
@@ -3984,16 +4249,21 @@ export class Workboard {
   ): Promise<"started" | "failed"> {
     const record = this.store.current.orchestrations[taskId]!;
     const feedback = record.feedback ?? "";
+    // CUSTOM(task-checkpoints)
+    const checkpoint = record.checkpoint;
+    const progress = this.store.current.assistant.progress[taskId];
+    const nextPrompt = checkpoint
+      ? checkpointResumePrompt(progress, record.waitingFor, this.assistantOn())
+      : continuationPrompt(feedback, this.assistantOn()); // CUSTOM(projects-assistant)
+    let fresh = false;
     try {
       await this.moveBound(taskId, stage);
       const task = this.task(taskId);
       let agentId = record.agentId;
       if (agentId && (await this.host.agentAlive(agentId)))
-        await this.host.sendAgent(
-          agentId,
-          continuationPrompt(feedback, this.assistantOn()), // CUSTOM(projects-assistant)
-        );
-      else
+        await this.host.sendAgent(agentId, nextPrompt);
+      else {
+        fresh = true;
         agentId = await this.host.startAgent(task.workspaceId!, {
           ...(await this.orchestratorProfile(settings)), // CUSTOM(agent-profiles)
           provider: settings.provider,
@@ -4002,10 +4272,17 @@ export class Workboard {
           title: task.title,
           prompt: [
             orchestratorPrompt(task, settings.instructions),
-            continuationPrompt(feedback, this.assistantOn()), // CUSTOM(projects-assistant)
+            // CUSTOM(task-checkpoints): the new agent gets the checklist, last summary and branch.
+            handoffSection({
+              progress,
+              summary: progress?.summary ?? record.summary,
+              branch: await this.taskBranch(task),
+            }),
+            nextPrompt,
           ].join("\n\n"),
           labels: BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
         });
+      }
       await this.setOrchestration(taskId, {
         status: "running",
         agentId,
@@ -4018,27 +4295,38 @@ export class Workboard {
         error: null,
         orchestratorId: settings.id,
         night: false, // CUSTOM(night-tasks): a continuation runs whenever it is taken
+        checkpoint: false, // CUSTOM(task-checkpoints)
+        resumeAt: null,
+        waitingFor: null,
       });
       // CUSTOM(projects-assistant)
       if (this.assistantOn()) {
         const attempt = await this.openAttempt(
           taskId,
-          "feedback",
+          checkpoint ? "checkpoint" : "feedback", // CUSTOM(task-checkpoints)
           agentId,
           settings.id,
-          feedback.trim() || null,
+          checkpoint ? null : feedback.trim() || null,
         );
         await this.record(
           taskId,
           "task-continued",
-          `Continued "${task.title}" with the review feedback`,
-          { attempt, agentId, detail: feedback.trim() || null },
+          checkpoint
+            ? `Resumed "${task.title}" from checkpoint ${progress?.checkpoints ?? 1}${fresh ? " with a new agent" : ""}`
+            : `Continued "${task.title}" with the review feedback`,
+          {
+            attempt,
+            agentId,
+            detail: checkpoint ? null : feedback.trim() || null,
+          },
         );
       }
       await this.log(
         settings.id,
         "info",
-        `Continued "${task.title}" with the review feedback`,
+        checkpoint
+          ? `Resumed "${task.title}" from checkpoint ${progress?.checkpoints ?? 1}${fresh ? " with a new agent" : ""}`
+          : `Continued "${task.title}" with the review feedback`,
         taskId,
         agentId,
       );

@@ -112,7 +112,15 @@ export const REPORT_STATUSES = [
   "blocked",
   "needs_input",
   "failed",
+  // CUSTOM(task-checkpoints): the task is not finished; the engine commits and resumes it later.
+  "checkpoint",
 ] as const;
+/** CUSTOM(task-checkpoints): a long task's checklist, as the agent reports it at a checkpoint. */
+export const progressSchema = z.object({
+  done: z.array(z.string().max(1000)).max(200).default([]),
+  next: z.array(z.string().max(1000)).max(200).default([]),
+});
+export type Progress = z.infer<typeof progressSchema>;
 export const reportSchema = z.object({
   status: z.enum(REPORT_STATUSES),
   summary: z.string().max(20000),
@@ -124,6 +132,12 @@ export const reportSchema = z.object({
   risks: z.array(z.string().max(2000)).max(50).default([]),
   /** For `needs_input` and `blocked`: what the user has to answer or do. */
   question: z.string().max(5000).nullable().default(null),
+  /** CUSTOM(task-checkpoints): for `checkpoint`: what is done and what comes next. */
+  progress: progressSchema.nullable().default(null),
+  /** CUSTOM(task-checkpoints): for `checkpoint`: resume no sooner than this ISO 8601 time. */
+  resumeAfter: z.string().max(100).nullable().default(null),
+  /** CUSTOM(task-checkpoints): for `checkpoint`: what the task waits for, such as "CI". */
+  waitingFor: z.string().max(500).nullable().default(null),
 });
 export type Report = z.infer<typeof reportSchema>;
 
@@ -136,6 +150,7 @@ export const ATTEMPT_OUTCOMES = [
   "failed",
   "no-report",
   "agent-error",
+  "checkpoint", // CUSTOM(task-checkpoints)
 ] as const;
 export const attemptSchema = z.object({
   index: z.number().int().min(1),
@@ -145,7 +160,10 @@ export const attemptSchema = z.object({
   finishedAt: z.string().nullable().default(null),
   outcome: z.enum(ATTEMPT_OUTCOMES).default("running"),
   /** What started this attempt after the first: the reviewer's feedback or the failed check. */
-  trigger: z.enum(["start", "feedback", "auto-fix"]).default("start"),
+  // CUSTOM(task-checkpoints): `checkpoint` resumes the task after a checkpoint report.
+  trigger: z
+    .enum(["start", "feedback", "auto-fix", "checkpoint"])
+    .default("start"),
   feedback: z.string().max(20000).nullable().default(null),
   /** How many times the engine told this attempt's agent to continue after it stopped with an error. */
   retries: z.number().int().min(0).default(0),
@@ -168,6 +186,8 @@ export const NEEDS_YOU_REASONS = [
   "merge-error",
   "pr-error",
   "dependency-files",
+  // CUSTOM(task-checkpoints): too many checkpoints, or checkpoints that complete nothing new.
+  "stalled",
 ] as const;
 export const needsYouReasonSchema = z.enum(NEEDS_YOU_REASONS);
 export type NeedsYouReason = z.infer<typeof needsYouReasonSchema>;
@@ -218,6 +238,35 @@ export const deliverySchema = z.object({
 });
 export type Delivery = z.infer<typeof deliverySchema>;
 
+/**
+ * CUSTOM(task-checkpoints): a long task's progress across checkpoints. `checkpoints` counts the
+ * automatic resumes since the task started or the reviewer last sent it back; `stalls` counts the
+ * checkpoints in a row that completed no new item.
+ */
+export const CHECKPOINT_LOG_LIMIT = 20;
+export const taskProgressSchema = z.object({
+  done: z.array(z.string()).default([]),
+  next: z.array(z.string()).default([]),
+  checkpoints: z.number().int().min(0).default(0),
+  stalls: z.number().int().min(0).default(0),
+  /** The agent's summary at the last checkpoint, for the handoff to a new agent. */
+  summary: z.string().max(20000).nullable().default(null),
+  /** Oldest first, at most CHECKPOINT_LOG_LIMIT. */
+  log: z
+    .array(
+      z.object({
+        at: z.string(),
+        checkpoint: z.number().int(),
+        text: z.string().max(2000),
+      }),
+    )
+    .default([]),
+  updatedAt: z.string(),
+});
+export type TaskProgress = z.infer<typeof taskProgressSchema>;
+/** Checkpoints in a row with no new done item before the task goes to the user. */
+export const STALL_LIMIT = 2;
+
 /** Stored inside the board's data (`dataSchema.assistant`). */
 export const assistantDataSchema = z.object({
   settings: assistantSettingsSchema.default(() =>
@@ -229,6 +278,8 @@ export const assistantDataSchema = z.object({
   attempts: z.record(z.string(), z.array(attemptSchema)).default({}),
   /** The current Projects Assistant chat agent; a new conversation replaces it. */
   chatAgentId: z.string().nullable().default(null),
+  /** CUSTOM(task-checkpoints): keyed by task id. */
+  progress: z.record(z.string(), taskProgressSchema).default({}),
 });
 export type AssistantData = z.infer<typeof assistantDataSchema>;
 
@@ -240,6 +291,7 @@ export const HISTORY_EVENT_KINDS = [
   "task-started",
   "task-continued",
   "report",
+  "checkpoint", // CUSTOM(task-checkpoints)
   "verify-passed",
   "verify-failed",
   "fix-requested",
@@ -311,10 +363,29 @@ export const runningItemSchema = z.object({
   projectName: z.string(),
   orchestratorName: z.string().nullable(),
   agentId: z.string().nullable(),
-  /** `running` while the agent works; otherwise the delivery stage. */
-  stage: z.union([z.literal("running"), deliveryStageSchema]),
+  /**
+   * `running` while the agent works; otherwise the delivery stage. CUSTOM(task-checkpoints):
+   * `waiting` is a task between checkpoints; it holds no slot.
+   */
+  stage: z.union([
+    z.literal("running"),
+    z.literal("waiting"),
+    deliveryStageSchema,
+  ]),
   attempt: z.number().int().nullable(),
   startedAt: z.string(),
+  /** CUSTOM(task-checkpoints): for `waiting`: when it resumes (null: on the next pass). */
+  resumeAt: z.string().nullable().optional(),
+  waitingFor: z.string().nullable().optional(),
+  /** CUSTOM(task-checkpoints): items done, items in all, and checkpoints so far. */
+  progress: z
+    .object({
+      done: z.number().int(),
+      total: z.number().int(),
+      checkpoints: z.number().int(),
+    })
+    .nullable()
+    .optional(),
 });
 export type RunningItem = z.infer<typeof runningItemSchema>;
 

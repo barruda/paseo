@@ -36,6 +36,8 @@ const en = {
   question: "Question",
   checks: "Checks",
   filesChanged: "Files changed", // CUSTOM(report-card)
+  waitingFor: "Waiting for", // CUSTOM(task-checkpoints)
+  resumes: "resumes", // CUSTOM(task-checkpoints)
   openConversation: "Open conversation",
   sourceAssistant: "assistant",
   sourceAuto: "automatic",
@@ -45,6 +47,7 @@ const en = {
     blocked: "Blocked",
     needs_input: "Needs input",
     failed: "Failed",
+    checkpoint: "Checkpoint", // CUSTOM(task-checkpoints)
   } as Record<string, string>,
   entryKind: {
     created: "Created",
@@ -64,6 +67,7 @@ const en = {
     "task-started": "Task started",
     "task-continued": "Task continued",
     report: "Agent report",
+    checkpoint: "Checkpoint", // CUSTOM(task-checkpoints)
     "verify-passed": "Checks passed",
     "verify-failed": "Checks failed",
     "fix-requested": "Fix requested",
@@ -113,6 +117,8 @@ const pt: ReportsStrings = {
   question: "Pergunta",
   checks: "Verificações",
   filesChanged: "Arquivos alterados", // CUSTOM(report-card)
+  waitingFor: "Aguardando", // CUSTOM(task-checkpoints)
+  resumes: "retoma", // CUSTOM(task-checkpoints)
   openConversation: "Abrir conversa",
   sourceAssistant: "assistente",
   sourceAuto: "automático",
@@ -122,6 +128,7 @@ const pt: ReportsStrings = {
     blocked: "Bloqueado",
     needs_input: "Precisa de resposta",
     failed: "Falhou",
+    checkpoint: "Ponto de controle", // CUSTOM(task-checkpoints)
   },
   entryKind: {
     created: "Criado",
@@ -141,6 +148,7 @@ const pt: ReportsStrings = {
     "task-started": "Tarefa iniciada",
     "task-continued": "Tarefa continuada",
     report: "Relatório do agente",
+    checkpoint: "Ponto de controle", // CUSTOM(task-checkpoints)
     "verify-passed": "Verificações passaram",
     "verify-failed": "Verificações falharam",
     "fix-requested": "Correção solicitada",

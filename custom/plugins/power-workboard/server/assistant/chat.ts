@@ -21,6 +21,7 @@ import {
   type AssistantActionInput,
   type ProjectPolicy,
   type HistoryEvent,
+  type TaskProgress, // CUSTOM(task-checkpoints)
 } from "../../shared/assistant";
 import type { HistoryQuery } from "./history";
 import { buildOverview, readConversation } from "./views";
@@ -37,7 +38,7 @@ import { ACK_MESSAGE_MAX, normalizeAckStatus } from "../../shared/quick";
 import type { QuickInbox } from "./quick";
 // CUSTOM(assistant-reports)
 import { reportEntryInputSchema } from "../../shared/assistant-reports";
-import type { Data } from "../../shared/model";
+import type { Data, Orchestration } from "../../shared/model";
 import { orchestratorPart, type ReportStore } from "./reports";
 
 export const CHAT_LABEL = "pwb/assistant-chat";
@@ -95,6 +96,24 @@ export function defaultChatDirectory(
     "power-workboard",
     "assistant-chat",
   );
+}
+
+// CUSTOM(task-checkpoints): a long task's checklist and checkpoint log for board_get_task.
+function checkpointLines(
+  run: Orchestration | undefined,
+  progress: TaskProgress | undefined,
+): string {
+  if (!progress) return "";
+  const waiting =
+    run?.checkpoint && (run.status === "queued" || run.status === "waiting")
+      ? `Waiting to resume${run.resumeAt ? ` at ${run.resumeAt}` : " on the next pass"}${run.waitingFor ? ` (for ${run.waitingFor})` : ""}\n`
+      : "";
+  return [
+    `Checkpoints: ${progress.checkpoints} (${progress.stalls} in a row without a new done item)`,
+    `${waiting}Done:\n${progress.done.map((item) => `- [x] ${item}`).join("\n") || "- none"}`,
+    `Next:\n${progress.next.map((item) => `- [ ] ${item}`).join("\n") || "- none"}`,
+    `Checkpoint log:\n${progress.log.map((entry) => `- ${entry.at} #${entry.checkpoint}: ${entry.text}`).join("\n")}`,
+  ].join("\n");
 }
 
 // The installed @getpaseo/plugin types predate agent tools, so the shape is declared here; it is
@@ -509,6 +528,7 @@ export function chatTools(
           `Description:\n${c.description || "(empty)"}`,
           `Run: ${run ? `${run.status}, agent ${run.agentId ?? "-"}${run.error ? `, error: ${run.error}` : ""}` : "none"}`,
           `Last summary: ${run?.summary ?? "-"}`,
+          checkpointLines(run, data.assistant.progress[taskId]), // CUSTOM(task-checkpoints)
           `Attempts:\n${attempts.map((a) => `- #${a.index} ${a.trigger} | agent ${a.agentId ?? "-"} | ${a.outcome}${a.feedback ? ` | feedback: ${a.feedback}` : ""}`).join("\n") || "- none"}`,
           d
             ? `Delivery: ${d.stage}, action ${d.action}${d.reason ? `, reason ${d.reason}` : ""}${d.detail ? ` (${d.detail})` : ""}${d.report ? `\nReport: ${d.report.status}: ${d.report.summary}${d.report.risks.length ? `\nRisks: ${d.report.risks.join("; ")}` : ""}${d.report.question ? `\nQuestion: ${d.report.question}` : ""}` : ""}`

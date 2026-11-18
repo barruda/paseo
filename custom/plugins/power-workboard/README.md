@@ -28,6 +28,15 @@ this repo) with these differences:
 - **Done.** A Done card in a git project has **Commit**, **PR description** (written by the
   task's agent, to copy; no PR is created) and **Merge into project**. Once merged, only PR
   description is left.
+- **Checkpoints.** A task that does not fit in one session ends its turn with a `checkpoint`
+  report (`progress {done, next}`, optional `resumeAfter` and `waitingFor`). The engine commits
+  the partial work in the task's worktree only, keeps the card in In progress, and resumes it on
+  the next pass, or at `resumeAfter` (status `waiting`). A queued or waiting task holds no slot.
+  When the agent is gone, the new one gets a handoff: ticket, checklist, last summary, branch.
+  Past the orchestrator's **Checkpoints per task** (default 5), or after two checkpoints in a
+  row with no new done item, the task goes to Needs you as `stalled`; Continue task resets the
+  count. The card shows the progress ("3/7 · checkpoint 2", or "waiting until 09:00: CI") and
+  expands to the checklist and log; the Dashboard lists waiting tasks apart from running ones.
 - **Report card.** In any agent chat, a reply ending in a valid `<report>` block shows the block
   as a card (status, summary, question, checks, collapsed changed files, risks) instead of JSON
   (`shared/task-report.ts`). An invalid block leaves the reply as it was.

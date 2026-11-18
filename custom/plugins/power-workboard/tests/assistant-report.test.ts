@@ -15,6 +15,9 @@ it("reads a valid report and fills the defaults", () => {
     checks: [],
     risks: [],
     question: null,
+    progress: null,
+    resumeAfter: null,
+    waitingFor: null,
   });
   expect(text).toBe("All good.");
 });
@@ -69,4 +72,28 @@ it("tells the task's agent to keep its installed dependencies for the review", (
   expect(section).toContain("never delete `node_modules`");
   expect(section).toContain("Do not symlink another checkout's `node_modules`");
   expect(section).toContain("Never edit or patch files inside `node_modules` in place");
+});
+
+// CUSTOM(task-checkpoints)
+it("tells the task's agent how to end a session with a checkpoint", () => {
+  const section = assistantSection();
+  expect(section).toContain('"checkpoint"');
+  expect(section).toContain(
+    '"progress": {"done": string[], "next": string[]}',
+  );
+  expect(section).toContain('"resumeAfter"');
+  const body = JSON.stringify({
+    status: "checkpoint",
+    summary: "Half",
+    progress: { done: ["A"], next: ["B"] },
+    resumeAfter: "2026-09-23T09:00:00Z",
+    waitingFor: "CI",
+  });
+  const { report } = parseReport(`<report>${body}</report>`);
+  expect(report).toMatchObject({
+    status: "checkpoint",
+    progress: { done: ["A"], next: ["B"] },
+    resumeAfter: "2026-09-23T09:00:00Z",
+    waitingFor: "CI",
+  });
 });

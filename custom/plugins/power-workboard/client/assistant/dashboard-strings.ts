@@ -20,6 +20,7 @@ export const REASON_LABELS: Record<NeedsYouReason, string> = {
   "merge-error": "Merge failed",
   "pr-error": "Could not prepare the PR",
   "dependency-files": "Dependencies would be committed",
+  stalled: "Stalled", // CUSTOM(task-checkpoints)
 };
 
 export const KIND_LABELS: Record<HistoryEventKind, string> = {
@@ -28,6 +29,7 @@ export const KIND_LABELS: Record<HistoryEventKind, string> = {
   "task-started": "Started",
   "task-continued": "Continued",
   report: "Report",
+  checkpoint: "Checkpoint", // CUSTOM(task-checkpoints)
   "verify-passed": "Check passed",
   "verify-failed": "Check failed",
   "fix-requested": "Fix requested",
@@ -43,8 +45,12 @@ export const KIND_LABELS: Record<HistoryEventKind, string> = {
   dismissed: "Dismissed",
 };
 
-export const STAGE_LABELS: Record<"running" | DeliveryStage, string> = {
+export const STAGE_LABELS: Record<
+  "running" | "waiting" | DeliveryStage,
+  string
+> = {
   running: "Working",
+  waiting: "Waiting", // CUSTOM(task-checkpoints)
   reported: "Reported",
   verifying: "Checking",
   fixing: "Fixing",
@@ -68,6 +74,11 @@ export const dashboardStrings = {
   runningEmpty: "Nothing is running",
   queued: (n: number) => `${n} queued`,
   attempt: (n: number) => `attempt ${n}`,
+  // CUSTOM(task-checkpoints)
+  checkpointWord: "checkpoint",
+  waitingTitle: "Waiting",
+  resumes: (time: string) => `resumes ${time}`,
+  nextPass: "next pass",
   numbers: "Numbers",
   period: (d: number) => `${d} days`,
   charts: "Charts",

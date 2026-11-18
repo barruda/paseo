@@ -230,7 +230,9 @@ function ReportCard({
       ? c.statusSuccess
       : report.status === "failed"
         ? c.statusDanger
-        : c.statusWarning;
+        : report.status === "checkpoint" // CUSTOM(task-checkpoints)
+          ? c.accent
+          : c.statusWarning;
   return (
     <View
       style={[
@@ -326,7 +328,7 @@ function ReportCard({
 function outcomeColor(outcome: Attempt["outcome"], theme: Theme): string {
   const c = theme.colors;
   if (outcome === "done") return c.statusSuccess;
-  if (outcome === "running") return c.accent;
+  if (outcome === "running" || outcome === "checkpoint") return c.accent; // CUSTOM(task-checkpoints)
   if (
     outcome === "no-report" ||
     outcome === "needs_input" ||

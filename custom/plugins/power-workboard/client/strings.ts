@@ -101,6 +101,10 @@ const zh = {
     times: "时间（HH:MM，逗号分隔）",
     maxConcurrent: "同时运行",
     batchSize: "每轮任务数",
+    maxCheckpoints: "每个任务的检查点数", // CUSTOM(task-checkpoints)
+    maxCheckpointsHint: "长任务自动恢复多少次后转到“需要你”",
+    atCheckpoint: "个在检查点",
+    atCheckpointStat: "检查点",
     agent: "Agent",
     agentHint: "提供方/模型、模式、思考强度",
     provider: "提供方/模型",
@@ -160,6 +164,7 @@ const zh = {
     finished: "已完成",
     failed: "失败",
     queued: "等待编排器继续",
+    waiting: "检查点后等待", // CUSTOM(task-checkpoints)
   },
   finish: {
     labels: { commit: "提交", pr: "PR 描述", merge: "合并到项目" },
@@ -178,6 +183,17 @@ const zh = {
     copy: "复制描述",
     copied: "PR 描述已复制。",
     copyFailed: "无法复制。",
+  },
+  // CUSTOM(task-checkpoints)
+  checkpoint: {
+    word: "检查点",
+    until: "等待至",
+    nextPass: "下次运行时继续",
+    details: "进度与检查点记录",
+    progress: "进度",
+    log: "检查点记录",
+    entry: "检查点 {n}：{text}",
+    noItems: "Agent 还没有汇报清单。",
   },
   review: {
     title: "等待验收",
@@ -749,6 +765,11 @@ const en: typeof zh = {
     times: "Times (HH:MM, comma separated)",
     maxConcurrent: "At a time",
     batchSize: "Tasks per run",
+    maxCheckpoints: "Checkpoints per task", // CUSTOM(task-checkpoints)
+    maxCheckpointsHint:
+      "Automatic resumes of a long task before it goes to Needs you",
+    atCheckpoint: "at a checkpoint",
+    atCheckpointStat: "At checkpoint",
     agent: "Agent",
     agentHint: "provider/model, mode, thinking",
     provider: "Provider/model",
@@ -809,6 +830,7 @@ const en: typeof zh = {
     finished: "finished",
     failed: "failed",
     queued: "waiting to continue",
+    waiting: "waiting at a checkpoint", // CUSTOM(task-checkpoints)
   },
   finish: {
     labels: {
@@ -833,6 +855,17 @@ const en: typeof zh = {
     copy: "Copy description",
     copied: "PR description copied.",
     copyFailed: "Could not copy.",
+  },
+  // CUSTOM(task-checkpoints)
+  checkpoint: {
+    word: "checkpoint",
+    until: "waiting until",
+    nextPass: "resuming on the next pass",
+    details: "Progress and checkpoint log",
+    progress: "Progress",
+    log: "Checkpoint log",
+    entry: "Checkpoint {n}: {text}",
+    noItems: "The agent has not reported a checklist yet.",
   },
   review: {
     title: "Ready to review",

@@ -12,6 +12,7 @@ import {
   type ReportTextData,
   type ReportTone,
 } from "../../shared/task-report";
+import { formatClock } from "../checkpoint-format"; // CUSTOM(task-checkpoints)
 import { usePaseoLocale } from "../paseo-language";
 import { reportsStrings } from "./reports-strings";
 
@@ -29,6 +30,7 @@ function toneColor(tone: ReportTone, theme: Theme): string {
   const c = theme.colors;
   if (tone === "success") return c.statusSuccess;
   if (tone === "warning") return c.statusWarning;
+  if (tone === "info") return c.accent; // CUSTOM(task-checkpoints)
   return c.statusDanger;
 }
 
@@ -75,6 +77,13 @@ export function TaskReportCard({
   const look = REPORT_STATUS_LOOK[report.status];
   const color = toneColor(look.tone, theme);
   const label = t.reportStatus[report.status] ?? report.status;
+  // CUSTOM(task-checkpoints)
+  const waitParts = [
+    report.waitingFor ? `${t.waitingFor} ${report.waitingFor}` : null,
+    report.resumeAfter
+      ? `${t.resumes} ${formatClock(report.resumeAfter, new Date())}`
+      : null,
+  ].filter(Boolean);
   const filesTitle = `${t.filesChanged} (${report.filesChanged.length})`;
 
   return (
@@ -109,6 +118,44 @@ export function TaskReportCard({
       <Text selectable style={[styles.summary, { color: c.foreground }]}>
         {report.summary}
       </Text>
+
+      {/* CUSTOM(task-checkpoints) */}
+      {report.progress &&
+      report.progress.done.length + report.progress.next.length > 0 ? (
+        <View style={styles.section}>
+          {report.progress.done.map((item, index) => (
+            <View key={`done-${index}`} style={styles.rowTop}>
+              <Icon name="Check" size={14} color={c.statusSuccess} />
+              <Text
+                selectable
+                style={[styles.body, styles.grow, { color: c.foreground }]}
+              >
+                {item}
+              </Text>
+            </View>
+          ))}
+          {report.progress.next.map((item, index) => (
+            <View key={`next-${index}`} style={styles.rowTop}>
+              <Icon name="Circle" size={14} color={c.foregroundMuted} />
+              <Text
+                selectable
+                style={[styles.body, styles.grow, { color: c.foregroundMuted }]}
+              >
+                {item}
+              </Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {waitParts.length > 0 ? (
+        <View style={styles.row}>
+          <Icon name="Clock" size={14} color={c.foregroundMuted} />
+          <Text style={[styles.body, { color: c.foregroundMuted }]}>
+            {waitParts.join(" · ")}
+          </Text>
+        </View>
+      ) : null}
 
       {report.question ? (
         <View

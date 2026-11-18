@@ -2,7 +2,12 @@
 // and maps it to the timeline items that replace the raw JSON with a card in the agent chat.
 // The server reads the same block for delivery (server/assistant/report.ts).
 import { z } from "zod";
-import { REPORT_STATUSES, reportSchema, type Report } from "./assistant";
+import {
+  REPORT_STATUSES,
+  progressSchema,
+  reportSchema,
+  type Report,
+} from "./assistant";
 
 const BLOCK = /<report>([\s\S]*?)<\/report>/gi;
 
@@ -80,6 +85,10 @@ export const reportCardDataSchema = z.object({
   checks: z.array(z.object({ command: z.string(), passed: z.boolean() })),
   risks: z.array(z.string()),
   question: z.string().nullable(),
+  // CUSTOM(task-checkpoints): optional, so cards stored before checkpoints still parse.
+  progress: progressSchema.nullable().optional(),
+  resumeAfter: z.string().nullable().optional(),
+  waitingFor: z.string().nullable().optional(),
 });
 export type ReportCardData = z.infer<typeof reportCardDataSchema>;
 
@@ -87,7 +96,7 @@ export type ReportCardData = z.infer<typeof reportCardDataSchema>;
 export const reportTextDataSchema = z.object({ text: z.string() });
 export type ReportTextData = z.infer<typeof reportTextDataSchema>;
 
-export type ReportTone = "success" | "warning" | "danger";
+export type ReportTone = "success" | "warning" | "danger" | "info";
 
 /** Color tone and Lucide icon of each status. */
 export const REPORT_STATUS_LOOK: Record<
@@ -98,6 +107,7 @@ export const REPORT_STATUS_LOOK: Record<
   needs_input: { tone: "warning", icon: "CircleHelp" },
   blocked: { tone: "danger", icon: "Ban" },
   failed: { tone: "danger", icon: "CircleX" },
+  checkpoint: { tone: "info", icon: "Flag" }, // CUSTOM(task-checkpoints)
 };
 
 export interface ReportTimelineItem {
@@ -141,6 +151,9 @@ export function reportTimelineItems(
       checks: report.checks,
       risks: report.risks,
       question: report.question,
+      progress: report.progress,
+      resumeAfter: report.resumeAfter,
+      waitingFor: report.waitingFor,
     },
   });
   if (split.after) {

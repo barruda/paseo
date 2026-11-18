@@ -98,6 +98,7 @@ const EVENT_ICONS: Record<string, string> = {
   "task-started": "Play",
   "task-continued": "Play",
   report: "FileText",
+  checkpoint: "Flag", // CUSTOM(task-checkpoints)
   "verify-passed": "CheckCircle2",
   "verify-failed": "XCircle",
   "fix-requested": "Wrench",

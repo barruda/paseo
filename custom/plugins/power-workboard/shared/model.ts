@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { scheduleSchema, timeOfDaySchema } from "./schedule";
-import { assistantDataSchema } from "./assistant"; // CUSTOM(projects-assistant)
+import { assistantDataSchema, taskProgressSchema } from "./assistant"; // CUSTOM(projects-assistant), CUSTOM(task-checkpoints)
 import { skillSelectionSchema } from "./profiles"; // CUSTOM(agent-profiles)
 
 export const STAGES = [
@@ -461,7 +461,15 @@ export type Task = z.infer<typeof taskSchema>;
 /** What the orchestrator did with one task; kept apart from the task so the board model stays as is. */
 export const orchestrationSchema = z.object({
   // `queued`: the reviewer asked for more work; the next pass sends the feedback to the agent.
-  status: z.enum(["starting", "running", "finished", "failed", "queued"]),
+  // CUSTOM(task-checkpoints): `waiting`: a checkpoint asked to resume at `resumeAt`.
+  status: z.enum([
+    "starting",
+    "running",
+    "finished",
+    "failed",
+    "queued",
+    "waiting",
+  ]),
   workspaceId: z.string().nullable().default(null),
   agentId: z.string().nullable().default(null),
   startedAt: z.string(),
@@ -478,6 +486,13 @@ export const orchestrationSchema = z.object({
   orchestratorId: z.string().nullable().default(null),
   /** CUSTOM(night-tasks): started as a night task, inside the night window. */
   night: z.boolean().default(false),
+  /**
+   * CUSTOM(task-checkpoints): queued or waiting after a checkpoint; the task stays in progress and
+   * resumes without the user. Neither status holds a slot.
+   */
+  checkpoint: z.boolean().default(false),
+  resumeAt: z.string().nullable().default(null),
+  waitingFor: z.string().nullable().default(null),
 });
 export type Orchestration = z.infer<typeof orchestrationSchema>;
 /** Agent settings new orchestrators start from; refinement chats use them too. */
@@ -515,6 +530,8 @@ export const orchestratorConfigSchema = z.object({
   memory: z.boolean().default(true),
   /** CUSTOM(resource-pools): the pool whose limits it shares; null: only its own limit. */
   poolId: z.string().nullable().default(null),
+  /** CUSTOM(task-checkpoints): automatic resumes per task before it goes to the user as stalled. */
+  maxCheckpoints: z.number().int().min(0).max(50).default(5),
 });
 export type OrchestratorConfig = z.infer<typeof orchestratorConfigSchema>;
 /** What a run still may start, and when the schedule last fired. */
@@ -539,6 +556,8 @@ export const orchestratorStatusSchema = z.object({
   active: z.boolean(),
   running: z.number(),
   waiting: z.number(),
+  /** CUSTOM(task-checkpoints): its tasks between checkpoints; they hold no slot. */
+  paused: z.number().default(0),
   nextRunAt: z.string().nullable(),
   /** CUSTOM(resource-pools): why waiting tasks don't start although the orchestrator has room. */
   hold: z
@@ -706,6 +725,8 @@ export const boardSchema = z.object({
     .record(z.string(), orchestratorStatusSchema)
     .default({}),
   finishes: z.record(z.string(), finishSchema).default({}),
+  /** CUSTOM(task-checkpoints): each long task's checklist and checkpoint log, by task id. */
+  progress: z.record(z.string(), taskProgressSchema).default({}),
   // CUSTOM(night-tasks)
   night: nightSettingsSchema.default(() => nightSettingsSchema.parse({})),
   nightRuntime: nightRuntimeSchema.default(() => nightRuntimeSchema.parse({})),

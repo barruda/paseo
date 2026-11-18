@@ -1,4 +1,5 @@
 import type { Task } from "../shared/model";
+import type { TaskProgress } from "../shared/assistant"; // CUSTOM(task-checkpoints)
 
 // CUSTOM(projects-assistant): what the agent must know when the Projects Assistant delivers its work.
 export function assistantSection(): string {
@@ -9,9 +10,71 @@ export function assistantSection(): string {
     "The review and the delivery run the checks in this workspace. If dependencies are missing, install them here with the project's installer and leave them in place when you finish: never delete `node_modules`, virtualenvs or build outputs as cleanup. Do not symlink another checkout's `node_modules`: an ignore rule like `node_modules/` matches directories only, so git sees the symlink as an untracked file, and the delivery commit stages every untracked file.",
     // CUSTOM(worktree-shared-deps): worktree setup may hardlink node_modules to the main checkout's files.
     "The worktree setup may have filled `node_modules` with hardlinks to the main checkout's files. Never edit or patch files inside `node_modules` in place: the edit would change the main checkout too. To change dependencies, edit the manifest and run the installer (`npm install` or `npm ci` replace files instead of editing them).",
-    'End your final reply with a report between <report> and </report>, as JSON: {"status": "done" | "blocked" | "needs_input" | "failed", "summary": string, "filesChanged": string[], "checks": [{"command": string, "passed": boolean}], "risks": string[], "question": string | null}. Use `question` for what the user must answer or do when the status is blocked or needs_input.',
+    'End your final reply with a report between <report> and </report>, as JSON: {"status": "done" | "blocked" | "needs_input" | "failed" | "checkpoint", "summary": string, "filesChanged": string[], "checks": [{"command": string, "passed": boolean}], "risks": string[], "question": string | null}. Use `question` for what the user must answer or do when the status is blocked or needs_input.',
     'Example: <report>{"status":"done","summary":"Added the retry button.","filesChanged":["src/button.tsx"],"checks":[{"command":"npm test","passed":true}],"risks":[],"question":null}</report>',
+    checkpointSection(), // CUSTOM(task-checkpoints)
   ].join("\n\n");
+}
+
+// CUSTOM(task-checkpoints): a task too long for one session saves its progress and is resumed later.
+function checkpointSection(): string {
+  return [
+    'If the task does not fit in this session, or it must wait for something such as CI, end with status "checkpoint" instead of "done". Add "progress": {"done": string[], "next": string[]}, the full checklist of the task so far, with the same wording for an item across checkpoints. Leave the workspace in a state that builds; the Projects Assistant commits your partial work in this worktree (never on the base branch) and resumes the task later, maybe with a new agent that only has your summary and checklist.',
+    'To resume only later, add "resumeAfter" (an ISO 8601 time) and "waitingFor" (what you wait for). Without them the task resumes on the next pass.',
+    "Use a checkpoint only after real progress: a task with too many checkpoints, or with checkpoints in a row that complete no new item, goes to the user as stalled.",
+    'Example: <report>{"status":"checkpoint","summary":"Server side done; UI next.","filesChanged":["server/a.ts"],"checks":[],"risks":[],"question":null,"progress":{"done":["Server engine"],"next":["Card badge","Dashboard"]},"resumeAfter":null,"waitingFor":null}</report>',
+  ].join("\n\n");
+}
+
+/** CUSTOM(task-checkpoints): the checklist and last checkpoint, as Markdown. */
+function progressMarkdown(progress: TaskProgress): string {
+  const list = (items: string[], mark: string) =>
+    items.map((item) => `- [${mark}] ${item}`).join("\n");
+  return [
+    progress.done.length ? `Done:\n${list(progress.done, "x")}` : "",
+    progress.next.length ? `Next:\n${list(progress.next, " ")}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** CUSTOM(task-checkpoints): what the task's own agent receives when its checkpoint resumes. */
+export function checkpointResumePrompt(
+  progress: TaskProgress | undefined,
+  waitingFor: string | null,
+  assistant = false,
+): string {
+  return [
+    `The Power Workboard resumes this task from checkpoint ${progress?.checkpoints ?? 1}. Continue it in this workspace without waiting for confirmation.`,
+    waitingFor ? `You were waiting for: ${waitingFor}. Check it first.` : "",
+    progress ? progressMarkdown(progress) : "",
+    "When you are done, reply with a short summary of what you changed and what a reviewer should check.",
+    assistant ? assistantSection() : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/**
+ * CUSTOM(task-checkpoints): the handoff a new agent receives when the task's agent is gone: the
+ * ticket comes from `orchestratorPrompt`; this adds the checklist, the last summary and the branch.
+ */
+export function handoffSection(input: {
+  progress: TaskProgress | undefined;
+  summary: string | null;
+  branch: string | null;
+}): string {
+  const { progress, summary, branch } = input;
+  return [
+    "## Handoff",
+    "Another agent worked on this task in this workspace and is gone. Its work is in this worktree" +
+      (branch ? `, on branch \`${branch}\`` : "") +
+      ": read `git log` and `git status` before you change anything.",
+    progress ? progressMarkdown(progress) : "",
+    summary?.trim() ? `Its last summary:\n\n${summary.trim()}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /** What the agent receives when a check the Projects Assistant ran on its work failed. */

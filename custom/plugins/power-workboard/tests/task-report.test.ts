@@ -22,6 +22,9 @@ const report = {
   ],
   risks: ["Not tested on iOS."],
   question: null,
+  progress: null,
+  resumeAfter: null,
+  waitingFor: null,
 };
 const block = (value: unknown) => `<report>${JSON.stringify(value)}</report>`;
 
@@ -46,6 +49,9 @@ describe("splitTaskReport", () => {
       checks: [],
       risks: [],
       question: null,
+      progress: null,
+      resumeAfter: null,
+      waitingFor: null,
     });
     expect(split?.before).toBe("");
   });
@@ -140,6 +146,25 @@ describe("reportTimelineItems", () => {
     });
   });
 
+  it("carries the progress and the wait of a checkpoint report", () => {
+    const items = reportTimelineItems(
+      block({
+        status: "checkpoint",
+        summary: "Half way",
+        progress: { done: ["a"], next: ["b", "c"] },
+        resumeAfter: "2026-11-18T09:00:00.000Z",
+        waitingFor: "CI",
+      }),
+    );
+    expect(items?.[0].data).toMatchObject({
+      status: "checkpoint",
+      progress: { done: ["a"], next: ["b", "c"] },
+      resumeAfter: "2026-11-18T09:00:00.000Z",
+      waitingFor: "CI",
+    });
+    expect(reportCardDataSchema.safeParse(items?.[0].data).success).toBe(true);
+  });
+
   it("output is JSON-compatible", () => {
     const items = reportTimelineItems(block(report));
     expect(JSON.parse(JSON.stringify(items))).toEqual(items);
@@ -153,6 +178,7 @@ describe("card presentation", () => {
       needs_input: { tone: "warning", icon: "CircleHelp" },
       blocked: { tone: "danger", icon: "Ban" },
       failed: { tone: "danger", icon: "CircleX" },
+      checkpoint: { tone: "info", icon: "Flag" },
     });
     const icons = Object.values(REPORT_STATUS_LOOK).map((look) => look.icon);
     expect(new Set(icons).size).toBe(icons.length);

@@ -63,6 +63,7 @@ import {
   withOptimisticStages,
 } from "./board-utils";
 import { groupTitle, stageTitle, strings } from "./strings";
+import { logLines, progressBadge, waitingLine } from "./checkpoint-format"; // CUSTOM(task-checkpoints)
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { BoardView } from "./BoardView";
 import { groupColor, projectColor, supplementalColor } from "./colors";
@@ -1564,6 +1565,7 @@ function OrchestrationLine({
   theme: PluginSurfaceProps["theme"];
   onOpenAgent(agentId: string): void;
 }) {
+  const [detailsOpen, setDetailsOpen] = useState(false); // CUSTOM(task-checkpoints)
   const record = board.orchestrations[card.id];
   const refinement = board.refinements[card.id];
   if (!record && refinement && card.workspaceId === null) {
@@ -1593,38 +1595,150 @@ function OrchestrationLine({
   const owner =
     board.orchestrators.find((o) => o.id === record.orchestratorId)?.name ??
     t.orchestrator;
+  // CUSTOM(task-checkpoints): a long task shows its progress, or why it waits.
+  const progress = board.progress[card.id];
+  const now = new Date();
+  let badge: string | null = null;
+  if (progress) {
+    if (record.status === "waiting" && record.checkpoint) {
+      badge = waitingLine(
+        record,
+        { until: t.checkpoint.until, nextPass: t.checkpoint.nextPass },
+        now,
+      );
+    } else if (record.status === "queued" && record.checkpoint) {
+      badge = t.checkpoint.nextPass;
+    } else if (record.status === "running" || record.status === "starting") {
+      badge =
+        progressBadge(
+          {
+            done: progress.done.length,
+            total: progress.done.length + progress.next.length,
+            checkpoints: progress.checkpoints,
+          },
+          t.checkpoint.word,
+        ) || null;
+    }
+  }
   const text = `${owner}: ${t.orchestrationStatus[record.status]}${
-    record.error ? ` · ${record.error}` : ""
-  }`;
+    badge ? ` · ${badge}` : ""
+  }${record.error ? ` · ${record.error}` : ""}`;
   const agentId = record.agentId;
   return (
-    <View style={styles.cardFooter}>
-      <Icon name="Bot" size={13} color={color} />
-      <Text style={[styles.cardMeta, { color, flex: 1 }]} numberOfLines={2}>
-        {text}
-      </Text>
-      {agentId && (
-        <HintButton
-          hint={t.openAgentHint}
-          accessibilityRole="link"
-          accessibilityLabel={t.openAgent}
-          onPress={() => onOpenAgent(agentId)}
-          style={({ pressed }) => [
-            styles.iconAction,
-            pressed && { backgroundColor: theme.colors.surface2 },
-          ]}
-        >
-          <Text
-            style={[
-              styles.cardMeta,
-              { color: theme.colors.accent, textDecorationLine: "underline" },
+    <>
+      <View style={styles.cardFooter}>
+        <Icon name="Bot" size={13} color={color} />
+        <Text style={[styles.cardMeta, { color, flex: 1 }]} numberOfLines={2}>
+          {text}
+        </Text>
+        {progress && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t.checkpoint.details}
+            accessibilityState={{ expanded: detailsOpen }}
+            onPress={() => setDetailsOpen((value) => !value)}
+            style={styles.iconAction}
+          >
+            <Icon
+              name={detailsOpen ? "ChevronDown" : "ChevronRight"}
+              size={14}
+              color={theme.colors.accent}
+            />
+          </Pressable>
+        )}
+        {agentId && (
+          <HintButton
+            hint={t.openAgentHint}
+            accessibilityRole="link"
+            accessibilityLabel={t.openAgent}
+            onPress={() => onOpenAgent(agentId)}
+            style={({ pressed }) => [
+              styles.iconAction,
+              pressed && { backgroundColor: theme.colors.surface2 },
             ]}
           >
-            {t.openAgent}
-          </Text>
-        </HintButton>
+            <Text
+              style={[
+                styles.cardMeta,
+                { color: theme.colors.accent, textDecorationLine: "underline" },
+              ]}
+            >
+              {t.openAgent}
+            </Text>
+          </HintButton>
+        )}
+      </View>
+      {progress && detailsOpen && (
+        <View
+          style={[
+            styles.review,
+            {
+              borderColor: theme.colors.border,
+              backgroundColor: theme.colors.surface1,
+            },
+          ]}
+        >
+          {progress.done.length + progress.next.length === 0 && (
+            <Text
+              style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
+            >
+              {t.checkpoint.noItems}
+            </Text>
+          )}
+          {progress.done.map((item, index) => (
+            <View key={`done-${index}`} style={styles.cardFooter}>
+              <Icon name="Check" size={13} color={theme.colors.statusSuccess} />
+              <Text
+                selectable
+                style={[
+                  styles.cardMeta,
+                  { color: theme.colors.foreground, flex: 1 },
+                ]}
+              >
+                {item}
+              </Text>
+            </View>
+          ))}
+          {progress.next.map((item, index) => (
+            <View key={`next-${index}`} style={styles.cardFooter}>
+              <Icon
+                name="Circle"
+                size={13}
+                color={theme.colors.foregroundMuted}
+              />
+              <Text
+                selectable
+                style={[
+                  styles.cardMeta,
+                  { color: theme.colors.foreground, flex: 1 },
+                ]}
+              >
+                {item}
+              </Text>
+            </View>
+          ))}
+          {progress.log.length > 0 && (
+            <Text
+              style={[styles.reviewTitle, { color: theme.colors.foreground }]}
+            >
+              {t.checkpoint.log}
+            </Text>
+          )}
+          {logLines(progress.log, now).map((line) => (
+            <Text
+              key={line.key}
+              selectable
+              style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
+            >
+              {line.time} ·{" "}
+              {t.checkpoint.entry
+                .replace("{n}", String(line.checkpoint))
+                .replace("{text}", line.text)}
+            </Text>
+          ))}
+        </View>
       )}
-    </View>
+    </>
   );
 }
 

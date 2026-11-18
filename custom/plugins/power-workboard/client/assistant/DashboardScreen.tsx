@@ -47,6 +47,7 @@ import {
   formatTime,
   isWide,
 } from "./dashboard-format";
+import { formatClock, progressBadge } from "../checkpoint-format"; // CUSTOM(task-checkpoints)
 import {
   KIND_LABELS,
   REASON_LABELS,
@@ -481,39 +482,66 @@ function RunningSection({
   running: RunningItem[];
   queued: number;
 }) {
+  // CUSTOM(task-checkpoints): tasks between checkpoints hold no slot, so they list apart.
+  const waiting = running.filter((item) => item.stage === "waiting");
+  const active = running.filter((item) => item.stage !== "waiting");
+  const now = new Date();
+  const row = (item: RunningItem, meta: (string | null)[]) => (
+    <View
+      key={item.taskId}
+      style={[styles.runRow, { borderColor: theme.colors.border }]}
+    >
+      <Text
+        numberOfLines={1}
+        style={[styles.runTitle, { color: theme.colors.foreground }]}
+      >
+        {item.title}
+      </Text>
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+        {meta.filter(Boolean).join(" · ")}
+      </Text>
+    </View>
+  );
   return (
     <Section theme={theme} title={s.running}>
-      {running.length === 0 ? (
+      {active.length === 0 ? (
         <Text style={{ color: theme.colors.foregroundMuted }}>
           {s.runningEmpty}
         </Text>
       ) : (
-        running.map((item) => (
-          <View
-            key={item.taskId}
-            style={[styles.runRow, { borderColor: theme.colors.border }]}
-          >
-            <Text
-              numberOfLines={1}
-              style={[styles.runTitle, { color: theme.colors.foreground }]}
-            >
-              {item.title}
-            </Text>
-            <Text
-              style={[styles.meta, { color: theme.colors.foregroundMuted }]}
-            >
-              {[
-                item.projectName,
-                STAGE_LABELS[item.stage],
-                item.attempt ? s.attempt(item.attempt) : null,
-                formatElapsed(item.startedAt),
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </Text>
-          </View>
-        ))
+        active.map((item) =>
+          row(item, [
+            item.projectName,
+            STAGE_LABELS[item.stage],
+            item.attempt ? s.attempt(item.attempt) : null,
+            item.progress
+              ? progressBadge(item.progress, s.checkpointWord) || null
+              : null,
+            formatElapsed(item.startedAt),
+          ]),
+        )
       )}
+      {waiting.length > 0 ? (
+        <>
+          <Text
+            style={[styles.runTitle, { color: theme.colors.foregroundMuted }]}
+          >
+            {s.waitingTitle} ({waiting.length})
+          </Text>
+          {waiting.map((item) =>
+            row(item, [
+              item.projectName,
+              item.resumeAt
+                ? s.resumes(formatClock(item.resumeAt, now))
+                : s.nextPass,
+              item.waitingFor ?? null,
+              item.progress
+                ? progressBadge(item.progress, s.checkpointWord) || null
+                : null,
+            ]),
+          )}
+        </>
+      ) : null}
       {queued > 0 ? (
         <Text style={{ color: theme.colors.foregroundMuted }}>
           {s.queued(queued)}

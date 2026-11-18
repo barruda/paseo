@@ -56,6 +56,7 @@ const en = {
     start: "start",
     feedback: "feedback",
     "auto-fix": "auto-fix",
+    checkpoint: "checkpoint", // CUSTOM(task-checkpoints)
   } as Record<string, string>,
   outcome: {
     running: "running",
@@ -65,12 +66,14 @@ const en = {
     failed: "failed",
     "no-report": "no report",
     "agent-error": "agent error",
+    checkpoint: "checkpoint", // CUSTOM(task-checkpoints)
   } as Record<string, string>,
   reportStatus: {
     done: "Done",
     blocked: "Blocked",
     needs_input: "Needs input",
     failed: "Failed",
+    checkpoint: "Checkpoint", // CUSTOM(task-checkpoints)
   } as Record<string, string>,
   agentStatus: {
     running: "running",
