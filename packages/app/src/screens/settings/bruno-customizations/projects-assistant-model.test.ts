@@ -5,8 +5,10 @@ import {
   clampAutoFixes,
   patchChatSettings,
   patchProjectPolicy,
+  projectReview,
   resetProjectPolicy,
   setProjectAction,
+  setProjectReview,
   assistantChatSettingsSchema,
   assistantSettingsSchema,
 } from "./projects-assistant-model";
@@ -21,6 +23,7 @@ describe("projects assistant settings model", () => {
       enabled: true,
       defaultAction: "notify",
       projects: {},
+      reviews: {},
       chat: {
         provider: "claude/claude-opus-5-5",
         thinkingOptionId: "high",
@@ -82,6 +85,24 @@ describe("projects assistant settings model", () => {
   it("does not create a rule when patching a project without one", () => {
     const base = assistantSettingsSchema.parse({});
     expect(patchProjectPolicy(base, "p", { observe: true })).toBe(base);
+  });
+
+  // CUSTOM(assistant-review-policy)
+  it("keeps the review apart from the project's rule, self by default", () => {
+    const base = assistantSettingsSchema.parse({
+      reviews: { dream: "fresh-agent" },
+    });
+    expect(projectReview(base, "dream")).toBe("fresh-agent");
+    expect(projectReview(base, "p")).toBe("self");
+    const raised = setProjectReview(base, "p", "fresh-agent");
+    expect(raised.reviews).toEqual({ dream: "fresh-agent", p: "fresh-agent" });
+    // Setting the review gives no project its own action.
+    expect(raised.projects).toEqual({});
+    expect(setProjectReview(raised, "dream", "self").reviews).toEqual({ p: "fresh-agent" });
+    // A rule's reset leaves the review alone.
+    const ruled = setProjectAction(raised, "p", "merge");
+    expect(resetProjectPolicy(ruled, "p").reviews.p).toBe("fresh-agent");
+    expect(assistantSettingsSchema.safeParse({ reviews: { p: "someone" } }).success).toBe(false);
   });
 
   it("clamps auto-fix attempts to 0-3", () => {

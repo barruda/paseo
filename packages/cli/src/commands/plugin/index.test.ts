@@ -77,6 +77,7 @@ import {
   runPluginUpdateCommand,
   runPluginListCommand,
   runPluginLogsCommand,
+  parsePluginRpcInput,
 } from "./index.js";
 
 describe("plugin management commands", () => {
@@ -384,4 +385,28 @@ describe("reviewed plugin update workflow", () => {
       expect(f.applied).toEqual([]);
     },
   );
+});
+
+describe("parsePluginRpcInput", () => {
+  const noStdin = async () => {
+    throw new Error("stdin should not be read");
+  };
+
+  it("defaults to an empty object", async () => {
+    await expect(parsePluginRpcInput(undefined, noStdin)).resolves.toEqual({});
+  });
+
+  it("parses valid JSON", async () => {
+    await expect(parsePluginRpcInput('{"a":1}', noStdin)).resolves.toEqual({ a: 1 });
+  });
+
+  it("reads stdin for -", async () => {
+    await expect(parsePluginRpcInput("-", async () => '{"b":2}')).resolves.toEqual({ b: 2 });
+  });
+
+  it("throws INVALID_INPUT for invalid JSON", async () => {
+    await expect(parsePluginRpcInput("{nope", noStdin)).rejects.toMatchObject({
+      code: "INVALID_INPUT",
+    });
+  });
 });

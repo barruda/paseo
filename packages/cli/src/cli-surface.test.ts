@@ -118,6 +118,8 @@ describe("canonical CLI surface", () => {
       "enable",
       "disable",
       "remove",
+      // CUSTOM(assistant-quick)
+      "rpc",
     ]);
     expect(
       plugin?.commands.find((command) => command.name() === "init")?.helpInformation(),

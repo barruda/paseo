@@ -26,6 +26,9 @@ import {
   PluginPopoverContent,
   type PluginEnvironment,
 } from "../popover";
+// CUSTOM(assistant-quick): sidebar items get the host navigation.
+import { usePluginHostNavigation } from "../host-navigation";
+import { withBeforeNavigate } from "../host-navigation-model";
 import { buildPluginSurfaceRoute, hostIdFromPathname } from "../routes";
 import {
   selectPluginSidebarTarget,
@@ -202,6 +205,16 @@ function SidebarItemContent({
     [anchorToFallback, fallbackAnchorRef, showPopover],
   );
   const close = useCallback(() => showPopover(null), [showPopover]);
+  // CUSTOM(assistant-quick): navigating closes the popover and the mobile sidebar overlay first.
+  const hostNavigation = usePluginHostNavigation(plugin.serverId);
+  const navigation = useMemo(
+    () =>
+      withBeforeNavigate(hostNavigation, () => {
+        showPopover(null);
+        onBeforeNavigate?.();
+      }),
+    [hostNavigation, onBeforeNavigate, showPopover],
+  );
   const frame = useMemo<SidebarItemFrame>(
     () => ({
       section,
@@ -217,8 +230,8 @@ function SidebarItemContent({
     [anchorTo, item.id, item.title, offerAnchor, plugin, releaseAnchor, section],
   );
   const itemProps = useMemo<PluginSidebarItemProps>(
-    () => ({ ...hostProps, currentScreen, openScreen, openPopover }),
-    [currentScreen, hostProps, openPopover, openScreen],
+    () => ({ ...hostProps, currentScreen, openScreen, openPopover, navigation }),
+    [currentScreen, hostProps, navigation, openPopover, openScreen],
   );
   const Item = item.Component;
   const Popover = popover;
@@ -234,7 +247,12 @@ function SidebarItemContent({
           <SurfaceErrorBoundary installation={plugin} Surface={Popover}>
             <PluginEnvironmentProvider environment={environment}>
               <PluginPopoverContent>
-                <Popover {...hostProps} close={close} openScreen={openScreen} />
+                <Popover
+                  {...hostProps}
+                  close={close}
+                  openScreen={openScreen}
+                  navigation={navigation}
+                />
               </PluginPopoverContent>
             </PluginEnvironmentProvider>
           </SurfaceErrorBoundary>
