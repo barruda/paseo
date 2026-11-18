@@ -79,6 +79,10 @@ export function fixture(initial: Partial<Data> = {}) {
       inventory.workspaces.push(workspace(id, title));
       return id;
     }),
+    // CUSTOM(worktree-base)
+    currentBranch: vi.fn(
+      async (_directory: string): Promise<string | null> => null,
+    ),
     startAgent: vi.fn(async (workspaceId, start) => {
       const id = `a${inventory.agents.length + 1}`;
       inventory.agents.push({

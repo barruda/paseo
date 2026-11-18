@@ -39,6 +39,7 @@ import {
   type ConversationReason,
   type Settings,
   type Stage,
+  type StartInput,
   type Task,
 } from "../shared/model";
 import { dueTrigger, nextRunAt, windowOpen } from "../shared/schedule";
@@ -1525,6 +1526,7 @@ export class Workboard {
               binding.target.source,
               draft.title,
               `workboard:${binding.operationId}`,
+              await this.worktreeBase(binding.target.source), // CUSTOM(worktree-base)
             ));
       const workspace = await this.host.workspace(workspaceId);
       if (!workspace) throw new Error("Binding workspace is unavailable");
@@ -1580,6 +1582,24 @@ export class Workboard {
     } finally {
       this.bindingInFlight.delete(binding.operationId);
     }
+  }
+  /**
+   * CUSTOM(worktree-base): the branch a task's new worktree starts from: the project policy's
+   * `baseBranch`, else the project checkout's current branch. Undefined leaves it to the daemon,
+   * which uses the repository's default branch. The merge targets the same branch, so its
+   * base-ref check passes.
+   */
+  private async worktreeBase(
+    source: Extract<StartInput["target"], { kind: "new" }>["source"],
+  ): Promise<string | undefined> {
+    if (source.kind !== "worktree") return undefined;
+    const configured = this.policy(source.projectId).baseBranch.trim();
+    if (configured) return configured;
+    const project = this.inventory.projects.find(
+      (p) => p.id === source.projectId,
+    );
+    if (!project) return undefined;
+    return (await this.host.currentBranch(project.directory)) ?? undefined;
   }
   private async transition(
     id: string,

@@ -132,11 +132,15 @@ export interface Host {
     assigned: boolean,
   ): Promise<string[]>;
   setPinned(workspaceId: string, pinned: boolean): Promise<string | null>;
+  /** CUSTOM(worktree-base): `baseBranch` is the branch a new worktree starts from and records. */
   create(
     source: Extract<StartInput["target"], { kind: "new" }>["source"],
     title: string,
     key: string,
+    baseBranch?: string,
   ): Promise<string>;
+  /** CUSTOM(worktree-base): the checkout's current branch, or null when detached or unreadable. */
+  currentBranch(directory: string): Promise<string | null>;
   startAgent(workspaceId: string, start: AgentStart): Promise<string>;
   /** Start an agent in a directory, outside any board workspace. */
   startAgentIn(cwd: string, start: AgentStart): Promise<string>;
@@ -577,10 +581,37 @@ export class PaseoHost implements Host {
     source: Extract<StartInput["target"], { kind: "new" }>["source"],
     title: string,
     key: string,
+    baseBranch?: string,
   ) {
+    // CUSTOM(worktree-base): `refName` makes the daemon branch off it and store it as the
+    // worktree's base, instead of the repository's default branch.
+    const wire =
+      source.kind === "worktree" && baseBranch
+        ? { ...source, refName: baseBranch }
+        : source;
     return (
-      await this.api.workspaces.create({ source, title, idempotencyKey: key })
+      await this.api.workspaces.create({
+        source: wire,
+        title,
+        idempotencyKey: key,
+      })
     ).id;
+  }
+  // CUSTOM(worktree-base)
+  async currentBranch(directory: string): Promise<string | null> {
+    try {
+      const { stdout } = await execute(
+        "git",
+        ["-C", directory, "symbolic-ref", "--quiet", "--short", "HEAD"],
+        {
+          timeout: 15000,
+          env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+        },
+      );
+      return stdout.trim() || null;
+    } catch {
+      return null;
+    }
   }
   async startAgent(workspaceId: string, start: AgentStart): Promise<string> {
     const agent = await this.api.workspaces.ref(workspaceId).agents.create({

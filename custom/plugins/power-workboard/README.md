@@ -12,7 +12,9 @@ this repo) with these differences:
   settings, running tasks and log. An orchestrator takes Ready to start tasks (the ones chosen for
   it, or unassigned ones of its project), top of the column first, on a schedule: Manual (Run
   now), a time window, or daily times with a batch per run. Each task gets a workspace in its
-  project (a worktree for git projects), moves to In progress, and gets an agent whose first
+  project (a worktree for git projects, cut from the Projects Assistant's base branch for that
+  project, or else from the branch the project checkout is on), moves to In progress, and gets an
+  agent whose first
   message is the task's title and description. When the agent's turn ends the task moves to
   Ready to review. Cards link to the agent's chat.
 - **Review.** A Ready to review card shows the agent's last reply with **Done** and **Continue

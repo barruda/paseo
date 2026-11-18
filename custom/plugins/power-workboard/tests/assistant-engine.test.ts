@@ -41,6 +41,8 @@ function memoryHistory() {
 
 interface Options {
   policy?: Record<string, unknown>;
+  /** CUSTOM(worktree-base): the project checkout's current branch. */
+  currentBranch?: string | null;
   settings?: Record<string, unknown>;
   git?: boolean;
   assistant?: AssistantOptions;
@@ -59,6 +61,10 @@ async function scenario(options: Options = {}) {
     }),
   });
   setup.inventory.projects.push(project);
+  if (options.currentBranch !== undefined)
+    vi.mocked(setup.host.currentBranch).mockResolvedValue(
+      options.currentBranch,
+    );
   let now = Date.parse("2026-09-23T00:00:00Z");
   const board = new Workboard(setup.host, setup.store, () => now, 60000, {
     history,
@@ -901,3 +907,50 @@ it("saved review policies are kept as they are, without the seed coming back", (
     assistantDataSchema.parse({ settings: { reviews: { p: "someone" } } }),
   ).toThrow();
 });
+
+// CUSTOM(worktree-base)
+it("starts the task worktree from the policy's base branch, so the merge into it needs no fix", async () => {
+  const s = await scenario({
+    policy: { action: "merge", baseBranch: "custom" },
+    currentBranch: "feature",
+  });
+  try {
+    expect(vi.mocked(s.host.create).mock.calls[0]).toEqual([
+      { kind: "worktree", projectId: "p" },
+      "Task",
+      expect.any(String),
+      "custom",
+    ]);
+    s.reply(report());
+    await s.finishTurn();
+    await s.settled("delivered");
+    expect(s.host.mergeToBase).toHaveBeenCalledWith(
+      "/fixture",
+      expect.objectContaining({ baseRef: "custom" }),
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+// CUSTOM(worktree-base)
+it.each([
+  ["the checkout's current branch", "master", "master"],
+  ["the daemon's default when the checkout is detached", null, undefined],
+])(
+  "without a policy base branch, starts the task worktree from %s",
+  async (_case, currentBranch, base) => {
+    const s = await scenario({ currentBranch });
+    try {
+      expect(s.host.currentBranch).toHaveBeenCalledWith("/fixture");
+      expect(vi.mocked(s.host.create).mock.calls[0]).toEqual([
+        { kind: "worktree", projectId: "p" },
+        "Task",
+        expect.any(String),
+        base,
+      ]);
+    } finally {
+      s.board.dispose();
+    }
+  },
+);

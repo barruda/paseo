@@ -1,4 +1,8 @@
 import { expect, it, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type {
   PaseoApi,
   OwnedSubscription,
@@ -494,5 +498,65 @@ it("never labels a lower bound exact when the recorded user message is missing",
     });
   } finally {
     host.dispose();
+  }
+});
+
+// CUSTOM(worktree-base)
+it("creates a task worktree from the given base branch and reads a checkout's current branch", async () => {
+  const create = vi.fn(async (_options: unknown) => ({ id: "w1" }));
+  const host = new PaseoHost(
+    { workspaces: { create } } as unknown as PaseoApi,
+    {} as PaseoCompat,
+    { serverId: "h", version: "0.9.1" },
+    () => {},
+  );
+  await host.create(
+    { kind: "worktree", projectId: "p" },
+    "Task",
+    "k",
+    "custom",
+  );
+  await host.create({ kind: "worktree", projectId: "p" }, "Task", "k2");
+  await host.create({ kind: "directory", path: "/d" }, "Task", "k3", "custom");
+  expect(create.mock.calls.map(([options]) => options)).toEqual([
+    {
+      source: { kind: "worktree", projectId: "p", refName: "custom" },
+      title: "Task",
+      idempotencyKey: "k",
+    },
+    {
+      source: { kind: "worktree", projectId: "p" },
+      title: "Task",
+      idempotencyKey: "k2",
+    },
+    {
+      source: { kind: "directory", path: "/d" },
+      title: "Task",
+      idempotencyKey: "k3",
+    },
+  ]);
+
+  const repo = await mkdtemp(join(tmpdir(), "pwb-current-branch-"));
+  try {
+    const git = (...args: string[]) =>
+      execFileSync("git", ["-C", repo, ...args], { stdio: "pipe" });
+    git("init", "--quiet", "--initial-branch", "custom");
+    git(
+      "-c",
+      "user.name=t",
+      "-c",
+      "user.email=t@t",
+      "commit",
+      "--quiet",
+      "--allow-empty",
+      "-m",
+      "init",
+    );
+    expect(await host.currentBranch(repo)).toBe("custom");
+    git("checkout", "--quiet", "--detach");
+    expect(await host.currentBranch(repo)).toBeNull();
+    expect(await host.currentBranch(join(repo, "missing"))).toBeNull();
+  } finally {
+    await rm(repo, { recursive: true, force: true });
   }
 });

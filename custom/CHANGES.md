@@ -6733,3 +6733,27 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   shows Review = A fresh agent on DreamMMO and DreamMMO-android and The assistant elsewhere;
   change one, Save, reopen the page and it stuck; ask the assistant for `board_overview` and the
   project lines say `review: …`.
+
+## worktree-base: a task's worktree starts from the project's base branch
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: task worktrees start from the project's base branch`
+- **Why:** Power Workboard created task worktrees from the repository's default branch (`main` in
+  paseo, the upstream mirror), so the daemon stored `baseRef: refs/heads/main` in the worktree's
+  `paseo/worktree.json`. With the paseo policy at `baseBranch: custom`, the assistant's merge hit
+  `checkout_merge`'s base check ("Base ref mismatch: stored refs/heads/main, requested custom"),
+  and every agent had to fast-forward onto `custom` by hand.
+- **What:** when the board creates a worktree workspace for a task (orchestrator start or manual
+  start, `Workboard.bind`), it picks the base: the project's Projects Assistant policy
+  `baseBranch`, else the branch the project checkout is on (`Host.currentBranch`, `git symbolic-ref`),
+  else nothing. `PaseoHost.create` sends it as the worktree source's `refName`, which the daemon
+  branches off and records as the worktree's base. Nothing sent (detached checkout, unreadable
+  repo) keeps the daemon's default branch. A merge without a policy branch targets the stored base,
+  which is now the branch the worktree came from. Worktrees created before this keep their base.
+- **Core files touched:** none (plugin only: `server/host.ts`, `server/workboard.ts`).
+- **Re-apply:** in `Workboard.bind`, pass `worktreeBase(source)` as the 4th argument of
+  `host.create`; `PaseoHost.create` spreads it into a `kind: "worktree"` source as `refName`.
+- **Verify:** the plugin suite (`tests/host.test.ts`, `tests/assistant-engine.test.ts`). After a
+  plugin reload: a new paseo task's worktree is on `custom`'s tip and its
+  `<git dir>/paseo/worktree.json` has `"baseRef": "refs/heads/custom"`; its Merge delivery merges
+  into `custom` with no manual step.
