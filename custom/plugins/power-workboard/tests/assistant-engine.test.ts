@@ -1,6 +1,11 @@
 import { expect, it, vi } from "vitest";
 import { Workboard, type AssistantOptions } from "../server/workboard";
-import { assistantDataSchema, type HistoryEvent } from "../shared/assistant";
+import {
+  SEEDED_REVIEW_POLICIES,
+  assistantDataSchema,
+  reviewPolicyFor,
+  type HistoryEvent,
+} from "../shared/assistant";
 import { orchestratorConfigSchema } from "../shared/model";
 import { fixture } from "./fixtures";
 
@@ -869,4 +874,30 @@ it("assistant settings stored without the field wake the chat", () => {
   expect(
     assistantDataSchema.parse({ settings: { chat: {} } }).settings.chat,
   ).toMatchObject({ wakeOnNeedsYou: true });
+});
+
+// CUSTOM(assistant-review-policy)
+it("assistant settings stored without reviews get DreamMMO and DreamMMO-android as fresh-agent", () => {
+  const settings = assistantDataSchema.parse({ settings: {} }).settings;
+  expect(settings.reviews).toEqual({
+    prj_1b497e9066c32377: "fresh-agent",
+    prj_dc85fecbbf8a290e: "fresh-agent",
+  });
+  expect(SEEDED_REVIEW_POLICIES).toEqual(settings.reviews);
+  expect(reviewPolicyFor(settings, "prj_1b497e9066c32377")).toBe("fresh-agent");
+  expect(reviewPolicyFor(settings, "prj_dc85fecbbf8a290e")).toBe("fresh-agent");
+  // Any other project, and a task without one, defaults to self.
+  expect(reviewPolicyFor(settings, "prj_other")).toBe("self");
+  expect(reviewPolicyFor(settings, null)).toBe("self");
+});
+
+it("saved review policies are kept as they are, without the seed coming back", () => {
+  const settings = assistantDataSchema.parse({
+    settings: { reviews: { prj_1b497e9066c32377: "self" } },
+  }).settings;
+  expect(settings.reviews).toEqual({ prj_1b497e9066c32377: "self" });
+  expect(reviewPolicyFor(settings, "prj_dc85fecbbf8a290e")).toBe("self");
+  expect(() =>
+    assistantDataSchema.parse({ settings: { reviews: { p: "someone" } } }),
+  ).toThrow();
 });

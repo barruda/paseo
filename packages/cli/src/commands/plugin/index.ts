@@ -9,7 +9,13 @@ import {
   parsePluginSourceReference,
   formatPluginIdentity,
 } from "@getpaseo/protocol/plugin-source-reference";
-import type { CommandOptions, ListResult, OutputSchema, SingleResult } from "../../output/index.js";
+import type {
+  CommandError,
+  CommandOptions,
+  ListResult,
+  OutputSchema,
+  SingleResult,
+} from "../../output/index.js";
 import { withOutput } from "../../output/index.js";
 import { addJsonAndDaemonHostOptions, addJsonOption } from "../../utils/command-options.js";
 import { scaffoldPluginDirectory, type PluginScaffold } from "./scaffold.js";
@@ -207,6 +213,49 @@ async function remove(
   return { type: "single", data, schema: pluginSchema };
 }
 
+// CUSTOM(assistant-quick): lets external programs call a plugin RPC and read its JSON output.
+const pluginRpcSchema: OutputSchema<unknown> = {
+  idField: () => "output",
+  columns: [{ header: "OUTPUT", field: (output) => JSON.stringify(output), width: 80 }],
+  serialize: (data) => data,
+};
+
+export async function parsePluginRpcInput(
+  raw: string | undefined,
+  readStdin: () => Promise<string>,
+): Promise<unknown> {
+  const text = raw === "-" ? await readStdin() : (raw ?? "{}");
+  try {
+    return JSON.parse(text);
+  } catch (error) {
+    const invalid: CommandError = {
+      code: "INVALID_INPUT",
+      message: `Plugin RPC input is not valid JSON: ${error instanceof Error ? error.message : String(error)}`,
+    };
+    throw invalid;
+  }
+}
+
+async function readProcessStdin(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+export async function runPluginRpcCommand(
+  pluginId: string,
+  method: string,
+  input: string | undefined,
+  options: PluginOptions,
+  _command: Command,
+): Promise<SingleResult<unknown>> {
+  const parsed = await parsePluginRpcInput(input, readProcessStdin);
+  const data = await withPluginManagementClient(options.daemonTarget, (client) =>
+    client.invokePluginRpc(pluginId, method, parsed),
+  );
+  return { type: "single", data, schema: pluginRpcSchema };
+}
+
 export function createPluginCommand(): Command {
   const plugin = new Command("plugin").description("Manage trusted, unsandboxed plugins");
   addJsonOption(
@@ -263,5 +312,13 @@ export function createPluginCommand(): Command {
   addJsonAndDaemonHostOptions(
     plugin.command("remove").description("Remove plugin configuration").argument("<id>"),
   ).action(withOutput(remove));
+  addJsonAndDaemonHostOptions(
+    plugin
+      .command("rpc")
+      .description("Call a plugin RPC and print its output")
+      .argument("<plugin-id>")
+      .argument("<method>")
+      .argument("[input]", "JSON input, or - to read it from stdin", "{}"),
+  ).action(withOutput(runPluginRpcCommand));
   return plugin;
 }

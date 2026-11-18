@@ -1,0 +1,84 @@
+#!/usr/bin/env bash
+# CUSTOM(assistant-quick): send a message to the Projects Assistant from outside Paseo and print its
+# ack as JSON: {"id","status":"ok|needs-input|error","message","agentId","sentAt","link"}.
+# A plugin RPC lasts at most 25 s, so this polls until the assistant answers or --timeout passes;
+# a message still unanswered then comes out as status "error" (it stays in the chat).
+#
+#   ask-assistant [--source NAME] [--timeout SECONDS] [--open] MESSAGE...
+#   echo "MESSAGE" | ask-assistant --source opendeck
+#
+# Exit code: 0 ok, 2 needs-input, 1 error. --open opens the conversation in the desktop app.
+# The CLI: $PASEO_CLI, else the one of the build the paseo-personal launcher runs, else this
+# checkout's source through npx tsx. It talks to the daemon of $PASEO_HOME (default ~/.paseo).
+set -euo pipefail
+
+source_name="cli"
+timeout_s=90
+open_chat=false
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --source) source_name="$2"; shift 2 ;;
+    --timeout) timeout_s="$2"; shift 2 ;;
+    --open) open_chat=true; shift ;;
+    -h|--help) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    --) shift; break ;;
+    *) break ;;
+  esac
+done
+text="${*:-}"
+[[ -n "$text" ]] || text="$(cat)"
+[[ -n "${text//[[:space:]]/}" ]] || { echo "ask-assistant: no message" >&2; exit 1; }
+
+here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
+cli=()
+if [[ -n "${PASEO_CLI:-}" ]]; then
+  cli=("$PASEO_CLI")
+else
+  launcher="$HOME/.local/share/applications/paseo-personal.desktop"
+  app=""
+  [[ -f "$launcher" ]] && app="$(grep -m1 '^Exec=' "$launcher" | sed -E 's/.*"([^"]+\/Paseo)".*/\1/')"
+  if [[ -n "$app" && -x "$(dirname "$app")/resources/bin/paseo" ]]; then
+    cli=("$(dirname "$app")/resources/bin/paseo")
+  else
+    root="$(cd "$here/../../../.." && pwd)"
+    cli=(npx --prefix "$root" tsx "$root/packages/cli/src/index.js")
+  fi
+fi
+
+rpc() {
+  local out
+  out="$("${cli[@]}" plugin rpc power-workboard "$1" "$2" --json 2>/dev/null)" || return 1
+  jq -e 'type == "object" and (.status | type == "string")' >/dev/null 2>&1 <<<"$out" || return 1
+  printf '%s\n' "$out"
+}
+
+fail() {
+  jq -n --arg m "$1" --arg now "$(date -u +%FT%TZ)" \
+    '{id: null, status: "error", message: $m, agentId: null, sentAt: $now, link: null}'
+  exit 1
+}
+
+input="$(jq -n --arg t "$text" --arg s "$source_name" '{text: $t, source: $s, waitMs: 25000}')"
+ack="$(rpc workboard.assistant.ask "$input")" || fail "Could not call the Projects Assistant (is the daemon up and the paseo CLI new enough?)"
+
+deadline=$((SECONDS + timeout_s))
+while [[ "$(jq -r .status <<<"$ack")" == "pending" ]]; do
+  if ((SECONDS >= deadline)); then
+    ack="$(jq --arg m "No answer from the assistant in ${timeout_s} s; the message is in its chat." \
+      '.status = "error" | .message = $m' <<<"$ack")"
+    break
+  fi
+  get="$(jq -n --arg id "$(jq -r .id <<<"$ack")" '{id: $id, waitMs: 25000}')"
+  ack="$(rpc workboard.assistant.quick.get "$get")" || fail "Lost the daemon while waiting for the assistant"
+done
+
+jq . <<<"$ack"
+link="$(jq -r '.link // empty' <<<"$ack")"
+if $open_chat && [[ -n "$link" ]]; then
+  xdg-open "$link" >/dev/null 2>&1 || true
+fi
+case "$(jq -r .status <<<"$ack")" in
+  ok) exit 0 ;;
+  needs-input) exit 2 ;;
+  *) exit 1 ;;
+esac
