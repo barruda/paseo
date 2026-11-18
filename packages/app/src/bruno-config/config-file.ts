@@ -18,6 +18,7 @@ const AppSectionSchema = z
       .optional(),
     deskPreviewTabs: z.boolean().optional(),
     recentTabsSkipPinned: z.boolean().optional(),
+    headerShortcuts: z.boolean().optional(),
     showCriticToggle: z.boolean().optional(),
     showJevRouterToggle: z.boolean().optional(),
   })

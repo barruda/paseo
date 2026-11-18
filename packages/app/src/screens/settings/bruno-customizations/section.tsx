@@ -207,6 +207,7 @@ export function BrunoTabsPage() {
         <FlexibleTabMovementRow first />
         <DeskPreviewTabsRow />
         <RecentTabsSkipPinnedRow />
+        <HeaderShortcutsRow />
       </View>
     </SettingsSection>
   );
@@ -291,6 +292,24 @@ function RecentTabsSkipPinnedRow() {
       value={settings.recentTabsSkipPinned}
       onValueChange={setEnabled}
       testID="recent-tabs-skip-pinned-toggle"
+    />
+  );
+}
+
+// CUSTOM(header-shortcuts)
+function HeaderShortcutsRow() {
+  const { settings, updateSettings } = useAppSettings();
+  const setEnabled = useCallback(
+    (headerShortcuts: boolean) => void updateSettings({ headerShortcuts }),
+    [updateSettings],
+  );
+  return (
+    <ToggleRow
+      title="Header shortcuts"
+      hint="Show the everyday shortcuts (Model, New tab, Search...) in the workspace header."
+      value={settings.headerShortcuts}
+      onValueChange={setEnabled}
+      testID="header-shortcuts-toggle"
     />
   );
 }

@@ -7017,3 +7017,22 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   `CUSTOM(auto-archive-worktrees)`.
 - **Verify:** `cd packages/server && npx vitest run src/server/agent/auto-archive-closed/`. Needs a
   daemon restart; the log then shows "Auto-archived merged worktree" for qualifying worktrees.
+
+## header-shortcuts: a toggle for the shortcut hints in the workspace header
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Header shortcuts toggle in Bruno's Customizations > Tabs, off by default`
+- **Why:** the user finds the hint strip (Model, Next Desk, New tab, Search, Bottom panel) noisy.
+- **What:** app setting `headerShortcuts` (off by default). Off, `HeaderShortcutsStrip` renders
+  nothing. The row lives in Settings > Bruno's Customizations > Tabs, it is searchable as "Header
+  shortcuts", and the Bruno config file saves and loads it.
+- **Core files touched (app):** each marked `CUSTOM(header-shortcuts)`:
+  `hooks/use-settings/storage.ts` (type, default, schema), `header-shortcuts/strip.tsx`. Plus
+  `screens/settings/bruno-customizations/section.tsx` (`HeaderShortcutsRow`),
+  `screens/settings/settings-search-index.ts`, `bruno-config/config-file.ts` and
+  `bruno-config/use-bruno-config-file.ts` (`APP_KEYS`).
+- **Re-apply:** add `headerShortcuts: boolean` next to `recentTabsSkipPinned` in the settings
+  storage, read it with `useSettings` in `HeaderShortcutsStrip` and return null when off, and add the
+  toggle row to `BrunoTabsPage`.
+- **Verify:** on desktop, the header shows no shortcut hints; turn on Settings > Bruno's
+  Customizations > Tabs > Header shortcuts and they come back. No daemon restart.

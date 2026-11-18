@@ -115,6 +115,8 @@ export interface AppSettings {
   deskPreviewTabs: boolean;
   /** CUSTOM(recent-tabs): "Last visited tab" walks past pinned tabs. Off by default. */
   recentTabsSkipPinned: boolean;
+  /** CUSTOM(header-shortcuts): the shortcut hints in the workspace header. Off by default. */
+  headerShortcuts: boolean;
   /** CUSTOM(bruno-customizations): the critic's composer icon. On by default. */
   showCriticToggle: boolean;
   /** CUSTOM(bruno-customizations): the Jev router's composer icon. On by default. */
@@ -181,6 +183,7 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   chatOptionOrder: {}, // CUSTOM(chat-options)
   deskPreviewTabs: false, // CUSTOM(desk-preview-tabs)
   recentTabsSkipPinned: false, // CUSTOM(recent-tabs)
+  headerShortcuts: false, // CUSTOM(header-shortcuts)
   showCriticToggle: true, // CUSTOM(bruno-customizations)
   showJevRouterToggle: true, // CUSTOM(bruno-customizations)
   vimKeybindings: false,
@@ -299,6 +302,7 @@ const StoredAppSettingsSchema = z
       .catch({}),
     deskPreviewTabs: z.boolean().catch(false), // CUSTOM(desk-preview-tabs)
     recentTabsSkipPinned: z.boolean().catch(false), // CUSTOM(recent-tabs)
+    headerShortcuts: z.boolean().catch(false), // CUSTOM(header-shortcuts)
     showCriticToggle: z.boolean().catch(true), // CUSTOM(bruno-customizations)
     showJevRouterToggle: z.boolean().catch(true), // CUSTOM(bruno-customizations)
     vimKeybindings: z.boolean().catch(false),

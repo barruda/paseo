@@ -56,6 +56,7 @@ const APP_KEYS = [
   "chatOptionOrder",
   "deskPreviewTabs",
   "recentTabsSkipPinned",
+  "headerShortcuts",
   "showCriticToggle",
   "showJevRouterToggle",
 ] as const;

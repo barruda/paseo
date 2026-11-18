@@ -4,6 +4,7 @@ import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Shortcut } from "@/components/ui/shortcut";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useSettings } from "@/hooks/use-settings"; // CUSTOM(header-shortcuts)
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
 import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
 import { resolveShortcutKeysForAction } from "@/keyboard/keyboard-shortcuts";
@@ -42,7 +43,8 @@ export function HeaderShortcutsStrip({
   const available = useKeyboardShortcutsAvailable();
   const widths = useHeaderWidths(layoutKey);
   const { overrides } = useKeyboardShortcutOverrides();
-  if (compact || !available || !widths) return null;
+  const enabled = useSettings((settings) => settings.headerShortcuts); // CUSTOM(header-shortcuts)
+  if (!enabled || compact || !available || !widths) return null;
 
   const platform = { isMac: getShortcutOs() === "mac", isDesktop: getIsElectronRuntime() };
   const entries = HEADER_SHORTCUTS.flatMap((entry) => {

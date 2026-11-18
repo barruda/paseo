@@ -115,6 +115,7 @@ export const SETTINGS_SEARCH_INDEX: Partial<
       "Preview tabs",
       "Skip pinned tabs",
       "Last visited tab shortcut",
+      "Header shortcuts",
     ],
   },
   "customizations-voice": { i18nKeys: ["settings.voiceSettings", "settings.voice"] },
