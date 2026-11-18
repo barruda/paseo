@@ -164,7 +164,20 @@ it("enabled: the prompt carries the delivery section and the first attempt is re
     expect(s.attempts()).toMatchObject([
       { index: 1, trigger: "start", outcome: "running", agentId: s.agent.id },
     ]);
-    expect(s.history.kinds()).toEqual(["task-started"]);
+    expect(s.history.kinds()).toEqual([
+      "task-created",
+      "task-moved",
+      "task-started",
+    ]);
+    // CUSTOM(assistant-reports): creating and moving a task are automatic items of the Reports page.
+    expect(s.history.events.slice(0, 2)).toMatchObject([
+      {
+        kind: "task-created",
+        text: 'Created "Task" in Backlog',
+        agentId: null,
+      },
+      { kind: "task-moved", text: "Moved to Ready to start" },
+    ]);
   } finally {
     s.board.dispose();
   }
@@ -185,7 +198,13 @@ it("a reply without a report needs you (no-report) and the task goes to review",
     expect(s.board.snapshot().orchestrations[s.taskId].summary).toBe(
       "I changed things.",
     );
-    expect(s.history.kinds()).toEqual(["task-started", "report", "needs-you"]);
+    expect(s.history.kinds()).toEqual([
+      "task-created",
+      "task-moved",
+      "task-started",
+      "report",
+      "needs-you",
+    ]);
   } finally {
     s.board.dispose();
   }
@@ -416,6 +435,8 @@ it("merge: commits what is dirty, merges into the base and moves the task to Don
       mergedAt: expect.any(String),
     });
     expect(s.history.kinds()).toEqual([
+      "task-created",
+      "task-moved",
       "task-started",
       "report",
       "committed",
@@ -442,9 +463,7 @@ it("merge in a project that is not git needs you (merge-error)", async () => {
   }
 });
 
-it.each([
-  ["boom", "merge-error"],
-] as const)(
+it.each([["boom", "merge-error"]] as const)(
   "a merge error %j needs you as %s and the task stays in review",
   async (error, reason) => {
     const s = await scenario({ policy: { action: "merge" } });
@@ -514,6 +533,8 @@ it("a failed check goes back to the agent once, then the merge goes ahead when i
     expect(s.host.mergeToBase).toHaveBeenCalledTimes(1);
     expect(s.delivery()).toMatchObject({ fixesUsed: 1 });
     expect(s.history.kinds()).toEqual([
+      "task-created",
+      "task-moved",
       "task-started",
       "report",
       "verify-failed",
@@ -971,7 +992,13 @@ it("the review action settles a done report as needs-you review and does not mer
       action: "review",
     });
     expect(s.host.mergeToBase).not.toHaveBeenCalled();
-    expect(s.history.kinds()).toEqual(["task-started", "report", "needs-you"]);
+    expect(s.history.kinds()).toEqual([
+      "task-created",
+      "task-moved",
+      "task-started",
+      "report",
+      "needs-you",
+    ]);
   } finally {
     s.board.dispose();
   }
@@ -999,13 +1026,15 @@ it("a review task wakes the assistant with the review policy of its project", as
     await s.finishTurn();
     await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
     const text = s.sent()[0]![1];
-    expect(text).toContain(`${s.taskId} | Task | Project | review | review: fresh-agent`);
+    expect(text).toContain(
+      `${s.taskId} | Task | Project | review | review: fresh-agent`,
+    );
     expect(text).toContain("review and merge-now (reason review)");
     expect(text).toContain("the ok before merging a fresh-agent project");
     await vi.waitFor(() =>
-      expect(s.history.events.find((e) => e.kind === "told-assistant")?.text).toBe(
-        "Told the assistant: 1 task wait for it",
-      ),
+      expect(
+        s.history.events.find((e) => e.kind === "told-assistant")?.text,
+      ).toBe("Told the assistant: 1 task wait for it"),
     );
   } finally {
     s.board.dispose();
@@ -1031,7 +1060,10 @@ it("merge-now stores the merge action, so an approved merge survives a conflict 
     expect(sent[1]).toContain("merge, not a rebase");
     expect(sent[1]).toContain("keep every entry");
     expect(sent[1]).toContain("<report>");
-    expect(s.attempts().at(-1)).toMatchObject({ trigger: "auto-fix", outcome: "running" });
+    expect(s.attempts().at(-1)).toMatchObject({
+      trigger: "auto-fix",
+      outcome: "running",
+    });
     expect(s.history.events.find((e) => e.kind === "fix-requested")?.text).toBe(
       "Sent the merge conflict back to the agent",
     );
@@ -1047,13 +1079,19 @@ it("merge-now stores the merge action, so an approved merge survives a conflict 
 });
 
 it("the conflict prompt names the policy's base branch", async () => {
-  const s = await scenario({ policy: { action: "merge", baseBranch: "develop" } });
+  const s = await scenario({
+    policy: { action: "merge", baseBranch: "develop" },
+  });
   try {
-    (s.host.mergeToBase as any).mockRejectedValueOnce(new Error("Merge conflict"));
+    (s.host.mergeToBase as any).mockRejectedValueOnce(
+      new Error("Merge conflict"),
+    );
     s.reply(report());
     await s.finishTurn();
     await s.settled("fixing");
-    expect((s.host.sendAgent as any).mock.calls.at(-1)[1]).toContain("git merge develop");
+    expect((s.host.sendAgent as any).mock.calls.at(-1)[1]).toContain(
+      "git merge develop",
+    );
   } finally {
     s.board.dispose();
   }
@@ -1062,12 +1100,16 @@ it("the conflict prompt names the policy's base branch", async () => {
 it("a conflict goes back to the agent twice, then needs you (merge-conflict)", async () => {
   const s = await scenario({ policy: { action: "merge" } });
   try {
-    (s.host.mergeToBase as any).mockRejectedValue(new Error("CONFLICT in a.ts"));
+    (s.host.mergeToBase as any).mockRejectedValue(
+      new Error("CONFLICT in a.ts"),
+    );
     s.reply(report());
     await s.finishTurn();
     await s.settled("fixing");
     await s.finishTurn();
-    await vi.waitFor(() => expect(s.delivery()).toMatchObject({ stage: "fixing", conflictFixes: 2 }));
+    await vi.waitFor(() =>
+      expect(s.delivery()).toMatchObject({ stage: "fixing", conflictFixes: 2 }),
+    );
     await s.finishTurn();
     await s.settled("needs-you");
     expect(s.delivery()).toMatchObject({
@@ -1085,12 +1127,17 @@ it("a conflict goes back to the agent twice, then needs you (merge-conflict)", a
 it("a conflict with no agent to send it to needs you right away", async () => {
   const s = await scenario({ policy: { action: "merge" } });
   try {
-    (s.host.mergeToBase as any).mockRejectedValue(new Error("CONFLICT in a.ts"));
+    (s.host.mergeToBase as any).mockRejectedValue(
+      new Error("CONFLICT in a.ts"),
+    );
     (s.host.sendAgent as any).mockRejectedValueOnce(new Error("agent is gone"));
     s.reply(report());
     await s.finishTurn();
     await s.settled("needs-you");
-    expect(s.delivery()).toMatchObject({ reason: "merge-conflict", detail: "agent is gone" });
+    expect(s.delivery()).toMatchObject({
+      reason: "merge-conflict",
+      detail: "agent is gone",
+    });
   } finally {
     s.board.dispose();
   }
@@ -1117,7 +1164,9 @@ it("a dirty base checkout is waited for, then the merge goes through", async () 
     // The second try ran while the delivery said it was waiting.
     expect(seen[1]).toBe("Waiting for a clean checkout (1/12)");
     expect(s.delivery()).toMatchObject({ dirtyRetries: 0, detail: null });
-    expect(s.history.kinds().filter((k) => k === "waiting-clean")).toHaveLength(1);
+    expect(s.history.kinds().filter((k) => k === "waiting-clean")).toHaveLength(
+      1,
+    );
   } finally {
     s.board.dispose();
   }
@@ -1132,12 +1181,20 @@ it("a checkout that stays dirty needs you after 12 tries, listing its dirty path
     (s.host.mergeToBase as any).mockRejectedValue(
       new Error("Target checkout has uncommitted changes"),
     );
-    (s.host.gitStatusLines as any).mockResolvedValue([" M src/a.ts", "?? notes.md"]);
+    (s.host.gitStatusLines as any).mockResolvedValue([
+      " M src/a.ts",
+      "?? notes.md",
+    ]);
     s.reply(report());
     await s.finishTurn();
-    await vi.waitFor(() => expect(s.delivery()?.stage).toBe("needs-you"), { timeout: 4000 });
+    await vi.waitFor(() => expect(s.delivery()?.stage).toBe("needs-you"), {
+      timeout: 4000,
+    });
     expect(s.host.mergeToBase).toHaveBeenCalledTimes(13);
-    expect(s.delivery()).toMatchObject({ reason: "dirty-checkout", dirtyRetries: 12 });
+    expect(s.delivery()).toMatchObject({
+      reason: "dirty-checkout",
+      dirtyRetries: 12,
+    });
     expect(s.delivery()?.detail).toContain(" M src/a.ts");
     expect(s.delivery()?.detail).toContain("?? notes.md");
   } finally {
@@ -1156,7 +1213,9 @@ it("a pending dirty-checkout retry is cleared when the board stops", async () =>
     );
     s.reply(report());
     await s.finishTurn();
-    await vi.waitFor(() => expect(s.delivery()?.dirtyRetries).toBe(1), { interval: 2 });
+    await vi.waitFor(() => expect(s.delivery()?.dirtyRetries).toBe(1), {
+      interval: 2,
+    });
   } finally {
     s.board.dispose();
   }

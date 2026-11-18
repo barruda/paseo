@@ -84,6 +84,42 @@ and talks to the daemon of `$PASEO_HOME` (default `~/.paseo`). It needs `jq`.
 
 Messages live in memory (the last 30). A daemon restart empties the status row.
 
+## Reports and `board_report`
+
+The **Projects Reports** chip in the Desk header shows, per ticket, what the Projects Assistant
+and the board did. The sidebar lists every ticket with actions, newest first, with a search and a
+project filter; a ticket shows what was asked and a timeline with one collapsed row per action.
+Open a row for its detail, decisions and the automatic events of that iteration; the inner
+"Interaction with the agent" toggle shows what the assistant asked the task's agent, its answer,
+its `<report>` and a link to the conversation.
+
+The assistant records each action once with `board_report` (`shared/assistant-reports.ts`):
+
+```json
+{
+  "taskId": "…",
+  "kind": "merged",
+  "summary": "One sentence; also the chat reply and the status row text.",
+  "detail": "short markdown",
+  "decisions": ["…"],
+  "orchestrator": {
+    "agentId": "…",
+    "prompt": "what it asked",
+    "reply": "its answer"
+  },
+  "quickMessageId": "q-…"
+}
+```
+
+`kind` is one of `created`, `started`, `moved`, `reviewed`, `feedback`, `answered`, `fixed`,
+`merged`, `escalated`, `note`. Without `orchestrator.reply` the server stores the agent's last
+reply; its `<report>` block is parsed out with the delivery's parser. With `quickMessageId`, the
+summary becomes that quick message's ack (`quickStatus` sets its state; it keeps the current one,
+`ok` while pending). Entries go to `plugin-data/power-workboard/reports/YYYY-MM-DD.jsonl`, kept as
+long as the history. The board's own history (created, moved, started, report, merged...) shows
+on the page even when the assistant records nothing: an event up to 2 minutes after an entry, or
+up to 15 minutes before it, folds into that entry; the rest are automatic rows.
+
 See [CHANGES.md](../../CHANGES.md#power-workboard-a-board-of-registered-tasks-with-an-agent-orchestrator)
 for the full description.
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import {
   readPaseoLanguage,
+  readPaseoLocale,
   subscribePaseoLanguage,
 } from "../client/paseo-language";
 import { shortDate } from "../client/board-utils";
@@ -113,4 +114,21 @@ it("keeps rendering when client storage is corrupt, denied or unavailable", () =
   vi.stubGlobal("window", undefined);
   expect(readPaseoLanguage()).toBe("en");
   expect(() => subscribePaseoLanguage(() => {})()).not.toThrow();
+});
+
+// CUSTOM(assistant-reports)
+it("reads Brazilian Portuguese for the page locale but keeps the board language English", () => {
+  choose("pt-BR");
+  expect(readPaseoLocale()).toBe("pt");
+  expect(readPaseoLanguage()).toBe("en");
+  choose("zh-CN");
+  expect(readPaseoLocale()).toBe("zh");
+  choose("en");
+  expect(readPaseoLocale()).toBe("en");
+  choose("system");
+  vi.stubGlobal("navigator", { languages: ["pt-BR", "zh-CN"] });
+  expect(readPaseoLocale()).toBe("pt");
+  expect(readPaseoLanguage()).toBe("en");
+  vi.stubGlobal("navigator", { languages: ["fr-FR", "pt-BR"] });
+  expect(readPaseoLocale()).toBe("en");
 });

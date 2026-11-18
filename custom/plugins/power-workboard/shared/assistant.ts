@@ -227,6 +227,9 @@ export type AssistantData = z.infer<typeof assistantDataSchema>;
 
 /** Append-only history, one JSON object per line under `plugin-data/power-workboard/history/`. */
 export const HISTORY_EVENT_KINDS = [
+  // CUSTOM(assistant-reports): created and moved by the user or the assistant, for the Reports page.
+  "task-created",
+  "task-moved",
   "task-started",
   "task-continued",
   "report",

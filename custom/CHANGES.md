@@ -7133,3 +7133,45 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   the update script). In the desktop app, Ctrl+D, speak, tap Enter: the text lands in the box.
   Ctrl+D, speak, hold Enter: after half a second the bar stops recording; release and the message
   is sent. Needs an app build, no daemon restart.
+
+## assistant-reports: a Projects Reports page per ticket, fed by one `board_report` record per action
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: Projects Reports page and the board_report protocol`
+- **Why:** the user could not see at a glance what the Projects Assistant did on each ticket, and
+  the assistant wrote the same thing in several places (chat reply, quick-message ack). One record
+  per action now feeds the page, the status row and the chat reply.
+- **What:**
+  - **Protocol:** `shared/assistant-reports.ts` defines the entry (`taskId`, `kind`, a one-line
+    `summary`, `detail`, `decisions`, `orchestrator {agentId, prompt, reply}`, `quickMessageId`,
+    `quickStatus`). The chat tool `board_report` (`server/assistant/chat.ts`) refuses an invalid
+    entry or an unknown task with the zod reason, fills the project and time, stores the task
+    agent's last reply when `reply` is left out, and parses its `<report>` with
+    `server/assistant/report.ts`. With `quickMessageId` it acks that quick message with the summary.
+    Entries live in `plugin-data/power-workboard/reports/YYYY-MM-DD.jsonl`; `server/assistant/history.ts`
+    now has a generic day-file store (`DayJsonlStore`) that the history and the reports share.
+  - **Automatic items:** the history gets `task-created` and `task-moved` (create and move
+    mutations, while the assistant is on). `server/assistant/reports.ts` merges the history with the
+    entries: an event up to 2 min after an entry, else up to 15 min before one, folds into it; the
+    rest stand alone, a `report` event carrying the delivery's parsed report.
+  - **Page:** surface `projects-reports` (`client/assistant/ReportsScreen.tsx`, `reports-timeline.tsx`,
+    `reports-format.ts`, `reports-strings.ts`) over RPCs `workboard.assistant.reports.tasks` and
+    `workboard.assistant.reports.task`. Sidebar of tickets (search, project chips), header with what
+    was asked, one collapsed toggle per action, an inner toggle for the agent interaction with an
+    Open conversation link. Compact layouts show the list, then the ticket. Strings in en and
+    pt-BR: `client/paseo-language.ts` gets `readPaseoLocale`/`usePaseoLocale`, which tell pt-BR
+    apart (the rest of the plugin still maps it to en).
+  - **Instructions:** `ASSISTANT_ROLE` (the profile seed), `CHAT_INSTRUCTIONS` and the tool
+    description ask for one `board_report` per action and the summary reused as the chat reply.
+- **Core files touched:** `packages/app/src/task-navigation/desk-workboard-model.ts` (the
+  "Projects Reports" chip in `DESK_SURFACES`), marked `CUSTOM(assistant-reports)`.
+- **Re-apply:** plugin-only, plus one `DESK_SURFACES` entry `{ id: "projects-reports", kind: "surface" }`.
+  An existing assistant profile keeps its own `system-prompt.md`; add the `board_report` paragraph
+  of `ASSISTANT_ROLE` to it by hand (Settings > the assistant's profile) if it predates this.
+- **Verify:** the plugin suite (`tests/assistant-reports.test.ts`,
+  `tests/assistant-reports-format.test.ts`, `tests/paseo-language.test.ts`) and
+  `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts --bail=1)`, both
+  already in the update script. Needs a plugin reload and an app build and install (the chip). In
+  Tasks mode, click "Projects Reports" in the Desk header: tickets the board touched are listed;
+  open one and expand a row. Send a quick message that makes the assistant act: its
+  `board_report` summary shows in the status row and as a row on that ticket.

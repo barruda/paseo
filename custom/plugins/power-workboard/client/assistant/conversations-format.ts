@@ -122,7 +122,7 @@ export function attemptDuration(
 export function relativeTime(
   at: string,
   now: number,
-  t: ConversationsStrings,
+  t: Pick<ConversationsStrings, "ago">, // CUSTOM(assistant-reports)
 ): string {
   const ms = now - Date.parse(at);
   if (Number.isNaN(ms)) return "";

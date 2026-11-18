@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { appendFile, mkdir, readdir, readFile, unlink } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import type { z } from "zod";
 import {
   HISTORY_RETENTION_DAYS,
   historyEventSchema,
@@ -61,7 +62,10 @@ function time(iso: string): number {
 }
 
 /** Newest first: later `at`, then larger id. */
-function newestFirst(left: HistoryEvent, right: HistoryEvent): number {
+export function newestFirst(
+  left: { at: string; id: string },
+  right: { at: string; id: string },
+): number {
   return (
     time(right.at) - time(left.at) ||
     (right.id < left.id ? -1 : right.id > left.id ? 1 : 0)
@@ -90,25 +94,26 @@ function decodeCursor(cursor: string): { at: string; id: string } | null {
   }
 }
 
-export class HistoryStore {
+/**
+ * CUSTOM(assistant-reports): one JSON object per line, one file per local day, pruned after the
+ * retention. The history and the assistant's reports (`reports.ts`) both live in one of these.
+ */
+export class DayJsonlStore<T extends { id: string; at: string }> {
   private chain: Promise<unknown> = Promise.resolve();
 
   constructor(
     readonly directory: string,
+    private readonly schema: z.ZodType<T>,
     readonly options: { now?: () => Date; retentionDays?: number } = {},
   ) {}
 
-  private now(): Date {
+  protected now(): Date {
     return this.options.now ? this.options.now() : new Date();
   }
 
-  /** Assigns `id` and `at` (unless given), writes one line, returns the stored event. */
-  async append(event: HistoryEventInput): Promise<HistoryEvent> {
-    const stored = historyEventSchema.parse({
-      ...event,
-      id: randomUUID(),
-      at: event.at ?? this.now().toISOString(),
-    });
+  /** Validates `value`, writes it as one line of its day's file, returns the stored value. */
+  protected async write(value: unknown): Promise<T> {
+    const stored = this.schema.parse(value);
     const day = localDay(new Date(stored.at));
     const write = async () => {
       await mkdir(this.directory, { recursive: true });
@@ -123,7 +128,7 @@ export class HistoryStore {
     return stored;
   }
 
-  private async files(): Promise<string[]> {
+  protected async files(): Promise<string[]> {
     try {
       return (await readdir(this.directory))
         .filter((name) => FILE_PATTERN.test(name))
@@ -133,24 +138,71 @@ export class HistoryStore {
     }
   }
 
-  private async readFile(name: string): Promise<HistoryEvent[]> {
+  protected async readFile(name: string): Promise<T[]> {
     let text: string;
     try {
       text = await readFile(path.join(this.directory, name), "utf8");
     } catch {
       return [];
     }
-    const events: HistoryEvent[] = [];
+    const values: T[] = [];
     for (const line of text.split("\n")) {
       if (!line.trim()) continue;
       try {
-        const parsed = historyEventSchema.safeParse(JSON.parse(line));
-        if (parsed.success) events.push(parsed.data);
+        const parsed = this.schema.safeParse(JSON.parse(line));
+        if (parsed.success) values.push(parsed.data);
       } catch {
         // Skip a malformed line.
       }
     }
-    return events;
+    return values;
+  }
+
+  /** Every value at or after `fromIso` (all of them when null), oldest first. */
+  async since(fromIso: string | null): Promise<T[]> {
+    const from = fromIso === null ? null : time(fromIso);
+    const fromDay = from === null ? null : localDay(new Date(from));
+    const values: T[] = [];
+    for (const name of await this.files()) {
+      if (fromDay !== null && name.slice(0, 10) < fromDay) continue;
+      values.push(
+        ...(await this.readFile(name)).filter(
+          (value) => from === null || time(value.at) >= from,
+        ),
+      );
+    }
+    return values.sort((left, right) => -newestFirst(left, right));
+  }
+
+  /** Deletes day files older than the retention. */
+  async prune(): Promise<void> {
+    const days = this.options.retentionDays ?? HISTORY_RETENTION_DAYS;
+    const limit = new Date(this.now());
+    limit.setHours(12, 0, 0, 0);
+    limit.setDate(limit.getDate() - days);
+    const oldest = localDay(limit);
+    for (const name of await this.files()) {
+      if (name.slice(0, 10) < oldest)
+        await unlink(path.join(this.directory, name)).catch(() => {});
+    }
+  }
+}
+
+export class HistoryStore extends DayJsonlStore<HistoryEvent> {
+  constructor(
+    directory: string,
+    options: { now?: () => Date; retentionDays?: number } = {},
+  ) {
+    super(directory, historyEventSchema, options);
+  }
+
+  /** Assigns `id` and `at` (unless given), writes one line, returns the stored event. */
+  append(event: HistoryEventInput): Promise<HistoryEvent> {
+    return this.write({
+      ...event,
+      id: randomUUID(),
+      at: event.at ?? this.now().toISOString(),
+    });
   }
 
   /** Newest first, filtered; `nextCursor` is null on the last page. */
@@ -203,34 +255,5 @@ export class HistoryStore {
           ? encodeCursor(events[events.length - 1])
           : null,
     };
-  }
-
-  /** Every event at or after `fromIso`, oldest first (for stats). */
-  async since(fromIso: string): Promise<HistoryEvent[]> {
-    const from = time(fromIso);
-    const fromDay = localDay(new Date(from));
-    const events: HistoryEvent[] = [];
-    for (const name of await this.files()) {
-      if (name.slice(0, 10) < fromDay) continue;
-      events.push(
-        ...(await this.readFile(name)).filter(
-          (event) => time(event.at) >= from,
-        ),
-      );
-    }
-    return events.sort((left, right) => -newestFirst(left, right));
-  }
-
-  /** Deletes day files older than the retention. */
-  async prune(): Promise<void> {
-    const days = this.options.retentionDays ?? HISTORY_RETENTION_DAYS;
-    const limit = new Date(this.now());
-    limit.setHours(12, 0, 0, 0);
-    limit.setDate(limit.getDate() - days);
-    const oldest = localDay(limit);
-    for (const name of await this.files()) {
-      if (name.slice(0, 10) < oldest)
-        await unlink(path.join(this.directory, name)).catch(() => {});
-    }
   }
 }

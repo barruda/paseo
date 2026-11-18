@@ -20,6 +20,7 @@ import {
   quickAckSchema,
   quickMessageSchema,
 } from "./quick"; // CUSTOM(assistant-quick)
+import { reportTaskSchema, reportTimelineSchema } from "./assistant-reports"; // CUSTOM(assistant-reports)
 
 const settingsOutput = z.object({
   settings: assistantSettingsSchema,
@@ -133,4 +134,18 @@ export const assistantQuickListRpc = defineRpc({
   name: "workboard.assistant.quick.list",
   input: z.object({}),
   output: z.object({ items: z.array(quickMessageSchema) }),
+});
+
+// CUSTOM(assistant-reports): the Projects Reports page. Tickets with actions, newest action first.
+export const assistantReportsTasksRpc = defineRpc({
+  name: "workboard.assistant.reports.tasks",
+  input: z.object({}),
+  output: z.object({ tasks: z.array(reportTaskSchema) }),
+});
+
+/** One ticket's timeline; null when nothing was recorded for it. */
+export const assistantReportsTaskRpc = defineRpc({
+  name: "workboard.assistant.reports.task",
+  input: z.object({ taskId: z.string().min(1) }),
+  output: z.object({ timeline: reportTimelineSchema.nullable() }),
 });

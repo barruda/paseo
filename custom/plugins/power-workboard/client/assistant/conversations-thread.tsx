@@ -77,7 +77,8 @@ function Collapsible(props: {
   );
 }
 
-function RichText({
+// CUSTOM(assistant-reports): exported for the Reports page.
+export function RichText({
   text,
   color,
   theme,
