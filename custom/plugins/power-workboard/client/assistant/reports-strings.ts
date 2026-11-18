@@ -35,6 +35,7 @@ const en = {
   risks: "Risks",
   question: "Question",
   checks: "Checks",
+  filesChanged: "Files changed", // CUSTOM(report-card)
   openConversation: "Open conversation",
   sourceAssistant: "assistant",
   sourceAuto: "automatic",
@@ -111,6 +112,7 @@ const pt: ReportsStrings = {
   risks: "Riscos",
   question: "Pergunta",
   checks: "Verificações",
+  filesChanged: "Arquivos alterados", // CUSTOM(report-card)
   openConversation: "Abrir conversa",
   sourceAssistant: "assistente",
   sourceAuto: "automático",
