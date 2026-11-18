@@ -62,15 +62,34 @@ function windowOn(
 }
 
 export function windowOpen(schedule: Schedule, now: number): boolean {
-  if (schedule.kind !== "window") return false;
+  return openWindowStart(schedule, now) !== null;
+}
+
+/** When the window that is open at `now` opened; null while it is closed. */
+export function openWindowStart(
+  schedule: Schedule,
+  now: number,
+): number | null {
+  if (schedule.kind !== "window") return null;
   const today = startOfDay(now);
   // Yesterday's window may still be open after midnight.
   for (const day of [startOfDay(today - DAY / 2), today]) {
     const range = windowOn(schedule, day);
-    if (range && now >= range[0] && now < range[1]) return true;
+    if (range && now >= range[0] && now < range[1]) return range[0];
   }
-  return false;
+  return null;
 }
+
+/** CUSTOM(night-tasks): the night window is a window schedule that runs every day. */
+export const nightSchedule = (night: {
+  start: string;
+  end: string;
+}): Schedule => ({
+  kind: "window",
+  days: [0, 1, 2, 3, 4, 5, 6],
+  start: night.start,
+  end: night.end,
+});
 
 /** The latest daily trigger after `lastTriggerAt` and not after `now`, within the grace. */
 export function dueTrigger(

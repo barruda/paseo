@@ -167,6 +167,11 @@ export interface Host {
   ): Promise<{ archivedAt: string | null; error: string | null }>;
   /** CUSTOM(assistant-restart-pill): archive one agent. */
   archiveAgent(agentId: string): Promise<void>;
+  /**
+   * CUSTOM(night-tasks): every agent on the daemon that is working or waiting on a permission,
+   * board or not; the night power-off waits for them.
+   */
+  busyAgents(): Promise<Array<{ id: string; workspaceId: string | null }>>;
   dispose(): void;
 }
 interface Page<T> {
@@ -613,6 +618,24 @@ export class PaseoHost implements Host {
       ...(start.labels ? { labels: start.labels } : {}), // CUSTOM(projects-assistant)
     });
     return agent.id;
+  }
+  // CUSTOM(night-tasks)
+  async busyAgents(): Promise<
+    Array<{ id: string; workspaceId: string | null }>
+  > {
+    const agents = await allPages((cursor) =>
+      this.api.agents.list({ page: { limit: 200, cursor } }),
+    );
+    return agents
+      .map(({ agent }) => agent)
+      .filter((agent) => {
+        const state = activity(agent);
+        return state === "running" || state === "waiting";
+      })
+      .map((agent) => ({
+        id: agent.id,
+        workspaceId: agent.workspaceId ?? null,
+      }));
   }
   async agentAlive(agentId: string): Promise<boolean> {
     try {

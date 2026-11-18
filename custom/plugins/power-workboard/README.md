@@ -21,7 +21,14 @@ this repo) with these differences:
 - **Done.** A Done card in a git project has **Commit**, **PR description** (written by the
   task's agent, to copy; no PR is created) and **Merge into project**.
 
-Groups: Backlog, Ready to start, In progress, Ready to review, Done, on `pwb:*` workspace labels.
+- **Night tasks and start times.** A draft's **When** (task editor) puts it in Scheduled: a
+  night task starts inside the night window (Orchestrators tab, Night tasks), taken by any
+  enabled orchestrator whatever its schedule; a task with a start time moves to Ready to start
+  at that time. The Night tasks section can also power the computer off when the night's work
+  is done, after a 5-minute countdown that the board's banner can cancel.
+
+Groups: Backlog, Scheduled, Ready to start, In progress, Ready to review, Done, on `pwb:*`
+workspace labels.
 
 Each orchestrator is stored in `orchestrators` (`shared/model.ts`, `orchestratorConfigSchema`);
 schedules are in `shared/schedule.ts`. `orchestrator` holds the defaults new orchestrators start

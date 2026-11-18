@@ -22,6 +22,26 @@ const zh = {
   orchestratorAutomatic: "自动（按项目）",
   openAgent: "打开 Agent",
   openAgentHint: "打开这个任务的 Agent 会话",
+  night: {
+    badge: "夜间",
+    title: "夜间任务",
+    open: "夜间窗口已开启",
+    opensAt: "开启于 {time}",
+    waiting: "{count} 个等待中",
+    from: "从",
+    to: "到",
+    windowHint:
+      "夜间任务只在此时间窗口内开始，不受编排器自身计划影响。结束时间早于开始时间表示跨过午夜。",
+    shutdown: "完成后关闭电脑",
+    shutdownHint:
+      "夜间任务完成（或窗口关闭）且没有其他 agent 在运行时，开始 5 分钟倒计时，然后关闭电脑。可在此处或看板上取消。",
+    command: "关机命令",
+    commandPlaceholder: "systemctl poweroff",
+    save: "保存",
+    log: "最近记录",
+    poweringOff: "将在 {time} 后关闭这台电脑",
+    cancel: "取消",
+  },
   panel: {
     title: "编排器",
     boardTab: "看板",
@@ -268,6 +288,14 @@ const zh = {
     orchestrator: "编排器",
     createIn: "放入",
     saveHint: "Ctrl+Enter 保存",
+    when: "何时开始",
+    whenReady: "不排程",
+    whenNight: "夜间",
+    whenAt: "指定时间",
+    atHint: "本地时间，格式 YYYY-MM-DD HH:MM。",
+    atInvalid: "时间格式无效。",
+    atPast: "时间已过去。",
+    goesToScheduled: "将放入“已排程”列",
   },
   uploadingImage: "正在上传图片…",
   imageTooLarge: "图片超过 10 MB。",
@@ -360,6 +388,8 @@ const zh = {
     inbox:
       "未配置默认落点时，首个待归类组接收未标记 workspace；导入不会写入标签。",
     todo: "接收 Todo 草稿；创建草稿不会创建 workspace 或会话。",
+    scheduled:
+      "夜间任务和定时任务在这里等待：夜间任务在夜间时段开始，定时任务到时间后移到 Ready to start。",
     ready: "已完善、可以开始的草稿；编排器从这里取任务。",
     "in-progress":
       "仅在开启“进行中任务在 Paseo 侧边栏自动置顶”时自动置顶；离开分组时仅取消插件添加的置顶。",
@@ -392,6 +422,7 @@ const zh = {
   stages: {
     inbox: "待归类",
     todo: "待开始",
+    scheduled: "已排程",
     ready: "可以开始",
     "in-progress": "进行中",
     review: "待验收",
@@ -491,6 +522,10 @@ const zh = {
     "Workboard stopped": "Workboard 已停止，请重新打开。",
     "Task no longer exists": "任务已不存在，请刷新。",
     "Orchestrator is disabled": "编排器已停用，请先启用。",
+    "Choose a valid start time": "请选择有效的开始时间。",
+    "Add a Scheduled group to schedule tasks": "请先添加“已排程”类型的分组。",
+    "Only a task without a workspace can be scheduled":
+      "只有尚未关联 workspace 的任务可以排程。",
     "Workboard storage belongs to another Paseo host":
       "存储数据属于另一个 Paseo host，无法修改。",
     "Paseo disconnected during refresh": "刷新时 Paseo 连接中断，请重试。",
@@ -600,6 +635,26 @@ const en: typeof zh = {
   orchestratorAutomatic: "Automatic (by project)",
   openAgent: "Open agent",
   openAgentHint: "Open this task's agent chat",
+  night: {
+    badge: "Night",
+    title: "Night tasks",
+    open: "Night window open",
+    opensAt: "Opens at {time}",
+    waiting: "{count} waiting",
+    from: "From",
+    to: "To",
+    windowHint:
+      "Night tasks start only inside this window, whatever the orchestrator's own schedule. An end before the start crosses midnight.",
+    shutdown: "Power off the computer when done",
+    shutdownHint:
+      "When the night's tasks are done (or the window closes) and no other agent is running, a 5-minute countdown starts; then the computer powers off. Cancel it here or on the board.",
+    command: "Power-off command",
+    commandPlaceholder: "systemctl poweroff",
+    save: "Save",
+    log: "Recent activity",
+    poweringOff: "Powering off this computer in {time}",
+    cancel: "Cancel",
+  },
   panel: {
     title: "Orchestrators",
     boardTab: "Board",
@@ -869,6 +924,14 @@ const en: typeof zh = {
     orchestrator: "Orchestrator",
     createIn: "Create in",
     saveHint: "Ctrl+Enter saves",
+    when: "When",
+    whenReady: "Not scheduled",
+    whenNight: "Night",
+    whenAt: "At a time",
+    atHint: "Local time, as YYYY-MM-DD HH:MM.",
+    atInvalid: "Not a valid date and time.",
+    atPast: "That time is in the past.",
+    goesToScheduled: "Goes to Scheduled",
   },
   uploadingImage: "Uploading image…",
   imageTooLarge: "The image is larger than 10 MB.",
@@ -965,6 +1028,8 @@ const en: typeof zh = {
     inbox:
       "The first Inbox group receives unlabeled workspaces when no default destination is configured. Importing does not write labels.",
     todo: "Receives Todo drafts. Creating a draft creates no workspace or conversation.",
+    scheduled:
+      "Night tasks and tasks with a start time wait here. Night tasks start inside the night window; a timed task moves to Ready to start at its time.",
     ready:
       "Refined drafts that may start. The orchestrator takes its tasks from here, top first.",
     "in-progress":
@@ -1002,6 +1067,7 @@ const en: typeof zh = {
   stages: {
     inbox: "Inbox",
     todo: "To do",
+    scheduled: "Scheduled",
     ready: "Ready to start",
     "in-progress": "In progress",
     review: "Review",
@@ -1110,6 +1176,11 @@ const en: typeof zh = {
     "Task no longer exists": "The task no longer exists. Refresh first.",
     "Orchestrator is disabled":
       "The orchestrator is disabled. Enable it first.",
+    "Choose a valid start time": "Choose a valid start time.",
+    "Add a Scheduled group to schedule tasks":
+      "Add a Scheduled group before scheduling tasks.",
+    "Only a task without a workspace can be scheduled":
+      "Only a task without a workspace can be scheduled.",
     "Workboard storage belongs to another Paseo host":
       "Stored data belongs to another Paseo host and cannot be changed here.",
     "Paseo disconnected during refresh":
