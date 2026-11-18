@@ -540,16 +540,21 @@ export const orchestratorStatusSchema = z.object({
   running: z.number(),
   waiting: z.number(),
   nextRunAt: z.string().nullable(),
-  /** CUSTOM(resource-pools): why waiting tasks don't start although the orchestrator has room. */
+  /**
+   * CUSTOM(resource-pools): why waiting tasks don't start although the orchestrator would take
+   * them now and has room. `settle`: the pool has a RAM floor and started an agent less than
+   * `RAM_SETTLE_MS` ago, so the RAM it will use doesn't show yet; it waits until `until`.
+   */
   hold: z
     .object({
-      kind: z.enum(["pool", "ram"]),
+      kind: z.enum(["pool", "ram", "settle"]),
       poolId: z.string(),
       poolName: z.string(),
       running: z.number(),
       maxConcurrent: z.number(),
       freeRamPercent: z.number().nullable(),
       minFreeRamPercent: z.number().nullable(),
+      until: z.string().nullable().default(null),
     })
     .nullable()
     .default(null),

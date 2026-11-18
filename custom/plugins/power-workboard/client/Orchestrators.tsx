@@ -86,6 +86,16 @@ export function holdSummary(
       .replace("{pool}", hold.poolName)
       .replace("{running}", String(hold.running))
       .replace("{max}", String(hold.maxConcurrent));
+  if (hold.kind === "settle")
+    return pools.holdSettle.replace("{pool}", hold.poolName).replace(
+      "{time}",
+      hold.until
+        ? new Date(hold.until).toLocaleTimeString(t.locale, {
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "?",
+    );
   return pools.holdRam
     .replace(
       "{free}",

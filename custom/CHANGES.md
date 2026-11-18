@@ -7509,29 +7509,54 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
 ## resource-pools: Power Workboard project orchestrators first, shared pools and a RAM floor
 
 - **Added:** 2026-11-18
-- **Commit:** `custom: Power Workboard project orchestrators come first, with shared resource pools and a RAM floor`
+- **Commits:** `custom: Power Workboard project orchestrators come first, with shared resource pools and a RAM floor`,
+  then `custom: Power Workboard pools wait for the RAM to settle, queue delivery fixes and give slots in column order`.
 - **Why:** One orchestrator per project stays the model, but some projects compete for the same
   machine resource (two Unity checkouts can't both open an Editor; each one eats 10–17 GB of
   RAM). Limits shared between orchestrators cover that without an orchestrator per group. The
   Default ("All projects") orchestrator can then stay on for projects that have none of their own.
 - **What:**
   - **Ownership:** a task with no orchestrator chosen goes to its project's orchestrator (the
-    first in the list), even when it is disabled or outside its schedule; only a project with
-    no orchestrator of its own leaves its tasks to the All projects ones (`owns()` in
-    `server/workboard.ts`).
+    first of that project in the list), even when it is disabled, outside its schedule or held
+    by its pool. A second orchestrator of the same project takes only the tasks chosen for it,
+    so it can't get around the first one's pool. Only a project with no orchestrator of its own
+    leaves its tasks to the All projects ones; among those, a task the first can't take now goes
+    to the next, so put every All projects orchestrator that shares a resource in the same pool
+    (`owns()` in `server/workboard.ts`).
   - **Pools:** `settings.pools[{id, name, maxConcurrent, minFreeRamPercent}]` and `poolId` on the
     orchestrator, both optional with defaults, so stored v9 data loads as is (no schema bump).
     A task starts only with a free slot in its orchestrator and in its pool; the pass counts the
-    pool's slots across all its orchestrators, night tasks included. Pools are saved with their
-    own `pools-save` mutation; the board settings save keeps them, removing a pool takes its
-    orchestrators out of it, and saving an orchestrator with an unknown pool fails.
+    pool's slots across all its orchestrators, night tasks included. Each pass first sets up
+    every orchestrator's run and window, then goes down the columns, so a pool's free slot goes
+    to the top card of any of its orchestrators, not to the first orchestrator in the list.
+    Pools are saved with their own `pools-save` mutation; the board settings save keeps them,
+    removing a pool takes its orchestrators out of it, and saving an orchestrator with an
+    unknown pool fails.
+  - **Slots:** an orchestrator's slots are its starting and running tasks plus any agent of its
+    finished tasks that is working again (woken by the Projects Assistant's direct message or by
+    the user in the chat), so no new task starts beside it. The assistant's direct message
+    itself is not held back.
+  - **Delivery fixes wait for a slot:** a failed check or a merge conflict goes back to the
+    task's agent only when its orchestrator and pool have room. Otherwise the delivery stays in
+    `fixing` with `queuedFix` (the prompt) and the reason as its detail, and each pass sends the
+    waiting fixes, oldest delivery first, before it starts new tasks. A fix the user overtook
+    (another delivery action, or the task running again) is dropped.
   - **RAM floor:** `server/resources.ts` reads `MemAvailable`/`MemTotal` from `/proc/meminfo` once
     per pass when some pool has a floor. Under the floor nothing of the pool starts. An unreadable
-    reading (no `/proc/meminfo`) never holds a pool.
-  - **Why it waits:** `orchestratorStatus[id].hold` (`pool` full or `ram`, with the numbers) when
-    the orchestrator has waiting tasks and room of its own; the list row and the orchestrator's
-    Overview show it, and the log gets one line when a hold starts ("Waiting: pool "Unity" is full
-    (1/1)", "Waiting for RAM: 10% free, pool "Unity" needs 20%").
+    reading (no `/proc/meminfo`) never holds a pool. The agent opens Unity minutes after it starts,
+    so after each start (or fix sent) in a pool with a floor nothing else of the pool starts for
+    `RAM_SETTLE_MS` (5 minutes): at most one start per pass, and the next one sees the RAM the
+    first agent took. A pool without a floor starts all its free slots at once.
+  - **Why it waits:** `orchestratorStatus[id].hold` (`pool` full, `ram` with the numbers, or
+    `settle` with the time it ends) when the orchestrator would take its waiting tasks now
+    (enabled, with a run or an open window) and has room of its own; a Manual orchestrator
+    without a run shows none. The snapshot RPC rereads the RAM on each board poll (1.5 s), so
+    the RAM shown is current, not the last pass's. The list row and the orchestrator's Overview
+    show it, and the log gets one line when a `pool` or `ram` hold starts ("Waiting: pool "Unity"
+    is full (1/1)", "Waiting for RAM: 10% free, pool "Unity" needs 20%"); the routine `settle`
+    wait is not logged.
+  - **Night power-off:** a night task held by its pool (full or under the RAM floor) still counts
+    as waiting, so the power-off waits until it starts or the night window closes.
   - **UI:** Orchestrators tab, **Resource pools** section (name, at a time, min. free RAM %, Save
     pools); the orchestrator's General tab gets a **Pool** chip row once a pool exists.
 - **Core files touched:** none (plugin only).
@@ -7539,11 +7564,16 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
 - **Tests:** `tests/resource-pools.test.ts` (project orchestrator before Default, disabled project
   orchestrator, a pool of 1 across two orchestrators, the RAM floor with a fake reader, an
   unreadable RAM, removing a pool, settings save keeps pools, v9 data without pools,
-  `/proc/meminfo` parsing, hold text).
+  `/proc/meminfo` parsing, hold text; RAM settle with a fake clock, a pool without a floor, no
+  hold for a Manual orchestrator and the RAM reread, the slot going to the top card, a second
+  orchestrator of the project, a delivery fix waiting for the slot, an agent woken by the
+  assistant taking a slot).
 - **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
   After `plugin reload power-workboard`: Orchestrators tab > Resource pools > New pool, set At a
   time 1, Save pools; put two orchestrators in it (General > Pool); with a task Ready to start in
-  each project only one starts and the other's row says the pool is full.
+  each project only one starts (the one higher in the column) and the other's row says the pool
+  is full. With a min. free RAM % set and At a time 2, a second task waits about 5 minutes after
+  the first starts, and the row says it waits for the RAM to settle.
 
 ## report-card: a task agent's `<report>` block shows as a card in the agent chat
 

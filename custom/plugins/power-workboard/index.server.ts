@@ -178,6 +178,9 @@ export default function contribute(server: PluginServerContext) {
   };
   server.handle(snapshotRpc, () => {
     if (!board) throw new Error(error);
+    // CUSTOM(resource-pools): the board polls every 1.5 s, so a pool's RAM hold shows the RAM
+    // read at the previous poll instead of the last pass's.
+    void board.readPoolMemory().catch(() => undefined);
     return board.snapshot();
   });
   server.handle(mutateRpc, (input) => {
