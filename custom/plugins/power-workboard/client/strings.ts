@@ -94,6 +94,13 @@ const zh = {
     scheduleManual: "手动",
     enabled: "已启用",
     disabled: "已停用",
+    // CUSTOM(resource-pools)
+    projectFirst: "项目的第一个编排器：接收未指定编排器的任务",
+    projectOther: "只接收指定给它的任务；未指定的任务交给项目的第一个编排器",
+    firstDisabled:
+      "已停用，但 {project} 有 {count} 个任务在等待它：该项目的其他编排器不会接收这些任务。启用它，或把另一个编排器移到它上面。",
+    moveUp: "上移",
+    moveDown: "下移",
     daysLabel: "日期",
     days: ["日", "一", "二", "三", "四", "五", "六"],
     everyDay: "每天",
@@ -760,6 +767,15 @@ const en: typeof zh = {
     scheduleManual: "Manual",
     enabled: "Enabled",
     disabled: "Disabled",
+    // CUSTOM(resource-pools)
+    projectFirst:
+      "First of its project: takes the tasks with no orchestrator chosen",
+    projectOther:
+      "Takes only the tasks chosen for it; the others go to the project's first orchestrator",
+    firstDisabled:
+      "Disabled, and tasks of {project} wait for it ({count}): the project's other orchestrators won't take them. Enable it, or move another orchestrator above it.",
+    moveUp: "Move up",
+    moveDown: "Move down",
     daysLabel: "Days",
     days: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"],
     everyDay: "Every day",

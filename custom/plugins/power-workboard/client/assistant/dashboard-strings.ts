@@ -4,6 +4,11 @@ import type {
   HistoryEventKind,
   NeedsYouReason,
 } from "../../shared/assistant";
+// CUSTOM(resource-pools)
+import { FIX_WAIT_LIMIT_MS } from "../../shared/assistant";
+import type { OrchestratorHold } from "../../shared/hold";
+import type { PageLocale } from "../paseo-language";
+import { formatHold } from "../hold-format";
 
 export const REASON_LABELS: Record<NeedsYouReason, string> = {
   review: "Assistant reviewing",
@@ -21,6 +26,7 @@ export const REASON_LABELS: Record<NeedsYouReason, string> = {
   "pr-error": "Could not prepare the PR",
   "dependency-files": "Dependencies would be committed",
   stalled: "Stalled", // CUSTOM(task-checkpoints)
+  "fix-waiting": "Fix waiting for a slot", // CUSTOM(resource-pools)
 };
 
 export const KIND_LABELS: Record<HistoryEventKind, string> = {
@@ -44,6 +50,48 @@ export const KIND_LABELS: Record<HistoryEventKind, string> = {
   done: "Done",
   dismissed: "Dismissed",
 };
+
+/**
+ * CUSTOM(resource-pools): why a delivery's fix waits for a pool slot, in English and Brazilian
+ * Portuguese like the Reports page. Chinese falls back to English.
+ */
+const FIX_WAIT_EN = {
+  holdPool: "Fix waiting: pool “{pool}” is full ({running}/{max})",
+  holdRam: "Fix waiting for RAM: {free}% free, pool “{pool}” needs {min}%",
+  holdSettle:
+    "Fix waiting for RAM to settle: pool “{pool}” just started an agent; next start at {time}",
+  waitedTooLong: (minutes: number) =>
+    `The fix has waited over ${minutes} minutes for a free slot. It still goes to the agent when one frees; merge, continue or dismiss replaces it.`,
+};
+const FIX_WAIT_PT: typeof FIX_WAIT_EN = {
+  holdPool: "Correção esperando: o pool “{pool}” está cheio ({running}/{max})",
+  holdRam: "Correção esperando RAM: {free}% livre, o pool “{pool}” pede {min}%",
+  holdSettle:
+    "Correção esperando a RAM assentar: o pool “{pool}” acabou de iniciar um agente; próximo início às {time}",
+  waitedTooLong: (minutes: number) =>
+    `A correção espera uma vaga há mais de ${minutes} minutos. Ela ainda vai para o agente quando uma vaga abrir; mesclar, continuar ou dispensar a substitui.`,
+};
+/** CUSTOM(resource-pools): why a waiting fix waits, for the Running row. */
+export function fixHoldText(
+  hold: OrchestratorHold,
+  locale: PageLocale,
+): string {
+  return formatHold(
+    hold,
+    locale === "pt" ? FIX_WAIT_PT : FIX_WAIT_EN,
+    locale === "pt" ? "pt-BR" : "en",
+  );
+}
+/** CUSTOM(resource-pools): the Needs you card of a fix that waited FIX_WAIT_LIMIT_MS. */
+export function fixWaitedText(
+  hold: OrchestratorHold | null | undefined,
+  locale: PageLocale,
+): string {
+  const text = (locale === "pt" ? FIX_WAIT_PT : FIX_WAIT_EN).waitedTooLong(
+    FIX_WAIT_LIMIT_MS / 60_000,
+  );
+  return hold ? `${text}\n${fixHoldText(hold, locale)}` : text;
+}
 
 export const STAGE_LABELS: Record<
   "running" | "waiting" | DeliveryStage,

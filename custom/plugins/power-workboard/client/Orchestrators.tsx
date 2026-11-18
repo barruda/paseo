@@ -20,6 +20,7 @@ import { ConfirmationModal } from "./ConfirmationModal";
 import { HintButton } from "./Hint";
 import type { strings } from "./strings";
 import { toggleButtonState } from "./web";
+import { formatHold } from "./hold-format"; // CUSTOM(resource-pools)
 // CUSTOM(agent-profiles)
 import {
   AgentFields,
@@ -79,33 +80,43 @@ export function holdSummary(
   hold: OrchestratorHold | null | undefined,
   t: Strings,
 ): string | null {
-  if (!hold) return null;
-  const pools = t.pools;
-  if (hold.kind === "pool")
-    return pools.holdPool
-      .replace("{pool}", hold.poolName)
-      .replace("{running}", String(hold.running))
-      .replace("{max}", String(hold.maxConcurrent));
-  if (hold.kind === "settle")
-    return pools.holdSettle.replace("{pool}", hold.poolName).replace(
-      "{time}",
-      hold.until
-        ? new Date(hold.until).toLocaleTimeString(t.locale, {
-            hour: "2-digit",
-            minute: "2-digit",
-          })
-        : "?",
-    );
-  return pools.holdRam
-    .replace(
-      "{free}",
-      hold.freeRamPercent === null ? "?" : String(hold.freeRamPercent),
-    )
-    .replace("{pool}", hold.poolName)
-    .replace(
-      "{min}",
-      hold.minFreeRamPercent === null ? "?" : String(hold.minFreeRamPercent),
-    );
+  return hold ? formatHold(hold, t.pools, t.locale) : null;
+}
+
+/**
+ * CUSTOM(resource-pools): in a project with several orchestrators, only the first in the list takes
+ * the tasks with no orchestrator chosen. `first`/`other` for those; null for a general
+ * orchestrator or the only one of its project.
+ */
+export function projectRole(
+  orchestrators: readonly OrchestratorConfig[],
+  config: OrchestratorConfig,
+): "first" | "other" | null {
+  if (config.projectId === null) return null;
+  const same = orchestrators.filter((o) => o.projectId === config.projectId);
+  if (same.length < 2) return null;
+  return same[0]!.id === config.id ? "first" : "other";
+}
+
+/**
+ * CUSTOM(resource-pools): the warning on a project's first orchestrator that is disabled while
+ * tasks wait for it; the project's other orchestrators won't take them.
+ */
+export function firstDisabledWarning(
+  board: Board,
+  config: OrchestratorConfig,
+  t: Strings,
+): string | null {
+  const waiting = board.orchestratorStatus[config.id]?.waiting ?? 0;
+  if (
+    config.enabled ||
+    waiting === 0 ||
+    projectRole(board.orchestrators, config) !== "first"
+  )
+    return null;
+  return t.panel.firstDisabled
+    .replace("{count}", String(waiting))
+    .replace("{project}", projectName(board, config.projectId, t));
 }
 
 /** A new orchestrator starts from the board's agent defaults. */
@@ -189,8 +200,11 @@ export function OrchestratorsPanel(
           {panel.empty}
         </Text>
       )}
-      {board.orchestrators.map((config) => {
+      {board.orchestrators.map((config, index) => {
         const status = board.orchestratorStatus[config.id];
+        // CUSTOM(resource-pools)
+        const role = projectRole(board.orchestrators, config);
+        const warning = firstDisabledWarning(board, config, t);
         return (
           <View
             key={config.id}
@@ -257,7 +271,29 @@ export function OrchestratorsPanel(
                   .filter(Boolean)
                   .join(" · ")}
               </Text>
+              {/* CUSTOM(resource-pools) */}
+              {role ? (
+                <Text
+                  style={[styles.meta, { color: theme.colors.foregroundMuted }]}
+                >
+                  {role === "first" ? panel.projectFirst : panel.projectOther}
+                </Text>
+              ) : null}
+              {warning ? (
+                <Text
+                  style={[styles.meta, { color: theme.colors.statusWarning }]}
+                >
+                  {warning}
+                </Text>
+              ) : null}
             </Pressable>
+            {/* CUSTOM(resource-pools) */}
+            <MoveButtons
+              config={config}
+              index={index}
+              count={board.orchestrators.length}
+              {...props}
+            />
             <EnableToggle config={config} {...props} />
             <RunControls config={config} {...props} />
           </View>
@@ -719,6 +755,48 @@ function RunControls({
 }
 
 /** A compact on/off switch that saves right away; it is not part of the editor form. */
+/** CUSTOM(resource-pools): moves an orchestrator up or down the list. */
+function MoveButtons({
+  config,
+  index,
+  count,
+  t,
+  theme,
+  disabled,
+  mutate,
+}: Shared & { config: OrchestratorConfig; index: number; count: number }) {
+  if (count < 2) return null;
+  const button = (direction: "up" | "down", off: boolean) => (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${direction === "up" ? t.panel.moveUp : t.panel.moveDown}: ${config.name}`}
+      disabled={disabled || off}
+      onPress={() =>
+        void mutate({ action: "orchestrator-move", id: config.id, direction })
+      }
+      style={({ pressed }) => [
+        styles.moveButton,
+        {
+          backgroundColor: pressed ? theme.colors.surface2 : "transparent",
+          opacity: disabled || off ? 0.3 : 1,
+        },
+      ]}
+    >
+      <Icon
+        name={direction === "up" ? "ChevronUp" : "ChevronDown"}
+        size={16}
+        color={theme.colors.foregroundMuted}
+      />
+    </Pressable>
+  );
+  return (
+    <View style={styles.moveButtons}>
+      {button("up", index === 0)}
+      {button("down", index === count - 1)}
+    </View>
+  );
+}
+
 function EnableToggle({
   config,
   t,
@@ -1598,6 +1676,9 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   deleteButton: { alignSelf: "flex-start" },
+  // CUSTOM(resource-pools)
+  moveButtons: { gap: 2 },
+  moveButton: { borderRadius: 6, padding: 2 },
   row: {
     borderWidth: 1,
     borderRadius: 10,

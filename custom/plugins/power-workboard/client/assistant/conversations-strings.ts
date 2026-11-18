@@ -67,6 +67,7 @@ const en = {
     "no-report": "no report",
     "agent-error": "agent error",
     checkpoint: "checkpoint", // CUSTOM(task-checkpoints)
+    dropped: "fix dropped", // CUSTOM(resource-pools)
   } as Record<string, string>,
   reportStatus: {
     done: "Done",
