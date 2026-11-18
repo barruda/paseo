@@ -6605,9 +6605,9 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     through the board and never edits, commits or merges outside `board_task_action`, but reads
     freely to review (git log/diff/show, files, the task's tests in its worktree) and may use a
     read-only reviewer subagent. Reviews are sized by risk: low risk is reviewed and merged without
-    asking, then reported; critical (DreamMMO, DreamMMO-android, big or risky changes) gets a
-    review task for a fresh agent and the user's ok before merge. After `merge-now` it checks the
-    commit on the base branch, and it does the default next step instead of asking. Changing the
+    asking, then reported; critical (projects whose review policy is `fresh-agent`, see
+    `assistant-review-policy`, and big or risky changes) gets a review task for a fresh agent and
+    the user's ok before merge. After `merge-now` it checks the commit on the base branch, and it does the default next step instead of asking. Changing the
     seed does not touch an existing `system-prompt.md`: copy the new text there by hand (the
     live one is `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md`).
   - A new agent of the profile (task start, a continuation that starts a new agent, the assistant
@@ -6699,3 +6699,35 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `(cd custom/plugins/paseo-background && npx tsc --noEmit && npm test)`. In the app:
   Settings > Appearance > Backgrounds > Choose local image…, pick a photo, see the preview, Save,
   reload the app and the background is still there.
+
+## assistant-review-policy: who reviews each project's tasks is a Projects Assistant setting
+
+- **Added:** 2026-11-17
+- **Commit:** `custom: Projects Assistant review policy per project (self or fresh-agent)`
+- **Why:** The rule "DreamMMO and DreamMMO-android get a fresh agent's review, the assistant
+  reviews the rest" lived only in the assistant's prompt and memory. As a setting the user sees and
+  edits it, and the assistant reads it from the board.
+- **What:** `settings.reviews` in the plugin's `shared/assistant.ts`: project id →
+  `self | fresh-agent`; a project without an entry is `self` (`reviewPolicyFor`). It is kept apart
+  from `settings.projects` so setting a review never gives a project its own delivery action.
+  Settings stored without the field get `SEEDED_REVIEW_POLICIES` (DreamMMO `prj_1b497e9066c32377`
+  and DreamMMO-android `prj_dc85fecbbf8a290e` as `fresh-agent`); a zod field default, so it runs
+  once and the user's edits stay. `board_overview` adds `review: <policy>` to each project line and
+  `review per project: …, the rest self` to the Assistant line. The seed role (`ASSISTANT_ROLE`)
+  tells the assistant to follow the policy and still treat a big or risky change as
+  `fresh-agent`. Settings > Bruno's Customizations > Projects Assistant shows a Review select on
+  each project card ("The assistant" / "A fresh agent"), independent of the project's rule and of
+  Reset to default. Nothing runs the review automatically.
+- **Core files touched:** `packages/app/src/screens/settings/bruno-customizations/projects-assistant-model.ts`
+  (mirror `reviews`, `projectReview`, `setProjectReview`) and `projects-assistant-page.tsx`
+  (the Review select).
+- **Re-apply:** add `reviews` to the app's mirror of `assistantSettingsSchema` and the Review
+  `SettingsSelect` under the action select in `ProjectCard`. The live assistant prompt is
+  `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md`: a seed change does
+  not reach it, so copy the review lines of `ASSISTANT_ROLE` there by hand.
+- **Verify:** the plugin suite and
+  `(cd packages/app && npx vitest run src/screens/settings/bruno-customizations/projects-assistant-model.test.ts --bail=1)`.
+  After a plugin reload and an app build: Settings > Bruno's Customizations > Projects Assistant
+  shows Review = A fresh agent on DreamMMO and DreamMMO-android and The assistant elsewhere;
+  change one, Save, reopen the page and it stuck; ask the assistant for `board_overview` and the
+  project lines say `review: …`.

@@ -10,9 +10,11 @@ import {
   type Card,
   type Group,
 } from "../../shared/model";
-import type {
-  AssistantActionInput,
-  HistoryEvent,
+import {
+  DEFAULT_REVIEW_POLICY,
+  reviewPolicyFor,
+  type AssistantActionInput,
+  type HistoryEvent,
 } from "../../shared/assistant";
 import type { HistoryQuery } from "./history";
 import { buildOverview, readConversation } from "./views";
@@ -30,9 +32,9 @@ export const ASSISTANT_ROLE = [
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
   "Write each task description as a complete ticket: goal, context, acceptance criteria and what is out of scope. If the project or the goal is unclear, ask one short question before creating the task.",
   [
-    "When a task lands in Ready to review, size the review to its risk:",
-    "- Low risk (most tasks: a small change that is easy to revert): review the diff against each acceptance criterion, yourself or with a read-only reviewer subagent. If it is good, run merge-now without asking, create follow-up tasks for the non-blocking points, then report what you did.",
-    "- Critical (anything in DreamMMO or DreamMMO-android, or a big or risky change in any project): create a review task with start=true so a fresh agent, not the author, reviews the diff against the acceptance criteria without changing code. Read its report, tell the user what merge-now or mark-done will do, and wait for their ok.",
+    "When a task lands in Ready to review, size the review to its risk. Each project's review policy (self or fresh-agent) is in board_overview and comes from the assistant's settings: follow it, and treat a big or risky change as fresh-agent even in a self project.",
+    "- Low risk (a project whose review is self, and a small change that is easy to revert): review the diff against each acceptance criterion, yourself or with a read-only reviewer subagent. If it is good, run merge-now without asking, create follow-up tasks for the non-blocking points, then report what you did.",
+    "- Critical (a project whose review is fresh-agent in board_overview, or a big or risky change in any project): create a review task with start=true so a fresh agent, not the author, reviews the diff against the acceptance criteria without changing code. Read its report, tell the user what merge-now or mark-done will do, and wait for their ok.",
     "- Has problems: board_task_action continue with your feedback.",
   ].join("\n"),
   "Announce merge-now or mark-done beforehand only for critical tasks; for low-risk ones act first, then report.",
@@ -254,8 +256,15 @@ export function chatTools(
           }
         })();
         const settings = source.data.assistant.settings;
+        // CUSTOM(assistant-review-policy): each project's review policy, and the ones set apart.
+        const reviewed = Object.entries(settings.reviews)
+          .filter(([, review]) => review !== DEFAULT_REVIEW_POLICY)
+          .map(([id, review]) => {
+            const name = snapshot.projects.find((p) => p.id === id)?.name;
+            return `${name ? `${name} (${id})` : id}=${review}`;
+          });
         const lines = [
-          `Projects:\n${snapshot.projects.map((p) => `- ${p.id} | ${p.name} | ${p.isGit ? "git" : "not git"} | ${p.directory}`).join("\n") || "- none"}`,
+          `Projects:\n${snapshot.projects.map((p) => `- ${p.id} | ${p.name} | ${p.isGit ? "git" : "not git"} | ${p.directory} | review: ${reviewPolicyFor(settings, p.id)}`).join("\n") || "- none"}`,
           `Orchestrators:\n${
             snapshot.orchestrators
               .map((o) => {
@@ -278,7 +287,7 @@ export function chatTools(
                   `${id}=${p.action}${p.observe ? " (observe)" : ""}`,
               )
               .join(", ") || "none"
-          }`,
+          }; review per project: ${reviewed.join(", ") || "none"}, the rest ${DEFAULT_REVIEW_POLICY}`,
         ];
         return text(lines.join("\n\n"));
       },

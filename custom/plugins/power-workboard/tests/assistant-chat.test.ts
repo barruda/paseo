@@ -10,6 +10,7 @@ import {
   attachChatTools,
   chatTools,
 } from "../server/assistant/chat";
+import { Store } from "../server/store";
 import { fixture } from "./fixtures";
 
 const project = {
@@ -395,6 +396,44 @@ it("project and orchestrator references resolve by id or name; unknown ones list
     expect(
       (await c.run("board_list_tasks", { projectId: "nope" })).isError,
     ).toBe(true);
+  } finally {
+    c.board.dispose();
+  }
+});
+
+// CUSTOM(assistant-review-policy)
+it("review policies are saved, loaded back and shown per project in board_overview", async () => {
+  const c = await chat();
+  try {
+    const initial = c.board.assistantSettings().settings;
+    expect(initial.reviews).toMatchObject({
+      prj_1b497e9066c32377: "fresh-agent",
+      prj_dc85fecbbf8a290e: "fresh-agent",
+    });
+    let overview = (await c.run("board_overview")).text!;
+    expect(overview).toContain("- p | Project | git | /fixture | review: self");
+    expect(overview).toContain(
+      "review per project: prj_1b497e9066c32377=fresh-agent, prj_dc85fecbbf8a290e=fresh-agent, the rest self",
+    );
+
+    await c.board.setAssistantSettings({
+      ...initial,
+      reviews: { p: "fresh-agent", prj_1b497e9066c32377: "self" },
+    });
+    const reloaded = new Store(c.backing);
+    await reloaded.load();
+    expect(reloaded.current.assistant.settings.reviews).toEqual({
+      p: "fresh-agent",
+      prj_1b497e9066c32377: "self",
+    });
+
+    overview = (await c.run("board_overview")).text!;
+    expect(overview).toContain(
+      "- p | Project | git | /fixture | review: fresh-agent",
+    );
+    expect(overview).toContain(
+      "review per project: Project (p)=fresh-agent, the rest self",
+    );
   } finally {
     c.board.dispose();
   }

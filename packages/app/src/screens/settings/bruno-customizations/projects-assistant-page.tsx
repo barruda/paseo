@@ -22,20 +22,25 @@ import {
   ASSISTANT_ACTIONS,
   ASSISTANT_DEFAULT_ACTIONS,
   MAX_AUTO_FIXES,
+  REVIEW_LABELS,
+  REVIEW_POLICIES,
   actionNeedsGit,
   assistantSettingsResponseSchema,
   chatSettingsValid,
   patchChatSettings,
   patchProjectPolicy,
   policyActs,
+  projectReview,
   resetProjectPolicy,
   setProjectAction,
+  setProjectReview,
   settingsEqual,
   type AssistantAction,
   type AssistantDefaultAction,
   type AssistantProject,
   type AssistantSettings,
   type AssistantSettingsResponse,
+  type ReviewPolicy,
 } from "./projects-assistant-model";
 
 const PLUGIN_ID = "power-workboard";
@@ -45,6 +50,10 @@ const SET_METHOD = "workboard.assistant.settings.set";
 const DEFAULT_OPTIONS = ASSISTANT_DEFAULT_ACTIONS.map((value) => ({
   value,
   label: ACTION_LABELS[value],
+}));
+const REVIEW_OPTIONS = REVIEW_POLICIES.map((value) => ({
+  value,
+  label: REVIEW_LABELS[value],
 }));
 const AUTO_FIX_OPTIONS = Array.from({ length: MAX_AUTO_FIXES + 1 }, (_, index) => ({
   value: String(index),
@@ -269,6 +278,10 @@ function ProjectCard({
     () => onChange((current) => resetProjectPolicy(current, project.id)),
     [onChange, project.id],
   );
+  const handleReview = useCallback(
+    (review: ReviewPolicy) => onChange((current) => setProjectReview(current, project.id, review)),
+    [onChange, project.id],
+  );
   const handleObserve = useCallback(
     (observe: boolean) =>
       onChange((current) => patchProjectPolicy(current, project.id, { observe })),
@@ -330,6 +343,13 @@ function ProjectCard({
         value={value}
         options={selectOptions}
         onValueChange={handleSelect}
+      />
+      <SettingsSelect
+        label="Review"
+        hint="Who reviews a finished task before it is merged. A big or risky change still goes to a fresh agent."
+        value={projectReview(settings, project.id)}
+        options={REVIEW_OPTIONS}
+        onValueChange={handleReview}
       />
       {policy ? (
         <SettingsRow label="Rule" hint="This project has its own rule.">

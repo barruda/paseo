@@ -104,7 +104,11 @@ describe("profile folders", () => {
     );
     expect(ASSISTANT_SEED_PROMPT).toContain("read-only reviewer subagent");
     expect(ASSISTANT_SEED_PROMPT).toContain("run merge-now without asking");
-    expect(ASSISTANT_SEED_PROMPT).toContain("DreamMMO or DreamMMO-android");
+    // CUSTOM(assistant-review-policy): the critical projects come from the settings, not the prompt.
+    expect(ASSISTANT_SEED_PROMPT).not.toContain("DreamMMO");
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "a project whose review is fresh-agent in board_overview",
+    );
     expect(ASSISTANT_SEED_PROMPT).toContain("board_task_action continue");
     expect(ASSISTANT_SEED_PROMPT).toContain(
       "confirm the commit is on the project's base branch",
