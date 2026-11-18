@@ -96,6 +96,7 @@ import { listSkills } from "./profile-skills";
 import {
   KeyedLock,
   classifyMergeError,
+  dependencyRefusal,
   isUpToDate,
   runVerify,
   type VerifyRunner,
@@ -1877,6 +1878,11 @@ export class Workboard {
       if (step === "commit" && !dirty) throw new Error("Nothing to commit");
       const done: Partial<Finish> = {};
       if (dirty) {
+        // CUSTOM(assistant-autonomy): never commit a dependency folder or symlink.
+        const refusal = dependencyRefusal(
+          await this.host.gitStatusLines(directory),
+        );
+        if (refusal) throw new Error(refusal);
         await this.host.commit(directory);
         done.committedAt = this.stamp();
       }
@@ -2564,6 +2570,12 @@ export class Workboard {
         }
         if (stage === "committing") {
           if (await this.host.gitDirty(directory)) {
+            // CUSTOM(assistant-autonomy): `commit` stages every new file; a symlinked
+            // node_modules would land in the base branch.
+            const refusal = dependencyRefusal(
+              await this.host.gitStatusLines(directory),
+            );
+            if (refusal) return await needsYou("dependency-files", refusal);
             await this.host.commit(directory);
             await this.serial(() =>
               this.setFinish(taskId, { committedAt: this.stamp() }),
@@ -2626,6 +2638,10 @@ export class Workboard {
         if (!agentId)
           throw new Error("No agent of this task can write the description");
         if (await this.host.gitDirty(directory)) {
+          const refusal = dependencyRefusal(
+            await this.host.gitStatusLines(directory),
+          );
+          if (refusal) return await needsYou("dependency-files", refusal);
           await this.host.commit(directory);
           await this.serial(() =>
             this.setFinish(taskId, { committedAt: this.stamp() }),

@@ -6521,11 +6521,17 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     assistant, without going through the project's action again. A dirty base checkout is waited
     for: the delivery stays in `merging` and retries every 5 minutes, 12 times, then lands in
     Needs you with the dirty paths. Prepare PR: commit and the agent's PR title/body (no PR is
-    created; GitHub stays out for now). Observe only records "would merge" instead. blocked /
+    created; GitHub stays out for now). Every commit the board makes (Merge, Prepare PR and the
+    task's Commit/Merge buttons) first reads `git status --porcelain`: a new untracked or added
+    path that is or sits in `node_modules`, `.venv`, `venv` or a similar dependency folder (a
+    symlink included) stops it. Nothing is committed and the delivery lands in Needs you with
+    reason `dependency-files` and the paths (`dependencyRefusal` in `server/assistant/delivery.ts`);
+    the buttons show the same text as their error. `commit` sends `addAll`, so a symlinked
+    `node_modules` left by an agent would otherwise reach the base branch. Observe only records "would merge" instead. blocked /
     needs_input / failed reports, conflicts and dirty checkouts that outlast their retries,
     failed checks and agent errors (after 3 "continue" nudges at 30 s / 60 s / 120 s) land in
     **Needs you**. Nothing is archived. Each step is persisted (`data.assistant.deliveries`, with
-    `conflictFixes` and `dirtyRetries`) and resumed after a daemon restart. The review action, conflict hand-back and dirty wait are marked `CUSTOM(assistant-autonomy)`.
+    `conflictFixes` and `dirtyRetries`) and resumed after a daemon restart. The review action, conflict hand-back, dirty wait and dependency check are marked `CUSTOM(assistant-autonomy)`.
   - **Attempts and history:** each start, feedback continuation and auto-fix is an attempt
     (`data.assistant.attempts`). Events go to `<PASEO_HOME>/plugin-data/power-workboard/history/`
     (one JSONL per day, 90 days).
