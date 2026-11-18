@@ -6494,6 +6494,11 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     [board-turn-end](#board-turn-end-a-turn-that-waits-on-a-background-subagent-is-not-the-end)),
     and has stayed idle for 20 s. A task settled as `no-report` whose agent later ends a turn with
     a valid report is delivered as if the report had come on time ("The report arrived late").
+    The same section tells the agent that review and delivery run the checks in its worktree: install
+    missing dependencies there, never delete `node_modules` or builds as cleanup, and never symlink
+    another checkout's `node_modules` (the `node_modules/` ignore rule skips symlinks, and the
+    delivery commit stages every untracked file). An agent with no profile prompt deleted its
+    symlink and the review could not run the tests.
   - **Delivery per project** (Settings > Bruno's Customizations > Projects Assistant, which also has a **Chat** section for
     the assistant chat's model, thinking and mode, used by new conversations): Merge,
     Prepare PR, Tell me (default) or Nothing. **Merge is never a default**; it runs only in a

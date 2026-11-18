@@ -5,6 +5,8 @@ export function assistantSection(): string {
   return [
     "## Delivery",
     "The Projects Assistant delivers the work of this task. Do not merge, push, rebase onto the base branch or open pull requests; leave your changes in this workspace.",
+    // CUSTOM(projects-assistant): an agent with no profile prompt deleted its node_modules symlink as "cleanup", and the review could not run the tests.
+    "The review and the delivery run the checks in this workspace. If dependencies are missing, install them here with the project's installer and leave them in place when you finish: never delete `node_modules`, virtualenvs or build outputs as cleanup. Do not symlink another checkout's `node_modules`: an ignore rule like `node_modules/` matches directories only, so git sees the symlink as an untracked file, and the delivery commit stages every untracked file.",
     'End your final reply with a report between <report> and </report>, as JSON: {"status": "done" | "blocked" | "needs_input" | "failed", "summary": string, "filesChanged": string[], "checks": [{"command": string, "passed": boolean}], "risks": string[], "question": string | null}. Use `question` for what the user must answer or do when the status is blocked or needs_input.',
     'Example: <report>{"status":"done","summary":"Added the retry button.","filesChanged":["src/button.tsx"],"checks":[{"command":"npm test","passed":true}],"risks":[],"question":null}</report>',
   ].join("\n\n");
