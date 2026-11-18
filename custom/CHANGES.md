@@ -7036,3 +7036,37 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   toggle row to `BrunoTabsPage`.
 - **Verify:** on desktop, the header shows no shortcut hints; turn on Settings > Bruno's
   Customizations > Tabs > Header shortcuts and they come back. No daemon restart.
+
+## dictation-hold-enter-sends: holding Enter during dictation sends the transcript
+
+- **Added:** 2026-11-18
+- **Commit:** `custom: holding Enter during dictation sends the transcript`
+- **Why:** a short Enter during dictation only puts the transcript in the box
+  (`dictation-enter-inserts`), so sending took a second Enter. Holding Enter now sends it directly.
+- **What:** while dictation records (Ctrl+D), on web and desktop:
+  - A short Enter confirms on release and inserts the transcript, as before.
+  - Enter held for `DICTATION_HOLD_ENTER_SEND_MS` (500 ms) confirms with auto-send: the
+    transcript goes through `applyDictationTranscript` with `autoSend`, so it sends or queues by
+    `defaultSendBehavior` like the send button. An empty transcript sends nothing.
+  - The feedback that you can let go is the dictation bar leaving the recording state at 500 ms.
+  - Auto-repeat keydowns are swallowed until Enter comes up, so the text box gets no newline and no
+    second send. An Enter the window never saw go down (typed in an embedded browser) and a window
+    blur before 500 ms count as a short press. A hold whose keyup was lost frees Enter on the next
+    fresh press.
+  - The Enter shortcut only reports keydowns, so the composer also feeds the controller the window's
+    Enter keydown/keyup and blur (`useDictationEnterHold`). Native has no keyboard shortcuts and
+    is unchanged.
+- **Core files touched (app):** new `composer/input/dictation-hold-enter.ts`;
+  `composer/input/state.ts` (`holdDictationEnter` in `runMessageInputKeyboardAction`),
+  `composer/input/input.tsx` (the hook and `holdDictationEnter`), `composer/input/state.test.ts`.
+  Each marked `CUSTOM(dictation-hold-enter-sends)`.
+- **Re-apply:** keep `dictation-hold-enter.ts`. In `runMessageInputKeyboardAction`, before the
+  `send`/`dictation-confirm` branch, return true when `action === "dictation-confirm"` and
+  `actions.holdDictationEnter?.()` is true. In the composer, call `useDictationEnterHold` after
+  `useDictation` with `isRecording: isRecordingActive`, `confirm` (clear `sendAfterTranscriptRef`,
+  then `confirmDictation`) and `confirmAndSend` (set it, then `confirmDictation`), and pass
+  `holdDictationEnter: () => hold.press()` to `runMessageInputKeyboardAction`.
+- **Verify:** `(cd packages/app && npx vitest run src/composer/input/state.test.ts)` (already in
+  the update script). In the desktop app, Ctrl+D, speak, tap Enter: the text lands in the box.
+  Ctrl+D, speak, hold Enter: after half a second the bar stops recording; release and the message
+  is sent. Needs an app build, no daemon restart.
