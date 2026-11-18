@@ -87,12 +87,16 @@ export interface PluginScreenProps extends PluginSurfaceProps {
   params: PluginScreenParams;
 }
 
-export interface PluginPopoverProps extends PluginHostProps {
+// CUSTOM(assistant-quick): sidebar items and their popovers get the host navigation surfaces get,
+// so a sidebar row can open an agent. Optional: older hosts pass none.
+export interface PluginPopoverProps
+  extends PluginHostProps, Pick<PluginSurfaceProps, "navigation"> {
   close(): void;
   openScreen(input: PluginOpenScreenInput): void;
 }
 
-export interface PluginSidebarItemProps extends PluginHostProps {
+export interface PluginSidebarItemProps
+  extends PluginHostProps, Pick<PluginSurfaceProps, "navigation"> {
   /** This plugin's screen open on this item's host, with its params, else null. */
   currentScreen: PluginScreenLocation | null;
   openScreen(input: PluginOpenScreenInput): void;

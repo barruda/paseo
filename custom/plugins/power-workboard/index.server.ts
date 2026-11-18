@@ -16,6 +16,9 @@ import {
 } from "./shared/rpc";
 // CUSTOM(projects-assistant)
 import {
+  assistantAskRpc,
+  assistantQuickGetRpc,
+  assistantQuickListRpc,
   assistantActionRpc,
   assistantChatOpenRpc,
   assistantConversationRpc,
@@ -30,7 +33,12 @@ import {
   HistoryStore,
   defaultHistoryDirectory,
 } from "./server/assistant/history";
-import { attachChatTools, chatTools } from "./server/assistant/chat";
+import {
+  attachChatTools,
+  chatTools,
+  quickAckTool,
+} from "./server/assistant/chat";
+import { QuickInbox } from "./server/assistant/quick"; // CUSTOM(assistant-quick)
 import {
   buildOverview,
   buildStats,
@@ -100,6 +108,15 @@ export default function contribute(server: PluginServerContext) {
   // CUSTOM(projects-assistant): created once; the board gets it on every (re)boot.
   const history = new HistoryStore(defaultHistoryDirectory());
   void history.prune().catch(() => undefined);
+  // CUSTOM(assistant-quick): outside `boot`, so it survives board reboots.
+  let serverId: string | null = null;
+  const inbox = new QuickInbox({
+    openChat: async () => (await ready().openChat(false)).agentId,
+    send: (id, text) => ready().chatSend(id, text),
+    activity: (id) => ready().chatActivity(id),
+    lastReply: (id) => ready().chatLastReply(id),
+    serverId: () => serverId,
+  });
   let board: Workboard | undefined;
   let disposed = false;
   let error = "Workboard is starting";
@@ -120,6 +137,7 @@ export default function contribute(server: PluginServerContext) {
       const api = await bootstrap();
       if (disposed) return;
       const identity = await compat.identity();
+      serverId = identity.serverId; // CUSTOM(assistant-quick)
       board?.dispose();
       const host = new PaseoHost(api, compat, identity, (id) =>
         board?.changed(id),
@@ -198,6 +216,12 @@ export default function contribute(server: PluginServerContext) {
   server.handle(assistantChatOpenRpc, (input) =>
     ready().openChat(input.fresh, input.archivePrevious),
   );
+  // CUSTOM(assistant-quick)
+  server.handle(assistantAskRpc, (input) => inbox.ask(input));
+  server.handle(assistantQuickGetRpc, (input) =>
+    inbox.get(input.id, input.waitMs),
+  );
+  server.handle(assistantQuickListRpc, () => ({ items: inbox.list() }));
   // CUSTOM(agent-profiles): the profile of an orchestrator or of the assistant chat.
   server.handle(profilesGetRpc, (input) => ready().profileView(input.profile));
   server.handle(profilesSetSystemPromptRpc, async (input) => {
@@ -208,7 +232,7 @@ export default function contribute(server: PluginServerContext) {
     skills: await ready().profileSkills(input.profile),
   }));
   // The chat agent gets the board tools on every session open (create and resume).
-  const boardTools = chatTools(ready, history);
+  const boardTools = [...chatTools(ready, history), quickAckTool(inbox)]; // CUSTOM(assistant-quick)
   const removeChatTools = server.before("agent.session_open", ({ request }) =>
     attachChatTools(request, boardTools),
   );
@@ -226,6 +250,7 @@ export default function contribute(server: PluginServerContext) {
     clearTimeout(retry);
     stopChange();
     removeChatTools(); // CUSTOM(projects-assistant)
+    inbox.dispose(); // CUSTOM(assistant-quick)
     board?.dispose();
     compat.dispose();
   };

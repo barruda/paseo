@@ -14,6 +14,12 @@ import {
   statsSchema,
   treeSchema,
 } from "./assistant";
+import {
+  QUICK_MESSAGE_MAX,
+  QUICK_WAIT_MAX_MS,
+  quickAckSchema,
+  quickMessageSchema,
+} from "./quick"; // CUSTOM(assistant-quick)
 
 const settingsOutput = z.object({
   settings: assistantSettingsSchema,
@@ -99,4 +105,32 @@ export const assistantChatOpenRpc = defineRpc({
     archivePrevious: z.boolean().default(false),
   }),
   output: z.object({ agentId: z.string(), created: z.boolean() }),
+});
+
+// CUSTOM(assistant-quick): a message to the assistant from outside its chat, and its short ack.
+// The external contract (`paseo plugin rpc power-workboard workboard.assistant.ask`) is in README.md.
+export const assistantAskRpc = defineRpc({
+  name: "workboard.assistant.ask",
+  input: z.object({
+    text: z.string().trim().min(1).max(QUICK_MESSAGE_MAX),
+    source: z.string().trim().min(1).max(40).default("app"),
+    waitMs: z.number().int().min(0).max(QUICK_WAIT_MAX_MS).default(20_000),
+  }),
+  output: quickAckSchema,
+});
+
+export const assistantQuickGetRpc = defineRpc({
+  name: "workboard.assistant.quick.get",
+  input: z.object({
+    id: z.string(),
+    waitMs: z.number().int().min(0).max(QUICK_WAIT_MAX_MS).default(0),
+  }),
+  output: quickAckSchema,
+});
+
+/** Newest first. */
+export const assistantQuickListRpc = defineRpc({
+  name: "workboard.assistant.quick.list",
+  input: z.object({}),
+  output: z.object({ items: z.array(quickMessageSchema) }),
 });

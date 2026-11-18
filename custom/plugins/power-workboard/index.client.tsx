@@ -2,23 +2,23 @@ import type {
   PluginClientContext,
   PluginWorkspacePanelProps,
 } from "@getpaseo/plugin/client";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ComponentType } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
+import { queryClient } from "./client/query-client";
 import { WorkboardScreen } from "./client/WorkboardScreen";
 import { writeTicketRpc } from "./shared/rpc";
 // CUSTOM(projects-assistant)
 import { ChatLauncher } from "./client/assistant/ChatLauncher";
 import { ConversationsScreen } from "./client/assistant/ConversationsScreen";
 import { contributeRestartChatPill } from "./client/assistant/RestartChatPill"; // CUSTOM(assistant-restart-pill)
+import { QuickStatusItem } from "./client/assistant/QuickStatus"; // CUSTOM(assistant-quick)
+import { assistantAskRpc } from "./shared/assistant-rpc";
 import { DashboardScreen } from "./client/assistant/DashboardScreen";
 import {
   CHAT_SURFACE_ID,
   CONVERSATIONS_SURFACE_ID,
   DASHBOARD_SURFACE_ID,
 } from "./client/assistant/nav";
-
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { retry: 1, staleTime: 2_000 } },
-});
 
 const Surface = (props: Parameters<typeof WorkboardScreen>[0]) => (
   <QueryClientProvider client={queryClient}>
@@ -119,7 +119,37 @@ export default function contribute(client: PluginClientContext) {
       await rpc(writeTicketRpc, { agentId: agent.id, focus: args });
     },
   });
+  // CUSTOM(assistant-quick): the status row in the sidebar footer and `/assistant`. The pinned
+  // plugin types predate addSidebarFooterItem, hence the cast.
+  const removeStatus =
+    (
+      client as unknown as {
+        addSidebarFooterItem?(item: {
+          id: string;
+          title: string;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Component: ComponentType<any>;
+        }): () => void;
+      }
+    ).addSidebarFooterItem?.({
+      id: "projects-assistant-status",
+      title: "Projects Assistant status",
+      Component: QuickStatusItem,
+    }) ?? (() => {});
+  const removeAssistantCommand = client.addSlashCommand({
+    name: "assistant",
+    description:
+      "Projects Assistant: send this message to the assistant without leaving this chat",
+    argumentHint: "<message>",
+    context: "agent",
+    async onSubmit({ args, rpc }) {
+      if (!args.trim()) throw new Error("Write the message after /assistant");
+      await rpc(assistantAskRpc, { text: args, source: "slash", waitMs: 0 });
+    },
+  });
   return () => {
+    removeAssistantCommand();
+    removeStatus();
     removeWriteTicket();
     removeTabCommand();
     removePanel();

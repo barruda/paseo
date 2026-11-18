@@ -49,6 +49,7 @@ import {
 } from "../shared/rpc";
 import {
   attentionReasons,
+  finishButtons,
   groupDeleteReason,
   mappingPreview,
   shortDate,
@@ -1774,9 +1775,16 @@ function ReviewPrompt({
   );
 }
 
+const FINISH_ICONS: Record<FinishStep, string> = {
+  commit: "GitCommitHorizontal",
+  pr: "FileText",
+  merge: "GitMerge",
+};
+
 /**
  * A Done task's work is still in its worktree: Commit it, get a PR description from its agent, or
- * merge it into the project. Each is the user's call; the task is already Done.
+ * merge it into the project. Each is the user's call; the task is already Done. Once merged, only
+ * PR description is left (see `finishButtons`).
  */
 function FinishActions({
   card,
@@ -1803,10 +1811,11 @@ function FinishActions({
     ? t.finish.running[running]
     : (finish?.error ??
       (finish?.mergedAt
-        ? t.finish.merged
+        ? `${t.finish.merged} · ${shortDate(finish.mergedAt, t.locale)}`
         : finish?.committedAt
           ? t.finish.committed
           : null));
+  const { steps, primary } = finishButtons(finish);
   const pr =
     finish?.prBody !== null && finish?.prBody !== undefined
       ? `${finish.prTitle ? `# ${finish.prTitle}\n\n` : ""}${finish.prBody}`
@@ -1922,9 +1931,9 @@ function FinishActions({
         </View>
       )}
       <View style={styles.reviewActions}>
-        {button("commit", "GitCommitHorizontal")}
-        {button("pr", "FileText")}
-        {button("merge", "GitMerge", true)}
+        {steps.map((step) =>
+          button(step, FINISH_ICONS[step], step === primary),
+        )}
       </View>
     </View>
   );

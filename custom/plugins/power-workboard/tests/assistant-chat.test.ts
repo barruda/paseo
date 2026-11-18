@@ -11,6 +11,7 @@ import {
   attachChatTools,
   chatTools,
 } from "../server/assistant/chat";
+import { Store } from "../server/store";
 import { fixture, workspace } from "./fixtures";
 
 const project = {
@@ -104,7 +105,7 @@ it("chat.open creates the chat agent once, reuses it, and recreates it when arch
       prompt: CHAT_INSTRUCTIONS,
     });
     expect(
-      start.prompt.startsWith("Reply with one short line saying you're ready."), // CUSTOM(agent-profiles): the role is the system prompt now
+      start.prompt.startsWith("Call board_overview, then reply in one line"), // CUSTOM(agent-profiles): the role is the system prompt now
     ).toBe(true);
     expect(c.store.current.assistant.chatAgentId).toBe(first.agentId);
 
@@ -520,6 +521,44 @@ it("board_get_task shows the worktree, branch, base, commits ahead and the diffs
     });
     expect((await c.run("board_get_task", { taskId })).text).toContain(
       "Base: release (project policy)",
+    );
+  } finally {
+    c.board.dispose();
+  }
+});
+
+// CUSTOM(assistant-review-policy)
+it("review policies are saved, loaded back and shown per project in board_overview", async () => {
+  const c = await chat();
+  try {
+    const initial = c.board.assistantSettings().settings;
+    expect(initial.reviews).toMatchObject({
+      prj_1b497e9066c32377: "fresh-agent",
+      prj_dc85fecbbf8a290e: "fresh-agent",
+    });
+    let overview = (await c.run("board_overview")).text!;
+    expect(overview).toContain("- p | Project | git | /fixture | review: self");
+    expect(overview).toContain(
+      "review per project: prj_1b497e9066c32377=fresh-agent, prj_dc85fecbbf8a290e=fresh-agent, the rest self",
+    );
+
+    await c.board.setAssistantSettings({
+      ...initial,
+      reviews: { p: "fresh-agent", prj_1b497e9066c32377: "self" },
+    });
+    const reloaded = new Store(c.backing);
+    await reloaded.load();
+    expect(reloaded.current.assistant.settings.reviews).toEqual({
+      p: "fresh-agent",
+      prj_1b497e9066c32377: "self",
+    });
+
+    overview = (await c.run("board_overview")).text!;
+    expect(overview).toContain(
+      "- p | Project | git | /fixture | review: fresh-agent",
+    );
+    expect(overview).toContain(
+      "review per project: Project (p)=fresh-agent, the rest self",
     );
   } finally {
     c.board.dispose();

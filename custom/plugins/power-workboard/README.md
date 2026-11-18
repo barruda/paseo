@@ -19,7 +19,8 @@ this repo) with these differences:
   task**. Continue takes optional feedback and sends the task back to Ready to start; the
   orchestrator's next pass gives the feedback to the same agent.
 - **Done.** A Done card in a git project has **Commit**, **PR description** (written by the
-  task's agent, to copy; no PR is created) and **Merge into project**.
+  task's agent, to copy; no PR is created) and **Merge into project**. Once merged, only PR
+  description is left.
 
 Groups: Backlog, Ready to start, In progress, Ready to review, Done, on `pwb:*` workspace labels.
 
@@ -27,6 +28,52 @@ Each orchestrator is stored in `orchestrators` (`shared/model.ts`, `orchestrator
 schedules are in `shared/schedule.ts`. `orchestrator` holds the defaults new orchestrators start
 from (`claude/claude-opus-5-5`, `bypassPermissions`, `medium`, worktree) and `refineModeId`
 (`default`) for refinement chats, with no UI yet.
+
+## Quick messages and the ack contract
+
+You can write to the Projects Assistant without opening its chat.
+
+- **From the app.** The sidebar footer has a row named "Projects Assistant status". Press the
+  **+** on it to write a message; press the row itself to open the assistant conversation at the
+  newest message. The row shows the assistant's short answer: green for ok, yellow when it needs
+  something from you, red for an error, grey while it has not answered yet.
+- **From any chat.** Type `/assistant <message>` in the composer of any agent. The message goes to
+  the assistant and you stay where you are.
+
+Each message reaches the assistant wrapped as `[Quick message <id> from <source>]`. The assistant
+must call `board_ack` first, before any other tool: `ok` with a sentence on what it will do,
+`needs-input` with its question, or `error` with the reason. It may call `board_ack` again with
+the same id to update the state. If its turn ends without one, the server classifies its reply
+instead (a question needs input; failure words are an error; anything else is ok).
+
+External callers use the plugin RPC (this needs a Paseo build whose CLI has `paseo plugin rpc`,
+as this fork's does):
+
+```sh
+paseo plugin rpc power-workboard workboard.assistant.ask '{"text":"...","source":"opendeck"}' --json
+```
+
+It returns `{ id, status, message, agentId, sentAt, link }`, with `status` one of `ok`,
+`needs-input`, `error` or `pending`. `pending` means the assistant has not answered within
+`waitMs` (default 20 s, at most 25 s). Poll with
+`workboard.assistant.quick.get '{"id":"<id>","waitMs":25000}'`. `link` opens the chat:
+`xdg-open <link>` or `paseo agent open <agentId>`. `workboard.assistant.quick.list` returns the
+recent messages, newest first.
+
+For scripts, `bin/ask-assistant` does the polling and only answers `ok`, `needs-input` or
+`error`:
+
+```sh
+custom/plugins/power-workboard/bin/ask-assistant --source opendeck "what needs me today?"
+echo "create a task to ..." | custom/plugins/power-workboard/bin/ask-assistant --open
+```
+
+It prints the JSON above and exits 0 (ok), 2 (needs-input) or 1 (error). A message still
+unanswered after `--timeout` (90 s) comes out as `error`; it stays in the chat. `--open` opens the
+conversation. It uses `$PASEO_CLI`, else the CLI of the build the paseo-personal launcher runs,
+and talks to the daemon of `$PASEO_HOME` (default `~/.paseo`). It needs `jq`.
+
+Messages live in memory (the last 30). A daemon restart empties the status row.
 
 See [CHANGES.md](../../CHANGES.md#power-workboard-a-board-of-registered-tasks-with-an-agent-orchestrator)
 for the full description.
