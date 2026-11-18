@@ -104,6 +104,9 @@ it("chat.open creates the chat agent once, reuses it, and recreates it when arch
       labels: { [CHAT_LABEL]: "true" },
       prompt: CHAT_INSTRUCTIONS,
     });
+    // CUSTOM(hidden-board-agents): the chat itself is not a hidden board agent.
+    expect(start.labels).toEqual({ [CHAT_LABEL]: "true" });
+    expect(CHAT_INSTRUCTIONS).toContain('"paseo.board-agent": "true"');
     expect(
       start.prompt.startsWith("Call board_overview, then reply in one line"), // CUSTOM(agent-profiles): the role is the system prompt now
     ).toBe(true);

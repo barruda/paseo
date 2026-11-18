@@ -44,6 +44,7 @@ import {
   type StartInput,
   type Task,
   type TaskTiming,
+  BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
 } from "../shared/model";
 import {
   dueTrigger,
@@ -3750,6 +3751,7 @@ export class Workboard {
           config.instructions,
           this.assistantOn(),
         ), // CUSTOM(projects-assistant)
+        labels: BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
       });
       await this.setOrchestration(card.id, {
         status: "running",
@@ -3821,6 +3823,7 @@ export class Workboard {
             orchestratorPrompt(task, settings.instructions),
             continuationPrompt(feedback, this.assistantOn()), // CUSTOM(projects-assistant)
           ].join("\n\n"),
+          labels: BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
         });
       await this.setOrchestration(taskId, {
         status: "running",

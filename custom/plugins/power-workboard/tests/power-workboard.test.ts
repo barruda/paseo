@@ -2,6 +2,7 @@ import { expect, it, vi } from "vitest";
 import { agentEvidence } from "./fixtures";
 import { Workboard } from "../server/workboard";
 import {
+  BOARD_AGENT_LABEL, // CUSTOM(hidden-board-agents)
   DEFAULT_GROUPS,
   dataSchema,
   newTask,
@@ -169,6 +170,9 @@ it("orchestrates Ready to start tasks up to the limit and moves finished ones to
     expect(host.startAgent).toHaveBeenCalledTimes(2);
     const prompt = (host.startAgent as any).mock.calls[0][1].prompt as string;
     expect(prompt).toContain("# Top\n\nDo Top");
+    // CUSTOM(hidden-board-agents): every orchestrator agent is a hidden, silent board agent.
+    for (const [, start] of (host.startAgent as any).mock.calls)
+      expect(start.labels).toEqual({ [BOARD_AGENT_LABEL]: "true" });
     expect(stageOf(board, "Last")).toBe("ready");
     const inProgress = board
       .snapshot()
@@ -260,6 +264,8 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
     expect(
       (host.startAgentIn as any).mock.calls[0][1].prompt as string,
     ).toContain("# rough idea\n\nmake it faster");
+    // CUSTOM(hidden-board-agents): the user chats with the refinement agent, so it stays visible.
+    expect((host.startAgentIn as any).mock.calls[0][1].labels).toBeUndefined();
     // Reopening reuses the same chat while its agent lives.
     await board.mutate({ action: "refine", taskId: task.id });
     expect(host.startAgentIn).toHaveBeenCalledTimes(1);

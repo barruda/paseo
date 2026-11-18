@@ -58,6 +58,9 @@ import {
 } from "./provider-subagent-rows";
 import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
+// CUSTOM(hidden-board-agents)
+import { useBoardAgentsStore } from "@/board-agents/store";
+import { isBoardAgentInSession } from "@/board-agents/visibility";
 import { TaskRowContextMenu, useTaskRowActions, type TaskRowActions } from "./task-row-menu";
 import { useArchivedTasks } from "./use-archived-tasks";
 import { useSettledTaskStates } from "./use-settled-task-states";
@@ -147,11 +150,21 @@ function idleToggleRow(
 }
 
 /** One compact collection subscription; streamed messages never become task row props. */
-function selectAgents(state: ReturnType<typeof useSessionStore.getState>): TaskAgent[] {
+function collectAgents(
+  state: ReturnType<typeof useSessionStore.getState>,
+  includeBoardAgents: boolean,
+): TaskAgent[] {
   const result: TaskAgent[] = [];
   for (const [serverId, session] of Object.entries(state.sessions)) {
     for (const agent of session.agents.values()) {
       if (agent.archivedAt) continue;
+      // CUSTOM(hidden-board-agents): board agents stay out of the list unless "Show board agents" is on.
+      if (
+        !includeBoardAgents &&
+        isBoardAgentInSession(agent, session.agents, session.agentDetails)
+      ) {
+        continue;
+      }
       result.push({
         serverId,
         id: agent.id,
@@ -173,6 +186,14 @@ function selectAgents(state: ReturnType<typeof useSessionStore.getState>): TaskA
     }
   }
   return result;
+}
+
+// CUSTOM(hidden-board-agents): two module-level selectors, so the hook keeps a stable function.
+function selectAgents(state: ReturnType<typeof useSessionStore.getState>): TaskAgent[] {
+  return collectAgents(state, false);
+}
+function selectAgentsWithBoard(state: ReturnType<typeof useSessionStore.getState>): TaskAgent[] {
+  return collectAgents(state, true);
 }
 
 // CUSTOM(task-provider-subagents): per-server feature flags, as one small comparable record.
@@ -262,7 +283,12 @@ function rowKey(row: ListRow) {
 export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?: () => void }) {
   const { allWorkspaceEntriesByKey, isInitialLoad } = useSidebarModel();
   const showBackground = useSidebarViewStore((state) => state.showBackground);
-  const ownAgents = useStoreWithEqualityFn(useSessionStore, selectAgents, equal);
+  const showBoardAgents = useBoardAgentsStore((state) => state.showBoardAgents);
+  const ownAgents = useStoreWithEqualityFn(
+    useSessionStore,
+    showBoardAgents ? selectAgentsWithBoard : selectAgents,
+    equal,
+  );
   // CUSTOM(task-provider-subagents): an agent whose provider subagent runs counts as working.
   const providerSubagentFlags = useStoreWithEqualityFn(
     useSessionStore,
@@ -1417,8 +1443,24 @@ function ProjectPicker({
             keys={keys}
           />
         ))}
+        <DropdownMenuSeparator />
+        <BoardAgentsChoice />
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+// CUSTOM(hidden-board-agents): the Tasks sidebar has no display menu, so the toggle sits in the
+// Projects menu.
+function BoardAgentsChoice() {
+  const show = useBoardAgentsStore((state) => state.showBoardAgents);
+  const toggle = useCallback(() => {
+    const store = useBoardAgentsStore.getState();
+    store.setShowBoardAgents(!store.showBoardAgents);
+  }, []);
+  return (
+    <DropdownMenuItem selected={show} showSelectedCheck closeOnSelect={false} onSelect={toggle}>
+      Show board agents
+    </DropdownMenuItem>
   );
 }
 function ProjectChoice({

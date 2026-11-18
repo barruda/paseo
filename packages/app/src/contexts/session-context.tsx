@@ -1,6 +1,7 @@
 import { useRef, ReactNode, useCallback, useEffect } from "react";
 import { Buffer } from "buffer";
 import { AppState } from "react-native";
+import { isBoardAgentInSession } from "@/board-agents/visibility"; // CUSTOM(hidden-board-agents)
 import { observeOpenWorkspaceAgentIds } from "@/stores/workspace-layout-store";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
@@ -59,6 +60,12 @@ export type {
   ExplorerEntryKind,
   AgentFileExplorerState,
 } from "@/stores/session-store";
+
+// CUSTOM(hidden-board-agents): a board agent's attention never becomes a notification.
+function isBoardAgentAttention(session: SessionState | undefined, agentId: string): boolean {
+  const agent = session?.agents?.get(agentId);
+  return agent ? isBoardAgentInSession(agent, session?.agents, session?.agentDetails) : false;
+}
 
 type AudioOutputPayload = Extract<SessionOutboundMessage, { type: "audio_output" }>["payload"];
 
@@ -264,6 +271,10 @@ function SessionProviderInternal({ children, serverId, client }: SessionProvider
       const appState = appStateRef.current;
       const session = useSessionStore.getState().sessions[serverId];
       const attentionFocusedAgentId = session?.focusedAgentId ?? null;
+      // CUSTOM(hidden-board-agents): board agents never notify, whatever the sidebar toggle says.
+      if (isBoardAgentAttention(session, params.agentId)) {
+        return;
+      }
       if (params.reason === "error") {
         return;
       }

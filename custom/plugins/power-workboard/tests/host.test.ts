@@ -12,6 +12,7 @@ import { allPages, PaseoHost } from "../server/host";
 import type { TimelineReader } from "../server/conversations";
 import type { PaseoCompat } from "../server/paseo-compat";
 import { workspace } from "./fixtures";
+import { BOARD_AGENT_LABELS } from "../shared/model"; // CUSTOM(hidden-board-agents)
 
 it("reads every page and rejects a cursor loop instead of silently truncating", async () => {
   expect(
@@ -559,4 +560,31 @@ it("creates a task worktree from the given base branch and reads a checkout's cu
   } finally {
     await rm(repo, { recursive: true, force: true });
   }
+});
+
+// CUSTOM(hidden-board-agents)
+it("passes the board-agent label to a workspace agent and leaves unlabeled starts unlabeled", async () => {
+  const create = vi.fn(async (_options: unknown) => ({ id: "a1" }));
+  const host = new PaseoHost(
+    {
+      workspaces: { ref: () => ({ agents: { create } }) },
+    } as unknown as PaseoApi,
+    {} as PaseoCompat,
+    { serverId: "h", version: "0.9.1" },
+    () => {},
+  );
+  const start = {
+    provider: "claude",
+    modeId: null,
+    thinkingOptionId: null,
+    title: "Task",
+    prompt: "Do it",
+  };
+  await host.startAgent("w1", { ...start, labels: BOARD_AGENT_LABELS });
+  await host.startAgent("w1", start);
+  const [labeled, plain] = create.mock.calls.map(
+    ([options]) => options as { labels?: Record<string, string> },
+  );
+  expect(labeled.labels).toEqual({ "paseo.board-agent": "true" });
+  expect(plain).not.toHaveProperty("labels");
 });

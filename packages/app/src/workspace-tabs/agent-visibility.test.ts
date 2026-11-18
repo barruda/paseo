@@ -15,6 +15,7 @@ function makeAgent(input: {
   cwd: string;
   workspaceId?: string;
   parentAgentId?: string | null;
+  labels?: Record<string, string>;
   archivedAt?: Date | null;
   createdAt?: Date;
   lastActivityAt?: Date;
@@ -53,7 +54,7 @@ function makeAgent(input: {
     model: null,
     thinkingOptionId: null,
     parentAgentId: input.parentAgentId ?? null,
-    labels: {},
+    labels: input.labels ?? {},
     requiresAttention: false,
     attentionReason: null,
     attentionTimestamp: null,
@@ -174,6 +175,40 @@ describe("workspace agent visibility", () => {
 
     expect(result.activeAgentIds).toEqual(new Set());
     expect(result.foreignAgentIds).toEqual(new Set([foreign.id]));
+  });
+
+  it("keeps board agents active but never auto-opens them", () => {
+    const labeled = makeAgent({
+      id: "labeled",
+      cwd: "/repo",
+      workspaceId: WORKSPACE_ID,
+      labels: { "paseo.board-agent": "true" },
+    });
+    const chat = makeAgent({
+      id: "chat",
+      cwd: "/other",
+      workspaceId: "ws-2",
+      labels: { "pwb/assistant-chat": "true" },
+    });
+    const child = makeAgent({
+      id: "child",
+      cwd: "/repo",
+      workspaceId: WORKSPACE_ID,
+      labels: { "paseo.parent-agent-id": "chat" },
+    });
+    const plain = makeAgent({ id: "plain", cwd: "/repo", workspaceId: WORKSPACE_ID });
+    const result = deriveWorkspaceAgentVisibility({
+      workspaceId: WORKSPACE_ID,
+      sessionAgents: new Map([
+        [labeled.id, labeled],
+        [chat.id, chat],
+        [child.id, child],
+        [plain.id, plain],
+      ]),
+    });
+
+    expect(result.activeAgentIds).toEqual(new Set([labeled.id, child.id, plain.id]));
+    expect(result.autoOpenAgentIds).toEqual(new Set([plain.id]));
   });
 
   it("keeps subagents active while excluding them from auto-open", () => {
