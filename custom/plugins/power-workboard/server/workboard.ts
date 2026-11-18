@@ -71,7 +71,9 @@ import {
   type NeedsYouReason,
   type ProjectPolicy,
   type AssistantSettings,
+  reviewPolicyFor,
 } from "../shared/assistant";
+import { worktreeBaseName } from "./assistant/task-git";
 import { parseReport } from "./assistant/report";
 import {
   ASSISTANT_SEED_PROMPT,
@@ -101,6 +103,7 @@ import type { HistoryEventInput, HistoryStore } from "./assistant/history";
 import type { ViewSource } from "./assistant/views";
 import {
   continuationPrompt,
+  conflictPrompt,
   fixPrompt,
   orchestratorPrompt,
   parseTicket,
@@ -131,6 +134,8 @@ export interface AssistantOptions {
   wakeDelayMs?: number;
   /** CUSTOM(night-tasks): notifications and the power-off command. */
   night?: NightSystem;
+  /** CUSTOM(assistant-autonomy): wait before retrying a merge blocked by a dirty base checkout. */
+  dirtyRetryMs?: number;
 }
 /**
  * CUSTOM(night-tasks): a power-off arms only this soon after the night was last active (its
@@ -147,6 +152,8 @@ type AttemptOutcome = Attempt["outcome"]; // CUSTOM(projects-assistant)
 /** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
 const IDLE_SETTLE_MS = 20_000;
 const DEFAULT_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
+/** CUSTOM(assistant-autonomy): how many times a merge waits for a clean base checkout. */
+const MAX_DIRTY_RETRIES = 12;
 const DELIVERY_STEPS: ReadonlySet<string> = new Set([
   "verifying",
   "committing",
@@ -2138,6 +2145,8 @@ export class Workboard {
     taskId: string,
     change: Partial<Delivery>,
   ): Promise<void> {
+    if (change.stage && change.stage !== "merging")
+      this.clearDirtyTimer(taskId); // CUSTOM(assistant-autonomy)
     return this.store.update((data) => {
       const delivery = data.assistant.deliveries[taskId];
       if (!delivery) return;
@@ -2224,20 +2233,21 @@ export class Workboard {
           delivery!.detail
             ? `${reason}: ${clean(delivery!.detail, 300)}`
             : reason,
+          `review: ${reviewPolicyFor(assistant.settings, this.projectIdOf(task!))}`,
         ].join(" | ");
       });
       await this.host.sendAgent(
         agentId,
         [
-          "[Board] These tasks now need the user:",
+          "[Board] These tasks finished or stopped and wait for you, the Projects Assistant, first:",
           ...lines,
-          "Look at them with your board tools (read the agent for no-report) and tell the user in 2-4 lines what happened and what they need to decide, in the language the user writes to you in. Do not merge or mark done.",
+          "Handle each one as your instructions say: review and merge-now (reason review), send feedback with continue, answer the agent's question or give the ok yourself when you can do it with reasonable precision and no real risk, and fix small reversible blockers. Leave to the user only what is really theirs: the ok before merging a fresh-agent project, real product decisions, anything risky or hard to undo. Then tell the user in 2-4 lines, in the language they write to you in, what you did and what is left for them (or that nothing is).",
         ].join("\n"),
       );
       await this.record(
         tasks[0]!.id,
         "told-assistant",
-        `Told the assistant: ${tasks.length} task${tasks.length === 1 ? "" : "s"} need the user`,
+        `Told the assistant: ${tasks.length} task${tasks.length === 1 ? "" : "s"} wait for it`,
         {
           agentId,
           detail: tasks.map((entry) => entry.task!.title).join("\n"),
@@ -2252,6 +2262,7 @@ export class Workboard {
     init: Partial<Delivery> & Pick<Delivery, "action" | "attempt">,
   ): Promise<void> {
     const at = this.stamp();
+    this.clearDirtyTimer(taskId); // CUSTOM(assistant-autonomy)
     await this.store.update((data) => {
       data.assistant.deliveries[taskId] = deliverySchema.parse({
         stage: "reported",
@@ -2285,12 +2296,18 @@ export class Workboard {
     const policy = this.policy(this.projectIdOf(task));
     const previous = this.store.current.assistant.deliveries[taskId];
     const afterFix = previous?.stage === "fixing" ? previous : null;
+    // CUSTOM(assistant-autonomy): a merge that went back to the agent (a failed check or a
+    // conflict) returns to merging whatever the policy says; it was already approved.
+    const resumeMerge = afterFix?.action === "merge";
+    const action = resumeMerge ? "merge" : policy.action;
+    const observe = resumeMerge ? false : policy.observe;
     await this.createDelivery(taskId, {
-      action: policy.action,
-      observe: policy.observe,
+      action,
+      observe,
       attempt,
       report,
       fixesUsed: afterFix?.fixesUsed ?? 0,
+      conflictFixes: afterFix?.conflictFixes ?? 0,
       verifyOutput: afterFix?.verifyOutput ?? null,
     });
     await this.record(
@@ -2313,18 +2330,19 @@ export class Workboard {
       });
       return this.settle(taskId, "failed", report.question);
     }
-    if (policy.action === "nothing") {
+    if (action === "nothing") {
       await this.patchDelivery(taskId, { stage: "delivered" });
       return false;
     }
-    if (policy.action === "notify") return this.settle(taskId, "notify", null);
-    if (policy.observe) {
-      const would =
-        policy.action === "merge" ? "Would merge" : "Would prepare a PR";
+    if (action === "notify") return this.settle(taskId, "notify", null);
+    // CUSTOM(assistant-autonomy): like notify, but the assistant chat reviews and merges it.
+    if (action === "review") return this.settle(taskId, "review", null);
+    if (observe) {
+      const would = action === "merge" ? "Would merge" : "Would prepare a PR";
       await this.record(taskId, "observed", would, { detail: would });
       return this.settle(taskId, "observed", would);
     }
-    if (policy.action === "prepare-pr") {
+    if (action === "prepare-pr") {
       await this.patchDelivery(taskId, { stage: "preparing-pr" });
       return true;
     }
@@ -2553,8 +2571,32 @@ export class Workboard {
           } catch (error) {
             failure = message(error);
           }
-          if (failure !== null && !isUpToDate(failure))
-            return await needsYou(classifyMergeError(failure), failure);
+          if (failure !== null && !isUpToDate(failure)) {
+            const kind = classifyMergeError(failure);
+            // CUSTOM(assistant-autonomy): a conflict goes back to the task's agent, twice at most.
+            if (
+              kind === "merge-conflict" &&
+              delivery.conflictFixes < 2 &&
+              agentId
+            ) {
+              await this.serial(() =>
+                this.requestConflictFix(taskId, directory, policy.baseBranch),
+              );
+              return;
+            }
+            // CUSTOM(assistant-autonomy): a dirty base checkout is waited for, 12 times.
+            if (kind === "dirty-checkout") {
+              if (delivery.dirtyRetries < MAX_DIRTY_RETRIES) {
+                await this.waitForCleanCheckout(taskId, delivery.dirtyRetries);
+                return;
+              }
+              return await needsYou(
+                kind,
+                await this.dirtyCheckoutDetail(task, failure),
+              );
+            }
+            return await needsYou(kind, failure);
+          }
           await this.serial(() => this.completeMerge(taskId));
           await this.record(taskId, "merged", "Merged into the base branch");
           await this.record(taskId, "done", "Done");
@@ -2628,7 +2670,112 @@ export class Workboard {
       stage: "delivered",
       reason: null,
       detail: null,
+      dirtyRetries: 0,
     });
+  }
+  // CUSTOM(assistant-autonomy): retry timers of deliveries waiting for a clean base checkout.
+  private dirtyTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private clearDirtyTimer(taskId: string): void {
+    const timer = this.dirtyTimers.get(taskId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.dirtyTimers.delete(taskId);
+  }
+  /** Keeps the delivery in `merging` and tries again later. */
+  private async waitForCleanCheckout(
+    taskId: string,
+    retries: number,
+  ): Promise<void> {
+    await this.serial(() =>
+      this.patchDelivery(taskId, {
+        stage: "merging",
+        dirtyRetries: retries + 1,
+        detail: `Waiting for a clean checkout (${retries + 1}/${MAX_DIRTY_RETRIES})`,
+      }),
+    );
+    if (retries === 0)
+      await this.record(
+        taskId,
+        "waiting-clean",
+        "The base checkout has uncommitted changes; waiting for it to be clean",
+      );
+    if (this.stopped) return;
+    this.clearDirtyTimer(taskId);
+    this.dirtyTimers.set(
+      taskId,
+      setTimeout(() => {
+        this.dirtyTimers.delete(taskId);
+        if (this.store.current.assistant.deliveries[taskId]?.stage === "merging")
+          this.launch(taskId);
+      }, this.assistantOptions.dirtyRetryMs ?? 300_000),
+    );
+  }
+  /** The paths that keep the base checkout dirty, or the git error. */
+  private async dirtyCheckoutDetail(
+    task: Task,
+    failure: string,
+  ): Promise<string> {
+    const project = this.inventory.projects.find(
+      (p) => p.id === this.projectIdOf(task),
+    );
+    if (!project) return failure;
+    try {
+      const lines = await this.host.gitStatusLines(project.directory);
+      if (!lines.length) return failure;
+      const shown = lines.slice(0, 20).join("\n");
+      return `The base checkout ${project.directory} still has uncommitted changes after ${MAX_DIRTY_RETRIES} tries:\n${shown}${lines.length > 20 ? `\n... and ${lines.length - 20} more` : ""}`;
+    } catch {
+      return failure;
+    }
+  }
+  /** A merge conflict goes back to the same agent. Inside `serial`. */
+  private async requestConflictFix(
+    taskId: string,
+    directory: string,
+    policyBase: string,
+  ): Promise<void> {
+    const delivery = this.store.current.assistant.deliveries[taskId];
+    const record = this.store.current.orchestrations[taskId];
+    if (!delivery) return;
+    if (!record?.agentId)
+      return this.markNeedsYou(
+        taskId,
+        "merge-conflict",
+        "No agent to send the conflict to",
+      );
+    const base = await worktreeBaseName(directory, policyBase.trim() || null);
+    try {
+      await this.host.sendAgent(record.agentId, conflictPrompt(base));
+    } catch (error) {
+      return this.markNeedsYou(taskId, "merge-conflict", message(error));
+    }
+    await this.patchDelivery(taskId, {
+      stage: "fixing",
+      conflictFixes: delivery.conflictFixes + 1,
+      reason: null,
+      detail: null,
+    });
+    const attempt = await this.openAttempt(
+      taskId,
+      "auto-fix",
+      record.agentId,
+      record.orchestratorId,
+      `Merge conflict with ${base || "the base branch"}`,
+    );
+    await this.setOrchestration(taskId, {
+      status: "running",
+      startedAt: this.stamp(),
+      finishedAt: null,
+      sawRunning: false,
+      idleSince: null,
+      error: null,
+    });
+    await this.record(
+      taskId,
+      "fix-requested",
+      "Sent the merge conflict back to the agent",
+      { attempt, detail: base || null },
+    );
   }
   /** A failed check goes back to the same agent. Inside `serial`. */
   private async requestFix(
@@ -2695,6 +2842,7 @@ export class Workboard {
         stage,
         reason: null,
         detail: null,
+        dirtyRetries: 0, // CUSTOM(assistant-autonomy)
       });
     else
       await this.createDelivery(taskId, {
@@ -3984,6 +4132,8 @@ export class Workboard {
     clearTimeout(this.debounce);
     clearTimeout(this.settleTimer);
     clearTimeout(this.wakeTimer); // CUSTOM(assistant-wake)
+    for (const timer of this.dirtyTimers.values()) clearTimeout(timer); // CUSTOM(assistant-autonomy)
+    this.dirtyTimers.clear();
     clearTimeout(this.dueTimer); // CUSTOM(night-tasks)
     this.host.dispose();
   }

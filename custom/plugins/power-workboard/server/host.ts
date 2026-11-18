@@ -158,6 +158,8 @@ export interface Host {
   askAgent(agentId: string, question: string): Promise<string>;
   /** Whether the checkout has uncommitted changes. */
   gitDirty(directory: string): Promise<boolean>;
+  /** CUSTOM(assistant-autonomy): the paths `git status --porcelain` lists, one `XY path` line each. */
+  gitStatusLines(directory: string): Promise<string[]>;
   /** Commit everything in the checkout with a generated message, as the app's Git menu does. */
   commit(directory: string): Promise<void>;
   /** Merge the checkout's branch into its base branch in the main checkout. */
@@ -737,6 +739,10 @@ export class PaseoHost implements Host {
     return result.answer;
   }
   async gitDirty(directory: string): Promise<boolean> {
+    return (await this.gitStatusLines(directory)).length > 0;
+  }
+  // CUSTOM(assistant-autonomy)
+  async gitStatusLines(directory: string): Promise<string[]> {
     const { stdout } = await execute(
       "git",
       ["-C", directory, "status", "--porcelain"],
@@ -746,7 +752,7 @@ export class PaseoHost implements Host {
         env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
       },
     );
-    return stdout.trim().length > 0;
+    return stdout.split("\n").filter((line) => line.trim().length > 0);
   }
   async commit(directory: string): Promise<void> {
     await this.checkout("checkout_commit", { cwd: directory, addAll: true });

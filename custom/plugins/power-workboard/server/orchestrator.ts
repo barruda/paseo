@@ -22,6 +22,22 @@ export function fixPrompt(command: string, output: string): string {
   ].join("\n\n");
 }
 
+// CUSTOM(assistant-autonomy): what the agent receives when merging its branch hit a conflict.
+export function conflictPrompt(baseBranch: string): string {
+  const base = baseBranch.trim() || "the base branch";
+  return [
+    `The Projects Assistant tried to merge your branch into ${base}, but ${base} moved and the merge conflicts. Resolve it in this workspace without waiting for confirmation.`,
+    [
+      `1. Run \`git merge ${baseBranch.trim() || "<base branch>"}\` here (a merge, not a rebase).`,
+      "2. Resolve every conflict keeping both sides. In custom/CHANGES.md keep every entry.",
+      "3. Rerun the project's typecheck and the tests you touched.",
+      "4. Commit the merge and end with a clean `git status`.",
+      "5. Do not push.",
+    ].join("\n"),
+    assistantSection(),
+  ].join("\n\n");
+}
+
 /** The first message an orchestrated agent receives. */
 export function orchestratorPrompt(
   task: Task,

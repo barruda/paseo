@@ -6502,16 +6502,25 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     delivery commit stages every untracked file). An agent with no profile prompt deleted its
     symlink and the review could not run the tests.
   - **Delivery per project** (Settings > Bruno's Customizations > Projects Assistant, which also has a **Chat** section for
-    the assistant chat's model, thinking and mode, used by new conversations): Merge,
-    Prepare PR, Tell me (default) or Nothing. **Merge is never a default**; it runs only in a
-    project where it was chosen. Merge: optional check command in the worktree (a failure goes
-    back to the same agent up to the project's auto-fix count), commit, then `checkout_merge` into
-    the base branch with `requireCleanTarget`, one merge per project at a time; the task moves to
-    Done. Prepare PR: commit and the agent's PR title/body (no PR is created; GitHub stays out for
-    now). Observe only records "would merge" instead. blocked / needs_input / failed reports,
-    conflicts, a dirty main checkout, failed checks and agent errors (after 3 "continue" nudges at
-    30 s / 60 s / 120 s) land in **Needs you**. Nothing is archived. Each step is persisted
-    (`data.assistant.deliveries`) and resumed after a daemon restart.
+    the assistant chat's model, thinking and mode, used by new conversations): Assistant reviews
+    (default), Merge, Prepare PR, Tell me or Nothing. **Merge is never a default**; it runs only
+    in a project where it was chosen. Assistant reviews (`review`): a `done` report goes to
+    **Needs you** with reason `review` and wakes the assistant chat, which reviews the diff and
+    runs `merge-now` itself in a low-risk project (see the review policy in
+    `assistant-review-policy`). Merge merges with no review: optional check command in the
+    worktree (a failure goes back to the same agent up to the project's auto-fix count), commit,
+    then `checkout_merge` into the base branch with `requireCleanTarget`, one merge per project at
+    a time; the task moves to Done. A merge conflict goes back to the task's agent (a prompt to run
+    `git merge <base>`, keep both sides, rerun the checks and commit), twice at most; when that
+    agent reports `done` the delivery returns to merging, also after a `merge-now` from the
+    assistant, without going through the project's action again. A dirty base checkout is waited
+    for: the delivery stays in `merging` and retries every 5 minutes, 12 times, then lands in
+    Needs you with the dirty paths. Prepare PR: commit and the agent's PR title/body (no PR is
+    created; GitHub stays out for now). Observe only records "would merge" instead. blocked /
+    needs_input / failed reports, conflicts and dirty checkouts that outlast their retries,
+    failed checks and agent errors (after 3 "continue" nudges at 30 s / 60 s / 120 s) land in
+    **Needs you**. Nothing is archived. Each step is persisted (`data.assistant.deliveries`, with
+    `conflictFixes` and `dirtyRetries`) and resumed after a daemon restart. The review action, conflict hand-back and dirty wait are marked `CUSTOM(assistant-autonomy)`.
   - **Attempts and history:** each start, feedback continuation and auto-fix is an attempt
     (`data.assistant.attempts`). Events go to `<PASEO_HOME>/plugin-data/power-workboard/history/`
     (one JSONL per day, 90 days).
@@ -6520,9 +6529,14 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     per-project / per-orchestrator bars for 7/14/30 days, filterable history. No badge.
   - **Told in the chat** (`assistant.settings.chat.wakeOnNeedsYou`, default on, a switch in the
     Projects Assistant profile): tasks entering Needs you are batched for 90 s and sent as one
-    `[Board]` message to the assistant chat agent (`assistant.chatAgentId`), which reads them and
-    answers; its reply raises Paseo's usual "finished" notification. A busy chat is retried later,
-    never interrupted; without a chat nothing is sent. History records "Told the assistant".
+    `[Board]` message to the assistant chat agent (`assistant.chatAgentId`). Each line carries
+    the reason and the project's review policy (`review: self` or `fresh-agent`). The message
+    tells the assistant to handle the tasks first, as its instructions say: review and merge,
+    answer an agent's question or give the ok when it can do so with no real risk, fix small
+    reversible blockers, and leave to the user only what is theirs, then report in 2-4 lines what
+    it did and what is left. Its reply raises Paseo's usual "finished" notification. A busy chat
+    is retried later, never interrupted; without a chat nothing is sent. History records "Told
+    the assistant".
   - **Projects Conversations** (surface `projects-conversations`): orchestrator > task > the
     agents it started (never their subagents), the selected agent's conversation read through the
     timeline API (plugins cannot embed the real chat), report card, attempts, the orchestrator's
@@ -6533,7 +6547,14 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     to agents labeled `pwb/assistant-chat`; they reach the agent through Paseo's injected MCP, so
     the host needs **Enable Paseo tools** on, or the agent finds no board tools). The tools return
     plain text only: Claude Code shows the model only `structuredContent` when a result has it,
-    which hid the overview's projects and orchestrators. Projects and orchestrators can be given
+    which hid the overview's projects and orchestrators. The tools are `board_overview`,
+    `board_list_tasks`, `board_get_task`, `board_task_diff`, `board_create_task`,
+    `board_update_task`, `board_move_task`, `board_task_action` (with `wait`, `merge-now` waits up
+    to 120 s and returns the final stage, reason and detail), `board_run_orchestrator`,
+    `board_set_project_policy` (merges the given fields into a project's policy, creating it from
+    the default action; it refuses to change a review from `fresh-agent` to `self`, which only
+    the user does in Settings), `board_set_default_action`, `board_history`, `board_read_agent`
+    and `board_ack`. Projects and orchestrators can be given
     by id or name; an unknown one is an error that lists the valid ones. `board_get_task` also shows
     the task's worktree (path, branch, base, commits ahead, diffstat with new untracked files) and
     the read-only `board_task_diff` returns its diff, cut at `maxBytes` with a notice, so the
@@ -6617,10 +6638,17 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   - The assistant's role (`ASSISTANT_ROLE` in `server/assistant/chat.ts`): it manages tasks only
     through the board and never edits, commits or merges outside `board_task_action`, but reads
     freely to review (git log/diff/show, files, the task's tests in its worktree) and may use a
-    read-only reviewer subagent. Reviews are sized by risk: low risk is reviewed and merged without
-    asking, then reported; critical (projects whose review policy is `fresh-agent`, see
-    `assistant-review-policy`, and big or risky changes) gets a review task for a fresh agent and
-    the user's ok before merge. After `merge-now` it checks the commit on the base branch, and it does the default next step instead of asking. Changing the
+    read-only reviewer subagent. It acts for the user: it answers an agent's question or gives the
+    ok when it can do so with no real risk, fixes small reversible blockers (its own settings, a
+    worktree's stored base, a stale lock, with a backup in `~/uprojects/tmp`), and reports the
+    decisions it took. Reviews are sized by risk: low risk is reviewed and merged with
+    `merge-now` and `wait=true` without asking, then reported; critical (projects whose review
+    policy is `fresh-agent`, see `assistant-review-policy`, and big or risky changes) gets a
+    review task for a fresh agent and the user's ok before merge. After `merge-now` it checks the
+    commit on the base branch, and it does the default next step instead of asking. In the paseo
+    project it reloads the plugin after merging plugin changes and, for changes under `packages/`,
+    creates one Paseo agent that only builds, installs and reopens the clients, never restarting a
+    daemon. Changing the
     seed does not touch an existing `system-prompt.md`: copy the new text there by hand (the
     live one is `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md`).
   - A new agent of the profile (task start, a continuation that starts a new agent, the assistant

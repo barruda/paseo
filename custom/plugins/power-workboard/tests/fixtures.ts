@@ -130,6 +130,7 @@ export function fixture(initial: Partial<Data> = {}) {
         "<pr>\n# Add X\n\nWhat changed.\n</pr>",
     ),
     gitDirty: vi.fn(async (_directory: string) => true),
+    gitStatusLines: vi.fn(async (_directory: string) => [] as string[]),
     commit: vi.fn(async (_directory: string) => {}),
     mergeToBase: vi.fn(async (_directory: string, _options?: unknown) => {}),
     // CUSTOM(projects-assistant)

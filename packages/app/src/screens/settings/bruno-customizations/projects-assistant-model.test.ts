@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
+  ACTION_LABELS,
+  ASSISTANT_ACTIONS,
+  ASSISTANT_DEFAULT_ACTIONS,
+  actionNeedsGit,
+  policyActs,
+  projectPolicySchema,
   assistantSettingsResponseSchema,
   chatSettingsValid,
   clampAutoFixes,
@@ -21,7 +27,7 @@ describe("projects assistant settings model", () => {
     });
     expect(parsed.settings).toEqual({
       enabled: true,
-      defaultAction: "notify",
+      defaultAction: "review",
       projects: {},
       reviews: {},
       chat: {
@@ -67,6 +73,20 @@ describe("projects assistant settings model", () => {
 
   it("rejects merge as the default action", () => {
     expect(assistantSettingsSchema.safeParse({ defaultAction: "merge" }).success).toBe(false);
+  });
+
+  // CUSTOM(assistant-autonomy)
+  it("makes review the default and a picked action, and treats it like merge for git", () => {
+    const base = assistantSettingsSchema.parse({});
+    expect(base.defaultAction).toBe("review");
+    expect(projectPolicySchema.parse({}).action).toBe("review");
+    expect(assistantSettingsSchema.safeParse({ defaultAction: "review" }).success).toBe(true);
+    expect(ASSISTANT_ACTIONS).toContain("review");
+    expect(ASSISTANT_DEFAULT_ACTIONS).toContain("review");
+    expect(ACTION_LABELS.review).toBe("Assistant reviews");
+    expect(actionNeedsGit("review")).toBe(true);
+    expect(actionNeedsGit("notify")).toBe(false);
+    expect(policyActs(setProjectAction(base, "p", "review").projects.p)).toBe(true);
   });
 
   it("creates a rule when an action is picked and removes it on reset", () => {

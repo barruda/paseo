@@ -100,10 +100,10 @@ describe("profile folders", () => {
     );
     expect(ASSISTANT_SEED_PROMPT).toContain("git log, git diff and git show");
     expect(ASSISTANT_SEED_PROMPT).toContain(
-      "Never edit code, commit or merge outside board_task_action.",
+      "Never edit a project's code, commit or merge outside board_task_action.",
     );
     expect(ASSISTANT_SEED_PROMPT).toContain("read-only reviewer subagent");
-    expect(ASSISTANT_SEED_PROMPT).toContain("run merge-now without asking");
+    expect(ASSISTANT_SEED_PROMPT).toContain("merge-now with wait=true without asking");
     // CUSTOM(assistant-review-policy): the critical projects come from the settings, not the prompt.
     expect(ASSISTANT_SEED_PROMPT).not.toContain("DreamMMO");
     expect(ASSISTANT_SEED_PROMPT).toContain(

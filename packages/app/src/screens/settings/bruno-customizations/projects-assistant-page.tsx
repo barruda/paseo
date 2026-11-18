@@ -338,7 +338,7 @@ function ProjectCard({
         hint={
           project.isGit
             ? project.directory
-            : `${project.directory}\nNot a git project: Merge and Prepare PR are unavailable.`
+            : `${project.directory}\nNot a git project: Assistant reviews, Merge and Prepare PR are unavailable.`
         }
         value={value}
         options={selectOptions}

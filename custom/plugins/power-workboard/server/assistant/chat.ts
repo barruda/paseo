@@ -11,9 +11,15 @@ import {
   type Group,
 } from "../../shared/model";
 import {
+  ASSISTANT_ACTIONS,
+  ASSISTANT_DEFAULT_ACTIONS,
   DEFAULT_REVIEW_POLICY,
+  REVIEW_POLICIES,
+  assistantSettingsSchema,
+  projectPolicySchema,
   reviewPolicyFor,
   type AssistantActionInput,
+  type ProjectPolicy,
   type HistoryEvent,
 } from "../../shared/assistant";
 import type { HistoryQuery } from "./history";
@@ -34,19 +40,25 @@ export const CHAT_LABEL = "pwb/assistant-chat";
 
 // CUSTOM(agent-profiles): the role text is the seed of the assistant profile's system-prompt.md;
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
+const BOARD_TOOLS =
+  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack";
+
 export const ASSISTANT_ROLE = [
-  "You are the Projects Assistant: the user's manager for their Power Workboard tasks and orchestrators, in Tasks mode.",
-  "Manage tasks only through your board tools (board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history, board_read_agent, board_ack): create, move, start, continue and deliver every task there. Never edit code, commit or merge outside board_task_action.",
+  "You are the Projects Assistant: the user's manager for their Power Workboard tasks and orchestrators, in Tasks mode. You act for the user: they want decisions made and reported, not questions.",
+  `Manage tasks through your board tools (${BOARD_TOOLS}): create, move, start, continue and deliver every task there. Never edit a project's code, commit or merge outside board_task_action.`,
   "To review and diagnose, read freely: git log, git diff and git show in a task's worktree or the project's checkout, read any file, and run the task's tests in its worktree.",
-  "Do not create Paseo agents to do a task: tasks go through the board so the orchestrators run them. A read-only reviewer subagent that helps you review a diff is fine.",
+  "Do not create Paseo agents to do a task: tasks go through the board so the orchestrators run them. A read-only reviewer subagent that helps you review a diff is fine. The one exception is the ship agent below.",
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
-  "Write each task description as a complete ticket: goal, context, acceptance criteria and what is out of scope. If the project or the goal is unclear, ask one short question before creating the task.",
+  "Write each task description as a complete ticket: goal, context, acceptance criteria and what is out of scope. If the project or the goal is unclear, make the most reasonable choice, say it, and create the task; ask only when you cannot guess.",
   [
     "When a task lands in Ready to review, size the review to its risk. Each project's review policy (self or fresh-agent) is in board_overview and comes from the assistant's settings: follow it, and treat a big or risky change as fresh-agent even in a self project.",
-    "- Low risk (a project whose review is self, and a small change that is easy to revert): review the diff against each acceptance criterion, yourself or with a read-only reviewer subagent. If it is good, run merge-now without asking, create follow-up tasks for the non-blocking points, then report what you did.",
+    "- Low risk (a project whose review is self, and a small change that is easy to revert): review the diff against each acceptance criterion, yourself or with a read-only reviewer subagent. If it is good, use board_task_action merge-now with wait=true without asking, create follow-up tasks for the non-blocking points, then report what you did.",
     "- Critical (a project whose review is fresh-agent in board_overview, or a big or risky change in any project): create a review task with start=true so a fresh agent, not the author, reviews the diff against the acceptance criteria without changing code. Read its report, tell the user what merge-now or mark-done will do, and wait for their ok.",
     "- Has problems: board_task_action continue with your feedback.",
   ].join("\n"),
+  "Act for the user. When a board task's agent waits for the user's ok or a decision (a needs_input or blocked report, a question in its reply, the open decisions of a proposal), answer it yourself with board_task_action continue when you can do it with reasonable precision and no real risk. Agents outside the board may refuse an ok that comes from you; then leave that one for the user and don't insist. End with the list of decisions you took.",
+  "Fix small blockers yourself. When a delivery is blocked by something small and reversible outside a project's code (your settings, through board_set_project_policy or board_set_default_action; daemon metadata such as a worktree's stored base; a stale lock), fix it, keep a backup in /home/bruno/uprojects/tmp when you change a file, and report it. Merge conflicts and a dirty checkout are retried by the board on its own; step in only when it gives up. Ask before anything destructive or hard to undo.",
+  "Ship what you merge in the paseo project. After merging changes under custom/plugins/power-workboard, reload the plugin as the last step of your turn: `cd /home/bruno/projetos/paseo && npx tsx packages/cli/src/index.js plugin reload power-workboard --home ~/.paseo`. When a merged change touches packages/ (the app or the daemon) and no paseo task is still in review or delivering, create one Paseo agent in /home/bruno/projetos/paseo whose only job is to ship: load the paseo-customizations skill, build and install, reopen the clients, and never restart a daemon. If the change needs a daemon restart, tell the user once, with the command kill-paseos-and-daemons.sh.",
   "Announce merge-now or mark-done beforehand only for critical tasks; for low-risk ones act first, then report.",
   "After merge-now, confirm the commit is on the project's base branch (git log), not only that the card moved to Done.",
   "When the next step is the default one (a new task to the Backlog, an obvious follow-up), do it and say so instead of ending with a question. Ask only when the decision is the user's.",
@@ -55,13 +67,13 @@ export const ASSISTANT_ROLE = [
 
 /** Added to the seed: what Write, Edit and Bash may change. */
 export const ASSISTANT_MEMORY_NOTE =
-  "Write and Edit are only for your memory folder. Bash is for reading, running a task's tests and your memory folder; never use it to change anything else.";
+  "Write and Edit are only for your memory folder. Bash is for reading, running a task's tests, your memory folder, the plugin reload above and the small reversible fixes above; never use it to edit a project's code, commit or merge.";
 
 export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NOTE}`;
 
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS =
-  "Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_history, board_read_agent and board_ack. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool.";
+  "Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent and board_ack. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool.";
 
 /** `<PASEO_HOME>/plugin-data/power-workboard/assistant-chat`, next to the history folder. */
 export function defaultChatDirectory(
@@ -168,6 +180,10 @@ export function quickAckTool(inbox: Pick<QuickInbox, "ack">): ChatTool {
     },
   });
 }
+
+/** How long board_task_action with wait=true waits for a delivery, and how often it looks. */
+const WAIT_LIMIT_MS = 120_000;
+const WAIT_POLL_MS = 200;
 
 const groupName = (group: Group) => group.name ?? group.label;
 
@@ -288,6 +304,20 @@ export function chatTools(
     } catch (error) {
       return `Worktree: ${found.directory}\nGit: unavailable (${error instanceof Error ? error.message : String(error)})`;
     }
+  };
+
+  /** Wait until a delivery leaves verifying, committing and merging, then say where it ended. */
+  const waitForDelivery = async (taskId: string): Promise<string> => {
+    const running = new Set(["verifying", "committing", "merging"]);
+    const deadline = Date.now() + WAIT_LIMIT_MS;
+    while (running.has(delivery(taskId)?.stage ?? "") && Date.now() < deadline)
+      await new Promise((resolve) => setTimeout(resolve, WAIT_POLL_MS));
+    const d = delivery(taskId);
+    if (!d) return `No delivery for ${taskId}.`;
+    const tail = `${d.reason ? `, reason ${d.reason}` : ""}${d.detail ? ` (${d.detail})` : ""}`;
+    if (running.has(d.stage))
+      return `Still ${d.stage} after ${WAIT_LIMIT_MS / 1000} s${tail}. Check board_get_task later.`;
+    return `merge-now for ${taskId} ended at stage ${d.stage}${tail}.`;
   };
 
   return [
@@ -544,7 +574,7 @@ export function chatTools(
     define({
       name: "board_task_action",
       description:
-        "Act on a task that is in review or done: merge-now (commit and merge into the base branch), prepare-pr, continue (send it back to its agent with feedback), mark-done, or dismiss (take it off Needs you).",
+        "Act on a task that is in review or done: merge-now (commit and merge into the base branch), prepare-pr, continue (send it back to its agent with feedback), mark-done, or dismiss (take it off Needs you). With wait=true, merge-now waits (up to 120 s) for the delivery to finish and returns its final stage, reason and detail.",
       input: z.object({
         taskId: z.string(),
         type: z.enum([
@@ -555,6 +585,10 @@ export function chatTools(
           "dismiss",
         ]),
         feedback: z.string().max(20000).optional(),
+        wait: z
+          .boolean()
+          .default(false)
+          .describe("With merge-now: wait for the delivery to finish"),
       }),
       async execute(input) {
         const action: AssistantActionInput =
@@ -566,11 +600,82 @@ export function chatTools(
               }
             : { type: input.type, taskId: input.taskId };
         await board().assistantAction(action);
+        if (input.type === "merge-now" && input.wait)
+          return text(await waitForDelivery(input.taskId));
         return text(
           input.type === "merge-now" || input.type === "prepare-pr"
             ? `Started ${input.type} for ${input.taskId}; it runs in the background. Check board_get_task for the result.`
             : `Done: ${input.type} for ${input.taskId}.`,
         );
+      },
+    }),
+    define({
+      name: "board_set_project_policy",
+      description:
+        "Change a project's delivery policy (project by id or name). Only the fields you pass change; a project without its own policy starts from the default action. action: review, merge, prepare-pr, notify or nothing. review: self or fresh-agent (you cannot change fresh-agent to self; only the user does, in Settings). Returns the resulting policy.",
+      input: z.object({
+        project: z.string().describe("A project's id or name"),
+        action: z.enum(ASSISTANT_ACTIONS).optional(),
+        baseBranch: z.string().max(200).optional(),
+        verifyCommand: z.string().max(2000).optional(),
+        autoFixes: z.number().int().min(0).max(3).optional(),
+        observe: z.boolean().optional(),
+        review: z.enum(REVIEW_POLICIES).optional(),
+      }),
+      async execute(input) {
+        const projectId = resolveProject(input.project);
+        const settings = board().assistantSettings().settings;
+        if (
+          input.review === "self" &&
+          reviewPolicyFor(settings, projectId) === "fresh-agent"
+        )
+          throw new Error(
+            "This project's review is fresh-agent; only the user changes that, in Settings.",
+          );
+        const patch: Partial<ProjectPolicy> = {};
+        if (input.action !== undefined) patch.action = input.action;
+        if (input.baseBranch !== undefined) patch.baseBranch = input.baseBranch;
+        if (input.verifyCommand !== undefined)
+          patch.verifyCommand = input.verifyCommand;
+        if (input.autoFixes !== undefined) patch.autoFixes = input.autoFixes;
+        if (input.observe !== undefined) patch.observe = input.observe;
+        const current =
+          settings.projects[projectId] ??
+          projectPolicySchema.parse({ action: settings.defaultAction });
+        const changesPolicy = Object.keys(patch).length > 0;
+        const policy = projectPolicySchema.parse({ ...current, ...patch });
+        const reviews = { ...settings.reviews };
+        if (input.review === "fresh-agent") reviews[projectId] = "fresh-agent";
+        else if (input.review === "self") delete reviews[projectId];
+        const saved = await board().setAssistantSettings(
+          assistantSettingsSchema.parse({
+            ...settings,
+            // Setting only the review gives the project no policy of its own.
+            projects:
+              changesPolicy || settings.projects[projectId]
+                ? { ...settings.projects, [projectId]: policy }
+                : settings.projects,
+            reviews,
+          }),
+        );
+        const name =
+          saved.projects.find((p) => p.id === projectId)?.name ?? projectId;
+        return text(
+          `${name} (${projectId}): action ${policy.action}${policy.observe ? " (observe)" : ""}, review ${reviewPolicyFor(saved.settings, projectId)}, base branch ${policy.baseBranch || "the project's current branch"}, check command ${policy.verifyCommand || "none"}, auto-fixes ${policy.autoFixes}.`,
+        );
+      },
+    }),
+    define({
+      name: "board_set_default_action",
+      description:
+        "Change the delivery action of projects with no policy of their own: review, prepare-pr, notify or nothing (merge is never a default). Returns the new default.",
+      input: z.object({ action: z.enum(ASSISTANT_DEFAULT_ACTIONS) }),
+      async execute({ action }) {
+        const settings = board().assistantSettings().settings;
+        const saved = await board().setAssistantSettings(
+          assistantSettingsSchema.parse({ ...settings, defaultAction: action }),
+        );
+        return text(`Default action: ${saved.settings.defaultAction}.`);
       },
     }),
     define({

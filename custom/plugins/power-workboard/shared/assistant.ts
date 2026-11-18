@@ -8,8 +8,13 @@
 import { z } from "zod";
 import { skillSelectionSchema } from "./profiles";
 
-/** What happens to a task's work when its agent finishes with a `done` report. */
+/**
+ * What happens to a task's work when its agent finishes with a `done` report. `review` (the
+ * default) hands the task to the assistant chat, which reviews it and merges it itself when the
+ * change is low risk; `merge` merges with no review.
+ */
 export const ASSISTANT_ACTIONS = [
+  "review",
   "merge",
   "prepare-pr",
   "notify",
@@ -18,8 +23,9 @@ export const ASSISTANT_ACTIONS = [
 export const assistantActionSchema = z.enum(ASSISTANT_ACTIONS);
 export type AssistantAction = z.infer<typeof assistantActionSchema>;
 
-/** Merge is never a default: it only runs in a project where the user picked it. */
+/** Merge is never a default: it only runs in a project where the user picked it. Review is. */
 export const ASSISTANT_DEFAULT_ACTIONS = [
+  "review",
   "prepare-pr",
   "notify",
   "nothing",
@@ -27,7 +33,7 @@ export const ASSISTANT_DEFAULT_ACTIONS = [
 export const assistantDefaultActionSchema = z.enum(ASSISTANT_DEFAULT_ACTIONS);
 
 export const projectPolicySchema = z.object({
-  action: assistantActionSchema.default("notify"),
+  action: assistantActionSchema.default("review"),
   /** Record what the action would do, without doing it. */
   observe: z.boolean().default(false),
   /** Optional shell command run in the task's worktree before a merge; empty skips the check. */
@@ -83,7 +89,7 @@ export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
 export const assistantSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   /** For projects with no policy of their own. */
-  defaultAction: assistantDefaultActionSchema.default("notify"),
+  defaultAction: assistantDefaultActionSchema.default("review"),
   /** Keyed by project id. */
   projects: z.record(z.string(), projectPolicySchema).default({}),
   /** CUSTOM(assistant-review-policy): keyed by project id; kept apart from `projects` so setting
@@ -148,6 +154,7 @@ export type Attempt = z.infer<typeof attemptSchema>;
 
 /** Why a task is waiting on the user. */
 export const NEEDS_YOU_REASONS = [
+  "review",
   "notify",
   "observed",
   "no-report",
@@ -195,6 +202,10 @@ export const deliverySchema = z.object({
   /** Tail of the verify command's output. */
   verifyOutput: z.string().max(20000).nullable().default(null),
   fixesUsed: z.number().int().min(0).default(0),
+  /** CUSTOM(assistant-autonomy): times a merge conflict went back to the task's agent. */
+  conflictFixes: z.number().int().min(0).default(0),
+  /** CUSTOM(assistant-autonomy): times the merge waited for the base checkout to be clean. */
+  dirtyRetries: z.number().int().min(0).default(0),
   startedAt: z.string(),
   updatedAt: z.string(),
 });
@@ -222,6 +233,7 @@ export const HISTORY_EVENT_KINDS = [
   "verify-passed",
   "verify-failed",
   "fix-requested",
+  "waiting-clean",
   "committed",
   "merged",
   "pr-prepared",

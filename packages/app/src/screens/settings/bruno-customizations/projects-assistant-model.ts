@@ -3,14 +3,15 @@
 // not depend on plugin code); keep them in step with it.
 import { z } from "zod";
 
-export const ASSISTANT_ACTIONS = ["merge", "prepare-pr", "notify", "nothing"] as const;
-export const ASSISTANT_DEFAULT_ACTIONS = ["prepare-pr", "notify", "nothing"] as const;
+// CUSTOM(assistant-autonomy): `review` (the assistant reviews, then merges) is the default action.
+export const ASSISTANT_ACTIONS = ["review", "merge", "prepare-pr", "notify", "nothing"] as const;
+export const ASSISTANT_DEFAULT_ACTIONS = ["review", "prepare-pr", "notify", "nothing"] as const;
 
 const actionSchema = z.enum(ASSISTANT_ACTIONS);
 const defaultActionSchema = z.enum(ASSISTANT_DEFAULT_ACTIONS);
 
 export const projectPolicySchema = z.object({
-  action: actionSchema.default("notify"),
+  action: actionSchema.default("review"),
   observe: z.boolean().default(false),
   verifyCommand: z.string().max(2000).default(""),
   autoFixes: z.number().int().min(0).max(3).default(1),
@@ -46,7 +47,7 @@ export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
 
 export const assistantSettingsSchema = z.object({
   enabled: z.boolean().default(true),
-  defaultAction: defaultActionSchema.default("notify"),
+  defaultAction: defaultActionSchema.default("review"),
   projects: z.record(z.string(), projectPolicySchema).default({}),
   reviews: z.record(z.string(), reviewPolicySchema).default({}),
   chat: assistantChatSettingsSchema.default(() => assistantChatSettingsSchema.parse({})),
@@ -70,6 +71,7 @@ export const assistantSettingsResponseSchema = z.object({
 export type AssistantSettingsResponse = z.infer<typeof assistantSettingsResponseSchema>;
 
 export const ACTION_LABELS: Record<AssistantAction, string> = {
+  review: "Assistant reviews",
   merge: "Merge",
   "prepare-pr": "Prepare PR",
   notify: "Tell me",
@@ -84,7 +86,8 @@ export const REVIEW_LABELS: Record<ReviewPolicy, string> = {
 export const MAX_AUTO_FIXES = 3;
 
 export function actionNeedsGit(action: AssistantAction): boolean {
-  return action === "merge" || action === "prepare-pr";
+  // Review leads to merge-now, so it needs a git project and a base branch like merge does.
+  return action === "review" || action === "merge" || action === "prepare-pr";
 }
 
 /** A project's own rule is only worth editing in detail when the assistant acts on the work. */

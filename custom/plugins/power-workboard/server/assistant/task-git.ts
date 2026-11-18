@@ -88,6 +88,15 @@ async function resolveBase(
 const shortRef = (ref: string) =>
   ref.replace(/^refs\/heads\//, "").replace(/^refs\/remotes\//, "");
 
+/** CUSTOM(assistant-autonomy): the base branch's short name for a worktree, or "" when unknown. */
+export async function worktreeBaseName(
+  directory: string,
+  policyBase: string | null,
+): Promise<string> {
+  const base = await resolveBase(directory, policyBase);
+  return base ? shortRef(base.ref) : "";
+}
+
 interface FileStat {
   path: string;
   added: number | null;

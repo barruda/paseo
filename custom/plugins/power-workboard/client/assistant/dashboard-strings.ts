@@ -6,6 +6,7 @@ import type {
 } from "../../shared/assistant";
 
 export const REASON_LABELS: Record<NeedsYouReason, string> = {
+  review: "Assistant reviewing",
   notify: "Ready for review",
   observed: "Observe mode: would deliver",
   "no-report": "No report from the agent",
@@ -27,6 +28,7 @@ export const KIND_LABELS: Record<HistoryEventKind, string> = {
   "verify-passed": "Check passed",
   "verify-failed": "Check failed",
   "fix-requested": "Fix requested",
+  "waiting-clean": "Waiting for a clean checkout",
   committed: "Committed",
   merged: "Merged",
   "pr-prepared": "PR prepared",
