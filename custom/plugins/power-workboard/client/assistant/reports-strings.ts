@@ -68,6 +68,7 @@ const en = {
     "task-continued": "Task continued",
     report: "Agent report",
     checkpoint: "Checkpoint", // CUSTOM(task-checkpoints)
+    "usage-limit": "Paused by the usage limit", // CUSTOM(usage-limit)
     "verify-passed": "Checks passed",
     "verify-failed": "Checks failed",
     "fix-requested": "Fix requested",
@@ -149,6 +150,7 @@ const pt: ReportsStrings = {
     "task-continued": "Tarefa continuada",
     report: "Relatório do agente",
     checkpoint: "Ponto de controle", // CUSTOM(task-checkpoints)
+    "usage-limit": "Pausada pelo limite de uso", // CUSTOM(usage-limit)
     "verify-passed": "Verificações passaram",
     "verify-failed": "Verificações falharam",
     "fix-requested": "Correção solicitada",

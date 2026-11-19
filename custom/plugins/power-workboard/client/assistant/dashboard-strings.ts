@@ -27,6 +27,7 @@ export const REASON_LABELS: Record<NeedsYouReason, string> = {
   "dependency-files": "Dependencies would be committed",
   stalled: "Stalled", // CUSTOM(task-checkpoints)
   "fix-waiting": "Fix waiting for a slot", // CUSTOM(resource-pools)
+  "usage-limit": "Usage limit hit again", // CUSTOM(usage-limit)
 };
 
 export const KIND_LABELS: Record<HistoryEventKind, string> = {
@@ -36,6 +37,7 @@ export const KIND_LABELS: Record<HistoryEventKind, string> = {
   "task-continued": "Continued",
   report: "Report",
   checkpoint: "Checkpoint", // CUSTOM(task-checkpoints)
+  "usage-limit": "Usage limit", // CUSTOM(usage-limit)
   "verify-passed": "Check passed",
   "verify-failed": "Check failed",
   "fix-requested": "Fix requested",
@@ -126,6 +128,11 @@ export const dashboardStrings = {
   checkpointWord: "checkpoint",
   waitingTitle: "Waiting",
   resumes: (time: string) => `resumes ${time}`,
+  // CUSTOM(usage-limit)
+  limitPaused: (time: string | null) =>
+    time
+      ? `paused by the usage limit until ${time}`
+      : "paused by the usage limit",
   nextPass: "next pass",
   numbers: "Numbers",
   period: (d: number) => `${d} days`,

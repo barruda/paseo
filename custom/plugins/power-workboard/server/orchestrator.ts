@@ -55,6 +55,21 @@ export function checkpointResumePrompt(
     .join("\n\n");
 }
 
+/** CUSTOM(usage-limit): what the agent receives once the plan's usage limit has reset. */
+export function usageLimitResumePrompt(
+  progress: TaskProgress | undefined,
+  assistant = false,
+): string {
+  return [
+    "You stopped because the plan's usage limit was reached. It has reset: continue the task from where you stopped, in this workspace, without waiting for confirmation.",
+    progress ? progressMarkdown(progress) : "",
+    "When you are done, reply with a short summary of what you changed and what a reviewer should check.",
+    assistant ? assistantSection() : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 /**
  * CUSTOM(task-checkpoints): the handoff a new agent receives when the task's agent is gone: the
  * ticket comes from `orchestratorPrompt`; this adds the checklist, the last summary and the branch.

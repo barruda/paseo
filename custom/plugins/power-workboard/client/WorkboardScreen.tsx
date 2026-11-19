@@ -65,7 +65,12 @@ import {
   withOptimisticStages,
 } from "./board-utils";
 import { groupTitle, stageTitle, strings } from "./strings";
-import { logLines, progressBadge, waitingLine } from "./checkpoint-format"; // CUSTOM(task-checkpoints)
+import {
+  limitLine,
+  logLines,
+  progressBadge,
+  waitingLine,
+} from "./checkpoint-format"; // CUSTOM(task-checkpoints)
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { BoardView } from "./BoardView";
 import { groupColor, projectColor, supplementalColor } from "./colors";
@@ -1667,9 +1672,12 @@ function OrchestrationLine({
         ) || null;
     }
   }
-  const text = `${owner}: ${t.orchestrationStatus[record.status]}${
-    badge ? ` · ${badge}` : ""
-  }${record.error ? ` · ${record.error}` : ""}`;
+  // CUSTOM(usage-limit): paused by the usage limit, with the time it resumes.
+  const limited = record.limited && record.status === "waiting";
+  const statusText = limited
+    ? limitLine(record.resumeAt, t.limit, now)
+    : `${t.orchestrationStatus[record.status]}${badge ? ` · ${badge}` : ""}`;
+  const text = `${owner}: ${statusText}${record.error ? ` · ${record.error}` : ""}`;
   const agentId = record.agentId;
   return (
     <>
