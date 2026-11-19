@@ -7893,13 +7893,20 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   history and needs no second model setup), asking for open requests, decisions, tasks with ids
   and promises from the last three replies; if that fails, the last three replies and the user's
   messages between them are read from the timeline instead. Either is cut to 8 000 characters
-  (about 2k tokens). The chat is checked again after the summary: a new user message cancels the
-  round. Then, as Restart chat does, a new chat starts (`createChat`, shared with `openChat`) and
-  the old one is archived. The new chat's first message is `CHAT_RULES` (the instructions
+  (about 2k tokens). Then, as Restart chat does, a new chat starts (`createChat`, shared with
+  `openChat`) and the old one is archived, inside `serial`. The chat is checked again (quiet,
+  same `lastUserMessageAt`) right before the new chat starts, which cancels the round, and right
+  after, which archives the new chat (it only said "ok") and keeps the old one; either way the
+  next idle tries again. A round that fails (no summary at all, the new chat does not start, or
+  the archive fails) stores `compactRetryAt` 30 minutes out and records `chat-compact-failed`
+  with the error; until then nothing summarizes the chat again, so a broken start cannot spend
+  an Opus fork on ~180k tokens every minute. A compaction that works, and any new chat
+  `openChat` starts (Restart chat, New conversation), clear it. The new chat's first message is `CHAT_RULES` (the instructions
   without the greeting) plus the summary in `<inherited-context>`, marked as background, with
   "reply only ok". `assistant.compact` stores the new chat and, after its first turn, its size
-  (`bornTokens`): a chat born at or above the limit is never compacted again, so the restart
-  cannot loop. History kind `chat-compacted` ("Chat compacted: N tokens → new chat", the summary
+  (`bornTokens`): a chat born at or above the limit is never compacted again, and one born below
+  it is compacted only after growing 10% of the limit since then, so a chat born just under the
+  limit does not restart on every turn. History kind `chat-compacted` ("Chat compacted: N tokens → new chat", the summary
   as detail) is filed under task id `assistant-chat` (`CHAT_HISTORY_TASK_ID`), so Reports shows
   one "Projects Assistant chat" row. The chat shows nothing about it. Board wakes read
   `chatAgentId` when they send, so they reach the new chat.
@@ -7908,13 +7915,15 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   `projects-assistant-page.tsx` (the input), `projects-assistant-model.test.ts`,
   `packages/app/src/screens/settings/settings-search-index.ts` (search term). Plugin files:
   `shared/assistant.ts`, `server/assistant/compact.ts` (new), `server/assistant/chat.ts`
-  (`CHAT_RULES`), `server/assistant/quick.ts`, `server/host.ts` (`agentContext`),
+  (`CHAT_RULES`), `server/assistant/quick.ts`, `server/host.ts` (`agentContext`, and the agent id
+  of an `agent_update`),
   `server/workboard.ts`, `index.server.ts`, `client/Profiles.tsx` (its save keeps the limit),
-  history strings and icon, `README.md`, tests (`assistant-engine`, `fixtures`).
+  history strings and icons, `README.md`, tests (`assistant-engine`, `assistant-quick`, `host`,
+  `fixtures`).
 - **Re-apply:** Plugin side: grep `CUSTOM(assistant-compact)`. App side: keep the mirror schema
   in step with the plugin's `assistantChatSettingsSchema`, or saving from Settings drops the
-  field back to its default. **Rollback:** an older plugin rejects the `chat-compacted` history
-  kind when it reads the history.
+  field back to its default. **Rollback:** an older plugin skips `chat-compacted` and
+  `chat-compact-failed` events when it reads the history (it parses each line on its own).
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
 tests/assistant-engine.test.ts -t compaction` and `(cd packages/app && npx vitest run
 src/screens/settings/bruno-customizations/projects-assistant-model.test.ts)`. The plugin side

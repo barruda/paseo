@@ -197,6 +197,13 @@ const WAKE_TURN_START_MS = 30_000;
  * the board compacts it, so a message the app queued during the turn goes out first.
  */
 const COMPACT_SETTLE_MS = 15_000;
+/** CUSTOM(assistant-compact): after a failed compaction, the next try waits this long. */
+const COMPACT_RETRY_MS = 30 * 60_000;
+/**
+ * CUSTOM(assistant-compact): a chat this compaction started is compacted again only after it grew
+ * by this share of the limit, so a chat born just under the limit does not restart every turn.
+ */
+const COMPACT_MIN_GROWTH = 0.1;
 /** CUSTOM(assistant-autonomy): how many times a merge waits for a clean base checkout. */
 const MAX_DIRTY_RETRIES = 12;
 /**
@@ -3672,6 +3679,7 @@ export class Workboard {
       const agentId = await this.createChat(CHAT_INSTRUCTIONS);
       await this.store.update((data) => {
         data.assistant.chatAgentId = agentId;
+        data.assistant.compactRetryAt = null; // CUSTOM(assistant-compact): a new chat starts clean
       });
       this.chatId = agentId; // CUSTOM(assistant-compact)
       // CUSTOM(assistant-restart-pill): the replaced chat is archived only once the new one exists.
@@ -3723,7 +3731,13 @@ export class Workboard {
     const assistant = this.store.current.assistant;
     this.chatId = assistant.chatAgentId;
     const limit = assistant.settings.chat.compactAtTokens;
-    if (!this.chatId || limit <= 0 || this.compactTimer || this.compacting)
+    if (
+      !this.chatId ||
+      limit <= 0 ||
+      this.compactTimer ||
+      this.compacting ||
+      this.compactWaiting()
+    )
       return;
     if (this.chatTokens === undefined || (this.chatTokens ?? 0) >= limit)
       this.chatChanged();
@@ -3743,13 +3757,31 @@ export class Workboard {
       !this.assistantOptions.chatQueued?.(agentId)
     );
   }
+  /** A failed compaction waits until `compactRetryAt`. */
+  private compactWaiting(): boolean {
+    const at = Date.parse(this.store.current.assistant.compactRetryAt ?? "");
+    return Number.isFinite(at) && this.now() < at;
+  }
+  /** The chat is still quiet and got no user message since `before` was read. */
+  private async chatStillQuiet(
+    agentId: string,
+    before: NonNullable<Awaited<ReturnType<Host["agentContext"]>>>,
+  ): Promise<boolean> {
+    const now = await this.host.agentContext(agentId);
+    return (
+      !!now &&
+      this.chatQuiet(agentId, now) &&
+      now.lastUserMessageAt === before.lastUserMessageAt
+    );
+  }
   private async compactChat(): Promise<void> {
-    if (this.stopped || this.compacting) return;
+    if (this.stopped || this.compacting || this.compactWaiting()) return;
     const assistant = this.store.current.assistant;
     const agentId = assistant.chatAgentId;
     const limit = assistant.settings.chat.compactAtTokens;
     if (!agentId || limit <= 0) return;
     this.compacting = true;
+    let stage = "check";
     try {
       const before = await this.host.agentContext(agentId);
       this.chatTokens = before?.usedTokens ?? null;
@@ -3762,8 +3794,9 @@ export class Workboard {
       if (this.wakeWait() > 0) return;
       const used = before.usedTokens;
       if (used === null) return;
-      // A chat this compaction started is measured after its first turn. Born at the limit, it
-      // stays: compacting it again would only start another chat just as big.
+      // A chat this compaction started is measured after its first turn. It is compacted again
+      // only once it grew by COMPACT_MIN_GROWTH of the limit; born at the limit, never, since
+      // compacting it would only start another chat just as big.
       const compact = assistant.compact;
       if (compact?.agentId === agentId) {
         const born = compact.bornTokens ?? used;
@@ -3772,9 +3805,10 @@ export class Workboard {
             if (data.assistant.compact?.agentId === agentId)
               data.assistant.compact.bornTokens = used;
           });
-        if (born >= limit) return;
+        if (born >= limit || used - born < limit * COMPACT_MIN_GROWTH) return;
       }
       if (used < limit) return;
+      stage = "summary";
       let summary: string;
       try {
         summary = await this.host.askAgent(agentId, COMPACT_QUESTION);
@@ -3783,25 +3817,27 @@ export class Workboard {
           "The assistant chat could not summarize itself; using its last messages:",
           message(error),
         );
-        summary = await recentExchange(this.host.timeline(agentId)).catch(
-          () => "",
-        );
+        summary = await recentExchange(this.host.timeline(agentId));
+        if (!summary.trim())
+          throw new Error(`no summary (${message(error)}) and no messages`);
       }
       if (this.stopped) return;
-      // The summary takes a while: anything that reached the chat meanwhile cancels this round.
-      const after = await this.host.agentContext(agentId);
-      if (
-        !after ||
-        !this.chatQuiet(agentId, after) ||
-        after.lastUserMessageAt !== before.lastUserMessageAt
-      )
-        return;
-      const next = await this.serial(async () => {
+      stage = "new chat";
+      const outcome = await this.serial(async () => {
+        // Checked right before and right after the new chat starts: a message that reached the
+        // old chat meanwhile keeps it, and the round waits for the next idle.
         const current = this.store.current.assistant;
         if (current.chatAgentId !== agentId || current.wakeTurn) return null;
+        if (!(await this.chatStillQuiet(agentId, before))) return null;
         const id = await this.createChat(compactPrompt(summary, used));
+        if (!(await this.chatStillQuiet(agentId, before))) {
+          // The new chat only answered "ok"; the old one carries on.
+          await this.host.archiveAgent(id).catch(() => undefined);
+          return null;
+        }
         await this.store.update((data) => {
           data.assistant.chatAgentId = id;
+          data.assistant.compactRetryAt = null;
           data.assistant.compact = {
             agentId: id,
             fromAgentId: agentId,
@@ -3813,20 +3849,44 @@ export class Workboard {
         this.chatId = id;
         this.chatTokens = undefined;
         // As "Restart chat" does: the old chat is archived only once the new one exists.
-        await this.host.archiveAgent(agentId).catch(() => undefined);
-        return id;
+        let archiveError: string | null = null;
+        await this.host.archiveAgent(agentId).catch((error: unknown) => {
+          archiveError = message(error);
+        });
+        return { id, archiveError: archiveError as string | null };
       });
-      if (!next) return;
+      if (!outcome) return;
       await this.recordChat(
         "chat-compacted",
         `Chat compacted: ${used} tokens → new chat`,
-        { agentId: next, detail: summary },
+        { agentId: outcome.id, detail: summary },
       );
+      if (outcome.archiveError)
+        await this.compactFailed(agentId, "archive", outcome.archiveError);
     } catch (error) {
-      console.error("Could not compact the assistant chat:", message(error));
+      await this.compactFailed(agentId, stage, message(error));
     } finally {
       this.compacting = false;
     }
+  }
+  /** Records the failure and holds the next compaction COMPACT_RETRY_MS. */
+  private async compactFailed(
+    agentId: string,
+    stage: string,
+    error: string,
+  ): Promise<void> {
+    console.error(`Could not compact the assistant chat (${stage}):`, error);
+    const retryAt = new Date(this.now() + COMPACT_RETRY_MS).toISOString();
+    await this.store
+      .update((data) => {
+        data.assistant.compactRetryAt = retryAt;
+      })
+      .catch(() => undefined);
+    await this.recordChat(
+      "chat-compact-failed",
+      `Chat compaction failed at ${stage}; next try after ${retryAt}`,
+      { agentId, detail: error },
+    );
   }
   /** A history event about the chat itself, filed under CHAT_HISTORY_TASK_ID. */
   private async recordChat(

@@ -54,6 +54,7 @@ this repo) with these differences:
   board asks a fork of the chat for a short summary of its last three replies, starts a new chat
   whose first message carries it as inherited context, and archives the old one, as Restart chat
   does. It waits for a quiet chat: no turn, permission, queued or quick message, or board wake.
+  A failed round waits 30 minutes before the next try and shows as "Chat compaction failed".
   Reports lists each compaction under a "Projects Assistant chat" row (`server/assistant/compact.ts`).
 - **Report card.** In any agent chat, a reply ending in a valid `<report>` block shows the block
   as a card (status, summary, question, checks, collapsed changed files, risks) instead of JSON

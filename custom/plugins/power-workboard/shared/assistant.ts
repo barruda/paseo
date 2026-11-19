@@ -350,6 +350,11 @@ export const assistantDataSchema = z.object({
     })
     .nullable()
     .default(null),
+  /**
+   * CUSTOM(assistant-compact): a compaction failed; the next one waits until this time. Cleared
+   * by a compaction that works and by any new chat the user opens.
+   */
+  compactRetryAt: z.string().nullable().default(null),
 });
 export type AssistantData = z.infer<typeof assistantDataSchema>;
 
@@ -373,6 +378,7 @@ export const HISTORY_EVENT_KINDS = [
   "needs-you",
   "told-assistant",
   "chat-compacted", // CUSTOM(assistant-compact): the chat restarted with a summary
+  "chat-compact-failed", // CUSTOM(assistant-compact): a compaction failed; it waits COMPACT_RETRY_MS
   "observed",
   "failed",
   "done",
