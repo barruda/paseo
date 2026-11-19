@@ -5150,9 +5150,22 @@ src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.t
 - **Commit:** pending
 - **Why:** Commits should not run formatting, lint, or typecheck automatically.
 - **What:** Remove Lefthook, its configuration and its npm prepare script. Run the checks manually.
+  An `npm install` in an upstream checkout (a worktree that started on `main`) still runs
+  `lefthook install --force` and writes hooks into the hooks dir every worktree shares. Where
+  lefthook isn't installed, the generated hook falls back to `pnpm lefthook -h`, which
+  pnpm-installs over the worktree's `node_modules` (`node_modules/.pnpm`, `pnpm-lock.yaml`,
+  react-dom 19.2.3 linked to react 19.3.1, app tests fail with "Incompatible React versions").
+  So `custom/scripts/worktree-deps.sh`, the first step of every worktree setup, deletes hooks
+  containing `call_lefthook` from `git rev-parse --git-path hooks` and keeps the rest. A hook
+  written after a worktree's setup survives until the next setup; `LEFTHOOK=0 git commit` skips
+  it meanwhile.
 - **Core files touched:** `lefthook.yml` (removed), `package.json` and `package-lock.json`.
 - **Re-apply:** Remove the Lefthook dependency, configuration and `prepare` script if upstream restores them.
-- **Verify:** `npm exec -- lefthook uninstall` removes installed hooks; `npm run typecheck` and `npm run lint` remain available.
+  The hook sweep lives in `custom/scripts/worktree-deps.sh` (`drop_lefthook_hooks`).
+- **Verify:** `ls "$(git rev-parse --git-common-dir)/hooks"` shows only `*.sample`;
+  `bash custom/scripts/worktree-deps.test.sh` ("lefthook hook removed"). In a worktree after
+  `npm ci`, `git commit --allow-empty -m t` creates no `pnpm-lock.yaml` or `node_modules/.pnpm`
+  (undo with `git reset --soft HEAD~1`). `npm run typecheck` and `npm run lint` remain available.
 
 ## delegation: Opus sessions plan and review, a cheaper subagent writes the code
 

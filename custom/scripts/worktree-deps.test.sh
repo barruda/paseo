@@ -102,6 +102,19 @@ make_checkout "$work/d6"
   bash "$here/worktree-deps.sh" >/dev/null)
 check "npm ci without a source checkout" '[[ "$(cat "$work/d6/.npm-called" 2>/dev/null)" == ci ]]'
 
+# 7. Lefthook hooks in the shared hooks dir are removed; other hooks stay.
+make_checkout "$work/s7" yes
+make_checkout "$work/d7"
+git -C "$work/d7" init -q
+hooks7="$work/d7/.git/hooks"
+mkdir -p "$hooks7"
+printf '#!/bin/sh\ncall_lefthook()\n{\n  pnpm lefthook "$@"\n}\ncall_lefthook run "prepare-commit-msg" "$@"\n' >"$hooks7/prepare-commit-msg"
+printf '#!/bin/sh\necho mine\n' >"$hooks7/pre-push"
+run "$work/s7" "$work/d7"
+check "lefthook hook removed" '[[ ! -e "$hooks7/prepare-commit-msg" ]]'
+check "other hooks kept" '[[ -f "$hooks7/pre-push" ]]'
+check "deps still linked after dropping hooks" '[[ ! -e "$work/d7/.npm-called" && -d "$work/d7/node_modules/left-pad" ]]'
+
 if ((failures > 0)); then
   echo "$failures failed"
   exit 1
