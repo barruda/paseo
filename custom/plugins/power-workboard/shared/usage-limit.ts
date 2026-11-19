@@ -1,5 +1,5 @@
 // CUSTOM(usage-limit): a provider's "usage limit reached" reply and when the limit resets.
-// Pure: `now` comes from the caller.
+// Pure: `now` and the notice's own time come from the caller.
 
 /** Wait after the reset before resuming, so the provider has cleared the limit. */
 export const LIMIT_RESUME_MARGIN_MS = 2 * 60_000;
@@ -12,11 +12,16 @@ export const MAX_LIMIT_PAUSES = 3;
 /** A limit notice is one short line, not an agent's summary that mentions limits. */
 const MAX_NOTICE_LENGTH = 400;
 
-// "You've hit your 5-hour limit", "Weekly limit reached", "You're out of extra usage".
+// "You've hit your 5-hour limit", "Weekly limit reached", "You're out of extra usage". The
+// provider's notice starts with it; a reply that only quotes one (a summary, the assistant telling
+// about a task) does not.
 const NOTICE =
-  /\bhit your\b[^.\n]{0,40}\blimit\b|\blimit (?:reached|hit)\b|\bout of (?:extra )?usage\b/i;
+  /^(?:you(?:'|\u2019)ve hit your\b[^.\n]{0,40}\blimit\b|you(?:'|\u2019)re out of (?:extra )?usage\b|(?:claude (?:ai )?)?(?:(?:usage|session|weekly|daily|monthly|opus|sonnet|\d+-hour)\s+){1,2}limit (?:reached|hit)\b)/i;
 // Claude Code's older form: "Claude AI usage limit reached|1763519400".
-const EPOCH_NOTICE = /\busage limit reached\|(\d{9,13})\b/i;
+const EPOCH_NOTICE = /^claude ai usage limit reached\|(\d{9,13})\b/i;
+// "resets in 2h 30m", "resets in 45 minutes".
+const RESET_IN =
+  /\bresets?\s+in\s+(?=\d)(?:(?<hours>\d+)\s*h(?:ours?|rs?)?\b)?\s*(?:(?<minutes>\d+)\s*m(?:in(?:ute)?s?)?\b)?/i;
 // "resets 11:30pm (America/Sao_Paulo)", "resets 3pm", "resets Nov 20 at 10am (UTC)", "resets 23:30".
 const RESET =
   /\bresets?\s+(?:at\s+)?(?:(?<month>jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+(?<day>\d{1,2})(?:st|nd|rd|th)?,?\s+(?:at\s+)?)?(?<hour>\d{1,2})(?::(?<minute>\d{2}))?\s*(?<ampm>[ap]\.?m\.?)?(?:\s*\((?<zone>[^)]+)\))?/i;
@@ -40,10 +45,13 @@ export interface UsageLimit {
   resetAt: number | null;
 }
 
-/** The usage limit a reply announces, or null when the reply is not a limit notice. */
+/**
+ * The usage limit a reply announces, or null when the reply is not a limit notice. `noticeAt`:
+ * when the notice was written; its reset time is read relative to it.
+ */
 export function usageLimit(
   text: string | null | undefined,
-  now: number,
+  noticeAt: number,
 ): UsageLimit | null {
   const notice = text?.trim();
   if (!notice || notice.length > MAX_NOTICE_LENGTH) return null;
@@ -53,27 +61,39 @@ export function usageLimit(
     return { resetAt: value < 1e12 ? value * 1000 : value };
   }
   if (!NOTICE.test(notice)) return null;
-  return { resetAt: resetTime(notice, now) };
+  return { resetAt: resetTime(notice, noticeAt) };
 }
 
 /**
- * When a task stopped by this notice resumes: the reset plus a margin, or an hour from now when
- * the reset is unknown. Null when the text is not a limit notice.
+ * When a task stopped by this notice resumes: the reset plus a margin, or an hour after the notice
+ * when the reset is unknown; never before `now` plus the margin. `noticeAt` (default `now`): when
+ * the notice was written, so a notice read late keeps its own day. Null when the text is not a
+ * limit notice.
  */
 export function usageLimitResumeAt(
   text: string | null | undefined,
   now: number,
+  noticeAt: number = now,
 ): string | null {
-  const limit = usageLimit(text, now);
+  const written = Number.isFinite(noticeAt) ? Math.min(noticeAt, now) : now;
+  const limit = usageLimit(text, written);
   if (!limit) return null;
   const at =
     limit.resetAt === null
-      ? now + LIMIT_FALLBACK_MS
+      ? Math.max(written + LIMIT_FALLBACK_MS, now + LIMIT_RESUME_MARGIN_MS)
       : Math.max(limit.resetAt, now) + LIMIT_RESUME_MARGIN_MS;
   return new Date(Math.min(at, now + MAX_LIMIT_WAIT_MS)).toISOString();
 }
 
+/** The reset the notice names, read relative to `now`, the time the notice was written. */
 function resetTime(notice: string, now: number): number | null {
+  const after = RESET_IN.exec(notice)?.groups;
+  if (after && (after.hours || after.minutes))
+    return (
+      now +
+      Number(after.hours ?? 0) * 60 * 60_000 +
+      Number(after.minutes ?? 0) * 60_000
+    );
   const match = RESET.exec(notice)?.groups;
   if (!match) return null;
   let hour = Number(match.hour);
@@ -98,8 +118,8 @@ function resetTime(notice: string, now: number): number | null {
     return at;
   }
   const at = wallToUtc(today.year, today.month, today.day, hour, minute, zone);
-  // A time that passed within the hour has just reset (the notice was read late); an earlier one
-  // is tomorrow's.
+  // A notice comes before its reset, so a time already behind it is tomorrow's (an hour of
+  // slack covers a notice time taken a little late).
   if (at < now - 60 * 60_000)
     return wallToUtc(
       today.year,

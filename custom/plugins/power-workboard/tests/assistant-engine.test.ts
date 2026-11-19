@@ -1989,3 +1989,106 @@ it("a wake turn that ends normally is forgotten and the task stays told", async 
     s.board.dispose();
   }
 });
+
+it("a wake answered with a reply that quotes a limit notice keeps the task told", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.wakeTurn).toBeTruthy(),
+    );
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    s.reply(`"Task" stopped again: ${LIMIT}. It needs you.`);
+    s.advance(30_000);
+    await s.board.refresh();
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.wakeTurn).toBeNull(),
+    );
+    expect(s.delivery()?.toldAt).toBeTruthy();
+    expect(s.store.current.assistant.wakeAt).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a new wake reads the last wake's turn first instead of replacing it", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+    // The chat's turn ended on the limit; before any refresh, another task needs the user.
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    s.reply(LIMIT);
+    const second = await s.another();
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.wakeAt).toBe(LIMIT_RESUME),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(1);
+    expect(s.delivery()?.toldAt).toBeNull();
+    expect(s.store.current.assistant.deliveries[second]?.toldAt).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("Ready to start waits while a task of the orchestrator is paused by the usage limit", async () => {
+  const s = await scenario();
+  try {
+    s.reply(LIMIT);
+    await s.finishTurn();
+    s.advance(1000);
+    await s.board.mutate({
+      action: "create",
+      title: "Second",
+      description: "",
+      projectId: "p",
+    });
+    const second = s.board
+      .snapshot()
+      .cards.find((c) => c.title === "Second")!.id;
+    await s.board.mutate({
+      action: "stage",
+      taskId: second,
+      stage: "ready",
+      expectedLabels: [],
+    });
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[second]).toBeUndefined();
+    const owner = s.store.current.orchestrations[s.taskId].orchestratorId!;
+    expect(
+      s.store.current.orchestratorLogs[owner]?.map((entry) => entry.text),
+    ).toContain("Ready to start waits: a task is paused by the usage limit");
+    // After the reset the paused task resumes first, then the new one starts.
+    s.advance(3 * 3_600_000);
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[s.taskId].status).toBe("running");
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[second]?.status).toBe("running");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a usage-limit pause moved out of In progress by hand stops and forgets its pauses", async () => {
+  const s = await scenario();
+  try {
+    s.reply(LIMIT);
+    await s.finishTurn();
+    const card = s.board.snapshot().cards.find((c) => c.id === s.taskId)!;
+    await s.board.mutate({
+      action: "stage",
+      taskId: s.taskId,
+      stage: "done",
+      expectedLabels: card.managedLabels,
+    });
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[s.taskId]).toMatchObject({
+      status: "finished",
+      limited: false,
+      limitPauses: 0,
+    });
+  } finally {
+    s.board.dispose();
+  }
+});

@@ -7742,28 +7742,38 @@ tests/card-title-area.test.ts`. Needs only `paseo plugin reload power-workboard`
 ## usage-limit: Power Workboard tasks and the Projects Assistant resume after the plan's usage limit resets
 
 - **Added:** 2026-11-19 (based on `custom` at `763ec569c`)
-- **Commit:** `custom: Power Workboard tasks and the assistant wake resume after the usage limit resets`
+- **Commit:** `custom: Power Workboard tasks and the assistant wake resume after the usage limit resets`,
+  then `custom: Power Workboard usage-limit notices are read only at the start of a reply`
 - **Why:** On 2026-11-18 three tasks ended with "You've hit your 5-hour limit · resets 11:30pm
   (America/Sao_Paulo)". The board took the reply as `no-report` and sent them to Needs you. The
   wake reached the assistant chat, which was on the same limit and did nothing, but `toldAt` was
   already stored, so nobody told it again and the tasks sat until the user wrote.
-- **What:** `shared/usage-limit.ts` reads a short limit notice (the reply or the agent's
-  `lastError`, never a valid `<report>`) and its reset: a time or a date and time, in the notice's
-  IANA zone (else the local one), or the older `…|<epoch>` form. A task whose turn ends on it waits
-  like a checkpoint (`status: waiting`, `checkpoint: true`, new `limited: true`, `resumeAt` = reset
-  - 2 min, or + 1 h when unreadable): it stays in In progress, holds no slot, and is not in Needs
-    you. It resumes through the checkpoint path (`dueTimer`/the periodic pass, and `start()` for a
-    pause already due after a reload or a machine that was off), with "the usage limit has reset;
-    continue" to the same agent (a new agent gets the handoff). Each pause counts in
-    `limitPauses`; a turn that ends normally resets it; a 4th pause in a row (`MAX_LIMIT_PAUSES` = 3)
-    goes to Needs you as `usage-limit`. An agent in error on the limit pauses the same way instead of
-    getting the "continue" nudges. Assistant wake: each wake stores `wakeTurn {agentId, toldAt,
-taskIds}`; once that turn ends (checked on the refreshes and at start, 30 s after the send), a
-    reply that is a limit notice clears those tasks' `toldAt` and stores `wakeAt`; the next wake
-    waits until then, also across a restart. Tasks told before a restart are not told again: with
-    `wakeTurn` stored, that case is covered without re-telling the chat on every plugin reload. No new
-    polling. UI: the card says "paused by the usage limit until HH:MM"; the Dashboard's Waiting rows
-    say the same; new history kind, attempt outcome/trigger and Needs you reason `usage-limit`.
+- **What:** `shared/usage-limit.ts` reads a limit notice: a reply (or the agent's `lastError`,
+  never a valid `<report>`) of at most 400 characters that **starts** with it ("You've hit your …
+  limit", "You're out of … usage", "Weekly limit reached", "Claude AI usage limit reached|<epoch>").
+  A reply that only quotes one (a summary, the assistant telling about a task) is not a notice;
+  matching anywhere in the text paused tasks on summaries and looped the assistant wake. The reset
+  is a time or a date and time in the notice's IANA zone (else the local one), "resets in 2h 30m",
+  or the epoch, read relative to when the notice was written (the agent's `updatedAt`, the wake's
+  `toldAt`), so a notice read hours late keeps its own day. A task whose turn ends on it waits
+  like a checkpoint (`status: waiting`, `checkpoint: true`, new `limited: true`, `resumeAt` =
+  reset + 2 min, or notice + 1 h when unreadable): it stays in In progress, holds no slot, and is
+  not in Needs you. It resumes through the checkpoint path (`dueTimer`/the periodic pass, and
+  `start()` for a pause already due after a reload or a machine that was off), with "the usage
+  limit has reset; continue" to the same agent (a new agent gets the handoff). Each pause counts in
+  `limitPauses`; a turn that ends any other way, a failed or gone agent, a review continue and a
+  card moved out of In progress reset it; a 4th pause in a row (`MAX_LIMIT_PAUSES` = 3) goes to
+  Needs you as `usage-limit`. An agent in error on the limit pauses the same way instead of
+  getting the "continue" nudges. While one of its tasks is paused, an orchestrator starts no new
+  Ready to start task (it would hit the limit too; its log says so once); resumes still go.
+  Assistant wake: each wake stores `wakeTurn {agentId, toldAt, taskIds}`; once that turn ends
+  (checked on the refreshes and at start 30 s after the send, and by the next wake before it
+  sends, so it never overwrites an unread turn), a reply that is a limit notice clears those
+  tasks' `toldAt` and stores `wakeAt`; the next wake waits until then, also across a restart.
+  Tasks told before a restart are not told again: with `wakeTurn` stored, that case is covered
+  without re-telling the chat on every plugin reload. No new polling. UI: the card says "paused by
+  the usage limit until HH:MM"; the Dashboard's Waiting rows say the same; new history kind,
+  attempt outcome/trigger and Needs you reason `usage-limit`.
 - **Core files touched:** none. Plugin files: `shared/usage-limit.ts`, `shared/model.ts`
   (`limited`, `limitPauses`), `shared/assistant.ts` (enums, `wakeAt`, `wakeTurn`,
   `runningItem.limited`), `server/workboard.ts` (`usageLimitReached`, `orchestrate`,

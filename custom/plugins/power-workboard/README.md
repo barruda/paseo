@@ -45,8 +45,9 @@ this repo) with these differences:
 - **Usage limit.** A task whose agent stops on the plan's usage limit ("You've hit your 5-hour
   limit · resets 11:30pm (America/Sao_Paulo)") is not sent to Needs you: it waits like a
   checkpoint until two minutes after the reset (an hour when the notice has no time), then the
-  same agent continues. The card says "paused by the usage limit until 23:32". A fourth limit in a
-  row goes to Needs you as `usage-limit`. When the Projects Assistant chat answers a wake with the
+  same agent continues. The card says "paused by the usage limit until 23:32". Meanwhile its
+  orchestrator starts no new task. A fourth limit in a row goes to Needs you as `usage-limit`.
+  Only a reply that starts with the notice counts, not one that quotes it. When the Projects Assistant chat answers a wake with the
   limit, its tasks are told again after the reset, also after a restart.
 - **Report card.** In any agent chat, a reply ending in a valid `<report>` block shows the block
   as a card (status, summary, question, checks, collapsed changed files, risks) instead of JSON

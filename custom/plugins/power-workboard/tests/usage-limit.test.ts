@@ -97,3 +97,58 @@ it("ignores replies that are not a limit notice", () => {
     usageLimit(`${"Did the work. ".repeat(40)}You've hit your limit`, now),
   ).toBeNull();
 });
+
+it("only a reply that starts with the notice counts, not one that quotes it", () => {
+  const now = at("2026-11-19T00:00:00Z");
+  expect(
+    usageLimit(
+      "Fixed the bug where users hit your API rate limit too early.",
+      now,
+    ),
+  ).toBeNull();
+  // The assistant telling the user about a task that went past the limit of pauses.
+  expect(
+    usageLimit(
+      `Task "Docs" stopped: ${NOTICE}. It is in Needs you; nothing else to do.`,
+      now,
+    ),
+  ).toBeNull();
+  expect(
+    usageLimit("Fixed: weekly limit reached the wrong users", now),
+  ).toBeNull();
+  expect(usageLimit("Opus weekly limit reached", now)).toEqual({
+    resetAt: null,
+  });
+});
+
+it("a notice read hours after its reset keeps its own day", () => {
+  // Written at 21:35 São Paulo, read the next morning: it reset at 02:30Z, so resume now.
+  const written = at("2026-11-19T00:35:40Z");
+  const now = at("2026-11-19T09:00:00Z");
+  expect(usageLimitResumeAt(NOTICE, now, written)).toBe(
+    "2026-11-19T09:02:00.000Z",
+  );
+  // Without the notice's time, 23:30 already behind the clock would be tomorrow's.
+  expect(usageLimitResumeAt(NOTICE, now)).toBe("2026-11-20T02:32:00.000Z");
+  // A notice with no reset time waits an hour from when it was written.
+  expect(
+    usageLimitResumeAt(
+      "You've hit your limit",
+      at("2026-11-19T00:40:00Z"),
+      written,
+    ),
+  ).toBe("2026-11-19T01:35:40.000Z");
+});
+
+it("reads a relative reset", () => {
+  const written = at("2026-11-19T00:00:00Z");
+  expect(
+    usageLimit("You've hit your limit · resets in 2h 30m", written),
+  ).toEqual({ resetAt: at("2026-11-19T02:30:00Z") });
+  expect(
+    usageLimitResumeAt(
+      "You're out of extra usage · resets in 45 minutes",
+      written,
+    ),
+  ).toBe("2026-11-19T00:47:00.000Z");
+});
