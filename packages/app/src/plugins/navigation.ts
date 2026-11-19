@@ -15,6 +15,8 @@ export function createPluginNavigation(input: {
   workspaceId: string | null;
 }): PluginNavigation {
   const { serverId, workspaceId } = input;
+  // CUSTOM(workboard-chip-only): where the chip shows when no workspace was shown yet.
+  const workspace = workspaceId ? { serverId, workspaceId } : null;
   function placement(location: PluginPanelLocation) {
     if (location !== "explorer") return undefined;
     if (!workspaceId) throw new Error("No active workspace");
@@ -29,14 +31,14 @@ export function createPluginNavigation(input: {
     },
     openSurface(pluginId, surfaceId, params) {
       // CUSTOM(workboard-chip-only): in Tasks mode Power Workboard opens on its Desk chip.
-      if (openWorkboardInDesk({ pluginId, screenId: surfaceId, params })) return;
+      if (openWorkboardInDesk({ pluginId, screenId: surfaceId, params, workspace })) return;
       router.push(
         buildPluginSurfaceRoute(serverId, pluginId, { kind: "surface", id: surfaceId }, params),
       );
     },
     openWorkspacePanel(pluginId, panelId, location) {
       // CUSTOM(workboard-chip-only): never a Power Workboard tab in a Desk; its chip instead.
-      if (openWorkboardPanelInDesk(pluginId, panelId)) return;
+      if (openWorkboardPanelInDesk(pluginId, panelId, workspace)) return;
       if (!workspaceId) throw new Error("No active workspace");
       navigateToWorkspace({
         serverId,

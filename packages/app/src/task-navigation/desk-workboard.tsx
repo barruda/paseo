@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Text, View } from "react-native";
 import { Workflow } from "lucide-react-native";
+import { useIsFocused } from "expo-router/react-navigation";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import type { ComponentType } from "react";
@@ -16,6 +17,7 @@ import { ScreenHeader } from "@/components/headers/screen-header";
 import { StatusIcon } from "@/components/status-icon";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useFetchQuery } from "@/data/query";
+import { useAppVisible } from "@/hooks/use-app-visible";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { usePluginHostNavigation } from "@/plugins/host-navigation";
 import { PluginInstallationProvider } from "@/plugins/installation-provider";
@@ -31,6 +33,7 @@ import {
   DESK_STATUS_RPC_NAME,
   DESK_SURFACES,
   POWER_WORKBOARD_PLUGIN_ID,
+  deskStatusPollMs,
   deskStatusSchema,
   deskWorkboardStatusBucket,
   isDeskSurfaceOpen,
@@ -104,12 +107,10 @@ export function useDeskWorkboard(
   return { entries, selected };
 }
 
-/** CUSTOM(workboard-chip-status): how often the chip asks the plugin for its counts. */
-const DESK_STATUS_POLL_MS = 3_000;
-
 /**
  * CUSTOM(workboard-chip-status): the plugin icon with the agent-tab status overlay. A plugin
- * without `workboard.desk-status` (not reloaded yet) leaves the chip clean.
+ * without `workboard.desk-status` (not reloaded yet) leaves the chip clean. Asks only while the
+ * Desk is the focused screen and the app is visible, and backs off after a failure.
  */
 export function DeskWorkboardChipIcon({
   plugin,
@@ -118,12 +119,15 @@ export function DeskWorkboardChipIcon({
   plugin: InstalledPlugin;
   active: boolean;
 }) {
+  const isFocused = useIsFocused();
+  const isAppVisible = useAppVisible();
   const { data } = useFetchQuery({
     queryKey: ["desk-workboard-status", plugin.serverId, plugin.id],
     queryFn: async () => deskStatusSchema.parse(await plugin.invoke(DESK_STATUS_RPC_NAME, {})),
     dataShape: "value",
     staleTimeMs: 0,
-    refetchInterval: DESK_STATUS_POLL_MS,
+    enabled: isFocused && isAppVisible,
+    refetchInterval: (query) => deskStatusPollMs(query.state.status === "error"),
     retry: false,
   });
   return (

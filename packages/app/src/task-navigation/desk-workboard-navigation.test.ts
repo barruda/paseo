@@ -1,7 +1,14 @@
 // CUSTOM(workboard-chip-only): every Power Workboard open in Tasks mode selects its Desk chip.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const routes = vi.hoisted(() => ({ pushed: [] as string[], workspace: [] as string[] }));
+const routes = vi.hoisted(() => ({
+  pushed: [] as string[],
+  workspace: [] as string[],
+  last: { serverId: "local", workspaceId: "ws-1" } as {
+    serverId: string;
+    workspaceId: string;
+  } | null,
+}));
 vi.mock("expo-router", () => ({
   router: { push: (route: string) => routes.pushed.push(route) },
 }));
@@ -9,7 +16,7 @@ vi.mock("@/navigation/workspace-route-navigation", () => ({
   navigateToHostWorkspaceRoute: (route: string) => routes.workspace.push(route),
 }));
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
-  getLastWorkspaceSelection: () => ({ serverId: "local", workspaceId: "ws-1" }),
+  getLastWorkspaceSelection: () => routes.last,
   navigateToWorkspace: () => {
     throw new Error("the board panel must not open as a workspace tab");
   },
@@ -25,6 +32,7 @@ describe("Power Workboard opens on its Desk chip", () => {
   beforeEach(() => {
     routes.pushed.length = 0;
     routes.workspace.length = 0;
+    routes.last = { serverId: "local", workspaceId: "ws-1" };
     useTaskNavigationStore.setState({ enabled: true });
     useDeskWorkboardStore.setState({
       open: { "power-workboard": false },
@@ -61,6 +69,22 @@ describe("Power Workboard opens on its Desk chip", () => {
   it("from Open Power Workboard tab: the chip, no workspace tab", () => {
     navigation().openWorkspacePanel("power-workboard", "power-workboard", "workspace");
     expect(useDeskWorkboardStore.getState().selected).toBe("power-workboard");
+  });
+
+  it("with no workspace shown yet: the chip on the caller's own workspace, never a tab", () => {
+    routes.last = null;
+    createPluginNavigation({ serverId: "local", workspaceId: "ws-2" }).openWorkspacePanel(
+      "power-workboard",
+      "power-workboard",
+      "workspace",
+    );
+    expect(useDeskWorkboardStore.getState().selected).toBe("power-workboard");
+    expect(routes.workspace).toEqual(["/h/local/workspace/ws-2"]);
+    createPluginNavigation({ serverId: "local", workspaceId: "ws-2" }).openSurface(
+      "power-workboard",
+      "power-workboard",
+    );
+    expect(routes.pushed).toEqual([]);
   });
 
   it("from the Desk's +: the chip, and the launching New tab goes away", () => {

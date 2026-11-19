@@ -141,6 +141,18 @@ export const deskStatusSchema = z.object({
 });
 export type DeskWorkboardStatus = z.infer<typeof deskStatusSchema>;
 
+/** Polls while the plugin answers. */
+export const DESK_STATUS_POLL_MS = 3_000;
+/**
+ * After a failed ask (plugin not reloaded yet, reloading, board still starting). Each failure logs
+ * an error on the daemon, so back off, but keep asking so a `plugin reload` heals the chip.
+ */
+export const DESK_STATUS_RETRY_MS = 60_000;
+
+export function deskStatusPollMs(lastFetchFailed: boolean): number {
+  return lastFetchFailed ? DESK_STATUS_RETRY_MS : DESK_STATUS_POLL_MS;
+}
+
 /**
  * The agent-tab state the chip borrows. Needs you is the agent waiting for you (amber alert),
  * Ready to review is the agent that finished and waits for your look (attention dot), and a task

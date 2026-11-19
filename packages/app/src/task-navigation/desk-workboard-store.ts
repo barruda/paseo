@@ -94,19 +94,21 @@ export const useDeskWorkboardStore = create<DeskWorkboardState>()(
 
 /**
  * CUSTOM(workboard-chip-only): in Tasks mode, selects the Power Workboard chip for an open of one
- * of its screens and shows the Desk (the last workspace's route). False when the open is not the
- * board's, outside Tasks mode, or before any workspace was shown; the caller then opens it as usual.
+ * of its screens and shows the Desk: the last workspace's route, else `workspace` (the caller's
+ * own). False when the open is not the board's, outside Tasks mode, or with no workspace to show;
+ * the caller then opens it as usual.
  */
 export function openWorkboardInDesk(input: {
   pluginId: string;
   screenId: string;
   params?: Readonly<Record<string, string>>;
+  workspace?: { serverId: string; workspaceId: string } | null;
 }): boolean {
   const target = resolveWorkboardOpen({
     tasksMode: useTaskNavigationStore.getState().enabled,
     ...input,
   });
-  const last = getLastWorkspaceSelection();
+  const last = getLastWorkspaceSelection() ?? input.workspace ?? null;
   if (!target || !last) return false;
   const store = useDeskWorkboardStore.getState();
   store.openSurface(target.surfaceId);
@@ -120,8 +122,13 @@ export function openWorkboardInDesk(input: {
 }
 
 /** CUSTOM(workboard-chip-only): the board's workspace panel selects the chip in Tasks mode. */
-export function openWorkboardPanelInDesk(pluginId: string, panelId: string): boolean {
+export function openWorkboardPanelInDesk(
+  pluginId: string,
+  panelId: string,
+  workspace: { serverId: string; workspaceId: string } | null,
+): boolean {
   return (
-    isWorkboardPanel(pluginId, panelId) && openWorkboardInDesk({ pluginId, screenId: panelId })
+    isWorkboardPanel(pluginId, panelId) &&
+    openWorkboardInDesk({ pluginId, screenId: panelId, workspace })
   );
 }

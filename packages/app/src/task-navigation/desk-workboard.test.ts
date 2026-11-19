@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   DESK_SURFACES,
+  deskStatusPollMs,
   deskStatusSchema,
   deskSurfacesStorageSchema,
   deskWorkboardStatusBucket,
@@ -150,5 +151,13 @@ describe("Power Workboard chip status", () => {
   it("lets what waits for the user win over a running task", () => {
     expect(deskWorkboardStatusBucket(status(3, 1, 0))).toBe("attention");
     expect(deskWorkboardStatusBucket(status(3, 1, 2))).toBe("needs_input");
+  });
+});
+
+// CUSTOM(workboard-chip-status)
+describe("Power Workboard chip polling", () => {
+  it("asks every 3 s while the plugin answers and every 60 s after a failure", () => {
+    expect(deskStatusPollMs(false)).toBe(3_000);
+    expect(deskStatusPollMs(true)).toBe(60_000);
   });
 });

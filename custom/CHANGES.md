@@ -7888,7 +7888,8 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   - **One place.** In Tasks mode, opening Power Workboard from the sidebar row, the Command
     Center ("Power Workboard", "Open Power Workboard tab", "Projects Reports"), a plugin
     `openScreen` (the assistant chat's `pwb` links, status bar and sidebar items) or the Desk's
-    **+** menu reopens and selects the chip and shows the Desk (the last workspace's route). A
+    **+** menu reopens and selects the chip and shows the Desk (the last workspace's route, or the
+    calling workspace's when none was shown yet). A
     screen `tab` param (or an old inner page id) picks the board's inner tab. The **+** entry and
     the "Open Power Workboard tab" command stay, as ways to reach the chip: from **+** the
     launching New tab closes and no board tab is created. Outside Tasks mode nothing changed: the
@@ -7903,9 +7904,12 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   - **Data.** The plugin answers `workboard.desk-status` with three counts
     (`shared/desk-status.ts`, computed from the snapshot and the assistant deliveries). Plugins
     have no server-to-client push and the board's own snapshot (300 KB+) is too heavy to poll with
-    the board closed, so the chip asks for the counts every 3 s while it is on screen. The app
-    repeats the contract in `desk-workboard-model.ts`; a plugin without the RPC leaves the chip
-    clean.
+    the board closed, so the chip asks for the counts every 3 s, only while the Desk is the
+    focused screen and the app is visible (`useAppVisible`: `AppState` on iOS and Android, page
+    visibility on web). After a failed ask (plugin not reloaded yet, reloading, board still
+    starting) it waits 60 s: each failure logs an error on the daemon. It never stops, so a
+    `plugin reload` heals the chip without remounting it. The app repeats the contract in
+    `desk-workboard-model.ts`; a plugin without the RPC leaves the chip clean.
   - A select now bumps `revision` in the chip store; a Desk tab change in the same update (the
     **+** launcher closing, a route change) no longer deselects it.
 - **Core files touched** (`CUSTOM(workboard-chip-only)` / `CUSTOM(workboard-chip-status)`):
@@ -7923,8 +7927,9 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   The store stays out of `desk-workboard.tsx` so `plugins/navigation.ts` can import it without a
   cycle through the plugin registry. In the chip, render `DeskWorkboardChipIcon` before the label.
 - **Tests:** `packages/app/src/task-navigation/desk-workboard.test.ts` (open resolution, status
-  rule: running, review, needs you, both, none), `desk-workboard-navigation.test.ts` (Command
-  Center, screen with a tab, panel, Desk +, outside Tasks mode), plugin
+  rule: running, review, needs you, both, none; poll interval and failure backoff),
+  `desk-workboard-navigation.test.ts` (Command Center, screen with a tab, panel, no workspace
+  shown yet, Desk +, outside Tasks mode), plugin
   `tests/desk-status.test.ts` (the counts).
 - **Verify:** Needs `paseo plugin reload power-workboard` and an app build and install. In Tasks
   mode: click Power Workboard in the sidebar, in the Command Center, and in a Desk's **+**: each
