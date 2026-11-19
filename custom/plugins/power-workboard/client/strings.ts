@@ -541,6 +541,8 @@ const zh = {
     // CUSTOM(assistant-cards)
     "This card is from an earlier run of the task":
       "这张卡片来自该任务较早的一次运行。",
+    "This task is already closed":
+      "该任务已经结束；要继续，请在看板上重新打开它。",
     "This question was already answered or replaced":
       "这个问题已经回答过，或已被新问题取代。",
     "The task's agent is not waiting for an answer":
@@ -1261,6 +1263,8 @@ const en: typeof zh = {
     // CUSTOM(assistant-cards)
     "This card is from an earlier run of the task":
       "This card is from an earlier run of the task.",
+    "This task is already closed":
+      "This task is already closed. Reopen it on the board to continue it.",
     "This question was already answered or replaced":
       "This question was already answered or replaced.",
     "The task's agent is not waiting for an answer":

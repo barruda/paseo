@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
+  useAgent,
   usePaseo,
   type PluginTimelineItemProps,
 } from "@getpaseo/plugin/client";
@@ -27,6 +28,7 @@ import { Commentable, OutcomeMap, QuestionBlock } from "./card-parts";
 import { reportsStrings, type CardLabels } from "./reports-strings";
 import { MarkdownText, wash } from "./TaskReportCard";
 import { canOpenTaskReport, openTaskReport } from "./nav";
+import { useIsNewestReply } from "./newest-reply"; // CUSTOM(assistant-cards)
 
 type Theme = PluginTimelineItemProps["theme"];
 type Layout = PluginTimelineItemProps["layout"];
@@ -48,6 +50,7 @@ export function AssistantReplyItem({
   theme,
   layout,
   agentId,
+  timestamp,
 }: PluginTimelineItemProps<ReplyItemData>) {
   const text = item.data.text;
   const split = useMemo(() => splitReply(text), [text]);
@@ -60,6 +63,7 @@ export function AssistantReplyItem({
         theme={theme}
         layout={layout}
         agentId={agentId}
+        time={timestamp.getTime()}
       />
     </View>
   );
@@ -149,17 +153,23 @@ function ReplyCard({
   theme,
   layout,
   agentId,
+  time,
 }: {
   split: ReplySplit;
   theme: Theme;
   layout: Layout;
   agentId: string;
+  time: number;
 }) {
   const { reply } = split;
   const paseo = usePaseo();
   const labels = reportsStrings(usePaseoLocale()).card;
   // CUSTOM(assistant-cards): one-tap answers and item comments go to the chat as a message; a
-  // failure shows on the card.
+  // failure shows on the card. Only the newest reply takes them, and not while the chat is
+  // working (an answer was just sent), so an old answer is not sent again after a reload.
+  const newest = useIsNewestReply(agentId, time);
+  const running = useAgent(agentId, (agent) => agent.status === "running");
+  const live = newest && running !== true;
   const say = (text: string) => paseo.agents.ref(agentId).send(text);
   const c = theme.colors;
   const details = replyDetails(split);
@@ -201,7 +211,9 @@ function ReplyCard({
           line={line}
           theme={theme}
           labels={labels}
-          onFeedback={(text) => say(itemFeedback(line.text, text))}
+          onFeedback={
+            live ? (text) => say(itemFeedback(line.text, text)) : undefined
+          }
         />
       ))}
       <OutcomeMap
@@ -212,7 +224,9 @@ function ReplyCard({
         }))}
         theme={theme}
         labels={labels}
-        onFeedback={(item, text) => say(itemFeedback(item, text))}
+        onFeedback={
+          live ? (item, text) => say(itemFeedback(item, text)) : undefined
+        }
       />
       {reply.warnings.map((line, index) => (
         <IconLine
@@ -266,8 +280,11 @@ function ReplyCard({
           why={reply.question.why}
           theme={theme}
           labels={labels}
-          onPick={(option) =>
-            say(optionAnswer(reply.question?.text ?? "", option))
+          onPick={
+            live
+              ? (option) =>
+                  say(optionAnswer(reply.question?.text ?? "", option))
+              : undefined
           }
         />
       ) : null}

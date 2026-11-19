@@ -84,7 +84,8 @@ Only when the user must decide. `pergunta` is the question; each `opção` is `<
 optional `ganha: <what it gains>` and `custa: <what it costs>` fields, in any order. The id is one
 word. `recomendo: <id> | <why>` names one of the options. The card draws each option as a button:
 one tap sends `Resposta a "<pergunta>": escolho <id> (<label>).` to the chat. Typing an answer
-still works.
+still works. Only the chat's newest card takes taps and comments, and not while the chat is
+working, so an old answer is not sent again after a reload.
 
 ### `aviso` and `bloqueio`
 
@@ -175,8 +176,10 @@ optional fields. A malformed one falls back to empty, so it never costs the repo
 
 The report card in the agent's chat and in the board's Reports tab draw them like the chat card.
 One tap on an option, or a comment on an outcome or a checklist step, continues the task with it
-as its feedback, like Continue task (action `answer`, which checks that the task still asks that
-question). The board's Ready to review card shows the same options as buttons. Reports from
+as its feedback, like Continue task (action `answer`). The action refuses a card from an older
+agent of the task, a question the task no longer asks, a task in a Done column or whose delivery
+was delivered or dismissed, and a task with a delivery step running; the card shows why. The
+question is the one the last report asked, kept with the assistant on or off. The board's Ready to review card shows the same options as buttons. Reports from
 before these fields draw as before.
 
 ## Who did it: `by`

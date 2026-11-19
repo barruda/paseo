@@ -8206,8 +8206,12 @@ custa:`) and `recomendo` (`id | why`); v1 blocks parse as before. The task `<rep
   item. The chat card sends a tap or a comment to the chat as a message
   (`shared/card-answers.ts` builds the text). The report card in the agent's chat and in Reports
   (newest report only) send it through a new `answer` action: the board task whose agent it is
-  continues with it like Continue task, after checking the task still asks that question; an agent
-  outside the board gets a message. The Ready to review card shows the options as buttons from the
+  continues with it like Continue task; an agent outside the board gets a message. The action
+  refuses a card from an older agent of the task, a question the task no longer asks, a closed
+  task (Done column, delivery delivered or dismissed) and a running delivery step, and never moves
+  those. The current question is the orchestration's `ask`, written on every finish with the
+  assistant on or off. In the chat, only the newest card takes taps and comments, and not while
+  the chat works (`client/assistant/newest-reply.ts`). The Ready to review card shows the options as buttons from the
   orchestration's new `ask` field. Every history event records `by` (`user`, `assistant`,
   `orchestrator`; the chat's tools pass `assistant` to `mutate` and `assistantAction`, the
   feedback's author rides on the orchestration's `feedbackBy`), and Reports keeps the user's own
@@ -8219,12 +8223,14 @@ custa:`) and `recomendo` (`id | why`); v1 blocks parse as before. The task `<rep
   `shared/reply-protocol.ts`, `shared/task-report.ts`, `shared/assistant-reports.ts`,
   `shared/card-answers.ts` (new), `server/workboard.ts`, `server/assistant/chat.ts`,
   `server/assistant/history.ts`, `server/assistant/reports.ts`, `server/orchestrator.ts`,
-  `client/assistant/card-parts.tsx` (new), `client/assistant/AssistantReplyCard.tsx`,
+  `client/assistant/card-parts.tsx` (new), `client/assistant/newest-reply.ts` (new),
+  `client/assistant/AssistantReplyCard.tsx`,
   `client/assistant/TaskReportCard.tsx` (`wash` moved to card-parts, re-exported),
   `client/assistant/reports-timeline.tsx`, `client/assistant/reports-strings.ts`,
   `client/WorkboardScreen.tsx` (`ReviewPrompt`), `client/strings.ts`,
   `docs/assistant-reply-protocol.md`, `README.md`, tests (`reply-protocol`, `task-report`,
-  `assistant-report`, `assistant-reports`, `assistant-engine`, `assistant-views`).
+  `assistant-report`, `assistant-reports`, `assistant-engine`, `assistant-views`,
+  `newest-reply`).
 - **Re-apply:** Plugin-only. Grep `CUSTOM(assistant-cards)` and `COMPAT(history-by)`. Change the
   doc and `shared/reply-protocol.ts` together and bump the version; the test compares keys, verbs,
   next values and evidence values. Keep new report fields lenient (`.catch` / `lenientList`): the

@@ -2619,3 +2619,150 @@ it("an answer to an agent outside the board is sent to it as a message", async (
     s.board.dispose();
   }
 });
+
+it("answer refuses a card from an older agent, during a delivery step, and on a closed task", async () => {
+  const question = "Which database?";
+  const asking = () =>
+    report({
+      status: "needs_input",
+      question,
+      options: [{ id: "a", label: "Postgres" }],
+    });
+  const answer = (s: { agent: { id: string } }, agentId?: string) => ({
+    type: "answer" as const,
+    agentId: agentId ?? s.agent.id,
+    text: "More tests",
+    question: null,
+  });
+
+  // An agent from an earlier run of the task.
+  const s = await scenario();
+  try {
+    s.reply(asking());
+    await s.finishTurn();
+    await s.store.update((data) => {
+      data.assistant.attempts[s.taskId][0].agentId = "old-agent";
+    });
+    await expect(
+      s.board.assistantAction(answer(s, "old-agent")),
+    ).rejects.toThrow("This card is from an earlier run of the task");
+    expect(s.host.sendAgent).not.toHaveBeenCalledWith(
+      "old-agent",
+      expect.anything(),
+    );
+    // A delivery step running for the task.
+    (s.board as unknown as { delivering: Set<string> }).delivering.add(
+      s.taskId,
+    );
+    await expect(s.board.assistantAction(answer(s))).rejects.toThrow(
+      "A delivery step is already running for this task",
+    );
+    expect(s.stage()).toBe("review");
+  } finally {
+    s.board.dispose();
+  }
+
+  // Marked Done: neither a comment nor the old question's option reopens it.
+  const done = await scenario();
+  try {
+    done.reply(asking());
+    await done.finishTurn();
+    await done.board.assistantAction({
+      type: "mark-done",
+      taskId: done.taskId,
+    });
+    for (const input of [
+      answer(done),
+      { ...answer(done), text: "Escolho a", question },
+    ])
+      await expect(done.board.assistantAction(input)).rejects.toThrow(
+        "This task is already closed",
+      );
+    expect(done.stage()).toBe("done");
+    expect(done.delivery()).toMatchObject({ stage: "delivered" });
+    expect(done.attempts()).toHaveLength(1);
+  } finally {
+    done.board.dispose();
+  }
+
+  // Dismissed: the task stays in review and the delivery stays dismissed.
+  const dismissed = await scenario();
+  try {
+    dismissed.reply(asking());
+    await dismissed.finishTurn();
+    await dismissed.board.assistantAction({
+      type: "dismiss",
+      taskId: dismissed.taskId,
+    });
+    await expect(
+      dismissed.board.assistantAction(answer(dismissed)),
+    ).rejects.toThrow("This task is already closed");
+    expect(dismissed.stage()).toBe("review");
+    expect(dismissed.delivery()).toMatchObject({ stage: "dismissed" });
+  } finally {
+    dismissed.board.dispose();
+  }
+});
+
+it("with the assistant off, the report's question is kept for the answer check and replaces an old one", async () => {
+  const s = await scenario({ settings: { enabled: false } });
+  try {
+    await s.store.update((data) => {
+      data.orchestrations[s.taskId].ask = {
+        question: "Stale?",
+        options: [{ id: "x", label: "Old", gains: null, costs: null }],
+        recommend: null,
+        why: null,
+      };
+    });
+    s.reply(
+      report({
+        status: "needs_input",
+        question: "Which database?",
+        options: [{ id: "a", label: "Postgres" }],
+      }),
+    );
+    await s.finishTurn();
+    const record = () => s.store.current.orchestrations[s.taskId];
+    expect(record().ask?.question).toBe("Which database?");
+    await expect(
+      s.board.assistantAction({
+        type: "answer",
+        agentId: s.agent.id,
+        text: "Escolho x",
+        question: "Stale?",
+      }),
+    ).rejects.toThrow("This question was already answered or replaced");
+    await s.board.assistantAction({
+      type: "answer",
+      agentId: s.agent.id,
+      text: "Escolho a",
+      question: "Which database?",
+    });
+    expect(record().ask).toBeNull();
+    expect((s.host.sendAgent as any).mock.calls.at(-1)[1]).toContain(
+      "Escolho a",
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a finish without a question clears the old one with the assistant off", async () => {
+  const s = await scenario({ settings: { enabled: false } });
+  try {
+    await s.store.update((data) => {
+      data.orchestrations[s.taskId].ask = {
+        question: "Stale?",
+        options: [{ id: "x", label: "Old", gains: null, costs: null }],
+        recommend: null,
+        why: null,
+      };
+    });
+    s.reply(report());
+    await s.finishTurn();
+    expect(s.store.current.orchestrations[s.taskId].ask).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});

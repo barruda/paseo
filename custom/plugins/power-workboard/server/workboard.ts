@@ -313,6 +313,21 @@ function projectChangeRequest(workspace?: Workspace): Card["changeRequest"] {
 }
 
 /** One writer per plugin process. UI windows never own timers or archive operations. */
+/**
+ * CUSTOM(assistant-cards): a report's question with its options, for the Ready to review card's
+ * one-tap answers and the `answer` check. Null when the report asks nothing with options.
+ */
+function askOf(report: Report | null): Orchestration["ask"] {
+  return report?.question && report.options.length
+    ? {
+        question: report.question,
+        options: report.options,
+        recommend: report.recommend,
+        why: report.why,
+      }
+    : null;
+}
+
 export class Workboard {
   private inventory: Inventory = { workspaces: [], agents: [], projects: [] };
   private queue: Promise<unknown> = Promise.resolve();
@@ -2605,16 +2620,7 @@ export class Workboard {
     const parsed = reply ? parseReport(reply) : { report: null, text: "" };
     const report = parsed.report;
     const summary = parsed.text || report?.summary || "";
-    // CUSTOM(assistant-cards): the question and its options, for the review card's one-tap answers.
-    const ask =
-      report?.question && report.options.length
-        ? {
-            question: report.question,
-            options: report.options,
-            recommend: report.recommend,
-            why: report.why,
-          }
-        : null;
+    const ask = askOf(report); // CUSTOM(assistant-cards)
     if (summary || ask || record.ask)
       await this.setOrchestration(taskId, {
         ...(summary ? { summary } : {}),
@@ -3693,14 +3699,22 @@ export class Workboard {
     // An older agent of the task, or a question the task no longer asks: the card is stale.
     if (record?.agentId !== input.agentId)
       throw new Error("This card is from an earlier run of the task");
-    if (input.question !== null) {
-      const delivery = data.assistant.deliveries[taskId];
-      const current = delivery
-        ? (delivery.report?.question ?? null)
-        : (record.ask?.question ?? input.question);
-      if (current !== input.question)
-        throw new Error("This question was already answered or replaced");
-    }
+    // A finished task is not reopened from a card: the user does that on the board.
+    const delivery = data.assistant.deliveries[taskId];
+    const card = this.snapshot().cards.find((c) => c.id === taskId);
+    if (
+      (card && groupKind(card.stage, data.settings.groups) === "done") ||
+      delivery?.stage === "delivered" ||
+      delivery?.stage === "dismissed"
+    )
+      throw new Error("This task is already closed");
+    // `ask` is written on every finish, with the assistant on or off, so it is the current question.
+    if (
+      input.question !== null &&
+      (record.ask?.question ?? delivery?.report?.question ?? null) !==
+        input.question
+    )
+      throw new Error("This question was already answered or replaced");
     if (record.status !== "finished")
       throw new Error("The task's agent is not waiting for an answer");
     if (this.delivering.has(taskId))
@@ -4287,7 +4301,12 @@ export class Workboard {
         // Settled by usageLimitReached; the card goes to review below.
       } else if (this.assistantOn())
         launch = await this.assistantFinished(taskId, record, summary);
-      else if (summary) await this.setOrchestration(taskId, { summary });
+      // CUSTOM(assistant-cards): the report's question too, replacing any older one.
+      else
+        await this.setOrchestration(taskId, {
+          ...(summary ? { summary } : {}),
+          ask: askOf(summary ? parseReport(summary).report : null),
+        });
       // CUSTOM(task-checkpoints): the task stays in progress and resumes later.
       if (this.store.current.orchestrations[taskId]?.checkpoint) continue;
       await this.log(
