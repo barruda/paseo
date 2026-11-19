@@ -1,6 +1,8 @@
 // CUSTOM(desk-workboard): the Power Workboard plugin's surfaces as fixed tabs beside the Desks. Shown
 // by default; closing one moves it into the + menu until it is reopened. Each is the plugin's own
 // screen, rendered here instead of on its route so the Desk header stays.
+// CUSTOM(workboard-inner-pages): only Power Workboard is a chip; the Projects Assistant pages are
+// tabs inside it. This store remembers its inner tab and passes it back as `params.tab`.
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Text, View } from "react-native";
@@ -29,6 +31,7 @@ import {
   deskSurfacesStorageSchema,
   isDeskSurfaceOpen,
   migrateDeskSurfaces,
+  resolveDeskSurfaceTarget,
   type DeskSurfaceDefinition,
 } from "./desk-workboard-model";
 
@@ -40,16 +43,22 @@ interface DeskWorkboardState {
   open: Record<string, boolean>;
   /** The surface showing instead of the Desk's tabs. */
   selected: string | null;
+  /** Power Workboard's inner tab; the board reports it on every change. */
+  tab: string | null;
   select(id: string): void;
   deselect(): void;
   close(id: string): void;
   reopen(id: string): void;
+  /** Reopens and selects a chip; an inner page's id selects Power Workboard on that tab. */
+  openSurface(id: string): void;
+  setTab(tab: string): void;
 }
 export const useDeskWorkboardStore = create<DeskWorkboardState>()(
   persist(
     (set) => ({
       open: {},
       selected: null,
+      tab: null,
       select: (id) => set((state) => ({ open: { ...state.open, [id]: true }, selected: id })),
       deselect: () => set((state) => (state.selected ? { selected: null } : state)),
       close: (id) =>
@@ -58,13 +67,22 @@ export const useDeskWorkboardStore = create<DeskWorkboardState>()(
           selected: state.selected === id ? null : state.selected,
         })),
       reopen: (id) => set((state) => ({ open: { ...state.open, [id]: true }, selected: id })),
+      openSurface: (id) => {
+        const target = resolveDeskSurfaceTarget(id);
+        set((state) => ({
+          open: { ...state.open, [target.surfaceId]: true },
+          selected: target.surfaceId,
+          tab: target.tab ?? state.tab,
+        }));
+      },
+      setTab: (tab) => set((state) => (state.tab === tab ? state : { tab })),
     }),
     {
       name: "custom-desk-workboard",
-      version: 2,
+      version: 3,
       migrate: (persisted) => migrateDeskSurfaces(persisted),
       storage: createValidatedPersistStorage(AsyncStorage, deskSurfacesStorageSchema),
-      partialize: (state) => ({ open: state.open, selected: state.selected }),
+      partialize: (state) => ({ open: state.open, selected: state.selected, tab: state.tab }),
     },
   ),
 );
@@ -175,14 +193,17 @@ function Board({
         hostNavigation.openAgent(input);
         useDeskWorkboardStore.getState().deselect();
       },
-      openDeskSurface: (id: string) => useDeskWorkboardStore.getState().reopen(id),
+      openDeskSurface: (id: string) => useDeskWorkboardStore.getState().openSurface(id),
+      // CUSTOM(workboard-inner-pages): the board reports its inner tab, so it comes back on it.
+      setDeskWorkboardTab: (tab: string) => useDeskWorkboardStore.getState().setTab(tab),
     }),
     [hostNavigation],
   );
+  const tab = useDeskWorkboardStore((s) => s.tab);
   const label = hosts.find((host) => host.serverId === plugin.serverId)?.label ?? plugin.serverId;
   const host = useMemo(() => ({ id: plugin.serverId, label }), [label, plugin.serverId]);
   const layout = useMemo(() => ({ compact, platform: resolvePluginPlatform() }), [compact]);
-  const params = useMemo(() => ({}), []);
+  const params = useMemo((): Record<string, string> => (tab ? { tab } : {}), [tab]);
   return (
     <PluginInstallationProvider plugin={plugin}>
       <Surface

@@ -28,7 +28,12 @@ import {
   ProfileSkillsMemory,
   useProfileContent,
 } from "./Profiles";
-import { usePaseoLanguage } from "./paseo-language";
+import { usePaseoLanguage, usePaseoLocale } from "./paseo-language";
+// CUSTOM(workboard-inner-pages)
+import {
+  WORKBOARD_PAGES,
+  workboardPageLabels,
+} from "./assistant/workboard-pages";
 import { profileStrings } from "./profiles-strings";
 import { ASSISTANT_PROFILE, type SkillSelection } from "../shared/profiles";
 
@@ -1552,7 +1557,10 @@ function AgentLink({
   );
 }
 
-/** Board | Orchestrators | one tab per opened orchestrator. */
+/**
+ * Board | Orchestrators | Assistant | Dashboard | Conversations | Reports | one tab per opened
+ * orchestrator. CUSTOM(workboard-inner-pages): the four Projects Assistant pages.
+ */
 export function WorkboardTabs({
   board,
   t,
@@ -1561,7 +1569,6 @@ export function WorkboardTabs({
   open,
   onSelect,
   onClose,
-  trailing,
 }: {
   board: Board;
   t: Strings;
@@ -1570,10 +1577,9 @@ export function WorkboardTabs({
   open: string[];
   onSelect(tab: string): void;
   onClose(id: string): void;
-  /** Shown after the tabs, at the end of the bar. CUSTOM(board-desk-links) */
-  trailing?: ReactNode;
 }) {
   const language = usePaseoLanguage(); // CUSTOM(agent-profiles)
+  const pageLabels = workboardPageLabels(usePaseoLocale()); // CUSTOM(workboard-inner-pages)
   const active = Object.values(board.orchestratorStatus).filter(
     (status) => status.active,
   ).length;
@@ -1587,6 +1593,13 @@ export function WorkboardTabs({
       icon: "Bot",
       closable: false,
     },
+    // CUSTOM(workboard-inner-pages)
+    ...WORKBOARD_PAGES.map((page) => ({
+      id: page.tab,
+      label: pageLabels[page.tab],
+      icon: page.icon,
+      closable: false,
+    })),
     ...open.map((id) => ({
       id,
       label:
@@ -1614,6 +1627,7 @@ export function WorkboardTabs({
           >
             <Pressable
               accessibilityRole="tab"
+              testID={`workboard-tab-${item.id}`}
               {...toggleButtonState(selected)}
               onPress={() => onSelect(item.id)}
               style={styles.inline}
@@ -1650,7 +1664,6 @@ export function WorkboardTabs({
           </View>
         );
       })}
-      {trailing}
     </View>
   );
 }

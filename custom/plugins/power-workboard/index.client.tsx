@@ -8,8 +8,6 @@ import { queryClient } from "./client/query-client";
 import { WorkboardScreen } from "./client/WorkboardScreen";
 import { writeTicketRpc } from "./shared/rpc";
 // CUSTOM(projects-assistant)
-import { ChatLauncher } from "./client/assistant/ChatLauncher";
-import { ConversationsScreen } from "./client/assistant/ConversationsScreen";
 import {
   ASSISTANT_CHAT_LABEL,
   contributeRestartChatPill,
@@ -19,14 +17,6 @@ import {
   QuickStatusItem,
 } from "./client/assistant/QuickStatus"; // CUSTOM(assistant-quick)
 import { assistantAskRpc } from "./shared/assistant-rpc";
-import { DashboardScreen } from "./client/assistant/DashboardScreen";
-import { ReportsScreen } from "./client/assistant/ReportsScreen"; // CUSTOM(assistant-reports)
-import {
-  CHAT_SURFACE_ID,
-  CONVERSATIONS_SURFACE_ID,
-  DASHBOARD_SURFACE_ID,
-  REPORTS_SURFACE_ID, // CUSTOM(assistant-reports)
-} from "./client/assistant/nav";
 // CUSTOM(report-card)
 import {
   TaskReportCard,
@@ -59,48 +49,11 @@ const SettingsSurface = (props: Parameters<typeof WorkboardScreen>[0]) => (
   </QueryClientProvider>
 );
 
-// CUSTOM(projects-assistant): Tasks mode only. The Desk header opens these as chips
-// (packages/app/src/task-navigation/desk-workboard.tsx); they have no sidebar item or tab.
-const DashboardSurface = (props: Parameters<typeof DashboardScreen>[0]) => (
-  <QueryClientProvider client={queryClient}>
-    <DashboardScreen {...props} />
-  </QueryClientProvider>
-);
-const ConversationsSurface = (
-  props: Parameters<typeof ConversationsScreen>[0],
-) => (
-  <QueryClientProvider client={queryClient}>
-    <ConversationsScreen {...props} />
-  </QueryClientProvider>
-);
-
-// CUSTOM(assistant-reports)
-const ReportsSurface = (props: Parameters<typeof ReportsScreen>[0]) => (
-  <QueryClientProvider client={queryClient}>
-    <ReportsScreen {...props} />
-  </QueryClientProvider>
-);
-
-const ChatSurface = (props: Parameters<typeof ChatLauncher>[0]) => (
-  <QueryClientProvider client={queryClient}>
-    <ChatLauncher {...props} />
-  </QueryClientProvider>
-);
+// CUSTOM(workboard-inner-pages): the Projects Assistant chat, dashboard, conversations and reports
+// are tabs inside WorkboardScreen, not surfaces of their own (they were Desk chips before).
 
 export default function contribute(client: PluginClientContext) {
   const removeSurface = client.addSurface("power-workboard", Surface);
-  // CUSTOM(projects-assistant)
-  const removeDashboard = client.addSurface(
-    DASHBOARD_SURFACE_ID,
-    DashboardSurface,
-  );
-  const removeConversations = client.addSurface(
-    CONVERSATIONS_SURFACE_ID,
-    ConversationsSurface,
-  );
-  // CUSTOM(assistant-reports)
-  const removeReports = client.addSurface(REPORTS_SURFACE_ID, ReportsSurface);
-  const removeChat = client.addSurface(CHAT_SURFACE_ID, ChatSurface);
   const removeRestartPill = contributeRestartChatPill(client); // CUSTOM(assistant-restart-pill)
   const removeSidebar = client.addSidebarItem({
     id: "power-workboard",
@@ -140,13 +93,25 @@ export default function contribute(client: PluginClientContext) {
     onSelect: (context) => context.openSurface("power-workboard"),
   });
   // CUSTOM(assistant-reports): Projects Reports from anywhere, as a full page.
+  // CUSTOM(workboard-inner-pages): the Power Workboard page on its Reports tab. The pinned plugin
+  // types predate `openScreen` with params, hence the cast.
   const removeReportsCommand = client.addCommandCenterItem({
     id: "projects-reports-open",
     title: "Projects Reports",
     icon: "FileText",
     keywords: ["projects", "reports", "assistant", "timeline", "tickets"],
     context: "global",
-    onSelect: (context) => context.openSurface(REPORTS_SURFACE_ID),
+    onSelect: (context) => {
+      const { openScreen } = context as {
+        openScreen?(input: {
+          screenId: string;
+          params?: Record<string, string>;
+        }): void;
+      };
+      if (openScreen)
+        openScreen({ screenId: "power-workboard", params: { tab: "reports" } });
+      else context.openSurface("power-workboard");
+    },
   });
   const removeWriteTicket = client.addSlashCommand({
     name: "write-ticket",
@@ -241,10 +206,6 @@ export default function contribute(client: PluginClientContext) {
     removeSettings();
     removeSidebar();
     removeRestartPill(); // CUSTOM(assistant-restart-pill)
-    removeChat();
-    removeReports(); // CUSTOM(assistant-reports)
-    removeConversations();
-    removeDashboard();
     removeSurface();
   };
 }

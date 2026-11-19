@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ComponentProps,
@@ -87,7 +88,16 @@ import { HintButton, HintProvider } from "./Hint";
 import { usePaseoLanguage } from "./paseo-language";
 import { AssistantProfileTab } from "./Profiles"; // CUSTOM(agent-profiles)
 import { ConfirmationModal } from "./ConfirmationModal";
-import { DeskLinks } from "./assistant/DeskLinks"; // CUSTOM(board-desk-links)
+// CUSTOM(workboard-inner-pages): the Projects Assistant pages, as tabs of the board.
+import { ChatLauncher } from "./assistant/ChatLauncher";
+import { ConversationsScreen } from "./assistant/ConversationsScreen";
+import { DashboardScreen } from "./assistant/DashboardScreen";
+import { ReportsScreen } from "./assistant/ReportsScreen";
+import {
+  reportTab,
+  requestedTab,
+  withPageNavigation,
+} from "./assistant/workboard-pages";
 // CUSTOM(workboard-images)
 import { DescriptionImages } from "./DescriptionImages";
 import {
@@ -150,8 +160,29 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const cache = useQueryClient();
   const toast = useToast();
   const [page, setPage] = useState<Page>(props.initialPage ?? "board");
-  // "board", "orchestrators", or the id of an orchestrator opened in its own tab.
-  const [tab, setTab] = useState("board");
+  // CUSTOM(workboard-inner-pages): the tab the host asks for (the Desk remembers the last one).
+  // The pinned plugin types have no `params`, hence the cast.
+  const requested = requestedTab((props as { params?: unknown }).params);
+  // "board", "orchestrators", a Projects Assistant page, or the id of an orchestrator opened in
+  // its own tab.
+  const [tab, setTab] = useState(requested ?? "board");
+  // CUSTOM(workboard-inner-pages): the assistant chat tab opens the chat and returns here.
+  const returnTab = useRef("board");
+  const selectTab = useCallback((next: string) => {
+    setPage("board");
+    setTab(next);
+  }, []);
+  useEffect(() => {
+    if (requested) selectTab(requested);
+  }, [requested, selectTab]);
+  useEffect(() => {
+    if (tab !== "assistant-chat") returnTab.current = tab;
+    reportTab(props.navigation, tab);
+  }, [props.navigation, tab]);
+  const pageNavigation = useMemo(
+    () => withPageNavigation(props.navigation, selectTab),
+    [props.navigation, selectTab],
+  );
   const [openOrchestrators, setOpenOrchestrators] = useState<string[]>([]);
   const [filters, setFilters] = useState(() => loadBoardFilters(props.host.id));
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -358,6 +389,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const closeOrchestrator = (id: string) => {
     setOpenOrchestrators((open) => open.filter((item) => item !== id));
     if (tab === id) setTab("orchestrators");
+    if (returnTab.current === id) returnTab.current = "orchestrators";
   };
   const shutdownAt = board.nightRuntime.shutdownAt;
   const tabs = (
@@ -381,15 +413,8 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             id === ASSISTANT_TAB ||
             board.orchestrators.some((o) => o.id === id),
         )}
-        onSelect={setTab}
+        onSelect={selectTab}
         onClose={closeOrchestrator}
-        trailing={
-          <DeskLinks
-            navigation={props.navigation}
-            theme={props.theme}
-            compact={props.layout.compact}
-          />
-        }
       />
     </>
   );
@@ -426,6 +451,21 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               if (created) openOrchestrator(created.id);
             }}
           />
+        ) : tab === "assistant-chat" ? (
+          // CUSTOM(workboard-inner-pages): the same screens the Desk chips used to show.
+          <ChatLauncher
+            {...props}
+            navigation={pageNavigation}
+            onOpened={() => selectTab(returnTab.current)}
+          />
+        ) : tab === "dashboard" ? (
+          <View style={styles.screen}>
+            <DashboardScreen {...props} navigation={pageNavigation} />
+          </View>
+        ) : tab === "conversations" ? (
+          <ConversationsScreen {...props} navigation={pageNavigation} />
+        ) : tab === "reports" ? (
+          <ReportsScreen {...props} navigation={pageNavigation} />
         ) : tab === ASSISTANT_TAB ? (
           <AssistantProfileTab theme={props.theme} disabled={writesDisabled} /> // CUSTOM(agent-profiles)
         ) : (

@@ -1,6 +1,7 @@
-// CUSTOM(projects-assistant): state shared by the Projects Dashboard and Projects Conversations
-// surfaces. Both come from this plugin's bundle, so a module-level store is enough to hand the
-// selected agent from one page to the other.
+// CUSTOM(projects-assistant): state shared by the Projects Dashboard, Conversations and Reports
+// pages, now tabs of the Power Workboard (CUSTOM(workboard-inner-pages)). They come from this
+// plugin's bundle, so a module-level store is enough to hand the selected agent between them.
+// The surface ids below name the pages; they are no longer surfaces of their own.
 import { useSyncExternalStore } from "react";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 
@@ -36,9 +37,9 @@ export function useConversationSelection(): Selection {
 }
 
 /**
- * The Desk header (packages/app/src/task-navigation/desk-workboard.tsx, CUSTOM(projects-assistant))
- * passes `navigation.openDeskSurface` to the surfaces it shows. It is not in the published plugin
- * types, hence the cast. Returns false when the host has no such navigation.
+ * The Power Workboard gives its pages a `navigation.openDeskSurface` that switches its tab
+ * (`withPageNavigation` in workboard-pages.ts). It is not in the published plugin types, hence the
+ * cast. Returns false when there is no such navigation.
  */
 export function openDeskSurface(
   navigation: PluginSurfaceProps["navigation"],
@@ -72,8 +73,8 @@ let reportRequest: ReportRequest | null = null;
 let reportSeq = 0;
 
 /**
- * Ask Projects Reports to show a ticket. The page may mount only after this (the Desk shows one
- * surface at a time), so the request waits until the page consumes it.
+ * Ask Projects Reports to show a ticket. The page may mount only after this (the board shows one
+ * tab at a time), so the request waits until the page consumes it.
  */
 export function requestReportTask(taskId: string): void {
   reportRequest = { taskId, seq: ++reportSeq };

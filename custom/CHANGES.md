@@ -3065,20 +3065,23 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **Why:** The board, and the Projects Assistant's dashboard and conversations, are where tasks get
   handed out, reviewed and followed; they should be one click away in Tasks mode, next to the
   Desks, without leaving them.
-- **What:** In Tasks mode the header shows one chip per plugin surface that a connected host has
-  (the local daemon's copy first), before the Desk chips, in this order: **Power Workboard**
-  (`sidebar` identity `power-workboard`), **Projects Assistant**, **Projects Dashboard** and
-  **Projects Conversations** (`surface` identities `projects-assistant-chat`,
-  `projects-dashboard`, `projects-conversations`). Clicking a chip shows that surface under the Desk
-  header; at most one is selected, and the Desk stays mounted underneath, hidden, so its tabs
+- **What:** In Tasks mode the header shows one chip per entry of `DESK_SURFACES` that a connected
+  host has (the local daemon's copy first), before the Desk chips. Since
+  [workboard-inner-pages](#workboard-inner-pages-the-projects-assistant-pages-are-tabs-inside-power-workboard)
+  that is only **Power Workboard** (`sidebar` identity `power-workboard`); the Projects Assistant
+  pages are tabs inside it. Clicking a chip shows that surface under the Desk header; at most one
+  is selected, and the Desk stays mounted underneath, hidden, so its tabs
   keep their state. Clicking a Desk chip, switching Desks or opening another tab (a task in the
   sidebar, or a workspace/agent a surface opens) returns to the Desk. Each chip's × or
   right-click > Close removes it; then **+** opens a menu with **New Desk** and every closed
   surface, which brings it back. The rendered surface also gets
-  `navigation.openDeskSurface(surfaceId)` (not in `packages/plugin` types; the plugin reads it
-  with a cast) which opens, re-opens and selects that surface's chip. Open flags per surface and
-  the selected surface are kept in this app's storage (`custom-desk-workboard`, version 2;
-  version 1's `open`/`selected` migrate to Power Workboard, new surfaces start open).
+  `navigation.openDeskSurface(surfaceId)` and `navigation.setDeskWorkboardTab(tab)` (not in
+  `packages/plugin` types; the plugin reads them with a cast): the first opens, re-opens and
+  selects a chip (an old page id selects Power Workboard on that page's tab), the second records
+  the board's inner tab, which comes back as `params.tab`. Open flags, the selected surface and the
+  inner tab are kept in this app's storage (`custom-desk-workboard`, version 3; version 1's
+  `open`/`selected` migrate to Power Workboard, version 2's page chips migrate to Power Workboard
+  on that page's tab).
 - **Files:** `packages/app/src/task-navigation/desk-workboard.tsx` (store, the installation lookup
   per surface, the cover that swaps the surface in, and the surface renderer modeled on
   `plugins/surface-screen.tsx`) and `desk-workboard-model.ts` (the surface list, the persisted
@@ -3092,10 +3095,11 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   New Desk button when some entry is closed. Wrap everything inside the root view up to the
   bottom-panel expand button in `DeskWorkboardCover` with `surface` set to the selected entry. If
   upstream changes how plugin screens render, follow `SurfaceRenderer` in
-  `plugins/surface-screen.tsx`. To add a surface, add it to `DESK_SURFACES`.
+  `plugins/surface-screen.tsx`. To add a surface, add it to `DESK_SURFACES`; a page that belongs
+  inside the board goes to `WORKBOARD_INNER_PAGES` instead.
 - **Verify:** Typecheck, lint, `vitest run src/task-navigation/desk-workboard.test.ts`. In Tasks
-  mode with the plugin installed: the chips show and open their surfaces; clicking a task in the
-  sidebar returns to the Desk; × hides a chip and + > its name brings it back.
+  mode with the plugin installed: the Power Workboard chip shows and opens the board; clicking a
+  task in the sidebar returns to the Desk; × hides the chip and + > its name brings it back.
 
 ## task-summary-hover: hovering a Tasks sidebar row shows the agent's status summary
 
@@ -6536,7 +6540,7 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   - **Attempts and history:** each start, feedback continuation and auto-fix is an attempt
     (`data.assistant.attempts`). Events go to `<PASEO_HOME>/plugin-data/power-workboard/history/`
     (one JSONL per day, 90 days).
-  - **Projects Dashboard** (surface `projects-dashboard`): Needs you first (Merge now, Continue
+  - **Projects Dashboard** (the Dashboard tab of Power Workboard): Needs you first (Merge now, Continue
     with feedback, Mark done, Dismiss, Open conversation), running now, numbers and per-day /
     per-project / per-orchestrator bars for 7/14/30 days, filterable history. No badge.
   - **Told in the chat** (`assistant.settings.chat.wakeOnNeedsYou`, default on, a switch in the
@@ -6552,7 +6556,7 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     entry to Needs you): on start and on each refresh the board puts back every Needs you task
     without it, so a `plugin reload` or daemon restart does not drop the message, and a task
     already told is not told again. A failed send also goes back on the next refresh.
-  - **Projects Conversations** (surface `projects-conversations`): orchestrator > task > the
+  - **Projects Conversations** (the Conversations tab): orchestrator > task > the
     agents it started (never their subagents), the selected agent's conversation read through the
     timeline API (plugins cannot embed the real chat), report card, attempts, the orchestrator's
     log for the task, a composer and quick actions; Open in Desk opens the real chat.
@@ -6576,13 +6580,12 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     assistant reviews a task without guessing paths. The base is the project's `baseBranch` policy,
     else the `baseRef` the daemon stored in `<git dir>/paseo/worktree.json`, the same order
     `checkout_merge` uses. The git calls run with `GIT_OPTIONAL_LOCKS=0` and never stage (no
-    `add -N`), so a review never touches the worktree or its index. Its chip calls an RPC and then
-    `navigation.openAgent`, which opens the agent as a Desk tab and returns from the chip to the
+    `add -N`), so a review never touches the worktree or its index. Its Assistant tab calls an RPC and then
+    `navigation.openAgent`, which opens the agent as a Desk tab and leaves the board for the
     Desk (the Desk's navigation wrapper deselects the chip even if that tab was already active).
-  - **Tasks mode only:** the pages are chips in the Desk header next to Power Workboard (see
-    [desk-workboard](#desk-workboard-the-power-workboard-plugins-surfaces-as-tabs-beside-the-desks)); no sidebar item
-    or workspace tab. The Desk passes `navigation.openDeskSurface(id)` so the dashboard can jump
-    to a conversation.
+  - **Where:** the pages are tabs inside Power Workboard (see
+    [workboard-inner-pages](#workboard-inner-pages-the-projects-assistant-pages-are-tabs-inside-power-workboard));
+    they were Desk chips until 2026-11-19.
 - **Files:** plugin `custom/plugins/power-workboard/`: contract `shared/assistant.ts` and
   `shared/assistant-rpc.ts` (`workboard.assistant.*` RPCs), engine in `server/workboard.ts`
   (`assistantFinished`, `advance`, actions) with `server/assistant/{report,delivery}.ts`, read side
@@ -6601,9 +6604,9 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run)` and
   `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts src/screens/settings/bruno-customizations/projects-assistant-model.test.ts --bail=1)`
   (both in the update script). In the app: Settings > Bruno's Customizations > Projects Assistant
-  lists the board's projects and keeps a saved rule after reload; in Tasks mode the Desk header
-  shows Power Workboard, Projects Assistant, Projects Dashboard and Projects Conversations chips; a task finished by an
-  orchestrator shows in Needs you with its report.
+  lists the board's projects and keeps a saved rule after reload; the Power Workboard tab bar
+  has Assistant, Dashboard and Conversations; a task finished by an orchestrator shows in Needs
+  you with its report.
 
 ## board-turn-end: a turn that waits on a background subagent is not the end
 
@@ -7174,15 +7177,15 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     side too (`orchestrator`: the continue's prompt, the report's reply and `<report>`).
     `DayJsonlStore` caches each parsed day file by mtime and size, and `since()` takes a filter, so
     the ticket RPC reads only that ticket's records.
-  - **Page:** surface `projects-reports` (`client/assistant/ReportsScreen.tsx`, `reports-timeline.tsx`,
+  - **Page:** the Reports tab of Power Workboard (`client/assistant/ReportsScreen.tsx`, `reports-timeline.tsx`,
     `reports-format.ts`, `reports-strings.ts`) over RPCs `workboard.assistant.reports.tasks` and
     `workboard.assistant.reports.task`. Sidebar of tickets (search, project chips), header with what
     was asked, one collapsed toggle per action, an inner toggle for the agent interaction with an
     Open conversation link. Compact layouts show the list, then the ticket. Folded events show
     their detail and their own interaction toggle. Other ways in: a global Command Center item
-    "Projects Reports" (opens the surface as a full page), "Open report" on a Dashboard Needs you
-    card and "Report" in a Conversations thread header (both through `showReport` in
-    `client/assistant/nav.ts`, which opens the Desk chip at that ticket).
+    "Projects Reports" (opens the Power Workboard page on its Reports tab), "Open report" on a
+    Dashboard Needs you card and "Report" in a Conversations thread header (both through
+    `showReport` in `client/assistant/nav.ts`, which switches the board to Reports at that ticket).
     A row of status chips (one per board column, name and color from the board settings, sent by
     the tasks RPC as `columns`) filters the list with the project chips and the search. Backlog
     (the `todo` kind) starts off; the viewer's choice is saved in `localStorage`
@@ -7193,16 +7196,17 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     apart (the rest of the plugin still maps it to en).
   - **Instructions:** `ASSISTANT_ROLE` (the profile seed), `CHAT_INSTRUCTIONS` and the tool
     description ask for one `board_report` per action and the summary reused as the chat reply.
-- **Core files touched:** `packages/app/src/task-navigation/desk-workboard-model.ts` (the
-  "Projects Reports" chip in `DESK_SURFACES`), marked `CUSTOM(assistant-reports)`.
-- **Re-apply:** plugin-only, plus one `DESK_SURFACES` entry `{ id: "projects-reports", kind: "surface" }`.
+- **Core files touched:** none since
+  [workboard-inner-pages](#workboard-inner-pages-the-projects-assistant-pages-are-tabs-inside-power-workboard)
+  (the "Projects Reports" Desk chip became a tab of the board).
+- **Re-apply:** plugin-only.
   An existing assistant profile keeps its own `system-prompt.md`; add the `board_report` paragraph
   of `ASSISTANT_ROLE` to it by hand (Settings > the assistant's profile) if it predates this.
 - **Verify:** the plugin suite (`tests/assistant-reports.test.ts`,
   `tests/assistant-reports-format.test.ts`, `tests/paseo-language.test.ts`) and
   `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts --bail=1)`, both
-  already in the update script. Needs a plugin reload and an app build and install (the chip). In
-  Tasks mode, click "Projects Reports" in the Desk header: tickets the board touched are listed;
+  already in the update script. Needs a plugin reload. In Power Workboard, click the Reports tab:
+  tickets the board touched are listed;
   open one and expand a row; in a row with automatic events, an agent's report shows its own
   "Interaction with the agent" toggle. Backlog tickets are hidden until you turn on the Backlog
   chip, and the chips keep their state after a reload. Command Center: "Projects Reports" opens
@@ -7625,27 +7629,55 @@ tests/task-report.test.ts`. Needs only `paseo plugin reload power-workboard`: th
 
 ## board-desk-links: Dashboard, Conversations and Reports links in the Power Workboard
 
-- **Added:** 2026-11-18
-- **Commit:** `custom: Power Workboard links to Projects Dashboard, Conversations and Reports`
-- **Why:** The three Projects Assistant pages only opened from their Desk tabs; from the board
-  you had to leave it to reach them.
-- **What:** The end of the board's tab bar (Board | Orchestrators | ...) shows three links:
-  Dashboard, Conversations, Reports (pt-BR: Painel, Conversas, Relatórios; the hint names the
-  page). Each calls `openDeskSurface` with its page's id, the same call the Desk's + menu makes:
-  the Desk keeps one tab per page, so a second click selects that tab instead of adding one. In
-  compact layouts the links are icons only and the bar wraps, so there is no horizontal scroll.
-  The links render only where the host passes `navigation.openDeskSurface` (the board as a Desk
-  tab); the workspace-tab and sidebar-route versions of the board have no Desk tabs to open.
-- **Core files touched:** none. Plugin files: `client/assistant/desk-links.ts` (ids, labels,
-  open helper), `client/assistant/DeskLinks.tsx`, `client/Orchestrators.tsx` (`WorkboardTabs`
-  `trailing` slot), `client/WorkboardScreen.tsx`, `tests/board-desk-links.test.ts`.
-- **Re-apply:** Plugin-only. Grep `CUSTOM(board-desk-links)`. Needs the Desk's
-  `openDeskSurface` from `CUSTOM(projects-assistant)` in
-  `packages/app/src/task-navigation/desk-workboard.tsx`.
-- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
-tests/board-desk-links.test.ts`. Needs only `paseo plugin reload power-workboard`: open the
-  Power Workboard tab of the Desk, click Dashboard, Conversations and Reports at the right of
-  the Board | Orchestrators bar; each opens its tab, and clicking again focuses the same tab.
+- **Added:** 2026-11-18. **Replaced** on 2026-11-19 by
+  [workboard-inner-pages](#workboard-inner-pages-the-projects-assistant-pages-are-tabs-inside-power-workboard):
+  the pages are tabs of the board, so the links and their files (`client/assistant/desk-links.ts`,
+  `DeskLinks.tsx`, `tests/board-desk-links.test.ts`) are gone. Nothing to re-apply.
+
+## workboard-inner-pages: the Projects Assistant pages are tabs inside Power Workboard
+
+- **Added:** 2026-11-19
+- **Commit:** `custom: Projects Assistant pages become tabs inside the Power Workboard`
+- **Why:** The Desk header had five plugin chips (Power Workboard, Projects Assistant, Projects
+  Dashboard, Projects Conversations, Projects Reports) beside the Desks. The user wants only Power
+  Workboard there, with the other four in its own tab bar.
+- **What:** The board's tab bar reads Board | Orchestrators | Assistant | Dashboard |
+  Conversations | Reports, then any orchestrator tabs (pt-BR: Assistente, Painel, Conversas,
+  Relatórios). Each tab renders the screen the chip used to show (`ChatLauncher`,
+  `DashboardScreen`, `ConversationsScreen`, `ReportsScreen`), in every host of the board: the Desk
+  chip, the workspace tab from + / "Open Power Workboard tab", and the sidebar route. The four
+  are no longer plugin surfaces.
+  - **Links between pages** (`showReport`, `showConversation` in `client/assistant/nav.ts`) call
+    `navigation.openDeskSurface(<page surface id>)`; the board hands its pages a wrapped navigation
+    (`withPageNavigation` in `client/assistant/workboard-pages.ts`) that switches its own tab
+    instead, so they work in every host.
+  - **Assistant** opens the chat agent like the chip did; once it is open the board goes back to
+    the tab it came from, so returning to Power Workboard does not reopen the chat.
+  - **The Desk remembers the tab:** the board reports Board, Orchestrators, Dashboard,
+    Conversations and Reports through `navigation.setDeskWorkboardTab`, and the Desk passes it back
+    as `params.tab`. The stored state migrates (version 3): a selected page chip becomes Power
+    Workboard on that tab; the page chips' open flags are dropped.
+  - **Command Center** "Projects Reports" opens the Power Workboard page with `params.tab =
+reports` (`openScreen`, cast: the pinned plugin types predate it). The assistant's status bar
+    entries open agents, not pages, so they did not change.
+- **Core files touched:** `packages/app/src/task-navigation/desk-workboard-model.ts`
+  (`DESK_SURFACES` down to Power Workboard, `WORKBOARD_INNER_PAGES`, the version-3 schema and
+  migration, `resolveDeskSurfaceTarget`), `desk-workboard.tsx` (store `tab`, `openSurface`,
+  `setTab`, the two navigation extras, `params`), `desk-workboard.test.ts`; marked
+  `CUSTOM(workboard-inner-pages)`. Plugin: `client/assistant/workboard-pages.ts`,
+  `client/Orchestrators.tsx` (`WorkboardTabs`), `client/WorkboardScreen.tsx`,
+  `client/assistant/ChatLauncher.tsx` (`onOpened`), `client/assistant/nav.ts`, `index.client.tsx`,
+  `tests/workboard-pages.test.ts`.
+- **Re-apply:** In the app, keep only the Power Workboard entry in `DESK_SURFACES`, map the old page
+  ids in `WORKBOARD_INNER_PAGES`, add `tab` to the persisted store with a version bump and pass it
+  to the surface as `params.tab`. In the plugin, grep `CUSTOM(workboard-inner-pages)`.
+- **Verify:** `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts
+--bail=1)` and the plugin suite (`tests/workboard-pages.test.ts`), both in the update script.
+  Needs `paseo plugin reload power-workboard` and an app build and install. In Tasks mode the
+  header shows only Power Workboard beside the Desks; its tab bar has the four pages; Dashboard >
+  "Open report" switches to Reports at that ticket; Assistant opens the chat agent; switch to
+  Reports, leave to a Desk and come back: Reports is still selected. The Power Workboard
+  workspace tab has the same tabs. Command Center > "Projects Reports" opens the board on Reports.
 
 ## task-checkpoints: long Power Workboard tasks save progress and resume on their own
 
