@@ -49,6 +49,7 @@ export type WorkspaceTabTarget =
   | { kind: "changes_tree" }
   | { kind: "files" }
   | { kind: "docs" } // CUSTOM(desk-docs)
+  | { kind: "projects_assistant" } // CUSTOM(assistant-sidebar)
   | { kind: "pull_request" }
   | WorkspaceFileTabTarget
   | WorkspaceWorkingDiffTabTarget

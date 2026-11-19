@@ -1594,9 +1594,8 @@ function ActiveAgentComposer({
   );
   const paneContext = usePaneContext();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
-  const { workspaceId, tabId, retargetCurrentTab } = paneContext;
+  const { workspaceId, closeCurrentTab, retargetCurrentTab } = paneContext;
   const { archiveAgent } = useArchiveAgent();
-  const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
   const unpinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.unpinAgent);
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
@@ -1641,8 +1640,11 @@ function ActiveAgentComposer({
           draftId: generateDraftId(),
           setup: buildDraftAgentSetup(agent),
         });
-      } else if (workspaceKey) {
-        closeWorkspaceTab(workspaceKey, tabId);
+      } else {
+        // CUSTOM(assistant-sidebar): close the tab this panel is in. The panel's workspace can
+        // differ from its tab's (the sidebar's Projects Assistant chat), so closing the store tab
+        // with this workspace key could close another tab.
+        closeCurrentTab();
       }
 
       // CUSTOM(clear-keeps-agent): /clear leaves the old agent as its own idle task.
@@ -1655,11 +1657,10 @@ function ActiveAgentComposer({
     [
       agentId,
       archiveAgent,
-      closeWorkspaceTab,
+      closeCurrentTab,
       hideWorkspaceAgent,
       retargetCurrentTab,
       serverId,
-      tabId,
       unpinWorkspaceAgent,
       workspaceId,
     ],

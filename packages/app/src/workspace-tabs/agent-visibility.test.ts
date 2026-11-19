@@ -211,6 +211,23 @@ describe("workspace agent visibility", () => {
     expect(result.autoOpenAgentIds).toEqual(new Set([plain.id]));
   });
 
+  // CUSTOM(assistant-sidebar)
+  it("never auto-opens the Projects Assistant chat, which lives in the sidebar", () => {
+    const chat = makeAgent({
+      id: "chat",
+      cwd: "/repo",
+      workspaceId: WORKSPACE_ID,
+      labels: { "pwb/assistant-chat": "true" },
+    });
+    const result = deriveWorkspaceAgentVisibility({
+      workspaceId: WORKSPACE_ID,
+      sessionAgents: new Map([[chat.id, chat]]),
+    });
+
+    expect(result.activeAgentIds).toEqual(new Set([chat.id]));
+    expect(result.autoOpenAgentIds).toEqual(new Set());
+  });
+
   it("keeps subagents active while excluding them from auto-open", () => {
     const parent = makeAgent({
       id: "parent-agent",

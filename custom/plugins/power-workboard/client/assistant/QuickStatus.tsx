@@ -44,6 +44,7 @@ import {
   type AssistantAgentEntry,
 } from "./quick-format";
 import { ASSISTANT_CHAT_LABEL } from "./RestartChatPill";
+import { openAssistantChat } from "./nav"; // CUSTOM(assistant-sidebar)
 
 const strings = {
   en: {
@@ -312,7 +313,7 @@ function StatusBarEntries(props: QuickSidebarItemProps) {
           maxLabelWidth={480}
           onPress={
             navigation
-              ? () => navigation.openAgent({ agentId: assistant.id })
+              ? () => openAssistantChat(navigation, assistant.id) // CUSTOM(assistant-sidebar)
               : undefined
           }
         />

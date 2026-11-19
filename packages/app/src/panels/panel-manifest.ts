@@ -167,6 +167,15 @@ const manifests = {
     compactSheet: null,
     resourceKey: () => "docs",
   },
+  // CUSTOM(assistant-sidebar): the Projects Assistant chat, one tab beside Files and Changes.
+  projects_assistant: {
+    kind: "projects_assistant",
+    supportedHosts: ["explorer"],
+    showCloseButton: false,
+    singleton: true,
+    compactSheet: null,
+    resourceKey: () => "projects_assistant",
+  },
   // CUSTOM(history-search-tabs)
   history_search: {
     kind: "history_search",

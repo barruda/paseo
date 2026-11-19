@@ -22,10 +22,8 @@ import { useHasPullRequest } from "@/panels/pull-request";
 import { NewTabLauncherProvider, type NewTabLauncher } from "@/workspace-tabs/launcher";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
-import {
-  selectExplorerSidebarPaneId,
-  useWorkspaceLayoutStore,
-} from "@/stores/workspace-layout-store"; // CUSTOM(desk-docs)
+import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store"; // CUSTOM(desk-docs)
+import { showExplorerSidebar } from "@/workspace-tabs/explorer-sidebar"; // CUSTOM(desk-docs)
 import { activeDesk, deskContextTab, useDesksStore, type DeskTabOwner } from "./desks-store";
 import { isWorkboardPanel, POWER_WORKBOARD_SURFACE_ID } from "./desk-workboard-model"; // CUSTOM(workboard-chip-only)
 import { useDeskWorkboardStore } from "./desk-workboard-store"; // CUSTOM(workboard-chip-only)
@@ -35,10 +33,12 @@ export function launchDeskTarget(
   scope: DeskTabOwner,
   target: WorkspaceTabTarget,
   destination: TerminalTabDestination,
+  isCompact = false,
 ) {
   // CUSTOM(desk-docs): Docs only lives in the workspace's Explorer sidebar, which the Desk docks.
-  if (target.kind === "docs") {
-    openDocsInExplorer(scope, destination);
+  // CUSTOM(assistant-sidebar): so does the Projects Assistant.
+  if (target.kind === "docs" || target.kind === "projects_assistant") {
+    openDocsInExplorer(scope, target, destination, isCompact);
     return;
   }
   const store = useDesksStore.getState();
@@ -60,14 +60,20 @@ export function launchDeskTarget(
   );
 }
 
-/** CUSTOM(desk-docs): puts the Docs tab in the Explorer pane of the scope's workspace. */
-function openDocsInExplorer(scope: DeskTabOwner, destination: TerminalTabDestination) {
+/** CUSTOM(desk-docs): puts the Docs (or Projects Assistant) tab in the scope's Explorer pane. */
+function openDocsInExplorer(
+  scope: DeskTabOwner,
+  target: Extract<WorkspaceTabTarget, { kind: "docs" | "projects_assistant" }>,
+  destination: TerminalTabDestination,
+  isCompact: boolean,
+) {
   const workspaceKey = `${scope.serverId}:${scope.workspaceId}`;
   const layoutStore = useWorkspaceLayoutStore.getState();
-  const paneId = selectExplorerSidebarPaneId(layoutStore, workspaceKey);
+  // A hidden Explorer would take the tab without showing it (Docs did this too), so reveal it.
+  const paneId = showExplorerSidebar({ isCompact, workspaceKey });
   layoutStore.openTab({
     workspaceKey,
-    target: { kind: "docs" },
+    target,
     intent: "reveal",
     placement: paneId ? { mode: "pane", paneId } : undefined,
   });
@@ -92,10 +98,11 @@ export function DeskLauncherProvider({
   const workspace = useWorkspaceFields(serverId, workspaceId, (w) => ({ scripts: w.scripts }));
   const toast = useToast();
   const { t } = useTranslation();
+  const isCompact = useIsCompactFormFactor();
   const open = useCallback(
     (target: WorkspaceTabTarget, destination: TerminalTabDestination) =>
-      launchDeskTarget({ serverId, workspaceId }, target, destination),
-    [serverId, workspaceId],
+      launchDeskTarget({ serverId, workspaceId }, target, destination, isCompact),
+    [isCompact, serverId, workspaceId],
   );
   const terminalCreated = useCallback(
     (input: { terminalId: string; destination: TerminalTabDestination }) =>
@@ -153,7 +160,6 @@ export function DeskLauncherProvider({
     },
     [open, createTerminal],
   );
-  const isCompact = useIsCompactFormFactor();
   const terminalDisabled =
     !isConnected ||
     !directory ||

@@ -132,3 +132,23 @@ export function openTaskReport(taskId: string): boolean {
 export function canOpenTaskReport(): boolean {
   return screenOpener !== null;
 }
+
+// CUSTOM(assistant-sidebar): the chat opens in its tab of the app's right sidebar (Explorer), not
+// as a tab of its own. The flag tells the app it is the chat even before its session lists the
+// agent (a chat created a moment ago); the pinned plugin types lack it, hence the cast.
+type OpenAgentWithSidebar = (input: {
+  agentId: string;
+  serverId?: string;
+  assistantSidebar?: boolean;
+}) => void;
+
+/** Opens the Projects Assistant chat in the app's sidebar. */
+export function openAssistantChat(
+  navigation: Pick<NonNullable<PluginSurfaceProps["navigation"]>, "openAgent">,
+  agentId: string,
+): void {
+  (navigation.openAgent as OpenAgentWithSidebar)({
+    agentId,
+    assistantSidebar: true,
+  });
+}

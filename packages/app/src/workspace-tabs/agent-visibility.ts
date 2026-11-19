@@ -1,4 +1,5 @@
 import { isBoardAgentInSession } from "@/board-agents/visibility"; // CUSTOM(hidden-board-agents)
+import { isAssistantChatAgent } from "@/assistant-sidebar/model"; // CUSTOM(assistant-sidebar)
 import type { Agent } from "@/stores/session-store";
 import type { WorkspaceTabSnapshot } from "@/stores/workspace-layout-actions";
 import { isWorkspaceRootAgent } from "@/subagents/policies";
@@ -19,7 +20,9 @@ function isAutoOpenAgent(
 ): boolean {
   return (
     isWorkspaceRootAgent(agent, parentAgent) &&
-    !isBoardAgentInSession(agent, sessionAgents, agentDetails)
+    !isBoardAgentInSession(agent, sessionAgents, agentDetails) &&
+    // CUSTOM(assistant-sidebar): the Projects Assistant chat lives in the sidebar tab.
+    !isAssistantChatAgent(agent)
   );
 }
 
