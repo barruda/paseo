@@ -75,6 +75,8 @@ export type Agent = Pick<
    * background work, with no turn of its own. Absent means unknown (treated as a turn).
    */
   turnActive?: boolean;
+  /** CUSTOM(usage-limit): the error the agent stopped with, such as the plan's usage limit. */
+  lastError?: string | null;
   parentAgentId?: string;
   subagentId?: string;
   /** Whether this parent's provider children could be listed in this inventory. */

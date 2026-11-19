@@ -543,9 +543,13 @@ function RunningSection({
           {waiting.map((item) =>
             row(item, [
               item.projectName,
-              item.resumeAt
-                ? s.resumes(formatClock(item.resumeAt, now))
-                : s.nextPass,
+              item.limited // CUSTOM(usage-limit)
+                ? s.limitPaused(
+                    item.resumeAt ? formatClock(item.resumeAt, now) : null,
+                  )
+                : item.resumeAt
+                  ? s.resumes(formatClock(item.resumeAt, now))
+                  : s.nextPass,
               item.waitingFor ?? null,
               item.progress
                 ? progressBadge(item.progress, s.checkpointWord) || null

@@ -1782,3 +1782,210 @@ it("a night task waiting at a checkpoint holds the power-off and stays a night t
     s.board.dispose();
   }
 });
+
+// CUSTOM(usage-limit) --------------------------------------------------------------------------
+const LIMIT =
+  "You've hit your 5-hour limit · resets 11:30pm (America/Sao_Paulo)";
+/** 23:30 São Paulo on the scenario's first day (2026-09-22, UTC-3), plus the 2-minute margin. */
+const LIMIT_RESUME = "2026-09-23T02:32:00.000Z";
+
+/** A new Workboard on the same store and host whose clock reads `at`. */
+async function reopenAt(
+  s: { host: any; store: any; history: any; board: Workboard },
+  at: string,
+) {
+  s.board.dispose();
+  const board = new Workboard(s.host, s.store, () => Date.parse(at), 60000, {
+    history: s.history,
+    wakeDelayMs: 5,
+  });
+  await board.start();
+  return board;
+}
+
+it("a turn cut by the usage limit waits in progress until the reset, then resumes the same agent", async () => {
+  const s = await scenario({ policy: { action: "merge" } });
+  try {
+    s.reply(LIMIT);
+    const sent = (s.host.sendAgent as any).mock.calls.length;
+    await s.finishTurn();
+    expect(s.stage()).toBe("in-progress");
+    expect(s.delivery()).toBeUndefined();
+    expect(s.board.snapshot().orchestrations[s.taskId]).toMatchObject({
+      status: "waiting",
+      checkpoint: true,
+      limited: true,
+      limitPauses: 1,
+      resumeAt: LIMIT_RESUME,
+    });
+    expect(s.attempts()).toMatchObject([{ outcome: "usage-limit" }]);
+    expect(s.history.kinds()).toContain("usage-limit");
+    expect(s.history.kinds()).not.toContain("needs-you");
+    // Not before the reset.
+    s.advance(3_600_000);
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[s.taskId].status).toBe("waiting");
+    expect((s.host.sendAgent as any).mock.calls.length).toBe(sent);
+    // After it, on the next pass.
+    s.advance(2 * 3_600_000);
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[s.taskId]).toMatchObject({
+      status: "running",
+      limited: false,
+      checkpoint: false,
+    });
+    const [agentId, prompt] = lastSent(s);
+    expect(agentId).toBe(s.agent.id);
+    expect(prompt).toContain("usage limit was reached");
+    expect(s.attempts()).toMatchObject([
+      { index: 1, outcome: "usage-limit" },
+      { index: 2, trigger: "usage-limit", outcome: "running" },
+    ]);
+    // A normal end delivers and resets the count.
+    s.reply(report());
+    await s.finishTurn();
+    await s.settled("delivered");
+    expect(s.board.snapshot().orchestrations[s.taskId].limitPauses).toBe(0);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a usage-limit pause already due resumes when the Workboard starts", async () => {
+  const s = await scenario();
+  let board = s.board;
+  try {
+    s.reply(LIMIT);
+    await s.finishTurn();
+    expect(s.store.current.orchestrations[s.taskId].status).toBe("waiting");
+    // The daemon was off at the reset and comes back after it.
+    board = await reopenAt(s, "2026-09-23T08:00:00Z");
+    expect(s.store.current.orchestrations[s.taskId].status).toBe("running");
+    expect(lastSent(s)[1]).toContain("usage limit was reached");
+  } finally {
+    board.dispose();
+  }
+});
+
+it("an agent stopped with the usage limit as its error waits for the reset instead of being nudged", async () => {
+  const s = await scenario();
+  try {
+    s.agent.activity = "error";
+    (s.agent as any).lastError = LIMIT;
+    await s.board.refresh();
+    expect(s.board.snapshot().orchestrations[s.taskId]).toMatchObject({
+      status: "waiting",
+      limited: true,
+      resumeAt: LIMIT_RESUME,
+    });
+    expect(
+      (s.host.sendAgent as any).mock.calls.some(
+        ([, text]: [string, string]) =>
+          text === "Continue the task where you stopped.",
+      ),
+    ).toBe(false);
+    expect(s.delivery()).toBeUndefined();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("hitting the limit again pauses again, and past the limit of pauses the task needs you", async () => {
+  const s = await scenario();
+  try {
+    // No readable reset: each pause waits an hour.
+    s.reply("You've hit your limit");
+    await s.finishTurn();
+    for (let pause = 2; pause <= 3; pause++) {
+      s.advance(2 * 3_600_000);
+      await s.board.refresh();
+      expect(s.board.snapshot().orchestrations[s.taskId].status).toBe(
+        "running",
+      );
+      await s.finishTurn();
+      expect(s.board.snapshot().orchestrations[s.taskId]).toMatchObject({
+        status: "waiting",
+        limitPauses: pause,
+      });
+    }
+    s.advance(2 * 3_600_000);
+    await s.board.refresh();
+    await s.finishTurn();
+    expect(s.stage()).toBe("review");
+    expect(s.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "usage-limit",
+    });
+    expect(s.board.snapshot().orchestrations[s.taskId]).toMatchObject({
+      status: "finished",
+      limited: false,
+      limitPauses: 0,
+    });
+    expect(s.attempts().map((a) => a.outcome)).toEqual([
+      "usage-limit",
+      "usage-limit",
+      "usage-limit",
+      "usage-limit",
+    ]);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a wake the chat answered with the usage limit is told again after the reset, also after a restart", async () => {
+  const s = await wake();
+  let board = s.board;
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+    expect(s.store.current.assistant.wakeTurn).toMatchObject({
+      agentId: s.chatId,
+      taskIds: [s.taskId],
+    });
+    // The chat's turn ends on the usage limit.
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    s.reply(LIMIT);
+    s.advance(30_000);
+    await s.board.refresh();
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeNull());
+    expect(s.store.current.assistant).toMatchObject({
+      wakeAt: LIMIT_RESUME,
+      wakeTurn: null,
+    });
+    expect(
+      s.history.events.filter((e) => e.kind === "usage-limit"),
+    ).toHaveLength(1);
+    // Not before the reset.
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(1);
+    // The plugin comes back after the reset: the chat hears about the task again.
+    s.reply("On it.");
+    board = await reopenAt(s, "2026-09-23T03:00:00Z");
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(2));
+    expect(s.sent()[1]![1]).toContain(`${s.taskId} | Task | Project | blocked`);
+    await vi.waitFor(() => expect(s.store.current.assistant.wakeAt).toBeNull());
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a wake turn that ends normally is forgotten and the task stays told", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.wakeTurn).toBeTruthy(),
+    );
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    s.reply("Merged it.");
+    s.advance(30_000);
+    await s.board.refresh();
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.wakeTurn).toBeNull(),
+    );
+    expect(s.delivery()?.toldAt).toBeTruthy();
+    expect(s.store.current.assistant.wakeAt).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});

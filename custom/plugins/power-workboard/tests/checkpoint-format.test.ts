@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   formatClock,
+  limitLine,
   logLines,
   progressBadge,
   waitingLine,
@@ -89,5 +90,23 @@ describe("logLines", () => {
       ["09:00", 2, "second"],
       ["08:00", 1, "first"],
     ]);
+  });
+});
+
+// CUSTOM(usage-limit)
+describe("limitLine", () => {
+  const limitWords = { paused: "paused by the usage limit", until: "until" };
+  it("names the reset time", () => {
+    expect(limitLine(at(18, 23, 32), limitWords, now)).toBe(
+      "paused by the usage limit until 23:32",
+    );
+  });
+  it("shows the day when it is not today", () => {
+    expect(limitLine(at(19, 1, 0), limitWords, now)).toBe(
+      "paused by the usage limit until 19/11 01:00",
+    );
+  });
+  it("drops the time when unknown", () => {
+    expect(limitLine(null, limitWords, now)).toBe("paused by the usage limit");
   });
 });

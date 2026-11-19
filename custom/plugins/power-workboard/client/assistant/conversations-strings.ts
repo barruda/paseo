@@ -57,6 +57,7 @@ const en = {
     feedback: "feedback",
     "auto-fix": "auto-fix",
     checkpoint: "checkpoint", // CUSTOM(task-checkpoints)
+    "usage-limit": "usage limit", // CUSTOM(usage-limit)
   } as Record<string, string>,
   outcome: {
     running: "running",
@@ -67,6 +68,7 @@ const en = {
     "no-report": "no report",
     "agent-error": "agent error",
     checkpoint: "checkpoint", // CUSTOM(task-checkpoints)
+    "usage-limit": "usage limit", // CUSTOM(usage-limit)
     dropped: "fix dropped", // CUSTOM(resource-pools)
   } as Record<string, string>,
   reportStatus: {

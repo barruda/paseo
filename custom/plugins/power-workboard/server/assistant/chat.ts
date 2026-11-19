@@ -106,7 +106,7 @@ function checkpointLines(
   if (!progress) return "";
   const waiting =
     run?.checkpoint && (run.status === "queued" || run.status === "waiting")
-      ? `Waiting to resume${run.resumeAt ? ` at ${run.resumeAt}` : " on the next pass"}${run.waitingFor ? ` (for ${run.waitingFor})` : ""}\n`
+      ? `Waiting to resume${run.resumeAt ? ` at ${run.resumeAt}` : " on the next pass"}${run.waitingFor ? ` (for ${run.waitingFor})` : ""}${run.limited ? " (paused by the usage limit)" : ""}\n`
       : "";
   return [
     `Checkpoints: ${progress.checkpoints} (${progress.stalls} in a row without a new done item)`,

@@ -494,6 +494,13 @@ export const orchestrationSchema = z.object({
   checkpoint: z.boolean().default(false),
   resumeAt: z.string().nullable().default(null),
   waitingFor: z.string().nullable().default(null),
+  /**
+   * CUSTOM(usage-limit): the agent stopped on the plan's usage limit. The task waits like a
+   * checkpoint (`checkpoint` true, status `waiting`) until `resumeAt`, just after the reset.
+   */
+  limited: z.boolean().default(false),
+  /** CUSTOM(usage-limit): limit pauses in a row; a turn that ends normally resets it. */
+  limitPauses: z.number().int().min(0).default(0),
 });
 export type Orchestration = z.infer<typeof orchestrationSchema>;
 /** Agent settings new orchestrators start from; refinement chats use them too. */
