@@ -109,6 +109,8 @@ const EVENT_ICONS: Record<string, string> = {
   "pr-prepared": "GitPullRequest",
   "needs-you": "Bell",
   "told-assistant": "Bot",
+  "chat-compacted": "RotateCcw", // CUSTOM(assistant-compact)
+  "chat-compact-failed": "XCircle", // CUSTOM(assistant-compact)
   observed: "Eye",
   failed: "XCircle",
   done: "CircleCheck",
@@ -134,7 +136,9 @@ export function kindTone(
   if (["merged", "done", "verify-passed"].includes(kind)) return "success";
   if (["needs-you", "escalated", "waiting-clean", "usage-limit"].includes(kind))
     return "warning";
-  if (["failed", "verify-failed"].includes(kind)) return "danger";
+  // CUSTOM(assistant-compact): chat-compact-failed
+  if (["failed", "verify-failed", "chat-compact-failed"].includes(kind))
+    return "danger";
   return "muted";
 }
 

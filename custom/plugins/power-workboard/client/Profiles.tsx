@@ -799,7 +799,16 @@ export function AssistantProfileTab({
     try {
       // Read again so a policy saved meanwhile in Settings is not overwritten.
       const current = await callGet({});
-      await callSet({ settings: { ...current.settings, chat: chat.data } });
+      // CUSTOM(assistant-compact): the compaction limit is edited in Settings; keep the saved one.
+      await callSet({
+        settings: {
+          ...current.settings,
+          chat: {
+            ...chat.data,
+            compactAtTokens: current.settings.chat.compactAtTokens,
+          },
+        },
+      });
       await content.save();
       setDirty(false);
       toast.show(s.done, { variant: "success" });

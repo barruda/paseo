@@ -21,6 +21,7 @@ import {
   ACTION_LABELS,
   ASSISTANT_ACTIONS,
   ASSISTANT_DEFAULT_ACTIONS,
+  DEFAULT_COMPACT_AT_TOKENS,
   MAX_AUTO_FIXES,
   REVIEW_LABELS,
   REVIEW_POLICIES,
@@ -140,6 +141,11 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
     [handleChat],
   );
   const handleMode = useCallback((modeId: string) => handleChat({ modeId }), [handleChat]);
+  // CUSTOM(assistant-compact)
+  const handleCompactAt = useCallback(
+    (compactAtTokens: string) => handleChat({ compactAtTokens }),
+    [handleChat],
+  );
   const handleProjectChange = useCallback(
     (update: (settings: AssistantSettings) => AssistantSettings) =>
       setDraft((current) => (current ? update(current) : current)),
@@ -215,6 +221,13 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               initialValue={draft.chat.modeId ?? ""}
               onChangeText={handleMode}
               placeholder="bypassPermissions"
+            />
+            <SettingsInput
+              label="Compact at (tokens)"
+              hint="When a turn leaves the chat's context at this size or more, the board starts a new chat with a short summary and archives the old one. 0 turns it off."
+              initialValue={String(draft.chat.compactAtTokens)}
+              onChangeText={handleCompactAt}
+              placeholder={String(DEFAULT_COMPACT_AT_TOKENS)}
             />
           </SettingsCard>
           <Text style={settingsStyles.sectionHeaderTitle}>Per project</Text>

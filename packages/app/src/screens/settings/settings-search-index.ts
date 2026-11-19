@@ -136,6 +136,7 @@ export const SETTINGS_SEARCH_INDEX: Partial<
       "Check command",
       "Auto-fix attempts",
       "Base branch",
+      "Compact at (tokens)", // CUSTOM(assistant-compact)
     ],
   },
   "customizations-config-file": {

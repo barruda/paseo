@@ -72,6 +72,8 @@ export function reviewPolicyFor(
   return (projectId && settings.reviews[projectId]) || DEFAULT_REVIEW_POLICY;
 }
 
+/** CUSTOM(assistant-compact): the chat restarts with a summary once its context reaches this. */
+export const DEFAULT_COMPACT_AT_TOKENS = 180_000;
 /** The agent behind the Projects Assistant chat (a real Paseo agent with board tools). */
 export const assistantChatSettingsSchema = z.object({
   /** `provider/model`. */
@@ -84,6 +86,16 @@ export const assistantChatSettingsSchema = z.object({
   memory: z.boolean().default(true),
   /** CUSTOM(assistant-wake): tell the chat agent, in a batch, when a task needs the user. */
   wakeOnNeedsYou: z.boolean().default(true),
+  /**
+   * CUSTOM(assistant-compact): once a turn leaves the chat's context at this many tokens or more,
+   * the board restarts the chat with a short summary of the recent conversation. 0 turns it off.
+   */
+  compactAtTokens: z
+    .number()
+    .int()
+    .min(0)
+    .max(10_000_000)
+    .default(DEFAULT_COMPACT_AT_TOKENS),
 });
 export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
 
@@ -323,6 +335,26 @@ export const assistantDataSchema = z.object({
     })
     .nullable()
     .default(null),
+  /**
+   * CUSTOM(assistant-compact): the chat the last automatic compaction started. `bornTokens` is
+   * its context after its first turn (null until measured); a chat born at or above the limit is
+   * never compacted again, so a summary too big for the limit cannot loop.
+   */
+  compact: z
+    .object({
+      agentId: z.string(),
+      fromAgentId: z.string(),
+      fromTokens: z.number(),
+      at: z.string(),
+      bornTokens: z.number().nullable().default(null),
+    })
+    .nullable()
+    .default(null),
+  /**
+   * CUSTOM(assistant-compact): a compaction failed; the next one waits until this time. Cleared
+   * by a compaction that works and by any new chat the user opens.
+   */
+  compactRetryAt: z.string().nullable().default(null),
 });
 export type AssistantData = z.infer<typeof assistantDataSchema>;
 
@@ -345,11 +377,18 @@ export const HISTORY_EVENT_KINDS = [
   "pr-prepared",
   "needs-you",
   "told-assistant",
+  "chat-compacted", // CUSTOM(assistant-compact): the chat restarted with a summary
+  "chat-compact-failed", // CUSTOM(assistant-compact): a compaction failed; it waits COMPACT_RETRY_MS
   "observed",
   "failed",
   "done",
   "dismissed",
 ] as const;
+/**
+ * CUSTOM(assistant-compact): the history files events about the chat itself (not a task) under
+ * this id, so the Reports page lists them as one row.
+ */
+export const CHAT_HISTORY_TASK_ID = "assistant-chat";
 export const historyEventKindSchema = z.enum(HISTORY_EVENT_KINDS);
 export type HistoryEventKind = z.infer<typeof historyEventKindSchema>;
 

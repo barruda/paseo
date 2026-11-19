@@ -47,6 +47,8 @@ export const KIND_LABELS: Record<HistoryEventKind, string> = {
   "pr-prepared": "PR prepared",
   "needs-you": "Needs you",
   "told-assistant": "Told the assistant",
+  "chat-compacted": "Chat compacted", // CUSTOM(assistant-compact)
+  "chat-compact-failed": "Chat compaction failed", // CUSTOM(assistant-compact)
   observed: "Observed",
   failed: "Failed",
   done: "Done",

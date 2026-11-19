@@ -154,10 +154,15 @@ export default function contribute(server: PluginServerContext) {
       const identity = await compat.identity();
       serverId = identity.serverId; // CUSTOM(assistant-quick)
       board?.dispose();
-      const host = new PaseoHost(api, compat, identity, (id) =>
-        board?.changed(id),
-      );
-      board = new Workboard(host, store, Date.now, 60000, { history }); // CUSTOM(projects-assistant)
+      const host = new PaseoHost(api, compat, identity, (id, agentId) => {
+        if (agentId) board?.agentUpdated(agentId); // CUSTOM(assistant-compact)
+        board?.changed(id);
+      });
+      // CUSTOM(projects-assistant), CUSTOM(assistant-compact): the chat waits for quick messages.
+      board = new Workboard(host, store, Date.now, 60000, {
+        history,
+        chatQueued: (agentId) => inbox.pending(agentId),
+      });
       await board.start();
     } catch (failure) {
       const classified = classifyBootFailure(failure);

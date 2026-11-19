@@ -78,6 +78,8 @@ const en = {
     "pr-prepared": "Pull request prepared",
     "needs-you": "Needs you",
     "told-assistant": "Told the assistant",
+    "chat-compacted": "Chat compacted", // CUSTOM(assistant-compact)
+    "chat-compact-failed": "Chat compaction failed", // CUSTOM(assistant-compact)
     observed: "Observed",
     failed: "Failed",
     done: "Done",
@@ -160,6 +162,8 @@ const pt: ReportsStrings = {
     "pr-prepared": "Pull request preparado",
     "needs-you": "Precisa de você",
     "told-assistant": "Avisou o assistente",
+    "chat-compacted": "Chat compactado", // CUSTOM(assistant-compact)
+    "chat-compact-failed": "Falha ao compactar o chat", // CUSTOM(assistant-compact)
     observed: "Observado",
     failed: "Falhou",
     done: "Concluído",

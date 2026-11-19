@@ -1,14 +1,19 @@
 import { expect, it, vi } from "vitest";
 import { Workboard, type AssistantOptions } from "../server/workboard";
 import {
+  CHAT_HISTORY_TASK_ID, // CUSTOM(assistant-compact)
+  DEFAULT_COMPACT_AT_TOKENS, // CUSTOM(assistant-compact)
   SEEDED_REVIEW_POLICIES,
   assistantDataSchema,
+  assistantSettingsSchema,
   reviewPolicyFor,
   type HistoryEvent,
 } from "../shared/assistant";
 import { orchestratorConfigSchema } from "../shared/model";
 import { fixture } from "./fixtures";
 import { buildOverview } from "../server/assistant/views"; // CUSTOM(task-checkpoints)
+import { COMPACT_QUESTION } from "../server/assistant/compact"; // CUSTOM(assistant-compact)
+import { CHAT_RULES } from "../server/assistant/chat"; // CUSTOM(assistant-compact)
 
 const project = {
   id: "p",
@@ -2088,6 +2093,411 @@ it("a usage-limit pause moved out of In progress by hand stops and forgets its p
       limited: false,
       limitPauses: 0,
     });
+  } finally {
+    s.board.dispose();
+  }
+});
+
+// CUSTOM(assistant-compact): a full chat restarts with a summary once its turn ends.
+async function compaction(
+  options: { limit?: number; wakeDelayMs?: number } = {},
+) {
+  const queued = new Set<string>();
+  const s = await scenario({
+    settings: {
+      chat: {
+        wakeOnNeedsYou: true,
+        ...(options.limit === undefined
+          ? {}
+          : { compactAtTokens: options.limit }),
+      },
+    },
+    assistant: {
+      wakeDelayMs: options.wakeDelayMs ?? 5,
+      compactSettleMs: 5,
+      chatQueued: (id) => queued.has(id),
+    },
+  });
+  const { agentId: chatId } = await s.board.openChat(false);
+  const chat = (id = s.store.current.assistant.chatAgentId!) =>
+    s.inventory.agents.find((a) => a.id === id) as any;
+  chat().activity = "idle";
+  (s.host.askAgent as any).mockResolvedValue("- Open: ship X (task t-1)");
+  /** The chat ends a turn with `tokens` of context; its `agent_update` arms the check. */
+  const turn = (tokens: number, id?: string) => {
+    const agent = chat(id);
+    agent.activity = "idle";
+    agent.contextUsedTokens = tokens;
+    s.board.agentUpdated(agent.id);
+  };
+  const quiet = () => new Promise((resolve) => setTimeout(resolve, 40));
+  const compacted = () =>
+    vi.waitFor(() =>
+      expect(s.store.current.assistant.chatAgentId).not.toBe(chatId),
+    );
+  const chatStarts = () =>
+    (s.host.startAgentIn as any).mock.calls.map(
+      ([, start]: [string, { prompt: string }]) => start.prompt,
+    ) as string[];
+  return { ...s, chatId, chat, turn, quiet, queued, compacted, chatStarts };
+}
+
+it("compaction: the default limit is 180k tokens", () => {
+  expect(assistantSettingsSchema.parse({}).chat.compactAtTokens).toBe(
+    DEFAULT_COMPACT_AT_TOKENS,
+  );
+  expect(DEFAULT_COMPACT_AT_TOKENS).toBe(180_000);
+});
+
+it("compaction: a turn that ends above the limit restarts the chat with the summary as its first message, archives the old one and records it", async () => {
+  const s = await compaction();
+  try {
+    s.turn(185_000);
+    await s.compacted();
+    const next = s.store.current.assistant.chatAgentId!;
+    expect(s.host.askAgent).toHaveBeenCalledWith(s.chatId, COMPACT_QUESTION);
+    const prompt = s.chatStarts().at(-1)!;
+    expect(prompt.startsWith(CHAT_RULES)).toBe(true);
+    expect(prompt).not.toContain("Call board_overview, then reply");
+    expect(prompt).toContain("[Inherited context]");
+    expect(prompt).toContain("not a new request");
+    expect(prompt).toContain("Reply with only `ok`");
+    expect(prompt).toContain(
+      "<inherited-context>\n- Open: ship X (task t-1)\n</inherited-context>",
+    );
+    expect(s.host.archiveAgent).toHaveBeenCalledWith(s.chatId);
+    expect(await s.host.agentAlive(s.chatId)).toBe(false);
+    expect(s.store.current.assistant.compact).toMatchObject({
+      agentId: next,
+      fromAgentId: s.chatId,
+      fromTokens: 185_000,
+      bornTokens: null,
+    });
+    await vi.waitFor(() =>
+      expect(s.history.kinds()).toContain("chat-compacted"),
+    );
+    expect(
+      s.history.events.find((e) => e.kind === "chat-compacted"),
+    ).toMatchObject({
+      taskId: CHAT_HISTORY_TASK_ID,
+      agentId: next,
+      text: "Chat compacted: 185000 tokens → new chat",
+      detail: "- Open: ship X (task t-1)",
+    });
+    // Nothing is said in the chat itself.
+    expect(s.host.sendAgent).not.toHaveBeenCalledWith(
+      s.chatId,
+      expect.anything(),
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: below the limit nothing happens", async () => {
+  const s = await compaction();
+  try {
+    s.turn(179_999);
+    await s.quiet();
+    expect(s.host.askAgent).not.toHaveBeenCalled();
+    expect(s.store.current.assistant.chatAgentId).toBe(s.chatId);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: never during a turn or a permission; it waits for the next idle", async () => {
+  const s = await compaction();
+  try {
+    s.chat().contextUsedTokens = 190_000;
+    for (const activity of ["running", "waiting", "error"]) {
+      s.chat().activity = activity;
+      s.board.agentUpdated(s.chatId);
+      await s.quiet();
+    }
+    expect(s.host.askAgent).not.toHaveBeenCalled();
+    expect(s.store.current.assistant.chatAgentId).toBe(s.chatId);
+    s.turn(190_000);
+    await s.compacted();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: a pending board wake or quick message waits for the next idle", async () => {
+  const s = await compaction({ wakeDelayMs: 60_000 });
+  try {
+    // A task needs the user: its wake waits on the timer.
+    s.reply(
+      `x\n<report>${JSON.stringify({ status: "blocked", summary: "Stuck" })}</report>`,
+    );
+    await s.finishTurn();
+    await s.settled("needs-you");
+    s.turn(190_000);
+    await s.quiet();
+    expect(s.host.askAgent).not.toHaveBeenCalled();
+    s.board.dispose();
+
+    const q = await compaction();
+    try {
+      q.queued.add(q.chatId);
+      q.turn(190_000);
+      await q.quiet();
+      expect(q.host.askAgent).not.toHaveBeenCalled();
+      q.queued.clear();
+      q.turn(190_000);
+      await q.compacted();
+    } finally {
+      q.board.dispose();
+    }
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: a message that reaches the chat while it summarizes cancels the round", async () => {
+  const s = await compaction();
+  try {
+    (s.host.askAgent as any).mockImplementation(async () => {
+      s.chat().lastUserMessageAt = "2026-09-23T00:05:00.000Z";
+      return "Summary";
+    });
+    s.turn(190_000);
+    await vi.waitFor(() => expect(s.host.askAgent).toHaveBeenCalled());
+    await s.quiet();
+    expect(s.store.current.assistant.chatAgentId).toBe(s.chatId);
+    expect(s.host.archiveAgent).not.toHaveBeenCalled();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: a new chat born above the limit is not compacted again; one born below it is, once it grows", async () => {
+  const s = await compaction();
+  try {
+    s.turn(185_000);
+    await s.compacted();
+    const born = s.store.current.assistant.chatAgentId!;
+    s.turn(200_000, born);
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.compact?.bornTokens).toBe(200_000),
+    );
+    s.turn(260_000, born);
+    await s.quiet();
+    expect(s.store.current.assistant.chatAgentId).toBe(born);
+    expect(s.host.askAgent).toHaveBeenCalledTimes(1);
+  } finally {
+    s.board.dispose();
+  }
+  const t = await compaction();
+  try {
+    t.turn(185_000);
+    await t.compacted();
+    const born = t.store.current.assistant.chatAgentId!;
+    t.turn(30_000, born);
+    await vi.waitFor(() =>
+      expect(t.store.current.assistant.compact?.bornTokens).toBe(30_000),
+    );
+    t.turn(181_000, born);
+    await vi.waitFor(() =>
+      expect(t.store.current.assistant.chatAgentId).not.toBe(born),
+    );
+  } finally {
+    t.board.dispose();
+  }
+});
+
+it("compaction: the limit comes from the setting, and 0 turns it off", async () => {
+  const s = await compaction({ limit: 100_000 });
+  try {
+    s.turn(120_000);
+    await s.compacted();
+  } finally {
+    s.board.dispose();
+  }
+  const off = await compaction({ limit: 0 });
+  try {
+    off.turn(900_000);
+    await off.quiet();
+    expect(off.host.askAgent).not.toHaveBeenCalled();
+  } finally {
+    off.board.dispose();
+  }
+});
+
+it("compaction: without a summary from the chat, its last replies and the user's messages go instead", async () => {
+  const s = await compaction();
+  try {
+    (s.host.askAgent as any).mockRejectedValue(new Error("no side questions"));
+    const row = (type: string, text: string) => ({
+      timestamp: "t",
+      item: { type, text },
+    });
+    (s.host.timeline as any).mockReturnValue(async () => ({
+      entries: [
+        row("user_message", "old question"),
+        row("assistant_message", "old answer"),
+        row("user_message", "ship X"),
+        row("assistant_message", "Started "),
+        row("tool_call", ""),
+        row("assistant_message", "X."),
+        row("user_message", "and Y?"),
+        row("assistant_message", "Y waits for you."),
+        row("user_message", "ok"),
+        row("assistant_message", "Done."),
+      ],
+    }));
+    s.turn(190_000);
+    await s.compacted();
+    const prompt = s.chatStarts().at(-1)!;
+    expect(prompt).toContain(
+      "User: ship X\n\nAssistant: Started X.\n\nUser: and Y?\n\nAssistant: Y waits for you.\n\nUser: ok\n\nAssistant: Done.",
+    );
+    expect(prompt).not.toContain("old answer");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: the board wakes the new chat, and nothing goes to the archived one", async () => {
+  const s = await compaction();
+  try {
+    s.turn(185_000);
+    await s.compacted();
+    const next = s.store.current.assistant.chatAgentId!;
+    s.chat(next).activity = "idle";
+    s.reply(
+      `x\n<report>${JSON.stringify({ status: "blocked", summary: "Stuck" })}</report>`,
+    );
+    await s.finishTurn();
+    await s.settled("needs-you");
+    const sentTo = () =>
+      (s.host.sendAgent as any).mock.calls.map(([id]: [string]) => id);
+    await vi.waitFor(() => expect(sentTo()).toContain(next));
+    expect(sentTo()).not.toContain(s.chatId);
+    expect(s.store.current.assistant.wakeTurn?.agentId).toBe(next);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: a round that fails holds the next one 30 minutes and records it; a manual restart clears the hold", async () => {
+  const s = await compaction();
+  try {
+    (s.host.startAgentIn as any).mockRejectedValueOnce(
+      new Error("spawn failed"),
+    );
+    s.turn(190_000);
+    await vi.waitFor(() =>
+      expect(s.history.kinds()).toContain("chat-compact-failed"),
+    );
+    expect(
+      s.history.events.find((e) => e.kind === "chat-compact-failed"),
+    ).toMatchObject({
+      taskId: CHAT_HISTORY_TASK_ID,
+      agentId: s.chatId,
+      detail: "spawn failed",
+    });
+    expect(s.store.current.assistant.chatAgentId).toBe(s.chatId);
+    expect(s.store.current.assistant.compactRetryAt).toBe(
+      "2026-09-23T00:30:00.000Z",
+    );
+    expect(s.host.askAgent).toHaveBeenCalledTimes(1);
+    // Neither the chat's updates nor the periodic pass summarize it again before the hold ends.
+    s.turn(195_000);
+    await s.quiet();
+    await s.board.refresh();
+    await s.quiet();
+    expect(s.host.askAgent).toHaveBeenCalledTimes(1);
+    s.advance(30 * 60_000);
+    s.turn(195_000);
+    await s.compacted();
+    expect(s.host.askAgent).toHaveBeenCalledTimes(2);
+    expect(s.store.current.assistant.compactRetryAt).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+  const m = await compaction();
+  try {
+    (m.host.askAgent as any).mockRejectedValue(new Error("no side questions"));
+    m.turn(190_000); // no summary and no timeline: the round fails
+    await vi.waitFor(() =>
+      expect(m.store.current.assistant.compactRetryAt).not.toBeNull(),
+    );
+    await m.board.openChat(true, true);
+    expect(m.store.current.assistant.compactRetryAt).toBeNull();
+  } finally {
+    m.board.dispose();
+  }
+});
+
+it("compaction: a message that reaches the old chat while the new one starts keeps the old one and archives the new", async () => {
+  const s = await compaction();
+  try {
+    const start = (s.host.startAgentIn as any).getMockImplementation();
+    let started = "";
+    (s.host.startAgentIn as any).mockImplementationOnce(
+      async (cwd: string, input: unknown) => {
+        started = await start(cwd, input);
+        s.chat(s.chatId).lastUserMessageAt = "2026-09-23T00:05:00.000Z";
+        return started;
+      },
+    );
+    s.turn(190_000);
+    await vi.waitFor(() =>
+      expect(s.host.archiveAgent).toHaveBeenCalledWith(started),
+    );
+    await s.quiet();
+    expect(s.store.current.assistant.chatAgentId).toBe(s.chatId);
+    expect(await s.host.agentAlive(s.chatId)).toBe(true);
+    expect(s.host.archiveAgent).not.toHaveBeenCalledWith(s.chatId);
+    expect(s.history.kinds()).not.toContain("chat-compacted");
+    // Not a failure: the next idle tries again.
+    expect(s.store.current.assistant.compactRetryAt).toBeNull();
+    s.turn(195_000);
+    await s.compacted();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: a message that arrives before the new chat starts cancels it", async () => {
+  const s = await compaction();
+  try {
+    const calls = (s.host.startAgentIn as any).mock.calls.length;
+    (s.host.askAgent as any).mockImplementation(async () => {
+      s.chat().activity = "running";
+      return "Summary";
+    });
+    s.turn(190_000);
+    await vi.waitFor(() => expect(s.host.askAgent).toHaveBeenCalled());
+    await s.quiet();
+    expect((s.host.startAgentIn as any).mock.calls).toHaveLength(calls);
+    expect(s.store.current.assistant.chatAgentId).toBe(s.chatId);
+    expect(s.store.current.assistant.compactRetryAt).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: a chat born just under the limit compacts again only after growing 10% of the limit", async () => {
+  const s = await compaction();
+  try {
+    s.turn(185_000);
+    await s.compacted();
+    const born = s.store.current.assistant.chatAgentId!;
+    s.turn(170_000, born);
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.compact?.bornTokens).toBe(170_000),
+    );
+    s.turn(187_999, born); // grew 17 999 < 18 000
+    await s.quiet();
+    expect(s.store.current.assistant.chatAgentId).toBe(born);
+    expect(s.host.askAgent).toHaveBeenCalledTimes(1);
+    s.turn(188_000, born);
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.chatAgentId).not.toBe(born),
+    );
   } finally {
     s.board.dispose();
   }
