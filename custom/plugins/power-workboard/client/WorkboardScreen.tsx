@@ -59,6 +59,7 @@ import {
   groupDeleteReason,
   mappingPreview,
   shortDate,
+  splitTitleArea,
   visibleCards,
   withOptimisticStages,
 } from "./board-utils";
@@ -2294,6 +2295,7 @@ export function TaskCard({
     return issueText(reason, t) ?? reason;
   });
   const pinHint = card.pinState === "automatic" ? t.pinAutomatic : t.pinManual;
+  const titleParts = splitTitleArea(card.title);
   return (
     <View
       style={[
@@ -2331,13 +2333,16 @@ export function TaskCard({
       <View
         style={[styles.cardTitleRow, { paddingRight: showDragHandle ? 30 : 0 }]}
       >
+        {/* CUSTOM(card-title-area): the title opens the task's description in every column (the
+            workspace still opens from Open agent and the attention line), and the hint shows the
+            whole saved title, which the card clips to two lines and may show without its area. */}
         <HintButton
-          hint={isDraft ? t.edit : t.openWorkspace}
+          hint={card.title}
           onHoverIn={() => setTitleHovered(true)}
           onHoverOut={() => setTitleHovered(false)}
           accessibilityRole="button"
-          accessibilityLabel={`${isDraft ? t.edit : t.openWorkspace}: ${card.title}`}
-          onPress={isDraft ? onEdit : onOpen}
+          accessibilityLabel={`${isDraft ? t.edit : t.notes}: ${card.title}`}
+          onPress={onEdit}
           style={styles.cardTitlePressable}
         >
           <Text
@@ -2348,7 +2353,7 @@ export function TaskCard({
               titleHovered && { textDecorationLine: "underline" },
             ]}
           >
-            {card.title}
+            {titleParts.title}
           </Text>
         </HintButton>
         {card.pinState !== "none" && (
@@ -2380,6 +2385,7 @@ export function TaskCard({
         style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
       >
         {card.projectName || t.unassigned}
+        {titleParts.area ? ` · ${titleParts.area}` : ""}
         {normalLabels.length ? ` · ${normalLabels.join(" · ")}` : ""}
       </Text>
       {card.timing && <TimingChip timing={card.timing} t={t} theme={theme} />}

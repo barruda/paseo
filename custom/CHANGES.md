@@ -7715,3 +7715,26 @@ tests/assistant-engine.test.ts tests/checkpoint-format.test.ts`. Needs only `pas
 src/components/question-form-card.browser.test.tsx`. App-only: needs a desktop build and install,
   no daemon restart. In the app, ask an agent a one-question AskUserQuestion: one click on an
   option sends it. With several questions, each click moves on and the last one sends.
+
+## card-title-area: Power Workboard card titles open the description and show their area as a label
+
+- **Added:** 2026-11-18 (based on `custom` at `1c82b8533`)
+- **Commit:** `custom: Power Workboard card titles open the description and show their area`
+- **Why:** Outside Draft the card title opened the workspace (hint "Open workspace"), which the
+  user never wanted from the title. Titles were clipped to two lines, and most start with an area
+  prefix ("Power Workboard: …", "Assets-board: …") that used up the visible part.
+- **What:** Clicking the title opens the task modal (the same one as the card's Notes action) in
+  every column; Open agent, the attention line and the workspace row still open the workspace.
+  The title's hint is the whole saved title, in every column. `splitTitleArea` reads a leading
+  `Area: rest` (first colon only, followed by a space; area of at most 4 words and 40 characters,
+  without sentence punctuation, brackets, quotes or slashes, so URLs, times and long sentences
+  stay whole): the card shows `rest` as the title and the area after the project (`paseo · Power Workboard`). Display only: the saved title, the task modal, search
+  and filters keep the whole title.
+- **Core files touched:** none. Plugin files: `client/board-utils.ts` (`splitTitleArea`),
+  `client/WorkboardScreen.tsx` (`TaskCard` title and project line), `tests/card-title-area.test.ts`.
+- **Re-apply:** Plugin-only. Grep `CUSTOM(card-title-area)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/card-title-area.test.ts`. Needs only `paseo plugin reload power-workboard`. On the board, a
+  card titled "Power Workboard: something" shows "something" with "paseo · Power Workboard"
+  below; hovering the title shows the full title; clicking it opens the description, in Draft and
+  in In progress.

@@ -281,3 +281,31 @@ export function moveCardToAnchor(
   next.splice(next.indexOf(anchor) + (side === "after" ? 1 : 0), 0, moving);
   return next;
 }
+
+// CUSTOM(card-title-area): many titles start with an area ("Power Workboard: ..."), which ate the
+// two visible lines of the card. The card shows the rest as its title and the area beside the
+// project. Display only: the saved title, search and filters keep the whole text.
+const AREA_MAX_WORDS = 4;
+const AREA_MAX_LENGTH = 40;
+const AREA_FORBIDDEN = /[.,;!?()[\]{}"'`/\\]/;
+
+export function splitTitleArea(title: string): {
+  area: string | null;
+  title: string;
+} {
+  const whole = title.trim();
+  const colon = whole.indexOf(":");
+  // Only the first colon counts, and it must end a word: "10:30" and "https://" never make an area.
+  if (colon <= 0 || !/\s/.test(whole.charAt(colon + 1)))
+    return { area: null, title: whole };
+  const area = whole.slice(0, colon).trim();
+  const rest = whole.slice(colon + 1).trim();
+  if (
+    !rest ||
+    area.length > AREA_MAX_LENGTH ||
+    area.split(/\s+/).length > AREA_MAX_WORDS ||
+    AREA_FORBIDDEN.test(area)
+  )
+    return { area: null, title: whole };
+  return { area, title: rest };
+}
