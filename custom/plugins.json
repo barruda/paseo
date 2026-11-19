@@ -93,6 +93,11 @@
       "id": "paseo-chat-polish",
       "source": "custom/plugins/paseo-chat-polish",
       "what": "Chat polish (our fork): quieter timeline, merged steps, turn recap"
+    },
+    {
+      "id": "telus-sync",
+      "source": "custom/plugins/telus-sync",
+      "what": "Settings > Sincronizar com Paseo Telus: copy UX and plugin configuration, with backup and rollback"
     }
   ]
 }

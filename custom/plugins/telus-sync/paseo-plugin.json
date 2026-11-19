@@ -1,0 +1,5 @@
+{
+  "id": "telus-sync",
+  "description": "Copy UX and plugin configuration from Paseo Personal to Paseo Telus, with backup and rollback",
+  "requirements": { "paseo": ">=0.9.1" }
+}

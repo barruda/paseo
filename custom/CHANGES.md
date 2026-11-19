@@ -8186,3 +8186,50 @@ tests/card-open-agent.test.ts`. Needs only `paseo plugin reload power-workboard`
   of the ⌄ 📄 ⇄ row and dragging ⋮⋮ still moves the card. Hover the gap right of a column: the
   cursor turns to `col-resize` along the whole border and an accent line appears; dragging
   resizes, double-click resets.
+
+## telus-sync: copy UX and plugin configuration from Paseo Personal to Paseo Telus
+
+- **Added:** 2026-11-19 (based on `custom` at `0a83c9e42`)
+- **Commit:** `custom: sync Paseo Personal UX and plugin settings into Paseo Telus`
+- **Why:** The user tests almost everything on Paseo Personal, and reconfiguring the same theme,
+  features and plugins by hand on Paseo Telus is slow and error-prone. Both installs run the same
+  build with separate homes (`~/.paseo`, `~/.paseo-telus`) and separate daemons.
+- **What:** New plugin `custom/plugins/telus-sync`, marked `CUSTOM(telus-sync)`. Settings >
+  Plugins > telus-sync > **Sincronizar com Paseo Telus** shows a checklist of four categories, all
+  checked by default, and a live preview of what each would change (per file and per key) versus
+  what is already the same. The sync only runs from the Personal daemon (`PASEO_HOME` basename
+  `.paseo`); on Telus the screen explains why it is unavailable. Before writing, it copies every
+  Telus file it will overwrite to `~/.paseo-backups/telus-sync/<timestamp>/files/...` and writes a
+  `manifest.json`; files it creates are recorded so a rollback removes them. The screen keeps the
+  five newest backups, shows their date, categories and result, and offers a confirmed rollback
+  per entry. It says what Telus needs next (reopen the window, restart the daemon, or
+  `paseo plugin reload`) and never restarts the Telus daemon or touches its agents.
+  - Categories and files: `ux` (`config.json` `features.dictation`, `features.voiceMode`,
+    `features.webUi`); `desktop` (`desktop-settings.json` `notifications.playSound`,
+    `tabs.flexibleMovement`); `plugins` (`config.json` `pluginsEnabled` and `plugins` with paths
+    rewritten from the source home, `plugins/` managed sources referenced by those entries with
+    `.git`, `.npmrc` and dotenv files removed, `custom-plugins-applied.json`, `plugins/sources.json` with
+    `user:token@` stripped from remotes); `pluginSettings`
+    (`plugin-settings/<id>/*.json`).
+  - Never copied: credentials (`local-credential`, `daemon-keypair.json`, `push-tokens.json`,
+    `server-id`, `cli-client-id`), agents/providers/profiles, `agents/`, `projects/`, `schedules/`,
+    `runtime/`, `plugin-data/`, and any `config.json` key outside the allowlist. Credential-looking
+    keys are dropped from plugin settings and from the copied `features` block (an `apiKey` under
+    `dictation.stt` or `voiceMode.tts`), credential-looking and non-JSON settings files are
+    skipped, and `power-workboard`, `delegation` and `jev-router` settings are excluded by id
+    because they hold execution state, model picks or keys. A Telus `config.json` that is not a
+    JSON object is left untouched and the run fails instead of overwriting it.
+  - Left out on purpose: theme, fonts, sidebar layout and keyboard shortcuts, which live in the
+    Electron client's localStorage and cannot be written safely into the other Electron profile
+    while it runs. The screen and the plugin README say so.
+  - The UI is English like the rest of Settings; the screen title is the one the ticket asked for.
+- **Core files touched:** none. Plugin files: `paseo-plugin.json`, `package.json`, `tsconfig.json`,
+  `vitest.config.ts`, `index.client.tsx`, `index.server.ts`, `client/SettingsScreen.tsx`,
+  `server/sync.ts`, `shared/model.ts`, `shared/rpc.ts`, `tests/sync.test.ts`, `README.md`.
+  `custom/plugins.json` installs it on both homes; the test line is in the update script.
+- **Re-apply:** Plugin-only; an upstream merge cannot conflict. Grep `CUSTOM(telus-sync)`.
+- **Verify:** `(cd custom/plugins/telus-sync && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)`.
+  The suite uses temporary homes only; it never touches `~/.paseo-telus`. Needs the plugin installed
+  on both daemons and `paseo plugin reload telus-sync --home ~/.paseo` (and `~/.paseo-telus`). In
+  Personal: Settings > Plugins > telus-sync, check the preview, sync a small category (for example
+  App preferences), then roll it back and confirm the Telus file returned to its previous content.
