@@ -7801,7 +7801,8 @@ tests/card-title-area.test.ts`. Needs only `paseo plugin reload power-workboard`
 
 - **Added:** 2026-11-19 (based on `custom` at `763ec569c`)
 - **Commit:** `custom: Power Workboard tasks and the assistant wake resume after the usage limit resets`,
-  then `custom: Power Workboard usage-limit notices are read only at the start of a reply`
+  then `custom: Power Workboard usage-limit notices are read only at the start of a reply`, then
+  `custom: Projects Assistant wake waits are scoped to the chat that hit the usage limit`
 - **Why:** On 2026-11-18 three tasks ended with "You've hit your 5-hour limit · resets 11:30pm
   (America/Sao_Paulo)". The board took the reply as `no-report` and sent them to Needs you. The
   wake reached the assistant chat, which was on the same limit and did nothing, but `toldAt` was
@@ -7827,15 +7828,20 @@ tests/card-title-area.test.ts`. Needs only `paseo plugin reload power-workboard`
   Assistant wake: each wake stores `wakeTurn {agentId, toldAt, taskIds}`; once that turn ends
   (checked on the refreshes and at start 30 s after the send, and by the next wake before it
   sends, so it never overwrites an unread turn), a reply that is a limit notice clears those
-  tasks' `toldAt` and stores `wakeAt`; the next wake waits until then, also across a restart.
-  Tasks told before a restart are not told again: with `wakeTurn` stored, that case is covered
-  without re-telling the chat on every plugin reload. No new polling. UI: the card says "paused by
+  tasks' `toldAt` and stores `wakeAt` plus `wakeAgentId`, the chat that hit it. Both the wait and
+  the turn belong to that chat: Restart chat drops them, and the tasks that chat never read go
+  back to the queue and are told to the new chat on the normal ~90 s wake, not at the old reset.
+  A replaced chat's turn is never read as the current chat's. Data from before `wakeAgentId`
+  existed (`null`) still holds the current chat, as before. Tasks told before a plugin reload are
+  not told again:
+  with `wakeTurn` stored, that case is covered without re-telling the chat on every reload. No new
+  polling. UI: the card says "paused by
   the usage limit until HH:MM"; the Dashboard's Waiting rows say the same; new history kind,
   attempt outcome/trigger and Needs you reason `usage-limit`.
 - **Core files touched:** none. Plugin files: `shared/usage-limit.ts`, `shared/model.ts`
-  (`limited`, `limitPauses`), `shared/assistant.ts` (enums, `wakeAt`, `wakeTurn`,
+  (`limited`, `limitPauses`), `shared/assistant.ts` (enums, `wakeAt`, `wakeAgentId`, `wakeTurn`,
   `runningItem.limited`), `server/workboard.ts` (`usageLimitReached`, `orchestrate`,
-  `continueTask`, `armWake`/`wakeAssistant`/`checkWakeTurn`), `server/orchestrator.ts`
+  `continueTask`, `armWake`/`wakeAssistant`/`checkWakeTurn`, `openChat`), `server/orchestrator.ts`
   (`usageLimitResumePrompt`), `server/host.ts` (`Agent.lastError`), `server/assistant/views.ts`,
   `server/assistant/chat.ts`, `client/checkpoint-format.ts` (`limitLine`),
   `client/WorkboardScreen.tsx`, `client/assistant/DashboardScreen.tsx`, strings, and tests
@@ -8235,3 +8241,140 @@ src/workspace-tabs/launcher/internal/catalog.test.ts)` (in the update script). N
   tab shows the new chat; close and reopen the app: still the new chat, not the archived one.
   `/exit` in the sidebar chat closes the sidebar tab, not another one. Compact (set "Compact at"
   low): the tab moves to the new chat with no click.
+
+## card-open-agent: Power Workboard cards link their agent in every column; pin and move sit in the action row; wider column-resize strip
+
+- **Added:** 2026-11-19 (based on `custom` at `60bc73d0d`)
+- **Commit:** `custom: Power Workboard cards always link their agent, pin and move join the action row`
+- **Why:** Open agent only showed on the orchestration line, so Ready to review cards and tasks
+  started by hand had no link. The pin and the drag handle sat right of the title and wrapped it
+  ("hook lefthook do / prepare-commit-…"). The column-resize strip was easy to miss: its inner
+  Pressable showed the pointer cursor and only a 22 px bar lit up on hover.
+- **What:** `cardAgentId` picks the card's agent: the orchestration record's agent (current or
+  last attempt, archived or not), else the workspace's agents, a live one first; a draft with no
+  workspace has none. The orchestration line links it when it shows; in Ready to review, or
+  with no record, the card shows its own `Open agent` line. The pin and the drag handle moved to
+  the end of the bottom action row (after ⌄, notes and status): `BoardView` hands the handle to
+  `renderCard(card, dragHandle)` and `TaskDragShell` takes a render function, so the drag still
+  starts only on the handle. The resize strip is 16 px wide, centred on the column's right
+  border and full height (`right: -9`, inside the 8 px padding and half the 10 px gap, so it
+  covers no card, scrollbar or neighbour column); the whole strip shows `col-resize` and, hovered
+  or focused, a full-height accent line. Keyboard, double-click reset and saved widths are
+  unchanged.
+- **Core files touched:** none. Plugin files: `client/board-utils.ts` (`cardAgentId`),
+  `client/WorkboardScreen.tsx` (`TaskCard`, `OrchestrationLine`, `OpenAgentLink`),
+  `client/BoardView.tsx` (`TaskDragShell`, `renderCard`, resize strip),
+  `tests/card-open-agent.test.ts`.
+- **Re-apply:** Plugin-only. Grep `CUSTOM(card-open-agent)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/card-open-agent.test.ts`. Needs only `paseo plugin reload power-workboard`. On the board,
+  every card whose task ran an agent shows Open agent (Backlog after an attempt, In progress,
+  Ready to review, Done); the title uses the card's full width; the pin and ⋮⋮ sit at the right
+  of the ⌄ 📄 ⇄ row and dragging ⋮⋮ still moves the card. Hover the gap right of a column: the
+  cursor turns to `col-resize` along the whole border and an accent line appears; dragging
+  resizes, double-click resets.
+
+## telus-sync: copy UX and plugin configuration from Paseo Personal to Paseo Telus
+
+- **Added:** 2026-11-19 (based on `custom` at `0a83c9e42`)
+- **Commit:** `custom: sync Paseo Personal UX and plugin settings into Paseo Telus`
+- **Why:** The user tests almost everything on Paseo Personal, and reconfiguring the same theme,
+  features and plugins by hand on Paseo Telus is slow and error-prone. Both installs run the same
+  build with separate homes (`~/.paseo`, `~/.paseo-telus`) and separate daemons.
+- **What:** New plugin `custom/plugins/telus-sync`, marked `CUSTOM(telus-sync)`. Settings >
+  Plugins > telus-sync > **Sincronizar com Paseo Telus** shows a checklist of four categories, all
+  checked by default, and a live preview of what each would change (per file and per key) versus
+  what is already the same. The sync only runs from the Personal daemon (`PASEO_HOME` basename
+  `.paseo`); on Telus the screen explains why it is unavailable. Before writing, it copies every
+  Telus file it will overwrite to `~/.paseo-backups/telus-sync/<timestamp>/files/...` and writes a
+  `manifest.json`; files it creates are recorded so a rollback removes them. The screen keeps the
+  five newest backups, shows their date, categories and result, and offers a confirmed rollback
+  per entry. It says what Telus needs next (reopen the window, restart the daemon, or
+  `paseo plugin reload`) and never restarts the Telus daemon or touches its agents.
+  - Categories and files: `ux` (`config.json` `features.dictation`, `features.voiceMode`,
+    `features.webUi`); `desktop` (`desktop-settings.json` `notifications.playSound`,
+    `tabs.flexibleMovement`); `plugins` (`config.json` `pluginsEnabled` and `plugins` with paths
+    rewritten from the source home, `plugins/` managed sources referenced by those entries with
+    `.git`, `.npmrc` and dotenv files removed, `custom-plugins-applied.json`, `plugins/sources.json` with
+    `user:token@` stripped from remotes); `pluginSettings`
+    (`plugin-settings/<id>/*.json`).
+  - Never copied: credentials (`local-credential`, `daemon-keypair.json`, `push-tokens.json`,
+    `server-id`, `cli-client-id`), agents/providers/profiles, `agents/`, `projects/`, `schedules/`,
+    `runtime/`, `plugin-data/`, and any `config.json` key outside the allowlist. Credential-looking
+    keys are dropped from plugin settings and from the copied `features` block (an `apiKey` under
+    `dictation.stt` or `voiceMode.tts`), credential-looking and non-JSON settings files are
+    skipped, and `power-workboard`, `delegation` and `jev-router` settings are excluded by id
+    because they hold execution state, model picks or keys. A Telus `config.json` that is not a
+    JSON object is left untouched and the run fails instead of overwriting it.
+  - Left out on purpose: theme, fonts, sidebar layout and keyboard shortcuts, which live in the
+    Electron client's localStorage and cannot be written safely into the other Electron profile
+    while it runs. The screen and the plugin README say so.
+  - The UI is English like the rest of Settings; the screen title is the one the ticket asked for.
+- **Core files touched:** none. Plugin files: `paseo-plugin.json`, `package.json`, `tsconfig.json`,
+  `vitest.config.ts`, `index.client.tsx`, `index.server.ts`, `client/SettingsScreen.tsx`,
+  `server/sync.ts`, `shared/model.ts`, `shared/rpc.ts`, `tests/sync.test.ts`, `README.md`.
+  `custom/plugins.json` installs it on both homes; the test line is in the update script.
+- **Re-apply:** Plugin-only; an upstream merge cannot conflict. Grep `CUSTOM(telus-sync)`.
+- **Verify:** `(cd custom/plugins/telus-sync && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)`.
+  The suite uses temporary homes only; it never touches `~/.paseo-telus`. Needs the plugin installed
+  on both daemons and `paseo plugin reload telus-sync --home ~/.paseo` (and `~/.paseo-telus`). In
+  Personal: Settings > Plugins > telus-sync, check the preview, sync a small category (for example
+  App preferences), then roll it back and confirm the Telus file returned to its previous content.
+
+## assistant-cards: Projects Assistant cards show the review map and answer in one tap
+
+- **Added:** 2026-11-19 (based on `custom` at `60bc73d0d`)
+- **Commit:** `custom: Projects Assistant cards show the review map and answer questions in one tap`
+- **Why:** The user wants to react, not write: a question should come with its options, what each
+  gains and costs and a recommendation, answered in one tap; a review should show what they asked
+  for with the evidence per item. Ideas from jelly ("agents show, people react", its review and
+  plan recipes), which is only inspiration and is not installed. The Reports page also guessed by
+  time who created or moved a ticket, and joined the user's own moves to assistant entries.
+- **What:** Protocol v2 in `custom/plugins/power-workboard/docs/assistant-reply-protocol.md`. The
+  `pwb` block gains `pedido` (evidence `seen`/`tested`/`unverified`, Portuguese aliases, the quoted
+  ask and its proof), `fora` (changed outside the ask), `pergunta`, `opção` (`id | label | ganha: |
+custa:`) and `recomendo` (`id | why`); v1 blocks parse as before. The task `<report>` gains
+  optional `options`, `recommend`, `why`, `outcomes` and `notDone`; a malformed one falls back to
+  empty and never costs the report. Shared card pieces (`client/assistant/card-parts.tsx`): the
+  question with option buttons and the outcome map with evidence pills and a comment button per
+  item. The chat card sends a tap or a comment to the chat as a message
+  (`shared/card-answers.ts` builds the text). The report card in the agent's chat and in Reports
+  (newest report only) send it through a new `answer` action: the board task whose agent it is
+  continues with it like Continue task; an agent outside the board gets a message. The action
+  refuses a card from an older agent of the task, a question the task no longer asks, a closed
+  task (Done column, delivery delivered or dismissed) and a running delivery step, and never moves
+  those. The current question is the orchestration's `ask`, written on every finish with the
+  assistant on or off. In the chat, only the newest card takes taps and comments, and not while
+  the chat works (`client/assistant/newest-reply.ts`). The Ready to review card shows the options as buttons from the
+  orchestration's new `ask` field. Every history event records `by` (`user`, `assistant`,
+  `orchestrator`; the chat's tools pass `assistant` to `mutate` and `assistantAction`, the
+  feedback's author rides on the orchestration's `feedbackBy`), and Reports keeps the user's own
+  events apart instead of the 2-minute window, which stays only for events without `by`
+  (`COMPAT(history-by)`). Small visual pass on both cards: more spacing, a divider before the
+  question and the footer, uppercase section titles, a bigger summary. The chat's and the task
+  agents' prompts ask for the new parts.
+- **Core files touched:** none. Plugin files: `shared/assistant.ts`, `shared/model.ts`,
+  `shared/reply-protocol.ts`, `shared/task-report.ts`, `shared/assistant-reports.ts`,
+  `shared/card-answers.ts` (new), `server/workboard.ts`, `server/assistant/chat.ts`,
+  `server/assistant/history.ts`, `server/assistant/reports.ts`, `server/orchestrator.ts`,
+  `client/assistant/card-parts.tsx` (new), `client/assistant/newest-reply.ts` (new),
+  `client/assistant/AssistantReplyCard.tsx`,
+  `client/assistant/TaskReportCard.tsx` (`wash` moved to card-parts, re-exported),
+  `client/assistant/reports-timeline.tsx`, `client/assistant/reports-strings.ts`,
+  `client/WorkboardScreen.tsx` (`ReviewPrompt`), `client/strings.ts`,
+  `docs/assistant-reply-protocol.md`, `README.md`, tests (`reply-protocol`, `task-report`,
+  `assistant-report`, `assistant-reports`, `assistant-engine`, `assistant-views`,
+  `newest-reply`).
+- **Re-apply:** Plugin-only. Grep `CUSTOM(assistant-cards)` and `COMPAT(history-by)`. Change the
+  doc and `shared/reply-protocol.ts` together and bump the version; the test compares keys, verbs,
+  next values and evidence values. Keep new report fields lenient (`.catch` / `lenientList`): the
+  delivery reads the same schema and a strict field would turn a good report into `no-report`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/reply-protocol.test.ts tests/task-report.test.ts tests/assistant-reports.test.ts
+tests/assistant-engine.test.ts`. Needs only `paseo plugin reload power-workboard`. The live
+  assistant's `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md` still
+  says "protocol v1"; change it to v2 (or add the new lines) so the assistant writes the new keys.
+  In the app: ask the assistant something with options and tap one (the chat gets "Resposta a
+  ..."); open a task agent's report with options in its chat or in Reports and tap one (the task
+  goes back to Ready to start with that answer); comment on an outcome; in Reports, a ticket you
+  moved by hand shows "you" and stays its own row. Check light and dark, desktop and phone width.

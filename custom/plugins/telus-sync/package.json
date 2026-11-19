@@ -1,0 +1,35 @@
+{
+  "name": "telus-sync",
+  "version": "0.1.0",
+  "description": "Sync UX and plugin configuration from Paseo Personal to Paseo Telus",
+  "license": "MIT",
+  "type": "module",
+  "files": [
+    "paseo-plugin.json",
+    "index.client.tsx",
+    "index.server.ts",
+    "client/",
+    "server/",
+    "shared/",
+    "README.md"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "@getpaseo/plugin": "0.10.0-beta.1",
+    "@types/node": "^22.19.0",
+    "@types/react": "~19.2.0",
+    "prettier": "3.6.2",
+    "react": "19.1.0",
+    "react-native": "0.81.5",
+    "typescript": "~5.9.3",
+    "vite": "7.3.1",
+    "vitest": "4.0.18",
+    "zod": "^4.4.3"
+  }
+}

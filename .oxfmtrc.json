@@ -18,6 +18,7 @@
     "custom/plugins/beautiful-chat/**",
     "!custom/plugins/beautiful-chat/client/expand-memory*.ts",
     "custom/plugins/power-workboard/**",
+    "custom/plugins/telus-sync/**",
     "custom/plugins/paseo-background/**",
     "custom/plugins/token-ledger/**",
     "custom/plugins/paseo-chat-polish/**",

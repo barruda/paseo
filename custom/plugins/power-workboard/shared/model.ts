@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { scheduleSchema, timeOfDaySchema } from "./schedule";
-import { assistantDataSchema, taskProgressSchema } from "./assistant"; // CUSTOM(projects-assistant), CUSTOM(task-checkpoints)
+import {
+  assistantDataSchema,
+  reportOptionSchema, // CUSTOM(assistant-cards)
+  taskProgressSchema,
+} from "./assistant"; // CUSTOM(projects-assistant), CUSTOM(task-checkpoints)
 import { skillSelectionSchema } from "./profiles"; // CUSTOM(agent-profiles)
 import { orchestratorHoldSchema, type OrchestratorHold } from "./hold"; // CUSTOM(resource-pools)
 
@@ -483,6 +487,21 @@ export const orchestrationSchema = z.object({
   summary: z.string().nullable().default(null),
   /** What the reviewer asked for when they sent the task back to Ready to start. */
   feedback: z.string().nullable().default(null),
+  /** CUSTOM(assistant-cards): who sent that feedback, for the history's `by`. */
+  feedbackBy: z.enum(["user", "assistant"]).nullable().default(null),
+  /**
+   * CUSTOM(assistant-cards): the question of the agent's last report and its options, for the
+   * Ready to review card's one-tap answers. Null when the report asked nothing.
+   */
+  ask: z
+    .object({
+      question: z.string(),
+      options: z.array(reportOptionSchema),
+      recommend: z.string().nullable(),
+      why: z.string().nullable(),
+    })
+    .nullable()
+    .default(null),
   /** The orchestrator that started it; its log and limits own this run. */
   orchestratorId: z.string().nullable().default(null),
   /** CUSTOM(night-tasks): started as a night task, inside the night window. */

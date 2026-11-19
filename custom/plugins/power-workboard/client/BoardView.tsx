@@ -106,7 +106,8 @@ type Props = {
   renderQuickCreate?(group: Group): ReactNode;
   onClearFilters?(): void;
   onCreateTask?(): void;
-  renderCard(card: Card, showDragHandle: boolean): ReactNode;
+  /** CUSTOM(card-open-agent): the card puts `dragHandle` in its action row; null off the board. */
+  renderCard(card: Card, dragHandle: ReactNode | null): ReactNode;
   groupColor(group: Group): string;
 };
 
@@ -703,7 +704,7 @@ export function BoardView(props: Props) {
                       accessibilityHint={t.cardOrderHint}
                       {...cardKeys(card)}
                     >
-                      {renderCard(card, false)}
+                      {renderCard(card, null)}
                       <View style={{ flexDirection: "row", gap: 2 }}>
                         {([-1, 1] as const).map((direction) => (
                           <HintButton
@@ -887,7 +888,7 @@ export function BoardView(props: Props) {
                       onEnd={end}
                       onCancel={cancel}
                     >
-                      {renderCard(card, true)}
+                      {(handle) => renderCard(card, handle)}
                     </TaskDragShell>
                   ))}
                 </BoardColumn>
@@ -930,7 +931,7 @@ export function BoardView(props: Props) {
             ]}
           >
             {preview.kind === "card" ? (
-              renderCard(preview.card!, false)
+              renderCard(preview.card!, null)
             ) : (
               <View
                 style={[
@@ -1380,7 +1381,8 @@ function TaskDragShell({
   orderKeys: ReturnType<typeof keyboardProps>;
   orderHint: string;
   insertion: "before" | "after" | null;
-  children: ReactNode;
+  /** Gets the drag handle to place inside the card. */
+  children(handle: ReactNode): ReactNode;
 }) {
   const measured = useRef<View>(null);
   const handlers = useDragHandle({
@@ -1424,28 +1426,29 @@ function TaskDragShell({
           }}
         />
       )}
-      {children}
-      <View
-        {...handlers}
-        {...orderKeys}
-        tabIndex={0}
-        accessibilityHint={orderHint}
-        accessible
-        accessibilityLabel={label}
-        accessibilityState={{ disabled }}
-        testID={`workboard-drag-${card.id}`}
-        style={[
-          styles.cardHandle,
-          dragCursor(),
-          { opacity: disabled && !moving ? 0.35 : 1 },
-        ]}
-      >
-        <Icon
-          name="GripVertical"
-          size={14}
-          color={theme.colors.foregroundMuted}
-        />
-      </View>
+      {children(
+        <View
+          {...handlers}
+          {...orderKeys}
+          tabIndex={0}
+          accessibilityHint={orderHint}
+          accessible
+          accessibilityLabel={label}
+          accessibilityState={{ disabled }}
+          testID={`workboard-drag-${card.id}`}
+          style={[
+            styles.cardHandle,
+            dragCursor(),
+            { opacity: disabled && !moving ? 0.35 : 1 },
+          ]}
+        >
+          <Icon
+            name="GripVertical"
+            size={14}
+            color={theme.colors.foregroundMuted}
+          />
+        </View>,
+      )}
     </View>
   );
 }
@@ -1712,17 +1715,22 @@ function BoardColumn({
               lastPress.current = now;
             }}
             accessible={false}
-            style={{
-              flex: 1,
-              width: "100%",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
+            // The Pressable would show the pointer cursor over the whole strip.
+            style={[
+              {
+                flex: 1,
+                width: "100%",
+                alignItems: "center",
+                justifyContent: "center",
+              },
+              dragCursor(true),
+            ]}
           >
+            {/* Hovered or focused, the line runs along the whole strip to show where to grab. */}
             <View
               style={{
-                width: resizeHovered || resizeFocused ? 4 : 2,
-                height: 22,
+                width: resizeHovered || resizeFocused ? 3 : 2,
+                height: resizeHovered || resizeFocused ? "100%" : 22,
                 borderRadius: 1,
                 backgroundColor:
                   resizeHovered || resizeFocused
@@ -1801,26 +1809,25 @@ const styles = StyleSheet.create({
     width: 3,
     borderRadius: 2,
   },
+  // CUSTOM(card-open-agent): a 16px strip centred on the column's right border, full height. The
+  // column's 8px padding and the 10px gap between columns hold it, so it never covers a card,
+  // the card list's scrollbar or the next column.
   resize: {
     position: "absolute",
-    right: -5,
-    top: 42,
+    right: -9,
+    top: 0,
     bottom: 0,
-    width: 12,
+    width: 16,
     alignItems: "center",
     justifyContent: "center",
     zIndex: 5,
   },
   task: { position: "relative" },
   cardHandle: {
-    position: "absolute",
-    right: 1,
-    top: 1,
     width: 30,
-    height: 32,
+    minHeight: 36,
     alignItems: "center",
     justifyContent: "center",
-    zIndex: 2,
   },
   ghost: {
     position: "absolute",

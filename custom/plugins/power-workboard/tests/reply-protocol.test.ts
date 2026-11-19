@@ -10,6 +10,8 @@ import {
   REPLY_ITEM_VERSION,
   REPLY_KEYS,
   REPLY_PROTOCOL_VERSION,
+  EVIDENCE_WORDS,
+  normalizeWord,
   parseReplyBlock,
   replyDetails,
   replyItemDataSchema,
@@ -22,6 +24,8 @@ import {
   CHAT_INSTRUCTIONS,
   CHAT_LABEL,
 } from "../server/assistant/chat";
+import { EVIDENCE_KINDS } from "../shared/assistant"; // CUSTOM(assistant-cards)
+import { itemFeedback, optionAnswer } from "../shared/card-answers";
 import {
   canOpenTaskReport,
   openTaskReport,
@@ -60,10 +64,145 @@ describe("protocol doc", () => {
     for (const key of REPLY_KEYS) expect(doc).toContain(`\`${key}\``);
   });
 
+  // CUSTOM(assistant-cards)
+  it("lists the evidence values of the report schema", () => {
+    expect(docList("evidence-values")).toEqual([...EVIDENCE_KINDS]);
+    const words = normalizeWord(doc);
+    for (const alias of Object.keys(EVIDENCE_WORDS))
+      expect(words).toContain(`\`${alias}\``);
+  });
+
   it("is what the assistant's prompt points to", () => {
     expect(ASSISTANT_ROLE).toContain("docs/assistant-reply-protocol.md");
     expect(ASSISTANT_ROLE).toContain("```pwb");
     expect(CHAT_INSTRUCTIONS).toContain("```pwb");
+  });
+});
+
+// CUSTOM(assistant-cards): protocol v2.
+describe("parseReplyBlock v2", () => {
+  it("reads the review map", () => {
+    const reply = parseReplyBlock(
+      [
+        'pedido: testado | "abas internas" | tests/pages.test.ts [10b1b0d7]',
+        "pedido: Visto | Reports sob pedido | abri o board | nada carregou",
+        "pedido: sem prova | retry no 503",
+        "pedido: o pedido sem evidência",
+        "fora: renomeei o hook [10b1b0d7]",
+      ].join("\n"),
+    );
+    expect(reply.outcomes).toEqual([
+      {
+        evidence: "tested",
+        text: "abas internas",
+        detail: "tests/pages.test.ts",
+        taskIds: ["10b1b0d7"],
+      },
+      {
+        evidence: "seen",
+        text: "Reports sob pedido",
+        detail: "abri o board | nada carregou",
+        taskIds: [],
+      },
+      { evidence: "unverified", text: "retry no 503", detail: "", taskIds: [] },
+      {
+        evidence: "unverified",
+        text: "o pedido sem evidência",
+        detail: "",
+        taskIds: [],
+      },
+    ]);
+    expect(reply.notDone).toEqual([
+      { kind: "outside", text: "renomeei o hook", taskIds: ["10b1b0d7"] },
+    ]);
+    expect(reply.extra).toEqual([]);
+  });
+
+  it("reads a question with options and a recommendation", () => {
+    const reply = parseReplyBlock(
+      [
+        "pergunta: Merge agora ou espero o CI? [10b1b0d7]",
+        "opção: a | Merge agora | ganha: entrega hoje | custa: CI pode quebrar",
+        "Opcao: b | Esperar o CI | custa: 20 min",
+        "opção: c | Só | rótulo | com barras",
+        "recomendo: a | só testes mudaram",
+        "próximo: você",
+        "seu: decidir o merge",
+      ].join("\n"),
+    );
+    expect(reply.question).toEqual({
+      text: "Merge agora ou espero o CI?",
+      taskIds: ["10b1b0d7"],
+      options: [
+        {
+          id: "a",
+          label: "Merge agora",
+          gains: "entrega hoje",
+          costs: "CI pode quebrar",
+        },
+        { id: "b", label: "Esperar o CI", gains: null, costs: "20 min" },
+        {
+          id: "c",
+          label: "Só | rótulo | com barras",
+          gains: null,
+          costs: null,
+        },
+      ],
+      recommend: "a",
+      why: "só testes mudaram",
+    });
+    expect(reply.next?.value).toBe("você");
+  });
+
+  it("keeps bad options as text and drops a recommendation of no option", () => {
+    const reply = parseReplyBlock(
+      [
+        "opção: a | Um",
+        "opção: a | Repetida",
+        "opção: sem rótulo",
+        "opção: duas palavras | rótulo",
+        "recomendo: z | não existe",
+      ].join("\n"),
+    );
+    expect(reply.question).toEqual({
+      text: "",
+      taskIds: [],
+      options: [{ id: "a", label: "Um", gains: null, costs: null }],
+      recommend: null,
+      why: null,
+    });
+    expect(reply.extra.map((line) => line.text)).toEqual([
+      "a | Repetida",
+      "sem rótulo",
+      "duas palavras | rótulo",
+    ]);
+  });
+
+  it("keeps a question without options and the last repeated one", () => {
+    const reply = parseReplyBlock(
+      "pergunta: primeira\npergunta: Qual nome usar?",
+    );
+    expect(reply.question).toEqual({
+      text: "Qual nome usar?",
+      taskIds: [],
+      options: [],
+      recommend: null,
+      why: null,
+    });
+  });
+});
+
+describe("card answers", () => {
+  it("names the question and the option, or the item", () => {
+    expect(
+      optionAnswer("Merge agora?", { id: "a", label: " Merge agora " }),
+    ).toBe('Resposta a "Merge agora?": escolho a (Merge agora).');
+    expect(optionAnswer("", { id: "b", label: "Esperar" })).toBe(
+      "Escolho b (Esperar).",
+    );
+    expect(itemFeedback("retry\nno 503", " falta o teste ")).toBe(
+      'Sobre "retry no 503": falta o teste',
+    );
   });
 });
 
@@ -103,6 +242,10 @@ describe("parseReplyBlock", () => {
       yours: { none: false, text: "aprovar o merge", taskIds: ["10b1b0d7"] },
       extra: [],
       details: "",
+      // CUSTOM(assistant-cards): a v1 block has none of the v2 parts.
+      outcomes: [],
+      notDone: [],
+      question: null,
     });
   });
 

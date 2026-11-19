@@ -352,6 +352,8 @@ if $VERIFY; then
   # Worktree setup hardlinks the main checkout's node_modules when the lockfiles match.
   bash custom/scripts/worktree-deps.test.sh
   (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
+  # Telus sync: allowlists, credential/exclusion lists, backup, rollback and backup retention.
+  (cd custom/plugins/telus-sync && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
   # Timeline transformers get the chat's agent; a row that replaced a reply keeps the copy button.
   (cd packages/app && npx vitest run src/plugins/timeline/model.test.ts src/plugins/timeline/projection.test.ts src/agent-stream/render-strategy.test.ts src/agent-stream/layout.test.ts src/agent-stream/turn-boundary.test.ts src/agent-stream/spacing.test.ts --bail=1)
   # Backgrounds plugin (vendored from upstream) with the local image picker.

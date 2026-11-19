@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type ComponentProps,
+  type ReactNode,
 } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -56,6 +57,7 @@ import {
 } from "../shared/rpc";
 import {
   attentionReasons,
+  cardAgentId,
   finishButtons,
   groupDeleteReason,
   mappingPreview,
@@ -92,6 +94,7 @@ import { QuickCreate } from "./QuickCreate";
 import { HintButton, HintProvider } from "./Hint";
 import { usePaseoLanguage } from "./paseo-language";
 import { AssistantProfileTab } from "./Profiles"; // CUSTOM(agent-profiles)
+import { optionAnswer } from "../shared/card-answers";
 import { ConfirmationModal } from "./ConfirmationModal";
 // CUSTOM(workboard-inner-pages): the Projects Assistant pages, as tabs of the board.
 import { ChatLauncher } from "./assistant/ChatLauncher";
@@ -1114,7 +1117,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             },
           }));
         }}
-        renderCard={(card, showDragHandle) => (
+        renderCard={(card, dragHandle) => (
           <TaskCard
             card={card}
             board={board}
@@ -1126,7 +1129,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               pendingMutationIds.has(`card-order:${card.stage}`)
             }
             compact={props.layout.compact}
-            showDragHandle={showDragHandle}
+            dragHandle={dragHandle}
             onUndo={
               moveUndos.has(card.id) ? () => undoMove(card.id) : undefined
             }
@@ -1678,7 +1681,8 @@ function OrchestrationLine({
     ? limitLine(record.resumeAt, t.limit, now)
     : `${t.orchestrationStatus[record.status]}${badge ? ` · ${badge}` : ""}`;
   const text = `${owner}: ${statusText}${record.error ? ` · ${record.error}` : ""}`;
-  const agentId = record.agentId;
+  // CUSTOM(card-open-agent): the same agent the card links everywhere else.
+  const agentId = cardAgentId(card, record);
   return (
     <>
       <View style={styles.cardFooter}>
@@ -1702,25 +1706,11 @@ function OrchestrationLine({
           </Pressable>
         )}
         {agentId && (
-          <HintButton
-            hint={t.openAgentHint}
-            accessibilityRole="link"
-            accessibilityLabel={t.openAgent}
+          <OpenAgentLink
+            t={t}
+            theme={theme}
             onPress={() => onOpenAgent(agentId)}
-            style={({ pressed }) => [
-              styles.iconAction,
-              pressed && { backgroundColor: theme.colors.surface2 },
-            ]}
-          >
-            <Text
-              style={[
-                styles.cardMeta,
-                { color: theme.colors.accent, textDecorationLine: "underline" },
-              ]}
-            >
-              {t.openAgent}
-            </Text>
-          </HintButton>
+          />
         )}
       </View>
       {progress && detailsOpen && (
@@ -1821,6 +1811,7 @@ function ReviewPrompt({
   const [feedback, setFeedback] = useState("");
   const [sending, setSending] = useState(false);
   const summary = board.orchestrations[card.id]?.summary ?? null;
+  const ask = board.orchestrations[card.id]?.ask ?? null;
   const send = async (outcome: "done" | "continue") => {
     setSending(true);
     try {
@@ -1921,6 +1912,74 @@ function ReviewPrompt({
           </Text>
         </Pressable>
       )}
+      {ask && ask.options.length > 0 && !writing ? (
+        <View style={{ gap: 6 }}>
+          <Text
+            style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
+          >
+            {t.review.options}
+          </Text>
+          {ask.options.map((option) => {
+            const recommended = ask.recommend === option.id;
+            return (
+              <CardAction
+                key={option.id}
+                theme={theme}
+                hint={option.label}
+                accessibilityRole="button"
+                accessibilityLabel={option.label}
+                disabled={busy}
+                onPress={() =>
+                  void onReview("continue", optionAnswer(ask.question, option))
+                }
+                style={{
+                  borderWidth: 1,
+                  borderRadius: 6,
+                  padding: 8,
+                  gap: 2,
+                  borderColor: recommended
+                    ? theme.colors.accent
+                    : theme.colors.border,
+                  backgroundColor: theme.colors.surface0,
+                  opacity: busy ? 0.5 : 1,
+                }}
+              >
+                <Text
+                  style={[
+                    styles.cardMeta,
+                    { color: theme.colors.foreground, fontWeight: "600" },
+                  ]}
+                >
+                  {option.label}
+                  {recommended ? ` · ${t.review.recommended}` : ""}
+                </Text>
+                {option.gains || option.costs ? (
+                  <Text
+                    style={[
+                      styles.cardMeta,
+                      { color: theme.colors.foregroundMuted },
+                    ]}
+                  >
+                    {[
+                      option.gains ? `+ ${option.gains}` : null,
+                      option.costs ? `− ${option.costs}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join("  ")}
+                  </Text>
+                ) : null}
+              </CardAction>
+            );
+          })}
+          {ask.why ? (
+            <Text
+              style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
+            >
+              {t.review.why}: {ask.why}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       {writing ? (
         <>
           <TextInput
@@ -1982,6 +2041,39 @@ const FINISH_ICONS: Record<FinishStep, string> = {
   pr: "FileText",
   merge: "GitMerge",
 };
+
+/** CUSTOM(card-open-agent): the card's Open agent link. */
+function OpenAgentLink({
+  t,
+  theme,
+  onPress,
+}: {
+  t: ReturnType<typeof strings>;
+  theme: PluginSurfaceProps["theme"];
+  onPress(): void;
+}) {
+  return (
+    <HintButton
+      hint={t.openAgentHint}
+      accessibilityRole="link"
+      accessibilityLabel={t.openAgent}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.iconAction,
+        pressed && { backgroundColor: theme.colors.surface2 },
+      ]}
+    >
+      <Text
+        style={[
+          styles.cardMeta,
+          { color: theme.colors.accent, textDecorationLine: "underline" },
+        ]}
+      >
+        {t.openAgent}
+      </Text>
+    </HintButton>
+  );
+}
 
 /**
  * A Done task's work is still in its worktree: Commit it, get a PR description from its agent, or
@@ -2285,7 +2377,7 @@ export function TaskCard({
   onDetachDraft,
   onUndo,
   compact = false,
-  showDragHandle = false,
+  dragHandle = null,
 }: {
   card: Card;
   board: Board;
@@ -2306,7 +2398,8 @@ export function TaskCard({
   onDetachDraft(draftId: string): void;
   onUndo?(): Promise<void>;
   compact?: boolean;
-  showDragHandle?: boolean;
+  /** CUSTOM(card-open-agent): the board's drag handle, shown at the end of the action row. */
+  dragHandle?: ReactNode;
 }) {
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [titleHovered, setTitleHovered] = useState(false);
@@ -2350,6 +2443,12 @@ export function TaskCard({
   });
   const pinHint = card.pinState === "automatic" ? t.pinAutomatic : t.pinManual;
   const titleParts = splitTitleArea(card.title);
+  // CUSTOM(card-open-agent): Open agent shows in every column while the task has an agent. The
+  // orchestration line carries it when it shows (not in review); otherwise it gets its own line.
+  const record = board.orchestrations[card.id];
+  const inReview = !isDraft && !card.binding && group?.kind === "review";
+  const agentId = cardAgentId(card, record);
+  const standaloneAgentLink = !!agentId && (inReview || !record);
   return (
     <View
       style={[
@@ -2384,9 +2483,7 @@ export function TaskCard({
           <Text style={{ color: theme.colors.accent }}>{t.undoMove}</Text>
         </HintButton>
       )}
-      <View
-        style={[styles.cardTitleRow, { paddingRight: showDragHandle ? 30 : 0 }]}
-      >
+      <View style={styles.cardTitleRow}>
         {/* CUSTOM(card-title-area): the title opens the task's description in every column (the
             workspace still opens from Open agent and the attention line), and the hint shows the
             whole saved title, which the card clips to two lines and may show without its area. */}
@@ -2410,16 +2507,6 @@ export function TaskCard({
             {titleParts.title}
           </Text>
         </HintButton>
-        {card.pinState !== "none" && (
-          <HintButton
-            hint={pinHint}
-            accessibilityRole="button"
-            accessibilityLabel={pinHint}
-            style={styles.pinAction}
-          >
-            <Icon name="Pin" size={13} color={theme.colors.foregroundMuted} />
-          </HintButton>
-        )}
         {pending && (
           <View
             accessible
@@ -2514,7 +2601,7 @@ export function TaskCard({
           onFinish={onFinish}
         />
       )}
-      {!isDraft && !card.binding && group?.kind === "review" ? (
+      {inReview ? (
         <ReviewPrompt
           card={card}
           board={board}
@@ -2531,6 +2618,16 @@ export function TaskCard({
           theme={theme}
           onOpenAgent={onOpenAgent}
         />
+      )}
+      {standaloneAgentLink && agentId && (
+        <View style={styles.cardFooter}>
+          <Icon name="Bot" size={13} color={theme.colors.foregroundMuted} />
+          <OpenAgentLink
+            t={t}
+            theme={theme}
+            onPress={() => onOpenAgent(agentId)}
+          />
+        </View>
       )}
       <View style={styles.cardBottom}>
         {isDraft ? (
@@ -2781,6 +2878,18 @@ export function TaskCard({
                 />
               </CardAction>
             )}
+          {/* CUSTOM(card-open-agent): pin and move live here so the title gets the card's width. */}
+          {card.pinState !== "none" && (
+            <HintButton
+              hint={pinHint}
+              accessibilityRole="button"
+              accessibilityLabel={pinHint}
+              style={styles.iconAction}
+            >
+              <Icon name="Pin" size={13} color={theme.colors.foregroundMuted} />
+            </HintButton>
+          )}
+          {dragHandle}
         </View>
       </View>
       {terminal && card.dueAt && (
@@ -4656,13 +4765,6 @@ const styles = StyleSheet.create({
     minHeight: 36,
     alignItems: "center",
     justifyContent: "center",
-  },
-  pinAction: {
-    minWidth: 36,
-    minHeight: 36,
-    alignItems: "center",
-    justifyContent: "center",
-    marginTop: -5,
   },
   reasonAction: {
     minHeight: 36,
