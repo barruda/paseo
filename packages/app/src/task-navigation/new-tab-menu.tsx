@@ -27,6 +27,8 @@ import {
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store"; // CUSTOM(desk-docs)
 import { activeDesk, deskContextTab, useDesksStore, type DeskTabOwner } from "./desks-store";
+import { isWorkboardPanel, POWER_WORKBOARD_SURFACE_ID } from "./desk-workboard-model"; // CUSTOM(workboard-chip-only)
+import { useDeskWorkboardStore } from "./desk-workboard-store"; // CUSTOM(workboard-chip-only)
 
 /** Opens a launched target in its pane, or turns the launching new-tab tab into it. */
 export function launchDeskTarget(
@@ -40,6 +42,12 @@ export function launchDeskTarget(
     return;
   }
   const store = useDesksStore.getState();
+  // CUSTOM(workboard-chip-only): Power Workboard from + selects its chip; no board tab in a Desk.
+  if (target.kind === "plugin" && isWorkboardPanel(target.pluginId, target.panelId)) {
+    if (destination.kind === "replace") store.closeTab(destination.tabId);
+    useDeskWorkboardStore.getState().openSurface(POWER_WORKBOARD_SURFACE_ID);
+    return;
+  }
   if (destination.kind === "replace") {
     store.updateTab(destination.tabId, { ...scope, target });
     store.selectTab(destination.tabId);

@@ -42,6 +42,7 @@ import type { PluginSidebarSection } from "../types";
 import { SidebarItemFrameContext, type SidebarItemFrame } from "./frame";
 import { LegacyPluginSidebarRow } from "./legacy";
 import { resolvePluginPlatform } from "../platform";
+import { openWorkboardInDesk } from "@/task-navigation/desk-workboard-store";
 
 export { SidebarRow, SidebarSeparator } from "./kit";
 
@@ -188,6 +189,8 @@ function SidebarItemContent({
       rememberPluginContributionHost(pluginScreensHostKey(plugin.id), plugin.serverId);
       showPopover(null);
       onBeforeNavigate?.();
+      // CUSTOM(workboard-chip-only): in Tasks mode Power Workboard opens on its Desk chip.
+      if (openWorkboardInDesk({ pluginId: plugin.id, screenId, params })) return;
       router.push(
         buildPluginSurfaceRoute(
           plugin.serverId,

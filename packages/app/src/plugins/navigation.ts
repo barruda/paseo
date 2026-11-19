@@ -5,6 +5,10 @@ import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store"
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { buildPluginSurfaceRoute } from "./routes";
 import type { PluginNavigation } from "./actions";
+import {
+  openWorkboardInDesk,
+  openWorkboardPanelInDesk,
+} from "@/task-navigation/desk-workboard-store";
 
 export function createPluginNavigation(input: {
   serverId: string;
@@ -24,11 +28,15 @@ export function createPluginNavigation(input: {
       router.push(buildPluginSettingsRoute(serverId, pluginId, screenId));
     },
     openSurface(pluginId, surfaceId, params) {
+      // CUSTOM(workboard-chip-only): in Tasks mode Power Workboard opens on its Desk chip.
+      if (openWorkboardInDesk({ pluginId, screenId: surfaceId, params })) return;
       router.push(
         buildPluginSurfaceRoute(serverId, pluginId, { kind: "surface", id: surfaceId }, params),
       );
     },
     openWorkspacePanel(pluginId, panelId, location) {
+      // CUSTOM(workboard-chip-only): never a Power Workboard tab in a Desk; its chip instead.
+      if (openWorkboardPanelInDesk(pluginId, panelId)) return;
       if (!workspaceId) throw new Error("No active workspace");
       navigateToWorkspace({
         serverId,

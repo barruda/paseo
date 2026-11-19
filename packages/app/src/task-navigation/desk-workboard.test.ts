@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   DESK_SURFACES,
+  deskStatusSchema,
   deskSurfacesStorageSchema,
+  deskWorkboardStatusBucket,
   isDeskSurfaceOpen,
+  isWorkboardPanel,
   migrateDeskSurfaces,
   resolveDeskSurfaceTarget,
+  resolveWorkboardOpen,
 } from "./desk-workboard-model";
 
 describe("desk surfaces persisted state", () => {
@@ -92,5 +96,59 @@ describe("Projects Assistant pages inside Power Workboard", () => {
       surfaceId: "power-workboard",
       tab: null,
     });
+  });
+});
+
+// CUSTOM(workboard-chip-only)
+describe("opening Power Workboard in Tasks mode", () => {
+  const open = (screenId: string, params?: Record<string, string>, tasksMode = true) =>
+    resolveWorkboardOpen({ tasksMode, pluginId: "power-workboard", screenId, params });
+
+  it("lands on the chip for the sidebar row, the Command Center and the inner pages", () => {
+    expect(open("power-workboard")).toEqual({ surfaceId: "power-workboard", tab: null });
+    expect(open("projects-reports")).toEqual({ surfaceId: "power-workboard", tab: "reports" });
+    expect(open("power-workboard", { tab: "reports", request: "1" })).toEqual({
+      surfaceId: "power-workboard",
+      tab: "reports",
+    });
+  });
+
+  it("keeps the default open outside Tasks mode, for other screens and other plugins", () => {
+    expect(open("power-workboard", undefined, false)).toBeNull();
+    expect(open("power-workboard-settings")).toBeNull();
+    expect(
+      resolveWorkboardOpen({ tasksMode: true, pluginId: "warp", screenId: "power-workboard" }),
+    ).toBeNull();
+  });
+
+  it("recognizes only the board's own workspace panel", () => {
+    expect(isWorkboardPanel("power-workboard", "power-workboard")).toBe(true);
+    expect(isWorkboardPanel("power-workboard", "other")).toBe(false);
+    expect(isWorkboardPanel("warp", "power-workboard")).toBe(false);
+  });
+});
+
+// CUSTOM(workboard-chip-status)
+describe("Power Workboard chip status", () => {
+  const status = (running: number, review: number, needsYou: number) =>
+    deskStatusSchema.parse({ running, review, needsYou });
+
+  it("is clean with nothing going on or before the plugin answers", () => {
+    expect(deskWorkboardStatusBucket(status(0, 0, 0))).toBeNull();
+    expect(deskWorkboardStatusBucket(null)).toBeNull();
+  });
+
+  it("shows the running ring while a task runs", () => {
+    expect(deskWorkboardStatusBucket(status(2, 0, 0))).toBe("running");
+  });
+
+  it("shows the review dot for Ready to review and the alert for Needs you", () => {
+    expect(deskWorkboardStatusBucket(status(0, 1, 0))).toBe("attention");
+    expect(deskWorkboardStatusBucket(status(0, 0, 1))).toBe("needs_input");
+  });
+
+  it("lets what waits for the user win over a running task", () => {
+    expect(deskWorkboardStatusBucket(status(3, 1, 0))).toBe("attention");
+    expect(deskWorkboardStatusBucket(status(3, 1, 2))).toBe("needs_input");
   });
 });

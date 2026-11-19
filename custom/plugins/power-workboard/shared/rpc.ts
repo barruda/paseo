@@ -1,5 +1,6 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
+import { deskStatusSchema } from "./desk-status";
 import {
   FINISH_STEPS,
   boardSchema,
@@ -20,6 +21,12 @@ export const snapshotRpc = defineRpc({
   name: "workboard.snapshot",
   input: z.object({}),
   output: boardSchema,
+});
+// CUSTOM(workboard-chip-status): three counts for the Desk header chip.
+export const deskStatusRpc = defineRpc({
+  name: "workboard.desk-status",
+  input: z.object({}),
+  output: deskStatusSchema,
 });
 export const CANCEL_BINDING_BUSY_ERROR_CODE = "cancel-binding-busy";
 export const mutationSchema = z.discriminatedUnion("action", [

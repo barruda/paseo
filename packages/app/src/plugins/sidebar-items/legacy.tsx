@@ -5,6 +5,7 @@ import { rememberPluginContributionHost } from "../contribution-host";
 import { pluginIconComponent } from "../icons";
 import { buildPluginSurfaceRoute, hostIdFromPathname } from "../routes";
 import { selectPluginSidebarTarget, type PluginSidebarGroup } from "../sidebar-groups";
+import { openWorkboardInDesk } from "@/task-navigation/desk-workboard-store";
 
 // COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
 /**
@@ -29,8 +30,17 @@ export function LegacyPluginSidebarRow({
   const navigate = useCallback(() => {
     rememberPluginContributionHost(group.key, target.plugin.serverId);
     onBeforeNavigate?.();
+    // CUSTOM(workboard-chip-only): in Tasks mode Power Workboard opens on its Desk chip.
+    if (openWorkboardInDesk({ pluginId: group.pluginId, screenId: group.contributionId })) return;
     router.push(route);
-  }, [group.key, onBeforeNavigate, route, target.plugin.serverId]);
+  }, [
+    group.key,
+    group.contributionId,
+    group.pluginId,
+    onBeforeNavigate,
+    route,
+    target.plugin.serverId,
+  ]);
   return (
     <SidebarHeaderRow
       icon={pluginIconComponent(group.icon)}

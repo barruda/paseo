@@ -3008,7 +3008,9 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     all projects, always on (a window from 00:00 to 00:00 every day), 2 at a time, with the agent
     defaults. `defaultOrchestratorSeeded` keeps it from coming back after it is deleted.
   - **Tab and images** (from the patched Workboard): the board is also a workspace panel ("+"
-    new-tab menu, or "Open Power Workboard tab" in the Command Center). Pasting an image into a
+    new-tab menu, or "Open Power Workboard tab" in the Command Center). In Tasks mode both select
+    the Desk chip instead
+    ([workboard-chip-only](#workboard-chip-only-power-workboard-always-opens-on-its-desk-chip-with-a-status-icon)). Pasting an image into a
     task description uploads it to the daemon and inserts `![image](<absolute path>)`; thumbnails
     show under the field. Web and desktop only; PNG, JPEG, GIF and WebP up to 10 MB. The read RPC
     serves only files directly inside the image folder.
@@ -3082,9 +3084,10 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   inner tab are kept in this app's storage (`custom-desk-workboard`, version 3; version 1's
   `open`/`selected` migrate to Power Workboard, version 2's page chips migrate to Power Workboard
   on that page's tab).
-- **Files:** `packages/app/src/task-navigation/desk-workboard.tsx` (store, the installation lookup
+- **Files:** `packages/app/src/task-navigation/desk-workboard.tsx` (the installation lookup
   per surface, the cover that swaps the surface in, and the surface renderer modeled on
-  `plugins/surface-screen.tsx`) and `desk-workboard-model.ts` (the surface list, the persisted
+  `plugins/surface-screen.tsx`), `desk-workboard-store.ts` (the store, re-exported by
+  `desk-workboard.tsx`) and `desk-workboard-model.ts` (the surface list, the persisted
   schema and its migration; tested in `desk-workboard.test.ts`).
 - **Core files touched:** `packages/app/src/task-navigation/desk-screen.tsx`
   (`CUSTOM(desk-workboard)`): the chips and the + menu in the header, Desk chips unselected while
@@ -7872,3 +7875,59 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   in the card; hover or click "detalhes"; click a `feito` line with an id to land on that ticket in
   Reports. A task agent's chat still shows a `pwb` block as a code block (as Markdown). Check
   light and dark.
+
+## workboard-chip-only: Power Workboard always opens on its Desk chip, with a status icon
+
+- **Added:** 2026-11-19 (based on `custom` at `36f050171`)
+- **Commit:** `custom: Power Workboard always opens on its Desk chip, which shows running and review status`
+- **Why:** In Tasks mode the board had two homes: the fixed chip in the Desk header and a
+  workspace tab inside a Desk (the sidebar row and the Command Center even opened a third, the
+  plugin page). The user wants one place, and wants to see from any Desk whether board tasks are
+  running or waiting for them.
+- **What:**
+  - **One place.** In Tasks mode, opening Power Workboard from the sidebar row, the Command
+    Center ("Power Workboard", "Open Power Workboard tab", "Projects Reports"), a plugin
+    `openScreen` (the assistant chat's `pwb` links, status bar and sidebar items) or the Desk's
+    **+** menu reopens and selects the chip and shows the Desk (the last workspace's route). A
+    screen `tab` param (or an old inner page id) picks the board's inner tab. The **+** entry and
+    the "Open Power Workboard tab" command stay, as ways to reach the chip: from **+** the
+    launching New tab closes and no board tab is created. Outside Tasks mode nothing changed: the
+    sidebar row opens the plugin page and the panel opens as a workspace tab. Board tabs left open
+    in a Desk from before stay until closed.
+  - **Status icon.** The chip now has the plugin's Workflow icon with the agent tabs'
+    `StatusIcon` overlay: the running ring while an orchestrator has a running task, the
+    attention dot (the agent tab's "finished, look at it") when a task is in a review group, and
+    the amber needs-input alert when a task is in the Projects Assistant's Needs you. One corner,
+    so Needs you wins over Ready to review, which wins over running: the states that want the
+    user hide the one that doesn't. Nothing to show leaves the icon clean.
+  - **Data.** The plugin answers `workboard.desk-status` with three counts
+    (`shared/desk-status.ts`, computed from the snapshot and the assistant deliveries). Plugins
+    have no server-to-client push and the board's own snapshot (300 KB+) is too heavy to poll with
+    the board closed, so the chip asks for the counts every 3 s while it is on screen. The app
+    repeats the contract in `desk-workboard-model.ts`; a plugin without the RPC leaves the chip
+    clean.
+  - A select now bumps `revision` in the chip store; a Desk tab change in the same update (the
+    **+** launcher closing, a route change) no longer deselects it.
+- **Core files touched** (`CUSTOM(workboard-chip-only)` / `CUSTOM(workboard-chip-status)`):
+  `packages/app/src/plugins/navigation.ts` (`openSurface`, `openWorkspacePanel`),
+  `plugins/sidebar-items/legacy.tsx`, `plugins/sidebar-items/index.tsx` and
+  `plugins/status-bar/index.tsx` (`openScreen`), `task-navigation/new-tab-menu.tsx`
+  (`launchDeskTarget`), `task-navigation/desk-screen.tsx` (the chip's icon). Customization
+  files: `task-navigation/desk-workboard-store.ts` (new; `openWorkboardInDesk`),
+  `desk-workboard-model.ts`, `desk-workboard.tsx` (`DeskWorkboardChipIcon`). Plugin:
+  `shared/desk-status.ts`, `shared/rpc.ts`, `server/workboard.ts` (`deskStatus()`),
+  `index.server.ts`, `tests/desk-status.test.ts`.
+- **Re-apply:** Every place that pushes a plugin surface route or opens a workspace panel calls
+  `openWorkboardInDesk` / `openWorkboardPanelInDesk` first and returns when it answers true; find
+  new ones with `rg "buildPluginSurfaceRoute\(|openWorkspacePanel\("` in `packages/app/src/plugins`.
+  The store stays out of `desk-workboard.tsx` so `plugins/navigation.ts` can import it without a
+  cycle through the plugin registry. In the chip, render `DeskWorkboardChipIcon` before the label.
+- **Tests:** `packages/app/src/task-navigation/desk-workboard.test.ts` (open resolution, status
+  rule: running, review, needs you, both, none), `desk-workboard-navigation.test.ts` (Command
+  Center, screen with a tab, panel, Desk +, outside Tasks mode), plugin
+  `tests/desk-status.test.ts` (the counts).
+- **Verify:** Needs `paseo plugin reload power-workboard` and an app build and install. In Tasks
+  mode: click Power Workboard in the sidebar, in the Command Center, and in a Desk's **+**: each
+  selects the chip, no tab appears in the Desk. Close the chip (×) and click the sidebar row: it
+  comes back selected. With a task running, the chip's icon has the blue ring; with a task in
+  Ready to review, a green dot; with one in Needs you, the amber alert. Light and dark.

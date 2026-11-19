@@ -130,11 +130,13 @@ import {
 } from "./desks-store";
 // CUSTOM(desk-workboard)
 import {
+  DeskWorkboardChipIcon,
   DeskWorkboardCover,
   type DeskSurfaceEntry,
   useDeskWorkboard,
   useDeskWorkboardStore,
 } from "./desk-workboard";
+import { POWER_WORKBOARD_SURFACE_ID } from "./desk-workboard-model"; // CUSTOM(workboard-chip-status)
 // CUSTOM(bottom-panel-expand)
 import { BottomPanelExpandButton } from "@/workspace-tabs/bottom-panel-expand-button";
 
@@ -734,6 +736,7 @@ export function DeskScreen() {
                 key={entry.definition.id}
                 id={entry.definition.id}
                 label={entry.definition.label}
+                plugin={entry.plugin}
                 selected={selectedSurface?.definition.id === entry.definition.id}
               />
             ))}
@@ -1287,10 +1290,12 @@ function DeskTabChip({
 function DeskWorkboardChip({
   id,
   label,
+  plugin,
   selected,
 }: {
   id: string;
   label: string;
+  plugin: DeskSurfaceEntry["plugin"];
   selected: boolean;
 }) {
   const select = useCallback(() => useDeskWorkboardStore.getState().select(id), [id]);
@@ -1308,6 +1313,10 @@ function DeskWorkboardChip({
           style={styles.workboardTabLabel}
           onPress={select}
         >
+          {/* CUSTOM(workboard-chip-status): running / review / needs-you, as on agent tabs. */}
+          {id === POWER_WORKBOARD_SURFACE_ID ? (
+            <DeskWorkboardChipIcon plugin={plugin} active={selected} />
+          ) : null}
           <Text
             style={[styles.deskTabText, selected && styles.deskTabTextSelected]}
             numberOfLines={1}
@@ -1451,7 +1460,12 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: theme.borderRadius.md,
     paddingLeft: theme.spacing[2],
   },
-  workboardTabLabel: { height: "100%", justifyContent: "center" },
+  workboardTabLabel: {
+    height: "100%",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1.5],
+  },
   workboardClose: { width: 20, height: 20 },
   content: { flex: 1, minHeight: 0 },
   empty: {

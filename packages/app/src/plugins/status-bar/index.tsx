@@ -38,6 +38,7 @@ import {
   type PluginStatusBarGroup,
   type PluginStatusBarTarget,
 } from "./model";
+import { openWorkboardInDesk } from "@/task-navigation/desk-workboard-store";
 
 export { StatusBarItem } from "./kit";
 
@@ -221,6 +222,8 @@ function StatusBarItemContent({
       rememberPluginContributionHost(pluginScreensHostKey(plugin.id), plugin.serverId);
       showPopover(null);
       onBeforeNavigate?.();
+      // CUSTOM(workboard-chip-only): in Tasks mode Power Workboard opens on its Desk chip.
+      if (openWorkboardInDesk({ pluginId: plugin.id, screenId, params })) return;
       router.push(
         buildPluginSurfaceRoute(
           plugin.serverId,

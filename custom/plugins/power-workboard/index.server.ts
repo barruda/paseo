@@ -12,6 +12,7 @@ import {
   readImageRpc,
   saveImageRpc,
   snapshotRpc,
+  deskStatusRpc,
   writeTicketRpc,
 } from "./shared/rpc";
 // CUSTOM(projects-assistant)
@@ -182,6 +183,11 @@ export default function contribute(server: PluginServerContext) {
     // read at the previous poll instead of the last pass's.
     void board.readPoolMemory().catch(() => undefined);
     return board.snapshot();
+  });
+  // CUSTOM(workboard-chip-status): the Desk header chip's counts.
+  server.handle(deskStatusRpc, () => {
+    if (!board) throw new Error(error);
+    return board.deskStatus();
   });
   server.handle(mutateRpc, (input) => {
     if (!board) throw new Error(error);

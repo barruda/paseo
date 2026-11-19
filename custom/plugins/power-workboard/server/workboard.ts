@@ -1,3 +1,4 @@
+import { deskStatusOf, type DeskStatus } from "../shared/desk-status";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import {
@@ -3618,6 +3619,11 @@ export class Workboard {
       agents: this.inventory.agents,
       now: new Date(),
     };
+  }
+  // CUSTOM(workboard-chip-status): the counts the Desk header chip shows.
+  deskStatus(): DeskStatus {
+    const data = this.store.current;
+    return deskStatusOf(this.snapshot(data), data.assistant?.deliveries ?? {});
   }
   // CUSTOM(assistant-quick): what the quick-message inbox needs from the chat agent.
   chatSend(agentId: string, text: string): Promise<void> {

@@ -2,18 +2,20 @@
 // by default; closing one moves it into the + menu until it is reopened. Each is the plugin's own
 // screen, rendered here instead of on its route so the Desk header stays.
 // CUSTOM(workboard-inner-pages): only Power Workboard is a chip; the Projects Assistant pages are
-// tabs inside it. This store remembers its inner tab and passes it back as `params.tab`.
-import AsyncStorage from "@react-native-async-storage/async-storage";
+// tabs inside it. Its inner tab (kept in desk-workboard-store.ts) comes back as `params.tab`.
+// CUSTOM(workboard-chip-only): in Tasks mode, opening Power Workboard from anywhere selects the chip.
+// CUSTOM(workboard-chip-status): the chip's status icon, from the plugin's `workboard.desk-status`.
 import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { Text, View } from "react-native";
+import { Workflow } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { create } from "zustand";
-import { persist } from "zustand/middleware";
 import type { PluginScreenProps } from "@getpaseo/plugin/client";
 import type { ComponentType } from "react";
 import type { PluginTheme } from "@getpaseo/plugin";
 import { ScreenHeader } from "@/components/headers/screen-header";
+import { StatusIcon } from "@/components/status-icon";
 import { useIsCompactFormFactor } from "@/constants/layout";
+import { useFetchQuery } from "@/data/query";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { usePluginHostNavigation } from "@/plugins/host-navigation";
 import { PluginInstallationProvider } from "@/plugins/installation-provider";
@@ -24,68 +26,25 @@ import { resolvePluginSurfaceContribution } from "@/plugins/surface-contribution
 import { SurfaceErrorBoundary } from "@/plugins/surface-error-boundary";
 import { toPluginTheme } from "@/plugins/theme";
 import { useHostRuntimeClient, useHosts } from "@/runtime/host-runtime";
-import { createValidatedPersistStorage } from "@/storage/validated-persist-storage";
 import type { Theme } from "@/styles/theme";
 import {
+  DESK_STATUS_RPC_NAME,
   DESK_SURFACES,
-  deskSurfacesStorageSchema,
+  POWER_WORKBOARD_PLUGIN_ID,
+  deskStatusSchema,
+  deskWorkboardStatusBucket,
   isDeskSurfaceOpen,
-  migrateDeskSurfaces,
-  resolveDeskSurfaceTarget,
   type DeskSurfaceDefinition,
 } from "./desk-workboard-model";
+import { useDeskWorkboardStore } from "./desk-workboard-store";
+
+export {
+  openWorkboardInDesk,
+  openWorkboardPanelInDesk,
+  useDeskWorkboardStore,
+} from "./desk-workboard-store";
 
 export const DESK_WORKBOARD_LABEL = DESK_SURFACES[0].label;
-const PLUGIN_ID = "power-workboard";
-
-interface DeskWorkboardState {
-  /** Surface id -> its tab is in the header; closed ones are reopened from +. Missing means open. */
-  open: Record<string, boolean>;
-  /** The surface showing instead of the Desk's tabs. */
-  selected: string | null;
-  /** Power Workboard's inner tab; the board reports it on every change. */
-  tab: string | null;
-  select(id: string): void;
-  deselect(): void;
-  close(id: string): void;
-  reopen(id: string): void;
-  /** Reopens and selects a chip; an inner page's id selects Power Workboard on that tab. */
-  openSurface(id: string): void;
-  setTab(tab: string): void;
-}
-export const useDeskWorkboardStore = create<DeskWorkboardState>()(
-  persist(
-    (set) => ({
-      open: {},
-      selected: null,
-      tab: null,
-      select: (id) => set((state) => ({ open: { ...state.open, [id]: true }, selected: id })),
-      deselect: () => set((state) => (state.selected ? { selected: null } : state)),
-      close: (id) =>
-        set((state) => ({
-          open: { ...state.open, [id]: false },
-          selected: state.selected === id ? null : state.selected,
-        })),
-      reopen: (id) => set((state) => ({ open: { ...state.open, [id]: true }, selected: id })),
-      openSurface: (id) => {
-        const target = resolveDeskSurfaceTarget(id);
-        set((state) => ({
-          open: { ...state.open, [target.surfaceId]: true },
-          selected: target.surfaceId,
-          tab: target.tab ?? state.tab,
-        }));
-      },
-      setTab: (tab) => set((state) => (state.tab === tab ? state : { tab })),
-    }),
-    {
-      name: "custom-desk-workboard",
-      version: 3,
-      migrate: (persisted) => migrateDeskSurfaces(persisted),
-      storage: createValidatedPersistStorage(AsyncStorage, deskSurfacesStorageSchema),
-      partialize: (state) => ({ open: state.open, selected: state.selected, tab: state.tab }),
-    },
-  ),
-);
 
 export interface DeskSurfaceEntry {
   definition: DeskSurfaceDefinition;
@@ -96,7 +55,7 @@ export interface DeskSurfaceEntry {
 
 /** Surfaces that exist on some installation, in `DESK_SURFACES` order. */
 export function useDeskSurfaceEntries(): DeskSurfaceEntry[] {
-  const installations = usePluginInstallations(PLUGIN_ID);
+  const installations = usePluginInstallations(POWER_WORKBOARD_PLUGIN_ID);
   const localServerId = useLocalDaemonServerId();
   const open = useDeskWorkboardStore((s) => s.open);
   return useMemo(() => {
@@ -132,16 +91,50 @@ export function useDeskWorkboard(
     [entries, selectedId],
   );
   const activeTabId = activeTab?.id ?? null;
-  const previous = useRef({ deskId, activeTabId });
+  const revision = useDeskWorkboardStore((s) => s.revision);
+  const previous = useRef({ deskId, activeTabId, revision });
   useEffect(() => {
     const before = previous.current;
-    previous.current = { deskId, activeTabId };
+    previous.current = { deskId, activeTabId, revision };
+    if (before.revision !== revision) return; // CUSTOM(workboard-chip-only)
     if (before.deskId !== deskId || before.activeTabId !== activeTabId) {
       useDeskWorkboardStore.getState().deselect();
     }
-  }, [deskId, activeTabId]);
+  }, [deskId, activeTabId, revision]);
   return { entries, selected };
 }
+
+/** CUSTOM(workboard-chip-status): how often the chip asks the plugin for its counts. */
+const DESK_STATUS_POLL_MS = 3_000;
+
+/**
+ * CUSTOM(workboard-chip-status): the plugin icon with the agent-tab status overlay. A plugin
+ * without `workboard.desk-status` (not reloaded yet) leaves the chip clean.
+ */
+export function DeskWorkboardChipIcon({
+  plugin,
+  active,
+}: {
+  plugin: InstalledPlugin;
+  active: boolean;
+}) {
+  const { data } = useFetchQuery({
+    queryKey: ["desk-workboard-status", plugin.serverId, plugin.id],
+    queryFn: async () => deskStatusSchema.parse(await plugin.invoke(DESK_STATUS_RPC_NAME, {})),
+    dataShape: "value",
+    staleTimeMs: 0,
+    refetchInterval: DESK_STATUS_POLL_MS,
+    retry: false,
+  });
+  return (
+    <StatusIcon statusBucket={deskWorkboardStatusBucket(data)} size={14} backdrop="surface0">
+      <ThemedWorkflow size={14} uniProps={active ? activeIconMapping : mutedIconMapping} />
+    </StatusIcon>
+  );
+}
+const ThemedWorkflow = withUnistyles(Workflow);
+const activeIconMapping = (theme: Theme) => ({ color: theme.colors.foreground });
+const mutedIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundExtraMuted });
 
 /** With a plugin, the Desk header and the board replace `children`, which stay mounted but hidden. */
 export function DeskWorkboardCover({
@@ -200,10 +193,14 @@ function Board({
     [hostNavigation],
   );
   const tab = useDeskWorkboardStore((s) => s.tab);
+  const tabRequest = useDeskWorkboardStore((s) => s.tabRequest); // CUSTOM(workboard-chip-only)
   const label = hosts.find((host) => host.serverId === plugin.serverId)?.label ?? plugin.serverId;
   const host = useMemo(() => ({ id: plugin.serverId, label }), [label, plugin.serverId]);
   const layout = useMemo(() => ({ compact, platform: resolvePluginPlatform() }), [compact]);
-  const params = useMemo((): Record<string, string> => (tab ? { tab } : {}), [tab]);
+  const params = useMemo((): Record<string, string> => {
+    if (!tab) return {};
+    return tabRequest ? { tab, request: tabRequest } : { tab };
+  }, [tab, tabRequest]);
   return (
     <PluginInstallationProvider plugin={plugin}>
       <Surface

@@ -102,3 +102,56 @@ export function resolveDeskSurfaceTarget(id: string): { surfaceId: string; tab: 
   if (!Object.hasOwn(WORKBOARD_INNER_PAGES, id)) return { surfaceId: id, tab: null };
   return { surfaceId: POWER_WORKBOARD_SURFACE_ID, tab: WORKBOARD_INNER_PAGES[id] };
 }
+
+// CUSTOM(workboard-chip-only): in Tasks mode every way of opening Power Workboard (sidebar row,
+// Command Center, a plugin's `openScreen`, the workspace panel) selects its Desk chip instead of
+// opening the plugin page or a workspace tab.
+export const POWER_WORKBOARD_PLUGIN_ID = "power-workboard";
+
+/** Where an open of `pluginId`'s screen `screenId` lands in Tasks mode; null keeps the default. */
+export function resolveWorkboardOpen(input: {
+  tasksMode: boolean;
+  pluginId: string;
+  screenId: string;
+  params?: Readonly<Record<string, string>>;
+}): { surfaceId: string; tab: string | null } | null {
+  if (!input.tasksMode || input.pluginId !== POWER_WORKBOARD_PLUGIN_ID) return null;
+  const known =
+    DESK_SURFACES.some((surface) => surface.id === input.screenId) ||
+    Object.hasOwn(WORKBOARD_INNER_PAGES, input.screenId);
+  if (!known) return null;
+  const target = resolveDeskSurfaceTarget(input.screenId);
+  return { surfaceId: target.surfaceId, tab: input.params?.tab ?? target.tab };
+}
+
+/** The board's workspace panel ("+" menu, "Open Power Workboard tab"): the chip in Tasks mode. */
+export function isWorkboardPanel(pluginId: string, panelId: string): boolean {
+  return pluginId === POWER_WORKBOARD_PLUGIN_ID && panelId === POWER_WORKBOARD_SURFACE_ID;
+}
+
+/**
+ * CUSTOM(workboard-chip-status): the counts behind the chip's status icon. Same contract as
+ * `deskStatusRpc` in custom/plugins/power-workboard/shared/rpc.ts; keep the two in step.
+ */
+export const DESK_STATUS_RPC_NAME = "workboard.desk-status";
+export const deskStatusSchema = z.object({
+  running: z.number().int(),
+  review: z.number().int(),
+  needsYou: z.number().int(),
+});
+export type DeskWorkboardStatus = z.infer<typeof deskStatusSchema>;
+
+/**
+ * The agent-tab state the chip borrows. Needs you is the agent waiting for you (amber alert),
+ * Ready to review is the agent that finished and waits for your look (attention dot), and a task
+ * running is the running ring. The icon has one corner, so the state that wants the user wins.
+ */
+export function deskWorkboardStatusBucket(
+  status: DeskWorkboardStatus | null | undefined,
+): "needs_input" | "attention" | "running" | null {
+  if (!status) return null;
+  if (status.needsYou > 0) return "needs_input";
+  if (status.review > 0) return "attention";
+  if (status.running > 0) return "running";
+  return null;
+}
