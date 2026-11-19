@@ -8233,3 +8233,61 @@ tests/card-open-agent.test.ts`. Needs only `paseo plugin reload power-workboard`
   on both daemons and `paseo plugin reload telus-sync --home ~/.paseo` (and `~/.paseo-telus`). In
   Personal: Settings > Plugins > telus-sync, check the preview, sync a small category (for example
   App preferences), then roll it back and confirm the Telus file returned to its previous content.
+
+## assistant-cards: Projects Assistant cards show the review map and answer in one tap
+
+- **Added:** 2026-11-19 (based on `custom` at `60bc73d0d`)
+- **Commit:** `custom: Projects Assistant cards show the review map and answer questions in one tap`
+- **Why:** The user wants to react, not write: a question should come with its options, what each
+  gains and costs and a recommendation, answered in one tap; a review should show what they asked
+  for with the evidence per item. Ideas from jelly ("agents show, people react", its review and
+  plan recipes), which is only inspiration and is not installed. The Reports page also guessed by
+  time who created or moved a ticket, and joined the user's own moves to assistant entries.
+- **What:** Protocol v2 in `custom/plugins/power-workboard/docs/assistant-reply-protocol.md`. The
+  `pwb` block gains `pedido` (evidence `seen`/`tested`/`unverified`, Portuguese aliases, the quoted
+  ask and its proof), `fora` (changed outside the ask), `pergunta`, `opção` (`id | label | ganha: |
+custa:`) and `recomendo` (`id | why`); v1 blocks parse as before. The task `<report>` gains
+  optional `options`, `recommend`, `why`, `outcomes` and `notDone`; a malformed one falls back to
+  empty and never costs the report. Shared card pieces (`client/assistant/card-parts.tsx`): the
+  question with option buttons and the outcome map with evidence pills and a comment button per
+  item. The chat card sends a tap or a comment to the chat as a message
+  (`shared/card-answers.ts` builds the text). The report card in the agent's chat and in Reports
+  (newest report only) send it through a new `answer` action: the board task whose agent it is
+  continues with it like Continue task; an agent outside the board gets a message. The action
+  refuses a card from an older agent of the task, a question the task no longer asks, a closed
+  task (Done column, delivery delivered or dismissed) and a running delivery step, and never moves
+  those. The current question is the orchestration's `ask`, written on every finish with the
+  assistant on or off. In the chat, only the newest card takes taps and comments, and not while
+  the chat works (`client/assistant/newest-reply.ts`). The Ready to review card shows the options as buttons from the
+  orchestration's new `ask` field. Every history event records `by` (`user`, `assistant`,
+  `orchestrator`; the chat's tools pass `assistant` to `mutate` and `assistantAction`, the
+  feedback's author rides on the orchestration's `feedbackBy`), and Reports keeps the user's own
+  events apart instead of the 2-minute window, which stays only for events without `by`
+  (`COMPAT(history-by)`). Small visual pass on both cards: more spacing, a divider before the
+  question and the footer, uppercase section titles, a bigger summary. The chat's and the task
+  agents' prompts ask for the new parts.
+- **Core files touched:** none. Plugin files: `shared/assistant.ts`, `shared/model.ts`,
+  `shared/reply-protocol.ts`, `shared/task-report.ts`, `shared/assistant-reports.ts`,
+  `shared/card-answers.ts` (new), `server/workboard.ts`, `server/assistant/chat.ts`,
+  `server/assistant/history.ts`, `server/assistant/reports.ts`, `server/orchestrator.ts`,
+  `client/assistant/card-parts.tsx` (new), `client/assistant/newest-reply.ts` (new),
+  `client/assistant/AssistantReplyCard.tsx`,
+  `client/assistant/TaskReportCard.tsx` (`wash` moved to card-parts, re-exported),
+  `client/assistant/reports-timeline.tsx`, `client/assistant/reports-strings.ts`,
+  `client/WorkboardScreen.tsx` (`ReviewPrompt`), `client/strings.ts`,
+  `docs/assistant-reply-protocol.md`, `README.md`, tests (`reply-protocol`, `task-report`,
+  `assistant-report`, `assistant-reports`, `assistant-engine`, `assistant-views`,
+  `newest-reply`).
+- **Re-apply:** Plugin-only. Grep `CUSTOM(assistant-cards)` and `COMPAT(history-by)`. Change the
+  doc and `shared/reply-protocol.ts` together and bump the version; the test compares keys, verbs,
+  next values and evidence values. Keep new report fields lenient (`.catch` / `lenientList`): the
+  delivery reads the same schema and a strict field would turn a good report into `no-report`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/reply-protocol.test.ts tests/task-report.test.ts tests/assistant-reports.test.ts
+tests/assistant-engine.test.ts`. Needs only `paseo plugin reload power-workboard`. The live
+  assistant's `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md` still
+  says "protocol v1"; change it to v2 (or add the new lines) so the assistant writes the new keys.
+  In the app: ask the assistant something with options and tap one (the chat gets "Resposta a
+  ..."); open a task agent's report with options in its chat or in Reports and tap one (the task
+  goes back to Ready to start with that answer); comment on an outcome; in Reports, a ticket you
+  moved by hand shows "you" and stays its own row. Check light and dark, desktop and phone width.

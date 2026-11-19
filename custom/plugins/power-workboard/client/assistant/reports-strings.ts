@@ -4,6 +4,27 @@ import type { HistoryEventKind } from "../../shared/assistant";
 import type { ReportEntryKind } from "../../shared/assistant-reports";
 import type { PageLocale } from "../paseo-language";
 
+/** The labels of the question and review-map pieces (client/assistant/card-parts.tsx). */
+export interface CardLabels {
+  whatYouAsked: string;
+  evidence: { seen: string; tested: string; unverified: string };
+  notDoneKind: { skipped: string; unverified: string; outside: string };
+  recommended: string;
+  why: string;
+  pick: string;
+  sent: string;
+  sending: string;
+  comment: string;
+  commentPlaceholder: string;
+  send: string;
+  cancel: string;
+  gains: string;
+  costs: string;
+  sendFailed: string;
+  byUser: string;
+  byAssistant: string;
+}
+
 const en = {
   title: "Reports",
   searchPlaceholder: "Search tickets",
@@ -42,6 +63,30 @@ const en = {
   sourceAssistant: "assistant",
   sourceAuto: "automatic",
   ago: { now: "now", m: "m ago", h: "h ago", d: "d ago" },
+  // CUSTOM(assistant-cards): the question and review-map pieces of the report cards.
+  card: {
+    whatYouAsked: "What you asked",
+    evidence: { seen: "seen", tested: "tested", unverified: "unverified" },
+    notDoneKind: {
+      skipped: "skipped",
+      unverified: "not verified",
+      outside: "outside the ask",
+    },
+    recommended: "recommended",
+    why: "Why",
+    pick: "Answer with this option",
+    sent: "sent",
+    sending: "Sending…",
+    comment: "Comment on this item",
+    commentPlaceholder: "What should change here?",
+    send: "Send",
+    cancel: "Cancel",
+    gains: "gains",
+    costs: "costs",
+    sendFailed: "Could not send.",
+    byUser: "you",
+    byAssistant: "assistant",
+  },
   reportStatus: {
     done: "Done",
     blocked: "Blocked",
@@ -126,6 +171,29 @@ const pt: ReportsStrings = {
   sourceAssistant: "assistente",
   sourceAuto: "automático",
   ago: { now: "agora", m: " min atrás", h: " h atrás", d: " d atrás" },
+  card: {
+    whatYouAsked: "O que você pediu",
+    evidence: { seen: "visto", tested: "testado", unverified: "sem prova" },
+    notDoneKind: {
+      skipped: "pulado",
+      unverified: "não verificado",
+      outside: "fora do pedido",
+    },
+    recommended: "recomendado",
+    why: "Por quê",
+    pick: "Responder com esta opção",
+    sent: "enviado",
+    sending: "Enviando…",
+    comment: "Comentar este item",
+    commentPlaceholder: "O que mudar aqui?",
+    send: "Enviar",
+    cancel: "Cancelar",
+    gains: "ganha",
+    costs: "custa",
+    sendFailed: "Não foi possível enviar.",
+    byUser: "você",
+    byAssistant: "assistente",
+  },
   reportStatus: {
     done: "Concluído",
     blocked: "Bloqueado",

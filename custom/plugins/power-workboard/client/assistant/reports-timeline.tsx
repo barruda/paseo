@@ -2,15 +2,18 @@
 // was asked, and its timeline of assistant and automatic items.
 import { useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
+import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { Report } from "../../shared/assistant";
+import { assistantActionRpc } from "../../shared/assistant-rpc";
+import { itemFeedback, optionAnswer } from "../../shared/card-answers";
 import type {
   ReportOrchestrator,
   ReportTimeline,
   ReportTimelineItem,
 } from "../../shared/assistant-reports";
 import { projectColor } from "../colors";
+import { OutcomeMap, QuestionBlock } from "./card-parts";
 import { RichText } from "./conversations-thread";
 import { showConversation } from "./nav";
 import {
@@ -52,14 +55,23 @@ function Badge({ text, color }: { text: string; color: string }) {
 
 function ReportBlock({
   report,
+  agentId,
+  interactive,
   t,
   theme,
 }: {
   report: Report;
+  agentId: string;
+  /** Only the newest report of the ticket takes answers. */
+  interactive: boolean;
   t: ReportsStrings;
   theme: Theme;
 }) {
   const c = theme.colors;
+  const act = useRpc(assistantActionRpc);
+  const answer = async (text: string, question: string | null) => {
+    await act({ type: "answer", agentId, text, question });
+  };
   const color =
     report.status === "done"
       ? c.statusSuccess
@@ -83,6 +95,21 @@ function ReportBlock({
       <Text selectable style={[styles.body, { color: c.foreground }]}>
         {report.summary}
       </Text>
+      <OutcomeMap
+        outcomes={report.outcomes.map((o) => ({
+          text: o.ask,
+          evidence: o.evidence,
+          detail: o.detail,
+        }))}
+        notDone={report.notDone}
+        theme={theme}
+        labels={t.card}
+        onFeedback={
+          interactive
+            ? (item, feedback) => answer(itemFeedback(item, feedback), null)
+            : undefined
+        }
+      />
       {report.risks.length > 0 && (
         <View style={styles.block}>
           <Text style={[styles.meta, { color: c.foregroundMuted }]}>
@@ -100,14 +127,23 @@ function ReportBlock({
         </View>
       )}
       {report.question ? (
-        <View style={styles.block}>
-          <Text style={[styles.meta, { color: c.statusWarning }]}>
-            {t.question}
-          </Text>
-          <Text selectable style={[styles.body, { color: c.foreground }]}>
-            {report.question}
-          </Text>
-        </View>
+        <QuestionBlock
+          question={report.question}
+          options={report.options}
+          recommend={report.recommend}
+          why={report.why}
+          theme={theme}
+          labels={t.card}
+          onPick={
+            interactive
+              ? (option) =>
+                  answer(
+                    optionAnswer(report.question ?? "", option),
+                    report.question,
+                  )
+              : undefined
+          }
+        />
       ) : null}
       {report.checks.length > 0 && (
         <View style={styles.block}>
@@ -136,9 +172,26 @@ function ReportBlock({
   );
 }
 
+/** The id of the newest item, or folded event, that carries a report. */
+function newestReportOwner(timeline: ReportTimeline): string | null {
+  let newest: { id: string; at: string } | null = null;
+  const consider = (id: string, at: string) => {
+    if (!newest || at >= newest.at) newest = { id, at };
+  };
+  for (const item of timeline.items) {
+    if (item.orchestrator?.report) consider(item.id, item.at);
+    if (item.source === "assistant")
+      for (const event of item.events)
+        if (event.orchestrator?.report) consider(event.id, event.at);
+  }
+  return (newest as { id: string } | null)?.id ?? null;
+}
+
 function Interaction(props: {
   orchestrator: ReportOrchestrator;
   taskId: string;
+  /** Whether this report is the ticket's newest, the only one that takes answers. */
+  interactive: boolean;
   open: boolean;
   onToggle(): void;
   navigation: PluginSurfaceProps["navigation"];
@@ -192,7 +245,13 @@ function Interaction(props: {
             </View>
           ) : null}
           {orchestrator.report ? (
-            <ReportBlock report={orchestrator.report} t={t} theme={theme} />
+            <ReportBlock
+              report={orchestrator.report}
+              agentId={orchestrator.agentId}
+              interactive={props.interactive}
+              t={t}
+              theme={theme}
+            />
           ) : null}
           <Pressable
             accessibilityRole="button"
@@ -216,9 +275,21 @@ function Interaction(props: {
   );
 }
 
+/** Who caused an automatic event; the board's own engine and unknown causes show nothing. */
+function byLabel(
+  by: "user" | "assistant" | "orchestrator" | null | undefined,
+  t: ReportsStrings,
+): string | null {
+  if (by === "user") return t.card.byUser;
+  if (by === "assistant") return t.card.byAssistant;
+  return null;
+}
+
 function ItemRow(props: {
   item: ReportTimelineItem;
   taskId: string;
+  /** The id of the newest item or folded event carrying a report. */
+  newestReportId: string | null;
   open: boolean;
   /** Whether the item's or a folded event's Interaction is open, by id. */
   isInteractionOpen(id: string): boolean;
@@ -260,6 +331,11 @@ function ItemRow(props: {
             {item.source === "auto" ? (
               <Text style={[styles.meta, { color: c.foregroundMuted }]}>
                 · {t.sourceAuto}
+              </Text>
+            ) : null}
+            {item.source === "auto" && byLabel(item.by, t) ? (
+              <Text style={[styles.meta, { color: c.foregroundMuted }]}>
+                · {byLabel(item.by, t)}
               </Text>
             ) : null}
           </View>
@@ -309,6 +385,7 @@ function ItemRow(props: {
                     style={[styles.meta, { color: c.foregroundMuted }]}
                   >
                     {formatClock(event.at, props.now)} ·{" "}
+                    {byLabel(event.by, t) ? `${byLabel(event.by, t)} · ` : ""}
                     {t.eventKind[event.kind]} · {event.text}
                   </Text>
                   {event.detail || event.orchestrator ? (
@@ -324,6 +401,7 @@ function ItemRow(props: {
                         <Interaction
                           orchestrator={event.orchestrator}
                           taskId={props.taskId}
+                          interactive={props.newestReportId === event.id}
                           open={props.isInteractionOpen(event.id)}
                           onToggle={() => props.onToggleInteraction(event.id)}
                           navigation={props.navigation}
@@ -341,6 +419,7 @@ function ItemRow(props: {
             <Interaction
               orchestrator={item.orchestrator}
               taskId={props.taskId}
+              interactive={props.newestReportId === item.id}
               open={props.isInteractionOpen(item.id)}
               onToggle={() => props.onToggleInteraction(item.id)}
               navigation={props.navigation}
@@ -415,6 +494,7 @@ export function ReportContent(props: {
     );
   }
   const { task } = timeline;
+  const newestReportId = newestReportOwner(timeline);
   const { excerpt, truncated } = descriptionExcerpt(task.description);
   return (
     <View style={styles.content}>
@@ -474,6 +554,7 @@ export function ReportContent(props: {
               <ItemRow
                 key={item.id}
                 item={item}
+                newestReportId={newestReportId}
                 taskId={props.taskId}
                 open={open.has(item.id)}
                 isInteractionOpen={(id) => inner.has(id)}

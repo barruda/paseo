@@ -4,6 +4,7 @@
 // row (when the record names a `quickMessageId`) and the assistant's short chat reply.
 import { z } from "zod";
 import {
+  historyActorSchema,
   historyEventKindSchema,
   reportSchema,
   type HistoryEventKind,
@@ -131,6 +132,8 @@ export const reportEventSchema = z.object({
   agentId: z.string().nullable(),
   /** The task's agent for this event, with its report when the event is that report. */
   orchestrator: reportOrchestratorSchema.nullable().default(null),
+  /** CUSTOM(assistant-cards): who caused it; null on events from before the field. */
+  by: historyActorSchema.nullable().optional(),
 });
 export type ReportEvent = z.infer<typeof reportEventSchema>;
 
@@ -157,6 +160,8 @@ export const reportTimelineItemSchema = z.discriminatedUnion("source", [
     detail: z.string().nullable(),
     /** The task's agent for this event, with its report when the event is that report. */
     orchestrator: reportOrchestratorSchema.nullable(),
+    /** CUSTOM(assistant-cards): who caused it; null on events from before the field. */
+    by: historyActorSchema.nullable().optional(),
   }),
 ]);
 export type ReportTimelineItem = z.infer<typeof reportTimelineItemSchema>;

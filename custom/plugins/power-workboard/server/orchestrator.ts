@@ -12,7 +12,17 @@ export function assistantSection(): string {
     "The worktree setup may have filled `node_modules` with hardlinks to the main checkout's files. Never edit or patch files inside `node_modules` in place: the edit would change the main checkout too. To change dependencies, edit the manifest and run the installer (`npm install` or `npm ci` replace files instead of editing them).",
     'End your final reply with a report between <report> and </report>, as JSON: {"status": "done" | "blocked" | "needs_input" | "failed" | "checkpoint", "summary": string, "filesChanged": string[], "checks": [{"command": string, "passed": boolean}], "risks": string[], "question": string | null}. Use `question` for what the user must answer or do when the status is blocked or needs_input.',
     'Example: <report>{"status":"done","summary":"Added the retry button.","filesChanged":["src/button.tsx"],"checks":[{"command":"npm test","passed":true}],"risks":[],"question":null}</report>',
+    reviewMapSection(), // CUSTOM(assistant-cards)
     checkpointSection(), // CUSTOM(task-checkpoints)
+  ].join("\n\n");
+}
+
+// CUSTOM(assistant-cards): optional fields the report cards draw as a review map and as one-tap
+// answers (docs/assistant-reply-protocol.md, "The task report").
+function reviewMapSection(): string {
+  return [
+    'Optional, and worth adding: "outcomes": [{"ask": string, "evidence": "seen" | "tested" | "unverified", "detail": string}], one per thing the task asked for, quoted from it. "seen" means you ran it and watched it work (put the command and what it showed in "detail"); "tested" names the test; anything else is "unverified". "notDone": [{"kind": "skipped" | "unverified" | "outside", "text": string}] lists what you skipped, left unverified, or changed without being asked ("outside").',
+    'When you ask a question, never leave it empty: add "options": [{"id": string, "label": string, "gains": string, "costs": string}], "recommend": the id you recommend, and "why". The user answers in one tap; free text still works.',
   ].join("\n\n");
 }
 

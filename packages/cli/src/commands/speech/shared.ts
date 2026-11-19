@@ -68,8 +68,14 @@ export class DictationUpload {
   constructor(
     private readonly client: DictationStreamClient,
     private readonly dictationId: string = randomUUID(),
+    // CUSTOM(cli-dictation): live transcript so far (the whole text; earlier words can change).
+    private readonly onPartial?: (text: string) => void,
   ) {
     this.unsubscribe = client.subscribeRawMessages((message) => {
+      if (message.type === "dictation_stream_partial") {
+        if (message.payload.dictationId === this.dictationId) this.onPartial?.(message.payload.text);
+        return;
+      }
       if (message.type !== "dictation_stream_ack") return;
       if (message.payload.dictationId !== this.dictationId) return;
       this.acked = Math.max(this.acked, message.payload.ackSeq);

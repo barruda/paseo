@@ -20,6 +20,7 @@ interface DictateOptions {
   toggle?: boolean;
   copy: boolean;
   notify?: boolean;
+  partials?: boolean;
 }
 
 async function runDictate(options: DictateOptions): Promise<void> {
@@ -72,7 +73,16 @@ async function runDictate(options: DictateOptions): Promise<void> {
 
   const connecting = connectToDaemon({ target: options.daemonTarget }).then((client) => {
     process.stderr.write(`Connected to the daemon (${elapsed()}).\n`);
-    upload = new DictationUpload(client);
+    // CUSTOM(cli-dictation): --partials prints each live transcript as a JSON line.
+    let lastPartial = "";
+    const onPartial = options.partials
+      ? (partial: string) => {
+          if (partial === lastPartial) return;
+          lastPartial = partial;
+          process.stdout.write(`${JSON.stringify({ partial })}\n`);
+        }
+      : undefined;
+    upload = new DictationUpload(client, undefined, onPartial);
     for (const segment of early.splice(0)) upload.push(segment);
     return client;
   });
@@ -87,12 +97,13 @@ async function runDictate(options: DictateOptions): Promise<void> {
     if (tail) upload!.push(tail);
     process.stderr.write("Transcribing…\n");
     const text = await upload!.finish();
+    if (options.partials) process.stdout.write(`${JSON.stringify({ final: text })}\n`);
     if (!text) {
       process.stderr.write("No speech recognized.\n");
       notify("Dictation", "No speech recognized");
       return;
     }
-    process.stdout.write(`${text}\n`);
+    if (!options.partials) process.stdout.write(`${text}\n`);
     if (options.copy) await runQuietly("wl-copy", [], text);
     notify(options.copy ? "Dictation copied" : "Dictation", text);
   } catch (error) {
@@ -114,6 +125,7 @@ export function createDictateCommand(): Command {
       )
       .option("--toggle", "Stop the running dictation if there is one, otherwise start one")
       .option("--no-copy", "Print the text without copying it to the clipboard")
+      .option("--partials", "Print live transcripts as JSON lines ({partial}, then {final})")
       .option("--notify", "Show desktop notifications (for keyboard shortcuts)"),
   ).action(
     withGlobalOptions(async (options: DictateOptions, _command: Command) => {

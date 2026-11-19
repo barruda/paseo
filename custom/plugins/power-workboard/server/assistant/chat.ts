@@ -62,7 +62,10 @@ export const REPLY_PROTOCOL_DOC =
 export const REPLY_PROTOCOL_RULE = [
   `End every reply to the user with a \`\`\`${REPLY_FENCE} block, protocol v${REPLY_PROTOCOL_VERSION} in ${REPLY_PROTOCOL_DOC}. One \`key: value\` per line, no braces, in this order:`,
   `- \`feito: <verb> <short task title> [<first 8 characters of the task id>]\`, one line per thing done; the verb is one of ${DONE_VERBS.join(", ")}.`,
+  // CUSTOM(assistant-cards): the review map and structured questions (protocol v2).
+  "- After a review, `pedido: <visto | testado | sem prova> | <what the user asked, quoted> | <proof: the command and what it showed, or the test's name>`, one line per thing asked, and `fora: <changed without being asked>` for anything outside the ask.",
   "- `aviso: <short>` and `bloqueio: <short>`, only when there is one.",
+  "- When the user must decide: `pergunta: <question>`, then `opção: <id> | <label> | ganha: <what it gains> | custa: <what it costs>` per option and `recomendo: <id> | <why>`. Never ask an empty question: lay out the options and recommend one. The user answers in one tap.",
   `- \`próximo: <${NEXT_VALUES.join(" | ")}>\`: sigo = you carry on, agente = back to the task's agent, revisão = a reviewer is on it, você = waiting for the user, espera = waiting on something outside, fim = delivered.`,
   "- `seu: nada`, or a short verb and its object (decidir, aprovar, testar, reiniciar <x>), always the last key line.",
   "Put the why, criteria checked, checks, decisions and links after a `---` line inside the block: the chat shows them collapsed. Outside the block write at most a one-line direct answer when the user asked something. Never list commands you ran, test output that passed or steps that changed nothing.",
@@ -631,14 +634,17 @@ export function chatTools(
           ? resolveOrchestrator(input.orchestratorId)
           : null;
         const before = new Set(snapshot.cards.map((c) => c.id));
-        const after = await board().mutate({
-          action: "create",
-          title: input.title,
-          description: input.description,
-          projectId,
-          ...(orchestratorId ? { orchestratorId } : {}),
-          stage,
-        });
+        const after = await board().mutate(
+          {
+            action: "create",
+            title: input.title,
+            description: input.description,
+            projectId,
+            ...(orchestratorId ? { orchestratorId } : {}),
+            stage,
+          },
+          "assistant",
+        ); // CUSTOM(assistant-cards): the history's `by`
         const created = after.cards.find((c) => !before.has(c.id));
         if (!created) throw new Error("The task was not created");
         return text(
@@ -667,15 +673,18 @@ export function chatTools(
           input.orchestratorId === undefined || input.orchestratorId === null
             ? input.orchestratorId
             : resolveOrchestrator(input.orchestratorId);
-        await board().mutate({
-          action: "edit",
-          taskId: c.id,
-          updatedAt: c.updatedAt,
-          title: input.title ?? c.title,
-          description: input.description ?? c.description,
-          projectId: projectId !== undefined ? projectId : c.projectId,
-          ...(orchestratorId !== undefined ? { orchestratorId } : {}),
-        });
+        await board().mutate(
+          {
+            action: "edit",
+            taskId: c.id,
+            updatedAt: c.updatedAt,
+            title: input.title ?? c.title,
+            description: input.description ?? c.description,
+            projectId: projectId !== undefined ? projectId : c.projectId,
+            ...(orchestratorId !== undefined ? { orchestratorId } : {}),
+          },
+          "assistant",
+        ); // CUSTOM(assistant-cards): the history's `by`
         return text(`Updated ${c.id}.`);
       },
     }),
@@ -687,14 +696,21 @@ export function chatTools(
       async execute({ taskId, column }) {
         const c = card(taskId);
         const group = resolveGroup(column);
-        await board().mutate({
-          action: "stage",
-          taskId: c.id,
-          stage: group.id,
-          expectedLabels: c.managedLabels,
-          expectedUpdatedAt: c.updatedAt,
-          expectedGroup: { id: group.id, kind: group.kind, label: group.label },
-        });
+        await board().mutate(
+          {
+            action: "stage",
+            taskId: c.id,
+            stage: group.id,
+            expectedLabels: c.managedLabels,
+            expectedUpdatedAt: c.updatedAt,
+            expectedGroup: {
+              id: group.id,
+              kind: group.kind,
+              label: group.label,
+            },
+          },
+          "assistant",
+        ); // CUSTOM(assistant-cards): the history's `by`
         return text(`Moved ${c.id} to ${groupName(group)}.`);
       },
     }),
@@ -726,7 +742,7 @@ export function chatTools(
                 feedback: input.feedback ?? "",
               }
             : { type: input.type, taskId: input.taskId };
-        await board().assistantAction(action);
+        await board().assistantAction(action, "assistant"); // CUSTOM(assistant-cards)
         if (input.type === "merge-now" && input.wait)
           return text(await waitForDelivery(input.taskId));
         return text(
@@ -811,10 +827,13 @@ export function chatTools(
         "Run an orchestrator now (Run now): it takes one batch from Ready to start.",
       input: z.object({ orchestratorId: z.string() }),
       async execute({ orchestratorId }) {
-        await board().mutate({
-          action: "orchestrator-run",
-          id: orchestratorId,
-        });
+        await board().mutate(
+          {
+            action: "orchestrator-run",
+            id: orchestratorId,
+          },
+          "assistant",
+        ); // CUSTOM(assistant-cards): the history's `by`
         return text(`Orchestrator ${orchestratorId} is running.`);
       },
     }),

@@ -72,6 +72,7 @@ import {
   type Attempt,
   type Delivery,
   type HistoryEventKind,
+  type HistoryActor, // CUSTOM(assistant-cards)
   type NeedsYouReason,
   type ProjectPolicy,
   type AssistantSettings,
@@ -312,6 +313,21 @@ function projectChangeRequest(workspace?: Workspace): Card["changeRequest"] {
 }
 
 /** One writer per plugin process. UI windows never own timers or archive operations. */
+/**
+ * CUSTOM(assistant-cards): a report's question with its options, for the Ready to review card's
+ * one-tap answers and the `answer` check. Null when the report asks nothing with options.
+ */
+function askOf(report: Report | null): Orchestration["ask"] {
+  return report?.question && report.options.length
+    ? {
+        question: report.question,
+        options: report.options,
+        recommend: report.recommend,
+        why: report.why,
+      }
+    : null;
+}
+
 export class Workboard {
   private inventory: Inventory = { workspaces: [], agents: [], projects: [] };
   private queue: Promise<unknown> = Promise.resolve();
@@ -1250,7 +1266,11 @@ export class Workboard {
     )
       throw new Error("stage-task-changed");
   }
-  async mutate(input: Mutation): Promise<Board> {
+  /** CUSTOM(assistant-cards): `by` is who asked, for the history (the chat's tools pass `assistant`). */
+  async mutate(
+    input: Mutation,
+    by: Exclude<HistoryActor, "orchestrator"> = "user",
+  ): Promise<Board> {
     // Reject before queueing so an active or queued start cannot be canceled after it fails.
     if (
       input.action === "cancel-binding" &&
@@ -1302,7 +1322,7 @@ export class Workboard {
               taskId,
               "task-created",
               `Created "${input.title}" in ${this.groupLabel(stage)}`,
-              { agentId: null, attempt: null, action: null },
+              { agentId: null, attempt: null, action: null, by },
             );
           if (kind === "ready") await this.orchestrate();
           else if (timing) this.armDueTimer(); // CUSTOM(night-tasks)
@@ -1324,7 +1344,7 @@ export class Workboard {
         } else if (input.action === "refine") {
           await this.refine(input.taskId);
         } else if (input.action === "review") {
-          await this.review(input.taskId, input.outcome, input.feedback);
+          await this.review(input.taskId, input.outcome, input.feedback, by);
         } else if (input.action === "orchestrator-defaults") {
           await this.store.update((data) => {
             data.orchestrator = orchestratorSchema.parse({
@@ -1631,7 +1651,7 @@ export class Workboard {
                 task.id,
                 "task-moved",
                 `Moved to ${this.groupLabel(input.stage)}`,
-                { agentId: null, action: null },
+                { agentId: null, action: null, by },
               );
           } else if (input.action === "archive-draft") {
             if (
@@ -2131,6 +2151,7 @@ export class Workboard {
     taskId: string,
     outcome: "done" | "continue",
     feedback: string,
+    by: Exclude<HistoryActor, "orchestrator">, // CUSTOM(assistant-cards)
   ): Promise<void> {
     const task = this.task(taskId);
     if (task.binding) throw new Error("Workspace binding is still pending");
@@ -2149,7 +2170,7 @@ export class Workboard {
     if (outcome === "done") {
       if (this.store.current.orchestrations[taskId])
         await this.setOrchestration(taskId, { feedback: null });
-      await this.closeDelivery(taskId); // CUSTOM(projects-assistant)
+      await this.closeDelivery(taskId, by); // CUSTOM(projects-assistant)
       return;
     }
     // CUSTOM(projects-assistant): the task leaves Needs you when it goes back to its agent.
@@ -2160,6 +2181,8 @@ export class Workboard {
     await this.setOrchestration(taskId, {
       status: "queued",
       feedback: feedback.trim(),
+      feedbackBy: by, // CUSTOM(assistant-cards)
+      ask: null,
       error: null,
       finishedAt: this.stamp(),
       // CUSTOM(task-checkpoints): the reviewer's answer is not a checkpoint resume.
@@ -2213,7 +2236,7 @@ export class Workboard {
     extra: Partial<
       Pick<
         HistoryEventInput,
-        "reason" | "detail" | "attempt" | "action" | "agentId"
+        "reason" | "detail" | "attempt" | "action" | "agentId" | "by"
       >
     > = {},
   ): Promise<void> {
@@ -2252,6 +2275,7 @@ export class Workboard {
         reason: extra.reason ?? null,
         text: text.slice(0, 2000),
         detail: extra.detail ?? null,
+        by: extra.by ?? "orchestrator", // CUSTOM(assistant-cards)
       });
     } catch {
       // The history is a log; the board does not depend on it.
@@ -2596,7 +2620,12 @@ export class Workboard {
     const parsed = reply ? parseReport(reply) : { report: null, text: "" };
     const report = parsed.report;
     const summary = parsed.text || report?.summary || "";
-    if (summary) await this.setOrchestration(taskId, { summary });
+    const ask = askOf(report); // CUSTOM(assistant-cards)
+    if (summary || ask || record.ask)
+      await this.setOrchestration(taskId, {
+        ...(summary ? { summary } : {}),
+        ask,
+      });
     const attempt = await this.closeAttempt(
       taskId,
       report ? report.status : "no-report",
@@ -3011,7 +3040,10 @@ export class Workboard {
     return true;
   }
   /** The user accepted the task on the board: close its delivery. Inside `serial`. */
-  private async closeDelivery(taskId: string): Promise<void> {
+  private async closeDelivery(
+    taskId: string,
+    by: Exclude<HistoryActor, "orchestrator">, // CUSTOM(assistant-cards)
+  ): Promise<void> {
     if (!this.assistantOn()) return;
     const delivery = this.store.current.assistant.deliveries[taskId];
     if (delivery?.stage === "delivered") return;
@@ -3022,7 +3054,7 @@ export class Workboard {
         reason: null,
         detail: null,
       });
-    await this.record(taskId, "done", "Marked done");
+    await this.record(taskId, "done", "Marked done", { by });
   }
   /** Runs the delivery's asynchronous steps, one task at a time. Never blocks `orchestrate`. */
   private launch(taskId: string): void {
@@ -3586,8 +3618,14 @@ export class Workboard {
       throw new Error("This task's project is not a git repository");
     return { task, workspace };
   }
-  /** What the user can do from the Projects Dashboard. */
-  assistantAction(input: AssistantActionInput): Promise<void> {
+  /**
+   * What the user can do from the Projects Dashboard and the report cards; the chat's
+   * board_task_action passes `by: "assistant"`.
+   */
+  assistantAction(
+    input: AssistantActionInput,
+    by: Exclude<HistoryActor, "orchestrator"> = "user", // CUSTOM(assistant-cards)
+  ): Promise<void> {
     return this.serial(async () => {
       if (!this.connected)
         throw new Error(this.error ?? "Paseo is disconnected");
@@ -3607,6 +3645,8 @@ export class Workboard {
         await this.host.sendAgent(input.agentId, input.text);
         return;
       }
+      // CUSTOM(assistant-cards)
+      if (input.type === "answer") return this.answer(input, by);
       const taskId = input.taskId;
       if (input.type === "merge-now") {
         this.reviewable(taskId);
@@ -3617,16 +3657,69 @@ export class Workboard {
         await this.actionDelivery(taskId, "prepare-pr", "preparing-pr");
         this.launch(taskId);
       } else if (input.type === "continue") {
-        await this.review(taskId, "continue", input.feedback);
+        await this.review(taskId, "continue", input.feedback, by);
       } else if (input.type === "mark-done") {
-        await this.review(taskId, "done", "");
+        await this.review(taskId, "done", "", by);
       } else {
         if (!this.store.current.assistant.deliveries[taskId])
           throw new Error("Nothing to dismiss for this task");
         await this.patchDelivery(taskId, { stage: "dismissed" });
-        await this.record(taskId, "dismissed", "Dismissed by the user");
+        await this.record(
+          taskId,
+          "dismissed",
+          by === "assistant"
+            ? "Dismissed by the assistant"
+            : "Dismissed by the user",
+          { by },
+        );
       }
     });
+  }
+  /**
+   * CUSTOM(assistant-cards): an answer from a report card, as `assistantAction` gets it. The board
+   * task the agent works on continues with it, like Continue task; an agent outside the board gets
+   * it as a message. Runs inside `serial`.
+   */
+  private async answer(
+    input: Extract<AssistantActionInput, { type: "answer" }>,
+    by: Exclude<HistoryActor, "orchestrator">,
+  ): Promise<void> {
+    const data = this.store.current;
+    const owns = ([, list]: [string, Attempt[]]) =>
+      list.some((a) => a.agentId === input.agentId);
+    const taskId =
+      Object.entries(data.orchestrations).find(
+        ([, o]) => o.agentId === input.agentId,
+      )?.[0] ?? Object.entries(data.assistant.attempts).find(owns)?.[0];
+    if (!taskId || !data.tasks.some((t) => t.id === taskId)) {
+      await this.host.sendAgent(input.agentId, input.text);
+      return;
+    }
+    const record = data.orchestrations[taskId];
+    // An older agent of the task, or a question the task no longer asks: the card is stale.
+    if (record?.agentId !== input.agentId)
+      throw new Error("This card is from an earlier run of the task");
+    // A finished task is not reopened from a card: the user does that on the board.
+    const delivery = data.assistant.deliveries[taskId];
+    const card = this.snapshot().cards.find((c) => c.id === taskId);
+    if (
+      (card && groupKind(card.stage, data.settings.groups) === "done") ||
+      delivery?.stage === "delivered" ||
+      delivery?.stage === "dismissed"
+    )
+      throw new Error("This task is already closed");
+    // `ask` is written on every finish, with the assistant on or off, so it is the current question.
+    if (
+      input.question !== null &&
+      (record.ask?.question ?? delivery?.report?.question ?? null) !==
+        input.question
+    )
+      throw new Error("This question was already answered or replaced");
+    if (record.status !== "finished")
+      throw new Error("The task's agent is not waiting for an answer");
+    if (this.delivering.has(taskId))
+      throw new Error("A delivery step is already running for this task");
+    await this.review(taskId, "continue", input.text, by);
   }
   assistantSettings(): {
     settings: AssistantSettings;
@@ -3923,6 +4016,7 @@ export class Workboard {
         action: null,
         text: text.slice(0, 2000),
         detail: extra.detail ? extra.detail.slice(0, 5000) : null,
+        by: "orchestrator", // CUSTOM(assistant-cards)
       });
     } catch {
       // The history is a log; the board does not depend on it.
@@ -4207,7 +4301,12 @@ export class Workboard {
         // Settled by usageLimitReached; the card goes to review below.
       } else if (this.assistantOn())
         launch = await this.assistantFinished(taskId, record, summary);
-      else if (summary) await this.setOrchestration(taskId, { summary });
+      // CUSTOM(assistant-cards): the report's question too, replacing any older one.
+      else
+        await this.setOrchestration(taskId, {
+          ...(summary ? { summary } : {}),
+          ask: askOf(summary ? parseReport(summary).report : null),
+        });
       // CUSTOM(task-checkpoints): the task stays in progress and resumes later.
       if (this.store.current.orchestrations[taskId]?.checkpoint) continue;
       await this.log(
@@ -5132,6 +5231,10 @@ export class Workboard {
             attempt,
             agentId,
             detail: checkpoint ? null : feedback.trim() || null,
+            // CUSTOM(assistant-cards): the feedback's author; a checkpoint resume is the board's.
+            by: checkpoint
+              ? "orchestrator"
+              : (record.feedbackBy ?? "orchestrator"),
           },
         );
       }
