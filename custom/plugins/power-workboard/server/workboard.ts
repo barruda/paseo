@@ -2424,7 +2424,14 @@ export class Workboard {
   }
   /** CUSTOM(usage-limit): how long the chat still waits for its usage limit to reset; 0 when it doesn't. */
   private wakeWait(): number {
-    const at = Date.parse(this.store.current.assistant.wakeAt ?? "");
+    const assistant = this.store.current.assistant;
+    // Scoped per agent: a wait stored for a chat the user replaced does not hold the new one.
+    if (
+      assistant.wakeAgentId &&
+      assistant.wakeAgentId !== assistant.chatAgentId
+    )
+      return 0;
+    const at = Date.parse(assistant.wakeAt ?? "");
     return Number.isFinite(at) ? Math.max(0, at - this.now()) : 0;
   }
   /** CUSTOM(usage-limit): a `checkWakeTurn` is running. */
@@ -2439,6 +2446,26 @@ export class Workboard {
   private async checkWakeTurn(ended = false): Promise<void> {
     const turn = this.store.current.assistant.wakeTurn;
     if (!turn || this.wakeChecking || this.stopped) return;
+    // A turn of a chat the user replaced belongs to that chat: it is not read, and its reset
+    // must not hold the current chat.
+    if (this.store.current.assistant.chatAgentId !== turn.agentId) {
+      const at = turn.toldAt;
+      await this.store.update((data) => {
+        if (data.assistant.wakeTurn?.toldAt !== at) return;
+        data.assistant.wakeTurn = null;
+        data.assistant.wakeAt = null;
+        data.assistant.wakeAgentId = null;
+        // The replaced chat may never have read it; the current chat is told instead.
+        for (const id of turn.taskIds) {
+          const delivery = data.assistant.deliveries[id];
+          if (delivery?.stage === "needs-you" && delivery.toldAt === at)
+            delivery.toldAt = null;
+        }
+      });
+      this.requeueUntold();
+      if (this.wakePending.size) this.armWake();
+      return;
+    }
     // Give the turn time to start, so the reply read is the answer to the wake.
     if (!ended && this.now() - Date.parse(turn.toldAt) < WAKE_TURN_START_MS)
       return;
@@ -2458,8 +2485,13 @@ export class Workboard {
       await this.store.update((data) => {
         if (data.assistant.wakeTurn?.toldAt !== turn.toldAt) return;
         data.assistant.wakeTurn = null;
-        if (!wakeAt) return;
+        if (!wakeAt) {
+          data.assistant.wakeAt = null;
+          data.assistant.wakeAgentId = null;
+          return;
+        }
         data.assistant.wakeAt = wakeAt;
+        data.assistant.wakeAgentId = turn.agentId;
         for (const id of turn.taskIds) {
           const delivery = data.assistant.deliveries[id];
           if (
@@ -2568,6 +2600,7 @@ export class Workboard {
         }
         // CUSTOM(usage-limit): watch this turn in case it ends on the usage limit.
         data.assistant.wakeAt = null;
+        data.assistant.wakeAgentId = null;
         data.assistant.wakeTurn = {
           agentId,
           toldAt,
@@ -3780,8 +3813,28 @@ export class Workboard {
       await this.store.update((data) => {
         data.assistant.chatAgentId = agentId;
         data.assistant.compactRetryAt = null; // CUSTOM(assistant-compact): a new chat starts clean
+        // CUSTOM(usage-limit): the replaced chat's wait and unread turn are not the new chat's.
+        // Its tasks go back to the queue instead of staying silently told to an abandoned chat.
+        data.assistant.wakeAt = null;
+        data.assistant.wakeAgentId = null;
+        const turn = data.assistant.wakeTurn;
+        if (turn) {
+          for (const id of turn.taskIds) {
+            const delivery = data.assistant.deliveries[id];
+            if (
+              delivery?.stage === "needs-you" &&
+              delivery.toldAt === turn.toldAt
+            )
+              delivery.toldAt = null;
+          }
+          data.assistant.wakeTurn = null;
+        }
       });
       this.chatId = agentId; // CUSTOM(assistant-compact)
+      // CUSTOM(usage-limit): tasks still untold hear from the new chat now, not at the reset the
+      // replaced chat was waiting for.
+      this.requeueUntold();
+      if (this.wakePending.size) this.armWake();
       // CUSTOM(assistant-restart-pill): the replaced chat is archived only once the new one exists.
       if (fresh && archivePrevious && current && current !== agentId)
         await this.host.archiveAgent(current).catch(() => undefined);

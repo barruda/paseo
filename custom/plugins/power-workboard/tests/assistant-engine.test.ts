@@ -2038,6 +2038,109 @@ it("a new wake reads the last wake's turn first instead of replacing it", async 
   }
 });
 
+/** A new chat the user started, as "Restart chat" does; its board state is set by the caller. */
+async function anotherChat(s: { host: any; inventory: any }) {
+  const id = await s.host.startAgentIn("/chat", {
+    provider: "opencode/deepseek",
+    modeId: null,
+    thinkingOptionId: null,
+    title: "Projects Assistant",
+    prompt: "hi",
+  });
+  s.inventory.agents.find((a: { id: string }) => a.id === id)!.activity =
+    "idle";
+  return id as string;
+}
+
+it("a usage-limit wait stored for an archived chat does not hold a Needs you in the current chat", async () => {
+  const s = await wake();
+  try {
+    const old = s.chatId!;
+    await s.host.archiveAgent(old);
+    const next = await anotherChat(s);
+    await s.store.update((data) => {
+      data.assistant.chatAgentId = next;
+      data.assistant.wakeAt = LIMIT_RESUME;
+      data.assistant.wakeAgentId = old;
+    });
+    await s.blocked();
+    await vi.waitFor(() =>
+      expect(s.host.sendAgent).toHaveBeenCalledWith(
+        next,
+        expect.stringContaining(s.taskId),
+      ),
+    );
+    expect(s.store.current.assistant.wakeAt).toBeNull();
+    expect(s.store.current.assistant.wakeAgentId).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("restarting the chat drops the old chat's usage-limit wait and tells the new one", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+    // The old chat's wake ended on the limit: its tasks are untold and the next wake is reset+2m.
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    s.reply(LIMIT);
+    s.advance(30_000);
+    await s.board.refresh();
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeNull());
+    expect(s.store.current.assistant).toMatchObject({
+      wakeAt: LIMIT_RESUME,
+      wakeAgentId: s.chatId,
+    });
+    // The user restarts the chat; the new chat is idle and has plenty of quota.
+    const { agentId: next } = await s.board.openChat(true, true);
+    expect(next).not.toBe(s.chatId);
+    expect(s.store.current.assistant.wakeAt).toBeNull();
+    expect(s.store.current.assistant.wakeAgentId).toBeNull();
+    s.inventory.agents.find((a) => a.id === next)!.activity = "idle";
+    s.reply("On it.");
+    await vi.waitFor(() =>
+      expect(s.host.sendAgent).toHaveBeenCalledWith(
+        next,
+        expect.stringContaining(s.taskId),
+      ),
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("checkWakeTurn does not read an archived chat's turn as the current chat's reply", async () => {
+  const s = await wake();
+  try {
+    const old = s.chatId!;
+    await s.host.archiveAgent(old);
+    const next = await anotherChat(s);
+    await s.store.update((data) => {
+      data.assistant.chatAgentId = next;
+      data.assistant.wakeAt = LIMIT_RESUME;
+      data.assistant.wakeAgentId = old;
+      data.assistant.wakeTurn = {
+        agentId: old,
+        toldAt: "2026-09-23T00:00:00.000Z",
+        taskIds: [s.taskId],
+      };
+    });
+    // The current chat's last reply is a limit notice; the archived chat's is not read.
+    s.reply(LIMIT);
+    s.advance(30_000);
+    await s.board.refresh();
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.wakeTurn).toBeNull(),
+    );
+    expect(s.store.current.assistant.wakeAt).toBeNull();
+    expect(s.store.current.assistant.wakeAgentId).toBeNull();
+    expect(s.history.kinds()).not.toContain("usage-limit");
+  } finally {
+    s.board.dispose();
+  }
+});
+
 it("Ready to start waits while a task of the orchestrator is paused by the usage limit", async () => {
   const s = await scenario();
   try {

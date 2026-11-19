@@ -7799,7 +7799,8 @@ tests/card-title-area.test.ts`. Needs only `paseo plugin reload power-workboard`
 
 - **Added:** 2026-11-19 (based on `custom` at `763ec569c`)
 - **Commit:** `custom: Power Workboard tasks and the assistant wake resume after the usage limit resets`,
-  then `custom: Power Workboard usage-limit notices are read only at the start of a reply`
+  then `custom: Power Workboard usage-limit notices are read only at the start of a reply`, then
+  `custom: Projects Assistant wake waits are scoped to the chat that hit the usage limit`
 - **Why:** On 2026-11-18 three tasks ended with "You've hit your 5-hour limit · resets 11:30pm
   (America/Sao_Paulo)". The board took the reply as `no-report` and sent them to Needs you. The
   wake reached the assistant chat, which was on the same limit and did nothing, but `toldAt` was
@@ -7825,15 +7826,20 @@ tests/card-title-area.test.ts`. Needs only `paseo plugin reload power-workboard`
   Assistant wake: each wake stores `wakeTurn {agentId, toldAt, taskIds}`; once that turn ends
   (checked on the refreshes and at start 30 s after the send, and by the next wake before it
   sends, so it never overwrites an unread turn), a reply that is a limit notice clears those
-  tasks' `toldAt` and stores `wakeAt`; the next wake waits until then, also across a restart.
-  Tasks told before a restart are not told again: with `wakeTurn` stored, that case is covered
-  without re-telling the chat on every plugin reload. No new polling. UI: the card says "paused by
+  tasks' `toldAt` and stores `wakeAt` plus `wakeAgentId`, the chat that hit it. Both the wait and
+  the turn belong to that chat: Restart chat drops them, and the tasks that chat never read go
+  back to the queue and are told to the new chat on the normal ~90 s wake, not at the old reset.
+  A replaced chat's turn is never read as the current chat's. Data from before `wakeAgentId`
+  existed (`null`) still holds the current chat, as before. Tasks told before a plugin reload are
+  not told again:
+  with `wakeTurn` stored, that case is covered without re-telling the chat on every reload. No new
+  polling. UI: the card says "paused by
   the usage limit until HH:MM"; the Dashboard's Waiting rows say the same; new history kind,
   attempt outcome/trigger and Needs you reason `usage-limit`.
 - **Core files touched:** none. Plugin files: `shared/usage-limit.ts`, `shared/model.ts`
-  (`limited`, `limitPauses`), `shared/assistant.ts` (enums, `wakeAt`, `wakeTurn`,
+  (`limited`, `limitPauses`), `shared/assistant.ts` (enums, `wakeAt`, `wakeAgentId`, `wakeTurn`,
   `runningItem.limited`), `server/workboard.ts` (`usageLimitReached`, `orchestrate`,
-  `continueTask`, `armWake`/`wakeAssistant`/`checkWakeTurn`), `server/orchestrator.ts`
+  `continueTask`, `armWake`/`wakeAssistant`/`checkWakeTurn`, `openChat`), `server/orchestrator.ts`
   (`usageLimitResumePrompt`), `server/host.ts` (`Agent.lastError`), `server/assistant/views.ts`,
   `server/assistant/chat.ts`, `client/checkpoint-format.ts` (`limitLine`),
   `client/WorkboardScreen.tsx`, `client/assistant/DashboardScreen.tsx`, strings, and tests

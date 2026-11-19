@@ -374,12 +374,20 @@ export const assistantDataSchema = z.object({
   progress: z.record(z.string(), taskProgressSchema).default({}),
   /**
    * CUSTOM(usage-limit): the chat hit the usage limit on a wake; the next wake waits until this
-   * time. Null: wake as usual.
+   * time. Null: wake as usual. It belongs to the chat agent that hit the limit (`wakeAgentId`):
+   * a chat the user replaced does not inherit its wait.
    */
   wakeAt: z.string().nullable().default(null),
   /**
+   * CUSTOM(usage-limit): the chat agent `wakeAt` belongs to. Null: unknown (data from before this
+   * field existed), so `wakeAt` holds whichever chat is current. A `wakeTurn` is scoped by its own
+   * `agentId`.
+   */
+  wakeAgentId: z.string().nullable().default(null),
+  /**
    * CUSTOM(usage-limit): the last wake sent, until its turn ends. If that turn ends on the usage
-   * limit, its tasks lose `toldAt` and are told again at `wakeAt`.
+   * limit, its tasks lose `toldAt` and are told again at `wakeAt`. Its `agentId` scopes it: a turn
+   * of a chat the user replaced is not read as the current chat's.
    */
   wakeTurn: z
     .object({
