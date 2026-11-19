@@ -154,6 +154,7 @@ export const ATTEMPT_OUTCOMES = [
   "checkpoint", // CUSTOM(task-checkpoints)
   // CUSTOM(resource-pools): a queued fix dropped before it reached the agent.
   "dropped",
+  "usage-limit", // CUSTOM(usage-limit): the agent stopped on the plan's usage limit
 ] as const;
 export const attemptSchema = z.object({
   index: z.number().int().min(1),
@@ -164,8 +165,9 @@ export const attemptSchema = z.object({
   outcome: z.enum(ATTEMPT_OUTCOMES).default("running"),
   /** What started this attempt after the first: the reviewer's feedback or the failed check. */
   // CUSTOM(task-checkpoints): `checkpoint` resumes the task after a checkpoint report.
+  // CUSTOM(usage-limit): `usage-limit` resumes it after the plan's usage limit reset.
   trigger: z
-    .enum(["start", "feedback", "auto-fix", "checkpoint"])
+    .enum(["start", "feedback", "auto-fix", "checkpoint", "usage-limit"])
     .default("start"),
   feedback: z.string().max(20000).nullable().default(null),
   /** How many times the engine told this attempt's agent to continue after it stopped with an error. */
@@ -193,6 +195,8 @@ export const NEEDS_YOU_REASONS = [
   "stalled",
   // CUSTOM(resource-pools): a fix has waited FIX_WAIT_LIMIT_MS for a pool slot; it still goes when one frees.
   "fix-waiting",
+  // CUSTOM(usage-limit): the agent hit the usage limit again after MAX_LIMIT_PAUSES resumes.
+  "usage-limit",
 ] as const;
 export const needsYouReasonSchema = z.enum(NEEDS_YOU_REASONS);
 export type NeedsYouReason = z.infer<typeof needsYouReasonSchema>;
@@ -302,6 +306,23 @@ export const assistantDataSchema = z.object({
   chatAgentId: z.string().nullable().default(null),
   /** CUSTOM(task-checkpoints): keyed by task id. */
   progress: z.record(z.string(), taskProgressSchema).default({}),
+  /**
+   * CUSTOM(usage-limit): the chat hit the usage limit on a wake; the next wake waits until this
+   * time. Null: wake as usual.
+   */
+  wakeAt: z.string().nullable().default(null),
+  /**
+   * CUSTOM(usage-limit): the last wake sent, until its turn ends. If that turn ends on the usage
+   * limit, its tasks lose `toldAt` and are told again at `wakeAt`.
+   */
+  wakeTurn: z
+    .object({
+      agentId: z.string(),
+      toldAt: z.string(),
+      taskIds: z.array(z.string()),
+    })
+    .nullable()
+    .default(null),
 });
 export type AssistantData = z.infer<typeof assistantDataSchema>;
 
@@ -314,6 +335,7 @@ export const HISTORY_EVENT_KINDS = [
   "task-continued",
   "report",
   "checkpoint", // CUSTOM(task-checkpoints)
+  "usage-limit", // CUSTOM(usage-limit): a task or the chat paused by the plan's usage limit
   "verify-passed",
   "verify-failed",
   "fix-requested",
@@ -400,6 +422,8 @@ export const runningItemSchema = z.object({
   startedAt: z.string(),
   /** CUSTOM(task-checkpoints): for `waiting`: when it resumes (null: on the next pass). */
   resumeAt: z.string().nullable().optional(),
+  /** CUSTOM(usage-limit): for `waiting`: paused by the usage limit, not by a checkpoint. */
+  limited: z.boolean().optional(),
   waitingFor: z.string().nullable().optional(),
   /** CUSTOM(task-checkpoints): items done, items in all, and checkpoints so far. */
   progress: z

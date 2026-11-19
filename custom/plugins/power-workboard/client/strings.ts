@@ -193,6 +193,8 @@ const zh = {
     copied: "PR 描述已复制。",
     copyFailed: "无法复制。",
   },
+  // CUSTOM(usage-limit)
+  limit: { paused: "因用量限制暂停", until: "至" },
   // CUSTOM(task-checkpoints)
   checkpoint: {
     word: "检查点",
@@ -876,6 +878,8 @@ const en: typeof zh = {
     copied: "PR description copied.",
     copyFailed: "Could not copy.",
   },
+  // CUSTOM(usage-limit)
+  limit: { paused: "paused by the usage limit", until: "until" },
   // CUSTOM(task-checkpoints)
   checkpoint: {
     word: "checkpoint",

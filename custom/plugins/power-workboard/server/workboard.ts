@@ -128,8 +128,10 @@ import {
   parseTicket,
   pullRequestPrompt,
   refinementPrompt,
+  usageLimitResumePrompt, // CUSTOM(usage-limit)
   writeTicketPrompt,
 } from "./orchestrator";
+import { MAX_LIMIT_PAUSES, usageLimitResumeAt } from "../shared/usage-limit"; // CUSTOM(usage-limit)
 import type {
   Agent,
   ConversationEvidence,
@@ -177,6 +179,8 @@ const MAX_RESUME_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 /** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
 const IDLE_SETTLE_MS = 20_000;
 const DEFAULT_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
+/** CUSTOM(usage-limit): a wake's turn is read no sooner than this after the send, so it has started. */
+const WAKE_TURN_START_MS = 30_000;
 /** CUSTOM(assistant-autonomy): how many times a merge waits for a clean base checkout. */
 const MAX_DIRTY_RETRIES = 12;
 /**
@@ -446,6 +450,7 @@ export class Workboard {
       await this.scan();
       await this.orchestrate();
       this.requeueUntold(); // CUSTOM(assistant-wake)
+      void this.checkWakeTurn(); // CUSTOM(usage-limit)
       // CUSTOM(projects-assistant): a delivery interrupted by a restart resumes at its step.
       for (const [taskId, delivery] of Object.entries(
         this.store.current.assistant.deliveries,
@@ -532,6 +537,7 @@ export class Workboard {
         await this.scan(scope);
         await this.orchestrate();
         this.requeueUntold(); // CUSTOM(assistant-wake)
+        void this.checkWakeTurn(); // CUSTOM(usage-limit)
       } catch (error) {
         this.connected = false;
         this.error = message(error);
@@ -2353,8 +2359,74 @@ export class Workboard {
     clearTimeout(this.wakeTimer);
     this.wakeTimer = setTimeout(
       () => void this.wakeAssistant(),
-      this.assistantOptions.wakeDelayMs ?? 90_000,
+      Math.max(this.assistantOptions.wakeDelayMs ?? 90_000, this.wakeWait()), // CUSTOM(usage-limit)
     );
+  }
+  /** CUSTOM(usage-limit): how long the chat still waits for its usage limit to reset; 0 when it doesn't. */
+  private wakeWait(): number {
+    const at = Date.parse(this.store.current.assistant.wakeAt ?? "");
+    return Number.isFinite(at) ? Math.max(0, at - this.now()) : 0;
+  }
+  /** CUSTOM(usage-limit): a `checkWakeTurn` is running. */
+  private wakeChecking = false;
+  /**
+   * CUSTOM(usage-limit): once the turn of the last wake has ended, see whether it ended on the
+   * plan's usage limit. Then the chat never read it: its tasks lose `toldAt` and the next wake
+   * waits until just after the reset (`wakeAt`). Runs at start and on each refresh while a wake
+   * turn is open; the turn is stored, so a restart in between still checks it. `ended`: the
+   * caller saw the chat idle, so the turn is over however recent the wake.
+   */
+  private async checkWakeTurn(ended = false): Promise<void> {
+    const turn = this.store.current.assistant.wakeTurn;
+    if (!turn || this.wakeChecking || this.stopped) return;
+    // Give the turn time to start, so the reply read is the answer to the wake.
+    if (!ended && this.now() - Date.parse(turn.toldAt) < WAKE_TURN_START_MS)
+      return;
+    this.wakeChecking = true;
+    try {
+      const activity = await this.host.agentActivity(turn.agentId);
+      if (activity === "running" || activity === "waiting") return;
+      const reply =
+        activity === null ? null : await this.host.lastReply(turn.agentId);
+      // The notice came right after the wake, so the wake's time dates it.
+      const wakeAt = usageLimitResumeAt(
+        reply,
+        this.now(),
+        Date.parse(turn.toldAt),
+      );
+      let requeued = false;
+      await this.store.update((data) => {
+        if (data.assistant.wakeTurn?.toldAt !== turn.toldAt) return;
+        data.assistant.wakeTurn = null;
+        if (!wakeAt) return;
+        data.assistant.wakeAt = wakeAt;
+        for (const id of turn.taskIds) {
+          const delivery = data.assistant.deliveries[id];
+          if (
+            delivery?.stage === "needs-you" &&
+            delivery.toldAt === turn.toldAt
+          ) {
+            delivery.toldAt = null;
+            requeued = true;
+          }
+        }
+      });
+      if (!wakeAt || !requeued) return;
+      await this.record(
+        turn.taskIds[0]!,
+        "usage-limit",
+        `The assistant hit the usage limit; it will be told again at ${wakeAt}`,
+        { agentId: turn.agentId, detail: reply },
+      );
+      this.requeueUntold();
+    } catch (error) {
+      console.error(
+        "Could not check the assistant's wake turn:",
+        message(error),
+      );
+    } finally {
+      this.wakeChecking = false;
+    }
   }
   private async wakeAssistant(): Promise<void> {
     this.wakeTimer = undefined;
@@ -2374,6 +2446,17 @@ export class Workboard {
       }
       // Never interrupt it: try again later.
       if (activity === "running" || activity === "waiting") {
+        this.armWake();
+        return;
+      }
+      // CUSTOM(usage-limit): read the last wake's turn first, so this wake does not replace it
+      // unread; then, if the chat is still on its usage limit, the tasks wait for the reset.
+      if (this.wakeChecking) {
+        this.armWake();
+        return;
+      }
+      await this.checkWakeTurn(true);
+      if (this.wakeWait() > 0) {
         this.armWake();
         return;
       }
@@ -2423,6 +2506,13 @@ export class Workboard {
           const delivery = data.assistant.deliveries[id];
           if (delivery?.stage === "needs-you") delivery.toldAt = toldAt;
         }
+        // CUSTOM(usage-limit): watch this turn in case it ends on the usage limit.
+        data.assistant.wakeAt = null;
+        data.assistant.wakeTurn = {
+          agentId,
+          toldAt,
+          taskIds: tasks.map((entry) => entry.id),
+        };
       });
       await this.record(
         tasks[0]!.id,
@@ -2734,6 +2824,83 @@ export class Workboard {
       .catch(() => null);
   }
   // End CUSTOM(task-checkpoints) -------------------------------------------------------------
+  /**
+   * CUSTOM(usage-limit): the agent's turn ended on the plan's usage limit (`text`: its last reply
+   * or error). Up to MAX_LIMIT_PAUSES times in a row the task waits in progress, like a
+   * checkpoint, until just after the reset: "paused". Past that it goes to the user: "over".
+   * Null when `text` is no limit notice. `noticeAt`: when the agent wrote it (its `updatedAt`),
+   * so a notice read hours late keeps the reset of its own day. Inside `serial`.
+   */
+  private async usageLimitReached(
+    taskId: string,
+    record: Orchestration,
+    task: Task,
+    text: string | null,
+    noticeAt: number,
+  ): Promise<"paused" | "over" | null> {
+    const resumeAt = usageLimitResumeAt(text, this.now(), noticeAt);
+    if (!resumeAt || !text) {
+      if (record.limitPauses)
+        await this.setOrchestration(taskId, { limitPauses: 0 });
+      return null;
+    }
+    // Records created in this session lack the parsed defaults.
+    const pauses = (record.limitPauses ?? 0) + 1;
+    const assistant = this.assistantOn();
+    const attempt = assistant
+      ? await this.closeAttempt(taskId, "usage-limit", record)
+      : null;
+    if (pauses > MAX_LIMIT_PAUSES) {
+      await this.setOrchestration(taskId, { summary: text, limitPauses: 0 });
+      await this.log(
+        record.orchestratorId,
+        "warn",
+        `"${task.title}": hit the usage limit again after ${MAX_LIMIT_PAUSES} automatic resumes; it needs you`,
+        taskId,
+        record.agentId,
+      );
+      if (assistant) {
+        const policy = this.policy(this.projectIdOf(task));
+        await this.createDelivery(taskId, {
+          action: policy.action,
+          observe: policy.observe,
+          attempt: attempt!,
+        });
+        await this.settle(
+          taskId,
+          "usage-limit",
+          `${text} (after ${MAX_LIMIT_PAUSES} automatic resumes)`,
+        );
+      }
+      return "over";
+    }
+    await this.setOrchestration(taskId, {
+      status: "waiting",
+      finishedAt: this.stamp(),
+      checkpoint: true,
+      limited: true,
+      limitPauses: pauses,
+      resumeAt,
+      waitingFor: null,
+      feedback: null,
+      error: null,
+    });
+    if (assistant)
+      await this.record(
+        taskId,
+        "usage-limit",
+        `Paused by the usage limit until ${resumeAt}`,
+        { attempt, detail: text },
+      );
+    await this.log(
+      record.orchestratorId,
+      "info",
+      `"${task.title}": paused by the usage limit (${pauses}/${MAX_LIMIT_PAUSES}); resumes at ${resumeAt}`,
+      taskId,
+      record.agentId,
+    );
+    return "paused";
+  }
   private async settle(
     taskId: string,
     reason: NeedsYouReason,
@@ -3654,6 +3821,8 @@ export class Workboard {
             checkpoint: false,
             resumeAt: null,
             waitingFor: null,
+            limited: false, // CUSTOM(usage-limit)
+            limitPauses: 0,
           });
           await this.log(
             record.orchestratorId,
@@ -3674,6 +3843,7 @@ export class Workboard {
             status: "failed",
             finishedAt: this.stamp(),
             error: "The agent is gone",
+            limitPauses: 0, // CUSTOM(usage-limit)
           });
           await this.log(
             record.orchestratorId,
@@ -3697,6 +3867,26 @@ export class Workboard {
         continue;
       }
       if (agent.activity === "error") {
+        // CUSTOM(usage-limit): the usage limit waits for its reset instead of "continue" nudges.
+        // A resumed agent still shows the old error until it runs; give it the start delay.
+        if (usageLimitResumeAt(agent.lastError, this.now())) {
+          if (!record.sawRunning && elapsed < 90_000) continue;
+          this.retryAt.delete(taskId);
+          const limit = await this.usageLimitReached(
+            taskId,
+            record,
+            task,
+            agent.lastError!,
+            Date.parse(agent.updatedAt),
+          );
+          if (limit === "over")
+            await this.setOrchestration(taskId, {
+              status: "failed",
+              finishedAt: this.stamp(),
+              error: agent.lastError!,
+            });
+          continue;
+        }
         // CUSTOM(projects-assistant): a transient error gets up to three "continue" nudges first.
         if (this.assistantOn() && (await this.retryAgent(taskId, record, task)))
           continue;
@@ -3704,6 +3894,7 @@ export class Workboard {
           status: "failed",
           finishedAt: this.stamp(),
           error: "The agent stopped with an error",
+          limitPauses: 0, // CUSTOM(usage-limit)
         });
         await this.log(
           record.orchestratorId,
@@ -3741,9 +3932,21 @@ export class Workboard {
         (w) => w.id === task.workspaceId,
       );
       const summary = await this.host.lastReply(record.agentId);
+      // CUSTOM(usage-limit): a turn cut by the usage limit waits for the reset, or (past the
+      // limit of pauses) already went to the user.
+      const limit = await this.usageLimitReached(
+        taskId,
+        record,
+        task,
+        summary,
+        Date.parse(agent.updatedAt),
+      );
+      if (limit === "paused") continue;
       // CUSTOM(projects-assistant): with the assistant on, the report decides what happens next.
       let launch = false;
-      if (this.assistantOn())
+      if (limit === "over") {
+        // Settled by usageLimitReached; the card goes to review below.
+      } else if (this.assistantOn())
         launch = await this.assistantFinished(taskId, record, summary);
       else if (summary) await this.setOrchestration(taskId, { summary });
       // CUSTOM(task-checkpoints): the task stays in progress and resumes later.
@@ -3842,6 +4045,7 @@ export class Workboard {
       slots: number;
       pool: Pool | null;
       hold: OrchestratorHold | null;
+      limitHeld: boolean; // CUSTOM(usage-limit)
     }> = [];
     for (const config of [...this.store.current.orchestrators]) {
       if (this.stopped) break;
@@ -3878,12 +4082,33 @@ export class Workboard {
         !candidates.some(({ card, night }) => !night && this.owns(config, card))
       )
         await this.endRun(config.id, "nothing left in Ready to start");
+      // CUSTOM(usage-limit): while one of its tasks waits for the usage limit to reset, a new task
+      // would only hit it too; resumes still go.
+      const limitHeld = Object.values(this.store.current.orchestrations).some(
+        (record) =>
+          record.orchestratorId === config.id &&
+          record.limited &&
+          record.status === "waiting",
+      );
+      if (!limitHeld) this.limitHoldLogged.delete(config.id);
+      else if (
+        !this.limitHoldLogged.has(config.id) &&
+        candidates.some(({ card }) => this.owns(config, card))
+      ) {
+        this.limitHoldLogged.add(config.id);
+        await this.log(
+          config.id,
+          "info",
+          "Ready to start waits: a task is paused by the usage limit",
+        );
+      }
       takers.push({
         config,
         open,
         slots: config.maxConcurrent - this.runningFor(config.id),
         pool: this.poolOf(config),
         hold: null,
+        limitHeld,
       });
     }
     let started = false;
@@ -3897,6 +4122,7 @@ export class Workboard {
         const { config, pool } = taker;
         if (taker.slots <= 0 || taker.hold || !this.owns(config, card))
           continue;
+        if (!resume && taker.limitHeld) continue; // CUSTOM(usage-limit)
         const runtime = this.runtime(config.id);
         if (!night && !resume && !taker.open && runtime.quota <= 0) continue;
         // CUSTOM(resource-pools): the pool must have a free slot and enough free RAM too.
@@ -4215,6 +4441,8 @@ export class Workboard {
   private memoryReading: MemoryReading | null = null;
   /** The hold last written to each orchestrator's log, so a long wait logs once. */
   private loggedHolds = new Map<string, string>();
+  /** CUSTOM(usage-limit): orchestrators whose Ready to start hold by the usage limit was logged. */
+  private limitHoldLogged = new Set<string>();
   private poolOf(
     config: OrchestratorConfig,
     data: Data = this.store.current,
@@ -4560,10 +4788,22 @@ export class Workboard {
     const feedback = record.feedback ?? "";
     // CUSTOM(task-checkpoints)
     const checkpoint = record.checkpoint;
+    const limited = checkpoint && record.limited; // CUSTOM(usage-limit)
     const progress = this.store.current.assistant.progress[taskId];
-    const nextPrompt = checkpoint
-      ? checkpointResumePrompt(progress, record.waitingFor, this.assistantOn())
-      : continuationPrompt(feedback, this.assistantOn()); // CUSTOM(projects-assistant)
+    const nextPrompt = limited
+      ? usageLimitResumePrompt(progress, this.assistantOn())
+      : checkpoint
+        ? checkpointResumePrompt(
+            progress,
+            record.waitingFor,
+            this.assistantOn(),
+          )
+        : continuationPrompt(feedback, this.assistantOn()); // CUSTOM(projects-assistant)
+    // CUSTOM(usage-limit)
+    const resumed = (title: string, fresh: boolean) =>
+      limited
+        ? `Resumed "${title}" after the usage limit reset${fresh ? " with a new agent" : ""}`
+        : `Resumed "${title}" from checkpoint ${progress?.checkpoints ?? 1}${fresh ? " with a new agent" : ""}`;
     let fresh = false;
     try {
       await this.moveBound(taskId, stage);
@@ -4609,12 +4849,16 @@ export class Workboard {
         checkpoint: false, // CUSTOM(task-checkpoints)
         resumeAt: null,
         waitingFor: null,
+        // CUSTOM(usage-limit): only a resume after the limit keeps counting pauses.
+        limited: false,
+        limitPauses: limited ? (record.limitPauses ?? 0) : 0,
       });
       // CUSTOM(projects-assistant)
       if (this.assistantOn()) {
         const attempt = await this.openAttempt(
           taskId,
-          checkpoint ? "checkpoint" : "feedback", // CUSTOM(task-checkpoints)
+          // CUSTOM(task-checkpoints), CUSTOM(usage-limit)
+          limited ? "usage-limit" : checkpoint ? "checkpoint" : "feedback",
           agentId,
           settings.id,
           checkpoint ? null : feedback.trim() || null,
@@ -4623,7 +4867,7 @@ export class Workboard {
           taskId,
           "task-continued",
           checkpoint
-            ? `Resumed "${task.title}" from checkpoint ${progress?.checkpoints ?? 1}${fresh ? " with a new agent" : ""}`
+            ? resumed(task.title, fresh)
             : `Continued "${task.title}" with the review feedback`,
           {
             attempt,
@@ -4636,7 +4880,7 @@ export class Workboard {
         settings.id,
         "info",
         checkpoint
-          ? `Resumed "${task.title}" from checkpoint ${progress?.checkpoints ?? 1}${fresh ? " with a new agent" : ""}`
+          ? resumed(task.title, fresh)
           : `Continued "${task.title}" with the review feedback`,
         taskId,
         agentId,
@@ -4650,6 +4894,7 @@ export class Workboard {
         checkpoint: false, // CUSTOM(task-checkpoints)
         resumeAt: null,
         waitingFor: null,
+        limited: false, // CUSTOM(usage-limit)
       });
       await this.log(
         settings.id,
@@ -4662,7 +4907,9 @@ export class Workboard {
         await this.assistantFailed(
           taskId,
           this.store.current.orchestrations[taskId],
-          `Could not resume from the checkpoint: ${message(error)}`,
+          limited
+            ? `Could not resume after the usage limit: ${message(error)}`
+            : `Could not resume from the checkpoint: ${message(error)}`,
         );
       return "failed";
     }

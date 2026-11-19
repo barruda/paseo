@@ -99,6 +99,7 @@ const EVENT_ICONS: Record<string, string> = {
   "task-continued": "Play",
   report: "FileText",
   checkpoint: "Flag", // CUSTOM(task-checkpoints)
+  "usage-limit": "Clock", // CUSTOM(usage-limit)
   "verify-passed": "CheckCircle2",
   "verify-failed": "XCircle",
   "fix-requested": "Wrench",
@@ -131,7 +132,7 @@ export function kindTone(
     return "accent";
   }
   if (["merged", "done", "verify-passed"].includes(kind)) return "success";
-  if (["needs-you", "escalated", "waiting-clean"].includes(kind))
+  if (["needs-you", "escalated", "waiting-clean", "usage-limit"].includes(kind))
     return "warning";
   if (["failed", "verify-failed"].includes(kind)) return "danger";
   return "muted";

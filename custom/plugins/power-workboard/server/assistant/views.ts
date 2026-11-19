@@ -183,6 +183,7 @@ export function buildOverview(source: ViewSource): Overview {
       // CUSTOM(task-checkpoints)
       resumeAt: waiting ? run.resumeAt : null,
       waitingFor: waiting ? run.waitingFor : null,
+      limited: waiting && run.limited ? true : undefined, // CUSTOM(usage-limit)
       progress: progressOf(data, taskId),
     });
   }

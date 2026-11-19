@@ -41,6 +41,18 @@ export function waitingLine(
   return input.waitingFor ? `${when}: ${input.waitingFor}` : when;
 }
 
+// CUSTOM(usage-limit)
+/** "paused by the usage limit until 23:32"; just `paused` when the reset time is unknown. */
+export function limitLine(
+  resumeAt: string | null,
+  words: { paused: string; until: string },
+  now: Date,
+): string {
+  return resumeAt
+    ? `${words.paused} ${words.until} ${formatClock(resumeAt, now)}`
+    : words.paused;
+}
+
 /** The checkpoint log, newest first, one line each: `time`, `text`. */
 export function logLines(
   log: readonly { at: string; checkpoint: number; text: string }[],
