@@ -129,20 +129,12 @@ describe("reportTimelineItems", () => {
     ]);
   });
 
-  it("gives two cards in one chat distinct row keys", () => {
-    // The host keys a row `pluginId/<item id>`, or `pluginId/<source message id>/<index>` when the
-    // item has none (packages/app/src/plugins/timeline/model.ts and projection.ts).
-    const hostKeys = (sourceId: string, text: string) =>
-      (reportTimelineItems(text) ?? []).map(
-        (item, index) =>
-          `power-workboard/${"id" in item ? String(item.id) : `${sourceId}/${index}`}`,
-      );
-    const keys = [
-      ...hostKeys("msg-1", `First.\n${block(report)}`),
-      ...hostKeys("msg-2", `Second.\n${block(report)}`),
-    ];
-    expect(keys).toHaveLength(4);
-    expect(new Set(keys).size).toBe(4);
+  it("emits rows without ids, so the host keys them by the source reply", () => {
+    // A fixed id would collide across replies; the host's keying of id-less rows is tested in
+    // packages/app/src/plugins/timeline/projection.test.ts.
+    const items = reportTimelineItems(`before ${block(report)} after`) ?? [];
+    expect(items).toHaveLength(3);
+    for (const item of items) expect(item).not.toHaveProperty("id");
   });
 
   it("keeps the original reply when the report is invalid", () => {

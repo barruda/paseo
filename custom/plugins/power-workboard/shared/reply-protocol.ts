@@ -203,8 +203,8 @@ export const REPLY_ITEM_KIND = "assistant-reply";
 export const REPLY_ITEM_VERSION = 1;
 
 /**
- * The item keeps the whole reply: the renderer parses it, and shows it unchanged when the agent is
- * not the Projects Assistant (the transformer cannot tell which agent wrote it).
+ * The item keeps the whole reply: the renderer parses it again to draw the text before the block
+ * and the card, and shows the text unchanged if it no longer parses.
  */
 export const replyItemDataSchema = z.object({ text: z.string() });
 export type ReplyItemData = z.infer<typeof replyItemDataSchema>;
@@ -216,7 +216,6 @@ export interface ReplyTimelineItem {
   data: ReplyItemData;
 }
 
-/** The item that replaces a reply ending in a `pwb` block; undefined keeps the reply as it is. */
 /** The label the server's `CHAT_LABEL` puts on the Projects Assistant's chat agent. */
 export const ASSISTANT_CHAT_AGENT_LABEL = "pwb/assistant-chat";
 

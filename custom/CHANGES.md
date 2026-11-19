@@ -7891,16 +7891,19 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   replaces an `assistant_message` keeps the reply's text in `sourceAssistantText` on its last row;
   the turn footer hosts on that row, copies that text and gets the turn's timing
   (`getAssistantResponseText` in `types/stream.ts`, used by the footer source search, the copy
-  collector and the turn timing). This brings the copy button back to every transformed reply,
-  report cards included. Power Workboard: the `assistant-reply` transformer emits the card only
+  collector, the turn timing and the footer row's `compactBottom` spacing). That row also offers
+  fork from its `timelineCursor` (`turn-boundary.ts`); it has no provider message id, so a host
+  without cursor support offers no fork there. This brings the copy button back to every
+  transformed reply, report cards included. Power Workboard: the `assistant-reply` transformer emits the card only
   for agents labeled `pwb/assistant-chat` (the renderer's `useAgent` check is gone), and the
   report rows carry no `id`, so the host keys them `<source message id>/<index>`.
 - **Core files touched:** `packages/plugin/src/client/contracts.ts`, `packages/plugin/src/client/index.ts`,
   `packages/app/src/plugins/timeline/{model,index,projection}.ts`,
-  `packages/app/src/agent-stream/{view.tsx,layout.ts,strategy.ts,turn-footer.tsx}`,
+  `packages/app/src/agent-stream/{view.tsx,layout.ts,strategy.ts,turn-footer.tsx,turn-boundary.ts,spacing.ts}`,
   `packages/app/src/timeline/turn-time.ts`, `packages/app/src/types/stream.ts`, `docs/plugins.md`
   (the `agent` input and the fixed-`id` gotcha). Tests:
-  `plugins/timeline/{model,projection}.test.ts`, `agent-stream/{render-strategy,layout}.test.ts`.
+  `plugins/timeline/{model,projection}.test.ts`,
+  `agent-stream/{render-strategy,layout,turn-boundary,spacing}.test.ts`.
   Plugin files: `index.client.tsx`, `shared/reply-protocol.ts`, `shared/task-report.ts`,
   `client/assistant/{AssistantReplyCard,RestartChatPill}.tsx`, `docs/assistant-reply-protocol.md`,
   `tests/{reply-protocol,task-report}.test.ts`.
@@ -7909,12 +7912,16 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   closes over it, and the agent object must stay stable (the projection cache is keyed by the
   transform). In `transformSourceItem` set `sourceAssistantText` on the last projected row of an
   `assistant_message` only, so the copy collector doesn't repeat it; wherever the footer code tests
-  `kind === "assistant_message"` to find or copy the reply, use `getAssistantResponseText`. The
+  `kind === "assistant_message"` to find or copy the reply or to compact its bottom spacing, use
+  `getAssistantResponseText`; `resolveAssistantTurnForkBoundary` takes such a plugin row's
+  `timelineCursor` (cursor only). The
   PWB plugin pins SDK types without `agent`, hence the cast in `index.client.tsx`.
 - **Verify:** `cd packages/app && npx vitest run src/plugins/timeline/model.test.ts
 src/plugins/timeline/projection.test.ts src/agent-stream/render-strategy.test.ts
-src/agent-stream/layout.test.ts`, and the power-workboard checks. Needs an app build and install
+src/agent-stream/layout.test.ts src/agent-stream/turn-boundary.test.ts
+src/agent-stream/spacing.test.ts`, and the power-workboard checks. Needs an app build and install
   plus `paseo plugin reload power-workboard`. In the Projects Assistant's chat a reply with a
-  `pwb` block shows the card and its turn footer has the copy button, which copies the raw reply;
+  `pwb` block shows the card and its turn footer has the copy button, which copies the raw reply,
+  and the fork button, which forks the chat up to that reply;
   in a task agent's chat the same block stays a code block with the normal copy and reveal. Two
   report cards in one chat both render.
