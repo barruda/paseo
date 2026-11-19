@@ -8154,3 +8154,35 @@ power-workboard`. In the app, open the Projects Assistant chat, set "Compact at 
   (say 20000), send a message, wait for the reply, type a few words in the composer without
   sending, and wait 15 s: the same tab now shows the new chat with your words in its composer,
   and other agents' tabs are unchanged. Put the limit back afterwards.
+
+## card-open-agent: Power Workboard cards link their agent in every column; pin and move sit in the action row; wider column-resize strip
+
+- **Added:** 2026-11-19 (based on `custom` at `60bc73d0d`)
+- **Commit:** `custom: Power Workboard cards always link their agent, pin and move join the action row`
+- **Why:** Open agent only showed on the orchestration line, so Ready to review cards and tasks
+  started by hand had no link. The pin and the drag handle sat right of the title and wrapped it
+  ("hook lefthook do / prepare-commit-…"). The column-resize strip was easy to miss: its inner
+  Pressable showed the pointer cursor and only a 22 px bar lit up on hover.
+- **What:** `cardAgentId` picks the card's agent: the orchestration record's agent (current or
+  last attempt, archived or not), else the workspace's agents, a live one first; a draft with no
+  workspace has none. The orchestration line links it when it shows; in Ready to review, or
+  with no record, the card shows its own `Open agent` line. The pin and the drag handle moved to
+  the end of the bottom action row (after ⌄, notes and status): `BoardView` hands the handle to
+  `renderCard(card, dragHandle)` and `TaskDragShell` takes a render function, so the drag still
+  starts only on the handle. The resize strip is 16 px wide, centred on the column's right
+  border and full height (`right: -9`, inside the 8 px padding and half the 10 px gap, so it
+  covers no card, scrollbar or neighbour column); the whole strip shows `col-resize` and, hovered
+  or focused, a full-height accent line. Keyboard, double-click reset and saved widths are
+  unchanged.
+- **Core files touched:** none. Plugin files: `client/board-utils.ts` (`cardAgentId`),
+  `client/WorkboardScreen.tsx` (`TaskCard`, `OrchestrationLine`, `OpenAgentLink`),
+  `client/BoardView.tsx` (`TaskDragShell`, `renderCard`, resize strip),
+  `tests/card-open-agent.test.ts`.
+- **Re-apply:** Plugin-only. Grep `CUSTOM(card-open-agent)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/card-open-agent.test.ts`. Needs only `paseo plugin reload power-workboard`. On the board,
+  every card whose task ran an agent shows Open agent (Backlog after an attempt, In progress,
+  Ready to review, Done); the title uses the card's full width; the pin and ⋮⋮ sit at the right
+  of the ⌄ 📄 ⇄ row and dragging ⋮⋮ still moves the card. Hover the gap right of a column: the
+  cursor turns to `col-resize` along the whole border and an accent line appears; dragging
+  resizes, double-click resets.

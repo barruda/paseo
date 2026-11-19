@@ -125,6 +125,25 @@ export function finishButtons(finish: Pick<Finish, "mergedAt"> | undefined): {
   return { steps: ["commit", "pr", "merge"], primary: "merge" };
 }
 
+/**
+ * CUSTOM(card-open-agent): the agent a card's Open agent link opens, in any column and whatever
+ * the agent's state. The orchestrated attempt's agent wins (current, or the last one: its record
+ * stays after the task moves); a restart that has no agent yet, or a task started by hand, falls
+ * back to the workspace's agents, a live one first. A draft has no workspace and no agent.
+ */
+export function cardAgentId(
+  card: Pick<Card, "workspaceId" | "agents">,
+  orchestration: { agentId: string | null } | undefined,
+): string | null {
+  if (orchestration?.agentId) return orchestration.agentId;
+  if (card.workspaceId === null) return null;
+  return (
+    card.agents.find((agent) => !agent.archived)?.id ??
+    card.agents[0]?.id ??
+    null
+  );
+}
+
 export function stageAtX(
   x: number,
   columns: Partial<Record<Stage, { left: number; right: number }>>,
