@@ -356,6 +356,8 @@ const en = {
   "chat.tasks": "Tasks",
   "chat.steps": "{n} steps",
   "chat.failedCount": "{n} failed",
+  // CUSTOM(command-outcome): commands that exited nonzero without failing.
+  "chat.nonzeroCount": "{n} exit≠0",
   "chat.createdTasks": "Created {n} tasks",
   "chat.createdOneTask": "Created 1 task",
   "chat.change.added": "Added",
@@ -476,6 +478,7 @@ const en = {
   // Turn markdown copy
   "markdown.changes": "Changes",
   "markdown.failed": "{n} failed",
+  "markdown.nonzero": "{n} exit≠0",
   "markdown.exit": " (exit {code})",
 
   // Web surfaces the plugin draws into Paseo's DOM
@@ -873,6 +876,7 @@ const zh: Partial<Record<MessageKey, Message>> = {
   "chat.tasks": "任务",
   "chat.steps": "{n} 步",
   "chat.failedCount": "{n} 项失败",
+  "chat.nonzeroCount": "{n} 项退出码非 0",
   "chat.createdTasks": "创建了 {n} 个任务",
   "chat.createdOneTask": "创建了 1 个任务",
   "chat.change.added": "已添加",
@@ -990,6 +994,7 @@ const zh: Partial<Record<MessageKey, Message>> = {
 
   "markdown.changes": "变更",
   "markdown.failed": "{n} 项失败",
+  "markdown.nonzero": "{n} 项退出码非 0",
   "markdown.exit": "（退出码 {code}）",
 
   "web.copy": "复制",

@@ -8,7 +8,8 @@ test("shell: tense follows status, nonzero exit is flagged", () => {
   const running = toolData(tool({ type: "shell", command: "npm test\n--watch" }, { status: "running" }));
   assert.equal(running.verb, "Running");
   assert.equal(running.target, "npm test");
-  const failed = toolData(tool({ type: "shell", command: "npm test", exitCode: 1, output: "FAIL" }, { status: "failed", error: { message: "x" } }));
+  // CUSTOM(command-outcome): the output has to read as a failure; exit 1 with ordinary output is neutral (command-outcome.test.mjs).
+  const failed = toolData(tool({ type: "shell", command: "npm test", exitCode: 1, output: "FAIL src/a.test.ts" }, { status: "failed", error: { message: "x" } }));
   assert.equal(failed.verb, "Ran");
   assert.equal(failed.meta, "exit 1");
   assert.equal(failed.metaTone, "danger");
@@ -194,7 +195,9 @@ test("turn recap: files with +/− relative to cwd, failed commands with exit co
   assert.deepEqual(recapData(timeline, "/w"), {
     files: [{ path: "src/a.ts", added: 3, removed: 2 }, { path: "new.md", added: 3, removed: 0 }, { path: "~/notes/todo.md", added: 1, removed: 0 }],
     commands: 3,
-    failed: [{ command: "npm test", exit: 1 }, { command: "rg x", exit: 2 }],
+    failed: [{ command: "npm test", exit: 1 }, { command: "rg x", exit: 2, output: "boom" }],
+    // CUSTOM(command-outcome): commands that exited nonzero without failing.
+    nonzero: [],
   });
   assert.equal(recapData([tool({ type: "read", filePath: "/w/a.ts" }), tool({ type: "shell", command: "ls" })], "/w"), undefined);
 });

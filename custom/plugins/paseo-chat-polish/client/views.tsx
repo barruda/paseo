@@ -5,6 +5,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { AccessibilityInfo, Animated, Easing, Image, LayoutAnimation, Modal, Platform, Pressable, StyleSheet, Text, useWindowDimensions, View, type StyleProp, type TextStyle, type ViewStyle } from "react-native";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { z } from "zod";
+import { isRealFailure } from "../shared/command-outcome";
 import { readImage } from "../shared/image";
 import { loadImage } from "./images";
 import type { Recap } from "../shared/recap";
@@ -631,7 +632,8 @@ export function MergedSteps(
   const label = useSteady(fresh, `${fresh.verb}\n${fresh.target ?? ""}`, 700, holdLabel);
   if (steps.length < 2) return steps[0] ? step(steps[0], false) : null;
   const c = theme.colors;
-  const failed = steps.filter((s) => s.item.type === "tool_call" && s.item.status === "failed").length;
+  // CUSTOM(command-outcome): a command that only exited nonzero is not a failure here; its own row shows the exit code.
+  const failed = steps.filter((s) => isRealFailure(s.item)).length;
   return (
     <View style={TIGHT[density]}>
       <Row
@@ -1382,6 +1384,8 @@ export function RecapItem({ item, theme }: PluginTimelineItemProps<Recap>) {
   const c = theme.colors;
   const t = useT();
   const { files, commands, failed } = item.data;
+  // CUSTOM(command-outcome): commands that exited nonzero without failing get a neutral count and rows; recaps stored before it have none.
+  const nonzero = item.data.nonzero ?? [];
   const [open, toggle] = useDisclosure(false);
   const [hovered, setHovered] = useState(false);
   const added = files.reduce((n, f) => n + f.added, 0);
@@ -1389,6 +1393,7 @@ export function RecapItem({ item, theme }: PluginTimelineItemProps<Recap>) {
   const text = [s.meta, { marginLeft: 0, fontSize: 12 }];
   const mono = [s.code, { fontSize: 12, lineHeight: 18 }];
   const dot = <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.statusDanger }} />;
+  const mutedDot = <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: c.foregroundMuted, opacity: 0.6 }} />;
   const parts: ReactNode[] = [];
   if (files.length)
     parts.push(
@@ -1407,6 +1412,33 @@ export function RecapItem({ item, theme }: PluginTimelineItemProps<Recap>) {
         <Text style={[text, { color: c.statusDanger }]}>{t("chat.failedCount", { n: failed.length })}</Text>
       </View>,
     );
+  if (nonzero.length)
+    parts.push(
+      <View key="nonzero" style={{ flexDirection: "row", alignItems: "center", gap: 5 }}>
+        {mutedDot}
+        <Text style={text}>{t("chat.nonzeroCount", { n: nonzero.length })}</Text>
+      </View>,
+    );
+  const commandRow = (f: Recap["failed"][number], i: number, real: boolean) => (
+    <View key={`${real ? "f" : "n"}${i}`} style={{ paddingVertical: 4 }}>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 18 }}>
+        {real ? dot : mutedDot}
+        <Text {...PMONO} numberOfLines={1} style={[mono, { flexShrink: 1 }]} selectable>
+          {f.command}
+        </Text>
+        {f.exit ? (
+          <Text {...PMONO} numberOfLines={1} style={[mono, { flexShrink: 0, color: real ? c.statusDanger : c.foregroundMuted }]}>
+            {t("chat.exitCode", { code: f.exit })}
+          </Text>
+        ) : null}
+      </View>
+      {f.output ? (
+        <Text {...PMONO} style={[mono, { color: c.foregroundMuted, paddingLeft: 14 }]} selectable>
+          {f.output}
+        </Text>
+      ) : null}
+    </View>
+  );
   return (
     <View style={{ marginVertical: -3 }}>
       <Pressable
@@ -1443,15 +1475,8 @@ export function RecapItem({ item, theme }: PluginTimelineItemProps<Recap>) {
                 </View>
               );
             })}
-            {failed.map((f, i) => (
-              <View key={i} style={{ flexDirection: "row", alignItems: "center", gap: 8, minHeight: 26 }}>
-                {dot}
-                <Text {...PMONO} numberOfLines={1} style={[mono, { flexShrink: 1 }]} selectable>
-                  {f.command}
-                </Text>
-                {f.exit ? <Text {...PMONO} numberOfLines={1} style={[mono, { flexShrink: 0, color: c.statusDanger }]}>{t("chat.exitCode", { code: f.exit })}</Text> : null}
-              </View>
-            ))}
+            {failed.map((f, i) => commandRow(f, i, true))}
+            {nonzero.map((f, i) => commandRow(f, i, false))}
           </View>
         </FadeIn>
       ) : null}

@@ -1,12 +1,17 @@
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { z } from "zod";
+import { commandOutcome, outputTail } from "./command-outcome.ts";
 import { diffLines } from "./diff.ts";
 
-/** One line after a turn: the files it changed, the commands it ran and the ones that failed. */
+// CUSTOM(command-outcome): `output` and `nonzero` are optional so recaps stored before them still parse.
+const commandEntry = z.object({ command: z.string(), exit: z.number().optional(), output: z.string().optional() });
+
+/** One line after a turn: the files it changed, the commands it ran, the ones that failed and the ones that only exited nonzero. */
 export const recapSchema = z.object({
   files: z.array(z.object({ path: z.string(), added: z.number(), removed: z.number() })),
   commands: z.number(),
-  failed: z.array(z.object({ command: z.string(), exit: z.number().optional() })),
+  failed: z.array(commandEntry),
+  nonzero: z.array(commandEntry).optional(),
 });
 export type Recap = z.output<typeof recapSchema>;
 
@@ -14,11 +19,12 @@ export type Recap = z.output<typeof recapSchema>;
 const MAX_FILES = 40;
 const MAX_FAILED = 10;
 
-/** Files changed with +/−, commands run and the ones that failed, across the given items. */
-export function changeSummary(items: readonly AgentTimelineItem[], cwd: string): Recap {
+/** Files changed with +/−, commands run, the ones that failed and the ones that only exited nonzero, across the given items. */
+export function changeSummary(items: readonly AgentTimelineItem[], cwd: string): Recap & { nonzero: Recap["failed"] } {
   const files = new Map<string, { added: number; removed: number }>();
   let commands = 0;
   const failed: Recap["failed"] = [];
+  const nonzero: Recap["failed"] = [];
   // Paths inside the agent's folder are relative; others start from ~ rather than /Users/name.
   const relative = (path: string) => (path.startsWith(cwd + "/") ? path.slice(cwd.length + 1) : path.replace(/^\/(Users|home)\/[^/]+\//, "~/"));
   for (const item of items) {
@@ -32,18 +38,20 @@ export function changeSummary(items: readonly AgentTimelineItem[], cwd: string):
     }
     if (d.type !== "shell") continue;
     commands++;
-    // Claude reports a failed command's exit code only in the error text ("Exit code 2").
-    const exit = d.exitCode || Number(/Exit code (\d+)/.exec(JSON.stringify(item.error ?? ""))?.[1]) || undefined;
-    if (item.status === "failed" || exit) failed.push({ command: d.command.trim().split("\n")[0] ?? "", exit });
+    const outcome = commandOutcome(item);
+    if (!outcome || outcome.kind === "ok") continue;
+    const output = outputTail(outcome.output);
+    const entry = { command: d.command.trim().split("\n")[0] ?? "", exit: outcome.exit || undefined, ...(output ? { output } : {}) };
+    (outcome.kind === "failed" ? failed : nonzero).push(entry);
   }
-  return { files: [...files].map(([path, f]) => ({ path, ...f })), commands, failed };
+  return { files: [...files].map(([path, f]) => ({ path, ...f })), commands, failed, nonzero };
 }
 
-/** The recap for the latest turn in an agent's timeline, or undefined when it changed no files and no command failed (Paseo's own rows already say "Ran 2 commands"). */
+/** The recap for the latest turn in an agent's timeline, or undefined when it changed no files and every command exited 0 (Paseo's own rows already say "Ran 2 commands"). */
 export function recapData(timeline: readonly AgentTimelineItem[], cwd: string): Recap | undefined {
   // Given more than one turn, the latest is everything after the last user message.
   const start = timeline.findLastIndex((item) => item.type === "user_message") + 1;
   const recap = changeSummary(timeline.slice(start), cwd);
-  if (!recap.files.length && !recap.failed.length) return undefined;
-  return { ...recap, files: recap.files.slice(0, MAX_FILES), failed: recap.failed.slice(0, MAX_FAILED) };
+  if (!recap.files.length && !recap.failed.length && !recap.nonzero.length) return undefined;
+  return { ...recap, files: recap.files.slice(0, MAX_FILES), failed: recap.failed.slice(0, MAX_FAILED), nonzero: recap.nonzero.slice(0, MAX_FAILED) };
 }

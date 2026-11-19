@@ -1,5 +1,6 @@
 import type { AgentTimelineItem, ToolCallDetail } from "@getpaseo/protocol/agent-types";
 import { z } from "zod";
+import { commandOutcome } from "../shared/command-outcome.ts";
 import { diffLines } from "../shared/diff.ts";
 import { translate, type Language, type MessageKey } from "../shared/i18n.ts";
 import { recapData } from "../shared/recap.ts";
@@ -333,6 +334,14 @@ export function toolData(item: Item<"tool_call">, lang: Language = "en"): ToolDa
       ? { icon: "Bell", verb: translate(lang, "tool.backgroundTask"), target: item.detail.label, mono: false }
       : describe(item.detail, item.name, item.status === "running", lang);
   if (item.status === "canceled") return { ...base, status: "canceled", icon: "CircleSlash", verb: translate(lang, "tool.canceled"), meta: undefined };
+  // CUSTOM(command-outcome): a command that only exited nonzero keeps a neutral row: exit N in muted text, its output a click away.
+  const outcome = commandOutcome(item);
+  if (outcome?.kind === "nonzero" && base.detail?.kind === "output") {
+    const detail = base.detail.text ? base.detail : { ...base.detail, text: clipLines(outcome.output) };
+    return { ...base, status: "completed", meta: translate(lang, "chat.exitCode", { code: outcome.exit }), metaTone: "muted", detail };
+  }
+  // A provider that reports a failing command as completed with its exit code (Codex) still gets a red row.
+  if (outcome?.kind === "failed" && item.status === "completed") return { ...base, status: "failed" };
   if (item.status === "failed") {
     const body = errorBody(item.error) ?? "";
     // Claude reports shell failures as "Exit code N" followed by the output: show it as exit N + output.
@@ -401,12 +410,14 @@ export function turnMarkdown(timeline: readonly AgentTimelineItem[], cwd: string
       recap.files.length && `${translate(lang, "chat.fileCount", { n: recap.files.length })} +${added} −${removed}`,
       recap.commands && translate(lang, "chat.commandCount", { n: recap.commands }),
       recap.failed.length && translate(lang, "markdown.failed", { n: recap.failed.length }),
+      recap.nonzero?.length && translate(lang, "markdown.nonzero", { n: recap.nonzero.length }),
     ];
     parts.push(
       [
         `**${translate(lang, "markdown.changes")}** · ${head.filter(Boolean).join(" · ")}`,
         ...recap.files.map((f) => `- \`${f.path}\` +${f.added} −${f.removed}`),
         ...recap.failed.map((f) => `- ✗ \`${f.command}\`${f.exit ? translate(lang, "markdown.exit", { code: f.exit }) : ""}`),
+        ...(recap.nonzero ?? []).map((f) => `- · \`${f.command}\`${f.exit ? translate(lang, "markdown.exit", { code: f.exit }) : ""}`),
       ].join("\n"),
     );
   }
