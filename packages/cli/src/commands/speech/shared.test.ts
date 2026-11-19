@@ -52,7 +52,13 @@ function createFakeClient(text: string) {
       };
     },
   };
-  return { client, sent, calls, start: () => resolveStart() };
+  return {
+    client,
+    sent,
+    calls,
+    start: () => resolveStart(),
+    emit: (message: SessionOutboundMessage) => handler?.(message),
+  };
 }
 
 describe("DictationUpload", () => {
@@ -67,6 +73,18 @@ describe("DictationUpload", () => {
     await expect(upload.finish()).resolves.toBe("hello world");
     expect(fake.sent).toEqual([0, 1, 2]);
     expect(fake.calls).toEqual(["finish:2"]);
+  });
+
+  it("reports partials of its own dictation only", async () => {
+    const fake = createFakeClient("done");
+    const seen: string[] = [];
+    const upload = new DictationUpload(fake.client, "d3", (text) => seen.push(text));
+    fake.emit({ type: "dictation_stream_partial", payload: { dictationId: "d3", text: "hel" } });
+    fake.emit({ type: "dictation_stream_partial", payload: { dictationId: "other", text: "x" } });
+    fake.emit({ type: "dictation_stream_partial", payload: { dictationId: "d3", text: "hello" } });
+    expect(seen).toEqual(["hel", "hello"]);
+    fake.start();
+    await upload.finish();
   });
 
   it("cancels the stream when nothing was recorded", async () => {
