@@ -112,7 +112,6 @@ export const REPORT_STATUS_LOOK: Record<
 
 export interface ReportTimelineItem {
   type: "plugin";
-  id: string;
   kind: string;
   version: number;
   data: ReportCardData | ReportTextData;
@@ -121,7 +120,9 @@ export interface ReportTimelineItem {
 /**
  * The items that replace an assistant reply carrying a valid report: the text before it, the
  * card, and any text after it. Undefined keeps the reply as it is (no block, invalid JSON,
- * missing fields, or a block quoted in code).
+ * missing fields, or a block quoted in code). The items carry no id: the host keys a plugin item
+ * by its own id as is, so a fixed one would collide across replies in one chat; without one it
+ * uses the source message's id and the item's index.
  */
 export function reportTimelineItems(
   text: string,
@@ -133,7 +134,6 @@ export function reportTimelineItems(
   if (split.before) {
     items.push({
       type: "plugin",
-      id: "before",
       kind: REPORT_TEXT_KIND,
       version: REPORT_ITEM_VERSION,
       data: { text: split.before },
@@ -141,7 +141,6 @@ export function reportTimelineItems(
   }
   items.push({
     type: "plugin",
-    id: "card",
     kind: REPORT_CARD_KIND,
     version: REPORT_ITEM_VERSION,
     data: {
@@ -159,7 +158,6 @@ export function reportTimelineItems(
   if (split.after) {
     items.push({
       type: "plugin",
-      id: "after",
       kind: REPORT_TEXT_KIND,
       version: REPORT_ITEM_VERSION,
       data: { text: split.after },

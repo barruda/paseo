@@ -112,10 +112,11 @@ The parser reads the **last** closed `pwb` block of the reply and never fails:
   plain text;
 - a repeated `próximo` or `seu` keeps the last one.
 
-Only the Projects Assistant's chat (the agent labeled `pwb/assistant-chat`) gets the card. The
-plugin can't tell agents apart before rendering, so in any chat a reply with a closed `pwb` block
-becomes a plugin row: other agents show the same text as Markdown, but that reply loses the turn's
-copy button and the paced streaming reveal. A reply that also carries a valid `<report>` keeps the
+Only the Projects Assistant's chat (the agent labeled `pwb/assistant-chat`) gets the card: the
+host hands the chat's agent to the timeline transformer, and other agents' replies stay as they
+are. In the assistant's chat the turn's copy button copies the reply's original text, block
+included; the reply has no paced streaming reveal once its block closes. An app build without the
+agent context draws no card anywhere. A reply that also carries a valid `<report>` keeps the
 report card instead.
 
 ## Changelog

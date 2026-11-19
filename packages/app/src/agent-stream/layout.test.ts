@@ -148,6 +148,30 @@ function findLayoutItem(layout: StreamLayout, id: string): StreamLayoutItem {
 }
 
 describe("layoutStream", () => {
+  // CUSTOM(timeline-transformer-agent)
+  it("hosts the footer on the plugin row that replaced a reply", () => {
+    const prompt = userMessage("prompt", 1);
+    const replaced: StreamItem = {
+      kind: "plugin",
+      id: "p/reply/0",
+      sourceId: "reply",
+      timestamp: timestamp(2),
+      pluginId: "p",
+      pluginItemId: "reply/0",
+      itemKind: "card",
+      version: 1,
+      data: null,
+      sourceAssistantText: "reply",
+    };
+    const layout = layoutFor({
+      platform: "web",
+      tail: [prompt, replaced],
+      timingIds: [replaced.id],
+    });
+
+    expect(footerAssistantIds(layout)).toEqual([replaced.id]);
+  });
+
   it("keeps separate footers for an assistant turn and an adjacent tool-only turn", () => {
     const priorAssistant = assistantMessage("prior", 1, undefined, "turn-1");
     const nextTool = toolCall("next-tool", 2, "turn-2");

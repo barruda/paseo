@@ -29,6 +29,26 @@ function assistantMessage(
   };
 }
 
+// CUSTOM(timeline-transformer-agent)
+function replacedReply(
+  id: string,
+  seed: number,
+  extra: Partial<Extract<StreamItem, { kind: "plugin" }>> = {},
+): Extract<StreamItem, { kind: "plugin" }> {
+  return {
+    kind: "plugin",
+    id,
+    sourceId: "assistant-1",
+    timestamp: timestamp(seed),
+    pluginId: "p",
+    pluginItemId: "reply",
+    itemKind: "card",
+    version: 1,
+    data: null,
+    ...extra,
+  };
+}
+
 describe("resolveAssistantTurnForkBoundary", () => {
   it("forks a failed assistant turn from its Paseo timeline cursor without a provider message id", () => {
     const failedTurn = {
@@ -99,6 +119,53 @@ describe("resolveAssistantTurnForkBoundary", () => {
         items: [userMessage("user-1", 1), assistantMessage("assistant-1", 2, "msg-assistant-1")],
         startIndex: 0,
         supportsTimelineCursor: false,
+      }),
+    ).toBeUndefined();
+  });
+
+  // CUSTOM(timeline-transformer-agent)
+  it("forks a reply a plugin replaced from its timeline cursor", () => {
+    const selected = replacedReply("p/reply", 2, {
+      sourceAssistantText: "original reply",
+      timelineCursor: { epoch: "timeline-1", seq: 42 },
+    });
+
+    expect(
+      resolveAssistantTurnForkBoundary({
+        items: [userMessage("user-1", 1), selected],
+        startIndex: 1,
+        supportsTimelineCursor: true,
+      }),
+    ).toEqual({ boundaryCursor: { epoch: "timeline-1", seq: 42 } });
+  });
+
+  // CUSTOM(timeline-transformer-agent)
+  it("does not fork a replaced reply without timeline cursor support", () => {
+    const selected = replacedReply("p/reply", 2, {
+      sourceAssistantText: "original reply",
+      timelineCursor: { epoch: "timeline-1", seq: 42 },
+    });
+
+    expect(
+      resolveAssistantTurnForkBoundary({
+        items: [selected],
+        startIndex: 0,
+        supportsTimelineCursor: false,
+      }),
+    ).toBeUndefined();
+  });
+
+  // CUSTOM(timeline-transformer-agent)
+  it("does not fork from a plugin row that did not replace a reply", () => {
+    const selected = replacedReply("p/usage", 2, {
+      timelineCursor: { epoch: "timeline-1", seq: 42 },
+    });
+
+    expect(
+      resolveAssistantTurnForkBoundary({
+        items: [selected],
+        startIndex: 0,
+        supportsTimelineCursor: true,
       }),
     ).toBeUndefined();
   });

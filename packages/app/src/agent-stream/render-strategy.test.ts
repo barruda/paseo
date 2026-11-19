@@ -231,6 +231,37 @@ describe("neighbor and traversal semantics", () => {
     ).toBe("second turn");
   });
 
+  // CUSTOM(timeline-transformer-agent)
+  it("copies the original text of a reply a plugin replaced, once", () => {
+    const pluginRow = (id: string, sourceAssistantText?: string): StreamItem => ({
+      kind: "plugin",
+      id,
+      sourceId: "a2",
+      timestamp: createTimestamp(3),
+      pluginId: "p",
+      pluginItemId: id,
+      itemKind: "part",
+      version: 1,
+      data: null,
+      ...(sourceAssistantText ? { sourceAssistantText } : {}),
+    });
+    const items: StreamItem[] = [
+      userMessage("u1", "user-1", 1),
+      assistantMessage("a1", "assistant-1", 2),
+      pluginRow("p/a2/0"),
+      pluginRow("p/a2/1", "original reply"),
+    ];
+    const strategy = resolveStreamRenderStrategy({ platform: "web", isMobileBreakpoint: false });
+
+    expect(
+      collectAssistantResponseContentForStreamRenderStrategy({
+        strategy,
+        items,
+        startIndex: 3,
+      }),
+    ).toBe("assistant-1\n\noriginal reply");
+  });
+
   it("returns undefined neighbor when index would be out of bounds", () => {
     const forward = resolveStreamRenderStrategy({
       platform: "web",

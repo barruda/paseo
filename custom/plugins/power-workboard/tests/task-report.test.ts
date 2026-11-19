@@ -98,14 +98,12 @@ describe("reportTimelineItems", () => {
     expect(items).toEqual([
       {
         type: "plugin",
-        id: "before",
         kind: REPORT_TEXT_KIND,
         version: REPORT_ITEM_VERSION,
         data: { text: "All good." },
       },
       {
         type: "plugin",
-        id: "card",
         kind: REPORT_CARD_KIND,
         version: REPORT_ITEM_VERSION,
         data: report,
@@ -119,16 +117,24 @@ describe("reportTimelineItems", () => {
 
   it("emits only the card when the reply is the report alone", () => {
     const items = reportTimelineItems(block(report));
-    expect(items?.map((item) => item.id)).toEqual(["card"]);
+    expect(items?.map((item) => item.kind)).toEqual([REPORT_CARD_KIND]);
   });
 
   it("emits the text after the report as its own item", () => {
     const items = reportTimelineItems(`before ${block(report)} after`);
-    expect(items?.map((item) => [item.id, item.kind])).toEqual([
-      ["before", REPORT_TEXT_KIND],
-      ["card", REPORT_CARD_KIND],
-      ["after", REPORT_TEXT_KIND],
+    expect(items?.map((item) => item.kind)).toEqual([
+      REPORT_TEXT_KIND,
+      REPORT_CARD_KIND,
+      REPORT_TEXT_KIND,
     ]);
+  });
+
+  it("emits rows without ids, so the host keys them by the source reply", () => {
+    // A fixed id would collide across replies; the host's keying of id-less rows is tested in
+    // packages/app/src/plugins/timeline/projection.test.ts.
+    const items = reportTimelineItems(`before ${block(report)} after`) ?? [];
+    expect(items).toHaveLength(3);
+    for (const item of items) expect(item).not.toHaveProperty("id");
   });
 
   it("keeps the original reply when the report is invalid", () => {

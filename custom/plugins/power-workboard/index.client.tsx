@@ -185,10 +185,12 @@ export default function contribute(client: PluginClientContext) {
       await rpc(assistantAskRpc, { text: args, source: "slash", waitMs: 0 });
     },
   });
-  // CUSTOM(assistant-reply-protocol): a reply ending in a ```pwb block becomes one item; its
-  // renderer draws the block only in the Projects Assistant's chat. Registered before the report
-  // card, since the host uses the first transformer that answers. Ids in the block open the board
-  // through the client's `openScreen`, which the pinned plugin types lack, hence the cast.
+  // CUSTOM(assistant-reply-protocol): a reply ending in a ```pwb block becomes one item, only in
+  // the Projects Assistant's chat: the host passes the chat's agent to the transformer
+  // (CUSTOM(timeline-transformer-agent)), which the pinned plugin types lack, hence the cast.
+  // Other agents keep the reply as Markdown. Registered before the report card, since the host uses
+  // the first transformer that answers. Ids in the block open the board through the client's
+  // `openScreen`, also missing from the pinned types.
   setScreenOpener(
     (
       client as unknown as {
@@ -202,10 +204,14 @@ export default function contribute(client: PluginClientContext) {
   const removeReplyTransformer = client.addTimelineTransformer({
     id: "assistant-reply",
     query: { itemType: "assistant_message" },
-    transform: ({ item }) => {
+    transform: (input) => {
+      const { item } = input;
       // A reply that also carries a valid `<report>` keeps its report card.
       if (splitTaskReport(item.text)) return undefined;
-      const items = replyTimelineItems(item.text);
+      const { agent } = input as {
+        agent?: { labels: Readonly<Record<string, string>> };
+      };
+      const items = replyTimelineItems(item.text, agent?.labels);
       return items ? { items } : undefined;
     },
   });

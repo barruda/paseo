@@ -3,6 +3,7 @@ import type {
   PluginTimelineItem,
   PluginTimelineTransformResult,
 } from "@getpaseo/plugin";
+import type { PluginTimelineAgentContext } from "@getpaseo/plugin/client";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import type { InstalledPlugin } from "../types";
 
@@ -16,6 +17,9 @@ export interface TimelineItemTransformInput {
   phase: "streaming" | "complete";
   sourceId: string;
 }
+
+// CUSTOM(timeline-transformer-agent): the chat's agent, handed to every transformer.
+export type TimelineTransformAgent = PluginTimelineAgentContext;
 
 export type TimelineItemTransform = (
   input: TimelineItemTransformInput,
@@ -72,7 +76,10 @@ function parseTransformResult(value: unknown): PluginTimelineTransformResult {
 }
 
 export function transformTimelineItem(
-  input: TimelineItemTransformInput & { plugins: readonly InstalledPlugin[] },
+  input: TimelineItemTransformInput & {
+    plugins: readonly InstalledPlugin[];
+    agent?: TimelineTransformAgent;
+  },
 ): InstalledPluginTimelineItem[] | undefined {
   for (const plugin of input.plugins) {
     for (const transformer of plugin.timelineTransformers) {
@@ -81,8 +88,13 @@ export function transformTimelineItem(
         const transform = transformer.transform as (input: {
           item: AgentTimelineItem;
           phase: "streaming" | "complete";
+          agent?: TimelineTransformAgent;
         }) => PluginTimelineTransformResult | undefined;
-        const output = transform({ item: input.item, phase: input.phase });
+        const output = transform({
+          item: input.item,
+          phase: input.phase,
+          ...(input.agent ? { agent: input.agent } : {}),
+        });
         if (output === undefined) continue;
         const parsed = parseTransformResult(output);
         return parsed.items.map((transformedItem, index) => ({

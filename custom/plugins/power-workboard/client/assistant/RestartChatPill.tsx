@@ -11,11 +11,12 @@ import {
   type PluginSurfaceProps,
 } from "@getpaseo/plugin/client";
 import { assistantChatOpenRpc } from "../../shared/assistant-rpc";
+import { ASSISTANT_CHAT_AGENT_LABEL } from "../../shared/reply-protocol";
 import { readPaseoLanguage, usePaseoLanguage } from "../paseo-language";
 import type { Language } from "../strings";
 
 /** The label `CHAT_LABEL` (server/assistant/chat.ts) puts on the chat agent. */
-export const ASSISTANT_CHAT_LABEL = "pwb/assistant-chat";
+export const ASSISTANT_CHAT_LABEL = ASSISTANT_CHAT_AGENT_LABEL;
 export const RESTART_PILL_ID = "restart-chat";
 
 const strings = {

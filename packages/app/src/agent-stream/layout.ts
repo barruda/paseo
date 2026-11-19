@@ -1,5 +1,5 @@
 import type { TurnTiming } from "@/timeline/turn-time";
-import type { StreamItem } from "@/types/stream";
+import { getAssistantResponseText, type StreamItem } from "@/types/stream";
 import { getAssistantMessageSpacing, getGapBetweenStreamItems } from "./spacing";
 import type { StreamFrameChildOrder, StreamStrategy } from "./strategy";
 import { continuesResponse, continuesTurn, isResponseBoundary } from "./turn-membership";
@@ -102,7 +102,8 @@ function findTurnFooterSource(input: {
       if (!item || (laterItem && !continuesResponse(item, laterItem))) {
         return toolFallback;
       }
-      if (item.kind === "assistant_message") {
+      // CUSTOM(timeline-transformer-agent): a plugin row that replaced a reply hosts the footer.
+      if (getAssistantResponseText(item) !== null) {
         return { item, items, index };
       }
       laterItem = item;

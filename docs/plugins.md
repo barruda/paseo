@@ -636,7 +636,11 @@ replaces it, and an empty array removes it. Output `data` must be JSON-compatibl
 runtime plugin ID, preserves the source timeline cursor and identity, validates renderer data with
 its Zod schema, and mounts the component inside the normal plugin runtime and error boundary. An
 optional output `id` distinguishes several stable replacements from the same source item; its output
-index is the default.
+index is the default. Paseo keys the row by that `id` as is, without the source item, so a fixed
+`id` collides when two source items in one chat produce it: leave it out unless you derive it from
+the source. The callback also receives `agent` (`id` and `labels`) for the chat it renders in; hosts
+from before the field pass none. A row that replaces an assistant message keeps the turn's copy
+button, which copies the original text.
 
 Transformers run synchronously and must be deterministic. When several transformers match, the
 first one that returns a result owns that source item. Plugin and registration ordering is stable.

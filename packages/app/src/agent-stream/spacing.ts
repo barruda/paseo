@@ -1,11 +1,12 @@
-import type { StreamItem } from "@/types/stream";
+import { getAssistantResponseText, type StreamItem } from "@/types/stream";
 import { SPACING } from "@/styles/theme";
 
 export function getAssistantMessageSpacing(params: {
   item: StreamItem;
   hasFooterBelow?: boolean;
 }): "default" | "compactBottom" {
-  return params.item.kind === "assistant_message" && params.hasFooterBelow
+  // CUSTOM(timeline-transformer-agent): a plugin row that replaced a reply hosts the footer too.
+  return getAssistantResponseText(params.item) !== null && params.hasFooterBelow
     ? "compactBottom"
     : "default";
 }

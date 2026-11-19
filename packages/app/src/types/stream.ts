@@ -773,6 +773,16 @@ export type AgentToolCallItem = ToolCallItem & {
   payload: { source: "agent"; data: AgentToolCallData };
 };
 
+/**
+ * CUSTOM(timeline-transformer-agent): the reply text a row carries for the turn footer: an
+ * assistant message's text, or the original text kept on the last plugin row that replaced one.
+ */
+export function getAssistantResponseText(item: StreamItem): string | null {
+  if (item.kind === "assistant_message") return item.text;
+  if (item.kind === "plugin") return item.sourceAssistantText ?? null;
+  return null;
+}
+
 /** Find and scrolling address a plugin row by the source it replaces. */
 export function getStreamItemMessageId(item: StreamItem): string {
   if (item.kind === "plugin") return item.sourceId ?? item.id;
@@ -812,6 +822,11 @@ export interface PluginTimelineStreamItem {
   id: string;
   /** The id of the stream item a timeline transformer replaced; set only by projection. */
   sourceId?: string;
+  /**
+   * CUSTOM(timeline-transformer-agent): the text of the assistant message a transformer replaced,
+   * on the last row of that message only, so the turn footer still hosts and copies it.
+   */
+  sourceAssistantText?: string;
   timelineCursor?: TimelinePosition;
   turnId?: string;
   timestamp: Date;
