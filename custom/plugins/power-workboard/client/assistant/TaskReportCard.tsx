@@ -2,7 +2,7 @@
 // of raw JSON. The transformer and the data contract live in shared/task-report.ts.
 import { useState, type ComponentType } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import type { PluginTimelineItemProps } from "@getpaseo/plugin/client";
+import { useRpc, type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import * as hostUi from "@getpaseo/plugin/client/ui";
 import {
@@ -14,6 +14,9 @@ import {
 } from "../../shared/task-report";
 import { formatClock } from "../checkpoint-format"; // CUSTOM(task-checkpoints)
 import { usePaseoLocale } from "../paseo-language";
+import { assistantActionRpc } from "../../shared/assistant-rpc";
+import { itemFeedback, optionAnswer } from "../../shared/card-answers";
+import { Commentable, OutcomeMap, QuestionBlock, wash } from "./card-parts";
 import { reportsStrings } from "./reports-strings";
 
 type Theme = PluginTimelineItemProps["theme"];
@@ -34,10 +37,7 @@ function toneColor(tone: ReportTone, theme: Theme): string {
   return c.statusDanger;
 }
 
-/** A light wash of a `#rrggbb` color for backgrounds; other formats get none. */
-export function wash(color: string): string {
-  return /^#[0-9a-f]{6}$/i.test(color) ? `${color}1f` : "transparent";
-}
+export { wash }; // CUSTOM(assistant-cards): it lives in card-parts, which this file imports.
 
 export function MarkdownText({ text, theme }: { text: string; theme: Theme }) {
   if (HostMarkdown) return <HostMarkdown>{text}</HostMarkdown>;
@@ -69,8 +69,13 @@ function SectionTitle({ text, theme }: { text: string; theme: Theme }) {
 export function TaskReportCard({
   item,
   theme,
+  agentId,
 }: PluginTimelineItemProps<ReportCardData>) {
   const report = item.data;
+  const act = useRpc(assistantActionRpc);
+  const answer = async (text: string, question: string | null) => {
+    await act({ type: "answer", agentId, text, question });
+  };
   const t = reportsStrings(usePaseoLocale());
   const [filesOpen, setFilesOpen] = useState(false);
   const c = theme.colors;
@@ -84,6 +89,7 @@ export function TaskReportCard({
       ? `${t.resumes} ${formatClock(report.resumeAfter, new Date())}`
       : null,
   ].filter(Boolean);
+  const cardLabels = t.card;
   const filesTitle = `${t.filesChanged} (${report.filesChanged.length})`;
 
   return (
@@ -119,31 +125,63 @@ export function TaskReportCard({
         {report.summary}
       </Text>
 
+      <OutcomeMap
+        outcomes={(report.outcomes ?? []).map((o) => ({
+          text: o.ask,
+          evidence: o.evidence,
+          detail: o.detail,
+        }))}
+        notDone={report.notDone ?? []}
+        theme={theme}
+        labels={cardLabels}
+        onFeedback={(text, feedback) =>
+          answer(itemFeedback(text, feedback), null)
+        }
+      />
+
       {/* CUSTOM(task-checkpoints) */}
       {report.progress &&
       report.progress.done.length + report.progress.next.length > 0 ? (
         <View style={styles.section}>
           {report.progress.done.map((item, index) => (
-            <View key={`done-${index}`} style={styles.rowTop}>
-              <Icon name="Check" size={14} color={c.statusSuccess} />
-              <Text
-                selectable
-                style={[styles.body, styles.grow, { color: c.foreground }]}
-              >
-                {item}
-              </Text>
-            </View>
+            <Commentable
+              key={`done-${index}`}
+              theme={theme}
+              labels={cardLabels}
+              onFeedback={(text) => answer(itemFeedback(item, text), null)}
+            >
+              <View style={styles.rowTop}>
+                <Icon name="Check" size={14} color={c.statusSuccess} />
+                <Text
+                  selectable
+                  style={[styles.body, styles.grow, { color: c.foreground }]}
+                >
+                  {item}
+                </Text>
+              </View>
+            </Commentable>
           ))}
           {report.progress.next.map((item, index) => (
-            <View key={`next-${index}`} style={styles.rowTop}>
-              <Icon name="Circle" size={14} color={c.foregroundMuted} />
-              <Text
-                selectable
-                style={[styles.body, styles.grow, { color: c.foregroundMuted }]}
-              >
-                {item}
-              </Text>
-            </View>
+            <Commentable
+              key={`next-${index}`}
+              theme={theme}
+              labels={cardLabels}
+              onFeedback={(text) => answer(itemFeedback(item, text), null)}
+            >
+              <View style={styles.rowTop}>
+                <Icon name="Circle" size={14} color={c.foregroundMuted} />
+                <Text
+                  selectable
+                  style={[
+                    styles.body,
+                    styles.grow,
+                    { color: c.foregroundMuted },
+                  ]}
+                >
+                  {item}
+                </Text>
+              </View>
+            </Commentable>
           ))}
         </View>
       ) : null}
@@ -158,25 +196,17 @@ export function TaskReportCard({
       ) : null}
 
       {report.question ? (
-        <View
-          style={[
-            styles.question,
-            {
-              borderColor: c.statusWarning,
-              backgroundColor: wash(c.statusWarning),
-            },
-          ]}
-        >
-          <View style={styles.row}>
-            <Icon name="CircleHelp" size={14} color={c.statusWarning} />
-            <Text style={[styles.questionLabel, { color: c.statusWarning }]}>
-              {t.question}
-            </Text>
-          </View>
-          <Text selectable style={[styles.body, { color: c.foreground }]}>
-            {report.question}
-          </Text>
-        </View>
+        <QuestionBlock
+          question={report.question}
+          options={report.options ?? []}
+          recommend={report.recommend}
+          why={report.why}
+          theme={theme}
+          labels={cardLabels}
+          onPick={(option) =>
+            answer(optionAnswer(report.question ?? "", option), report.question)
+          }
+        />
       ) : null}
 
       {report.checks.length > 0 ? (
@@ -270,13 +300,16 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   badgeText: { fontSize: 12, fontWeight: "600" },
-  summary: { fontSize: 14, lineHeight: 20, fontWeight: "500" },
+  summary: { fontSize: 15, lineHeight: 22, fontWeight: "600" },
   body: { fontSize: 13, lineHeight: 19 },
   mono: { fontSize: 12, fontFamily: "monospace" },
-  question: { borderWidth: 1, borderRadius: 6, padding: 10, gap: 4 },
-  questionLabel: { fontSize: 12, fontWeight: "600" },
   section: { gap: 4 },
-  sectionTitle: { fontSize: 12, fontWeight: "600" },
+  sectionTitle: {
+    fontSize: 11,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+  },
   row: { flexDirection: "row", alignItems: "center", gap: 6 },
   rowTop: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   grow: { flex: 1, minWidth: 0 },

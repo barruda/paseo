@@ -4,7 +4,10 @@
 import { z } from "zod";
 import {
   REPORT_STATUSES,
+  notDoneSchema,
   progressSchema,
+  reportOptionSchema,
+  reportOutcomeSchema,
   reportSchema,
   type Report,
 } from "./assistant";
@@ -89,6 +92,12 @@ export const reportCardDataSchema = z.object({
   progress: progressSchema.nullable().optional(),
   resumeAfter: z.string().nullable().optional(),
   waitingFor: z.string().nullable().optional(),
+  // CUSTOM(assistant-cards): optional, so cards stored before them still parse.
+  options: z.array(reportOptionSchema).optional(),
+  recommend: z.string().nullable().optional(),
+  why: z.string().nullable().optional(),
+  outcomes: z.array(reportOutcomeSchema).optional(),
+  notDone: z.array(notDoneSchema).optional(),
 });
 export type ReportCardData = z.infer<typeof reportCardDataSchema>;
 
@@ -153,6 +162,11 @@ export function reportTimelineItems(
       progress: report.progress,
       resumeAfter: report.resumeAfter,
       waitingFor: report.waitingFor,
+      options: report.options,
+      recommend: report.recommend,
+      why: report.why,
+      outcomes: report.outcomes,
+      notDone: report.notDone,
     },
   });
   if (split.after) {

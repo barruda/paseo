@@ -193,6 +193,7 @@ const event = (
   reason: null,
   text: "",
   detail: null,
+  by: null,
   ...over,
 });
 

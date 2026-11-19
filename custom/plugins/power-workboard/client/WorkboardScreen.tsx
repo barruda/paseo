@@ -94,6 +94,7 @@ import { QuickCreate } from "./QuickCreate";
 import { HintButton, HintProvider } from "./Hint";
 import { usePaseoLanguage } from "./paseo-language";
 import { AssistantProfileTab } from "./Profiles"; // CUSTOM(agent-profiles)
+import { optionAnswer } from "../shared/card-answers";
 import { ConfirmationModal } from "./ConfirmationModal";
 // CUSTOM(workboard-inner-pages): the Projects Assistant pages, as tabs of the board.
 import { ChatLauncher } from "./assistant/ChatLauncher";
@@ -1810,6 +1811,7 @@ function ReviewPrompt({
   const [feedback, setFeedback] = useState("");
   const [sending, setSending] = useState(false);
   const summary = board.orchestrations[card.id]?.summary ?? null;
+  const ask = board.orchestrations[card.id]?.ask ?? null;
   const send = async (outcome: "done" | "continue") => {
     setSending(true);
     try {
@@ -1910,6 +1912,74 @@ function ReviewPrompt({
           </Text>
         </Pressable>
       )}
+      {ask && ask.options.length > 0 && !writing ? (
+        <View style={{ gap: 6 }}>
+          <Text
+            style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
+          >
+            {t.review.options}
+          </Text>
+          {ask.options.map((option) => {
+            const recommended = ask.recommend === option.id;
+            return (
+              <CardAction
+                key={option.id}
+                theme={theme}
+                hint={option.label}
+                accessibilityRole="button"
+                accessibilityLabel={option.label}
+                disabled={busy}
+                onPress={() =>
+                  void onReview("continue", optionAnswer(ask.question, option))
+                }
+                style={{
+                  borderWidth: 1,
+                  borderRadius: 6,
+                  padding: 8,
+                  gap: 2,
+                  borderColor: recommended
+                    ? theme.colors.accent
+                    : theme.colors.border,
+                  backgroundColor: theme.colors.surface0,
+                  opacity: busy ? 0.5 : 1,
+                }}
+              >
+                <Text
+                  style={[
+                    styles.cardMeta,
+                    { color: theme.colors.foreground, fontWeight: "600" },
+                  ]}
+                >
+                  {option.label}
+                  {recommended ? ` · ${t.review.recommended}` : ""}
+                </Text>
+                {option.gains || option.costs ? (
+                  <Text
+                    style={[
+                      styles.cardMeta,
+                      { color: theme.colors.foregroundMuted },
+                    ]}
+                  >
+                    {[
+                      option.gains ? `+ ${option.gains}` : null,
+                      option.costs ? `− ${option.costs}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join("  ")}
+                  </Text>
+                ) : null}
+              </CardAction>
+            );
+          })}
+          {ask.why ? (
+            <Text
+              style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
+            >
+              {t.review.why}: {ask.why}
+            </Text>
+          ) : null}
+        </View>
+      ) : null}
       {writing ? (
         <>
           <TextInput

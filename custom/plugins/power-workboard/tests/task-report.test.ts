@@ -25,6 +25,11 @@ const report = {
   progress: null,
   resumeAfter: null,
   waitingFor: null,
+  options: [],
+  recommend: null,
+  why: null,
+  outcomes: [],
+  notDone: [],
 };
 const block = (value: unknown) => `<report>${JSON.stringify(value)}</report>`;
 
@@ -52,8 +57,87 @@ describe("splitTaskReport", () => {
       progress: null,
       resumeAfter: null,
       waitingFor: null,
+      options: [],
+      recommend: null,
+      why: null,
+      outcomes: [],
+      notDone: [],
     });
     expect(split?.before).toBe("");
+  });
+
+  // CUSTOM(assistant-cards)
+  it("reads the question's options and the review map", () => {
+    const full = {
+      ...report,
+      status: "needs_input",
+      question: "Which cache?",
+      options: [
+        { id: "a", label: "Memory", gains: "fast", costs: "lost on restart" },
+        { id: "b", label: "Disk" },
+      ],
+      recommend: "a",
+      why: "Restarts are rare",
+      outcomes: [
+        { ask: "retry on 503", evidence: "seen", detail: "curl → retried" },
+        { ask: "no new deps", evidence: "tested" },
+      ],
+      notDone: [{ kind: "outside", text: "Renamed a helper" }],
+    };
+    const parsed = splitTaskReport(block(full))?.report;
+    expect(parsed?.options).toEqual([
+      { id: "a", label: "Memory", gains: "fast", costs: "lost on restart" },
+      { id: "b", label: "Disk", gains: null, costs: null },
+    ]);
+    expect(parsed?.recommend).toBe("a");
+    expect(parsed?.outcomes[1]).toEqual({
+      ask: "no new deps",
+      evidence: "tested",
+      detail: null,
+    });
+    expect(parsed?.notDone).toEqual([
+      { kind: "outside", text: "Renamed a helper" },
+    ]);
+    const card = reportTimelineItems(block(full))?.[0].data;
+    expect(reportCardDataSchema.parse(card)).toMatchObject({
+      options: parsed?.options,
+      recommend: "a",
+      why: "Restarts are rare",
+      outcomes: parsed?.outcomes,
+      notDone: parsed?.notDone,
+    });
+  });
+
+  it("never loses a report over a malformed new field", () => {
+    const parsed = splitTaskReport(
+      block({
+        status: "done",
+        summary: "ok",
+        options: "a or b",
+        recommend: 3,
+        outcomes: [
+          { ask: "kept", evidence: "maybe" },
+          { evidence: "seen" },
+          "loose text",
+        ],
+        notDone: [{ kind: "later", text: "kept as skipped" }, { kind: "x" }],
+      }),
+    )?.report;
+    expect(parsed?.status).toBe("done");
+    expect(parsed?.options).toEqual([]);
+    expect(parsed?.recommend).toBeNull();
+    expect(parsed?.outcomes).toEqual([
+      { ask: "kept", evidence: "unverified", detail: null },
+    ]);
+    expect(parsed?.notDone).toEqual([
+      { kind: "skipped", text: "kept as skipped" },
+    ]);
+  });
+
+  it("parses cards stored before the new fields", () => {
+    const { options, recommend, why, outcomes, notDone, ...old } = report;
+    void [options, recommend, why, outcomes, notDone];
+    expect(reportCardDataSchema.safeParse(old).success).toBe(true);
   });
 
   it("keeps the text after the block", () => {

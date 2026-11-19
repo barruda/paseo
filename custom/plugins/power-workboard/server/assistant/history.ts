@@ -21,11 +21,12 @@ import {
 
 export type HistoryEventInput = Omit<
   HistoryEvent,
-  "id" | "at" | "reason" | "detail"
+  "id" | "at" | "reason" | "detail" | "by"
 > & {
   at?: string;
   reason?: HistoryEvent["reason"];
   detail?: HistoryEvent["detail"];
+  by?: HistoryEvent["by"]; // CUSTOM(assistant-cards)
 };
 
 export interface HistoryQuery {

@@ -2513,3 +2513,109 @@ it("compaction: a chat born just under the limit compacts again only after growi
     s.board.dispose();
   }
 });
+
+// CUSTOM(assistant-cards)
+it("the history says who did it: the user, the assistant or the board's engine", async () => {
+  const s = await scenario();
+  try {
+    const byKind = (kind: string) =>
+      s.history.events.filter((e) => e.kind === kind).map((e) => e.by);
+    expect(byKind("task-created")).toEqual(["user"]);
+    expect(byKind("task-moved")).toEqual(["user"]);
+    expect(byKind("task-started")).toEqual(["orchestrator"]);
+    s.reply(report({ status: "needs_input", question: "Which database?" }));
+    await s.finishTurn();
+    expect(byKind("report")).toEqual(["orchestrator"]);
+    await s.board.assistantAction(
+      { type: "continue", taskId: s.taskId, feedback: "Postgres" },
+      "assistant",
+    );
+    expect(byKind("task-continued")).toEqual(["assistant"]);
+    await s.board.mutate(
+      { action: "create", title: "Other", description: "", projectId: "p" },
+      "assistant",
+    );
+    expect(byKind("task-created")).toEqual(["user", "assistant"]);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a report's options become one-tap answers that continue the task once", async () => {
+  const s = await scenario();
+  try {
+    const options = [
+      { id: "a", label: "Postgres", gains: "joins", costs: "a server" },
+      { id: "b", label: "SQLite" },
+    ];
+    s.reply(
+      report({
+        status: "needs_input",
+        question: "Which database?",
+        options,
+        recommend: "b",
+        why: "No server to run",
+      }),
+    );
+    await s.finishTurn();
+    const record = () => s.store.current.orchestrations[s.taskId];
+    expect(record().ask).toEqual({
+      question: "Which database?",
+      options: [options[0], { ...options[1], gains: null, costs: null }],
+      recommend: "b",
+      why: "No server to run",
+    });
+    await expect(
+      s.board.assistantAction({
+        type: "answer",
+        agentId: s.agent.id,
+        text: "Escolho a",
+        question: "Which cache?",
+      }),
+    ).rejects.toThrow("This question was already answered or replaced");
+    await s.board.assistantAction({
+      type: "answer",
+      agentId: s.agent.id,
+      text: 'Resposta a "Which database?": escolho b (SQLite).',
+      question: "Which database?",
+    });
+    const sent = (s.host.sendAgent as any).mock.calls.at(-1);
+    expect(sent[0]).toBe(s.agent.id);
+    expect(sent[1]).toContain("escolho b (SQLite)");
+    expect(s.attempts().at(-1)).toMatchObject({
+      trigger: "feedback",
+      feedback: 'Resposta a "Which database?": escolho b (SQLite).',
+    });
+    expect(record().ask).toBeNull();
+    expect(s.history.events.at(-1)).toMatchObject({
+      kind: "task-continued",
+      by: "user",
+    });
+    // The agent works on it again: a second tap is refused.
+    await expect(
+      s.board.assistantAction({
+        type: "answer",
+        agentId: s.agent.id,
+        text: "Feedback",
+        question: null,
+      }),
+    ).rejects.toThrow("The task's agent is not waiting for an answer");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("an answer to an agent outside the board is sent to it as a message", async () => {
+  const s = await scenario();
+  try {
+    await s.board.assistantAction({
+      type: "answer",
+      agentId: "stranger",
+      text: 'Sobre "x": y',
+      question: null,
+    });
+    expect(s.host.sendAgent).toHaveBeenCalledWith("stranger", 'Sobre "x": y');
+  } finally {
+    s.board.dispose();
+  }
+});

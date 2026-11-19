@@ -134,6 +134,51 @@ export const progressSchema = z.object({
   next: z.array(z.string().max(1000)).max(200).default([]),
 });
 export type Progress = z.infer<typeof progressSchema>;
+// CUSTOM(assistant-cards): structured questions and the review map, inspired by jelly's "agents
+// show, people react" (docs/assistant-reply-protocol.md, "The task report"). Every new field is
+// optional and a malformed one falls back to its default, so a report never fails over them.
+/** One answer to the report's question: what it gains and what it costs. */
+export const reportOptionSchema = z.object({
+  id: z.string().trim().min(1).max(40),
+  label: z.string().trim().min(1).max(500),
+  gains: z.string().max(1000).nullable().default(null).catch(null),
+  costs: z.string().max(1000).nullable().default(null).catch(null),
+});
+export type ReportOption = z.infer<typeof reportOptionSchema>;
+/** How an outcome was checked: watched it work, a named test, or not at all. */
+export const EVIDENCE_KINDS = ["seen", "tested", "unverified"] as const;
+export type EvidenceKind = (typeof EVIDENCE_KINDS)[number];
+/** One thing the user asked for, quoted, and the evidence that it works. */
+export const reportOutcomeSchema = z.object({
+  ask: z.string().trim().min(1).max(2000),
+  evidence: z.enum(EVIDENCE_KINDS).catch("unverified"),
+  /** The command and what it showed, or the test's name. */
+  detail: z.string().max(2000).nullable().default(null).catch(null),
+});
+export type ReportOutcome = z.infer<typeof reportOutcomeSchema>;
+/** `outside`: changed without being asked. */
+export const NOT_DONE_KINDS = ["skipped", "unverified", "outside"] as const;
+export type NotDoneKind = (typeof NOT_DONE_KINDS)[number];
+export const notDoneSchema = z.object({
+  kind: z.enum(NOT_DONE_KINDS).catch("skipped"),
+  text: z.string().trim().min(1).max(2000),
+});
+export type NotDone = z.infer<typeof notDoneSchema>;
+/** Keeps the valid items of a list and drops the rest, so one bad item does not empty it. */
+function lenientList<T extends z.ZodTypeAny>(item: T, max: number) {
+  return z
+    .array(z.unknown())
+    .catch([])
+    .default([])
+    .transform((values) =>
+      values
+        .map((value) => item.safeParse(value))
+        .filter((result) => result.success)
+        .map((result) => result.data as z.output<T>)
+        .slice(0, max),
+    );
+}
+
 export const reportSchema = z.object({
   status: z.enum(REPORT_STATUSES),
   summary: z.string().max(20000),
@@ -151,6 +196,15 @@ export const reportSchema = z.object({
   resumeAfter: z.string().max(100).nullable().default(null),
   /** CUSTOM(task-checkpoints): for `checkpoint`: what the task waits for, such as "CI". */
   waitingFor: z.string().max(500).nullable().default(null),
+  /** CUSTOM(assistant-cards): answers to `question`, each with its gains and costs. */
+  options: lenientList(reportOptionSchema, 8),
+  /** CUSTOM(assistant-cards): the option id the agent recommends, and why. */
+  recommend: z.string().max(40).nullable().default(null).catch(null),
+  why: z.string().max(2000).nullable().default(null).catch(null),
+  /** CUSTOM(assistant-cards): one per thing the user asked for, with its evidence. */
+  outcomes: lenientList(reportOutcomeSchema, 50),
+  /** CUSTOM(assistant-cards): what was skipped, left unverified, or changed outside the ask. */
+  notDone: lenientList(notDoneSchema, 50),
 });
 export type Report = z.infer<typeof reportSchema>;
 
@@ -392,6 +446,15 @@ export const CHAT_HISTORY_TASK_ID = "assistant-chat";
 export const historyEventKindSchema = z.enum(HISTORY_EVENT_KINDS);
 export type HistoryEventKind = z.infer<typeof historyEventKindSchema>;
 
+/**
+ * CUSTOM(assistant-cards): who caused a history event. `user`: the user, from the board or a card;
+ * `assistant`: the Projects Assistant chat, through its board tools; `orchestrator`: the board's
+ * own engine (orchestrators, delivery, the chat's housekeeping).
+ */
+export const HISTORY_ACTORS = ["user", "assistant", "orchestrator"] as const;
+export const historyActorSchema = z.enum(HISTORY_ACTORS);
+export type HistoryActor = z.infer<typeof historyActorSchema>;
+
 export const historyEventSchema = z.object({
   id: z.string(),
   at: z.string(),
@@ -409,6 +472,8 @@ export const historyEventSchema = z.object({
   /** One line a person can read in the history table. */
   text: z.string().max(2000),
   detail: z.string().max(5000).nullable().default(null),
+  /** CUSTOM(assistant-cards): null on events written before the field existed. */
+  by: historyActorSchema.nullable().default(null),
 });
 export type HistoryEvent = z.infer<typeof historyEventSchema>;
 
@@ -607,6 +672,18 @@ export const assistantActionInputSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("mark-done"), taskId: z.string() }),
   /** Take it off Needs you; the task stays where it is on the board. */
   z.object({ type: z.literal("dismiss"), taskId: z.string() }),
+  /**
+   * CUSTOM(assistant-cards): an answer from a report card: an option picked in one tap, or
+   * feedback on one outcome or step. A board task waiting for the user continues with it as its
+   * feedback (like Continue task); any other agent gets it as a message. With `question`, the
+   * task's current question must still be that one.
+   */
+  z.object({
+    type: z.literal("answer"),
+    agentId: z.string().min(1),
+    text: z.string().trim().min(1).max(20000),
+    question: z.string().max(5000).nullable().default(null),
+  }),
   /** A message from the user to one of the managed agents. */
   z.object({
     type: z.literal("send"),

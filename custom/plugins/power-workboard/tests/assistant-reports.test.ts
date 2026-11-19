@@ -56,6 +56,7 @@ const event = (
   reason: null,
   text: `event ${id}`,
   detail: null,
+  by: null,
   ...over,
 });
 
@@ -331,7 +332,41 @@ describe("mergeTimeline", () => {
     expect(owners(later)).toEqual({ continued: "feedback" });
   });
 
-  it("keeps a ticket moved by hand minutes before an entry out of that entry", () => {
+  // CUSTOM(assistant-cards)
+  it("uses by: the user's own actions stand alone, the assistant's join its entry", () => {
+    const items = mergeTimeline(
+      [
+        // A second before the assistant's entry, but the user moved it.
+        event("user-move", -0.02, {
+          kind: "task-moved",
+          agentId: null,
+          by: "user",
+        }),
+        // Ten minutes before: too old for the legacy window, fine for the assistant's own.
+        event("assistant-create", -10, {
+          kind: "task-created",
+          agentId: null,
+          by: "assistant",
+        }),
+        event("user-continue", 0.5, {
+          kind: "task-continued",
+          by: "user",
+        }),
+        event("engine-report", -5, { kind: "report", by: "orchestrator" }),
+      ],
+      [entry("r1", 0, { kind: "created" })],
+    );
+    expect(owners(items)).toEqual({
+      "user-move": "auto",
+      "assistant-create": "r1",
+      "user-continue": "auto",
+      "engine-report": "r1",
+    });
+    const auto = items.find((i) => i.id === "user-move");
+    expect(auto?.source === "auto" && auto.by).toBe("user");
+  });
+
+  it("keeps a ticket moved by hand minutes before an entry out of that entry (events without by)", () => {
     const window = ATTACH_BEFORE_BOARD_MS / 60_000;
     const items = mergeTimeline(
       [
@@ -398,6 +433,11 @@ describe("mergeTimeline", () => {
           progress: null,
           resumeAfter: null,
           waitingFor: null,
+          options: [],
+          recommend: null,
+          why: null,
+          outcomes: [],
+          notDone: [],
         },
         reason: "review",
         detail: null,
@@ -455,6 +495,11 @@ describe("mergeTimeline", () => {
           progress: null,
           resumeAfter: null,
           waitingFor: null,
+          options: [],
+          recommend: null,
+          why: null,
+          outcomes: [],
+          notDone: [],
         },
         reason: null,
         detail: null,
