@@ -57,13 +57,16 @@ this repo) with these differences:
   A failed round waits 30 minutes before the next try and shows as "Chat compaction failed".
   Reports lists each compaction under a "Projects Assistant chat" row (`server/assistant/compact.ts`).
 - **Report card.** In any agent chat, a reply ending in a valid `<report>` block shows the block
-  as a card (status, summary, question, checks, collapsed changed files, risks) instead of JSON
-  (`shared/task-report.ts`). An invalid block leaves the reply as it was.
+  as a card (status, summary, what was asked with its evidence, question with its options,
+  checks, collapsed changed files, risks) instead of JSON (`shared/task-report.ts`). An invalid
+  block leaves the reply as it was. An option answers in one tap and any outcome or checklist
+  step takes a comment; both continue the task like Continue task (`client/assistant/card-parts.tsx`).
 - **Assistant reply block.** The Projects Assistant ends each reply with a short ` ```pwb `
-  block (`feito`, `aviso`, `bloqueio`, `próximo`, `seu`), described in
-  [docs/assistant-reply-protocol.md](docs/assistant-reply-protocol.md). In the assistant's chat
-  only, it shows as icons, a `próximo` chip, the `seu` line last and a details expander; a task
-  id links to the ticket in Reports (`shared/reply-protocol.ts`).
+  block (`feito`, `pedido`, `fora`, `aviso`, `bloqueio`, `pergunta`, `opção`, `recomendo`,
+  `próximo`, `seu`), described in [docs/assistant-reply-protocol.md](docs/assistant-reply-protocol.md).
+  In the assistant's chat only, it shows as icons, the review map, the options as buttons, a
+  `próximo` chip, the `seu` line last and a details expander; a task id links to the ticket in
+  Reports (`shared/reply-protocol.ts`). A tap or a comment goes to the chat as a message.
 
 - **Night tasks and start times.** A draft's **When** (task editor) puts it in Scheduled: a
   night task starts inside the night window (Orchestrators tab, Night tasks), taken by any
@@ -167,8 +170,9 @@ summary becomes that quick message's ack (`quickStatus` sets its state; it keeps
 long as the history. The board's own history (created, moved, started, report, merged...) shows
 on the page even when the assistant records nothing: an event up to 2 minutes after an entry, or
 up to 15 minutes before it, folds into the nearest such entry, an entry of its own kind first (a
-continue into a `feedback` entry). Creates and moves fold into an entry after them only within 2
-minutes, since the history does not say whether the user or the assistant made them. The rest are
+continue into a `feedback` entry). Every event records `by` (`user`, `assistant` or
+`orchestrator`): what the user did by hand never folds into an assistant entry and its row says
+"you". Events from before `by` keep the old rule for creates and moves (2 minutes). The rest are
 automatic rows. The server caches each parsed day file by mtime and size, so the page's polling
 re-reads only the day being written.
 

@@ -87,9 +87,9 @@ export function orchestratorPart(input: {
 export const ATTACH_BEFORE_MS = 15 * 60_000;
 export const ATTACH_AFTER_MS = 2 * 60_000;
 /**
- * The user creates and moves tickets by hand too, and the history does not say who did it. The
- * assistant reports its own create or move right after it, so these kinds join an entry after them
- * only within this shorter window.
+ * COMPAT(history-by): added in assistant-cards (2026-11-19), remove after 2027-02-17, when the
+ * 90-day history has no event without `by`. Before `by`, the history did not say who created or
+ * moved a ticket, so these kinds joined an entry after them only within this shorter window.
  */
 export const ATTACH_BEFORE_BOARD_MS = ATTACH_AFTER_MS;
 const BOARD_KINDS: ReadonlySet<HistoryEvent["kind"]> = new Set([
@@ -167,6 +167,7 @@ const toEvent = (
   kind: event.kind,
   text: event.text,
   agentId: event.agentId,
+  by: event.by, // CUSTOM(assistant-cards)
   ...agentSide(event, delivery),
 });
 
@@ -181,23 +182,28 @@ function autoItem(
     at: event.at,
     kind: event.kind,
     summary: event.text,
+    by: event.by, // CUSTOM(assistant-cards)
     ...agentSide(event, delivery),
   };
 }
 
 /**
- * The entry an event belongs to: among the entries up to ATTACH_AFTER_MS before it and up to
- * ATTACH_BEFORE_MS after it (ATTACH_BEFORE_BOARD_MS for creates and moves), one of the kinds the
- * event points to (AFFINITY) wins, then the nearest; on a tie, the one after it.
+ * The entry an event belongs to. CUSTOM(assistant-cards): what the user did by hand (`by: user`)
+ * is never part of the assistant's iteration and stands as its own item. Otherwise, among the
+ * entries up to ATTACH_AFTER_MS before it and up to ATTACH_BEFORE_MS after it, one of the kinds
+ * the event points to (AFFINITY) wins, then the nearest; on a tie, the one after it.
  */
 function ownerOf(
   event: HistoryEvent,
   entries: readonly AssistantReport[],
 ): AssistantReport | undefined {
+  if (event.by === "user") return undefined;
   const at = time(event.at);
-  const before = BOARD_KINDS.has(event.kind)
-    ? ATTACH_BEFORE_BOARD_MS
-    : ATTACH_BEFORE_MS;
+  // COMPAT(history-by): an event without `by` may be the user's create or move.
+  const before =
+    event.by == null && BOARD_KINDS.has(event.kind)
+      ? ATTACH_BEFORE_BOARD_MS
+      : ATTACH_BEFORE_MS;
   const preferred = AFFINITY[event.kind] ?? [];
   let best: { entry: AssistantReport; rank: number } | undefined;
   for (const entry of entries) {

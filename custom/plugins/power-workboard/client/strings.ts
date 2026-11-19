@@ -219,6 +219,9 @@ const zh = {
     send: "退回并继续",
     cancel: "取消",
     queued: "反馈已排队；编排器下次运行时交给 Agent。",
+    options: "一键回答",
+    recommended: "推荐",
+    why: "原因",
   },
   title: "Power Workboard",
   addTask: "新建任务",
@@ -535,6 +538,15 @@ const zh = {
       "只有带 workspace 且处于审核或完成的任务可以交付。",
     "This agent is not managed by the Projects Assistant":
       "该 agent 不由 Projects Assistant 管理。",
+    // CUSTOM(assistant-cards)
+    "This card is from an earlier run of the task":
+      "这张卡片来自该任务较早的一次运行。",
+    "This task is already closed":
+      "该任务已经结束；要继续，请在看板上重新打开它。",
+    "This question was already answered or replaced":
+      "这个问题已经回答过，或已被新问题取代。",
+    "The task's agent is not waiting for an answer":
+      "该任务的 agent 没有在等待回答。",
     "This task's project is not a git repository":
       "该任务的项目不是 git 仓库。",
     "A git action is already running for this task":
@@ -907,6 +919,9 @@ const en: typeof zh = {
     cancel: "Cancel",
     queued:
       "Feedback queued; the orchestrator hands it to the agent on its next pass.",
+    options: "Answer in one tap",
+    recommended: "recommended",
+    why: "Why",
   },
   title: "Power Workboard",
   addTask: "New task",
@@ -1245,6 +1260,15 @@ const en: typeof zh = {
       "Only a task in review or done with a workspace can be delivered.",
     "This agent is not managed by the Projects Assistant":
       "This agent is not managed by the Projects Assistant.",
+    // CUSTOM(assistant-cards)
+    "This card is from an earlier run of the task":
+      "This card is from an earlier run of the task.",
+    "This task is already closed":
+      "This task is already closed. Reopen it on the board to continue it.",
+    "This question was already answered or replaced":
+      "This question was already answered or replaced.",
+    "The task's agent is not waiting for an answer":
+      "The task's agent is not waiting for an answer.",
     "This task's project is not a git repository":
       "This task's project is not a git repository.",
     "A git action is already running for this task":

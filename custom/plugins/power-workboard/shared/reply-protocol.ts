@@ -2,16 +2,24 @@
 // with, and its parser. The protocol is described in docs/assistant-reply-protocol.md; the keys
 // and enums below are its source of truth (a test checks the doc lists the same values).
 import { z } from "zod";
+import { type EvidenceKind, type NotDoneKind } from "./assistant";
 
-export const REPLY_PROTOCOL_VERSION = 1;
+// CUSTOM(assistant-cards): v2 adds the review map (`pedido`, `fora`) and structured questions
+// (`pergunta`, `opção`, `recomendo`). v1 blocks have none of them and parse as before.
+export const REPLY_PROTOCOL_VERSION = 2;
 /** The fence language of the block: ```pwb. */
 export const REPLY_FENCE = "pwb";
 
 /** The keys, in the order the block writes them. */
 export const REPLY_KEYS = [
   "feito",
+  "pedido",
+  "fora",
   "aviso",
   "bloqueio",
+  "pergunta",
+  "opção",
+  "recomendo",
   "próximo",
   "seu",
 ] as const;
@@ -42,6 +50,20 @@ export const NEXT_VALUES = [
   "fim",
 ] as const;
 export type NextValue = (typeof NEXT_VALUES)[number];
+
+/**
+ * The evidence word a `pedido` line starts with. The canonical words are the report's
+ * EVIDENCE_KINDS; the Portuguese ones are aliases.
+ */
+export const EVIDENCE_WORDS: Readonly<Record<string, EvidenceKind>> = {
+  seen: "seen",
+  visto: "seen",
+  tested: "tested",
+  testado: "tested",
+  unverified: "unverified",
+  "nao verificado": "unverified",
+  "sem prova": "unverified",
+};
 
 /** The `seu` value that means the user has nothing to do. */
 export const YOURS_NONE = "nada";
@@ -93,14 +115,51 @@ export interface DoneLine extends ReplyLine {
   verb: DoneVerb | null;
 }
 
+/** A `pedido` line: what the user asked for, quoted, and how it was checked. */
+export interface OutcomeLine extends ReplyLine {
+  /** `unverified` when the line names no evidence word. */
+  evidence: EvidenceKind;
+  /** The proof: the command and what it showed, or the test's name. */
+  detail: string;
+}
+
+/** A `fora` line: changed without being asked, the report's `notDone` of kind `outside`. */
+export interface NotDoneLine extends ReplyLine {
+  kind: NotDoneKind;
+}
+
+/** An `opção` line. */
+export interface ReplyOption {
+  id: string;
+  label: string;
+  gains: string | null;
+  costs: string | null;
+}
+
+/** `pergunta` with its `opção` lines and `recomendo`. */
+export interface ReplyQuestion {
+  /** Empty when the block has options but no `pergunta` line. */
+  text: string;
+  taskIds: string[];
+  options: ReplyOption[];
+  /** The recommended option's id, when it names one of the options. */
+  recommend: string | null;
+  why: string | null;
+}
+
 export interface ParsedReply {
   done: DoneLine[];
+  /** CUSTOM(assistant-cards): the review map. */
+  outcomes: OutcomeLine[];
+  notDone: NotDoneLine[];
   warnings: ReplyLine[];
   blockers: ReplyLine[];
   /** `value` is null when the word is not one of NEXT_VALUES; `text` keeps what was written. */
   next: { value: NextValue | null; text: string } | null;
   /** `none` when the value is `nada` (or empty). */
   yours: (ReplyLine & { none: boolean }) | null;
+  /** CUSTOM(assistant-cards): null when the block has no `pergunta` and no `opção`. */
+  question: ReplyQuestion | null;
   /** Unknown keys and lines without a key, shown as plain text. */
   extra: { key: string | null; text: string }[];
   /** Markdown after a `---` line inside the block. */
@@ -115,9 +174,15 @@ export function parseReplyBlock(body: string): ParsedReply {
     blockers: [],
     next: null,
     yours: null,
+    question: null,
     extra: [],
     details: "",
+    outcomes: [],
+    notDone: [],
   };
+  let question: { text: string; taskIds: string[] } | null = null;
+  const options: ReplyOption[] = [];
+  let recommend: { id: string; why: string | null } | null = null;
   const lines = body.replace(/\r\n?/g, "\n").split("\n");
   for (let index = 0; index < lines.length; index++) {
     const raw = lines[index].trim();
@@ -142,6 +207,30 @@ export function parseReplyBlock(body: string): ParsedReply {
     }
     const value = match[2].trim();
     const { text, ids } = splitTaskIds(value);
+    if (key === "opção") {
+      const option = parseOption(value);
+      if (option && !options.some((o) => o.id === option.id))
+        options.push(option);
+      else reply.extra.push({ key: match[1].trim(), text: value });
+      continue;
+    }
+    if (key === "recomendo") {
+      const [id = "", ...why] = splitFields(value);
+      recommend = { id, why: why.join(" | ") || null };
+      continue;
+    }
+    if (key === "pergunta") {
+      question = { text, taskIds: ids };
+      continue;
+    }
+    if (key === "pedido") {
+      reply.outcomes.push(parseOutcome(text, ids));
+      continue;
+    }
+    if (key === "fora") {
+      reply.notDone.push({ kind: "outside", text, taskIds: ids });
+      continue;
+    }
     if (key === "feito") {
       const [first = "", ...rest] = text.split(/\s+/);
       const verb = lookup(DONE_VERBS, first);
@@ -161,7 +250,76 @@ export function parseReplyBlock(body: string): ParsedReply {
       reply.yours = { none, text: none ? YOURS_NONE : text, taskIds: ids };
     }
   }
+  if (question || options.length) {
+    const known = recommend && options.some((o) => o.id === recommend.id);
+    reply.question = {
+      text: question?.text ?? "",
+      taskIds: question?.taskIds ?? [],
+      options,
+      recommend: known ? recommend!.id : null,
+      why: known ? recommend!.why : null,
+    };
+  }
   return reply;
+}
+
+/** The `|`-separated fields of a value, trimmed, without empty ones. */
+function splitFields(value: string): string[] {
+  return value
+    .split("|")
+    .map((field) => field.trim())
+    .filter(Boolean);
+}
+
+/** A field written as `ganha: x` or `custa: x`; null for any other field. */
+function labeledField(
+  field: string,
+): { key: "gains" | "costs"; text: string } | null {
+  const match = /^([^:]+):\s*(.*)$/.exec(field);
+  if (!match) return null;
+  const word = normalizeWord(match[1]);
+  if (word === "ganha" || word === "gains")
+    return { key: "gains", text: match[2].trim() };
+  if (word === "custa" || word === "costs")
+    return { key: "costs", text: match[2].trim() };
+  return null;
+}
+
+/** `<id> | <label> | ganha: <x> | custa: <y>`; null without an id and a label. */
+function parseOption(value: string): ReplyOption | null {
+  const [id, ...rest] = splitFields(value);
+  if (!id || /\s/.test(id) || id.length > 40) return null;
+  const option: ReplyOption = { id, label: "", gains: null, costs: null };
+  const label: string[] = [];
+  for (const field of rest) {
+    const labeled = labeledField(field);
+    if (labeled) option[labeled.key] = labeled.text || null;
+    else label.push(field);
+  }
+  option.label = label.join(" | ");
+  return option.label ? option : null;
+}
+
+/** `<evidence> | <the ask> | <proof>`; without an evidence word the whole text is the ask. */
+function parseOutcome(text: string, taskIds: string[]): OutcomeLine {
+  const fields = splitFields(text);
+  const evidence = fields.length
+    ? EVIDENCE_WORDS[normalizeWord(fields[0]).replace(/[-_]/g, " ")]
+    : undefined;
+  if (!evidence) return { evidence: "unverified", text, detail: "", taskIds };
+  const [, ask = "", ...proof] = fields;
+  return {
+    evidence,
+    text: unquote(ask),
+    detail: proof.join(" | "),
+    taskIds,
+  };
+}
+
+/** The ask without the quotes around it: the card adds its own. */
+function unquote(text: string): string {
+  const match = /^["“'](.*)["”']$/.exec(text);
+  return match ? match[1].trim() : text;
 }
 
 export interface ReplySplit {

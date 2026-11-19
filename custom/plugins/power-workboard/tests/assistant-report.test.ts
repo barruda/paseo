@@ -18,6 +18,12 @@ it("reads a valid report and fills the defaults", () => {
     progress: null,
     resumeAfter: null,
     waitingFor: null,
+    // CUSTOM(assistant-cards)
+    options: [],
+    recommend: null,
+    why: null,
+    outcomes: [],
+    notDone: [],
   });
   expect(text).toBe("All good.");
 });
@@ -71,16 +77,16 @@ it("tells the task's agent to keep its installed dependencies for the review", (
   const section = assistantSection();
   expect(section).toContain("never delete `node_modules`");
   expect(section).toContain("Do not symlink another checkout's `node_modules`");
-  expect(section).toContain("Never edit or patch files inside `node_modules` in place");
+  expect(section).toContain(
+    "Never edit or patch files inside `node_modules` in place",
+  );
 });
 
 // CUSTOM(task-checkpoints)
 it("tells the task's agent how to end a session with a checkpoint", () => {
   const section = assistantSection();
   expect(section).toContain('"checkpoint"');
-  expect(section).toContain(
-    '"progress": {"done": string[], "next": string[]}',
-  );
+  expect(section).toContain('"progress": {"done": string[], "next": string[]}');
   expect(section).toContain('"resumeAfter"');
   const body = JSON.stringify({
     status: "checkpoint",
@@ -96,4 +102,19 @@ it("tells the task's agent how to end a session with a checkpoint", () => {
     resumeAfter: "2026-09-23T09:00:00Z",
     waitingFor: "CI",
   });
+});
+
+// CUSTOM(assistant-cards)
+it("tells the task's agent about the review map and the question's options", () => {
+  const section = assistantSection();
+  for (const field of [
+    '"outcomes"',
+    '"notDone"',
+    '"options"',
+    '"recommend"',
+    '"why"',
+  ])
+    expect(section).toContain(field);
+  expect(section).toContain('"seen" | "tested" | "unverified"');
+  expect(section).toContain('"skipped" | "unverified" | "outside"');
 });

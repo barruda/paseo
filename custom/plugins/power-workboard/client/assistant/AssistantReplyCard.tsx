@@ -4,7 +4,11 @@
 // never reach it.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { type PluginTimelineItemProps } from "@getpaseo/plugin/client";
+import {
+  useAgent,
+  usePaseo,
+  type PluginTimelineItemProps,
+} from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import {
   DONE_FALLBACK_ICON,
@@ -18,8 +22,13 @@ import {
   type ReplySplit,
   type ReplyTone,
 } from "../../shared/reply-protocol";
+import { itemFeedback, optionAnswer } from "../../shared/card-answers";
+import { usePaseoLocale } from "../paseo-language";
+import { Commentable, OutcomeMap, QuestionBlock } from "./card-parts";
+import { reportsStrings, type CardLabels } from "./reports-strings";
 import { MarkdownText, wash } from "./TaskReportCard";
 import { canOpenTaskReport, openTaskReport } from "./nav";
+import { useIsNewestReply } from "./newest-reply"; // CUSTOM(assistant-cards)
 
 type Theme = PluginTimelineItemProps["theme"];
 type Layout = PluginTimelineItemProps["layout"];
@@ -40,6 +49,8 @@ export function AssistantReplyItem({
   item,
   theme,
   layout,
+  agentId,
+  timestamp,
 }: PluginTimelineItemProps<ReplyItemData>) {
   const text = item.data.text;
   const split = useMemo(() => splitReply(text), [text]);
@@ -47,7 +58,13 @@ export function AssistantReplyItem({
   return (
     <View style={styles.reply}>
       {split.before ? <MarkdownText text={split.before} theme={theme} /> : null}
-      <ReplyCard split={split} theme={theme} layout={layout} />
+      <ReplyCard
+        split={split}
+        theme={theme}
+        layout={layout}
+        agentId={agentId}
+        time={timestamp.getTime()}
+      />
     </View>
   );
 }
@@ -94,6 +111,8 @@ function IconLine({
   theme,
   label,
   textColor,
+  onFeedback,
+  labels,
 }: {
   icon: string;
   iconColor: string;
@@ -101,8 +120,10 @@ function IconLine({
   theme: Theme;
   label?: string;
   textColor?: string;
+  onFeedback?: (feedback: string) => Promise<void>;
+  labels?: CardLabels;
 }) {
-  return (
+  const row = (
     <View style={styles.rowTop}>
       <View style={styles.iconSlot}>
         <Icon name={icon} size={14} color={iconColor} />
@@ -119,18 +140,37 @@ function IconLine({
       />
     </View>
   );
+  if (!onFeedback || !labels) return row;
+  return (
+    <Commentable theme={theme} labels={labels} onFeedback={onFeedback}>
+      {row}
+    </Commentable>
+  );
 }
 
 function ReplyCard({
   split,
   theme,
   layout,
+  agentId,
+  time,
 }: {
   split: ReplySplit;
   theme: Theme;
   layout: Layout;
+  agentId: string;
+  time: number;
 }) {
   const { reply } = split;
+  const paseo = usePaseo();
+  const labels = reportsStrings(usePaseoLocale()).card;
+  // CUSTOM(assistant-cards): one-tap answers and item comments go to the chat as a message; a
+  // failure shows on the card. Only the newest reply takes them, and not while the chat is
+  // working (an answer was just sent), so an old answer is not sent again after a reload.
+  const newest = useIsNewestReply(agentId, time);
+  const running = useAgent(agentId, (agent) => agent.status === "running");
+  const live = newest && running !== true;
+  const say = (text: string) => paseo.agents.ref(agentId).send(text);
   const c = theme.colors;
   const details = replyDetails(split);
   const blocked = reply.blockers.length > 0;
@@ -141,6 +181,14 @@ function ReplyCard({
       ? c.statusWarning
       : c.border;
   const next = reply.next ? NEXT_LOOK[reply.next.value ?? "other"] : null;
+  const hasBody =
+    reply.done.length +
+      reply.outcomes.length +
+      reply.notDone.length +
+      reply.warnings.length +
+      reply.blockers.length +
+      reply.extra.length >
+    0;
   const nextColor = next ? toneColor(next.tone, theme) : c.foregroundMuted;
 
   return (
@@ -162,8 +210,24 @@ function ReplyCard({
           label={line.verb ?? undefined}
           line={line}
           theme={theme}
+          labels={labels}
+          onFeedback={
+            live ? (text) => say(itemFeedback(line.text, text)) : undefined
+          }
         />
       ))}
+      <OutcomeMap
+        outcomes={reply.outcomes}
+        notDone={reply.notDone.map((line) => ({
+          kind: line.kind,
+          text: line.text,
+        }))}
+        theme={theme}
+        labels={labels}
+        onFeedback={
+          live ? (item, text) => say(itemFeedback(item, text)) : undefined
+        }
+      />
       {reply.warnings.map((line, index) => (
         <IconLine
           key={`warn-${index}`}
@@ -201,6 +265,27 @@ function ReplyCard({
           initiallyOpen={blocked}
           hoverable={layout.platform === "web" && !layout.compact}
           theme={theme}
+        />
+      ) : null}
+
+      {hasBody && (reply.question || next || reply.yours) ? (
+        <View style={[styles.divider, { borderColor: c.border }]} />
+      ) : null}
+
+      {reply.question ? (
+        <QuestionBlock
+          question={reply.question.text}
+          options={reply.question.options}
+          recommend={reply.question.recommend}
+          why={reply.question.why}
+          theme={theme}
+          labels={labels}
+          onPick={
+            live
+              ? (option) =>
+                  say(optionAnswer(reply.question?.text ?? "", option))
+              : undefined
+          }
         />
       ) : null}
 
@@ -353,10 +438,11 @@ const styles = StyleSheet.create({
     borderLeftWidth: 3,
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 10,
-    gap: 6,
+    paddingVertical: 12,
+    gap: 8,
     marginVertical: 4,
   },
+  divider: { borderTopWidth: StyleSheet.hairlineWidth, marginVertical: 2 },
   row: { flexDirection: "row", alignItems: "center", gap: 6 },
   rowTop: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   iconSlot: { width: 16, height: 20, justifyContent: "center" },
