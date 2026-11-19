@@ -217,9 +217,19 @@ export interface ReplyTimelineItem {
 }
 
 /** The item that replaces a reply ending in a `pwb` block; undefined keeps the reply as it is. */
+/** The label the server's `CHAT_LABEL` puts on the Projects Assistant's chat agent. */
+export const ASSISTANT_CHAT_AGENT_LABEL = "pwb/assistant-chat";
+
+/**
+ * The item that replaces a reply ending in a `pwb` block, only in the Projects Assistant's chat.
+ * `labels` are the chat agent's, which hosts without CUSTOM(timeline-transformer-agent) don't
+ * pass: the reply then stays as is.
+ */
 export function replyTimelineItems(
   text: string,
+  labels: Readonly<Record<string, string>> | undefined,
 ): ReplyTimelineItem[] | undefined {
+  if (labels?.[ASSISTANT_CHAT_AGENT_LABEL] !== "true") return undefined;
   if (!splitReply(text)) return undefined;
   return [
     {

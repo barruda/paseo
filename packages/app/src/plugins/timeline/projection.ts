@@ -100,7 +100,8 @@ function transformSourceItem(
     sourceId: item.id,
   });
   if (transformed === undefined) return [item];
-  return transformed.map((pluginItem) => {
+  const lastIndex = transformed.length - 1;
+  return transformed.map((pluginItem, index) => {
     const projected: PluginTimelineStreamItem = {
       kind: "plugin",
       id: `${pluginItem.pluginId}/${pluginItem.id}`,
@@ -114,6 +115,10 @@ function transformSourceItem(
     };
     if (item.timelineCursor) projected.timelineCursor = item.timelineCursor;
     if (item.turnId) projected.turnId = item.turnId;
+    // CUSTOM(timeline-transformer-agent): keep the reply's text for the turn's copy button.
+    if (item.kind === "assistant_message" && index === lastIndex) {
+      projected.sourceAssistantText = item.text;
+    }
     return projected;
   });
 }

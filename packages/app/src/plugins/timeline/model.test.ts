@@ -216,4 +216,20 @@ describe("plugin timeline transforms", () => {
     });
     expect(transformed?.[0]?.id).toBe("summary");
   });
+
+  // CUSTOM(timeline-transformer-agent)
+  it("passes the chat's agent to the transformer", () => {
+    const transform = vi.fn(() => undefined);
+    const agent = { id: "agent-1", labels: { "pwb/assistant-chat": "true" } };
+
+    transformTimelineItem({
+      item: toolCall,
+      phase: "complete",
+      sourceId: "agent_tool_call-1",
+      plugins: [plugin({ id: "reports", transform })],
+      agent,
+    });
+
+    expect(transform).toHaveBeenCalledWith({ item: toolCall, phase: "complete", agent });
+  });
 });

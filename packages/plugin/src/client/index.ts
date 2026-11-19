@@ -35,6 +35,7 @@ export type {
   PluginScreenTitle,
   PluginSidebarContribution,
   PluginTimelineTransformerContribution,
+  PluginTimelineAgentContext, // CUSTOM(timeline-transformer-agent)
   PluginTimelineItemProps,
   PluginTimelineRendererContribution,
   PluginCommandCapabilities,

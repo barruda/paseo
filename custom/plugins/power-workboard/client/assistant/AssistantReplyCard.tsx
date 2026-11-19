@@ -1,12 +1,10 @@
 // CUSTOM(assistant-reply-protocol): draws the `pwb` block the Projects Assistant ends its replies
 // with (docs/assistant-reply-protocol.md) as icons, a `próximo` chip, the `seu` line and a details
-// expander. Other agents' replies show unchanged, as Markdown.
+// expander. The transformer only emits this item in the assistant's chat, so other agents' replies
+// never reach it.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import {
-  useAgent,
-  type PluginTimelineItemProps,
-} from "@getpaseo/plugin/client";
+import { type PluginTimelineItemProps } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
 import {
   DONE_FALLBACK_ICON,
@@ -20,7 +18,6 @@ import {
   type ReplySplit,
   type ReplyTone,
 } from "../../shared/reply-protocol";
-import { ASSISTANT_CHAT_LABEL } from "./RestartChatPill";
 import { MarkdownText, wash } from "./TaskReportCard";
 import { canOpenTaskReport, openTaskReport } from "./nav";
 
@@ -40,18 +37,13 @@ function toneColor(tone: ReplyTone, theme: Theme): string {
 }
 
 export function AssistantReplyItem({
-  agentId,
   item,
   theme,
   layout,
 }: PluginTimelineItemProps<ReplyItemData>) {
   const text = item.data.text;
-  const isAssistant = useAgent(
-    agentId,
-    (agent) => agent.labels[ASSISTANT_CHAT_LABEL] === "true",
-  );
   const split = useMemo(() => splitReply(text), [text]);
-  if (!isAssistant || !split) return <MarkdownText text={text} theme={theme} />;
+  if (!split) return <MarkdownText text={text} theme={theme} />;
   return (
     <View style={styles.reply}>
       {split.before ? <MarkdownText text={split.before} theme={theme} /> : null}

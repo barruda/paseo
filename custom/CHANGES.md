@@ -7616,7 +7616,9 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
   summary, the question highlighted, checks with ✓/✗, changed files collapsed with the count in the
   title (paths as inline code, so the chat links them), and risks with a warning icon. Labels come
   from the Reports page strings (English, pt-BR). An invalid or missing block keeps the reply as it
-  was. Any agent qualifies when the block parses, not only board agents.
+  was. Any agent qualifies when the block parses, not only board agents. The rows carry no `id`
+  (since timeline-transformer-agent): fixed ids (`before`, `card`, `after`) collided when a chat
+  had two cards; the host now keys them by the source message.
 - **Core files touched:** none. Plugin files: `shared/task-report.ts` (block finder, parser,
   mapping to rows; `server/assistant/report.ts` now uses its finder),
   `client/assistant/TaskReportCard.tsx`, `index.client.tsx` (registration),
@@ -7840,11 +7842,11 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
   `bloqueio`, `próximo` (closed enum) and `seu` (always last), details after `---`. The parser
   (`shared/reply-protocol.ts`) reads the last closed block, matches words without case or
   accents, and shows unknown keys and values as text. A timeline transformer turns a reply with a
-  block into one plugin item that keeps the whole text; the renderer checks the agent's
-  `pwb/assistant-chat` label with `useAgent` and draws the card only there. Other agents get the
-  same text as Markdown, but in a plugin row: a reply of theirs with a closed `pwb` block loses
-  the turn's copy button and paced reveal (the transformer can't see the agent). A reply that
-  also has a valid `<report>` keeps the report card. The card: an icon per verb, ⚠ warnings, red
+  block into one plugin item that keeps the whole text, only when the chat's agent carries the
+  `pwb/assistant-chat` label (the host passes the agent since
+  [timeline-transformer-agent](#timeline-transformer-agent-plugin-timeline-transformers-see-the-chats-agent);
+  before it, the renderer checked the label and other agents' replies lost the copy button). Other
+  agents' replies stay untouched. A reply that also has a valid `<report>` keeps the report card. The card: an icon per verb, ⚠ warnings, red
   blockers, a `próximo`
   chip colored by value, `seu` highlighted when it is not `nada` (a small seal when it is), and a
   details expander (click pins it; resting the pointer opens it on desktop web; open from the
@@ -7861,8 +7863,9 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
   `tests/reply-protocol.test.ts`. Outside the repo: the live
   `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md` got the same rule
   (it wins over the seed once it exists).
-- **Re-apply:** Plugin-only. The transformer can't see the agent, so the agent check lives in the
-  renderer. Leave the item without an `id`: the host keys plugin items by that id as is, and a
+- **Re-apply:** Plugin-only. The agent check lives in the transformer and needs the host's
+  `agent` input (timeline-transformer-agent); without it no reply becomes a card. Leave the item
+  without an `id`: the host keys plugin items by that id as is, and a
   fixed one collides across replies. Changing the protocol means editing the doc and
   `shared/reply-protocol.ts` together and bumping the version; the test compares their lists.
   Grep `CUSTOM(assistant-reply-protocol)`.
@@ -7872,3 +7875,46 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   in the card; hover or click "detalhes"; click a `feito` line with an id to land on that ticket in
   Reports. A task agent's chat still shows a `pwb` block as a code block (as Markdown). Check
   light and dark.
+
+## timeline-transformer-agent: plugin timeline transformers see the chat's agent
+
+- **Added:** 2026-11-19 (based on `custom` at `36f050171`)
+- **Commit:** `custom: plugin timeline transformers get the chat's agent; replaced replies keep the copy button`
+- **Why:** The `pwb` reply card (assistant-reply-protocol) couldn't tell agents apart in its
+  transformer, so every agent's reply with a closed `pwb` block became a plugin row and lost the
+  turn's copy button and paced reveal, the assistant's included. The report card's fixed row ids
+  also collided when one chat had two cards.
+- **What:** The app passes `agent: { id, labels }` to each client timeline transformer (optional
+  field on `PluginTimelineTransformerContribution`'s input, new `PluginTimelineAgentContext` type;
+  older plugins ignore it, older hosts pass none). `AgentStreamView` selects the agent's labels as
+  a JSON string so a store update that keeps them doesn't reproject the timeline. A plugin row that
+  replaces an `assistant_message` keeps the reply's text in `sourceAssistantText` on its last row;
+  the turn footer hosts on that row, copies that text and gets the turn's timing
+  (`getAssistantResponseText` in `types/stream.ts`, used by the footer source search, the copy
+  collector and the turn timing). This brings the copy button back to every transformed reply,
+  report cards included. Power Workboard: the `assistant-reply` transformer emits the card only
+  for agents labeled `pwb/assistant-chat` (the renderer's `useAgent` check is gone), and the
+  report rows carry no `id`, so the host keys them `<source message id>/<index>`.
+- **Core files touched:** `packages/plugin/src/client/contracts.ts`, `packages/plugin/src/client/index.ts`,
+  `packages/app/src/plugins/timeline/{model,index,projection}.ts`,
+  `packages/app/src/agent-stream/{view.tsx,layout.ts,strategy.ts,turn-footer.tsx}`,
+  `packages/app/src/timeline/turn-time.ts`, `packages/app/src/types/stream.ts`, `docs/plugins.md`
+  (the `agent` input and the fixed-`id` gotcha). Tests:
+  `plugins/timeline/{model,projection}.test.ts`, `agent-stream/{render-strategy,layout}.test.ts`.
+  Plugin files: `index.client.tsx`, `shared/reply-protocol.ts`, `shared/task-report.ts`,
+  `client/assistant/{AssistantReplyCard,RestartChatPill}.tsx`, `docs/assistant-reply-protocol.md`,
+  `tests/{reply-protocol,task-report}.test.ts`.
+- **Re-apply:** Grep `CUSTOM(timeline-transformer-agent)`. In `transformTimelineItem` pass
+  `agent` through to `transformer.transform`; `useInstalledTimelineTransform(serverId, agent)`
+  closes over it, and the agent object must stay stable (the projection cache is keyed by the
+  transform). In `transformSourceItem` set `sourceAssistantText` on the last projected row of an
+  `assistant_message` only, so the copy collector doesn't repeat it; wherever the footer code tests
+  `kind === "assistant_message"` to find or copy the reply, use `getAssistantResponseText`. The
+  PWB plugin pins SDK types without `agent`, hence the cast in `index.client.tsx`.
+- **Verify:** `cd packages/app && npx vitest run src/plugins/timeline/model.test.ts
+src/plugins/timeline/projection.test.ts src/agent-stream/render-strategy.test.ts
+src/agent-stream/layout.test.ts`, and the power-workboard checks. Needs an app build and install
+  plus `paseo plugin reload power-workboard`. In the Projects Assistant's chat a reply with a
+  `pwb` block shows the card and its turn footer has the copy button, which copies the raw reply;
+  in a task agent's chat the same block stays a code block with the normal copy and reveal. Two
+  report cards in one chat both render.

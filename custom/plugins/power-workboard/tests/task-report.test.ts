@@ -98,14 +98,12 @@ describe("reportTimelineItems", () => {
     expect(items).toEqual([
       {
         type: "plugin",
-        id: "before",
         kind: REPORT_TEXT_KIND,
         version: REPORT_ITEM_VERSION,
         data: { text: "All good." },
       },
       {
         type: "plugin",
-        id: "card",
         kind: REPORT_CARD_KIND,
         version: REPORT_ITEM_VERSION,
         data: report,
@@ -119,16 +117,32 @@ describe("reportTimelineItems", () => {
 
   it("emits only the card when the reply is the report alone", () => {
     const items = reportTimelineItems(block(report));
-    expect(items?.map((item) => item.id)).toEqual(["card"]);
+    expect(items?.map((item) => item.kind)).toEqual([REPORT_CARD_KIND]);
   });
 
   it("emits the text after the report as its own item", () => {
     const items = reportTimelineItems(`before ${block(report)} after`);
-    expect(items?.map((item) => [item.id, item.kind])).toEqual([
-      ["before", REPORT_TEXT_KIND],
-      ["card", REPORT_CARD_KIND],
-      ["after", REPORT_TEXT_KIND],
+    expect(items?.map((item) => item.kind)).toEqual([
+      REPORT_TEXT_KIND,
+      REPORT_CARD_KIND,
+      REPORT_TEXT_KIND,
     ]);
+  });
+
+  it("gives two cards in one chat distinct row keys", () => {
+    // The host keys a row `pluginId/<item id>`, or `pluginId/<source message id>/<index>` when the
+    // item has none (packages/app/src/plugins/timeline/model.ts and projection.ts).
+    const hostKeys = (sourceId: string, text: string) =>
+      (reportTimelineItems(text) ?? []).map(
+        (item, index) =>
+          `power-workboard/${"id" in item ? String(item.id) : `${sourceId}/${index}`}`,
+      );
+    const keys = [
+      ...hostKeys("msg-1", `First.\n${block(report)}`),
+      ...hostKeys("msg-2", `Second.\n${block(report)}`),
+    ];
+    expect(keys).toHaveLength(4);
+    expect(new Set(keys).size).toBe(4);
   });
 
   it("keeps the original reply when the report is invalid", () => {
