@@ -89,13 +89,24 @@ export function isRestorableTab(tab: string): boolean {
   );
 }
 
-/** The tab the host asks for in `params.tab` (the Desk, or a Command Center item's route). */
+/**
+ * The tab the host asks for in `params.tab` (the Desk, or a Command Center item's route). Never
+ * the assistant chat, for the reason in `isRestorableTab`.
+ */
 export function requestedTab(params: unknown): string | null {
   const tab = (params as { tab?: unknown } | undefined)?.tab;
-  return typeof tab === "string" &&
-    (isRestorableTab(tab) || isWorkboardPageTab(tab))
-    ? tab
-    : null;
+  return typeof tab === "string" && isRestorableTab(tab) ? tab : null;
+}
+
+/**
+ * Changes whenever the host asks again: the tab plus `params.request`, a value a caller makes
+ * unique (the Command Center item) so a repeated open of the same route switches back to the tab.
+ */
+export function tabRequestKey(params: unknown): string | null {
+  const tab = requestedTab(params);
+  if (!tab) return null;
+  const request = (params as { request?: unknown }).request;
+  return typeof request === "string" ? `${tab}#${request}` : tab;
 }
 
 /** Tells the Desk the board's tab; other hosts don't take it. */

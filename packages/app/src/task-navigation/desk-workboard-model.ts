@@ -22,10 +22,12 @@ export const DESK_SURFACES: readonly DeskSurfaceDefinition[] = [
 
 /**
  * CUSTOM(workboard-inner-pages): surfaces that used to be chips of their own and are now tabs
- * inside Power Workboard. Surface id -> the board's `params.tab` for that page.
+ * inside Power Workboard. Surface id -> the board's `params.tab` for that page. The assistant chat
+ * maps to null: its tab opens the chat agent on mount, so asking for it would reopen the chat every
+ * time the board shows.
  */
-export const WORKBOARD_INNER_PAGES: Readonly<Record<string, string>> = {
-  "projects-assistant-chat": "assistant-chat",
+export const WORKBOARD_INNER_PAGES: Readonly<Record<string, string | null>> = {
+  "projects-assistant-chat": null,
   "projects-dashboard": "dashboard",
   "projects-conversations": "conversations",
   "projects-reports": "reports",
@@ -69,8 +71,12 @@ export function migrateDeskSurfaces(persisted: unknown): DeskSurfacesPersisted {
     const { open, selected } = surfaces.data;
     const board = POWER_WORKBOARD_SURFACE_ID;
     const kept: Record<string, boolean> = board in open ? { [board]: open[board] } : {};
-    const innerTab = selected ? WORKBOARD_INNER_PAGES[selected] : undefined;
-    if (innerTab) return { open: { ...kept, [board]: true }, selected: board, tab: innerTab };
+    if (selected && Object.hasOwn(WORKBOARD_INNER_PAGES, selected))
+      return {
+        open: { ...kept, [board]: true },
+        selected: board,
+        tab: WORKBOARD_INNER_PAGES[selected],
+      };
     return { open: kept, selected: selected === board ? board : null, tab: null };
   }
   const legacy = legacyPersistedSchema.safeParse(persisted);
@@ -93,6 +99,6 @@ export function isDeskSurfaceOpen(open: Record<string, boolean>, id: string): bo
  * other id selects its own chip.
  */
 export function resolveDeskSurfaceTarget(id: string): { surfaceId: string; tab: string | null } {
-  const tab = WORKBOARD_INNER_PAGES[id];
-  return tab ? { surfaceId: POWER_WORKBOARD_SURFACE_ID, tab } : { surfaceId: id, tab: null };
+  if (!Object.hasOwn(WORKBOARD_INNER_PAGES, id)) return { surfaceId: id, tab: null };
+  return { surfaceId: POWER_WORKBOARD_SURFACE_ID, tab: WORKBOARD_INNER_PAGES[id] };
 }

@@ -7652,14 +7652,20 @@ tests/task-report.test.ts`. Needs only `paseo plugin reload power-workboard`: th
     (`withPageNavigation` in `client/assistant/workboard-pages.ts`) that switches its own tab
     instead, so they work in every host.
   - **Assistant** opens the chat agent like the chip did; once it is open the board goes back to
-    the tab it came from, so returning to Power Workboard does not reopen the chat.
+    the tab it came from, so returning to Power Workboard does not reopen the chat. For the same
+    reason nothing asks for this tab: `requestedTab` refuses it, and the migration and
+    `openDeskSurface("projects-assistant-chat")` select Power Workboard with no tab. A stored
+    `assistant-chat` would reopen the chat on every click of the chip, because the Desk unmounts
+    the board before it can report another tab.
   - **The Desk remembers the tab:** the board reports Board, Orchestrators, Dashboard,
     Conversations and Reports through `navigation.setDeskWorkboardTab`, and the Desk passes it back
     as `params.tab`. The stored state migrates (version 3): a selected page chip becomes Power
     Workboard on that tab; the page chips' open flags are dropped.
-  - **Command Center** "Projects Reports" opens the Power Workboard page with `params.tab =
-reports` (`openScreen`, cast: the pinned plugin types predate it). The assistant's status bar
-    entries open agents, not pages, so they did not change.
+  - **Command Center** "Projects Reports" opens the Power Workboard page with the params
+    `tab: "reports"` and a fresh `request` (`openScreen`, cast: the pinned plugin types predate
+    it). The board switches tabs whenever the tab or `request` changes (`tabRequestKey`), so
+    running the item again on a board already on that route goes back to Reports. The
+    assistant's status bar entries open agents, not pages, so they did not change.
 - **Core files touched:** `packages/app/src/task-navigation/desk-workboard-model.ts`
   (`DESK_SURFACES` down to Power Workboard, `WORKBOARD_INNER_PAGES`, the version-3 schema and
   migration, `resolveDeskSurfaceTarget`), `desk-workboard.tsx` (store `tab`, `openSurface`,
@@ -7671,8 +7677,8 @@ reports` (`openScreen`, cast: the pinned plugin types predate it). The assistant
 - **Re-apply:** In the app, keep only the Power Workboard entry in `DESK_SURFACES`, map the old page
   ids in `WORKBOARD_INNER_PAGES`, add `tab` to the persisted store with a version bump and pass it
   to the surface as `params.tab`. In the plugin, grep `CUSTOM(workboard-inner-pages)`.
-- **Verify:** `(cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts
---bail=1)` and the plugin suite (`tests/workboard-pages.test.ts`), both in the update script.
+- **Verify:** the app's `src/task-navigation/desk-workboard.test.ts` and the plugin suite
+  (`tests/workboard-pages.test.ts`), both in the update script.
   Needs `paseo plugin reload power-workboard` and an app build and install. In Tasks mode the
   header shows only Power Workboard beside the Desks; its tab bar has the four pages; Dashboard >
   "Open report" switches to Reports at that ticket; Assistant opens the chat agent; switch to

@@ -96,6 +96,7 @@ import { ReportsScreen } from "./assistant/ReportsScreen";
 import {
   reportTab,
   requestedTab,
+  tabRequestKey,
   withPageNavigation,
 } from "./assistant/workboard-pages";
 // CUSTOM(workboard-images)
@@ -162,7 +163,9 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const [page, setPage] = useState<Page>(props.initialPage ?? "board");
   // CUSTOM(workboard-inner-pages): the tab the host asks for (the Desk remembers the last one).
   // The pinned plugin types have no `params`, hence the cast.
-  const requested = requestedTab((props as { params?: unknown }).params);
+  const params = (props as { params?: unknown }).params;
+  const requested = requestedTab(params);
+  const requestKey = tabRequestKey(params);
   // "board", "orchestrators", a Projects Assistant page, or the id of an orchestrator opened in
   // its own tab.
   const [tab, setTab] = useState(requested ?? "board");
@@ -172,9 +175,12 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     setPage("board");
     setTab(next);
   }, []);
+  // Keyed on the request, so the same tab asked for again (a repeated Command Center open) also
+  // switches back to it.
   useEffect(() => {
     if (requested) selectTab(requested);
-  }, [requested, selectTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey, selectTab]);
   useEffect(() => {
     if (tab !== "assistant-chat") returnTab.current = tab;
     reportTab(props.navigation, tab);

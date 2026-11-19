@@ -45,12 +45,22 @@ describe("Projects Assistant pages inside Power Workboard", () => {
         selected: "projects-reports",
       }),
     ).toEqual({ open: { "power-workboard": true }, selected: "power-workboard", tab: "reports" });
-    expect(migrateDeskSurfaces({ open: {}, selected: "projects-assistant-chat" }).tab).toBe(
-      "assistant-chat",
-    );
     expect(migrateDeskSurfaces({ open: {}, selected: "projects-conversations" }).tab).toBe(
       "conversations",
     );
+  });
+
+  it("moves a selected assistant chat chip to Power Workboard without asking for the chat", () => {
+    expect(
+      migrateDeskSurfaces({
+        open: { "power-workboard": false, "projects-assistant-chat": true },
+        selected: "projects-assistant-chat",
+      }),
+    ).toEqual({ open: { "power-workboard": true }, selected: "power-workboard", tab: null });
+    expect(resolveDeskSurfaceTarget("projects-assistant-chat")).toEqual({
+      surfaceId: "power-workboard",
+      tab: null,
+    });
   });
 
   it("drops the page chips' flags and keeps Power Workboard's", () => {

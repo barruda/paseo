@@ -109,7 +109,12 @@ export default function contribute(client: PluginClientContext) {
         }): void;
       };
       if (openScreen)
-        openScreen({ screenId: "power-workboard", params: { tab: "reports" } });
+        openScreen({
+          screenId: "power-workboard",
+          // `request` makes each open a new request, so a board already on this route that
+          // moved to another tab switches back to Reports.
+          params: { tab: "reports", request: String(Date.now()) },
+        });
       else context.openSurface("power-workboard");
     },
   });

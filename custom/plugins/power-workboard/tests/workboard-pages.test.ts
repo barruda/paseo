@@ -7,6 +7,7 @@ import {
   pageTabForSurface,
   reportTab,
   requestedTab,
+  tabRequestKey,
   withPageNavigation,
   workboardPageLabels,
 } from "../client/assistant/workboard-pages";
@@ -55,10 +56,19 @@ describe("Projects Assistant pages inside the Power Workboard", () => {
   it("selects the tab the host asks for and ignores anything else", () => {
     expect(requestedTab({ tab: "reports" })).toBe("reports");
     expect(requestedTab({ tab: "orchestrators" })).toBe("orchestrators");
-    expect(requestedTab({ tab: "assistant-chat" })).toBe("assistant-chat");
+    // The chat tab opens the chat on mount; asking for it would trap the board there.
+    expect(requestedTab({ tab: "assistant-chat" })).toBeNull();
     expect(requestedTab({ tab: "some-orchestrator-id" })).toBeNull();
     expect(requestedTab({})).toBeNull();
     expect(requestedTab(undefined)).toBeNull();
+  });
+
+  it("keys a request on its tab and request id", () => {
+    expect(tabRequestKey({ tab: "reports" })).toBe("reports");
+    expect(tabRequestKey({ tab: "reports", request: "1" })).toBe("reports#1");
+    expect(tabRequestKey({ tab: "reports", request: "2" })).toBe("reports#2");
+    expect(tabRequestKey({ tab: "assistant-chat", request: "1" })).toBeNull();
+    expect(tabRequestKey(undefined)).toBeNull();
   });
 
   it("reports only tabs worth restoring to the Desk", () => {
