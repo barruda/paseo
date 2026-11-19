@@ -103,12 +103,16 @@ export function ReportsScreen(props: PluginSurfaceProps) {
   const request = useReportTaskRequest();
   useEffect(() => {
     if (!request || !tasks.data) return;
-    const columnId = all.find((t) => t.taskId === request.taskId)?.columnId;
+    // CUSTOM(assistant-reply-protocol): the chat links a short id, the first characters.
+    const match =
+      all.find((t) => t.taskId === request.taskId) ??
+      all.find((t) => t.taskId.startsWith(request.taskId));
+    const columnId = match?.columnId;
     if (columnId && hiddenColumns.includes(columnId))
       setSavedHidden(hiddenColumns.filter((id) => id !== columnId));
     setSearch("");
     setProjectId(null);
-    setSelectedId(request.taskId);
+    setSelectedId(match?.taskId ?? request.taskId);
     setShowContent(true);
     consumeReportTaskRequest(request.seq);
   }, [request, tasks.data, all, hiddenColumns]);

@@ -7776,3 +7776,48 @@ tests/card-title-area.test.ts`. Needs only `paseo plugin reload power-workboard`
   card titled "Power Workboard: something" shows "something" with "paseo · Power Workboard"
   below; hovering the title shows the full title; clicking it opens the description, in Draft and
   in In progress.
+
+## assistant-reply-protocol: the Projects Assistant ends replies with a `pwb` block the chat draws
+
+- **Added:** 2026-11-19 (based on `custom` at `f9439fa66`)
+- **Commit:** `custom: Projects Assistant replies end with a pwb block drawn as icons in its chat`
+- **Why:** The user (ADHD) wants to scan the assistant's chat fast: what was done, who moves next
+  and whether they have to do anything, with the rest one click away. The format will keep
+  changing, so it lives in one versioned doc.
+- **What:** Protocol v1 in `custom/plugins/power-workboard/docs/assistant-reply-protocol.md`: a
+  ` ```pwb ` block with `feito` (closed verb list, optional `[task id]`), `aviso`,
+  `bloqueio`, `próximo` (closed enum) and `seu` (always last), details after `---`. The parser
+  (`shared/reply-protocol.ts`) reads the last closed block, matches words without case or
+  accents, and shows unknown keys and values as text. A timeline transformer turns a reply with a
+  block into one plugin item that keeps the whole text; the renderer checks the agent's
+  `pwb/assistant-chat` label with `useAgent` and draws the card only there. Other agents get the
+  same text as Markdown, but in a plugin row: a reply of theirs with a closed `pwb` block loses
+  the turn's copy button and paced reveal (the transformer can't see the agent). A reply that
+  also has a valid `<report>` keeps the report card. The card: an icon per verb, ⚠ warnings, red
+  blockers, a `próximo`
+  chip colored by value, `seu` highlighted when it is not `nada` (a small seal when it is), and a
+  details expander (click pins it; resting the pointer opens it on desktop web; open from the
+  start when there is a blocker) holding the `---` part and any text after the block. Text
+  before the block stays visible as Markdown. A line with a task id is a link: it opens the Power
+  Workboard on Reports with that ticket (the client's `openScreen` plus `requestReportTask`;
+  Reports now also matches a short id prefix). The assistant's seed prompt (`ASSISTANT_ROLE`) and
+  `CHAT_INSTRUCTIONS` ask for the block; the rule text is built from the parser's enums.
+- **Core files touched:** none. Plugin files: `shared/reply-protocol.ts`,
+  `client/assistant/AssistantReplyCard.tsx`, `client/assistant/nav.ts` (`openTaskReport`),
+  `client/assistant/ReportsScreen.tsx` (short id), `client/assistant/TaskReportCard.tsx` (exports
+  `MarkdownText` and `wash`), `index.client.tsx` (registration, before the report card's),
+  `server/assistant/chat.ts`, `docs/assistant-reply-protocol.md`, `README.md`,
+  `tests/reply-protocol.test.ts`. Outside the repo: the live
+  `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md` got the same rule
+  (it wins over the seed once it exists).
+- **Re-apply:** Plugin-only. The transformer can't see the agent, so the agent check lives in the
+  renderer. Leave the item without an `id`: the host keys plugin items by that id as is, and a
+  fixed one collides across replies. Changing the protocol means editing the doc and
+  `shared/reply-protocol.ts` together and bumping the version; the test compares their lists.
+  Grep `CUSTOM(assistant-reply-protocol)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` (and a new
+  assistant chat, or the next reply, to pick up the prompt). In the assistant's chat a reply ends
+  in the card; hover or click "detalhes"; click a `feito` line with an id to land on that ticket in
+  Reports. A task agent's chat still shows a `pwb` block as a code block (as Markdown). Check
+  light and dark.

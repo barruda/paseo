@@ -104,3 +104,31 @@ export function showReport(
   requestReportTask(taskId);
   openDeskSurface(navigation, REPORTS_SURFACE_ID);
 }
+
+// CUSTOM(assistant-reply-protocol): the client's `openScreen`, set by index.client.tsx, so a chat
+// row (timeline items get no navigation) can open the board on a ticket.
+type ScreenOpener = (input: {
+  screenId: string;
+  params?: Record<string, string>;
+}) => void;
+let screenOpener: ScreenOpener | null = null;
+
+export function setScreenOpener(open: ScreenOpener | null): void {
+  screenOpener = open;
+}
+
+/** Opens the Power Workboard on its Reports tab with this ticket. False when the host can't. */
+export function openTaskReport(taskId: string): boolean {
+  if (!screenOpener) return false;
+  requestReportTask(taskId);
+  // `request` makes each open a new request, so a board already on this route switches back.
+  screenOpener({
+    screenId: "power-workboard",
+    params: { tab: "reports", request: String(Date.now()) },
+  });
+  return true;
+}
+
+export function canOpenTaskReport(): boolean {
+  return screenOpener !== null;
+}

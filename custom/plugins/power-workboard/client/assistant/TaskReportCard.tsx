@@ -35,11 +35,11 @@ function toneColor(tone: ReportTone, theme: Theme): string {
 }
 
 /** A light wash of a `#rrggbb` color for backgrounds; other formats get none. */
-function wash(color: string): string {
+export function wash(color: string): string {
   return /^#[0-9a-f]{6}$/i.test(color) ? `${color}1f` : "transparent";
 }
 
-function MarkdownText({ text, theme }: { text: string; theme: Theme }) {
+export function MarkdownText({ text, theme }: { text: string; theme: Theme }) {
   if (HostMarkdown) return <HostMarkdown>{text}</HostMarkdown>;
   return (
     <Text selectable style={[styles.body, { color: theme.colors.foreground }]}>

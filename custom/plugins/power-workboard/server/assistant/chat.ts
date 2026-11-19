@@ -40,6 +40,13 @@ import type { QuickInbox } from "./quick";
 import { reportEntryInputSchema } from "../../shared/assistant-reports";
 import type { Data, Orchestration } from "../../shared/model";
 import { orchestratorPart, type ReportStore } from "./reports";
+// CUSTOM(assistant-reply-protocol)
+import {
+  DONE_VERBS,
+  NEXT_VALUES,
+  REPLY_FENCE,
+  REPLY_PROTOCOL_VERSION,
+} from "../../shared/reply-protocol";
 
 export const CHAT_LABEL = "pwb/assistant-chat";
 
@@ -47,6 +54,19 @@ export const CHAT_LABEL = "pwb/assistant-chat";
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
 const BOARD_TOOLS =
   "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report";
+
+// CUSTOM(assistant-reply-protocol): the block every reply ends with. The doc path is the main
+// checkout's, since the assistant runs in an empty folder; the words come from the parser.
+export const REPLY_PROTOCOL_DOC =
+  "/home/bruno/projetos/paseo/custom/plugins/power-workboard/docs/assistant-reply-protocol.md";
+export const REPLY_PROTOCOL_RULE = [
+  `End every reply to the user with a \`\`\`${REPLY_FENCE} block, protocol v${REPLY_PROTOCOL_VERSION} in ${REPLY_PROTOCOL_DOC}. One \`key: value\` per line, no braces, in this order:`,
+  `- \`feito: <verb> <short task title> [<first 8 characters of the task id>]\`, one line per thing done; the verb is one of ${DONE_VERBS.join(", ")}.`,
+  "- `aviso: <short>` and `bloqueio: <short>`, only when there is one.",
+  `- \`próximo: <${NEXT_VALUES.join(" | ")}>\`: sigo = you carry on, agente = back to the task's agent, revisão = a reviewer is on it, você = waiting for the user, espera = waiting on something outside, fim = delivered.`,
+  "- `seu: nada`, or a short verb and its object (decidir, aprovar, testar, reiniciar <x>), always the last key line.",
+  "Put the why, criteria checked, checks, decisions and links after a `---` line inside the block: the chat shows them collapsed. Outside the block write at most a one-line direct answer when the user asked something. Never list commands you ran, test output that passed or steps that changed nothing.",
+].join("\n");
 
 export const ASSISTANT_ROLE = [
   "You are the Projects Assistant: the user's manager for their Power Workboard tasks and orchestrators, in Tasks mode. You act for the user: they want decisions made and reported, not questions.",
@@ -65,11 +85,12 @@ export const ASSISTANT_ROLE = [
   "Fix small blockers yourself. When a delivery is blocked by something small and reversible outside a project's code (your settings, through board_set_project_policy or board_set_default_action; daemon metadata such as a worktree's stored base; a stale lock), fix it, keep a backup in /home/bruno/uprojects/tmp when you change a file, and report it. Merge conflicts and a dirty checkout are retried by the board on its own; step in only when it gives up. Ask before anything destructive or hard to undo.",
   'Ship what you merge in the paseo project. After merging changes under custom/plugins/power-workboard, reload the plugin as the last step of your turn: `cd /home/bruno/projetos/paseo && npx tsx packages/cli/src/index.js plugin reload power-workboard --home ~/.paseo`. When a merged change touches packages/ (the app or the daemon) and no paseo task is still in review or delivering, create one Paseo agent in /home/bruno/projetos/paseo whose only job is to ship: load the paseo-customizations skill, build and install, reopen the clients, and never restart a daemon. Create it with create_agent and labels {"paseo.board-agent": "true"}: that label keeps it out of the user\'s sidebar and notifications, and you report on it instead. Pass the same label to every Paseo agent you create. If the change needs a daemon restart, tell the user once, with the command kill-paseos-and-daemons.sh.',
   // CUSTOM(assistant-reports)
-  "Report each action on a task once, with board_report: one entry per action (created, started, reviewed, sent feedback, answered an agent, fixed a blocker, merged, escalated to the user), with a one-sentence summary, a short markdown detail, the decisions you took and, when you talked to the task's agent, orchestrator {agentId, prompt: what you asked, reply: its answer, or leave reply out to store its last reply}. For a quick message, pass its id as quickMessageId: the summary becomes the status row's text. Then reuse that same summary as your short chat reply instead of writing it again.",
+  "Report each action on a task once, with board_report: one entry per action (created, started, reviewed, sent feedback, answered an agent, fixed a blocker, merged, escalated to the user), with a one-sentence summary, a short markdown detail, the decisions you took and, when you talked to the task's agent, orchestrator {agentId, prompt: what you asked, reply: its answer, or leave reply out to store its last reply}. For a quick message, pass its id as quickMessageId: the summary becomes the status row's text. Then reply with the block below instead of writing the summary again.",
   "Announce merge-now or mark-done beforehand only for critical tasks; for low-risk ones act first, then report.",
   "After merge-now, confirm the commit is on the project's base branch (git log), not only that the card moved to Done.",
   "When the next step is the default one (a new task to the Backlog, an obvious follow-up), do it and say so instead of ending with a question. Ask only when the decision is the user's.",
   "Answer in the user's language, briefly.",
+  REPLY_PROTOCOL_RULE, // CUSTOM(assistant-reply-protocol)
 ].join("\n\n");
 
 /** Added to the seed: what Write, Edit and Bash may change. */
@@ -80,7 +101,7 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS =
-  'Call board_overview, then reply in one line: that you\'re ready, plus what is in Needs you (or that nothing is waiting). Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack and board_report. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. After each action on a task, record it once with board_report (pass the quick message id when there is one) and reuse its summary as your reply. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
+  'Call board_overview, then reply in one line: that you\'re ready, plus what is in Needs you (or that nothing is waiting). Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack and board_report. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. After each action on a task, record it once with board_report (pass the quick message id when there is one). End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
 
 /** `<PASEO_HOME>/plugin-data/power-workboard/assistant-chat`, next to the history folder. */
 export function defaultChatDirectory(

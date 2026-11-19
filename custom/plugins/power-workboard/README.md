@@ -45,6 +45,11 @@ this repo) with these differences:
 - **Report card.** In any agent chat, a reply ending in a valid `<report>` block shows the block
   as a card (status, summary, question, checks, collapsed changed files, risks) instead of JSON
   (`shared/task-report.ts`). An invalid block leaves the reply as it was.
+- **Assistant reply block.** The Projects Assistant ends each reply with a short ` ```pwb `
+  block (`feito`, `aviso`, `bloqueio`, `próximo`, `seu`), described in
+  [docs/assistant-reply-protocol.md](docs/assistant-reply-protocol.md). In the assistant's chat
+  only, it shows as icons, a `próximo` chip, the `seu` line last and a details expander; a task
+  id links to the ticket in Reports (`shared/reply-protocol.ts`).
 
 - **Night tasks and start times.** A draft's **When** (task editor) puts it in Scheduled: a
   night task starts inside the night window (Orchestrators tab, Night tasks), taken by any

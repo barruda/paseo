@@ -29,7 +29,17 @@ import {
   reportCardDataSchema,
   reportTextDataSchema,
   reportTimelineItems,
+  splitTaskReport,
 } from "./shared/task-report";
+// CUSTOM(assistant-reply-protocol)
+import { AssistantReplyItem } from "./client/assistant/AssistantReplyCard";
+import { setScreenOpener } from "./client/assistant/nav";
+import {
+  REPLY_ITEM_KIND,
+  REPLY_ITEM_VERSION,
+  replyItemDataSchema,
+  replyTimelineItems,
+} from "./shared/reply-protocol";
 
 const Surface = (props: Parameters<typeof WorkboardScreen>[0]) => (
   <QueryClientProvider client={queryClient}>
@@ -175,6 +185,36 @@ export default function contribute(client: PluginClientContext) {
       await rpc(assistantAskRpc, { text: args, source: "slash", waitMs: 0 });
     },
   });
+  // CUSTOM(assistant-reply-protocol): a reply ending in a ```pwb block becomes one item; its
+  // renderer draws the block only in the Projects Assistant's chat. Registered before the report
+  // card, since the host uses the first transformer that answers. Ids in the block open the board
+  // through the client's `openScreen`, which the pinned plugin types lack, hence the cast.
+  setScreenOpener(
+    (
+      client as unknown as {
+        openScreen?(input: {
+          screenId: string;
+          params?: Record<string, string>;
+        }): void;
+      }
+    ).openScreen?.bind(client) ?? null,
+  );
+  const removeReplyTransformer = client.addTimelineTransformer({
+    id: "assistant-reply",
+    query: { itemType: "assistant_message" },
+    transform: ({ item }) => {
+      // A reply that also carries a valid `<report>` keeps its report card.
+      if (splitTaskReport(item.text)) return undefined;
+      const items = replyTimelineItems(item.text);
+      return items ? { items } : undefined;
+    },
+  });
+  const removeReplyRenderer = client.addTimelineRenderer({
+    kind: REPLY_ITEM_KIND,
+    version: REPLY_ITEM_VERSION,
+    schema: replyItemDataSchema,
+    Component: AssistantReplyItem,
+  });
   // CUSTOM(report-card): an agent reply ending in a valid `<report>` block shows a card instead of
   // the raw JSON. Any agent qualifies when the block parses; anything else keeps the reply as is.
   const removeReportTransformer = client.addTimelineTransformer({
@@ -198,6 +238,9 @@ export default function contribute(client: PluginClientContext) {
     Component: TaskReportText,
   });
   return () => {
+    removeReplyRenderer(); // CUSTOM(assistant-reply-protocol)
+    removeReplyTransformer();
+    setScreenOpener(null);
     removeReportText();
     removeReportCard();
     removeReportTransformer();
