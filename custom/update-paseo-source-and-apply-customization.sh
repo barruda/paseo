@@ -333,6 +333,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/task-navigation/provider-subagent-rows.test.ts --bail=1)
   # Token ledger fork: MLflow trace links, turn jumps, Claude cache writes.
   (cd custom/plugins/token-ledger && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npm test)
+  # Chat Polish fork: a command that only exited nonzero is not counted as failed (command-outcome).
+  (cd custom/plugins/paseo-chat-polish && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npm test)
   (cd packages/app && npx vitest run src/turn-jump/model.test.ts src/plugins/host-navigation.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/agent-projections.test.ts --bail=1)
   # agent-profiles: Claude providerOptions plugins, skills and autoMemoryDirectory.
@@ -350,6 +352,8 @@ if $VERIFY; then
   # Worktree setup hardlinks the main checkout's node_modules when the lockfiles match.
   bash custom/scripts/worktree-deps.test.sh
   (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
+  # Timeline transformers get the chat's agent; a row that replaced a reply keeps the copy button.
+  (cd packages/app && npx vitest run src/plugins/timeline/model.test.ts src/plugins/timeline/projection.test.ts src/agent-stream/render-strategy.test.ts src/agent-stream/layout.test.ts src/agent-stream/turn-boundary.test.ts src/agent-stream/spacing.test.ts --bail=1)
   # Backgrounds plugin (vendored from upstream) with the local image picker.
   (cd custom/plugins/paseo-background && { [ -d node_modules ] || npm ci --no-audit --no-fund --ignore-scripts; } && npx tsc --noEmit && npm test)
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel.test.ts --bail=1)

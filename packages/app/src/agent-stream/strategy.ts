@@ -1,6 +1,6 @@
 import type { ComponentType, ReactElement, ReactNode, RefObject } from "react";
 import type { StyleProp, ViewStyle } from "react-native";
-import type { StreamItem } from "@/types/stream";
+import { getAssistantResponseText, type StreamItem } from "@/types/stream";
 import type { ReadingRowReplacements } from "./reading-anchor";
 import { continuesResponse } from "./turn-membership";
 import type { StreamHistoryBoundary, StreamRenderSegments } from "./model";
@@ -200,8 +200,10 @@ export function createStreamStrategy(config: StreamStrategyConfig): StreamStrate
         if (!currentItem || (laterItem && !continuesResponse(currentItem, laterItem))) {
           break;
         }
-        if (currentItem.kind === "assistant_message") {
-          messages.push(currentItem.text);
+        // CUSTOM(timeline-transformer-agent): plugin rows that replaced a reply copy its text.
+        const text = getAssistantResponseText(currentItem);
+        if (text !== null) {
+          messages.push(text);
         }
         laterItem = currentItem;
       }

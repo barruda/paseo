@@ -33,6 +33,13 @@ brings their work back for review. See
 timeline for every agent (tool calls, thinking, todos, messages), and its cards remember open or
 closed per kind. Don't install the registry version on top of it; both use the id `beautiful-chat`.
 
+`paseo-chat-polish` is our fork of `lthieu96/paseo-chat-polish` 0.14.2 (`4e68486`). It draws the
+chat timeline and the recap after each turn; the fork tells a command that failed from one that
+only exited nonzero. Homes that installed the git version keep it until switched by hand; see
+[CHANGES.md](CHANGES.md#command-outcome-a-command-that-only-exited-nonzero-is-not-counted-as-failed).
+Its dashboard's **Update** button no longer applies upstream releases: diff a new upstream
+version against the vendor commit and replay our changes.
+
 `skills` is our copy of `gpambrozio/skills`. If the npm version is installed, run
 `paseo plugin remove skills` before the sync installs ours.
 

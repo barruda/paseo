@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import {
+  ASSISTANT_CHAT_AGENT_LABEL,
   DONE_VERBS,
   NEXT_VALUES,
   REPLY_ITEM_KIND,
@@ -16,7 +17,11 @@ import {
   splitReply,
   splitTaskIds,
 } from "../shared/reply-protocol";
-import { ASSISTANT_ROLE, CHAT_INSTRUCTIONS } from "../server/assistant/chat";
+import {
+  ASSISTANT_ROLE,
+  CHAT_INSTRUCTIONS,
+  CHAT_LABEL,
+} from "../server/assistant/chat";
 import {
   canOpenTaskReport,
   openTaskReport,
@@ -255,10 +260,12 @@ describe("splitReply", () => {
   });
 });
 
+const assistantLabels = { [ASSISTANT_CHAT_AGENT_LABEL]: "true" };
+
 describe("replyTimelineItems", () => {
   it("keeps the whole reply in one item", () => {
     const text = "Oi.\n\n" + fence("próximo: fim\nseu: nada");
-    const items = replyTimelineItems(text);
+    const items = replyTimelineItems(text, assistantLabels);
     expect(items).toEqual([
       {
         type: "plugin",
@@ -271,7 +278,20 @@ describe("replyTimelineItems", () => {
   });
 
   it("leaves replies without a block alone", () => {
-    expect(replyTimelineItems("Sem bloco.")).toBeUndefined();
+    expect(replyTimelineItems("Sem bloco.", assistantLabels)).toBeUndefined();
+  });
+
+  it("leaves other agents' replies alone, and every reply when the host passes no agent", () => {
+    const text = "Oi.\n\n" + fence("próximo: fim\nseu: nada");
+    expect(replyTimelineItems(text, {})).toBeUndefined();
+    expect(
+      replyTimelineItems(text, { [ASSISTANT_CHAT_AGENT_LABEL]: "false" }),
+    ).toBeUndefined();
+    expect(replyTimelineItems(text, undefined)).toBeUndefined();
+  });
+
+  it("matches the label the server puts on the chat agent", () => {
+    expect(ASSISTANT_CHAT_AGENT_LABEL).toBe(CHAT_LABEL);
   });
 });
 

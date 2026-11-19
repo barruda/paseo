@@ -317,6 +317,12 @@ export interface PluginSidebarContribution<Text extends PluginText = string> {
   surface: string;
 }
 
+/** CUSTOM(timeline-transformer-agent): the agent a timeline transformer runs for. */
+export interface PluginTimelineAgentContext {
+  readonly id: string;
+  readonly labels: Readonly<Record<string, string>>;
+}
+
 export type PluginTimelineTransformerContribution<
   ItemType extends AgentTimelineItem["type"] = AgentTimelineItem["type"],
 > = ItemType extends AgentTimelineItem["type"]
@@ -328,6 +334,11 @@ export type PluginTimelineTransformerContribution<
       transform(input: {
         item: Extract<AgentTimelineItem, { type: ItemType }>;
         phase: "streaming" | "complete";
+        /**
+         * CUSTOM(timeline-transformer-agent): the agent whose chat shows the item. Older hosts
+         * pass none.
+         */
+        agent?: PluginTimelineAgentContext;
       }): PluginTimelineTransformResult | undefined;
     }
   : never;

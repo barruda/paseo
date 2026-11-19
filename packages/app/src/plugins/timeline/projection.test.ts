@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { StreamItem } from "@/types/stream";
-import type { TimelineItemTransform } from "./model";
+import type { InstalledPlugin } from "../types";
+import { transformTimelineItem, type TimelineItemTransform } from "./model";
 import { projectPluginTimelineItems } from "./projection";
 
 function thought(text: string, status: "loading" | "ready" = "loading"): StreamItem {
@@ -150,5 +151,72 @@ describe("plugin timeline projection", () => {
       "split/thought-1/right",
     ]);
     expect(filtered).toEqual([]);
+  });
+
+  // CUSTOM(timeline-transformer-agent)
+  it("keys the id-less rows of two transformed replies apart", () => {
+    const reply = (id: string): StreamItem => ({
+      kind: "assistant_message",
+      id,
+      text: `${id} <report>{}</report>`,
+      timestamp: new Date("2026-01-01T00:00:00.000Z"),
+    });
+    // Like the report card: a text row and a card row, neither with an id.
+    const reportPlugin = {
+      id: "power-workboard",
+      timelineTransformers: [
+        {
+          id: "task-report",
+          query: { itemType: "assistant_message" },
+          transform: () => ({
+            items: ["text", "card"].map((kind) => ({
+              type: "plugin",
+              kind,
+              version: 1,
+              data: null,
+            })),
+          }),
+        },
+      ],
+    } as unknown as InstalledPlugin;
+    const transform: TimelineItemTransform = (input) =>
+      transformTimelineItem({ ...input, plugins: [reportPlugin] });
+
+    const ids = projectPluginTimelineItems([reply("a1"), reply("a2")], transform).map(
+      (item) => item.id,
+    );
+
+    expect(ids).toEqual([
+      "power-workboard/a1/0",
+      "power-workboard/a1/1",
+      "power-workboard/a2/0",
+      "power-workboard/a2/1",
+    ]);
+  });
+
+  it("keeps a replaced reply's text on its last row for the turn's copy button", () => {
+    const reply: StreamItem = {
+      kind: "assistant_message",
+      id: "a1",
+      text: "Original reply",
+      timestamp: new Date("2026-01-01T00:00:00.000Z"),
+    };
+    const part = (id: string) => ({
+      type: "plugin" as const,
+      id,
+      pluginId: "p",
+      kind: "part",
+      version: 1,
+      data: null,
+    });
+    const rows = projectPluginTimelineItems([reply], ({ sourceId }) => [
+      part(`${sourceId}/0`),
+      part(`${sourceId}/1`),
+    ]);
+
+    expect(rows.map((row) => (row.kind === "plugin" ? row.sourceAssistantText : null))).toEqual([
+      undefined,
+      "Original reply",
+    ]);
   });
 });

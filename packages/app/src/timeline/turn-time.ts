@@ -1,4 +1,4 @@
-import type { StreamItem } from "@/types/stream";
+import { getAssistantResponseText, type StreamItem } from "@/types/stream";
 import { startsNewTurn, isTurnTrigger } from "@/agent-stream/turn-membership";
 
 export interface TurnTiming {
@@ -70,7 +70,8 @@ function walkTurns(
       assistantIds = [];
     }
     lastItemAt = item.timestamp;
-    if (item.kind === "assistant_message") {
+    // CUSTOM(timeline-transformer-agent): a plugin row that replaced a reply gets its timing.
+    if (getAssistantResponseText(item) !== null) {
       assistantIds.push(item.id);
     }
     previousItem = item;

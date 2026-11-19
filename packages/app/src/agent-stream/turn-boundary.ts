@@ -10,6 +10,13 @@ export function resolveAssistantTurnForkBoundary(input: {
   supportsTimelineCursor: boolean;
 }): AssistantTurnForkBoundary | undefined {
   const item = input.items[input.startIndex];
+  // CUSTOM(timeline-transformer-agent): a plugin row that replaced a reply forks from the reply's
+  // timeline cursor. It has no provider message id, so it needs a host that supports cursors.
+  if (item?.kind === "plugin" && item.sourceAssistantText !== undefined) {
+    return input.supportsTimelineCursor && item.timelineCursor
+      ? { boundaryCursor: item.timelineCursor }
+      : undefined;
+  }
   if (item?.kind !== "assistant_message") {
     return undefined;
   }

@@ -91,9 +91,8 @@
     { "id": "vitals", "source": "tomgrin10/vitals", "what": "Host vitals" },
     {
       "id": "paseo-chat-polish",
-      "source": "https://github.com/lthieu96/paseo-chat-polish.git",
-      "ref": "4e68486185382920b6963e8d95766e72f0ddfa63",
-      "what": "Chat polish"
+      "source": "custom/plugins/paseo-chat-polish",
+      "what": "Chat polish (our fork): quieter timeline, merged steps, turn recap"
     }
   ]
 }

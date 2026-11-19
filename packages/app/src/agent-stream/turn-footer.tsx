@@ -4,7 +4,11 @@ import { View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { SPACING, type Theme } from "@/styles/theme";
 import type { TurnTiming } from "@/timeline/turn-time";
-import type { PluginTimelineStreamItem, StreamItem } from "@/types/stream";
+import {
+  getAssistantResponseText,
+  type PluginTimelineStreamItem,
+  type StreamItem,
+} from "@/types/stream";
 import {
   collectAssistantResponseContentForStreamRenderStrategy,
   type StreamStrategy,
@@ -210,7 +214,12 @@ function CompletedTurnFooter({
   return (
     <View style={stylesheet.turnFooterSlot}>
       <AssistantTurnFooter
-        getContent={items[startIndex]?.kind === "assistant_message" ? getContent : undefined}
+        getContent={
+          // CUSTOM(timeline-transformer-agent): also a plugin row that replaced a reply.
+          items[startIndex] && getAssistantResponseText(items[startIndex]) !== null
+            ? getContent
+            : undefined
+        }
         completedAt={timing?.completedAt}
         durationMs={timing?.durationMs}
         onFork={boundary && onForkAssistantTurn ? handleFork : undefined}

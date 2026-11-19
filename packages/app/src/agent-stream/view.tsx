@@ -492,7 +492,20 @@ const AgentStreamViewComponent = forwardRef<AgentStreamViewHandle, AgentStreamVi
     useEffect(() => {
       if (rewindMessageId) viewportRef.current?.scrollToMessage?.(rewindMessageId);
     }, [rewindMessageId]);
-    const transformTimelineItem = useInstalledTimelineTransform(resolvedServerId);
+    // CUSTOM(timeline-transformer-agent): plugin transformers see whose chat this is. The labels
+    // are selected as a string so a store update that keeps them does not reproject the timeline.
+    const agentLabelsKey = useSessionStore((state) =>
+      JSON.stringify(state.sessions[resolvedServerId]?.agents.get(agentId)?.labels ?? {}),
+    );
+    const transformAgent = useMemo(
+      () =>
+        Object.freeze({
+          id: agentId,
+          labels: Object.freeze(JSON.parse(agentLabelsKey) as Record<string, string>),
+        }),
+      [agentId, agentLabelsKey],
+    );
+    const transformTimelineItem = useInstalledTimelineTransform(resolvedServerId, transformAgent);
 
     const client = useSessionStore((state) => state.sessions[resolvedServerId]?.client ?? null);
     const sessionStreamHead = useSessionStore((state) =>

@@ -7619,7 +7619,9 @@ src/server/agent/auto-archive-closed/auto-archive-closed.test.ts --bail=1)`,
   summary, the question highlighted, checks with ✓/✗, changed files collapsed with the count in the
   title (paths as inline code, so the chat links them), and risks with a warning icon. Labels come
   from the Reports page strings (English, pt-BR). An invalid or missing block keeps the reply as it
-  was. Any agent qualifies when the block parses, not only board agents.
+  was. Any agent qualifies when the block parses, not only board agents. The rows carry no `id`
+  (since timeline-transformer-agent): fixed ids (`before`, `card`, `after`) collided when a chat
+  had two cards; the host now keys them by the source message.
 - **Core files touched:** none. Plugin files: `shared/task-report.ts` (block finder, parser,
   mapping to rows; `server/assistant/report.ts` now uses its finder),
   `client/assistant/TaskReportCard.tsx`, `index.client.tsx` (registration),
@@ -7843,11 +7845,11 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
   `bloqueio`, `próximo` (closed enum) and `seu` (always last), details after `---`. The parser
   (`shared/reply-protocol.ts`) reads the last closed block, matches words without case or
   accents, and shows unknown keys and values as text. A timeline transformer turns a reply with a
-  block into one plugin item that keeps the whole text; the renderer checks the agent's
-  `pwb/assistant-chat` label with `useAgent` and draws the card only there. Other agents get the
-  same text as Markdown, but in a plugin row: a reply of theirs with a closed `pwb` block loses
-  the turn's copy button and paced reveal (the transformer can't see the agent). A reply that
-  also has a valid `<report>` keeps the report card. The card: an icon per verb, ⚠ warnings, red
+  block into one plugin item that keeps the whole text, only when the chat's agent carries the
+  `pwb/assistant-chat` label (the host passes the agent since
+  [timeline-transformer-agent](#timeline-transformer-agent-plugin-timeline-transformers-see-the-chats-agent);
+  before it, the renderer checked the label and other agents' replies lost the copy button). Other
+  agents' replies stay untouched. A reply that also has a valid `<report>` keeps the report card. The card: an icon per verb, ⚠ warnings, red
   blockers, a `próximo`
   chip colored by value, `seu` highlighted when it is not `nada` (a small seal when it is), and a
   details expander (click pins it; resting the pointer opens it on desktop web; open from the
@@ -7864,8 +7866,9 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
   `tests/reply-protocol.test.ts`. Outside the repo: the live
   `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md` got the same rule
   (it wins over the seed once it exists).
-- **Re-apply:** Plugin-only. The transformer can't see the agent, so the agent check lives in the
-  renderer. Leave the item without an `id`: the host keys plugin items by that id as is, and a
+- **Re-apply:** Plugin-only. The agent check lives in the transformer and needs the host's
+  `agent` input (timeline-transformer-agent); without it no reply becomes a card. Leave the item
+  without an `id`: the host keys plugin items by that id as is, and a
   fixed one collides across replies. Changing the protocol means editing the doc and
   `shared/reply-protocol.ts` together and bumping the version; the test compares their lists.
   Grep `CUSTOM(assistant-reply-protocol)`.
@@ -7936,3 +7939,105 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   selects the chip, no tab appears in the Desk. Close the chip (×) and click the sidebar row: it
   comes back selected. With a task running, the chip's icon has the blue ring; with a task in
   Ready to review, a green dot; with one in Needs you, the amber alert. Light and dark.
+
+## timeline-transformer-agent: plugin timeline transformers see the chat's agent
+
+- **Added:** 2026-11-19 (based on `custom` at `36f050171`)
+- **Commit:** `custom: plugin timeline transformers get the chat's agent; replaced replies keep the copy button`
+- **Why:** The `pwb` reply card (assistant-reply-protocol) couldn't tell agents apart in its
+  transformer, so every agent's reply with a closed `pwb` block became a plugin row and lost the
+  turn's copy button and paced reveal, the assistant's included. The report card's fixed row ids
+  also collided when one chat had two cards.
+- **What:** The app passes `agent: { id, labels }` to each client timeline transformer (optional
+  field on `PluginTimelineTransformerContribution`'s input, new `PluginTimelineAgentContext` type;
+  older plugins ignore it, older hosts pass none). `AgentStreamView` selects the agent's labels as
+  a JSON string so a store update that keeps them doesn't reproject the timeline. A plugin row that
+  replaces an `assistant_message` keeps the reply's text in `sourceAssistantText` on its last row;
+  the turn footer hosts on that row, copies that text and gets the turn's timing
+  (`getAssistantResponseText` in `types/stream.ts`, used by the footer source search, the copy
+  collector, the turn timing and the footer row's `compactBottom` spacing). That row also offers
+  fork from its `timelineCursor` (`turn-boundary.ts`); it has no provider message id, so a host
+  without cursor support offers no fork there. This brings the copy button back to every
+  transformed reply, report cards included. Power Workboard: the `assistant-reply` transformer emits the card only
+  for agents labeled `pwb/assistant-chat` (the renderer's `useAgent` check is gone), and the
+  report rows carry no `id`, so the host keys them `<source message id>/<index>`.
+- **Core files touched:** `packages/plugin/src/client/contracts.ts`, `packages/plugin/src/client/index.ts`,
+  `packages/app/src/plugins/timeline/{model,index,projection}.ts`,
+  `packages/app/src/agent-stream/{view.tsx,layout.ts,strategy.ts,turn-footer.tsx,turn-boundary.ts,spacing.ts}`,
+  `packages/app/src/timeline/turn-time.ts`, `packages/app/src/types/stream.ts`, `docs/plugins.md`
+  (the `agent` input and the fixed-`id` gotcha). Tests:
+  `plugins/timeline/{model,projection}.test.ts`,
+  `agent-stream/{render-strategy,layout,turn-boundary,spacing}.test.ts`.
+  Plugin files: `index.client.tsx`, `shared/reply-protocol.ts`, `shared/task-report.ts`,
+  `client/assistant/{AssistantReplyCard,RestartChatPill}.tsx`, `docs/assistant-reply-protocol.md`,
+  `tests/{reply-protocol,task-report}.test.ts`.
+- **Re-apply:** Grep `CUSTOM(timeline-transformer-agent)`. In `transformTimelineItem` pass
+  `agent` through to `transformer.transform`; `useInstalledTimelineTransform(serverId, agent)`
+  closes over it, and the agent object must stay stable (the projection cache is keyed by the
+  transform). In `transformSourceItem` set `sourceAssistantText` on the last projected row of an
+  `assistant_message` only, so the copy collector doesn't repeat it; wherever the footer code tests
+  `kind === "assistant_message"` to find or copy the reply or to compact its bottom spacing, use
+  `getAssistantResponseText`; `resolveAssistantTurnForkBoundary` takes such a plugin row's
+  `timelineCursor` (cursor only). The
+  PWB plugin pins SDK types without `agent`, hence the cast in `index.client.tsx`.
+- **Verify:** `cd packages/app && npx vitest run src/plugins/timeline/model.test.ts
+src/plugins/timeline/projection.test.ts src/agent-stream/render-strategy.test.ts
+src/agent-stream/layout.test.ts src/agent-stream/turn-boundary.test.ts
+src/agent-stream/spacing.test.ts`, and the power-workboard checks. Needs an app build and install
+  plus `paseo plugin reload power-workboard`. In the Projects Assistant's chat a reply with a
+  `pwb` block shows the card and its turn footer has the copy button, which copies the raw reply,
+  and the fork button, which forks the chat up to that reply;
+  in a task agent's chat the same block stays a code block with the normal copy and reveal. Two
+  report cards in one chat both render.
+
+## command-outcome: a command that only exited nonzero is not counted as failed
+
+- **Added:** 2026-11-19 (based on `custom` at `b2b2f2ec4`)
+- **Commit:** `custom: vendor paseo-chat-polish 0.14.2 into custom/plugins` (unchanged baseline of
+  `lthieu96/paseo-chat-polish` at `4e68486`, MIT; diff against it), then
+  `custom: chat-polish tells failed commands from harmless nonzero exits`
+- **Why:** The turn recap ("22 commands · ● 2 failed") and the merged steps row counted every
+  command with a nonzero exit as failed, in red. Many are harmless: a `grep` with no match,
+  `[ -n "$f" ] && …` with `$f` empty at the end, a loop reading a `/proc/<pid>` that vanished after
+  printing its output (session `c7675891`, 2026-11-19). Both renderers belong to Chat Polish, a
+  third-party plugin pinned by git ref, so the change needed our own copy, as with token-ledger.
+- **What:** `shared/command-outcome.ts` is the one place that judges a settled shell call:
+  `failed` (red) when the harness reported its own error (no `Exit code N`: timeout, denial,
+  interruption), exit ≥ 124 (timeout, not found, killed), the output matches an error pattern
+  (`command not found`, `Permission denied`, `Traceback`, `error:`/`fatal:` at a line start,
+  `SomethingError:`, `error TS…`, vitest/jest `FAIL`, `npm ERR!`), or exit 1 printed nothing;
+  `nonzero` (neutral) for exit 1 with output, or exit 1 with `grep`/`rg`/`test`/`[`/`diff`… in the
+  last statement. Claude's failed Bash calls carry the exit code and the output only in the error
+  text (`Exit code 1\n…`); Codex's carry `exitCode` and `output` in the detail.
+  - Recap: `failed` holds real failures, new optional `nonzero` holds the rest; each entry may
+    carry the last 3 lines of output. The row shows `● 1 failed` in red and `● 2 exit≠0` in muted
+    text; opened, it lists each command with its exit code and output tail. A turn whose only news
+    is a nonzero exit still gets a recap, neutral. Old recap rows still parse.
+  - Command rows: a nonzero exit reads `Ran <command>` with a muted `exit 1` and its output on
+    expand; a real failure keeps the red icon and `exit N`. A Codex command reported completed
+    with a failing exit code turns red.
+  - The merged steps row counts only real failures (`isRealFailure`).
+  - "Copy last turn" Markdown lists `- ·` nonzero exits after the `- ✗` failures.
+- **Files:** plugin-only, `custom/plugins/paseo-chat-polish/`: `shared/command-outcome.ts` (new),
+  `shared/recap.ts`, `shared/i18n.ts` (`chat.nonzeroCount`, `markdown.nonzero`), `client/model.ts`,
+  `client/views.tsx` (`StepsItem`, `RecapItem`), `test/command-outcome.test.mjs` (new; the two real
+  commands are fixtures) and two expectations in `test/model.test.mjs`. Marked
+  `CUSTOM(command-outcome)`. `custom/plugins.json` installs the fork from the folder. Excluded from
+  the root oxlint/oxfmt; it has its own `tsc` and `node --test` suite. Left out of the copy:
+  `design/`, README screenshots, the upstream release workflow.
+- **Setup (once per home, `~/.paseo` and `~/.paseo-telus`):** the sync leaves an installed plugin
+  alone, so switch from the git install by hand. `paseo plugin remove` resets the plugin's
+  settings, so keep them: `(cd custom/plugins/paseo-chat-polish && npm ci)`, copy
+  `<home>/plugin-settings/paseo-chat-polish/` aside, `paseo plugin remove paseo-chat-polish --home
+<home>`, `paseo plugin install "$PWD/custom/plugins/paseo-chat-polish" --home <home>`, copy the
+  settings back, `paseo plugin reload paseo-chat-polish --home <home>`. The icon cache in
+  `<home>/plugin-cache/paseo-chat-polish/` survives the remove.
+- **Re-apply:** Plugin-only; an upstream Paseo merge can't conflict. To take a new Chat Polish
+  release, diff it against the vendor commit and replay the `CUSTOM(command-outcome)` sites: the
+  recap's `changeSummary` asks `commandOutcome` instead of `status === "failed" || exit`,
+  `toolData` returns the neutral row before its failed branch, `StepsItem` counts `isRealFailure`.
+  Its dashboard **Update** button no longer applies upstream releases to the fork.
+- **Verify:** `(cd custom/plugins/paseo-chat-polish && npx tsc --noEmit && npm test)`. After the
+  setup above, in a Claude chat run a turn with `grep -q nomatch /etc/hostname` and
+  `ls /nonexistent`: the recap shows `● 1 failed · ● 1 exit≠0`, the
+  grep row has a muted `exit 1`, and opening the recap lists both with their exit codes.
