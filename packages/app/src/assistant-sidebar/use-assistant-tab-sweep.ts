@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { deskTabs, useDesksStore } from "@/task-navigation/desks-store";
-import { isAssistantChatAgent } from "./model";
+import type { AssistantAgentFacts } from "./model";
 import { openAssistantSidebar } from "./open";
 import {
   planAssistantTabSweep,
@@ -42,14 +42,13 @@ export function useAssistantTabSweep(): void {
       if (!known) known = tabKeys(tabs);
       else known = pruneKnownTabs(known, tabs);
       const sessions = useSessionStore.getState().sessions;
+      // The plan keeps an archived chat's tab (Conversations' "Open in Desk"): only a live chat
+      // belongs in the single sidebar tab.
       const plan = planAssistantTabSweep({
         ...tabs,
         known,
-        isAssistant: (serverId, agentId) =>
-          isAssistantChatAgent(
-            sessions[serverId]?.agents.get(agentId) ??
-              sessions[serverId]?.agentDetails.get(agentId),
-          ),
+        agentFor: (serverId, agentId): AssistantAgentFacts | undefined =>
+          sessions[serverId]?.agents.get(agentId) ?? sessions[serverId]?.agentDetails.get(agentId),
       });
       if (plan.deskTabIds.length === 0 && plan.layoutTabs.length === 0) return;
       sweeping = true;

@@ -4,6 +4,7 @@ import { AGENT_REPLACES_LABEL } from "@/task-navigation/agent-successor";
 import {
   ASSISTANT_CHAT_LABEL,
   isAssistantChatAgent,
+  isLiveAssistantChatAgent,
   resolveAssistantChat,
   type AssistantAgentFacts,
 } from "./model";
@@ -28,6 +29,15 @@ describe("isAssistantChatAgent", () => {
     expect(isAssistantChatAgent({ labels: { [ASSISTANT_CHAT_LABEL]: "false" } })).toBe(false);
     expect(isAssistantChatAgent({ labels: {} })).toBe(false);
     expect(isAssistantChatAgent(undefined)).toBe(false);
+  });
+});
+
+describe("isLiveAssistantChatAgent", () => {
+  it("is the labeled chat only until it is archived", () => {
+    expect(isLiveAssistantChatAgent({ labels: CHAT })).toBe(true);
+    expect(isLiveAssistantChatAgent({ labels: CHAT, archivedAt: ARCHIVED })).toBe(false);
+    expect(isLiveAssistantChatAgent({ labels: {} })).toBe(false);
+    expect(isLiveAssistantChatAgent(null)).toBe(false);
   });
 });
 

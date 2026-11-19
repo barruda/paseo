@@ -10,7 +10,8 @@ import { PaneProvider, usePaneContext, type PaneContextValue } from "@/panels/pa
 import { definePanel, type PanelPresentation } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
-import { resolveAssistantChat, type AssistantAgentFacts, type AssistantChatRef } from "./model";
+import { resolveAssistantChat, type AssistantChatRef } from "./model";
+import { assistantAgentMaps } from "./session-agent-maps";
 import { useAssistantSidebarStore } from "./store";
 
 const ThemedBot = withUnistyles(Bot);
@@ -29,12 +30,7 @@ const SEPARATOR = "\u0000";
 function useAssistantChatKey(preferredServerId: string): string {
   const remembered = useAssistantSidebarStore((state) => state.chat);
   return useSessionStore((state) => {
-    const agentsByServer = new Map<string, ReadonlyMap<string, AssistantAgentFacts>>();
-    const hydratedServerIds = new Set<string>();
-    for (const [serverId, session] of Object.entries(state.sessions)) {
-      agentsByServer.set(serverId, session.agents);
-      if (session.hasHydratedAgents) hydratedServerIds.add(serverId);
-    }
+    const { agentsByServer, hydratedServerIds } = assistantAgentMaps(state.sessions);
     const chat = resolveAssistantChat({
       remembered,
       agentsByServer,

@@ -24,6 +24,15 @@ export function isAssistantChatAgent(agent: AssistantAgentFacts | undefined | nu
 }
 
 /**
+ * A chat the sidebar tab owns. An archived chat is not one: its tab stays exactly where the user
+ * opened it (Conversations' "Open in Desk") instead of being swept into the sidebar, which would
+ * show whatever live chat replaced it.
+ */
+export function isLiveAssistantChatAgent(agent: AssistantAgentFacts | undefined | null): boolean {
+  return isAssistantChatAgent(agent) && !agent?.archivedAt;
+}
+
+/**
  * The chat the sidebar tab shows. The remembered chat while it is live; once it is archived, the
  * live agent that replaces it (a compaction, see CUSTOM(agent-successor)); else any live chat,
  * on `preferredServerId` first (a restart archives the old chat without naming it); else the

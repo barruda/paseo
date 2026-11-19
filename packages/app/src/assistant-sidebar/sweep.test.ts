@@ -1,8 +1,17 @@
 // CUSTOM(assistant-sidebar)
 import { describe, expect, it } from "vitest";
+import { ASSISTANT_CHAT_LABEL, type AssistantAgentFacts } from "./model";
 import { deskTabKey, layoutTabKey, planAssistantTabSweep, pruneKnownTabs } from "./sweep";
 
-const isAssistant = (serverId: string, agentId: string) => serverId === "s1" && agentId === "chat";
+const CHAT = { [ASSISTANT_CHAT_LABEL]: "true" };
+const ARCHIVED = new Date("2026-11-19T12:00:00Z");
+
+const liveChat = (): AssistantAgentFacts => ({ labels: CHAT });
+const archivedChat = (): AssistantAgentFacts => ({ labels: CHAT, archivedAt: ARCHIVED });
+const otherAgent = (): AssistantAgentFacts => ({ labels: {} });
+
+const agentFor = (serverId: string, agentId: string) =>
+  serverId === "s1" && agentId === "chat" ? liveChat() : otherAgent();
 
 describe("planAssistantTabSweep", () => {
   it("closes restored chat tabs without showing the sidebar", () => {
@@ -15,7 +24,7 @@ describe("planAssistantTabSweep", () => {
         { workspaceKey: "s1:ws", tabId: "t1", target: { kind: "agent", agentId: "chat" } },
         { workspaceKey: "s1:ws", tabId: "t2", target: { kind: "projects_assistant" } },
       ],
-      isAssistant,
+      agentFor,
       known: new Set([deskTabKey("d1"), layoutTabKey("s1:ws", "t1")]),
     });
     expect(plan).toEqual({
@@ -29,11 +38,24 @@ describe("planAssistantTabSweep", () => {
     const plan = planAssistantTabSweep({
       deskTabs: [{ id: "new", serverId: "s1", target: { kind: "agent", agentId: "chat" } }],
       layoutTabs: [],
-      isAssistant,
+      agentFor,
       known: new Set(),
     });
     expect(plan.deskTabIds).toEqual(["new"]);
     expect(plan.reveal).toEqual({ serverId: "s1", agentId: "chat" });
+  });
+
+  it("leaves an archived chat's tab where the user opened it", () => {
+    const plan = planAssistantTabSweep({
+      deskTabs: [{ id: "old", serverId: "s1", target: { kind: "agent", agentId: "chat" } }],
+      layoutTabs: [
+        { workspaceKey: "s1:ws", tabId: "t", target: { kind: "agent", agentId: "chat" } },
+      ],
+      agentFor: (serverId, agentId) =>
+        serverId === "s1" && agentId === "chat" ? archivedChat() : otherAgent(),
+      known: new Set(),
+    });
+    expect(plan).toEqual({ deskTabIds: [], layoutTabs: [], reveal: null });
   });
 
   it("reads the server from the workspace key and leaves other servers alone", () => {
@@ -43,7 +65,7 @@ describe("planAssistantTabSweep", () => {
         { workspaceKey: "s2:ws", tabId: "t", target: { kind: "agent", agentId: "chat" } },
         { workspaceKey: "s1:ws:x", tabId: "u", target: { kind: "agent", agentId: "chat" } },
       ],
-      isAssistant,
+      agentFor,
       known: new Set(),
     });
     expect(plan.deskTabIds).toEqual([]);

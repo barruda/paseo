@@ -3021,11 +3021,12 @@ function WorkspaceScreenContent({
                 });
               }
             : undefined,
+        // CUSTOM(assistant-sidebar): closing from inside the panel (`/exit`, `/clear`) drops the
+        // tab only. It must not run the tab button's guarded close, which confirms and archives a
+        // running agent; `/exit` archives once itself after this returns.
         onCloseCurrentTab:
           input.onCloseCurrentTab ??
-          (() => {
-            void handleCloseTabById(input.tab.tabId);
-          }),
+          (() => handleClosePassiveTab({ tabId: input.tab.tabId, target: input.tab.target })),
         onRetargetCurrentTab: (target) => {
           if (!persistenceKey) {
             return;
@@ -3048,7 +3049,7 @@ function WorkspaceScreenContent({
         onOpenImportSheet: openImportSheet,
       }),
     [
-      handleCloseTabById,
+      handleClosePassiveTab,
       panelRevisions,
       handleOpenWorkspaceFileFromPane,
       navigateToTabId,

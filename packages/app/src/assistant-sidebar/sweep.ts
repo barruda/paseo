@@ -1,7 +1,8 @@
-// CUSTOM(assistant-sidebar): the Projects Assistant chat never stays as a tab of its own. Tabs
-// restored from storage close silently; a tab some path opens later (a row of the Tasks sidebar,
-// a launcher that reaches the Desk directly) closes and the sidebar tab shows instead.
-import type { AssistantChatRef } from "./model";
+// CUSTOM(assistant-sidebar): the live Projects Assistant chat never stays as a tab of its own.
+// Tabs restored from storage close silently; a tab some path opens later (a row of the Tasks
+// sidebar, a launcher that reaches the Desk directly) closes and the sidebar tab shows instead.
+// An archived chat is not swept: opening it from Conversations shows that conversation.
+import { isLiveAssistantChatAgent, type AssistantAgentFacts, type AssistantChatRef } from "./model";
 
 interface SweepTarget {
   kind: string;
@@ -58,24 +59,29 @@ export function pruneKnownTabs(
   return new Set([...known].filter((key) => present.has(key)));
 }
 
-/** `known` holds the keys of tabs that were already there when the app started. */
+/**
+ * `known` holds the keys of tabs that were already there when the app started. Only tabs of a
+ * live chat are swept; an archived chat keeps the tab the user opened it in.
+ */
 export function planAssistantTabSweep(input: {
   deskTabs: readonly SweepDeskTab[];
   layoutTabs: readonly SweepLayoutTab[];
-  isAssistant: (serverId: string, agentId: string) => boolean;
+  agentFor: (serverId: string, agentId: string) => AssistantAgentFacts | undefined | null;
   known: ReadonlySet<string>;
 }): AssistantTabSweep {
   const plan: AssistantTabSweep = { deskTabIds: [], layoutTabs: [], reveal: null };
+  const isAssistant = (serverId: string, agentId: string) =>
+    isLiveAssistantChatAgent(input.agentFor(serverId, agentId));
   for (const tab of input.deskTabs) {
     const agentId = tab.target.kind === "agent" ? tab.target.agentId : undefined;
-    if (!agentId || !input.isAssistant(tab.serverId, agentId)) continue;
+    if (!agentId || !isAssistant(tab.serverId, agentId)) continue;
     plan.deskTabIds.push(tab.id);
     if (!input.known.has(deskTabKey(tab.id))) plan.reveal = { serverId: tab.serverId, agentId };
   }
   for (const tab of input.layoutTabs) {
     const agentId = tab.target.kind === "agent" ? tab.target.agentId : undefined;
     const serverId = serverOf(tab.workspaceKey);
-    if (!agentId || !input.isAssistant(serverId, agentId)) continue;
+    if (!agentId || !isAssistant(serverId, agentId)) continue;
     plan.layoutTabs.push({ workspaceKey: tab.workspaceKey, tabId: tab.tabId, agentId });
     if (!input.known.has(layoutTabKey(tab.workspaceKey, tab.tabId))) {
       plan.reveal = { serverId, agentId };

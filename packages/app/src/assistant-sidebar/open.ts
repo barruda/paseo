@@ -6,12 +6,8 @@ import { getLastWorkspaceSelection } from "@/stores/navigation-active-workspace-
 import { useSessionStore } from "@/stores/session-store";
 import { useDeskWorkboardStore } from "@/task-navigation/desk-workboard-store";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
-import {
-  isAssistantChatAgent,
-  resolveAssistantChat,
-  type AssistantAgentFacts,
-  type AssistantChatRef,
-} from "./model";
+import { isLiveAssistantChatAgent, resolveAssistantChat, type AssistantChatRef } from "./model";
+import { assistantAgentMaps } from "./session-agent-maps";
 import { useAssistantSidebarStore } from "./store";
 
 function sessionAgent(serverId: string, agentId: string) {
@@ -26,17 +22,14 @@ function sessionAgent(serverId: string, agentId: string) {
  */
 export function isAssistantChatInSession(serverId: string, agentId: string): boolean {
   const agent = sessionAgent(serverId, agentId);
-  return isAssistantChatAgent(agent) && !agent?.archivedAt;
+  return isLiveAssistantChatAgent(agent);
 }
 
 /** The chat the sidebar tab shows right now; see resolveAssistantChat. */
 export function currentAssistantChat(preferredServerId: string | null): AssistantChatRef | null {
-  const agentsByServer = new Map<string, ReadonlyMap<string, AssistantAgentFacts>>();
-  const hydratedServerIds = new Set<string>();
-  for (const [serverId, session] of Object.entries(useSessionStore.getState().sessions)) {
-    agentsByServer.set(serverId, session.agents);
-    if (session.hasHydratedAgents) hydratedServerIds.add(serverId);
-  }
+  const { agentsByServer, hydratedServerIds } = assistantAgentMaps(
+    useSessionStore.getState().sessions,
+  );
   return resolveAssistantChat({
     remembered: useAssistantSidebarStore.getState().chat,
     agentsByServer,

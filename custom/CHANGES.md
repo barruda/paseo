@@ -8190,28 +8190,49 @@ power-workboard`. In the app, open the Projects Assistant chat, set "Compact at 
     Tasks sidebar row, the plugin's `openAgent`, "Open in Desk" in Conversations), and the plugin
     passes `assistantSidebar: true` from the Assistant tab, the Restart pill and the status-bar
     topic, for a chat too new for the session to list. An archived chat is left to ordinary
-    navigation, since the tab would show whatever live chat replaced it. It deselects the board
-    chip, shows the last workspace's route, and the focused Desk or workspace screen
-    (`useAssistantSidebarReveal`) opens its Explorer on that tab (the Desk also opens the sidebar
-    for its focused tab) and, on web wide layouts, focuses the composer. Without a workspace to
+    navigation, and the sweep leaves its tab alone: "Open in Desk" in Conversations shows that
+    archived conversation in a normal tab while the sidebar keeps showing the live chat. It
+    deselects the board chip, shows the last workspace's route, and the focused Desk or workspace
+    screen (`useAssistantSidebarReveal`) opens its Explorer on that tab (the Desk also opens the
+    sidebar for its focused tab) and, on web wide layouts, focuses the composer. Without a
+    workspace to
     show, it remembers the chat and leaves no reveal request for an unrelated screen to consume.
-  - One instance: the tab is a singleton per Explorer, and the chat never keeps a tab of its own.
-    `useAssistantTabSweep` (mounted beside `useAgentSuccessorTabs`) closes agent tabs of the chat
-    in Desks and workspace layouts and unpins them: tabs restored from storage close silently,
-    a tab opened later (a path that skips `navigateToAgent`) closes and the sidebar tab shows
-    instead. The set of restored tabs shrinks as tabs go away, so a tab that comes back counts as
-    newly opened. Workspaces no longer auto-open the chat (`agent-visibility.ts`).
+  - One instance: the tab is a singleton per Explorer, and the **live** chat never keeps a tab of
+    its own. `useAssistantTabSweep` (mounted beside `useAgentSuccessorTabs`) closes agent tabs of a
+    live chat in Desks and workspace layouts and unpins them: tabs restored from storage close
+    silently, a tab opened later (a path that skips `navigateToAgent`) closes and the sidebar tab
+    shows instead. The set of restored tabs shrinks as tabs go away, so a tab that comes back
+    counts as newly opened. An archived chat is not swept, so its tab stays. Workspaces no longer
+    auto-open the chat (`agent-visibility.ts`).
   - The Desk's **+** reveals the Explorer (`showExplorerSidebar`, compact overlay included) before
     adding the tab; the tab is useless in a hidden sidebar. `/exit` in the chat closes the tab
     the panel is in through the pane context, not `closeTab` with the chat's workspace key, which
     could close a same-id tab elsewhere.
   - In Tasks mode the Explorer is the focused Desk tab's workspace, so each workspace's sidebar
     has its own Projects Assistant tab, showing the same chat.
+- **Follow-up (2026-11-19):** from the review of the first commit.
+  - `/exit` and `/clear` close the panel's tab through a plain close in every host (Desk, workspace
+    pane, Explorer sidebar). The workspace pane used to give the pane the tab button's guarded
+    close, which confirmed and archived a running agent, and then `/exit` archived it again.
+    `client-slash-commands/execute.ts` runs the command once: `/clear` retargets to a draft,
+    `/exit` closes and archives once.
+  - The panel keeps the per-server agent maps cached (`assistant-sidebar/session-agent-maps.ts`),
+    rebuilding them only when an agents map or a hydration flag is replaced, instead of on every
+    session update while agents stream.
+  - New tests: `open.test.ts` (`isAssistantChatInSession`, `currentAssistantChat`,
+    `openAssistantSidebar`), `reveal.test.tsx`, `panel.test.tsx`,
+    `use-assistant-tab-sweep.test.ts`, `session-agent-maps.test.ts`,
+    `utils/navigate-to-agent/index.test.ts` and `client-slash-commands/execute.test.ts`. `sweep.ts`
+    now takes the agent facts and decides live vs archived itself, so the archived-tab test is
+    meaningful.
 - **Files:** `packages/app/src/assistant-sidebar/` (`model.ts` pure rules, `store.ts`, `open.ts`,
-  `reveal.ts`, `panel.tsx`, `sweep.ts`, `use-assistant-tab-sweep.ts`, tests `model.test.ts`,
-  `sweep.test.ts` and `launch.test.ts`). Plugin: `client/assistant/nav.ts`
+  `reveal.ts`, `panel.tsx`, `sweep.ts`, `use-assistant-tab-sweep.ts`,
+  `session-agent-maps.ts`, tests `model.test.ts`, `sweep.test.ts`, `launch.test.ts`,
+  `open.test.ts`, `reveal.test.tsx`, `panel.test.tsx`, `use-assistant-tab-sweep.test.ts` and
+  `session-agent-maps.test.ts`). Plugin: `client/assistant/nav.ts`
   (`openAssistantChat`), `ChatLauncher.tsx`, `RestartChatPill.tsx`, `QuickStatus.tsx`. The `/exit`
-  fix is `panels/agent-panel.tsx`.
+  fix is `panels/agent-panel.tsx` and `client-slash-commands/execute.ts`
+  (`execute.test.ts`); the plain pane close is `screens/workspace/workspace-screen.tsx`.
 - **Core files touched** (`CUSTOM(assistant-sidebar)`): the target kind wherever `docs` is listed
   (`workspace-tabs/model.ts`, `identity.ts`, `stores/workspace-layout-storage.ts`,
   `panels/panel-manifest.ts`, `panels/register-panels.ts`, the launcher's `index.tsx` and
@@ -8230,17 +8251,24 @@ power-workboard`. In the app, open the Projects Assistant chat, set "Compact at 
   it has the focus. Keep the label string the same as the plugin's `ASSISTANT_CHAT_AGENT_LABEL`.
 - **Verify:** `(cd packages/app && npx vitest run src/assistant-sidebar/model.test.ts
 src/assistant-sidebar/sweep.test.ts src/assistant-sidebar/launch.test.ts
-src/workspace-tabs/agent-visibility.test.ts src/plugins/host-navigation.test.ts
-src/workspace-tabs/launcher/internal/catalog.test.ts)` (in the update script). Needs an app build
-  and `paseo plugin reload power-workboard`; no daemon restart.
+src/assistant-sidebar/open.test.ts src/assistant-sidebar/reveal.test.tsx
+src/assistant-sidebar/panel.test.tsx src/assistant-sidebar/use-assistant-tab-sweep.test.ts
+src/assistant-sidebar/session-agent-maps.test.ts src/utils/navigate-to-agent/index.test.ts
+src/client-slash-commands/execute.test.ts src/workspace-tabs/agent-visibility.test.ts
+src/plugins/host-navigation.test.ts src/workspace-tabs/launcher/internal/catalog.test.ts)` (in
+  the update script). Needs an app build and `paseo plugin reload power-workboard`; no daemon
+  restart.
   In Tasks mode: the Desk has no Projects Assistant tab after the update. Click the status bar's
   topic, Power Workboard's Assistant tab, a notification of the chat, and the chat in the Command
   Center: each opens the right sidebar on **Projects Assistant** with the composer focused, and no
   Desk tab appears. Click again: still one tab. With the sidebar closed (Ctrl+E), the same clicks
   open it, and so does the Desk's **+** > Projects Assistant. Restart the chat with the pill: the
   tab shows the new chat; close and reopen the app: still the new chat, not the archived one.
-  `/exit` in the sidebar chat closes the sidebar tab, not another one. Compact (set "Compact at"
-  low): the tab moves to the new chat with no click.
+  `/exit` in the sidebar chat closes the sidebar tab, not another one; `/exit` while the chat runs
+  in an ordinary workspace tab closes that tab with no extra confirmation and archives the agent
+  once. Open an old conversation from Projects Conversations on **Open in Desk**: it stays in the
+  tab it opened in, and the sidebar keeps showing the live chat. Compact (set "Compact at" low):
+  the tab moves to the new chat with no click.
 
 ## card-open-agent: Power Workboard cards link their agent in every column; pin and move sit in the action row; wider column-resize strip
 
