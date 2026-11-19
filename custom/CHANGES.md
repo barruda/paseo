@@ -8114,3 +8114,43 @@ src/agent-stream/spacing.test.ts`, and the power-workboard checks. Needs an app 
   setup above, in a Claude chat run a turn with `grep -q nomatch /etc/hostname` and
   `ls /nonexistent`: the recap shows `● 1 failed · ● 1 exit≠0`, the
   grep row has a muted `exit 1`, and opening the recap lists both with their exit codes.
+
+## assistant-compact-follow: after a compaction, the open chat tab moves to the new chat
+
+- **Added:** 2026-11-19 (based on `custom` at `d67c8acaf`)
+- **Commit:** `custom: open tabs and the draft of a compacted assistant chat move to the new chat`
+- **Why:** [assistant-compact](#assistant-compact-the-projects-assistant-chat-restarts-with-a-summary-once-its-context-is-full)
+  archives the full chat, but the tab that showed it kept showing the archived callout. Writing
+  there (after unarchiving) talked to the full chat while board wakes went to the new one.
+- **What:** Generic app side, `CUSTOM(agent-successor)`: an agent created with the label
+  `paseo.replaces-agent=<id>` takes over from that agent. `useAgentSuccessorTabs` (mounted once
+  in `app/_layout.tsx`) watches the session store's agent maps; when an agent goes from live to
+  archived while the app watches and a live agent names it, its Desk tabs
+  (`desks-store.followAgentTabs`) and workspace tabs (`replaceTab`, then `unpinAgent`, or the
+  next reconcile reopens a pinned archived agent) switch in place to the successor, and the
+  composer draft moves to the successor's draft key unless that one has text. It runs in the
+  store subscription, before React renders the archive, so the composer has not unmounted yet
+  and the successor's composer finds the draft when it hydrates. The Desk's archive-close
+  (`DeskArchivedAgentTabs`) skips agents with a successor. A Desk or workspace that already shows
+  the successor closes the old tab instead. A successor in another workspace leaves the
+  workspace tab alone (it would be pruned there). An agent already archived when the app first
+  sees it keeps its tab, so opening an old chat from Conversations still shows the old chat.
+  Plugin side, `CUSTOM(assistant-compact-follow)`: `compactChat` passes the old chat id to
+  `createChat`, which adds the label. If the round gives up after the new chat started, it
+  archives the new chat and keeps the old one, and the app sees no live successor. "Restart
+  chat" is unchanged: its pill already opens the new chat.
+- **Core files touched:** `packages/app/src/task-navigation/agent-successor.ts` (new),
+  `use-agent-successor-tabs.ts` (new), `agent-successor.test.ts` (new), `desks-store.ts`
+  (`followAgentTabs`), `desk-screen.tsx` (archive-close skips followed agents), `store.test.ts`,
+  `packages/app/src/app/_layout.tsx`. Plugin files: `server/workboard.ts`,
+  `shared/reply-protocol.ts` (`AGENT_REPLACES_LABEL`, same string as the app's),
+  `tests/assistant-engine.test.ts`.
+- **Re-apply:** grep `CUSTOM(agent-successor)` (app) and `CUSTOM(assistant-compact-follow)`
+  (plugin). Keep the label string the same on both sides.
+- **Verify:** `(cd packages/app && npx vitest run src/task-navigation/agent-successor.test.ts
+src/task-navigation/store.test.ts)` and `cd custom/plugins/power-workboard && npx vitest run
+tests/assistant-engine.test.ts -t compaction`. Needs an app build and `paseo plugin reload
+power-workboard`. In the app, open the Projects Assistant chat, set "Compact at (tokens)" low
+  (say 20000), send a message, wait for the reply, type a few words in the composer without
+  sending, and wait 15 s: the same tab now shows the new chat with your words in its composer,
+  and other agents' tabs are unchanged. Put the limit back afterwards.

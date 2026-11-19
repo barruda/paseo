@@ -220,6 +220,13 @@ export interface ReplyTimelineItem {
 export const ASSISTANT_CHAT_AGENT_LABEL = "pwb/assistant-chat";
 
 /**
+ * CUSTOM(assistant-compact-follow): the app label (AGENT_REPLACES_LABEL in
+ * packages/app/src/task-navigation/agent-successor.ts) naming the chat a compacted chat replaces.
+ * The app moves the old chat's tabs and composer draft to the new chat when the old one is archived.
+ */
+export const AGENT_REPLACES_LABEL = "paseo.replaces-agent";
+
+/**
  * The item that replaces a reply ending in a `pwb` block, only in the Projects Assistant's chat.
  * `labels` are the chat agent's, which hosts without CUSTOM(timeline-transformer-agent) don't
  * pass: the reply then stays as is.

@@ -13,7 +13,8 @@ import { orchestratorConfigSchema } from "../shared/model";
 import { fixture } from "./fixtures";
 import { buildOverview } from "../server/assistant/views"; // CUSTOM(task-checkpoints)
 import { COMPACT_QUESTION } from "../server/assistant/compact"; // CUSTOM(assistant-compact)
-import { CHAT_RULES } from "../server/assistant/chat"; // CUSTOM(assistant-compact)
+import { CHAT_LABEL, CHAT_RULES } from "../server/assistant/chat"; // CUSTOM(assistant-compact)
+import { AGENT_REPLACES_LABEL } from "../shared/reply-protocol"; // CUSTOM(assistant-compact-follow)
 
 const project = {
   id: "p",
@@ -2167,6 +2168,16 @@ it("compaction: a turn that ends above the limit restarts the chat with the summ
     );
     expect(s.host.archiveAgent).toHaveBeenCalledWith(s.chatId);
     expect(await s.host.agentAlive(s.chatId)).toBe(false);
+    // CUSTOM(assistant-compact-follow): the new chat names the one it replaces, so the app moves
+    // the open tab and its draft over.
+    expect((s.host.startAgentIn as any).mock.calls.at(-1)[1].labels).toEqual({
+      [CHAT_LABEL]: "true",
+      [AGENT_REPLACES_LABEL]: s.chatId,
+    });
+    // The chat the board first opened replaces nothing.
+    expect((s.host.startAgentIn as any).mock.calls[0][1].labels).toEqual({
+      [CHAT_LABEL]: "true",
+    });
     expect(s.store.current.assistant.compact).toMatchObject({
       agentId: next,
       fromAgentId: s.chatId,

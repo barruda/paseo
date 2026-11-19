@@ -229,6 +229,30 @@ describe("Desks", () => {
     const targets = useDesksStore.getState().desks.map(targetsOf);
     expect(targets).toEqual([[firstTab.target], []]);
   });
+  // CUSTOM(agent-successor)
+  it("moves an agent's tabs to its successor in every Desk, closing them where it is open", () => {
+    const store = useDesksStore.getState();
+    store.openTab(firstTab, true);
+    store.openTab(secondTab, true);
+    const followed = tabs()[1]!;
+    const successor = { ...secondTab, target: { kind: "agent", agentId: "three" } } as const;
+    store.createDesk("Second");
+    useDesksStore.getState().openTab(secondTab, true);
+    useDesksStore.getState().openTab(successor, true);
+    useDesksStore
+      .getState()
+      .followAgentTabs({ serverId: "home", from: "two", to: "three", toWorkspaceId: "unity" });
+    const [first, second] = useDesksStore.getState().desks;
+    expect(deskTabs(first!).map((tab) => tab.target)).toEqual([firstTab.target, successor.target]);
+    // Same-kind retarget keeps the tab, so its place and focus stay.
+    expect(deskTabs(first!)[1]).toMatchObject({ id: followed.id, workspaceId: "unity" });
+    expect(deskTabs(second!).map((tab) => tab.target)).toEqual([successor.target]);
+    const before = useDesksStore.getState().desks;
+    useDesksStore
+      .getState()
+      .followAgentTabs({ serverId: "other", from: "one", to: "four", toWorkspaceId: null });
+    expect(useDesksStore.getState().desks).toBe(before);
+  });
   it("replaces the preview across projects while pinned tabs keep their source workspace", () => {
     const store = useDesksStore.getState();
     store.openTab(firstTab, true);

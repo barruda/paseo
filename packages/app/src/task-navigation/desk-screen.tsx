@@ -49,6 +49,7 @@ import { useToast } from "@/contexts/toast-context";
 import { useLocalDaemonServerId } from "@/hooks/use-is-local-daemon";
 import { useSessionStore } from "@/stores/session-store";
 import { detectNewlyArchived } from "./desk-archive-close";
+import { planAgentSuccessorFollows } from "./agent-successor"; // CUSTOM(agent-successor)
 import { useWorkspace, useWorkspaceDirectory } from "@/stores/session-store-hooks";
 import {
   collectAllPanes,
@@ -1028,8 +1029,11 @@ function DeskArchivedAgentTabs() {
       lastMaps = maps;
       const { next, newlyArchived } = detectNewlyArchived(seen.current, byServer);
       seen.current = next;
+      // CUSTOM(agent-successor): an agent with a successor keeps its tabs; useAgentSuccessorTabs
+      // moves them to the successor.
+      const closing = planAgentSuccessorFollows(newlyArchived, byServer).rest;
       const byId = new Map<string, Set<string>>();
-      for (const key of newlyArchived) {
+      for (const key of closing) {
         const split = key.indexOf(":");
         const serverId = key.slice(0, split);
         byId.set(serverId, (byId.get(serverId) ?? new Set()).add(key.slice(split + 1)));

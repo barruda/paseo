@@ -140,6 +140,7 @@ import {
   writeTicketPrompt,
 } from "./orchestrator";
 import { MAX_LIMIT_PAUSES, usageLimitResumeAt } from "../shared/usage-limit"; // CUSTOM(usage-limit)
+import { AGENT_REPLACES_LABEL } from "../shared/reply-protocol"; // CUSTOM(assistant-compact-follow)
 import type {
   Agent,
   ConversationEvidence,
@@ -3694,8 +3695,11 @@ export class Workboard {
       return { agentId, created: true };
     });
   }
-  /** Start a chat agent with the assistant's settings and profile; its id is not stored here. */
-  private async createChat(prompt: string): Promise<string> {
+  /**
+   * Start a chat agent with the assistant's settings and profile; its id is not stored here.
+   * `replaces` names the chat it takes over from (CUSTOM(assistant-compact-follow)).
+   */
+  private async createChat(prompt: string, replaces?: string): Promise<string> {
     const directory =
       this.assistantOptions.chatDirectory ?? defaultChatDirectory();
     await mkdir(directory, { recursive: true });
@@ -3713,7 +3717,10 @@ export class Workboard {
       thinkingOptionId: chat.thinkingOptionId,
       title: "Projects Assistant",
       prompt,
-      labels: { [CHAT_LABEL]: "true" },
+      labels: {
+        [CHAT_LABEL]: "true",
+        ...(replaces ? { [AGENT_REPLACES_LABEL]: replaces } : {}),
+      },
     });
   }
   // CUSTOM(assistant-compact): once a turn leaves the chat at its token limit, the board restarts
@@ -3835,7 +3842,9 @@ export class Workboard {
         const current = this.store.current.assistant;
         if (current.chatAgentId !== agentId || current.wakeTurn) return null;
         if (!(await this.chatStillQuiet(agentId, before))) return null;
-        const id = await this.createChat(compactPrompt(summary, used));
+        // CUSTOM(assistant-compact-follow): the label lets the app move the old chat's open tabs
+        // and composer draft to this one once the old chat is archived below.
+        const id = await this.createChat(compactPrompt(summary, used), agentId);
         if (!(await this.chatStillQuiet(agentId, before))) {
           // The new chat only answered "ok"; the old one carries on.
           await this.host.archiveAgent(id).catch(() => undefined);

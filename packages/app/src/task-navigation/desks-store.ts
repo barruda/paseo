@@ -101,6 +101,16 @@ interface DesksState {
    * was watching. Like closeTab, but never archives anything.
    */
   closeAgentTabs(input: { serverId: string; agentIds: ReadonlySet<string> }): void;
+  /**
+   * CUSTOM(agent-successor): in every Desk, the tabs of agent `from` show agent `to` instead; a
+   * Desk that already shows `to` just closes them.
+   */
+  followAgentTabs(input: {
+    serverId: string;
+    from: string;
+    to: string;
+    toWorkspaceId: string | null;
+  }): void;
   /** Moves a tab of the active Desk into another Desk as a kept tab, leaving that Desk unselected. */
   moveTabToDesk(id: string, deskId: string): void;
   keepPreview(): void;
@@ -575,6 +585,41 @@ export const useDesksStore = create<DesksState>()(
               if (layout === desk.layout) return desk;
               changed = true;
               return withLayout(desk, layout);
+            });
+            return changed ? { desks } : {};
+          }),
+        followAgentTabs: ({ serverId, from, to, toWorkspaceId }) =>
+          set((state) => {
+            let changed = false;
+            const desks = state.desks.map((desk) => {
+              const agentTab = (agentId: string) => (tab: DeskTab) =>
+                tab.serverId === serverId &&
+                tab.target.kind === "agent" &&
+                tab.target.agentId === agentId;
+              const followed = deskTabs(desk).filter(agentTab(from));
+              if (followed.length === 0) return desk;
+              changed = true;
+              let next = desk;
+              let showsSuccessor = deskTabs(desk).some(agentTab(to));
+              for (const tab of followed) {
+                if (showsSuccessor) {
+                  const layout =
+                    closeTabInLayout({
+                      layout: next.layout,
+                      tabId: tab.id,
+                      explorerSidebarPaneId: null,
+                    }) ?? next.layout;
+                  next = withLayout(next, layout);
+                  continue;
+                }
+                next = updateDeskTab(next, tab.id, {
+                  serverId,
+                  workspaceId: toWorkspaceId ?? tab.workspaceId,
+                  target: { kind: "agent", agentId: to },
+                });
+                showsSuccessor = true;
+              }
+              return next;
             });
             return changed ? { desks } : {};
           }),
