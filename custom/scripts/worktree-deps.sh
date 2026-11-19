@@ -48,6 +48,25 @@ link_node_modules() {
   fi
 }
 
+# CUSTOM(no-git-hooks): custom has no git hooks, but `npm install` in an upstream checkout (its
+# `prepare` runs `lefthook install --force`) writes lefthook hooks into the hooks dir that every
+# worktree shares. Where lefthook isn't installed, that hook falls back to `pnpm lefthook`, which
+# pnpm-installs over node_modules and leaves react-dom on another react. Drop those hooks first,
+# before any `exec npm ci` below; hooks that aren't lefthook's stay.
+drop_lefthook_hooks() {
+  local hooks hook
+  hooks="$(git -C "$dst" rev-parse --path-format=absolute --git-path hooks 2>/dev/null)" || return 0
+  [[ -d "$hooks" ]] || return 0
+  for hook in "$hooks"/*; do
+    [[ -f "$hook" && "$hook" != *.sample ]] || continue
+    if grep -q 'call_lefthook' "$hook" 2>/dev/null; then
+      rm -f "$hook"
+      log "removed lefthook git hook $hook"
+    fi
+  done
+}
+drop_lefthook_hooks
+
 [[ "${PASEO_WORKTREE_DEPS:-}" == "install" ]] && full_install "PASEO_WORKTREE_DEPS=install"
 [[ -n "$src" && -d "$src" ]] || full_install "no source checkout"
 src="$(realpath "$src")"
