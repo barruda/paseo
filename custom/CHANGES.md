@@ -7925,3 +7925,55 @@ src/agent-stream/spacing.test.ts`, and the power-workboard checks. Needs an app 
   and the fork button, which forks the chat up to that reply;
   in a task agent's chat the same block stays a code block with the normal copy and reveal. Two
   report cards in one chat both render.
+
+## command-outcome: a command that only exited nonzero is not counted as failed
+
+- **Added:** 2026-11-19 (based on `custom` at `b2b2f2ec4`)
+- **Commit:** `custom: vendor paseo-chat-polish 0.14.2 into custom/plugins` (unchanged baseline of
+  `lthieu96/paseo-chat-polish` at `4e68486`, MIT; diff against it), then
+  `custom: chat-polish tells failed commands from harmless nonzero exits`
+- **Why:** The turn recap ("22 commands · ● 2 failed") and the merged steps row counted every
+  command with a nonzero exit as failed, in red. Many are harmless: a `grep` with no match,
+  `[ -n "$f" ] && …` with `$f` empty at the end, a loop reading a `/proc/<pid>` that vanished after
+  printing its output (session `c7675891`, 2026-11-19). Both renderers belong to Chat Polish, a
+  third-party plugin pinned by git ref, so the change needed our own copy, as with token-ledger.
+- **What:** `shared/command-outcome.ts` is the one place that judges a settled shell call:
+  `failed` (red) when the harness reported its own error (no `Exit code N`: timeout, denial,
+  interruption), exit ≥ 124 (timeout, not found, killed), the output matches an error pattern
+  (`command not found`, `Permission denied`, `Traceback`, `error:`/`fatal:` at a line start,
+  `SomethingError:`, `error TS…`, vitest/jest `FAIL`, `npm ERR!`), or exit 1 printed nothing;
+  `nonzero` (neutral) for exit 1 with output, or exit 1 with `grep`/`rg`/`test`/`[`/`diff`… in the
+  last statement. Claude's failed Bash calls carry the exit code and the output only in the error
+  text (`Exit code 1\n…`); Codex's carry `exitCode` and `output` in the detail.
+  - Recap: `failed` holds real failures, new optional `nonzero` holds the rest; each entry may
+    carry the last 3 lines of output. The row shows `● 1 failed` in red and `● 2 exit≠0` in muted
+    text; opened, it lists each command with its exit code and output tail. A turn whose only news
+    is a nonzero exit still gets a recap, neutral. Old recap rows still parse.
+  - Command rows: a nonzero exit reads `Ran <command>` with a muted `exit 1` and its output on
+    expand; a real failure keeps the red icon and `exit N`. A Codex command reported completed
+    with a failing exit code turns red.
+  - The merged steps row counts only real failures (`isRealFailure`).
+  - "Copy last turn" Markdown lists `- ·` nonzero exits after the `- ✗` failures.
+- **Files:** plugin-only, `custom/plugins/paseo-chat-polish/`: `shared/command-outcome.ts` (new),
+  `shared/recap.ts`, `shared/i18n.ts` (`chat.nonzeroCount`, `markdown.nonzero`), `client/model.ts`,
+  `client/views.tsx` (`StepsItem`, `RecapItem`), `test/command-outcome.test.mjs` (new; the two real
+  commands are fixtures) and two expectations in `test/model.test.mjs`. Marked
+  `CUSTOM(command-outcome)`. `custom/plugins.json` installs the fork from the folder. Excluded from
+  the root oxlint/oxfmt; it has its own `tsc` and `node --test` suite. Left out of the copy:
+  `design/`, README screenshots, the upstream release workflow.
+- **Setup (once per home, `~/.paseo` and `~/.paseo-telus`):** the sync leaves an installed plugin
+  alone, so switch from the git install by hand. `paseo plugin remove` resets the plugin's
+  settings, so keep them: `(cd custom/plugins/paseo-chat-polish && npm ci)`, copy
+  `<home>/plugin-settings/paseo-chat-polish/` aside, `paseo plugin remove paseo-chat-polish --home
+<home>`, `paseo plugin install "$PWD/custom/plugins/paseo-chat-polish" --home <home>`, copy the
+  settings back, `paseo plugin reload paseo-chat-polish --home <home>`. The icon cache in
+  `<home>/plugin-cache/paseo-chat-polish/` survives the remove.
+- **Re-apply:** Plugin-only; an upstream Paseo merge can't conflict. To take a new Chat Polish
+  release, diff it against the vendor commit and replay the `CUSTOM(command-outcome)` sites: the
+  recap's `changeSummary` asks `commandOutcome` instead of `status === "failed" || exit`,
+  `toolData` returns the neutral row before its failed branch, `StepsItem` counts `isRealFailure`.
+  Its dashboard **Update** button no longer applies upstream releases to the fork.
+- **Verify:** `(cd custom/plugins/paseo-chat-polish && npx tsc --noEmit && npm test)`. After the
+  setup above, in a Claude chat run a turn with `grep -q nomatch /etc/hostname` and
+  `ls /nonexistent`: the recap shows `● 1 failed · ● 1 exit≠0`, the
+  grep row has a muted `exit 1`, and opening the recap lists both with their exit codes.

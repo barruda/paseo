@@ -1,0 +1,313 @@
+import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
+import { execFile } from "node:child_process";
+import { createServer } from "node:http";
+import { promisify } from "node:util";
+import { test } from "node:test";
+import ts from "typescript";
+
+const chrome = [process.env.CHROME_BIN, "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome", ...(process.env.PATH ?? "").split(delimiter).flatMap((dir) => ["google-chrome", "chromium", "chromium-browser"].map((name) => join(dir, name)))].find((file) => file && existsSync(file));
+
+test("DOM restyling, accordion transitions, and bottom following stay stable", { skip: chrome ? false : "Chrome not installed (set CHROME_BIN)" }, async () => {
+  const temp = mkdtempSync(join(tmpdir(), "chat-polish-web-test-"));
+  let server;
+  try {
+    const names = ["css-guard", "i18n", "provider-icons", "stack-viewer", "web", ...readdirSync(new URL("../client/web/", import.meta.url)).map((file) => `web/${file.replace(/\.ts$/, "")}`)];
+    const sources = Object.fromEntries(names.map((name) => [name, ts.transpileModule(readFileSync(new URL(`../client/${name}.ts`, import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText]));
+    // client/i18n has no locale source here, so the web modules word their strings in English. shared/i18n has no imports.
+    sources["shared/i18n"] = ts.transpileModule(readFileSync(new URL("../shared/i18n.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+    // Paseo's bundle exports its mermaid document as a minified string literal, with JS-only escapes like \xHH.
+    const bundle = String.raw`Object.defineProperty(a,"mermaidRuntimeHtml",{get:function(){return o}});const o='<!doctype html>\n<p class="x" title=\'y\'>\x3c!-- __PASEO_MERMAID_RUNTIME_RECEIVE__ \\x41 \u0041 \u{1F600} \v \/ --\x3e</p>';
+__d(function(g,r,i,a,m,e,d){"use strict";Object.defineProperty(e,'__esModule',{value:!0}),e.AttachmentLightbox=function(h){const u={a:{b:1}},x=[1,2];return null};var t=r(d[0])},4021,[1008,472]);`;
+    const mermaidDoc = "<!doctype html>\n<p class=\"x\" title='y'><!-- __PASEO_MERMAID_RUNTIME_RECEIVE__ \\x41 A \u{1F600} \v / --></p>";
+    const html = `<!doctype html><html><head><title>pending</title><script type="text/plain" src="/bundle.js"></script></head><body><img src="/hold" hidden>
+      <div data-testid="settings-detail-pane"></div>
+      <div data-testid="context-window-details" style="position:absolute;border:1px solid black;border-radius:12px;background:white"><div><span>Context</span><span>35% used</span></div><div data-testid="usage-report-test" style="height:180px">Usage</div></div>
+      <div data-testid="assistant-message"><div data-paseo-markdown-tag="blockquote"><span id="marker">[!NO</span></div></div>
+      <div><div data-testid="permission-request-deny" style="color:#888"><div><span>Deny</span></div></div><div data-testid="permission-request-action-always" style="color:#888"><div><span>Allow always</span></div></div><div data-testid="permission-request-action-once" style="color:#eee"><div><span>Allow once</span></div></div></div>
+      <script>
+        const checks = {}; const errors = [];
+        window.onerror = (message) => errors.push(String(message));
+        const wait = (ms = 50) => new Promise((resolve) => setTimeout(resolve, ms));
+        const NativeObserver = MutationObserver; let batches = 0; let capped = false;
+        window.MutationObserver = class extends NativeObserver {
+          constructor(cb) { super((records) => { if (++batches > 30) { capped = true; this.disconnect(); } else cb(records); }); }
+        };
+        let released = 0;
+        const remove = EventTarget.prototype.removeEventListener;
+        EventTarget.prototype.removeEventListener = function(type, ...args) {
+          if (type === 'click' && this.hasAttribute?.('data-chat-polish-clamp') && !this.isConnected) released++;
+          return remove.call(this, type, ...args);
+        };
+        function prompts() {
+          const list = document.createElement('section');
+          for (let i = 0; i < 10; i++) {
+            const message = document.createElement('div'); message.dataset.testid = 'user-message';
+            message.innerHTML = '<div><div><div style="line-height:20px;font-size:14px;white-space:pre">' + Array(15).fill('long prompt').join('\\n') + '</div></div></div>';
+            list.appendChild(message);
+          }
+          document.body.appendChild(list); return list;
+        }
+        const sources = ${JSON.stringify(sources)}; const modules = {};
+        function load(name) {
+          if (modules[name]) return modules[name];
+          const exports = modules[name] = {};
+          // "./dom" from "web/parts" is "web/dom"; "../css-guard" is "css-guard".
+          const resolve = (id) => id.replace(/\\.ts$/, '').split('/').reduce((path, part) => part === '..' ? path.slice(0, -1) : part === '.' ? path : [...path, part], name.split('/').slice(0, -1)).join('/');
+          new Function('exports', 'require', sources[name])(exports, (id) => id === 'react-native' ? { Platform: { OS: 'web' } } : id === 'react' ? { useSyncExternalStore() {} } : load(resolve(id)));
+          return exports;
+        }
+        (async () => {
+          localStorage.removeItem('chat-polish:context-card-heights');
+          const first = prompts(); const web = load('web');
+          const restyle = web.restyleNative(() => true); const clamp = web.clampUserMessages(() => true);
+          window.__r = (id) => (id === 4021 ? { AttachmentLightbox: function Lightbox() {} } : {});
+          checks.paseoLightboxFromBundle = (await web.loadPaseoLightbox())?.name === 'Lightbox';
+          checks.mermaidDocFromBundle = (await web.loadMermaidDoc()) === new TextDecoder().decode(Uint8Array.from(atob("${Buffer.from(mermaidDoc).toString("base64")}"), (ch) => ch.charCodeAt(0)));
+          await wait(); checks.observerSettles = !capped;
+          // Paseo 0.14 wraps a prompt's rows and text in a message preview that clamps long prompts itself.
+          const shapes = document.createElement('section');
+          shapes.innerHTML = '<div data-testid="user-message" id="p14"><div><div><div style="max-height:240px;overflow:hidden"><div><div data-message-text="true" style="line-height:20px;font-size:14px;white-space:pre">' + Array(15).fill('long prompt').join('\\n') + '</div></div></div></div></div></div>'
+            + '<div data-testid="user-message" id="a14"><div><div><div style="max-height:240px;overflow:hidden"><div><div id="a14row"><div><div><span>PR #12</span></div></div></div><div data-message-text="true">with a card</div></div></div></div></div></div>';
+          document.body.appendChild(shapes); await wait();
+          const bubbleOf = (id) => document.getElementById(id).firstElementChild.firstElementChild;
+          checks.previewPromptLeftToPaseo = !bubbleOf('p14').hasAttribute('data-cp-attach') && !bubbleOf('p14').hasAttribute('data-chat-polish-clamp') && !document.querySelector('#p14 [data-cp-part]');
+          const row14 = document.getElementById('a14row');
+          checks.previewAttachmentsTagged = bubbleOf('a14').hasAttribute('data-cp-attach') && row14.dataset.cpPart === 'att-files' && row14.parentElement.hasAttribute('data-cp-attach-body') && !row14.nextElementSibling.hasAttribute('data-cp-part');
+          shapes.remove(); await wait();
+          // Beside an attachment Paseo's 240px cap counted the image too and cut the text bubble flat; the plugin clamps the text alone.
+          const tall = document.createElement('section');
+          tall.innerHTML = '<div data-testid="user-message" id="t14"><div><div><div id="t14clip" style="max-height:240px;overflow:hidden"><div><div style="height:160px"><div role="button"></div></div><div data-message-text="true" style="line-height:20px;font-size:14px;white-space:pre">' + Array(15).fill('long prompt').join('\\n') + '</div></div><div id="t14fade"></div></div><button>Show more</button></div></div></div>'
+            + '<div data-testid="user-message" id="s14short"><div><div><div style="max-height:240px;overflow:hidden"><div><div style="height:160px"><div role="button"></div></div><div data-message-text="true" style="line-height:20px">short</div></div></div></div></div></div>';
+          document.body.appendChild(tall); await wait();
+          const tallText = document.querySelector('#t14 [data-message-text]');
+          checks.attachmentPromptClampsText = getComputedStyle(document.getElementById('t14clip')).maxHeight === 'none' && getComputedStyle(document.getElementById('t14fade')).display === 'none'
+            && getComputedStyle(document.querySelector('#t14 button')).display === 'none' && bubbleOf('t14').getAttribute('data-chat-polish-clamp') === 'closed'
+            && tallText.getBoundingClientRect().height < 200 && !bubbleOf('s14short').hasAttribute('data-chat-polish-clamp');
+          tall.remove(); await wait(); checks.attachmentPromptReleased = released === 1; released = 0;
+          // A prompt another agent sent leads with a "Sent by" button; the bubble after it keeps the plugin's shape and attachment layout.
+          const sent = document.createElement('section');
+          sent.innerHTML = '<div data-testid="user-message" id="s14"><div><button><div dir="auto">Sent by planner</div></button><div><div><div><div data-message-text="true">hello</div></div></div></div></div></div>'
+            + '<div data-testid="user-message" id="sa14"><div><button><div dir="auto">Sent by planner</div></button><div><div><div><div id="sa14row"><div><div><span>PR #12</span></div></div></div><div data-message-text="true">with a card</div></div></div></div></div></div>';
+          document.body.appendChild(sent); await wait();
+          const sentBubble = document.querySelector('#s14 > div > div');
+          checks.senderPromptBubble = getComputedStyle(sentBubble).paddingLeft === '14px' && getComputedStyle(document.querySelector('#s14 > div > button')).paddingLeft !== '14px'
+            && document.getElementById('sa14row').dataset.cpPart === 'att-files' && document.querySelector('#sa14 > div > div').hasAttribute('data-cp-attach');
+          sent.remove(); await wait();
+          // Berkeley Mono's metrics get pulled up to SF's offset with the same line box height; SF and SF Pro (centered higher) are left alone.
+          const fix = load('web/control-font').centeredMetrics({ ascent: 1.048, descent: 0.246, capHeight: 0.68 });
+          checks.controlFontMetrics = Math.abs(fix.ascent - 1.013) < 0.001 && Math.abs(fix.ascent + fix.descent - 1.294) < 1e-9 && load('web/control-font').centeredMetrics({ ascent: 0.967, descent: 0.211, capHeight: 0.705 }) === undefined
+            && load('web/control-font').centeredMetrics({ ascent: 0.952, descent: 0.241, capHeight: 0.705 }) === undefined;
+          // Paseo 0.14's chat display setting, with the tool call display it replaced as the fallback.
+          const realNow = Date.now; let clock = 0; Date.now = () => (clock += 5000);
+          const display = (settings) => (localStorage.setItem('@paseo:app-settings', JSON.stringify(settings)), load('web/host').readHostAppearance().chatDisplay);
+          checks.chatDisplaySetting = display({ chatDisplay: 'collapseTurns' }) === 'collapseTurns' && display({ chatDisplay: 'full', toolCallDetailLevel: 'overview' }) === 'full'
+            && display({ toolCallDetailLevel: 'overview' }) === 'collapseToolCalls' && display({ compactToolCalls: true }) === 'collapseToolCalls' && display({}) === 'full';
+          Date.now = realNow; localStorage.removeItem('@paseo:app-settings');
+          // Extra permission actions follow Paseo's variant, which it shows only by label color.
+          const action = (id) => document.querySelector('[data-testid="permission-request-action-' + id + '"]').dataset.cpPart;
+          checks.permissionActionVariants = action('always') === 'secondary' && action('once') === 'primary';
+          // Collapse turns (Paseo 0.14+): an open summary turns its chevron 90°; its rows sit in IndentRails in their own history rows.
+          const turn = document.createElement('section');
+          turn.innerHTML = '<div data-history-row-id="t1"><div><div data-testid="turn-summary" id="ts"><button><div><div><div style="transform: rotate(90deg);"><svg><path d="m9 18 6-6-6-6"></path></svg></div></div><div>Ran 2 commands</div></div></button></div><div id="tail"></div></div></div>'
+            + '<div data-history-row-id="t2"><div><div id="rail"><div data-testid="tool-call-badge"><button></button></div></div></div></div>'
+            + '<div data-history-row-id="t3"><div><div id="railView"><div style="display: contents;"></div></div></div></div>'
+            + '<div data-history-row-id="paseo-chat-polish/x"><div><div style="display: contents;" id="view"><div></div></div></div></div>'
+            + '<div data-history-row-id="t4"><div><div id="wrap"><div data-cp-part="footer"></div></div></div></div>';
+          document.body.appendChild(turn); await wait();
+          const summary = document.getElementById('ts');
+          const openedTagged = summary.hasAttribute('data-cp-open') && getComputedStyle(summary.firstElementChild).opacity === '1';
+          summary.querySelector('[style]').style.transform = 'rotate(0deg)'; await wait();
+          checks.turnSummaryOpen = openedTagged && !summary.hasAttribute('data-cp-open');
+          checks.turnRails = document.getElementById('tail').dataset.cpIndent === 'tail' && ['rail', 'railView'].every((id) => document.getElementById(id).dataset.cpIndent === '')
+            && document.getElementById('railView').hasAttribute('data-cp-indent-end') && !document.getElementById('rail').hasAttribute('data-cp-indent-end') && !turn.querySelector('#view[data-cp-indent], #wrap[data-cp-indent], #ts[data-cp-indent]');
+          // Rows that mounted with the list don't animate; rows of a summary opened in place do, and so does a body opened in a row on screen.
+          const remounted = !turn.querySelector('[data-cp-enter]');
+          summary.querySelector('[style]').style.transform = 'rotate(90deg)'; await wait();
+          const opened = document.createElement('div'); opened.setAttribute('data-history-row-id', 't5');
+          opened.innerHTML = '<div><div id="railNew"><div data-testid="tool-call-badge"><button></button></div></div></div>';
+          turn.insertBefore(opened, turn.children[1]); await wait();
+          const badge = opened.querySelector('[data-testid="tool-call-badge"]');
+          badge.insertAdjacentHTML('beforeend', '<div><div><div id="sec"><div dir="auto">Details</div><div><div><div dir="auto">Limit</div><div dir="auto">3</div></div></div></div></div></div>'); await wait();
+          checks.turnEnter = remounted && document.getElementById('railNew').hasAttribute('data-cp-enter') && badge.lastElementChild.hasAttribute('data-cp-enter') && document.getElementById('sec').dataset.cpPart === 'tool-section';
+          turn.remove(); await wait();
+          // A loading row (Paseo's gradient copy over its label) runs in the plugin's look; its next step's label rises in; done once the copy goes.
+          const loading = document.createElement('div');
+          loading.innerHTML = '<div data-testid="tool-call-group" id="lg"><button><div><div><svg></svg></div><div><div dir="auto" id="lt">Ran 1 command</div><div><div style="background-image: linear-gradient(red, blue)">Ran 1 command</div></div></div></div></button></div>';
+          document.body.appendChild(loading); await wait();
+          const lg = document.getElementById('lg'), label = lg.querySelector('[data-cp-part="row-label"]');
+          const startedRunning = lg.hasAttribute('data-cp-running') && label?.hasAttribute('data-cp-running-label');
+          document.getElementById('lt').textContent = 'Ran 2 commands'; await wait();
+          const swapped = label.getAttribute('data-cp-swap') === 'a';
+          label.lastElementChild.remove(); await wait();
+          checks.runningRow = startedRunning && swapped && !lg.hasAttribute('data-cp-running') && !label.hasAttribute('data-cp-running-label');
+          loading.remove(); await wait();
+          first.remove(); await wait(); checks.detachedReleased = released === 10;
+          const card = document.querySelector('[data-testid="context-window-details"]');
+          const usage = card.lastElementChild;
+          usage.style.height = '40px'; usage.appendChild(document.createElement('span')); await wait();
+          const heights = JSON.parse(localStorage.getItem('chat-polish:context-card-heights'));
+          checks.heightShrinks = heights[''] < 180 && !card.style.minHeight;
+          usage.remove(); card.appendChild(document.createElement('span')); await wait();
+          checks.placeholder = !!card.style.minHeight;
+          card.appendChild(usage); await wait(); checks.placeholderReleased = !card.style.minHeight;
+          let fullScans = 0; let markdownScans = 0;
+          const queryDocument = Document.prototype.querySelectorAll;
+          Document.prototype.querySelectorAll = function(selector) { if (selector === '*') fullScans++; return queryDocument.call(this, selector); };
+          const queryElement = Element.prototype.querySelectorAll;
+          Element.prototype.querySelectorAll = function(selector) { if (this === document.documentElement && selector.includes('data-paseo-markdown')) markdownScans++; return queryElement.call(this, selector); };
+          document.getElementById('marker').firstChild.nodeValue = '[!NOTE]';
+          document.querySelector('[data-testid="settings-detail-pane"]').appendChild(document.createElement('div'));
+          await wait(300);
+          checks.calloutUpdated = document.getElementById('marker').parentElement.dataset.cpCallout === 'note';
+          checks.noGlobalScans = fullScans === 0 && markdownScans === 0;
+          checks.observerSettles &&= !capped;
+          const fileFixture = document.createElement('div');
+          fileFixture.innerHTML = '<div data-testid="file-explorer-row-5" tabindex="0" style="height:40px">context</div><div data-menu-surface="true" data-testid="file-explorer-row-5-context-menu" tabindex="-1" style="overflow:hidden"><div style="height:26px">New file</div><div style="height:26px">New folder</div></div><button data-testid="file-explorer-row-5-context-menu-backdrop" tabindex="0" style="height:80px"></button>';
+          document.body.appendChild(fileFixture);
+          document.documentElement.setAttribute('data-cp-rt-window', 'flat'); await wait();
+          // The menu surface and backdrop share the row's testID prefix and also have a tabindex.
+          checks.fileRowsStayCompact = fileFixture.firstElementChild.getBoundingClientRect().height === 26;
+          checks.fileContextMenuKeepsHeight = fileFixture.querySelector('[data-menu-surface]').getBoundingClientRect().height === 52;
+          checks.fileContextMenuBackdropKeepsHeight = fileFixture.lastElementChild.getBoundingClientRect().height === 80;
+          fileFixture.remove(); document.documentElement.removeAttribute('data-cp-rt-window'); await wait();
+          clamp(); restyle();
+          const unstyle = web.stylePluginViews();
+          checks.accordionCloses = true; checks.accordionReverses = true;
+          for (const width of [320, 1000]) {
+            const fixture = document.createElement('div'); fixture.style.width = width + 'px';
+            fixture.innerHTML = '<div data-cp-expand="open" style="display:flex;flex-direction:column"><div style="display:flex;flex-direction:column;min-height:0;overflow:hidden"><div style="display:flex;margin-top:6px;margin-bottom:12px;height:100px;flex-shrink:0">Output</div></div></div><div>Next tool</div>';
+            document.body.appendChild(fixture);
+            const box = fixture.firstElementChild, next = fixture.lastElementChild;
+            const height = () => box.getBoundingClientRect().height;
+            height(); box.getAnimations().forEach((animation) => animation.finish());
+            const full = height(); box.dataset.cpExpand = 'closed'; height();
+            const animations = box.getAnimations(); animations.forEach((animation) => animation.pause());
+            animations.forEach((animation) => { animation.currentTime = 50; });
+            const middle = height();
+            checks.accordionCloses &&= full === 118 && middle > 0 && middle < full && Math.abs(next.getBoundingClientRect().top - box.getBoundingClientRect().top - middle) < 1;
+            animations.forEach((animation) => animation.finish());
+            checks.accordionCloses &&= height() === 0;
+            box.dataset.cpExpand = 'open'; height();
+            const opening = box.getAnimations(); opening.forEach((animation) => { animation.pause(); animation.currentTime = 25; });
+            const partial = height(); box.dataset.cpExpand = 'closed';
+            checks.accordionReverses &&= partial > 0 && partial < full && Math.abs(height() - partial) < 1;
+            box.getAnimations().forEach((animation) => animation.finish());
+            checks.accordionReverses &&= height() === 0;
+            fixture.remove();
+          }
+          const chat = document.createElement('div');
+          chat.dataset.testid = 'agent-chat-scroll';
+          chat.style = 'width:600px;height:400px;overflow:auto;overflow-anchor:auto';
+          chat.innerHTML = '<div style="display:flex;flex-direction:column;padding:16px"><div style="height:700px;flex-shrink:0;overflow-anchor:none"></div><div style="flex-shrink:0"><button>Ran command</button><div data-cp-expand="closed"><div style="min-height:0;overflow:hidden"><div style="height:250px;margin:6px 0 12px">Output</div></div></div></div></div>';
+          document.body.appendChild(chat);
+          const content = chat.firstElementChild, expanding = chat.querySelector('[data-cp-expand]');
+          chat.scrollTop = chat.scrollHeight; await wait();
+          // Paseo 0.11.4 follows content resizing in the next animation frame.
+          let hostFollowing = true;
+          const hostFollow = new ResizeObserver(() => requestAnimationFrame(() => {
+            if (hostFollowing) chat.scrollTop = chat.scrollHeight;
+          }));
+          hostFollow.observe(content); await wait();
+          chat.querySelector('button').focus({ preventScroll: true });
+          web.followExpansionAtBottom();
+          const gaps = [];
+          const beforePaint = new ResizeObserver(() => gaps.push(chat.scrollHeight - chat.clientHeight - chat.scrollTop));
+          beforePaint.observe(content);
+          expanding.dataset.cpExpand = 'open'; expanding.getBoundingClientRect();
+          const reveal = expanding.getAnimations(); reveal.forEach((animation) => animation.pause());
+          for (const time of [0, 20, 50, 100]) {
+            reveal.forEach((animation) => { animation.currentTime = time; });
+            expanding.getBoundingClientRect(); await wait(30);
+          }
+          checks.expansionStaysAtBottom = gaps.length > 0 && gaps.every((gap) => Math.abs(gap) <= 1);
+          hostFollowing = false;
+          beforePaint.disconnect(); hostFollow.disconnect();
+          reveal.forEach((animation) => animation.finish());
+          chat.dispatchEvent(new WheelEvent('wheel', { deltaY: -80, bubbles: true }));
+          chat.style.overflowAnchor = 'none'; chat.scrollTop -= 80;
+          const readingTop = chat.scrollTop, output = expanding.firstElementChild.firstElementChild;
+          output.style.height = '300px'; await wait(30);
+          checks.userScrollCancelsFollowing = Math.abs(chat.scrollTop - readingTop) <= 1;
+          web.followExpansionAtBottom(); output.style.height = '350px'; await wait(30);
+          checks.detachedReadingPreserved = Math.abs(chat.scrollTop - readingTop) <= 1;
+          chat.scrollTop = chat.scrollHeight;
+          const detachedBottom = chat.scrollTop;
+          web.followExpansionAtBottom(); output.style.height = '400px'; await wait(30);
+          checks.disabledFollowingPreserved = Math.abs(chat.scrollTop - detachedBottom) <= 1;
+          chat.remove();
+          const diff = document.createElement('div');
+          diff.dataset.cpNowrap = '';
+          diff.style = 'width:300px;max-height:100px;overflow-x:hidden;overflow-y:auto;display:flex;flex-direction:column;font:12px monospace;line-height:18px';
+          const lines = document.createElement('div'); lines.style = 'display:flex;flex-direction:column';
+          for (let i = 0; i < 12; i++) {
+            const row = document.createElement('div'); row.style = 'display:flex;gap:12px;flex-shrink:0';
+            const gutter = document.createElement('span'); gutter.textContent = '+ ' + String(99 + i).padStart(3, '\\u2007'); gutter.style.flexShrink = '0';
+            const code = document.createElement('span'); code.dataset.pmono = ''; code.style = 'flex-grow:1;flex-shrink:0;white-space:pre-wrap;overflow-wrap:break-word'; code.textContent = '  const value = ' + 'longFunctionName(argument); '.repeat(12);
+            row.append(gutter, code); lines.appendChild(row);
+          }
+          diff.appendChild(lines); document.body.appendChild(diff);
+          const firstCode = lines.firstElementChild.lastElementChild;
+          diff.scrollLeft = 80; diff.scrollTop = 36;
+          checks.diffNoWrapScrollsBothAxes = firstCode.getBoundingClientRect().height === 18 && diff.scrollLeft === 80 && diff.scrollTop === 36;
+          diff.removeAttribute('data-cp-nowrap');
+          for (const row of lines.children) row.lastElementChild.style = 'flex:1;min-width:0;white-space:pre-wrap;overflow-wrap:break-word';
+          checks.diffWrapRestoresWrapping = firstCode.getBoundingClientRect().height > 18 && diff.scrollWidth <= diff.clientWidth + 1;
+          diff.remove();
+          unstyle();
+          // Image stacks in replies Paseo draws: built over the originals, given back as a run changes, gone with the pref and on cleanup.
+          batches = 0; capped = false;
+          document.documentElement.setAttribute('data-cp-rt-stacks', 'on');
+          const pic = (id) => '<img id="' + id + '" alt="' + id + '" src="data:image/gif;base64,R0lGODlhAQABAAAAACw=">';
+          const stackReply = document.createElement('div'); stackReply.dataset.testid = 'assistant-message';
+          stackReply.innerHTML = '<div class="enrm-text"><p id="sp1">' + pic('sa') + pic('sb') + '</p><p id="sp2">' + pic('sc') + '</p><p>after</p></div>';
+          document.body.appendChild(stackReply);
+          const unstack = web.stackImages(); await wait(100);
+          const visible = (id) => getComputedStyle(document.getElementById(id)).display !== 'none';
+          const stackOf = () => stackReply.querySelectorAll('[data-cp-stack]');
+          checks.stackBuilt = stackOf().length === 1 && stackOf()[0].nextElementSibling.id === 'sa' && stackOf()[0].querySelectorAll('[data-cp-card]').length === 3
+            && !['sa', 'sb', 'sc'].some(visible) && document.getElementById('sp2').hasAttribute('data-cp-stack-hole');
+          // Text streamed in between: the last image leaves the stack and shows again.
+          document.getElementById('sp2').insertBefore(document.createTextNode('caption '), document.getElementById('sc')); await wait(350);
+          checks.stackGivesBack = stackOf()[0].querySelectorAll('[data-cp-card]').length === 2 && visible('sc') && !visible('sa') && !document.getElementById('sp2').hasAttribute('data-cp-stack-hole');
+          // No viewer host: a press on a card reaches the image underneath once, and Paseo's handlers never see the card's click.
+          let imageClicks = 0, cardClicks = 0;
+          document.getElementById('sa').addEventListener('click', () => imageClicks++);
+          const countCards = (event) => { if (event.target.closest?.('[data-cp-card]')) cardClicks++; };
+          document.addEventListener('click', countCards);
+          stackOf()[0].querySelector('[data-cp-card]').click(); await wait();
+          document.removeEventListener('click', countCards);
+          checks.stackFallbackClick = imageClicks === 1 && cardClicks === 0;
+          // Turning stacks off shows the originals again; cleanup leaves nothing behind.
+          document.documentElement.setAttribute('data-cp-rt-stacks', 'off'); await wait();
+          checks.stackOffShowsOriginals = ['sa', 'sb', 'sc'].every(visible) && getComputedStyle(stackOf()[0]).display === 'none';
+          unstack(); await wait();
+          checks.stackCleanup = !document.querySelector('[data-cp-stack], [data-cp-stacked], [data-cp-stack-hole]') && !capped;
+          stackReply.remove(); document.documentElement.removeAttribute('data-cp-rt-stacks');
+          document.title = JSON.stringify({ checks, errors });
+        })().catch((error) => { document.title = JSON.stringify({ error: error.stack, checks }); }).finally(() => fetch('/done'));
+      </script></body></html>`;
+    // Hold page load open while real animation frames and ResizeObserver callbacks run.
+    let held;
+    server = createServer((request, response) => {
+      if (request.url === "/hold") { held = response; return; }
+      if (request.url === "/done") { held?.end(); response.end(); return; }
+      if (request.url === "/bundle.js") { response.end(bundle); return; }
+      response.setHeader("Content-Type", "text/html"); response.end(html);
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const result = await promisify(execFile)(chrome, ["--headless=new", "--no-sandbox", "--disable-gpu", "--no-first-run", "--disable-background-networking", `--user-data-dir=${join(temp, "chrome")}`, "--dump-dom", `http://127.0.0.1:${server.address().port}`], { encoding: "utf8", timeout: 20000, maxBuffer: 8 * 1024 * 1024 });
+    const title = /<title>([\s\S]*?)<\/title>/.exec(result.stdout)?.[1];
+    assert.notEqual(title, "pending", "browser test did not finish");
+    const report = JSON.parse(title.replaceAll("&amp;", "&").replaceAll("&lt;", "<").replaceAll("&gt;", ">"));
+    assert.equal(report.error, undefined, report.error);
+    assert.deepEqual(report.errors, []);
+    for (const [check, passed] of Object.entries(report.checks)) assert.equal(passed, true, check);
+    assert.equal(Object.keys(report.checks).length, 37);
+  } finally {
+    server?.closeAllConnections(); server?.close();
+    rmSync(temp, { recursive: true, force: true });
+  }
+});
