@@ -103,7 +103,9 @@ describe("profile folders", () => {
       "Never edit a project's code, commit or merge outside board_task_action.",
     );
     expect(ASSISTANT_SEED_PROMPT).toContain("read-only reviewer subagent");
-    expect(ASSISTANT_SEED_PROMPT).toContain("merge-now with wait=true without asking");
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "merge-now with wait=true without asking",
+    );
     // CUSTOM(assistant-review-policy): the critical projects come from the settings, not the prompt.
     expect(ASSISTANT_SEED_PROMPT).not.toContain("DreamMMO");
     expect(ASSISTANT_SEED_PROMPT).toContain(
@@ -365,7 +367,7 @@ describe("the engine applies the profile", () => {
       await s.board.openChat(false);
       const start = (s.host.startAgentIn as any).mock.calls[0][1];
       const directory = path.join(s.profilesDirectory, ASSISTANT_PROFILE);
-      expect(start.prompt).toBe(CHAT_INSTRUCTIONS);
+      expect(start.prompt).toContain(CHAT_INSTRUCTIONS);
       expect(start.systemPrompt).toContain("You are the Projects Assistant");
       expect(start.providerOptions).toEqual({
         plugins: [{ type: "local", path: directory }],

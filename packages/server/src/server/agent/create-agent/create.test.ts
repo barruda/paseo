@@ -136,6 +136,47 @@ test("session create validates the requested mode against the provider's modes",
   expect(createAgent).not.toHaveBeenCalled();
 });
 
+test("session create forwards unattended automation to provider resolution", async () => {
+  const snapshot = {
+    id: "agent-1",
+    provider: "opencode",
+    cwd: "/tmp/paseo-create-test",
+    runtimeInfo: null,
+  } as ManagedAgent;
+  const createAgent = vi.fn(async () => snapshot);
+  const stub = createProviderSnapshotManagerStub();
+  stub.resolveCreateConfig.mockResolvedValue({
+    modeId: "build",
+    featureValues: { auto_accept: true },
+  });
+  const dependencies: Parameters<typeof createAgentCommand>[0] = {
+    agentManager: {
+      createAgent,
+    } as unknown as Parameters<typeof createAgentCommand>[0]["agentManager"],
+    agentStorage: {} as Parameters<typeof createAgentCommand>[0]["agentStorage"],
+    logger: createTestLogger(),
+    providerSnapshotManager: stub.manager,
+  };
+
+  await createAgentCommand(dependencies, {
+    kind: "session",
+    config: { provider: "opencode", cwd: "/tmp/paseo-create-test", modeId: "build" },
+    workspaceId: "ws-create-test",
+    labels: {},
+    provisionalTitle: null,
+    firstAgentContext: { attachments: [] },
+    unattended: true,
+  });
+
+  expect(stub.resolveCreateConfig).toHaveBeenCalledWith(
+    expect.objectContaining({
+      provider: "opencode",
+      unattended: true,
+      unattendedExplicit: true,
+    }),
+  );
+});
+
 test("session create applies the resolved mode from the provider create config", async () => {
   const snapshot = {
     id: "agent-1",

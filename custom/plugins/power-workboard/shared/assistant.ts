@@ -263,6 +263,8 @@ export const NEEDS_YOU_REASONS = [
   "fix-waiting",
   // CUSTOM(usage-limit): the agent hit the usage limit again after MAX_LIMIT_PAUSES resumes.
   "usage-limit",
+  // CUSTOM(unattended-automation): an automatic agent has waited too long on a permission.
+  "permission",
 ] as const;
 export const needsYouReasonSchema = z.enum(NEEDS_YOU_REASONS);
 export type NeedsYouReason = z.infer<typeof needsYouReasonSchema>;

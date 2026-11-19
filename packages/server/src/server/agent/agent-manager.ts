@@ -108,6 +108,8 @@ import {
   withRuntimePaseoMcpServer,
 } from "./runtime-mcp-config.js";
 import { resolveCreateAgentTitles } from "./create-agent-title.js";
+// CUSTOM(unattended-automation): the daemon's own answer to "may this agent run unasked?".
+import { isUnattendedAgentConfig, resolveUnattendedCreateConfig } from "./unattended-mode.js";
 import type { PaseoToolCatalogFactory } from "./tools/types.js";
 import { isPaseoToolPolicyEnabled } from "./paseo-tool-policy.js";
 import {
@@ -1523,11 +1525,11 @@ export class AgentManager {
       "resumeAgentFromPersistence",
     );
     const metadata = (handle.metadata ?? {}) as Partial<AgentSessionConfig>;
-    const mergedConfig = {
+    const mergedConfig = this.resolveUnattendedResumeConfig({
       ...metadata,
       ...overrides,
       provider: handle.provider,
-    } as AgentSessionConfig;
+    } as AgentSessionConfig);
     // Decide residency from durable state inside the lifecycle lane. A loader may
     // have read the record before a queued archive or restore completed. Residency is
     // settled before the config is prepared, because a history load reads an archived
@@ -1706,11 +1708,11 @@ export class AgentManager {
     const handle = existing.persistence;
     const provider = handle?.provider ?? existing.provider;
     const client = this.requireClient(provider);
-    const refreshConfig = {
+    const refreshConfig = this.resolveUnattendedResumeConfig({
       ...existing.config,
       ...overrides,
       provider,
-    } as AgentSessionConfig;
+    } as AgentSessionConfig);
     const { storedConfig, launchConfig, paseoToolPolicy } = await this.prepareSessionConfig(
       refreshConfig,
       agentId,
@@ -2253,6 +2255,24 @@ export class AgentManager {
     return notice;
   }
 
+  /**
+   * CUSTOM(unattended-automation): a resumed or reloaded agent may carry a mode from the
+   * provider it was created on. Re-resolve it so the first turn does not fail or ask.
+   */
+  private resolveUnattendedResumeConfig(config: AgentSessionConfig): AgentSessionConfig {
+    if (!isUnattendedAgentConfig(config)) return config;
+    const resolved = resolveUnattendedCreateConfig({
+      provider: config.provider,
+      modeId: config.modeId,
+      featureValues: config.featureValues,
+    });
+    return {
+      ...config,
+      modeId: resolved.modeId,
+      featureValues: resolved.featureValues,
+    };
+  }
+
   async setAgentModel(agentId: string, modelId: string | null): Promise<void> {
     const agent = this.requireSessionAgent(agentId);
     const normalizedModelId =
@@ -2267,9 +2287,58 @@ export class AgentManager {
     if (agent.runtimeInfo) {
       agent.runtimeInfo = { ...agent.runtimeInfo, model: normalizedModelId };
     }
+    // CUSTOM(unattended-automation): the new model may change which mode exists. Re-resolve
+    // so an automatic agent never falls back to asking for permission.
+    if (isUnattendedAgentConfig(agent.config)) await this.reapplyUnattendedConfig(agent);
     this.refreshSessionPersistence(agent);
     this.touchUpdatedAt(agent);
     this.emitState(agent);
+  }
+
+  /**
+   * CUSTOM(unattended-automation): re-resolve an unattended agent's mode and features against
+   * what the provider offers now. A mode or feature the provider rejects is left in place and
+   * logged; the permission manager still approves whatever escapes.
+   */
+  private async reapplyUnattendedConfig(agent: ActiveManagedAgent): Promise<void> {
+    const resolved = resolveUnattendedCreateConfig({
+      provider: agent.provider,
+      modeId: agent.currentModeId ?? agent.config.modeId ?? undefined,
+      featureValues: agent.config.featureValues,
+      availableModes: agent.availableModes,
+    });
+    if (resolved.modeId && resolved.modeId !== agent.currentModeId) {
+      try {
+        await agent.session.setMode(resolved.modeId);
+        const currentMode = (await agent.session.getCurrentMode()) ?? resolved.modeId;
+        agent.config.modeId = currentMode ?? undefined;
+        agent.currentModeId = currentMode;
+        if (agent.runtimeInfo) {
+          agent.runtimeInfo = { ...agent.runtimeInfo, modeId: currentMode };
+        }
+      } catch (error) {
+        this.logger.warn(
+          { err: error, agentId: agent.id, modeId: resolved.modeId },
+          "Failed to reapply unattended mode",
+        );
+      }
+    }
+    if (!agent.session.setFeature) return;
+    for (const [featureId, value] of Object.entries(resolved.featureValues ?? {})) {
+      if (agent.config.featureValues?.[featureId] === value) continue;
+      try {
+        await agent.session.setFeature(featureId, value);
+        agent.config.featureValues = {
+          ...agent.config.featureValues,
+          [featureId]: value,
+        };
+      } catch (error) {
+        this.logger.warn(
+          { err: error, agentId: agent.id, featureId },
+          "Failed to reapply unattended feature",
+        );
+      }
+    }
   }
 
   async setAgentThinkingOption(
@@ -4847,7 +4916,7 @@ export class AgentManager {
         this.onStreamTurnStarted({ agent, eventTurnId, isForegroundEvent, flags });
         return undefined;
       case "permission_requested":
-        this.onStreamPermissionRequested(agent, event);
+        this.onStreamPermissionRequested(agent, event, options);
         return undefined;
       case "permission_resolved":
         this.onStreamPermissionResolved({ agent, event, options, flags });
@@ -5064,7 +5133,13 @@ export class AgentManager {
   private onStreamPermissionRequested(
     agent: ActiveManagedAgent,
     event: Extract<AgentStreamEvent, { type: "permission_requested" }>,
+    options?: HandleStreamEventOptions,
   ): void {
+    // CUSTOM(unattended-automation): layer B. Whatever the provider or permission kind,
+    // an unattended agent approves it here instead of waiting for a user nobody told.
+    if (!options?.fromHistory && this.autoApproveUnattendedPermission(agent, event.request)) {
+      return;
+    }
     const hadPendingPermissions = agent.pendingPermissions.size > 0;
     agent.pendingPermissions.set(event.request.id, event.request);
     this.refreshSessionPersistence(agent);
@@ -5072,6 +5147,50 @@ export class AgentManager {
       this.broadcastAgentAttention(agent, "permission");
     }
     this.emitState(agent);
+  }
+
+  /**
+   * CUSTOM(unattended-automation): approve a permission for an agent whose config already
+   * means "stop asking" (a full-access mode or the provider's auto-accept feature). The
+   * approval is logged and written to the agent timeline, so an automatic run leaves a trace.
+   * Returns whether the request was handled.
+   */
+  private autoApproveUnattendedPermission(
+    agent: ActiveManagedAgent,
+    request: AgentPermissionRequest,
+  ): boolean {
+    if (!isUnattendedAgentConfig(agent.config)) return false;
+    // A question asks for an answer, not for an allow reply; it always reaches the user.
+    if (request.kind === "question") return false;
+    const label = request.title ?? request.name;
+    this.logger.info(
+      {
+        agentId: agent.id,
+        provider: agent.provider,
+        requestId: request.id,
+        kind: request.kind,
+        name: request.name,
+      },
+      "Auto-approving permission for unattended agent",
+    );
+    this.recordAndDispatchTimelineItem(
+      agent.id,
+      {
+        type: "notification",
+        level: "info",
+        message: `Auto-approved ${agent.provider} permission: ${label}`,
+      },
+      agent.provider,
+    );
+    void this.respondToPermission(agent.id, request.id, { behavior: "allow" }).catch(
+      (error: unknown) => {
+        this.logger.warn(
+          { err: error, agentId: agent.id, requestId: request.id },
+          "Failed to auto-approve permission for unattended agent",
+        );
+      },
+    );
+    return true;
   }
 
   private onStreamPermissionResolved(params: {

@@ -152,6 +152,11 @@ function PaseoSubagentSelects({
     (value: string) => form.set("paseoThinkingOptionId", value),
     [form],
   );
+  // CUSTOM(unattended-automation)
+  const setUnattended = useCallback(
+    (value: boolean) => form.set("implementerUnattended", value),
+    [form],
+  );
   const catalogError =
     !isLoading && !entries && error
       ? `Could not load this host's providers and models (${error}). Showing the saved values.`
@@ -185,6 +190,17 @@ function PaseoSubagentSelects({
         disabled={unavailable}
         testID="delegation-paseo-thinking"
       />
+      <SettingsRow
+        label="Full permission"
+        hint="The Paseo subagent runs with the provider's full-access mode and never stops for a permission."
+      >
+        <Switch
+          value={draft.implementerUnattended}
+          onValueChange={setUnattended}
+          accessibilityLabel="Full permission for the implementer"
+          testID="delegation-implementer-unattended"
+        />
+      </SettingsRow>
     </>
   );
 }
@@ -245,6 +261,10 @@ export function DelegationSheet({
   );
   const setWhen = useCallback((value: DelegationWhen) => form.set("when", value), [form]);
   const setReview = useCallback((value: boolean) => form.set("review", value), [form]);
+  const setSearchUnattended = useCallback(
+    (value: boolean) => form.set("searchUnattended", value),
+    [form],
+  );
   const setSearch = useCallback(
     (value: DelegationSearch) => form.set("searchModel", value),
     [form],
@@ -367,6 +387,17 @@ export function DelegationSheet({
                     onValueChange={setSearch}
                     testID="delegation-search"
                   />
+                  <SettingsRow
+                    label="Full permission for search"
+                    hint="A Paseo search agent runs with the provider's full-access mode instead of asking. Read-only tools stay read-only."
+                  >
+                    <Switch
+                      value={draft.searchUnattended}
+                      onValueChange={setSearchUnattended}
+                      accessibilityLabel="Full permission for search"
+                      testID="delegation-search-unattended"
+                    />
+                  </SettingsRow>
                 </SettingsCard>
               </SettingsSection>
               <SettingsSection title="Orchestrator's extra instructions">

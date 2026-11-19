@@ -178,11 +178,55 @@ const preferences = {
   defaultStartWorkGroup: stageSchema.nullable().default(null),
   pinInProgressWorkspaces: z.boolean().default(true),
 };
+// CUSTOM(unattended-automation): automatic agents run with the provider's full-access mode
+// unless the user turns that off, per role.
+export const AUTO_PERMISSION_ROLES = [
+  "orchestrator",
+  "assistant",
+  "refinement",
+  "ship",
+] as const;
+export type AutoPermissionRole = (typeof AUTO_PERMISSION_ROLES)[number];
+export const autoPermissionSchema = z.object({
+  enabled: z.boolean().default(true),
+  orchestrator: z.boolean().default(true),
+  assistant: z.boolean().default(true),
+  refinement: z.boolean().default(true),
+  ship: z.boolean().default(true),
+});
+export type AutoPermission = z.infer<typeof autoPermissionSchema>;
+/** Whether an automatic agent of this role may run without asking for permission. */
+export function autoPermissionFor(
+  settings: Pick<Settings, "autoPermission">,
+  role: AutoPermissionRole,
+): boolean {
+  const value = settings.autoPermission;
+  return value.enabled && value[role];
+}
+// CUSTOM(unattended-automation): remove first-level entries of the scratch folder older than
+// this many hours; the board runs the pass at most once an hour.
+export const TMP_CLEANUP_DEFAULT_PATH = "/home/bruno/uprojects/tmp";
+export const TMP_CLEANUP_DEFAULT_HOURS = 24;
+export const TMP_CLEANUP_INTERVAL_MS = 60 * 60_000;
+export const tmpCleanupSchema = z.object({
+  path: z.string().trim().default(TMP_CLEANUP_DEFAULT_PATH),
+  maxAgeHours: z
+    .number()
+    .int()
+    .min(1)
+    .max(24 * 365)
+    .default(TMP_CLEANUP_DEFAULT_HOURS),
+});
+export type TmpCleanup = z.infer<typeof tmpCleanupSchema>;
 export const settingsSchema = z.object({
   ...preferences,
   groups: groupsSchema.default(DEFAULT_GROUPS),
   groupOrder: groupOrderSchema.default([]),
   pools: poolsSchema.default([]), // CUSTOM(resource-pools)
+  autoPermission: autoPermissionSchema.default(() =>
+    autoPermissionSchema.parse({}),
+  ),
+  tmpCleanup: tmpCleanupSchema.default(() => tmpCleanupSchema.parse({})),
 });
 export type Settings = z.infer<typeof settingsSchema>;
 export function orderedGroups(
@@ -482,6 +526,10 @@ export const orchestrationSchema = z.object({
   sawRunning: z.boolean().default(false),
   /** CUSTOM(board-turn-end): since when the agent has been continuously idle; null while it runs. */
   idleSince: z.string().nullable().default(null),
+  /** CUSTOM(unattended-automation): since when the agent has been waiting on a permission. */
+  permissionSince: z.string().nullable().default(null),
+  /** CUSTOM(unattended-automation): this wait was already raised to Needs you. */
+  permissionNeedsYou: z.boolean().default(false),
   error: z.string().nullable().default(null),
   /** The agent's last reply when it finished, shown to the reviewer. */
   summary: z.string().nullable().default(null),

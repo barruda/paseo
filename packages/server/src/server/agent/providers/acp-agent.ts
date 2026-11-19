@@ -2630,6 +2630,18 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           { toolCallId: params.toolCall.toolCallId, optionId: allowOption.optionId },
           "Auto-accepting ACP permission request",
         );
+        // CUSTOM(unattended-automation): the approval leaves a trace in the agent timeline.
+        this.pushEvent({
+          type: "timeline",
+          provider: this.provider,
+          item: {
+            type: "notification",
+            level: "info",
+            message: `Auto-approved ${this.provider} permission: ${
+              params.toolCall.title ?? params.toolCall.kind ?? "tool call"
+            }`,
+          },
+        });
         return {
           outcome: { outcome: "selected", optionId: allowOption.optionId },
         };

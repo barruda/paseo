@@ -9,7 +9,7 @@ import {
   reviewPolicyFor,
   type HistoryEvent,
 } from "../shared/assistant";
-import { orchestratorConfigSchema } from "../shared/model";
+import { orchestratorConfigSchema, type Data } from "../shared/model";
 import { fixture } from "./fixtures";
 import { buildOverview } from "../server/assistant/views"; // CUSTOM(task-checkpoints)
 import { COMPACT_QUESTION } from "../server/assistant/compact"; // CUSTOM(assistant-compact)
@@ -51,6 +51,8 @@ interface Options {
   /** CUSTOM(worktree-base): the project checkout's current branch. */
   currentBranch?: string | null;
   settings?: Record<string, unknown>;
+  /** CUSTOM(unattended-automation): board settings, distinct from the assistant's. */
+  boardSettings?: Record<string, unknown>;
   git?: boolean;
   assistant?: AssistantOptions;
 }
@@ -60,6 +62,9 @@ async function scenario(options: Options = {}) {
   const history = memoryHistory();
   const setup = fixture({
     defaultOrchestratorSeeded: true,
+    ...(options.boardSettings
+      ? { settings: options.boardSettings as Data["settings"] }
+      : {}),
     assistant: assistantDataSchema.parse({
       settings: {
         ...options.settings,
@@ -2867,5 +2872,60 @@ it("a finish without a question clears the old one with the assistant off", asyn
     expect(s.store.current.orchestrations[s.taskId].ask).toBeNull();
   } finally {
     s.board.dispose();
+  }
+});
+
+it("an automatic agent waiting on a permission reaches Needs you within about two minutes", async () => {
+  const s = await scenario();
+  try {
+    (s.agent as any).activity = "waiting";
+    (s.agent as any).waitingPermission = true;
+    await s.board.refresh(); // starts the wait clock
+    s.advance(89_000);
+    await s.board.refresh();
+    expect(s.delivery()).toBeUndefined();
+    s.advance(2_000);
+    await s.board.refresh();
+    expect(s.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "permission",
+    });
+    expect(s.board.snapshot().orchestrations[s.taskId].permissionNeedsYou).toBe(
+      true,
+    );
+    expect(s.history.events.at(-1)).toMatchObject({
+      kind: "needs-you",
+      reason: "permission",
+    });
+    // The permission clears and the agent runs again: the board drops its Needs you.
+    (s.agent as any).activity = "running";
+    (s.agent as any).waitingPermission = false;
+    s.advance(1_000);
+    await s.board.refresh();
+    expect(s.delivery()).toBeUndefined();
+    expect(s.board.snapshot().orchestrations[s.taskId].permissionNeedsYou).toBe(
+      false,
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("the automatic-permission setting reaches the agent the board starts", async () => {
+  const on = await scenario();
+  try {
+    expect((on.host.startAgent as any).mock.calls[0][1].unattended).toBe(true);
+  } finally {
+    on.board.dispose();
+  }
+  const off = await scenario({
+    boardSettings: { autoPermission: { enabled: false } },
+  });
+  try {
+    expect((off.host.startAgent as any).mock.calls[0][1].unattended).toBe(
+      false,
+    );
+  } finally {
+    off.board.dispose();
   }
 });

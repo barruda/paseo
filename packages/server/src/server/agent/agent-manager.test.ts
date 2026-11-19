@@ -12838,3 +12838,171 @@ test("thread_started and usage_updated live events do not bump updatedAt; real a
     rmSync(workdir, { recursive: true, force: true });
   }
 });
+
+test("auto-approves an unknown permission kind for an unattended agent and records it", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unattended-permission-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const responded: string[] = [];
+
+  class UnattendedPermissionSession extends TestAgentSession {
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = "turn-unattended-permission";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "permission_requested",
+          provider: this.provider,
+          request: {
+            id: "perm-unknown-1",
+            provider: this.provider,
+            kind: "other",
+            name: "A permission kind the daemon has never seen",
+          },
+          turnId,
+        });
+      }, 0);
+      return { turnId };
+    }
+
+    override async respondToPermission(requestId: string, _response: unknown): Promise<void> {
+      responded.push(requestId);
+      setTimeout(() => {
+        this.pushEvent({
+          type: "permission_resolved",
+          provider: this.provider,
+          requestId,
+          resolution: { behavior: "allow" },
+        });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId: "turn-unattended-permission",
+        });
+      }, 0);
+    }
+  }
+
+  class UnattendedPermissionClient implements AgentClient {
+    readonly provider = "codex" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new UnattendedPermissionSession(config);
+    }
+
+    async resumeSession(config?: Partial<AgentSessionConfig>): Promise<AgentSession> {
+      return new UnattendedPermissionSession({
+        provider: "codex",
+        cwd: config?.cwd ?? process.cwd(),
+        modeId: config?.modeId,
+      });
+    }
+  }
+
+  const attentionReasons: string[] = [];
+  const manager = new AgentManager({
+    clients: { codex: new UnattendedPermissionClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000133",
+    onAgentAttention: ({ reason }) => attentionReasons.push(reason),
+  });
+
+  const agent = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      modeId: "full-access",
+      title: "Unattended permission test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await manager.runAgent(agent.id, "do work");
+
+  await vi.waitFor(() => expect(responded).toEqual(["perm-unknown-1"]));
+  expect(manager.getAgent(agent.id)?.pendingPermissions.size).toBe(0);
+  expect(attentionReasons).not.toContain("permission");
+  expect(
+    manager
+      .getTimeline(agent.id)
+      .some(
+        (item) =>
+          item.type === "notification" && item.message.includes("Auto-approved codex permission"),
+      ),
+  ).toBe(true);
+});
+
+test("changing the model re-resolves an unattended agent's no-approval mode", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unattended-model-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const appliedModes: string[] = [];
+  let currentMode = "build";
+
+  class ResolvingSession extends TestAgentSession {
+    override async getAvailableModes() {
+      return [
+        { id: "build", label: "Build" },
+        { id: "yolo", label: "Yolo" },
+      ];
+    }
+
+    override async getCurrentMode() {
+      return currentMode;
+    }
+
+    override async setMode(modeId: string): Promise<void> {
+      currentMode = modeId;
+      appliedModes.push(modeId);
+    }
+  }
+
+  class ResolvingClient implements AgentClient {
+    readonly provider = "future-agent" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new ResolvingSession(config);
+    }
+
+    async resumeSession(config?: Partial<AgentSessionConfig>): Promise<AgentSession> {
+      return new ResolvingSession({
+        provider: "future-agent",
+        cwd: config?.cwd ?? process.cwd(),
+        modeId: config?.modeId,
+      });
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { "future-agent": new ResolvingClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000134",
+  });
+
+  const agent = await manager.createAgent(
+    {
+      provider: "future-agent",
+      cwd: workdir,
+      modeId: "build",
+      featureValues: { auto_accept: true },
+      title: "Re-resolution test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+  await manager.setAgentModel(agent.id, "new-model");
+
+  expect(appliedModes).toContain("yolo");
+  expect(manager.getAgent(agent.id)?.config.modeId).toBe("yolo");
+});

@@ -4230,6 +4230,15 @@ export function SettingsPage({
     base: number;
     text: string;
   } | null>(null);
+  // CUSTOM(unattended-automation): scratch-folder settings edit the same way archive days do.
+  const [tmpPathEdit, setTmpPathEdit] = useState<{
+    base: string;
+    text: string;
+  } | null>(null);
+  const [tmpHoursEdit, setTmpHoursEdit] = useState<{
+    base: number;
+    text: string;
+  } | null>(null);
   const [confirmAutoArchive, setConfirmAutoArchive] = useState(false);
   const current =
     board.revision > confirmed.revision
@@ -4243,6 +4252,18 @@ export function SettingsPage({
       : String(settings.archiveAfterDays);
   const validDays =
     /^\d+$/.test(daysText) && Number(daysText) >= 0 && Number(daysText) <= 365;
+  const tmpPathText =
+    tmpPathEdit?.base === settings.tmpCleanup.path
+      ? tmpPathEdit.text
+      : settings.tmpCleanup.path;
+  const tmpHoursText =
+    tmpHoursEdit?.base === settings.tmpCleanup.maxAgeHours
+      ? tmpHoursEdit.text
+      : String(settings.tmpCleanup.maxAgeHours);
+  const validTmpHours =
+    /^\d+$/.test(tmpHoursText) &&
+    Number(tmpHoursText) >= 1 &&
+    Number(tmpHoursText) <= 8760;
   const preview = mappingPreview(board.cards, settings, Date.now());
   const controlDisabled = (id: string) =>
     disabled || !!pendingMutationIds?.has(`settings:${id}`);
@@ -4436,6 +4457,121 @@ export function SettingsPage({
                 }}
                 disabled={controlDisabled("start-work-default")}
                 testID="workboard-default-start-work"
+              />
+            </SettingsCard>
+          </SettingsSection>
+          <SettingsSection title={t.autoPermissionTitle}>
+            <SettingsCard>
+              <SettingsSwitch
+                label={t.autoPermission}
+                hint={t.autoPermissionHint}
+                value={settings.autoPermission.enabled}
+                onValueChange={async (value) => {
+                  await persist(
+                    {
+                      ...settings,
+                      autoPermission: {
+                        ...settings.autoPermission,
+                        enabled: value,
+                      },
+                    },
+                    "auto-permission",
+                  );
+                }}
+                disabled={controlDisabled("auto-permission")}
+                testID="workboard-auto-permission"
+              />
+              {(
+                [
+                  ["orchestrator", t.autoPermissionOrchestrator],
+                  ["assistant", t.autoPermissionAssistant],
+                  ["refinement", t.autoPermissionRefinement],
+                  ["ship", t.autoPermissionShip],
+                ] as const
+              ).map(([role, label]) => (
+                <SettingsSwitch
+                  key={role}
+                  label={label}
+                  value={settings.autoPermission[role]}
+                  onValueChange={async (value) => {
+                    await persist(
+                      {
+                        ...settings,
+                        autoPermission: {
+                          ...settings.autoPermission,
+                          [role]: value,
+                        },
+                      },
+                      `auto-permission-${role}`,
+                    );
+                  }}
+                  disabled={
+                    !settings.autoPermission.enabled ||
+                    controlDisabled(`auto-permission-${role}`)
+                  }
+                  testID={`workboard-auto-permission-${role}`}
+                />
+              ))}
+            </SettingsCard>
+          </SettingsSection>
+          <SettingsSection title={t.tmpCleanupTitle}>
+            <SettingsCard>
+              <SettingsInput
+                key={settings.tmpCleanup.path}
+                label={t.tmpCleanupPath}
+                hint={t.tmpCleanupPathHint}
+                initialValue={settings.tmpCleanup.path}
+                onChangeText={(text) =>
+                  setTmpPathEdit({ base: settings.tmpCleanup.path, text })
+                }
+                disabled={controlDisabled("tmp-path")}
+                testID="workboard-tmp-path"
+              />
+              <SettingsInput
+                key={settings.tmpCleanup.maxAgeHours}
+                label={t.tmpCleanupHours}
+                hint={t.tmpCleanupHoursHint}
+                initialValue={String(settings.tmpCleanup.maxAgeHours)}
+                onChangeText={(text) =>
+                  setTmpHoursEdit({
+                    base: settings.tmpCleanup.maxAgeHours,
+                    text,
+                  })
+                }
+                error={validTmpHours ? null : t.tmpCleanupInvalid}
+                disabled={controlDisabled("tmp-hours")}
+                testID="workboard-tmp-hours"
+              />
+              <SettingsAction
+                label={t.tmpCleanupTitle}
+                actionLabel={t.save}
+                onPress={async () => {
+                  if (
+                    validTmpHours &&
+                    tmpPathText.trim() &&
+                    (await persist(
+                      {
+                        ...settings,
+                        tmpCleanup: {
+                          path: tmpPathText.trim(),
+                          maxAgeHours: Number(tmpHoursText),
+                        },
+                      },
+                      "tmp-cleanup",
+                    ))
+                  ) {
+                    setTmpPathEdit(null);
+                    setTmpHoursEdit(null);
+                  }
+                }}
+                disabled={
+                  controlDisabled("tmp-cleanup") ||
+                  !validTmpHours ||
+                  !tmpPathText.trim() ||
+                  (tmpPathText.trim() === settings.tmpCleanup.path &&
+                    Number(tmpHoursText) === settings.tmpCleanup.maxAgeHours)
+                }
+                testID="workboard-save-tmp-cleanup"
               />
             </SettingsCard>
           </SettingsSection>

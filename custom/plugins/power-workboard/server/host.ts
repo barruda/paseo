@@ -70,6 +70,8 @@ export type Agent = Pick<
   | "archivedAt"
 > & {
   activity: Card["activity"];
+  /** CUSTOM(unattended-automation): the wait is a permission prompt, not just idle input. */
+  waitingPermission?: boolean;
   /**
    * CUSTOM(resource-pools): false when `activity` is "running" only because the agent awaits
    * background work, with no turn of its own. Absent means unknown (treated as a turn).
@@ -105,6 +107,11 @@ export interface AgentStart {
   title: string;
   prompt: string;
   labels?: Record<string, string>; // CUSTOM(projects-assistant)
+  /**
+   * CUSTOM(unattended-automation): let the daemon resolve the provider's full-access mode.
+   * Undefined leaves the agent asking, which is what a disabled setting means.
+   */
+  unattended?: boolean;
   /** CUSTOM(agent-profiles): appended to the agent's system prompt. */
   systemPrompt?: string;
   /** CUSTOM(agent-profiles): provider options (Claude: plugins, skills, memory folder). */
@@ -246,6 +253,14 @@ function activity(
     return "error";
   return agent.requiresAttention ? "attention" : "idle";
 }
+/** CUSTOM(unattended-automation): the agent is blocked on a permission prompt. */
+function waitingPermission(agent: PaseoAgent): boolean {
+  return (
+    !agent.archivedAt &&
+    (agent.pendingPermissions.length > 0 ||
+      agent.attentionReason === "permission")
+  );
+}
 /** CUSTOM(resource-pools): the agent is in a turn (not just waiting on background work). */
 function turnActive(agent: PaseoAgent): boolean {
   return (
@@ -305,6 +320,7 @@ export class PaseoHost implements Host {
         this.agentUpdates.set(change.agent.id, {
           ...change.agent,
           activity: activity(change.agent),
+          waitingPermission: waitingPermission(change.agent),
           turnActive: turnActive(change.agent),
         });
         this.changed(change.agent.workspaceId, change.agent.id);
@@ -391,7 +407,12 @@ export class PaseoHost implements Host {
     const agentMap = new Map<string, Agent>(
       agents.map(({ agent }) => [
         agent.id,
-        { ...agent, activity: activity(agent), turnActive: turnActive(agent) },
+        {
+          ...agent,
+          activity: activity(agent),
+          waitingPermission: waitingPermission(agent),
+          turnActive: turnActive(agent),
+        },
       ]),
     );
     for (const [id, value] of this.workspaceUpdates) {
@@ -664,6 +685,11 @@ export class PaseoHost implements Host {
       title: start.title,
       prompt: start.prompt,
       ...(start.labels ? { labels: { ...start.labels } } : {}), // CUSTOM(hidden-board-agents)
+      // CUSTOM(unattended-automation): the pinned @getpaseo/client predates the field; the
+      // daemon accepts it and resolves the provider's full-access mode.
+      ...(start.unattended !== undefined
+        ? ({ unattended: start.unattended } as Record<string, boolean>)
+        : {}),
     });
     return agent.id;
   }
@@ -681,6 +707,10 @@ export class PaseoHost implements Host {
       title: start.title,
       prompt: start.prompt,
       ...(start.labels ? { labels: start.labels } : {}), // CUSTOM(projects-assistant)
+      // CUSTOM(unattended-automation)
+      ...(start.unattended !== undefined
+        ? ({ unattended: start.unattended } as Record<string, boolean>)
+        : {}),
     });
     return agent.id;
   }

@@ -10,7 +10,8 @@ import {
 // whole prompt cache away, so a session keeps the rule (or its absence) for its whole life.
 
 /** First line of the rule; also how a config that already has it is recognized. */
-export const DELEGATION_MARKER = "# Delegating implementation (Paseo delegation)";
+export const DELEGATION_MARKER =
+  "# Delegating implementation (Paseo delegation)";
 
 /** Passed to the session's first launch, so `agent.session_open` can tie the rule to an agent id. */
 export const DELEGATION_ENV = "PASEO_DELEGATION_ID";
@@ -47,15 +48,21 @@ export function isDelegationEligible(config: DelegationConfigInput): boolean {
 
 export function buildDelegationPolicy(settings: DelegationSettings): string {
   const { implementerModel: model, implementerEffort: effort } = settings;
-  const paseoProvider = formatPaseoSubagentProvider(settings.paseoProvider, settings.paseoModel);
+  const paseoProvider = formatPaseoSubagentProvider(
+    settings.paseoProvider,
+    settings.paseoModel
+  );
   const paseoThinking = settings.paseoThinkingOptionId
     ? `, settings.thinkingOptionId "${settings.paseoThinkingOptionId}"`
     : "";
   const paseoRunner = settings.implementerRunner === "paseo";
+  // CUSTOM(unattended-automation): the Paseo subagent gets full permission through the daemon's
+  // provider resolution, so it never stops on a permission nobody sees.
+  const unattended = `, settings: { unattended: ${settings.implementerUnattended} }`;
   const brief =
     "the goal, the approved plan, the files to change, what to leave alone, acceptance criteria, and the exact commands that verify the work (typecheck, lint, targeted tests). Ask it to end with the files it changed, the commands it ran and their results, and any departure from the plan. Independent pieces that touch different files can go to parallel subagents.";
   const howToDelegate = paseoRunner
-    ? `How to delegate: create a Paseo subagent with the Paseo create_agent tool (mcp__paseo__create_agent): provider "${paseoProvider}"${paseoThinking}, a short title, and the brief as initialPrompt. Keep notifyOnFinish on and don't poll: you are notified when it finishes. The subagent cannot see this conversation, so the brief must stand alone: ${brief}`
+    ? `How to delegate: create a Paseo subagent with the Paseo create_agent tool (mcp__paseo__create_agent): provider "${paseoProvider}"${paseoThinking}${unattended}, a short title, and the brief as initialPrompt. Keep notifyOnFinish on and don't poll: you are notified when it finishes. The subagent cannot see this conversation, so the brief must stand alone: ${brief}`
     : `How to delegate: call the Agent tool with subagent_type "${IMPLEMENTER_AGENT_NAME}", model "${model}" and effort "${effort}". The subagent cannot see this conversation, so the brief must stand alone: ${brief}`;
   const lines = [
     DELEGATION_MARKER,
@@ -71,13 +78,17 @@ export function buildDelegationPolicy(settings: DelegationSettings): string {
   if (settings.review) {
     lines.push(
       "",
-      `Review: when the subagent finishes, read the diff yourself, rerun the checks, and send fixes back to the same subagent with ${paseoRunner ? "the Paseo send_agent_prompt tool" : "SendMessage"} instead of ${paseoRunner ? "creating" : "starting"} a new one. Make a fix yourself only when it is smaller than the message describing it.`,
+      `Review: when the subagent finishes, read the diff yourself, rerun the checks, and send fixes back to the same subagent with ${
+        paseoRunner ? "the Paseo send_agent_prompt tool" : "SendMessage"
+      } instead of ${
+        paseoRunner ? "creating" : "starting"
+      } a new one. Make a fix yourself only when it is smaller than the message describing it.`
     );
   }
   if (settings.searchModel !== "off") {
     lines.push(
       "",
-      `Search: for a broad search across many files where you only need the conclusion, use the Agent tool with subagent_type "${SEARCH_AGENT_NAME}".`,
+      `Search: for a broad search across many files where you only need the conclusion, use the Agent tool with subagent_type "${SEARCH_AGENT_NAME}".`
     );
   }
   const subagentText = settings.subagentInstructions.trim();
@@ -85,7 +96,7 @@ export function buildDelegationPolicy(settings: DelegationSettings): string {
   if (subagentText && !paseoRunner) {
     lines.push(
       "",
-      `Subagent instructions: end the prompt of every subagent you start with the Agent tool with the following text, quoted verbatim:\n${subagentText}`,
+      `Subagent instructions: end the prompt of every subagent you start with the Agent tool with the following text, quoted verbatim:\n${subagentText}`
     );
   }
   const extra = settings.extraInstructions.trim();
@@ -94,12 +105,17 @@ export function buildDelegationPolicy(settings: DelegationSettings): string {
 }
 
 /** The session's own system prompt, if any, then the rule. */
-export function withDelegationPolicy(systemPrompt: string | undefined, policy: string): string {
+export function withDelegationPolicy(
+  systemPrompt: string | undefined,
+  policy: string
+): string {
   const own = systemPrompt?.trim();
   return own ? `${own}\n\n${policy}` : policy;
 }
 
-export function delegationCardData(settings: DelegationSettings): DelegationCardData {
+export function delegationCardData(
+  settings: DelegationSettings
+): DelegationCardData {
   return {
     implementerRunner: settings.implementerRunner,
     implementerModel: settings.implementerModel,

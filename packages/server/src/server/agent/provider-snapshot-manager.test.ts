@@ -1418,6 +1418,61 @@ describe("ProviderSnapshotManager public surface", () => {
     }
   });
 
+  test("an explicit unattended false drops a full-access mode the caller carried", async () => {
+    const resolverInputs: ResolveAgentCreateConfigInput[] = [];
+    const modes: AgentMode[] = [
+      { id: "auto", label: "Default Permissions" },
+      { id: "full-access", label: "Full Access", isUnattended: true },
+    ];
+    const manager = new ProviderSnapshotManager({
+      logger: createTestLogger(),
+      providerOverrides: {
+        claude: { enabled: false },
+        copilot: { enabled: false },
+        opencode: { enabled: false },
+        pi: { enabled: false },
+      },
+      extraClients: {
+        codex: createExtraClient("codex", {
+          async isAvailable() {
+            return true;
+          },
+          async fetchCatalog() {
+            return { models: [] as AgentModelDefinition[], modes };
+          },
+          resolveCreateConfig(input) {
+            resolverInputs.push(input);
+            return { modeId: input.requestedMode, featureValues: undefined };
+          },
+        }),
+      },
+    });
+    try {
+      await manager.resolveCreateConfig({
+        cwd: "/tmp/project",
+        provider: "codex",
+        requestedMode: "full-access",
+        featureValues: undefined,
+        parent: null,
+        unattended: false,
+        unattendedExplicit: true,
+      });
+      expect(resolverInputs[0]?.requestedMode).toBeUndefined();
+
+      await manager.resolveCreateConfig({
+        cwd: "/tmp/project",
+        provider: "codex",
+        requestedMode: "full-access",
+        featureValues: undefined,
+        parent: null,
+        unattended: false,
+      });
+      expect(resolverInputs[1]?.requestedMode).toBe("full-access");
+    } finally {
+      manager.destroy();
+    }
+  });
+
   test("treats an OpenCode parent with auto accept as unattended when resolving an explicit child mode", async () => {
     const openCode = new OpenCodeAgentClient(createTestLogger());
     const modes: AgentMode[] = [

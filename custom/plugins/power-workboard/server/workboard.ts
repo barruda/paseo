@@ -48,7 +48,10 @@ import {
   type Task,
   type TaskTiming,
   BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
+  autoPermissionFor, // CUSTOM(unattended-automation)
+  TMP_CLEANUP_INTERVAL_MS, // CUSTOM(unattended-automation)
 } from "../shared/model";
+import { cleanupScratchDirectory, tmpCleanupDue } from "./tmp-cleanup"; // CUSTOM(unattended-automation)
 import {
   dueTrigger,
   nextRunAt,
@@ -192,6 +195,9 @@ const DEFAULT_MAX_CHECKPOINTS = 5;
 const MAX_RESUME_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 /** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
 const IDLE_SETTLE_MS = 20_000;
+// CUSTOM(unattended-automation): within ~2 minutes, plus a tick, an automatic agent stuck on
+// a permission reaches Needs you.
+const PERMISSION_WAIT_MS = 90_000;
 const DEFAULT_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
 /** CUSTOM(usage-limit): a wake's turn is read no sooner than this after the send, so it has started. */
 const WAKE_TURN_START_MS = 30_000;
@@ -332,6 +338,9 @@ export class Workboard {
   private inventory: Inventory = { workspaces: [], agents: [], projects: [] };
   private queue: Promise<unknown> = Promise.resolve();
   private timer: ReturnType<typeof setInterval> | undefined;
+  // CUSTOM(unattended-automation): the hourly scratch-folder pass.
+  private tmpCleanupRanAt: number | null = null;
+  private tmpCleanupRunning = false;
   private debounce: ReturnType<typeof setTimeout> | undefined;
   private refreshing: Promise<void> | undefined;
   // null means a full refresh; undefined means no work is waiting.
@@ -499,10 +508,44 @@ export class Workboard {
       ))
         if (DELIVERY_STEPS.has(delivery.stage)) this.launch(taskId);
     });
+    // CUSTOM(unattended-automation): one background pass at start; the tick asks again hourly.
+    void this.cleanTmpIfDue();
     if (!this.stopped)
       this.timer = setInterval(() => {
         void this.refresh().catch(() => undefined);
+        void this.cleanTmpIfDue();
       }, this.interval);
+  }
+  /**
+   * CUSTOM(unattended-automation): the scratch-folder cleanup, at most once an hour and never
+   * inside the tick's serial queue. Settings are read on each pass so a change applies next hour.
+   */
+  private async cleanTmpIfDue(): Promise<void> {
+    if (this.stopped || this.tmpCleanupRunning) return;
+    const now = this.now();
+    if (!tmpCleanupDue(this.tmpCleanupRanAt, now, TMP_CLEANUP_INTERVAL_MS))
+      return;
+    this.tmpCleanupRunning = true;
+    this.tmpCleanupRanAt = now;
+    try {
+      const settings = this.store.current.settings.tmpCleanup;
+      if (!settings.path) return;
+      const result = await cleanupScratchDirectory({
+        path: settings.path,
+        maxAgeMs: settings.maxAgeHours * 60 * 60_000,
+        now,
+      });
+      for (const error of result.errors) {
+        console.error(`Scratch cleanup failed: ${error}`);
+      }
+    } catch (error) {
+      console.error(
+        "Scratch cleanup failed:",
+        error instanceof Error ? error.message : error,
+      );
+    } finally {
+      this.tmpCleanupRunning = false;
+    }
   }
   private async load() {
     await this.store.load();
@@ -1975,6 +2018,8 @@ export class Workboard {
       thinkingOptionId: settings.thinkingOptionId,
       title: `Refine: ${task.title}`.slice(0, 200),
       prompt: refinementPrompt(task, settings.instructions),
+      // CUSTOM(unattended-automation)
+      unattended: autoPermissionFor(this.store.current.settings, "refinement"),
     });
     await this.setRefinement(taskId, {
       agentId,
@@ -2384,6 +2429,69 @@ export class Workboard {
       this.wakePending.add(taskId);
       this.armWake();
     }
+  }
+  /**
+   * CUSTOM(unattended-automation): layer C. An automatic agent stuck on a permission goes to
+   * Needs you with the reason and wakes the Projects Assistant. The delivery is created only
+   * when none exists; a task in a delivery step keeps its step.
+   */
+  private async permissionNeedsYou(
+    taskId: string,
+    record: Orchestration,
+    task: Task,
+    since: string,
+  ): Promise<void> {
+    const delivery = this.store.current.assistant.deliveries[taskId];
+    await this.setOrchestration(taskId, { permissionNeedsYou: true });
+    if (delivery) {
+      // A delivery step (a fix, a merge) owns the task; changing its stage would break
+      // its resume. Leave the step alone but record why the agent is not moving.
+      await this.log(
+        record.orchestratorId,
+        "warn",
+        `"${task.title}" is waiting for a permission during its delivery`,
+        taskId,
+        record.agentId,
+      );
+      return;
+    }
+    const { index: attempt } = await this.ensureAttempt(taskId, record);
+    await this.createDelivery(taskId, {
+      action: this.policy(this.projectIdOf(task)).action,
+      attempt,
+    });
+    const minutes = Math.max(
+      1,
+      Math.round((this.now() - Date.parse(since)) / 60_000),
+    );
+    await this.markNeedsYou(
+      taskId,
+      "permission",
+      `The agent has been waiting for a permission for ${minutes} min.`,
+    );
+    await this.log(
+      record.orchestratorId,
+      "warn",
+      `"${task.title}" is waiting for a permission`,
+      taskId,
+      record.agentId,
+    );
+  }
+  /** CUSTOM(unattended-automation): the wait ended; drop a Needs you this board raised. */
+  private async clearPermissionWait(taskId: string): Promise<void> {
+    const delivery = this.store.current.assistant.deliveries[taskId];
+    await this.setOrchestration(taskId, {
+      permissionSince: null,
+      permissionNeedsYou: false,
+    });
+    if (
+      delivery?.stage === "needs-you" &&
+      delivery.reason === "permission" &&
+      !delivery.report
+    )
+      await this.store.update((data) => {
+        delete data.assistant.deliveries[taskId];
+      });
   }
   // CUSTOM(assistant-wake): tasks that need the user are told to the chat agent in one batch.
   private wakePending = new Set<string>();
@@ -3850,14 +3958,26 @@ export class Workboard {
       this.assistantOptions.chatDirectory ?? defaultChatDirectory();
     await mkdir(directory, { recursive: true });
     const chat = this.store.current.assistant.settings.chat;
+    // CUSTOM(unattended-automation): the ship agent is created through create_agent, so the
+    // assistant is told which permission mode its role setting asks for.
+    const shipUnattended = autoPermissionFor(
+      this.store.current.settings,
+      "ship",
+    );
+    const permissionNote = `Automatic agents: when you create the ship agent with create_agent, pass settings: {"unattended": ${shipUnattended}}. It must not stop for a permission prompt.`;
+    const profile = await this.agentProfile(
+      this.profileRef(ASSISTANT_PROFILE),
+      chat.provider,
+      chat.skills,
+      chat.memory,
+    );
     return this.host.startAgentIn(directory, {
       // CUSTOM(agent-profiles)
-      ...(await this.agentProfile(
-        this.profileRef(ASSISTANT_PROFILE),
-        chat.provider,
-        chat.skills,
-        chat.memory,
-      )),
+      ...profile,
+      // CUSTOM(unattended-automation): part of the system prompt, so a restarted chat keeps it.
+      systemPrompt: profile.systemPrompt
+        ? `${profile.systemPrompt}\n\n${permissionNote}`
+        : permissionNote,
       provider: chat.provider,
       modeId: chat.modeId,
       thinkingOptionId: chat.thinkingOptionId,
@@ -3867,6 +3987,8 @@ export class Workboard {
         [CHAT_LABEL]: "true",
         ...(replaces ? { [AGENT_REPLACES_LABEL]: replaces } : {}),
       },
+      // CUSTOM(unattended-automation)
+      unattended: autoPermissionFor(this.store.current.settings, "assistant"),
     });
   }
   // CUSTOM(assistant-compact): once a turn leaves the chat at its token limit, the board restarts
@@ -4264,6 +4386,25 @@ export class Workboard {
         }
         continue;
       }
+      // CUSTOM(unattended-automation): layer C. Whatever layer B could not approve, the
+      // board surfaces within PERMISSION_WAIT_MS instead of leaving the task silent.
+      if (agent.waitingPermission) {
+        const since = record.permissionSince ?? this.stamp();
+        if (!record.sawRunning || record.idleSince || !record.permissionSince)
+          await this.setOrchestration(taskId, {
+            sawRunning: true,
+            idleSince: null,
+            permissionSince: since,
+          });
+        if (
+          !record.permissionNeedsYou &&
+          this.now() - Date.parse(since) >= PERMISSION_WAIT_MS
+        )
+          await this.permissionNeedsYou(taskId, record, task, since);
+        continue;
+      }
+      if (record.permissionSince || record.permissionNeedsYou)
+        await this.clearPermissionWait(taskId);
       if (agent.activity === "running" || agent.activity === "waiting") {
         if (!record.sawRunning || record.idleSince)
           await this.setOrchestration(taskId, {
@@ -5104,6 +5245,9 @@ export class Workboard {
       status: "starting",
       orchestratorId: config.id,
       night,
+      // CUSTOM(unattended-automation): a new run starts its own wait clock.
+      permissionSince: null,
+      permissionNeedsYou: false,
     });
     try {
       const source =
@@ -5139,6 +5283,11 @@ export class Workboard {
         provider: config.provider,
         modeId: config.modeId,
         thinkingOptionId: config.thinkingOptionId,
+        // CUSTOM(unattended-automation)
+        unattended: autoPermissionFor(
+          this.store.current.settings,
+          "orchestrator",
+        ),
         title: task.title,
         prompt: orchestratorPrompt(
           task,
@@ -5229,6 +5378,11 @@ export class Workboard {
           provider: settings.provider,
           modeId: settings.modeId,
           thinkingOptionId: settings.thinkingOptionId,
+          // CUSTOM(unattended-automation)
+          unattended: autoPermissionFor(
+            this.store.current.settings,
+            "orchestrator",
+          ),
           title: task.title,
           prompt: [
             orchestratorPrompt(task, settings.instructions),
@@ -5254,6 +5408,9 @@ export class Workboard {
         feedback: null,
         error: null,
         orchestratorId: settings.id,
+        // CUSTOM(unattended-automation)
+        permissionSince: null,
+        permissionNeedsYou: false,
         // CUSTOM(night-tasks): a continuation runs whenever it is taken.
         // CUSTOM(task-checkpoints): a resumed night task stays one, for the night power-off.
         night: checkpoint ? record.night : false,
