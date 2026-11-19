@@ -8226,8 +8226,16 @@ tests/card-open-agent.test.ts`. Needs only `paseo plugin reload power-workboard`
     because they hold execution state, model picks or keys. A Telus `config.json` that is not a
     JSON object is left untouched and the run fails instead of overwriting it.
   - Left out on purpose: theme, fonts, sidebar layout and keyboard shortcuts, which live in the
-    Electron client's localStorage and cannot be written safely into the other Electron profile
-    while it runs. The screen and the plugin README say so.
+    Electron client's localStorage. Decision recorded on the screen ("Theme and visuals stay on the
+    Telus side") and in the README: Chromium locks and caches the profile, writing it while Telus
+    runs can lose the change or corrupt the store, and there is no supported export/import.
+  - The desktop category is written only while Paseo Telus is closed. The preview reads the Telus
+    Electron profile's `SingletonLock`; when its process is alive the category is shown unavailable
+    with the reason instead of being written, and the preview and the run say to quit the app
+    first and reopen it after. A rollback of a backup that touched `desktop` is refused while the
+    app runs. This covers the app's cached whole-file write, which would otherwise undo the sync.
+  - The plugins preview lists each plugin separately with its enabled state and, when changed, the
+    path that moved into the Telus home, instead of one aggregate line.
   - The UI is English like the rest of Settings; the screen title is the one the ticket asked for.
 - **Core files touched:** none. Plugin files: `paseo-plugin.json`, `package.json`, `tsconfig.json`,
   `vitest.config.ts`, `index.client.tsx`, `index.server.ts`, `client/SettingsScreen.tsx`,
