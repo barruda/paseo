@@ -8297,3 +8297,33 @@ tests/assistant-engine.test.ts`. Needs only `paseo plugin reload power-workboard
   ..."); open a task agent's report with options in its chat or in Reports and tap one (the task
   goes back to Ready to start with that answer); comment on an outcome; in Reports, a ticket you
   moved by hand shows "you" and stays its own row. Check light and dark, desktop and phone width.
+
+## board-drag-selection: Power Workboard drag handles never start a text selection
+
+- **Added:** 2026-11-19 (based on `custom` at `e30e10550`)
+- **Commit:** `custom: Power Workboard drag handles never start a text selection`
+- **Why:** A mousedown on a card grip, a column title or the resize strip began a native text
+  selection. Once a selection exists, react-native-web's responder system terminates the Pressable
+  that grabbed the gesture, resets its tracked pointers and then ignores every mousemove, so the
+  column and resize handles (which only take over after 6 px) never start and the browser keeps
+  extending the selection across the column. `duringDrag`'s `user-select: none` on `body` only ran
+  after a drag had started, and never cleared a selection that already existed.
+- **What:** `dragAreaProps(disabled)` cancels the web `mousedown` default, clears the current
+  selection and focuses the area again (preventDefault would otherwise stop the browser from
+  focusing it, which breaks the resize strip's arrow keys and the title's keyboard reorder). It
+  cancels `mousedown`, not `pointerdown`: cancelling `pointerdown` also drops the compatibility
+  `mousedown` that react-native-web uses to grant the gesture. `noSelectText()` adds
+  `user-select: none` to the drag area only, so text elsewhere stays selectable. Both are no-ops on
+  native. The card grip, the column title and the resize strip apply them, and `duringDrag` clears
+  any selection when a drag actually begins.
+- **Core files touched:** none. Plugin files: `client/web.ts` (`dragAreaProps`, `noSelectText`,
+  `duringDrag`), `client/BoardView.tsx` (`TaskDragShell`, the column title `Pressable`, the resize
+  strip), `tests/react-native.ts` (`Platform.OS` is mutable so a test can enter web mode),
+  `tests/drag-area.test.ts` (new, jsdom).
+- **Re-apply:** Plugin-only. Grep `CUSTOM(board-drag-selection)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/drag-area.test.ts`. Needs only `paseo plugin reload power-workboard`. In the app, select some
+  text on the board first (drag over a card's summary), then drag a card grip, a column title and
+  the resize strip: each drag starts, the old selection is gone and no new one appears. A plain
+  click on the column title still opens its menu, a double-click on the resize strip still resets
+  the width, and text outside the grips is still selectable.
