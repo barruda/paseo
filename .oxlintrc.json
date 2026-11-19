@@ -10,6 +10,7 @@
     "custom/plugins/power-workboard/**",
     "custom/plugins/paseo-background/**",
     "custom/plugins/token-ledger/**",
+    "custom/plugins/paseo-chat-polish/**",
     "custom/plugins/skills/**"
   ],
   "plugins": ["react", "react-perf", "unicorn", "typescript", "oxc", "import", "promise"],
