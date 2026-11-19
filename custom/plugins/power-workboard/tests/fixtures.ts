@@ -116,6 +116,19 @@ export function fixture(initial: Partial<Data> = {}) {
       const agent = inventory.agents.find((a) => a.id === id);
       return agent && !agent.archivedAt ? agent.activity : null;
     }),
+    // CUSTOM(assistant-compact): tests set `contextUsedTokens` on the agent.
+    agentContext: vi.fn(async (id: string) => {
+      const agent = inventory.agents.find((a) => a.id === id) as
+        | (Agent & { contextUsedTokens?: number })
+        | undefined;
+      if (!agent || agent.archivedAt) return null;
+      return {
+        activity: agent.activity,
+        usedTokens: agent.contextUsedTokens ?? null,
+        lastUserMessageAt: agent.lastUserMessageAt ?? null,
+        queued: false,
+      };
+    }),
     runAgent: vi.fn(
       async (_id: string, _text: string) =>
         "<ticket>\n# Ticket\n\nBody\n</ticket>",

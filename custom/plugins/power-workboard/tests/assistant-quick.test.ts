@@ -92,6 +92,20 @@ describe("QuickInbox", () => {
     }
   });
 
+  // CUSTOM(assistant-compact)
+  it("reports a message to the chat as pending until it is acked", async () => {
+    const { inbox } = setup();
+    expect(inbox.pending("agent-1")).toBe(false);
+    const asked = inbox.ask({ text: "x", source: "app", waitMs: 1_000 });
+    await settle();
+    expect(inbox.pending("agent-1")).toBe(true);
+    expect(inbox.pending("agent-2")).toBe(false);
+    inbox.ack(inbox.list()[0].id, "ok", "Done");
+    await asked;
+    expect(inbox.pending("agent-1")).toBe(false);
+    inbox.dispose();
+  });
+
   it("settles error when openChat or send throws", async () => {
     for (const overrides of [
       { openChat: async () => Promise.reject(new Error("down")) },

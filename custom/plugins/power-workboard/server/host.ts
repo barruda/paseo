@@ -116,6 +116,15 @@ const profileConfig = (start: AgentStart) => ({
   ...(start.systemPrompt ? { systemPrompt: start.systemPrompt } : {}),
   ...(start.providerOptions ? { providerOptions: start.providerOptions } : {}),
 });
+/** CUSTOM(assistant-compact): what the board reads of the chat before compacting it. */
+export interface AgentContext {
+  activity: Card["activity"];
+  /** Tokens in the context window after the last turn; null when the provider reports none. */
+  usedTokens: number | null;
+  lastUserMessageAt: string | null;
+  /** Messages sent during a turn that the agent has not taken yet. */
+  queued: boolean;
+}
 // CUSTOM(projects-assistant)
 export interface MergeOptions {
   baseRef?: string;
@@ -155,6 +164,8 @@ export interface Host {
   agentAlive(agentId: string): Promise<boolean>;
   /** CUSTOM(assistant-wake): the agent's activity, or null when it is gone or archived. */
   agentActivity(agentId: string): Promise<Card["activity"] | null>;
+  /** CUSTOM(assistant-compact): the agent's activity and context use, or null when it is gone or archived. */
+  agentContext(agentId: string): Promise<AgentContext | null>;
   /** Send a message and wait for that turn; resolves with the agent's last message. */
   runAgent(agentId: string, text: string): Promise<string>;
   /** Send a message to an agent without waiting for its turn. */
@@ -261,7 +272,8 @@ export class PaseoHost implements Host {
     private api: PaseoApi,
     private compat: PaseoCompat,
     readonly identity: Host["identity"],
-    private changed: (workspaceId?: string) => void,
+    // CUSTOM(assistant-compact): `agentId` names the agent an `agent_update` was about.
+    private changed: (workspaceId?: string, agentId?: string) => void,
   ) {}
   private own(subscription: Subscription): void {
     let initial = true;
@@ -295,7 +307,7 @@ export class PaseoHost implements Host {
           activity: activity(change.agent),
           turnActive: turnActive(change.agent),
         });
-        this.changed(change.agent.workspaceId);
+        this.changed(change.agent.workspaceId, change.agent.id);
       } else {
         this.childRecords.delete(change.agentId);
         this.agentUpdates.set(change.agentId, null);
@@ -706,6 +718,26 @@ export class PaseoHost implements Host {
     try {
       const result = await this.api.agents.ref(agentId).refresh();
       return result && !result.agent.archivedAt ? activity(result.agent) : null;
+    } catch {
+      return null;
+    }
+  }
+  // CUSTOM(assistant-compact)
+  async agentContext(agentId: string): Promise<AgentContext | null> {
+    try {
+      const result = await this.api.agents.ref(agentId).refresh();
+      if (!result || result.agent.archivedAt) return null;
+      // The pinned client types may predate the steer queue; the daemon sends it when it has one.
+      const agent = result.agent as PaseoAgent & {
+        pendingSteerMessageIds?: string[];
+      };
+      const used = agent.lastUsage?.contextWindowUsedTokens;
+      return {
+        activity: activity(agent),
+        usedTokens: typeof used === "number" ? used : null,
+        lastUserMessageAt: agent.lastUserMessageAt ?? null,
+        queued: (agent.pendingSteerMessageIds?.length ?? 0) > 0,
+      };
     } catch {
       return null;
     }

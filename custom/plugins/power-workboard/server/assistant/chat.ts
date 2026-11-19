@@ -99,9 +99,11 @@ export const ASSISTANT_MEMORY_NOTE =
 
 export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NOTE}`;
 
+// CUSTOM(assistant-compact): the rules alone open a chat started by compaction, which must not greet.
+export const CHAT_RULES =
+  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack and board_report. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. After each action on a task, record it once with board_report (pass the quick message id when there is one). End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
 /** The chat's first message; the role itself is in the profile's system prompt. */
-export const CHAT_INSTRUCTIONS =
-  'Call board_overview, then reply in one line: that you\'re ready, plus what is in Needs you (or that nothing is waiting). Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack and board_report. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. After each action on a task, record it once with board_report (pass the quick message id when there is one). End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
+export const CHAT_INSTRUCTIONS = `Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). ${CHAT_RULES}`;
 
 /** `<PASEO_HOME>/plugin-data/power-workboard/assistant-chat`, next to the history folder. */
 export function defaultChatDirectory(

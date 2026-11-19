@@ -7872,3 +7872,54 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   in the card; hover or click "detalhes"; click a `feito` line with an id to land on that ticket in
   Reports. A task agent's chat still shows a `pwb` block as a code block (as Markdown). Check
   light and dark.
+
+## assistant-compact: the Projects Assistant chat restarts with a summary once its context is full
+
+- **Added:** 2026-11-19 (based on `custom` at `36f050171`)
+- **Commit:** `custom: Projects Assistant chat compacts itself into a new chat at 180k tokens`
+- **Why:** The assistant chat runs for days and its context grows past 200k tokens, where it gets
+  slow and expensive. The board and the assistant's memory already hold the durable state, so a
+  new chat only needs the thread of the last few exchanges.
+- **What:** New chat setting `compactAtTokens` (default 180 000, 0 turns it off), edited in
+  Settings > Bruno's Customizations > Projects Assistant > Chat as "Compact at (tokens)". The
+  chat's `agent_update`s (the host's unfiltered agent subscription already gets them; it now
+  passes the agent id to `Workboard.agentUpdated`) arm a 15 s settle timer; the periodic pass re-arms it only while the last reading was at the limit or unknown, so
+  there is no new polling. When it fires, `host.agentContext` reads the chat's activity,
+  `lastUsage.contextWindowUsedTokens`, `lastUserMessageAt` and steer queue in one refresh. It goes
+  ahead only when the chat is idle (not running, waiting on a permission or in error), nothing is
+  queued, no board wake is pending, sending or unread (`wakeTurn` is read first), the chat is not
+  waiting for the usage limit, and no quick message to it is pending (`QuickInbox.pending`). The
+  summary comes from `askAgent` (a side question on a fork of the chat, so it stays out of its
+  history and needs no second model setup), asking for open requests, decisions, tasks with ids
+  and promises from the last three replies; if that fails, the last three replies and the user's
+  messages between them are read from the timeline instead. Either is cut to 8 000 characters
+  (about 2k tokens). The chat is checked again after the summary: a new user message cancels the
+  round. Then, as Restart chat does, a new chat starts (`createChat`, shared with `openChat`) and
+  the old one is archived. The new chat's first message is `CHAT_RULES` (the instructions
+  without the greeting) plus the summary in `<inherited-context>`, marked as background, with
+  "reply only ok". `assistant.compact` stores the new chat and, after its first turn, its size
+  (`bornTokens`): a chat born at or above the limit is never compacted again, so the restart
+  cannot loop. History kind `chat-compacted` ("Chat compacted: N tokens → new chat", the summary
+  as detail) is filed under task id `assistant-chat` (`CHAT_HISTORY_TASK_ID`), so Reports shows
+  one "Projects Assistant chat" row. The chat shows nothing about it. Board wakes read
+  `chatAgentId` when they send, so they reach the new chat.
+- **Core files touched:** `packages/app/src/screens/settings/bruno-customizations/projects-assistant-model.ts`
+  (`compactAtTokens` in the mirror schema, `patchChatSettings` parses it as text),
+  `projects-assistant-page.tsx` (the input), `projects-assistant-model.test.ts`,
+  `packages/app/src/screens/settings/settings-search-index.ts` (search term). Plugin files:
+  `shared/assistant.ts`, `server/assistant/compact.ts` (new), `server/assistant/chat.ts`
+  (`CHAT_RULES`), `server/assistant/quick.ts`, `server/host.ts` (`agentContext`),
+  `server/workboard.ts`, `index.server.ts`, `client/Profiles.tsx` (its save keeps the limit),
+  history strings and icon, `README.md`, tests (`assistant-engine`, `fixtures`).
+- **Re-apply:** Plugin side: grep `CUSTOM(assistant-compact)`. App side: keep the mirror schema
+  in step with the plugin's `assistantChatSettingsSchema`, or saving from Settings drops the
+  field back to its default. **Rollback:** an older plugin rejects the `chat-compacted` history
+  kind when it reads the history.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/assistant-engine.test.ts -t compaction` and `(cd packages/app && npx vitest run
+src/screens/settings/bruno-customizations/projects-assistant-model.test.ts)`. The plugin side
+  needs `paseo plugin reload power-workboard`; the setting in Settings needs an app build. In
+  Settings > Bruno's Customizations > Projects Assistant > Chat, "Compact at (tokens)" shows 180000. To see it work, save a low limit (say 20000), send the chat a message, wait for its
+  reply and 15 s: a new Projects Assistant chat appears whose first message has the inherited
+  context, the old one is archived, and Reports shows "Projects Assistant chat" with "Chat
+  compacted". Put the limit back afterwards.

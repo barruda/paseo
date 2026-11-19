@@ -109,6 +109,7 @@ const EVENT_ICONS: Record<string, string> = {
   "pr-prepared": "GitPullRequest",
   "needs-you": "Bell",
   "told-assistant": "Bot",
+  "chat-compacted": "RotateCcw", // CUSTOM(assistant-compact)
   observed: "Eye",
   failed: "XCircle",
   done: "CircleCheck",

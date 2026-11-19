@@ -37,6 +37,7 @@ describe("projects assistant settings model", () => {
         skills: { mode: "all", names: [] },
         memory: true,
         wakeOnNeedsYou: true,
+        compactAtTokens: 180_000,
       },
     });
   });
@@ -55,6 +56,7 @@ describe("projects assistant settings model", () => {
       skills: { mode: "all", names: [] },
       memory: true,
       wakeOnNeedsYou: true,
+      compactAtTokens: 180_000,
     });
     expect(chatSettingsValid(edited)).toBe(true);
     expect(chatSettingsValid(patchChatSettings(base, { provider: "" }))).toBe(false);
@@ -69,6 +71,20 @@ describe("projects assistant settings model", () => {
     expect(edited.chat.skills).toEqual({ mode: "selected", names: ["a:b"] });
     expect(edited.chat.memory).toBe(false);
     expect(assistantChatSettingsSchema.parse({ provider: "claude/x" }).memory).toBe(true);
+  });
+
+  // CUSTOM(assistant-compact)
+  it("edits the compaction limit as text: empty is the default, 0 is off, and a non-number is invalid", () => {
+    const base = assistantSettingsSchema.parse({});
+    expect(patchChatSettings(base, { compactAtTokens: "150,000" }).chat.compactAtTokens).toBe(
+      150_000,
+    );
+    expect(patchChatSettings(base, { compactAtTokens: " " }).chat.compactAtTokens).toBe(180_000);
+    const off = patchChatSettings(base, { compactAtTokens: "0" });
+    expect(off.chat.compactAtTokens).toBe(0);
+    expect(chatSettingsValid(off)).toBe(true);
+    expect(chatSettingsValid(patchChatSettings(base, { compactAtTokens: "180k" }))).toBe(false);
+    expect(chatSettingsValid(patchChatSettings(base, { compactAtTokens: "-5" }))).toBe(false);
   });
 
   it("rejects merge as the default action", () => {

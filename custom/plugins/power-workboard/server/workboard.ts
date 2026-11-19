@@ -81,6 +81,7 @@ import {
   taskProgressSchema,
   type Report,
   FIX_WAIT_LIMIT_MS, // CUSTOM(resource-pools)
+  CHAT_HISTORY_TASK_ID, // CUSTOM(assistant-compact)
 } from "../shared/assistant";
 import { worktreeBaseName } from "./assistant/task-git";
 import { parseReport } from "./assistant/report";
@@ -90,6 +91,12 @@ import {
   CHAT_LABEL,
   defaultChatDirectory,
 } from "./assistant/chat";
+// CUSTOM(assistant-compact)
+import {
+  COMPACT_QUESTION,
+  compactPrompt,
+  recentExchange,
+} from "./assistant/compact";
 import { mkdir } from "node:fs/promises";
 // CUSTOM(resource-pools)
 import {
@@ -159,6 +166,10 @@ export interface AssistantOptions {
   dirtyRetryMs?: number;
   /** CUSTOM(resource-pools): reads the free RAM for the pools' floor; tests pass a fake. */
   memory?: MemoryReader;
+  /** CUSTOM(assistant-compact): quiet time after the chat's last change before its size is checked. */
+  compactSettleMs?: number;
+  /** CUSTOM(assistant-compact): a quick message to this chat still waits for its answer. */
+  chatQueued?: (agentId: string) => boolean;
 }
 /**
  * CUSTOM(night-tasks): a power-off arms only this soon after the night was last active (its
@@ -181,6 +192,11 @@ const IDLE_SETTLE_MS = 20_000;
 const DEFAULT_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
 /** CUSTOM(usage-limit): a wake's turn is read no sooner than this after the send, so it has started. */
 const WAKE_TURN_START_MS = 30_000;
+/**
+ * CUSTOM(assistant-compact): the chat must stay quiet this long after its last `agent_update` before
+ * the board compacts it, so a message the app queued during the turn goes out first.
+ */
+const COMPACT_SETTLE_MS = 15_000;
 /** CUSTOM(assistant-autonomy): how many times a merge waits for a clean base checkout. */
 const MAX_DIRTY_RETRIES = 12;
 /**
@@ -449,6 +465,7 @@ export class Workboard {
       await this.reconcile();
       await this.scan();
       await this.orchestrate();
+      this.chatId = this.store.current.assistant.chatAgentId; // CUSTOM(assistant-compact)
       this.requeueUntold(); // CUSTOM(assistant-wake)
       void this.checkWakeTurn(); // CUSTOM(usage-limit)
       // CUSTOM(projects-assistant): a delivery interrupted by a restart resumes at its step.
@@ -538,6 +555,7 @@ export class Workboard {
         await this.orchestrate();
         this.requeueUntold(); // CUSTOM(assistant-wake)
         void this.checkWakeTurn(); // CUSTOM(usage-limit)
+        this.compactOnRefresh(); // CUSTOM(assistant-compact)
       } catch (error) {
         this.connected = false;
         this.error = message(error);
@@ -552,7 +570,16 @@ export class Workboard {
   private observation(id: string): string {
     return `${this.epoch}:${this.workspaceEpochs.get(id) ?? 0}`;
   }
+  /**
+   * CUSTOM(assistant-compact): an agent's snapshot changed (`agent_update`, which the board gets
+   * for every agent). The chat is outside the board; its updates (turn end, new usage) arm the
+   * size check.
+   */
+  agentUpdated(id: string): void {
+    if (id === this.chatId) this.chatChanged();
+  }
   agentChanged(id: string): void {
+    this.agentUpdated(id); // CUSTOM(assistant-compact)
     // Streams of agents outside the board must not force a full refresh.
     const workspaceId = this.inventory.agents.find(
       (a) => a.id === id,
@@ -3642,34 +3669,191 @@ export class Workboard {
       const current = assistant.chatAgentId;
       if (!fresh && current && (await this.host.agentAlive(current)))
         return { agentId: current, created: false };
-      const directory =
-        this.assistantOptions.chatDirectory ?? defaultChatDirectory();
-      await mkdir(directory, { recursive: true });
-      const chat = assistant.settings.chat;
-      const agentId = await this.host.startAgentIn(directory, {
-        // CUSTOM(agent-profiles)
-        ...(await this.agentProfile(
-          this.profileRef(ASSISTANT_PROFILE),
-          chat.provider,
-          chat.skills,
-          chat.memory,
-        )),
-        provider: chat.provider,
-        modeId: chat.modeId,
-        thinkingOptionId: chat.thinkingOptionId,
-        title: "Projects Assistant",
-        prompt: CHAT_INSTRUCTIONS,
-        labels: { [CHAT_LABEL]: "true" },
-      });
+      const agentId = await this.createChat(CHAT_INSTRUCTIONS);
       await this.store.update((data) => {
         data.assistant.chatAgentId = agentId;
       });
+      this.chatId = agentId; // CUSTOM(assistant-compact)
       // CUSTOM(assistant-restart-pill): the replaced chat is archived only once the new one exists.
       if (fresh && archivePrevious && current && current !== agentId)
         await this.host.archiveAgent(current).catch(() => undefined);
       return { agentId, created: true };
     });
   }
+  /** Start a chat agent with the assistant's settings and profile; its id is not stored here. */
+  private async createChat(prompt: string): Promise<string> {
+    const directory =
+      this.assistantOptions.chatDirectory ?? defaultChatDirectory();
+    await mkdir(directory, { recursive: true });
+    const chat = this.store.current.assistant.settings.chat;
+    return this.host.startAgentIn(directory, {
+      // CUSTOM(agent-profiles)
+      ...(await this.agentProfile(
+        this.profileRef(ASSISTANT_PROFILE),
+        chat.provider,
+        chat.skills,
+        chat.memory,
+      )),
+      provider: chat.provider,
+      modeId: chat.modeId,
+      thinkingOptionId: chat.thinkingOptionId,
+      title: "Projects Assistant",
+      prompt,
+      labels: { [CHAT_LABEL]: "true" },
+    });
+  }
+  // CUSTOM(assistant-compact): once a turn leaves the chat at its token limit, the board restarts
+  // it with a short summary of the recent conversation, the way "Restart chat" does.
+  /** The stored chat agent, kept here so agent stream events don't clone the store. */
+  private chatId: string | null = null;
+  private compactTimer: ReturnType<typeof setTimeout> | undefined;
+  private compacting = false;
+  /** The chat's context at the last check; undefined until read. */
+  private chatTokens: number | null | undefined;
+  private chatChanged(): void {
+    if (this.stopped) return;
+    clearTimeout(this.compactTimer);
+    this.compactTimer = setTimeout(() => {
+      this.compactTimer = undefined;
+      void this.compactChat();
+    }, this.assistantOptions.compactSettleMs ?? COMPACT_SETTLE_MS);
+  }
+  /** The periodic pass checks again only a chat that may be full, in case no update came. */
+  private compactOnRefresh(): void {
+    const assistant = this.store.current.assistant;
+    this.chatId = assistant.chatAgentId;
+    const limit = assistant.settings.chat.compactAtTokens;
+    if (!this.chatId || limit <= 0 || this.compactTimer || this.compacting)
+      return;
+    if (this.chatTokens === undefined || (this.chatTokens ?? 0) >= limit)
+      this.chatChanged();
+  }
+  /** Nothing waits to reach the chat: no turn, permission, queued message or board wake. */
+  private chatQuiet(
+    agentId: string,
+    context: NonNullable<Awaited<ReturnType<Host["agentContext"]>>>,
+  ): boolean {
+    return (
+      (context.activity === "idle" || context.activity === "attention") &&
+      !context.queued &&
+      this.wakePending.size === 0 &&
+      this.wakeSending.size === 0 &&
+      !this.wakeTimer &&
+      !this.wakeChecking &&
+      !this.assistantOptions.chatQueued?.(agentId)
+    );
+  }
+  private async compactChat(): Promise<void> {
+    if (this.stopped || this.compacting) return;
+    const assistant = this.store.current.assistant;
+    const agentId = assistant.chatAgentId;
+    const limit = assistant.settings.chat.compactAtTokens;
+    if (!agentId || limit <= 0) return;
+    this.compacting = true;
+    try {
+      const before = await this.host.agentContext(agentId);
+      this.chatTokens = before?.usedTokens ?? null;
+      if (!before || !this.chatQuiet(agentId, before)) return;
+      // A wake's turn is read before the chat that answered it goes away.
+      if (assistant.wakeTurn) {
+        await this.checkWakeTurn(true);
+        if (this.store.current.assistant.wakeTurn) return;
+      }
+      if (this.wakeWait() > 0) return;
+      const used = before.usedTokens;
+      if (used === null) return;
+      // A chat this compaction started is measured after its first turn. Born at the limit, it
+      // stays: compacting it again would only start another chat just as big.
+      const compact = assistant.compact;
+      if (compact?.agentId === agentId) {
+        const born = compact.bornTokens ?? used;
+        if (compact.bornTokens === null)
+          await this.store.update((data) => {
+            if (data.assistant.compact?.agentId === agentId)
+              data.assistant.compact.bornTokens = used;
+          });
+        if (born >= limit) return;
+      }
+      if (used < limit) return;
+      let summary: string;
+      try {
+        summary = await this.host.askAgent(agentId, COMPACT_QUESTION);
+      } catch (error) {
+        console.error(
+          "The assistant chat could not summarize itself; using its last messages:",
+          message(error),
+        );
+        summary = await recentExchange(this.host.timeline(agentId)).catch(
+          () => "",
+        );
+      }
+      if (this.stopped) return;
+      // The summary takes a while: anything that reached the chat meanwhile cancels this round.
+      const after = await this.host.agentContext(agentId);
+      if (
+        !after ||
+        !this.chatQuiet(agentId, after) ||
+        after.lastUserMessageAt !== before.lastUserMessageAt
+      )
+        return;
+      const next = await this.serial(async () => {
+        const current = this.store.current.assistant;
+        if (current.chatAgentId !== agentId || current.wakeTurn) return null;
+        const id = await this.createChat(compactPrompt(summary, used));
+        await this.store.update((data) => {
+          data.assistant.chatAgentId = id;
+          data.assistant.compact = {
+            agentId: id,
+            fromAgentId: agentId,
+            fromTokens: used,
+            at: this.stamp(),
+            bornTokens: null,
+          };
+        });
+        this.chatId = id;
+        this.chatTokens = undefined;
+        // As "Restart chat" does: the old chat is archived only once the new one exists.
+        await this.host.archiveAgent(agentId).catch(() => undefined);
+        return id;
+      });
+      if (!next) return;
+      await this.recordChat(
+        "chat-compacted",
+        `Chat compacted: ${used} tokens → new chat`,
+        { agentId: next, detail: summary },
+      );
+    } catch (error) {
+      console.error("Could not compact the assistant chat:", message(error));
+    } finally {
+      this.compacting = false;
+    }
+  }
+  /** A history event about the chat itself, filed under CHAT_HISTORY_TASK_ID. */
+  private async recordChat(
+    kind: HistoryEventKind,
+    text: string,
+    extra: { agentId: string | null; detail?: string | null },
+  ): Promise<void> {
+    try {
+      await this.assistantOptions.history?.append({
+        kind,
+        taskId: CHAT_HISTORY_TASK_ID,
+        taskTitle: "Projects Assistant chat",
+        projectId: null,
+        projectName: "",
+        orchestratorId: null,
+        orchestratorName: null,
+        agentId: extra.agentId,
+        attempt: null,
+        action: null,
+        text: text.slice(0, 2000),
+        detail: extra.detail ? extra.detail.slice(0, 5000) : null,
+      });
+    } catch {
+      // The history is a log; the board does not depend on it.
+    }
+  }
+  // End CUSTOM(assistant-compact)
   assistantTimeline(agentId: string) {
     return this.host.timeline(agentId);
   }
@@ -5204,6 +5388,7 @@ export class Workboard {
     clearTimeout(this.debounce);
     clearTimeout(this.settleTimer);
     clearTimeout(this.wakeTimer); // CUSTOM(assistant-wake)
+    clearTimeout(this.compactTimer); // CUSTOM(assistant-compact)
     for (const timer of this.dirtyTimers.values()) clearTimeout(timer); // CUSTOM(assistant-autonomy)
     this.dirtyTimers.clear();
     clearTimeout(this.dueTimer); // CUSTOM(night-tasks)

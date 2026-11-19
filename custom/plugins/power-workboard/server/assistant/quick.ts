@@ -123,6 +123,17 @@ export class QuickInbox {
     return { ...entry };
   }
 
+  /** CUSTOM(assistant-compact): a message to this chat is on its way or still waits for its answer. */
+  pending(agentId: string): boolean {
+    const since = this.now() - (this.deps.watchMs ?? 30 * 60_000);
+    return this.entries.some(
+      (entry) =>
+        entry.status === "pending" &&
+        (entry.agentId === null || entry.agentId === agentId) &&
+        Date.parse(entry.sentAt) >= since,
+    );
+  }
+
   dispose(): void {
     this.disposed = true;
     for (const timer of this.timers) clearTimeout(timer);

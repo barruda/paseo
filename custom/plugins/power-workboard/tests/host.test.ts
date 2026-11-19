@@ -250,6 +250,31 @@ it("keeps an agent removal scoped to its last known workspace", async () => {
   }
 });
 
+// CUSTOM(assistant-compact): the chat's updates reach the board by agent id.
+it("an agent upsert names the agent as well as its workspace", async () => {
+  const changed = vi.fn();
+  const observers: SubscriptionObserver<unknown>[] = [];
+  const host = providerHost(
+    parentAgent,
+    { subagents: async () => [] } as unknown as PaseoCompat,
+    changed,
+    observers,
+  );
+  try {
+    await host.inventory();
+    observers[1].update({
+      type: "agent_update",
+      payload: {
+        kind: "upsert",
+        agent: { ...parentAgent, id: "chat", workspaceId: "chat-dir" },
+      },
+    } as unknown as Parameters<SubscriptionObserver<unknown>["update"]>[0]);
+    expect(changed).toHaveBeenLastCalledWith("chat-dir", "chat");
+  } finally {
+    host.dispose();
+  }
+});
+
 it("merges provider-managed subagents and reads their projected conversation time", async () => {
   const read = vi.fn(async () => ({
     epoch: "epoch-1",

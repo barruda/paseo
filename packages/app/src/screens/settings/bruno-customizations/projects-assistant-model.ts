@@ -32,6 +32,10 @@ export const skillSelectionSchema = z.object({
   names: z.array(z.string().trim().min(1).max(200)).max(500).default([]),
 });
 
+// CUSTOM(assistant-compact): the chat restarts with a summary once a turn leaves it this full.
+export const DEFAULT_COMPACT_AT_TOKENS = 180_000;
+const MAX_COMPACT_AT_TOKENS = 10_000_000;
+
 export const assistantChatSettingsSchema = z.object({
   /** `provider/model`. */
   provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
@@ -42,6 +46,13 @@ export const assistantChatSettingsSchema = z.object({
   memory: z.boolean().default(true),
   // CUSTOM(assistant-wake)
   wakeOnNeedsYou: z.boolean().default(true),
+  // CUSTOM(assistant-compact): 0 turns it off.
+  compactAtTokens: z
+    .number()
+    .int()
+    .min(0)
+    .max(MAX_COMPACT_AT_TOKENS)
+    .default(DEFAULT_COMPACT_AT_TOKENS),
 });
 export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
 
@@ -148,17 +159,35 @@ export function setProjectReview(
   return { ...settings, reviews };
 }
 
-/** Empty thinking/mode means the provider's default (null); an empty model keeps the saved one. */
+/**
+ * Empty thinking/mode means the provider's default (null); an empty model keeps the saved one.
+ * CUSTOM(assistant-compact): the compaction limit is typed as text; empty is the default, and
+ * anything that is not a whole number makes the settings invalid until it is fixed.
+ */
 export function patchChatSettings(
   settings: AssistantSettings,
-  patch: { provider?: string; thinkingOptionId?: string; modeId?: string },
+  patch: {
+    provider?: string;
+    thinkingOptionId?: string;
+    modeId?: string;
+    compactAtTokens?: string;
+  },
 ): AssistantSettings {
   const chat = { ...settings.chat };
   if (patch.provider !== undefined) chat.provider = patch.provider.trim();
   if (patch.thinkingOptionId !== undefined)
     chat.thinkingOptionId = patch.thinkingOptionId.trim() || null;
   if (patch.modeId !== undefined) chat.modeId = patch.modeId.trim() || null;
+  if (patch.compactAtTokens !== undefined)
+    chat.compactAtTokens = parseTokens(patch.compactAtTokens);
   return { ...settings, chat };
+}
+
+/** "180000", "180,000" or "180_000"; NaN when it is not a whole number. */
+function parseTokens(text: string): number {
+  const digits = text.replace(/[\s_,.]/g, "");
+  if (!digits) return DEFAULT_COMPACT_AT_TOKENS;
+  return /^\d+$/.test(digits) ? Number(digits) : Number.NaN;
 }
 
 export function chatSettingsValid(settings: AssistantSettings): boolean {
