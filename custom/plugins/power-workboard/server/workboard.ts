@@ -1446,6 +1446,10 @@ export class Workboard {
                     provider: provider.data,
                     modeId: input.modeId,
                     thinkingOptionId: input.thinkingOptionId,
+                    // CUSTOM(unattended-automation)
+                    ...(input.autoAccept === undefined
+                      ? {}
+                      : { autoAccept: input.autoAccept }),
                   })
                 : config,
             );

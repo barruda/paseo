@@ -463,6 +463,7 @@ function BulkAgentModal({
     provider: first?.provider ?? "",
     modeId: first?.modeId ?? "",
     thinkingOptionId: first?.thinkingOptionId ?? "",
+    autoAccept: first?.autoAccept ?? true, // CUSTOM(unattended-automation)
   });
   const [pending, setPending] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -478,6 +479,7 @@ function BulkAgentModal({
         provider: value.provider,
         modeId: value.modeId.trim() || null,
         thinkingOptionId: value.thinkingOptionId.trim() || null,
+        autoAccept: value.autoAccept, // CUSTOM(unattended-automation)
       }));
       if (ok) onApplied();
       else setFailed(true);

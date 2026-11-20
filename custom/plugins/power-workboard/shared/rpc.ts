@@ -29,6 +29,12 @@ export const deskStatusRpc = defineRpc({
   input: z.object({}),
   output: deskStatusSchema,
 });
+// CUSTOM(redeploy-button): runs custom/bin/build-paseo-if-needed-and-kill-daemons.sh.
+export const redeployPaseoRpc = defineRpc({
+  name: "workboard.redeploy-paseo",
+  input: z.object({}),
+  output: z.object({ ok: z.boolean(), output: z.string() }),
+});
 export const CANCEL_BINDING_BUSY_ERROR_CODE = "cancel-binding-busy";
 export const mutationSchema = z.discriminatedUnion("action", [
   z.object({
@@ -125,6 +131,8 @@ export const mutationSchema = z.discriminatedUnion("action", [
     provider: providerModelSchema,
     modeId: z.string().trim().min(1).nullable(),
     thinkingOptionId: z.string().trim().min(1).nullable(),
+    // CUSTOM(unattended-automation): the Permissions select of OpenCode-like providers.
+    autoAccept: z.boolean().optional(),
   }),
   z.object({ action: z.literal("orchestrator-delete"), id: z.string() }),
   // CUSTOM(resource-pools): the list order decides which orchestrator is a project's first.

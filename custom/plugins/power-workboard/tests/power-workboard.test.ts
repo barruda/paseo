@@ -642,12 +642,24 @@ it("changes the agent of several orchestrators at once and leaves the rest alone
     }
     expect(find(untouched)).toMatchObject({
       provider: "claude/claude-opus-5-5",
-      modeId: "bypassPermissions",
+      modeId: null,
       thinkingOptionId: "medium",
     });
     expect(logText(board, untouched)).not.toContain(
       "Agent changed to codex/gpt-5",
     );
+    // CUSTOM(unattended-automation): OpenCode-like providers carry the Permissions choice.
+    const asked = await board.mutate({
+      action: "orchestrators-set-agent",
+      ids: [first],
+      provider: "opencode/some-model",
+      modeId: "build",
+      thinkingOptionId: null,
+      autoAccept: false,
+    });
+    expect(
+      asked.orchestrators.find((config) => config.id === first),
+    ).toMatchObject({ provider: "opencode/some-model", autoAccept: false });
     await expect(
       board.mutate({
         action: "orchestrators-set-agent",

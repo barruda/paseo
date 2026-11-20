@@ -14,6 +14,7 @@ import {
   snapshotRpc,
   deskStatusRpc,
   writeTicketRpc,
+  redeployPaseoRpc,
 } from "./shared/rpc";
 // CUSTOM(projects-assistant)
 import {
@@ -63,6 +64,7 @@ import {
   profilesSetSystemPromptRpc,
   profilesSkillsRpc,
 } from "./shared/profiles";
+import { redeployPaseo } from "./server/redeploy"; // CUSTOM(redeploy-button)
 import { ImageStore, defaultImageDirectory } from "./server/images";
 import { PaseoCompat } from "./server/paseo-compat";
 import { PaseoHost } from "./server/host";
@@ -207,6 +209,7 @@ export default function contribute(server: PluginServerContext) {
     if (!board) throw new Error(error);
     return board.deskStatus();
   });
+  server.handle(redeployPaseoRpc, () => redeployPaseo()); // CUSTOM(redeploy-button)
   server.handle(mutateRpc, (input) => {
     if (!board) throw new Error(error);
     return board.mutate(input);

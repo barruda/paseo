@@ -8698,3 +8698,28 @@ tests/power-workboard.test.ts --bail=1`. Needs only `paseo plugin reload power-w
   app: Orchestrators tab, tick two orchestrators, **Change agent**, pick a provider/model, mode and
   thinking, **Apply**; both rows change and each one's log says "Agent changed to …" while the other
   rows keep theirs.
+
+## redeploy-button: Build and redeploy Paseo from the Power Workboard
+
+- **Added:** 2026-11-20 (based on `custom` at `0d7a45f6b`)
+- **Commit:** `custom: Power Workboard button builds and redeploys Paseo`
+- **Why:** Restarting the daemons after a change meant typing `!kill-paseos-and-daemons.sh` in a
+  chat, and the restart ran an installed build that could be older than the committed source.
+- **What:** The board toolbar has a **Build and redeploy Paseo** button before the Settings gear
+  (icon only on compact). It asks for confirmation (every running agent stops), then the
+  `workboard.redeploy-paseo` RPC runs `build-paseo-if-needed-and-kill-daemons.sh` with `execFile`
+  and shows the line the script prints (build or restart, and the log path) under the toolbar.
+  The script hands its work to a systemd user service and returns in a second or two, so the RPC
+  answers before the daemon goes down. The daemon evaluates the plugin as a bundled string with no
+  plugin directory, so `server/redeploy.ts` finds the script through the `~/.local/bin` link (the
+  repo path only where `__dirname` exists, as in tests). Also: the bulk agent change
+  (`orchestrators-set-agent`) carries the Permissions choice (`autoAccept`) of OpenCode-like
+  providers.
+- **Core files touched:** none. Plugin files: `server/redeploy.ts`, `index.server.ts`,
+  `shared/rpc.ts`, `client/WorkboardScreen.tsx`, `client/strings.ts`, `client/Orchestrators.tsx`,
+  `server/workboard.ts`, `tests/redeploy.test.ts`, `tests/power-workboard.test.ts`, `README.md`.
+- **Re-apply:** Plugin-only. Grep `CUSTOM(redeploy-button)`. The scripts live in `custom/bin/`
+  (`build-paseo-if-needed-and-kill-daemons.sh`, `paseo-build.sh`, see `custom/README.md`).
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+  tests/redeploy.test.ts tests/power-workboard.test.ts --bail=1`. Needs only
+  `paseo plugin reload power-workboard`. Pressing the button restarts the daemons.

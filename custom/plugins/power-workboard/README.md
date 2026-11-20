@@ -5,6 +5,9 @@ this repo) with these differences:
 
 - **Only registered tasks.** Nothing is imported. A workspace joins the board only when one of its
   tasks starts work on it, and only those workspaces and their agents are watched.
+- **Build and redeploy Paseo.** A board toolbar button (top right, before Settings) runs
+  `custom/bin/build-paseo-if-needed-and-kill-daemons.sh` after a confirmation and shows its output;
+  the daemons restart and every running agent stops.
 - **Refinement.** A draft's Refine button opens an agent chat in the project folder.
   `/write-ticket [focus]` in that chat closes it and writes the ticket into the task's title and
   description; then move it to Ready to start.

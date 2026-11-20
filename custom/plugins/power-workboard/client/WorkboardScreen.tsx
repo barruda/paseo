@@ -51,6 +51,7 @@ import {
 import {
   CANCEL_BINDING_BUSY_ERROR_CODE,
   mutateRpc,
+  redeployPaseoRpc,
   saveImageRpc,
   snapshotRpc,
   type Mutation,
@@ -166,6 +167,12 @@ export function WorkboardScreen(
 function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const callSnapshot = useRpc(snapshotRpc);
   const callMutation = useRpc(mutateRpc);
+  const callRedeploy = useRpc(redeployPaseoRpc); // CUSTOM(redeploy-button)
+  const [confirmingRedeploy, setConfirmingRedeploy] = useState(false);
+  const [redeployResult, setRedeployResult] = useState<{
+    ok: boolean;
+    output: string;
+  } | null>(null);
   const cache = useQueryClient();
   const toast = useToast();
   const [page, setPage] = useState<Page>(props.initialPage ?? "board");
@@ -903,6 +910,34 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           </Pressable>
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel={t.redeployPaseo}
+            disabled={writesDisabled}
+            onPress={() => setConfirmingRedeploy(true)}
+            style={({ pressed }) => [
+              styles.toolbarButton,
+              {
+                opacity: writesDisabled ? 0.5 : pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Icon
+              name="RefreshCw"
+              size={16}
+              color={props.theme.colors.foregroundMuted}
+            />
+            {!props.layout.compact && (
+              <Text
+                style={[
+                  styles.controlText,
+                  { color: props.theme.colors.foregroundMuted },
+                ]}
+              >
+                {t.redeployPaseo}
+              </Text>
+            )}
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
             accessibilityLabel={t.settings}
             onPress={() => setPage("settings")}
             style={({ pressed }) => [
@@ -981,6 +1016,36 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             <Text style={{ color: props.theme.colors.foreground }}>
               {t.refresh}
             </Text>
+          </Pressable>
+        </View>
+      )}
+      {redeployResult && (
+        <View style={styles.filterSummary}>
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.notice,
+              {
+                flex: 1,
+                color: redeployResult.ok
+                  ? props.theme.colors.foregroundMuted
+                  : props.theme.colors.statusWarning,
+              },
+            ]}
+          >
+            {redeployResult.output}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t.dismiss}
+            onPress={() => setRedeployResult(null)}
+            style={styles.toolbarButton}
+          >
+            <Icon
+              name="X"
+              size={14}
+              color={props.theme.colors.foregroundMuted}
+            />
           </Pressable>
         </View>
       )}
@@ -1288,6 +1353,25 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           })
         }
       />
+      {confirmingRedeploy && (
+        <ConfirmationModal
+          title={t.redeployPaseo}
+          description={t.redeployPaseoConfirm}
+          confirmLabel={t.redeployPaseo}
+          disabled={writesDisabled}
+          t={t}
+          theme={props.theme}
+          onClose={() => setConfirmingRedeploy(false)}
+          onConfirm={async () => {
+            try {
+              setRedeployResult(await callRedeploy({}));
+            } catch {
+              setRedeployResult({ ok: false, output: t.redeployPaseoFailed });
+            }
+            return true;
+          }}
+        />
+      )}
       {archivingDraft && (
         <ConfirmationModal
           title={t.archiveDraft}

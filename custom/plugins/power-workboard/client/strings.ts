@@ -285,6 +285,11 @@ const zh = {
   pinManual: "Paseo 侧边栏：已有或手动置顶，Workboard 不会自动取消。",
   archive: "归档",
   settings: "设置",
+  redeployPaseo: "构建并重新部署 Paseo",
+  redeployPaseoConfirm:
+    "如果已安装的版本落后于已提交的源码，将先构建并安装 Paseo，然后重启守护进程和 Paseo 窗口。所有正在运行的智能体都会停止。",
+  redeployPaseoFailed: "无法启动重新部署。",
+  dismiss: "关闭",
   refresh: "刷新",
   save: "保存",
   cancel: "取消",
@@ -1014,6 +1019,11 @@ const en: typeof zh = {
     "Paseo sidebar: existing or manual pin. Workboard will not remove it automatically.",
   archive: "Archive",
   settings: "Settings",
+  redeployPaseo: "Build and redeploy Paseo",
+  redeployPaseoConfirm:
+    "Builds and installs Paseo if the installed build is behind the committed source, then restarts the Paseo daemons and windows. Every running agent stops.",
+  redeployPaseoFailed: "Could not start the redeploy.",
+  dismiss: "Dismiss",
   refresh: "Refresh",
   save: "Save",
   cancel: "Cancel",
