@@ -8625,32 +8625,45 @@ tests/drag-area.test.ts`. Needs only `paseo plugin reload power-workboard`. In t
   click on the column title still opens its menu, a double-click on the resize strip still resets
   the width, and text outside the grips is still selectable.
 
-## assistant-dirty-checkout: the Projects Assistant stashes a dirty checkout instead of asking
+## assistant-dirty-checkout: the Projects Assistant frees a dirty checkout unless an agent is working in it
 
 - **Added:** 2026-11-20 (based on `custom` at `1e3310424`)
-- **Commit:** `custom: Projects Assistant stashes a dirty checkout instead of asking`
+- **Updated:** 2026-11-20: the assistant checks for a live agent in the checkout before stashing,
+  and otherwise acts on the first "Waiting for a clean checkout" instead of waiting for the
+  board's twelve retries.
+- **Commit:** `custom: Projects Assistant checks for a live agent before stashing a dirty checkout`
 - **Why:** On 2026-11-20 the board gave up on five paseo merges after twelve retries each because
   the base checkout had uncommitted edits from other sessions. The assistant escalated with
   "commit or stash?". That decision is obvious, so it must take it every time instead of spending
-  the user's attention on it.
-- **What:** The "Fix small blockers yourself" paragraph of `ASSISTANT_ROLE` no longer treats a
-  dirty checkout as a retry the assistant only steps in for. When the board gives up on it, the
-  assistant: saves `git diff` and the untracked files in
+  the user's attention on it. Waiting for the retries also costs up to an hour per delivery for a
+  decision that is the same on the first try.
+- **What:** The "Fix small blockers yourself" paragraph of `ASSISTANT_ROLE` splits the two
+  blockers. Merge conflicts stay with the board; the assistant steps in only when it gives up. A
+  dirty base checkout may be another agent's live work, so the assistant checks it before touching
+  anything: when a task in `merging` shows "Waiting for a clean checkout" in `board_get_task` or
+  in Needs you, it calls `list_agents` and looks for any agent, of any origin, whose cwd is that
+  checkout and that is running or touched it recently. If one is there, it does not stash and does
+  not touch the checkout: the board keeps retrying the merge, and if it gives up the assistant
+  tells the user which agent is in the checkout and which tasks are waiting on it. If no agent is
+  working there, it saves `git diff` and the untracked files in
   `/home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/`; runs
-  `git stash push -u -m "assistant: <origin>, reaplicar após merges"` in that checkout; runs
-  `merge-now` with `wait=true` on each approved task that was waiting, one at a time, checking
-  `git log` for the commits on the base branch and Done on the cards; then `git stash pop` and
-  tells the user what merged, where the backup is and that the edits are back. It escalates only
-  when the pop conflicts, leaving the stash intact and naming it, and never discards the edits (no
-  `checkout --`, `reset --hard` or `stash drop` without a pop). The
-  "Ask before anything destructive or hard to undo" rule stays for everything else.
+  `git stash push -u -m "assistant: <origin>, reaplicar após merges"` in that checkout; runs the
+  tests of each approved task that was waiting; runs `merge-now` with `wait=true` on them, one at
+  a time, checking `git log` for the commits on the base branch and Done on the cards; then
+  `git stash pop` right after and tells the user what merged, where the backup is and that the
+  edits are back. It escalates only when the pop conflicts, leaving the stash intact and naming
+  it, and never discards the edits (no `checkout --`, `reset --hard` or `stash drop` without a
+  pop). The "Ask before anything destructive or hard to undo" rule stays for everything else.
 - **Core files touched:** none. Plugin files: `server/assistant/chat.ts`,
   `tests/profiles.test.ts`.
-- **Re-apply:** Plugin-only. In `ASSISTANT_ROLE`, find "When it gives up because the base checkout
-  has uncommitted edits" and keep the sequence above, with the backup path, the stash command with
-  `-u`, one merge-now at a time with `wait=true`, the git-log/Done check, the pop and the report,
-  escalation only on a conflicting pop, and the never-discard list. Keep "Ask before anything
-  destructive or hard to undo" for the rest.
+- **Re-apply:** Plugin-only. In `ASSISTANT_ROLE`, find "A dirty base checkout may be another
+  agent's live work" and keep: the trigger (`merging` plus "Waiting for a clean checkout" in
+  `board_get_task` or Needs you), the `list_agents` check (any origin, cwd in the checkout,
+  running or recently touched), the no-stash path where the board keeps retrying and a give-up
+  names the agent and the waiting tasks, then the backup path, the stash command with `-u`, the
+  tests of the waiting tasks, one merge-now at a time with `wait=true`, the git-log/Done check,
+  the immediate pop and the report, escalation only on a conflicting pop, and the never-discard
+  list. Keep "Ask before anything destructive or hard to undo" for the rest.
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
 tests/profiles.test.ts --bail=1`. Needs only `paseo plugin reload power-workboard`. A seed change
   does not touch an existing `system-prompt.md`: the live assistant keeps the old text in
