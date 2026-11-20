@@ -1,5 +1,6 @@
 // CUSTOM(projects-assistant): pure helpers of the Projects Dashboard.
-import type { Stats } from "../../shared/assistant";
+import type { NeedsYouItem, Stats } from "../../shared/assistant";
+import { formatClock } from "../checkpoint-format";
 import { dashboardStrings as s } from "./dashboard-strings";
 
 export const PERIODS = [7, 14, 30] as const;
@@ -101,4 +102,19 @@ export function periodRange(
   start.setHours(0, 0, 0, 0);
   start.setDate(start.getDate() - (days - 1));
   return { from: start.toISOString(), to: new Date(now).toISOString() };
+}
+
+// CUSTOM(assistant-wake): the Needs you card's wake line, so a waiting card never looks stalled.
+export function wakeStatusLine(
+  item: Pick<NeedsYouItem, "notifyAt" | "toldAt">,
+  now: number = Date.now(),
+): string | null {
+  if (item.notifyAt) {
+    const at = Date.parse(item.notifyAt);
+    if (Number.isFinite(at)) {
+      if (at <= now) return s.notifyNow;
+      return s.notifyIn(Math.ceil((at - now) / 1000));
+    }
+  }
+  return item.toldAt ? s.withPm(formatClock(item.toldAt, new Date(now))) : null;
 }

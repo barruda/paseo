@@ -35,6 +35,10 @@ export const skillSelectionSchema = z.object({
 // CUSTOM(assistant-compact): the chat restarts with a summary once a turn leaves it this full.
 export const DEFAULT_COMPACT_AT_TOKENS = 180_000;
 const MAX_COMPACT_AT_TOKENS = 10_000_000;
+// CUSTOM(assistant-wake): the first wake waits this long, so tasks arriving together share it.
+export const DEFAULT_WAKE_DELAY_SECONDS = 12;
+const MIN_WAKE_DELAY_SECONDS = 3;
+const MAX_WAKE_DELAY_SECONDS = 300;
 
 export const assistantChatSettingsSchema = z.object({
   /** `provider/model`. */
@@ -46,6 +50,13 @@ export const assistantChatSettingsSchema = z.object({
   memory: z.boolean().default(true),
   // CUSTOM(assistant-wake)
   wakeOnNeedsYou: z.boolean().default(true),
+  // CUSTOM(assistant-wake): seconds before the first wake; a busy chat keeps its own 10 s retry.
+  wakeDelaySeconds: z
+    .number()
+    .int()
+    .min(MIN_WAKE_DELAY_SECONDS)
+    .max(MAX_WAKE_DELAY_SECONDS)
+    .default(DEFAULT_WAKE_DELAY_SECONDS),
   // CUSTOM(assistant-compact): 0 turns it off.
   compactAtTokens: z
     .number()
@@ -171,6 +182,7 @@ export function patchChatSettings(
     thinkingOptionId?: string;
     modeId?: string;
     compactAtTokens?: string;
+    wakeDelaySeconds?: string;
   },
 ): AssistantSettings {
   const chat = { ...settings.chat };
@@ -180,6 +192,8 @@ export function patchChatSettings(
   if (patch.modeId !== undefined) chat.modeId = patch.modeId.trim() || null;
   if (patch.compactAtTokens !== undefined)
     chat.compactAtTokens = parseTokens(patch.compactAtTokens);
+  if (patch.wakeDelaySeconds !== undefined)
+    chat.wakeDelaySeconds = parseSeconds(patch.wakeDelaySeconds);
   return { ...settings, chat };
 }
 
@@ -187,6 +201,13 @@ export function patchChatSettings(
 function parseTokens(text: string): number {
   const digits = text.replace(/[\s_,.]/g, "");
   if (!digits) return DEFAULT_COMPACT_AT_TOKENS;
+  return /^\d+$/.test(digits) ? Number(digits) : Number.NaN;
+}
+
+/** CUSTOM(assistant-wake): empty is the default; NaN when it is not a whole number. */
+function parseSeconds(text: string): number {
+  const digits = text.replace(/\s/g, "");
+  if (!digits) return DEFAULT_WAKE_DELAY_SECONDS;
   return /^\d+$/.test(digits) ? Number(digits) : Number.NaN;
 }
 

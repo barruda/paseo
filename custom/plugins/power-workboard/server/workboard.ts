@@ -100,6 +100,7 @@ import {
   attemptSchema,
   projectPolicySchema,
   assistantSettingsSchema,
+  DEFAULT_WAKE_DELAY_SECONDS, // CUSTOM(assistant-wake)
   type AssistantActionInput,
   type Attempt,
   type Delivery,
@@ -2736,6 +2737,8 @@ export class Workboard {
   /** Tasks in the prompt being sent; their `toldAt` is not stored yet. */
   private wakeSending = new Set<string>();
   private wakeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** CUSTOM(assistant-wake): when `wakeTimer` fires, for the dashboard countdown. */
+  private wakeDueAt: number | null = null;
   /** CUSTOM(assistant-wake): the last time the chat was told a Needs you list. */
   private lastToldAt = 0;
   /**
@@ -2779,13 +2782,21 @@ export class Workboard {
     if (!delivery.reportedAt || !first) return false;
     return Date.parse(delivery.reportedAt) >= Date.parse(first);
   }
-  private armWake(delayMs = this.assistantOptions.wakeDelayMs ?? 90_000): void {
+  /** CUSTOM(assistant-wake): the setting's seconds; tests may override the wait directly. */
+  private wakeDelay(): number {
+    if (this.assistantOptions.wakeDelayMs !== undefined)
+      return this.assistantOptions.wakeDelayMs;
+    const seconds = this.store.current.assistant.settings.chat.wakeDelaySeconds;
+    return Number.isFinite(seconds)
+      ? seconds * 1000
+      : DEFAULT_WAKE_DELAY_SECONDS * 1000;
+  }
+  private armWake(delayMs = this.wakeDelay()): void {
     if (this.stopped) return;
     clearTimeout(this.wakeTimer);
-    this.wakeTimer = setTimeout(
-      () => void this.wakeAssistant(),
-      Math.max(delayMs, this.wakeWait()), // CUSTOM(usage-limit)
-    );
+    const delay = Math.max(delayMs, this.wakeWait()); // CUSTOM(usage-limit)
+    this.wakeDueAt = this.now() + delay;
+    this.wakeTimer = setTimeout(() => void this.wakeAssistant(), delay);
   }
   /**
    * CUSTOM(assistant-wake): every task still on Needs you, oldest wait first, with its reason and
@@ -3087,6 +3098,7 @@ export class Workboard {
   }
   private async wakeAssistant(): Promise<void> {
     this.wakeTimer = undefined;
+    this.wakeDueAt = null;
     if (this.stopped) return;
     let sending: string[] = [];
     let previousToldAt = 0;
@@ -4537,6 +4549,8 @@ export class Workboard {
       board: this.snapshot(),
       agents: this.inventory.agents,
       now: new Date(),
+      // CUSTOM(assistant-wake): the dashboard counts down to this wake.
+      notifyAt: this.wakeDueAt ? new Date(this.wakeDueAt).toISOString() : null,
     };
   }
   // CUSTOM(packages): package mutations. A package is a label with a gate, created after the
@@ -7412,6 +7426,7 @@ export class Workboard {
     clearTimeout(this.debounce);
     clearTimeout(this.settleTimer);
     clearTimeout(this.wakeTimer); // CUSTOM(assistant-wake)
+    this.wakeDueAt = null; // CUSTOM(assistant-wake)
     clearTimeout(this.compactTimer); // CUSTOM(assistant-compact)
     for (const timer of this.dirtyTimers.values()) clearTimeout(timer); // CUSTOM(assistant-autonomy)
     this.dirtyTimers.clear();
