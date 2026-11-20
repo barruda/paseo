@@ -14,6 +14,9 @@ import { Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { Board, Card } from "../shared/model";
 import type { strings } from "./strings";
 import { cardAgentId } from "./board-utils";
+import { projectAccentColor } from "./colors";
+import { ProjectIcon } from "./ProjectIcon";
+import { projectIconFor, type ProjectIcons } from "./project-icons";
 import { RichText } from "./assistant/conversations-thread";
 import { onEscapeKey } from "./web";
 import type { CardMenuItem } from "./card-menu";
@@ -195,6 +198,7 @@ function PanelAction({
 export function TaskPanel({
   card,
   board,
+  icons,
   t,
   theme,
   compact,
@@ -206,6 +210,7 @@ export function TaskPanel({
 }: {
   card: Card;
   board: Board;
+  icons: ProjectIcons;
   t: Strings;
   theme: Theme;
   compact: boolean;
@@ -222,6 +227,10 @@ export function TaskPanel({
   const labels = card.labels.filter(
     (label) => !card.managedLabels.includes(label),
   );
+  const project = board.projects.find((item) => item.id === card.projectId);
+  const projectColor = card.projectId
+    ? projectAccentColor(project?.accent, card.projectId, theme)
+    : theme.colors.foregroundMuted;
   useEffect(() => onEscapeKey(onClose), [onClose]);
   return (
     <View
@@ -275,10 +284,21 @@ export function TaskPanel({
         style={styles.panelScroll}
         contentContainerStyle={styles.content}
       >
-        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
-          {card.projectName || t.unassigned}
-          {` · ${stage}`}
-        </Text>
+        <View style={styles.projectMetaRow}>
+          {card.projectId && card.projectName ? (
+            <ProjectIcon
+              name={project?.name ?? card.projectName}
+              color={projectColor}
+              theme={theme}
+              size={14}
+              icon={projectIconFor(icons, card.projectId)}
+            />
+          ) : null}
+          <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+            {card.projectName || t.unassigned}
+            {` · ${stage}`}
+          </Text>
+        </View>
         {labels.length > 0 ? (
           <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
             {labels.join(" · ")}
@@ -432,6 +452,7 @@ const styles = StyleSheet.create({
   panelScroll: { flex: 1 },
   content: { padding: 12, gap: 10 },
   meta: { fontSize: 12 },
+  projectMetaRow: { flexDirection: "row", alignItems: "center", gap: 6 },
   section: { gap: 6 },
   sectionTitle: { fontSize: 11, fontWeight: "600", textTransform: "uppercase" },
   body: { fontSize: 13, lineHeight: 19 },
