@@ -56,6 +56,7 @@ import {
   snapshotRpc,
   type Mutation,
 } from "../shared/rpc";
+import { assistantPmCardsRpc } from "../shared/assistant-rpc"; // CUSTOM(pm-board)
 import {
   attentionReasons,
   cardAgentId,
@@ -103,6 +104,7 @@ import { ConfirmationModal } from "./ConfirmationModal";
 import { ChatLauncher } from "./assistant/ChatLauncher";
 import { ConversationsScreen } from "./assistant/ConversationsScreen";
 import { DashboardScreen } from "./assistant/DashboardScreen";
+import { PmBoardScreen } from "./assistant/pm-board/PmBoardScreen"; // CUSTOM(pm-board)
 import { ReportsScreen } from "./assistant/ReportsScreen";
 import {
   reportTab,
@@ -244,6 +246,17 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     queryFn: () => callSnapshot({}),
     refetchInterval: 1_500,
   });
+  // CUSTOM(pm-board): the count on the Decisões tab. The page polls its own cards; this only
+  // needs the number waiting for the user.
+  const callPmCards = useRpc(assistantPmCardsRpc);
+  const pmCardsQuery = useQuery({
+    queryKey: ["power-workboard", "pm-board", props.host.id, "badge"],
+    queryFn: () => callPmCards({}),
+    refetchInterval: 15_000,
+  });
+  const pmWaiting =
+    pmCardsQuery.data?.cards.filter((card) => card.status === "waiting")
+      .length ?? 0;
   const serverBoard = boardQuery.data;
   const language = usePaseoLanguage();
   const t = strings(language);
@@ -461,6 +474,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       )}
       <WorkboardTabs
         trailing={redeployButton} // CUSTOM(redeploy-button)
+        badges={{ "pm-board": pmWaiting }} // CUSTOM(pm-board)
         board={board}
         t={t}
         theme={props.theme}
@@ -565,6 +579,9 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             navigation={pageNavigation}
             onOpened={() => selectTab(returnTab.current)}
           />
+        ) : tab === "pm-board" ? (
+          // CUSTOM(pm-board): the PM's own board, apart from the code tasks.
+          <PmBoardScreen {...props} navigation={pageNavigation} />
         ) : tab === "dashboard" ? (
           <View style={styles.screen}>
             <DashboardScreen {...props} navigation={pageNavigation} />

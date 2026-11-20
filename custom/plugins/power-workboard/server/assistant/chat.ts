@@ -47,13 +47,20 @@ import {
   REPLY_FENCE,
   REPLY_PROTOCOL_VERSION,
 } from "../../shared/reply-protocol";
+// CUSTOM(pm-board)
+import {
+  buildPmOverview,
+  pmCardKindSchema,
+  pmCardOptionSchema,
+  pmCardStatusSchema,
+} from "../../shared/pm-board";
 
 export const CHAT_LABEL = "pwb/assistant-chat";
 
 // CUSTOM(agent-profiles): the role text is the seed of the Project Manager profile's system-prompt.md;
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
 const BOARD_TOOLS =
-  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin";
+  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive";
 
 // CUSTOM(assistant-reply-protocol): the block every reply ends with. The doc path is the main
 // checkout's, since the Project Manager runs in an empty folder; the words come from the parser.
@@ -65,15 +72,16 @@ export const REPLY_PROTOCOL_RULE = [
   // CUSTOM(assistant-cards): the review map and structured questions (protocol v2).
   "- After a review, `pedido: <visto | testado | sem prova> | <what the user asked, quoted> | <proof: the command and what it showed, or the test's name>`, one line per thing asked, and `fora: <changed without being asked>` for anything outside the ask.",
   "- `aviso: <short>` and `bloqueio: <short>`, only when there is one.",
-  "- When the user must decide: `pergunta: <question>`, then `opção: <id> | <label> | ganha: <what it gains> | custa: <what it costs>` per option and `recomendo: <id> | <why>`. Never ask an empty question: lay out the options and recommend one. The user answers in one tap.",
+  "- When the user must decide: `pergunta: <question>`, then `opção: <id> | <label> | ganha: <what it gains> | custa: <what it costs>` per option and `recomendo: <id> | <why>`. Never ask an empty question: lay out the options and recommend one. The user answers in one tap. The same question is a proposal card on your PM board (pm_card_create, kind proposal): put its id in `seu` so the user can also decide it there.",
   `- \`próximo: <${NEXT_VALUES.join(" | ")}>\`: sigo = you carry on, agente = back to the task's agent, revisão = a reviewer is on it, você = waiting for the user, espera = waiting on something outside, fim = delivered.`,
-  "- `seu: nada`, or a short verb and its object (decidir, aprovar, testar, reiniciar <x>), always the last key line.",
+  "- `seu: nada`, or a short verb and its object (decidir, aprovar, testar, reiniciar <x>), always the last key line. For a decision on a PM board proposal, add its card id: `seu: decidir <x> [pm:<card id>]`; a bare `[<task id>]` still opens the task.",
   "Put the why, criteria checked, checks, decisions and links after a `---` line inside the block: the chat shows them collapsed. Outside the block write at most a one-line direct answer when the user asked something. Never list commands you ran, test output that passed or steps that changed nothing.",
 ].join("\n");
 
 export const ASSISTANT_ROLE = [
   "You are the Project Manager: the user's manager for their Workboard tasks and orchestrators, in Tasks mode. You act for the user: they want decisions made and reported, not questions.",
   `Manage tasks through your board tools (${BOARD_TOOLS}): create, move, start, continue and deliver every task there. Never edit a project's code, commit or merge outside board_task_action.`,
+  'Investigation, proposals and decisions with the user go on your own board (the Decisões tab), not on the task board; code tasks and code reviews stay on the task board. Use pm_card_create, pm_card_update, pm_card_decide and pm_card_archive for them. An investigation is something you are looking into; a proposal is a choice the user must make (lay out the options with their gains and costs, recommend one, and the card waits in "Esperando você"); a decision is a call you already made on your own (kind decision, decidedBy pm); a notice is information the user should track. A PM card never starts an agent. Do not create a card for every event: only what the user should track. When you need the user, create a proposal and put its id in the reply\'s `seu` line as `[pm:<card id>]`.',
   "To review and diagnose, read freely: git log, git diff and git show in a task's worktree or the project's checkout, read any file, and run the task's tests in its worktree.",
   "Do not create Paseo agents to do a task: tasks go through the board so the orchestrators run them. A read-only reviewer subagent that helps you review a diff is fine. The one exception is the ship agent below.",
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
@@ -105,7 +113,7 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 // CUSTOM(assistant-compact): the rules alone open a chat started by compaction, which must not greet.
 export const CHAT_RULES =
-  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report and board_reload_plugin. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
+  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide and pm_card_archive. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS = `Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). ${CHAT_RULES}`;
 
@@ -477,6 +485,7 @@ export function chatTools(
             const name = snapshot.projects.find((p) => p.id === id)?.name;
             return `${name ? `${name} (${id})` : id}=${review}`;
           });
+        const pm = buildPmOverview(source.data.assistant?.pmBoard); // CUSTOM(pm-board)
         const lines = [
           `Projects:\n${snapshot.projects.map((p) => `- ${p.id} | ${p.name} | ${p.isGit ? "git" : "not git"} | ${p.directory} | review: ${reviewPolicyFor(settings, p.id)}`).join("\n") || "- none"}`,
           `Orchestrators:\n${
@@ -494,6 +503,8 @@ export function chatTools(
             )
             .join("\n")}`,
           `Needs you:\n${needsYou.map((n) => `- ${n.taskId} | ${n.title} | project: ${n.projectName || n.projectId || "-"} | orchestrator: ${n.orchestratorName ?? "-"} | agent: ${n.agentId ?? "-"} | attempt: ${n.attempt ?? "-"} | since: ${n.since} | can merge: ${n.canMerge ? "yes" : "no"} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
+          // CUSTOM(pm-board): your own board, apart from the task board.
+          `Project Manager board (investigations, proposals and decisions; code tasks and code reviews stay on the task board):\ninvestigating ${pm.investigating}, waiting for the user ${pm.waiting}, decided ${pm.decided}, archived ${pm.archived}\n${pm.cards.map((c) => `- ${c.id} | ${c.kind} | ${c.title} | since: ${c.since}`).join("\n") || "- nothing waiting"}`,
           `Project Manager: ${settings.enabled ? "on" : "off"}, default action ${settings.defaultAction}; per project: ${
             Object.entries(settings.projects)
               .map(
@@ -914,6 +925,116 @@ export function chatTools(
           messages.map((item) => `[${item.kind}] ${item.text}`).join("\n\n") ||
             "No messages yet.",
         );
+      },
+    }),
+    // CUSTOM(pm-board): the Project Manager's own board. Investigation, proposals and decisions
+    // with the user live here; these tools never create a task, a workspace or an agent.
+    define({
+      name: "pm_card_create",
+      description:
+        'Create a card on your own Project Manager board (the Decisões tab), apart from the task board. kind: "investigation" (something you are looking into, starts in Investigating), "proposal" (a choice the user must make: put question, options with gains and costs, and recommend one; it waits in "Esperando você"), "decision" (a call you already made on your own; pass decision and it starts Decided with decidedBy pm) or "notice" (information the user should track). Never create a card for every event: only what the user should track. Code tasks and code reviews are not PM cards: they stay on the task board (board_create_task). taskIds/reportIds link the card to tasks and their Reports tickets.',
+      input: z.object({
+        kind: pmCardKindSchema,
+        title: z.string().min(1).max(500),
+        question: z.string().max(5000).nullable().default(null),
+        options: z.array(pmCardOptionSchema).max(8).default([]),
+        recommend: z.string().max(40).nullable().default(null),
+        why: z.string().max(2000).nullable().default(null),
+        findings: z.string().max(20000).default(""),
+        decision: z.string().max(5000).nullable().default(null),
+        taskIds: z.array(z.string()).max(50).default([]),
+        reportIds: z.array(z.string()).max(50).default([]),
+      }),
+      async execute(input) {
+        const card = await board().pmCardCreate({
+          kind: input.kind,
+          title: input.title,
+          question: input.question,
+          options: input.options,
+          recommend: input.recommend,
+          why: input.why,
+          findings: input.findings,
+          decision: input.decision,
+          links: { taskIds: input.taskIds, reportIds: input.reportIds },
+        });
+        return text(
+          `Created PM card ${card.id} (${card.kind}, ${card.status}): "${card.title}".`,
+        );
+      },
+    }),
+    define({
+      name: "pm_card_update",
+      description:
+        'Update one of your PM cards: title, question, options, recommendation, findings, decision, links or status. Use status "waiting" when an investigation now needs the user, and status "decided" with decision and decidedBy "pm" when you decide alone; the board records who decided and when. Replacing the options drops a recommendation that names none of them.',
+      input: z.object({
+        id: z.string(),
+        title: z.string().min(1).max(500).optional(),
+        question: z.string().max(5000).nullable().optional(),
+        options: z.array(pmCardOptionSchema).max(8).optional(),
+        recommend: z.string().max(40).nullable().optional(),
+        why: z.string().max(2000).nullable().optional(),
+        findings: z.string().max(20000).optional(),
+        decision: z.string().max(5000).nullable().optional(),
+        status: pmCardStatusSchema.optional(),
+        decidedBy: z.enum(["pm", "user"]).optional(),
+        taskIds: z.array(z.string()).max(50).optional(),
+        reportIds: z.array(z.string()).max(50).optional(),
+      }),
+      async execute(input) {
+        const current = board()
+          .pmCards()
+          .find((card) => card.id === input.id);
+        if (!current) throw new Error(`No PM card with id ${input.id}.`);
+        const links =
+          input.taskIds || input.reportIds
+            ? {
+                taskIds: input.taskIds ?? current.links.taskIds,
+                reportIds: input.reportIds ?? current.links.reportIds,
+              }
+            : undefined;
+        const card = await board().pmCardUpdate(input.id, {
+          title: input.title,
+          question: input.question,
+          options: input.options,
+          recommend: input.recommend,
+          why: input.why,
+          findings: input.findings,
+          decision: input.decision,
+          status: input.status,
+          decidedBy: input.decidedBy,
+          links,
+        });
+        return text(
+          `Updated PM card ${card.id}: ${card.kind}, ${card.status}.`,
+        );
+      },
+    }),
+    define({
+      name: "pm_card_decide",
+      description:
+        "Record a decision you made alone on one of your PM cards (decidedBy pm), with the decision text. Use it for the calls that are yours, not for the user's: the user decides a proposal on the card itself, and the board records it with decidedBy user. When you answer a user's decision message, use pm_card_update or pm_card_decide to close the card.",
+      input: z.object({
+        id: z.string(),
+        decision: z.string().min(1).max(5000),
+        answerOptionId: z.string().max(40).nullable().default(null),
+      }),
+      async execute({ id, decision, answerOptionId }) {
+        const card = await board().pmCardDecide(id, {
+          optionId: answerOptionId,
+          decision,
+          by: "pm",
+        });
+        return text(`Decided PM card ${card.id}: "${card.decision ?? ""}".`);
+      },
+    }),
+    define({
+      name: "pm_card_archive",
+      description:
+        "Archive one of your PM cards. Nothing is deleted; an archived card stays in the Arquivado column.",
+      input: z.object({ id: z.string() }),
+      async execute({ id }) {
+        const card = await board().pmCardArchive(id);
+        return text(`Archived PM card ${card.id}: "${card.title}".`);
       },
     }),
   ];

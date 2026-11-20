@@ -25,6 +25,7 @@ import {
   reportTaskSchema,
   reportTimelineSchema,
 } from "./assistant-reports"; // CUSTOM(assistant-reports)
+import { pmCardSchema } from "./pm-board"; // CUSTOM(pm-board)
 
 const settingsOutput = z.object({
   settings: assistantSettingsSchema,
@@ -155,4 +156,36 @@ export const assistantReportsTaskRpc = defineRpc({
   name: "workboard.assistant.reports.task",
   input: z.object({ taskId: z.string().min(1) }),
   output: z.object({ timeline: reportTimelineSchema.nullable() }),
+});
+
+// CUSTOM(pm-board): the Project Manager's own cards. The page reads them here and decides or
+// reopens a card; both actions also send a message to the PM chat.
+export const assistantPmCardsRpc = defineRpc({
+  name: "workboard.assistant.pm.cards",
+  input: z.object({}),
+  output: z.object({ cards: z.array(pmCardSchema) }),
+});
+
+export const assistantPmDecideRpc = defineRpc({
+  name: "workboard.assistant.pm.card.decide",
+  input: z.object({
+    cardId: z.string().min(1),
+    /** An option of the card; null when the user wrote an answer. */
+    optionId: z.string().max(40).nullable().default(null),
+    answer: z.string().max(5000).nullable().default(null),
+  }),
+  output: z.object({
+    card: pmCardSchema,
+    /** The message sent to the PM chat; null when it could not be sent. */
+    messageId: z.string().nullable(),
+  }),
+});
+
+export const assistantPmReopenRpc = defineRpc({
+  name: "workboard.assistant.pm.card.reopen",
+  input: z.object({ cardId: z.string().min(1) }),
+  output: z.object({
+    card: pmCardSchema,
+    messageId: z.string().nullable(),
+  }),
 });

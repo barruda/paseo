@@ -6,7 +6,9 @@ import { type EvidenceKind, type NotDoneKind } from "./assistant";
 
 // CUSTOM(assistant-cards): v2 adds the review map (`pedido`, `fora`) and structured questions
 // (`pergunta`, `opção`, `recomendo`). v1 blocks have none of them and parse as before.
-export const REPLY_PROTOCOL_VERSION = 2;
+// CUSTOM(pm-board): v3 adds `[pm:<card id>]` at the end of a line, for a card on the Project
+// Manager's own board. A bare `[<task id>]` still opens the task.
+export const REPLY_PROTOCOL_VERSION = 3;
 /** The fence language of the block: ```pwb. */
 export const REPLY_FENCE = "pwb";
 
@@ -101,19 +103,41 @@ function lookup<T extends string>(
 const TRAILING_ID =
   /\s*\[([0-9a-f]{8}(?:-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})?)\]\s*$/i;
 
-/** Splits the trailing `[id]` groups off a value. */
-export function splitTaskIds(value: string): { text: string; ids: string[] } {
-  const ids: string[] = [];
+/** A trailing `[pm:<card id>]`: a card on the Project Manager's own board. */
+const TRAILING_PM_ID = /\s*\[pm:([a-z0-9][a-z0-9-]{0,39})\]\s*$/i;
+
+/**
+ * Splits the trailing `[id]` and `[pm:<id>]` groups off a value. A task id is the first 8 hex
+ * characters or the whole UUID; a PM card id is written with the `pm:` prefix. Anything else
+ * bracketed (a date, a commit hash) stays text.
+ */
+export function splitReplyIds(value: string): {
+  text: string;
+  taskIds: string[];
+  pmCardIds: string[];
+} {
+  const taskIds: string[] = [];
+  const pmCardIds: string[] = [];
   let text = value;
-  for (
-    let match = TRAILING_ID.exec(text);
-    match;
-    match = TRAILING_ID.exec(text)
-  ) {
-    ids.unshift(match[1].toLowerCase());
+  for (;;) {
+    const pm = TRAILING_PM_ID.exec(text);
+    if (pm) {
+      pmCardIds.unshift(pm[1].toLowerCase());
+      text = text.slice(0, pm.index);
+      continue;
+    }
+    const match = TRAILING_ID.exec(text);
+    if (!match) break;
+    taskIds.unshift(match[1].toLowerCase());
     text = text.slice(0, match.index);
   }
-  return { text: text.trim(), ids };
+  return { text: text.trim(), taskIds, pmCardIds };
+}
+
+/** Splits the trailing `[id]` groups off a value (task ids only). */
+export function splitTaskIds(value: string): { text: string; ids: string[] } {
+  const { text, taskIds } = splitReplyIds(value);
+  return { text, ids: taskIds };
 }
 
 export interface ReplyLine {
@@ -121,6 +145,8 @@ export interface ReplyLine {
   text: string;
   /** Task ids written as `[id]` at the end of the line. */
   taskIds: string[];
+  /** PM board card ids written as `[pm:<id>]` at the end of the line. */
+  pmCardIds: string[];
 }
 
 export interface DoneLine extends ReplyLine {
@@ -154,6 +180,7 @@ export interface ReplyQuestion {
   /** Empty when the block has options but no `pergunta` line. */
   text: string;
   taskIds: string[];
+  pmCardIds: string[];
   options: ReplyOption[];
   /** The recommended option's id, when it names one of the options. */
   recommend: string | null;
@@ -193,7 +220,11 @@ export function parseReplyBlock(body: string): ParsedReply {
     outcomes: [],
     notDone: [],
   };
-  let question: { text: string; taskIds: string[] } | null = null;
+  let question: {
+    text: string;
+    taskIds: string[];
+    pmCardIds: string[];
+  } | null = null;
   const options: ReplyOption[] = [];
   let recommend: { id: string; why: string | null } | null = null;
   const lines = body.replace(/\r\n?/g, "\n").split("\n");
@@ -219,7 +250,7 @@ export function parseReplyBlock(body: string): ParsedReply {
       continue;
     }
     const value = match[2].trim();
-    const { text, ids } = splitTaskIds(value);
+    const { text, taskIds: ids, pmCardIds } = splitReplyIds(value);
     if (key === "opção") {
       const option = parseOption(value);
       if (option && !options.some((o) => o.id === option.id))
@@ -233,15 +264,15 @@ export function parseReplyBlock(body: string): ParsedReply {
       continue;
     }
     if (key === "pergunta") {
-      question = { text, taskIds: ids };
+      question = { text, taskIds: ids, pmCardIds };
       continue;
     }
     if (key === "pedido") {
-      reply.outcomes.push(parseOutcome(text, ids));
+      reply.outcomes.push(parseOutcome(text, ids, pmCardIds));
       continue;
     }
     if (key === "fora") {
-      reply.notDone.push({ kind: "outside", text, taskIds: ids });
+      reply.notDone.push({ kind: "outside", text, taskIds: ids, pmCardIds });
       continue;
     }
     if (key === "feito") {
@@ -251,16 +282,22 @@ export function parseReplyBlock(body: string): ParsedReply {
         verb,
         text: verb ? rest.join(" ") : text,
         taskIds: ids,
+        pmCardIds,
       });
     } else if (key === "aviso") {
-      reply.warnings.push({ text, taskIds: ids });
+      reply.warnings.push({ text, taskIds: ids, pmCardIds });
     } else if (key === "bloqueio") {
-      reply.blockers.push({ text, taskIds: ids });
+      reply.blockers.push({ text, taskIds: ids, pmCardIds });
     } else if (key === "próximo") {
       reply.next = { value: lookup(NEXT_VALUES, text), text };
     } else {
       const none = text === "" || normalizeWord(text) === YOURS_NONE;
-      reply.yours = { none, text: none ? YOURS_NONE : text, taskIds: ids };
+      reply.yours = {
+        none,
+        text: none ? YOURS_NONE : text,
+        taskIds: ids,
+        pmCardIds,
+      };
     }
   }
   if (question || options.length) {
@@ -268,6 +305,7 @@ export function parseReplyBlock(body: string): ParsedReply {
     reply.question = {
       text: question?.text ?? "",
       taskIds: question?.taskIds ?? [],
+      pmCardIds: question?.pmCardIds ?? [],
       options,
       recommend: known ? recommend!.id : null,
       why: known ? recommend!.why : null,
@@ -314,18 +352,24 @@ function parseOption(value: string): ReplyOption | null {
 }
 
 /** `<evidence> | <the ask> | <proof>`; without an evidence word the whole text is the ask. */
-function parseOutcome(text: string, taskIds: string[]): OutcomeLine {
+function parseOutcome(
+  text: string,
+  taskIds: string[],
+  pmCardIds: string[],
+): OutcomeLine {
   const fields = splitFields(text);
   const evidence = fields.length
     ? EVIDENCE_WORDS[normalizeWord(fields[0]).replace(/[-_]/g, " ")]
     : undefined;
-  if (!evidence) return { evidence: "unverified", text, detail: "", taskIds };
+  if (!evidence)
+    return { evidence: "unverified", text, detail: "", taskIds, pmCardIds };
   const [, ask = "", ...proof] = fields;
   return {
     evidence,
     text: unquote(ask),
     detail: proof.join(" | "),
     taskIds,
+    pmCardIds,
   };
 }
 

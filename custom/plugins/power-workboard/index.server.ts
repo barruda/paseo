@@ -33,7 +33,14 @@ import {
   assistantTreeRpc,
   assistantReportsTaskRpc,
   assistantReportsTasksRpc,
+  assistantPmCardsRpc, // CUSTOM(pm-board)
+  assistantPmDecideRpc,
+  assistantPmReopenRpc,
 } from "./shared/assistant-rpc";
+import {
+  decidePmCardOnBoard,
+  reopenPmCardOnBoard,
+} from "./server/assistant/pm-board"; // CUSTOM(pm-board)
 import {
   HistoryStore,
   defaultHistoryDirectory,
@@ -294,6 +301,24 @@ export default function contribute(server: PluginServerContext) {
       timeline: buildReportTimeline(source, input.taskId, events, entries),
     };
   });
+  // CUSTOM(pm-board): the Project Manager's own board. A user's answer and a reopen also reach the
+  // PM chat as a message, so it can act on what the user decided.
+  server.handle(assistantPmCardsRpc, () => ({ cards: ready().pmCards() }));
+  const pmMessage = async (text: string): Promise<string | null> => {
+    try {
+      const ack = await inbox.ask({ text, source: "pm-board", waitMs: 0 });
+      // The inbox reports a failed send as an `error` ack with an id, not a throw.
+      return ack.status === "error" ? null : ack.id;
+    } catch {
+      return null;
+    }
+  };
+  server.handle(assistantPmDecideRpc, (input) =>
+    decidePmCardOnBoard(ready(), pmMessage, input),
+  );
+  server.handle(assistantPmReopenRpc, (input) =>
+    reopenPmCardOnBoard(ready(), pmMessage, input.cardId),
+  );
   // CUSTOM(agent-profiles): the profile of an orchestrator or of the assistant chat.
   server.handle(profilesGetRpc, (input) => ready().profileView(input.profile));
   server.handle(profilesSetSystemPromptRpc, async (input) => {

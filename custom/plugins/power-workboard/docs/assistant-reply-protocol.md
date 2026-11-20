@@ -1,6 +1,6 @@
 # Project Manager reply protocol
 
-Version: **v2** (2026-11-19)
+Version: **v3** (2026-11-20)
 
 The Project Manager ends every reply to the user with a short `pwb` block. The Workboard
 plugin draws that block in the Project Manager's chat as icons, a chip and a details expander, so the
@@ -111,7 +111,31 @@ One word, who moves next:
 
 Always the **last** key line, so the user finds it in the same place every time. The value is
 `nada` or a short verb plus its object: `decidir <x>`, `aprovar <x>`, `testar <x>`,
-`reiniciar <x>`. Anything other than `nada` is highlighted.
+`reiniciar <x>`. Anything other than `nada` is highlighted. A trailing `[pm:<card id>]` names a
+card on the Project Manager board (see below); a bare `[<task id>]` opens the task.
+
+### `[pm:<card id>]`: the Project Manager board
+
+Investigation, proposals and decisions between the user and the Project Manager live on the PM's
+own board (the **Decisões** tab), not on the task board. Code tasks and code reviews stay on the
+task board: a review by a fresh agent needs an orchestrator to run it, and a PM card never starts
+an agent.
+
+Use the `pm_card_create`, `pm_card_update`, `pm_card_decide` and `pm_card_archive` tools, and put
+the card id at the end of a line as `[pm:pm-abc12345]`:
+
+- **`proposal`**: the user must choose. Give it a `question`, the `options` with their gains and
+  costs, and `recommend` one. It waits in "Esperando você"; the user answers on the card, or in one
+  tap in the chat, and the answer reaches the PM as a message.
+- **`decision`**: the PM decided alone. Record it with `decision` and `decidedBy: pm`; the user can
+  reopen it.
+- **`investigation`**: something the PM is looking into. Its findings grow; it moves to "Esperando
+  você" when it needs the user.
+- **`notice`**: information the user should track. Use it sparingly, not for every event.
+
+The `seu` line of a reply that needs a decision ends with the proposal's id:
+`seu: decidir <x> [pm:pm-abc12345]`. A card id is stripped from the line's text and opens the
+Decisões tab on that card; a bare task id still opens the ticket in Reports.
 
 ## What goes where
 
@@ -192,6 +216,8 @@ the old two-minute rule until they age out of the history.
 
 ## Changelog
 
+- **v3** (2026-11-20): `[pm:<card id>]` at the end of a line, for the Project Manager board's
+  investigation, proposals and decisions; the `pm_card_*` tools. v1 and v2 blocks parse as before.
 - **v2** (2026-11-19): `pedido`, `fora`, `pergunta`, `opção`, `recomendo`; the task report's
   `options`, `recommend`, `why`, `outcomes`, `notDone`; the history's `by`. v1 blocks parse as
   before.

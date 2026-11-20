@@ -9,6 +9,7 @@ export const DASHBOARD_SURFACE_ID = "projects-dashboard";
 export const CONVERSATIONS_SURFACE_ID = "projects-conversations";
 export const REPORTS_SURFACE_ID = "projects-reports"; // CUSTOM(assistant-reports)
 export const CHAT_SURFACE_ID = "projects-assistant-chat"; // CUSTOM(projects-assistant)
+export const PM_BOARD_SURFACE_ID = "projects-pm-board"; // CUSTOM(pm-board)
 
 interface Selection {
   agentId: string | null;
@@ -130,6 +131,51 @@ export function openTaskReport(taskId: string): boolean {
 }
 
 export function canOpenTaskReport(): boolean {
+  return screenOpener !== null;
+}
+
+// CUSTOM(pm-board): open the Decisões tab on one card, from a reply's `[pm:<id>]` or a link.
+interface PmCardRequest {
+  cardId: string;
+  seq: number;
+}
+
+let pmCardRequest: PmCardRequest | null = null;
+let pmCardSeq = 0;
+
+/** Ask the Decisões page to show a card. It may mount only after this, so the request waits. */
+export function requestPmCard(cardId: string): void {
+  pmCardRequest = { cardId, seq: ++pmCardSeq };
+  for (const listener of listeners) listener();
+}
+
+/** Called by the page once it showed the card, so a later visit starts fresh. */
+export function consumePmCardRequest(seq: number): void {
+  if (pmCardRequest?.seq !== seq) return;
+  pmCardRequest = null;
+  for (const listener of listeners) listener();
+}
+
+export function usePmCardRequest(): PmCardRequest | null {
+  return useSyncExternalStore(
+    subscribe,
+    () => pmCardRequest,
+    () => pmCardRequest,
+  );
+}
+
+/** Opens the Workboard on its Decisões tab with this card. False when the host can't. */
+export function openPmCard(cardId: string): boolean {
+  if (!screenOpener) return false;
+  requestPmCard(cardId);
+  screenOpener({
+    screenId: "power-workboard",
+    params: { tab: "pm-board", request: String(Date.now()) },
+  });
+  return true;
+}
+
+export function canOpenPmCard(): boolean {
   return screenOpener !== null;
 }
 

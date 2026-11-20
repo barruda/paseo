@@ -57,6 +57,17 @@ import {
   REFINEMENT_CHAT_LABEL, // CUSTOM(sidebar-agent-tabs)
   TMP_CLEANUP_INTERVAL_MS, // CUSTOM(unattended-automation)
 } from "../shared/model";
+import {
+  newPmCard,
+  normalizePmRecommend,
+  pmAnswerOption,
+  PM_CARD_ID_PREFIX,
+  PM_CARD_LIMIT,
+  type PmCard,
+  type PmCardCreateInput,
+  type PmCardUpdateInput,
+  type PmDecider,
+} from "../shared/pm-board"; // CUSTOM(pm-board)
 import { cleanupScratchDirectory, tmpCleanupDue } from "./tmp-cleanup"; // CUSTOM(unattended-automation)
 import { runsUnattended } from "../shared/permission"; // CUSTOM(unattended-automation)
 import {
@@ -4372,6 +4383,114 @@ export class Workboard {
       agents: this.inventory.agents,
       now: new Date(),
     };
+  }
+  // CUSTOM(pm-board): the Project Manager's own cards. They never touch a task, a workspace or an
+  // agent; this board only stores them, so a card can never start code work.
+  pmCards(): PmCard[] {
+    return this.store.current.assistant.pmBoard.cards;
+  }
+  async pmCardCreate(input: PmCardCreateInput): Promise<PmCard> {
+    const card = newPmCard(
+      `${PM_CARD_ID_PREFIX}${randomUUID().slice(0, 8)}`,
+      this.stamp(),
+      input,
+    );
+    await this.serial(() =>
+      this.store.update((data) => {
+        data.assistant.pmBoard.cards = [
+          card,
+          ...data.assistant.pmBoard.cards,
+        ].slice(0, PM_CARD_LIMIT);
+      }),
+    );
+    return card;
+  }
+  async pmCardUpdate(id: string, input: PmCardUpdateInput): Promise<PmCard> {
+    let updated: PmCard | null = null;
+    await this.serial(() =>
+      this.store.update((data) => {
+        const cards = data.assistant.pmBoard.cards;
+        const index = cards.findIndex((card) => card.id === id);
+        if (index < 0) throw new Error(`No PM card with id ${id}.`);
+        const current = cards[index]!;
+        const options = input.options ?? current.options;
+        const next: PmCard = {
+          ...current,
+          ...(input.title !== undefined ? { title: input.title.trim() } : {}),
+          ...(input.question !== undefined ? { question: input.question } : {}),
+          options,
+          recommend:
+            input.recommend !== undefined
+              ? normalizePmRecommend(input.recommend, options)
+              : normalizePmRecommend(current.recommend, options),
+          ...(input.why !== undefined ? { why: input.why } : {}),
+          ...(input.findings !== undefined ? { findings: input.findings } : {}),
+          ...(input.decision !== undefined ? { decision: input.decision } : {}),
+          ...(input.answer !== undefined ? { answer: input.answer } : {}),
+          ...(input.answerOptionId !== undefined
+            ? { answerOptionId: input.answerOptionId }
+            : {}),
+          ...(input.status !== undefined ? { status: input.status } : {}),
+          ...(input.links !== undefined ? { links: input.links } : {}),
+          updatedAt: this.stamp(current.updatedAt),
+        };
+        // A decision records who decided and when; reopening or going back to investigating
+        // clears both. Archiving keeps the record.
+        if (next.status === "decided") {
+          if (input.decidedBy !== undefined) next.decidedBy = input.decidedBy;
+          next.decidedBy ??= "pm";
+          next.decidedAt ??= next.updatedAt;
+        } else if (
+          next.status === "waiting" ||
+          next.status === "investigating"
+        ) {
+          next.decidedBy = null;
+          next.decidedAt = null;
+        }
+        cards[index] = next;
+        updated = next;
+      }),
+    );
+    if (!updated) throw new Error(`No PM card with id ${id}.`);
+    return updated;
+  }
+  /** Records a decision on a card: the user's answer, or the PM deciding alone. */
+  async pmCardDecide(
+    id: string,
+    input: {
+      optionId?: string | null;
+      answer?: string | null;
+      decision?: string | null;
+      by: PmDecider;
+    },
+  ): Promise<PmCard> {
+    const current = this.pmCards().find((card) => card.id === id);
+    if (!current) throw new Error(`No PM card with id ${id}.`);
+    const option = pmAnswerOption(current, input.optionId ?? null);
+    if (input.optionId && !option)
+      throw new Error(
+        `Card ${id} has no option "${input.optionId}". Options: ${current.options.map((item) => item.id).join(", ") || "none"}.`,
+      );
+    const answer = input.answer?.trim() || option?.label || null;
+    return this.pmCardUpdate(id, {
+      status: "decided",
+      answer,
+      answerOptionId: option?.id ?? null,
+      decision: input.decision ?? answer,
+      decidedBy: input.by,
+    });
+  }
+  /** Sends a decided card back to "Esperando você" and clears the decision it recorded. */
+  async pmCardReopen(id: string): Promise<PmCard> {
+    return this.pmCardUpdate(id, {
+      status: "waiting",
+      answer: null,
+      answerOptionId: null,
+      decision: null,
+    });
+  }
+  async pmCardArchive(id: string): Promise<PmCard> {
+    return this.pmCardUpdate(id, { status: "archived" });
   }
   // CUSTOM(workboard-chip-status): the counts the Desk header chip shows.
   deskStatus(): DeskStatus {
