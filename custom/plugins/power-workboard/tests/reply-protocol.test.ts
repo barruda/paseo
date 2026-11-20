@@ -20,6 +20,7 @@ import {
   replyItemDataSchema,
   replyTimelineItems,
   splitReply,
+  splitReplyIds,
   splitTaskIds,
 } from "../shared/reply-protocol";
 import {
@@ -30,7 +31,9 @@ import {
 import { EVIDENCE_KINDS } from "../shared/assistant"; // CUSTOM(assistant-cards)
 import { itemFeedback, optionAnswer } from "../shared/card-answers";
 import {
+  canOpenPmCard,
   canOpenTaskReport,
+  openPmCard,
   openTaskReport,
   setScreenOpener,
 } from "../client/assistant/nav";
@@ -117,23 +120,37 @@ describe("parseReplyBlock v2", () => {
         text: "abas internas",
         detail: "tests/pages.test.ts",
         taskIds: ["10b1b0d7"],
+        pmCardIds: [],
       },
       {
         evidence: "seen",
         text: "Reports sob pedido",
         detail: "abri o board | nada carregou",
         taskIds: [],
+        pmCardIds: [],
       },
-      { evidence: "unverified", text: "retry no 503", detail: "", taskIds: [] },
+      {
+        evidence: "unverified",
+        text: "retry no 503",
+        detail: "",
+        taskIds: [],
+        pmCardIds: [],
+      },
       {
         evidence: "unverified",
         text: "o pedido sem evidência",
         detail: "",
         taskIds: [],
+        pmCardIds: [],
       },
     ]);
     expect(reply.notDone).toEqual([
-      { kind: "outside", text: "renomeei o hook", taskIds: ["10b1b0d7"] },
+      {
+        kind: "outside",
+        text: "renomeei o hook",
+        taskIds: ["10b1b0d7"],
+        pmCardIds: [],
+      },
     ]);
     expect(reply.extra).toEqual([]);
   });
@@ -153,6 +170,7 @@ describe("parseReplyBlock v2", () => {
     expect(reply.question).toEqual({
       text: "Merge agora ou espero o CI?",
       taskIds: ["10b1b0d7"],
+      pmCardIds: [],
       options: [
         {
           id: "a",
@@ -187,6 +205,7 @@ describe("parseReplyBlock v2", () => {
     expect(reply.question).toEqual({
       text: "",
       taskIds: [],
+      pmCardIds: [],
       options: [{ id: "a", label: "Um", gains: null, costs: null }],
       recommend: null,
       why: null,
@@ -205,6 +224,7 @@ describe("parseReplyBlock v2", () => {
     expect(reply.question).toEqual({
       text: "Qual nome usar?",
       taskIds: [],
+      pmCardIds: [],
       options: [],
       recommend: null,
       why: null,
@@ -244,22 +264,30 @@ describe("parseReplyBlock", () => {
           verb: "merge",
           text: "abas internas do Workboard",
           taskIds: ["10b1b0d7"],
+          pmCardIds: [],
         },
         {
           verb: "revisão",
           text: "retomada após o limite",
           taskIds: ["ed28643e"],
+          pmCardIds: [],
         },
       ],
       warnings: [
         {
           text: "abas internas só aparecem depois de instalar o app",
           taskIds: [],
+          pmCardIds: [],
         },
       ],
-      blockers: [{ text: "CI fora do ar", taskIds: [] }],
+      blockers: [{ text: "CI fora do ar", taskIds: [], pmCardIds: [] }],
       next: { value: "revisão", text: "revisão" },
-      yours: { none: false, text: "aprovar o merge", taskIds: ["10b1b0d7"] },
+      yours: {
+        none: false,
+        text: "aprovar o merge",
+        taskIds: ["10b1b0d7"],
+        pmCardIds: [],
+      },
       extra: [],
       details: "",
       // CUSTOM(assistant-cards): a v1 block has none of the v2 parts.
@@ -273,7 +301,12 @@ describe("parseReplyBlock", () => {
     const reply = parseReplyBlock("próximo: fim\nseu: nada");
     expect(reply.done).toEqual([]);
     expect(reply.next).toEqual({ value: "fim", text: "fim" });
-    expect(reply.yours).toEqual({ none: true, text: "nada", taskIds: [] });
+    expect(reply.yours).toEqual({
+      none: true,
+      text: "nada",
+      taskIds: [],
+      pmCardIds: [],
+    });
   });
 
   it("matches keys and words without case or accents", () => {
@@ -300,7 +333,7 @@ describe("parseReplyBlock", () => {
       { key: null, text: "uma linha solta" },
     ]);
     expect(reply.done).toEqual([
-      { verb: null, text: "dancei a valsa", taskIds: [] },
+      { verb: null, text: "dancei a valsa", taskIds: [], pmCardIds: [] },
     ]);
     expect(reply.next).toEqual({ value: null, text: "talvez" });
     expect(reply.yours?.none).toBe(true);
@@ -327,7 +360,12 @@ describe("parseReplyBlock", () => {
   it("treats an empty seu as nada and keeps the last repeated key", () => {
     const reply = parseReplyBlock("próximo: sigo\npróximo: fim\nseu:");
     expect(reply.next?.value).toBe("fim");
-    expect(reply.yours).toEqual({ none: true, text: "nada", taskIds: [] });
+    expect(reply.yours).toEqual({
+      none: true,
+      text: "nada",
+      taskIds: [],
+      pmCardIds: [],
+    });
   });
 });
 
@@ -345,6 +383,60 @@ describe("splitTaskIds", () => {
     expect(splitTaskIds("curto [abc]")).toEqual({
       text: "curto [abc]",
       ids: [],
+    });
+    // CUSTOM(pm-board): a `[pm:<id>]` is stripped from the text and is not a task id.
+    expect(splitTaskIds("decidir x [pm:pm-abc12345]")).toEqual({
+      text: "decidir x",
+      ids: [],
+    });
+  });
+});
+
+// CUSTOM(pm-board): protocol v3 adds `[pm:<card id>]`.
+describe("parseReplyBlock v3", () => {
+  it("reads a PM card id at the end of a line", () => {
+    const reply = parseReplyBlock(
+      [
+        "feito: decidi o merge [pm:pm-abc12345]",
+        "pergunta: Publicar agora? [pm:pm-abc12345]",
+        "opção: a | Sim",
+        "seu: decidir a publicação [pm:pm-abc12345]",
+      ].join("\n"),
+    );
+    expect(reply.done[0]).toEqual({
+      verb: null,
+      text: "decidi o merge",
+      taskIds: [],
+      pmCardIds: ["pm-abc12345"],
+    });
+    expect(reply.question).toMatchObject({
+      text: "Publicar agora?",
+      taskIds: [],
+      pmCardIds: ["pm-abc12345"],
+    });
+    expect(reply.yours).toEqual({
+      none: false,
+      text: "decidir a publicação",
+      taskIds: [],
+      pmCardIds: ["pm-abc12345"],
+    });
+  });
+
+  it("splits task and PM card ids together, leaving other brackets", () => {
+    expect(splitReplyIds("movi X [10b1b0d7] [pm:pm-abc12345]")).toEqual({
+      text: "movi X",
+      taskIds: ["10b1b0d7"],
+      pmCardIds: ["pm-abc12345"],
+    });
+    expect(splitReplyIds("decidir x [PM:PM-ABC12345]").pmCardIds).toEqual([
+      "pm-abc12345",
+    ]);
+    expect(splitReplyIds("decidir x [pm:]").pmCardIds).toEqual([]);
+    expect(splitReplyIds("decidir x [pm:com espaço]").pmCardIds).toEqual([]);
+    expect(splitReplyIds("reseta [2026-11-20] [pm:pm-1]")).toEqual({
+      text: "reseta [2026-11-20]",
+      taskIds: [],
+      pmCardIds: ["pm-1"],
     });
   });
 });
@@ -376,6 +468,7 @@ describe("splitReply", () => {
       verb: "merge",
       text: "segunda",
       taskIds: ["abcdef12"],
+      pmCardIds: [],
     });
     expect(split?.after).toBe("Mais contexto.");
     expect(split && replyDetails(split)).toBe("Mais contexto.");
@@ -394,7 +487,9 @@ describe("splitReply", () => {
       { key: null, text: ":::" },
       { key: null, text: ": sem chave" },
     ]);
-    expect(split?.reply.done).toEqual([{ verb: null, text: "", taskIds: [] }]);
+    expect(split?.reply.done).toEqual([
+      { verb: null, text: "", taskIds: [], pmCardIds: [] },
+    ]);
     expect(split?.reply.next).toBeNull();
     expect(split?.reply.yours).toBeNull();
   });
@@ -471,6 +566,21 @@ describe("openTaskReport", () => {
     });
     setScreenOpener(null);
     expect(canOpenTaskReport()).toBe(false);
+  });
+
+  // CUSTOM(pm-board): a `[pm:<id>]` opens the Decisões tab on that card.
+  it("opens the board on its Decisões tab with a PM card", () => {
+    expect(openPmCard("pm-abc12345")).toBe(false);
+    const open = vi.fn();
+    setScreenOpener(open);
+    expect(canOpenPmCard()).toBe(true);
+    expect(openPmCard("pm-abc12345")).toBe(true);
+    expect(open).toHaveBeenCalledWith({
+      screenId: "power-workboard",
+      params: { tab: "pm-board", request: expect.any(String) },
+    });
+    setScreenOpener(null);
+    expect(canOpenPmCard()).toBe(false);
   });
 });
 

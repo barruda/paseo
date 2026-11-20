@@ -9239,3 +9239,61 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   commit goes to Needs you; dirty folder recorded; delivery commits without `mergeToBase`; diff
   from the starting HEAD; worktree unchanged) and `tests/finish-buttons.test.ts` (no Merge for a
   folder-mode Done card).
+
+## pm-board: a Project Manager board for investigations, proposals and decisions
+
+- **Added:** 2026-11-20 (based on upstream 0.11.2, on `custom`)
+- **Commit:** `custom: a Project Manager board for investigations, proposals and decisions`
+- **Why:** Everything the user and the Project Manager settle in conversation was spread over the
+  chat, the `seu:` line of the `pwb` block and the same board as code tasks. An open question had
+  no place to live until it was answered, and reviews and investigations turned into task cards
+  beside real code work.
+- **What:**
+  - **A separate board.** The **Decisões** tab, right after Board: investigations, proposals and
+    decisions between the user and the PM, in four columns (Investigando, Esperando você,
+    Decidido, Arquivado). Cards have a kind (`investigation`, `proposal`, `decision`, `notice`) and
+    a status (the column); a "pending decision" is a proposal in Esperando você, and a decided card
+    records `decidedBy` (`user` or `pm`) and `decidedAt`. The tab shows a count of what waits for
+    the user.
+  - **What stays on the task board.** Code tasks, orchestrators and their deliveries, and code
+    reviews (including the fresh-agent review of a critical change) are unchanged. A PM card never
+    starts an agent or a workspace, so it cannot do code work.
+  - **The PM writes.** `pm_card_create`, `pm_card_update`, `pm_card_decide` and `pm_card_archive`
+    join the chat's MCP beside the `board_*` tools; `board_overview` gains a `Project Manager board`
+    section with the counts and the waiting cards. The PM creates a proposal when the user must
+    choose (question, options with gains and costs, a recommendation), records a decision it took
+    alone with `decidedBy: pm`, and uses a notice sparingly.
+  - **The user answers.** On a proposal, each option is a button and there is a free-text field.
+    One tap moves the card to Decidido with `decidedBy: user` and sends the answer to the PM chat as
+    a message. **Reabrir** sends a decided card back to Esperando você and tells the PM. A card can
+    link to tasks and Reports tickets by id.
+  - **Reply protocol v3.** A trailing `[pm:<card id>]` on a line links to that card; a bare
+    `[<task id>]` still opens the ticket in Reports. `docs/assistant-reply-protocol.md` and
+    `docs/pm-board.md` describe it.
+  - **Storage and polling.** Cards live in `data.assistant.pmBoard`, so an old board loads with an
+    empty PM board. The page reads them through `workboard.assistant.pm.cards` at its own poll;
+    the task board's 1.5 s snapshot does not grow.
+- **Core files touched:** none.
+- **Re-apply:** Plugin-only, marked `CUSTOM(pm-board)`:
+  - `shared/pm-board.ts` (schema, columns, helpers), `shared/assistant.ts`
+    (`assistantDataSchema.pmBoard`, `overviewSchema.pm`), `shared/assistant-rpc.ts` (the three PM
+    RPCs).
+  - `server/workboard.ts` (`pmCards`, `pmCardCreate/Update/Decide/Reopen/Archive`),
+    `server/assistant/pm-board.ts` (answer and reopen, which also message the chat),
+    `server/assistant/chat.ts` (the four tools, the `board_overview` section and the PM prompt),
+    `server/assistant/views.ts` (`buildOverview`), `index.server.ts` (RPC handlers).
+  - `shared/reply-protocol.ts` (`splitReplyIds`, `pmCardIds`, v3) and
+    `client/assistant/nav.ts` (`openPmCard`), `AssistantReplyCard.tsx` (the `[pm:id]` link),
+    `client/assistant/pm-board/`, `client/assistant/workboard-pages.ts`,
+    `client/WorkboardScreen.tsx`, `client/Orchestrators.tsx` (the tab badge).
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
+  Needs only `paseo plugin reload power-workboard`. In the app: the **Decisões** tab appears right
+  after Board; ask the PM for a decision (or let it create a proposal); the card waits in
+  **Esperando você** with its options; click one: the card moves to **Decidido** with "decidido por
+  você", and the PM chat gets `Resposta a "..." no card pm-...`; press **Reabrir**: the card returns
+  to Esperando você and the chat gets a message. A code task still starts an agent from the Board.
+- **Tests:** `tests/pm-board.test.ts` (kind/column defaults, create/update/archive, a user's answer
+  with the message to the PM, a written answer, Reabrir, the overview section),
+  `tests/reply-protocol.test.ts` (v3 `[pm:<id>]`, mixed task and card ids, the doc's version) and
+  `tests/assistant-chat.test.ts` (the tools share the chat's MCP and decide a card);
+  `tests/workboard-pages.test.ts` (the new tab).

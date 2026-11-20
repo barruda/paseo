@@ -29,7 +29,12 @@ import { usePaseoLocale } from "../paseo-language";
 import { Commentable, OutcomeMap, QuestionBlock } from "./card-parts";
 import { reportsStrings, type CardLabels } from "./reports-strings";
 import { MarkdownText, wash } from "./TaskReportCard";
-import { canOpenTaskReport, openTaskReport } from "./nav";
+import {
+  canOpenPmCard,
+  canOpenTaskReport,
+  openPmCard,
+  openTaskReport,
+} from "./nav"; // CUSTOM(pm-board)
 import { useIsNewestReply } from "./newest-reply"; // CUSTOM(assistant-cards)
 
 type Theme = PluginTimelineItemProps["theme"];
@@ -83,13 +88,29 @@ function LineText({
   theme: Theme;
   strong?: boolean;
 }) {
-  const id = line.taskIds[0];
   const style = [
     styles.body,
     styles.shrink,
     strong && styles.strong,
     { color },
   ];
+  // CUSTOM(pm-board): a `[pm:<id>]` opens the decision card; a bare `[id]` opens the task.
+  const pmCardId = line.pmCardIds[0];
+  if (pmCardId && canOpenPmCard())
+    return (
+      <Pressable
+        accessibilityRole="link"
+        accessibilityLabel={`${line.text} (${pmCardId})`}
+        onPress={() => openPmCard(pmCardId)}
+        style={[styles.row, styles.shrink]}
+      >
+        <Text style={[style, styles.link, { color: theme.colors.accent }]}>
+          {line.text || pmCardId}
+        </Text>
+        <Icon name="ArrowUpRight" size={12} color={theme.colors.accent} />
+      </Pressable>
+    );
+  const id = line.taskIds[0];
   if (!id || !canOpenTaskReport())
     return (
       <Text selectable style={style}>
@@ -356,7 +377,7 @@ function ReplyCard({
           icon="Minus"
           iconColor={c.foregroundMuted}
           label={line.key ? `${line.key}:` : undefined}
-          line={{ text: line.text, taskIds: [] }}
+          line={{ text: line.text, taskIds: [], pmCardIds: [] }}
           theme={theme}
           textColor={c.foregroundMuted}
         />

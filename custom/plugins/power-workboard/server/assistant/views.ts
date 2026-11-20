@@ -13,6 +13,7 @@ import type {
   Tree,
 } from "../../shared/assistant";
 import type { Board, Card, Data, Task } from "../../shared/model";
+import { buildPmOverview } from "../../shared/pm-board"; // CUSTOM(pm-board)
 import type { TimelineReader } from "../conversations";
 import type { Agent } from "../host";
 import { localDay } from "./history";
@@ -196,6 +197,7 @@ export function buildOverview(source: ViewSource): Overview {
     needsYou,
     running,
     queued: queuedCount(board),
+    pm: buildPmOverview(data.assistant?.pmBoard), // CUSTOM(pm-board)
   };
 }
 

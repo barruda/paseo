@@ -8,6 +8,7 @@
 import { z } from "zod";
 import { skillSelectionSchema } from "./profiles";
 import { orchestratorHoldSchema } from "./hold"; // CUSTOM(resource-pools)
+import { pmBoardSchema, pmOverviewSchema } from "./pm-board"; // CUSTOM(pm-board)
 
 /**
  * What happens to a task's work when its agent finishes with a `done` report. `review` (the
@@ -433,6 +434,8 @@ export const assistantDataSchema = z.object({
    * by a compaction that works and by any new chat the user opens.
    */
   compactRetryAt: z.string().nullable().default(null),
+  /** CUSTOM(pm-board): the PM's own cards (investigations, proposals, decisions). */
+  pmBoard: pmBoardSchema.default(() => pmBoardSchema.parse({})),
 });
 export type AssistantData = z.infer<typeof assistantDataSchema>;
 
@@ -573,6 +576,8 @@ export const overviewSchema = z.object({
   needsYou: z.array(needsYouItemSchema),
   running: z.array(runningItemSchema),
   queued: z.number().int(),
+  /** CUSTOM(pm-board): the PM board's columns and the cards waiting for the user. */
+  pm: pmOverviewSchema,
 });
 export type Overview = z.infer<typeof overviewSchema>;
 

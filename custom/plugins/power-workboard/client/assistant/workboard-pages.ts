@@ -8,12 +8,14 @@ import {
   CHAT_SURFACE_ID,
   CONVERSATIONS_SURFACE_ID,
   DASHBOARD_SURFACE_ID,
+  PM_BOARD_SURFACE_ID,
   REPORTS_SURFACE_ID,
 } from "./nav";
 
 type Navigation = PluginSurfaceProps["navigation"];
 
 export type WorkboardPageTab =
+  | "pm-board"
   | "assistant-chat"
   | "dashboard"
   | "conversations"
@@ -27,6 +29,8 @@ export interface WorkboardPage {
 }
 
 export const WORKBOARD_PAGES: readonly WorkboardPage[] = [
+  // CUSTOM(pm-board): the PM's own board, right after Board, apart from the code tasks.
+  { tab: "pm-board", surfaceId: PM_BOARD_SURFACE_ID, icon: "Scale" },
   { tab: "assistant-chat", surfaceId: CHAT_SURFACE_ID, icon: "MessageSquare" },
   {
     tab: "dashboard",
@@ -42,18 +46,21 @@ export const WORKBOARD_PAGES: readonly WorkboardPage[] = [
 ];
 
 const en: Record<WorkboardPageTab, string> = {
+  "pm-board": "Decisions",
   "assistant-chat": "Project Manager",
   dashboard: "Dashboard",
   conversations: "Conversations",
   reports: "Reports",
 };
 const pt: Record<WorkboardPageTab, string> = {
+  "pm-board": "Decisões",
   "assistant-chat": "Project Manager",
   dashboard: "Painel",
   conversations: "Conversas",
   reports: "Relatórios",
 };
 const zh: Record<WorkboardPageTab, string> = {
+  "pm-board": "决策",
   "assistant-chat": "Project Manager",
   dashboard: "仪表板",
   conversations: "对话",

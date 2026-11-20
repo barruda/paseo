@@ -29,20 +29,23 @@ function hostNavigation(extra: Record<string, unknown> = {}) {
 }
 
 describe("Project Manager pages inside the Workboard", () => {
-  it("lists Project Manager, Dashboard, Conversations and Reports in that order", () => {
+  it("lists Decisões, Project Manager, Dashboard, Conversations and Reports in that order", () => {
     expect(WORKBOARD_PAGES.map((page) => page.tab)).toEqual([
+      "pm-board",
       "assistant-chat",
       "dashboard",
       "conversations",
       "reports",
     ]);
     expect(Object.values(workboardPageLabels("en"))).toEqual([
+      "Decisions",
       "Project Manager",
       "Dashboard",
       "Conversations",
       "Reports",
     ]);
     expect(workboardPageLabels("pt").reports).toBe("Relatórios");
+    expect(workboardPageLabels("pt")["pm-board"]).toBe("Decisões");
   });
 
   it("maps the old surface ids to their tabs", () => {
@@ -50,12 +53,14 @@ describe("Project Manager pages inside the Workboard", () => {
     expect(pageTabForSurface("projects-dashboard")).toBe("dashboard");
     expect(pageTabForSurface("projects-conversations")).toBe("conversations");
     expect(pageTabForSurface("projects-reports")).toBe("reports");
+    expect(pageTabForSurface("projects-pm-board")).toBe("pm-board");
     expect(pageTabForSurface("power-workboard")).toBeNull();
   });
 
   it("selects the tab the host asks for and ignores anything else", () => {
     expect(requestedTab({ tab: "reports" })).toBe("reports");
     expect(requestedTab({ tab: "orchestrators" })).toBe("orchestrators");
+    expect(requestedTab({ tab: "pm-board" })).toBe("pm-board");
     // The chat tab opens the chat on mount; asking for it would trap the board there.
     expect(requestedTab({ tab: "assistant-chat" })).toBeNull();
     expect(requestedTab({ tab: "some-orchestrator-id" })).toBeNull();
@@ -78,13 +83,14 @@ describe("Project Manager pages inside the Workboard", () => {
     });
     for (const tab of [
       "board",
+      "pm-board",
       "dashboard",
       "assistant-chat",
       "uuid-1",
       "reports",
     ])
       reportTab(navigation, tab);
-    expect(reported).toEqual(["board", "dashboard", "reports"]);
+    expect(reported).toEqual(["board", "pm-board", "dashboard", "reports"]);
     expect(isRestorableTab("assistant-chat")).toBe(false);
     expect(() => reportTab(hostNavigation(), "board")).not.toThrow();
   });

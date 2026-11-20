@@ -106,7 +106,18 @@ this repo) with these differences:
   `próximo`, `seu`), described in [docs/assistant-reply-protocol.md](docs/assistant-reply-protocol.md).
   In the Project Manager's chat only, it shows as icons, the review map, the options as buttons, a
   `próximo` chip, the `seu` line last and a details expander; a task id links to the ticket in
-  Reports (`shared/reply-protocol.ts`). A tap or a comment goes to the chat as a message.
+  Reports (`shared/reply-protocol.ts`). A tap or a comment goes to the chat as a message. A
+  `[pm:<card id>]` at the end of a line links to the card on the PM board (below).
+- **Decisões board.** The Project Manager has its own board, the **Decisões** tab right after Board:
+  investigations, proposals and decisions between the user and the PM, in four columns
+  (Investigando, Esperando você, Decidido, Arquivado). A proposal carries the question, its
+  options with gains and costs, and the PM's recommendation; the user answers on the card and the
+  answer goes to the PM chat as a message, with the card moving to Decidido and recording who
+  decided and when. Reabrir sends it back to Esperando você and tells the PM. The PM writes through
+  `pm_card_create/update/decide/archive`, in the same MCP as the board tools, and `board_overview`
+  has a `Project Manager board` section. A PM card never starts an agent: code tasks and code
+  reviews stay on the task board. Data in `data.assistant.pmBoard`, page in
+  [docs/pm-board.md](docs/pm-board.md).
 
 - **Night tasks and start times.** A draft's **When** (task editor) puts it in Scheduled: a
   night task starts inside the night window (Orchestrators tab, Night tasks), taken by any

@@ -1844,6 +1844,7 @@ export function WorkboardTabs({
   onSelect,
   onClose,
   trailing,
+  badges,
 }: {
   board: Board;
   t: Strings;
@@ -1854,14 +1855,30 @@ export function WorkboardTabs({
   onClose(id: string): void;
   /** CUSTOM(redeploy-button): pinned to the right end of the row. */
   trailing?: ReactNode;
+  /** CUSTOM(pm-board): a count shown after a page's label, such as the cards waiting for you. */
+  badges?: Record<string, number>;
 }) {
   const language = usePaseoLanguage(); // CUSTOM(agent-profiles)
   const pageLabels = workboardPageLabels(usePaseoLocale()); // CUSTOM(workboard-inner-pages)
   const active = Object.values(board.orchestratorStatus).filter(
     (status) => status.active,
   ).length;
+  // CUSTOM(workboard-inner-pages)
+  const pages = WORKBOARD_PAGES.map((page) => {
+    // CUSTOM(pm-board)
+    const count = badges?.[page.tab] ?? 0;
+    return {
+      id: page.tab,
+      label:
+        count > 0 ? `${pageLabels[page.tab]} · ${count}` : pageLabels[page.tab],
+      icon: page.icon,
+      closable: false,
+    };
+  });
   const tabs = [
     { id: "board", label: t.panel.boardTab, icon: "Columns3", closable: false },
+    // CUSTOM(pm-board): Decisões sits right after Board, apart from the code tasks.
+    ...pages.filter((page) => page.id === "pm-board"),
     {
       id: "orchestrators",
       label: active
@@ -1870,13 +1887,7 @@ export function WorkboardTabs({
       icon: "Bot",
       closable: false,
     },
-    // CUSTOM(workboard-inner-pages)
-    ...WORKBOARD_PAGES.map((page) => ({
-      id: page.tab,
-      label: pageLabels[page.tab],
-      icon: page.icon,
-      closable: false,
-    })),
+    ...pages.filter((page) => page.id !== "pm-board"),
     ...open.map((id) => ({
       id,
       label:

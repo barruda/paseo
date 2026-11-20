@@ -170,6 +170,11 @@ it("the session_open hook attaches the tools only to the chat agent's own sessio
       "board_reload_plugin",
       "board_history",
       "board_read_agent",
+      // CUSTOM(pm-board): the PM's own board, in the same MCP.
+      "pm_card_create",
+      "pm_card_update",
+      "pm_card_decide",
+      "pm_card_archive",
     ]);
     expect(attachChatTools({ ...base, labels: {} }, c.tools)).toBeUndefined();
     expect(
@@ -870,5 +875,50 @@ it("the assistant's Permissions field decides unattended; the ship agent stays u
     expect(start.unattended).toBe(false);
   } finally {
     o.board.dispose();
+  }
+});
+
+// CUSTOM(pm-board): the PM card tools share the chat's MCP with the board tools.
+it("creates, decides and reports a PM card from the chat tools", async () => {
+  const c = await chat();
+  try {
+    const names = c.tools.map((tool) => tool.name);
+    for (const name of [
+      "pm_card_create",
+      "pm_card_update",
+      "pm_card_decide",
+      "pm_card_archive",
+    ])
+      expect(names).toContain(name);
+
+    const created = await c.run("pm_card_create", {
+      kind: "proposal",
+      title: "Publicar?",
+      question: "Publicar o site agora?",
+      options: [
+        { id: "a", label: "Sim", gains: "entrega hoje" },
+        { id: "b", label: "Esperar", costs: "20 min" },
+      ],
+      recommend: "a",
+    });
+    expect(created.isError).toBeUndefined();
+    const id = /Created PM card (pm-[0-9a-f]{8})/.exec(created.text ?? "")![1];
+
+    const decided = await c.run("pm_card_decide", {
+      id,
+      decision: "Publico amanhã",
+      answerOptionId: "b",
+    });
+    expect(decided.isError).toBeUndefined();
+    const card = c.board.pmCards().find((entry) => entry.id === id)!;
+    expect(card.status).toBe("decided");
+    expect(card.decidedBy).toBe("pm");
+    expect(card.answer).toBe("Esperar");
+
+    const overview = await c.run("board_overview");
+    expect(overview.text).toContain("Project Manager board");
+    expect(overview.text).toContain("decided 1");
+  } finally {
+    c.board.dispose();
   }
 });
