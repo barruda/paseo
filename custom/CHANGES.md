@@ -4975,8 +4975,10 @@ src/keyboard/keyboard-shortcuts.test.ts src/task-navigation/store.test.ts)`, and
 
 ## desk-docs: a Docs tab in the Explorer sidebar
 
-- **Added:** 2026-11-04; moved from a Desk header chip to the sidebar on 2026-11-05
-- **Commit:** `custom: Docs tab in the Explorer sidebar with the HTML and Markdown files each project mentions`
+- **Added:** 2026-11-04; moved from a Desk header chip to the sidebar on 2026-11-05; folder tree
+  on 2026-11-20
+- **Commit:** `custom: Docs tab in the Explorer sidebar with the HTML and Markdown files each project mentions`;
+  the folder tree in `custom: Docs tab groups each project's documents into a folder tree`
 - **Why:** The link list beside a chat dies with the chat tab, and reports an agent wrote last week
   are hard to find again. The Docs tab keeps them per project, opens them in the browsing Desk, and
   also shows any folder you add. It lives in the sidebar next to Files and Changes.
@@ -4993,12 +4995,24 @@ src/keyboard/keyboard-shortcuts.test.ts src/task-navigation/store.test.ts)`, and
     nothing. The same file name at another path moves the entry when the old path is gone, and is
     a second entry when the old one still exists. Right-click: Open, Copy full path, Remove from
     Docs.
+  - Inside a project the documents form a folder tree relative to the workspace, the way the Files
+    tab draws one: folders first, then files, each folder with a chevron, a folder icon and the
+    count of documents under it. Single-child folder chains fold into one row
+    (`.claude/skills/mw-terrain-advanced-usage`), so `SKILL.md` and `index.html` are told apart by
+    where they sit. A document in a nested workspace is placed under the deepest workspace that
+    holds it.
+  - Documents outside every workspace (agent memory, `~/.claude/…`, `~/uprojects/tmp/…`) get one
+    group per root, labelled short (`memory`, `~/.claude`, `tmp`), so they stay reachable. The
+    group is a folder row like the others.
+  - A folder's open state is remembered in `custom-desk-docs` (`folderOverrides`, by project and
+    path). Folders start closed when the project has more than 15 documents and open otherwise.
+    The added-folder trees use the same store, starting closed as before.
   - A **+** with a discreet border on each project picks a folder with the desktop folder dialog
     (projects on the local daemon only; other hosts get a toast) and adds it as a collapsible tree
     like the Files sidebar, listed by the project's daemon. Right-click removes it from Docs.
   - Sorting, top right: **Most recent** (default; the file's modification time) or **A to Z**.
-    Folders come before files: added folders above the documents, and inside a tree folders above
-    files, each group sorted.
+    Folders come before files. In **Most recent** a folder is ordered by the newest document under
+    it; in **A to Z** by its name.
   - A project filter comes first in the toolbar, then **All** and **None**, on the same row as the
     sort menu. The combo lists every project with a check; unchecking one hides its section right
     away and the menu stays open. Its label reads **All projects**, **N projects** or **No
@@ -5010,8 +5024,9 @@ src/keyboard/keyboard-shortcuts.test.ts src/task-navigation/store.test.ts)`, and
     named **Navegadores** (any case or accents, also "Navegador") and shows that Desk; with no such
     Desk, it opens in the Desk that is showing. In the workspace layout it opens in the project's
     workspace.
-- **Files:** `packages/app/src/desk-docs/` (`model.ts` pure capture, sort and project-filter rules
-  with `model.test.ts`, `store.ts` persisted as `custom-desk-docs` with `store.test.ts`,
+  - Folder rows carry `desk-docs-folder-<path>` testIDs.
+- **Files:** `packages/app/src/desk-docs/` (`model.ts` pure capture, tree, sort and project-filter
+  rules with `model.test.ts`, `store.ts` persisted as `custom-desk-docs` with `store.test.ts`,
   `capture.ts` the hook the agent view calls, `projects.ts`, `open.ts`, `panel.tsx`, `view.tsx`).
   New files; no conflict risk.
 - **Core files touched** (marked `CUSTOM(desk-docs)`): the new `docs` tab target in
@@ -5033,8 +5048,11 @@ src/desk-docs/store.test.ts src/workspace-tabs/launcher/internal/catalog.test.ts
 src/desk-docs/launch.test.ts)` (the update script runs the Docs ones). In
   the app: in the Explorer sidebar, + > Docs. Ask an agent to write and link a Markdown file: the
   project lists it. Move the file and have the agent link the new path: still one entry. With a
-  Desk named Navegadores, click the entry: that Desk shows with the file open. Use + to add a
-  folder, expand it, switch sorting. Needs a new app build; no daemon restart.
+  Desk named Navegadores, click the entry: that Desk shows with the file open. With a project that
+  has documents in several folders, the section shows a tree, a single-child chain on one row, and
+  a group for a document outside the workspace; close a folder, reload the app, and it stays
+  closed. Use + to add a folder, expand it, switch sorting. Needs a new app build; no daemon
+  restart.
 
 ## task-idle-divider: Expand / Collapse on the line under the pinned tasks
 

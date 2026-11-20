@@ -14,6 +14,8 @@ interface DeskDocsState {
   collapsedProjects: string[];
   /** Projects the filter hides; a project missing here is shown, so new ones start visible. */
   hiddenProjects: string[];
+  /** Folders the user opened or closed, by `folderKey`; a missing folder follows its default. */
+  folderOverrides: Record<string, boolean>;
   setDocs(docs: DocEntry[]): void;
   addRoot(root: DocRoot): void;
   removeRoot(id: string): void;
@@ -23,6 +25,7 @@ interface DeskDocsState {
   toggleProjectVisibility(projectRef: string): void;
   showAllProjects(): void;
   hideAllProjects(projectRefs: readonly string[]): void;
+  setFolderExpanded(key: string, expanded: boolean): void;
 }
 
 const docSchema = z.object({
@@ -49,6 +52,7 @@ export const useDeskDocsStore = create<DeskDocsState>()(
       sort: "recent",
       collapsedProjects: [],
       hiddenProjects: [],
+      folderOverrides: {},
       setDocs: (docs) => set({ docs }),
       addRoot: (root) =>
         set((state) =>
@@ -78,6 +82,8 @@ export const useDeskDocsStore = create<DeskDocsState>()(
         })),
       showAllProjects: () => set({ hiddenProjects: [] }),
       hideAllProjects: (projectRefs) => set({ hiddenProjects: [...projectRefs] }),
+      setFolderExpanded: (key, expanded) =>
+        set((state) => ({ folderOverrides: { ...state.folderOverrides, [key]: expanded } })),
     }),
     {
       name: "custom-desk-docs",
@@ -91,6 +97,8 @@ export const useDeskDocsStore = create<DeskDocsState>()(
           collapsedProjects: z.array(z.string()),
           // Optional so a state saved before the filter existed still loads.
           hiddenProjects: z.array(z.string()).optional(),
+          // Optional so a state saved before the folder tree existed still loads.
+          folderOverrides: z.record(z.string(), z.boolean()).optional(),
         }),
       ),
       partialize: (state) => ({
@@ -99,6 +107,7 @@ export const useDeskDocsStore = create<DeskDocsState>()(
         sort: state.sort,
         collapsedProjects: state.collapsedProjects,
         hiddenProjects: state.hiddenProjects,
+        folderOverrides: state.folderOverrides,
       }),
     },
   ),

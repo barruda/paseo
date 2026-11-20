@@ -13,6 +13,7 @@ beforeEach(async () => {
     sort: "recent",
     collapsedProjects: [],
     hiddenProjects: [],
+    folderOverrides: {},
   });
 });
 
@@ -67,5 +68,41 @@ describe("project filter", () => {
     await useDeskDocsStore.persist.rehydrate();
     expect(store().docs).toEqual([doc]);
     expect(store().hiddenProjects).toEqual([]);
+    expect(store().folderOverrides).toEqual({});
+  });
+});
+
+describe("folder state", () => {
+  it("remembers a folder the user closed or opened", async () => {
+    store().setFolderExpanded("srv:p1|/repo/docs", false);
+    store().setFolderExpanded("srv:p1|/repo/src", true);
+    expect(store().folderOverrides).toEqual({
+      "srv:p1|/repo/docs": false,
+      "srv:p1|/repo/src": true,
+    });
+    expect(
+      JSON.parse((await AsyncStorage.getItem("custom-desk-docs"))!).state.folderOverrides,
+    ).toEqual({
+      "srv:p1|/repo/docs": false,
+      "srv:p1|/repo/src": true,
+    });
+  });
+
+  it("loads a state saved before folders were remembered", async () => {
+    await AsyncStorage.setItem(
+      "custom-desk-docs",
+      JSON.stringify({
+        version: 1,
+        state: {
+          docs: [],
+          roots: [],
+          sort: "recent",
+          collapsedProjects: [],
+          hiddenProjects: [],
+        },
+      }),
+    );
+    await useDeskDocsStore.persist.rehydrate();
+    expect(store().folderOverrides).toEqual({});
   });
 });

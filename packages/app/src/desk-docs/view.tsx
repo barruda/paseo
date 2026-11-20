@@ -32,7 +32,11 @@ import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
 import { useWorkspaceProjectTabIcon } from "@/panels/agent-project-tab-icon";
 import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import {
+  buildProjectDocsTree,
+  defaultFolderExpanded,
   fileNameOf,
+  folderKey,
+  isFolderExpanded,
   joinPath,
   parentPathOf,
   projectFilterLabel,
@@ -42,6 +46,8 @@ import {
   type DocEntry,
   type DocRoot,
   type DocsSort,
+  type DocTreeFolder,
+  type DocTreeNode,
 } from "./model";
 import { openDocument } from "./open";
 import { pickOwnerWorkspace, useDocsProjects, type DocsProject } from "./projects";
@@ -242,6 +248,16 @@ const ProjectSection = memo(function ProjectSection({
     () => roots.filter((root) => root.projectRef === project.ref),
     [roots, project.ref],
   );
+  const tree = useMemo(
+    () =>
+      buildProjectDocsTree(
+        projectDocs,
+        project.workspaces.map((workspace) => workspace.directory),
+        sort,
+      ),
+    [projectDocs, project.workspaces, sort],
+  );
+  const foldersExpanded = defaultFolderExpanded(projectDocs.length);
   const toggle = useCallback(
     () => useDeskDocsStore.getState().toggleProject(project.ref),
     [project.ref],
@@ -290,12 +306,28 @@ const ProjectSection = memo(function ProjectSection({
       </View>
       {collapsed ? null : (
         <View>
-          {/* Folders come before files. */}
           {projectRoots.map((root) => (
             <RootTree key={root.id} root={root} project={project} sort={sort} />
           ))}
-          {projectDocs.map((doc) => (
-            <DocRow key={doc.id} doc={doc} project={project} />
+          {tree.project ? (
+            <DocsTreeNodes
+              nodes={tree.project.nodes}
+              project={project}
+              depth={1}
+              defaultExpanded={foldersExpanded}
+            />
+          ) : null}
+          {tree.external.map((group) => (
+            <DocFolderRow
+              key={group.root}
+              name={group.label ?? group.root}
+              path={group.root}
+              count={group.count}
+              nodes={group.nodes}
+              project={project}
+              depth={1}
+              defaultExpanded={foldersExpanded}
+            />
           ))}
         </View>
       )}
@@ -309,7 +341,15 @@ function openPath(project: DocsProject, path: string, preferredWorkspaceId?: str
   openDocument({ serverId: project.serverId, workspaceId: owner.id, path });
 }
 
-const DocRow = memo(function DocRow({ doc, project }: { doc: DocEntry; project: DocsProject }) {
+const DocRow = memo(function DocRow({
+  doc,
+  project,
+  depth,
+}: {
+  doc: DocEntry;
+  project: DocsProject;
+  depth: number;
+}) {
   const toast = useToast();
   const [hovered, setHovered] = useState(false);
   const open = useCallback(
@@ -323,7 +363,14 @@ const DocRow = memo(function DocRow({ doc, project }: { doc: DocEntry; project: 
   const remove = useCallback(() => useDeskDocsStore.getState().removeDoc(doc.id), [doc.id]);
   const hoverIn = useCallback(() => setHovered(true), []);
   const hoverOut = useCallback(() => setHovered(false), []);
-  const rowStyle = useMemo(() => [styles.row, hovered && styles.rowHovered], [hovered]);
+  const rowStyle = useMemo(
+    () => [
+      styles.row,
+      { paddingLeft: treeRowPaddingLeft(depth) + WORKSPACE_TREE_ICON_SIZE },
+      hovered && styles.rowHovered,
+    ],
+    [depth, hovered],
+  );
   return (
     <ContextMenu>
       <ContextMenuTrigger
@@ -340,9 +387,6 @@ const DocRow = memo(function DocRow({ doc, project }: { doc: DocEntry; project: 
         <Text style={styles.rowName} numberOfLines={1}>
           {doc.name}
         </Text>
-        <Text style={styles.rowDetail} numberOfLines={1}>
-          {fileNameOf(parentPathOf(doc.path))}
-        </Text>
       </ContextMenuTrigger>
       <ContextMenuContent align="start">
         <ContextMenuItem onSelect={open}>Open</ContextMenuItem>
@@ -355,6 +399,111 @@ const DocRow = memo(function DocRow({ doc, project }: { doc: DocEntry; project: 
   );
 });
 
+function DocsTreeNodes({
+  nodes,
+  project,
+  depth,
+  defaultExpanded,
+}: {
+  nodes: readonly DocTreeNode[];
+  project: DocsProject;
+  depth: number;
+  defaultExpanded: boolean;
+}) {
+  return (
+    <View>
+      {nodes.map((node) =>
+        node.kind === "folder" ? (
+          <DocFolder
+            key={node.path}
+            node={node}
+            project={project}
+            depth={depth}
+            defaultExpanded={defaultExpanded}
+          />
+        ) : (
+          <DocRow key={node.path} doc={node.doc} project={project} depth={depth} />
+        ),
+      )}
+    </View>
+  );
+}
+
+const DocFolder = memo(function DocFolder({
+  node,
+  project,
+  depth,
+  defaultExpanded,
+}: {
+  node: DocTreeFolder;
+  project: DocsProject;
+  depth: number;
+  defaultExpanded: boolean;
+}) {
+  return (
+    <DocFolderRow
+      name={node.name}
+      path={node.path}
+      count={node.count}
+      nodes={node.children}
+      project={project}
+      depth={depth}
+      defaultExpanded={defaultExpanded}
+    />
+  );
+});
+
+const DocFolderRow = memo(function DocFolderRow({
+  name,
+  path,
+  count,
+  nodes,
+  project,
+  depth,
+  defaultExpanded,
+}: {
+  name: string;
+  path: string;
+  count: number;
+  nodes: readonly DocTreeNode[];
+  project: DocsProject;
+  depth: number;
+  defaultExpanded: boolean;
+}) {
+  const key = folderKey(project.ref, path);
+  const overrides = useDeskDocsStore((s) => s.folderOverrides);
+  const expanded = isFolderExpanded(overrides, key, defaultExpanded);
+  const toggle = useCallback(() => {
+    useDeskDocsStore.getState().setFolderExpanded(key, !expanded);
+  }, [key, expanded]);
+  const rowStyle = useMemo(() => [styles.row, { paddingLeft: treeRowPaddingLeft(depth) }], [depth]);
+  return (
+    <View>
+      <PressHighlight
+        onPress={toggle}
+        style={rowStyle}
+        accessibilityLabel={path}
+        testID={`desk-docs-folder-${path}`}
+      >
+        <TreeChevron expanded={expanded} />
+        {expanded ? <ThemedFolderOpen size={14} /> : <ThemedFolder size={14} />}
+        <Text style={styles.rowName} numberOfLines={1}>
+          {name}
+        </Text>
+        <Text style={styles.rowCount}>{count}</Text>
+      </PressHighlight>
+      {expanded ? (
+        <DocsTreeNodes
+          nodes={nodes}
+          project={project}
+          depth={depth + 1}
+          defaultExpanded={defaultExpanded}
+        />
+      ) : null}
+    </View>
+  );
+});
+
 function RootTree({
   root,
   project,
@@ -364,8 +513,12 @@ function RootTree({
   project: DocsProject;
   sort: DocsSort;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const toggle = useCallback(() => setExpanded((value) => !value), []);
+  const key = folderKey(project.ref, root.path);
+  const overrides = useDeskDocsStore((s) => s.folderOverrides);
+  const expanded = isFolderExpanded(overrides, key, false);
+  const toggle = useCallback(() => {
+    useDeskDocsStore.getState().setFolderExpanded(key, !expanded);
+  }, [key, expanded]);
   const remove = useCallback(() => useDeskDocsStore.getState().removeRoot(root.id), [root.id]);
   const cwd = project.workspaces[0]?.directory ?? root.path;
   return (
@@ -493,8 +646,12 @@ function DirectoryNode({
   sort: DocsSort;
   project: DocsProject;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const toggle = useCallback(() => setExpanded((value) => !value), []);
+  const key = folderKey(project.ref, entry.path);
+  const overrides = useDeskDocsStore((s) => s.folderOverrides);
+  const expanded = isFolderExpanded(overrides, key, false);
+  const toggle = useCallback(() => {
+    useDeskDocsStore.getState().setFolderExpanded(key, !expanded);
+  }, [key, expanded]);
   const rowStyle = useMemo(() => [styles.row, { paddingLeft: treeRowPaddingLeft(depth) }], [depth]);
   return (
     <View>
@@ -502,7 +659,7 @@ function DirectoryNode({
         onPress={toggle}
         style={rowStyle}
         accessibilityLabel={entry.path}
-        testID={`desk-docs-dir-${entry.path}`}
+        testID={`desk-docs-folder-${entry.path}`}
       >
         <TreeChevron expanded={expanded} />
         {expanded ? <ThemedFolderOpen size={14} /> : <ThemedFolder size={14} />}
@@ -652,6 +809,12 @@ const styles = StyleSheet.create((theme) => ({
   rowDetail: {
     flex: 1,
     minWidth: 0,
+    color: theme.colors.foregroundExtraMuted,
+    fontSize: theme.fontSize.sm,
+  },
+  rowCount: {
+    marginLeft: "auto",
+    paddingLeft: theme.spacing[2],
     color: theme.colors.foregroundExtraMuted,
     fontSize: theme.fontSize.sm,
   },

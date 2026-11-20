@@ -1,15 +1,23 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildProjectDocsTree,
   captureDoc,
+  defaultFolderExpanded,
+  externalRootOf,
   findBrowsersDesk,
+  folderKey,
   isDocPath,
+  isFolderExpanded,
   joinPath,
   parentPathOf,
   projectFilterLabel,
+  relativeSegments,
   sortDocs,
   sortTreeEntries,
   visibleProjects,
+  workspaceHolding,
   type DocEntry,
+  type DocTreeFolder,
   type StatFile,
 } from "./model";
 
@@ -193,5 +201,159 @@ describe("findBrowsersDesk", () => {
 
   it("is null when there is no such Desk", () => {
     expect(findBrowsersDesk([{ id: "a", name: "Primary tasks" }])).toBeNull();
+  });
+});
+
+describe("docs tree", () => {
+  const workspace = "/repo";
+
+  it("places documents under their folders, folders before files", () => {
+    const docs = [
+      entry("/repo/README.md", 1),
+      entry("/repo/docs/guide/a.md", 5),
+      entry("/repo/docs/guide/b.md", 4),
+      entry("/repo/docs/notes.md", 3),
+      entry("/repo/src/c.md", 2),
+    ];
+    const tree = buildProjectDocsTree(docs, [workspace], "name");
+    expect(tree.project?.nodes.map((node) => node.name)).toEqual(["docs", "src", "README.md"]);
+    const docsFolder = tree.project?.nodes[0] as DocTreeFolder;
+    expect(docsFolder).toMatchObject({ kind: "folder", path: "/repo/docs", count: 3 });
+    expect(docsFolder.children.map((node) => node.name)).toEqual(["guide", "notes.md"]);
+    const guide = docsFolder.children[0] as DocTreeFolder;
+    expect(guide.children.map((node) => node.name)).toEqual(["a.md", "b.md"]);
+  });
+
+  it("folds single-child folder chains into one row and stops before a file", () => {
+    const docs = [entry("/repo/.claude/skills/mw-terrain-advanced-usage/SKILL.md", 1)];
+    const tree = buildProjectDocsTree(docs, [workspace], "name");
+    expect(tree.project?.nodes).toHaveLength(1);
+    const row = tree.project!.nodes[0] as DocTreeFolder;
+    expect(row).toMatchObject({
+      kind: "folder",
+      name: ".claude/skills/mw-terrain-advanced-usage",
+      path: "/repo/.claude/skills/mw-terrain-advanced-usage",
+      count: 1,
+    });
+    expect(row.children.map((node) => node.name)).toEqual(["SKILL.md"]);
+  });
+
+  it("keeps folders apart when they hold more than one child", () => {
+    const docs = [entry("/repo/a/x.md", 1), entry("/repo/a/y.md", 2), entry("/repo/a/b/z.md", 3)];
+    const tree = buildProjectDocsTree(docs, [workspace], "name");
+    const a = tree.project?.nodes[0] as DocTreeFolder;
+    expect(a.name).toBe("a");
+    expect(a.children.map((node) => node.name)).toEqual(["b", "x.md", "y.md"]);
+  });
+
+  it("puts documents outside the workspace in one group per root", () => {
+    const docs = [
+      entry("/home/bruno/.claude/skills/x/SKILL.md", 3),
+      entry("/home/bruno/.claude/skills/y/SKILL.md", 2),
+      entry("/home/bruno/uprojects/tmp/report.md", 4),
+      entry("/home/bruno/.claude/projects/p/memory/notes.md", 5),
+      entry("/repo/inside.md", 1),
+    ];
+    const tree = buildProjectDocsTree(docs, [workspace], "name");
+    expect(tree.project?.nodes.map((node) => node.name)).toEqual(["inside.md"]);
+    expect(tree.external.map((group) => group.label).sort()).toEqual([
+      "memory",
+      "tmp",
+      "~/.claude",
+    ]);
+    const claude = tree.external.find((group) => group.label === "~/.claude")!;
+    expect(claude.root).toBe("/home/bruno/.claude");
+    expect(claude.count).toBe(2);
+    expect(claude.nodes.map((node) => node.name)).toEqual(["skills"]);
+    const memory = tree.external.find((group) => group.label === "memory")!;
+    expect(memory.root).toBe("/home/bruno/.claude/projects/p/memory");
+    expect(memory.nodes.map((node) => node.name)).toEqual(["notes.md"]);
+  });
+
+  it("prefers the deepest workspace that holds a document", () => {
+    const docs = [entry("/repo/pkg/a.md", 1)];
+    const tree = buildProjectDocsTree(docs, ["/repo", "/repo/pkg"], "name");
+    expect(tree.project?.nodes.map((node) => node.name)).toEqual(["a.md"]);
+    expect(tree.external).toEqual([]);
+    expect(workspaceHolding("/repo/pkg/a.md", ["/repo", "/repo/pkg"])).toBe("/repo/pkg");
+    expect(relativeSegments("/repo/pkg/a.md", "/repo/pkg")).toEqual(["a.md"]);
+    expect(relativeSegments("/other/a.md", "/repo")).toBeNull();
+  });
+
+  it("orders folders by their newest document in Most recent", () => {
+    const docs = [
+      entry("/repo/old/a.md", 1),
+      entry("/repo/old/b.md", 9),
+      entry("/repo/new/a.md", 5),
+      entry("/repo/zzz.md", 20),
+    ];
+    const tree = buildProjectDocsTree(docs, [workspace], "recent");
+    expect(tree.project?.nodes.map((node) => node.name)).toEqual(["old", "new", "zzz.md"]);
+    const old = tree.project?.nodes[0] as DocTreeFolder;
+    expect(old.children.map((node) => node.name)).toEqual(["b.md", "a.md"]);
+  });
+
+  it("orders everything by name in A to Z", () => {
+    const docs = [
+      entry("/repo/zeta/a.md", 1),
+      entry("/repo/alpha/b.md", 9),
+      entry("/repo/mmm.md", 20),
+      entry("/repo/aaa.md", 30),
+    ];
+    const tree = buildProjectDocsTree(docs, [workspace], "name");
+    expect(tree.project?.nodes.map((node) => node.name)).toEqual([
+      "alpha",
+      "zeta",
+      "aaa.md",
+      "mmm.md",
+    ]);
+  });
+
+  it("sorts external groups by their newest document or by label", () => {
+    const docs = [entry("/home/bruno/uprojects/aaa/a.md", 8), entry("/home/bruno/.claude/x.md", 2)];
+    expect(
+      buildProjectDocsTree(docs, [workspace], "recent").external.map((group) => group.label),
+    ).toEqual(["aaa", "~/.claude"]);
+    expect(
+      buildProjectDocsTree(docs, [workspace], "name").external.map((group) => group.label),
+    ).toEqual(["~/.claude", "aaa"]);
+  });
+});
+
+describe("externalRootOf", () => {
+  it("labels the agent memory, a dot folder, and the first two folders under home", () => {
+    expect(externalRootOf("/home/bruno/.paseo/agents/a/memory/m.md")).toEqual({
+      root: "/home/bruno/.paseo/agents/a/memory",
+      label: "memory",
+    });
+    expect(externalRootOf("/home/bruno/.claude/skills/x/SKILL.md")).toEqual({
+      root: "/home/bruno/.claude",
+      label: "~/.claude",
+    });
+    expect(externalRootOf("/home/bruno/uprojects/tmp/report.md")).toEqual({
+      root: "/home/bruno/uprojects/tmp",
+      label: "tmp",
+    });
+    expect(externalRootOf("/tmp/report.md")).toEqual({ root: "/tmp", label: "tmp" });
+    expect(externalRootOf("/home/bruno/notes.md")).toEqual({
+      root: "/home/bruno",
+      label: "~",
+    });
+  });
+});
+
+describe("folder state", () => {
+  it("starts folders closed only above the document limit", () => {
+    expect(defaultFolderExpanded(0)).toBe(true);
+    expect(defaultFolderExpanded(15)).toBe(true);
+    expect(defaultFolderExpanded(16)).toBe(false);
+  });
+
+  it("follows an explicit override and scopes keys by project", () => {
+    const key = folderKey("srv:p1", "/repo/docs");
+    expect(key).toBe("srv:p1|/repo/docs");
+    expect(isFolderExpanded({}, key, false)).toBe(false);
+    expect(isFolderExpanded({ [key]: true }, key, false)).toBe(true);
+    expect(isFolderExpanded({ [key]: false }, key, true)).toBe(false);
   });
 });
