@@ -2426,6 +2426,7 @@ export class Workboard {
       reason,
       detail,
       toldAt: null, // CUSTOM(assistant-wake)
+      firstToldAt: null, // CUSTOM(assistant-wake)
       // CUSTOM(assistant-wake): a new wait is a new event, even for a task reported before.
       reportedAt: null,
       remindedAt: null,
@@ -2555,10 +2556,11 @@ export class Workboard {
     // A timer already armed takes the new tasks with it; re-arming would push it back.
     if (added && !this.wakeTimer) this.armWake();
   }
-  /** CUSTOM(assistant-wake): the assistant recorded an action after the last time it was told. */
+  /** CUSTOM(assistant-wake): the assistant recorded an action after it first heard of the wait. */
   private reportedSince(delivery: Delivery): boolean {
-    if (!delivery.reportedAt || !delivery.toldAt) return false;
-    return Date.parse(delivery.reportedAt) >= Date.parse(delivery.toldAt);
+    const first = delivery.firstToldAt ?? delivery.toldAt;
+    if (!delivery.reportedAt || !first) return false;
+    return Date.parse(delivery.reportedAt) >= Date.parse(first);
   }
   private armWake(delayMs = this.assistantOptions.wakeDelayMs ?? 90_000): void {
     if (this.stopped) return;
@@ -2661,9 +2663,21 @@ export class Workboard {
         const delivery = data.assistant.deliveries[id];
         if (delivery?.stage !== "needs-you") continue;
         delivery.toldAt = at;
+        delivery.firstToldAt ??= at;
         if (reminded.includes(id)) delivery.remindedAt = at;
       }
     });
+  }
+  /**
+   * CUSTOM(assistant-wake): these tasks are on their way to the chat (a quick message). Its turn
+   * may start before the send resolves; `chatTurnStarted` must not repeat the same list. Returns
+   * the release to call once the message landed and `markAssistantTold` ran.
+   */
+  markAssistantSending(ids: string[]): () => void {
+    for (const id of ids) this.wakeSending.add(id);
+    return () => {
+      for (const id of ids) this.wakeSending.delete(id);
+    };
   }
   /** CUSTOM(assistant-wake): board_report counts as handling the task for the reminder. */
   async noteAssistantReported(taskId: string): Promise<void> {
@@ -2726,6 +2740,8 @@ export class Workboard {
   /**
    * CUSTOM(assistant-wake): the chat's turn ended. A deferred plugin reload runs now, so the
    * board tools stay attached for the whole turn and the next prompt opens a fresh session.
+   * An interrupted turn's `turn_ended` can arrive right before the turn that replaces it, so
+   * reload only while the chat is idle; otherwise the flag stays for the next end.
    */
   chatTurnEnded(agentId: string): void {
     if (
@@ -2733,8 +2749,18 @@ export class Workboard {
       agentId !== this.store.current.assistant.chatAgentId
     )
       return;
+    void this.reloadPluginWhenIdle(agentId);
+  }
+  private async reloadPluginWhenIdle(agentId: string): Promise<void> {
+    if (agentId !== this.store.current.assistant.chatAgentId) return;
+    if ((await this.host.agentActivity(agentId)) !== "idle") return;
+    if (
+      !this.reloadAfterTurn ||
+      agentId !== this.store.current.assistant.chatAgentId
+    )
+      return;
     this.reloadAfterTurn = false;
-    void this.host
+    await this.host
       .reloadPlugin()
       .catch((error) =>
         console.error("Could not reload the plugin:", message(error)),
@@ -2776,8 +2802,10 @@ export class Workboard {
         // The replaced chat may never have read it; the current chat is told instead.
         for (const id of turn.taskIds) {
           const delivery = data.assistant.deliveries[id];
-          if (delivery?.stage === "needs-you" && delivery.toldAt === at)
+          if (delivery?.stage === "needs-you" && delivery.toldAt === at) {
             delivery.toldAt = null;
+            delivery.firstToldAt = null;
+          }
         }
       });
       this.requeueUntold();
@@ -2817,6 +2845,7 @@ export class Workboard {
             delivery.toldAt === turn.toldAt
           ) {
             delivery.toldAt = null;
+            delivery.firstToldAt = null;
             requeued = true;
           }
         }
@@ -2842,6 +2871,8 @@ export class Workboard {
     this.wakeTimer = undefined;
     if (this.stopped) return;
     let sending: string[] = [];
+    let previousToldAt = 0;
+    let advancedToldAt = false;
     try {
       const assistant = this.store.current.assistant;
       const agentId = assistant.chatAgentId;
@@ -2891,6 +2922,8 @@ export class Workboard {
       for (const id of sending) this.wakeSending.add(id);
       const lines = tasks.map((entry) => this.needsYouLine(entry));
       // Before the send: the turn starts while it is in flight.
+      previousToldAt = this.lastToldAt;
+      advancedToldAt = true;
       this.lastToldAt = this.now();
       await this.host.sendAgent(
         agentId,
@@ -2907,6 +2940,7 @@ export class Workboard {
           const delivery = data.assistant.deliveries[id];
           if (delivery?.stage === "needs-you") {
             delivery.toldAt = toldAt;
+            delivery.firstToldAt ??= toldAt;
             if (reminded.has(id)) delivery.remindedAt = toldAt;
           }
         }
@@ -2929,6 +2963,8 @@ export class Workboard {
         },
       );
     } catch (error) {
+      // Nothing reached the chat: let the next user turn steer the list in.
+      if (advancedToldAt) this.lastToldAt = previousToldAt;
       // A task whose `toldAt` was not stored goes back on the next refresh.
       console.error("Could not tell the assistant:", message(error));
     } finally {
@@ -3963,6 +3999,19 @@ export class Workboard {
       throw new Error("This task's project is not a git repository");
     return { task, workspace };
   }
+  /** CUSTOM(assistant-wake): the board task one of its agents belongs to, when there is one. */
+  private taskOfAgent(agentId: string): string | null {
+    const data = this.store.current;
+    return (
+      Object.entries(data.orchestrations).find(
+        ([, record]) => record.agentId === agentId,
+      )?.[0] ??
+      Object.entries(data.assistant.attempts).find(([, list]) =>
+        list.some((attempt) => attempt.agentId === agentId),
+      )?.[0] ??
+      null
+    );
+  }
   /**
    * What the user can do from the Projects Dashboard and the report cards; the chat's
    * board_task_action passes `by: "assistant"`.
@@ -3988,10 +4037,24 @@ export class Workboard {
             "This agent is not managed by the Projects Assistant",
           );
         await this.host.sendAgent(input.agentId, input.text);
+        // CUSTOM(assistant-wake): the assistant messaged the task's agent; that counts as
+        // handling it for the reminder, as `board_report` does.
+        if (by === "assistant") {
+          const taskId = this.taskOfAgent(input.agentId);
+          if (
+            taskId &&
+            this.store.current.assistant.deliveries[taskId]?.stage ===
+              "needs-you"
+          )
+            await this.noteAssistantReported(taskId);
+        }
         return;
       }
       // CUSTOM(assistant-cards)
-      if (input.type === "answer") return this.answer(input, by);
+      if (input.type === "answer") {
+        await this.answer(input, by);
+        return;
+      }
       const taskId = input.taskId;
       if (input.type === "merge-now") {
         this.reviewable(taskId);
@@ -4018,6 +4081,13 @@ export class Workboard {
           { by },
         );
       }
+      // CUSTOM(assistant-wake): an action the assistant took on a task still waiting counts as
+      // handling it for the 10-minute reminder, as `board_report` does.
+      if (
+        by === "assistant" &&
+        this.store.current.assistant.deliveries[taskId]?.stage === "needs-you"
+      )
+        await this.noteAssistantReported(taskId);
     });
   }
   /**
@@ -4133,7 +4203,10 @@ export class Workboard {
         // CUSTOM(assistant-wake): a new chat has read nothing, so every waiting task is told
         // again, including the ones a quick message or a user-turn steer had marked told.
         for (const delivery of Object.values(data.assistant.deliveries))
-          if (delivery.stage === "needs-you") delivery.toldAt = null;
+          if (delivery.stage === "needs-you") {
+            delivery.toldAt = null;
+            delivery.firstToldAt = null;
+          }
       });
       this.chatId = agentId; // CUSTOM(assistant-compact)
       this.reloadAfterTurn = false; // CUSTOM(assistant-wake): a deferred reload belonged to the old chat
@@ -4326,9 +4399,22 @@ export class Workboard {
             at: this.stamp(),
             bornTokens: null,
           };
+          // CUSTOM(assistant-wake): the new chat only has the summary, so it has read nothing.
+          // As in `openChat`, every waiting task is told again and no deferred reload carries over.
+          data.assistant.wakeAt = null;
+          data.assistant.wakeAgentId = null;
+          data.assistant.wakeTurn = null;
+          for (const delivery of Object.values(data.assistant.deliveries))
+            if (delivery.stage === "needs-you") {
+              delivery.toldAt = null;
+              delivery.firstToldAt = null;
+            }
         });
         this.chatId = id;
         this.chatTokens = undefined;
+        this.reloadAfterTurn = false;
+        this.requeueUntold();
+        if (this.wakePending.size) this.armWake();
         // As "Restart chat" does: the old chat is archived only once the new one exists.
         let archiveError: string | null = null;
         await this.host.archiveAgent(agentId).catch((error: unknown) => {

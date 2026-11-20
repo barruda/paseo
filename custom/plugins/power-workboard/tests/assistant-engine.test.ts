@@ -18,6 +18,7 @@ import { fixture } from "./fixtures";
 import { buildOverview } from "../server/assistant/views"; // CUSTOM(task-checkpoints)
 import { COMPACT_QUESTION } from "../server/assistant/compact"; // CUSTOM(assistant-compact)
 import { CHAT_LABEL, CHAT_RULES } from "../server/assistant/chat"; // CUSTOM(assistant-compact)
+import { QuickInbox } from "../server/assistant/quick"; // CUSTOM(assistant-quick)
 import { AGENT_REPLACES_LABEL } from "../shared/reply-protocol"; // CUSTOM(assistant-compact-follow)
 
 const project = {
@@ -995,6 +996,8 @@ it("a needs-you task already told is not told again after the Workboard is recre
     await s.blocked();
     await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
     expect(s.sent()).toHaveLength(1);
+    // The chat is idle, so an accidental requeue would send again.
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
     board = await reload(s);
     await board.refresh();
     await new Promise((resolve) => setTimeout(resolve, 40));
@@ -1066,6 +1069,45 @@ it("a board_report after the wake counts as handling the task: no reminder", asy
   }
 });
 
+it("an assistant action on a task still waiting counts as handling it: no reminder", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+    await s.board.assistantAction(
+      { type: "send", agentId: s.agent.id, text: "I am on it" },
+      "assistant",
+    );
+    expect(s.delivery()?.stage).toBe("needs-you");
+    expect(s.delivery()?.reportedAt).toBeTruthy();
+    s.advance(11 * 60_000);
+    await s.board.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(1);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a re-tell after a board_report does not bring the reminder back", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+    await s.board.noteAssistantReported(s.taskId);
+    // A quick message or a steer rewrites `toldAt` after the report.
+    s.advance(2 * 60_000);
+    await s.board.markAssistantTold([s.taskId]);
+    expect(s.delivery()?.toldAt).not.toBe(s.delivery()?.firstToldAt);
+    s.advance(11 * 60_000);
+    await s.board.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(1);
+  } finally {
+    s.board.dispose();
+  }
+});
+
 it("a user message steers the Needs you list into the chat's turn", async () => {
   const s = await wake();
   try {
@@ -1083,6 +1125,52 @@ it("a user message steers the Needs you list into the chat's turn", async () => 
     expect(steer).toContain(`${s.taskId} | Task | Project | blocked`);
     await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
   } finally {
+    s.board.dispose();
+  }
+});
+
+it("a quick message does not let the turn it starts steer the same Needs you list", async () => {
+  const s = await wake();
+  let inbox: QuickInbox | undefined;
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+    await s.store.update((data) => {
+      data.assistant.deliveries[s.taskId]!.toldAt = null;
+      data.assistant.deliveries[s.taskId]!.firstToldAt = null;
+    });
+    s.advance(61_000); // past the "just told" window
+    const chat = s.inventory.agents.find((a) => a.id === s.chatId)!;
+    chat.activity = "idle";
+    let turnStarted = false;
+    // The chat's turn starts while the quick message is still in flight.
+    (s.host.sendAgent as any).mockImplementationOnce(async (id: string) => {
+      turnStarted = true;
+      s.board.chatTurnStarted(id);
+      chat.activity = "running";
+    });
+    inbox = new QuickInbox({
+      openChat: async () => s.chatId!,
+      send: (id, text) => s.board.chatSend(id, text),
+      activity: (id) => s.board.chatActivity(id),
+      lastReply: (id) => s.board.chatLastReply(id),
+      serverId: () => null,
+      needsYou: () => s.board.assistantNeedsYouBrief(),
+      sending: (ids) => s.board.markAssistantSending(ids),
+      markTold: (ids) => {
+        void s.board.markAssistantTold(ids);
+      },
+      pollMs: 1_000,
+      startGraceMs: 5_000,
+    });
+    await inbox.ask({ text: "hi", source: "app", waitMs: 0 });
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+    expect(turnStarted).toBe(true);
+    // The list went once, in the quick message; no steer repeated it.
+    expect(s.host.steerAgent).not.toHaveBeenCalled();
+    expect(s.sent()).toHaveLength(2);
+  } finally {
+    inbox?.dispose();
     s.board.dispose();
   }
 });
@@ -1118,6 +1206,53 @@ it("a deferred plugin reload runs when the chat's turn ends, once", async () => 
     s.board.chatTurnEnded(s.chatId!);
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(s.host.reloadPlugin).toHaveBeenCalledTimes(1);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a deferred plugin reload waits for the chat to be idle, not the turn that replaces an interrupted one", async () => {
+  const s = await wake();
+  try {
+    expect(s.board.requestPluginReload()).toBe(true);
+    const chat = s.inventory.agents.find((a) => a.id === s.chatId)!;
+    // An interrupted turn ends right before the turn that replaces it.
+    chat.activity = "running";
+    s.board.chatTurnEnded(s.chatId!);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(s.host.reloadPlugin).not.toHaveBeenCalled();
+    // The next end finds it idle and reloads then.
+    chat.activity = "idle";
+    s.board.chatTurnEnded(s.chatId!);
+    await vi.waitFor(() =>
+      expect(s.host.reloadPlugin).toHaveBeenCalledTimes(1),
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a wake whose send fails does not silence the next user turn's steer", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+    await s.store.update((data) => {
+      data.assistant.deliveries[s.taskId]!.toldAt = null;
+      data.assistant.deliveries[s.taskId]!.firstToldAt = null;
+    });
+    s.advance(61_000); // the successful wake is now outside the "just told" window
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    (s.board as any).wakePending.add(s.taskId);
+    (s.host.sendAgent as any).mockRejectedValueOnce(new Error("down"));
+    await (s.board as any).wakeAssistant();
+    expect(s.delivery()?.toldAt).toBeNull();
+    s.advance(5_000);
+    s.board.chatTurnStarted(s.chatId!);
+    await vi.waitFor(() => expect(s.host.steerAgent).toHaveBeenCalled());
+    expect((s.host.steerAgent as any).mock.calls.at(-1)[1] as string).toContain(
+      `${s.taskId} | Task | Project | blocked`,
+    );
   } finally {
     s.board.dispose();
   }
@@ -2610,6 +2745,40 @@ it("compaction: the board wakes the new chat, and nothing goes to the archived o
     await vi.waitFor(() => expect(sentTo()).toContain(next));
     expect(sentTo()).not.toContain(s.chatId);
     expect(s.store.current.assistant.wakeTurn?.agentId).toBe(next);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("compaction: the new chat is told the Needs you list again and no deferred reload carries over", async () => {
+  const s = await compaction({ wakeDelayMs: 60_000 });
+  try {
+    s.reply(
+      `x\n<report>${JSON.stringify({ status: "blocked", summary: "Stuck" })}</report>`,
+    );
+    await s.finishTurn();
+    await s.settled("needs-you");
+    // The wake is held for 60 s; send it now so the old chat is told before compaction.
+    await (s.board as any).wakeAssistant();
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+    s.chat().activity = "idle";
+    expect(s.board.requestPluginReload()).toBe(true);
+    s.turn(190_000);
+    await s.compacted();
+    const next = s.store.current.assistant.chatAgentId!;
+    // The new chat has only the summary, so it has read nothing.
+    expect(s.delivery()).toMatchObject({ toldAt: null, firstToldAt: null });
+    // The deferred reload belonged to the old chat: the new one's turn end does nothing.
+    s.chat(next).activity = "idle";
+    s.board.chatTurnEnded(next);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(s.host.reloadPlugin).not.toHaveBeenCalled();
+    // It hears the whole list.
+    await (s.board as any).wakeAssistant();
+    const sentTo = () =>
+      (s.host.sendAgent as any).mock.calls.map(([id]: [string]) => id);
+    expect(sentTo()).toContain(next);
+    expect(s.delivery()?.toldAt).toBeTruthy();
   } finally {
     s.board.dispose();
   }

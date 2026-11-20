@@ -133,6 +133,8 @@ export default function contribute(server: PluginServerContext) {
     serverId: () => serverId,
     // CUSTOM(assistant-wake): a quick message carries the current Needs you list.
     needsYou: () => ready().assistantNeedsYouBrief(),
+    // The chat's turn can start before the send resolves; keep it from steering the same list.
+    sending: (ids) => ready().markAssistantSending(ids),
     markTold: (ids) => {
       try {
         void ready()

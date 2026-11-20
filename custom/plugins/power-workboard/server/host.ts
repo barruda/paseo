@@ -751,14 +751,22 @@ export class PaseoHost implements Host {
     await this.api.agents.ref(agentId).archive();
   }
   // CUSTOM(assistant-wake): the daemon stops this plugin process to reload it, so the reply
-  // never arrives; the reload itself is what matters.
+  // never arrives; the reload itself is what matters, and its timeout is success.
   async reloadPlugin(): Promise<void> {
-    await this.compat.request(
-      "plugin.reload.request",
-      { pluginId: PLUGIN_ID },
-      "plugin.reload.response",
-      5000,
-    );
+    try {
+      await this.compat.request(
+        "plugin.reload.request",
+        { pluginId: PLUGIN_ID },
+        "plugin.reload.response",
+        5000,
+      );
+    } catch (error) {
+      if (
+        !(error instanceof Error) ||
+        !error.message.includes("Paseo request timed out")
+      )
+        throw error;
+    }
   }
   async agentActivity(agentId: string): Promise<Card["activity"] | null> {
     try {

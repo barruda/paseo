@@ -326,6 +326,11 @@ export const deliverySchema = z.object({
    */
   toldAt: z.string().nullable().optional(),
   /**
+   * CUSTOM(assistant-wake): the first `toldAt` of this wait. A quick message or a steer rewrites
+   * `toldAt`; a `reportedAt` from before that rewrite still counts as handling the task.
+   */
+  firstToldAt: z.string().nullable().optional(),
+  /**
    * CUSTOM(assistant-wake): when the assistant last recorded an action on this task with
    * board_report. A task left waiting past NEEDS_YOU_REMIND_MS without it is told again once.
    */
