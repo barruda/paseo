@@ -2992,7 +2992,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     description**; no PR is created), and **Merge into project** (commits what is left, then merges
     the branch into the project's base branch in the main checkout). The card shows the step
     running, Committed or Merged with its date, or the git error. Once merged, Commit and Merge
-    are gone and PR description stays as a plain button; the board does not watch the worktree
+    are gone and PR description stays as a plain button; with no PR description body the Merged
+    line and that button share one row instead of stacking. The board does not watch the worktree
     after the merge, so later changes there are not offered for another merge. Commit and merge
     are the daemon's own `checkout_commit` and `checkout_merge` requests, the same as the app's Git
     menu; results are in `finishes`. The workspace is not archived.
@@ -3027,7 +3028,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   orchestrator limits, disable, project retry, Run now batches, daily time and Stop, task
   assignment and delete, refinement and `/write-ticket`, review Done, Continue while active and
   while disabled, the default orchestrator, Commit, Merge and PR description, creating in Ready to
-  start), `tests/finish-buttons.test.ts` (the Done card's buttons before and after the merge)
+  start), `tests/finish-buttons.test.ts` (the Done card's buttons before and after the merge, and
+  when the status and the button share a row)
   and `tests/schedule.test.ts` (windows across midnight, daily triggers, next run). The upstream
   Workboard suites that assume import and the old groups were moved to `tests/upstream-workboard/` and are not run. The update script runs
   `tsc` and `vitest` in the plugin folder.
@@ -8005,7 +8007,9 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
     attention dot (the agent tab's "finished, look at it") when a task is in a review group, and
     the amber needs-input alert when a task is in the Projects Assistant's Needs you. One corner,
     so Needs you wins over Ready to review, which wins over running: the states that want the
-    user hide the one that doesn't. Nothing to show leaves the icon clean.
+    user hide the one that doesn't. A task still running keeps the blue ring turning under the
+    mark that wins, so Needs you (or Ready to review) with something else running is amber (or
+    green) and animated, not still. Nothing to show leaves the icon clean.
   - **Data.** The plugin answers `workboard.desk-status` with three counts
     (`shared/desk-status.ts`, computed from the snapshot and the assistant deliveries). Plugins
     have no server-to-client push and the board's own snapshot (300 KB+) is too heavy to poll with
@@ -8032,7 +8036,8 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   The store stays out of `desk-workboard.tsx` so `plugins/navigation.ts` can import it without a
   cycle through the plugin registry. In the chip, render `DeskWorkboardChipIcon` before the label.
 - **Tests:** `packages/app/src/task-navigation/desk-workboard.test.ts` (open resolution, status
-  rule: running, review, needs you, both, none; poll interval and failure backoff),
+  rule: running, review, needs you, both, none; the mark's colour and ring for the four cases;
+  poll interval and failure backoff),
   `desk-workboard-navigation.test.ts` (Command Center, screen with a tab, panel, no workspace
   shown yet, Desk +, outside Tasks mode), plugin
   `tests/desk-status.test.ts` (the counts).
@@ -8040,7 +8045,8 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   mode: click Power Workboard in the sidebar, in the Command Center, and in a Desk's **+**: each
   selects the chip, no tab appears in the Desk. Close the chip (×) and click the sidebar row: it
   comes back selected. With a task running, the chip's icon has the blue ring; with a task in
-  Ready to review, a green dot; with one in Needs you, the amber alert. Light and dark.
+  Ready to review, a green dot; with one in Needs you, the amber alert. With a task running and
+  another in Needs you, the amber alert keeps the blue ring turning around it. Light and dark.
 
 ## assistant-compact: the Projects Assistant chat restarts with a summary once its context is full
 

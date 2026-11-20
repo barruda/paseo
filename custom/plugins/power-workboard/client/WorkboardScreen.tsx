@@ -60,6 +60,7 @@ import {
   attentionReasons,
   cardAgentId,
   finishButtons,
+  finishInlineLayout,
   groupDeleteReason,
   mappingPreview,
   shortDate,
@@ -2247,6 +2248,49 @@ function FinishActions({
       </Text>
     </CardAction>
   );
+  const statusRow = status ? (
+    <View style={styles.cardFooter}>
+      <Icon
+        name={
+          finish?.error && !running
+            ? "TriangleAlert"
+            : running
+              ? "LoaderCircle"
+              : "GitMerge"
+        }
+        size={13}
+        color={
+          finish?.error && !running
+            ? theme.colors.statusWarning
+            : theme.colors.foregroundMuted
+        }
+      />
+      <Text
+        style={[
+          styles.cardMeta,
+          {
+            color:
+              finish?.error && !running
+                ? theme.colors.statusWarning
+                : theme.colors.foregroundMuted,
+            flexShrink: 1,
+          },
+        ]}
+      >
+        {status}
+      </Text>
+    </View>
+  ) : null;
+  const actions = steps.map((step) =>
+    button(step, FINISH_ICONS[step], step === primary),
+  );
+  // CUSTOM(workboard-finish-inline): one button and no PR body have nothing to fill a second
+  // row, so the status and the button share a line instead of stacking.
+  const inline = finishInlineLayout({
+    hasStatus: statusRow !== null,
+    hasPr: pr !== null,
+    steps: steps.length,
+  });
   return (
     <View
       testID={`workboard-finish-${card.id}`}
@@ -2258,68 +2302,41 @@ function FinishActions({
         },
       ]}
     >
-      {status && (
-        <View style={styles.cardFooter}>
-          <Icon
-            name={
-              finish?.error && !running
-                ? "TriangleAlert"
-                : running
-                  ? "LoaderCircle"
-                  : "GitMerge"
-            }
-            size={13}
-            color={
-              finish?.error && !running
-                ? theme.colors.statusWarning
-                : theme.colors.foregroundMuted
-            }
-          />
-          <Text
-            style={[
-              styles.cardMeta,
-              {
-                color:
-                  finish?.error && !running
-                    ? theme.colors.statusWarning
-                    : theme.colors.foregroundMuted,
-                flexShrink: 1,
-              },
-            ]}
-          >
-            {status}
-          </Text>
+      {inline ? (
+        <View style={styles.finishInline}>
+          {statusRow}
+          {actions}
         </View>
+      ) : (
+        <>
+          {statusRow}
+          {pr && (
+            <View style={styles.prBox}>
+              <Text
+                selectable
+                numberOfLines={8}
+                style={[styles.cardMeta, { color: theme.colors.foreground }]}
+              >
+                {pr}
+              </Text>
+              <Pressable
+                accessibilityRole="button"
+                onPress={() =>
+                  void copyText(pr).then(
+                    () => toast.show(t.finish.copied),
+                    () => toast.error(t.finish.copyFailed),
+                  )
+                }
+              >
+                <Text style={[styles.cardMeta, { color: theme.colors.accent }]}>
+                  {t.finish.copy}
+                </Text>
+              </Pressable>
+            </View>
+          )}
+          <View style={styles.reviewActions}>{actions}</View>
+        </>
       )}
-      {pr && (
-        <View style={styles.prBox}>
-          <Text
-            selectable
-            numberOfLines={8}
-            style={[styles.cardMeta, { color: theme.colors.foreground }]}
-          >
-            {pr}
-          </Text>
-          <Pressable
-            accessibilityRole="button"
-            onPress={() =>
-              void copyText(pr).then(
-                () => toast.show(t.finish.copied),
-                () => toast.error(t.finish.copyFailed),
-              )
-            }
-          >
-            <Text style={[styles.cardMeta, { color: theme.colors.accent }]}>
-              {t.finish.copy}
-            </Text>
-          </Pressable>
-        </View>
-      )}
-      <View style={styles.reviewActions}>
-        {steps.map((step) =>
-          button(step, FINISH_ICONS[step], step === primary),
-        )}
-      </View>
     </View>
   );
 }
@@ -5011,6 +5028,13 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   reviewTitle: { fontSize: 13, fontWeight: "600" },
+  finishInline: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 6,
+  },
   prBox: { gap: 4 },
   taskModalBody: { flex: 1, minHeight: 0, gap: 12 },
   taskTitleInput: { fontSize: 16, fontWeight: "600" },

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { finishButtons } from "../client/board-utils";
+import { finishButtons, finishInlineLayout } from "../client/board-utils";
 import { finishSchema } from "../shared/model";
 
 it("a Done card with nothing finished offers Commit, PR description and Merge, Merge highlighted", () => {
@@ -34,4 +34,22 @@ it("a merged card drops Commit and Merge and keeps PR description, not highlight
     error: "No agent of this task can write the description",
   });
   expect(finishButtons(asking)).toEqual({ steps: ["pr"], primary: null });
+});
+
+it("a merged card with no PR body puts the status and PR description on one line", () => {
+  expect(finishInlineLayout({ hasStatus: true, hasPr: false, steps: 1 })).toBe(
+    true,
+  );
+});
+
+it("keeps the rows stacked when there is a PR body or more than one button", () => {
+  expect(finishInlineLayout({ hasStatus: true, hasPr: true, steps: 1 })).toBe(
+    false,
+  );
+  expect(finishInlineLayout({ hasStatus: true, hasPr: false, steps: 3 })).toBe(
+    false,
+  );
+  expect(finishInlineLayout({ hasStatus: false, hasPr: false, steps: 1 })).toBe(
+    false,
+  );
 });
