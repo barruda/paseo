@@ -5,10 +5,13 @@ import type {
   ConversationDisplay,
   ConversationGate,
   ConversationReason,
+  ProjectAccent,
   StartInput,
 } from "../shared/model";
+import { projectViewKeys, resolveProjectAccent } from "../shared/project-color";
 import type { ConversationWindow, TimelineReader } from "./conversations";
 import { readConversationTime } from "./conversations";
+import { dominantColorFromIcon } from "./dominant-color";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
@@ -292,6 +295,16 @@ export class PaseoHost implements Host {
   private agentWorkspaces = new Map<string, string | undefined>();
   /** Provider children per parent, keyed by the parent activity Paseo last reported. */
   private childRecords = new Map<string, ChildRecord>();
+  /** CUSTOM(project-icon-colors): the accent per project and icon revision, computed once. */
+  private projectAccents = new Map<
+    string,
+    { revision: string; viewKey: string; accent: ProjectAccent }
+  >();
+  /** A failing icon RPC waits a minute instead of running on every inventory pass. */
+  private projectAccentFailures = new Map<
+    string,
+    { revision: string; viewKey: string; retryAt: number }
+  >();
   constructor(
     private api: PaseoApi,
     private compat: PaseoCompat,
@@ -466,19 +479,79 @@ export class PaseoHost implements Host {
                 : "idle",
         });
     }
+    const viewKeys = projectViewKeys(projects.projects, this.identity.serverId);
+    const projectEntries = await Promise.all(
+      projects.projects.map(async (project) => {
+        const viewKey = viewKeys.get(project.projectId);
+        return {
+          id: project.projectId,
+          name: project.projectDisplayName,
+          directory: project.projectRootPath,
+          isGit: project.projectKind === "git",
+          accent: await this.projectAccent(project, viewKey),
+        };
+      }),
+    );
     return {
       workspaces: [...workspaceMap.values()],
       agents: [...agentMap.values()].filter(
         (agent) =>
           !tracked || (!!agent.workspaceId && tracked.has(agent.workspaceId)),
       ),
-      projects: projects.projects.map((project) => ({
-        id: project.projectId,
-        name: project.projectDisplayName,
-        directory: project.projectRootPath,
-        isGit: project.projectKind === "git",
-      })),
+      projects: projectEntries,
     };
+  }
+  /**
+   * CUSTOM(project-icon-colors): the project's accent from the icon the app shows for it.
+   * Keyed by the daemon's icon revision, so an unchanged icon costs no request.
+   */
+  private async projectAccent(
+    project: {
+      projectId: string;
+      projectIconRevision?: string;
+    },
+    viewKey: string | undefined,
+  ): Promise<ProjectAccent | undefined> {
+    const revision = project.projectIconRevision ?? "";
+    const key = viewKey ?? "";
+    const cached = this.projectAccents.get(project.projectId);
+    if (cached && cached.revision === revision && cached.viewKey === key)
+      return cached.accent;
+    const failure = this.projectAccentFailures.get(project.projectId);
+    if (
+      failure &&
+      failure.revision === revision &&
+      failure.viewKey === key &&
+      Date.now() < failure.retryAt
+    )
+      return undefined;
+    let icon: { data: string; mimeType: string } | null;
+    try {
+      icon = await this.compat.projectIcon(project.projectId);
+    } catch {
+      // An unreadable icon leaves the client on the stable palette.
+      this.projectAccentFailures.set(project.projectId, {
+        revision,
+        viewKey: key,
+        retryAt: Date.now() + 60_000,
+      });
+      return undefined;
+    }
+    this.projectAccentFailures.delete(project.projectId);
+    const image = icon
+      ? dominantColorFromIcon(Buffer.from(icon.data, "base64"), icon.mimeType)
+      : null;
+    const accent = resolveProjectAccent({
+      id: project.projectId,
+      viewKey,
+      image,
+    });
+    this.projectAccents.set(project.projectId, {
+      revision,
+      viewKey: key,
+      accent,
+    });
+    return accent;
   }
   /**
    * Provider children are cached per parent activity. Re-listing them costs the daemon one

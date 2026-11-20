@@ -12,6 +12,7 @@ import {
   nightSettingsSchema,
   poolsSchema,
   providerModelSchema, // CUSTOM(bulk-orchestrator-agent)
+  projectAccentSchema, // CUSTOM(project-icon-colors)
   settingsSchema,
   stageSchema,
   startSchema,
@@ -22,6 +23,20 @@ export const snapshotRpc = defineRpc({
   name: "workboard.snapshot",
   input: z.object({}),
   output: boardSchema,
+});
+// CUSTOM(project-icon-colors): the accent the assistant pages paint a project's name with.
+export const projectAccentsRpc = defineRpc({
+  name: "workboard.project-accents",
+  input: z.object({}),
+  output: z.object({
+    projects: z.array(
+      z.object({
+        id: z.string(),
+        name: z.string(),
+        accent: projectAccentSchema.nullable(),
+      }),
+    ),
+  }),
 });
 // CUSTOM(workboard-chip-status): three counts for the Desk header chip.
 export const deskStatusRpc = defineRpc({

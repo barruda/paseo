@@ -3003,7 +3003,9 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     description inserts an image from a file (web and desktop, same upload as pasting), a
     checklist item, an Acceptance criteria section or an Out of scope section at the cursor.
     Project and orchestrator chips wrap instead of scrolling sideways; each project has its own
-    color (from its id, `projectColor` in `client/colors.ts`). A new task picks **Create in**:
+    color, from the icon the app shows for it
+    ([project-icon-colors](#project-icon-colors-project-colors-come-from-the-apps-project-icon)).
+    A new task picks **Create in**:
     its To do group or Ready to start, where an active orchestrator takes it at once.
   - **Default orchestrator:** a board with no orchestrators gets one named Default when it loads:
     all projects, always on (a window from 00:00 to 00:00 every day), 2 at a time, with the agent
@@ -3042,6 +3044,43 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   and watch it go to In progress and then Ready to review with the agent's summary. Press
   Continue task, write feedback and Send back: the same agent chat gets it and the card returns
   to In progress.
+
+## project-icon-colors: project colors come from the app's project icon
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: project colors from the app's project icon`
+- **Why:** The board picked a project's color from a hash of its id, so the P of pipeline and the
+  P of paseo showed palette colors that matched nothing the app showed for those projects. The app
+  already has an icon per project (a repository favicon or the generated letter); its color is what
+  the board should use.
+- **What:**
+  - `PaseoHost.inventory` asks the daemon for each project's icon (`project.icon.get`), computes
+    the dominant color once per icon revision, and stores the accent pair in the board's project
+    entry.
+  - `server/dominant-color.ts`: PNG through `pngjs`, SVG through its fill, stroke and gradient
+    colors, including named colors and classes declared in a `<style>` block. The weighted average
+    skips transparent, near-white and near-black pixels and weights chroma higher. Achromatic
+    icons become the neutral gray; formats it cannot decode, and icon errors, keep the palette.
+  - `shared/project-color.ts`: the palette moved here, plus the app's letter-color and
+    letter-foreground tables and view-key grouping (mirrors
+    `packages/app/src/styles/identity-colors.ts` and
+    `packages/app/src/projects/workspace-structure.ts`). An image icon gives its dominant color; a
+    project with no image gets the app's letter color (the darker fill on light, the lighter
+    foreground on dark); unknown projects get the stable palette.
+  - Each accent is a light/dark pair, chosen by `supplementalColor` from the theme surface, so the
+    badge, borders and accents stay readable in both themes.
+  - Used by the board cards (badge and left border), the task editor's project chips, the
+    Dashboard (Needs you and History chips), Reports (project chips, task row and ticket header),
+    the Conversations tree and the reports timeline. The assistant pages read the accents from the
+    new `workboard.project-accents` RPC.
+  - Group (column) colors are untouched; a color picked by hand in Group settings still wins for
+    that group.
+- **Core files touched:** none.
+- **Re-apply:** None for the app. The plugin is self-contained; `pngjs` is a new runtime
+  dependency (`npm install` in `custom/plugins/power-workboard` after merging).
+- **Verify:** `(cd custom/plugins/power-workboard && npm run check)`. In the app, Power Workboard:
+  DreamMMO's badge is the same violet as its letter icon, gnome-custom's is its logo blue, a
+  black-and-white logo is gray, and a project with no icon keeps its letter color in both themes.
 
 ## plugin-modal-size: plugin modals at 80% of the window
 

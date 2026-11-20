@@ -12,8 +12,9 @@ export function projectInitial(name: string): string {
 }
 
 /**
- * A project's generated icon: its initial on the same stable color as the card border. Uploaded
- * icons are app state the plugin cannot read, so the placeholder is the only shape here.
+ * A project's generated icon: its initial on the same accent as the card border. CUSTOM(
+ * project-icon-colors): the accent comes from the app's own icon for the project, resolved by
+ * the server; the plugin draws the letter, not the uploaded image.
  */
 export function ProjectIcon({
   name,

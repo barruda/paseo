@@ -32,7 +32,8 @@ import {
   assistantOverviewRpc,
   assistantStatsRpc,
 } from "../../shared/assistant-rpc";
-import { projectColor } from "../colors";
+import { projectAccentColor } from "../colors";
+import { useProjectAccents, type ProjectAccents } from "../project-accents";
 import { showConversation, showReport } from "./nav";
 import { DayChart, HorizontalBars } from "./dashboard-charts";
 import {
@@ -72,6 +73,7 @@ export function DashboardScreen(props: PluginSurfaceProps) {
   const [days, setDays] = useState<number>(DEFAULT_PERIOD);
   const callOverview = useRpc(assistantOverviewRpc);
   const callStats = useRpc(assistantStatsRpc);
+  const accents = useProjectAccents(hostId);
   const base = ["power-workboard", "assistant", hostId] as const;
 
   const overview = useQuery({
@@ -87,7 +89,11 @@ export function DashboardScreen(props: PluginSurfaceProps) {
 
   const left = (
     <>
-      <NeedsYouSection props={props} items={overview.data?.needsYou ?? null} />
+      <NeedsYouSection
+        props={props}
+        accents={accents}
+        items={overview.data?.needsYou ?? null}
+      />
       <RunningSection
         theme={theme}
         running={overview.data?.running ?? []}
@@ -151,7 +157,11 @@ export function DashboardScreen(props: PluginSurfaceProps) {
         </>
       )}
       <ChartsSection theme={theme} stats={stats.data ?? null} wide={wide} />
-      <HistorySection props={props} stats={stats.data ?? null} />
+      <HistorySection
+        props={props}
+        accents={accents}
+        stats={stats.data ?? null}
+      />
     </ScrollView>
   );
 }
@@ -187,12 +197,18 @@ function ProjectChip({
   theme,
   id,
   name,
+  accents,
 }: {
   theme: Theme;
   id: string | null;
   name: string;
+  accents: ProjectAccents;
 }) {
-  const color = projectColor(id ?? name, theme);
+  const color = projectAccentColor(
+    accents.forProject(id, name),
+    id ?? name,
+    theme,
+  );
   return (
     <View style={[styles.chip, { borderColor: color }]}>
       <View style={[styles.chipDot, { backgroundColor: color }]} />
@@ -256,9 +272,11 @@ function Button({
 
 function NeedsYouSection({
   props,
+  accents,
   items,
 }: {
   props: Props;
+  accents: ProjectAccents;
   items: NeedsYouItem[] | null;
 }) {
   const { theme } = props;
@@ -275,7 +293,12 @@ function NeedsYouSection({
         </Text>
       ) : (
         items.map((item) => (
-          <NeedsYouCard key={item.taskId} props={props} item={item} />
+          <NeedsYouCard
+            key={item.taskId}
+            props={props}
+            accents={accents}
+            item={item}
+          />
         ))
       )}
     </Section>
@@ -284,9 +307,11 @@ function NeedsYouSection({
 
 export function NeedsYouCard({
   props,
+  accents,
   item,
 }: {
   props: Props;
+  accents: ProjectAccents;
   item: NeedsYouItem;
 }) {
   const { theme } = props;
@@ -339,6 +364,7 @@ export function NeedsYouCard({
           theme={theme}
           id={item.projectId}
           name={item.projectName}
+          accents={accents}
         />
         <Text style={[styles.meta, muted]}>
           {item.orchestratorName ?? s.manual}
@@ -765,9 +791,11 @@ function FilterRow<T extends string>({
 
 function HistorySection({
   props,
+  accents,
   stats,
 }: {
   props: Props;
+  accents: ProjectAccents;
   stats: Stats | null;
 }) {
   const { theme } = props;
@@ -847,7 +875,12 @@ function HistorySection({
         </Text>
       ) : (
         events.map((event) => (
-          <HistoryRow key={event.id} props={props} event={event} />
+          <HistoryRow
+            key={event.id}
+            props={props}
+            accents={accents}
+            event={event}
+          />
         ))
       )}
       {history.hasNextPage ? (
@@ -864,7 +897,15 @@ function HistorySection({
   );
 }
 
-function HistoryRow({ props, event }: { props: Props; event: HistoryEvent }) {
+function HistoryRow({
+  props,
+  accents,
+  event,
+}: {
+  props: Props;
+  accents: ProjectAccents;
+  event: HistoryEvent;
+}) {
   const { theme } = props;
   const agentId = event.agentId;
   const content = (
@@ -880,6 +921,7 @@ function HistoryRow({ props, event }: { props: Props; event: HistoryEvent }) {
           theme={theme}
           id={event.projectId}
           name={event.projectName}
+          accents={accents}
         />
       </View>
       <Text style={[styles.body, { color: theme.colors.foregroundMuted }]}>

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { groupColorValue, projectColor } from "../client/colors";
+import {
+  groupColor,
+  groupColorValue,
+  projectAccentColor,
+  projectColor,
+} from "../client/colors";
 import { GROUP_COLORS } from "../shared/model";
 
 type Theme = PluginSurfaceProps["theme"];
@@ -10,6 +15,37 @@ function theme(surface0: string): Theme {
 }
 
 const PROJECT_COLORS = GROUP_COLORS.filter((color) => color !== "gray");
+
+describe("projectAccentColor", () => {
+  it("uses the project's accent in both themes", () => {
+    const accent = { light: "#123456", dark: "#abcdef" };
+    expect(projectAccentColor(accent, "paseo", theme("#ffffff"))).toBe(
+      "#123456",
+    );
+    expect(projectAccentColor(accent, "paseo", theme("#0b0d10"))).toBe(
+      "#abcdef",
+    );
+  });
+
+  it("falls back to the stable palette without an accent", () => {
+    expect(projectAccentColor(null, "paseo", theme("#ffffff"))).toBe(
+      projectColor("paseo", theme("#ffffff")),
+    );
+  });
+
+  it("keeps a group color picked by hand", () => {
+    const group = {
+      id: "review",
+      name: "Review",
+      kind: "review",
+      label: "pwb:review",
+      color: "pink",
+    } as const;
+    expect(groupColor(group, theme("#ffffff"))).toBe(
+      groupColorValue("pink", theme("#ffffff")),
+    );
+  });
+});
 
 describe("projectColor", () => {
   it("returns the same color for the same project id", () => {

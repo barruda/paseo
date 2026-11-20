@@ -12,6 +12,7 @@ import {
   readImageRpc,
   saveImageRpc,
   snapshotRpc,
+  projectAccentsRpc, // CUSTOM(project-icon-colors)
   deskStatusRpc,
   writeTicketRpc,
   redeployPaseoRpc,
@@ -208,6 +209,10 @@ export default function contribute(server: PluginServerContext) {
   server.handle(deskStatusRpc, () => {
     if (!board) throw new Error(error);
     return board.deskStatus();
+  });
+  server.handle(projectAccentsRpc, () => {
+    if (!board) throw new Error(error);
+    return board.projectAccents();
   });
   server.handle(redeployPaseoRpc, () => redeployPaseo()); // CUSTOM(redeploy-button)
   server.handle(mutateRpc, (input) => {
