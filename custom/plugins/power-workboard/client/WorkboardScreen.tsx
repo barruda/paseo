@@ -78,6 +78,7 @@ import {
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { BoardView } from "./BoardView";
 import { groupColor, projectColor, supplementalColor } from "./colors";
+import { ProjectIcon } from "./ProjectIcon";
 import { loadBoardFilters, saveBoardFilters, toggleButtonState } from "./web";
 import {
   activeFilterCount,
@@ -2571,9 +2572,9 @@ export function TaskCard({
                 outlineStyle: "solid" as const,
               }
             : {}),
-          borderLeftColor: group
-            ? groupColor(group, theme)
-            : theme.colors.statusWarning,
+          borderLeftColor: card.projectId
+            ? projectColor(card.projectId, theme)
+            : theme.colors.border,
         },
       ]}
     >
@@ -2629,14 +2630,27 @@ export function TaskCard({
           </View>
         )}
       </View>
-      <Text
-        numberOfLines={1}
-        style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
-      >
-        {card.projectName || t.unassigned}
-        {titleParts.area ? ` · ${titleParts.area}` : ""}
-        {normalLabels.length ? ` · ${normalLabels.join(" · ")}` : ""}
-      </Text>
+      <View style={styles.cardProjectRow}>
+        {card.projectId && card.projectName ? (
+          <ProjectIcon
+            name={card.projectName}
+            color={projectColor(card.projectId, theme)}
+            theme={theme}
+          />
+        ) : null}
+        <Text
+          numberOfLines={1}
+          style={[
+            styles.cardMeta,
+            styles.cardProjectText,
+            { color: theme.colors.foregroundMuted },
+          ]}
+        >
+          {card.projectName || t.unassigned}
+          {titleParts.area ? ` · ${titleParts.area}` : ""}
+          {normalLabels.length ? ` · ${normalLabels.join(" · ")}` : ""}
+        </Text>
+      </View>
       {card.timing && <TimingChip timing={card.timing} t={t} theme={theme} />}
       {request && (
         <View style={styles.changeRequest}>
@@ -4919,6 +4933,13 @@ const styles = StyleSheet.create({
   cardTitlePressable: { flex: 1, minWidth: 0 },
   cardTitle: { fontWeight: "600", fontSize: 14, lineHeight: 18 },
   cardMeta: { fontSize: 12, lineHeight: 16 },
+  cardProjectRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    minWidth: 0,
+  },
+  cardProjectText: { flexShrink: 1 },
   timingChip: {
     flexDirection: "row",
     alignItems: "center",

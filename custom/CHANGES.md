@@ -8793,3 +8793,29 @@ tests/redeploy.test.ts tests/power-workboard.test.ts --bail=1`. Needs only
 - **Re-apply:** Grep `CUSTOM(bruno-plugin-groups)`.
 - **Verify:** `cd packages/app && npx vitest run src/screens/settings/bruno-plugins.test.ts
 src/screens/settings/plugins-page.test.tsx --bail=1`.
+
+## workboard-project-accent: rail color in the column header, project color and icon on the card
+
+- **Added:** 2026-11-20 (based on `custom` at `0dc28e5c3`)
+- **Commit:** `custom: Workboard colors column headers by rail and cards by project`
+- **Why:** The card's left border repeated the rail color, which the column already says. The
+  project is the identity a card carries across rails, so the border belongs to it, and the
+  project's icon makes the name easier to pick out in a narrow card.
+- **What:** Each column header gets a 3 px top filete in the rail color, and the old dot next to
+  the title is gone (compact tabs carry the same filete instead of a dot). The card's 3 px left
+  border now uses `projectColor(card.projectId)`, the same stable palette `projectColor` already
+  uses for project chips: two cards of the same project share the color in any rail, and different
+  projects spread across the palette. The card's project line starts with a generated project icon
+  (the last name segment's initial on that same color, 14 px, surface-colored letter) before
+  `projectName · area · labels`. Unassigned cards keep the neutral border and show no icon.
+- **Core files touched:** none. Plugin files: `client/BoardView.tsx`, `client/WorkboardScreen.tsx`,
+  new `client/ProjectIcon.tsx`, new `tests/colors.test.ts`.
+- **Re-apply:** Plugin-only. In `BoardColumn`, put `borderTopWidth: 3` on `columnHeader` and pass
+  the rail `color` as `borderTopColor`; do the same with `borderTopWidth: 2` on compact `tab`.
+  In `TaskCard`, set `borderLeftColor` from `projectColor(card.projectId, theme)` and wrap the
+  project meta `Text` in a row with `ProjectIcon`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/colors.test.ts --bail=1`. Needs only `paseo plugin reload power-workboard`; no app build.
+  In the app, two cards of the same project in different rails have the same left border, the
+  project initial shows before the name, and each column header has its rail-colored top filete
+  in the light and dark themes.
