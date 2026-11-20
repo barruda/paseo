@@ -159,6 +159,26 @@ export function sortTreeEntries<T extends SortableEntry & { kind: "file" | "dire
   ];
 }
 
+/**
+ * The projects the filter shows: every project but the hidden ones. The store keeps the hidden
+ * refs, so a project the list has never seen stays visible without being added anywhere.
+ */
+export function visibleProjects<T extends { ref: string }>(
+  projects: readonly T[],
+  hiddenRefs: readonly string[],
+): T[] {
+  if (hiddenRefs.length === 0) return [...projects];
+  const hidden = new Set(hiddenRefs);
+  return projects.filter((project) => !hidden.has(project.ref));
+}
+
+/** The filter trigger's label: everything, how many, or none. */
+export function projectFilterLabel(total: number, visible: number): string {
+  if (visible === 0) return "No projects";
+  if (visible === total) return "All projects";
+  return `${visible} project${visible === 1 ? "" : "s"}`;
+}
+
 function normalizeName(name: string): string {
   return name
     .normalize("NFD")

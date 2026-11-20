@@ -12,12 +12,17 @@ interface DeskDocsState {
   sort: DocsSort;
   /** Projects whose section is folded. */
   collapsedProjects: string[];
+  /** Projects the filter hides; a project missing here is shown, so new ones start visible. */
+  hiddenProjects: string[];
   setDocs(docs: DocEntry[]): void;
   addRoot(root: DocRoot): void;
   removeRoot(id: string): void;
   removeDoc(id: string): void;
   setSort(sort: DocsSort): void;
   toggleProject(projectRef: string): void;
+  toggleProjectVisibility(projectRef: string): void;
+  showAllProjects(): void;
+  hideAllProjects(projectRefs: readonly string[]): void;
 }
 
 const docSchema = z.object({
@@ -43,6 +48,7 @@ export const useDeskDocsStore = create<DeskDocsState>()(
       roots: [],
       sort: "recent",
       collapsedProjects: [],
+      hiddenProjects: [],
       setDocs: (docs) => set({ docs }),
       addRoot: (root) =>
         set((state) =>
@@ -64,6 +70,14 @@ export const useDeskDocsStore = create<DeskDocsState>()(
             ? state.collapsedProjects.filter((ref) => ref !== projectRef)
             : [...state.collapsedProjects, projectRef],
         })),
+      toggleProjectVisibility: (projectRef) =>
+        set((state) => ({
+          hiddenProjects: state.hiddenProjects.includes(projectRef)
+            ? state.hiddenProjects.filter((ref) => ref !== projectRef)
+            : [...state.hiddenProjects, projectRef],
+        })),
+      showAllProjects: () => set({ hiddenProjects: [] }),
+      hideAllProjects: (projectRefs) => set({ hiddenProjects: [...projectRefs] }),
     }),
     {
       name: "custom-desk-docs",
@@ -75,6 +89,8 @@ export const useDeskDocsStore = create<DeskDocsState>()(
           roots: z.array(rootSchema),
           sort: z.enum(["recent", "name"]),
           collapsedProjects: z.array(z.string()),
+          // Optional so a state saved before the filter existed still loads.
+          hiddenProjects: z.array(z.string()).optional(),
         }),
       ),
       partialize: (state) => ({
@@ -82,6 +98,7 @@ export const useDeskDocsStore = create<DeskDocsState>()(
         roots: state.roots,
         sort: state.sort,
         collapsedProjects: state.collapsedProjects,
+        hiddenProjects: state.hiddenProjects,
       }),
     },
   ),
