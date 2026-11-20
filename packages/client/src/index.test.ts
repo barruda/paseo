@@ -271,6 +271,7 @@ test("createPaseoApi borrows daemon capabilities without exposing connection own
     "observeEvents",
     "projects",
     "providers",
+    "schedules", // CUSTOM(later)
     "terminals",
     "workspaces",
   ]);
@@ -306,6 +307,35 @@ test("agent handles send permission responses for their agent", async () => {
       },
     },
   });
+
+  await client.close();
+});
+
+test("agent handles update labels through the existing RPC", async () => {
+  const { client, ws } = await connectClient();
+
+  const updatePromise = client.agents
+    .ref("agent_sdk")
+    .update({ labels: { "custom.critic.enabled": "true" } });
+  const request = parseSentSessionMessage(ws.sent.at(-1));
+  expect(request).toMatchObject({
+    type: "update_agent_request",
+    agentId: "agent_sdk",
+    labels: { "custom.critic.enabled": "true" },
+  });
+
+  ws.message(
+    sessionMessage({
+      type: "update_agent_response",
+      payload: {
+        requestId: request.requestId,
+        agentId: "agent_sdk",
+        accepted: true,
+        error: null,
+      },
+    }),
+  );
+  await updatePromise;
 
   await client.close();
 });

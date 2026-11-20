@@ -369,6 +369,8 @@ export interface PaseoAgentHandle {
   readonly timeline: PaseoAgentTimelineHandle;
   current(): PaseoAgent | null;
   refresh(requestId?: string): Promise<PaseoAgentRefetchResult | null>;
+  /** CUSTOM(critic): updates the agent's name and/or labels through the existing update RPC. */
+  update(updates: { name?: string; labels?: Record<string, string> }): Promise<void>;
   /**
    * Reopens the provider session with current configuration, rerunning session-open hooks.
    * Interrupts a running turn and returns the refreshed snapshot.
@@ -1023,6 +1025,8 @@ function createAgentHandleFactory(
         current = result?.agent ?? null;
         return result;
       },
+      // CUSTOM(critic)
+      update: (updates) => daemonClient.updateAgent(id, updates),
       reload: async (options) => {
         await daemonClient.refreshAgent(id, options?.requestId);
         const result = await daemonClient.fetchAgent({ agentId: id });
