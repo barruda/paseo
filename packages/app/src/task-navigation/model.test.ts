@@ -51,6 +51,7 @@ function agent(id: string, overrides: Partial<TaskAgent> = {}): TaskAgent {
     attentionReason: null,
     parentAgentId: null,
     updatedAt: new Date("2026-10-15T12:00:00Z"),
+    sidebarTab: "user",
     ...overrides,
   };
 }

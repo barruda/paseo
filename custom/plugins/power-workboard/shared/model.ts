@@ -881,3 +881,7 @@ export const BOARD_AGENT_LABELS: Readonly<Record<string, string>> =
   Object.freeze({
     [BOARD_AGENT_LABEL]: "true",
   });
+// CUSTOM(sidebar-agent-tabs): the app's Tasks sidebar lists the refinement chat under
+// Orchestrators. Same string as REFINEMENT_CHAT_LABEL in packages/protocol/src/board-agents.ts
+// (the plugin builds against a pinned client).
+export const REFINEMENT_CHAT_LABEL = "pwb/refinement-chat";
