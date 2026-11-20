@@ -123,13 +123,14 @@ this repo) with these differences:
 
 - **Packages.** A **Package** groups tickets that already exist, so the full suite runs once per
   package, by script, instead of once per ticket. It is not a board column (`Group` stays the
-  column). Select tickets with Ctrl/Cmd+click or Shift+click and use **Add to package** in the
-  selection bar or a card's menu; on a phone, long-press
+  column). Select tickets with Ctrl/Cmd+click, Shift+click or a marquee drag on an empty part of a
+  column, and use **Add to package** in the selection bar or a card's menu; on a phone, long-press
   a card to enter selection. The menu searches the open packages of the project and creates one
   from the typed name. The cards get the package chip and a test-level chip; **Undo** restores the
   previous assignment (and deletes a package created by that action). **Columns | Packages** on the
   board switches to one rail per open package plus a last **No package** rail, with progress and
-  the last gate. A ticket without a package is unchanged: the same prompt and the same tests. A
+  the last gate. Drag a card onto a rail to move it into that package (or onto **No package** to
+  remove it); the card's menu does the same on a phone. A ticket without a package is unchanged: the same prompt and the same tests. A
   ticket in a package gets the **restricted** level in its prompt (the suites of its area, never the
   full suite); a diff that touches a project risk path (migrations, auth, security or protocol by
   default) raises it to **gate** and the PM board records the decision. The package gate is the
@@ -139,8 +140,16 @@ this repo) with these differences:
   letting suites skip. With `gateRunIn: "checkout"`, the setup and the gate run in the live
   checkout and the bisect is skipped. A failed run bisects the package's merge commits and opens **one**
   investigation card on the PM board with the suspect ticket; the history is in the package's
-  detail. A package's own integration branch, the PM's **select these tickets** suggestion, drag to
-  a rail and the marquee are the next step, not this one. Data lives
+  detail, with the gate result that covered each merge. A package may have an **integration
+  branch**: the next merges of its tickets go there and it merges into the project's base when the
+  package closes; tickets already merged stay in the base, and a branch with merges cannot be
+  replaced or cleared. The project's gate fields are in Settings > Bruno's Customizations >
+  Project Manager as well as in `board_set_project_policy`.
+  The PM suggests a grouping with a proposal card whose action is `select-tasks`: **Select these
+  tickets** only marks the tickets and opens the package menu, and **Ignore** dismisses it; nothing
+  is created without the user. When a package is complete the PM proposes closing it with
+  `board_package_propose_close` (a "Close package?" card) and never closes it on its own. Needs you
+  is grouped by package, and the Decisões page filters cards by package. Data lives
   in `data.packages`/`data.packageRuns`; the PM tools are `board_package_*` and
   `board_set_test_tier`; `shared/packages.ts` holds the pure tier, risk and bisect logic.
 

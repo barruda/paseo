@@ -109,6 +109,10 @@ export function buildOverview(source: ViewSource): Overview {
   );
   const needsYou: NeedsYouItem[] = [];
   const running: RunningItem[] = [];
+  // CUSTOM(packages): Needs you groups by package.
+  const packageNames = new Map(
+    (data.packages ?? []).map((pkg) => [pkg.id, pkg.name]),
+  );
   const seenRunning = new Set<string>();
 
   for (const [taskId, delivery] of Object.entries(
@@ -145,6 +149,11 @@ export function buildOverview(source: ViewSource): Overview {
           delivery.reason === "fix-waiting"
             ? (delivery.queuedFix?.hold ?? null)
             : null,
+        // CUSTOM(packages)
+        packageId: task.packageId ?? null,
+        packageName: task.packageId
+          ? (packageNames.get(task.packageId) ?? null)
+          : null,
       });
     } else if (ACTIVE_STAGES.has(delivery.stage)) {
       seenRunning.add(taskId);

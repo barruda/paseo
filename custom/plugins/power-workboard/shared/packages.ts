@@ -269,12 +269,28 @@ export async function findFirstFailing<T>(
   return found;
 }
 
-/** The merge target of a package's tickets: its branch in 2b, else the project's base. */
+/** The merge target of a package's tickets: its branch, else the project's base. */
 export function packageMergeTarget(
   pkg: Package | null | undefined,
   policy: ProjectPolicy,
 ): string | null {
   return pkg?.branch?.trim() || policy.baseBranch.trim() || null;
+}
+
+/**
+ * The gate run that covered one merge: the first run that started after the merge. A gate runs at
+ * the package's integration tip, so a run started after a merge includes it. Null means the gate
+ * has not run since that merge.
+ */
+export function gateRunForMerge(
+  mergedAt: string | null,
+  runs: readonly PackageRun[],
+): PackageRun | null {
+  if (!mergedAt) return null;
+  const after = runs
+    .filter((run) => run.startedAt.localeCompare(mergedAt) >= 0)
+    .sort((left, right) => left.startedAt.localeCompare(right.startedAt));
+  return after[0] ?? null;
 }
 
 /** The prompt section for a ticket in a package; empty for a ticket without one. */

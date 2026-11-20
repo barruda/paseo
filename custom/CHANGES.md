@@ -9376,6 +9376,10 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
 - **Commit:** `custom: group tickets into packages with one gate per package`
 - **Follow-up:** `custom: harden packages on untracked diffs and gate cancellation` (untracked
   paths, root globs, risk-scan failure, 60-minute gate timeout, worktree cleanup and cancellation).
+- **Follow-up 2:** `custom: complete packages with branch, marquee and PM suggestions` (the
+  integration branch, the marquee, drag to a rail, the PM's select-tasks suggestion, Needs you and
+  the Decisões filter by package, the gate fields in Settings, the close proposal and the review
+  #120's three non-blocking items).
 - **Why:** Every ticket paid for the full suite in its own agent turn, and the fixed "run everything"
   line in the orchestrator's instructions could not tell a migration from a one-file change. The
   analysis in `docs/improvements/workboard-test-tiers.html` found three layers run per ticket, two
@@ -9417,10 +9421,32 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     `board_package_history` and `board_set_test_tier`, plus a `Packages` section in
     `board_overview` and package/tests fields in `board_list_tasks`. The PM creates or moves tickets
     only when the user asks; on its own it suggests.
-  - **Not in this step:** a package's own integration branch, the PM's one-tap "select these
-    tickets" suggestion, drag a card onto a rail, the web marquee and Needs you grouped by package.
-    The model already has `branch` (null by default).
-- **Core files touched:** none.
+  - **Integration branch (2b).** A package may have its own `branch`. Already merged tickets stay
+    in the base; the branch is created from the base when it is set, and the next merges of the
+    package's tickets go to it (`finish.mergeTarget` records where each merge landed). Closing the
+    package merges the branch into the base through the daemon's merge, in a temporary worktree,
+    under the project's merge lock; a failed integration keeps the package open. A branch that
+    already has merges cannot be replaced or cleared, so its work is never stranded.
+  - **Selection and drag (2b).** A marquee drag on an empty part of a column selects the cards it
+    touches on the web; Ctrl/Cmd adds to the selection. In the Packages view, a card drags onto a
+    rail with the pointer (web/desktop) and its menu does the same on a phone; **No package**
+    removes it. A plain tap on a rail card opens its panel; long-press selects.
+  - **PM suggestions (2b).** A proposal card with `action: "select-tasks"` shows **Select these
+    tickets** and **Ignore**. Selecting marks the tickets and opens the package menu on the task
+    board; it creates nothing. `board_package_propose_close` creates one open "Close package?"
+    proposal per package with close/keep options. The Decisões page filters cards by package, and
+    Needs you is grouped by package.
+  - **Settings (2b).** Settings > Bruno's Customizations > Project Manager edits
+    `tests.gateCommand`, `gateRequiredEnv`, `gateEnv`, `gateRiskPaths` and `gateRunIn` per project,
+    so the PM is no longer the only way to set them. The Settings model keeps the `tests` block
+    instead of dropping it on save.
+  - **Review #120 (2b).** `board_list_tasks` reads the snapshot once instead of once per card; the
+    package detail shows the gate run that covered each merge; a plain tap on a rail card opens its
+    panel instead of selecting.
+- **Core files touched:** `packages/app/src/screens/settings/bruno-customizations/`
+  `projects-assistant-model.ts` (the mirrored `projectTestsSchema`, list/env parsers) and
+  `projects-assistant-page.tsx` (the gate fields), marked `CUSTOM(packages)`; both already carried
+  the Project Manager settings page. No core file outside that customization.
 - **Re-apply:** Plugin-only, marked `CUSTOM(packages)`:
   - `shared/model.ts` (test tiers, package/gate/run/view schemas, `task.packageId`/`testTier`,
     `finish.mergeCommit`, `data.packages`/`data.packageRuns`, `board.packages`), `shared/packages.ts`
@@ -9428,26 +9454,50 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     `shared/assistant.ts` (`projectTestsSchema`, default risk paths, `projectPolicy.tests`),
     `shared/pm-board.ts` (`links.packageIds`, `pmOverview.packages`), `shared/rpc.ts` (package
     mutations, `workboard.package.runs`).
-  - `server/package-gate.ts` (worktree, env guard, runner, bisect), `server/workboard.ts`
-    (mutations, snapshot views, tick triggers, escalation in `verifying`, `mergeCommit`, test
-    section in every prompt), `server/orchestrator.ts` (`tests` argument on the prompt builders),
+  - `server/package-gate.ts` (worktree, env guard, runner, bisect), `server/package-git.ts`
+    (branch/worktree primitives), `server/workboard.ts` (mutations, branch validation and
+    integration, merge target, snapshot views, tick triggers, escalation in `verifying`,
+    `mergeCommit`, test section in every prompt), `server/orchestrator.ts` (`tests` argument on the
+    prompt builders),
     `server/assistant/delivery.ts` (`VerifyOptions`), `server/assistant/views.ts`,
     `server/assistant/chat.ts` (tools, overview, package line), `index.server.ts`.
-  - `client/selection.ts`, `client/PackageMenu.tsx`, `client/PackagesView.tsx`,
-    `client/PackageDetail.tsx`, `client/PackageAdjust.tsx`, `client/WorkboardScreen.tsx`,
-    `client/TaskPanel` menu via `client/card-menu.ts`, `client/FilterPanel.tsx`,
-    `client/filters.ts`, `client/board-utils.ts`, `client/strings.ts`.
+  - `client/selection.ts` (marquee geometry and selection), `client/web.ts` (marquee and rail
+    pointer gestures), `client/BoardView.tsx` (marquee), `client/PackageMenu.tsx`,
+    `client/PackagesView.tsx` (rail drag, tap opens the panel), `client/PackageDetail.tsx` (gate
+    per merge, propose close), `client/PackageAdjust.tsx` (branch), `client/WorkboardScreen.tsx`,
+    `client/assistant/nav.ts` (`openBoardSelection`), `client/assistant/pm-board/PmBoardScreen.tsx`
+    (select-tasks, package filter), `client/assistant/DashboardScreen.tsx` and
+    `client/assistant/dashboard-format.ts` (Needs you by package), `client/TaskPanel` menu via
+    `client/card-menu.ts`, `client/FilterPanel.tsx`, `client/filters.ts`, `client/board-utils.ts`,
+    `client/strings.ts`, `client/assistant/pm-board/pm-board-strings.ts`.
+  - Core: the Project Manager settings page and its model, in the bullet above.
   - Docs: the plugin README and `docs/pm-board.md`.
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
-  Needs only `paseo plugin reload power-workboard` (or the PM's `board_reload_plugin`); no daemon
-  restart. In the app: create three tickets, Ctrl+click them, **Add to package**, type a name and
+  The plugin half needs only `paseo plugin reload power-workboard` (or the PM's
+  `board_reload_plugin`); no daemon restart. The new gate fields in Settings > Bruno's
+  Customizations > Project Manager are a core app change: build and install the app to see them. In the app: create three tickets, Ctrl+click them, **Add to package**, type a name and
   Enter; the three cards get the chip, **Undo** removes it, the **Packages** view shows the rail
   with "0 of 3 merged", and **Run gate now** in the detail starts a run (configure
   `tests.gateCommand` first). A project with `tests.gateRiskPaths` matching a ticket's diff raises
   it to gate and the PM board gets a decision card; a failing gate opens one investigation card with
   the suspect.
+  For 2b: in **Packages**, drag a card onto a rail (web/desktop) and onto **No package**; drag on
+  an empty column area in **Columns** to select; a plain click on a rail card opens its panel.
+  Set a branch in **Adjust**, let a ticket merge, then close the package and check the base has the
+  branch's commits. In **Decisões**, a select-tasks proposal marks the tickets and opens the
+  package menu; the package filter narrows the columns; **Propose closing** in the package detail
+  asks the PM for the close card. In Settings > Bruno's Customizations > Project Manager, set the
+  gate fields, save, reopen the page and check they survived.
 - **Tests:** `tests/packages.test.ts` (tiers, prompt section, gate resolution, required env, risk
-  globs, progress/views, bisect, colors, merge target), `tests/package-gate.test.ts` (missing env,
-  no command, pass, bisect to the suspect, merge order, bisect error),
+  globs, progress/views, bisect, colors, merge target, the gate run per merge),
+  `tests/package-gate.test.ts` (missing env, no command, pass, bisect to the suspect, merge order,
+  bisect error), `tests/package-git.test.ts` (branch creation, worktree merge, abort, missing ref),
   `tests/workboard-packages.test.ts` (create/assign/remove/delete, project guard, tier override,
-  close, one investigation card), `tests/selection.test.ts` (toggle, range, plain press, long-press).
+  close, one investigation card, branch creation/refusal/close integration),
+  `tests/selection.test.ts` (toggle, range, plain press, long-press, marquee geometry),
+  `tests/assistant-engine.test.ts` (a package ticket merges into the package branch),
+  `tests/assistant-chat.test.ts` (select-tasks suggestion, close proposal),
+  `tests/assistant-dashboard.test.ts` (Needs you by package), `tests/pm-board.test.ts`
+  (select-tasks action, package filter helpers), `tests/mutation-errors.test.ts` (branch errors),
+  `packages/app/src/screens/settings/bruno-customizations/projects-assistant-model.test.ts`
+  (gate defaults, the tests patch, env/list parsing).

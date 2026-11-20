@@ -3,6 +3,7 @@ import {
   HISTORY_EVENT_KINDS,
   NEEDS_YOU_REASONS,
   DELIVERY_STAGES,
+  needsYouItemSchema,
 } from "../shared/assistant";
 import {
   barRatio,
@@ -12,6 +13,7 @@ import {
   formatDecimal,
   formatDuration,
   formatPercent,
+  groupNeedsYou,
   isWide,
   maxDayTotal,
   periodRange,
@@ -99,4 +101,43 @@ describe("dashboard charts", () => {
     expect(new Date(from).getHours()).toBe(0);
     expect(Date.parse(to)).toBe(now);
   });
+});
+
+// CUSTOM(packages): Needs you grouped by package, with the tickets outside one last.
+it("groups Needs you by package, keeping the list order", () => {
+  const item = (
+    taskId: string,
+    packageId: string | null,
+    name: string | null,
+  ) =>
+    needsYouItemSchema.parse({
+      taskId,
+      title: taskId,
+      projectId: "p",
+      projectName: "P",
+      orchestratorId: null,
+      orchestratorName: null,
+      agentId: null,
+      reason: "review",
+      detail: null,
+      report: null,
+      attempt: 1,
+      since: "2026-01-10T12:00:00Z",
+      canMerge: true,
+      packageId,
+      packageName: name,
+    });
+  const groups = groupNeedsYou([
+    item("a", "pkg-1", "Auth"),
+    item("b", null, null),
+    item("c", "pkg-1", "Auth"),
+    item("d", "pkg-2", "UI"),
+  ]);
+  expect(groups.map((group) => group.packageId)).toEqual([
+    "pkg-1",
+    "pkg-2",
+    null,
+  ]);
+  expect(groups[0]!.items.map((entry) => entry.taskId)).toEqual(["a", "c"]);
+  expect(groups[2]!.items.map((entry) => entry.taskId)).toEqual(["b"]);
 });

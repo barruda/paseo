@@ -35,6 +35,11 @@ export const PM_DECIDERS = ["user", "pm"] as const;
 export const pmDeciderSchema = z.enum(PM_DECIDERS);
 export type PmDecider = z.infer<typeof pmDeciderSchema>;
 
+/** CUSTOM(packages): a proposal whose buttons work the task board instead of answering a choice. */
+export const PM_CARD_ACTIONS = ["select-tasks"] as const;
+export const pmCardActionSchema = z.enum(PM_CARD_ACTIONS);
+export type PmCardAction = z.infer<typeof pmCardActionSchema>;
+
 export const PM_CARD_ID_PREFIX = "pm-";
 /** The soft limit: over it, creating a card drops the oldest archived ones, never an active one. */
 export const PM_CARD_LIMIT = 500;
@@ -67,6 +72,12 @@ export const pmCardSchema = z.object({
   options: z.array(pmCardOptionSchema).max(PM_OPTION_LIMIT).default([]),
   /** An option id the PM recommends, when it names one of the options. */
   recommend: z.string().max(40).nullable().default(null),
+  /**
+   * CUSTOM(packages): `select-tasks` draws "Select these tickets" and "Ignore" instead of the
+   * generic options. Selecting only marks the tickets and opens the package menu; nothing is
+   * created without the user.
+   */
+  action: pmCardActionSchema.nullable().default(null),
   why: z.string().max(2000).nullable().default(null),
   /** What the PM found out, as short markdown. */
   findings: z.string().max(20000).default(""),
@@ -163,6 +174,7 @@ export interface PmCardCreateInput {
   question?: string | null;
   options?: PmCardOption[];
   recommend?: string | null;
+  action?: PmCardAction | null;
   why?: string | null;
   findings?: string;
   decision?: string | null;
@@ -175,6 +187,7 @@ export interface PmCardUpdateInput {
   question?: string | null;
   options?: PmCardOption[];
   recommend?: string | null;
+  action?: PmCardAction | null;
   why?: string | null;
   findings?: string;
   decision?: string | null;
@@ -216,6 +229,7 @@ export function newPmCard(
     question: input.question ?? null,
     options,
     recommend: normalizePmRecommend(input.recommend, options),
+    action: input.action ?? null,
     why: input.why ?? null,
     findings: input.findings ?? "",
     decision: input.decision ?? null,
@@ -296,6 +310,34 @@ export function buildPmOverview(
     cards: pmCardsIn(cards, "waiting").map(pmCardSummary),
     packages: [...packages],
   };
+}
+
+/**
+ * CUSTOM(packages): the packages a card belongs to, from its explicit links and from the
+ * package of each linked ticket. The PM board's filter reads this.
+ */
+export function pmCardPackageIds(
+  card: PmCard,
+  taskPackages: Readonly<Record<string, string>> = {},
+): string[] {
+  const ids = new Set(card.links.packageIds);
+  for (const taskId of card.links.taskIds) {
+    const pkg = taskPackages[taskId];
+    if (pkg) ids.add(pkg);
+  }
+  return [...ids];
+}
+
+/** CUSTOM(packages): the packages a filter should offer, in the given order. */
+export function pmPackagesOnBoard(
+  cards: readonly PmCard[],
+  packages: readonly { id: string; name: string; color: string }[],
+  taskPackages: Readonly<Record<string, string>> = {},
+): { id: string; name: string; color: string }[] {
+  const used = new Set(
+    cards.flatMap((card) => pmCardPackageIds(card, taskPackages)),
+  );
+  return packages.filter((pkg) => used.has(pkg.id));
 }
 
 /** The option a card's answer names, when the option still exists. */

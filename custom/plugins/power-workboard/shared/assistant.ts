@@ -558,6 +558,9 @@ export const needsYouItemSchema = z.object({
   canMerge: z.boolean(),
   /** CUSTOM(resource-pools): for `fix-waiting`: why the fix still waits. */
   hold: orchestratorHoldSchema.nullable().optional(),
+  /** CUSTOM(packages): the ticket's package, so Needs you can group by it. */
+  packageId: z.string().nullable().optional(),
+  packageName: z.string().nullable().optional(),
 });
 export type NeedsYouItem = z.infer<typeof needsYouItemSchema>;
 

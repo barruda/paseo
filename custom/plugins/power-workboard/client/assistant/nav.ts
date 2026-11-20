@@ -151,6 +151,23 @@ export function openTaskPanel(taskId: string): boolean {
 export function canOpenTaskPanel(): boolean {
   return screenOpener !== null;
 }
+/**
+ * CUSTOM(packages): opens the task board with these tickets selected and the package menu open,
+ * so the PM's grouping suggestion only marks the tickets; it never creates the package.
+ */
+export function openBoardSelection(taskIds: readonly string[]): boolean {
+  if (!screenOpener || !taskIds.length) return false;
+  screenOpener({
+    screenId: "power-workboard",
+    params: {
+      tab: "board",
+      request: String(Date.now()),
+      select: taskIds.join(","),
+      packageMenu: "1",
+    },
+  });
+  return true;
+}
 
 // CUSTOM(pm-board): open the Decisões tab on one card, from a reply's `[pm:<id>]` or a link.
 interface PmCardRequest {

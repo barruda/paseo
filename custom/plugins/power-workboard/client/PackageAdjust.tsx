@@ -1,6 +1,6 @@
 // CUSTOM(packages): the small "Adjust package" sheet reachable from the assignment banner and the
-// package detail. A package is born with a name only; this edits the name and the two default
-// triggers.
+// package detail. A package is born with a name only; this edits the name, the two default
+// triggers and the optional integration branch.
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
@@ -24,11 +24,17 @@ export function PackageAdjust({
   t: ReturnType<typeof strings>;
   theme: PluginSurfaceProps["theme"];
   onClose(): void;
-  onSave(patch: { name: string; night: boolean; onClose: boolean }): void;
+  onSave(patch: {
+    name: string;
+    night: boolean;
+    onClose: boolean;
+    branch: string | null;
+  }): void;
 }) {
   const [name, setName] = useState(pkg.name);
   const [night, setNight] = useState(pkg.trigger.night);
   const [onCloseTrigger, setOnCloseTrigger] = useState(pkg.trigger.onClose);
+  const [branch, setBranch] = useState(pkg.branch ?? "");
   return (
     <Modal
       open
@@ -51,6 +57,13 @@ export function PackageAdjust({
             label={t.packages.triggerClose}
             value={onCloseTrigger}
             onValueChange={setOnCloseTrigger}
+          />
+          <SettingsInput
+            label={t.packages.branch}
+            hint={t.packages.branchHint}
+            initialValue={pkg.branch ?? ""}
+            onChangeText={setBranch}
+            placeholder={t.packages.branchPlaceholder}
           />
         </SettingsCard>
         <View style={styles.actions}>
@@ -77,6 +90,7 @@ export function PackageAdjust({
                 name: name.trim(),
                 night,
                 onClose: onCloseTrigger,
+                branch: branch.trim() || null,
               })
             }
             style={({ pressed }) => [

@@ -12,6 +12,7 @@ import {
   SettingsSelect,
   SettingsSwitch,
 } from "@/components/settings";
+import { SettingsTextArea } from "@/components/settings-textarea";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { useInstalledPlugin } from "@/plugins/registry";
@@ -22,6 +23,8 @@ import {
   ASSISTANT_ACTIONS,
   ASSISTANT_DEFAULT_ACTIONS,
   DEFAULT_COMPACT_AT_TOKENS,
+  GATE_RUN_IN,
+  GATE_RUN_IN_LABELS,
   MAX_AUTO_FIXES,
   REVIEW_LABELS,
   REVIEW_POLICIES,
@@ -30,6 +33,10 @@ import {
   chatSettingsValid,
   patchChatSettings,
   patchProjectPolicy,
+  patchProjectTests,
+  formatEnv,
+  parseEnv,
+  parseList,
   policyActs,
   projectReview,
   resetProjectPolicy,
@@ -319,6 +326,36 @@ function ProjectCard({
       onChange((current) => patchProjectPolicy(current, project.id, { baseBranch })),
     [onChange, project.id],
   );
+  // CUSTOM(packages): the project's gate and the risk rule, editable here instead of only by the PM.
+  const handleGateCommand = useCallback(
+    (gateCommand: string) =>
+      onChange((current) => patchProjectTests(current, project.id, { gateCommand })),
+    [onChange, project.id],
+  );
+  const handleRequiredEnv = useCallback(
+    (text: string) =>
+      onChange((current) =>
+        patchProjectTests(current, project.id, { gateRequiredEnv: parseList(text) }),
+      ),
+    [onChange, project.id],
+  );
+  const handleGateEnv = useCallback(
+    (text: string) =>
+      onChange((current) => patchProjectTests(current, project.id, { gateEnv: parseEnv(text) })),
+    [onChange, project.id],
+  );
+  const handleRiskPaths = useCallback(
+    (text: string) =>
+      onChange((current) =>
+        patchProjectTests(current, project.id, { gateRiskPaths: parseList(text) }),
+      ),
+    [onChange, project.id],
+  );
+  const handleRunIn = useCallback(
+    (gateRunIn: (typeof GATE_RUN_IN)[number]) =>
+      onChange((current) => patchProjectTests(current, project.id, { gateRunIn })),
+    [onChange, project.id],
+  );
   const selectOptions = useMemo(
     () =>
       value === "default"
@@ -403,6 +440,50 @@ function ProjectCard({
             initialValue={policy.baseBranch}
             onChangeText={handleBase}
             placeholder="Current branch of the project"
+          />
+        </>
+      ) : null}
+      {policy ? (
+        <>
+          <Text style={settingsStyles.sectionHeaderTitle}>Package gate</Text>
+          <SettingsInput
+            label="Gate command"
+            hint="The full suite a package runs once, by script. Empty uses the check command."
+            initialValue={policy.tests.gateCommand}
+            onChangeText={handleGateCommand}
+            placeholder="npm test"
+          />
+          <SettingsInput
+            label="Required environment"
+            hint="Comma or newline separated names. A missing one fails the gate instead of letting suites skip."
+            initialValue={policy.tests.gateRequiredEnv.join(", ")}
+            onChangeText={handleRequiredEnv}
+            placeholder="DATABASE_URL, REDIS_URL"
+          />
+          <SettingsRow label="Gate environment" hint="NAME=value per line, set for the gate run.">
+            <SettingsTextArea
+              accessibilityLabel="Gate environment"
+              value={formatEnv(policy.tests.gateEnv)}
+              onChangeText={handleGateEnv}
+              placeholder="TH_SERVER_TEST_REQUIRE_DB=1"
+            />
+          </SettingsRow>
+          <SettingsInput
+            label="Risk paths"
+            hint="Globs that raise a ticket's diff to the gate level. Comma or newline separated."
+            initialValue={policy.tests.gateRiskPaths.join(", ")}
+            onChangeText={handleRiskPaths}
+            placeholder="**/migrations/**, **/auth/**"
+          />
+          <SettingsSelect
+            label="Gate runs in"
+            hint="A dedicated worktree never touches your checkout; the live checkout skips the bisect."
+            value={policy.tests.gateRunIn}
+            options={GATE_RUN_IN.map((option) => ({
+              value: option,
+              label: GATE_RUN_IN_LABELS[option],
+            }))}
+            onValueChange={handleRunIn}
           />
         </>
       ) : null}

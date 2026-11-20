@@ -71,13 +71,26 @@ A package's gate failure opens one `investigation` card linked to the package
 later failure updates the same open investigation instead of creating another. A tier the PM
 changes with `board_set_test_tier` records a `decision` card (`#N moved to gate`) with the reason,
 and the risk rule's automatic escalation does the same. `board_overview` lists the open packages
-with their merged counts, last gate and suspect; `board_package_history` reads one package's runs.
-The board's cards are not a place to start code work: a package's correction still goes through the
-task board.
+with their merged counts, branch, last gate and suspect; `board_package_history` reads one
+package's runs. The board's cards are not a place to start code work: a package's correction still
+goes through the task board.
+
+A **grouping suggestion** is a `proposal` with `action: "select-tasks"` and the ticket ids in
+`links.taskIds`. Its card shows **Select these tickets** and **Ignore** instead of the generic
+options: selecting records the answer, switches to the task board with those tickets selected and
+the package menu open, and creates nothing. The PM creates the package only after the user accepts.
+
+**Propose closing** (`board_package_propose_close`) creates one open proposal per package,
+"Close package <name>?", with close/keep options and `links.packageIds`; the PM closes the package
+only after the user chooses close. Closing a package with an integration branch merges the branch
+into the project's base first.
+
+The page has a **package filter**: the chips list the packages that appear on a card, either from
+`links.packageIds` or from the package of a linked ticket.
 
 ## What stays on the task board
 
 Code tasks, their orchestrators and their deliveries are unchanged. Code reviews, including the
 fresh-agent review of a critical change, are tasks with an agent and stay on the task board. The
-PM's Needs you list still holds only delivery reasons; the cards waiting for the user are counted on
-the Decisões tab.
+PM's Needs you list still holds only delivery reasons, now grouped by package; the cards waiting for
+the user are counted on the Decisões tab.

@@ -1313,6 +1313,61 @@ it("starts the task worktree from the policy's base branch, so the merge into it
   }
 });
 
+// CUSTOM(packages): a package's branch takes the ticket's merge; the finish records where it went.
+it("merges a package ticket into the package's branch and records the target", async () => {
+  const packageGit = {
+    ensureBranch: vi.fn(async () => "created" as const),
+    refCommit: vi.fn(async () => "package-commit"),
+    addWorktree: vi.fn(async () => {}),
+    removeWorktree: vi.fn(async () => {}),
+    mergeIntoBranch: vi.fn(async () => {}),
+  };
+  const s = await scenario({
+    policy: { action: "merge" },
+    currentBranch: "master",
+    assistant: { packageGit, changedPaths: async () => [] },
+  });
+  try {
+    const created = await s.board.mutate({
+      action: "package-create",
+      name: "Auth",
+      projectId: "p",
+      taskIds: [s.taskId],
+    });
+    const packageId = created.packages[0]!.id;
+    await s.board.mutate({
+      action: "package-update",
+      packageId,
+      branch: "pkg/auth",
+    });
+    s.reply(report());
+    await s.finishTurn();
+    await s.settled("delivered");
+    expect(packageGit.ensureBranch).toHaveBeenCalledWith(
+      "/fixture",
+      "pkg/auth",
+      "master",
+    );
+    expect(packageGit.mergeIntoBranch).toHaveBeenCalledWith(
+      "/fixture",
+      expect.stringContaining("pkg_"),
+      "pkg/auth",
+      "master",
+    );
+    // The package merge never touches the project's checkout.
+    expect(s.host.mergeToBase).not.toHaveBeenCalledWith(
+      "/fixture",
+      expect.objectContaining({ baseRef: "pkg/auth" }),
+    );
+    expect(s.board.snapshot().finishes[s.taskId]).toMatchObject({
+      mergeTarget: "pkg/auth",
+      mergeCommit: "package-commit",
+    });
+  } finally {
+    s.board.dispose();
+  }
+});
+
 // CUSTOM(worktree-base)
 it.each([
   ["the checkout's current branch", "master", "master"],

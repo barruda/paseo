@@ -46,6 +46,7 @@ import {
   formatElapsed,
   formatPercent,
   formatTime,
+  groupNeedsYou,
   isWide,
 } from "./dashboard-format";
 import { formatClock, progressBadge } from "../checkpoint-format"; // CUSTOM(task-checkpoints)
@@ -292,13 +293,25 @@ function NeedsYouSection({
           {s.needsYouEmpty}
         </Text>
       ) : (
-        items.map((item) => (
-          <NeedsYouCard
-            key={item.taskId}
-            props={props}
-            accents={accents}
-            item={item}
-          />
+        // CUSTOM(packages): one section per package, then the tickets outside one.
+        groupNeedsYou(items).map((group) => (
+          <View key={group.packageId ?? "none"} style={styles.needsGroup}>
+            {group.packageName ? (
+              <Text
+                style={[styles.groupTitle, { color: theme.colors.foreground }]}
+              >
+                {group.packageName}
+              </Text>
+            ) : null}
+            {group.items.map((item) => (
+              <NeedsYouCard
+                key={item.taskId}
+                props={props}
+                accents={accents}
+                item={item}
+              />
+            ))}
+          </View>
         ))
       )}
     </Section>
@@ -950,6 +963,8 @@ const styles = StyleSheet.create({
   columns: { flexDirection: "row", gap: 20, alignItems: "flex-start" },
   column: { flex: 1, minWidth: 0, gap: 20 },
   section: { gap: 10 },
+  needsGroup: { gap: 10 },
+  groupTitle: { fontSize: 13, fontWeight: "600" },
   sectionTitle: { fontSize: 17, fontWeight: "600" },
   card: {
     borderWidth: 1,

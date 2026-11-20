@@ -181,6 +181,7 @@ it("the session_open hook attaches the tools only to the chat agent's own sessio
       "board_package_assign",
       "board_package_remove",
       "board_package_close",
+      "board_package_propose_close",
       "board_run_package_gate",
       "board_package_history",
       "board_set_test_tier",
@@ -941,6 +942,55 @@ it("creates, decides and reports a PM card from the chat tools", async () => {
     const overview = await c.run("board_overview");
     expect(overview.text).toContain("Project Manager board");
     expect(overview.text).toContain("decided 1");
+  } finally {
+    c.board.dispose();
+  }
+});
+
+// CUSTOM(packages): the PM suggests a grouping and proposes closing a package, without acting.
+it("creates a select-tasks suggestion and a close proposal for a package", async () => {
+  const c = await chat();
+  try {
+    const a = await create(c);
+    const b = await create(c);
+    const created = await c.run("board_package_create", {
+      name: "Auth",
+      projectId: "p",
+      taskIds: [a.taskId, b.taskId],
+    });
+    expect(created.isError).toBeUndefined();
+    const packageId = c.board.snapshot().packages[0]!.id;
+
+    const suggestion = await c.run("pm_card_create", {
+      kind: "proposal",
+      title: "Group #1 and #2?",
+      action: "select-tasks",
+      taskIds: [a.taskId, b.taskId],
+    });
+    expect(suggestion.isError).toBeUndefined();
+    expect(c.board.pmCards()[0]).toMatchObject({
+      kind: "proposal",
+      action: "select-tasks",
+      links: { taskIds: [a.taskId, b.taskId] },
+    });
+
+    const close = await c.run("board_package_propose_close", { packageId });
+    expect(close.isError).toBeUndefined();
+    const closeCard = c.board
+      .pmCards()
+      .find((card) => card.title.startsWith("Close package"))!;
+    expect(closeCard).toMatchObject({
+      kind: "proposal",
+      status: "waiting",
+      links: { packageIds: [packageId] },
+    });
+    expect(closeCard.options.map((option) => option.id)).toEqual([
+      "close",
+      "keep",
+    ]);
+    // One open close proposal per package.
+    const again = await c.run("board_package_propose_close", { packageId });
+    expect(again.text).toContain("already has an open close proposal");
   } finally {
     c.board.dispose();
   }

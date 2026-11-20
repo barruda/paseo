@@ -123,6 +123,7 @@ import {
   EMPTY_SELECTION,
   clearSelection,
   longPressCard,
+  marqueeSelection,
   pressCard,
   selectionModifiers,
   type SelectionModifiers,
@@ -537,6 +538,20 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const selectOnLongPress = (card: Card) => {
     setSelection(longPressCard(selection, card.id));
   };
+  // CUSTOM(packages): a PM suggestion's "Select these tickets" opens the board with them
+  // selected and the package menu ready; it creates nothing.
+  const requestedSelect = (params as { select?: unknown } | undefined)?.select;
+  const requestedPackageMenu = (params as { packageMenu?: unknown } | undefined)
+    ?.packageMenu;
+  useEffect(() => {
+    if (typeof requestedSelect !== "string" || !requestedSelect) return;
+    const known = new Set(board.cards.map((card) => card.id));
+    const ids = requestedSelect.split(",").filter((id) => known.has(id));
+    if (!ids.length) return;
+    setSelection({ ids: new Set(ids), anchor: ids[ids.length - 1]! });
+    if (requestedPackageMenu === "1") setPackageMenu({ taskIds: ids });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey, requestedSelect, requestedPackageMenu]);
   const rememberPackageUndo = (
     taskIds: readonly string[],
     packageId: string,
@@ -588,6 +603,22 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     if (pkg) rememberPackageUndo(taskIds, packageId, false, pkg.name);
     setSelection(clearSelection());
     setPackageMenu(null);
+  };
+  // CUSTOM(packages): a card dropped on a package rail joins it; on "No package", it leaves.
+  const dropCardOnPackage = async (
+    packageId: string | null,
+    cardId: string,
+  ) => {
+    if (!packageId) {
+      await removeFromPackage([cardId]);
+      return;
+    }
+    const pkg = board.packages.find((item) => item.id === packageId);
+    const next = await mutate(
+      { action: "package-assign", packageId, taskIds: [cardId] },
+      `package-assign:${cardId}`,
+    );
+    if (next && pkg) rememberPackageUndo([cardId], packageId, false, pkg.name);
   };
   const removeFromPackage = async (taskIds: readonly string[]) => {
     const next = await mutate(
@@ -642,6 +673,19 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       toast.error(t.packages.askPmToGroup);
     }
   };
+  const proposePackageClose = async (pkg: PackageView) => {
+    setPackageDetailId(null);
+    try {
+      await callAsk({
+        text: `Propose closing package "${pkg.name}" (${pkg.id}) on your board with a "Close the package?" card. Do not close it without my ok.`,
+        source: "package-detail",
+        waitMs: 0,
+      });
+      toast.show(t.packages.proposedClose, { variant: "success" });
+    } catch {
+      toast.error(t.packages.proposedClose);
+    }
+  };
   const runPackageGate = async (packageId: string) => {
     const next = await mutate(
       { action: "package-run-gate", packageId },
@@ -658,7 +702,12 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   };
   const updatePackage = async (
     packageId: string,
-    patch: { name?: string; night?: boolean; onClose?: boolean },
+    patch: {
+      name?: string;
+      night?: boolean;
+      onClose?: boolean;
+      branch?: string | null;
+    },
   ) => {
     const pkg = board.packages.find((item) => item.id === packageId);
     if (!pkg) return;
@@ -667,6 +716,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
         action: "package-update",
         packageId,
         name: patch.name,
+        branch: patch.branch,
         trigger:
           patch.night === undefined && patch.onClose === undefined
             ? undefined
@@ -1793,6 +1843,11 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                 }));
               }}
               renderCard={renderTaskCard}
+              onMarqueeSelect={(ids, additive) =>
+                setSelection((current) =>
+                  marqueeSelection(current, ids, additive),
+                )
+              }
             />
           ) : (
             <PackagesView
@@ -1803,8 +1858,12 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               t={t}
               theme={props.theme}
               onOpenPackage={(pkg) => setPackageDetailId(pkg.id)}
-              onSelectCard={(card) =>
+              onOpenCard={(card) => setPanelTaskId(card.id)}
+              onLongPressCard={(card) =>
                 setSelection(longPressCard(selection, card.id))
+              }
+              onAssignCard={(packageId, cardId) =>
+                void dropCardOnPackage(packageId, cardId)
               }
               renderCard={(card) => renderTaskCard(card, null)}
             />
@@ -1889,6 +1948,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             setPackageDetailId(null);
           }}
           onClosePackage={() => void closePackage(packageDetail.id)}
+          onProposeClose={() => void proposePackageClose(packageDetail)}
         />
       )}
       {packageAdjust && (
@@ -1902,6 +1962,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               name: patch.name,
               night: patch.night,
               onClose: patch.onClose,
+              branch: patch.branch,
             })
           }
         />
@@ -6125,7 +6186,12 @@ export function mutationErrorText(
     ...t.bootErrors,
     [CANCEL_BINDING_BUSY_ERROR_CODE]: t.cancelBindingBusy,
   };
-  return Object.hasOwn(messages, error.message)
-    ? messages[error.message]
-    : t.loadError;
+  if (Object.hasOwn(messages, error.message)) return messages[error.message]!;
+  // A code that carries detail after a colon (`package-branch-merge-failed: <git error>`).
+  for (const [code, text] of Object.entries(messages)) {
+    const prefix = `${code}: `;
+    if (error.message.startsWith(prefix))
+      return `${text} ${error.message.slice(prefix.length)}`;
+  }
+  return t.loadError;
 }

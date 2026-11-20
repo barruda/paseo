@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   effectiveTestTier,
   findFirstFailing,
+  gateRunForMerge,
   matchesRiskPath,
   missingGateEnv,
   nextPackageColor,
@@ -197,6 +198,7 @@ describe("progress and views", () => {
       committedAt: null,
       mergedAt: "2026-01-02T00:00:00Z",
       mergeCommit: "abc",
+      mergeTarget: null,
       prTitle: null,
       prBody: null,
       error: null,
@@ -301,5 +303,29 @@ describe("package defaults", () => {
         policy({ baseBranch: "main" }),
       ),
     ).toBe("pkg/auth");
+  });
+
+  // CUSTOM(packages): the package detail shows the gate result that covered each merge.
+  it("finds the first gate run after a merge, and none before the first run", () => {
+    const runs = [
+      packageRunSchema.parse({
+        id: "r2",
+        packageId: "pkg-1",
+        trigger: "manual",
+        status: "passed",
+        startedAt: "2026-01-03T00:00:00Z",
+      }),
+      packageRunSchema.parse({
+        id: "r1",
+        packageId: "pkg-1",
+        trigger: "close",
+        status: "failed",
+        startedAt: "2026-01-02T00:00:00Z",
+      }),
+    ];
+    expect(gateRunForMerge("2026-01-01T00:00:00Z", runs)?.id).toBe("r1");
+    expect(gateRunForMerge("2026-01-02T12:00:00Z", runs)?.id).toBe("r2");
+    expect(gateRunForMerge("2026-01-04T00:00:00Z", runs)).toBeNull();
+    expect(gateRunForMerge(null, runs)).toBeNull();
   });
 });

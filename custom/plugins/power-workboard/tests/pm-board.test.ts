@@ -13,6 +13,8 @@ import {
   buildPmOverview,
   newPmCard,
   pmCardLinkTargets,
+  pmCardPackageIds,
+  pmPackagesOnBoard,
   pmWaitingCount,
   PM_CARD_LIMIT,
 } from "../shared/pm-board";
@@ -302,6 +304,49 @@ describe("PM card links", () => {
         label: "cafebabe",
       },
     ]);
+  });
+});
+
+// CUSTOM(packages): the PM's grouping suggestion and the board's package filter.
+describe("PM package suggestions and filter", () => {
+  it("keeps a select-tasks action on a proposal, and leaves other cards without one", () => {
+    const suggestion = newPmCard("pm-1", now, {
+      kind: "proposal",
+      title: "Group #1, #2 and #3?",
+      action: "select-tasks",
+      links: { taskIds: ["a", "b"], reportIds: [], packageIds: [] },
+    });
+    expect(suggestion.action).toBe("select-tasks");
+    expect(
+      newPmCard("pm-2", now, { kind: "notice", title: "N" }).action,
+    ).toBeNull();
+  });
+
+  it("reads a card's packages from its links and from its tickets", () => {
+    const card = newPmCard("pm-1", now, {
+      kind: "proposal",
+      title: "Group?",
+      links: {
+        taskIds: ["a", "b", "c"],
+        reportIds: [],
+        packageIds: ["pkg-1"],
+      },
+    });
+    expect(pmCardPackageIds(card, { b: "pkg-2" }).sort()).toEqual([
+      "pkg-1",
+      "pkg-2",
+    ]);
+    expect(
+      pmPackagesOnBoard(
+        [card],
+        [
+          { id: "pkg-1", name: "Auth", color: "blue" },
+          { id: "pkg-2", name: "UI", color: "green" },
+          { id: "pkg-3", name: "Unused", color: "gray" },
+        ],
+        { b: "pkg-2" },
+      ).map((pkg) => pkg.id),
+    ).toEqual(["pkg-1", "pkg-2"]);
   });
 });
 

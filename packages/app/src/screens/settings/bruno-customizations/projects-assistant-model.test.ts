@@ -11,6 +11,10 @@ import {
   clampAutoFixes,
   patchChatSettings,
   patchProjectPolicy,
+  patchProjectTests,
+  formatEnv,
+  parseEnv,
+  parseList,
   projectReview,
   resetProjectPolicy,
   setProjectAction,
@@ -145,5 +149,62 @@ describe("projects assistant settings model", () => {
     expect(clampAutoFixes(7)).toBe(3);
     expect(clampAutoFixes(-1)).toBe(0);
     expect(clampAutoFixes(Number.NaN)).toBe(0);
+  });
+});
+
+// CUSTOM(packages): the gate fields the PM sets must survive a save from Settings.
+describe("project package gate", () => {
+  it("keeps the gate a project already had and fills its defaults", () => {
+    const parsed = assistantSettingsResponseSchema.parse({
+      settings: {
+        projects: {
+          p: {
+            action: "review",
+            tests: {
+              gateCommand: "npm run gate",
+              gateRequiredEnv: ["DB_URL"],
+              gateEnv: { STRICT: "1" },
+              gateRiskPaths: ["**/migrations/**"],
+              gateRunIn: "checkout",
+            },
+          },
+        },
+      },
+      projects: [{ id: "p", name: "P", directory: "/p", isGit: true }],
+    });
+    expect(parsed.settings.projects.p!.tests).toEqual({
+      gateCommand: "npm run gate",
+      gateRequiredEnv: ["DB_URL"],
+      gateEnv: { STRICT: "1" },
+      gateSetupCommand: "",
+      gateRiskPaths: ["**/migrations/**"],
+      gateRunIn: "checkout",
+    });
+    // A policy stored before the gate existed gets the defaults.
+    expect(projectPolicySchema.parse({ action: "merge" }).tests.gateRunIn).toBe("worktree");
+  });
+
+  it("edits only the tests block and leaves the rest of the rule alone", () => {
+    const base = setProjectAction(assistantSettingsSchema.parse({}), "p", "merge");
+    const edited = patchProjectTests(base, "p", {
+      gateCommand: "npm test",
+      gateRunIn: "checkout",
+    });
+    expect(edited.projects.p).toMatchObject({
+      action: "merge",
+      verifyCommand: "",
+      tests: { gateCommand: "npm test", gateRunIn: "checkout" },
+    });
+    expect(patchProjectTests(assistantSettingsSchema.parse({}), "p", {})).toEqual(
+      assistantSettingsSchema.parse({}),
+    );
+  });
+
+  it("parses the gate's list and environment fields", () => {
+    expect(parseList("DB_URL, REDIS_URL\nDB_URL")).toEqual(["DB_URL", "REDIS_URL"]);
+    expect(parseList("  ")).toEqual([]);
+    expect(parseEnv("A=1\nB = two, C=")).toEqual({ A: "1", B: "two", C: "" });
+    expect(parseEnv("broken\n=1")).toEqual({});
+    expect(formatEnv({ A: "1", B: "two" })).toBe("A=1\nB=two");
   });
 });

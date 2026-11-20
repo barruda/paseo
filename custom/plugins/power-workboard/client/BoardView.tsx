@@ -47,9 +47,11 @@ import {
   duringDrag,
   keyboardProps,
   loadColumnWidths,
+  marqueeGesture,
   noSelectText,
   saveColumnWidths,
 } from "./web";
+import { marqueeIds } from "./selection"; // CUSTOM(packages)
 import {
   loadCollapsedColumns,
   saveCollapsedColumns,
@@ -110,6 +112,8 @@ type Props = {
   onCreateTask?(): void;
   /** CUSTOM(card-open-agent): the card puts `dragHandle` in its action row; null off the board. */
   renderCard(card: Card, dragHandle: ReactNode | null): ReactNode;
+  /** CUSTOM(packages): the cards a marquee drag on a column selected. */
+  onMarqueeSelect?(ids: readonly string[], additive: boolean): void;
   groupColor(group: Group): string;
 };
 
@@ -137,13 +141,22 @@ export function BoardView(props: Props) {
   const lists = useRef<
     Record<
       string,
-      { top: number; height: number; scrollY: number; contentHeight: number }
+      {
+        left: number;
+        top: number;
+        width: number;
+        height: number;
+        scrollY: number;
+        contentHeight: number;
+      }
     >
   >({});
   const listScrollers = useRef<Record<string, NativeScrollView | null>>({});
   const listState = (stage: Stage) =>
     (lists.current[stage] ??= {
+      left: 0,
       top: 0,
+      width: 0,
       height: 0,
       scrollY: 0,
       contentHeight: 0,
@@ -152,6 +165,14 @@ export function BoardView(props: Props) {
     stage: Stage;
     anchor: string;
     side: "before" | "after";
+  } | null>(null);
+  // CUSTOM(packages): the marquee rectangle, in the column content's coordinates.
+  const [marquee, setMarquee] = useState<{
+    stage: Stage;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
   } | null>(null);
   const completeOrder = (stage: Stage) =>
     cardsForStage(
@@ -537,6 +558,87 @@ export function BoardView(props: Props) {
     if (left !== undefined)
       scroller.current?.scrollTo({ x: Math.max(0, left - 12), animated: true });
   };
+  // CUSTOM(packages): a drag on a column's empty area selects the cards it touches. Web only;
+  // the touch path is the long-press selection.
+  const beginMarquee = (
+    stage: Stage,
+    pageX: number,
+    pageY: number,
+    additive: boolean,
+  ) => {
+    if (!latest.current.onMarqueeSelect) return;
+    const list = listState(stage);
+    const toContent = (x: number, y: number) => ({
+      x: x - list.left,
+      y: y - list.top + list.scrollY,
+    });
+    const start = toContent(pageX, pageY);
+    const apply = (x: number, y: number) => {
+      const current = toContent(x, y);
+      const left = Math.min(start.x, current.x);
+      const top = Math.min(start.y, current.y);
+      const width = Math.abs(current.x - start.x);
+      const height = Math.abs(current.y - start.y);
+      setMarquee({ stage, left, top, width, height });
+      const bounds = cardsForStage(
+        latest.current.cards,
+        stage,
+        latest.current.cardOrderByStage,
+      )
+        .map((card) => ({
+          id: card.id,
+          ...(cardBounds.current[card.id] ?? { top: -1, height: 0 }),
+        }))
+        .filter((card) => card.top >= 0);
+      latest.current.onMarqueeSelect?.(
+        marqueeIds(
+          { left, top, right: left + width, bottom: top + height },
+          bounds,
+          list.width,
+        ),
+        additive,
+      );
+    };
+    apply(pageX, pageY);
+    marqueeGesture(
+      (x, y) => apply(x, y),
+      () => setMarquee(null),
+    );
+  };
+  const marqueeStart = (stage: Stage) => {
+    if (compact || disabled) return {};
+    return {
+      onMouseDown: (event: {
+        button?: number;
+        ctrlKey?: boolean;
+        metaKey?: boolean;
+        preventDefault(): void;
+        nativeEvent?: {
+          pageX?: number;
+          pageY?: number;
+          ctrlKey?: boolean;
+          metaKey?: boolean;
+          target?: { closest?(selector: string): unknown } | null;
+        };
+        target?: { closest?(selector: string): unknown } | null;
+      }) => {
+        if (event.button !== undefined && event.button !== 0) return;
+        const target = event.nativeEvent?.target ?? event.target;
+        if (target?.closest?.('[data-testid^="workboard-card-"]')) return;
+        const pageX = event.nativeEvent?.pageX;
+        const pageY = event.nativeEvent?.pageY;
+        if (pageX === undefined || pageY === undefined) return;
+        event.preventDefault();
+        const additive = !!(
+          event.ctrlKey ||
+          event.metaKey ||
+          event.nativeEvent?.ctrlKey ||
+          event.nativeEvent?.metaKey
+        );
+        beginMarquee(stage, pageX, pageY, additive);
+      },
+    };
+  };
   const selectedMenu = groups.find((group) => group.id === menu);
   const selectedGroup = groups.find((group) => group.id === stage);
   const selectCompactGroup = (current: Stage, key: string) => {
@@ -779,6 +881,8 @@ export function BoardView(props: Props) {
                   onListLayout={(bounds) => {
                     Object.assign(listState(group.id), bounds);
                   }}
+                  marquee={marquee?.stage === group.id ? marquee : null}
+                  marqueeStart={marqueeStart(group.id)}
                   onListScroll={(scrollY) => {
                     listState(group.id).scrollY = scrollY;
                   }}
@@ -1478,6 +1582,8 @@ function BoardColumn({
   onListLayout,
   onListScroll,
   onListContentHeight,
+  marquee,
+  marqueeStart,
   ...gesture
 }: Omit<HandleProps, "measure" | "onBegin"> & {
   group: Group;
@@ -1502,9 +1608,16 @@ function BoardColumn({
   onReorderKey(direction: number): void;
   onWidthKey(direction: number): void;
   onListRef(value: NativeScrollView | null): void;
-  onListLayout(bounds: { top: number; height: number }): void;
+  onListLayout(bounds: {
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  }): void;
   onListScroll(scrollY: number): void;
   onListContentHeight(height: number): void;
+  marquee?: { left: number; top: number; width: number; height: number } | null;
+  marqueeStart?: Record<string, unknown>;
 }) {
   const measured = useRef<View>(null);
   const list = useRef<NativeScrollView | null>(null);
@@ -1661,10 +1774,11 @@ function BoardColumn({
           onLayout={() =>
             list.current
               ?.getNativeScrollRef()
-              ?.measureInWindow((_left, top, _width, height) =>
-                onListLayout({ top, height }),
+              ?.measureInWindow((left, top, width, height) =>
+                onListLayout({ left, top, width, height }),
               )
           }
+          {...(marqueeStart ?? {})}
           onScroll={(event) => onListScroll(event.nativeEvent.contentOffset.y)}
           scrollEventThrottle={16}
           onContentSizeChange={(_width, height) => onListContentHeight(height)}
@@ -1672,6 +1786,22 @@ function BoardColumn({
           contentContainerStyle={styles.cards}
         >
           {children}
+          {marquee ? (
+            <View
+              pointerEvents="none"
+              style={{
+                position: "absolute",
+                left: marquee.left,
+                top: marquee.top,
+                width: marquee.width,
+                height: marquee.height,
+                borderWidth: 1,
+                borderColor: theme.colors.accent,
+                backgroundColor: theme.colors.accent,
+                opacity: 0.14,
+              }}
+            />
+          ) : null}
         </ScrollView>
       )}
       {!collapsed && (

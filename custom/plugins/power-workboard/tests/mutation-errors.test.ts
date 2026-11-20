@@ -80,5 +80,15 @@ it.each(["zh", "en"] as const)(
     );
     expect(mutationErrorText(null, t)).toBe(t.loadError);
     expect(mutationErrorText(new Error("constructor"), t)).toBe(t.loadError);
+    // CUSTOM(packages): the git detail after the code is kept.
+    expect(
+      mutationErrorText(
+        new Error("package-branch-merge-failed: CONFLICT (content)"),
+        t,
+      ),
+    ).toContain("CONFLICT (content)");
+    expect(
+      mutationErrorText(new Error("package-branch-merge-failed: x"), t),
+    ).not.toBe(t.loadError);
   },
 );

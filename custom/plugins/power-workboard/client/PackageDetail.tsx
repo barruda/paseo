@@ -2,7 +2,11 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { Icon, Modal } from "@getpaseo/plugin/client/react-native";
-import { packageTaskOrder, effectiveTestTier } from "../shared/packages";
+import {
+  packageTaskOrder,
+  effectiveTestTier,
+  gateRunForMerge,
+} from "../shared/packages";
 import type { Board, PackageRun, PackageView } from "../shared/model";
 import { groupColorValue } from "./colors";
 import type { strings } from "./strings";
@@ -17,6 +21,7 @@ export function PackageDetail({
   onRunGate,
   onAdjust,
   onClosePackage,
+  onProposeClose,
 }: {
   pkg: PackageView;
   board: Board;
@@ -27,6 +32,7 @@ export function PackageDetail({
   onRunGate(): void;
   onAdjust(): void;
   onClosePackage(): void;
+  onProposeClose(): void;
 }) {
   const tasks = packageTaskOrder(board.cards, board.finishes, pkg.id);
   return (
@@ -74,6 +80,14 @@ export function PackageDetail({
                 onPress={onClosePackage}
               />
             )}
+            {pkg.status === "open" && (
+              <Action
+                icon="Send"
+                label={t.packages.proposeClose}
+                theme={theme}
+                onPress={onProposeClose}
+              />
+            )}
           </View>
           <View style={[styles.config, { borderColor: theme.colors.border }]}>
             <Text
@@ -112,6 +126,8 @@ export function PackageDetail({
           {tasks.map((task) => {
             const finish = board.finishes[task.id];
             const tier = effectiveTestTier(task);
+            // CUSTOM(packages): the gate run that covered this merge, if one ran after it.
+            const gateRun = gateRunForMerge(finish?.mergedAt ?? null, runs);
             return (
               <View
                 key={task.id}
@@ -149,6 +165,27 @@ export function PackageDetail({
                 >
                   {t.packages.tier[tier]}
                 </Text>
+                {finish?.mergedAt ? (
+                  <Text
+                    style={[
+                      styles.meta,
+                      { color: theme.colors.foregroundMuted },
+                    ]}
+                  >
+                    {t.packages.gateAfterMerge}:{" "}
+                    {gateRun ? gateRun.status : t.packages.gatePending}
+                  </Text>
+                ) : null}
+                {finish?.mergeTarget ? (
+                  <Text
+                    style={[
+                      styles.meta,
+                      { color: theme.colors.foregroundMuted },
+                    ]}
+                  >
+                    {t.packages.mergeTarget}: {finish.mergeTarget}
+                  </Text>
+                ) : null}
               </View>
             );
           })}

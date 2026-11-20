@@ -72,6 +72,7 @@ const finish = (commit: string, at: string): Finish => ({
   committedAt: null,
   mergedAt: at,
   mergeCommit: commit,
+  mergeTarget: null,
   prTitle: null,
   prBody: null,
   error: null,

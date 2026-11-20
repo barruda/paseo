@@ -20,6 +20,8 @@ import {
 import {
   PM_CARD_STATUSES,
   pmCardLinkTargets,
+  pmCardPackageIds,
+  pmPackagesOnBoard,
   type PmCard,
   type PmCardKind,
   type PmCardStatus,
@@ -27,6 +29,7 @@ import {
 import { usePaseoLocale } from "../../paseo-language";
 import {
   consumePmCardRequest,
+  openBoardSelection,
   openTaskPanel,
   showReport,
   usePmCardRequest,
@@ -58,6 +61,8 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
   const [pending, setPending] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [warning, setWarning] = useState<string | null>(null);
+  // CUSTOM(packages): one package filter for the whole page.
+  const [packageFilter, setPackageFilter] = useState<string | null>(null);
 
   const cards = useQuery({
     queryKey: base,
@@ -99,15 +104,37 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
     consumePmCardRequest(request.seq);
   }, [request]);
 
+  // CUSTOM(packages): the packages that appear on a card, and the card's own packages.
+  const taskPackages = cards.data?.taskPackages;
+  const packages = useMemo(
+    () =>
+      pmPackagesOnBoard(
+        cards.data?.cards ?? [],
+        cards.data?.packages ?? [],
+        taskPackages ?? {},
+      ),
+    [cards.data, taskPackages],
+  );
+  useEffect(() => {
+    if (packageFilter && !packages.some((pkg) => pkg.id === packageFilter))
+      setPackageFilter(null);
+  }, [packages, packageFilter]);
   const columns = useMemo(
     () =>
       statusOrder.map((status) => ({
         status,
         cards: (cards.data?.cards ?? [])
-          .filter((card) => card.status === status)
+          .filter(
+            (card) =>
+              card.status === status &&
+              (!packageFilter ||
+                pmCardPackageIds(card, taskPackages ?? {}).includes(
+                  packageFilter,
+                )),
+          )
           .sort(byUpdate),
       })),
-    [cards.data],
+    [cards.data, packageFilter, taskPackages],
   );
 
   const answer = (
@@ -126,6 +153,19 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
   };
   const openTask = (taskId: string) => {
     openTaskPanel(taskId);
+  };
+  // CUSTOM(packages): selecting a PM grouping suggestion marks the tickets and opens the
+  // package menu on the task board; it does not create the package.
+  const selectTasks = (card: PmCard) => {
+    setPending(card.id);
+    decide.mutate(
+      { cardId: card.id, answer: t.selectTickets },
+      {
+        onSuccess: () => {
+          openBoardSelection(card.links.taskIds);
+        },
+      },
+    );
   };
   const taskNumbers = cards.data?.taskNumbers ?? {};
 
@@ -150,6 +190,48 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
         <Text style={[styles.notice, { color: c.statusDanger }]}>
           {error instanceof Error ? error.message : String(error)}
         </Text>
+      ) : null}
+      {packages.length > 0 ? (
+        <View style={styles.filterRow}>
+          {[
+            {
+              id: null as string | null,
+              name: t.filterAll,
+              color: c.foregroundMuted,
+            },
+            ...packages,
+          ].map((pkg) => (
+            <Pressable
+              key={pkg.id ?? "all"}
+              accessibilityRole="button"
+              accessibilityState={{ selected: packageFilter === pkg.id }}
+              onPress={() => setPackageFilter(pkg.id)}
+              style={[
+                styles.filterChip,
+                {
+                  borderColor: packageFilter === pkg.id ? c.accent : c.border,
+                  backgroundColor:
+                    packageFilter === pkg.id ? c.surface2 : "transparent",
+                },
+              ]}
+            >
+              {pkg.id ? (
+                <View
+                  style={[styles.filterDot, { backgroundColor: pkg.color }]}
+                />
+              ) : null}
+              <Text
+                style={{
+                  color:
+                    packageFilter === pkg.id ? c.foreground : c.foregroundMuted,
+                  fontSize: 12,
+                }}
+              >
+                {pkg.name}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
       ) : null}
       <ScrollView contentContainerStyle={styles.scroll}>
         <View
@@ -201,6 +283,7 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
                       onReopen={reopenCard}
                       onOpenTask={openTask}
                       onOpenReport={openReport}
+                      onSelectTasks={selectTasks}
                       taskNumbers={taskNumbers}
                     />
                   ))
@@ -250,6 +333,7 @@ function CardView({
   onReopen,
   onOpenTask,
   onOpenReport,
+  onSelectTasks,
   taskNumbers,
 }: {
   card: PmCard;
@@ -267,6 +351,7 @@ function CardView({
   onReopen(card: PmCard): void;
   onOpenTask(taskId: string): void;
   onOpenReport(taskId: string): void;
+  onSelectTasks(card: PmCard): void;
   taskNumbers: Readonly<Record<string, number>>;
 }) {
   const c = theme.colors;
@@ -299,7 +384,44 @@ function CardView({
           {card.question}
         </Text>
       ) : null}
-      {waiting && card.options.length > 0 ? (
+      {waiting && card.action === "select-tasks" ? (
+        <View style={styles.options}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={() => onSelectTasks(card)}
+            style={({ pressed }) => [
+              styles.option,
+              {
+                borderColor: c.accent,
+                backgroundColor: c.surface1,
+                opacity: busy ? 0.6 : pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.optionLabel, { color: c.accent }]}>
+              {t.selectTickets}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            disabled={busy}
+            onPress={() => onAnswer(card, { answer: t.ignoreSuggestion })}
+            style={({ pressed }) => [
+              styles.option,
+              {
+                borderColor: c.border,
+                opacity: busy ? 0.6 : pressed ? 0.8 : 1,
+              },
+            ]}
+          >
+            <Text style={[styles.optionLabel, { color: c.foreground }]}>
+              {t.ignoreSuggestion}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
+      {waiting && card.action !== "select-tasks" && card.options.length > 0 ? (
         <View style={styles.options}>
           {card.options.map((option) => (
             <Pressable
@@ -339,7 +461,7 @@ function CardView({
           ))}
         </View>
       ) : null}
-      {waiting ? (
+      {waiting && card.action !== "select-tasks" ? (
         <View style={styles.answerRow}>
           <TextInput
             accessibilityLabel={t.send}
@@ -435,6 +557,23 @@ const styles = StyleSheet.create({
   subtitle: { fontSize: 12, lineHeight: 17, maxWidth: 760 },
   notice: { paddingHorizontal: 16, paddingTop: 8, fontSize: 12 },
   scroll: { padding: 16 },
+  filterRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    paddingHorizontal: 16,
+    paddingTop: 10,
+  },
+  filterChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  filterDot: { width: 8, height: 8, borderRadius: 4 },
   columns: { gap: 12 },
   columnsWide: { flexDirection: "row", alignItems: "flex-start" },
   columnsCompact: { flexDirection: "column" },

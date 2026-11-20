@@ -316,7 +316,12 @@ export default function contribute(server: PluginServerContext) {
   // PM chat as a message, so it can act on what the user decided.
   server.handle(assistantPmCardsRpc, () => {
     const board = ready();
-    return { cards: board.pmCards(), taskNumbers: board.pmTaskNumbers() };
+    return {
+      cards: board.pmCards(),
+      taskNumbers: board.pmTaskNumbers(),
+      packages: board.pmPackages(), // CUSTOM(packages)
+      taskPackages: board.pmTaskPackages(),
+    };
   });
   const pmMessage = async (text: string): Promise<string | null> => {
     try {

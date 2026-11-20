@@ -1,6 +1,6 @@
 // CUSTOM(packages): the board's package mutations, the test-tier override and the gate failure
 // card on the Project Manager board.
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { fixture } from "./fixtures";
 import { Workboard } from "../server/workboard";
 import {
@@ -409,4 +409,172 @@ it("marks a gate interrupted by a restart as an error on load", async () => {
     output: expect.stringContaining("Interrupted by a restart"),
   });
   f.board.dispose();
+});
+
+// CUSTOM(packages): the optional integration branch.
+async function gitPackageBoard() {
+  const f = fixture({ defaultOrchestratorSeeded: true });
+  f.inventory.projects.push({ ...project, isGit: true });
+  vi.mocked(f.host.currentBranch).mockResolvedValue("main");
+  const packageGit = {
+    ensureBranch: vi.fn(async () => "created" as const),
+    refCommit: vi.fn(async () => "package-commit"),
+    addWorktree: vi.fn(async () => {}),
+    removeWorktree: vi.fn(async () => {}),
+    mergeIntoBranch: vi.fn(async () => {}),
+  };
+  const board = new Workboard(f.host, f.store, undefined, undefined, {
+    packageGit,
+    changedPaths: async () => [],
+  });
+  await board.start();
+  const created = await board.mutate({
+    action: "create",
+    title: "A",
+    description: "",
+    projectId: "p",
+  });
+  const taskId = created.cards[0]!.id;
+  const withPackage = await board.mutate({
+    action: "package-create",
+    name: "Auth",
+    projectId: "p",
+    taskIds: [taskId],
+  });
+  return {
+    ...f,
+    board,
+    packageGit,
+    taskId,
+    packageId: withPackage.packages[0]!.id,
+  };
+}
+
+it("creates a package's branch from the base and keeps it while it has no merges", async () => {
+  const f = await gitPackageBoard();
+  try {
+    let board = await f.board.mutate({
+      action: "package-update",
+      packageId: f.packageId,
+      branch: "pkg/auth",
+    });
+    expect(board.packages[0]!.branch).toBe("pkg/auth");
+    expect(f.packageGit.ensureBranch).toHaveBeenCalledWith(
+      "/fixture",
+      "pkg/auth",
+      "main",
+    );
+    board = await f.board.mutate({
+      action: "package-update",
+      packageId: f.packageId,
+      branch: null,
+    });
+    expect(board.packages[0]!.branch).toBeNull();
+  } finally {
+    f.board.dispose();
+  }
+});
+
+it("refuses a branch on a project that is not git, and changing a branch that has merges", async () => {
+  const plain = await setup();
+  const plainPkg = (
+    await plain.board.mutate({
+      action: "package-create",
+      name: "Auth",
+      projectId: "p",
+      taskIds: [plain.tasks[0]!.id],
+    })
+  ).packages[0]!;
+  await expect(
+    plain.board.mutate({
+      action: "package-update",
+      packageId: plainPkg.id,
+      branch: "pkg/auth",
+    }),
+  ).rejects.toThrow("package-branch-needs-git");
+  plain.board.dispose();
+
+  const f = await gitPackageBoard();
+  try {
+    await f.board.mutate({
+      action: "package-update",
+      packageId: f.packageId,
+      branch: "pkg/auth",
+    });
+    await f.store.update((data) => {
+      data.finishes[f.taskId] = {
+        running: null,
+        committedAt: null,
+        mergedAt: "2026-01-02T00:00:00Z",
+        mergeCommit: "abc",
+        mergeTarget: "pkg/auth",
+        prTitle: null,
+        prBody: null,
+        error: null,
+      };
+    });
+    await expect(
+      f.board.mutate({
+        action: "package-update",
+        packageId: f.packageId,
+        branch: null,
+      }),
+    ).rejects.toThrow("package-branch-has-merges");
+  } finally {
+    f.board.dispose();
+  }
+});
+
+it("merges the package branch into the base when the package closes", async () => {
+  const f = await gitPackageBoard();
+  try {
+    await f.board.mutate({
+      action: "package-update",
+      packageId: f.packageId,
+      branch: "pkg/auth",
+    });
+    const board = await f.board.mutate({
+      action: "package-close",
+      packageId: f.packageId,
+      runGate: false,
+    });
+    expect(board.packages[0]!.status).toBe("closed");
+    expect(f.packageGit.addWorktree).toHaveBeenCalledWith(
+      "/fixture",
+      expect.stringContaining(f.packageId),
+      "pkg/auth",
+    );
+    expect(f.host.mergeToBase).toHaveBeenCalledWith(
+      expect.stringContaining(f.packageId),
+      expect.objectContaining({ baseRef: "main" }),
+    );
+    expect(f.packageGit.removeWorktree).toHaveBeenCalled();
+  } finally {
+    f.board.dispose();
+  }
+});
+
+it("keeps the package open when integrating its branch fails", async () => {
+  const f = await gitPackageBoard();
+  try {
+    await f.board.mutate({
+      action: "package-update",
+      packageId: f.packageId,
+      branch: "pkg/auth",
+    });
+    vi.mocked(f.host.mergeToBase).mockRejectedValueOnce(
+      new Error("CONFLICT (content): Merge conflict"),
+    );
+    await expect(
+      f.board.mutate({
+        action: "package-close",
+        packageId: f.packageId,
+        runGate: false,
+      }),
+    ).rejects.toThrow("package-branch-merge-failed");
+    expect(f.board.snapshot().packages[0]!.status).toBe("open");
+    expect(f.packageGit.removeWorktree).toHaveBeenCalled();
+  } finally {
+    f.board.dispose();
+  }
 });

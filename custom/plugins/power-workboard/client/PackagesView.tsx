@@ -1,7 +1,7 @@
 // CUSTOM(packages): the "Packages" board view. One rail per open package, each with the board's
 // usual columns, plus a last rail for tickets without a package. Cards keep the same renderer, so
 // selection, chips and menus work here too.
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
@@ -12,6 +12,7 @@ import {
   type PackageView,
 } from "../shared/model";
 import { groupColorValue } from "./colors";
+import { packageCardPointer, packageRailPointer } from "./web";
 import type { strings } from "./strings";
 
 export function PackagesView({
@@ -22,7 +23,9 @@ export function PackagesView({
   t,
   theme,
   onOpenPackage,
-  onSelectCard,
+  onOpenCard,
+  onLongPressCard,
+  onAssignCard,
   renderCard,
 }: {
   board: Board;
@@ -32,9 +35,14 @@ export function PackagesView({
   t: ReturnType<typeof strings>;
   theme: PluginSurfaceProps["theme"];
   onOpenPackage(pkg: PackageView): void;
-  onSelectCard(card: Card): void;
+  onOpenCard(card: Card): void;
+  onLongPressCard(card: Card): void;
+  /** A card dropped on a rail: a package id, or null for the "No package" rail. */
+  onAssignCard(packageId: string | null, cardId: string): void;
   renderCard(card: Card): ReactNode;
 }) {
+  // CUSTOM(packages): the rail under the pointer while a card is dragged, web and desktop only.
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const open = packages.filter((pkg) => pkg.status === "open");
   const rails: {
     id: string | null;
@@ -82,7 +90,20 @@ export function PackagesView({
         return (
           <View
             key={rail.id ?? "none"}
-            style={[styles.rail, { borderColor: theme.colors.border }]}
+            {...packageRailPointer(
+              (cardId) => onAssignCard(rail.id, cardId),
+              (over) => setDropTarget(over ? (rail.id ?? "none") : null),
+            )}
+            style={[
+              styles.rail,
+              {
+                borderColor:
+                  dropTarget === (rail.id ?? "none")
+                    ? theme.colors.accent
+                    : theme.colors.border,
+                borderWidth: dropTarget === (rail.id ?? "none") ? 2 : 1,
+              },
+            ]}
           >
             <Pressable
               accessibilityRole="button"
@@ -178,8 +199,14 @@ export function PackagesView({
                         <Pressable
                           key={card.id}
                           accessibilityRole="button"
-                          onPress={() => onSelectCard(card)}
+                          accessibilityHint={t.packages.dropToPackage.replace(
+                            "{name}",
+                            rail.name,
+                          )}
+                          onPress={() => onOpenCard(card)}
+                          onLongPress={() => onLongPressCard(card)}
                           style={styles.cardSlot}
+                          {...packageCardPointer(card.id)}
                         >
                           {renderCard(card)}
                         </Pressable>

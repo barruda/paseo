@@ -44,6 +44,10 @@ const en = {
   openReport: "Open report",
   showMore: "Show more",
   showLess: "Show less",
+  selectTickets: "Select these tickets",
+  ignoreSuggestion: "Ignore",
+  filterAll: "All packages",
+  filterLabel: "Package",
   ago: { now: "now", m: "m ago", h: "h ago", d: "d ago" },
 };
 
@@ -90,6 +94,10 @@ const pt: PmBoardStrings = {
   openReport: "Abrir relatório",
   showMore: "Mostrar mais",
   showLess: "Mostrar menos",
+  selectTickets: "Selecionar estes tickets",
+  ignoreSuggestion: "Ignorar",
+  filterAll: "Todos os pacotes",
+  filterLabel: "Pacote",
   ago: { now: "agora", m: "min", h: "h", d: "d" },
 };
 

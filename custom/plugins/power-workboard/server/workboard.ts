@@ -134,6 +134,7 @@ import {
   removeGateWorktree,
   runPackageGate,
 } from "./package-gate"; // CUSTOM(packages)
+import { packageGitOps, type PackageGitOps } from "./package-git"; // CUSTOM(packages)
 import { parseReport } from "./assistant/report";
 import {
   ASSISTANT_SEED_PROMPT,
@@ -224,6 +225,8 @@ export interface AssistantOptions {
   /** CUSTOM(packages): the gate runner and the risk scan; tests inject fakes. */
   packageGate?: typeof runPackageGate;
   changedPaths?: typeof changedPaths;
+  /** CUSTOM(packages): the branch primitives; tests inject a fake so no git runs. */
+  packageGit?: PackageGitOps;
   /** CUSTOM(assistant-compact): a quick message to this chat still waits for its answer. */
   chatQueued?: (agentId: string) => boolean;
   /** CUSTOM(restart-resume): the restart script's skip file; tests point it elsewhere. */
@@ -461,6 +464,12 @@ export class Workboard {
     private interval = 60000,
     private assistantOptions: AssistantOptions = {}, // CUSTOM(projects-assistant)
   ) {}
+  // CUSTOM(packages): the branch primitives, injectable in tests.
+  private packageGitOps?: PackageGitOps;
+  private get packageGit(): PackageGitOps {
+    return (this.packageGitOps ??=
+      this.assistantOptions.packageGit ?? packageGitOps());
+  }
   // CUSTOM(agent-profiles)
   private profilesStore?: Profiles;
   private get profiles(): Profiles {
@@ -3853,22 +3862,63 @@ export class Workboard {
             this.inventory.projects.find(
               (item) => item.id === this.projectIdOf(task),
             )?.directory ?? directory;
+          // CUSTOM(packages): a package with its own branch takes the next merges, so the
+          // branch integrates into the base once, when the package closes.
+          const pkg = task.packageId
+            ? this.store.current.packages.find(
+                (item) => item.id === task.packageId,
+              )
+            : null;
+          const branch = pkg?.branch?.trim() || null;
+          const baseRef = branch || policy.baseBranch.trim() || undefined;
+          const project = this.inventory.projects.find(
+            (item) => item.id === this.projectIdOf(task),
+          );
+          if (branch && project?.isGit) {
+            const base =
+              policy.baseBranch.trim() ||
+              (await this.host.currentBranch(projectDirectory)) ||
+              "HEAD";
+            await this.packageGit
+              .ensureBranch(projectDirectory, branch, base)
+              .catch(() => undefined);
+          }
           try {
-            await this.mergeLock.run(
-              this.projectIdOf(task) ?? directory,
-              async () => {
-                await this.host.mergeToBase(directory, {
-                  baseRef: policy.baseBranch.trim() || undefined,
-                  requireCleanTarget: true,
-                  strategy: "merge",
-                });
-                // CUSTOM(packages): read the merge commit inside the lock, before another
-                // merge can move the base.
-                mergeHead = await this.host
-                  .gitHead(projectDirectory)
-                  .catch(() => null);
-              },
-            );
+            if (branch && pkg) {
+              // The ticket worktree's stored base is the project's, so the daemon's merge RPC
+              // refuses a different target. Merge the ticket's branch into the package branch
+              // in a temporary worktree instead, and never touch the user's checkout.
+              const source = await this.host.currentBranch(directory);
+              if (!source) throw new Error("package-branch-source-missing");
+              const worktree = join(defaultGateDirectory(), `${pkg.id}-ticket`);
+              await this.mergeLock.run(pkg.projectId, () =>
+                this.packageGit.mergeIntoBranch(
+                  projectDirectory,
+                  worktree,
+                  branch,
+                  source,
+                ),
+              );
+              mergeHead = await this.packageGit
+                .refCommit(projectDirectory, branch)
+                .catch(() => null);
+            } else {
+              await this.mergeLock.run(
+                this.projectIdOf(task) ?? directory,
+                async () => {
+                  await this.host.mergeToBase(directory, {
+                    baseRef,
+                    requireCleanTarget: true,
+                    strategy: "merge",
+                  });
+                  // CUSTOM(packages): read the merge commit inside the lock, before another
+                  // merge can move the base.
+                  mergeHead = await this.host
+                    .gitHead(projectDirectory)
+                    .catch(() => null);
+                },
+              );
+            }
           } catch (error) {
             failure = message(error);
           }
@@ -3881,7 +3931,11 @@ export class Workboard {
               agentId
             ) {
               await this.serial(() =>
-                this.requestConflictFix(taskId, directory, policy.baseBranch),
+                this.requestConflictFix(
+                  taskId,
+                  directory,
+                  baseRef ?? policy.baseBranch,
+                ),
               );
               return;
             }
@@ -3900,10 +3954,13 @@ export class Workboard {
           }
           await this.serial(() => this.completeMerge(taskId));
           // CUSTOM(packages): the merge commit is the bisect's pivot; the package counts merges
-          // for its every-N trigger.
-          if (mergeHead)
+          // for its every-N trigger, and `mergeTarget` tells the branch it landed in.
+          if (mergeHead || branch)
             await this.serial(() =>
-              this.setFinish(taskId, { mergeCommit: mergeHead }),
+              this.setFinish(taskId, {
+                ...(mergeHead ? { mergeCommit: mergeHead } : {}),
+                mergeTarget: branch,
+              }),
             );
           const mergedTask = this.store.current.tasks.find(
             (item) => item.id === taskId,
@@ -3917,7 +3974,13 @@ export class Workboard {
               }),
             );
           }
-          await this.record(taskId, "merged", "Merged into the base branch");
+          await this.record(
+            taskId,
+            "merged",
+            branch
+              ? `Merged into the package branch ${branch}`
+              : "Merged into the base branch",
+          );
           await this.record(taskId, "done", "Done");
           return;
         }
@@ -4645,21 +4708,103 @@ export class Workboard {
   ): Promise<void> {
     const pkg = this.store.current.packages.find((p) => p.id === packageId);
     if (!pkg) throw new Error("package-not-found");
+    if (input.branch !== undefined)
+      await this.setPackageBranch(pkg, input.branch);
     await this.store.update((data) => {
       const current = data.packages.find((item) => item.id === packageId);
       if (!current) return;
       if (input.name !== undefined) current.name = input.name;
       if (input.color !== undefined) current.color = input.color;
-      if (input.branch !== undefined) current.branch = input.branch;
       if (input.gate !== undefined) current.gate = input.gate;
       if (input.trigger !== undefined) current.trigger = input.trigger;
       if (input.tierPolicy !== undefined) current.tierPolicy = input.tierPolicy;
-      if (input.status !== undefined) {
-        current.status = input.status;
-        current.closedAt = input.status === "closed" ? this.stamp() : null;
+      if (input.status === "open") {
+        current.status = "open";
+        current.closedAt = null;
       }
     });
+    // CUSTOM(packages): closing through an update integrates the branch first, like the
+    // package's own Close action.
+    if (
+      input.status === "closed" &&
+      this.store.current.packages.find((item) => item.id === packageId)
+        ?.status === "open"
+    )
+      await this.packageClose(packageId, false);
     this.changed();
+  }
+
+  /**
+   * CUSTOM(packages): sets or clears a package's integration branch. Already merged tickets stay
+   * in the base; only the next merges go to the new branch. A branch with merges cannot be
+   * replaced or cleared, so its work is never stranded.
+   */
+  private async setPackageBranch(
+    pkg: Package,
+    value: string | null,
+  ): Promise<void> {
+    const next = value?.trim() || null;
+    if (next === pkg.branch) return;
+    if (pkg.status !== "open") throw new Error("package-closed");
+    const project = this.inventory.projects.find(
+      (item) => item.id === pkg.projectId,
+    );
+    if (!project?.isGit) throw new Error("package-branch-needs-git");
+    const mergedInto = Object.entries(this.store.current.finishes).some(
+      ([taskId, finish]) =>
+        finish.mergeTarget === pkg.branch &&
+        this.store.current.tasks.find((task) => task.id === taskId)
+          ?.packageId === pkg.id,
+    );
+    if (mergedInto) throw new Error("package-branch-has-merges");
+    if (next) {
+      const policy = this.policy(pkg.projectId);
+      const base =
+        policy.baseBranch.trim() ||
+        (await this.host.currentBranch(project.directory)) ||
+        "HEAD";
+      await this.packageGit.ensureBranch(project.directory, next, base);
+    }
+    await this.store.update((data) => {
+      const current = data.packages.find((item) => item.id === pkg.id);
+      if (current) current.branch = next;
+    });
+    this.changed();
+  }
+
+  /** CUSTOM(packages): merges the package branch into the project's base once, on close. */
+  private async integratePackageBranch(pkg: Package): Promise<void> {
+    const branch = pkg.branch?.trim();
+    if (!branch) return;
+    const project = this.inventory.projects.find(
+      (item) => item.id === pkg.projectId,
+    );
+    if (!project?.isGit) return;
+    const policy = this.policy(pkg.projectId);
+    const base =
+      policy.baseBranch.trim() ||
+      (await this.host.currentBranch(project.directory)) ||
+      "";
+    if (!base || base === branch) return;
+    const worktree = join(defaultGateDirectory(), `${pkg.id}-merge`);
+    try {
+      // The whole worktree lifetime stays under the lock, so a ticket merge and this
+      // integration never check out the package branch in two worktrees at once.
+      await this.mergeLock.run(pkg.projectId, async () => {
+        await this.packageGit.addWorktree(project.directory, worktree, branch);
+        try {
+          await this.host.mergeToBase(worktree, {
+            baseRef: base,
+            requireCleanTarget: true,
+            strategy: "merge",
+          });
+        } finally {
+          await this.packageGit.removeWorktree(project.directory, worktree);
+        }
+      });
+    } catch (error) {
+      throw new Error(`package-branch-merge-failed: ${message(error)}`);
+    }
   }
 
   private async packageClose(
@@ -4668,6 +4813,7 @@ export class Workboard {
   ): Promise<void> {
     const pkg = this.store.current.packages.find((p) => p.id === packageId);
     if (!pkg) throw new Error("package-not-found");
+    if (pkg.status === "open") await this.integratePackageBranch(pkg);
     await this.store.update((data) => {
       const current = data.packages.find((item) => item.id === packageId);
       if (!current) return;
@@ -5013,6 +5159,22 @@ export class Workboard {
     return Object.fromEntries(
       this.store.current.tasks.map((task) => [task.id, task.number]),
     );
+  }
+  /** CUSTOM(packages): the package of each ticket, by task id, for the PM board's filter. */
+  pmTaskPackages(): Record<string, string> {
+    return Object.fromEntries(
+      this.store.current.tasks
+        .filter((task) => task.packageId)
+        .map((task) => [task.id, task.packageId as string]),
+    );
+  }
+  /** CUSTOM(packages): the packages the PM board's filter offers. */
+  pmPackages(): { id: string; name: string; color: string }[] {
+    return this.store.current.packages.map((pkg) => ({
+      id: pkg.id,
+      name: pkg.name,
+      color: pkg.color ?? "gray",
+    }));
   }
   async pmCardCreate(input: PmCardCreateInput): Promise<PmCard> {
     const card = newPmCard(

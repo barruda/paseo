@@ -167,6 +167,18 @@ export const assistantPmCardsRpc = defineRpc({
     cards: z.array(pmCardSchema),
     /** Short task numbers for the links under a card, by task id. */
     taskNumbers: z.record(z.string(), z.number()).default({}),
+    /** CUSTOM(packages): the open and closed packages, for the page's filter. */
+    packages: z
+      .array(
+        z.object({
+          id: z.string(),
+          name: z.string(),
+          color: z.string(),
+        }),
+      )
+      .default([]),
+    /** CUSTOM(packages): the package of each ticket, by task id, for the filter. */
+    taskPackages: z.record(z.string(), z.string()).default({}),
   }),
 });
 

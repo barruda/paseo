@@ -22,12 +22,14 @@ declare const document: {
   body: { style: { userSelect: string; cursor: string } };
   addEventListener(
     name: string,
-    callback: (event: KeyEvent) => void,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    callback: (event: any) => void,
     capture?: boolean,
   ): void;
   removeEventListener(
     name: string,
-    callback: (event: KeyEvent) => void,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    callback: (event: any) => void,
     capture?: boolean,
   ): void;
 };
@@ -159,6 +161,81 @@ export function toggleButtonState(selected: boolean) {
   return Platform.OS === "web"
     ? { "aria-pressed": selected }
     : { accessibilityState: { selected } };
+}
+
+// CUSTOM(packages): a marquee drag on a column. The listeners live until the mouse is released
+// or Esc cancels it; the caller only deals with page coordinates and the additive flag.
+export function marqueeGesture(
+  onMove: (pageX: number, pageY: number) => void,
+  onEnd: () => void,
+): () => void {
+  if (Platform.OS !== "web") return () => {};
+  const move = (event: {
+    pageX: number;
+    pageY: number;
+    preventDefault(): void;
+  }) => {
+    event.preventDefault();
+    onMove(event.pageX, event.pageY);
+  };
+  const up = () => finish();
+  const key = (event: { key: string; preventDefault(): void }) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    finish();
+  };
+  const finish = () => {
+    cleanup();
+    onEnd();
+  };
+  const cleanup = () => {
+    document.removeEventListener("mousemove", move);
+    document.removeEventListener("mouseup", up);
+    document.removeEventListener("keydown", key, true);
+  };
+  document.addEventListener("mousemove", move);
+  document.addEventListener("mouseup", up);
+  document.addEventListener("keydown", key, true);
+  return finish;
+}
+
+// CUSTOM(packages): pointer-based drag from a card to a package rail, web and desktop only.
+// RNW does not forward HTML5 drag props, so the card records itself on pointerdown and the rail
+// that receives the pointerup assigns it. A plain click clears the card on the document's
+// pointerup before it can leak into a later drag.
+let packageDragCard: string | null = null;
+
+export function packageCardPointer(id: string): Record<string, unknown> {
+  if (Platform.OS !== "web") return {};
+  return {
+    onPointerDown: () => {
+      packageDragCard = id;
+      const clear = () => {
+        packageDragCard = null;
+        document.removeEventListener("pointerup", clear);
+      };
+      document.addEventListener("pointerup", clear);
+    },
+  };
+}
+
+export function packageRailPointer(
+  onDropCard: (cardId: string) => void,
+  onOver: (over: boolean) => void,
+): Record<string, unknown> {
+  if (Platform.OS !== "web") return {};
+  return {
+    onPointerEnter: () => {
+      if (packageDragCard) onOver(true);
+    },
+    onPointerLeave: () => onOver(false),
+    onPointerUp: () => {
+      const cardId = packageDragCard;
+      packageDragCard = null;
+      onOver(false);
+      if (cardId) onDropCard(cardId);
+    },
+  };
 }
 
 export function duringDrag(cancel: () => void, resize = false): () => void {

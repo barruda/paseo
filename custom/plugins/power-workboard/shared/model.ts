@@ -790,6 +790,8 @@ export const finishSchema = z.object({
   mergedAt: z.string().nullable().default(null),
   /** CUSTOM(packages): the merge commit in the base branch, the package bisect's pivot. */
   mergeCommit: z.string().nullable().default(null),
+  /** CUSTOM(packages): the ref the ticket merged into: its package branch, else null (the base). */
+  mergeTarget: z.string().nullable().default(null),
   prTitle: z.string().nullable().default(null),
   prBody: z.string().nullable().default(null),
   error: z.string().nullable().default(null),

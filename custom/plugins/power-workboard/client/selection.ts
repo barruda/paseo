@@ -96,6 +96,40 @@ export function longPressCard(
   return { ids: new Set([id]), anchor: id };
 }
 
+/**
+ * CUSTOM(packages): the cards a marquee rectangle touches, in the given (column) order. The
+ * rectangle is in the column content's coordinates and every card spans the column's width.
+ */
+export function marqueeIds(
+  rect: { left: number; top: number; right: number; bottom: number },
+  cards: readonly { id: string; top: number; height: number }[],
+  columnWidth: number,
+): string[] {
+  const left = Math.min(rect.left, rect.right);
+  const right = Math.max(rect.left, rect.right);
+  const top = Math.min(rect.top, rect.bottom);
+  const bottom = Math.max(rect.top, rect.bottom);
+  if (left >= columnWidth || right <= 0) return [];
+  return cards
+    .filter((card) => card.top < bottom && card.top + card.height > top)
+    .map((card) => card.id);
+}
+
+/** CUSTOM(packages): a marquee replaces the selection, or adds to it with Ctrl/Cmd held. */
+export function marqueeSelection(
+  state: SelectionState,
+  ids: readonly string[],
+  additive: boolean,
+): SelectionState {
+  if (!additive)
+    return ids.length
+      ? { ids: new Set(ids), anchor: ids[ids.length - 1]! }
+      : EMPTY_SELECTION;
+  const next = new Set(state.ids);
+  for (const id of ids) next.add(id);
+  return { ids: next, anchor: ids[ids.length - 1] ?? state.anchor };
+}
+
 export function clearSelection(): SelectionState {
   return { ids: new Set(), anchor: null };
 }

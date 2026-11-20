@@ -1,5 +1,5 @@
 // CUSTOM(projects-assistant): pure helpers of the Projects Dashboard.
-import type { Stats } from "../../shared/assistant";
+import type { NeedsYouItem, Stats } from "../../shared/assistant";
 import { dashboardStrings as s } from "./dashboard-strings";
 
 export const PERIODS = [7, 14, 30] as const;
@@ -9,6 +9,34 @@ export const COLLAPSED_DETAIL_LINES = 3;
 
 export const isWide = (compact: boolean, width: number): boolean =>
   !compact && width >= WIDE_BREAKPOINT;
+
+/** CUSTOM(packages): one section of Needs you: a package, or the tickets outside one. */
+export interface NeedsYouGroup {
+  packageId: string | null;
+  packageName: string | null;
+  items: NeedsYouItem[];
+}
+
+/** CUSTOM(packages): Needs you grouped by package, packages first in list order, ungrouped last. */
+export function groupNeedsYou(items: readonly NeedsYouItem[]): NeedsYouGroup[] {
+  const groups = new Map<string, NeedsYouGroup>();
+  let ungrouped: NeedsYouGroup | null = null;
+  for (const item of items) {
+    if (!item.packageId) {
+      ungrouped ??= { packageId: null, packageName: null, items: [] };
+      ungrouped.items.push(item);
+      continue;
+    }
+    const group = groups.get(item.packageId) ?? {
+      packageId: item.packageId,
+      packageName: item.packageName ?? item.packageId,
+      items: [],
+    };
+    group.items.push(item);
+    groups.set(item.packageId, group);
+  }
+  return [...groups.values(), ...(ungrouped ? [ungrouped] : [])];
+}
 
 /** "12 min ago"; an unparsable date gives "—". */
 export function formatAge(iso: string, now: number = Date.now()): string {

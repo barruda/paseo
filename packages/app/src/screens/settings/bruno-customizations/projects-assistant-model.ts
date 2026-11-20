@@ -10,12 +10,37 @@ export const ASSISTANT_DEFAULT_ACTIONS = ["review", "prepare-pr", "notify", "not
 const actionSchema = z.enum(ASSISTANT_ACTIONS);
 const defaultActionSchema = z.enum(ASSISTANT_DEFAULT_ACTIONS);
 
+// CUSTOM(packages): the package gate, mirrored from the plugin's projectTestsSchema. Keeping it
+// here means saving a project rule from Settings no longer drops the gate the PM configured.
+export const DEFAULT_RISK_PATHS = [
+  "**/migrations/**",
+  "**/migration/**",
+  "**/auth/**",
+  "**/security/**",
+  "**/protocol/**",
+] as const;
+export const GATE_RUN_IN = ["worktree", "checkout"] as const;
+export const projectTestsSchema = z.object({
+  gateCommand: z.string().max(2000).default(""),
+  gateRequiredEnv: z.array(z.string().trim().min(1)).default([]),
+  gateEnv: z.record(z.string(), z.string()).default({}),
+  gateSetupCommand: z.string().max(2000).default(""),
+  gateRiskPaths: z.array(z.string().trim().min(1)).default(() => [...DEFAULT_RISK_PATHS]),
+  gateRunIn: z.enum(GATE_RUN_IN).default("worktree"),
+});
+export type ProjectTests = z.infer<typeof projectTestsSchema>;
+export const GATE_RUN_IN_LABELS: Record<(typeof GATE_RUN_IN)[number], string> = {
+  worktree: "Dedicated worktree",
+  checkout: "Live checkout",
+};
+
 export const projectPolicySchema = z.object({
   action: actionSchema.default("review"),
   observe: z.boolean().default(false),
   verifyCommand: z.string().max(2000).default(""),
   autoFixes: z.number().int().min(0).max(3).default(1),
   baseBranch: z.string().max(200).default(""),
+  tests: projectTestsSchema.default(() => projectTestsSchema.parse({})),
 });
 export type ProjectPolicy = z.infer<typeof projectPolicySchema>;
 
@@ -130,6 +155,59 @@ export function patchProjectPolicy(
     ...settings,
     projects: { ...settings.projects, [projectId]: { ...current, ...patch } },
   };
+}
+
+/** CUSTOM(packages): edits only the tests/gate block of an existing project rule. */
+export function patchProjectTests(
+  settings: AssistantSettings,
+  projectId: string,
+  patch: Partial<ProjectTests>,
+): AssistantSettings {
+  const current = settings.projects[projectId];
+  if (!current) return settings;
+  return {
+    ...settings,
+    projects: {
+      ...settings.projects,
+      [projectId]: {
+        ...current,
+        tests: { ...current.tests, ...patch },
+      },
+    },
+  };
+}
+
+/** CUSTOM(packages): "a, b\nc" as a list of trimmed, unique, non-empty values. */
+export function parseList(text: string): string[] {
+  return [
+    ...new Set(
+      text
+        .split(/[\n,]+/)
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
+/** CUSTOM(packages): "NAME=value" per line (or comma) as an env map; blank names are ignored. */
+export function parseEnv(text: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const line of text.split(/[\n,]+/)) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const at = trimmed.indexOf("=");
+    if (at <= 0) continue;
+    const name = trimmed.slice(0, at).trim();
+    if (!name) continue;
+    env[name] = trimmed.slice(at + 1).trim();
+  }
+  return env;
+}
+
+export function formatEnv(env: Readonly<Record<string, string>>): string {
+  return Object.entries(env)
+    .map(([name, value]) => `${name}=${value}`)
+    .join("\n");
 }
 
 /** Removes the project's rule so it follows the default again. */

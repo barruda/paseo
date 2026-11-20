@@ -55,6 +55,7 @@ import {
 // CUSTOM(pm-board)
 import {
   buildPmOverview,
+  pmCardActionSchema,
   pmCardKindSchema,
   pmCardOptionSchema,
   pmCardStatusSchema,
@@ -65,7 +66,7 @@ export const CHAT_LABEL = "pwb/assistant-chat";
 // CUSTOM(agent-profiles): the role text is the seed of the Project Manager profile's system-prompt.md;
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
 const BOARD_TOOLS =
-  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_run_package_gate, board_package_history, board_set_test_tier";
+  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_package_propose_close, board_run_package_gate, board_package_history, board_set_test_tier";
 
 // CUSTOM(task-numbers): the same reference is accepted everywhere a tool takes a task.
 const TASK_ID_HINT = "Task UUID, or its short number as 42 or #42";
@@ -91,7 +92,7 @@ export const ASSISTANT_ROLE = [
   `Manage tasks through your board tools (${BOARD_TOOLS}): create, move, start, continue and deliver every task there. Never edit a project's code, commit or merge outside board_task_action.`,
   "Every board tool that takes a task accepts its UUID or its short number as `42` or `#42`; the cards, board_list_tasks and board_overview show that number as `#42`.",
   'Investigation, proposals and decisions with the user go on your own board (the Decisões tab), not on the task board; code tasks and code reviews stay on the task board. Use pm_card_create, pm_card_update, pm_card_decide and pm_card_archive for them. An investigation is something you are looking into; a proposal is a choice the user must make (lay out the options with their gains and costs, recommend one, and the card waits in "Esperando você"); a decision is a call you already made on your own (kind decision, decidedBy pm); a notice is information the user should track. A PM card never starts an agent. Do not create a card for every event: only what the user should track. When you need the user, create a proposal and put its id in the reply\'s `seu` line as `[pm:<card id>]`.',
-  "Packages group tickets that already exist so the full suite runs once per package, by script, not once per ticket. Use the board_package_* tools. Create a package or move tickets only when the user asks; on your own, suggest a grouping with a proposal card linked to the ticket ids and let the user accept it. A ticket in a package runs the restricted suites; the risk rule raises a migration, auth, security or protocol diff to the gate level and records the decision on your board. A gate failure arrives as an investigation card with the suspected ticket: read board_package_history and explain it, do not create one card per failure.",
+  "Packages group tickets that already exist so the full suite runs once per package, by script, not once per ticket. Use the board_package_* tools. Create a package or move tickets only when the user asks; on your own, suggest a grouping with a proposal card with action select-tasks and the ticket ids in taskIds: the card offers Select these tickets and Ignore, and selecting only marks the tickets and opens the package menu, so it never creates the package. A package may have an integration branch: its next merges go there, and it merges into the base when the package closes; tickets already merged stay in the base. A ticket in a package runs the restricted suites; the risk rule raises a migration, auth, security or protocol diff to the gate level and records the decision on your board. A gate failure arrives as an investigation card with the suspected ticket: read board_package_history and explain it, do not create one card per failure. When a package is complete, propose closing it with board_package_propose_close; never close it on your own.",
   "To review and diagnose, read freely: git log, git diff and git show in a task's worktree or the project's checkout, read any file, and run the task's tests in its worktree.",
   "Do not create Paseo agents to do a task: tasks go through the board so the orchestrators run them. A read-only reviewer subagent that helps you review a diff is fine. The one exception is the ship agent below.",
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
@@ -123,7 +124,7 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 // CUSTOM(assistant-compact): the rules alone open a chat started by compaction, which must not greet.
 export const CHAT_RULES =
-  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_run_package_gate, board_package_history and board_set_test_tier. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
+  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_package_propose_close, board_run_package_gate, board_package_history and board_set_test_tier. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS = `Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). ${CHAT_RULES}`;
 
@@ -432,19 +433,17 @@ export function chatTools(
       .settings.groups.find((g) => g.id === c.stage);
     return group ? groupName(group) : c.stage;
   };
-  const orchestratorName = (id: string | null) =>
-    id
-      ? (board()
-          .snapshot()
-          .orchestrators.find((o) => o.id === id)?.name ?? id)
-      : "-";
-  const line = (c: Card) => {
+  /** One card line. It takes the snapshot so a list of N cards reads the board once, not N times. */
+  const line = (c: Card, snapshot = board().snapshot()) => {
     const pkg = c.packageId
-      ? board()
-          .snapshot()
-          .packages.find((item) => item.id === c.packageId)
+      ? snapshot.packages.find((item) => item.id === c.packageId)
       : null;
-    return `${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${columnOf(c)} (${c.stage}) | orchestrator: ${orchestratorName(c.orchestratorId)} | delivery: ${delivery(c.id)?.stage ?? "-"} | package: ${pkg ? `${pkg.name} (${pkg.id})` : "-"} | tests: ${effectiveTestTier(c)} | updated: ${c.updatedAt}`;
+    const group = snapshot.settings.groups.find((g) => g.id === c.stage);
+    const orchestrator = c.orchestratorId
+      ? (snapshot.orchestrators.find((o) => o.id === c.orchestratorId)?.name ??
+        c.orchestratorId)
+      : "-";
+    return `${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${group ? groupName(group) : c.stage} (${c.stage}) | orchestrator: ${orchestrator} | delivery: ${delivery(c.id)?.stage ?? "-"} | package: ${pkg ? `${pkg.name} (${pkg.id})` : "-"} | tests: ${effectiveTestTier(c)} | updated: ${c.updatedAt}`;
   };
   const managedAgent = (agentId: string) =>
     isManagedAgent(board().assistantSource().data, agentId);
@@ -524,14 +523,14 @@ export function chatTools(
                 `- ${g.id} | ${groupName(g)} | ${g.kind} | ${snapshot.cards.filter((c) => !c.archived && c.stage === g.id).length} tasks`,
             )
             .join("\n")}`,
-          `Needs you:\n${needsYou.map((n) => `- ${taskNumbers.get(n.taskId) ? `#${taskNumbers.get(n.taskId)} | ` : ""}${n.taskId} | ${n.title} | project: ${n.projectName || n.projectId || "-"} | orchestrator: ${n.orchestratorName ?? "-"} | agent: ${n.agentId ?? "-"} | attempt: ${n.attempt ?? "-"} | since: ${n.since} | can merge: ${n.canMerge ? "yes" : "no"} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
+          `Needs you:\n${needsYou.map((n) => `- ${taskNumbers.get(n.taskId) ? `#${taskNumbers.get(n.taskId)} | ` : ""}${n.taskId} | ${n.title} | project: ${n.projectName || n.projectId || "-"} | orchestrator: ${n.orchestratorName ?? "-"} | agent: ${n.agentId ?? "-"} | attempt: ${n.attempt ?? "-"} | since: ${n.since} | can merge: ${n.canMerge ? "yes" : "no"} | package: ${n.packageName ?? "-"} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
           // CUSTOM(packages): the open packages and their last gate.
           `Packages:\n${
             snapshot.packages
               .filter((pkg) => pkg.status === "open")
               .map(
                 (pkg) =>
-                  `- ${pkg.id} | ${pkg.name} | project: ${pkg.projectName || pkg.projectId} | ${pkg.merged}/${pkg.total} merged | gate: ${pkg.lastRun?.status ?? "none"}${pkg.suspectTaskIds.length ? ` | suspect: ${pkg.suspectTaskIds.map((id) => (taskNumbers.get(id) ? `#${taskNumbers.get(id)}` : id)).join(", ")}` : ""}`,
+                  `- ${pkg.id} | ${pkg.name} | project: ${pkg.projectName || pkg.projectId} | ${pkg.merged}/${pkg.total} merged | branch: ${pkg.branch ?? "base"} | gate: ${pkg.lastRun?.status ?? "none"}${pkg.suspectTaskIds.length ? ` | suspect: ${pkg.suspectTaskIds.map((id) => (taskNumbers.get(id) ? `#${taskNumbers.get(id)}` : id)).join(", ")}` : ""}`,
               )
               .join("\n") || "- none"
           }`,
@@ -568,9 +567,9 @@ export function chatTools(
           ? resolveProject(input.projectId)
           : null;
         const query = input.query?.toLowerCase();
-        const cards = board()
-          .snapshot()
-          .cards.filter(
+        const snapshot = board().snapshot();
+        const cards = snapshot.cards
+          .filter(
             (c) =>
               !c.archived &&
               (!stage || c.stage === stage) &&
@@ -580,7 +579,9 @@ export function chatTools(
           )
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           .slice(0, input.limit);
-        return text(cards.map(line).join("\n") || "No tasks.");
+        return text(
+          cards.map((card) => line(card, snapshot)).join("\n") || "No tasks.",
+        );
       },
     }),
     define({
@@ -1015,13 +1016,14 @@ export function chatTools(
     define({
       name: "pm_card_create",
       description:
-        'Create a card on your own Project Manager board (the Decisões tab), apart from the task board. kind: "investigation" (something you are looking into, starts in Investigating), "proposal" (a choice the user must make: put question, options with gains and costs, and recommend one; it waits in "Esperando você"), "decision" (a call you already made on your own; pass decision and it starts Decided with decidedBy pm) or "notice" (information the user should track). Never create a card for every event: only what the user should track. Code tasks and code reviews are not PM cards: they stay on the task board (board_create_task). taskIds/reportIds link the card to tasks and their Reports tickets.',
+        'Create a card on your own Project Manager board (the Decisões tab), apart from the task board. kind: "investigation" (something you are looking into, starts in Investigating), "proposal" (a choice the user must make: put question, options with gains and costs, and recommend one; it waits in "Esperando você"; to suggest a package grouping, set action "select-tasks" with the ticket ids in taskIds, and the card shows "Select these tickets" and "Ignore" — selecting only marks the tickets and opens the package menu, so never create the package yourself), "decision" (a call you already made on your own; pass decision and it starts Decided with decidedBy pm) or "notice" (information the user should track). Never create a card for every event: only what the user should track. Code tasks and code reviews are not PM cards: they stay on the task board (board_create_task). taskIds/reportIds link the card to tasks and their Reports tickets.',
       input: z.object({
         kind: pmCardKindSchema,
         title: z.string().min(1).max(500),
         question: z.string().max(5000).nullable().default(null),
         options: z.array(pmCardOptionSchema).max(8).default([]),
         recommend: z.string().max(40).nullable().default(null),
+        action: pmCardActionSchema.nullable().default(null),
         why: z.string().max(2000).nullable().default(null),
         findings: z.string().max(20000).default(""),
         decision: z.string().max(5000).nullable().default(null),
@@ -1036,6 +1038,7 @@ export function chatTools(
           question: input.question,
           options: input.options,
           recommend: input.recommend,
+          action: input.action,
           why: input.why,
           findings: input.findings,
           decision: input.decision,
@@ -1171,7 +1174,7 @@ export function chatTools(
     define({
       name: "board_package_update",
       description:
-        "Update a package: name, color, trigger (night, onClose, everyMerges), gate override, tier policy or status. Closing a package is board_package_close.",
+        "Update a package: name, color, trigger (night, onClose, everyMerges), gate override, tier policy, status or branch (the optional integration branch: its next merges go there and it merges into the base when the package closes; already merged tickets stay in the base). Closing a package is board_package_close.",
       input: z.object({
         packageId: z.string(),
         name: z.string().trim().min(1).max(80).optional(),
@@ -1273,6 +1276,59 @@ export function chatTools(
           "assistant",
         );
         return text(`Closed package ${input.packageId}.`);
+      },
+    }),
+    define({
+      name: "board_package_propose_close",
+      description:
+        'Propose closing a package on your own board with a "Close the package?" proposal card. It does not close it: the user decides, and you close it only after they choose close. Use it when every ticket is merged or the package has no work left. One open proposal per package.',
+      input: z.object({ packageId: z.string() }),
+      async execute(input) {
+        const pkg = board()
+          .snapshot()
+          .packages.find((item) => item.id === input.packageId);
+        if (!pkg) throw new Error(`No package with id ${input.packageId}.`);
+        if (pkg.status !== "open")
+          throw new Error(`Package ${pkg.name} is already closed.`);
+        const exists = board()
+          .pmCards()
+          .some(
+            (card) =>
+              card.kind === "proposal" &&
+              card.status === "waiting" &&
+              card.links.packageIds.includes(pkg.id) &&
+              card.title.toLowerCase().startsWith("close package"),
+          );
+        if (exists)
+          return text(
+            `Package ${pkg.name} already has an open close proposal.`,
+          );
+        const card = await board().pmCardCreate({
+          kind: "proposal",
+          title: `Close package ${pkg.name}?`,
+          question: `${pkg.merged} of ${pkg.total} tickets are merged. Close the package${pkg.branch ? ` and merge its branch ${pkg.branch} into the base` : ""}?`,
+          options: [
+            {
+              id: "close",
+              label: "Close the package",
+              gains:
+                "It stops taking tickets and its branch, if any, merges into the base.",
+              costs: "No more tickets can be added to it.",
+            },
+            {
+              id: "keep",
+              label: "Keep it open",
+              gains: "It keeps taking tickets.",
+              costs: "The package and its gate stay open.",
+            },
+          ],
+          recommend: "close",
+          findings: `Package: ${pkg.name} (${pkg.id}). ${pkg.merged} of ${pkg.total} merged, ${pkg.total - pkg.merged} open.${pkg.branch ? ` Integration branch: ${pkg.branch}.` : ""}`,
+          links: { taskIds: [], reportIds: [], packageIds: [pkg.id] },
+        });
+        return text(
+          `Proposed closing package ${pkg.name}: PM card ${card.id}.`,
+        );
       },
     }),
     define({
