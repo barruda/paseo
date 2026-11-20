@@ -6957,6 +6957,34 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   In the app: open an orchestrator, flip Enabled off (Run greys out, pill says Disabled), switch
   through the sub-tabs, edit a field and Save.
 
+## workboard-ticket-numbers-and-panel: `#42` on every ticket, and a ticket beside the board
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: Workboard tickets get a short number and open in a side panel`
+- **Why:** Tickets only had UUIDs, which are impossible to say in conversation, and reading a
+  ticket meant leaving the board.
+- **What:** Every ticket gets `number`, a sequential id global to the board (one board per plugin
+  storage, across projects), shown as `#42` on the card before the details arrow, in the editor
+  title, in the new side panel and in Projects Reports. New tickets take `data.nextTaskNumber`,
+  which only moves forward, so a removed ticket's number is never handed out again. The v9→v10
+  migration assigns numbers to existing tickets in `createdAt` order (ties by id) and sets the
+  counter past the highest. `board_get_task`, `board_task_diff`, `board_update_task`,
+  `board_move_task`, `board_task_action` and `board_report` resolve `42` or `#42` as well as the
+  UUID; `board_list_tasks` and `board_overview` print the number. Middle-click on a card, or
+  right-click → **Open in panel**, opens the ticket in a right-hand panel; one panel at a time,
+  closed by its X or Esc, with Open workspace, Open agent, Edit and Move inside. Left click keeps
+  its behavior. The panel is the board's own because the SDK workspace panel cannot carry a
+  ticket id and the board is a surface.
+- **Core files touched:** none (plugin only).
+- **Re-apply:** the plugin is self-contained. When upstream data changes, keep `number` on
+  `taskSchema`, `nextTaskNumber` on `dataSchema`, the v9→v10 migration, the creation paths that
+  read/increment the counter, `shared/task-reference.ts`, and the `CUSTOM(task-numbers)` /
+  `CUSTOM(task-panel)` call sites.
+- **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
+  In the app: the cards show `#1`, `#2`…; middle-click one and the panel opens on the right; open
+  another and it replaces the first; close it with Esc; right-click a card and choose **Open in
+  panel**; ask the Project Manager for `board_get_task` with `#1`.
+
 ## paseo-background-local-image: Backgrounds plugin vendored, with a file picker
 
 - **Added:** 2026-11-17

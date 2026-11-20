@@ -78,6 +78,7 @@ import {
 } from "./checkpoint-format"; // CUSTOM(task-checkpoints)
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { BoardView } from "./BoardView";
+import { cardMenuItems } from "./card-menu"; // CUSTOM(task-panel)
 import { groupColor, projectAccentColor, supplementalColor } from "./colors";
 import { ProjectIcon } from "./ProjectIcon";
 import { loadBoardFilters, saveBoardFilters, toggleButtonState } from "./web";
@@ -100,6 +101,13 @@ import { usePaseoLanguage } from "./paseo-language";
 import { AssistantProfileTab } from "./Profiles"; // CUSTOM(agent-profiles)
 import { optionAnswer } from "../shared/card-answers";
 import { ConfirmationModal } from "./ConfirmationModal";
+// CUSTOM(task-panel)
+import {
+  CardContextMenu,
+  TaskPanel,
+  useCardPointerActions,
+  type CardMenuRequest,
+} from "./TaskPanel";
 // CUSTOM(workboard-inner-pages): the Project Manager pages, as tabs of the board.
 import { ChatLauncher } from "./assistant/ChatLauncher";
 import { ConversationsScreen } from "./assistant/ConversationsScreen";
@@ -217,6 +225,9 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const [draft, setDraft] = useState<DraftForm>(null);
   const [starting, setStarting] = useState<StartForm>(null);
   const [statusCard, setStatusCard] = useState<Card | null>(null);
+  // CUSTOM(task-panel): one side panel at a time, plus the card's context menu.
+  const [panelTaskId, setPanelTaskId] = useState<string | null>(null);
+  const [cardMenu, setCardMenu] = useState<CardMenuRequest | null>(null);
   const [archivingDraft, setArchivingDraft] = useState<Card | null>(null);
   const [detachingDraft, setDetachingDraft] = useState<{
     card: Card;
@@ -404,6 +415,10 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const allCards = visibleCards(board, "all", "", false);
   const conflicts = cards.filter((card) => card.stage === "conflict");
   const archived = board.cards.filter((card) => card.archived !== null);
+  // CUSTOM(task-panel): one ticket at a time; switching replaces the panel's content.
+  const panelCard = panelTaskId
+    ? (board.cards.find((card) => card.id === panelTaskId) ?? null)
+    : null;
   const writesDisabled = !board.connected || boardQuery.isError;
   const groupsPending = pendingMutationIds.has("settings:groups");
   const draftPending = pendingMutationIds.has(
@@ -1110,200 +1125,260 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           onSelect={setStatusCard}
         />
       )}
-      <BoardView
-        key={props.host.id}
-        hostId={props.host.id}
-        groupColor={(group) => groupColor(group, props.theme)}
-        disabled={writesDisabled}
-        pendingStages={new Set(optimisticStages.keys())}
-        reordering={pendingMutationIds.has("reorder-groups")}
-        highlightedCards={new Set(moveUndos.keys())}
-        cards={cards}
-        fullCards={board.cards}
-        cardOrderByStage={board.cardOrderByStage}
-        filterKey={JSON.stringify(filters)}
-        orderPending={
-          new Set(
-            [...pendingMutationIds]
-              .filter((id) => id.startsWith("card-order:"))
-              .map((id) => id.slice("card-order:".length)),
-          )
-        }
-        onReorderCards={(card, expectedOrder, cardOrder) =>
-          saveCardOrder({
-            action: "reorder-cards",
-            taskId: card.id,
-            stage: card.stage as Stage,
-            expectedOrder,
-            cardOrder,
-          })
-        }
-        onResetCardOrder={(stage, expectedOrder) =>
-          saveCardOrder({ action: "reset-card-order", stage, expectedOrder })
-        }
-        hasActiveFilter={hasActiveFilter}
-        onClearFilters={clearFilters}
-        onCreateTask={writesDisabled ? undefined : createTask}
-        renderQuickCreate={(group) =>
-          group.kind === "todo" ? (
-            <QuickCreate
-              key={group.id}
-              disabled={writesDisabled}
-              t={t}
-              theme={props.theme}
-              groupName={groupTitle(group, t)}
-              onCreate={async (title) => {
-                const next = await mutate(
-                  {
-                    action: "create",
-                    stage: group.id,
-                    title,
-                    description: "",
-                    projectId:
-                      projectId === "all" || projectId === "none"
-                        ? null
-                        : projectId,
-                  },
-                  `create:${group.id}`,
-                );
-                if (!next) return false;
-                notifyTaskSaved(next, undefined, true);
-                return true;
-              }}
-            />
-          ) : null
-        }
-        groups={orderedGroups({
-          ...board.settings,
-          groupOrder: optimisticOrder ?? board.settings.groupOrder,
-        })}
-        compact={props.layout.compact}
-        stage={
-          board.settings.groups.find((group) => group.id === selectedStage)
-            ?.id ??
-          defaultWorkspaceGroup(
-            board.settings.groups,
-            board.settings.defaultStartGroup,
-          )
-        }
-        setStage={setSelectedStage}
-        t={t}
-        theme={props.theme}
-        onStage={setStage}
-        onReorder={async (groupOrder, expectedGroupOrder) => {
-          if (mutationPending.current.has("reorder-groups")) {
-            toast.error(t.mutationPending);
-            return false;
-          }
-          setOptimisticOrder(groupOrder);
-          const next = await mutate({
-            action: "reorder-groups",
-            groupOrder,
-            expectedGroupOrder,
-          });
-          setOptimisticOrder(null);
-          if (next)
-            toast.show(t.layoutSaved, { variant: "success", durationMs: 1600 });
-          return !!next;
-        }}
-        onEdit={editGroup}
-        onAdd={() => editGroup(newGroup(board.settings.groups))}
-        deleteReason={deleteReason}
-        onDelete={async (group) => {
-          const reason = deleteReason(group);
-          if (reason) {
-            toast.show(reason, { variant: "warning" });
-            return false;
-          }
-          return !!(await mutate({
-            action: "settings",
-            revision: board.revision,
-            expectedSettings: board.settings,
-            settings: {
+      <View style={styles.boardRow}>
+        <View style={styles.boardArea}>
+          <BoardView
+            key={props.host.id}
+            hostId={props.host.id}
+            groupColor={(group) => groupColor(group, props.theme)}
+            disabled={writesDisabled}
+            pendingStages={new Set(optimisticStages.keys())}
+            reordering={pendingMutationIds.has("reorder-groups")}
+            highlightedCards={new Set(moveUndos.keys())}
+            cards={cards}
+            fullCards={board.cards}
+            cardOrderByStage={board.cardOrderByStage}
+            filterKey={JSON.stringify(filters)}
+            orderPending={
+              new Set(
+                [...pendingMutationIds]
+                  .filter((id) => id.startsWith("card-order:"))
+                  .map((id) => id.slice("card-order:".length)),
+              )
+            }
+            onReorderCards={(card, expectedOrder, cardOrder) =>
+              saveCardOrder({
+                action: "reorder-cards",
+                taskId: card.id,
+                stage: card.stage as Stage,
+                expectedOrder,
+                cardOrder,
+              })
+            }
+            onResetCardOrder={(stage, expectedOrder) =>
+              saveCardOrder({
+                action: "reset-card-order",
+                stage,
+                expectedOrder,
+              })
+            }
+            hasActiveFilter={hasActiveFilter}
+            onClearFilters={clearFilters}
+            onCreateTask={writesDisabled ? undefined : createTask}
+            renderQuickCreate={(group) =>
+              group.kind === "todo" ? (
+                <QuickCreate
+                  key={group.id}
+                  disabled={writesDisabled}
+                  t={t}
+                  theme={props.theme}
+                  groupName={groupTitle(group, t)}
+                  onCreate={async (title) => {
+                    const next = await mutate(
+                      {
+                        action: "create",
+                        stage: group.id,
+                        title,
+                        description: "",
+                        projectId:
+                          projectId === "all" || projectId === "none"
+                            ? null
+                            : projectId,
+                      },
+                      `create:${group.id}`,
+                    );
+                    if (!next) return false;
+                    notifyTaskSaved(next, undefined, true);
+                    return true;
+                  }}
+                />
+              ) : null
+            }
+            groups={orderedGroups({
               ...board.settings,
-              groups: board.settings.groups.filter(
-                (item) => item.id !== group.id,
-              ),
-            },
-          }));
-        }}
-        renderCard={(card, dragHandle) => (
-          <TaskCard
-            card={card}
+              groupOrder: optimisticOrder ?? board.settings.groupOrder,
+            })}
+            compact={props.layout.compact}
+            stage={
+              board.settings.groups.find((group) => group.id === selectedStage)
+                ?.id ??
+              defaultWorkspaceGroup(
+                board.settings.groups,
+                board.settings.defaultStartGroup,
+              )
+            }
+            setStage={setSelectedStage}
+            t={t}
+            theme={props.theme}
+            onStage={setStage}
+            onReorder={async (groupOrder, expectedGroupOrder) => {
+              if (mutationPending.current.has("reorder-groups")) {
+                toast.error(t.mutationPending);
+                return false;
+              }
+              setOptimisticOrder(groupOrder);
+              const next = await mutate({
+                action: "reorder-groups",
+                groupOrder,
+                expectedGroupOrder,
+              });
+              setOptimisticOrder(null);
+              if (next)
+                toast.show(t.layoutSaved, {
+                  variant: "success",
+                  durationMs: 1600,
+                });
+              return !!next;
+            }}
+            onEdit={editGroup}
+            onAdd={() => editGroup(newGroup(board.settings.groups))}
+            deleteReason={deleteReason}
+            onDelete={async (group) => {
+              const reason = deleteReason(group);
+              if (reason) {
+                toast.show(reason, { variant: "warning" });
+                return false;
+              }
+              return !!(await mutate({
+                action: "settings",
+                revision: board.revision,
+                expectedSettings: board.settings,
+                settings: {
+                  ...board.settings,
+                  groups: board.settings.groups.filter(
+                    (item) => item.id !== group.id,
+                  ),
+                },
+              }));
+            }}
+            renderCard={(card, dragHandle) => (
+              <TaskCard
+                card={card}
+                board={board}
+                t={t}
+                theme={props.theme}
+                disabled={writesDisabled}
+                pending={
+                  pendingMutationIds.has(`stage:${card.id}`) ||
+                  pendingMutationIds.has(`card-order:${card.stage}`)
+                }
+                compact={props.layout.compact}
+                dragHandle={dragHandle}
+                onUndo={
+                  moveUndos.has(card.id) ? () => undoMove(card.id) : undefined
+                }
+                onOpen={() => {
+                  if (!props.navigation) {
+                    toast.error(t.navigationUnavailable);
+                    return;
+                  }
+                  if (card.workspaceId)
+                    props.navigation.openWorkspace({
+                      workspaceId: card.workspaceId,
+                      serverId: board.serverId,
+                    });
+                }}
+                onEdit={() =>
+                  setDraft({
+                    task: card,
+                    title: card.title,
+                    description: card.description,
+                    projectId: card.projectId,
+                    orchestratorId: card.orchestratorId,
+                    timing: card.timing,
+                  })
+                }
+                onStart={() => setStarting({ card })}
+                onOpenAgent={openAgent}
+                onRefine={async () => {
+                  const next = await mutate({
+                    action: "refine",
+                    taskId: card.id,
+                  });
+                  const agentId = next?.refinements[card.id]?.agentId;
+                  if (!agentId) return;
+                  if (!props.navigation) {
+                    toast.error(t.navigationUnavailable);
+                    return;
+                  }
+                  props.navigation.openAgent({
+                    agentId,
+                    serverId: board.serverId,
+                  });
+                }}
+                onReview={async (outcome, feedback) => {
+                  const next = await mutate({
+                    action: "review",
+                    taskId: card.id,
+                    outcome,
+                    feedback,
+                  });
+                  if (
+                    next &&
+                    outcome === "continue" &&
+                    next.orchestrations[card.id]?.status === "queued"
+                  )
+                    toast.show(t.review.queued);
+                  return !!next;
+                }}
+                onFinish={(step) =>
+                  void mutate({ action: "finish", taskId: card.id, step })
+                }
+                onStatus={() => setStatusCard(card)}
+                onArchive={() => setArchivingDraft(card)}
+                onCancelBinding={() => setCancelingBinding(card)}
+                onDetachDraft={(draftId) =>
+                  setDetachingDraft({ card, draftId })
+                }
+                onOpenPanel={() => setPanelTaskId(card.id)}
+                onContextMenu={setCardMenu}
+              />
+            )}
+          />
+        </View>
+        {panelCard && (
+          <TaskPanel
+            card={panelCard}
             board={board}
             t={t}
             theme={props.theme}
-            disabled={writesDisabled}
-            pending={
-              pendingMutationIds.has(`stage:${card.id}`) ||
-              pendingMutationIds.has(`card-order:${card.stage}`)
-            }
             compact={props.layout.compact}
-            dragHandle={dragHandle}
-            onUndo={
-              moveUndos.has(card.id) ? () => undoMove(card.id) : undefined
+            onClose={() => setPanelTaskId(null)}
+            onOpenWorkspace={
+              panelCard.workspaceId && props.navigation
+                ? () =>
+                    props.navigation?.openWorkspace({
+                      workspaceId: panelCard.workspaceId as string,
+                      serverId: board.serverId,
+                    })
+                : undefined
             }
-            onOpen={() => {
-              if (!props.navigation) {
-                toast.error(t.navigationUnavailable);
-                return;
-              }
-              if (card.workspaceId)
-                props.navigation.openWorkspace({
-                  workspaceId: card.workspaceId,
-                  serverId: board.serverId,
-                });
-            }}
+            onOpenAgent={openAgent}
             onEdit={() =>
               setDraft({
-                task: card,
-                title: card.title,
-                description: card.description,
-                projectId: card.projectId,
-                orchestratorId: card.orchestratorId,
-                timing: card.timing,
+                task: panelCard,
+                title: panelCard.title,
+                description: panelCard.description,
+                projectId: panelCard.projectId,
+                orchestratorId: panelCard.orchestratorId,
+                timing: panelCard.timing,
               })
             }
-            onStart={() => setStarting({ card })}
-            onOpenAgent={openAgent}
-            onRefine={async () => {
-              const next = await mutate({ action: "refine", taskId: card.id });
-              const agentId = next?.refinements[card.id]?.agentId;
-              if (!agentId) return;
-              if (!props.navigation) {
-                toast.error(t.navigationUnavailable);
-                return;
-              }
-              props.navigation.openAgent({
-                agentId,
-                serverId: board.serverId,
-              });
-            }}
-            onReview={async (outcome, feedback) => {
-              const next = await mutate({
-                action: "review",
-                taskId: card.id,
-                outcome,
-                feedback,
-              });
-              if (
-                next &&
-                outcome === "continue" &&
-                next.orchestrations[card.id]?.status === "queued"
-              )
-                toast.show(t.review.queued);
-              return !!next;
-            }}
-            onFinish={(step) =>
-              void mutate({ action: "finish", taskId: card.id, step })
+            onStatus={
+              panelCard.binding || panelCard.archived
+                ? undefined
+                : () => setStatusCard(panelCard)
             }
-            onStatus={() => setStatusCard(card)}
-            onArchive={() => setArchivingDraft(card)}
-            onCancelBinding={() => setCancelingBinding(card)}
-            onDetachDraft={(draftId) => setDetachingDraft({ card, draftId })}
           />
         )}
-      />
+      </View>
+      {cardMenu && (
+        <CardContextMenu
+          menu={cardMenu}
+          theme={props.theme}
+          onClose={() => setCardMenu(null)}
+        />
+      )}
       {editingGroup && (
         <GroupEditor
           key={editingGroup.group.id}
@@ -2502,6 +2577,8 @@ export function TaskCard({
   onCancelBinding,
   onDetachDraft,
   onUndo,
+  onOpenPanel,
+  onContextMenu,
   compact = false,
   dragHandle = null,
 }: {
@@ -2523,6 +2600,9 @@ export function TaskCard({
   onCancelBinding(): void;
   onDetachDraft(draftId: string): void;
   onUndo?(): Promise<void>;
+  /** CUSTOM(task-panel): open this ticket in the right-hand panel. */
+  onOpenPanel?(): void;
+  onContextMenu?(request: CardMenuRequest): void;
   compact?: boolean;
   /** CUSTOM(card-open-agent): the board's drag handle, shown at the end of the action row. */
   dragHandle?: ReactNode;
@@ -2578,8 +2658,31 @@ export function TaskCard({
   )?.accent;
   const agentId = cardAgentId(card, record);
   const standaloneAgentLink = !!agentId && (inReview || !record);
+  // CUSTOM(task-panel): middle click and the context menu open the side panel; left click keeps
+  // every existing behavior.
+  const openPanel = onOpenPanel ?? (() => {});
+  const pointerRef = useCardPointerActions({
+    onMiddleClick: openPanel,
+    onContextMenu: ({ x, y }) =>
+      onContextMenu?.({
+        x,
+        y,
+        items: cardMenuItems({
+          card,
+          agentId,
+          t,
+          disabled,
+          onOpenPanel: openPanel,
+          onOpen,
+          onOpenAgent,
+          onEdit,
+          onStatus,
+        }),
+      }),
+  });
   return (
     <View
+      ref={pointerRef}
       style={[
         styles.card,
         {
@@ -2814,6 +2917,13 @@ export function TaskCard({
           </HintButton>
         )}
         <View style={styles.cardActions}>
+          {card.number > 0 ? (
+            <Text
+              style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
+            >
+              {`#${card.number}`}
+            </Text>
+          ) : null}
           {!isDraft && (
             <CardAction
               theme={theme}
@@ -3303,7 +3413,11 @@ function TaskModal({
   return (
     <Modal
       open
-      title={form.task ? t.edit : t.addTask}
+      title={
+        form.task
+          ? `${t.edit}${form.task.number > 0 ? ` #${form.task.number}` : ""}`
+          : t.addTask
+      }
       onOpenChange={(open) => !open && !pending && onClose()}
     >
       <Modal.Content
@@ -4810,6 +4924,9 @@ function reviewColor(
 }
 const styles = StyleSheet.create({
   screen: { flex: 1, minHeight: 0 },
+  // CUSTOM(task-panel)
+  boardRow: { flex: 1, minHeight: 0, flexDirection: "row" },
+  boardArea: { flex: 1, minWidth: 0, minHeight: 0 },
   filterSummary: {
     paddingHorizontal: 12,
     minHeight: 36,

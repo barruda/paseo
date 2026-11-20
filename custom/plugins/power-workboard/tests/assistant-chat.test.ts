@@ -67,7 +67,9 @@ const create = async (c: Awaited<ReturnType<typeof chat>>, input = {}) => {
   });
   expect(result.isError).toBeUndefined();
   expect(result).not.toHaveProperty("structuredContent");
-  const match = /^Created (\S+) ".*" in .* \((\S+)\)/.exec(result.text ?? "");
+  const match = /^Created (\S+) \(#\d+\) ".*" in .* \((\S+)\)/.exec(
+    result.text ?? "",
+  );
   if (!match) throw new Error(`Unexpected create result: ${result.text}`);
   return { taskId: match[1], column: match[2] };
 };
@@ -238,6 +240,63 @@ it("update_task and move_task go through the board's own mutations", async () =>
     const detail = await c.run("board_get_task", { taskId });
     expect(detail.text).toContain("Renamed");
     expect(detail.text).toContain("Delivery: none");
+  } finally {
+    c.board.dispose();
+  }
+});
+
+it("the board tools accept the short ticket number, and list it in list and overview", async () => {
+  const c = await chat();
+  try {
+    const { taskId } = await create(c, { title: "Numbered" });
+    const card = c.board.snapshot().cards.find((x) => x.id === taskId)!;
+    expect(card.number).toBeGreaterThan(0);
+    const number = card.number;
+    expect(
+      (await c.run("board_get_task", { taskId: `#${number}` })).text,
+    ).toContain("Numbered");
+    expect(
+      (
+        await c.run("board_update_task", {
+          taskId: String(number),
+          title: "Renamed",
+        })
+      ).isError,
+    ).toBeUndefined();
+    expect(
+      (
+        await c.run("board_move_task", {
+          taskId: `#${number}`,
+          column: "ready",
+        })
+      ).text,
+    ).toContain("Moved");
+    expect((await c.run("board_list_tasks", {})).text).toContain(`#${number}`);
+    await c.store.update((data) => {
+      data.assistant.deliveries[taskId] = {
+        stage: "needs-you",
+        action: "notify",
+        observe: false,
+        attempt: 1,
+        report: null,
+        reason: "notify",
+        detail: null,
+        verifyOutput: null,
+        fixesUsed: 0,
+        conflictFixes: 0,
+        dirtyRetries: 0,
+        startedAt: "2026-09-23T00:00:00Z",
+        updatedAt: "2026-09-23T00:00:00Z",
+      };
+    });
+    expect((await c.run("board_overview")).text).toContain(`#${number}`);
+    const dismissed = await c.run("board_task_action", {
+      taskId: `#${number}`,
+      type: "dismiss",
+    });
+    expect(dismissed.isError).toBeUndefined();
+    expect(dismissed.text).toContain("dismiss");
+    expect(dismissed.text).not.toContain("No task");
   } finally {
     c.board.dispose();
   }
@@ -736,6 +795,7 @@ it("board_task_action merge-now with wait returns the final stage; without it, t
   let step = 0;
   let deliveryNow: any = null;
   const fake = {
+    snapshot: () => ({ cards: [{ id: "t", number: 0 }] }),
     assistantAction: vi.fn(async () => {
       deliveryNow = { stage: "committing", reason: null, detail: null };
     }),

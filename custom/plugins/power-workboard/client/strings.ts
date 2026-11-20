@@ -22,6 +22,15 @@ const zh = {
   orchestratorAutomatic: "自动（按项目）",
   openAgent: "打开 Agent",
   openAgentHint: "打开这个任务的 Agent 会话",
+  openInPanel: "在面板中打开",
+  ticketPanel: {
+    close: "关闭面板",
+    description: "说明",
+    emptyDescription: "没有说明。",
+    created: "创建于",
+    updated: "更新于",
+    summary: "最近回复",
+  },
   pools: {
     title: "资源池",
     intro:
@@ -743,6 +752,15 @@ const en: typeof zh = {
   orchestratorAutomatic: "Automatic (by project)",
   openAgent: "Open agent",
   openAgentHint: "Open this task's agent chat",
+  openInPanel: "Open in panel",
+  ticketPanel: {
+    close: "Close panel",
+    description: "Description",
+    emptyDescription: "No description.",
+    created: "Created",
+    updated: "Updated",
+    summary: "Last reply",
+  },
   pools: {
     title: "Resource pools",
     intro:

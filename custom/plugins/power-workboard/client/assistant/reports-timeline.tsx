@@ -503,6 +503,11 @@ export function ReportContent(props: {
       {back}
       <ScrollView contentContainerStyle={styles.scroll}>
         <Text style={[styles.title, { color: c.foreground }]} selectable>
+          {task.number > 0 ? (
+            <Text
+              style={{ color: c.foregroundMuted }}
+            >{`#${task.number} · `}</Text>
+          ) : null}
           {task.title}
         </Text>
         <Text style={[styles.meta, { color: c.foregroundMuted }]}>

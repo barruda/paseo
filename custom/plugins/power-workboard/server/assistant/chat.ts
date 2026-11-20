@@ -39,6 +39,7 @@ import type { QuickInbox } from "./quick";
 // CUSTOM(assistant-reports)
 import { reportEntryInputSchema } from "../../shared/assistant-reports";
 import type { Data, Orchestration } from "../../shared/model";
+import { resolveTaskReference } from "../../shared/task-reference"; // CUSTOM(task-numbers)
 import { orchestratorPart, type ReportStore } from "./reports";
 // CUSTOM(assistant-reply-protocol)
 import {
@@ -271,10 +272,11 @@ export function boardReportTool(
     async execute(input) {
       const board = getBoard();
       const data = board.assistantSource().data;
-      const task = data.tasks.find((t) => t.id === input.taskId);
+      // CUSTOM(task-numbers): the tool accepts `42` or `#42` as well as the UUID.
+      const task = resolveTaskReference(data.tasks, input.taskId);
       if (!task)
         throw new Error(
-          `No task with id ${input.taskId}. Use board_list_tasks to find its id.`,
+          `No task with id ${input.taskId}. Use board_list_tasks to find its id or number.`,
         );
       const snapshot = board.snapshot();
       const card = snapshot.cards.find((c) => c.id === task.id);
@@ -404,11 +406,13 @@ export function chatTools(
       `No orchestrator "${reference}". Orchestrators: ${choices(orchestrators)}`,
     );
   };
+  // CUSTOM(task-numbers): every tool resolves a UUID, `42` or `#42`.
   const card = (taskId: string): Card => {
-    const found = board()
-      .snapshot()
-      .cards.find((c) => c.id === taskId);
-    if (!found) throw new Error(`No task with id ${taskId}`);
+    const found = resolveTaskReference(board().snapshot().cards, taskId);
+    if (!found)
+      throw new Error(
+        `No task with id ${taskId}. Use board_list_tasks to find its id or number.`,
+      );
     return found;
   };
   const delivery = (taskId: string) =>
@@ -426,13 +430,13 @@ export function chatTools(
           .orchestrators.find((o) => o.id === id)?.name ?? id)
       : "-";
   const line = (c: Card) =>
-    `${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${columnOf(c)} (${c.stage}) | orchestrator: ${orchestratorName(c.orchestratorId)} | delivery: ${delivery(c.id)?.stage ?? "-"} | updated: ${c.updatedAt}`;
+    `${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${columnOf(c)} (${c.stage}) | orchestrator: ${orchestratorName(c.orchestratorId)} | delivery: ${delivery(c.id)?.stage ?? "-"} | updated: ${c.updatedAt}`;
   const managedAgent = (agentId: string) =>
     isManagedAgent(board().assistantSource().data, agentId);
 
   const checkout = (taskId: string) => {
-    card(taskId);
-    return board().assistantTaskCheckout(taskId);
+    const c = card(taskId);
+    return board().assistantTaskCheckout(c.id);
   };
   const NO_WORKTREE =
     "Worktree: none. This task has no workspace yet (or it was archived), so there is nothing to diff.";
@@ -486,6 +490,9 @@ export function chatTools(
             return `${name ? `${name} (${id})` : id}=${review}`;
           });
         const pm = buildPmOverview(source.data.assistant?.pmBoard); // CUSTOM(pm-board)
+        const taskNumbers = new Map(
+          source.data.tasks.map((task) => [task.id, task.number]),
+        ); // CUSTOM(task-numbers)
         const lines = [
           `Projects:\n${snapshot.projects.map((p) => `- ${p.id} | ${p.name} | ${p.isGit ? "git" : "not git"} | ${p.directory} | review: ${reviewPolicyFor(settings, p.id)}`).join("\n") || "- none"}`,
           `Orchestrators:\n${
@@ -502,7 +509,7 @@ export function chatTools(
                 `- ${g.id} | ${groupName(g)} | ${g.kind} | ${snapshot.cards.filter((c) => !c.archived && c.stage === g.id).length} tasks`,
             )
             .join("\n")}`,
-          `Needs you:\n${needsYou.map((n) => `- ${n.taskId} | ${n.title} | project: ${n.projectName || n.projectId || "-"} | orchestrator: ${n.orchestratorName ?? "-"} | agent: ${n.agentId ?? "-"} | attempt: ${n.attempt ?? "-"} | since: ${n.since} | can merge: ${n.canMerge ? "yes" : "no"} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
+          `Needs you:\n${needsYou.map((n) => `- ${taskNumbers.get(n.taskId) ? `#${taskNumbers.get(n.taskId)} | ` : ""}${n.taskId} | ${n.title} | project: ${n.projectName || n.projectId || "-"} | orchestrator: ${n.orchestratorName ?? "-"} | agent: ${n.agentId ?? "-"} | attempt: ${n.attempt ?? "-"} | since: ${n.since} | can merge: ${n.canMerge ? "yes" : "no"} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
           // CUSTOM(pm-board): your own board, apart from the task board.
           `Project Manager board (investigations, proposals and decisions; code tasks and code reviews stay on the task board):\ninvestigating ${pm.investigating}, waiting for the user ${pm.waiting}, decided ${pm.decided}, archived ${pm.archived}\n${pm.cards.map((c) => `- ${c.id} | ${c.kind} | ${c.title} | since: ${c.since}`).join("\n") || "- nothing waiting"}`,
           `Project Manager: ${settings.enabled ? "on" : "off"}, default action ${settings.defaultAction}; per project: ${
@@ -558,17 +565,18 @@ export function chatTools(
       input: z.object({ taskId: z.string() }),
       async execute({ taskId }) {
         const c = card(taskId);
+        const id = c.id;
         const data = board().assistantSource().data;
-        const run = data.orchestrations[taskId];
-        const d = data.assistant.deliveries[taskId];
-        const finish = data.finishes[taskId];
-        const attempts = data.assistant.attempts[taskId] ?? [];
+        const run = data.orchestrations[id];
+        const d = data.assistant.deliveries[id];
+        const finish = data.finishes[id];
+        const attempts = data.assistant.attempts[id] ?? [];
         const parts = [
           line(c),
           `Description:\n${c.description || "(empty)"}`,
           `Run: ${run ? `${run.status}, agent ${run.agentId ?? "-"}${run.error ? `, error: ${run.error}` : ""}` : "none"}`,
           `Last summary: ${run?.summary ?? "-"}`,
-          checkpointLines(run, data.assistant.progress[taskId]), // CUSTOM(task-checkpoints)
+          checkpointLines(run, data.assistant.progress[id]), // CUSTOM(task-checkpoints)
           `Attempts:\n${attempts.map((a) => `- #${a.index} ${a.trigger} | agent ${a.agentId ?? "-"} | ${a.outcome}${a.feedback ? ` | feedback: ${a.feedback}` : ""}`).join("\n") || "- none"}`,
           d
             ? `Delivery: ${d.stage}, action ${d.action}${d.reason ? `, reason ${d.reason}` : ""}${d.detail ? ` (${d.detail})` : ""}${d.report ? `\nReport: ${d.report.status}: ${d.report.summary}${d.report.risks.length ? `\nRisks: ${d.report.risks.join("; ")}` : ""}${d.report.question ? `\nQuestion: ${d.report.question}` : ""}` : ""}`
@@ -577,7 +585,7 @@ export function chatTools(
             ? `Prepared PR: ${finish.prTitle ?? ""}\n${finish.prBody ?? ""}`
             : "",
           finish?.mergedAt ? `Merged at ${finish.mergedAt}` : "",
-          await worktreeSection(taskId),
+          await worktreeSection(id),
         ];
         return text(parts.filter(Boolean).join("\n\n"));
       },
@@ -662,7 +670,7 @@ export function chatTools(
         const created = after.cards.find((c) => !before.has(c.id));
         if (!created) throw new Error("The task was not created");
         return text(
-          `Created ${created.id} "${created.title}" in ${columnOf(created)} (${created.stage}), project: ${created.projectName || created.projectId || "-"}.`,
+          `Created ${created.id}${created.number > 0 ? ` (#${created.number})` : ""} "${created.title}" in ${columnOf(created)} (${created.stage}), project: ${created.projectName || created.projectId || "-"}.`,
         );
       },
     }),
@@ -699,7 +707,7 @@ export function chatTools(
           },
           "assistant",
         ); // CUSTOM(assistant-cards): the history's `by`
-        return text(`Updated ${c.id}.`);
+        return text(`Updated ${c.id}${c.number > 0 ? ` (#${c.number})` : ""}.`);
       },
     }),
     define({
@@ -725,7 +733,9 @@ export function chatTools(
           },
           "assistant",
         ); // CUSTOM(assistant-cards): the history's `by`
-        return text(`Moved ${c.id} to ${groupName(group)}.`);
+        return text(
+          `Moved ${c.id}${c.number > 0 ? ` (#${c.number})` : ""} to ${groupName(group)}.`,
+        );
       },
     }),
     define({
@@ -748,21 +758,22 @@ export function chatTools(
           .describe("With merge-now: wait for the delivery to finish"),
       }),
       async execute(input) {
+        const c = card(input.taskId); // CUSTOM(task-numbers)
         const action: AssistantActionInput =
           input.type === "continue"
             ? {
                 type: "continue",
-                taskId: input.taskId,
+                taskId: c.id,
                 feedback: input.feedback ?? "",
               }
-            : { type: input.type, taskId: input.taskId };
+            : { type: input.type, taskId: c.id };
         await board().assistantAction(action, "assistant"); // CUSTOM(assistant-cards)
         if (input.type === "merge-now" && input.wait)
-          return text(await waitForDelivery(input.taskId));
+          return text(await waitForDelivery(c.id));
         return text(
           input.type === "merge-now" || input.type === "prepare-pr"
-            ? `Started ${input.type} for ${input.taskId}; it runs in the background. Check board_get_task for the result.`
-            : `Done: ${input.type} for ${input.taskId}.`,
+            ? `Started ${input.type} for ${c.id}; it runs in the background. Check board_get_task for the result.`
+            : `Done: ${input.type} for ${c.id}.`,
         );
       },
     }),
@@ -879,12 +890,17 @@ export function chatTools(
         const projectId = input.projectId
           ? resolveProject(input.projectId)
           : null;
+        // CUSTOM(task-numbers): resolve a short number, but keep an id of a removed task.
+        const taskId = input.taskId
+          ? (resolveTaskReference(board().snapshot().cards, input.taskId)?.id ??
+            input.taskId)
+          : null;
         const page = await history.list({
           cursor: null,
           limit: input.limit,
           projectId,
           orchestratorId: null,
-          taskId: input.taskId ?? null,
+          taskId,
           kinds: [],
           from: null,
           to: null,

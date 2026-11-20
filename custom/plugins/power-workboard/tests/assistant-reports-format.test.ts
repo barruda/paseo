@@ -28,6 +28,7 @@ const task = (
   columnId: string | null = null,
 ): ReportTask => ({
   taskId,
+  number: 0,
   title,
   projectId,
   projectName,

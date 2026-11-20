@@ -613,6 +613,7 @@ describe("Reports views", () => {
     expect(tasks).toEqual([
       {
         taskId: "t1",
+        number: 0,
         title: "Task one",
         projectId: "p1",
         projectName: "Proj",
@@ -660,6 +661,7 @@ describe("Reports views", () => {
     );
     expect(timeline?.task).toEqual({
       taskId: "t1",
+      number: 0,
       title: "Task one",
       projectId: "p1",
       projectName: "Proj",

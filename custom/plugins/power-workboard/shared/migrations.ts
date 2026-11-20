@@ -215,7 +215,7 @@ function migrateV8(values: unknown) {
       settings: settingsSchema.default(() => settingsSchema.parse({})),
     })
     .parse(values);
-  return dataSchema.parse({
+  return migrateV9({
     ...previous,
     schemaVersion: 9,
     settings: {
@@ -224,6 +224,37 @@ function migrateV8(values: unknown) {
       archiveAfterDays: 0,
       archiveMappingNeedsReview: false,
     },
+  });
+}
+
+/**
+ * CUSTOM(task-numbers): every existing ticket gets a short number in creation order, and the
+ * counter moves past the highest one so a removed ticket's number is never handed out again.
+ */
+function migrateV9(values: unknown) {
+  const previous = z
+    .object({
+      ...dataSchema.shape,
+      schemaVersion: z.literal(9).default(9),
+      settings: settingsSchema.default(() => settingsSchema.parse({})),
+    })
+    .parse(values);
+  const ordered = [...previous.tasks].sort(
+    (left, right) =>
+      Date.parse(left.createdAt) - Date.parse(right.createdAt) ||
+      left.id.localeCompare(right.id),
+  );
+  const numbers = new Map(
+    ordered.map((task, index) => [task.id, index + 1] as const),
+  );
+  return dataSchema.parse({
+    ...previous,
+    schemaVersion: 10,
+    tasks: previous.tasks.map((task) => ({
+      ...task,
+      number: numbers.get(task.id)!,
+    })),
+    nextTaskNumber: ordered.length + 1,
   });
 }
 
@@ -299,6 +330,7 @@ export class InvalidStorageDataError extends Error {
 }
 
 function migrateDataUnsafe(values: unknown, fromVersion: number) {
+  if (fromVersion === 9) return migrateV9(values);
   if (fromVersion === 8) return migrateV8(values);
   if (fromVersion === 7) return migrateV7(values);
   if (fromVersion === 6) return migrateV6(values);
