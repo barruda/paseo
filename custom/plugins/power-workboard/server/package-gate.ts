@@ -3,7 +3,7 @@
 // A failed run bisects the package's merges and points at the first suspect.
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -29,7 +29,7 @@ import { resolveBase } from "./assistant/task-git";
 
 const execute = promisify(execFile);
 const GIT_TIMEOUT_MS = 60_000;
-const GATE_TIMEOUT_MS = 60 * 60_000;
+export const GATE_TIMEOUT_MS = 60 * 60_000;
 
 export type GitExec = (
   args: string[],
@@ -83,16 +83,11 @@ export async function changedPaths(
     await exec(["-C", directory, "merge-base", base.ref, "HEAD"])
   ).trim();
   if (!mergeBase) return [];
-  const output = await exec([
-    "-C",
-    directory,
-    "diff",
-    "--name-only",
-    "--no-renames",
-    mergeBase,
+  const [tracked, untracked] = await Promise.all([
+    exec(["-C", directory, "diff", "--name-only", "--no-renames", mergeBase]),
+    exec(["-C", directory, "ls-files", "--others", "--exclude-standard"]),
   ]);
-  return output
-    .split("\n")
+  return [...new Set([...tracked.split("\n"), ...untracked.split("\n")])]
     .map((line) => line.trim())
     .filter(Boolean);
 }
@@ -175,6 +170,8 @@ export interface PackageGateInput {
   run?: VerifyRunner;
   exec?: GitExec;
   gateDirectory?: string;
+  /** CUSTOM(packages): aborted by the board's dispose; the run is canceled. */
+  signal?: AbortSignal;
 }
 
 function errorRun(
@@ -224,6 +221,7 @@ export async function runPackageGate(
   }
   const exec = input.exec ?? runGit;
   const run = input.run ?? runVerify;
+  if (input.signal?.aborted) return errorRun(input, "error", "Canceled");
   const started = Date.now();
   const startedAt = input.now ?? new Date(started).toISOString();
   const gateDir = input.gateDirectory ?? defaultGateDirectory();
@@ -247,6 +245,7 @@ export async function runPackageGate(
       const setup = await run(gate.setupCommand, directory, {
         env,
         timeoutMs: GATE_TIMEOUT_MS,
+        signal: input.signal,
       });
       if (!setup.passed) {
         return {
@@ -260,6 +259,7 @@ export async function runPackageGate(
     const result = await run(gate.command, directory, {
       env,
       timeoutMs: GATE_TIMEOUT_MS,
+      signal: input.signal,
     });
     const baseRun: PackageRun = {
       id: `pkgrun-${randomUUID().slice(0, 8)}`,
@@ -275,9 +275,20 @@ export async function runPackageGate(
       suspectCommit: null,
     };
     if (result.passed) return baseRun;
+    if (input.signal?.aborted)
+      return { ...baseRun, status: "error", output: "Canceled" };
+    if (!useWorktree)
+      return {
+        ...baseRun,
+        output:
+          `${baseRun.output}\nBisect requires a gate worktree; runIn is checkout.`
+            .trim()
+            .slice(-PACKAGE_OUTPUT_LIMIT),
+      };
     const merges = packageMerges(input.tasks, input.finishes, input.pkg.id);
     if (!merges.length) return baseRun;
     const runAt = async (merge: PackageMerge): Promise<GateAttempt> => {
+      if (input.signal?.aborted) return "error";
       try {
         if (useWorktree)
           await checkoutWorktree(
@@ -290,12 +301,14 @@ export async function runPackageGate(
           const setup = await run(gate.setupCommand, directory, {
             env,
             timeoutMs: GATE_TIMEOUT_MS,
+            signal: input.signal,
           });
           if (!setup.passed) return "error";
         }
         const check = await run(gate.command, directory, {
           env,
           timeoutMs: GATE_TIMEOUT_MS,
+          signal: input.signal,
         });
         return check.passed ? "passed" : "failed";
       } catch {
@@ -354,6 +367,7 @@ async function checkoutWorktree(
   }
   try {
     await exec(["-C", worktree, "checkout", "--detach", "--force", commit]);
+    await exec(["-C", worktree, "clean", "-fdx"]).catch(() => undefined);
   } catch {
     // A stale folder that is not a worktree: replace it with a fresh one.
     await exec([
@@ -375,4 +389,24 @@ async function checkoutWorktree(
       commit,
     ]);
   }
+}
+
+/** Removes a package's gate worktree when the package is deleted. */
+export async function removeGateWorktree(
+  projectDirectory: string,
+  packageId: string,
+  gateDirectory: string = defaultGateDirectory(),
+  exec: GitExec = runGit,
+): Promise<void> {
+  const worktree = path.join(gateDirectory, packageId);
+  if (!existsSync(worktree)) return;
+  await exec([
+    "-C",
+    projectDirectory,
+    "worktree",
+    "remove",
+    "--force",
+    worktree,
+  ]).catch(() => undefined);
+  await rm(worktree, { recursive: true, force: true }).catch(() => undefined);
 }

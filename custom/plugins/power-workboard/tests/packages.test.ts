@@ -170,6 +170,13 @@ describe("risk rule", () => {
       false,
     );
     expect(matchesRiskPath("src/ui/button.ts", "**/migrations/**")).toBe(false);
+    // A double star before the slash matches zero folders, so a root folder matches too.
+    expect(matchesRiskPath("migrations/001.sql", "**/migrations/**")).toBe(
+      true,
+    );
+    expect(matchesRiskPath("auth/login.ts", "**/auth/**")).toBe(true);
+    expect(matchesRiskPath("security/policy.ts", "**/security/**")).toBe(true);
+    expect(matchesRiskPath("protocol/wire.ts", "**/protocol/**")).toBe(true);
   });
 
   it("returns only the paths a rule escalates", () => {
@@ -225,6 +232,7 @@ describe("progress and views", () => {
       canceled: 1,
     });
     const view = packageViews(data, [{ id: "p", name: "Project" }])[0];
+    expect(view.gate).not.toHaveProperty("env");
     expect(view).toMatchObject({
       name: "Auth",
       projectName: "Project",

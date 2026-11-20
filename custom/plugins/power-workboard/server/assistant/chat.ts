@@ -8,6 +8,7 @@ import {
   GROUP_COLORS,
   defaultGroup,
   orderedGroups,
+  packageGateSchema,
   testTierSchema,
   type Card,
   type Group,
@@ -1180,6 +1181,8 @@ export function chatTools(
         night: z.boolean().optional(),
         onClose: z.boolean().optional(),
         everyMerges: z.number().int().min(1).max(100).nullable().optional(),
+        gate: packageGateSchema.nullable().optional(),
+        tierPolicy: z.object({ escalateOnRisk: z.boolean() }).optional(),
       }),
       async execute(input) {
         const current = board()
@@ -1194,6 +1197,8 @@ export function chatTools(
             color: input.color,
             branch: input.branch,
             status: input.status,
+            gate: input.gate,
+            tierPolicy: input.tierPolicy,
             trigger:
               input.night === undefined &&
               input.onClose === undefined &&

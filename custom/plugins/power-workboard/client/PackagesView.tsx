@@ -35,7 +35,7 @@ export function PackagesView({
   onSelectCard(card: Card): void;
   renderCard(card: Card): ReactNode;
 }) {
-  const open = packages;
+  const open = packages.filter((pkg) => pkg.status === "open");
   const rails: {
     id: string | null;
     name: string;
@@ -77,7 +77,7 @@ export function PackagesView({
           rail.id === null ? !card.packageId : card.packageId === rail.id,
         );
         const pkg = rail.id
-          ? packages.find((item) => item.id === rail.id)
+          ? open.find((item) => item.id === rail.id)
           : undefined;
         return (
           <View

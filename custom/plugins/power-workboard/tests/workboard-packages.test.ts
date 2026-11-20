@@ -3,7 +3,12 @@
 import { expect, it } from "vitest";
 import { fixture } from "./fixtures";
 import { Workboard } from "../server/workboard";
-import { orchestratorConfigSchema, type PackageRun } from "../shared/model";
+import {
+  orchestratorConfigSchema,
+  packageRunSchema,
+  packageSchema,
+  type PackageRun,
+} from "../shared/model";
 
 const project = {
   id: "p",
@@ -374,4 +379,34 @@ it("the nightly trigger runs the gate once per night window", async () => {
   await new Promise((resolve) => setTimeout(resolve, 20));
   expect(board.packageRuns(pkg.id)).toHaveLength(1);
   board.dispose();
+});
+
+it("marks a gate interrupted by a restart as an error on load", async () => {
+  const f = fixture({
+    defaultOrchestratorSeeded: true,
+    packages: [
+      packageSchema.parse({
+        id: "pkg-1",
+        name: "Auth",
+        projectId: "p",
+        createdAt: "2026-01-01T00:00:00Z",
+      }),
+    ],
+    packageRuns: [
+      packageRunSchema.parse({
+        id: "run-1",
+        packageId: "pkg-1",
+        trigger: "manual",
+        status: "running",
+        startedAt: "2026-01-01T00:00:00Z",
+      }),
+    ],
+  });
+  f.inventory.projects.push(project);
+  await f.board.start();
+  expect(f.store.current.packageRuns[0]).toMatchObject({
+    status: "error",
+    output: expect.stringContaining("Interrupted by a restart"),
+  });
+  f.board.dispose();
 });

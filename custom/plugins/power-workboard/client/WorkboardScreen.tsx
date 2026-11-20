@@ -103,7 +103,12 @@ import {
   useProjectIcons,
   type ProjectIcons,
 } from "./project-icons";
-import { loadBoardFilters, saveBoardFilters, toggleButtonState } from "./web";
+import {
+  loadBoardFilters,
+  onEscapeKey,
+  saveBoardFilters,
+  toggleButtonState,
+} from "./web";
 import {
   activeFilterCount,
   DEFAULT_FILTERS,
@@ -275,6 +280,10 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     const timer = setTimeout(() => setPackageUndo(null), 12_000);
     return () => clearTimeout(timer);
   }, [packageUndo]);
+  useEffect(() => {
+    if (!selection.ids.size) return;
+    return onEscapeKey(() => setSelection(clearSelection()));
+  }, [selection.ids.size]);
   const storageWarned = useRef(false);
   const { projectId, search, attentionOnly } = filters;
   const [selectedStage, setSelectedStage] = useState<Stage | null>(null);

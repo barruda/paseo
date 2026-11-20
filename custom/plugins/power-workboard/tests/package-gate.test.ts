@@ -2,12 +2,25 @@
 import { expect, it, vi } from "vitest";
 import { packageSchema, type Finish, type Task } from "../shared/model";
 import { projectPolicySchema } from "../shared/assistant";
+import { runVerify } from "../server/assistant/delivery";
 import {
   bisectPackage,
+  changedPaths,
   packageMerges,
+  removeGateWorktree,
   runPackageGate,
   type GitExec,
 } from "../server/package-gate";
+import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const project = {
   id: "p",
@@ -181,4 +194,93 @@ it("stops the bisect on an error instead of blaming a merge", async () => {
   const result = await bisectPackage(merges, async () => "error");
   expect(result.suspect).toBeNull();
   expect(result.error).toContain("could not run");
+});
+
+it("includes untracked files in the changed paths", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "pwb-changed-"));
+  try {
+    execFileSync("git", ["init"], { cwd: repo, stdio: "ignore" });
+    writeFileSync(join(repo, "base.txt"), "x");
+    execFileSync("git", ["add", "."], { cwd: repo, stdio: "ignore" });
+    execFileSync(
+      "git",
+      ["-c", "user.email=a@b", "-c", "user.name=a", "commit", "-m", "base"],
+      { cwd: repo, stdio: "ignore" },
+    );
+    mkdirSync(join(repo, "migrations"));
+    writeFileSync(join(repo, "migrations", "0001.sql"), "create table x;");
+    expect(await changedPaths(repo, "HEAD")).toContain("migrations/0001.sql");
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+it("a canceled gate does not run", async () => {
+  const controller = new AbortController();
+  controller.abort();
+  const run = vi.fn();
+  const result = await runPackageGate({
+    pkg: pkg({ gate: { command: "gate", runIn: "checkout" } }),
+    project,
+    policy: projectPolicySchema.parse({}),
+    tasks: [],
+    finishes: {},
+    trigger: "manual",
+    run,
+    exec: vi.fn(),
+    signal: controller.signal,
+  });
+  expect(result.status).toBe("error");
+  expect(result.output).toContain("Canceled");
+  expect(run).not.toHaveBeenCalled();
+});
+
+it("does not bisect a checkout gate and says so", async () => {
+  const tasks = [task("t1", 1), task("t2", 2)];
+  const finishes = {
+    t1: finish("good", "2026-01-02T00:00:00Z"),
+    t2: finish("bad", "2026-01-03T00:00:00Z"),
+  };
+  const result = await runPackageGate({
+    pkg: pkg({ gate: { command: "gate", runIn: "checkout" } }),
+    project,
+    policy: projectPolicySchema.parse({}),
+    tasks,
+    finishes,
+    trigger: "manual",
+    run: vi.fn(async () => ({ passed: false, output: "boom" })),
+    exec: vi.fn(async () => "head\n"),
+  });
+  expect(result.status).toBe("failed");
+  expect(result.suspectTaskId).toBeNull();
+  expect(result.output).toContain("Bisect requires a gate worktree");
+});
+
+it("removes a package's gate worktree and directory", async () => {
+  const gateDir = mkdtempSync(join(tmpdir(), "pwb-gate-"));
+  const worktree = join(gateDir, "pkg-1");
+  mkdirSync(worktree);
+  const exec = vi.fn(async () => "");
+  await removeGateWorktree("/project", "pkg-1", gateDir, exec);
+  expect(exec).toHaveBeenCalledWith([
+    "-C",
+    "/project",
+    "worktree",
+    "remove",
+    "--force",
+    worktree,
+  ]);
+  expect(existsSync(worktree)).toBe(false);
+  rmSync(gateDir, { recursive: true, force: true });
+});
+
+it("runVerify resolves canceled when its signal aborts", async () => {
+  const controller = new AbortController();
+  const promise = runVerify("sleep 5", process.cwd(), {
+    signal: controller.signal,
+  });
+  controller.abort();
+  const result = await promise;
+  expect(result.passed).toBe(false);
+  expect(result.output).toContain("Canceled");
 });

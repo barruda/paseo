@@ -14,6 +14,8 @@ export interface VerifyResult {
 export interface VerifyOptions {
   env?: NodeJS.ProcessEnv;
   timeoutMs?: number;
+  /** CUSTOM(packages): a gate run is canceled on dispose. */
+  signal?: AbortSignal;
 }
 export type VerifyRunner = (
   command: string,
@@ -26,10 +28,16 @@ export const runVerify: VerifyRunner = (command, directory, options = {}) =>
   new Promise((resolve) => {
     let output = "";
     let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onAbort = () => {
+      child.kill("SIGKILL");
+      finish({ passed: false, output: `${output}\nCanceled`.trim() });
+    };
     const finish = (result: VerifyResult) => {
       if (settled) return;
       settled = true;
-      clearTimeout(timer);
+      if (timer) clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
       resolve(result);
     };
     const child = spawn("sh", ["-c", command], {
@@ -43,13 +51,15 @@ export const runVerify: VerifyRunner = (command, directory, options = {}) =>
     child.stdout.on("data", take);
     child.stderr.on("data", take);
     const timeout = options.timeoutMs ?? VERIFY_TIMEOUT_MS;
-    const timer = setTimeout(() => {
+    timer = setTimeout(() => {
       child.kill("SIGKILL");
       output = `${output}\nTimed out after ${timeout / 60000} minutes`.slice(
         -VERIFY_OUTPUT_LIMIT,
       );
       finish({ passed: false, output });
     }, timeout);
+    options.signal?.addEventListener("abort", onAbort);
+    if (options.signal?.aborted) onAbort();
     child.on("error", (error) =>
       finish({ passed: false, output: `${output}\n${error.message}`.trim() }),
     );

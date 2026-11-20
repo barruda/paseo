@@ -3118,7 +3118,7 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     extracted from that image (gray when it is monochrome); a project without an image uses the
     app's letter color.
   - The plugin's `@getpaseo/*` dev dependencies move to 0.14.0 and the manifest requires Paseo
-    >= 0.13.0: the icon uses the `Icon` `icon` prop and `findSvgIconProblem` added in 0.13.0.
+    > = 0.13.0: the icon uses the `Icon` `icon` prop and `findSvgIconProblem` added in 0.13.0.
 - **Core files touched:** none.
 - **Re-apply:** None for the app. Run `npm install` in `custom/plugins/power-workboard` after
   merging to pick up the 0.14.0 dev dependencies.
@@ -6320,7 +6320,7 @@ src/task-navigation/provider-subagent-rows.test.ts` (in the update script). By h
   `settings.chatOptions` with a cached copy that sets those keys to `false` and leaves `dictation`
   and `voice` alone. In the agent controls, filter out features with `icon === "zap"` in embed mode.
 - **Verify:** `cd packages/app && npx vitest run src/embed src/composer/voice-controls.test.ts
-  --bail=1` (in the update script). Needs the app build and install; the daemon serves the web UI
+--bail=1` (in the update script). Needs the app build and install; the daemon serves the web UI
   and needs no restart. Reload the Assets Board agent panel: the composer has no plan, speed, Ctrl+M
   or Jev control, and the Dictation mic and Voice mode buttons are there and work; the Paseo app
   still has everything.
@@ -9374,6 +9374,8 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
 
 - **Added:** 2026-11-20 (based on upstream 0.11.2, on `custom`)
 - **Commit:** `custom: group tickets into packages with one gate per package`
+- **Follow-up:** `custom: harden packages on untracked diffs and gate cancellation` (untracked
+  paths, root globs, risk-scan failure, 60-minute gate timeout, worktree cleanup and cancellation).
 - **Why:** Every ticket paid for the full suite in its own agent turn, and the fixed "run everything"
   line in the orchestrator's instructions could not tell a migration from a one-file change. The
   analysis in `docs/improvements/workboard-test-tiers.html` found three layers run per ticket, two
@@ -9385,8 +9387,8 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     uses `Package`/`pkg` because `package` is reserved in an ES module. It is created after the
     tickets exist, per project, with a name; everything else has a default. A ticket belongs to at
     most one package.
-  - **Selection.** Ctrl/Cmd+click and Shift+click (interval in the column) on the web, a drag on
-    empty column space for an area, and long-press on a card for touch. The selection bar has
+  - **Selection.** Ctrl/Cmd+click and Shift+click (interval in the column) on the web, and
+    long-press on a card for touch. The selection bar has
     **Add to package** and **Clear**. The menu searches the project's open packages and creates one
     from the typed name; Enter chooses the first item. The toast banner offers **Undo** (restores
     the previous package ids and deletes a package this action created) and **Adjust**.
@@ -9406,7 +9408,8 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     worktree under `<PASEO_HOME>/plugin-data/power-workboard/gates/<packageId>`, never by an agent.
     Triggers: nightly (the existing night window, once per window), on close, manually and every N
     merges. `tests.gateRequiredEnv` missing fails the run (`missing-deps`) instead of letting
-    suites skip; `tests.gateEnv` sets the strict flags. A failed run bisects the package's merge
+    suites skip; `tests.gateEnv` sets the strict flags. `gateRunIn: "checkout"` runs the setup
+    and the gate in the live checkout and skips the bisect. A failed run bisects the package's merge
     commits (`finish.mergeCommit`, recorded at merge) and opens exactly one investigation card on
     the PM board with the suspect ticket. The history is capped at 50 runs per package; the board
     snapshot carries only the last run summary.

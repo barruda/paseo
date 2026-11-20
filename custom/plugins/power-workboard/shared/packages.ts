@@ -159,7 +159,15 @@ export function packageViews(
         branch: pkg.branch,
         trigger: pkg.trigger,
         tierPolicy: pkg.tierPolicy,
-        gate: resolvePackageGate(pkg, policy),
+        gate: (() => {
+          const resolved = resolvePackageGate(pkg, policy);
+          return {
+            command: resolved.command,
+            requiredEnv: resolved.requiredEnv,
+            setupCommand: resolved.setupCommand,
+            runIn: resolved.runIn,
+          };
+        })(),
         createdAt: pkg.createdAt,
         closedAt: pkg.closedAt,
         ...progress,
@@ -192,15 +200,34 @@ export function packageTaskOrder(
     });
 }
 
-/** Glob to RegExp: `**` crosses folders, `*` and `?` stay inside one segment. */
+/**
+ * Glob to RegExp: a double star followed by a slash matches zero or more folders, so a
+ * migrations glob also matches a `migrations/` at the repository root. A bare double star
+ * crosses folders; a single star and `?` stay inside one segment.
+ */
 export function riskGlobToRegExp(glob: string): RegExp {
-  const source = glob
-    .trim()
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, "\u0000")
-    .replace(/\*/g, "[^/]*")
-    .replace(/\?/g, "[^/]")
-    .replace(/\u0000/g, ".*");
+  const value = glob.trim();
+  const escape = (char: string) =>
+    /[.+^${}()|[\]\\]/.test(char) ? `\\${char}` : char;
+  let source = "";
+  for (let index = 0; index < value.length; ) {
+    if (value.startsWith("**/", index)) {
+      source += "(?:.*/)?";
+      index += 3;
+    } else if (value.startsWith("**", index)) {
+      source += ".*";
+      index += 2;
+    } else if (value[index] === "*") {
+      source += "[^/]*";
+      index += 1;
+    } else if (value[index] === "?") {
+      source += "[^/]";
+      index += 1;
+    } else {
+      source += escape(value[index]!);
+      index += 1;
+    }
+  }
   return new RegExp(`^${source}$`);
 }
 

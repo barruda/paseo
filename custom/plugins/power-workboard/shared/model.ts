@@ -546,7 +546,6 @@ export const packageViewSchema = z.object({
   gate: z.object({
     command: z.string(),
     requiredEnv: z.array(z.string()),
-    env: z.record(z.string(), z.string()),
     setupCommand: z.string(),
     runIn: z.enum(["worktree", "checkout"]),
   }),

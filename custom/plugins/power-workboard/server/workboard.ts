@@ -128,8 +128,10 @@ import {
   testSectionFor,
 } from "../shared/packages"; // CUSTOM(packages)
 import {
+  GATE_TIMEOUT_MS,
   changedPaths,
   defaultGateDirectory,
+  removeGateWorktree,
   runPackageGate,
 } from "./package-gate"; // CUSTOM(packages)
 import { parseReport } from "./assistant/report";
@@ -219,8 +221,9 @@ export interface AssistantOptions {
   compactSettleMs?: number;
   /** CUSTOM(orchestrator-in-place): wait before retrying a commit held by another task in the folder. */
   folderRetryMs?: number;
-  /** CUSTOM(packages): the gate runner; tests inject a fake. */
+  /** CUSTOM(packages): the gate runner and the risk scan; tests inject fakes. */
   packageGate?: typeof runPackageGate;
+  changedPaths?: typeof changedPaths;
   /** CUSTOM(assistant-compact): a quick message to this chat still waits for its answer. */
   chatQueued?: (agentId: string) => boolean;
   /** CUSTOM(restart-resume): the restart script's skip file; tests point it elsewhere. */
@@ -636,6 +639,18 @@ export class Workboard {
   }
   private async load() {
     await this.store.load();
+    // CUSTOM(packages): a gate interrupted by a restart is not left running forever.
+    if (this.store.current.packageRuns.some((run) => run.status === "running"))
+      await this.store.update((data) => {
+        for (const run of data.packageRuns)
+          if (run.status === "running") {
+            run.status = "error";
+            run.finishedAt = this.stamp();
+            run.output = `${run.output}\nInterrupted by a restart`
+              .trim()
+              .slice(-PACKAGE_OUTPUT_LIMIT);
+          }
+      });
     const serverId = this.store.current.serverId;
     if (serverId && serverId !== this.host.identity.serverId)
       throw new Error("Workboard storage belongs to another Paseo host");
@@ -3297,7 +3312,7 @@ export class Workboard {
         "This task's project is not a git repository",
       );
     await this.patchDelivery(taskId, {
-      stage: policy.verifyCommand.trim() ? "verifying" : "committing",
+      stage: this.needsVerification(task, policy) ? "verifying" : "committing",
     });
     return true;
   }
@@ -3686,7 +3701,9 @@ export class Workboard {
       try {
         if (stage === "reported") {
           if (delivery.action === "merge")
-            await to(policy.verifyCommand.trim() ? "verifying" : "committing");
+            await to(
+              this.needsVerification(task, policy) ? "verifying" : "committing",
+            );
           else if (delivery.action === "prepare-pr") await to("preparing-pr");
           else return;
           continue;
@@ -3703,7 +3720,11 @@ export class Workboard {
           this.store.current.assistant.attempts[taskId]?.at(-1)?.agentId ??
           null;
         if (stage === "verifying") {
-          const checks: { command: string; env?: NodeJS.ProcessEnv }[] = [];
+          const checks: {
+            command: string;
+            env?: NodeJS.ProcessEnv;
+            timeoutMs?: number;
+          }[] = [];
           const verify = policy.verifyCommand.trim();
           if (verify) checks.push({ command: verify });
           // CUSTOM(packages): a risky package ticket runs the package gate here, by script.
@@ -3721,7 +3742,11 @@ export class Workboard {
               else await needsYou("verify-failed", detail);
               return;
             }
-            checks.push({ command: gate, env: escalated?.env });
+            checks.push({
+              command: gate,
+              env: escalated?.env,
+              timeoutMs: GATE_TIMEOUT_MS,
+            });
           }
           if (!checks.length) {
             await to("committing");
@@ -3730,9 +3755,14 @@ export class Workboard {
           let failed = false;
           for (const check of checks) {
             const runner = this.assistantOptions.verify ?? runVerify;
-            const result = check.env
-              ? await runner(check.command, directory, { env: check.env })
-              : await runner(check.command, directory);
+            const options = {
+              ...(check.env ? { env: check.env } : {}),
+              ...(check.timeoutMs ? { timeoutMs: check.timeoutMs } : {}),
+            };
+            const result =
+              Object.keys(options).length > 0
+                ? await runner(check.command, directory, options)
+                : await runner(check.command, directory);
             if (stageNow() !== "verifying") return;
             await this.serial(() =>
               this.patchDelivery(taskId, { verifyOutput: result.output }),
@@ -3818,13 +3848,26 @@ export class Workboard {
         }
         if (stage === "merging") {
           let failure: string | null = null;
+          let mergeHead: string | null = null;
+          const projectDirectory =
+            this.inventory.projects.find(
+              (item) => item.id === this.projectIdOf(task),
+            )?.directory ?? directory;
           try {
-            await this.mergeLock.run(this.projectIdOf(task) ?? directory, () =>
-              this.host.mergeToBase(directory, {
-                baseRef: policy.baseBranch.trim() || undefined,
-                requireCleanTarget: true,
-                strategy: "merge",
-              }),
+            await this.mergeLock.run(
+              this.projectIdOf(task) ?? directory,
+              async () => {
+                await this.host.mergeToBase(directory, {
+                  baseRef: policy.baseBranch.trim() || undefined,
+                  requireCleanTarget: true,
+                  strategy: "merge",
+                });
+                // CUSTOM(packages): read the merge commit inside the lock, before another
+                // merge can move the base.
+                mergeHead = await this.host
+                  .gitHead(projectDirectory)
+                  .catch(() => null);
+              },
             );
           } catch (error) {
             failure = message(error);
@@ -3858,24 +3901,13 @@ export class Workboard {
           await this.serial(() => this.completeMerge(taskId));
           // CUSTOM(packages): the merge commit is the bisect's pivot; the package counts merges
           // for its every-N trigger.
+          if (mergeHead)
+            await this.serial(() =>
+              this.setFinish(taskId, { mergeCommit: mergeHead }),
+            );
           const mergedTask = this.store.current.tasks.find(
             (item) => item.id === taskId,
           );
-          const project = mergedTask
-            ? this.inventory.projects.find(
-                (item) => item.id === this.projectIdOf(mergedTask),
-              )
-            : null;
-          if (project) {
-            try {
-              const head = await this.host.gitHead(project.directory);
-              await this.serial(() =>
-                this.setFinish(taskId, { mergeCommit: head }),
-              );
-            } catch {
-              // A missing merge commit only weakens the bisect; the delivery stays merged.
-            }
-          }
           if (mergedTask?.packageId) {
             const packageId = mergedTask.packageId;
             await this.serial(() =>
@@ -4588,6 +4620,16 @@ export class Workboard {
   private async packageDelete(packageId: string): Promise<void> {
     if (this.store.current.tasks.some((task) => task.packageId === packageId))
       throw new Error("package-not-empty");
+    const pkg = this.store.current.packages.find(
+      (item) => item.id === packageId,
+    );
+    if (pkg) {
+      const project = this.inventory.projects.find(
+        (item) => item.id === pkg.projectId,
+      );
+      if (project?.isGit)
+        await removeGateWorktree(project.directory, packageId);
+    }
     await this.store.update((data) => {
       data.packages = data.packages.filter((pkg) => pkg.id !== packageId);
       data.packageRuns = data.packageRuns.filter(
@@ -4662,6 +4704,21 @@ export class Workboard {
     this.changed();
   }
 
+  /** A package ticket enters verifying even with no verifyCommand: the risk scan and the gate
+   * run there. A ticket without a package keeps exactly the old rule. */
+  private needsVerification(task: Task, policy: ProjectPolicy): boolean {
+    if (policy.verifyCommand.trim()) return true;
+    if (!task.packageId) return false;
+    const pkg = this.store.current.packages.find(
+      (item) => item.id === task.packageId,
+    );
+    if (!pkg) return false;
+    if (effectiveTestTier(task) === "gate") return true;
+    return (
+      pkg.tierPolicy.escalateOnRisk && policy.tests.gateRiskPaths.length > 0
+    );
+  }
+
   /** The test section a ticket's prompts carry; empty outside a package. */
   private testSection(task: Task): string {
     if (!task.packageId) return "";
@@ -4692,14 +4749,30 @@ export class Workboard {
     const gate = resolvePackageGate(pkg, policy);
     if (effectiveTestTier(task) === "gate") return gate;
     let paths: string[] = [];
+    let scanError: string | null = null;
     try {
-      paths = await changedPaths(directory, policy.baseBranch.trim() || null);
-    } catch {
-      return null;
+      const scan = this.assistantOptions.changedPaths ?? changedPaths;
+      paths = await scan(directory, policy.baseBranch.trim() || null);
+    } catch (error) {
+      scanError = error instanceof Error ? error.message : String(error);
+    }
+    // A failed scan must not silently leave the ticket restricted: escalate for safety and
+    // record why, so the PM sees it.
+    if (scanError) {
+      const reason = `risk scan failed: ${scanError}`;
+      await this.setEscalatedTier(task, reason);
+      await this.packageEscalationCard(pkg, task, [], reason);
+      return gate;
     }
     const risky = riskyPaths(paths, policy.tests.gateRiskPaths);
     if (!risky.length) return null;
     const reason = `diff touched ${risky.join(", ")}`;
+    await this.setEscalatedTier(task, reason);
+    await this.packageEscalationCard(pkg, task, risky, reason);
+    return gate;
+  }
+
+  private async setEscalatedTier(task: Task, reason: string): Promise<void> {
     await this.serial(() =>
       this.store.update((data) => {
         const current = data.tasks.find((item) => item.id === task.id);
@@ -4713,14 +4786,13 @@ export class Workboard {
         current.updatedAt = this.stamp(current.updatedAt);
       }),
     );
-    await this.packageEscalationCard(pkg, task, risky);
-    return gate;
   }
 
   private async packageEscalationCard(
     pkg: Package,
     task: Task,
     risky: readonly string[],
+    reason: string,
   ): Promise<void> {
     if (!this.assistantOn()) return;
     const exists = this.pmCards().some(
@@ -4734,13 +4806,14 @@ export class Workboard {
     await this.pmCardCreate({
       kind: "decision",
       title: `#${task.number} escalated to gate`,
-      decision: `The diff touched ${risky.join(", ")}. The package gate runs for this ticket.`,
-      findings: `Package: ${pkg.name}. Matched: ${risky.join(", ")}.`,
+      decision: `${reason}. The package gate runs for this ticket.`,
+      findings: `Package: ${pkg.name}. ${reason}.${risky.length ? ` Matched: ${risky.join(", ")}.` : ""}`,
       links: { taskIds: [task.id], reportIds: [], packageIds: [pkg.id] },
     });
   }
 
   private packageGates = new Set<string>();
+  private gateAbort = new Map<string, AbortController>();
 
   /** Starts one gate run in the background; the snapshot shows it as running. */
   private async startPackageGate(
@@ -4758,12 +4831,13 @@ export class Workboard {
       startedAt: this.stamp(),
     });
     this.packageGates.add(packageId);
+    this.gateAbort.set(packageId, new AbortController());
     await this.store.update((data) => {
       data.packageRuns.push(run);
       this.trimPackageRuns(data);
     });
     this.changed();
-    void this.executePackageGate(run.id, packageId);
+    void this.executePackageGate(run.id, packageId).catch(() => undefined);
     return run;
   }
 
@@ -4811,6 +4885,7 @@ export class Workboard {
         lastPassedCommit: lastPassed?.commit ?? null,
         gateDirectory: defaultGateDirectory(),
         run: this.assistantOptions.verify ?? runVerify,
+        signal: this.gateAbort.get(packageId)?.signal,
       });
       await this.serial(() =>
         this.store.update((next) => {
@@ -4825,9 +4900,10 @@ export class Workboard {
         }),
       );
       if (
-        result.status === "failed" ||
-        result.status === "missing-deps" ||
-        result.status === "error"
+        !this.stopped &&
+        (result.status === "failed" ||
+          result.status === "missing-deps" ||
+          result.status === "error")
       ) {
         const suspect = result.suspectTaskId
           ? this.store.current.tasks.find(
@@ -4875,8 +4951,8 @@ export class Workboard {
       }
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      await this.serial(() =>
-        this.store.update((data) => {
+      await this.store
+        .update((data) => {
           const index = data.packageRuns.findIndex((run) => run.id === runId);
           const current = data.packageRuns[index];
           if (current)
@@ -4886,10 +4962,11 @@ export class Workboard {
               finishedAt: this.stamp(),
               output: detail.slice(-PACKAGE_OUTPUT_LIMIT),
             });
-        }),
-      );
+        })
+        .catch(() => undefined);
     } finally {
       this.packageGates.delete(packageId);
+      this.gateAbort.delete(packageId);
       this.changed();
     }
   }
@@ -7341,6 +7418,9 @@ export class Workboard {
     for (const timer of this.folderTimers.values()) clearTimeout(timer); // CUSTOM(orchestrator-in-place)
     this.folderTimers.clear();
     clearTimeout(this.dueTimer); // CUSTOM(night-tasks)
+    for (const controller of this.gateAbort.values()) controller.abort();
+    this.gateAbort.clear();
+    this.packageGates.clear();
     this.host.dispose();
   }
 }

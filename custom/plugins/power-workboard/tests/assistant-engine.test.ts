@@ -3248,3 +3248,116 @@ it("a hidden board subagent waiting on a permission brings the task to Needs you
     s.board.dispose();
   }
 });
+
+it("a package ticket with no verifyCommand escalates on an untracked migration and runs the gate", async () => {
+  const verify = vi.fn(async () => ({ passed: true, output: "ok" }));
+  const s = await scenario({
+    policy: {
+      action: "merge",
+      verifyCommand: "",
+      tests: { gateCommand: "npm run gate" },
+    },
+    assistant: {
+      verify,
+      changedPaths: async () => ["migrations/0001.sql"],
+    },
+  });
+  try {
+    await s.board.mutate({
+      action: "package-create",
+      name: "Auth",
+      projectId: "p",
+      taskIds: [s.taskId],
+    });
+    s.reply(report());
+    await s.finishTurn();
+    await vi.waitFor(() => expect(s.delivery()?.stage).toBe("delivered"));
+    expect(
+      s.store.current.tasks.find((task) => task.id === s.taskId)!.testTier,
+    ).toMatchObject({
+      tier: "gate",
+      by: "rule",
+    });
+    expect(verify).toHaveBeenCalledWith(
+      "npm run gate",
+      "/fixture",
+      expect.objectContaining({ timeoutMs: 60 * 60_000 }),
+    );
+    expect(
+      s.store.current.assistant.pmBoard.cards.some(
+        (card) =>
+          card.kind === "decision" && card.links.taskIds.includes(s.taskId),
+      ),
+    ).toBe(true);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a ticket without a package keeps the old delivery: no gate and no risk scan", async () => {
+  const verify = vi.fn();
+  const changedPaths = vi.fn(async () => ["migrations/0001.sql"]);
+  const s = await scenario({
+    policy: { action: "merge", verifyCommand: "" },
+    assistant: { verify, changedPaths },
+  });
+  try {
+    s.reply(report());
+    await s.finishTurn();
+    await vi.waitFor(() => expect(s.delivery()?.stage).toBe("delivered"));
+    expect(verify).not.toHaveBeenCalled();
+    expect(changedPaths).not.toHaveBeenCalled();
+    expect(
+      s.store.current.tasks.find((task) => task.id === s.taskId)!.testTier,
+    ).toBeNull();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a failed risk scan escalates the package ticket and records why", async () => {
+  const verify = vi.fn(async () => ({ passed: true, output: "ok" }));
+  const s = await scenario({
+    policy: {
+      action: "merge",
+      verifyCommand: "",
+      tests: { gateCommand: "npm run gate" },
+    },
+    assistant: {
+      verify,
+      changedPaths: async () => {
+        throw new Error("git diff failed");
+      },
+    },
+  });
+  try {
+    await s.board.mutate({
+      action: "package-create",
+      name: "Auth",
+      projectId: "p",
+      taskIds: [s.taskId],
+    });
+    s.reply(report());
+    await s.finishTurn();
+    await vi.waitFor(() => expect(s.delivery()?.stage).toBe("delivered"));
+    expect(
+      s.store.current.tasks.find((task) => task.id === s.taskId)!.testTier,
+    ).toMatchObject({
+      tier: "gate",
+      by: "rule",
+      reason: expect.stringContaining("risk scan failed"),
+    });
+    expect(verify).toHaveBeenCalledWith(
+      "npm run gate",
+      "/fixture",
+      expect.objectContaining({ timeoutMs: 60 * 60_000 }),
+    );
+    const card = s.store.current.assistant.pmBoard.cards.find(
+      (item) =>
+        item.kind === "decision" && item.links.taskIds.includes(s.taskId),
+    );
+    expect(card?.decision).toContain("risk scan failed");
+  } finally {
+    s.board.dispose();
+  }
+});

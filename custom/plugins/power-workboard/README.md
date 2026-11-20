@@ -123,8 +123,8 @@ this repo) with these differences:
 
 - **Packages.** A **Package** groups tickets that already exist, so the full suite runs once per
   package, by script, instead of once per ticket. It is not a board column (`Group` stays the
-  column). Select tickets with Ctrl/Cmd+click or Shift+click (a drag on empty column space selects
-  an area) and use **Add to package** in the selection bar or a card's menu; on a phone, long-press
+  column). Select tickets with Ctrl/Cmd+click or Shift+click and use **Add to package** in the
+  selection bar or a card's menu; on a phone, long-press
   a card to enter selection. The menu searches the open packages of the project and creates one
   from the typed name. The cards get the package chip and a test-level chip; **Undo** restores the
   previous assignment (and deletes a package created by that action). **Columns | Packages** on the
@@ -136,7 +136,8 @@ this repo) with these differences:
   project's `tests.gateCommand` (else `verifyCommand`), run in a dedicated git worktree by the
   board, never an agent. It runs nightly (the existing night window), on close, manually and, when
   configured, every N merges; `tests.gateRequiredEnv` that is missing fails the run instead of
-  letting suites skip. A failed run bisects the package's merge commits and opens **one**
+  letting suites skip. With `gateRunIn: "checkout"`, the setup and the gate run in the live
+  checkout and the bisect is skipped. A failed run bisects the package's merge commits and opens **one**
   investigation card on the PM board with the suspect ticket; the history is in the package's
   detail. A package's own integration branch, the PM's **select these tickets** suggestion, drag to
   a rail and the marquee are the next step, not this one. Data lives
