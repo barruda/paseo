@@ -41,7 +41,7 @@ const zh = {
     holdRam: "等待内存：空闲 {free}%，资源池“{pool}”需要 {min}%",
     holdSettle:
       "等待内存稳定：资源池“{pool}”刚启动了一个代理，{time} 后再启动下一个",
-    holdFolder: "等待中：另一个任务正在 {directory} 中运行",
+    holdFolder: "等待中：“{task}”尚未在 {directory} 中交付",
   },
   night: {
     badge: "夜间",
@@ -762,7 +762,7 @@ const en: typeof zh = {
     holdRam: "Waiting for RAM: {free}% free, pool “{pool}” needs {min}%",
     holdSettle:
       "Waiting for RAM to settle: pool “{pool}” just started an agent; the next one starts at {time}",
-    holdFolder: "Waiting: another task is running in {directory}",
+    holdFolder: "Waiting: “{task}” is not delivered yet in {directory}",
   },
   night: {
     badge: "Night",

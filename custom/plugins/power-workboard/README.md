@@ -27,10 +27,13 @@ this repo) with these differences:
 - **Folder mode.** An orchestrator's **Workspace** can be **Directly in the project folder (no
   worktree)** instead of a worktree per task. Folder mode runs one task at a time per project
   folder, whichever orchestrator owns it, so `At a time` is locked at 1; a second task waits in
-  Ready to start with `Waiting: another task is running in <folder>` in the orchestrator's log and
-  status. A folder is busy only while its agent runs a turn or the delivery checks, commits or
-  fixes; Ready to review, Needs you and a checkpoint with an idle agent free it. The task starts
-  even if the folder already has uncommitted changes: the board records the folder's HEAD and the
+  Ready to start with `Waiting: "<task>" is not delivered yet in <folder>` in the orchestrator's
+  log and status. The folder stays busy from the start until the delivery is delivered or
+  dismissed, or until the task goes back to Backlog/Ready or to Done without a pending delivery;
+  In progress, Ready to review, Needs you, a checkpoint and every delivery stage keep it. Before
+  committing, the board checks that no other task's agent is still running in the folder; if one
+  is, the commit waits and retries on the next pass with the reason visible. The task starts even
+  if the folder already has uncommitted changes: the board records the folder's HEAD and the
   `git status --porcelain` lines in the orchestration, logs a `folder-dirty` history event, and
   the review diff warns and lists those files apart. Its delivery commits on the branch the
   folder is on and never merges, and approving it from Ready to review also commits what is left,

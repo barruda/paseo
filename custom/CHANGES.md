@@ -8962,24 +8962,29 @@ src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard
     the no-merge delivery are for the explicit folder mode.
   - **One task per folder.** A folder-mode task starts only when no other task the board runs in
     that `project.directory` is using it (folder mode, a non-git project, or a manual start),
-    whichever orchestrator owns it. The second task stays
-    in Ready to start; the orchestrator's log says `Waiting: another task is running in <folder>`
-    once and its status shows a `folder` hold, and the next pass starts it after the first frees
-    the folder. A folder is busy while its agent runs a turn or the delivery is checking,
-    committing or fixing; Ready to review, Needs you and a checkpoint with an idle agent free it.
-    Folder mode also caps `maxConcurrent` at 1: the server uses 1 and the form shows the field
-    locked at 1 with the reason.
+    whichever orchestrator owns it. The second task stays in Ready to start; the orchestrator's
+    log says `Waiting: "<task>" is not delivered yet in <folder>` once and its status shows a
+    `folder` hold, and the next pass starts it after the first frees the folder. The folder stays
+    busy from the start until the delivery is `delivered` or `dismissed`, or until the task goes
+    back to Backlog/Ready or to Done without a pending delivery. In progress, Ready to review,
+    Needs you, a checkpoint and every delivery stage (including `reported`) keep it, so the commit
+    can never run while another task is still using the folder. Folder mode also caps
+    `maxConcurrent` at 1: the server uses 1 and the form shows the field locked at 1 with the
+    reason.
   - **Dirty folder at start.** The task starts anyway. The orchestration stores `inPlace`,
     `baseHead` (the folder's HEAD) and `initialDirty` (the `git status --porcelain` lines), and
     the board logs a `folder-dirty` history event plus a warning in the orchestrator's log with
     the count.
   - **Delivery without merge.** The delivery's `committing` step commits in the folder (under the
     project's `mergeLock`, with the same `dependencyRefusal` protection) and then skips
-    `merging`: it marks the delivery delivered and moves the task to Done. Approving a folder task
-    from Ready to review (Done) also commits it on the current branch, asynchronously, when there
-    is something to commit. A task whose agent already committed is not committed again. The Done
-    card offers Commit and PR description, not Merge into project, and the server refuses a Merge
-    for an in-place task.
+    `merging`: it marks the delivery delivered and moves the task to Done. Before committing, it
+    checks whether another board task's agent is still running in the folder; if one is, the
+    delivery stays in `committing`, shows `Waiting: "<task>" is still running in <folder>` in its
+    detail and the orchestrator's log, and retries on the next pass instead of failing. Approving a
+    folder task from Ready to review (Done) also commits it on the current branch, asynchronously,
+    when there is something to commit. A task whose agent already committed is not committed
+    again. The Done card offers Commit and PR description, not Merge into project, and the server
+    refuses a Merge for an in-place task.
   - **Review and diff.** `board_get_task` and `board_task_diff` diff an in-place task from
     `baseHead` (source `task start`) instead of a base branch, then add the uncommitted work. The
     header says `Mode: project folder (no worktree)` and lists the files that were already dirty
@@ -9002,6 +9007,8 @@ src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard
   `Waiting: another task is running in <folder>` in the orchestrator's log. Approve the first
   task; it gets a commit on the folder's current branch and no merge, and the second starts. The
   Done card has no **Merge into project**.
-- **Tests:** `tests/orchestrator-in-place.test.ts` (one task per folder across orchestrators,
-  dirty folder recorded, delivery commits without `mergeToBase`, diff from the starting HEAD,
-  worktree unchanged) and `tests/finish-buttons.test.ts` (no Merge for a folder-mode Done card).
+- **Tests:** `tests/orchestrator-in-place.test.ts` (one task per folder across orchestrators; B
+  waits while A is not delivered and only starts after A's commit; Needs you dismiss and mark-done
+  release B; a commit waits while another task's agent runs in the folder; dirty folder recorded;
+  delivery commits without `mergeToBase`; diff from the starting HEAD; worktree unchanged) and
+  `tests/finish-buttons.test.ts` (no Merge for a folder-mode Done card).

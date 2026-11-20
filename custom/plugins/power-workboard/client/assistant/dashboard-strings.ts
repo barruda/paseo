@@ -66,7 +66,7 @@ const FIX_WAIT_EN = {
   holdRam: "Fix waiting for RAM: {free}% free, pool “{pool}” needs {min}%",
   holdSettle:
     "Fix waiting for RAM to settle: pool “{pool}” just started an agent; next start at {time}",
-  holdFolder: "Fix waiting: another task is running in {directory}",
+  holdFolder: "Fix waiting: “{task}” is not delivered yet in {directory}",
   waitedTooLong: (minutes: number) =>
     `The fix has waited over ${minutes} minutes for a free slot. It still goes to the agent when one frees; merge, continue or dismiss replaces it.`,
 };
@@ -75,7 +75,8 @@ const FIX_WAIT_PT: typeof FIX_WAIT_EN = {
   holdRam: "Correção esperando RAM: {free}% livre, o pool “{pool}” pede {min}%",
   holdSettle:
     "Correção esperando a RAM assentar: o pool “{pool}” acabou de iniciar um agente; próximo início às {time}",
-  holdFolder: "Correção esperando: outra tarefa está rodando em {directory}",
+  holdFolder:
+    "Correção esperando: “{task}” ainda não foi entregue em {directory}",
   waitedTooLong: (minutes: number) =>
     `A correção espera uma vaga há mais de ${minutes} minutos. Ela ainda vai para o agente quando uma vaga abrir; mesclar, continuar ou dispensar a substitui.`,
 };

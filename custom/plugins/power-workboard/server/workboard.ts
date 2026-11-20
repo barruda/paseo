@@ -177,6 +177,8 @@ export interface AssistantOptions {
   memory?: MemoryReader;
   /** CUSTOM(assistant-compact): quiet time after the chat's last change before its size is checked. */
   compactSettleMs?: number;
+  /** CUSTOM(orchestrator-in-place): wait before retrying a commit held by another task in the folder. */
+  folderRetryMs?: number;
   /** CUSTOM(assistant-compact): a quick message to this chat still waits for its answer. */
   chatQueued?: (agentId: string) => boolean;
 }
@@ -238,15 +240,6 @@ const POOL_RESERVING_STAGES: ReadonlySet<string> = new Set([
   "fixing",
 ]);
 /**
- * CUSTOM(orchestrator-in-place): delivery stages that keep the project folder busy. The agent
- * running is covered by `usesSlot`; these cover the commit that follows it.
- */
-const IN_PLACE_RESERVING_STAGES: ReadonlySet<string> = new Set([
-  "verifying",
-  "committing",
-  "fixing",
-]);
-/**
  * CUSTOM(night-tasks): a night task that still keeps the night power-off waiting: running, or
  * (CUSTOM(task-checkpoints)) queued or waiting to resume after a checkpoint.
  */
@@ -268,7 +261,7 @@ const DELIVERY_STEPS: ReadonlySet<string> = new Set([
 /** CUSTOM(resource-pools): a pool hold in one line, for the orchestrator's log and delivery details. */
 function holdText(hold: OrchestratorHold): string {
   if (hold.kind === "folder")
-    return `Waiting: another task is running in ${hold.directory}`;
+    return `Waiting: "${hold.taskTitle ?? "another task"}" is not delivered yet in ${hold.directory}`;
   if (hold.kind === "pool")
     return `Waiting: pool "${hold.poolName}" is full (${hold.running}/${hold.maxConcurrent})`;
   if (hold.kind === "settle")
@@ -2163,6 +2156,15 @@ export class Workboard {
           await this.host.gitStatusLines(directory),
         );
         if (refusal) throw new Error(refusal);
+        // CUSTOM(orchestrator-in-place): never sweep another running task's work into this
+        // commit; the user can press Commit again when the folder is free.
+        if (this.store.current.orchestrations[taskId]?.inPlace === true) {
+          const occupant = this.runningFolderOccupant(taskId, directory);
+          if (occupant)
+            throw new Error(
+              `Waiting: "${occupant}" is still running in ${directory}`,
+            );
+        }
         // CUSTOM(orchestrator-in-place): share the project's lock with deliveries and merges.
         if (this.store.current.orchestrations[taskId]?.inPlace === true)
           await this.mergeLock.run(this.projectIdOf(task) ?? directory, () =>
@@ -2486,6 +2488,10 @@ export class Workboard {
   ): Promise<void> {
     if (change.stage && change.stage !== "merging")
       this.clearDirtyTimer(taskId); // CUSTOM(assistant-autonomy)
+    if (change.stage) {
+      this.clearFolderTimer(taskId); // CUSTOM(orchestrator-in-place)
+      this.loggedFolderCommitWaits.delete(taskId);
+    }
     return this.store.update((data) => {
       const delivery = data.assistant.deliveries[taskId];
       if (!delivery) return;
@@ -3624,6 +3630,15 @@ export class Workboard {
               await this.host.gitStatusLines(directory),
             );
             if (refusal) return await needsYou("dependency-files", refusal);
+            // CUSTOM(orchestrator-in-place): another agent still running in the folder would
+            // have its work swept into this commit; wait for the next pass instead.
+            if (inPlace) {
+              const occupant = this.runningFolderOccupant(taskId, directory);
+              if (occupant) {
+                await this.waitForFolder(taskId, directory, occupant);
+                return;
+              }
+            }
             // CUSTOM(orchestrator-in-place): commits in the project folder share the project's
             // lock with merges, so two deliveries never write the same checkout at once.
             if (inPlace)
@@ -5123,8 +5138,9 @@ export class Workboard {
         // CUSTOM(orchestrator-in-place): one folder-mode task per project folder, whichever
         // orchestrator owns it.
         const folder = this.inPlaceFolder(config, card);
-        if (folder && inPlaceBusy.has(folder)) {
-          await this.logFolderWait(config.id, folder);
+        const occupant = folder ? inPlaceBusy.get(folder) : undefined;
+        if (folder && occupant) {
+          await this.logFolderWait(config.id, folder, occupant);
           continue;
         }
         const outcome = await this.startCard(config, card, column, night);
@@ -5446,6 +5462,9 @@ export class Workboard {
   private loggedHolds = new Map<string, string>();
   /** CUSTOM(orchestrator-in-place): the folder whose wait was last logged, by orchestrator. */
   private loggedFolderHolds = new Map<string, string>();
+  /** CUSTOM(orchestrator-in-place): commit waits already logged, and their retry timers. */
+  private loggedFolderCommitWaits = new Map<string, string>();
+  private folderTimers = new Map<string, ReturnType<typeof setTimeout>>();
   /** CUSTOM(usage-limit): orchestrators whose Ready to start hold by the usage limit was logged. */
   private limitHoldLogged = new Set<string>();
   private poolOf(
@@ -5548,42 +5567,126 @@ export class Workboard {
     );
     return project?.directory ?? null;
   }
+  /** The project folder a task runs in, or null for a worktree (or unknown workspace). */
+  private folderDirectoryOf(
+    taskId: string,
+    record: Orchestration,
+    data: Data = this.store.current,
+  ): string | null {
+    const task = data.tasks.find((t) => t.id === taskId);
+    if (!task) return null;
+    const workspace = this.inventory.workspaces.find(
+      (w) => w.id === task.workspaceId,
+    );
+    // A task of the folder mode, or any other task the board runs in a project folder (a non-git
+    // project, a manual start): both use the same working tree. A worktree task, or one whose
+    // workspace is not known yet, never keeps a project folder.
+    const folderTask =
+      record.inPlace ||
+      (workspace !== undefined && workspace.workspaceKind !== "worktree");
+    if (!folderTask) return null;
+    const projectId = task.projectId ?? workspace?.projectId ?? null;
+    return (
+      this.inventory.projects.find((p) => p.id === projectId)?.directory ?? null
+    );
+  }
   /**
-   * The project folders the board is using right now: a task's agent is running a turn, or its
-   * delivery is still checking, committing or fixing. Review, Needs you and checkpoints with an
-   * idle agent do not keep the folder. Worktrees never count.
+   * CUSTOM(orchestrator-in-place): the project folders a folder-mode task keeps busy. It stays
+   * busy from the start until its delivery is delivered or dismissed, or until the task goes
+   * back to Backlog/Ready or to Done without a pending delivery. Review, Needs you and checkpoints
+   * keep it. Worktrees never count.
    */
   private inPlaceDirectories(
     data: Data = this.store.current,
+    except?: string,
   ): Map<string, string> {
     const busy = new Map<string, string>();
     for (const [taskId, record] of Object.entries(data.orchestrations)) {
-      const task = data.tasks.find((t) => t.id === taskId);
-      if (!task) continue;
+      if (taskId === except) continue;
+      const directory = this.folderDirectoryOf(taskId, record, data);
+      if (!directory) continue;
+      const task = data.tasks.find((t) => t.id === taskId)!;
+      const stage = task.workspaceId ? task.lastStage : task.draftStage;
+      const kind = groupKind(stage, data.settings.groups);
+      const delivery = data.assistant.deliveries[taskId];
+      const idle = !this.usesSlot(record);
+      const released =
+        idle &&
+        (delivery?.stage === "delivered" ||
+          delivery?.stage === "dismissed" ||
+          kind === "todo" ||
+          kind === "inbox" ||
+          kind === "ready" ||
+          kind === "canceled" ||
+          (kind === "done" && !delivery));
+      if (released) continue;
+      busy.set(directory, task.title);
+    }
+    return busy;
+  }
+  /** The title of another board task whose agent is running in this folder, or null. */
+  private runningFolderOccupant(
+    taskId: string,
+    directory: string,
+  ): string | null {
+    for (const task of this.store.current.tasks) {
+      if (task.id === taskId || !task.workspaceId || task.archived) continue;
       const workspace = this.inventory.workspaces.find(
         (w) => w.id === task.workspaceId,
       );
-      // A task of the folder mode, or any other task the board runs in a project folder (a
-      // non-git project, a manual start): both use the same working tree. A worktree task, or
-      // one whose workspace is not known yet, never keeps a project folder.
-      const folderTask =
-        record.inPlace ||
-        (workspace !== undefined && workspace.workspaceKind !== "worktree");
-      if (!folderTask) continue;
-      const projectId = task.projectId ?? workspace?.projectId ?? null;
-      const directory = this.inventory.projects.find(
-        (p) => p.id === projectId,
-      )?.directory;
-      if (!directory) continue;
-      if (
-        this.usesSlot(record) ||
-        IN_PLACE_RESERVING_STAGES.has(
-          data.assistant.deliveries[taskId]?.stage ?? "",
-        )
-      )
-        busy.set(directory, task.title);
+      if (!workspace || workspace.workspaceDirectory !== directory) continue;
+      const running = this.inventory.agents.some(
+        (agent) =>
+          agent.workspaceId === workspace.id &&
+          !agent.archivedAt &&
+          agent.activity === "running" &&
+          agent.turnActive !== false,
+      );
+      if (running) return task.title;
     }
-    return busy;
+    return null;
+  }
+  /**
+   * CUSTOM(orchestrator-in-place): a folder task's commit waits while another agent is still
+   * running in the same folder, then tries again on the next pass.
+   */
+  private async waitForFolder(
+    taskId: string,
+    directory: string,
+    occupant: string,
+  ): Promise<void> {
+    const reason = `Waiting: "${occupant}" is still running in ${directory}`;
+    await this.serial(() => this.patchDelivery(taskId, { detail: reason }));
+    if (this.loggedFolderCommitWaits.get(taskId) !== reason) {
+      this.loggedFolderCommitWaits.set(taskId, reason);
+      const record = this.store.current.orchestrations[taskId];
+      await this.log(
+        record?.orchestratorId,
+        "info",
+        reason,
+        taskId,
+        record?.agentId ?? null,
+      );
+    }
+    if (this.stopped) return;
+    this.clearFolderTimer(taskId);
+    this.folderTimers.set(
+      taskId,
+      setTimeout(() => {
+        this.folderTimers.delete(taskId);
+        if (
+          this.store.current.assistant.deliveries[taskId]?.stage ===
+          "committing"
+        )
+          this.launch(taskId);
+      }, this.assistantOptions.folderRetryMs ?? this.interval),
+    );
+  }
+  private clearFolderTimer(taskId: string): void {
+    const timer = this.folderTimers.get(taskId);
+    if (timer === undefined) return;
+    clearTimeout(timer);
+    this.folderTimers.delete(taskId);
   }
   /** Why this folder-mode orchestrator's next task waits for another task in its folder. */
   private folderHold(
@@ -5614,13 +5717,18 @@ export class Workboard {
     };
   }
   /** Log a folder wait once, so a long wait doesn't fill the log. */
-  private async logFolderWait(id: string, directory: string): Promise<void> {
-    if (this.loggedFolderHolds.get(id) === directory) return;
-    this.loggedFolderHolds.set(id, directory);
+  private async logFolderWait(
+    id: string,
+    directory: string,
+    occupant: string,
+  ): Promise<void> {
+    const key = `${directory}\n${occupant}`;
+    if (this.loggedFolderHolds.get(id) === key) return;
+    this.loggedFolderHolds.set(id, key);
     await this.log(
       id,
       "info",
-      `Waiting: another task is running in ${directory}`,
+      `Waiting: "${occupant}" is not delivered yet in ${directory}`,
     );
   }
   // -----------------------------------------------------------------------------------------
@@ -6351,6 +6459,8 @@ export class Workboard {
     clearTimeout(this.compactTimer); // CUSTOM(assistant-compact)
     for (const timer of this.dirtyTimers.values()) clearTimeout(timer); // CUSTOM(assistant-autonomy)
     this.dirtyTimers.clear();
+    for (const timer of this.folderTimers.values()) clearTimeout(timer); // CUSTOM(orchestrator-in-place)
+    this.folderTimers.clear();
     clearTimeout(this.dueTimer); // CUSTOM(night-tasks)
     this.host.dispose();
   }

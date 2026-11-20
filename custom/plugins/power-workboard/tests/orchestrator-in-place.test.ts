@@ -103,14 +103,196 @@ it("runs one folder-mode task at a time per project folder, across orchestrators
     await create(s, "B", second);
     expect(card(s.board, "B").stage).toBe("ready");
     expect(logOf(s.board, second)).toContain(
-      "Waiting: another task is running in /fixture/p",
+      'Waiting: "A" is not delivered yet in /fixture/p',
     );
     expect(s.board.snapshot().orchestratorStatus[second]?.hold).toMatchObject({
       kind: "folder",
       directory: "/fixture/p",
     });
+    // A's agent is idle in review, but its delivery is not delivered yet: the folder stays busy.
     await finish(s, "A");
+    expect(card(s.board, "A").stage).toBe("review");
+    expect(card(s.board, "B").stage).toBe("ready");
+    // Approving A delivers it; only then does B start.
+    await s.board.mutate({
+      action: "review",
+      taskId: card(s.board, "A").id,
+      outcome: "done",
+      feedback: "",
+    });
     await s.board.refresh();
+    await vi.waitFor(() =>
+      expect(card(s.board, "B").stage).toBe("in-progress"),
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("does not start B before A's folder commit finishes", async () => {
+  const s = setup({
+    defaultOrchestratorSeeded: true,
+    assistant: assistantDataSchema.parse({
+      settings: {
+        projects: { p: { action: "merge", verifyCommand: "" } },
+      },
+    }),
+  });
+  (s.host.lastReply as any).mockResolvedValue(report);
+  (s.host.gitDirty as any).mockResolvedValue(true);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  (s.host.commit as any).mockImplementation(async () => {
+    await gate;
+  });
+  await s.board.start();
+  try {
+    const id = await addOrchestrator(s.board, {
+      name: "Folder",
+      useWorktree: false,
+    });
+    await create(s, "A", id);
+    await create(s, "B", id);
+    const taskA = card(s.board, "A").id;
+    s.inventory.workspaces.find(
+      (w) => w.id === card(s.board, "A").workspaceId,
+    )!.projectKind = "git";
+    await finish(s, "A");
+    await vi.waitFor(() => expect(s.host.commit).toHaveBeenCalled());
+    expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe(
+      "committing",
+    );
+    expect(card(s.board, "B").stage).toBe("ready");
+    release();
+    await vi.waitFor(() => expect(card(s.board, "A").stage).toBe("done"));
+    await vi.waitFor(() =>
+      expect(card(s.board, "B").stage).toBe("in-progress"),
+    );
+    const commitOrder = (s.host.commit as any).mock.invocationCallOrder[0];
+    const bStart = (s.host.startAgent as any).mock.calls.findIndex(
+      ([, start]: [string, { title: string }]) => start.title === "B",
+    );
+    expect(bStart).toBeGreaterThanOrEqual(0);
+    expect(commitOrder).toBeLessThan(
+      (s.host.startAgent as any).mock.invocationCallOrder[bStart],
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("waits before committing while another task's agent runs in the folder", async () => {
+  const s = setup(
+    {
+      defaultOrchestratorSeeded: true,
+      assistant: assistantDataSchema.parse({
+        settings: {
+          projects: { p: { action: "merge", verifyCommand: "" } },
+        },
+      }),
+    },
+    { folderRetryMs: 20 },
+  );
+  (s.host.lastReply as any).mockResolvedValue(report);
+  (s.host.gitDirty as any).mockResolvedValue(true);
+  await s.board.start();
+  try {
+    const id = await addOrchestrator(s.board, {
+      name: "Folder",
+      useWorktree: false,
+    });
+    await create(s, "A", id);
+    const taskA = card(s.board, "A").id;
+    s.inventory.workspaces.find(
+      (w) => w.id === card(s.board, "A").workspaceId,
+    )!.projectKind = "git";
+    // A manual task starts in the same folder while A runs, bypassing the folder queue.
+    await s.board.mutate({
+      action: "create",
+      title: "B",
+      description: "",
+      projectId: "p",
+    } as never);
+    const taskB = card(s.board, "B").id;
+    await s.board.mutate({
+      action: "start",
+      taskId: taskB,
+      target: {
+        kind: "new",
+        source: { kind: "directory", path: "/fixture/p", projectId: "p" },
+      },
+    } as never);
+    s.inventory.agents.push({
+      id: "manual-b",
+      workspaceId: card(s.board, "B").workspaceId!,
+      title: "B",
+      updatedAt: new Date(s.now()).toISOString(),
+      lastUserMessageAt: null,
+      archivedAt: null,
+      activity: "running",
+    });
+    await finish(s, "A");
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.deliveries[taskA]?.detail).toContain(
+        'Waiting: "B" is still running in /fixture/p',
+      ),
+    );
+    expect(s.host.commit).not.toHaveBeenCalled();
+    s.inventory.agents.find((a) => a.id === "manual-b")!.activity = "idle";
+    await vi.waitFor(() => expect(s.host.commit).toHaveBeenCalled());
+    expect(s.host.mergeToBase).not.toHaveBeenCalled();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("keeps the folder while A waits on Needs you, and dismiss releases B", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  (s.host.lastReply as any).mockResolvedValue(report);
+  await s.board.start();
+  try {
+    const id = await addOrchestrator(s.board, {
+      name: "Folder",
+      useWorktree: false,
+    });
+    await create(s, "A", id);
+    await create(s, "B", id);
+    const taskA = card(s.board, "A").id;
+    await finish(s, "A");
+    expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe(
+      "needs-you",
+    );
+    expect(card(s.board, "B").stage).toBe("ready");
+    await s.board.assistantAction({ type: "dismiss", taskId: taskA });
+    await s.board.refresh();
+    expect(card(s.board, "B").stage).toBe("in-progress");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("keeps the folder while A waits on Needs you, and mark-done releases B", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  (s.host.lastReply as any).mockResolvedValue(report);
+  await s.board.start();
+  try {
+    const id = await addOrchestrator(s.board, {
+      name: "Folder",
+      useWorktree: false,
+    });
+    await create(s, "A", id);
+    await create(s, "B", id);
+    const taskA = card(s.board, "A").id;
+    await finish(s, "A");
+    expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe(
+      "needs-you",
+    );
+    expect(card(s.board, "B").stage).toBe("ready");
+    await s.board.assistantAction({ type: "mark-done", taskId: taskA });
+    await s.board.refresh();
+    expect(card(s.board, "A").stage).toBe("done");
     expect(card(s.board, "B").stage).toBe("in-progress");
   } finally {
     s.board.dispose();
