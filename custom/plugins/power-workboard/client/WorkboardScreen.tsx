@@ -78,7 +78,7 @@ import {
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { BoardView } from "./BoardView";
 import { cardMenuItems } from "./card-menu"; // CUSTOM(task-panel)
-import { groupColor, projectColor, supplementalColor } from "./colors";
+import { groupColor, projectAccentColor, supplementalColor } from "./colors";
 import { ProjectIcon } from "./ProjectIcon";
 import { loadBoardFilters, saveBoardFilters, toggleButtonState } from "./web";
 import {
@@ -2636,6 +2636,9 @@ export function TaskCard({
   // orchestration line carries it when it shows (not in review); otherwise it gets its own line.
   const record = board.orchestrations[card.id];
   const inReview = !isDraft && !card.binding && group?.kind === "review";
+  const projectAccent = board.projects.find(
+    (project) => project.id === card.projectId,
+  )?.accent;
   const agentId = cardAgentId(card, record);
   const standaloneAgentLink = !!agentId && (inReview || !record);
   // CUSTOM(task-panel): middle click and the context menu open the side panel; left click keeps
@@ -2676,7 +2679,7 @@ export function TaskCard({
               }
             : {}),
           borderLeftColor: card.projectId
-            ? projectColor(card.projectId, theme)
+            ? projectAccentColor(projectAccent, card.projectId, theme)
             : theme.colors.border,
         },
       ]}
@@ -2737,7 +2740,7 @@ export function TaskCard({
         {card.projectId && card.projectName ? (
           <ProjectIcon
             name={card.projectName}
-            color={projectColor(card.projectId, theme)}
+            color={projectAccentColor(projectAccent, card.projectId, theme)}
             theme={theme}
           />
         ) : null}
@@ -3535,7 +3538,7 @@ function TaskModal({
               (project) => {
                 const selected = projectId === project.id;
                 const color = project.id
-                  ? projectColor(project.id, theme)
+                  ? projectAccentColor(project.accent, project.id, theme)
                   : theme.colors.foregroundMuted;
                 return (
                   <Pressable

@@ -71,6 +71,12 @@ export const GROUP_COLORS = [
   "red",
 ] as const;
 export type GroupColor = (typeof GROUP_COLORS)[number];
+// CUSTOM(project-icon-colors): a project's light and dark accent, picked by the theme surface.
+export const projectAccentSchema = z.object({
+  light: z.string(),
+  dark: z.string(),
+});
+export type ProjectAccent = z.infer<typeof projectAccentSchema>;
 export const groupSchema = z.object({
   id: stageSchema,
   name: z.string().trim().min(1).max(80).nullable().default(null),
@@ -826,6 +832,8 @@ export const boardSchema = z.object({
       name: z.string(),
       directory: z.string(),
       isGit: z.boolean(),
+      // CUSTOM(project-icon-colors): the accent pair resolved from the project's icon.
+      accent: projectAccentSchema.nullable().optional(),
     }),
   ),
 });

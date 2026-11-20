@@ -7,7 +7,8 @@ import {
   TextInput,
 } from "@getpaseo/plugin/client/react-native";
 import type { Tree } from "../../shared/assistant";
-import { projectColor } from "../colors";
+import { projectAccentColor } from "../colors";
+import type { ProjectAccents } from "../project-accents";
 import {
   agentLabel,
   orchestratorKey,
@@ -63,6 +64,7 @@ export function ConversationsTree(props: {
   compact?: boolean;
   t: ConversationsStrings;
   theme: PluginSurfaceProps["theme"];
+  accents: ProjectAccents;
 }) {
   const { t, theme } = props;
   const c = theme.colors;
@@ -153,7 +155,11 @@ export function ConversationsTree(props: {
                         style={[
                           styles.meta,
                           {
-                            color: projectColor(
+                            color: projectAccentColor(
+                              props.accents.forProject(
+                                null,
+                                orchestrator.projectName,
+                              ),
                               orchestrator.projectName,
                               theme,
                             ),

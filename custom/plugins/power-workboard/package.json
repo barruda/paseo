@@ -57,6 +57,7 @@
     "@getpaseo/protocol": "0.10.0-beta.1",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^22.19.0",
+    "@types/pngjs": "^6.0.5",
     "@types/react": "~19.2.0",
     "prettier": "3.6.2",
     "react": "19.1.0",
@@ -65,5 +66,8 @@
     "vite": "7.3.1",
     "vitest": "4.0.18",
     "zod": "^4.4.3"
+  },
+  "dependencies": {
+    "pngjs": "^7.0.0"
   }
 }

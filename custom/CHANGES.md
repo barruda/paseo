@@ -3003,7 +3003,9 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     description inserts an image from a file (web and desktop, same upload as pasting), a
     checklist item, an Acceptance criteria section or an Out of scope section at the cursor.
     Project and orchestrator chips wrap instead of scrolling sideways; each project has its own
-    color (from its id, `projectColor` in `client/colors.ts`). A new task picks **Create in**:
+    color, from the icon the app shows for it
+    ([project-icon-colors](#project-icon-colors-project-colors-come-from-the-apps-project-icon)).
+    A new task picks **Create in**:
     its To do group or Ready to start, where an active orchestrator takes it at once.
   - **Default orchestrator:** a board with no orchestrators gets one named Default when it loads:
     all projects, always on (a window from 00:00 to 00:00 every day), 2 at a time, with the agent
@@ -3042,6 +3044,43 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   and watch it go to In progress and then Ready to review with the agent's summary. Press
   Continue task, write feedback and Send back: the same agent chat gets it and the card returns
   to In progress.
+
+## project-icon-colors: project colors come from the app's project icon
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: project colors from the app's project icon`
+- **Why:** The board picked a project's color from a hash of its id, so the P of pipeline and the
+  P of paseo showed palette colors that matched nothing the app showed for those projects. The app
+  already has an icon per project (a repository favicon or the generated letter); its color is what
+  the board should use.
+- **What:**
+  - `PaseoHost.inventory` asks the daemon for each project's icon (`project.icon.get`), computes
+    the dominant color once per icon revision, and stores the accent pair in the board's project
+    entry.
+  - `server/dominant-color.ts`: PNG through `pngjs`, SVG through its fill, stroke and gradient
+    colors, including named colors and classes declared in a `<style>` block. The weighted average
+    skips transparent, near-white and near-black pixels and weights chroma higher. Achromatic
+    icons become the neutral gray; formats it cannot decode, and icon errors, keep the palette.
+  - `shared/project-color.ts`: the palette moved here, plus the app's letter-color and
+    letter-foreground tables and view-key grouping (mirrors
+    `packages/app/src/styles/identity-colors.ts` and
+    `packages/app/src/projects/workspace-structure.ts`). An image icon gives its dominant color; a
+    project with no image gets the app's letter color (the darker fill on light, the lighter
+    foreground on dark); unknown projects get the stable palette.
+  - Each accent is a light/dark pair, chosen by `supplementalColor` from the theme surface, so the
+    badge, borders and accents stay readable in both themes.
+  - Used by the board cards (badge and left border), the task editor's project chips, the
+    Dashboard (Needs you and History chips), Reports (project chips, task row and ticket header),
+    the Conversations tree and the reports timeline. The assistant pages read the accents from the
+    new `workboard.project-accents` RPC.
+  - Group (column) colors are untouched; a color picked by hand in Group settings still wins for
+    that group.
+- **Core files touched:** none.
+- **Re-apply:** None for the app. The plugin is self-contained; `pngjs` is a new runtime
+  dependency (`npm install` in `custom/plugins/power-workboard` after merging).
+- **Verify:** `(cd custom/plugins/power-workboard && npm run check)`. In the app, Power Workboard:
+  DreamMMO's badge is the same violet as its letter icon, gnome-custom's is its logo blue, a
+  black-and-white logo is gray, and a project with no icon keeps its letter color in both themes.
 
 ## plugin-modal-size: plugin modals at 80% of the window
 
@@ -4361,7 +4400,8 @@ waiting` tests in `agent-manager.test.ts`.
 ## critic: a second model reviews each answer before the user reads it
 
 - **Added:** 2026-11-03 (based on upstream v0.14.0)
-- **Commit:** `custom: a critic model reviews each answer before the user reads it`
+- **Commit:** `custom: a critic model reviews each answer before the user reads it`, then
+  `custom: an agent turns its own critic on or off with a skill and tool`
 - **Why:** The user wants a critic LLM in the loop of any conversation, not only the Power
   Workboard's review step in Tasks mode: a prompt (with reference images) and a model of their
   choice judge each answer, and a rejected answer goes back to the agent with the critique.
@@ -4373,6 +4413,14 @@ waiting` tests in `agent-manager.test.ts`.
   - Turning it on or off puts a `<critic-notice>` in front of the user's next message (the chat
     strips it): the agent is told every answer goes through a reviewer and to end each turn with a
     full report.
+  - **From the chat:** every interactive agent (never a critic) gets the `set_critic` agent tool
+    at session open. `enabled` plus optional `model` (`provider/model`), `prompt`, `mode`, `tools`,
+    `includeDiff` and `maxRounds` turn the critic on or off for the calling agent only. The tool
+    writes the same `config.set` store as the sheet and updates the `custom.critic.enabled` label,
+    so the sheet and the composer toggle show the same state. The bundled **paseo-critic** skill
+    teaches the agent to call it when the user says "usa um critic", "liga o critic", "desliga o
+    critic" or "revisor crítico", and to confirm the effective model and mode. The tool returns
+    them; nothing changes on the RPC or wire contract.
   - When a turn of a reviewed agent completes, the `critic` plugin reads the user's request, the
     agent's answer since the last user message and `git status` + `git diff HEAD`, and asks the
     critic, a Paseo subagent of the reviewed agent (label `custom.critic.role=critic`, in its
@@ -4400,29 +4448,41 @@ waiting` tests in `agent-manager.test.ts`.
     the sheet. A text paste still reaches the prompt.
 - **Files:** `packages/protocol/src/critic.ts` (labels, markers, config and row schemas, RPC
   names); `custom/plugins/critic/` (`server/loop.ts` the loop, `server/store.ts` the config file
-  `$PASEO_HOME/custom-critic.json`, `server/diff.ts`, `server/evidence.ts`, `shared/review.ts` prompt/verdict/turn reading
-  - test, `client/review-card.tsx`); `packages/app/src/critic/` (`model.ts` the chat filter and
-    last status, `store.ts` pending notices, `rpc.ts`, `form-model.ts`, `toggle.tsx`, `sheet.tsx`, with
-    tests); `packages/server/src/server/plugins/custom-critic-plugin.e2e.test.ts`.
+  `$PASEO_HOME/custom-critic.json`, `server/diff.ts`, `server/evidence.ts`, `server/set-critic.ts`
+  the agent tool, `shared/set-config.ts` its input and merge, `shared/review.ts` prompt/verdict/turn
+  reading, `client/review-card.tsx`); `skills/paseo-critic/SKILL.md`;
+  `packages/app/src/critic/` (`model.ts` the chat filter and last status, `store.ts` pending
+  notices, `rpc.ts`, `form-model.ts`, `toggle.tsx`, `sheet.tsx`, with tests);
+  `packages/server/src/server/plugins/custom-critic-plugin.e2e.test.ts`.
 - **Core files touched:** server `agent/agent-manager.ts` (`checkAndSetAttention` returns early for
   critic agents and, on running → idle, for reviewed agents; `appendTimelineItem` calls
   `raiseFinishedWhenCriticSettles`); app `agent-stream/view.tsx` (`hideCriticRounds` after
   `hideCacheWarmupTurns`), `composer/actions.ts` (`dispatchComposerAgentMessage` prepends a
   pending notice), `composer/agent-controls/index.tsx` (`<CriticToggle>` after
-  `<CacheWarmupToggle>`). All marked `CUSTOM(critic)`.
+  `<CacheWarmupToggle>`); client `index.ts` (`PaseoAgentHandle.update` wraps the existing
+  `updateAgent` RPC, so the tool can set the label). All marked `CUSTOM(critic)`.
 - **Re-apply:** In the daemon's attention check, skip agents labeled as critics, and skip
   "finished" for agents labeled critic-enabled; when a `critic`/`critic-review` plugin row whose
   status notifies is appended to an idle agent without attention, raise "finished". In the app,
   filter the stream through `hideCriticRounds`, render `CriticToggle` at the end of the composer's
   agent control row, and prefix the next sent message with `buildCriticNotice` while a notice is
-  pending.
+  pending. In the plugin, return the `set_critic` tool from an `agent.session_open` `before` hook
+  for interactive agents that are not critics; the tool merges the input into the stored config,
+  writes it with `saveAsDefault: false`, and calls `paseo.agents.ref(id).update` with the
+  `custom.critic.enabled` label. Keep `PaseoAgentHandle.update` in the client wrapping
+  `DaemonClient.updateAgent`.
 - **Setup:** `paseo plugin install "$PWD/custom/plugins/critic" --home <home>` once per daemon, a
-  desktop build for the app, and a daemon restart for the notification hold.
+  desktop build for the app, and a daemon restart for the notification hold. After a plugin update,
+  reload the plugin and reopen an agent's session: the `set_critic` tool is attached at session
+  open, and the `paseo-critic` skill is installed by the daemon's skill sync at startup.
 - **Verify:** `npx vitest run custom/plugins/critic`, `packages/app/src/critic`, the e2e
   `custom-critic-plugin.e2e.test.ts` and `agent-manager.test.ts -t "the critic holds the finished
-notification"` (all in the update script). By hand: turn the critic on with a strict prompt; send
-  a task; the answer stays hidden while a "Critic is reviewing" card shows, a rejection sends the
-  critique back, and only the approved answer shows with a ✓ card; one notification at the end.
+notification"` (all in the update script), plus `packages/client/src/index.test.ts`. By hand: turn
+  the critic on with a strict prompt; send a task; the answer stays hidden while a "Critic is
+  reviewing" card shows, a rejection sends the critique back, and only the approved answer shows
+  with a ✓ card; one notification at the end. From an agent chat, say "usa um critic"; the agent
+  calls `set_critic`, confirms the model and mode, the composer icon turns on, the sheet shows the
+  same config, and the next answer gets a critic-review card. "desliga o critic" turns both off.
 
 ## jev-router: a new Claude session starts on Sonnet or Haiku when its first prompt is small
 
@@ -8973,6 +9033,7 @@ tests/power-workboard.test.ts --bail=1`, `bash custom/scripts/restart-resume.tes
   restart. To check the whole flow, start a normal agent, a board task and the Projects Assistant
   chat, run `kill-paseos-and-daemons.sh`, and watch all three continue; the board task must not
   land in Needs you.
+
 ## workboard-project-accent: rail color in the column header, project color and icon on the card
 
 - **Added:** 2026-11-20 (based on `custom` at `0dc28e5c3`)

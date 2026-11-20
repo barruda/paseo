@@ -12,7 +12,8 @@ import type {
   ReportTimeline,
   ReportTimelineItem,
 } from "../../shared/assistant-reports";
-import { projectColor } from "../colors";
+import { projectAccentColor } from "../colors";
+import type { ProjectAccents } from "../project-accents";
 import { OutcomeMap, QuestionBlock } from "./card-parts";
 import { RichText } from "./conversations-thread";
 import { showConversation } from "./nav";
@@ -444,6 +445,7 @@ export function ReportContent(props: {
   navigation: PluginSurfaceProps["navigation"];
   t: ReportsStrings;
   theme: Theme;
+  accents: ProjectAccents;
 }) {
   const { t, theme, timeline } = props;
   const c = theme.colors;
@@ -509,7 +511,15 @@ export function ReportContent(props: {
           {task.title}
         </Text>
         <Text style={[styles.meta, { color: c.foregroundMuted }]}>
-          <Text style={{ color: projectColor(task.projectName, theme) }}>
+          <Text
+            style={{
+              color: projectAccentColor(
+                props.accents.forProject(task.projectId, task.projectName),
+                task.projectId ?? task.projectName,
+                theme,
+              ),
+            }}
+          >
             {task.projectName}
           </Text>
           {" · "}

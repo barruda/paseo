@@ -187,6 +187,26 @@ export class PaseoCompat {
       );
     return info;
   }
+  // CUSTOM(project-icon-colors): the same icon the app renders for the project, for its accent.
+  async projectIcon(
+    projectId: string,
+  ): Promise<{ data: string; mimeType: string } | null> {
+    const result = z
+      .object({
+        projectId: z.string(),
+        icon: z.object({ data: z.string(), mimeType: z.string() }).nullable(),
+        error: z.string().nullable(),
+      })
+      .parse(
+        await this.request(
+          "project.icon.get.request",
+          { projectId },
+          "project.icon.get.response",
+        ),
+      );
+    if (result.error) throw new Error(result.error);
+    return result.icon;
+  }
   async setLabel(
     workspaceId: string,
     name: string,
