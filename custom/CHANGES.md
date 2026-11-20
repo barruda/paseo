@@ -8779,7 +8779,8 @@ src/screens/settings/plugins-page.test.tsx --bail=1`.
 ## restart-resume: resume agents interrupted by a Paseo daemon restart
 
 - **Added:** 2026-11-20 (based on `custom` at `901b203aa`)
-- **Commit:** `custom: resume interrupted agents after a Paseo daemon restart`
+- **Commit:** `custom: resume interrupted agents after a Paseo daemon restart` (follow-up:
+  `custom: harden restart resume across script and board`)
 - **Why:** `build-paseo-if-needed-and-kill-daemons.sh` stops every running agent, and nothing
   brought them back: normal agents, Paseo subagents, board workers and the Projects Assistant chat
   stayed idle with the last turn cut. A board task whose agent went idle then fell into Needs you
@@ -8787,22 +8788,33 @@ src/screens/settings/plugins-page.test.tsx --bail=1`.
 - **What:**
   - The restart script records every agent whose stored `lastStatus` is `running` or
     `initializing` for each daemon home it is about to stop, in
-    `~/.local/state/paseo-restart-resume.tsv`. As each daemon comes back, every recorded agent of
-    that home gets one message: the daemon restarted, continue where you stopped, the restart was
+    `~/.local/state/paseo-restart-resume.tsv`. Agents waiting for permission or in `error` are not
+    recorded; the board's permission wait and error retry own those. As each daemon comes back, it
+    waits up to 60 s for the daemon to answer (`paseo agent ls`), then every recorded agent of that
+    home gets one message: the daemon restarted, continue where you stopped, the restart was
     intentional, do not restart it again. An agent that no longer exists, is already running, or
     already got a message after the restart is skipped; a failed send is logged and the rest go
     on. The agent that ran the script (`PASEO_AGENT_ID`) is skipped, and `--skip-agent <id>` adds
     another. Provider subagents that die with their parent process are not resumed; the parent's
     continue is enough.
+  - The skip is structural on both sides: the script writes those ids and the restart time to
+    `~/.local/state/paseo-restart-skip.json` (`{"at":"<iso>","agents":[...]}`). The Power
+    Workboard reads that file when the file belongs to the current daemon start and never sends
+    those agents a continue; their task follows the normal `no-report` path. If the state folder
+    cannot be written the restart goes on without a resume, and an unreadable agent id logs a
+    warning instead of disappearing.
   - The snapshot/resume logic lives in `custom/bin/paseo-restart-resume.sh`, which never stops or
     starts anything and is covered by `custom/scripts/restart-resume.test.sh` with fake homes and
     a fake `paseo`.
-  - Power Workboard: `daemon.get_status.response` already carries `startedAt`; the board reads it
-    (optional, so older daemons fall back to the plugin start) and treats a running task whose
-    agent is idle and whose last activity is before that start as interrupted. It sends one
-    continue instead of settling `no-report`, and keeps a 90 s grace for the turn to start.
-    `restartResumeAt` in the stored orchestration stops a second continue for the same restart.
-    This closes the race when the script's continue is late (long build, slow daemon).
+  - Power Workboard: `daemon.get_status.response` carries `startedAt`; the board reads it and
+    treats a running task whose agent is idle and whose last activity is before that start as
+    interrupted. Without `startedAt` the rule is off, so a plugin reload never invents an
+    interrupted task. The board does not resume a task already in its 20 s settle (`idleSince`
+    before the start), one never seen running (`sawRunning`), or one whose `lastUserMessageAt` is
+    after the start (the script already messaged it). It sends one continue instead of settling
+    `no-report`, and keeps a 90 s grace for the turn to start. `restartResumeAt` in the stored
+    orchestration stops a second continue for the same restart. This closes the race when the
+    script's continue is late (long build, slow daemon).
 - **Core files touched:** none. Plugin files: `server/workboard.ts`, `server/host.ts`,
   `server/paseo-compat.ts`, `server/redeploy.ts`, `shared/model.ts`, `tests/fixtures.ts`,
   `tests/power-workboard.test.ts`. Scripts: `custom/bin/build-paseo-if-needed-and-kill-daemons.sh`,
@@ -8810,10 +8822,11 @@ src/screens/settings/plugins-page.test.tsx --bail=1`.
   test line in `custom/update-paseo-source-and-apply-customization.sh`. Docs: `custom/README.md`,
   `.agents/skills/paseo-customizations/SKILL.md`.
 - **Re-apply:** Plugin-only plus scripts. Grep `CUSTOM(restart-resume)`. Keep `startedAt` optional
-  in `PaseoCompat.identity()` and in `Host["identity"]`; the cutoff falls back to the board's
-  start when a daemon does not report it. Keep `restartResumeAt` with a null default so old boards
-  load. Keep the resume message's last sentence: it stops an agent that was restarting Paseo from
-  doing it again in a loop.
+  in `PaseoCompat.identity()` and in `Host["identity"]`; when it is missing the board leaves
+  `restartCutoff` at 0 and does not apply the rule (no plugin-start fallback). Keep
+  `restartResumeAt` with a null default so old boards load, and keep the skip file path and JSON
+  shape in sync between the script and `defaultRestartSkipFile()`. Keep the resume message's last
+  sentence: it stops an agent that was restarting Paseo from doing it again in a loop.
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
 tests/power-workboard.test.ts --bail=1`, `bash custom/scripts/restart-resume.test.sh`. Needs only
   `paseo plugin reload power-workboard` for the board; the script change applies to the next

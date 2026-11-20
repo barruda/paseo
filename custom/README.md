@@ -97,14 +97,23 @@ owns. Its log, build included, is `~/.local/state/kill-paseos-and-daemons.log`.
 
 Before stopping, it records every agent whose stored status is `running` or `initializing` (normal
 agents, Paseo subagents, board workers and the Projects Assistant chat) in
-`~/.local/state/paseo-restart-resume.tsv`. As each daemon comes back, every recorded agent of that
-home gets one message saying the restart was intentional and to continue where it stopped. An agent
-that is gone, already running again, or already got a message after the restart is skipped;
-failures are logged and the rest go on. The agent that ran the script is skipped through
-`PASEO_AGENT_ID`, so its "continue" cannot make it restart Paseo again; `--skip-agent <id>` adds
-another id to leave alone. The Power Workboard has the same rule on its side: a task whose agent is
-idle and whose last activity is before the current daemon started is resumed instead of being
-closed as `no-report` when the script's continue is late.
+`~/.local/state/paseo-restart-resume.tsv`. Agents waiting for permission or in `error` are not
+recorded; the board's own permission wait and error retry handle them. As each daemon comes back,
+it waits up to 60 s for the daemon to answer (`paseo agent ls`), then every recorded agent of that
+home gets one message saying the restart was intentional and to continue where it stopped. An
+agent that is gone, already running again, or already got a message after the restart is skipped;
+failures are logged and the rest go on. If the state folder cannot be written, the restart goes on
+without a resume.
+
+The agent that ran the script is skipped through `PASEO_AGENT_ID`; `--skip-agent <id>` adds
+another. The script writes those ids and the restart time to
+`~/.local/state/paseo-restart-skip.json`, and the Power Workboard reads that file for the same
+daemon start, so the board does not send the worker that restarted Paseo a second "continue"
+either. The board's own interrupted rule only runs when `daemon.get_status` reports `startedAt`:
+a task whose agent is idle and whose last activity is before the current daemon started gets one
+"continue" instead of being closed as `no-report` when the script's continue is late. It does not
+resume a task already in its 20 s settle (`idleSince` before the start), one never seen running,
+or one whose `lastUserMessageAt` is after the start (the script already messaged it).
 
 `custom/bin/paseo-build.sh build` builds the desktop app from the working tree as it is and
 installs it; `if-needed` does that only when `status` says the installed build is behind. Each

@@ -90,13 +90,15 @@ rules agents get wrong.
   open Paseo windows and reopens them. It skips paseo-telus when neither its window nor its daemon
   is running.
   It records the agents that were running before the stop and sends each one a "continue" once
-  its daemon is back (the restart was intentional; continue where you stopped), so agents, Paseo
-  subagents, board workers and the Projects Assistant chat resume on their own. The agent that ran
-  the script (`PASEO_AGENT_ID`) is skipped, so its continue cannot make it restart Paseo again;
-  `--skip-agent <id>` leaves another agent alone. The Power Workboard also resumes a task whose
-  agent is idle and whose last activity is before the current daemon started, instead of closing
-  it as `no-report` when the script's continue is late. Details in "Updating" in
-  `custom/README.md`.
+  its daemon is back and answers (up to 60 s), so agents, Paseo subagents, board workers and the
+  Projects Assistant chat resume on their own. Agents waiting for permission or in error are left
+  to the board's own wait/retry. The agent that ran the script (`PASEO_AGENT_ID`) is skipped, and
+  `--skip-agent <id>` leaves another agent alone. The script writes those ids and the restart time
+  to `~/.local/state/paseo-restart-skip.json`; the Power Workboard reads it and skips the same
+  agents, so the worker that restarted Paseo never gets a second "continue". The board's own
+  interrupted rule runs only when `daemon.get_status` reports `startedAt`, and it does not resume a
+  task already in its settle, never seen running, or already messaged after the start. Details in
+  "Updating" in `custom/README.md`.
   From a Paseo chat or terminal, run it as `!kill-paseos-and-daemons.sh`.
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user
   first when the upstream version changed: reopening the app restarts the daemon, which stops its

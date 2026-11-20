@@ -33,26 +33,53 @@ agent() {
 EOF
 }
 
+# The skip file the board reads: the trigger id and the restart time.
+skipfile="$work/skip.json"
+bash "$helper" skip "$skipfile" "skip-me,trigger" >/dev/null
+check "skip file records the trigger" 'grep -q "trigger" "$skipfile"'
+check "skip file records the restart time" 'grep -q "\"at\":\"20" "$skipfile"'
+check "skip file is valid JSON" 'node -e "JSON.parse(require(\"fs\").readFileSync(process.argv[1], \"utf8\"))" "$skipfile"'
+
 home="$work/home"
 running="$home/agents/ws/running-1.json"
 initializing="$home/agents/ws/initializing-1.json"
 idle="$home/agents/ws/idle-1.json"
 skipped="$home/agents/ws/skip-me.json"
 trigger="$home/agents/ws/trigger.json"
+permission="$home/agents/ws/permission-1.json"
+broken="$home/agents/ws/broken.json"
 agent "$running" running-1 running "2026-09-22T23:00:00.000Z"
 agent "$initializing" initializing-1 initializing
 agent "$idle" idle-1 idle
 agent "$skipped" skip-me running
 agent "$trigger" trigger running
+cat >"$permission" <<'EOF'
+{
+  "id": "permission-1",
+  "lastUserMessageAt": null,
+  "lastStatus": "running",
+  "requiresAttention": true,
+  "attentionReason": "permission"
+}
+EOF
+cat >"$broken" <<'EOF'
+{
+  "id":"broken-1",
+  "lastStatus": "running"
+}
+EOF
 state="$work/state.tsv"
 
-bash "$helper" snapshot "$state" "$home" "skip-me,trigger" >/dev/null
+snapshot_output="$(bash "$helper" snapshot "$state" "$home" "skip-me,trigger")"
 
 check "snapshot keeps a running agent" 'grep -q "running-1" "$state"'
 check "snapshot keeps an initializing agent" 'grep -q "initializing-1" "$state"'
 check "snapshot drops an idle agent" '! grep -q "idle-1" "$state"'
 check "snapshot skips an explicit skip id" '! grep -q "skip-me" "$state"'
 check "snapshot skips the triggering agent" '! grep -q "trigger" "$state"'
+check "snapshot skips a permission wait" '! grep -q "permission-1" "$state"'
+check "snapshot logs the permission skip" 'grep -q "waiting for permission" <<<"$snapshot_output"'
+check "snapshot warns about an unreadable id" 'grep -q "could not read the agent id" <<<"$snapshot_output"'
 check "snapshot records the top-level id, not a nested one" '! grep -q "nested-" "$state"'
 check "snapshot records the last user message" 'grep -q "2026-09-22T23:00:00.000Z" "$state"'
 
@@ -97,6 +124,7 @@ rm -f "$gone"
 agent "$failing" failing idle "2026-09-22T21:00:00.000Z"
 cat >"$work/paseo-fail" <<'EOF'
 #!/usr/bin/env bash
+if [[ "${1:-}" == agent && "${2:-}" == ls ]]; then exit 0; fi
 exit 1
 EOF
 chmod +x "$work/paseo-fail"
@@ -108,6 +136,16 @@ set -e
 check "a gone agent is skipped" 'grep -q "no longer exists" <<<"$output"'
 check "a failed send is logged" 'grep -q "FAILED to resume failing" <<<"$output"'
 check "a failed send does not stop the helper" '[[ "$status" -eq 0 ]]'
+
+# A daemon that never answers is logged and the helper gives up within the timeout.
+cat >"$work/paseo-unreachable" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$work/paseo-unreachable"
+output="$(PASEO_RESTART_READY_TIMEOUT=0 \
+  bash "$helper" resume "$state3" "$home3" "$work/paseo-unreachable" 2>&1)"
+check "a daemon that never answers is logged" 'grep -q "did not answer" <<<"$output"'
 
 if ((failures > 0)); then
   echo "$failures failed"

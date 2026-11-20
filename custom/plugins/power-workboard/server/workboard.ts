@@ -1,5 +1,8 @@
 import { deskStatusOf, type DeskStatus } from "../shared/desk-status";
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   archiveDueAt,
@@ -178,6 +181,8 @@ export interface AssistantOptions {
   compactSettleMs?: number;
   /** CUSTOM(assistant-compact): a quick message to this chat still waits for its answer. */
   chatQueued?: (agentId: string) => boolean;
+  /** CUSTOM(restart-resume): the restart script's skip file; tests point it elsewhere. */
+  restartStateFile?: string;
 }
 /**
  * CUSTOM(night-tasks): a power-off arms only this soon after the night was last active (its
@@ -205,6 +210,18 @@ const RESTART_RESUME_MESSAGE =
   "The Paseo daemon restarted and cut your last turn. Continue from where you stopped. The restart was intentional: do not restart it again.";
 /** CUSTOM(restart-resume): after a resume, a turn this long to start before the board settles it. */
 const RESTART_RESUME_GRACE_MS = 90_000;
+/**
+ * CUSTOM(restart-resume): the skip file the restart script writes counts for this daemon start
+ * only. A start more than this far from the file's timestamp is another restart, not that one.
+ */
+const RESTART_SKIP_WINDOW_MS = 15 * 60_000;
+/** CUSTOM(restart-resume): the script's skip file, unless a test points elsewhere. */
+function defaultRestartSkipFile(): string {
+  return join(
+    process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"),
+    "paseo-restart-skip.json",
+  );
+}
 /** CUSTOM(assistant-wake): how soon to look again while the chat is busy with another turn. */
 const BUSY_WAKE_RETRY_MS = 10_000;
 /** CUSTOM(assistant-wake): a task told and left waiting this long is told again once. */
@@ -370,6 +387,8 @@ export class Workboard {
   private settleTimer: ReturnType<typeof setTimeout> | undefined;
   /** CUSTOM(restart-resume): when the current daemon started; earlier activity was cut by it. */
   private restartCutoff = 0;
+  /** CUSTOM(restart-resume): agents the restart script told the board to leave alone. */
+  private restartSkipAgents = new Set<string>();
   private pendingMutations = 0;
   private connectionGeneration = 0;
   private epoch = 0;
@@ -492,13 +511,12 @@ export class Workboard {
   }
   async start(): Promise<void> {
     await this.serial(async () => {
-      // CUSTOM(restart-resume): the daemon start is the cutoff; fall back to this boot when an
-      // older daemon does not report it.
+      // CUSTOM(restart-resume): only a daemon that reports its start gets the rule. Without it a
+      // plugin reload could turn every idle task into an "interrupted" one.
       const daemonStartedAt = this.host.identity.startedAt;
       const daemonStart = daemonStartedAt ? Date.parse(daemonStartedAt) : NaN;
-      this.restartCutoff = Number.isFinite(daemonStart)
-        ? daemonStart
-        : this.now();
+      this.restartCutoff = Number.isFinite(daemonStart) ? daemonStart : 0;
+      await this.loadRestartSkip();
       await this.load();
       await this.store.update((data) => {
         for (const task of data.tasks)
@@ -4556,6 +4574,35 @@ export class Workboard {
   }
   // End CUSTOM(projects-assistant) -------------------------------------------------------------
   /**
+   * CUSTOM(restart-resume): the restart script writes the agents it must leave alone (the one
+   * that ran the restart, plus `--skip-agent`) next to the restart time. Read it only when it
+   * belongs to this daemon start; an old file from another restart is ignored.
+   */
+  private async loadRestartSkip(): Promise<void> {
+    this.restartSkipAgents.clear();
+    if (this.restartCutoff <= 0) return;
+    const file =
+      this.assistantOptions.restartStateFile ?? defaultRestartSkipFile();
+    let data: { at?: unknown; agents?: unknown };
+    try {
+      data = JSON.parse(await readFile(file, "utf8")) as {
+        at?: unknown;
+        agents?: unknown;
+      };
+    } catch {
+      return; // no file, or unreadable: nothing to skip
+    }
+    if (typeof data.at !== "string" || !Array.isArray(data.agents)) return;
+    const at = Date.parse(data.at);
+    if (
+      !Number.isFinite(at) ||
+      Math.abs(at - this.restartCutoff) > RESTART_SKIP_WINDOW_MS
+    )
+      return;
+    for (const id of data.agents)
+      if (typeof id === "string") this.restartSkipAgents.add(id);
+  }
+  /**
    * CUSTOM(restart-resume): the agent was idle when the current daemon started, so a restart cut
    * its turn. Send one "continue" instead of letting the idle settle close the task as
    * no-report. Returns true when the caller must skip the normal idle handling. Inside `serial`.
@@ -4565,7 +4612,20 @@ export class Workboard {
     record: Orchestration,
     agent: Agent,
   ): Promise<boolean> {
+    if (this.restartCutoff <= 0) return false;
+    if (this.restartSkipAgents.has(record.agentId!)) return false;
+    // The script sent first: its message is the resume, so do not send a second one.
+    if (
+      agent.lastUserMessageAt &&
+      Date.parse(agent.lastUserMessageAt) >= this.restartCutoff
+    )
+      return false;
     if (Date.parse(agent.updatedAt) >= this.restartCutoff) return false;
+    // Never seen running: the "still starting" grace in the caller applies, not a resume.
+    if (!record.sawRunning) return false;
+    // Already in the 20 s settle before the restart: it finishes as it would have.
+    if (record.idleSince && Date.parse(record.idleSince) < this.restartCutoff)
+      return false;
     const handledAt = record.restartResumeAt
       ? Date.parse(record.restartResumeAt)
       : 0;
@@ -4838,11 +4898,12 @@ export class Workboard {
           );
         continue;
       }
-      // CUSTOM(restart-resume): the daemon restarted and cut this turn; send "continue"
-      // instead of letting the idle settle close it as no-report.
-      if (await this.resumeAfterRestart(taskId, record, agent)) continue;
       // Idle before it was ever seen running means it may not have started yet.
       if (!record.sawRunning && elapsed < 90_000) continue;
+      // CUSTOM(restart-resume): the daemon restarted and cut this turn; send "continue"
+      // instead of letting the idle settle close it as no-report. A task already in its
+      // settle, or never seen running, is not resumed.
+      if (await this.resumeAfterRestart(taskId, record, agent)) continue;
       // CUSTOM(board-turn-end): idle must hold for a while; a subagent may be about to hand back.
       if (!record.idleSince) {
         await this.setOrchestration(taskId, { idleSince: this.stamp() });

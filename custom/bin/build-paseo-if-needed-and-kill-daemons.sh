@@ -22,6 +22,7 @@ TIMEOUT=5
 STATE="${XDG_STATE_HOME:-$HOME/.local/state}"
 LOG="$STATE/kill-paseos-and-daemons.log"
 RESUME_STATE="$STATE/paseo-restart-resume.tsv"
+SKIP_STATE="$STATE/paseo-restart-skip.json"
 SELF="$(readlink -f "$0")"
 PASEO_BUILD="$(dirname "$SELF")/paseo-build.sh"
 PASEO_RESUME="$(dirname "$SELF")/paseo-restart-resume.sh"
@@ -171,17 +172,29 @@ for target in "${ALL_TARGETS[@]}"; do
 done
 
 # CUSTOM(restart-resume): remember what was running before the daemons go down, so each one can
-# be told to continue when its daemon is back. A daemon that is already down has nothing running.
+# be told to continue when its daemon is back. The skip list also goes to a file the board reads,
+# so the board leaves the agent that ran this restart alone too. Recording is best effort: a
+# read-only state folder must not stop the restart.
 log "Recording the agents that are running"
-mkdir -p "$STATE"
-: >"$RESUME_STATE"
-for target in "${TARGETS[@]}"; do
-  IFS='|' read -r launcher home _ <<<"$target"
-  if [[ -n "$(daemon_processes "$home")" ]]; then
-    bash "$PASEO_RESUME" snapshot "$RESUME_STATE" "$home" "$SKIP_AGENTS" | sed 's/^/  /' ||
-      log "Could not record the agents of $home; the restart goes on"
-  fi
-done
+if ! mkdir -p "$STATE"; then
+  log "Could not create $STATE; the restart goes on without resuming agents"
+  RESUME_STATE=""
+elif ! : >"$RESUME_STATE"; then
+  log "Could not reset $RESUME_STATE; the restart goes on without resuming agents"
+  RESUME_STATE=""
+fi
+if ! bash "$PASEO_RESUME" skip "$SKIP_STATE" "$SKIP_AGENTS" | sed 's/^/  /'; then
+  log "Could not record the restart skip list; the board may send a second continue"
+fi
+if [[ -n "$RESUME_STATE" ]]; then
+  for target in "${TARGETS[@]}"; do
+    IFS='|' read -r launcher home _ <<<"$target"
+    if [[ -n "$(daemon_processes "$home")" ]]; then
+      bash "$PASEO_RESUME" snapshot "$RESUME_STATE" "$home" "$SKIP_AGENTS" | sed 's/^/  /' ||
+        log "Could not record the agents of $home; the restart goes on"
+    fi
+  done
+fi
 
 log "Stopping the daemons"
 for target in "${TARGETS[@]}"; do
@@ -236,7 +249,7 @@ wait_until_up() {
 # agents that are gone, already running, or already got a message after the restart.
 resume_agents() {
   local home="$1"
-  [[ -s "$RESUME_STATE" ]] || return 0
+  [[ -n "$RESUME_STATE" && -s "$RESUME_STATE" ]] || return 0
   bash "$PASEO_RESUME" resume "$RESUME_STATE" "$home" "$PASEO_CLI" "$SKIP_AGENTS" | sed 's/^/  /' ||
     log "Could not resume the agents of $home; the restart goes on"
 }

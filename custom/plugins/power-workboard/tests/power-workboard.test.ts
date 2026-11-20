@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { agentEvidence } from "./fixtures";
 import { Workboard } from "../server/workboard";
@@ -239,20 +242,21 @@ async function startedTask() {
 /** Replace the board as a daemon restart does: the agent is idle, last active before the boot. */
 async function restarted(
   task: Awaited<ReturnType<typeof startedTask>>,
-  daemonStart: string,
+  daemonStart: string | null,
   at: number,
+  options: { restartStateFile?: string } = {},
 ) {
   task.board.dispose();
   task.agent.activity = "idle";
-  task.agent.updatedAt = new Date(
-    Date.parse(daemonStart) - 60_000,
-  ).toISOString();
-  task.agent.lastUserMessageAt = new Date(
-    Date.parse(daemonStart) - 3_600_000,
-  ).toISOString();
+  task.agent.updatedAt = daemonStart
+    ? new Date(Date.parse(daemonStart) - 60_000).toISOString()
+    : "2026-09-22T23:00:00Z";
+  task.agent.lastUserMessageAt = daemonStart
+    ? new Date(Date.parse(daemonStart) - 3_600_000).toISOString()
+    : "2026-09-22T22:00:00Z";
   task.host.identity.startedAt = daemonStart;
   task.setNow(at);
-  const board = new Workboard(task.host, task.store, task.now);
+  const board = new Workboard(task.host, task.store, task.now, 60000, options);
   await board.start();
   return board;
 }
@@ -347,6 +351,157 @@ it("a task whose agent ran after the daemon start is not resumed", async () => {
       {
         reason: "no-report",
       },
+    );
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a worker that ran the restart is not resumed by the board", async () => {
+  const task = await startedTask();
+  const dir = mkdtempSync(join(tmpdir(), "pwb-restart-skip-"));
+  const file = join(dir, "skip.json");
+  writeFileSync(
+    file,
+    JSON.stringify({
+      at: "2026-09-23T00:05:00Z",
+      agents: [task.agent.id],
+    }),
+  );
+  const board = await restarted(
+    task,
+    "2026-09-23T00:05:00Z",
+    Date.parse("2026-09-23T00:05:10Z"),
+    { restartStateFile: file },
+  );
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalled();
+    task.setNow(Date.parse("2026-09-23T00:06:00Z"));
+    await board.refresh();
+    expect(task.store.current.assistant.deliveries[task.task.id]).toMatchObject(
+      { reason: "no-report" },
+    );
+  } finally {
+    board.dispose();
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+it("without a daemon start the interrupted rule is off", async () => {
+  const task = await startedTask();
+  const board = await restarted(task, null, Date.parse("2026-09-23T00:05:10Z"));
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalled();
+    task.setNow(Date.parse("2026-09-23T00:06:00Z"));
+    await board.refresh();
+    expect(task.store.current.assistant.deliveries[task.task.id]).toMatchObject(
+      { reason: "no-report" },
+    );
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a task already settling before the restart is not resumed", async () => {
+  const task = await startedTask();
+  await task.store.update((data) => {
+    data.orchestrations[task.task.id]!.idleSince = "2026-09-23T00:04:00Z";
+  });
+  const board = await restarted(
+    task,
+    "2026-09-23T00:05:00Z",
+    Date.parse("2026-09-23T00:05:10Z"),
+  );
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalled();
+    expect(task.store.current.assistant.deliveries[task.task.id]).toMatchObject(
+      { reason: "no-report" },
+    );
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a task never seen running is not resumed", async () => {
+  const task = await startedTask();
+  await task.store.update((data) => {
+    const record = data.orchestrations[task.task.id]!;
+    record.sawRunning = false;
+    record.startedAt = "2026-09-23T00:05:05Z";
+    record.idleSince = null;
+  });
+  const board = await restarted(
+    task,
+    "2026-09-23T00:05:00Z",
+    Date.parse("2026-09-23T00:05:10Z"),
+  );
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalled();
+    task.setNow(Date.parse("2026-09-23T00:05:30Z"));
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalled();
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a task the restart script already messaged is not messaged again", async () => {
+  const task = await startedTask();
+  task.board.dispose();
+  task.host.identity.startedAt = "2026-09-23T00:05:00Z";
+  task.agent.activity = "idle";
+  task.agent.updatedAt = "2026-09-23T00:04:00Z";
+  task.agent.lastUserMessageAt = "2026-09-23T00:05:30Z";
+  task.setNow(Date.parse("2026-09-23T00:05:40Z"));
+  const board = new Workboard(task.host, task.store, task.now);
+  await board.start();
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalled();
+    task.setNow(Date.parse("2026-09-23T00:06:10Z"));
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalled();
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a permission wait is not resumed by the restart rule", async () => {
+  const task = await startedTask();
+  task.agent.waitingPermission = true;
+  const board = await restarted(
+    task,
+    "2026-09-23T00:05:00Z",
+    Date.parse("2026-09-23T00:05:10Z"),
+  );
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalled();
+  } finally {
+    board.dispose();
+  }
+});
+
+it("an agent in error is not sent the restart message", async () => {
+  const task = await startedTask();
+  task.board.dispose();
+  task.host.identity.startedAt = "2026-09-23T00:05:00Z";
+  task.agent.activity = "error";
+  task.agent.lastError = "boom";
+  task.agent.updatedAt = "2026-09-23T00:04:00Z";
+  task.agent.lastUserMessageAt = "2026-09-23T00:03:00Z";
+  task.setNow(Date.parse("2026-09-23T00:05:10Z"));
+  const board = new Workboard(task.host, task.store, task.now);
+  await board.start();
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalledWith(
+      task.agent.id,
+      expect.stringContaining("restart was intentional"),
     );
   } finally {
     board.dispose();
