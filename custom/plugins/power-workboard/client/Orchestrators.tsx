@@ -48,7 +48,7 @@ import { ASSISTANT_PROFILE, type SkillSelection } from "../shared/profiles";
 type Theme = PluginSurfaceProps["theme"];
 type Strings = ReturnType<typeof strings>;
 type Mutate = (input: Mutation) => Promise<Board | undefined>;
-/** CUSTOM(agent-profiles): the tab id of the Projects Assistant's profile. */
+/** CUSTOM(agent-profiles): the tab id of the Project Manager's profile. */
 export const ASSISTANT_TAB = ASSISTANT_PROFILE;
 interface Shared {
   board: Board;
@@ -1814,7 +1814,7 @@ function AgentLink({
 
 /**
  * Board | Orchestrators | Assistant | Dashboard | Conversations | Reports | one tab per opened
- * orchestrator. CUSTOM(workboard-inner-pages): the four Projects Assistant pages.
+ * orchestrator. CUSTOM(workboard-inner-pages): the four Project Manager pages.
  */
 export function WorkboardTabs({
   board,

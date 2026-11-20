@@ -31,7 +31,7 @@ const en = {
   clearSearch: "Clear search",
   allProjects: "All projects",
   noTickets:
-    "No tickets yet. Tickets appear here once the assistant or the board acts on them.",
+    "No tickets yet. Tickets appear here once the Project Manager or the board acts on them.",
   noMatches: "No ticket matches your search.",
   statusFilterHidesAll:
     "The status filter hides every ticket. Turn on more statuses above.",
@@ -60,7 +60,7 @@ const en = {
   waitingFor: "Waiting for", // CUSTOM(task-checkpoints)
   resumes: "resumes", // CUSTOM(task-checkpoints)
   openConversation: "Open conversation",
-  sourceAssistant: "assistant",
+  sourceAssistant: "Project Manager",
   sourceAuto: "automatic",
   ago: { now: "now", m: "m ago", h: "h ago", d: "d ago" },
   // CUSTOM(assistant-cards): the question and review-map pieces of the report cards.
@@ -85,7 +85,7 @@ const en = {
     costs: "costs",
     sendFailed: "Could not send.",
     byUser: "you",
-    byAssistant: "assistant",
+    byAssistant: "Project Manager",
   },
   reportStatus: {
     done: "Done",
@@ -122,7 +122,7 @@ const en = {
     merged: "Merged",
     "pr-prepared": "Pull request prepared",
     "needs-you": "Needs you",
-    "told-assistant": "Told the assistant",
+    "told-assistant": "Told the Project Manager",
     "chat-compacted": "Chat compacted", // CUSTOM(assistant-compact)
     "chat-compact-failed": "Chat compaction failed", // CUSTOM(assistant-compact)
     observed: "Observed",
@@ -139,7 +139,7 @@ const pt: ReportsStrings = {
   clearSearch: "Limpar busca",
   allProjects: "Todos os projetos",
   noTickets:
-    "Nenhum ticket ainda. Os tickets aparecem aqui quando o assistente ou o quadro agirem sobre eles.",
+    "Nenhum ticket ainda. Os tickets aparecem aqui quando o Project Manager ou o quadro agir sobre eles.",
   noMatches: "Nenhum ticket corresponde à busca.",
   statusFilterHidesAll:
     "O filtro de status escondeu todos os tickets. Marque mais status acima.",
@@ -168,7 +168,7 @@ const pt: ReportsStrings = {
   waitingFor: "Aguardando", // CUSTOM(task-checkpoints)
   resumes: "retoma", // CUSTOM(task-checkpoints)
   openConversation: "Abrir conversa",
-  sourceAssistant: "assistente",
+  sourceAssistant: "Project Manager",
   sourceAuto: "automático",
   ago: { now: "agora", m: " min atrás", h: " h atrás", d: " d atrás" },
   card: {
@@ -192,7 +192,7 @@ const pt: ReportsStrings = {
     costs: "custa",
     sendFailed: "Não foi possível enviar.",
     byUser: "você",
-    byAssistant: "assistente",
+    byAssistant: "Project Manager",
   },
   reportStatus: {
     done: "Concluído",
@@ -229,7 +229,7 @@ const pt: ReportsStrings = {
     merged: "Mesclado",
     "pr-prepared": "Pull request preparado",
     "needs-you": "Precisa de você",
-    "told-assistant": "Avisou o assistente",
+    "told-assistant": "Avisou o Project Manager",
     "chat-compacted": "Chat compactado", // CUSTOM(assistant-compact)
     "chat-compact-failed": "Falha ao compactar o chat", // CUSTOM(assistant-compact)
     observed: "Observado",

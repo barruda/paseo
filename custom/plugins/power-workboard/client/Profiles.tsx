@@ -651,7 +651,7 @@ type ProfileFieldsProps = {
   s: ProfileStrings;
 };
 
-/** Both halves, one after the other: the Projects Assistant tab uses this. */
+/** Both halves, one after the other: the Project Manager tab uses this. */
 export function ProfileFields(props: ProfileFieldsProps) {
   return (
     <View style={styles.stack}>
@@ -794,7 +794,7 @@ const draftOf = (chat: AssistantChatSettings) => ({
   wakeOnNeedsYou: chat.wakeOnNeedsYou, // CUSTOM(assistant-wake)
 });
 
-/** The Projects Assistant's fixed entry: the same editor, without project or schedule fields. */
+/** The Project Manager's fixed entry: the same editor, without project or schedule fields. */
 export function AssistantProfileTab({
   theme,
   disabled,

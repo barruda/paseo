@@ -28,7 +28,7 @@ describe("showAssistantChat", () => {
     expect(assistantDesk()).toBeUndefined();
     useDesksStore.getState().showAssistantChat({ tab: chatTab("a"), isChatTab: isChat(["a"]) });
 
-    expect(assistantDesk()?.name).toBe("Projects Assistant");
+    expect(assistantDesk()?.name).toBe("Project Manager");
     expect(useDesksStore.getState().activeDeskId).toBe(ASSISTANT_DESK_ID);
     expect(deskTabs(assistantDesk()!).map((tab) => tab.target)).toEqual([
       { kind: "agent", agentId: "a" },

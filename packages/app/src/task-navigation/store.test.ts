@@ -423,6 +423,34 @@ describe("Desks", () => {
     expect(current()).toMatchObject({ id: "pinned", workspaceId: "paseo" });
     expect(desk().previewTabId).toBe("preview");
   });
+  it("renames the assistant Desk saved under its old default name", async () => {
+    await AsyncStorage.setItem(
+      "custom-desks",
+      JSON.stringify({
+        version: 1,
+        state: {
+          desks: [
+            {
+              id: "projects-assistant",
+              name: "Projects Assistant",
+              tabs: [],
+              preview: null,
+              activeTabId: null,
+            },
+          ],
+          activeDeskId: "projects-assistant",
+          initialized: true,
+          projectKeys: null,
+          sort: "attention",
+          openedAt: {},
+        },
+      }),
+    );
+    await useDesksStore.persist.rehydrate();
+    expect(
+      useDesksStore.getState().desks.find((entry) => entry.id === "projects-assistant")?.name,
+    ).toBe("Project Manager");
+  });
 });
 
 // CUSTOM(workspace-content-search)

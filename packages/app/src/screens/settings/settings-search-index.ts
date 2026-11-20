@@ -129,7 +129,7 @@ export const SETTINGS_SEARCH_INDEX: Partial<
   // CUSTOM(projects-assistant)
   "customizations-projects-assistant": {
     terms: [
-      "Projects Assistant",
+      "Project Manager",
       "Default action",
       "Prepare PR",
       "Observe only",

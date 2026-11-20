@@ -1,5 +1,5 @@
 // CUSTOM(assistant-cards): the text a card sends when the user answers in one tap or leaves
-// feedback on one item. The chat card sends it to the Projects Assistant as a message; the report
+// feedback on one item. The chat card sends it to the Project Manager as a message; the report
 // cards send it as the task's Continue feedback. One format for both, so either reader sees which
 // option or item it is about.
 

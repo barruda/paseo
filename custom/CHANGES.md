@@ -8819,3 +8819,39 @@ tests/colors.test.ts --bail=1`. Needs only `paseo plugin reload power-workboard`
   In the app, two cards of the same project in different rails have the same left border, the
   project initial shows before the name, and each column header has its rail-colored top filete
   in the light and dark themes.
+## project-manager-rename: Projects Assistant becomes Project Manager, Power Workboard becomes Workboard
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: rename Projects Assistant to Project Manager and Power Workboard to Workboard`
+- **Why:** The two names read as separate products: "Power Workboard" looked different from the
+  Workboard, and "Projects Assistant" looked like a generic assistant rather than the manager of
+  the board. Shorter names are easier to find in the sidebar, the Command Center and Settings.
+- **What:** Every user-visible name is now **Project Manager** (the chat, its Desk, status row,
+  tab, Explorer mirror, settings page and report labels) and **Workboard** (the plugin, tab,
+  sidebar, Command Center, notifications and prompts). Covered: plugin UI strings (en, pt-BR and
+  zh), `paseo-plugin.json`'s description, the assistant's system prompt and MCP tool descriptions,
+  the orchestrator, fix, continuation and refinement prompts, README and
+  `docs/assistant-reply-protocol.md`, `bin/ask-assistant` output, and the core labels in
+  `packages/app`. An assistant Desk saved under the old default name is renamed on load; a Desk the
+  user renamed is left alone. Internal identifiers stay: the plugin id `power-workboard`, the
+  folder and `plugin-data/power-workboard/`, settings keys, the `board_*` tools, the
+  `paseo.board-agent` label, the `assistant` profile id and the route/RPC ids.
+- **Core files touched:** `packages/app/src/task-navigation/desk-workboard-model.ts` (chip label),
+  `desks-store.ts` (Desk name and the one-time rename in `migrateLegacyDesk`),
+  `assistant-sidebar/panel.tsx`, `assistant-sidebar/strings.ts`, `screens/settings-screen.tsx`,
+  `screens/settings/settings-search-index.ts`,
+  `screens/settings/bruno-customizations/projects-assistant-page.tsx`,
+  `screens/workspace/workspace-desktop-tabs-row.tsx`,
+  `screens/workspace/compact-workspace-header/tab-switcher.tsx`, `composer/chat-options.ts`, plus
+  the assertions in `assistant-sidebar/desk.test.ts` and `task-navigation/store.test.ts`. Plugin
+  files: the client, server, shared, test, README and docs files listed in the commit.
+- **Re-apply:** Plugin-only plus the core labels. Grep `Projects Assistant` and `Power Workboard`;
+  replace them with "Project Manager" and "Workboard" in user-visible text, keeping the ids above.
+  The Desk rename is the `CUSTOM(project-manager-rename)` block in `migrateLegacyDesk`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run`;
+  `npm run typecheck`; `(cd packages/app && npx vitest run src/task-navigation/store.test.ts
+src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard` and an app
+  build/install. In the app: the sidebar and Command Center say **Workboard**; the status row, chat
+  tab, Explorer mirror and Settings item say **Project Manager**; the existing assistant Desk shows
+  **Project Manager**. A live `system-prompt.md` keeps the old names until the new `ASSISTANT_ROLE`
+  text is copied there by hand.

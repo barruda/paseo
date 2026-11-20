@@ -14,7 +14,7 @@ export const CHAT_OPTIONS = [
   ["diff", "Changes"],
   ["worktree", "Worktree"],
   ["git-sync", "Git sync"],
-  ["plugin:power-workboard:restart-chat", "Projects Assistant: restart chat"], // CUSTOM(assistant-restart-pill)
+  ["plugin:power-workboard:restart-chat", "Project Manager: restart chat"], // CUSTOM(assistant-restart-pill)
   ["reading", "Reading mode"],
   ["attachments", "Attachments (+)"],
   ["model", "Model"],

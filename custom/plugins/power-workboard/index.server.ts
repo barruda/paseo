@@ -219,7 +219,7 @@ export default function contribute(server: PluginServerContext) {
     await board.writeTicket(input.agentId, input.focus);
     return { ok: true as const };
   });
-  // CUSTOM(projects-assistant): the Projects Assistant's settings, views and actions.
+  // CUSTOM(projects-assistant): the Project Manager's settings, views and actions.
   const ready = () => {
     if (!board) throw new Error(error);
     return board;

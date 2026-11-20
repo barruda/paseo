@@ -15,7 +15,7 @@ export const POWER_WORKBOARD_SURFACE_ID = "power-workboard";
 export const DESK_SURFACES: readonly DeskSurfaceDefinition[] = [
   {
     id: POWER_WORKBOARD_SURFACE_ID,
-    label: "Power Workboard",
+    label: "Workboard",
     identity: { kind: "sidebar", id: POWER_WORKBOARD_SURFACE_ID },
   },
 ];

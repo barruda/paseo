@@ -1,6 +1,6 @@
-// CUSTOM(workboard-inner-pages): the Projects Assistant pages (chat, dashboard, conversations,
-// reports) as tabs inside the Power Workboard, after Board and Orchestrators. They used to be Desk
-// chips of their own; the Desk now shows only Power Workboard and passes the inner tab to keep as
+// CUSTOM(workboard-inner-pages): the Project Manager pages (chat, dashboard, conversations,
+// reports) as tabs inside the Workboard, after Board and Orchestrators. They used to be Desk
+// chips of their own; the Desk now shows only Workboard and passes the inner tab to keep as
 // `params.tab`.
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { PageLocale } from "../paseo-language";
@@ -42,19 +42,19 @@ export const WORKBOARD_PAGES: readonly WorkboardPage[] = [
 ];
 
 const en: Record<WorkboardPageTab, string> = {
-  "assistant-chat": "Assistant",
+  "assistant-chat": "Project Manager",
   dashboard: "Dashboard",
   conversations: "Conversations",
   reports: "Reports",
 };
 const pt: Record<WorkboardPageTab, string> = {
-  "assistant-chat": "Assistente",
+  "assistant-chat": "Project Manager",
   dashboard: "Painel",
   conversations: "Conversas",
   reports: "Relatórios",
 };
 const zh: Record<WorkboardPageTab, string> = {
-  "assistant-chat": "助手",
+  "assistant-chat": "Project Manager",
   dashboard: "仪表板",
   conversations: "对话",
   reports: "报告",

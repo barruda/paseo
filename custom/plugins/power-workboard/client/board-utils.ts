@@ -314,7 +314,7 @@ export function moveCardToAnchor(
   return next;
 }
 
-// CUSTOM(card-title-area): many titles start with an area ("Power Workboard: ..."), which ate the
+// CUSTOM(card-title-area): many titles start with an area ("Workboard: ..."), which ate the
 // two visible lines of the card. The card shows the rest as its title and the area beside the
 // project. Display only: the saved title, search and filters keep the whole text.
 const AREA_MAX_WORDS = 4;

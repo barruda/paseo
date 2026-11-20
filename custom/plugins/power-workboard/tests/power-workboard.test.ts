@@ -271,7 +271,7 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
     expect(host.startAgentIn).toHaveBeenCalledTimes(1);
 
     await expect(board.writeTicket("someone-else", "")).rejects.toThrow(
-      "not a Power Workboard refinement",
+      "not a Workboard refinement",
     );
     await board.writeTicket(refinement.agentId, "the cache");
     expect((host.runAgent as any).mock.calls[0][1]).toContain(
