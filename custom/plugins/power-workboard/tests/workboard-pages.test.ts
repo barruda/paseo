@@ -28,8 +28,8 @@ function hostNavigation(extra: Record<string, unknown> = {}) {
   } as unknown as Navigation;
 }
 
-describe("Projects Assistant pages inside the Power Workboard", () => {
-  it("lists Assistant, Dashboard, Conversations and Reports in that order", () => {
+describe("Project Manager pages inside the Workboard", () => {
+  it("lists Project Manager, Dashboard, Conversations and Reports in that order", () => {
     expect(WORKBOARD_PAGES.map((page) => page.tab)).toEqual([
       "assistant-chat",
       "dashboard",
@@ -37,7 +37,7 @@ describe("Projects Assistant pages inside the Power Workboard", () => {
       "reports",
     ]);
     expect(Object.values(workboardPageLabels("en"))).toEqual([
-      "Assistant",
+      "Project Manager",
       "Dashboard",
       "Conversations",
       "Reports",

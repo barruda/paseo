@@ -7,6 +7,7 @@ describe("task navigation mode", () => {
   beforeEach(async () => {
     await useTaskNavigationStore.persist.rehydrate();
     useTaskNavigationStore.getState().setEnabled(false);
+    useTaskNavigationStore.getState().setTab("user");
   });
   it("returns to the workspace sidebar without losing its grouping or filters", () => {
     useSidebarViewStore.setState({
@@ -29,7 +30,7 @@ describe("task navigation mode", () => {
     useTaskNavigationStore.getState().setEnabled(true);
     expect(JSON.parse((await AsyncStorage.getItem("custom-task-navigation"))!)).toEqual({
       version: 1,
-      state: { enabled: true, compactTasks: true, filtersCollapsed: false },
+      state: { enabled: true, compactTasks: true, filtersCollapsed: false, tab: "user" },
     });
   });
   it("shows the Tasks list on the phone by default and remembers Workspaces", async () => {
@@ -43,7 +44,7 @@ describe("task navigation mode", () => {
     useTaskNavigationStore.getState().setCompactTasks(false);
     expect(JSON.parse((await AsyncStorage.getItem("custom-task-navigation"))!)).toEqual({
       version: 1,
-      state: { enabled: false, compactTasks: false, filtersCollapsed: false },
+      state: { enabled: false, compactTasks: false, filtersCollapsed: false, tab: "user" },
     });
     useTaskNavigationStore.getState().setCompactTasks(true);
   });
@@ -57,9 +58,26 @@ describe("task navigation mode", () => {
     useTaskNavigationStore.getState().setFiltersCollapsed(true);
     expect(JSON.parse((await AsyncStorage.getItem("custom-task-navigation"))!)).toEqual({
       version: 1,
-      state: { enabled: false, compactTasks: true, filtersCollapsed: true },
+      state: { enabled: false, compactTasks: true, filtersCollapsed: true, tab: "user" },
     });
     useTaskNavigationStore.getState().setFiltersCollapsed(false);
+  });
+  it("opens on User Agents and remembers the chosen tab", async () => {
+    await AsyncStorage.setItem(
+      "custom-task-navigation",
+      JSON.stringify({
+        version: 1,
+        state: { enabled: false, compactTasks: true, filtersCollapsed: false },
+      }),
+    );
+    await useTaskNavigationStore.persist.rehydrate();
+    expect(useTaskNavigationStore.getState().tab).toBe("user");
+    useTaskNavigationStore.getState().setTab("workers");
+    expect(JSON.parse((await AsyncStorage.getItem("custom-task-navigation"))!)).toEqual({
+      version: 1,
+      state: { enabled: false, compactTasks: true, filtersCollapsed: false, tab: "workers" },
+    });
+    useTaskNavigationStore.getState().setTab("user");
   });
 });
 
@@ -422,6 +440,34 @@ describe("Desks", () => {
     expect(tabs().map((tab) => tab.id)).toEqual(["preview", "pinned"]);
     expect(current()).toMatchObject({ id: "pinned", workspaceId: "paseo" });
     expect(desk().previewTabId).toBe("preview");
+  });
+  it("renames the assistant Desk saved under its old default name", async () => {
+    await AsyncStorage.setItem(
+      "custom-desks",
+      JSON.stringify({
+        version: 1,
+        state: {
+          desks: [
+            {
+              id: "projects-assistant",
+              name: "Projects Assistant",
+              tabs: [],
+              preview: null,
+              activeTabId: null,
+            },
+          ],
+          activeDeskId: "projects-assistant",
+          initialized: true,
+          projectKeys: null,
+          sort: "attention",
+          openedAt: {},
+        },
+      }),
+    );
+    await useDesksStore.persist.rehydrate();
+    expect(
+      useDesksStore.getState().desks.find((entry) => entry.id === "projects-assistant")?.name,
+    ).toBe("Project Manager");
   });
 });
 

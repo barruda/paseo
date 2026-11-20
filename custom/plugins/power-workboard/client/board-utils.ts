@@ -126,6 +126,19 @@ export function finishButtons(finish: Pick<Finish, "mergedAt"> | undefined): {
 }
 
 /**
+ * CUSTOM(workboard-finish-inline): a Done card's finish area stacks the status, the PR body and
+ * the buttons. With one button and no PR body there is nothing to fill the extra rows, so the
+ * status and that button share one line.
+ */
+export function finishInlineLayout(input: {
+  hasStatus: boolean;
+  hasPr: boolean;
+  steps: number;
+}): boolean {
+  return input.hasStatus && !input.hasPr && input.steps === 1;
+}
+
+/**
  * CUSTOM(card-open-agent): the agent a card's Open agent link opens, in any column and whatever
  * the agent's state. The orchestrated attempt's agent wins (current, or the last one: its record
  * stays after the task moves); a restart that has no agent yet, or a task started by hand, falls
@@ -301,7 +314,7 @@ export function moveCardToAnchor(
   return next;
 }
 
-// CUSTOM(card-title-area): many titles start with an area ("Power Workboard: ..."), which ate the
+// CUSTOM(card-title-area): many titles start with an area ("Workboard: ..."), which ate the
 // two visible lines of the card. The card shows the rest as its title and the area beside the
 // project. Display only: the saved title, search and filters keep the whole text.
 const AREA_MAX_WORDS = 4;

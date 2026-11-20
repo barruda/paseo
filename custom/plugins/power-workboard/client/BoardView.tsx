@@ -621,18 +621,12 @@ export function BoardView(props: Props) {
                       onPress={() => setStage(group.id)}
                       style={[
                         styles.tab,
+                        { borderTopColor: props.groupColor(group) },
                         stage === group.id && {
                           backgroundColor: theme.colors.surface2,
-                          borderBottomColor: props.groupColor(group),
                         },
                       ]}
                     >
-                      <View
-                        style={[
-                          styles.tabDot,
-                          { backgroundColor: props.groupColor(group) },
-                        ]}
-                      />
                       <Text
                         numberOfLines={1}
                         style={[
@@ -1570,7 +1564,11 @@ function BoardColumn({
         />
       )}
       <View
-        style={[styles.columnHeader, collapsed && styles.columnHeaderCollapsed]}
+        style={[
+          styles.columnHeader,
+          collapsed && styles.columnHeaderCollapsed,
+          { borderTopColor: color },
+        ]}
       >
         <View
           {...header}
@@ -1607,7 +1605,6 @@ function BoardColumn({
               size={13}
               color={theme.colors.foregroundMuted}
             />
-            <View style={[styles.dot, { backgroundColor: color }]} />
             <Text
               numberOfLines={collapsed ? 2 : 1}
               style={{
@@ -1764,6 +1761,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 2,
     paddingBottom: 2,
+    borderTopWidth: 3,
+    borderTopColor: "transparent",
   },
   columnHeaderCollapsed: { flexDirection: "column", alignItems: "stretch" },
   columnTitle: {
@@ -1780,7 +1779,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 4,
   },
-  dot: { width: 6, height: 6, borderRadius: 3 },
   iconButton: {
     width: 36,
     height: 36,
@@ -1874,10 +1872,9 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 7,
     maxWidth: 240,
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
+    borderTopWidth: 2,
+    borderTopColor: "transparent",
   },
-  tabDot: { width: 7, height: 7, borderRadius: 4, flexShrink: 0 },
   tabText: { flexShrink: 1 },
   compactList: { padding: 10, gap: 7 },
   menuAction: {

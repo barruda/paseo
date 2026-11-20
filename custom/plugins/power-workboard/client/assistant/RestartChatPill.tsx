@@ -26,7 +26,7 @@ const strings = {
     restart: "Restart",
     cancel: "Cancel",
     confirm:
-      "Starts a new Projects Assistant conversation. This one is archived and its session is dropped.",
+      "Starts a new Project Manager conversation. This one is archived and its session is dropped.",
   },
   zh: {
     title: "重启聊天",
@@ -51,7 +51,7 @@ function RestartChatContent(props: PluginButtonContentProps) {
       // Paseo passes button content the same navigation surfaces get (CUSTOM(assistant-restart-pill)
       // in the app); an older app has none, and the new chat is then reachable from the Desk chip.
       // The plugin's pinned @getpaseo/plugin types predate that field, hence the cast.
-      // CUSTOM(assistant-desk): the new chat shows in the Projects Assistant Desk.
+      // CUSTOM(assistant-desk): the new chat shows in the Project Manager Desk.
       const { navigation } = props as typeof props &
         Pick<PluginSurfaceProps, "navigation">;
       if (navigation) openAssistantChat(navigation, agentId);
@@ -113,7 +113,7 @@ function RestartChatContent(props: PluginButtonContentProps) {
 }
 
 /**
- * Keeps one pill on every Projects Assistant chat agent, from an owned agent subscription.
+ * Keeps one pill on every Project Manager chat agent, from an owned agent subscription.
  * Returns the cleanup.
  */
 export function contributeRestartChatPill(client: PluginClientContext) {

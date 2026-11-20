@@ -1,4 +1,4 @@
-// CUSTOM(assistant-reply-protocol): the short `pwb` block the Projects Assistant ends each reply
+// CUSTOM(assistant-reply-protocol): the short `pwb` block the Project Manager ends each reply
 // with, and its parser. The protocol is described in docs/assistant-reply-protocol.md; the keys
 // and enums below are its source of truth (a test checks the doc lists the same values).
 import { z } from "zod";
@@ -50,6 +50,19 @@ export const NEXT_VALUES = [
   "fim",
 ] as const;
 export type NextValue = (typeof NEXT_VALUES)[number];
+
+/**
+ * One line per `próximo` value, shown in the chip's legend. The protocol doc lists the same
+ * lines; a test compares them, so change both together.
+ */
+export const NEXT_DESCRIPTIONS: Record<NextValue, string> = {
+  sigo: "I carry on by myself.",
+  agente: "it went back to the task's agent.",
+  revisão: "an independent reviewer is looking at it.",
+  você: "stopped, waiting for the user.",
+  espera: "waiting on something outside (a limit, CI, a time).",
+  fim: "delivered, nothing pending.",
+};
 
 /**
  * The evidence word a `pedido` line starts with. The canonical words are the report's
@@ -374,7 +387,7 @@ export interface ReplyTimelineItem {
   data: ReplyItemData;
 }
 
-/** The label the server's `CHAT_LABEL` puts on the Projects Assistant's chat agent. */
+/** The label the server's `CHAT_LABEL` puts on the Project Manager's chat agent. */
 export const ASSISTANT_CHAT_AGENT_LABEL = "pwb/assistant-chat";
 
 /**
@@ -385,7 +398,7 @@ export const ASSISTANT_CHAT_AGENT_LABEL = "pwb/assistant-chat";
 export const AGENT_REPLACES_LABEL = "paseo.replaces-agent";
 
 /**
- * The item that replaces a reply ending in a `pwb` block, only in the Projects Assistant's chat.
+ * The item that replaces a reply ending in a `pwb` block, only in the Project Manager's chat.
  * `labels` are the chat agent's, which hosts without CUSTOM(timeline-transformer-agent) don't
  * pass: the reply then stays as is.
  */
@@ -447,3 +460,23 @@ export const NEXT_LOOK: Record<
   fim: { icon: "CircleCheckBig", tone: "success" },
   other: { icon: "Circle", tone: "muted" },
 };
+
+/** One row of the `próximo` chip's legend. */
+export interface NextLegendEntry {
+  value: NextValue;
+  icon: string;
+  tone: ReplyTone;
+  description: string;
+  /** True for the value the chip shows, so the legend can highlight it. */
+  current: boolean;
+}
+
+/** The legend behind the `próximo` chip: every value in enum order, the current one flagged. */
+export function nextLegend(current: NextValue | null): NextLegendEntry[] {
+  return NEXT_VALUES.map((value) => ({
+    value,
+    ...NEXT_LOOK[value],
+    description: NEXT_DESCRIPTIONS[value],
+    current: value === current,
+  }));
+}

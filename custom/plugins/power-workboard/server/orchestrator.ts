@@ -1,11 +1,11 @@
 import type { Task } from "../shared/model";
 import type { TaskProgress } from "../shared/assistant"; // CUSTOM(task-checkpoints)
 
-// CUSTOM(projects-assistant): what the agent must know when the Projects Assistant delivers its work.
+// CUSTOM(projects-assistant): what the agent must know when the Project Manager delivers its work.
 export function assistantSection(): string {
   return [
     "## Delivery",
-    "The Projects Assistant delivers the work of this task. Do not merge, push, rebase onto the base branch or open pull requests; leave your changes in this workspace.",
+    "The Project Manager delivers the work of this task. Do not merge, push, rebase onto the base branch or open pull requests; leave your changes in this workspace.",
     // CUSTOM(projects-assistant): an agent with no profile prompt deleted its node_modules symlink as "cleanup", and the review could not run the tests.
     "The review and the delivery run the checks in this workspace. If dependencies are missing, install them here with the project's installer and leave them in place when you finish: never delete `node_modules`, virtualenvs or build outputs as cleanup. Do not symlink another checkout's `node_modules`: an ignore rule like `node_modules/` matches directories only, so git sees the symlink as an untracked file, and the delivery commit stages every untracked file.",
     // CUSTOM(worktree-shared-deps): worktree setup may hardlink node_modules to the main checkout's files.
@@ -29,7 +29,7 @@ function reviewMapSection(): string {
 // CUSTOM(task-checkpoints): a task too long for one session saves its progress and is resumed later.
 function checkpointSection(): string {
   return [
-    'Most tasks end with "done": finish the work in this session. Use status "checkpoint" only when the task really does not fit in one session, or must wait for something outside it such as CI. Then add "progress": {"done": string[], "next": string[]}, the full checklist of the task so far, with the same wording for an item across checkpoints. Leave the workspace in a state that builds; the Projects Assistant commits your partial work in this worktree (never on the base branch) and resumes the task later, maybe with a new agent that only has your summary and checklist.',
+    'Most tasks end with "done": finish the work in this session. Use status "checkpoint" only when the task really does not fit in one session, or must wait for something outside it such as CI. Then add "progress": {"done": string[], "next": string[]}, the full checklist of the task so far, with the same wording for an item across checkpoints. Leave the workspace in a state that builds; the Project Manager commits your partial work in this worktree (never on the base branch) and resumes the task later, maybe with a new agent that only has your summary and checklist.',
     'To resume only later, add "resumeAfter" (an ISO 8601 time) and "waitingFor" (what you wait for). Without them the task resumes on the next pass.',
     "Use a checkpoint only after real progress: a task with too many checkpoints, or with checkpoints in a row that complete no new item, goes to the user as stalled.",
     'Example: <report>{"status":"checkpoint","summary":"Server side done; UI next.","filesChanged":["server/a.ts"],"checks":[],"risks":[],"question":null,"progress":{"done":["Server engine"],"next":["Card badge","Dashboard"]},"resumeAfter":null,"waitingFor":null}</report>',
@@ -55,7 +55,7 @@ export function checkpointResumePrompt(
   assistant = false,
 ): string {
   return [
-    `The Power Workboard resumes this task from checkpoint ${progress?.checkpoints ?? 1}. Continue it in this workspace without waiting for confirmation.`,
+    `The Workboard resumes this task from checkpoint ${progress?.checkpoints ?? 1}. Continue it in this workspace without waiting for confirmation.`,
     waitingFor ? `You were waiting for: ${waitingFor}. Check it first.` : "",
     progress ? progressMarkdown(progress) : "",
     "When you are done, reply with a short summary of what you changed and what a reviewer should check.",
@@ -102,10 +102,10 @@ export function handoffSection(input: {
     .join("\n\n");
 }
 
-/** What the agent receives when a check the Projects Assistant ran on its work failed. */
+/** What the agent receives when a check the Project Manager ran on its work failed. */
 export function fixPrompt(command: string, output: string): string {
   return [
-    "The Projects Assistant ran a check on your work before delivering it, and it failed. Fix the problem in this workspace without waiting for confirmation.",
+    "The Project Manager ran a check on your work before delivering it, and it failed. Fix the problem in this workspace without waiting for confirmation.",
     `Command: ${command}`,
     `Output (tail):\n\n${output.trim() || "(no output)"}`,
     assistantSection(),
@@ -116,7 +116,7 @@ export function fixPrompt(command: string, output: string): string {
 export function conflictPrompt(baseBranch: string): string {
   const base = baseBranch.trim() || "the base branch";
   return [
-    `The Projects Assistant tried to merge your branch into ${base}, but ${base} moved and the merge conflicts. Resolve it in this workspace without waiting for confirmation.`,
+    `The Project Manager tried to merge your branch into ${base}, but ${base} moved and the merge conflicts. Resolve it in this workspace without waiting for confirmation.`,
     [
       `1. Run \`git merge ${baseBranch.trim() || "<base branch>"}\` here (a merge, not a rebase).`,
       "2. Resolve every conflict keeping both sides. In custom/CHANGES.md keep every entry.",
@@ -139,7 +139,7 @@ export function orchestratorPrompt(
     `# ${task.title}`,
     task.description.trim(),
     "---",
-    "You were started by the Power Workboard orchestrator for the task above. Do the whole task in this workspace without waiting for confirmation. When you are done, reply with a short summary of what you changed and what a reviewer should check.",
+    "You were started by the Workboard orchestrator for the task above. Do the whole task in this workspace without waiting for confirmation. When you are done, reply with a short summary of what you changed and what a reviewer should check.",
     assistant ? assistantSection() : "", // CUSTOM(projects-assistant)
   ]
     .filter(Boolean)
@@ -152,7 +152,7 @@ export function continuationPrompt(
   assistant = false, // CUSTOM(projects-assistant)
 ): string {
   return [
-    "The reviewer sent this task back to you from the Power Workboard. Continue it in this workspace without waiting for confirmation.",
+    "The reviewer sent this task back to you from the Workboard. Continue it in this workspace without waiting for confirmation.",
     feedback.trim()
       ? `Reviewer feedback:\n\n${feedback.trim()}`
       : "The reviewer left no notes: finish what is still missing.",
@@ -167,7 +167,7 @@ export function continuationPrompt(
 export function refinementPrompt(task: Task, instructions: string): string {
   return [
     instructions.trim(),
-    "You are refining a task from the Power Workboard before another agent executes it. Do not change files or run anything that changes state: read the code, ask the user questions and propose an approach. Keep answers short. When the user is satisfied they run /write-ticket, and you will write the final ticket.",
+    "You are refining a task from the Workboard before another agent executes it. Do not change files or run anything that changes state: read the code, ask the user questions and propose an approach. Keep answers short. When the user is satisfied they run /write-ticket, and you will write the final ticket.",
     `# ${task.title}`,
     task.description.trim(),
     "---",

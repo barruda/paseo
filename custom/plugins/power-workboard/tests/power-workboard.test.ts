@@ -569,14 +569,17 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
     expect(
       (host.startAgentIn as any).mock.calls[0][1].prompt as string,
     ).toContain("# rough idea\n\nmake it faster");
-    // CUSTOM(hidden-board-agents): the user chats with the refinement agent, so it stays visible.
-    expect((host.startAgentIn as any).mock.calls[0][1].labels).toBeUndefined();
+    // CUSTOM(sidebar-agent-tabs): the refinement chat is an orchestrator in the sidebar, but the
+    // label does not make it a board agent, so it still opens and notifies like before.
+    expect((host.startAgentIn as any).mock.calls[0][1].labels).toEqual({
+      "pwb/refinement-chat": "true",
+    });
     // Reopening reuses the same chat while its agent lives.
     await board.mutate({ action: "refine", taskId: task.id });
     expect(host.startAgentIn).toHaveBeenCalledTimes(1);
 
     await expect(board.writeTicket("someone-else", "")).rejects.toThrow(
-      "not a Power Workboard refinement",
+      "not a Workboard refinement",
     );
     await board.writeTicket(refinement.agentId, "the cache");
     expect((host.runAgent as any).mock.calls[0][1]).toContain(

@@ -1,9 +1,9 @@
-# Projects Assistant reply protocol
+# Project Manager reply protocol
 
 Version: **v2** (2026-11-19)
 
-The Projects Assistant ends every reply to the user with a short `pwb` block. The Power Workboard
-plugin draws that block in the assistant's chat as icons, a chip and a details expander, so the
+The Project Manager ends every reply to the user with a short `pwb` block. The Workboard
+plugin draws that block in the Project Manager's chat as icons, a chip and a details expander, so the
 user can scan the conversation. Clients without the plugin show the block as a code block, which
 still reads fine. Task agents end their turn with a `<report>` instead; [The task
 report](#the-task-report) lists the fields its cards draw.
@@ -126,7 +126,7 @@ Always the **last** key line, so the user finds it in the same place every time.
 
 ````
 ```pwb
-feito: revisão abas internas do Power Workboard [10b1b0d7]
+feito: revisão abas internas do Workboard [10b1b0d7]
 pedido: testado | "abas internas no board" | tests/workboard-pages.test.ts
 pedido: visto | "Reports só abre quando pedido" | abri o board, a aba não carregou nada
 fora: renomeei o hook useBoardTabs
@@ -155,9 +155,9 @@ The parser reads the **last** closed `pwb` block of the reply and never fails:
 - an `opção` without an id and a label, or with an id already used, shows as plain text;
 - a `recomendo` that names no option is dropped.
 
-Only the Projects Assistant's chat (the agent labeled `pwb/assistant-chat`) gets the card: the
+Only the Project Manager's chat (the agent labeled `pwb/assistant-chat`) gets the card: the
 host hands the chat's agent to the timeline transformer, and other agents' replies stay as they
-are. In the assistant's chat the turn's copy button copies the reply's original text, block
+are. In the Project Manager's chat the turn's copy button copies the reply's original text, block
 included; the reply has no paced streaming reveal once its block closes. An app build without the
 agent context draws no card anywhere. A reply that also carries a valid `<report>` keeps the
 report card instead.
@@ -179,14 +179,14 @@ One tap on an option, or a comment on an outcome or a checklist step, continues 
 as its feedback, like Continue task (action `answer`). The action refuses a card from an older
 agent of the task, a question the task no longer asks, a task in a Done column or whose delivery
 was delivered or dismissed, and a task with a delivery step running; the card shows why. The
-question is the one the last report asked, kept with the assistant on or off. The board's Ready to review card shows the same options as buttons. Reports from
+question is the one the last report asked, kept with the Project Manager on or off. The board's Ready to review card shows the same options as buttons. Reports from
 before these fields draw as before.
 
 ## Who did it: `by`
 
 Every history event records `by`: `user` (the board or a card), `assistant` (the chat's board
 tools) or `orchestrator` (the board's engine). The Reports tab keeps what the user did by hand
-apart from the assistant's entries; it used to guess by time, which joined a ticket the user moved
+apart from the Project Manager's entries; it used to guess by time, which joined a ticket the user moved
 to an assistant entry written a minute later. Events from before the field have no `by` and keep
 the old two-minute rule until they age out of the history.
 

@@ -60,9 +60,8 @@ import {
 } from "./provider-subagent-rows";
 import { SidebarGroupToggleRow } from "@/components/sidebar/sidebar-group-toggle-row";
 import type { SidebarWorkspaceEntry } from "@/hooks/use-sidebar-workspaces-list";
-// CUSTOM(hidden-board-agents)
-import { useBoardAgentsStore } from "@/board-agents/store";
-import { isBoardAgentInSession } from "@/board-agents/visibility";
+// CUSTOM(sidebar-agent-tabs)
+import { classifySidebarAgent, type SidebarAgentTab } from "@/board-agents/classify";
 import { TaskRowContextMenu, useTaskRowActions, type TaskRowActions } from "./task-row-menu";
 import { useArchivedTasks } from "./use-archived-tasks";
 import { useSettledTaskStates } from "./use-settled-task-states";
@@ -152,21 +151,12 @@ function idleToggleRow(
 }
 
 /** One compact collection subscription; streamed messages never become task row props. */
-function collectAgents(
-  state: ReturnType<typeof useSessionStore.getState>,
-  includeBoardAgents: boolean,
-): TaskAgent[] {
+function collectAgents(state: ReturnType<typeof useSessionStore.getState>): TaskAgent[] {
   const result: TaskAgent[] = [];
   for (const [serverId, session] of Object.entries(state.sessions)) {
+    const getAgent = (id: string) => session.agents.get(id) ?? session.agentDetails?.get(id);
     for (const agent of session.agents.values()) {
       if (agent.archivedAt) continue;
-      // CUSTOM(hidden-board-agents): board agents stay out of the list unless "Show board agents" is on.
-      if (
-        !includeBoardAgents &&
-        isBoardAgentInSession(agent, session.agents, session.agentDetails)
-      ) {
-        continue;
-      }
       result.push({
         serverId,
         id: agent.id,
@@ -184,18 +174,17 @@ function collectAgents(
         attentionReason: agent.attentionReason,
         parentAgentId: agent.parentAgentId,
         updatedAt: agent.updatedAt,
+        // CUSTOM(sidebar-agent-tabs): every agent shows, in its own tab.
+        sidebarTab: classifySidebarAgent(agent, getAgent),
       });
     }
   }
   return result;
 }
 
-// CUSTOM(hidden-board-agents): two module-level selectors, so the hook keeps a stable function.
+// CUSTOM(task-navigation): a module-level selector, so the hook keeps a stable function.
 function selectAgents(state: ReturnType<typeof useSessionStore.getState>): TaskAgent[] {
-  return collectAgents(state, false);
-}
-function selectAgentsWithBoard(state: ReturnType<typeof useSessionStore.getState>): TaskAgent[] {
-  return collectAgents(state, true);
+  return collectAgents(state);
 }
 
 // CUSTOM(task-provider-subagents): per-server feature flags, as one small comparable record.
@@ -285,12 +274,9 @@ function rowKey(row: ListRow) {
 export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?: () => void }) {
   const { allWorkspaceEntriesByKey, isInitialLoad } = useSidebarModel();
   const showBackground = useSidebarViewStore((state) => state.showBackground);
-  const showBoardAgents = useBoardAgentsStore((state) => state.showBoardAgents);
-  const ownAgents = useStoreWithEqualityFn(
-    useSessionStore,
-    showBoardAgents ? selectAgentsWithBoard : selectAgents,
-    equal,
-  );
+  const tab = useTaskNavigationStore((state) => state.tab);
+  const setTab = useTaskNavigationStore((state) => state.setTab);
+  const ownAgents = useStoreWithEqualityFn(useSessionStore, selectAgents, equal);
   // CUSTOM(task-provider-subagents): an agent whose provider subagent runs counts as working.
   const providerSubagentFlags = useStoreWithEqualityFn(
     useSessionStore,
@@ -382,13 +368,17 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         })),
     [allWorkspaceEntriesByKey, showBackground],
   );
+  // CUSTOM(sidebar-agent-tabs): the chosen tab narrows the list; its subagents follow it.
+  const tabAgents = useMemo(
+    () => agents.filter((agent) => agent.sidebarTab === tab),
+    [agents, tab],
+  );
   const states = useSettledTaskStates(agents);
   const roots = useMemo(
-    () => buildTaskTree({ agents, workspaces, states }),
-    [agents, workspaces, states],
+    () => buildTaskTree({ agents: tabAgents, workspaces, states }),
+    [tabAgents, workspaces, states],
   );
-  // CUSTOM(hidden-board-agents): the Archived filter follows "Show board agents" too.
-  const archived = useArchivedTasks(filter === "archived", workspaces, showBoardAgents);
+  const archived = useArchivedTasks(filter === "archived", workspaces);
   // CUSTOM(task-pins): pinned sessions show under the filters whatever the search, project or filter.
   const pinnedKeys = usePinnedTasksStore((s) => s.keys);
   const pinnedSet = useMemo(() => new Set(pinnedKeys), [pinnedKeys]);
@@ -417,9 +407,14 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
       ]),
     );
   }, [scopedRoots]);
+  // CUSTOM(sidebar-agent-tabs): the Archived filter is split by tab like the live list.
   const archivedRoots = useMemo(
-    () => filterTaskTree(archived.roots, { query, projectKeys, filter: "all" }),
-    [archived.roots, query, projectKeys],
+    () =>
+      filterTaskTree(
+        archived.roots.filter((node) => node.agent.sidebarTab === tab),
+        { query, projectKeys, filter: "all" },
+      ),
+    [archived.roots, query, projectKeys, tab],
   );
   const archivedCount = archived.loaded ? archivedRoots.length : null;
   const [ordering, setOrdering] = useState(() => ({
@@ -794,7 +789,12 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   );
   return (
     <View style={styles.container} testID="task-navigation-sidebar">
-      <TaskFiltersToggle collapsed={filtersCollapsed} onToggle={toggleFilters} />
+      <TaskTabsHeader
+        tab={tab}
+        onTabChange={setTab}
+        collapsed={filtersCollapsed}
+        onToggle={toggleFilters}
+      />
       {filtersCollapsed ? null : (
         <View style={styles.controls}>
           <View style={styles.searchRow}>
@@ -900,25 +900,87 @@ function TaskListDivider({
   );
 }
 
-// CUSTOM(task-filters-toggle): the header's arrow folds the controls away so the list gets the
-// room, which matters most in the phone sidebar.
-function TaskFiltersToggle({ collapsed, onToggle }: { collapsed: boolean; onToggle(): void }) {
+// CUSTOM(sidebar-agent-tabs): the three tabs replace the "Tasks & crews" title. The arrow keeps
+// the CUSTOM(task-filters-toggle) behavior: it folds the controls away so the list gets the room.
+const SIDEBAR_TABS: readonly { value: SidebarAgentTab; label: string; testID: string }[] = [
+  { value: "user", label: "User Agents", testID: "task-tab-user" },
+  { value: "orchestrators", label: "Orchestrators", testID: "task-tab-orchestrators" },
+  { value: "workers", label: "Workers", testID: "task-tab-workers" },
+];
+
+function TaskTabsHeader({
+  tab,
+  onTabChange,
+  collapsed,
+  onToggle,
+}: {
+  tab: SidebarAgentTab;
+  onTabChange(tab: SidebarAgentTab): void;
+  collapsed: boolean;
+  onToggle(): void;
+}) {
   const accessibilityState = useMemo(() => ({ expanded: !collapsed }), [collapsed]);
   return (
+    <View style={styles.header}>
+      <View style={styles.tabs} testID="task-navigation-tabs">
+        {SIDEBAR_TABS.map((entry) => (
+          <SidebarTab
+            key={entry.value}
+            entry={entry}
+            selected={tab === entry.value}
+            onSelect={onTabChange}
+          />
+        ))}
+      </View>
+      <PressHighlight
+        style={styles.collapseButton}
+        onPress={onToggle}
+        accessibilityRole="button"
+        accessibilityLabel={collapsed ? "Show task filters" : "Hide task filters"}
+        accessibilityState={accessibilityState}
+        testID="task-navigation-filters-toggle"
+      >
+        <DensityIcon
+          icon={collapsed ? ChevronRight : ChevronDown}
+          size="sm"
+          color="foregroundMuted"
+        />
+      </PressHighlight>
+    </View>
+  );
+}
+
+function SidebarTab({
+  entry,
+  selected,
+  onSelect,
+}: {
+  entry: (typeof SIDEBAR_TABS)[number];
+  selected: boolean;
+  onSelect(tab: SidebarAgentTab): void;
+}) {
+  const press = useCallback(() => onSelect(entry.value), [entry.value, onSelect]);
+  const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  const buttonStyle = useCallback(
+    ({ hovered }: { hovered?: boolean }) => [
+      styles.tab,
+      selected && styles.tabSelected,
+      hovered && !selected && styles.tabHovered,
+    ],
+    [selected],
+  );
+  return (
     <PressHighlight
-      style={styles.header}
-      onPress={onToggle}
+      style={buttonStyle}
+      onPress={press}
       accessibilityRole="button"
-      accessibilityLabel={collapsed ? "Show task filters" : "Hide task filters"}
+      accessibilityLabel={entry.label}
       accessibilityState={accessibilityState}
-      testID="task-navigation-filters-toggle"
+      testID={entry.testID}
     >
-      <Text style={styles.title}>Tasks & crews</Text>
-      <DensityIcon
-        icon={collapsed ? ChevronRight : ChevronDown}
-        size="sm"
-        color="foregroundMuted"
-      />
+      <Text numberOfLines={1} style={[styles.tabLabel, selected && styles.tabLabelSelected]}>
+        {entry.label}
+      </Text>
     </PressHighlight>
   );
 }
@@ -1270,16 +1332,41 @@ const styles = StyleSheet.create((theme) => ({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    alignSelf: "flex-start",
     gap: theme.spacing[1],
     paddingHorizontal: theme.spacing[3],
     paddingTop: theme.spacing[3],
     paddingBottom: theme.spacing[2],
   },
-  title: {
-    color: theme.colors.foreground,
-    fontSize: theme.fontSize.base,
+  // CUSTOM(sidebar-agent-tabs)
+  tabs: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[0.5],
+    padding: theme.spacing[0.5],
+    borderRadius: theme.borderRadius.md,
+    backgroundColor: theme.colors.surface2,
+  },
+  tab: {
+    flex: 1,
+    minWidth: 0,
+    alignItems: "center",
+    paddingHorizontal: theme.spacing[1],
+    paddingVertical: theme.spacing[1],
+    borderRadius: theme.borderRadius.sm,
+  },
+  tabSelected: { backgroundColor: theme.colors.surface4 },
+  tabHovered: { backgroundColor: theme.colors.surface3 },
+  tabLabel: {
+    color: theme.colors.foregroundMuted,
+    fontSize: theme.fontSize.sm,
     fontWeight: theme.fontWeight.medium,
+  },
+  tabLabelSelected: { color: theme.colors.foreground },
+  collapseButton: {
+    padding: theme.spacing[1],
+    borderRadius: theme.borderRadius.sm,
   },
   controls: { padding: theme.spacing[2], gap: theme.spacing[2] },
   searchRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[1] },
@@ -1451,24 +1538,8 @@ function ProjectPicker({
             keys={keys}
           />
         ))}
-        <DropdownMenuSeparator />
-        <BoardAgentsChoice />
       </DropdownMenuContent>
     </DropdownMenu>
-  );
-}
-// CUSTOM(hidden-board-agents): the Tasks sidebar has no display menu, so the toggle sits in the
-// Projects menu.
-function BoardAgentsChoice() {
-  const show = useBoardAgentsStore((state) => state.showBoardAgents);
-  const toggle = useCallback(() => {
-    const store = useBoardAgentsStore.getState();
-    store.setShowBoardAgents(!store.showBoardAgents);
-  }, []);
-  return (
-    <DropdownMenuItem selected={show} showSelectedCheck closeOnSelect={false} onSelect={toggle}>
-      Show board agents
-    </DropdownMenuItem>
   );
 }
 function ProjectChoice({

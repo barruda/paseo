@@ -27,12 +27,12 @@ import {
 } from "@/subagents";
 import { ParentAgentPill } from "@/subagents/parent";
 import { SubagentsTrack } from "@/subagents/track";
+import { openSubagentTab } from "@/subagents/open-tab";
 import { BackgroundToolsTrack, useAgentBackgroundTools } from "@/background-tools/track"; // CUSTOM(background-tools)
 import { hasBackgroundTools } from "@/background-tools/presentation"; // CUSTOM(background-tools)
 import type { TodoEntry } from "@/types/stream";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
-import { openPreferredWorkspaceTarget } from "@/workspace-tabs/open-beside";
 import { openComposerChanges } from "@/workspace-tabs/open-supporting-view";
 import { chatOptionEnabled, defaultAboveOrder, orderChatOptions } from "@/composer/chat-options";
 
@@ -100,10 +100,9 @@ export const AgentTracks = memo(function AgentTracks({
   const detachSubagent = useDetachSubagent();
   const openSubagentTarget = useCallback(
     (target: WorkspaceTabTarget) => {
-      openPreferredWorkspaceTarget({
+      openSubagentTab({
         workspaceKey,
         target,
-        source: "subagents",
         preferences: openInSidePane,
         parentTabId: tabId,
       });

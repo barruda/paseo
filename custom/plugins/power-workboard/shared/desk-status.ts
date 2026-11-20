@@ -1,4 +1,4 @@
-// CUSTOM(workboard-chip-status): the counts the Power Workboard chip in the app's Desk header shows. The app repeats this contract in packages/app/src/task-navigation/desk-workboard-model.ts; keep the two in step.
+// CUSTOM(workboard-chip-status): the counts the Workboard chip in the app's Desk header shows. The app repeats this contract in packages/app/src/task-navigation/desk-workboard-model.ts; keep the two in step.
 import { z } from "zod";
 import type { Group, orchestratorStatusSchema } from "./model";
 type OrchestratorStatus = z.infer<typeof orchestratorStatusSchema>;

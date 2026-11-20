@@ -106,7 +106,7 @@ it("chat.open creates the chat agent once, reuses it, and recreates it when arch
       provider: "claude/claude-opus-5-5",
       thinkingOptionId: "high",
       modeId: null,
-      title: "Projects Assistant",
+      title: "Project Manager",
       labels: { [CHAT_LABEL]: "true" },
       prompt: expect.stringContaining(CHAT_INSTRUCTIONS),
       unattended: true, // CUSTOM(unattended-automation)
@@ -345,7 +345,7 @@ it("no board tool returns structuredContent and board_overview text carries ever
     expect(overview).toContain("Projects:");
     expect(overview).toContain("Orchestrators:");
     expect(overview).toContain("Columns:");
-    expect(overview).toContain("Assistant:");
+    expect(overview).toContain("Project Manager:");
     expect(overview).toMatch(
       new RegExp(`${taskId} \\| Fix it \\|.*attempt: 2.*since: .*can merge: `),
     );

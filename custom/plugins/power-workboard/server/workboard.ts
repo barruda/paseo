@@ -53,6 +53,7 @@ import {
   type TaskTiming,
   BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
   BOARD_AGENT_LABEL, // CUSTOM(hidden-board-agents)
+  REFINEMENT_CHAT_LABEL, // CUSTOM(sidebar-agent-tabs)
   TMP_CLEANUP_INTERVAL_MS, // CUSTOM(unattended-automation)
 } from "../shared/model";
 import { cleanupScratchDirectory, tmpCleanupDue } from "./tmp-cleanup"; // CUSTOM(unattended-automation)
@@ -425,7 +426,7 @@ export class Workboard {
     if (profile === ASSISTANT_PROFILE)
       return {
         id: ASSISTANT_PROFILE,
-        label: "Projects Assistant",
+        label: "Project Manager",
         seedPrompt: ASSISTANT_SEED_PROMPT,
       };
     return {
@@ -2097,6 +2098,7 @@ export class Workboard {
       thinkingOptionId: settings.thinkingOptionId,
       title: `Refine: ${task.title}`.slice(0, 200),
       prompt: refinementPrompt(task, settings.instructions),
+      labels: { [REFINEMENT_CHAT_LABEL]: "true" }, // CUSTOM(sidebar-agent-tabs)
       // CUSTOM(unattended-automation)
       unattended: true, // refinement chats have no form: full access
     });
@@ -2204,8 +2206,7 @@ export class Workboard {
       const entry = Object.entries(this.store.current.refinements).find(
         ([, refinement]) => refinement.agentId === agentId,
       );
-      if (!entry)
-        throw new Error("This chat is not a Power Workboard refinement");
+      if (!entry) throw new Error("This chat is not a Workboard refinement");
       const task = this.task(entry[0]);
       if (task.workspaceId) throw new Error("The task already started");
       if (entry[1].status === "writing")
@@ -2326,7 +2327,7 @@ export class Workboard {
     this.changed(task.workspaceId);
     await this.orchestrate();
   }
-  // CUSTOM(projects-assistant): the Projects Assistant engine. ----------------------------------
+  // CUSTOM(projects-assistant): the Project Manager engine. ----------------------------------
   /** CUSTOM(assistant-reports): a column's name as the board shows it. */
   private groupLabel(groupId: string): string {
     const group = this.store.current.settings.groups.find(
@@ -2525,7 +2526,7 @@ export class Workboard {
   }
   /**
    * CUSTOM(unattended-automation): layer C. An automatic agent stuck on a permission goes to
-   * Needs you with the reason and wakes the Projects Assistant. The delivery is created only
+   * Needs you with the reason and wakes the Project Manager. The delivery is created only
    * when none exists; a task in a delivery step keeps its step.
    */
   private async permissionNeedsYou(
@@ -3000,7 +3001,7 @@ export class Workboard {
       await this.host.sendAgent(
         agentId,
         [
-          "[Board] These tasks finished or stopped and wait for you, the Projects Assistant, first:",
+          "[Board] These tasks finished or stopped and wait for you, the Project Manager, first:",
           "This list is every task still on Needs you, including ones you were told about before and left waiting.",
           ...lines,
           "Handle each one as your instructions say: review and merge-now (reason review), send feedback with continue, answer the agent's question or give the ok yourself when you can do it with reasonable precision and no real risk, and fix small reversible blockers. Leave to the user only what is really theirs: the ok before merging a fresh-agent project, real product decisions, anything risky or hard to undo. Then tell the user in 2-4 lines, in the language they write to you in, what you did and what is left for them (or that nothing is).",
@@ -3923,7 +3924,7 @@ export class Workboard {
    * CUSTOM(resource-pools): sends the fixes that waited for a slot, oldest delivery first, while
    * their orchestrator and pool have room. A fix the user overtook (another action moved the
    * delivery, or the task runs again) is dropped and its attempt closed. A fix that waited
-   * FIX_WAIT_LIMIT_MS goes to Needs you, to wake the Projects Assistant, and keeps waiting there.
+   * FIX_WAIT_LIMIT_MS goes to Needs you, to wake the Project Manager, and keeps waiting there.
    * Inside `serial`.
    */
   private async sendQueuedFixes(): Promise<void> {
@@ -4105,9 +4106,7 @@ export class Workboard {
             list.some((a) => a.agentId === input.agentId),
           );
         if (!managed)
-          throw new Error(
-            "This agent is not managed by the Projects Assistant",
-          );
+          throw new Error("This agent is not managed by the Project Manager");
         await this.host.sendAgent(input.agentId, input.text);
         // CUSTOM(assistant-wake): the assistant messaged the task's agent; that counts as
         // handling it for the reminder, as `board_report` does.
@@ -4251,7 +4250,7 @@ export class Workboard {
     return this.host.lastReply(agentId);
   }
   /**
-   * The Projects Assistant chat agent: the stored one while it exists and is not archived,
+   * The Project Manager chat agent: the stored one while it exists and is not archived,
    * otherwise (or with `fresh`) a new one.
    */
   openChat(
@@ -4321,7 +4320,7 @@ export class Workboard {
       provider: chat.provider,
       modeId: chat.modeId,
       thinkingOptionId: chat.thinkingOptionId,
-      title: "Projects Assistant",
+      title: "Project Manager",
       prompt,
       labels: {
         [CHAT_LABEL]: "true",
@@ -4534,7 +4533,7 @@ export class Workboard {
       await this.assistantOptions.history?.append({
         kind,
         taskId: CHAT_HISTORY_TASK_ID,
-        taskTitle: "Projects Assistant chat",
+        taskTitle: "Project Manager chat",
         projectId: null,
         projectName: "",
         orchestratorId: null,
@@ -5304,7 +5303,7 @@ export class Workboard {
       void this.nightSystem
         .notify(
           "Paseo will power off this computer in 5 minutes",
-          "The night tasks are done. Open Power Workboard to cancel.",
+          "The night tasks are done. Open Workboard to cancel.",
         )
         .catch(() => undefined);
       return;

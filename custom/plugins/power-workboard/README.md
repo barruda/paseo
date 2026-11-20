@@ -1,4 +1,4 @@
-# Power Workboard
+# Workboard
 
 Started as a copy of our patched Workboard (`fxbing/paseo-workboard` 0.2.0, since removed from
 this repo) with these differences:
@@ -17,7 +17,7 @@ this repo) with these differences:
   that have none of their own), top of the column first, on a schedule: Automatic (always on,
   the default for new orchestrators; stored as a 00:00–00:00 window every day), a time window,
   daily times with a batch per run, or Manual (Run now). Each task gets a workspace in its
-  project (a worktree for git projects, cut from the Projects Assistant's base branch for that
+  project (a worktree for git projects, cut from the Project Manager's base branch for that
   project, or else from the branch the project checkout is on), moves to In progress, and gets an
   agent whose first
   message is the task's title and description. When the agent's turn ends the task moves to
@@ -53,24 +53,24 @@ this repo) with these differences:
   checkpoint until two minutes after the reset (an hour when the notice has no time), then the
   same agent continues. The card says "paused by the usage limit until 23:32". Meanwhile its
   orchestrator starts no new task. A fourth limit in a row goes to Needs you as `usage-limit`.
-  Only a reply that starts with the notice counts, not one that quotes it. When the Projects Assistant chat answers a wake with the
+  Only a reply that starts with the notice counts, not one that quotes it. When the Project Manager chat answers a wake with the
   limit, its tasks are told again after the reset, also after a restart.
-- **Chat compaction.** When a turn leaves the Projects Assistant chat at **Compact at (tokens)**
-  or more (Settings > Bruno's Customizations > Projects Assistant, default 180k, 0 is off), the
+- **Chat compaction.** When a turn leaves the Project Manager chat at **Compact at (tokens)**
+  or more (Settings > Bruno's Customizations > Project Manager, default 180k, 0 is off), the
   board asks a fork of the chat for a short summary of its last three replies, starts a new chat
   whose first message carries it as inherited context, and archives the old one, as Restart chat
   does. It waits for a quiet chat: no turn, permission, queued or quick message, or board wake.
   A failed round waits 30 minutes before the next try and shows as "Chat compaction failed".
-  Reports lists each compaction under a "Projects Assistant chat" row (`server/assistant/compact.ts`).
+  Reports lists each compaction under a "Project Manager chat" row (`server/assistant/compact.ts`).
 - **Report card.** In any agent chat, a reply ending in a valid `<report>` block shows the block
   as a card (status, summary, what was asked with its evidence, question with its options,
   checks, collapsed changed files, risks) instead of JSON (`shared/task-report.ts`). An invalid
   block leaves the reply as it was. An option answers in one tap and any outcome or checklist
   step takes a comment; both continue the task like Continue task (`client/assistant/card-parts.tsx`).
-- **Assistant reply block.** The Projects Assistant ends each reply with a short ` ```pwb `
+- **Project Manager reply block.** The Project Manager ends each reply with a short ` ```pwb `
   block (`feito`, `pedido`, `fora`, `aviso`, `bloqueio`, `pergunta`, `opção`, `recomendo`,
   `próximo`, `seu`), described in [docs/assistant-reply-protocol.md](docs/assistant-reply-protocol.md).
-  In the assistant's chat only, it shows as icons, the review map, the options as buttons, a
+  In the Project Manager's chat only, it shows as icons, the review map, the options as buttons, a
   `próximo` chip, the `seu` line last and a details expander; a task id links to the ticket in
   Reports (`shared/reply-protocol.ts`). A tap or a comment goes to the chat as a message.
 
@@ -87,33 +87,33 @@ Each orchestrator is stored in `orchestrators` (`shared/model.ts`, `orchestrator
 schedules are in `shared/schedule.ts`. `orchestrator` holds the defaults new orchestrators start
 from (`claude/claude-opus-5-5`, full access, `medium`, worktree) and `refineModeId`
 (`default`) for refinement chats, with no UI yet. Permission is a per-orchestrator and
-Projects Assistant field (**Permissions**, full access by default): the mode for Claude, Codex and
+Project Manager field (**Permissions**, full access by default): the mode for Claude, Codex and
 other mode providers, the `auto_accept` feature (`autoAccept`) for OpenCode, Cursor, Kimi, Kiro and Trae
 (`shared/permission.ts`).
 
 ## Quick messages and the ack contract
 
-You can write to the Projects Assistant without opening its chat.
+You can write to the Project Manager without opening its chat.
 
-- **From the app.** The status bar at the bottom of the window starts with the Projects Assistant:
-  a colored message icon that opens the box to write a message, the assistant's short answer to
+- **From the app.** The status bar at the bottom of the window starts with the Project Manager:
+  a colored message icon that opens the box to write a message, the Project Manager's short answer to
   the newest message (green check for ok, yellow when it needs something from you, red for an
-  error, grey clock while it has not answered yet), then the topic the assistant chat is on now.
+  error, grey clock while it has not answered yet), then the topic the Project Manager chat is on now.
   Press the answer to open the conversation at that message, or the topic to open the chat. The
   line under the chat's own composer is hidden, since the bar shows it. On phones the same entries
   sit at the bottom of the sidebar; on app builds without the status bar they are a sidebar footer
-  row named "Projects Assistant status", with a **+** to write.
+  row named "Project Manager status", with a **+** to write.
 - **From any chat.** Type `/assistant <message>` in the composer of any agent. The message goes to
-  the assistant and you stay where you are.
+  the Project Manager and you stay where you are.
 
-Every message that wakes the assistant carries the current **Needs you** list (task, project,
+Every message that wakes the Project Manager carries the current **Needs you** list (task, project,
 reason, review policy and since when): the `[Board]` wake lists every task still waiting, a quick
 message appends it, and a user message gets it steered into the same turn. While the chat is busy
 the wake looks again every 10 s; a task told 10 minutes ago with no `board_report` or action since
 is told once more (`delivery.toldAt`, `remindedAt`, `reportedAt`). `board_reload_plugin` reloads
 the plugin when the chat's turn ends, so the board tools stay attached for the whole turn.
 
-Each message reaches the assistant wrapped as `[Quick message <id> from <source>]`. The assistant
+Each message reaches the Project Manager wrapped as `[Quick message <id> from <source>]`. The Project Manager
 must call `board_ack` first, before any other tool: `ok` with a sentence on what it will do,
 `needs-input` with its question, or `error` with the reason. It may call `board_ack` again with
 the same id to update the state. If its turn ends without one, the server classifies its reply
@@ -127,7 +127,7 @@ paseo plugin rpc power-workboard workboard.assistant.ask '{"text":"...","source"
 ```
 
 It returns `{ id, status, message, agentId, sentAt, link }`, with `status` one of `ok`,
-`needs-input`, `error` or `pending`. `pending` means the assistant has not answered within
+`needs-input`, `error` or `pending`. `pending` means the Project Manager has not answered within
 `waitMs` (default 20 s, at most 25 s). Poll with
 `workboard.assistant.quick.get '{"id":"<id>","waitMs":25000}'`. `link` opens the chat:
 `xdg-open <link>` or `paseo agent open <agentId>`. `workboard.assistant.quick.list` returns the
@@ -153,14 +153,14 @@ Messages live in memory (the last 30). A daemon restart empties the status.
 The **Projects Reports** chip in the Desk header (also the Reports link at the end of the board's
 tab bar, beside Dashboard and Conversations, "Projects Reports" in the Command Center, "Open
 report" on a Dashboard card and "Report" in a Conversations thread) shows, per ticket, what the
-Projects Assistant and the board did. The sidebar lists every ticket with actions, newest first,
+Project Manager and the board did. The sidebar lists every ticket with actions, newest first,
 with a search and a project filter; a ticket shows what was asked and a timeline with one collapsed
 row per action. Open a row for its detail, decisions and the automatic events of that iteration (each with its
 detail and, for an agent's report or a continue, its own interaction toggle); the inner
-"Interaction with the agent" toggle shows what the assistant asked the task's agent, its answer,
+"Interaction with the agent" toggle shows what the Project Manager asked the task's agent, its answer,
 its `<report>` and a link to the conversation.
 
-The assistant records each action once with `board_report` (`shared/assistant-reports.ts`):
+The Project Manager records each action once with `board_report` (`shared/assistant-reports.ts`):
 
 ```json
 {
@@ -184,7 +184,7 @@ reply; its `<report>` block is parsed out with the delivery's parser. With `quic
 summary becomes that quick message's ack (`quickStatus` sets its state; it keeps the current one,
 `ok` while pending). Entries go to `plugin-data/power-workboard/reports/YYYY-MM-DD.jsonl`, kept as
 long as the history. The board's own history (created, moved, started, report, merged...) shows
-on the page even when the assistant records nothing: an event up to 2 minutes after an entry, or
+on the page even when the Project Manager records nothing: an event up to 2 minutes after an entry, or
 up to 15 minutes before it, folds into the nearest such entry, an entry of its own kind first (a
 continue into a `feedback` entry). Every event records `by` (`user`, `assistant` or
 `orchestrator`): what the user did by hand never folds into an assistant entry and its row says

@@ -288,6 +288,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/agent-stream/scroll-arrows.test.ts --bail=1)
   # Subagent rows start with "Claude subagent" or "Paseo subagent".
   (cd packages/app && npx vitest run src/subagents/track-presentation.test.ts src/task-navigation/provider-subagent-rows.test.ts --bail=1)
+  # A subagent row opens its tab in the current Desk, or in the workspace panes without Desks.
+  (cd packages/app && npx vitest run src/subagents/open-tab.test.ts src/subagents/track.browser.test.tsx --bail=1)
   (cd packages/app && npx vitest run src/keyboard/voice-escape.test.ts src/composer/submission/writer.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/codex-app-server-agent.test.ts --bail=1)
   (cd packages/app && npx vitest run src/composer/project-icon-model.test.ts --bail=1)
@@ -411,7 +413,7 @@ if $VERIFY; then
   # Tasks/Desks persistence, cross-project references, workspace fallback, closing tabs of
   # terminals that are gone, and opening every task in its own tab while preview tabs are off.
   (cd packages/app && npx vitest run src/task-navigation/model.test.ts src/task-navigation/store.test.ts src/workspace-tabs/open-supporting-view.test.ts --bail=1)
-  # Desk chips for plugin surfaces and the Projects Assistant settings page.
+  # Desk chips for plugin surfaces and the Project Manager settings page.
   (cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts src/task-navigation/desk-workboard-navigation.test.ts src/screens/settings/bruno-customizations/projects-assistant-model.test.ts --bail=1)
   # Ctrl+Z reopens the Desk tab you just closed.
   (cd packages/app && npx vitest run src/task-navigation/reopen-closed-tab.test.ts --bail=1)
@@ -510,7 +512,7 @@ if $VERIFY; then
   (cd packages/desktop && npx vitest run src/features/do-not-disturb.test.ts --bail=1)
   (cd packages/cli && npx vitest run src/commands/dnd.test.ts --bail=1)
   (cd packages/app && npx vitest run src/do-not-disturb src/keyboard/route-shortcut.test.ts src/keyboard/keyboard-shortcuts.test.ts --bail=1)
-  # Board agents: never a tab, hidden from Tasks and Archived, no notification, no badge (hidden-board-agents).
+  # Board agents: never a tab, no notification, no badge, and their own sidebar tabs (hidden-board-agents, sidebar-agent-tabs).
   (cd packages/protocol && npx vitest run src/board-agents.test.ts --bail=1)
   (cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts src/task-navigation/use-archived-tasks.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/websocket-server.notifications.test.ts --bail=1)

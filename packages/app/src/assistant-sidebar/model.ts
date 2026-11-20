@@ -97,24 +97,28 @@ function newestLiveChat(agents: ReadonlyMap<string, AssistantAgentFacts>): strin
  * CUSTOM(assistant-desk-newest): for an archived assistant chat, the live chat to go to instead.
  * Null unless the agent is an archived assistant chat and a different live chat exists.
  * `compacted` is true when some agent on the server names this one in AGENT_REPLACES_LABEL (the
- * plugin's automatic restart on the context limit).
+ * plugin's automatic restart on the context limit). The session's agents map lists only live
+ * agents, so the archived agent's own facts come in `agent` (from the session's agent details).
  */
 export function newerAssistantChat(input: {
   serverId: string;
   agentId: string;
+  agent: AssistantAgentFacts | undefined;
   agentsByServer: ReadonlyMap<string, ReadonlyMap<string, AssistantAgentFacts>>;
   hydratedServerIds?: ReadonlySet<string>;
 }): { chat: AssistantChatRef; compacted: boolean } | null {
-  const { serverId, agentId, agentsByServer, hydratedServerIds } = input;
+  const { serverId, agentId, agent, agentsByServer, hydratedServerIds } = input;
   const agents = agentsByServer.get(serverId);
-  const agent = agents?.get(agentId);
   if (!agents || !agent || !isAssistantChatAgent(agent) || !agent.archivedAt) return null;
-  const target = resolveAssistantChat({
-    remembered: { serverId, agentId },
-    agentsByServer,
-    preferredServerId: serverId,
-    hydratedServerIds,
-  });
+  const successor = findAgentSuccessor(agents, agentId);
+  const target = successor
+    ? { serverId, agentId: successor.agentId }
+    : resolveAssistantChat({
+        remembered: { serverId, agentId },
+        agentsByServer,
+        preferredServerId: serverId,
+        hydratedServerIds,
+      });
   if (!target || (target.serverId === serverId && target.agentId === agentId)) return null;
   const targetAgent = agentsByServer.get(target.serverId)?.get(target.agentId);
   if (!targetAgent || targetAgent.archivedAt) return null;

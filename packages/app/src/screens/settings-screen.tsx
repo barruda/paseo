@@ -276,7 +276,7 @@ const BRUNO_SECTION_ITEMS: {
   // CUSTOM(github-account)
   { id: "customizations-github", label: "GitHub", icon: GitBranch },
   // CUSTOM(projects-assistant)
-  { id: "customizations-projects-assistant", label: "Projects Assistant", icon: ListChecks },
+  { id: "customizations-projects-assistant", label: "Project Manager", icon: ListChecks },
   // CUSTOM(bruno-config-file): save and load every setting above as one JSON file.
   { id: "customizations-config-file", label: "Save and Load", icon: FileJson },
 ];

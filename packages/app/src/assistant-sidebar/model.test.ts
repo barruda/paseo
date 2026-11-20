@@ -158,6 +158,7 @@ describe("newerAssistantChat", () => {
     newerAssistantChat({
       serverId: "s1",
       agentId,
+      agent: agents[agentId],
       agentsByServer: servers({ s1: agents }),
       hydratedServerIds: hydrated,
     });
@@ -195,6 +196,19 @@ describe("newerAssistantChat", () => {
 
   it("is null when no live chat exists", () => {
     expect(ask({ old: { labels: CHAT, archivedAt: ARCHIVED } })).toBeNull();
+  });
+
+  // The session's agents map lists only live agents; the archived one comes from agent details.
+  it("finds the successor when the archived chat is missing from the agents map", () => {
+    expect(
+      newerAssistantChat({
+        serverId: "s1",
+        agentId: "old",
+        agent: { labels: CHAT, archivedAt: ARCHIVED },
+        agentsByServer: servers({ s1: { b: { labels: REPLACES("old") } } }),
+        hydratedServerIds: hydrated,
+      }),
+    ).toEqual({ chat: { serverId: "s1", agentId: "b" }, compacted: true });
   });
 });
 

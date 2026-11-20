@@ -2,14 +2,21 @@
 // Assistant's entry: agent pickers backed by the daemon's catalog, the skills chip, the system
 // prompt and the memory switch. Content (prompt, skills) lives in the profile folder; the settings
 // (provider, skills selection, memory) are saved by the caller.
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type FlatList as NativeFlatList,
+} from "react-native";
 import {
   useRpc,
   usePaseo,
   type PluginSurfaceProps,
 } from "@getpaseo/plugin/client";
 import {
+  FlatList,
   Icon,
   Modal,
   ScrollView,
@@ -19,6 +26,7 @@ import {
 } from "@getpaseo/plugin/client/react-native";
 import {
   SettingsCard,
+  SettingsRow,
   SettingsSelect,
   SettingsSwitch,
 } from "@getpaseo/plugin/client/ui";
@@ -45,6 +53,15 @@ import {
   isFeaturePermissionProvider,
 } from "../shared/permission"; // CUSTOM(unattended-automation)
 import { profileStrings, type ProfileStrings } from "./profiles-strings";
+import {
+  activeInternalProviders,
+  filterModelCatalog,
+  groupModelCatalog,
+  internalProviderOf,
+  modelsForInternalProvider,
+  type CatalogModel,
+  type ModelGroup,
+} from "./model-catalog";
 
 type Theme = PluginSurfaceProps["theme"];
 const DEFAULT = "__default";
@@ -77,6 +94,240 @@ export interface AgentValue {
   /** CUSTOM(unattended-automation): the permission of OpenCode-like providers. */
   autoAccept: boolean;
   thinkingOptionId: string;
+}
+
+type PickerRow =
+  | { kind: "section"; key: string; title: string }
+  | { kind: "model"; key: string; model: CatalogModel };
+
+const SECTION_HEIGHT = 28;
+const MODEL_HEIGHT = 52;
+
+function pickerRows(groups: readonly ModelGroup[]): PickerRow[] {
+  return groups.flatMap((group) => [
+    ...(group.provider
+      ? [
+          {
+            kind: "section" as const,
+            key: `section:${group.provider.id}`,
+            title: group.provider.label,
+          },
+        ]
+      : []),
+    ...group.models.map((model) => ({
+      kind: "model" as const,
+      key: `model:${model.id}`,
+      model,
+    })),
+  ]);
+}
+
+function rowHeight(row: PickerRow): number {
+  return row.kind === "section" ? SECTION_HEIGHT : MODEL_HEIGHT;
+}
+
+/** CUSTOM(model-picker-workboard): searchable model list; OpenCode rows show their provider. */
+function ModelPickerModal({
+  models,
+  opencode,
+  selectedId,
+  onPick,
+  onClose,
+  theme,
+  s,
+}: {
+  models: readonly CatalogModel[];
+  opencode: boolean;
+  selectedId: string;
+  onPick(model: CatalogModel): void;
+  onClose(): void;
+  theme: Theme;
+  s: ProfileStrings;
+}) {
+  const list = useRef<NativeFlatList<PickerRow>>(null);
+  const [query, setQuery] = useState("");
+  const [highlighted, setHighlighted] = useState<string | null>(selectedId);
+  const groups = useMemo(
+    () =>
+      groupModelCatalog(filterModelCatalog(models, query, opencode), opencode),
+    [models, opencode, query],
+  );
+  const rows = useMemo(() => pickerRows(groups), [groups]);
+  const modelRows = useMemo(
+    () =>
+      rows.flatMap((row, index) =>
+        row.kind === "model" ? [{ row, index }] : [],
+      ),
+    [rows],
+  );
+  const resolved =
+    modelRows.find((entry) => entry.row.model.id === highlighted)?.row.model
+      .id ??
+    modelRows[0]?.row.model.id ??
+    null;
+  const choose = (model: CatalogModel) => {
+    onPick(model);
+    onClose();
+  };
+  const move = (delta: number) => {
+    if (!modelRows.length) return;
+    const at = modelRows.findIndex((entry) => entry.row.model.id === resolved);
+    const next =
+      at < 0 ? 0 : Math.max(0, Math.min(modelRows.length - 1, at + delta));
+    const entry = modelRows[next];
+    if (!entry) return;
+    setHighlighted(entry.row.model.id);
+    list.current?.scrollToIndex({ index: entry.index, viewPosition: 0.5 });
+  };
+  const onKey = (key: string) => {
+    if (key === "ArrowDown") {
+      move(1);
+      return true;
+    }
+    if (key === "ArrowUp") {
+      move(-1);
+      return true;
+    }
+    if (key === "Enter") {
+      const entry = modelRows.find(
+        (candidate) => candidate.row.model.id === resolved,
+      );
+      if (entry) choose(entry.row.model);
+      return true;
+    }
+    if (key === "Escape") {
+      onClose();
+      return true;
+    }
+    return false;
+  };
+  const search = (next: string) => {
+    setQuery(next);
+    setHighlighted(null);
+  };
+  const getItemLayout = (
+    _data: ArrayLike<PickerRow> | null | undefined,
+    index: number,
+  ) => {
+    let offset = 0;
+    for (let i = 0; i < index; i += 1) offset += rowHeight(rows[i]!);
+    return { index, length: rowHeight(rows[index]!), offset };
+  };
+  return (
+    <Modal open title={s.model} onOpenChange={(next) => !next && onClose()}>
+      <Modal.Content scrollable={false} contentContainerStyle={styles.picker}>
+        <TextInput
+          autoFocus
+          accessibilityLabel={s.searchModels}
+          value={query}
+          onChangeText={search}
+          placeholder={s.searchModels}
+          placeholderTextColor={theme.colors.foregroundMuted}
+          style={[
+            styles.input,
+            {
+              color: theme.colors.foreground,
+              borderColor: theme.colors.border,
+            },
+          ]}
+          onKeyPress={(event) => {
+            if (onKey(event.nativeEvent.key)) event.preventDefault();
+          }}
+        />
+        {!rows.length ? (
+          <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+            {s.noModels}
+          </Text>
+        ) : (
+          <FlatList
+            ref={list}
+            data={rows}
+            style={styles.pickerList}
+            keyExtractor={(row) => row.key}
+            keyboardShouldPersistTaps="handled"
+            getItemLayout={getItemLayout}
+            renderItem={({ item }) =>
+              item.kind === "section" ? (
+                <Text
+                  style={[
+                    styles.section,
+                    { color: theme.colors.foregroundMuted },
+                  ]}
+                >
+                  {item.title}
+                </Text>
+              ) : (
+                <ModelRow
+                  model={item.model}
+                  opencode={opencode}
+                  selected={item.model.id === selectedId}
+                  highlighted={item.model.id === resolved}
+                  onPress={() => choose(item.model)}
+                  theme={theme}
+                />
+              )
+            }
+          />
+        )}
+      </Modal.Content>
+    </Modal>
+  );
+}
+
+function ModelRow({
+  model,
+  opencode,
+  selected,
+  highlighted,
+  onPress,
+  theme,
+}: {
+  model: CatalogModel;
+  opencode: boolean;
+  selected: boolean;
+  highlighted: boolean;
+  onPress(): void;
+  theme: Theme;
+}) {
+  const provider = internalProviderOf(model, opencode);
+  const subtitle = opencode ? provider?.label : model.description;
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      accessibilityLabel={
+        subtitle ? `${model.label}, ${subtitle}` : model.label
+      }
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.modelRow,
+        highlighted && { backgroundColor: theme.colors.surface2 },
+        pressed && { opacity: 0.8 },
+      ]}
+    >
+      <View style={styles.modelCheck}>
+        {selected && (
+          <Icon name="Check" size={16} color={theme.colors.accent} />
+        )}
+      </View>
+      <View style={styles.modelText}>
+        <Text
+          numberOfLines={1}
+          style={{ color: theme.colors.foreground, fontWeight: "600" }}
+        >
+          {model.label}
+        </Text>
+        {!!subtitle && (
+          <Text
+            numberOfLines={1}
+            style={[styles.meta, { color: theme.colors.foregroundMuted }]}
+          >
+            {subtitle}
+          </Text>
+        )}
+      </View>
+    </Pressable>
+  );
 }
 
 /** Provider, model, mode and thinking as selects of the daemon's catalog; free text when it fails. */
@@ -156,6 +407,58 @@ export function AgentFields({
         ]}
       />,
     );
+  const modelList = models.data ?? [];
+  const chosen = modelList.find((entry) => entry.id === model);
+  const thinking = chosen?.thinkingOptions ?? [];
+  const opencode = provider === "opencode";
+  const internalProviders = useMemo(
+    () => activeInternalProviders(modelList, opencode),
+    [modelList, opencode],
+  );
+  const currentInternal = internalProviderOf({ id: model }, opencode);
+  const selectedInternal = currentInternal ?? internalProviders[0] ?? null;
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const modelChoices = opencode
+    ? modelsForInternalProvider(
+        modelList,
+        selectedInternal?.id ?? "",
+        true,
+      ).filter((entry) => entry.isSelectable !== false)
+    : modelList.filter((entry) => entry.isSelectable !== false);
+  const modelLabel = chosen?.label ?? (model || s.providerDefault);
+  const modelInternalLabel = opencode ? (currentInternal?.label ?? null) : null;
+  const modelButtonLabel =
+    modelInternalLabel && modelInternalLabel !== modelLabel
+      ? `${modelLabel} · ${modelInternalLabel}`
+      : modelLabel;
+  const chooseInternal = (nextId: string) => {
+    if (!nextId || nextId === selectedInternal?.id) return;
+    const list = modelsForInternalProvider(modelList, nextId, true).filter(
+      (entry) => entry.isSelectable !== false,
+    );
+    const next = list.find((entry) => entry.isDefault) ?? list[0];
+    if (!next) return;
+    onChange({
+      ...value,
+      provider: `${provider}/${next.id}`,
+      thinkingOptionId: next.thinkingOptions?.some(
+        (option) => option.id === value.thinkingOptionId,
+      )
+        ? value.thinkingOptionId
+        : "",
+    });
+  };
+  const chooseModel = (next: CatalogModel) => {
+    onChange({
+      ...value,
+      provider: `${provider}/${next.id}`,
+      thinkingOptionId: next.thinkingOptions?.some(
+        (option) => option.id === value.thinkingOptionId,
+      )
+        ? value.thinkingOptionId
+        : "",
+    });
+  };
   if (catalog.isError)
     return (
       <View style={styles.stack}>
@@ -191,9 +494,6 @@ export function AgentFields({
       </Text>
     );
 
-  const modelList = models.data ?? [];
-  const chosen = modelList.find((entry) => entry.id === model);
-  const thinking = chosen?.thinkingOptions ?? [];
   const pick = async (nextProvider: string) => {
     if (nextProvider === provider) return;
     // The new provider's own default model; mode and thinking stay only when it has them too.
@@ -253,37 +553,85 @@ export function AgentFields({
           })),
           (next) => void pick(next),
         )}
-        {models.isError
-          ? text(
-              s.model,
-              model,
-              (next) => onChange({ ...value, provider: `${provider}/${next}` }),
-              "",
-            )
-          : select(
-              s.model,
-              model,
-              [
-                ...(model ? [] : [none]),
-                ...modelList
-                  .filter((entry) => entry.isSelectable !== false)
-                  .map((entry) => ({ value: entry.id, label: entry.label })),
-              ],
-              (next) => {
-                const entry = modelList.find(
-                  (candidate) => candidate.id === next,
-                );
-                onChange({
-                  ...value,
-                  provider: `${provider}/${next}`,
-                  thinkingOptionId: entry?.thinkingOptions?.some(
-                    (o) => o.id === value.thinkingOptionId,
-                  )
-                    ? value.thinkingOptionId
-                    : "",
-                });
-              },
+        {models.isError ? (
+          text(
+            s.model,
+            model,
+            (next) => onChange({ ...value, provider: `${provider}/${next}` }),
+            "",
+          )
+        ) : (
+          <>
+            {opencode && (
+              <SettingsSelect<string>
+                label={s.opencodeProvider}
+                value={selectedInternal?.id ?? DEFAULT}
+                options={
+                  internalProviders.length || selectedInternal
+                    ? withCurrent(
+                        internalProviders.map((entry) => ({
+                          value: entry.id,
+                          label: entry.label,
+                        })),
+                        selectedInternal?.id ?? "",
+                      )
+                    : [{ value: DEFAULT, label: s.providerDefault }]
+                }
+                onValueChange={(next) =>
+                  chooseInternal(next === DEFAULT ? "" : next)
+                }
+                disabled={disabled || !internalProviders.length}
+              />
             )}
+            <SettingsRow label={s.model}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${s.model}: ${modelButtonLabel}`}
+                disabled={disabled || !modelChoices.length}
+                onPress={() => setPickerOpen(true)}
+                style={({ pressed }) => [
+                  styles.modelButton,
+                  {
+                    borderColor: theme.colors.border,
+                    backgroundColor: theme.colors.surface1,
+                    opacity:
+                      disabled || !modelChoices.length
+                        ? 0.5
+                        : pressed
+                          ? 0.8
+                          : 1,
+                  },
+                ]}
+              >
+                <Text
+                  numberOfLines={1}
+                  style={[
+                    styles.modelButtonText,
+                    { color: theme.colors.foreground },
+                  ]}
+                >
+                  {modelButtonLabel}
+                </Text>
+                <Icon
+                  name="ChevronDown"
+                  size={16}
+                  color={theme.colors.foregroundMuted}
+                />
+              </Pressable>
+            </SettingsRow>
+            {pickerOpen && (
+              <ModelPickerModal
+                models={modelChoices}
+                opencode={opencode}
+                selectedId={model}
+                onPick={chooseModel}
+                onClose={() => setPickerOpen(false)}
+                theme={theme}
+                s={s}
+              />
+            )}
+          </>
+        )}
         {featureProvider ? (
           <>
             {select(
@@ -651,7 +999,7 @@ type ProfileFieldsProps = {
   s: ProfileStrings;
 };
 
-/** Both halves, one after the other: the Projects Assistant tab uses this. */
+/** Both halves, one after the other: the Project Manager tab uses this. */
 export function ProfileFields(props: ProfileFieldsProps) {
   return (
     <View style={styles.stack}>
@@ -794,7 +1142,7 @@ const draftOf = (chat: AssistantChatSettings) => ({
   wakeOnNeedsYou: chat.wakeOnNeedsYou, // CUSTOM(assistant-wake)
 });
 
-/** The Projects Assistant's fixed entry: the same editor, without project or schedule fields. */
+/** The Project Manager's fixed entry: the same editor, without project or schedule fields. */
 export function AssistantProfileTab({
   theme,
   disabled,
@@ -997,4 +1345,35 @@ const styles = StyleSheet.create({
   },
   skillText: { flex: 1, gap: 2 },
   path: { flexShrink: 1 },
+  picker: { gap: 8, flex: 1, minHeight: 0 },
+  pickerList: { flex: 1, minHeight: 0 },
+  section: {
+    height: SECTION_HEIGHT,
+    paddingTop: 8,
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+  },
+  modelRow: {
+    height: MODEL_HEIGHT,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    paddingHorizontal: 8,
+    borderRadius: 8,
+  },
+  modelCheck: { width: 16, alignItems: "center" },
+  modelText: { flex: 1, gap: 2 },
+  modelButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    minHeight: 36,
+    minWidth: 120,
+    maxWidth: 420,
+  },
+  modelButtonText: { flexShrink: 1 },
 });

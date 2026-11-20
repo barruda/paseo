@@ -11,7 +11,7 @@ import type { PageLocale } from "../paseo-language";
 import { formatHold } from "../hold-format";
 
 export const REASON_LABELS: Record<NeedsYouReason, string> = {
-  review: "Assistant reviewing",
+  review: "Project Manager reviewing",
   notify: "Ready for review",
   observed: "Observe mode: would deliver",
   "no-report": "No report from the agent",
@@ -47,7 +47,7 @@ export const KIND_LABELS: Record<HistoryEventKind, string> = {
   merged: "Merged",
   "pr-prepared": "PR prepared",
   "needs-you": "Needs you",
-  "told-assistant": "Told the assistant",
+  "told-assistant": "Told the Project Manager",
   "chat-compacted": "Chat compacted", // CUSTOM(assistant-compact)
   "chat-compact-failed": "Chat compaction failed", // CUSTOM(assistant-compact)
   observed: "Observed",
@@ -117,10 +117,9 @@ export const STAGE_LABELS: Record<
 
 export const dashboardStrings = {
   title: "Projects Dashboard",
-  statusOn: "Projects Assistant is on",
-  statusOff: "Projects Assistant is off",
-  offHint:
-    "Turn it on in Settings → Bruno's Customizations → Projects Assistant",
+  statusOn: "Project Manager is on",
+  statusOff: "Project Manager is off",
+  offHint: "Turn it on in Settings → Bruno's Customizations → Project Manager",
   needsYou: "Needs you",
   needsYouEmpty: "Nothing needs you",
   running: "Running now",

@@ -2992,7 +2992,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     description**; no PR is created), and **Merge into project** (commits what is left, then merges
     the branch into the project's base branch in the main checkout). The card shows the step
     running, Committed or Merged with its date, or the git error. Once merged, Commit and Merge
-    are gone and PR description stays as a plain button; the board does not watch the worktree
+    are gone and PR description stays as a plain button; with no PR description body the Merged
+    line and that button share one row instead of stacking. The board does not watch the worktree
     after the merge, so later changes there are not offered for another merge. Commit and merge
     are the daemon's own `checkout_commit` and `checkout_merge` requests, the same as the app's Git
     menu; results are in `finishes`. The workspace is not archived.
@@ -3027,7 +3028,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   orchestrator limits, disable, project retry, Run now batches, daily time and Stop, task
   assignment and delete, refinement and `/write-ticket`, review Done, Continue while active and
   while disabled, the default orchestrator, Commit, Merge and PR description, creating in Ready to
-  start), `tests/finish-buttons.test.ts` (the Done card's buttons before and after the merge)
+  start), `tests/finish-buttons.test.ts` (the Done card's buttons before and after the merge, and
+  when the status and the button share a row)
   and `tests/schedule.test.ts` (windows across midnight, daily triggers, next run). The upstream
   Workboard suites that assume import and the old groups were moved to `tests/upstream-workboard/` and are not run. The update script runs
   `tsc` and `vitest` in the plugin folder.
@@ -4000,25 +4002,26 @@ waiting` tests in `agent-manager.test.ts`.
   (390×844), both already in the update script. On the phone itself this needs an app build from
   this branch; the store app is upstream and has none of these customizations.
 
-## task-filters-toggle: the arrow beside "Tasks & crews" hides the filters
+## task-filters-toggle: the arrow beside the tabs hides the filters
 
 - **Added:** 2026-10-30 (upstream 0.14.0)
 - **Commit:** `custom: the arrow beside Tasks & crews hides search, sort and filters`
 - **Why:** In the phone sidebar the search, project picker, sort and status chips took so much
   height that little room was left for the tasks themselves.
-- **What:** The "Tasks & crews" header is a button with an arrow (⌄ open, › closed). Pressing it
-  hides or shows the search, project picker, sort and status filters, on desktop and phone. The
-  choice is saved per installation (`filtersCollapsed` in `custom-task-navigation`). The search,
-  projects and filter still apply while hidden.
+- **What:** The header has an arrow button (⌄ open, › closed). Pressing it hides or shows the
+  search, project picker, sort and status filters, on desktop and phone. The choice is saved per
+  installation (`filtersCollapsed` in `custom-task-navigation`). The search, projects and filter
+  still apply while hidden. Since [sidebar-agent-tabs](#sidebar-agent-tabs-user-agents-orchestrators-and-workers-tabs)
+  the arrow sits beside the three tabs instead of beside the "Tasks & crews" title.
 - **Files:** `packages/app/src/task-navigation/store.ts` (`filtersCollapsed`, optional in the
-  schema so older saved state still loads), `task-navigation/sidebar.tsx` (`TaskFiltersToggle`).
-  Marked `CUSTOM(task-filters-toggle)`. The same commit swaps the file's raw `Pressable`s (task
-  row, crew expand arrow) for `PressHighlight`: upstream 0.14's `no-raw-pressable` lint blocked
-  committing the file. Without `highlightStyle` it renders the same `Pressable`.
+  schema so older saved state still loads), `task-navigation/sidebar.tsx` (`TaskTabsHeader`'s
+  collapse button). Marked `CUSTOM(task-filters-toggle)`. The same commit swaps the file's raw
+  `Pressable`s (task row, crew expand arrow) for `PressHighlight`: upstream 0.14's
+  `no-raw-pressable` lint blocked committing the file. Without `highlightStyle` it renders the
+  same `Pressable`.
 - **Core files touched:** none.
-- **Re-apply:** Replace the sidebar's static "Tasks & crews" title with a pressable row holding
-  the title and a `ChevronDown`/`ChevronRight`, and render the controls block only when
-  `filtersCollapsed` is false.
+- **Re-apply:** Put a pressable arrow (`ChevronDown`/`ChevronRight`) at the end of the sidebar
+  header and render the controls block only when `filtersCollapsed` is false.
 - **Verify:** `store.test.ts` and the "Phone sidebar" case in `e2e/task-navigation.spec.ts`, both
   already in the update script. In the app, press the arrow: the controls disappear, the list
   moves up, and they stay hidden after reopening the app.
@@ -7312,32 +7315,91 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   the page; on the Dashboard, "Open report" on a Needs you card opens that ticket. Send a quick message that makes the assistant act: its
   `board_report` summary shows in the status row and as a row on that ticket.
 
-## hidden-board-agents: board agents stay out of the sidebar and never notify
+## sidebar-agent-tabs: User Agents, Orchestrators and Workers tabs
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: split the Tasks sidebar into User Agents, Orchestrators and Workers tabs`
+- **Why:** [hidden-board-agents](#hidden-board-agents-board-agents-never-auto-open-notify-or-light-the-badges)
+  hid every agent the board starts, so the user could not see or open them from the sidebar. The
+  board now has enough kinds of agents to give each its own place instead of hiding them.
+- **What:**
+  - The "Tasks & crews" title is gone. A three-tab bar opens on **User Agents** (the old list) and
+    offers **Orchestrators** and **Workers**. The chosen tab persists in `custom-task-navigation`
+    (`tab`, optional in the schema so older state loads).
+  - Classification (`classifySidebarAgent`, `board-agents/classify.ts`): the assistant chat
+    (`pwb/assistant-chat`), the refinement chat (`pwb/refinement-chat`, or the old `Refine: ` title)
+    and a root board agent (`paseo.board-agent` with no parent) are **Orchestrators**. An agent
+    below an orchestrator is a **Worker**, including the ship agent (child of the assistant chat),
+    a `create_agent` subagent, and a board-labeled agent whose parent is no longer loaded. Every
+    other agent, and its subagents, is a **User Agent**.
+  - Every agent shows again: the **Show board agents** toggle and its persisted store are gone.
+    The search, Projects picker, sort, status filters and their counts apply inside the chosen tab,
+    and the Archived filter splits by the same tab (every archived agent is kept and tagged).
+  - Paseo child agents are classified into their own tab, so a worker whose parent orchestrator is
+    in another tab is a root in Workers. Provider subagents (the "3 subagents" toggle) still nest
+    under their parent row, in the parent's tab.
+  - The filters arrow stays beside the tabs and still folds the controls away. The
+    [hidden-board-agents](#hidden-board-agents-board-agents-never-auto-open-notify-or-light-the-badges)
+    rules are unchanged: board agents do not auto-open, do not send OS notifications and do not
+    count for the dock badge or favicon.
+  - The refinement chat now carries a label so the app can classify it. The label is not part of
+    `isBoardAgent`, so the chat keeps opening and notifying like before.
+- **Core files touched:** each marked `CUSTOM(sidebar-agent-tabs)`.
+  - protocol: `src/board-agents.ts` (`REFINEMENT_CHAT_LABEL`).
+  - app (new): `src/board-agents/classify.ts` and its test.
+  - app: `task-navigation/model.ts` (`sidebarTab` on `TaskAgent`), `task-navigation/sidebar.tsx`
+    (`collectAgents` classifies every agent; the per-tab `tabAgents` tree; `TaskTabsHeader` /
+    `SidebarTab`; per-tab counts and archived list), `task-navigation/store.ts` (`tab`),
+    `task-navigation/use-archived-tasks.ts` (`sidebarTab` on each entry; `mergeArchivedAgents` no
+    longer takes `includeBoardAgents`), with tests.
+  - app removed: `src/board-agents/store.ts` and its test (the Show board agents toggle).
+  - plugin power-workboard: `shared/model.ts` (`REFINEMENT_CHAT_LABEL`), `server/workboard.ts`
+    (`refine` labels the chat), `tests/power-workboard.test.ts`.
+- **Re-apply:** add `REFINEMENT_CHAT_LABEL` and label the refinement chat in `refine()`. Add
+  `sidebarTab` to `TaskAgent` and `classifySidebarAgent` (board label with a parent is a worker,
+  without one an orchestrator; the two chats are orchestrators; a descendant of either is a
+  worker; the rest is the user's). In the Tasks sidebar collect every agent, filter the tree by the
+  persisted tab before `buildTaskTree`, compute the status counts from that tree, and filter the
+  archived roots by the same tab. Replace the header title with the three tabs and keep the
+  collapse arrow. Delete the Show board agents store and menu item.
+- **Verify:** `(cd packages/app && npx vitest run src/board-agents/classify.test.ts src/task-navigation/use-archived-tasks.test.ts src/task-navigation/store.test.ts src/task-navigation/model.test.ts)`
+  and the plugin suite. Needs a desktop build and install plus `plugin reload power-workboard`.
+  In the app: open the Tasks sidebar, switch to Orchestrators; the Projects Assistant chat and the
+  board's task agents are there. Switch to Workers; the ship agent and `create_agent` subagents are
+  there. User Agents keeps the agents you create, with their subagents nested. Start a board task:
+  no tab opens and finishing sends no notification, and it is in Orchestrators. Search, Projects,
+  sort and the status filters (Archived included) count only the chosen tab. Reopen the app: the
+  tab you chose is still selected.
+
+## hidden-board-agents: board agents never auto-open, notify, or light the badges
 
 - **Added:** 2026-11-18
 - **Commit:** `custom: board agents stay hidden and silent by default`
 - **Why:** the agents that Power Workboard and the Projects Assistant start and watch (orchestrator
-  runs, reviews, auto-fixes, the ship agent) opened as tabs, filled the sidebar and sent GNOME
-  notifications. The Projects Assistant already reports on them in its chat, its bar and the Needs
-  you column, so the extra noise only interrupted the user.
+  runs, reviews, auto-fixes, the ship agent) opened as tabs and sent GNOME notifications. The
+  Projects Assistant already reports on them in its chat, its bar and the Needs you column, so the
+  extra noise only interrupted the user. The sidebar hiding this entry introduced was replaced by
+  the Orchestrators and Workers tabs in [sidebar-agent-tabs](#sidebar-agent-tabs-user-agents-orchestrators-and-workers-tabs).
 - **What:**
   - Label `paseo.board-agent: "true"` (`BOARD_AGENT_LABEL`, in `@getpaseo/protocol/board-agents`
     and, as the same string, in the plugin's `shared/model.ts`). The board puts it on every agent
     it starts through `startAgent` (orchestrator runs, continuations, review tasks; auto-fixes reuse
-    the same agent). The refinement chat and the assistant chat stay unlabeled: the user talks to
-    them.
+    the same agent). The assistant chat stays unlabeled and the refinement chat carries
+    `pwb/refinement-chat` (see [sidebar-agent-tabs](#sidebar-agent-tabs-user-agents-orchestrators-and-workers-tabs)):
+    neither label makes them board agents, so the user still talks to them and they keep opening
+    and notifying.
   - The assistant's seed prompt (`ASSISTANT_ROLE`) and its first message (`CHAT_INSTRUCTIONS`) tell
     it to pass the label to every agent it creates with `create_agent` (the ship agent).
   - `isBoardAgent` also counts an agent whose parent chain reaches a board agent or the assistant
-    chat (`pwb/assistant-chat`), so the ship agent is hidden even if the assistant forgets the label.
+    chat (`pwb/assistant-chat`), so the ship agent is treated as a board agent even if the
+    assistant forgets the label.
   - App: board agents never auto-open as a workspace tab (`deriveWorkspaceAgentVisibility` keeps
-    them out of `autoOpenAgentIds` but in `activeAgentIds`, so a tab the user opens stays); the
-    Tasks sidebar hides them unless **Show board agents** is on in its Projects menu
-    (persisted, off by default); `notifyAgentAttention` never sends an OS notification for them.
-    Command Center search and the board card link still open them. The Archived filter of the
-    Tasks sidebar follows the same toggle (`mergeArchivedAgents` in `use-archived-tasks.ts`
-    checks the labels, and a history entry's parent chain against the other history entries).
-  - Dock badge and favicon ignore board agents, whatever the toggle says. The daemon's workspace
+    them out of `autoOpenAgentIds` but in `activeAgentIds`, so a tab the user opens stays);
+    `notifyAgentAttention` never sends an OS notification for them. Command Center search and the
+    board card link still open them. The Tasks sidebar no longer hides them: since
+    [sidebar-agent-tabs](#sidebar-agent-tabs-user-agents-orchestrators-and-workers-tabs) every
+    agent shows in its own tab, and the Archived filter splits by the same tab.
+  - Dock badge and favicon ignore board agents. The daemon's workspace
     status counts every agent, so `workspaceStatusesWithoutBoardAgents` (`board-agents/badges.ts`)
     drops a workspace whose live agents are all board agents and derives a shared workspace's
     status again from its other agents, with the daemon's rule (roots give their bucket,
@@ -7348,21 +7410,20 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Core files touched:** each marked `CUSTOM(hidden-board-agents)`.
   - protocol (new): `src/board-agents.ts` (`BOARD_AGENT_LABEL`, `ASSISTANT_CHAT_LABEL`,
     `isBoardAgent`) and its test.
-  - app (new): `src/board-agents/visibility.ts` (`isBoardAgentInSession`), `store.ts`
-    (persisted `showBoardAgents`, key `paseo-board-agents`), with tests.
+  - app (new): `src/board-agents/visibility.ts` (`isBoardAgentInSession`) with a test. The
+    persisted `showBoardAgents` store is gone: [sidebar-agent-tabs](#sidebar-agent-tabs-user-agents-orchestrators-and-workers-tabs)
+    lists board agents instead of hiding them.
   - app (new): `src/board-agents/badges.ts` (`workspaceStatusesWithoutBoardAgents`,
     `selectBoardAgentKeys`, `withoutBoardAgents`) with a test;
     `task-navigation/use-archived-tasks.test.ts`.
   - app: `stores/session-store-hooks/selectors.ts` (`selectWorkspaceStatusesForBadges` calls
     `workspaceStatusesWithoutBoardAgents`; `SessionsSnapshot` gets optional `agents` and
     `agentDetails`); `hooks/use-favicon-status.ts` (filters the agents with
-    `withoutBoardAgents`); `task-navigation/use-archived-tasks.ts` (`board` on each entry,
-    `mergeArchivedAgents`, an `includeBoardAgents` argument the sidebar passes).
+    `withoutBoardAgents`); `task-navigation/use-archived-tasks.ts` (`sidebarTab` on each entry;
+    every archived agent is kept).
   - app: `workspace-tabs/agent-visibility.ts` (`isAutoOpenAgent`) and a case in its test;
-    `task-navigation/sidebar.tsx` (`collectAgents` with the two selectors `selectAgents` /
-    `selectAgentsWithBoard`, and `BoardAgentsChoice` at the end of the Projects menu, since the
-    Tasks sidebar has no display menu); `contexts/session-context.tsx` (`isBoardAgentAttention`
-    at the top of `notifyAgentAttention`).
+    `contexts/session-context.tsx` (`isBoardAgentAttention` at the top of
+    `notifyAgentAttention`).
   - server: `src/server/websocket-server.ts` (`broadcastAgentAttention`) and two cases in
     `websocket-server.notifications.test.ts`.
   - plugin power-workboard: `shared/model.ts` (`BOARD_AGENT_LABELS`), `server/host.ts`
@@ -7371,26 +7432,23 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     `assistant-chat`.
 - **Re-apply:** the protocol file and `packages/app/src/board-agents/` are new. Then: in
   `deriveWorkspaceAgentVisibility` add an agent to `autoOpenAgentIds` only when it is a workspace
-  root and not `isBoardAgentInSession(agent, sessionAgents, agentDetails)`; in the Tasks
-  sidebar's agent selector skip board agents unless `useBoardAgentsStore().showBoardAgents`
-  (keep the selectors module-level: an inline one loops renders) and add the "Show board agents"
-  item to a sidebar menu; return early from `notifyAgentAttention` for a board agent; in
-  `broadcastAgentAttention` skip the push and send `shouldNotify: false` when
-  `isBoardAgent(agent.labels, id => agentManager.getAgent(id)?.labels)`. Pass
-  `showBoardAgents` to `useArchivedTasks` and skip board entries there; route
-  `selectWorkspaceStatusesForBadges` through `workspaceStatusesWithoutBoardAgents` and filter the
-  favicon's agents with `withoutBoardAgents(agents, selectBoardAgentKeys(state))`.
+  root and not `isBoardAgentInSession(agent, sessionAgents, agentDetails)`; return early from
+  `notifyAgentAttention` for a board agent; in `broadcastAgentAttention` skip the push and send
+  `shouldNotify: false` when `isBoardAgent(agent.labels, id => agentManager.getAgent(id)?.labels)`.
+  Route `selectWorkspaceStatusesForBadges` through `workspaceStatusesWithoutBoardAgents` and filter
+  the favicon's agents with `withoutBoardAgents(agents, selectBoardAgentKeys(state))`. The Tasks
+  sidebar keeps every agent and tags its tab (see
+  [sidebar-agent-tabs](#sidebar-agent-tabs-user-agents-orchestrators-and-workers-tabs)); do not
+  add a show/hide toggle back.
 - **Verify:** `(cd packages/protocol && npx vitest run src/board-agents.test.ts)`,
   `(cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts src/task-navigation/use-archived-tasks.test.ts)`,
   `(cd packages/server && npx vitest run src/server/websocket-server.notifications.test.ts)`
   (all in the update script), and the plugin suite. Needs a desktop build and install plus
   `plugin reload power-workboard`; the app part needs no daemon restart. The push gate
-  runs from the next daemon restart. In the app: start a board task; no tab opens, it is not in
-  the Tasks sidebar and finishing sends no GNOME notification. Projects menu > Show board agents
-  lists it, and with it on the Archived filter lists archived board agents too (off: none). A
+  runs from the next daemon restart. In the app: start a board task; no tab opens and finishing
+  sends no GNOME notification. It shows under Orchestrators, and its subagents under Workers. A
   board agent waiting for input lights neither the favicon nor the dock badge. The card's agent
-  link and Command Center still open it. The Projects Assistant chat
-  still shows and notifies.
+  link and Command Center still open it. The Projects Assistant chat still shows and notifies.
 
 ## status-bar: an IDE-style status bar at the bottom of the window, starting with the Projects Assistant
 
@@ -7938,7 +7996,8 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
 ## assistant-reply-protocol: the Projects Assistant ends replies with a `pwb` block the chat draws
 
 - **Added:** 2026-11-19 (based on `custom` at `f9439fa66`)
-- **Commit:** `custom: Projects Assistant replies end with a pwb block drawn as icons in its chat`
+- **Commit:** `custom: Projects Assistant replies end with a pwb block drawn as icons in its chat`;
+  follow-up `custom: the próximo chip explains its values and keeps its controls beside the text`
 - **Why:** The user (ADHD) wants to scan the assistant's chat fast: what was done, who moves next
   and whether they have to do anything, with the rest one click away. The format will keep
   changing, so it lives in one versioned doc.
@@ -7960,8 +8019,15 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
   Workboard on Reports with that ticket (the client's `openScreen` plus `requestReportTask`;
   Reports now also matches a short id prefix). The assistant's seed prompt (`ASSISTANT_ROLE`) and
   `CHAT_INSTRUCTIONS` ask for the block; the rule text is built from the parser's enums.
+  **Follow-up (2026-11-20):** the `próximo` chip carries its legend — hovering it on desktop web,
+  focusing it, or a long press on touch opens a compact panel with the six values, each with the
+  chip's icon and color and a one-line description, the current one highlighted. The `seu` seal
+  sits right after the chip instead of at the card's right edge, and each line's comment button
+  follows its text, after the open (↗) link. The one-liners live in `NEXT_DESCRIPTIONS` next to
+  `NEXT_VALUES`, and the protocol test compares them with the doc's `next-values` list.
 - **Core files touched:** none. Plugin files: `shared/reply-protocol.ts`,
-  `client/assistant/AssistantReplyCard.tsx`, `client/assistant/nav.ts` (`openTaskReport`),
+  `client/assistant/AssistantReplyCard.tsx`, `client/assistant/card-parts.tsx` (`inline`
+  comment button), `client/assistant/nav.ts` (`openTaskReport`),
   `client/assistant/ReportsScreen.tsx` (short id), `client/assistant/TaskReportCard.tsx` (exports
   `MarkdownText` and `wash`), `index.client.tsx` (registration, before the report card's),
   `server/assistant/chat.ts`, `docs/assistant-reply-protocol.md`, `README.md`,
@@ -7973,13 +8039,17 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
   without an `id`: the host keys plugin items by that id as is, and a
   fixed one collides across replies. Changing the protocol means editing the doc and
   `shared/reply-protocol.ts` together and bumping the version; the test compares their lists.
-  Grep `CUSTOM(assistant-reply-protocol)`.
+  The chip legend's one-liners are `NEXT_DESCRIPTIONS`, next to `NEXT_VALUES`, and `nextLegend`
+  pairs each value with `NEXT_LOOK`'s icon and tone; change them with the doc's `next-values`
+  list. Grep `CUSTOM(assistant-reply-protocol)`.
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
 tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` (and a new
   assistant chat, or the next reply, to pick up the prompt). In the assistant's chat a reply ends
-  in the card; hover or click "detalhes"; click a `feito` line with an id to land on that ticket in
-  Reports. A task agent's chat still shows a `pwb` block as a code block (as Markdown). Check
-  light and dark.
+  in the card; hover the `próximo` chip to see the six values with the current one highlighted,
+  then move the mouse away (on a phone, long press the chip); the `seu` seal sits next to the
+  chip; the comment icon of a `feito` line sits right after its text and still opens the field.
+  Hover or click "detalhes"; click a `feito` line with an id to land on that ticket in Reports. A
+  task agent's chat still shows a `pwb` block as a code block (as Markdown). Check light and dark.
 
 ## workboard-chip-only: Power Workboard always opens on its Desk chip, with a status icon
 
@@ -8005,7 +8075,9 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
     attention dot (the agent tab's "finished, look at it") when a task is in a review group, and
     the amber needs-input alert when a task is in the Projects Assistant's Needs you. One corner,
     so Needs you wins over Ready to review, which wins over running: the states that want the
-    user hide the one that doesn't. Nothing to show leaves the icon clean.
+    user hide the one that doesn't. A task still running keeps the blue ring turning under the
+    mark that wins, so Needs you (or Ready to review) with something else running is amber (or
+    green) and animated, not still. Nothing to show leaves the icon clean.
   - **Data.** The plugin answers `workboard.desk-status` with three counts
     (`shared/desk-status.ts`, computed from the snapshot and the assistant deliveries). Plugins
     have no server-to-client push and the board's own snapshot (300 KB+) is too heavy to poll with
@@ -8032,7 +8104,8 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   The store stays out of `desk-workboard.tsx` so `plugins/navigation.ts` can import it without a
   cycle through the plugin registry. In the chip, render `DeskWorkboardChipIcon` before the label.
 - **Tests:** `packages/app/src/task-navigation/desk-workboard.test.ts` (open resolution, status
-  rule: running, review, needs you, both, none; poll interval and failure backoff),
+  rule: running, review, needs you, both, none; the mark's colour and ring for the four cases;
+  poll interval and failure backoff),
   `desk-workboard-navigation.test.ts` (Command Center, screen with a tab, panel, no workspace
   shown yet, Desk +, outside Tasks mode), plugin
   `tests/desk-status.test.ts` (the counts).
@@ -8040,7 +8113,8 @@ tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` 
   mode: click Power Workboard in the sidebar, in the Command Center, and in a Desk's **+**: each
   selects the chip, no tab appears in the Desk. Close the chip (×) and click the sidebar row: it
   comes back selected. With a task running, the chip's icon has the blue ring; with a task in
-  Ready to review, a green dot; with one in Needs you, the amber alert. Light and dark.
+  Ready to review, a green dot; with one in Needs you, the amber alert. With a task running and
+  another in Needs you, the amber alert keeps the blue ring turning around it. Light and dark.
 
 ## assistant-compact: the Projects Assistant chat restarts with a summary once its context is full
 
@@ -8833,3 +8907,128 @@ tests/power-workboard.test.ts --bail=1`, `bash custom/scripts/restart-resume.tes
   restart. To check the whole flow, start a normal agent, a board task and the Projects Assistant
   chat, run `kill-paseos-and-daemons.sh`, and watch all three continue; the board task must not
   land in Needs you.
+## workboard-project-accent: rail color in the column header, project color and icon on the card
+
+- **Added:** 2026-11-20 (based on `custom` at `0dc28e5c3`)
+- **Commit:** `custom: Workboard colors column headers by rail and cards by project`
+- **Why:** The card's left border repeated the rail color, which the column already says. The
+  project is the identity a card carries across rails, so the border belongs to it, and the
+  project's icon makes the name easier to pick out in a narrow card.
+- **What:** Each column header gets a 3 px top filete in the rail color, and the old dot next to
+  the title is gone (compact tabs carry the same filete instead of a dot). The card's 3 px left
+  border now uses `projectColor(card.projectId)`, the same stable palette `projectColor` already
+  uses for project chips: two cards of the same project share the color in any rail, and different
+  projects spread across the palette. The card's project line starts with a generated project icon
+  (the last name segment's initial on that same color, 14 px, surface-colored letter) before
+  `projectName · area · labels`. Unassigned cards keep the neutral border and show no icon.
+- **Core files touched:** none. Plugin files: `client/BoardView.tsx`, `client/WorkboardScreen.tsx`,
+  new `client/ProjectIcon.tsx`, new `tests/colors.test.ts`.
+- **Re-apply:** Plugin-only. In `BoardColumn`, put `borderTopWidth: 3` on `columnHeader` and pass
+  the rail `color` as `borderTopColor`; do the same with `borderTopWidth: 2` on compact `tab`.
+  In `TaskCard`, set `borderLeftColor` from `projectColor(card.projectId, theme)` and wrap the
+  project meta `Text` in a row with `ProjectIcon`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/colors.test.ts --bail=1`. Needs only `paseo plugin reload power-workboard`; no app build.
+  In the app, two cards of the same project in different rails have the same left border, the
+  project initial shows before the name, and each column header has its rail-colored top filete
+  in the light and dark themes.
+
+## project-manager-rename: Projects Assistant becomes Project Manager, Power Workboard becomes Workboard
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: rename Projects Assistant to Project Manager and Power Workboard to Workboard`
+- **Why:** The two names read as separate products: "Power Workboard" looked different from the
+  Workboard, and "Projects Assistant" looked like a generic assistant rather than the manager of
+  the board. Shorter names are easier to find in the sidebar, the Command Center and Settings.
+- **What:** Every user-visible name is now **Project Manager** (the chat, its Desk, status row,
+  tab, Explorer mirror, settings page and report labels) and **Workboard** (the plugin, tab,
+  sidebar, Command Center, notifications and prompts). Covered: plugin UI strings (en, pt-BR and
+  zh), `paseo-plugin.json`'s description, the assistant's system prompt and MCP tool descriptions,
+  the orchestrator, fix, continuation and refinement prompts, README and
+  `docs/assistant-reply-protocol.md`, `bin/ask-assistant` output, and the core labels in
+  `packages/app`. An assistant Desk saved under the old default name is renamed on load; a Desk the
+  user renamed is left alone. Internal identifiers stay: the plugin id `power-workboard`, the
+  folder and `plugin-data/power-workboard/`, settings keys, the `board_*` tools, the
+  `paseo.board-agent` label, the `assistant` profile id and the route/RPC ids.
+- **Core files touched:** `packages/app/src/task-navigation/desk-workboard-model.ts` (chip label),
+  `desks-store.ts` (Desk name and the one-time rename in `migrateLegacyDesk`),
+  `assistant-sidebar/panel.tsx`, `assistant-sidebar/strings.ts`, `screens/settings-screen.tsx`,
+  `screens/settings/settings-search-index.ts`,
+  `screens/settings/bruno-customizations/projects-assistant-page.tsx`,
+  `screens/workspace/workspace-desktop-tabs-row.tsx`,
+  `screens/workspace/compact-workspace-header/tab-switcher.tsx`, `composer/chat-options.ts`, plus
+  the assertions in `assistant-sidebar/desk.test.ts` and `task-navigation/store.test.ts`. Plugin
+  files: the client, server, shared, test, README and docs files listed in the commit.
+- **Re-apply:** Plugin-only plus the core labels. Grep `Projects Assistant` and `Power Workboard`;
+  replace them with "Project Manager" and "Workboard" in user-visible text, keeping the ids above.
+  The Desk rename is the `CUSTOM(project-manager-rename)` block in `migrateLegacyDesk`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run`;
+  `npm run typecheck`; `(cd packages/app && npx vitest run src/task-navigation/store.test.ts
+src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard` and an app
+  build/install. In the app: the sidebar and Command Center say **Workboard**; the status row, chat
+  tab, Explorer mirror and Settings item say **Project Manager**; the existing assistant Desk shows
+  **Project Manager**. A live `system-prompt.md` keeps the old names until the new `ASSISTANT_ROLE`
+  text is copied there by hand.
+
+## subagent-track-open-tab: a subagent row opens its tab in the current Desk
+
+- **Added:** 2026-11-20 (based on `custom` at `fcfa4b6aa`)
+- **Commit:** `custom: a subagent row opens its tab in the current Desk`
+- **Why:** With Tasks mode (Desks) on, clicking a subagent in the composer's chip opened a tab in
+  the workspace layout store, which the Desk screen never renders: the chip closed and nothing
+  else happened. The same click works when Desks are off, which is why the upstream e2e test
+  (no Desks) stayed green.
+- **What:** `openSubagentTab` opens the row's target through `openDeskTargetInMainContent` first,
+  the same bridge `open-supporting-view.ts` uses for Changes and pull requests (and never the
+  focused bottom-panel terminal), and falls back to
+  `openPreferredWorkspaceTarget` (workspace panes, with the "open in side pane" preference) when
+  Tasks mode is off. Covers provider subagents (OpenCode, Claude Task/Agent, Codex) and Paseo
+  subagents in the same workspace; a Paseo subagent in another workspace still goes through
+  `navigateToAgent`, which was already Desk-aware. An already-open target is focused, not
+  duplicated, because the Desk reuses the tab with the same owner and target.
+- **Core files touched:** `packages/app/src/panels/agent-tracks.tsx` (the target callback), new
+  `packages/app/src/subagents/open-tab.ts`, plus new `open-tab.test.ts` and
+  `track.browser.test.tsx`; the tests are wired into the update script. `docs/agent-lifecycle.md`
+  (the subagents track section) records where the click opens.
+- **Re-apply:** Grep `CUSTOM(desks)` in `open-tab.ts`. Wherever the subagents track opens a row's
+  target, call `openDeskTargetInMainContent` first and keep `openPreferredWorkspaceTarget` as the
+  fallback.
+- **Verify:** `(cd packages/app && npx vitest run src/subagents/open-tab.test.ts
+src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. With Tasks mode on,
+  click a provider subagent row in the composer's "N working" chip: its tab opens and takes focus in
+  the current Desk, and the chip closes. Repeat for a Paseo subagent; a second click focuses the same
+  tab instead of adding one.
+
+## model-picker-workboard: OpenCode provider first, then a searchable model modal
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: Workboard model picker chooses the OpenCode provider and searches in a modal`
+- **Why:** OpenCode exposes every model of every internal provider (DeepSeek, DeepInfra…) in one
+  list, and the old dropdown made that list hard to use. The provider of a model was only visible
+  in its id prefix.
+- **What:**
+  - When the agent provider is `opencode`, the editor has an **OpenCode provider** select before
+    the model. Its options come from the models the daemon returned, which already excludes
+    providers that are not connected or API-managed. Changing it keeps the current model when it
+    belongs to that provider and otherwise picks that provider's default model.
+  - The model dropdown is now a modal in the style of the chat's model picker: search box with
+    autofocus, models grouped by internal provider (OpenCode) and every row showing its provider
+    name, arrow keys/Enter/Escape plus mouse. Other providers use the same modal with their model
+    list.
+  - The internal provider comes from `metadata.providerId` / `metadata.providerName` on the model
+    definition, with the `provider/model` prefix as fallback for a saved model that is no longer in
+    the catalog. A saved `provider/model` still opens with both steps filled in.
+  - The shared `AgentFields` is used by the orchestrator editor, the bulk agent change and the
+    Project Manager's profile tab, so all three get the new picker.
+- **Files:** `client/Profiles.tsx`, `client/model-catalog.ts` (new), `client/profiles-strings.ts`,
+  `tests/model-catalog.test.ts` (new).
+- **Core files touched:** none.
+- **Re-apply:** Plugin-only. The picker logic is the `CUSTOM(model-picker-workboard)` block in
+  `client/Profiles.tsx` and the helpers in `client/model-catalog.ts`; the grouping/filtering rules
+  live there, not in the modal.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
+  Needs only `paseo plugin reload power-workboard`. In the app: Workboard > Orchestrators > open an
+  orchestrator > **Agent** tab, pick **opencode**, choose an **OpenCode provider** and press the
+  **Model** row; the modal should find `flash` and show `DeepSeek`/`DeepInfra` on each result. The
+  same fields appear in the bulk agent change and in Settings > Bruno's Customizations > Project
+  Manager.

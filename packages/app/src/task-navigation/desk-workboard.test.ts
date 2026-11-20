@@ -5,6 +5,7 @@ import {
   deskStatusSchema,
   deskSurfacesStorageSchema,
   deskWorkboardStatusBucket,
+  deskWorkboardStatusMark,
   isDeskSurfaceOpen,
   isWorkboardPanel,
   migrateDeskSurfaces,
@@ -151,6 +152,42 @@ describe("Power Workboard chip status", () => {
   it("lets what waits for the user win over a running task", () => {
     expect(deskWorkboardStatusBucket(status(3, 1, 0))).toBe("attention");
     expect(deskWorkboardStatusBucket(status(3, 1, 2))).toBe("needs_input");
+  });
+
+  it("keeps the running animation while an attention mark owns the corner", () => {
+    // Nothing to show: no mark and no ring.
+    expect(deskWorkboardStatusMark(status(0, 0, 0))).toEqual({ bucket: null, running: false });
+    expect(deskWorkboardStatusMark(null)).toEqual({ bucket: null, running: false });
+
+    // Only running: the blue ring, as before.
+    expect(deskWorkboardStatusMark(status(2, 0, 0))).toEqual({
+      bucket: "running",
+      running: true,
+    });
+
+    // Only attention: the mark stays still.
+    expect(deskWorkboardStatusMark(status(0, 1, 0))).toEqual({
+      bucket: "attention",
+      running: false,
+    });
+    expect(deskWorkboardStatusMark(status(0, 0, 1))).toEqual({
+      bucket: "needs_input",
+      running: false,
+    });
+
+    // Attention plus running: the mark wins the corner and the ring keeps turning under it.
+    expect(deskWorkboardStatusMark(status(3, 0, 1))).toEqual({
+      bucket: "needs_input",
+      running: true,
+    });
+    expect(deskWorkboardStatusMark(status(3, 1, 0))).toEqual({
+      bucket: "attention",
+      running: true,
+    });
+    expect(deskWorkboardStatusMark(status(3, 1, 2))).toEqual({
+      bucket: "needs_input",
+      running: true,
+    });
   });
 });
 

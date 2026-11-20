@@ -1,4 +1,4 @@
-// CUSTOM(assistant-reports): the one record the Projects Assistant writes per action on a ticket
+// CUSTOM(assistant-reports): the one record the Project Manager writes per action on a ticket
 // (`board_report`), and the Projects Reports page built from those records plus the history the
 // server writes by itself. The same `summary` feeds the page, the quick-message ack in the status
 // row (when the record names a `quickMessageId`) and the assistant's short chat reply.

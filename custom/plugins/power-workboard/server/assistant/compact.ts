@@ -1,5 +1,5 @@
 // CUSTOM(assistant-compact): the text side of the chat's automatic compaction. When a turn leaves
-// the Projects Assistant chat at its token limit, the board asks a fork of that chat for a short
+// the Project Manager chat at its token limit, the board asks a fork of that chat for a short
 // summary of the recent conversation (the question stays out of its history), starts a new chat
 // whose first message carries the summary as inherited context, and archives the old one.
 import type { TimelineReader } from "../conversations";
@@ -11,7 +11,7 @@ export const COMPACT_SUMMARY_MAX_CHARS = 8_000;
 export const COMPACT_REPLIES = 3;
 
 export const COMPACT_QUESTION = [
-  `This chat is about to be restarted to free context. Write a compact handoff for the next Projects Assistant, covering only your last ${COMPACT_REPLIES} replies and the user's messages between them.`,
+  `This chat is about to be restarted to free context. Write a compact handoff for the next Project Manager, covering only your last ${COMPACT_REPLIES} replies and the user's messages between them.`,
   "Include, as short bullet lists: requests still open; decisions taken; tasks mentioned, each with its full id and where it stands; and what you promised the user. Skip what the board or your memory already holds and anything finished that needs no follow-up.",
   `Plain Markdown, no preamble, no pwb block, under 1000 words. Write "Nothing open." when nothing is.`,
 ].join("\n");
