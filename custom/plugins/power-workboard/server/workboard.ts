@@ -1398,7 +1398,14 @@ export class Workboard {
           if (kind === "scheduled") timing ??= { kind: "night" };
           const taskId = randomUUID();
           await this.store.update((data) => {
-            const task = newTask(taskId, input.title, this.stamp(), stage);
+            const task = newTask(
+              taskId,
+              input.title,
+              this.stamp(),
+              stage,
+              data.nextTaskNumber, // CUSTOM(task-numbers)
+            );
+            data.nextTaskNumber += 1;
             task.description = input.description;
             task.projectId = input.projectId;
             task.orchestratorId = input.orchestratorId ?? null;
@@ -1832,7 +1839,9 @@ export class Workboard {
                   data.settings.groups,
                   data.settings.defaultDraftGroup,
                 ),
+                data.nextTaskNumber, // CUSTOM(task-numbers)
               );
+              data.nextTaskNumber += 1;
               draft.description = source.description;
               current.description =
                 current.description.slice(0, start) +
@@ -2749,6 +2758,7 @@ export class Workboard {
       delivery.detail ? `${reason}: ${clean(delivery.detail, 300)}` : reason,
       `review: ${reviewPolicyFor(this.store.current.assistant.settings, this.projectIdOf(task))}`,
       `waiting since ${delivery.updatedAt} (${this.waitFor(delivery.updatedAt)})`,
+      ...(task.number > 0 ? [`#${task.number}`] : []), // CUSTOM(task-numbers)
     ].join(" | ");
   }
   /** CUSTOM(assistant-wake): "6 min", "2 h 5 min", for the prompt. */

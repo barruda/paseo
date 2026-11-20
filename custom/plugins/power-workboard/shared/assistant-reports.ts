@@ -97,6 +97,8 @@ export type AssistantReport = z.infer<typeof assistantReportSchema>;
 /** A ticket in the Reports sidebar. */
 export const reportTaskSchema = z.object({
   taskId: z.string(),
+  /** CUSTOM(task-numbers): the short number shown beside the title. */
+  number: z.number().int().min(0).default(0),
   title: z.string(),
   projectId: z.string().nullable(),
   projectName: z.string(),
@@ -169,6 +171,7 @@ export type ReportTimelineItem = z.infer<typeof reportTimelineItemSchema>;
 export const reportTimelineSchema = z.object({
   task: z.object({
     taskId: z.string(),
+    number: z.number().int().min(0).default(0), // CUSTOM(task-numbers)
     title: z.string(),
     projectId: z.string().nullable(),
     projectName: z.string(),

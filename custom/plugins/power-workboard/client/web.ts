@@ -142,6 +142,19 @@ export function keyboardProps(
   };
 }
 
+/** CUSTOM(task-panel): close the ticket panel on Esc, without stealing other keys. */
+export function onEscapeKey(onEscape: () => void): () => void {
+  if (Platform.OS !== "web") return () => {};
+  const onKey = (event: KeyEvent) => {
+    if (event.key !== "Escape") return;
+    event.preventDefault();
+    event.stopPropagation();
+    onEscape();
+  };
+  document.addEventListener("keydown", onKey);
+  return () => document.removeEventListener("keydown", onKey);
+}
+
 export function toggleButtonState(selected: boolean) {
   return Platform.OS === "web"
     ? { "aria-pressed": selected }

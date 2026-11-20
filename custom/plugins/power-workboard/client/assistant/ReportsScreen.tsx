@@ -235,6 +235,7 @@ export function ReportsScreen(props: PluginSurfaceProps) {
                   style={[styles.name, { color: c.foreground }]}
                   numberOfLines={2}
                 >
+                  {task.number > 0 ? `#${task.number} · ` : ""}
                   {task.title}
                 </Text>
                 <Text

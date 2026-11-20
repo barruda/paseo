@@ -331,7 +331,7 @@ export function conversationStatusFor(
  * The stored settings version. The plugin registers this same value, because the host only
  * migrates stored settings when the registered version differs from what it finds.
  */
-export const DATA_SCHEMA_VERSION = 9;
+export const DATA_SCHEMA_VERSION = 10;
 
 export const sourceSchema = z.discriminatedUnion("kind", [
   z.object({
@@ -435,6 +435,8 @@ export const nightRuntimeSchema = z.object({
 export type NightRuntime = z.infer<typeof nightRuntimeSchema>;
 export const taskSchema = z.object({
   id: z.string(),
+  /** CUSTOM(task-numbers): the short, sequential reference shown as `#42`; 0 on pre-v10 data. */
+  number: z.number().int().min(0).default(0),
   workspaceId: z.string().nullable(),
   title: z.string().min(1),
   description: z.string(),
@@ -679,6 +681,8 @@ export const dataSchema = z
   .object({
     schemaVersion: z.literal(DATA_SCHEMA_VERSION).default(DATA_SCHEMA_VERSION),
     revision: z.number().int().nonnegative().default(0),
+    /** CUSTOM(task-numbers): the next short ticket number; it only moves forward. */
+    nextTaskNumber: z.number().int().min(1).default(1),
     serverId: z.string().nullable().default(null),
     settings: settingsSchema.default(() => settingsSchema.parse({})),
     // Timestamp owns a native pin; null respects manual intervention for this stage.
@@ -832,9 +836,11 @@ export function newTask(
   title: string,
   now: string,
   stage = "backlog",
+  number = 0,
 ): Task {
   return {
     id,
+    number,
     title,
     description: "",
     workspaceId: null,

@@ -253,6 +253,7 @@ export function mergeTimeline(
 }
 
 interface TaskInfo {
+  number: number; // CUSTOM(task-numbers)
   title: string;
   projectId: string | null;
   projectName: string;
@@ -285,6 +286,7 @@ function taskInfo(
     newest?.projectName ||
     "";
   return {
+    number: card?.number ?? task?.number ?? 0, // CUSTOM(task-numbers)
     title: card?.title ?? task?.title ?? newest?.taskTitle ?? "",
     projectId: projectId ?? null,
     projectName,
@@ -345,6 +347,7 @@ export function buildReportTasks(
     const info = taskInfo(source, taskId, recordsOf(taskEvents, taskReports));
     tasks.push({
       taskId,
+      number: info.number,
       title: info.title,
       projectId: info.projectId,
       projectName: info.projectName,

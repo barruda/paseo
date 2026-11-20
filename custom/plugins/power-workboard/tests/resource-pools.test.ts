@@ -284,7 +284,7 @@ it("saving the board settings keeps the pools", async () => {
 
 it("stored data from before the pools keeps its orchestrators", () => {
   const stored = {
-    schemaVersion: 9,
+    schemaVersion: 10,
     settings: { autoArchive: true },
     orchestrators: [
       { id: "a", name: "Default", projectId: null },
