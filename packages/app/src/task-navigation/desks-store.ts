@@ -195,7 +195,7 @@ function createDesk(id: string, name: string): Desk {
 }
 /** CUSTOM(assistant-desk): the Desk that holds the Projects Assistant chat. */
 export const ASSISTANT_DESK_ID = "projects-assistant";
-const ASSISTANT_DESK_NAME = "Projects Assistant";
+const ASSISTANT_DESK_NAME = "Project Manager";
 
 /**
  * CUSTOM(assistant-desk): pure layout rule of showAssistantChat. The tab of the same chat is
@@ -233,7 +233,12 @@ export function showAssistantChatInDesk(
 
 export const initialDesks = (): Desk[] => [createDesk("primary", "Primary tasks")];
 
-function migrateLegacyDesk(desk: LegacyDesk | Desk): Desk {
+function migrateLegacyDesk(persisted: LegacyDesk | Desk): Desk {
+  // CUSTOM(project-manager-rename): rename the assistant Desk saved under its old default name.
+  const desk =
+    persisted.id === ASSISTANT_DESK_ID && persisted.name === "Projects Assistant"
+      ? { ...persisted, name: ASSISTANT_DESK_NAME }
+      : persisted;
   if ("layout" in desk) return { ...desk, layout: normalizeLayout(desk.layout) };
   const tabs = [...(desk.preview ? [desk.preview] : []), ...desk.tabs];
   if (tabs.length === 0) return createDesk(desk.id, desk.name);

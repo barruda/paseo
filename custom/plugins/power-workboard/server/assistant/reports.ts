@@ -1,4 +1,4 @@
-// CUSTOM(assistant-reports): the Projects Assistant's report entries (`board_report`), one JSON
+// CUSTOM(assistant-reports): the Project Manager's report entries (`board_report`), one JSON
 // object per line in `plugin-data/power-workboard/reports/YYYY-MM-DD.jsonl` with the history's
 // retention, and the Projects Reports views: the tickets with actions and one ticket's timeline,
 // where the history the server writes by itself is merged with the assistant's entries.

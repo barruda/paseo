@@ -1,4 +1,4 @@
-// CUSTOM(projects-assistant): RPCs of the Projects Assistant. The app's Settings page calls the two
+// CUSTOM(projects-assistant): RPCs of the Project Manager. The app's Settings page calls the two
 // settings RPCs by name (`plugin.invoke(name, input)`), so keep those names stable.
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
@@ -99,7 +99,7 @@ export const assistantActionRpc = defineRpc({
 });
 
 /**
- * Opens the Projects Assistant chat: returns the current chat agent, creating one when there is
+ * Opens the Project Manager chat: returns the current chat agent, creating one when there is
  * none, it is archived or gone, or `fresh` asks for a new conversation.
  */
 export const assistantChatOpenRpc = defineRpc({

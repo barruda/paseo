@@ -1,4 +1,4 @@
-// CUSTOM(assistant-quick): messages sent to the Projects Assistant from outside its chat (the
+// CUSTOM(assistant-quick): messages sent to the Project Manager from outside its chat (the
 // sidebar status row, `/assistant`, `paseo plugin rpc`), and the short classified ack the
 // assistant gives each one before its long work. Shared by the server, the client and the
 // external contract documented in README.md.

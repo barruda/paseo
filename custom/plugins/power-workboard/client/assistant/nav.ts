@@ -1,5 +1,5 @@
 // CUSTOM(projects-assistant): state shared by the Projects Dashboard, Conversations and Reports
-// pages, now tabs of the Power Workboard (CUSTOM(workboard-inner-pages)). They come from this
+// pages, now tabs of the Workboard (CUSTOM(workboard-inner-pages)). They come from this
 // plugin's bundle, so a module-level store is enough to hand the selected agent between them.
 // The surface ids below name the pages; they are no longer surfaces of their own.
 import { useSyncExternalStore } from "react";
@@ -37,7 +37,7 @@ export function useConversationSelection(): Selection {
 }
 
 /**
- * The Power Workboard gives its pages a `navigation.openDeskSurface` that switches its tab
+ * The Workboard gives its pages a `navigation.openDeskSurface` that switches its tab
  * (`withPageNavigation` in workboard-pages.ts). It is not in the published plugin types, hence the
  * cast. Returns false when there is no such navigation.
  */
@@ -117,7 +117,7 @@ export function setScreenOpener(open: ScreenOpener | null): void {
   screenOpener = open;
 }
 
-/** Opens the Power Workboard on its Reports tab with this ticket. False when the host can't. */
+/** Opens the Workboard on its Reports tab with this ticket. False when the host can't. */
 export function openTaskReport(taskId: string): boolean {
   if (!screenOpener) return false;
   requestReportTask(taskId);
@@ -133,7 +133,7 @@ export function canOpenTaskReport(): boolean {
   return screenOpener !== null;
 }
 
-// CUSTOM(assistant-desk): the chat opens in the app's Projects Assistant Desk, which reuses one
+// CUSTOM(assistant-desk): the chat opens in the app's Project Manager Desk, which reuses one
 // tab for it. The flag tells the app it is the chat even before its session lists the
 // agent (a chat created a moment ago); the pinned plugin types lack it, hence the cast.
 type OpenAgentWithSidebar = (input: {
@@ -142,7 +142,7 @@ type OpenAgentWithSidebar = (input: {
   assistantSidebar?: boolean;
 }) => void;
 
-/** Opens the Projects Assistant chat in the app's Projects Assistant Desk. */
+/** Opens the Project Manager chat in the app's Project Manager Desk. */
 export function openAssistantChat(
   navigation: Pick<NonNullable<PluginSurfaceProps["navigation"]>, "openAgent">,
   agentId: string,

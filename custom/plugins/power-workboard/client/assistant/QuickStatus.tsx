@@ -1,4 +1,4 @@
-// CUSTOM(assistant-quick): the "Projects Assistant status" row of the app's sidebar footer, and
+// CUSTOM(assistant-quick): the "Project Manager status" row of the app's sidebar footer, and
 // the popover to write a message to the assistant from any screen. The row shows the assistant's
 // short ack of the newest message (ok, needs input, error, or pending); pressing it opens the
 // assistant conversation at that message. CUSTOM(status-bar): on hosts with the app status bar,
@@ -48,10 +48,10 @@ import { openAssistantChat } from "./nav"; // CUSTOM(assistant-desk)
 
 const strings = {
   en: {
-    idle: "Projects Assistant",
+    idle: "Project Manager",
     pending: "Waiting for the assistant…",
-    newMessage: "New message to the Projects Assistant",
-    placeholder: "Message the Projects Assistant",
+    newMessage: "New message to the Project Manager",
+    placeholder: "Message the Project Manager",
     send: "Send",
     sending: "Sending…",
     recent: "Recent",

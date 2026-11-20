@@ -8,13 +8,13 @@ export interface AssistantDeskStrings {
 
 export const assistantDeskStringsEn: AssistantDeskStrings = {
   compacted: "This session ended and was compacted automatically.",
-  ended: "This Projects Assistant chat has ended.",
+  ended: "This Project Manager chat has ended.",
   goToNew: "Go to the new session",
 };
 
 export const assistantDeskStringsPtBr: AssistantDeskStrings = {
   compacted: "A sessão foi finalizada e compactada automaticamente.",
-  ended: "Esta conversa do Projects Assistant foi encerrada.",
+  ended: "Esta conversa do Project Manager foi encerrada.",
   goToNew: "Ir para a nova sessão",
 };
 

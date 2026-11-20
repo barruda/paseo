@@ -1,4 +1,4 @@
-// CUSTOM(projects-assistant): the Projects Assistant chat. A real Paseo agent, started in an empty
+// CUSTOM(projects-assistant): the Project Manager chat. A real Paseo agent, started in an empty
 // folder and labeled `pwb/assistant-chat`, that manages the board through the tools below. The
 // tools are attached in `agent.session_open` (see index.server.ts) on every create and resume.
 import os from "node:os";
@@ -50,13 +50,13 @@ import {
 
 export const CHAT_LABEL = "pwb/assistant-chat";
 
-// CUSTOM(agent-profiles): the role text is the seed of the assistant profile's system-prompt.md;
+// CUSTOM(agent-profiles): the role text is the seed of the Project Manager profile's system-prompt.md;
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
 const BOARD_TOOLS =
   "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin";
 
 // CUSTOM(assistant-reply-protocol): the block every reply ends with. The doc path is the main
-// checkout's, since the assistant runs in an empty folder; the words come from the parser.
+// checkout's, since the Project Manager runs in an empty folder; the words come from the parser.
 export const REPLY_PROTOCOL_DOC =
   "/home/bruno/projetos/paseo/custom/plugins/power-workboard/docs/assistant-reply-protocol.md";
 export const REPLY_PROTOCOL_RULE = [
@@ -72,14 +72,14 @@ export const REPLY_PROTOCOL_RULE = [
 ].join("\n");
 
 export const ASSISTANT_ROLE = [
-  "You are the Projects Assistant: the user's manager for their Power Workboard tasks and orchestrators, in Tasks mode. You act for the user: they want decisions made and reported, not questions.",
+  "You are the Project Manager: the user's manager for their Workboard tasks and orchestrators, in Tasks mode. You act for the user: they want decisions made and reported, not questions.",
   `Manage tasks through your board tools (${BOARD_TOOLS}): create, move, start, continue and deliver every task there. Never edit a project's code, commit or merge outside board_task_action.`,
   "To review and diagnose, read freely: git log, git diff and git show in a task's worktree or the project's checkout, read any file, and run the task's tests in its worktree.",
   "Do not create Paseo agents to do a task: tasks go through the board so the orchestrators run them. A read-only reviewer subagent that helps you review a diff is fine. The one exception is the ship agent below.",
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
   "Write each task description as a complete ticket: goal, context, acceptance criteria and what is out of scope. If the project or the goal is unclear, make the most reasonable choice, say it, and create the task; ask only when you cannot guess.",
   [
-    "When a task lands in Ready to review, size the review to its risk. Each project's review policy (self or fresh-agent) is in board_overview and comes from the assistant's settings: follow it, and treat a big or risky change as fresh-agent even in a self project.",
+    "When a task lands in Ready to review, size the review to its risk. Each project's review policy (self or fresh-agent) is in board_overview and comes from the Project Manager's settings: follow it, and treat a big or risky change as fresh-agent even in a self project.",
     "- Low risk (a project whose review is self, and a small change that is easy to revert): review the diff against each acceptance criterion, yourself or with a read-only reviewer subagent. If it is good, use board_task_action merge-now with wait=true without asking, create follow-up tasks for the non-blocking points, then report what you did.",
     "- Critical (a project whose review is fresh-agent in board_overview, or a big or risky change in any project): create a review task with start=true so a fresh agent, not the author, reviews the diff against the acceptance criteria without changing code. Read its report, tell the user what merge-now or mark-done will do, and wait for their ok.",
     "- Has problems: board_task_action continue with your feedback.",
@@ -456,7 +456,7 @@ export function chatTools(
     define({
       name: "board_overview",
       description:
-        "Overview of the Power Workboard: projects, orchestrators, columns with task counts, the tasks that need the user, and the Projects Assistant settings.",
+        "Overview of the Workboard: projects, orchestrators, columns with task counts, the tasks that need the user, and the Project Manager settings.",
       input: z.object({}),
       async execute() {
         const snapshot = board().snapshot();
@@ -494,7 +494,7 @@ export function chatTools(
             )
             .join("\n")}`,
           `Needs you:\n${needsYou.map((n) => `- ${n.taskId} | ${n.title} | project: ${n.projectName || n.projectId || "-"} | orchestrator: ${n.orchestratorName ?? "-"} | agent: ${n.agentId ?? "-"} | attempt: ${n.attempt ?? "-"} | since: ${n.since} | can merge: ${n.canMerge ? "yes" : "no"} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
-          `Assistant: ${settings.enabled ? "on" : "off"}, default action ${settings.defaultAction}; per project: ${
+          `Project Manager: ${settings.enabled ? "on" : "off"}, default action ${settings.defaultAction}; per project: ${
             Object.entries(settings.projects)
               .map(
                 ([id, p]) =>
@@ -843,12 +843,12 @@ export function chatTools(
     define({
       name: "board_reload_plugin",
       description:
-        "Reload the Power Workboard plugin after its code or settings changed. The reload runs when this turn ends, so board tools keep working for the rest of the turn; the new code is live on the next turn. Use this instead of running `plugin reload` yourself: a direct reload retires the board tools until the next message.",
+        "Reload the Workboard plugin after its code or settings changed. The reload runs when this turn ends, so board tools keep working for the rest of the turn; the new code is live on the next turn. Use this instead of running `plugin reload` yourself: a direct reload retires the board tools until the next message.",
       input: z.object({}),
       async execute() {
         if (!board().requestPluginReload())
           return text(
-            "No Projects Assistant chat is open, so there is no turn to wait for; reload the plugin yourself.",
+            "No Project Manager chat is open, so there is no turn to wait for; reload the plugin yourself.",
           );
         return text(
           "The plugin will reload when this turn ends. Board tools keep working until then.",
@@ -858,7 +858,7 @@ export function chatTools(
     define({
       name: "board_history",
       description:
-        "The Projects Assistant's history, newest first, one line per event.",
+        "The Project Manager's history, newest first, one line per event.",
       input: z.object({
         limit: z.number().int().min(1).max(50).default(20),
         taskId: z.string().optional(),

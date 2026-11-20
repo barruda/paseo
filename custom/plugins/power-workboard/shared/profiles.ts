@@ -1,5 +1,5 @@
 // CUSTOM(agent-profiles): a profile is the system prompt, skills and memory of an orchestrator or
-// of the Projects Assistant chat. Settings live in the board store (see `skillSelectionSchema`
+// of the Project Manager chat. Settings live in the board store (see `skillSelectionSchema`
 // in the two settings schemas); the content lives in a Claude Code plugin folder per profile.
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
@@ -12,7 +12,7 @@ export const skillSelectionSchema = z.object({
 });
 export type SkillSelection = z.infer<typeof skillSelectionSchema>;
 
-/** The fixed id of the Projects Assistant's profile; an orchestrator's is its id. */
+/** The fixed id of the Project Manager's profile; an orchestrator's is its id. */
 export const ASSISTANT_PROFILE = "assistant";
 const profileInput = z.object({ profile: z.string().min(1).max(200) });
 

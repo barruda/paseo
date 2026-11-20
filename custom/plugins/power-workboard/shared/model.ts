@@ -29,7 +29,7 @@ export const stageSchema = z
   .refine((id) => id !== "conflict");
 export type Stage = z.infer<typeof stageSchema>;
 export type BoardStage = Stage | "conflict";
-// Power Workboard uses its own labels, so it never takes over the original Workboard's columns.
+// The plugin uses its own labels, so it never takes over the original Workboard's columns.
 export const DEFAULT_LABELS: Record<StageKind, string> = {
   inbox: "pwb:inbox",
   todo: "pwb:backlog",
@@ -874,7 +874,7 @@ export function cardsForStage(
 
 // CUSTOM(hidden-board-agents): every agent the board starts (orchestrator runs, reviews, auto-fixes)
 // carries this label. The app keeps them out of the sidebar and never notifies for them; the
-// Projects Assistant reports on them instead. Same string as BOARD_AGENT_LABEL in
+// Project Manager reports on them instead. Same string as BOARD_AGENT_LABEL in
 // packages/protocol/src/board-agents.ts (the plugin builds against a pinned client).
 export const BOARD_AGENT_LABEL = "paseo.board-agent";
 export const BOARD_AGENT_LABELS: Readonly<Record<string, string>> =

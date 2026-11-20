@@ -1,4 +1,4 @@
-// CUSTOM(assistant-reply-protocol): the short `pwb` block the Projects Assistant ends each reply
+// CUSTOM(assistant-reply-protocol): the short `pwb` block the Project Manager ends each reply
 // with, and its parser. The protocol is described in docs/assistant-reply-protocol.md; the keys
 // and enums below are its source of truth (a test checks the doc lists the same values).
 import { z } from "zod";
@@ -387,7 +387,7 @@ export interface ReplyTimelineItem {
   data: ReplyItemData;
 }
 
-/** The label the server's `CHAT_LABEL` puts on the Projects Assistant's chat agent. */
+/** The label the server's `CHAT_LABEL` puts on the Project Manager's chat agent. */
 export const ASSISTANT_CHAT_AGENT_LABEL = "pwb/assistant-chat";
 
 /**
@@ -398,7 +398,7 @@ export const ASSISTANT_CHAT_AGENT_LABEL = "pwb/assistant-chat";
 export const AGENT_REPLACES_LABEL = "paseo.replaces-agent";
 
 /**
- * The item that replaces a reply ending in a `pwb` block, only in the Projects Assistant's chat.
+ * The item that replaces a reply ending in a `pwb` block, only in the Project Manager's chat.
  * `labels` are the chat agent's, which hosts without CUSTOM(timeline-transformer-agent) don't
  * pass: the reply then stays as is.
  */

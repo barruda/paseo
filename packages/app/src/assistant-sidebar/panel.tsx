@@ -21,9 +21,9 @@ const ThemedBot = withUnistyles(Bot);
 
 // English only, like the other custom surfaces.
 const presentation = {
-  label: () => "Projects Assistant",
-  subtitle: () => "The Projects Assistant Desk, mirrored here",
-  tooltip: () => "Projects Assistant",
+  label: () => "Project Manager",
+  subtitle: () => "The Project Manager Desk, mirrored here",
+  tooltip: () => "Project Manager",
   icon: ThemedBot,
 } satisfies PanelPresentation;
 
@@ -77,7 +77,7 @@ function AssistantSidebarPanel() {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyText}>
-          The Projects Assistant Desk has no chat open. Open the Desk to start or pick one.
+          The Project Manager Desk has no chat open. Open the Desk to start or pick one.
         </Text>
         <Button
           variant="secondary"
@@ -85,7 +85,7 @@ function AssistantSidebarPanel() {
           onPress={openDesk}
           testID="projects-assistant-open-desk"
         >
-          Open Projects Assistant Desk
+          Open Project Manager Desk
         </Button>
       </View>
     );

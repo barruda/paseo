@@ -1,4 +1,4 @@
-// CUSTOM(agent-profiles): the profile of an orchestrator or of the Projects Assistant chat. The
+// CUSTOM(agent-profiles): the profile of an orchestrator or of the Project Manager chat. The
 // settings (skills, memory) are in the board store; the content is a Claude Code plugin folder:
 //   <profiles>/<id>/.claude-plugin/plugin.json   {"name": "pwb-...", "description": "..."}
 //   <profiles>/<id>/skills/<name>/SKILL.md       the profile's own skills
@@ -108,7 +108,7 @@ export class Profiles {
         `${JSON.stringify(
           {
             name: pluginName,
-            description: `Power Workboard profile of ${ref.label}`,
+            description: `Workboard profile of ${ref.label}`,
           },
           null,
           2,

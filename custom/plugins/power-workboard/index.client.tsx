@@ -59,7 +59,7 @@ const SettingsSurface = (props: Parameters<typeof WorkboardScreen>[0]) => (
   </QueryClientProvider>
 );
 
-// CUSTOM(workboard-inner-pages): the Projects Assistant chat, dashboard, conversations and reports
+// CUSTOM(workboard-inner-pages): the Project Manager chat, dashboard, conversations and reports
 // are tabs inside WorkboardScreen, not surfaces of their own (they were Desk chips before).
 
 export default function contribute(client: PluginClientContext) {
@@ -67,20 +67,20 @@ export default function contribute(client: PluginClientContext) {
   const removeRestartPill = contributeRestartChatPill(client); // CUSTOM(assistant-restart-pill)
   const removeSidebar = client.addSidebarItem({
     id: "power-workboard",
-    title: "Power Workboard",
+    title: "Workboard",
     icon: "Workflow",
     surface: "power-workboard",
   });
   const removeSettings = client.addSettingsScreen({
     id: "power-workboard-settings",
-    title: "Power Workboard",
+    title: "Workboard",
     icon: "Settings",
     Component: SettingsSurface,
   });
   // CUSTOM(workboard-tab)
   const removePanel = client.addWorkspacePanel({
     id: "power-workboard",
-    title: "Power Workboard",
+    title: "Workboard",
     icon: "Workflow",
     context: "workspace",
     locations: ["workspace"],
@@ -88,7 +88,7 @@ export default function contribute(client: PluginClientContext) {
   });
   const removeTabCommand = client.addCommandCenterItem({
     id: "power-workboard-open-tab",
-    title: "Open Power Workboard tab",
+    title: "Open Workboard tab",
     icon: "Workflow",
     keywords: ["power", "workboard", "orchestrator", "kanban", "tab"],
     context: "workspace",
@@ -96,14 +96,14 @@ export default function contribute(client: PluginClientContext) {
   });
   const removeCommand = client.addCommandCenterItem({
     id: "power-workboard-open",
-    title: "Power Workboard",
+    title: "Workboard",
     icon: "Workflow",
     keywords: ["power", "workboard", "orchestrator", "tasks"],
     context: "global",
     onSelect: (context) => context.openSurface("power-workboard"),
   });
   // CUSTOM(assistant-reports): Projects Reports from anywhere, as a full page.
-  // CUSTOM(workboard-inner-pages): the Power Workboard page on its Reports tab. The pinned plugin
+  // CUSTOM(workboard-inner-pages): the Workboard page on its Reports tab. The pinned plugin
   // types predate `openScreen` with params, hence the cast.
   const removeReportsCommand = client.addCommandCenterItem({
     id: "projects-reports-open",
@@ -131,7 +131,7 @@ export default function contribute(client: PluginClientContext) {
   const removeWriteTicket = client.addSlashCommand({
     name: "write-ticket",
     description:
-      "Power Workboard: close this refinement and write the ticket into the task.",
+      "Workboard: close this refinement and write the ticket into the task.",
     argumentHint: "[what to focus on]",
     context: "agent",
     async onSubmit({ args, agent, rpc }) {
@@ -163,7 +163,7 @@ export default function contribute(client: PluginClientContext) {
     (host.addStatusBarItem
       ? host.addStatusBarItem({
           id: "projects-assistant-status",
-          title: "Projects Assistant",
+          title: "Project Manager",
           side: "left",
           priority: 100,
           agentLabel: ASSISTANT_CHAT_LABEL,
@@ -171,13 +171,12 @@ export default function contribute(client: PluginClientContext) {
         })
       : host.addSidebarFooterItem?.({
           id: "projects-assistant-status",
-          title: "Projects Assistant status",
+          title: "Project Manager status",
           Component: QuickStatusItem,
         })) ?? (() => {});
   const removeAssistantCommand = client.addSlashCommand({
     name: "assistant",
-    description:
-      "Projects Assistant: send this message to the assistant without leaving this chat",
+    description: "Project Manager: send this message without leaving this chat",
     argumentHint: "<message>",
     context: "agent",
     async onSubmit({ args, rpc }) {
@@ -186,7 +185,7 @@ export default function contribute(client: PluginClientContext) {
     },
   });
   // CUSTOM(assistant-reply-protocol): a reply ending in a ```pwb block becomes one item, only in
-  // the Projects Assistant's chat: the host passes the chat's agent to the transformer
+  // the Project Manager's chat: the host passes the chat's agent to the transformer
   // (CUSTOM(timeline-transformer-agent)), which the pinned plugin types lack, hence the cast.
   // Other agents keep the reply as Markdown. Registered before the report card, since the host uses
   // the first transformer that answers. Ids in the block open the board through the client's

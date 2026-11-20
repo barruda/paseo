@@ -70,7 +70,7 @@ describe("profile folders", () => {
     expect(name).toMatch(/^pwb-[a-z0-9-]+-1a2b3c$/);
     expect(name.length).toBeLessThanOrEqual(4 + 30 + 7);
     expect(pluginNameFor(ID, "!!!")).toBe("pwb-orchestrator-1a2b3c");
-    expect(pluginNameFor(ASSISTANT_PROFILE, "Projects Assistant")).toBe(
+    expect(pluginNameFor(ASSISTANT_PROFILE, "Project Manager")).toBe(
       "pwb-assistant",
     );
   });
@@ -79,11 +79,11 @@ describe("profile folders", () => {
     const profiles = new Profiles(await temporary());
     const view = await profiles.read({
       id: ASSISTANT_PROFILE,
-      label: "Projects Assistant",
+      label: "Project Manager",
       seedPrompt: ASSISTANT_SEED_PROMPT,
     });
     expect(view.pluginName).toBe("pwb-assistant");
-    expect(view.systemPrompt).toContain("You are the Projects Assistant");
+    expect(view.systemPrompt).toContain("You are the Project Manager");
     expect(view.systemPrompt).toContain(
       "Answer in the user's language, briefly.",
     );
@@ -405,7 +405,7 @@ describe("the engine applies the profile", () => {
       const start = (s.host.startAgentIn as any).mock.calls[0][1];
       const directory = path.join(s.profilesDirectory, ASSISTANT_PROFILE);
       expect(start.prompt).toContain(CHAT_INSTRUCTIONS);
-      expect(start.systemPrompt).toContain("You are the Projects Assistant");
+      expect(start.systemPrompt).toContain("You are the Project Manager");
       expect(start.providerOptions).toEqual({
         plugins: [{ type: "local", path: directory }],
         settings: { autoMemoryDirectory: path.join(directory, "memory") },

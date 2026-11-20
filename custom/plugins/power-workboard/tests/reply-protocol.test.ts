@@ -230,7 +230,7 @@ describe("parseReplyBlock", () => {
   it("reads a full block", () => {
     const reply = parseReplyBlock(
       [
-        "feito: merge abas internas do Power Workboard [10b1b0d7]",
+        "feito: merge abas internas do Workboard [10b1b0d7]",
         "feito: revisão retomada após o limite [ed28643e]",
         "aviso: abas internas só aparecem depois de instalar o app",
         "bloqueio: CI fora do ar",
@@ -242,7 +242,7 @@ describe("parseReplyBlock", () => {
       done: [
         {
           verb: "merge",
-          text: "abas internas do Power Workboard",
+          text: "abas internas do Workboard",
           taskIds: ["10b1b0d7"],
         },
         {

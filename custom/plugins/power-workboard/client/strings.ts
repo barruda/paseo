@@ -241,7 +241,7 @@ const zh = {
     recommended: "推荐",
     why: "原因",
   },
-  title: "Power Workboard",
+  title: "Workboard",
   addTask: "新建任务",
   search: "搜索任务或项目",
   allProjects: "全部项目",
@@ -569,8 +569,8 @@ const zh = {
     "Nothing to dismiss for this task": "该任务没有可忽略的事项。",
     "Only a task in review or done with a workspace can be delivered":
       "只有带 workspace 且处于审核或完成的任务可以交付。",
-    "This agent is not managed by the Projects Assistant":
-      "该 agent 不由 Projects Assistant 管理。",
+    "This agent is not managed by the Project Manager":
+      "该 agent 不由 Project Manager 管理。",
     // CUSTOM(assistant-cards)
     "This card is from an earlier run of the task":
       "这张卡片来自该任务较早的一次运行。",
@@ -593,8 +593,8 @@ const zh = {
     "The git action failed": "git 操作失败。",
     "Add a Ready to start group first": "请先添加 Ready to start 分组。",
     "Choose a project for this task": "请先为任务选择项目。",
-    "This chat is not a Power Workboard refinement":
-      "这个会话不是 Power Workboard 的完善会话。",
+    "This chat is not a Workboard refinement":
+      "这个会话不是 Workboard 的完善会话。",
     "The task already started": "任务已经开始。",
     "The ticket is already being written": "工单正在撰写中。",
     "The agent wrote no ticket": "Agent 没有写出工单。",
@@ -970,7 +970,7 @@ const en: typeof zh = {
     recommended: "recommended",
     why: "Why",
   },
-  title: "Power Workboard",
+  title: "Workboard",
   addTask: "New task",
   search: "Search tasks or projects",
   allProjects: "All projects",
@@ -1320,8 +1320,8 @@ const en: typeof zh = {
     "Nothing to dismiss for this task": "Nothing to dismiss for this task.",
     "Only a task in review or done with a workspace can be delivered":
       "Only a task in review or done with a workspace can be delivered.",
-    "This agent is not managed by the Projects Assistant":
-      "This agent is not managed by the Projects Assistant.",
+    "This agent is not managed by the Project Manager":
+      "This agent is not managed by the Project Manager.",
     // CUSTOM(assistant-cards)
     "This card is from an earlier run of the task":
       "This card is from an earlier run of the task.",
@@ -1344,8 +1344,8 @@ const en: typeof zh = {
     "The git action failed": "The git action failed.",
     "Add a Ready to start group first": "Add a Ready to start group first.",
     "Choose a project for this task": "Choose a project for this task first.",
-    "This chat is not a Power Workboard refinement":
-      "This chat is not a Power Workboard refinement. Open one from a card's Refine button.",
+    "This chat is not a Workboard refinement":
+      "This chat is not a Workboard refinement. Open one from a card's Refine button.",
     "The task already started": "The task already started.",
     "The ticket is already being written":
       "The ticket is already being written.",

@@ -1,6 +1,6 @@
-// CUSTOM(projects-assistant): Settings > Bruno's Customizations > Projects Assistant. What the
+// CUSTOM(projects-assistant): Settings > Bruno's Customizations > Project Manager. What the
 // assistant does with a task's work when its agent finishes, per project. The settings live in the
-// Power Workboard plugin on the host; this page reads and writes them through its RPCs.
+// Workboard plugin on the host; this page reads and writes them through its RPCs.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
@@ -64,7 +64,7 @@ const AUTO_FIX_OPTIONS = Array.from({ length: MAX_AUTO_FIXES + 1 }, (_, index) =
 export function BrunoProjectsAssistantPage({ serverId }: { serverId: string | null }) {
   if (!serverId) {
     return (
-      <Text style={settingsStyles.rowHint}>Connect a host to set up the Projects Assistant.</Text>
+      <Text style={settingsStyles.rowHint}>Connect a host to set up the Project Manager.</Text>
     );
   }
   return <ProjectsAssistantSettings serverId={serverId} />;
@@ -160,14 +160,14 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
   if (!plugin) {
     return (
       <Text style={settingsStyles.rowHint}>
-        The Power Workboard plugin is not installed on this host, or the host is offline. The
-        Projects Assistant is part of it.
+        The Workboard plugin is not installed on this host, or the host is offline. The Project
+        Manager is part of it.
       </Text>
     );
   }
 
   return (
-    <SettingsSection title="Projects Assistant">
+    <SettingsSection title="Project Manager">
       <Text style={settingsStyles.rowHint}>
         Works in Tasks mode. Decides what happens to a task&apos;s work when its agent finishes.
       </Text>

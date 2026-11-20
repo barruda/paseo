@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# CUSTOM(assistant-quick): send a message to the Projects Assistant from outside Paseo and print its
+# CUSTOM(assistant-quick): send a message to the Project Manager from outside Paseo and print its
 # ack as JSON: {"id","status":"ok|needs-input|error","message","agentId","sentAt","link"}.
-# A plugin RPC lasts at most 25 s, so this polls until the assistant answers or --timeout passes;
+# A plugin RPC lasts at most 25 s, so this polls until the Project Manager answers or --timeout passes;
 # a message still unanswered then comes out as status "error" (it stays in the chat).
 #
 #   ask-assistant [--source NAME] [--timeout SECONDS] [--open] MESSAGE...
@@ -59,17 +59,17 @@ fail() {
 }
 
 input="$(jq -n --arg t "$text" --arg s "$source_name" '{text: $t, source: $s, waitMs: 25000}')"
-ack="$(rpc workboard.assistant.ask "$input")" || fail "Could not call the Projects Assistant (is the daemon up and the paseo CLI new enough?)"
+ack="$(rpc workboard.assistant.ask "$input")" || fail "Could not call the Project Manager (is the daemon up and the paseo CLI new enough?)"
 
 deadline=$((SECONDS + timeout_s))
 while [[ "$(jq -r .status <<<"$ack")" == "pending" ]]; do
   if ((SECONDS >= deadline)); then
-    ack="$(jq --arg m "No answer from the assistant in ${timeout_s} s; the message is in its chat." \
+    ack="$(jq --arg m "No answer from the Project Manager in ${timeout_s} s; the message is in its chat." \
       '.status = "error" | .message = $m' <<<"$ack")"
     break
   fi
   get="$(jq -n --arg id "$(jq -r .id <<<"$ack")" '{id: $id, waitMs: 25000}')"
-  ack="$(rpc workboard.assistant.quick.get "$get")" || fail "Lost the daemon while waiting for the assistant"
+  ack="$(rpc workboard.assistant.quick.get "$get")" || fail "Lost the daemon while waiting for the Project Manager"
 done
 
 jq . <<<"$ack"
