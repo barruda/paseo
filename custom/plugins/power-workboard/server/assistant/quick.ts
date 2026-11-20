@@ -24,6 +24,10 @@ export interface QuickInboxDeps {
   activity(agentId: string): Promise<Activity | null>;
   lastReply(agentId: string): Promise<string | null>;
   serverId(): string | null;
+  /** CUSTOM(assistant-wake): the tasks still waiting for the assistant, rendered for the prompt. */
+  needsYou?(): { text: string; ids: string[] };
+  /** CUSTOM(assistant-wake): mark those tasks as told once the message was sent. */
+  markTold?(ids: string[]): void;
   now?: () => number;
   /** How often the watcher looks at the chat. */
   pollMs?: number;
@@ -73,10 +77,18 @@ export class QuickInbox {
       const agentId = await this.deps.openChat();
       entry.agentId = agentId;
       const before = await this.deps.lastReply(agentId);
+      // CUSTOM(assistant-wake): every wake carries the Needs you list.
+      const needsYou = this.deps.needsYou?.() ?? { text: "", ids: [] };
       await this.deps.send(
         agentId,
-        quickPrompt(entry.id, input.text, input.source),
+        quickPrompt(entry.id, input.text, input.source, needsYou.text),
       );
+      try {
+        this.deps.markTold?.(needsYou.ids);
+      } catch (error) {
+        // The message was sent; a failed mark only means the next wake says it again.
+        console.error("Could not mark Needs you tasks told:", reason(error));
+      }
       entry.sentAt = this.stamp();
       this.watch(entry, agentId, before);
     } catch (error) {

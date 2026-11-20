@@ -158,6 +158,7 @@ it("the session_open hook attaches the tools only to the chat agent's own sessio
       "board_set_project_policy",
       "board_set_default_action",
       "board_run_orchestrator",
+      "board_reload_plugin",
       "board_history",
       "board_read_agent",
     ]);
@@ -664,7 +665,10 @@ it("board_set_project_policy creates a policy from the default action and update
 it("board_set_project_policy refuses fresh-agent to self, and unknown projects list the valid ones", async () => {
   const c = await chat();
   try {
-    await c.run("board_set_project_policy", { project: "p", review: "fresh-agent" });
+    await c.run("board_set_project_policy", {
+      project: "p",
+      review: "fresh-agent",
+    });
     const refused = await c.run("board_set_project_policy", {
       project: "p",
       review: "self",
@@ -674,14 +678,21 @@ it("board_set_project_policy refuses fresh-agent to self, and unknown projects l
     expect(refused.text).toContain("only the user changes that, in Settings");
     expect(c.store.current.assistant.settings.reviews.p).toBe("fresh-agent");
     expect(c.store.current.assistant.settings.projects.p).toBeUndefined();
-    const unknown = await c.run("board_set_project_policy", { project: "nope" });
+    const unknown = await c.run("board_set_project_policy", {
+      project: "nope",
+    });
     expect(unknown.isError).toBe(true);
     expect(unknown.text).toContain("p (Project)");
     // self to fresh-agent and self to self are allowed.
     const c2 = await chat();
     try {
       expect(
-        (await c2.run("board_set_project_policy", { project: "p", review: "self" })).isError,
+        (
+          await c2.run("board_set_project_policy", {
+            project: "p",
+            review: "self",
+          })
+        ).isError,
       ).toBeUndefined();
     } finally {
       c2.board.dispose();
@@ -694,10 +705,14 @@ it("board_set_project_policy refuses fresh-agent to self, and unknown projects l
 it("board_set_default_action saves a default and refuses merge", async () => {
   const c = await chat();
   try {
-    const result = await c.run("board_set_default_action", { action: "notify" });
+    const result = await c.run("board_set_default_action", {
+      action: "notify",
+    });
     expect(result.text).toBe("Default action: notify.");
     expect(c.store.current.assistant.settings.defaultAction).toBe("notify");
-    expect((await c.run("board_set_default_action", { action: "merge" })).isError).toBe(true);
+    expect(
+      (await c.run("board_set_default_action", { action: "merge" })).isError,
+    ).toBe(true);
     expect(c.store.current.assistant.settings.defaultAction).toBe("notify");
   } finally {
     c.board.dispose();
@@ -720,7 +735,8 @@ it("board_task_action merge-now with wait returns the final stage; without it, t
   const run = (input: Record<string, unknown>) =>
     tools.find((t) => t.name === "board_task_action")!.execute(input);
   const timer = setInterval(() => {
-    if (deliveryNow) deliveryNow = { ...deliveryNow, stage: stages[Math.min(++step, 2)] };
+    if (deliveryNow)
+      deliveryNow = { ...deliveryNow, stage: stages[Math.min(++step, 2)] };
   }, 250);
   try {
     const waited = await run({ taskId: "t", type: "merge-now", wait: true });
@@ -730,7 +746,11 @@ it("board_task_action merge-now with wait returns the final stage; without it, t
     expect(plain.text).toContain("runs in the background");
     // A delivery that ends in needs-you reports its reason and detail.
     fake.assistantAction.mockImplementationOnce(async () => {
-      deliveryNow = { stage: "needs-you", reason: "merge-conflict", detail: "CONFLICT in a.ts" };
+      deliveryNow = {
+        stage: "needs-you",
+        reason: "merge-conflict",
+        detail: "CONFLICT in a.ts",
+      };
     });
     const failed = await run({ taskId: "t", type: "merge-now", wait: true });
     expect(failed.text).toBe(

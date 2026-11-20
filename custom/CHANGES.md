@@ -6567,11 +6567,13 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     answer an agent's question or give the ok when it can do so with no real risk, fix small
     reversible blockers, and leave to the user only what is theirs, then report in 2-4 lines what
     it did and what is left. Its reply raises Paseo's usual "finished" notification. A busy chat
-    is retried later, never interrupted; without a chat nothing is sent. History records "Told
+    is retried every 10 s, never interrupted; without a chat nothing is sent. History records "Told
     the assistant". The queue lives in memory, so each delivery stores `toldAt` (cleared on every
     entry to Needs you): on start and on each refresh the board puts back every Needs you task
     without it, so a `plugin reload` or daemon restart does not drop the message, and a task
-    already told is not told again. A failed send also goes back on the next refresh.
+    already told is not told again until the 10-minute reminder. A failed send also goes back on
+    the next refresh. Every wake carries the whole list, not only the new tasks; see
+    [assistant-needs-you](#assistant-needs-you-every-wake-carries-the-needs-you-list).
   - **Projects Conversations** (the Conversations tab): orchestrator > task > the
     agents it started (never their subagents), the selected agent's conversation read through the
     timeline API (plugins cannot embed the real chat), report card, attempts, the orchestrator's
@@ -6588,8 +6590,10 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     to 120 s and returns the final stage, reason and detail), `board_run_orchestrator`,
     `board_set_project_policy` (merges the given fields into a project's policy, creating it from
     the default action; it refuses to change a review from `fresh-agent` to `self`, which only
-    the user does in Settings), `board_set_default_action`, `board_history`, `board_read_agent`
-    and `board_ack`. Projects and orchestrators can be given
+    the user does in Settings), `board_set_default_action`, `board_history`, `board_read_agent`,
+    `board_ack` and `board_reload_plugin` (defers the plugin reload to the end of the turn; see
+    [assistant-needs-you](#assistant-needs-you-every-wake-carries-the-needs-you-list)). Projects
+    and orchestrators can be given
     by id or name; an unknown one is an error that lists the valid ones. `board_get_task` also shows
     the task's worktree (path, branch, base, commits ahead, diffstat with new untracked files) and
     the read-only `board_task_diff` returns its diff, cut at `maxBytes` with a notice, so the
@@ -6650,6 +6654,47 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   and the plugin suite (both in the update script). Needs a daemon restart. In the app: a board
   task whose agent delegates to a background subagent stays In progress until the agent's final
   turn, then shows its report.
+
+## assistant-needs-you: every wake carries the Needs you list
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: Projects Assistant gets the Needs you list on every wake`
+- **Why:** A task finished at 14:29 with `needs_input` and the `[Board]` notice did not reach the
+  assistant while it answered two quick messages; the user had to ask why nothing moved. The
+  notice was not lost or deduplicated: the board retried every 90 s while the chat was busy, so
+  the batch landed about six minutes late, and a quick message never mentioned the parked task.
+  Separately, running `plugin reload` in the middle of the assistant's own turn retired the
+  attached `board_*` tools for the rest of that turn (`MCP error -32602: Tool ... not found`).
+- **What:**
+  - `assistantNeedsYouBrief()` renders every task on Needs you (id, title, project, reason and
+    detail, review policy, `waiting since <ISO> (<age>)`). The `[Board]` wake lists all of them,
+    not only the new ones; a quick message appends the same list and marks those tasks `toldAt`;
+    a user message's turn gets it steered in by `chatTurnStarted` (once per minute at most,
+    `activeTurnBehavior: "steer"` so the user's turn is never interrupted). A new chat (restart,
+    compaction) clears every `toldAt`, so it hears the whole list again.
+  - While the chat is busy the wake looks again every 10 s instead of 90 s, so the batch lands on
+    the first idle moment. `requeueUntold` sends one reminder for a task told 10 minutes ago with
+    no `board_report` or action since (`delivery.remindedAt`), and `board_report` now stamps
+    `delivery.reportedAt`, which suppresses it.
+  - `board_reload_plugin` defers the reload to the chat's `agent.turn_ended`
+    (`Workboard.requestPluginReload` / `chatTurnEnded`), so board tools stay attached for the whole
+    turn. A direct `plugin reload` still retires them until the next message: the daemon rebuilds
+    the MCP tool catalog per request from the attached plugin instance, and only reopens the stale
+    session at the start of the next prompt (`reloadStalePluginSession`). The role text now says
+    to use the tool and not a direct reload while the turn still needs the board.
+- **Files:** `server/workboard.ts`, `server/assistant/{chat,quick}.ts`, `server/host.ts`,
+  `shared/{assistant,quick}.ts`, `index.server.ts`,
+  `tests/assistant-{engine,quick,chat,reports}.test.ts`, `tests/host.test.ts`.
+- **Core files touched:** none. A full fix for a direct reload would need a daemon RPC that
+  reattaches plugin tools without interrupting a turn (follow-up; the current next-prompt reopen
+  is what the transcript shows working).
+- **Re-apply:** plugin-only. The live profile's `system-prompt.md` keeps its old reload sentence
+  until the user copies the new role text there (the seed only writes a missing file); new chats
+  and profiles get it.
+- **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
+  In the app: with a task in Needs you, send a quick message from the status bar and the reply
+  should handle that task too; leave another waiting 10 minutes and the board reminds the chat
+  once.
 
 ## agent-profiles: orchestrators and the Projects Assistant get their own prompt, skills and memory
 

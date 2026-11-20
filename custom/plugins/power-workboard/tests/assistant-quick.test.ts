@@ -58,6 +58,40 @@ describe("QuickInbox", () => {
     inbox.dispose();
   });
 
+  // CUSTOM(assistant-wake): every wake carries the current Needs you list.
+  it("a quick message carries the Needs you list and marks those tasks told", async () => {
+    const brief =
+      "- t1 | Task | project: P | review | waiting since 2026-09-23T00:00:00Z (6 min)";
+    const markTold = vi.fn();
+    const { inbox, send } = setup({
+      needsYou: () => ({ text: brief, ids: ["t1"] }),
+      markTold,
+    });
+    const asked = inbox.ask({ text: "do it", source: "app", waitMs: 20_000 });
+    await settle();
+    const [item] = inbox.list();
+    expect(send.mock.calls[0][1]).toContain("[Needs you]");
+    expect(send.mock.calls[0][1]).toContain(brief);
+    expect(send.mock.calls[0][1]).toContain(item.id);
+    expect(markTold).toHaveBeenCalledWith(["t1"]);
+    inbox.ack(item.id, "ok", "On it");
+    await asked;
+    inbox.dispose();
+  });
+
+  it("a failed send does not mark the tasks told", async () => {
+    const markTold = vi.fn();
+    const { inbox } = setup({
+      needsYou: () => ({ text: "- t1 | Task", ids: ["t1"] }),
+      markTold,
+      send: async () => Promise.reject(new Error("down")),
+    });
+    const ack = await inbox.ask({ text: "x", source: "app", waitMs: 0 });
+    expect(ack.status).toBe("error");
+    expect(markTold).not.toHaveBeenCalled();
+    inbox.dispose();
+  });
+
   it("returns pending after waitMs and stays pending", async () => {
     const { inbox } = setup();
     const asked = inbox.ask({ text: "x", source: "app", waitMs: 3_000 });

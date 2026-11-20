@@ -701,16 +701,18 @@ describe("board_report", () => {
     const lastReply = vi.fn(
       async () => `All done.\n${reportBlock("Fixed the bug")}`,
     );
+    const noteAssistantReported = vi.fn(async () => {});
     const tool = boardReportTool(
       () => ({
         assistantSource: () => view,
         snapshot: () => view.board,
         chatLastReply: lastReply,
+        noteAssistantReported,
       }),
       reports,
       inbox,
     );
-    return { tool, appended, inbox, lastReply };
+    return { tool, appended, inbox, lastReply, noteAssistantReported };
   }
 
   it("records the entry with the task's project and the agent's last reply", async () => {
@@ -726,6 +728,8 @@ describe("board_report", () => {
     expect(result.isError).toBeUndefined();
     expect(result.text).toContain("Reviewed the diff; it is good.");
     expect(s.lastReply).toHaveBeenCalledWith("a1");
+    // CUSTOM(assistant-wake): a recorded action suppresses the 10-minute reminder.
+    expect(s.noteAssistantReported).toHaveBeenCalledWith("t1");
     expect(s.appended[0]).toEqual({
       taskId: "t1",
       taskTitle: "Task one",

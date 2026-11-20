@@ -52,10 +52,23 @@ export const ACK_MESSAGE_MAX = 300;
 export const QUICK_WAIT_MAX_MS = 25_000;
 
 /** The marker a quick message starts with in the chat; `board_ack` takes the id inside it. */
-export function quickPrompt(id: string, text: string, source: string): string {
+export function quickPrompt(
+  id: string,
+  text: string,
+  source: string,
+  /** CUSTOM(assistant-wake): the Needs you list, so this wake handles it too. */
+  needsYou = "",
+): string {
   return [
     `[Quick message ${id} from ${source}]`,
     text,
+    ...(needsYou
+      ? [
+          "",
+          "[Needs you] These tasks still wait for you. Handle them before you end this reply (review and merge-now, continue, answer, or dismiss), or say why they must wait for the user:",
+          needsYou,
+        ]
+      : []),
     "",
     `(Sent from outside this chat. Call board_ack FIRST, before any other tool: id "${id}", status "ok" with one short sentence of what you will do, "needs-input" with the question you need answered, or "error" with why you cannot do it. Then do the work.)`,
   ].join("\n");

@@ -97,6 +97,13 @@ You can write to the Projects Assistant without opening its chat.
 - **From any chat.** Type `/assistant <message>` in the composer of any agent. The message goes to
   the assistant and you stay where you are.
 
+Every message that wakes the assistant carries the current **Needs you** list (task, project,
+reason, review policy and since when): the `[Board]` wake lists every task still waiting, a quick
+message appends it, and a user message gets it steered into the same turn. While the chat is busy
+the wake looks again every 10 s; a task told 10 minutes ago with no `board_report` or action since
+is told once more (`delivery.toldAt`, `remindedAt`, `reportedAt`). `board_reload_plugin` reloads
+the plugin when the chat's turn ends, so the board tools stay attached for the whole turn.
+
 Each message reaches the assistant wrapped as `[Quick message <id> from <source>]`. The assistant
 must call `board_ack` first, before any other tool: `ok` with a sentence on what it will do,
 `needs-input` with its question, or `error` with the reason. It may call `board_ack` again with

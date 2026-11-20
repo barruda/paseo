@@ -192,6 +192,12 @@ const DEFAULT_MAX_CHECKPOINTS = 5;
 const MAX_RESUME_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 /** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
 const IDLE_SETTLE_MS = 20_000;
+/** CUSTOM(assistant-wake): how soon to look again while the chat is busy with another turn. */
+const BUSY_WAKE_RETRY_MS = 10_000;
+/** CUSTOM(assistant-wake): a task told and left waiting this long is told again once. */
+const NEEDS_YOU_REMIND_MS = 10 * 60_000;
+/** CUSTOM(assistant-wake): a user message re-steers the Needs you list when it is this old. */
+const CHAT_TURN_REMIND_MS = 60_000;
 const DEFAULT_RETRY_DELAYS_MS = [30_000, 60_000, 120_000];
 /** CUSTOM(usage-limit): a wake's turn is read no sooner than this after the send, so it has started. */
 const WAKE_TURN_START_MS = 30_000;
@@ -2374,6 +2380,9 @@ export class Workboard {
       reason,
       detail,
       toldAt: null, // CUSTOM(assistant-wake)
+      // CUSTOM(assistant-wake): a new wait is a new event, even for a task reported before.
+      reportedAt: null,
+      remindedAt: null,
     });
     await this.record(taskId, "needs-you", `Needs you: ${reason}`, {
       reason,
@@ -2390,10 +2399,12 @@ export class Workboard {
   /** Tasks in the prompt being sent; their `toldAt` is not stored yet. */
   private wakeSending = new Set<string>();
   private wakeTimer: ReturnType<typeof setTimeout> | undefined;
+  /** CUSTOM(assistant-wake): the last time the chat was told a Needs you list. */
+  private lastToldAt = 0;
   /**
    * The queue lives in memory, so a new Workboard (plugin reload, daemon restart) starts
-   * empty. Put back every needs-you task the chat was not told about yet; one already told
-   * stays out until it enters needs-you again.
+   * empty. Put back every needs-you task the chat was not told about yet, and remind it once
+   * about one that has waited NEEDS_YOU_REMIND_MS with no board_report or action.
    */
   private requeueUntold(): void {
     const { settings, chatAgentId, deliveries } = this.store.current.assistant;
@@ -2402,10 +2413,21 @@ export class Workboard {
     for (const [taskId, delivery] of Object.entries(deliveries)) {
       if (
         delivery.stage !== "needs-you" ||
-        delivery.toldAt ||
         this.wakePending.has(taskId) ||
         this.wakeSending.has(taskId) ||
         !this.store.current.tasks.some((t) => t.id === taskId)
+      )
+        continue;
+      if (!delivery.toldAt) {
+        this.wakePending.add(taskId);
+        added = true;
+        continue;
+      }
+      // CUSTOM(assistant-wake): told but ignored: one reminder after the wait.
+      if (
+        delivery.remindedAt ||
+        this.reportedSince(delivery) ||
+        this.now() - Date.parse(delivery.toldAt) < NEEDS_YOU_REMIND_MS
       )
         continue;
       this.wakePending.add(taskId);
@@ -2414,13 +2436,190 @@ export class Workboard {
     // A timer already armed takes the new tasks with it; re-arming would push it back.
     if (added && !this.wakeTimer) this.armWake();
   }
-  private armWake(): void {
+  /** CUSTOM(assistant-wake): the assistant recorded an action after the last time it was told. */
+  private reportedSince(delivery: Delivery): boolean {
+    if (!delivery.reportedAt || !delivery.toldAt) return false;
+    return Date.parse(delivery.reportedAt) >= Date.parse(delivery.toldAt);
+  }
+  private armWake(delayMs = this.assistantOptions.wakeDelayMs ?? 90_000): void {
     if (this.stopped) return;
     clearTimeout(this.wakeTimer);
     this.wakeTimer = setTimeout(
       () => void this.wakeAssistant(),
-      Math.max(this.assistantOptions.wakeDelayMs ?? 90_000, this.wakeWait()), // CUSTOM(usage-limit)
+      Math.max(delayMs, this.wakeWait()), // CUSTOM(usage-limit)
     );
+  }
+  /**
+   * CUSTOM(assistant-wake): every task still on Needs you, oldest wait first, with its reason and
+   * since when. A wake carries all of them, not only the new ones, so a task told before and left
+   * waiting is never out of the assistant's view.
+   */
+  private needsYouEntries(): { id: string; task: Task; delivery: Delivery }[] {
+    const entries: { id: string; task: Task; delivery: Delivery }[] = [];
+    for (const [id, delivery] of Object.entries(
+      this.store.current.assistant.deliveries,
+    )) {
+      if (delivery.stage !== "needs-you") continue;
+      const task = this.store.current.tasks.find((t) => t.id === id);
+      if (
+        !task ||
+        task.archived?.status === "archived" ||
+        task.archived?.status === "external"
+      )
+        continue;
+      entries.push({ id, task, delivery });
+    }
+    return entries.sort(
+      (left, right) =>
+        Date.parse(left.delivery.updatedAt) -
+        Date.parse(right.delivery.updatedAt),
+    );
+  }
+  private needsYouLine({
+    id,
+    task,
+    delivery,
+  }: {
+    id: string;
+    task: Task;
+    delivery: Delivery;
+  }): string {
+    const project =
+      task.projectName ||
+      this.inventory.projects.find((p) => p.id === this.projectIdOf(task))
+        ?.name ||
+      "";
+    const clean = (value: string, max: number) => {
+      const line = value.replace(/\s+/g, " ").trim();
+      return line.length > max ? `${line.slice(0, max)}...` : line;
+    };
+    const reason = delivery.reason ?? "unknown";
+    return [
+      id,
+      clean(task.title, 200),
+      clean(project, 100),
+      delivery.detail ? `${reason}: ${clean(delivery.detail, 300)}` : reason,
+      `review: ${reviewPolicyFor(this.store.current.assistant.settings, this.projectIdOf(task))}`,
+      `waiting since ${delivery.updatedAt} (${this.waitFor(delivery.updatedAt)})`,
+    ].join(" | ");
+  }
+  /** CUSTOM(assistant-wake): "6 min", "2 h 5 min", for the prompt. */
+  private waitFor(since: string): string {
+    const ms = Math.max(0, this.now() - Date.parse(since));
+    const minutes = Math.floor(ms / 60_000);
+    if (minutes < 1) return "just now";
+    if (minutes < 60) return `${minutes} min`;
+    const hours = Math.floor(minutes / 60);
+    const rest = minutes % 60;
+    return rest ? `${hours} h ${rest} min` : `${hours} h`;
+  }
+  /**
+   * CUSTOM(assistant-wake): the Needs you list that goes with a message that wakes the chat
+   * (quick message, user message, board wake).
+   */
+  assistantNeedsYouBrief(): { text: string; ids: string[] } {
+    const entries = this.needsYouEntries();
+    return {
+      text: entries.map((entry) => `- ${this.needsYouLine(entry)}`).join("\n"),
+      ids: entries.map((entry) => entry.id),
+    };
+  }
+  /** CUSTOM(assistant-wake): the chat was told these tasks; a reminder is still possible. */
+  async markAssistantTold(ids: string[]): Promise<void> {
+    if (!ids.length) return;
+    // A reminder already queued is satisfied by this message; don't send it again.
+    const reminded = ids.filter(
+      (id) =>
+        this.wakePending.has(id) &&
+        !!this.store.current.assistant.deliveries[id]?.toldAt,
+    );
+    for (const id of ids) this.wakePending.delete(id);
+    // Set before the store write so a turn that starts right after does not get it twice.
+    this.lastToldAt = this.now();
+    const at = this.stamp();
+    await this.store.update((data) => {
+      for (const id of ids) {
+        const delivery = data.assistant.deliveries[id];
+        if (delivery?.stage !== "needs-you") continue;
+        delivery.toldAt = at;
+        if (reminded.includes(id)) delivery.remindedAt = at;
+      }
+    });
+  }
+  /** CUSTOM(assistant-wake): board_report counts as handling the task for the reminder. */
+  async noteAssistantReported(taskId: string): Promise<void> {
+    if (!this.store.current.assistant.deliveries[taskId]) return;
+    const at = this.stamp();
+    // Not `patchDelivery`: `updatedAt` is the "waiting since" the prompt shows.
+    await this.store.update((data) => {
+      const delivery = data.assistant.deliveries[taskId];
+      if (delivery) delivery.reportedAt = at;
+    });
+  }
+  /**
+   * CUSTOM(assistant-wake): a message from the user started the chat's turn. If tasks wait and
+   * were not told recently, steer the same list in so the reply handles them too. A board wake
+   * or quick message sets `toldAt` right before its turn, so it is not repeated here.
+   */
+  chatTurnStarted(agentId: string): void {
+    const assistant = this.store.current.assistant;
+    if (
+      !assistant.settings.chat.wakeOnNeedsYou ||
+      assistant.chatAgentId !== agentId ||
+      this.wakeSending.size > 0 ||
+      // A board wake or a quick message just told it; its turn is starting now.
+      this.now() - this.lastToldAt < CHAT_TURN_REMIND_MS
+    )
+      return;
+    const entries = this.needsYouEntries().filter(({ delivery }) => {
+      if (!delivery.toldAt) return true;
+      return this.now() - Date.parse(delivery.toldAt) >= CHAT_TURN_REMIND_MS;
+    });
+    if (!entries.length) return;
+    const lines = entries.map((entry) => `- ${this.needsYouLine(entry)}`);
+    const previous = this.lastToldAt;
+    this.lastToldAt = this.now();
+    void this.host
+      .steerAgent(
+        agentId,
+        [
+          "[Needs you] These tasks still wait for you. Handle them before you end this reply (review and merge-now, continue, answer, or dismiss), or say why they must wait for the user:",
+          ...lines,
+        ].join("\n"),
+      )
+      .then(() => this.markAssistantTold(entries.map((entry) => entry.id)))
+      .catch((error) => {
+        // Nothing was delivered: let the next turn try again.
+        this.lastToldAt = previous;
+        console.error(
+          "Could not tell the assistant about Needs you:",
+          message(error),
+        );
+      });
+  }
+  /** CUSTOM(assistant-wake): board_reload_plugin defers the reload to the end of this turn. */
+  private reloadAfterTurn = false;
+  requestPluginReload(): boolean {
+    if (!this.store.current.assistant.chatAgentId) return false;
+    this.reloadAfterTurn = true;
+    return true;
+  }
+  /**
+   * CUSTOM(assistant-wake): the chat's turn ended. A deferred plugin reload runs now, so the
+   * board tools stay attached for the whole turn and the next prompt opens a fresh session.
+   */
+  chatTurnEnded(agentId: string): void {
+    if (
+      !this.reloadAfterTurn ||
+      agentId !== this.store.current.assistant.chatAgentId
+    )
+      return;
+    this.reloadAfterTurn = false;
+    void this.host
+      .reloadPlugin()
+      .catch((error) =>
+        console.error("Could not reload the plugin:", message(error)),
+      );
   }
   /** CUSTOM(usage-limit): how long the chat still waits for its usage limit to reset; 0 when it doesn't. */
   private wakeWait(): number {
@@ -2536,9 +2735,14 @@ export class Workboard {
         this.wakePending.clear();
         return;
       }
-      // Never interrupt it: try again later.
+      // Never interrupt it: look again soon, so the batch lands on the first idle moment.
       if (activity === "running" || activity === "waiting") {
-        this.armWake();
+        this.armWake(
+          Math.min(
+            this.assistantOptions.wakeDelayMs ?? BUSY_WAKE_RETRY_MS,
+            BUSY_WAKE_RETRY_MS,
+          ),
+        );
         return;
       }
       // CUSTOM(usage-limit): read the last wake's turn first, so this wake does not replace it
@@ -2552,42 +2756,28 @@ export class Workboard {
         this.armWake();
         return;
       }
-      const clean = (value: string, max: number) => {
-        const line = value.replace(/\s+/g, " ").trim();
-        return line.length > max ? `${line.slice(0, max)}...` : line;
-      };
-      const tasks = [...this.wakePending]
-        .map((id) => ({
-          id,
-          task: this.store.current.tasks.find((t) => t.id === id),
-          delivery: this.store.current.assistant.deliveries[id],
-        }))
-        .filter((entry) => entry.task && entry.delivery?.stage === "needs-you");
+      // CUSTOM(assistant-wake): the prompt lists every task still waiting, not only the new ones.
+      const pending = new Set(this.wakePending);
       this.wakePending.clear();
-      if (!tasks.length) return;
+      if (!pending.size) return;
+      const tasks = this.needsYouEntries();
+      // Nothing left that triggered this wake (the task was handled or dismissed).
+      if (!tasks.some((entry) => pending.has(entry.id))) return;
+      const reminded = new Set(
+        tasks
+          .filter((entry) => pending.has(entry.id) && entry.delivery.toldAt)
+          .map((entry) => entry.id),
+      );
       sending = tasks.map((entry) => entry.id);
       for (const id of sending) this.wakeSending.add(id);
-      const lines = tasks.map(({ id, task, delivery }) => {
-        const project =
-          task!.projectName ||
-          this.inventory.projects.find((p) => p.id === this.projectIdOf(task!))
-            ?.name ||
-          "";
-        const reason = delivery!.reason ?? "unknown";
-        return [
-          id,
-          clean(task!.title, 200),
-          clean(project, 100),
-          delivery!.detail
-            ? `${reason}: ${clean(delivery!.detail, 300)}`
-            : reason,
-          `review: ${reviewPolicyFor(assistant.settings, this.projectIdOf(task!))}`,
-        ].join(" | ");
-      });
+      const lines = tasks.map((entry) => this.needsYouLine(entry));
+      // Before the send: the turn starts while it is in flight.
+      this.lastToldAt = this.now();
       await this.host.sendAgent(
         agentId,
         [
           "[Board] These tasks finished or stopped and wait for you, the Projects Assistant, first:",
+          "This list is every task still on Needs you, including ones you were told about before and left waiting.",
           ...lines,
           "Handle each one as your instructions say: review and merge-now (reason review), send feedback with continue, answer the agent's question or give the ok yourself when you can do it with reasonable precision and no real risk, and fix small reversible blockers. Leave to the user only what is really theirs: the ok before merging a fresh-agent project, real product decisions, anything risky or hard to undo. Then tell the user in 2-4 lines, in the language they write to you in, what you did and what is left for them (or that nothing is).",
         ].join("\n"),
@@ -2596,7 +2786,10 @@ export class Workboard {
       await this.store.update((data) => {
         for (const { id } of tasks) {
           const delivery = data.assistant.deliveries[id];
-          if (delivery?.stage === "needs-you") delivery.toldAt = toldAt;
+          if (delivery?.stage === "needs-you") {
+            delivery.toldAt = toldAt;
+            if (reminded.has(id)) delivery.remindedAt = toldAt;
+          }
         }
         // CUSTOM(usage-limit): watch this turn in case it ends on the usage limit.
         data.assistant.wakeAt = null;
@@ -2613,7 +2806,7 @@ export class Workboard {
         `Told the assistant: ${tasks.length} task${tasks.length === 1 ? "" : "s"} wait for it`,
         {
           agentId,
-          detail: tasks.map((entry) => entry.task!.title).join("\n"),
+          detail: tasks.map((entry) => entry.task.title).join("\n"),
         },
       );
     } catch (error) {
@@ -3817,20 +4010,14 @@ export class Workboard {
         // Its tasks go back to the queue instead of staying silently told to an abandoned chat.
         data.assistant.wakeAt = null;
         data.assistant.wakeAgentId = null;
-        const turn = data.assistant.wakeTurn;
-        if (turn) {
-          for (const id of turn.taskIds) {
-            const delivery = data.assistant.deliveries[id];
-            if (
-              delivery?.stage === "needs-you" &&
-              delivery.toldAt === turn.toldAt
-            )
-              delivery.toldAt = null;
-          }
-          data.assistant.wakeTurn = null;
-        }
+        data.assistant.wakeTurn = null;
+        // CUSTOM(assistant-wake): a new chat has read nothing, so every waiting task is told
+        // again, including the ones a quick message or a user-turn steer had marked told.
+        for (const delivery of Object.values(data.assistant.deliveries))
+          if (delivery.stage === "needs-you") delivery.toldAt = null;
       });
       this.chatId = agentId; // CUSTOM(assistant-compact)
+      this.reloadAfterTurn = false; // CUSTOM(assistant-wake): a deferred reload belonged to the old chat
       // CUSTOM(usage-limit): tasks still untold hear from the new chat now, not at the reset the
       // replaced chat was waiting for.
       this.requeueUntold();

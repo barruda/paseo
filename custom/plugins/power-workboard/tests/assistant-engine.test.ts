@@ -945,15 +945,15 @@ it("a task that left needs-you before the timer fired is skipped", async () => {
 });
 
 /** A new Workboard on the same store and host, as a plugin reload or daemon restart makes. */
-async function reload(s: Awaited<ReturnType<typeof wake>>) {
+async function reload(
+  s: Awaited<ReturnType<typeof wake>>,
+  nowMs = Date.parse("2026-09-23T00:01:00Z"),
+) {
   s.board.dispose();
-  const board = new Workboard(
-    s.host,
-    s.store,
-    () => Date.parse("2026-09-23T01:00:00Z"),
-    60000,
-    { history: s.history, wakeDelayMs: 5 },
-  );
+  const board = new Workboard(s.host, s.store, () => nowMs, 60000, {
+    history: s.history,
+    wakeDelayMs: 5,
+  });
   await board.start();
   return board;
 }
@@ -1000,6 +1000,117 @@ it("a needs-you task already told is not told again after the Workboard is recre
     await vi.waitFor(() => expect(s.sent()).toHaveLength(2));
   } finally {
     board.dispose();
+  }
+});
+
+it("a new finish re-sends the whole Needs you list, including tasks told before", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+    const second = await s.another();
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(2));
+    const text = s.sent()[1]![1];
+    expect(text).toContain("including ones you were told about before");
+    expect(text).toContain(`${s.taskId} | Task | Project | blocked`);
+    expect(text).toContain(second);
+    expect(text).toContain("waiting since");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a task left waiting 10 minutes with no board_report is told again once", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    s.advance(11 * 60_000);
+    await s.board.refresh();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(2));
+    expect(s.sent()[1]![1]).toContain(`${s.taskId} | Task | Project | blocked`);
+    expect(s.delivery()?.remindedAt).toBeTruthy();
+    // Only once.
+    s.advance(11 * 60_000);
+    await s.board.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(2);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a board_report after the wake counts as handling the task: no reminder", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+    await s.board.noteAssistantReported(s.taskId);
+    s.advance(11 * 60_000);
+    await s.board.refresh();
+    await new Promise((resolve) => setTimeout(resolve, 40));
+    expect(s.sent()).toHaveLength(1);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a user message steers the Needs you list into the chat's turn", async () => {
+  const s = await wake();
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+    // A finish while the chat was busy: untold again.
+    await s.store.update((data) => {
+      data.assistant.deliveries[s.taskId]!.toldAt = null;
+    });
+    s.advance(61_000); // past the "just told" window of the board wake
+    s.board.chatTurnStarted(s.chatId!);
+    await vi.waitFor(() => expect(s.host.steerAgent).toHaveBeenCalled());
+    const steer = (s.host.steerAgent as any).mock.calls.at(-1)[1] as string;
+    expect(steer).toContain("[Needs you]");
+    expect(steer).toContain(`${s.taskId} | Task | Project | blocked`);
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a task told and left waiting is reminded after the Workboard is recreated", async () => {
+  const s = await wake();
+  let board = s.board;
+  try {
+    await s.blocked();
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    board = await reload(s, Date.parse("2026-09-23T00:20:00Z"));
+    await vi.waitFor(() => expect(s.sent()).toHaveLength(2));
+    expect(s.sent()[1]![1]).toContain(`${s.taskId} | Task | Project | blocked`);
+    expect(s.delivery()?.remindedAt).toBeTruthy();
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a deferred plugin reload runs when the chat's turn ends, once", async () => {
+  const s = await wake();
+  try {
+    expect(s.board.requestPluginReload()).toBe(true);
+    expect(s.host.reloadPlugin).not.toHaveBeenCalled();
+    // Another agent's turn is not the chat's.
+    s.board.chatTurnEnded("another-agent");
+    expect(s.host.reloadPlugin).not.toHaveBeenCalled();
+    s.board.chatTurnEnded(s.chatId!);
+    await vi.waitFor(() =>
+      expect(s.host.reloadPlugin).toHaveBeenCalledTimes(1),
+    );
+    s.board.chatTurnEnded(s.chatId!);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(s.host.reloadPlugin).toHaveBeenCalledTimes(1);
+  } finally {
+    s.board.dispose();
   }
 });
 

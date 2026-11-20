@@ -131,6 +131,17 @@ export default function contribute(server: PluginServerContext) {
     activity: (id) => ready().chatActivity(id),
     lastReply: (id) => ready().chatLastReply(id),
     serverId: () => serverId,
+    // CUSTOM(assistant-wake): a quick message carries the current Needs you list.
+    needsYou: () => ready().assistantNeedsYouBrief(),
+    markTold: (ids) => {
+      try {
+        void ready()
+          .markAssistantTold(ids)
+          .catch(() => undefined);
+      } catch {
+        // The board is not up; the next wake tells it again.
+      }
+    },
   });
   let board: Workboard | undefined;
   let disposed = false;
@@ -291,6 +302,16 @@ export default function contribute(server: PluginServerContext) {
   const removeChatTools = server.before("agent.session_open", ({ request }) =>
     attachChatTools(request, boardTools),
   );
+  // CUSTOM(assistant-wake): a user message gets the Needs you list steered in, and a deferred
+  // plugin reload runs once the chat's turn ends.
+  const removeChatTurns = [
+    server.on("agent.turn_started", ({ agent }) =>
+      board?.chatTurnStarted(agent.id),
+    ),
+    server.on("agent.turn_ended", ({ agent }) =>
+      board?.chatTurnEnded(agent.id),
+    ),
+  ];
   // CUSTOM(workboard-images): independent of the board, so images work while it boots.
   const images = new ImageStore(defaultImageDirectory());
   server.handle(saveImageRpc, (input) => images.save(input));
@@ -305,6 +326,7 @@ export default function contribute(server: PluginServerContext) {
     clearTimeout(retry);
     stopChange();
     removeChatTools(); // CUSTOM(projects-assistant)
+    for (const off of removeChatTurns) off(); // CUSTOM(assistant-wake)
     inbox.dispose(); // CUSTOM(assistant-quick)
     board?.dispose();
     compat.dispose();

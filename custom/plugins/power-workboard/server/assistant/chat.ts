@@ -53,7 +53,7 @@ export const CHAT_LABEL = "pwb/assistant-chat";
 // CUSTOM(agent-profiles): the role text is the seed of the assistant profile's system-prompt.md;
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
 const BOARD_TOOLS =
-  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report";
+  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin";
 
 // CUSTOM(assistant-reply-protocol): the block every reply ends with. The doc path is the main
 // checkout's, since the assistant runs in an empty folder; the words come from the parser.
@@ -84,9 +84,10 @@ export const ASSISTANT_ROLE = [
     "- Critical (a project whose review is fresh-agent in board_overview, or a big or risky change in any project): create a review task with start=true so a fresh agent, not the author, reviews the diff against the acceptance criteria without changing code. Read its report, tell the user what merge-now or mark-done will do, and wait for their ok.",
     "- Has problems: board_task_action continue with your feedback.",
   ].join("\n"),
+  "Every message that wakes you (a quick message, a [Board] wake, a message from the user) carries the current Needs you list. Handle it before you end the reply: review and merge-now, send feedback with continue, answer the agent, or dismiss what is not yours; leave for the user only the ok before a fresh-agent merge, real product decisions and anything risky or hard to undo.",
   "Act for the user. When a board task's agent waits for the user's ok or a decision (a needs_input or blocked report, a question in its reply, the open decisions of a proposal), answer it yourself with board_task_action continue when you can do it with reasonable precision and no real risk. Agents outside the board may refuse an ok that comes from you; then leave that one for the user and don't insist. End with the list of decisions you took.",
   "Fix small blockers yourself. When a delivery is blocked by something small and reversible outside a project's code (your settings, through board_set_project_policy or board_set_default_action; daemon metadata such as a worktree's stored base; a stale lock), fix it, keep a backup in /home/bruno/uprojects/tmp when you change a file, and report it. Merge conflicts are retried by the board on its own; step in only when it gives up. When it gives up because the base checkout has uncommitted edits, do not ask the user: save a backup of `git diff` and of the untracked files in /home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/, run `git stash push -u -m \"assistant: <origin>, reaplicar após merges\"` in that checkout, then run merge-now with wait=true on each approved task that was waiting on the checkout, one at a time, and check with git log that its commits are on the base branch and its card reached Done. Finish with `git stash pop` and tell the user what merged, where the backup is and that the edits are back. Escalate only if the stash pop conflicts: leave the stash intact and say which stash it is. Never discard those edits: no `checkout --`, no `reset --hard`, no `stash drop` without a pop. Ask before anything destructive or hard to undo, except for these steps.",
-  'Ship what you merge in the paseo project. After merging changes under custom/plugins/power-workboard, reload the plugin as the last step of your turn: `cd /home/bruno/projetos/paseo && npx tsx packages/cli/src/index.js plugin reload power-workboard --home ~/.paseo`. When a merged change touches packages/ (the app or the daemon) and no paseo task is still in review or delivering, create one Paseo agent in /home/bruno/projetos/paseo whose only job is to ship: load the paseo-customizations skill, build and install, reopen the clients, and never restart a daemon. Create it with create_agent and labels {"paseo.board-agent": "true"}: that label keeps it out of the user\'s sidebar and notifications, and you report on it instead. Pass the same label to every Paseo agent you create. If the change needs a daemon restart, tell the user once, with the command kill-paseos-and-daemons.sh.',
+  'Ship what you merge in the paseo project. After merging changes under custom/plugins/power-workboard, call board_reload_plugin as the last action of your turn: it reloads the plugin when the turn ends, so your board tools keep working until then. Never run `plugin reload` yourself while you still need the board tools in this turn: a direct reload retires them and they only come back on the next message. When a merged change touches packages/ (the app or the daemon) and no paseo task is still in review or delivering, create one Paseo agent in /home/bruno/projetos/paseo whose only job is to ship: load the paseo-customizations skill, build and install, reopen the clients, and never restart a daemon. Create it with create_agent and labels {"paseo.board-agent": "true"}: that label keeps it out of the user\'s sidebar and notifications, and you report on it instead. Pass the same label to every Paseo agent you create. If the change needs a daemon restart, tell the user once, with the command kill-paseos-and-daemons.sh.',
   // CUSTOM(assistant-reports)
   "Report each action on a task once, with board_report: one entry per action (created, started, reviewed, sent feedback, answered an agent, fixed a blocker, merged, escalated to the user), with a one-sentence summary, a short markdown detail, the decisions you took and, when you talked to the task's agent, orchestrator {agentId, prompt: what you asked, reply: its answer, or leave reply out to store its last reply}. For a quick message, pass its id as quickMessageId: the summary becomes the status row's text. Then reply with the block below instead of writing the summary again.",
   "Announce merge-now or mark-done beforehand only for critical tasks; for low-risk ones act first, then report.",
@@ -104,7 +105,7 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 // CUSTOM(assistant-compact): the rules alone open a chat started by compaction, which must not greet.
 export const CHAT_RULES =
-  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack and board_report. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. After each action on a task, record it once with board_report (pass the quick message id when there is one). End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
+  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report and board_reload_plugin. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS = `Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). ${CHAT_RULES}`;
 
@@ -249,7 +250,7 @@ export function isManagedAgent(data: Data, agentId: string): boolean {
 export function boardReportTool(
   getBoard: () => Pick<
     Workboard,
-    "assistantSource" | "snapshot" | "chatLastReply"
+    "assistantSource" | "snapshot" | "chatLastReply" | "noteAssistantReported"
   >,
   reports: Pick<ReportStore, "append">,
   inbox: Pick<QuickInbox, "ack" | "list">,
@@ -296,6 +297,8 @@ export function boardReportTool(
         orchestrator,
         quickMessageId: input.quickMessageId ?? null,
       });
+      // CUSTOM(assistant-wake): a recorded action counts as handling the task for the reminder.
+      await board.noteAssistantReported(task.id);
       const lines = [`Recorded ${stored.kind} for "${task.title}".`];
       if (input.quickMessageId) {
         const quick = inbox.list().find((q) => q.id === input.quickMessageId);
@@ -835,6 +838,21 @@ export function chatTools(
           "assistant",
         ); // CUSTOM(assistant-cards): the history's `by`
         return text(`Orchestrator ${orchestratorId} is running.`);
+      },
+    }),
+    define({
+      name: "board_reload_plugin",
+      description:
+        "Reload the Power Workboard plugin after its code or settings changed. The reload runs when this turn ends, so board tools keep working for the rest of the turn; the new code is live on the next turn. Use this instead of running `plugin reload` yourself: a direct reload retires the board tools until the next message.",
+      input: z.object({}),
+      async execute() {
+        if (!board().requestPluginReload())
+          return text(
+            "No Projects Assistant chat is open, so there is no turn to wait for; reload the plugin yourself.",
+          );
+        return text(
+          "The plugin will reload when this turn ends. Board tools keep working until then.",
+        );
       },
     }),
     define({

@@ -137,6 +137,11 @@ export function fixture(initial: Partial<Data> = {}) {
       const agent = inventory.agents.find((a) => a.id === id);
       if (agent) agent.activity = "running";
     }),
+    // CUSTOM(assistant-wake): a steer keeps the current turn.
+    steerAgent: vi.fn(async (id: string, _text: string) => {
+      const agent = inventory.agents.find((a) => a.id === id);
+      if (agent) agent.activity = "running";
+    }),
     lastReply: vi.fn(async (_id: string) => "Changed X. Check Y."),
     askAgent: vi.fn(
       async (_id: string, _question: string) =>
@@ -170,6 +175,8 @@ export function fixture(initial: Partial<Data> = {}) {
       const agent = inventory.agents.find((a) => a.id === id);
       if (agent) agent.archivedAt = new Date(now()).toISOString();
     }),
+    // CUSTOM(assistant-wake): a deferred plugin reload.
+    reloadPlugin: vi.fn(async () => {}),
     safety: vi.fn(
       async (_workspace: Workspace, _policyBase?: string | null) =>
         null as string | null,

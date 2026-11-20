@@ -613,3 +613,16 @@ it("passes the board-agent label to a workspace agent and leaves unlabeled start
   expect(labeled.labels).toEqual({ "paseo.board-agent": "true" });
   expect(plain).not.toHaveProperty("labels");
 });
+
+// CUSTOM(assistant-wake): a user message's Needs you list joins the running turn.
+it("steers into the chat's turn instead of interrupting it", async () => {
+  const send = vi.fn(async () => {});
+  const host = new PaseoHost(
+    { agents: { ref: () => ({ send }) } } as unknown as PaseoApi,
+    {} as PaseoCompat,
+    { serverId: "h", version: "0.9.1" },
+    () => {},
+  );
+  await host.steerAgent("a1", "hi");
+  expect(send).toHaveBeenCalledWith("hi", { activeTurnBehavior: "steer" });
+});

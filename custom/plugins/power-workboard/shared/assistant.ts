@@ -323,6 +323,13 @@ export const deliverySchema = z.object({
    * daemon restart) tells the chat about every needs-you task still without it.
    */
   toldAt: z.string().nullable().optional(),
+  /**
+   * CUSTOM(assistant-wake): when the assistant last recorded an action on this task with
+   * board_report. A task left waiting past NEEDS_YOU_REMIND_MS without it is told again once.
+   */
+  reportedAt: z.string().nullable().optional(),
+  /** CUSTOM(assistant-wake): when the one reminder for a task still waiting was sent. */
+  remindedAt: z.string().nullable().optional(),
   startedAt: z.string(),
   updatedAt: z.string(),
 });

@@ -13,7 +13,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { checkGitSafety } from "./git-safety";
-import type { PaseoApi, PaseoCompat } from "./paseo-compat";
+import { PLUGIN_ID, type PaseoApi, type PaseoCompat } from "./paseo-compat";
 
 const execute = promisify(execFile);
 
@@ -170,6 +170,8 @@ export interface Host {
   runAgent(agentId: string, text: string): Promise<string>;
   /** Send a message to an agent without waiting for its turn. */
   sendAgent(agentId: string, text: string): Promise<void>;
+  /** CUSTOM(assistant-wake): add to an agent's running turn instead of interrupting it. */
+  steerAgent(agentId: string, text: string): Promise<void>;
   /** The agent's last reply, or null when there is none or it can't be read. */
   lastReply(agentId: string): Promise<string | null>;
   /** Ask from a fork of the agent's context; the question stays out of its history. */
@@ -194,6 +196,8 @@ export interface Host {
   ): Promise<{ archivedAt: string | null; error: string | null }>;
   /** CUSTOM(assistant-restart-pill): archive one agent. */
   archiveAgent(agentId: string): Promise<void>;
+  /** CUSTOM(assistant-wake): reload this plugin; the daemon restarts it with fresh code. */
+  reloadPlugin(): Promise<void>;
   /**
    * CUSTOM(night-tasks): every agent on the daemon that is working or waiting on a permission,
    * board or not; the night power-off waits for them.
@@ -714,6 +718,16 @@ export class PaseoHost implements Host {
   async archiveAgent(agentId: string): Promise<void> {
     await this.api.agents.ref(agentId).archive();
   }
+  // CUSTOM(assistant-wake): the daemon stops this plugin process to reload it, so the reply
+  // never arrives; the reload itself is what matters.
+  async reloadPlugin(): Promise<void> {
+    await this.compat.request(
+      "plugin.reload.request",
+      { pluginId: PLUGIN_ID },
+      "plugin.reload.response",
+      5000,
+    );
+  }
   async agentActivity(agentId: string): Promise<Card["activity"] | null> {
     try {
       const result = await this.api.agents.ref(agentId).refresh();
@@ -754,6 +768,17 @@ export class PaseoHost implements Host {
   }
   async sendAgent(agentId: string, text: string): Promise<void> {
     await this.api.agents.ref(agentId).send(text);
+  }
+  // CUSTOM(assistant-wake): the pinned client types predate `activeTurnBehavior`; the daemon's
+  // client sends it, and without it a send with no source agent interrupts the running turn.
+  async steerAgent(agentId: string, text: string): Promise<void> {
+    const handle = this.api.agents.ref(agentId) as unknown as {
+      send(
+        text: string,
+        options?: { activeTurnBehavior?: "steer" | "interrupt" },
+      ): Promise<void>;
+    };
+    await handle.send(text, { activeTurnBehavior: "steer" });
   }
   async lastReply(agentId: string): Promise<string | null> {
     try {
