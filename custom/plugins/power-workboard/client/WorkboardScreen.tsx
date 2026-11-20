@@ -97,7 +97,7 @@ import { usePaseoLanguage } from "./paseo-language";
 import { AssistantProfileTab } from "./Profiles"; // CUSTOM(agent-profiles)
 import { optionAnswer } from "../shared/card-answers";
 import { ConfirmationModal } from "./ConfirmationModal";
-// CUSTOM(workboard-inner-pages): the Projects Assistant pages, as tabs of the board.
+// CUSTOM(workboard-inner-pages): the Project Manager pages, as tabs of the board.
 import { ChatLauncher } from "./assistant/ChatLauncher";
 import { ConversationsScreen } from "./assistant/ConversationsScreen";
 import { DashboardScreen } from "./assistant/DashboardScreen";
@@ -181,7 +181,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const params = (props as { params?: unknown }).params;
   const requested = requestedTab(params);
   const requestKey = tabRequestKey(params);
-  // "board", "orchestrators", a Projects Assistant page, or the id of an orchestrator opened in
+  // "board", "orchestrators", a Project Manager page, or the id of an orchestrator opened in
   // its own tab.
   const [tab, setTab] = useState(requested ?? "board");
   // CUSTOM(workboard-inner-pages): the assistant chat tab opens the chat and returns here.

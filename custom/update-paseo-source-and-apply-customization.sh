@@ -409,7 +409,7 @@ if $VERIFY; then
   # Tasks/Desks persistence, cross-project references, workspace fallback, closing tabs of
   # terminals that are gone, and opening every task in its own tab while preview tabs are off.
   (cd packages/app && npx vitest run src/task-navigation/model.test.ts src/task-navigation/store.test.ts src/workspace-tabs/open-supporting-view.test.ts --bail=1)
-  # Desk chips for plugin surfaces and the Projects Assistant settings page.
+  # Desk chips for plugin surfaces and the Project Manager settings page.
   (cd packages/app && npx vitest run src/task-navigation/desk-workboard.test.ts src/task-navigation/desk-workboard-navigation.test.ts src/screens/settings/bruno-customizations/projects-assistant-model.test.ts --bail=1)
   # Ctrl+Z reopens the Desk tab you just closed.
   (cd packages/app && npx vitest run src/task-navigation/reopen-closed-tab.test.ts --bail=1)

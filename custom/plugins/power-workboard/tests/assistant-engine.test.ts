@@ -830,7 +830,7 @@ async function wake(options: { chat?: boolean; setting?: boolean } = {}) {
       provider: "claude/x",
       modeId: null,
       thinkingOptionId: null,
-      title: "Projects Assistant",
+      title: "Project Manager",
       prompt: "hi",
     });
     s.inventory.agents.find((a) => a.id === chatId)!.activity = "idle";
@@ -878,7 +878,7 @@ it("two tasks that need the user are told in one prompt, and the batch is record
     const text = s.sent()[0]![1];
     expect(
       text.startsWith(
-        "[Board] These tasks finished or stopped and wait for you, the Projects Assistant, first:",
+        "[Board] These tasks finished or stopped and wait for you, the Project Manager, first:",
       ),
     ).toBe(true);
     expect(text).toContain(
@@ -2297,7 +2297,7 @@ async function anotherChat(s: { host: any; inventory: any }) {
     provider: "opencode/deepseek",
     modeId: null,
     thinkingOptionId: null,
-    title: "Projects Assistant",
+    title: "Project Manager",
     prompt: "hi",
   });
   s.inventory.agents.find((a: { id: string }) => a.id === id)!.activity =

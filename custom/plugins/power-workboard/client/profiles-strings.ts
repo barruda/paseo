@@ -2,10 +2,10 @@
 import type { Language } from "./strings";
 
 const zh = {
-  assistantName: "Projects Assistant",
+  assistantName: "Project Manager",
   assistantHint:
-    "助手聊天的配置档案：模型、系统提示、技能和记忆。只影响新的对话。",
-  assistantLoadFailed: "无法读取助手设置",
+    "Project Manager 聊天的配置档案：模型、系统提示、技能和记忆。只影响新的对话。",
+  assistantLoadFailed: "无法读取 Project Manager 设置",
   provider: "提供方",
   model: "模型",
   mode: "模式",
@@ -52,16 +52,16 @@ const zh = {
   copyFailed: "无法复制",
   instructionsHint: "加在每个任务的第一条消息前面；与系统提示不同。",
   wake: "有任务需要我时在聊天里告诉我",
-  wakeHint: "每一批消耗助手的一轮对话。",
+  wakeHint: "每一批消耗 Project Manager 的一轮对话。",
   save: "保存",
   saveFailed: "保存失败",
   done: "完成",
 };
 const en: typeof zh = {
-  assistantName: "Projects Assistant",
+  assistantName: "Project Manager",
   assistantHint:
-    "The assistant chat's profile: model, system prompt, skills and memory. Affects new conversations only.",
-  assistantLoadFailed: "Could not read the assistant's settings",
+    "The Project Manager chat's profile: model, system prompt, skills and memory. Affects new conversations only.",
+  assistantLoadFailed: "Could not read the Project Manager's settings",
   provider: "Provider",
   model: "Model",
   mode: "Mode",
@@ -112,7 +112,7 @@ const en: typeof zh = {
   instructionsHint:
     "Added to the task's first message, before it; not the system prompt.",
   wake: "Tell me in the chat when a task needs me",
-  wakeHint: "Costs one assistant turn per batch.",
+  wakeHint: "Costs one Project Manager turn per batch.",
   save: "Save",
   saveFailed: "Could not save",
   done: "Done",

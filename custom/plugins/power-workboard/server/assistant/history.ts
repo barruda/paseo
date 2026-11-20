@@ -1,4 +1,4 @@
-// CUSTOM(projects-assistant): append-only history of the Projects Assistant, one JSON object per
+// CUSTOM(projects-assistant): append-only history of the Project Manager, one JSON object per
 // line in one file per local day (`YYYY-MM-DD.jsonl`), kept HISTORY_RETENTION_DAYS days.
 import { randomUUID } from "node:crypto";
 import {

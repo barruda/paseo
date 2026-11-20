@@ -1,4 +1,4 @@
-// CUSTOM(projects-assistant): the Projects Assistant decides what happens to a task's work when its
+// CUSTOM(projects-assistant): the Project Manager decides what happens to a task's work when its
 // agent's turn ends (merge, prepare a PR, tell the user, or nothing), keeps a history, and feeds the
 // Projects Dashboard and Projects Conversations surfaces. This file is the contract shared by the
 // server engine, the two client surfaces, and the app's Settings page
@@ -74,7 +74,7 @@ export function reviewPolicyFor(
 
 /** CUSTOM(assistant-compact): the chat restarts with a summary once its context reaches this. */
 export const DEFAULT_COMPACT_AT_TOKENS = 180_000;
-/** The agent behind the Projects Assistant chat (a real Paseo agent with board tools). */
+/** The agent behind the Project Manager chat (a real Paseo agent with board tools). */
 export const assistantChatSettingsSchema = z.object({
   /** `provider/model`. */
   provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
@@ -384,7 +384,7 @@ export const assistantDataSchema = z.object({
   deliveries: z.record(z.string(), deliverySchema).default({}),
   /** Keyed by task id, oldest first. */
   attempts: z.record(z.string(), z.array(attemptSchema)).default({}),
-  /** The current Projects Assistant chat agent; a new conversation replaces it. */
+  /** The current Project Manager chat agent; a new conversation replaces it. */
   chatAgentId: z.string().nullable().default(null),
   /** CUSTOM(task-checkpoints): keyed by task id. */
   progress: z.record(z.string(), taskProgressSchema).default({}),
@@ -472,7 +472,7 @@ export type HistoryEventKind = z.infer<typeof historyEventKindSchema>;
 
 /**
  * CUSTOM(assistant-cards): who caused a history event. `user`: the user, from the board or a card;
- * `assistant`: the Projects Assistant chat, through its board tools; `orchestrator`: the board's
+ * `assistant`: the Project Manager chat, through its board tools; `orchestrator`: the board's
  * own engine (orchestrators, delivery, the chat's housekeeping).
  */
 export const HISTORY_ACTORS = ["user", "assistant", "orchestrator"] as const;

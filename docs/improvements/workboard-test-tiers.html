@@ -93,7 +93,7 @@
   <table>
     <thead><tr><th>Origem</th><th>Onde fica</th><th>O que mandou rodar</th></tr></thead>
     <tbody>
-      <tr><td><strong>1. Instruções do orquestrador</strong></td><td>Power Workboard → orquestrador "TH-AI-Core Orchestrator", campo <code>instructions</code> (<code>~/.paseo-telus/plugin-settings/power-workboard/workboard-data.json</code>, em <code>values.orchestrators[1].instructions</code>)</td><td><code>cargo test</code> + build wasm <strong>em todo ticket</strong>, além do <code>update-docs</code> se mexeu em <code>crates/</code></td></tr>
+      <tr><td><strong>1. Instruções do orquestrador</strong></td><td>Workboard → orquestrador "TH-AI-Core Orchestrator", campo <code>instructions</code> (<code>~/.paseo-telus/plugin-settings/power-workboard/workboard-data.json</code>, em <code>values.orchestrators[1].instructions</code>)</td><td><code>cargo test</code> + build wasm <strong>em todo ticket</strong>, além do <code>update-docs</code> se mexeu em <code>crates/</code></td></tr>
       <tr><td><strong>2. Texto do ticket</strong></td><td>Critérios de aceite do card TH-13 part 2</td><td>Um teste por passo em Postgres real, <code>cargo test &amp;&amp; cargo build --target wasm32...</code> e <code>cargo xtask check-server</code></td></tr>
       <tr><td><strong>3. Feedback do revisor</strong></td><td>Mensagem "The reviewer sent this task back…"</td><td>Repete tudo: <code>cargo test</code>, wasm, as suítes state/admin/database com Postgres e <code>check-server</code> num banco novo</td></tr>
     </tbody>

@@ -2,12 +2,12 @@ import { expect, it } from "vitest";
 import { splitTitleArea } from "../client/board-utils";
 
 it("a short area before the colon becomes the label and the rest the title", () => {
-  expect(
-    splitTitleArea("Power Workboard: Assistant reports the checkpoint"),
-  ).toEqual({
-    area: "Power Workboard",
-    title: "Assistant reports the checkpoint",
-  });
+  expect(splitTitleArea("Workboard: Assistant reports the checkpoint")).toEqual(
+    {
+      area: "Workboard",
+      title: "Assistant reports the checkpoint",
+    },
+  );
   expect(splitTitleArea("Assets-board: thumbnails load lazily")).toEqual({
     area: "Assets-board",
     title: "thumbnails load lazily",
@@ -61,8 +61,8 @@ it("an empty title, an empty area or an empty rest show the title as it is", () 
     area: null,
     title: ": nothing before",
   });
-  expect(splitTitleArea("Power Workboard:")).toEqual({
+  expect(splitTitleArea("Workboard:")).toEqual({
     area: null,
-    title: "Power Workboard:",
+    title: "Workboard:",
   });
 });
