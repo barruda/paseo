@@ -4361,7 +4361,8 @@ waiting` tests in `agent-manager.test.ts`.
 ## critic: a second model reviews each answer before the user reads it
 
 - **Added:** 2026-11-03 (based on upstream v0.14.0)
-- **Commit:** `custom: a critic model reviews each answer before the user reads it`
+- **Commit:** `custom: a critic model reviews each answer before the user reads it`, then
+  `custom: an agent turns its own critic on or off with a skill and tool`
 - **Why:** The user wants a critic LLM in the loop of any conversation, not only the Power
   Workboard's review step in Tasks mode: a prompt (with reference images) and a model of their
   choice judge each answer, and a rejected answer goes back to the agent with the critique.
@@ -4373,6 +4374,14 @@ waiting` tests in `agent-manager.test.ts`.
   - Turning it on or off puts a `<critic-notice>` in front of the user's next message (the chat
     strips it): the agent is told every answer goes through a reviewer and to end each turn with a
     full report.
+  - **From the chat:** every interactive agent (never a critic) gets the `set_critic` agent tool
+    at session open. `enabled` plus optional `model` (`provider/model`), `prompt`, `mode`, `tools`,
+    `includeDiff` and `maxRounds` turn the critic on or off for the calling agent only. The tool
+    writes the same `config.set` store as the sheet and updates the `custom.critic.enabled` label,
+    so the sheet and the composer toggle show the same state. The bundled **paseo-critic** skill
+    teaches the agent to call it when the user says "usa um critic", "liga o critic", "desliga o
+    critic" or "revisor crítico", and to confirm the effective model and mode. The tool returns
+    them; nothing changes on the RPC or wire contract.
   - When a turn of a reviewed agent completes, the `critic` plugin reads the user's request, the
     agent's answer since the last user message and `git status` + `git diff HEAD`, and asks the
     critic, a Paseo subagent of the reviewed agent (label `custom.critic.role=critic`, in its
@@ -4400,29 +4409,41 @@ waiting` tests in `agent-manager.test.ts`.
     the sheet. A text paste still reaches the prompt.
 - **Files:** `packages/protocol/src/critic.ts` (labels, markers, config and row schemas, RPC
   names); `custom/plugins/critic/` (`server/loop.ts` the loop, `server/store.ts` the config file
-  `$PASEO_HOME/custom-critic.json`, `server/diff.ts`, `server/evidence.ts`, `shared/review.ts` prompt/verdict/turn reading
-  - test, `client/review-card.tsx`); `packages/app/src/critic/` (`model.ts` the chat filter and
-    last status, `store.ts` pending notices, `rpc.ts`, `form-model.ts`, `toggle.tsx`, `sheet.tsx`, with
-    tests); `packages/server/src/server/plugins/custom-critic-plugin.e2e.test.ts`.
+  `$PASEO_HOME/custom-critic.json`, `server/diff.ts`, `server/evidence.ts`, `server/set-critic.ts`
+  the agent tool, `shared/set-config.ts` its input and merge, `shared/review.ts` prompt/verdict/turn
+  reading, `client/review-card.tsx`); `skills/paseo-critic/SKILL.md`;
+  `packages/app/src/critic/` (`model.ts` the chat filter and last status, `store.ts` pending
+  notices, `rpc.ts`, `form-model.ts`, `toggle.tsx`, `sheet.tsx`, with tests);
+  `packages/server/src/server/plugins/custom-critic-plugin.e2e.test.ts`.
 - **Core files touched:** server `agent/agent-manager.ts` (`checkAndSetAttention` returns early for
   critic agents and, on running → idle, for reviewed agents; `appendTimelineItem` calls
   `raiseFinishedWhenCriticSettles`); app `agent-stream/view.tsx` (`hideCriticRounds` after
   `hideCacheWarmupTurns`), `composer/actions.ts` (`dispatchComposerAgentMessage` prepends a
   pending notice), `composer/agent-controls/index.tsx` (`<CriticToggle>` after
-  `<CacheWarmupToggle>`). All marked `CUSTOM(critic)`.
+  `<CacheWarmupToggle>`); client `index.ts` (`PaseoAgentHandle.update` wraps the existing
+  `updateAgent` RPC, so the tool can set the label). All marked `CUSTOM(critic)`.
 - **Re-apply:** In the daemon's attention check, skip agents labeled as critics, and skip
   "finished" for agents labeled critic-enabled; when a `critic`/`critic-review` plugin row whose
   status notifies is appended to an idle agent without attention, raise "finished". In the app,
   filter the stream through `hideCriticRounds`, render `CriticToggle` at the end of the composer's
   agent control row, and prefix the next sent message with `buildCriticNotice` while a notice is
-  pending.
+  pending. In the plugin, return the `set_critic` tool from an `agent.session_open` `before` hook
+  for interactive agents that are not critics; the tool merges the input into the stored config,
+  writes it with `saveAsDefault: false`, and calls `paseo.agents.ref(id).update` with the
+  `custom.critic.enabled` label. Keep `PaseoAgentHandle.update` in the client wrapping
+  `DaemonClient.updateAgent`.
 - **Setup:** `paseo plugin install "$PWD/custom/plugins/critic" --home <home>` once per daemon, a
-  desktop build for the app, and a daemon restart for the notification hold.
+  desktop build for the app, and a daemon restart for the notification hold. After a plugin update,
+  reload the plugin and reopen an agent's session: the `set_critic` tool is attached at session
+  open, and the `paseo-critic` skill is installed by the daemon's skill sync at startup.
 - **Verify:** `npx vitest run custom/plugins/critic`, `packages/app/src/critic`, the e2e
   `custom-critic-plugin.e2e.test.ts` and `agent-manager.test.ts -t "the critic holds the finished
-notification"` (all in the update script). By hand: turn the critic on with a strict prompt; send
-  a task; the answer stays hidden while a "Critic is reviewing" card shows, a rejection sends the
-  critique back, and only the approved answer shows with a ✓ card; one notification at the end.
+notification"` (all in the update script), plus `packages/client/src/index.test.ts`. By hand: turn
+  the critic on with a strict prompt; send a task; the answer stays hidden while a "Critic is
+  reviewing" card shows, a rejection sends the critique back, and only the approved answer shows
+  with a ✓ card; one notification at the end. From an agent chat, say "usa um critic"; the agent
+  calls `set_critic`, confirms the model and mode, the composer icon turns on, the sheet shows the
+  same config, and the next answer gets a critic-review card. "desliga o critic" turns both off.
 
 ## jev-router: a new Claude session starts on Sonnet or Haiku when its first prompt is small
 
@@ -8927,6 +8948,7 @@ tests/power-workboard.test.ts --bail=1`, `bash custom/scripts/restart-resume.tes
   restart. To check the whole flow, start a normal agent, a board task and the Projects Assistant
   chat, run `kill-paseos-and-daemons.sh`, and watch all three continue; the board task must not
   land in Needs you.
+
 ## workboard-project-accent: rail color in the column header, project color and icon on the card
 
 - **Added:** 2026-11-20 (based on `custom` at `0dc28e5c3`)

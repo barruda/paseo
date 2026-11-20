@@ -8,6 +8,7 @@ import {
   CriticSetConfigOutputSchema,
 } from "@getpaseo/protocol/critic";
 import { CriticLoop } from "./server/loop";
+import { createSetCriticTool, shouldAttachCriticTool } from "./server/set-critic";
 import { CriticStore, defaultStoreFile } from "./server/store";
 
 const getConfigRpc = defineRpc({
@@ -47,8 +48,14 @@ export default function contribute(server: PluginServerContext) {
     paseo = context.paseo;
     loop.onPermissionRequested(event);
   });
+  const setCritic = createSetCriticTool(store);
+  const removeSessionOpen = server.before("agent.session_open", ({ request }) => {
+    if (!shouldAttachCriticTool(request)) return;
+    return { ...request, tools: [...request.tools, setCritic] };
+  });
   return () => {
     removeTurnEnded();
     removePermission();
+    removeSessionOpen();
   };
 }
