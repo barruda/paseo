@@ -8855,3 +8855,37 @@ src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard
   tab, Explorer mirror and Settings item say **Project Manager**; the existing assistant Desk shows
   **Project Manager**. A live `system-prompt.md` keeps the old names until the new `ASSISTANT_ROLE`
   text is copied there by hand.
+
+## model-picker-workboard: OpenCode provider first, then a searchable model modal
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: Workboard model picker chooses the OpenCode provider and searches in a modal`
+- **Why:** OpenCode exposes every model of every internal provider (DeepSeek, DeepInfra…) in one
+  list, and the old dropdown made that list hard to use. The provider of a model was only visible
+  in its id prefix.
+- **What:**
+  - When the agent provider is `opencode`, the editor has an **OpenCode provider** select before
+    the model. Its options come from the models the daemon returned, which already excludes
+    providers that are not connected or API-managed. Changing it keeps the current model when it
+    belongs to that provider and otherwise picks that provider's default model.
+  - The model dropdown is now a modal in the style of the chat's model picker: search box with
+    autofocus, models grouped by internal provider (OpenCode) and every row showing its provider
+    name, arrow keys/Enter/Escape plus mouse. Other providers use the same modal with their model
+    list.
+  - The internal provider comes from `metadata.providerId` / `metadata.providerName` on the model
+    definition, with the `provider/model` prefix as fallback for a saved model that is no longer in
+    the catalog. A saved `provider/model` still opens with both steps filled in.
+  - The shared `AgentFields` is used by the orchestrator editor, the bulk agent change and the
+    Project Manager's profile tab, so all three get the new picker.
+- **Files:** `client/Profiles.tsx`, `client/model-catalog.ts` (new), `client/profiles-strings.ts`,
+  `tests/model-catalog.test.ts` (new).
+- **Core files touched:** none.
+- **Re-apply:** Plugin-only. The picker logic is the `CUSTOM(model-picker-workboard)` block in
+  `client/Profiles.tsx` and the helpers in `client/model-catalog.ts`; the grouping/filtering rules
+  live there, not in the modal.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
+  Needs only `paseo plugin reload power-workboard`. In the app: Workboard > Orchestrators > open an
+  orchestrator > **Agent** tab, pick **opencode**, choose an **OpenCode provider** and press the
+  **Model** row; the modal should find `flash` and show `DeepSeek`/`DeepInfra` on each result. The
+  same fields appear in the bulk agent change and in Settings > Bruno's Customizations > Project
+  Manager.
