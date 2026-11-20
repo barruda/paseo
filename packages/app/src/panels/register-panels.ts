@@ -9,7 +9,7 @@ import { draftPanelRegistration } from "@/panels/draft-panel";
 import { filePanelRegistration } from "@/panels/file-panel";
 import { filesPanelRegistration } from "@/panels/files-panel";
 import { docsPanelRegistration } from "@/desk-docs/panel"; // CUSTOM(desk-docs)
-import { assistantSidebarPanelRegistration } from "@/assistant-sidebar/panel"; // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
+import { assistantSidebarPanelRegistration } from "@/assistant-sidebar/panel"; // CUSTOM(assistant-desk): the Explorer's mirror of the assistant Desk
 import { registerPanel } from "@/panels/panel-registry";
 import { setupPanelRegistration } from "@/panels/setup-panel";
 import { terminalPanelRegistration } from "@/panels/terminal-panel";
@@ -36,7 +36,7 @@ export function ensurePanelsRegistered(): void {
   registerPanel(filePanelRegistration);
   registerPanel(filesPanelRegistration);
   registerPanel(docsPanelRegistration); // CUSTOM(desk-docs)
-  registerPanel(assistantSidebarPanelRegistration); // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
+  registerPanel(assistantSidebarPanelRegistration); // CUSTOM(assistant-desk): the Explorer's mirror of the assistant Desk
   registerPanel(pullRequestPanelRegistration);
   registerPanel(commitDiffPanelRegistration);
   registerPanel(workingDiffPanelRegistration);

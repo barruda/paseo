@@ -35,9 +35,10 @@ export function launchDeskTarget(
   destination: TerminalTabDestination,
   isCompact = false,
 ) {
-  // CUSTOM(desk-docs): Docs only lives in the workspace's Explorer sidebar, which the Desk docks.
-  if (target.kind === "docs") {
-    openDocsInExplorer(scope, target, destination, isCompact);
+  // CUSTOM(desk-docs), CUSTOM(assistant-desk): Docs and the Projects Assistant mirror only live
+  // in the workspace's Explorer sidebar, which the Desk docks.
+  if (target.kind === "docs" || target.kind === "projects_assistant") {
+    openInExplorer(scope, target, destination, isCompact);
     return;
   }
   const store = useDesksStore.getState();
@@ -59,10 +60,10 @@ export function launchDeskTarget(
   );
 }
 
-/** CUSTOM(desk-docs): puts the Docs tab in the scope's Explorer pane. */
-function openDocsInExplorer(
+/** CUSTOM(desk-docs), CUSTOM(assistant-desk): puts an Explorer-only tab in the scope's Explorer. */
+function openInExplorer(
   scope: DeskTabOwner,
-  target: Extract<WorkspaceTabTarget, { kind: "docs" }>,
+  target: Extract<WorkspaceTabTarget, { kind: "docs" | "projects_assistant" }>,
   destination: TerminalTabDestination,
   isCompact: boolean,
 ) {

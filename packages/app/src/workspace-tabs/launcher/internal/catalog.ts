@@ -14,6 +14,7 @@ export const SUPPORTING_LAUNCH_ORDER = [
   "diff",
   "files",
   "docs", // CUSTOM(desk-docs)
+  "projectsAssistant", // CUSTOM(assistant-desk)
   "agent",
   "browser",
   "pullRequest",

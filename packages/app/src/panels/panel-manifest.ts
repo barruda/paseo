@@ -167,11 +167,11 @@ const manifests = {
     compactSheet: null,
     resourceKey: () => "docs",
   },
-  // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
+  // CUSTOM(assistant-desk): the Explorer's mirror of the Projects Assistant Desk, opened from +.
   projects_assistant: {
     kind: "projects_assistant",
     supportedHosts: ["explorer"],
-    showCloseButton: false,
+    showCloseButton: true,
     singleton: true,
     compactSheet: null,
     resourceKey: () => "projects_assistant",

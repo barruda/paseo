@@ -30,16 +30,14 @@ function finishPending(): void {
 }
 
 function collectTabs(): { deskTabs: SweepDeskTab[]; layoutTabs: SweepLayoutTab[] } {
-  const desks = useDesksStore
-    .getState()
-    .desks.flatMap((desk) =>
-      deskTabs(desk).map((tab) => ({
-        id: tab.id,
-        serverId: tab.serverId,
-        target: tab.target,
-        deskId: desk.id,
-      })),
-    );
+  const desks = useDesksStore.getState().desks.flatMap((desk) =>
+    deskTabs(desk).map((tab) => ({
+      id: tab.id,
+      serverId: tab.serverId,
+      target: tab.target,
+      deskId: desk.id,
+    })),
+  );
   const layouts = useWorkspaceLayoutStore.getState();
   const layoutTabs = Object.keys(layouts.layoutByWorkspace).flatMap((workspaceKey) =>
     layouts.getWorkspaceTabs(workspaceKey).map((tab) => ({
@@ -86,7 +84,7 @@ export function useAssistantTabSweep(): void {
         for (const tab of plan.layoutTabs) {
           layouts.closeTab(tab.workspaceKey, tab.tabId);
           // A pinned agent would get its tab back on the next reconcile.
-          if (tab.agentId) layouts.unpinAgent(tab.workspaceKey, tab.agentId);
+          layouts.unpinAgent(tab.workspaceKey, tab.agentId);
         }
       } finally {
         sweeping = false;

@@ -15,7 +15,7 @@ const agentFor = (serverId: string, agentId: string) =>
   serverId === "s1" && agentId === "chat" ? liveChat() : otherAgent();
 
 describe("planAssistantTabSweep", () => {
-  it("closes restored chat tabs, and old Explorer assistant tabs, silently", () => {
+  it("closes restored chat tabs silently", () => {
     const plan = planAssistantTabSweep({
       deskTabs: [
         { deskId: "primary", id: "d1", serverId: "s1", target: { kind: "agent", agentId: "chat" } },
@@ -28,19 +28,34 @@ describe("planAssistantTabSweep", () => {
       ],
       layoutTabs: [
         { workspaceKey: "s1:ws", tabId: "t1", target: { kind: "agent", agentId: "chat" } },
-        { workspaceKey: "s1:ws", tabId: "t2", target: { kind: "projects_assistant" } },
       ],
       agentFor,
       known: new Set([deskTabKey("d1"), layoutTabKey("s1:ws", "t1")]),
     });
     expect(plan).toEqual({
       deskTabIds: ["d1"],
-      layoutTabs: [
-        { workspaceKey: "s1:ws", tabId: "t1", agentId: "chat" },
-        { workspaceKey: "s1:ws", tabId: "t2", agentId: null },
-      ],
+      layoutTabs: [{ workspaceKey: "s1:ws", tabId: "t1", agentId: "chat" }],
       reveal: null,
     });
+  });
+
+  it("leaves the Explorer's Projects Assistant mirror tab alone", () => {
+    const plan = planAssistantTabSweep({
+      deskTabs: [
+        {
+          deskId: "primary",
+          id: "mirror",
+          serverId: "s1",
+          target: { kind: "projects_assistant" },
+        },
+      ],
+      layoutTabs: [
+        { workspaceKey: "s1:ws", tabId: "mirror", target: { kind: "projects_assistant" } },
+      ],
+      agentFor,
+      known: new Set(),
+    });
+    expect(plan).toEqual({ deskTabIds: [], layoutTabs: [], reveal: null });
   });
 
   it("asks to open the assistant Desk for a chat tab opened later", () => {

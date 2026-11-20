@@ -2,9 +2,12 @@
  * @vitest-environment jsdom
  */
 // CUSTOM(assistant-desk)
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const openAssistantDesk = vi.hoisted(() => vi.fn());
+vi.mock("./open", () => ({ openAssistantDesk }));
 
 vi.mock("@/panels/agent-panel", async () => {
   const ReactModule = await vi.importActual<typeof import("react")>("react");
@@ -23,11 +26,15 @@ vi.mock("@/panels/agent-panel", async () => {
 
 import { PaneProvider, type PaneContextValue } from "@/panels/pane-context";
 import { useSessionStore, type Agent, type SessionState } from "@/stores/session-store";
+import { initialDesks, useDesksStore, type DeskTab } from "@/task-navigation/desks-store";
 import { assistantSidebarPanelRegistration } from "./panel";
 import { ASSISTANT_CHAT_LABEL } from "./model";
 import { useAssistantSidebarStore } from "./store";
 
 const CHAT = { [ASSISTANT_CHAT_LABEL]: "true" };
+const OWNER = { serverId: "s1", workspaceId: "ws" };
+const chatTab = (agentId: string) => ({ ...OWNER, target: { kind: "agent" as const, agentId } });
+const isChat = (tab: DeskTab) => tab.target.kind === "agent";
 
 function agent(overrides: Partial<Agent> = {}): Agent {
   return {
@@ -40,17 +47,21 @@ function agent(overrides: Partial<Agent> = {}): Agent {
   } as unknown as Agent;
 }
 
-function seedSession(agents: [string, Agent][], agentDetails: [string, Agent][] = []): void {
+function seedSession(agents: [string, Agent][]): void {
   useSessionStore.setState({
     sessions: {
       s1: {
         serverId: "s1",
         agents: new Map(agents),
-        agentDetails: new Map(agentDetails),
+        agentDetails: new Map(),
         hasHydratedAgents: true,
       } as unknown as SessionState,
     },
   });
+}
+
+function showChat(agentId: string): void {
+  useDesksStore.getState().showAssistantChat({ tab: chatTab(agentId), isChatTab: isChat });
 }
 
 const paneContext: PaneContextValue = {
@@ -79,34 +90,51 @@ function renderPanel() {
 }
 
 beforeEach(() => {
+  openAssistantDesk.mockClear();
   useSessionStore.setState({ sessions: {} });
   useAssistantSidebarStore.setState({ chat: null, pending: null });
+  useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary", initialized: true });
 });
 
 afterEach(cleanup);
 
 describe("Projects Assistant sidebar panel", () => {
-  it("shows the live chat the store resolves, through a pane pointed at that agent", () => {
+  it("shows the chat the assistant Desk has in front, through a pane pointed at that agent", () => {
     seedSession([["chat", agent()]]);
+    showChat("chat");
     renderPanel();
     expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("chat");
   });
 
-  it("keeps showing an archived chat when no live chat exists", () => {
-    seedSession([], [["old", agent({ id: "old", archivedAt: new Date() })]]);
-    useAssistantSidebarStore.getState().setChat({ serverId: "s1", agentId: "old" });
+  it("follows the Desk when its chat changes", () => {
+    seedSession([
+      ["chat", agent()],
+      ["next", agent({ id: "next" })],
+    ]);
+    showChat("chat");
     renderPanel();
-    expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("old");
+
+    act(() => showChat("next"));
+
+    expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("next");
   });
 
-  it("points the user back to the board when there is no chat at all", () => {
+  it("points the user to the Desk when the Desk has no chat", () => {
+    useDesksStore.getState().selectAssistantDesk();
     renderPanel();
     expect(screen.queryByTestId("agent-panel")).toBeNull();
-    expect(screen.getByText(/Open one from Power Workboard/)).toBeTruthy();
+    expect(screen.getByText(/has no chat open/)).toBeTruthy();
   });
 
-  it("remembers the resolved chat so the next start shows it straight away", () => {
+  it("opens the Desk from the empty state", () => {
+    renderPanel();
+    fireEvent.click(screen.getByTestId("projects-assistant-open-desk"));
+    expect(openAssistantDesk).toHaveBeenCalledWith({ chat: null });
+  });
+
+  it("remembers the Desk's chat so the next start shows it straight away", () => {
     seedSession([["chat", agent()]]);
+    showChat("chat");
     renderPanel();
     expect(useAssistantSidebarStore.getState().chat).toEqual({ serverId: "s1", agentId: "chat" });
   });

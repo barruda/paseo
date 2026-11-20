@@ -21,6 +21,7 @@ describe("getBuiltInLaunchOrder", () => {
       "diff",
       "files",
       "docs",
+      "projectsAssistant",
       "agent",
       "browser",
       "pullRequest",
