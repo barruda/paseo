@@ -297,6 +297,24 @@ it("the board tools accept the short ticket number, and list it in list and over
   }
 });
 
+it("board_task_diff accepts the short ticket number", async () => {
+  const c = await chat();
+  try {
+    const { taskId } = await taskWithWorktree(c);
+    const card = c.board.snapshot().cards.find((x) => x.id === taskId)!;
+    expect(card.number).toBeGreaterThan(0);
+    const diff = await c.run("board_task_diff", {
+      taskId: String(card.number),
+      maxBytes: 100000,
+    });
+    expect(diff.isError).toBeUndefined();
+    expect(diff.text).toContain("Branch: task");
+    expect(diff.text).toContain("+++ b/a.txt");
+  } finally {
+    c.board.dispose();
+  }
+});
+
 it("task_action reuses the assistant actions; run_orchestrator and history work", async () => {
   const c = await chat();
   try {

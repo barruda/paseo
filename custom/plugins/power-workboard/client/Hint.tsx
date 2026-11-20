@@ -266,8 +266,9 @@ export function HintButton({
         onBlur?.(event);
       }}
       onLongPress={(event) => {
-        showForInput(event);
-        onLongPress?.(event);
+        // CUSTOM(task-panel): a card title's long press opens the menu instead of the hint.
+        if (onLongPress) onLongPress(event);
+        else showForInput(event);
       }}
     >
       {children}

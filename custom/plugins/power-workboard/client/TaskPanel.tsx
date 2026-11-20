@@ -17,11 +17,20 @@ import { cardAgentId } from "./board-utils";
 import { RichText } from "./assistant/conversations-thread";
 import { onEscapeKey } from "./web";
 import type { CardMenuItem } from "./card-menu";
+import {
+  MENU_EDGE,
+  clampMenuPosition,
+  menuSize,
+  type Size,
+} from "./task-panel-state";
 
 type Theme = PluginSurfaceProps["theme"];
 type Strings = ReturnType<typeof strings>;
-// CUSTOM(task-panel): viewport coordinates from the mouse, above every board overflow.
+// CUSTOM(task-panel): viewport coordinates from the mouse, above every board overflow. Native
+// has no fixed positioning, so there the menu is absolute inside the board root.
 const FIXED = { position: "fixed" } as unknown as ViewStyle;
+const ABSOLUTE = { position: "absolute" } as ViewStyle;
+const OVERLAY = Platform.OS === "web" ? FIXED : ABSOLUTE;
 
 export type CardMenuRequest = {
   x: number;
@@ -43,8 +52,8 @@ type WebNode = {
 };
 
 /**
- * CUSTOM(task-panel): middle click and the context menu on web. Native has neither, so the
- * board keeps its usual press behavior there.
+ * CUSTOM(task-panel): middle click and the context menu on web. Native has no pointer events;
+ * there the card's long press opens the same menu.
  */
 export function useCardPointerActions({
   onMiddleClick,
@@ -90,30 +99,39 @@ export function useCardPointerActions({
 
 export function CardContextMenu({
   menu,
+  viewport,
+  t,
   theme,
   onClose,
 }: {
   menu: CardMenuRequest;
+  viewport: Size;
+  t: Strings;
   theme: Theme;
   onClose(): void;
 }) {
   useEffect(() => onEscapeKey(onClose), [onClose]);
+  const size = menuSize(menu.items.length);
+  const available = Math.max(0, viewport.width - 2 * MENU_EDGE);
+  const width = available > 0 ? Math.min(size.width, available) : size.width;
+  const position = clampMenuPosition(menu, viewport, { ...size, width });
   return (
     <>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Close menu"
+        accessibilityLabel={t.closeMenu}
         onPress={onClose}
-        style={[styles.menuBackdrop, FIXED]}
+        style={[styles.menuBackdrop, OVERLAY]}
       />
       <View
         testID="workboard-card-menu"
         style={[
           styles.menu,
-          FIXED,
+          OVERLAY,
           {
-            left: menu.x,
-            top: menu.y,
+            left: position.x,
+            top: position.y,
+            width,
             backgroundColor: theme.colors.surface1,
             borderColor: theme.colors.border,
           },
@@ -253,7 +271,10 @@ export function TaskPanel({
           <Icon name="X" size={16} color={theme.colors.foregroundMuted} />
         </Pressable>
       </View>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView
+        style={styles.panelScroll}
+        contentContainerStyle={styles.content}
+      >
         <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
           {card.projectName || t.unassigned}
           {` · ${stage}`}
@@ -408,6 +429,7 @@ const styles = StyleSheet.create({
   number: { fontSize: 12, fontWeight: "700" },
   title: { flex: 1, fontSize: 15, fontWeight: "600" },
   iconButton: { padding: 6, borderRadius: 6 },
+  panelScroll: { flex: 1 },
   content: { padding: 12, gap: 10 },
   meta: { fontSize: 12 },
   section: { gap: 6 },
@@ -433,7 +455,6 @@ const styles = StyleSheet.create({
   },
   menu: {
     zIndex: 101,
-    minWidth: 190,
     borderWidth: 1,
     borderRadius: 8,
     paddingVertical: 4,

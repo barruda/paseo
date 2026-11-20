@@ -23,6 +23,7 @@ const zh = {
   openAgent: "打开 Agent",
   openAgentHint: "打开这个任务的 Agent 会话",
   openInPanel: "在面板中打开",
+  closeMenu: "关闭菜单",
   ticketPanel: {
     close: "关闭面板",
     description: "说明",
@@ -753,6 +754,7 @@ const en: typeof zh = {
   openAgent: "Open agent",
   openAgentHint: "Open this task's agent chat",
   openInPanel: "Open in panel",
+  closeMenu: "Close menu",
   ticketPanel: {
     close: "Close panel",
     description: "Description",

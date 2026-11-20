@@ -56,6 +56,9 @@ export const CHAT_LABEL = "pwb/assistant-chat";
 const BOARD_TOOLS =
   "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin";
 
+// CUSTOM(task-numbers): the same reference is accepted everywhere a tool takes a task.
+const TASK_ID_HINT = "Task UUID, or its short number as 42 or #42";
+
 // CUSTOM(assistant-reply-protocol): the block every reply ends with. The doc path is the main
 // checkout's, since the Project Manager runs in an empty folder; the words come from the parser.
 export const REPLY_PROTOCOL_DOC =
@@ -75,6 +78,7 @@ export const REPLY_PROTOCOL_RULE = [
 export const ASSISTANT_ROLE = [
   "You are the Project Manager: the user's manager for their Workboard tasks and orchestrators, in Tasks mode. You act for the user: they want decisions made and reported, not questions.",
   `Manage tasks through your board tools (${BOARD_TOOLS}): create, move, start, continue and deliver every task there. Never edit a project's code, commit or merge outside board_task_action.`,
+  "Every board tool that takes a task accepts its UUID or its short number as `42` or `#42`; the cards, board_list_tasks and board_overview show that number as `#42`.",
   "To review and diagnose, read freely: git log, git diff and git show in a task's worktree or the project's checkout, read any file, and run the task's tests in its worktree.",
   "Do not create Paseo agents to do a task: tasks go through the board so the orchestrators run them. A read-only reviewer subagent that helps you review a diff is fine. The one exception is the ship agent below.",
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
@@ -106,7 +110,7 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 // CUSTOM(assistant-compact): the rules alone open a chat started by compaction, which must not greet.
 export const CHAT_RULES =
-  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report and board_reload_plugin. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
+  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report and board_reload_plugin. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS = `Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). ${CHAT_RULES}`;
 
@@ -259,7 +263,7 @@ export function boardReportTool(
   return define({
     name: "board_report",
     description:
-      "Record one action you took on a task, once, for the Projects Reports page. kind: created, started, moved, reviewed, feedback, answered, fixed, merged, escalated or note. summary: ONE sentence, in the user's language; it is also your short chat reply and, with quickMessageId, the status row's text (quickStatus ok, needs-input or error; default: the message's current state, ok while pending). detail: short markdown (what you checked, what changed). decisions: the decisions you took, one per item. orchestrator: when you talked to the task's agent, {agentId, prompt: what you asked it, reply: its answer}; leave reply out to store the agent's last reply (its <report> block is read from it). The server fills the project and the time.",
+      "Record one action you took on a task, once, for the Projects Reports page. taskId accepts the UUID or the short number (42 or #42). kind: created, started, moved, reviewed, feedback, answered, fixed, merged, escalated or note. summary: ONE sentence, in the user's language; it is also your short chat reply and, with quickMessageId, the status row's text (quickStatus ok, needs-input or error; default: the message's current state, ok while pending). detail: short markdown (what you checked, what changed). decisions: the decisions you took, one per item. orchestrator: when you talked to the task's agent, {agentId, prompt: what you asked it, reply: its answer}; leave reply out to store the agent's last reply (its <report> block is read from it). The server fills the project and the time.",
     input: reportEntryInputSchema,
     async execute(input) {
       const board = getBoard();
@@ -551,7 +555,7 @@ export function chatTools(
       name: "board_get_task",
       description:
         "Everything about one task: description, column, attempts, delivery, last summary, PR text, and its worktree (path, branch, base branch, commits ahead and diffstat including new uncommitted files).",
-      input: z.object({ taskId: z.string() }),
+      input: z.object({ taskId: z.string().describe(TASK_ID_HINT) }),
       async execute({ taskId }) {
         const c = card(taskId);
         const id = c.id;
@@ -583,7 +587,7 @@ export function chatTools(
       name: "board_task_diff",
       description: `Read only. The task's diff against its base branch (or, for a task that runs directly in the project folder, the HEAD it started at): its commits, uncommitted edits and new untracked files, after a header with the worktree, branch, base and diffstat. Output is cut at maxBytes (default ${DEFAULT_DIFF_BYTES}); when it is cut, call again with path set to one file or folder from the diffstat.`,
       input: z.object({
-        taskId: z.string(),
+        taskId: z.string().describe(TASK_ID_HINT),
         path: z
           .string()
           .min(1)
@@ -668,7 +672,7 @@ export function chatTools(
       description:
         "Change a task's title, description, project (id or name) or orchestrator (id or name). Omitted fields stay as they are; null clears the project or orchestrator.",
       input: z.object({
-        taskId: z.string(),
+        taskId: z.string().describe(TASK_ID_HINT),
         title: z.string().min(1).max(1000).optional(),
         description: z.string().max(50000).optional(),
         projectId: z.string().nullable().optional(),
@@ -703,7 +707,10 @@ export function chatTools(
       name: "board_move_task",
       description:
         "Move a task to a column (group id or kind), like dragging its card. The board refuses moves it does not allow, such as putting a task that has no workspace into In progress.",
-      input: z.object({ taskId: z.string(), column: z.string() }),
+      input: z.object({
+        taskId: z.string().describe(TASK_ID_HINT),
+        column: z.string(),
+      }),
       async execute({ taskId, column }) {
         const c = card(taskId);
         const group = resolveGroup(column);
@@ -732,7 +739,7 @@ export function chatTools(
       description:
         "Act on a task that is in review or done: merge-now (commit and merge into the base branch), prepare-pr, continue (send it back to its agent with feedback), mark-done, or dismiss (take it off Needs you). With wait=true, merge-now waits (up to 120 s) for the delivery to finish and returns its final stage, reason and detail.",
       input: z.object({
-        taskId: z.string(),
+        taskId: z.string().describe(TASK_ID_HINT),
         type: z.enum([
           "merge-now",
           "prepare-pr",
@@ -872,7 +879,7 @@ export function chatTools(
         "The Project Manager's history, newest first, one line per event.",
       input: z.object({
         limit: z.number().int().min(1).max(50).default(20),
-        taskId: z.string().optional(),
+        taskId: z.string().optional().describe(TASK_ID_HINT),
         projectId: z.string().optional().describe("A project's id or name"),
       }),
       async execute(input) {

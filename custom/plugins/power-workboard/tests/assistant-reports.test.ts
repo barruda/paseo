@@ -688,7 +688,7 @@ describe("board_report", () => {
   });
 
   function setup(messages: QuickMessage[] = []) {
-    const view = source([task("t1", { title: "Task one" })]);
+    const view = source([task("t1", { number: 7, title: "Task one" })]);
     view.data.orchestrations = {
       t1: { agentId: "a1" },
     } as unknown as Data["orchestrations"];
@@ -749,6 +749,17 @@ describe("board_report", () => {
       },
       quickMessageId: null,
     });
+  });
+
+  it("accepts the task's short number as well as its id", async () => {
+    const s = setup();
+    const result = await s.tool.execute({
+      taskId: "#7",
+      kind: "note",
+      summary: "Recorded by number.",
+    });
+    expect(result.isError).toBeUndefined();
+    expect((s.appended[0] as AssistantReport).taskId).toBe("t1");
   });
 
   it("does not read the reply of an agent the board did not start", async () => {

@@ -6959,8 +6959,10 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 
 ## workboard-ticket-numbers-and-panel: `#42` on every ticket, and a ticket beside the board
 
-- **Added:** 2026-11-20
-- **Commit:** `custom: Workboard tickets get a short number and open in a side panel`
+- **Added:** 2026-11-20. Changed 2026-11-20: long-press on native, the menu stays on screen, and
+  the tools document the short number.
+- **Commit:** `custom: Workboard tickets get a short number and open in a side panel`, then
+  `custom: Workboard panel opens by touch and its menu stays on screen`
 - **Why:** Tickets only had UUIDs, which are impossible to say in conversation, and reading a
   ticket meant leaving the board.
 - **What:** Every ticket gets `number`, a sequential id global to the board (one board per plugin
@@ -6970,20 +6972,27 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   migration assigns numbers to existing tickets in `createdAt` order (ties by id) and sets the
   counter past the highest. `board_get_task`, `board_task_diff`, `board_update_task`,
   `board_move_task`, `board_task_action` and `board_report` resolve `42` or `#42` as well as the
-  UUID; `board_list_tasks` and `board_overview` print the number. Middle-click on a card, or
-  right-click → **Open in panel**, opens the ticket in a right-hand panel; one panel at a time,
-  closed by its X or Esc, with Open workspace, Open agent, Edit and Move inside. Left click keeps
+  UUID; `board_list_tasks` and `board_overview` print the number, and every tool's `taskId`
+  parameter says so. Middle-click on a card, right-click → **Open in panel**, or a long press on
+  a phone or tablet, opens the ticket in a right-hand panel; one panel at a time, closed by its
+  X or Esc, with Open workspace, Open agent, Edit and Move inside. The context menu is clamped to
+  the board's viewport, and the panel's ScrollView scrolls a long description. Left click keeps
   its behavior. The panel is the board's own because the SDK workspace panel cannot carry a
   ticket id and the board is a surface.
 - **Core files touched:** none (plugin only).
 - **Re-apply:** the plugin is self-contained. When upstream data changes, keep `number` on
   `taskSchema`, `nextTaskNumber` on `dataSchema`, the v9→v10 migration, the creation paths that
   read/increment the counter, `shared/task-reference.ts`, and the `CUSTOM(task-numbers)` /
-  `CUSTOM(task-panel)` call sites.
+  `CUSTOM(task-panel)` call sites. On the card, keep the native `Pressable` long-press wrapper
+  (a plain `View` on web) and the title's long press; `client/task-panel-state.ts` holds the menu
+  clamp and the one-panel selection.
 - **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`.
-  In the app: the cards show `#1`, `#2`…; middle-click one and the panel opens on the right; open
-  another and it replaces the first; close it with Esc; right-click a card and choose **Open in
-  panel**; ask the Project Manager for `board_get_task` with `#1`.
+  In the app: the cards show `#N` (most tickets are archived, so the visible numbers are high);
+  middle-click one and the panel opens on the right; open another and it replaces the first;
+  close it with Esc; right-click a card and choose **Open in panel**; on a phone or tablet,
+  long-press a card and choose **Open in panel**; open a card near the right or bottom edge and
+  check the menu stays on screen; ask the Project Manager for `board_get_task` with `#42` or the
+  UUID.
 
 ## paseo-background-local-image: Backgrounds plugin vendored, with a file picker
 

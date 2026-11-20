@@ -35,7 +35,11 @@ export const REPORT_REPLY_MAX = 20000;
 /** What `board_report` accepts. Unknown fields are refused so a misspelled field is not lost. */
 export const reportEntryInputSchema = z
   .object({
-    taskId: z.string().trim().min(1),
+    taskId: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("Task UUID, or its short number as 42 or #42"),
     kind: reportEntryKindSchema,
     summary: z
       .string()

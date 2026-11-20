@@ -7,7 +7,14 @@ import {
   type ComponentProps,
   type ReactNode,
 } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from "react-native";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -78,6 +85,7 @@ import {
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { BoardView } from "./BoardView";
 import { cardMenuItems } from "./card-menu"; // CUSTOM(task-panel)
+import { panelCardFor } from "./task-panel-state"; // CUSTOM(task-panel)
 import { groupColor, projectAccentColor, supplementalColor } from "./colors";
 import { ProjectIcon } from "./ProjectIcon";
 import { loadBoardFilters, saveBoardFilters, toggleButtonState } from "./web";
@@ -226,6 +234,13 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   // CUSTOM(task-panel): one side panel at a time, plus the card's context menu.
   const [panelTaskId, setPanelTaskId] = useState<string | null>(null);
   const [cardMenu, setCardMenu] = useState<CardMenuRequest | null>(null);
+  const rootRef = useRef<View>(null);
+  const [rootSize, setRootSize] = useState({ width: 0, height: 0 });
+  const windowSize = useWindowDimensions();
+  const menuViewport =
+    Platform.OS === "web"
+      ? { width: windowSize.width, height: windowSize.height }
+      : rootSize;
   const [archivingDraft, setArchivingDraft] = useState<Card | null>(null);
   const [detachingDraft, setDetachingDraft] = useState<{
     card: Card;
@@ -403,9 +418,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const conflicts = cards.filter((card) => card.stage === "conflict");
   const archived = board.cards.filter((card) => card.archived !== null);
   // CUSTOM(task-panel): one ticket at a time; switching replaces the panel's content.
-  const panelCard = panelTaskId
-    ? (board.cards.find((card) => card.id === panelTaskId) ?? null)
-    : null;
+  const panelCard = panelCardFor(board.cards, panelTaskId);
   const writesDisabled = !board.connected || boardQuery.isError;
   const groupsPending = pendingMutationIds.has("settings:groups");
   const draftPending = pendingMutationIds.has(
@@ -413,6 +426,17 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   );
   const startPending =
     !!starting && pendingMutationIds.has(`start:${starting.card.id}`);
+  // CUSTOM(task-panel): touch positions are window-based; the native menu is absolute inside the
+  // board root, so convert them once, here.
+  const openCardMenu = (request: CardMenuRequest) => {
+    if (Platform.OS === "web" || !rootRef.current) {
+      setCardMenu(request);
+      return;
+    }
+    rootRef.current.measureInWindow((x, y) => {
+      setCardMenu({ ...request, x: request.x - x, y: request.y - y });
+    });
+  };
   const openAgent = (agentId: string) => {
     if (!props.navigation) {
       toast.error(t.navigationUnavailable);
@@ -793,6 +817,15 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   };
   return (
     <View
+      ref={rootRef}
+      onLayout={(event) => {
+        const { width, height } = event.nativeEvent.layout;
+        setRootSize((current) =>
+          current.width === width && current.height === height
+            ? current
+            : { width, height },
+        );
+      }}
       style={[styles.screen, { backgroundColor: props.theme.colors.surface0 }]}
     >
       {tabs}
@@ -1314,7 +1347,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                   setDetachingDraft({ card, draftId })
                 }
                 onOpenPanel={() => setPanelTaskId(card.id)}
-                onContextMenu={setCardMenu}
+                onContextMenu={openCardMenu}
               />
             )}
           />
@@ -1358,6 +1391,8 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       {cardMenu && (
         <CardContextMenu
           menu={cardMenu}
+          viewport={menuViewport}
+          t={t}
           theme={props.theme}
           onClose={() => setCardMenu(null)}
         />
@@ -2642,48 +2677,49 @@ export function TaskCard({
   const agentId = cardAgentId(card, record);
   const standaloneAgentLink = !!agentId && (inReview || !record);
   // CUSTOM(task-panel): middle click and the context menu open the side panel; left click keeps
-  // every existing behavior.
+  // every existing behavior. Native has neither pointer event, so a long press opens the same menu.
   const openPanel = onOpenPanel ?? (() => {});
+  const menuAt = (x: number, y: number) =>
+    onContextMenu?.({
+      x,
+      y,
+      items: cardMenuItems({
+        card,
+        agentId,
+        t,
+        disabled,
+        onOpenPanel: openPanel,
+        onOpen,
+        onOpenAgent,
+        onEdit,
+        onStatus,
+      }),
+    });
   const pointerRef = useCardPointerActions({
     onMiddleClick: openPanel,
-    onContextMenu: ({ x, y }) =>
-      onContextMenu?.({
-        x,
-        y,
-        items: cardMenuItems({
-          card,
-          agentId,
-          t,
-          disabled,
-          onOpenPanel: openPanel,
-          onOpen,
-          onOpenAgent,
-          onEdit,
-          onStatus,
-        }),
-      }),
+    onContextMenu: ({ x, y }) => menuAt(x, y),
   });
-  return (
-    <View
-      ref={pointerRef}
-      style={[
-        styles.card,
-        {
-          backgroundColor: theme.colors.surface0,
-          borderColor: theme.colors.border,
-          ...(onUndo && compact
-            ? {
-                outlineColor: theme.colors.accent,
-                outlineWidth: 2,
-                outlineStyle: "solid" as const,
-              }
-            : {}),
-          borderLeftColor: card.projectId
-            ? projectAccentColor(projectAccent, card.projectId, theme)
-            : theme.colors.border,
-        },
-      ]}
-    >
+  const openMenu = (event: { nativeEvent: { pageX: number; pageY: number } }) =>
+    menuAt(event.nativeEvent.pageX, event.nativeEvent.pageY);
+  const cardStyle = [
+    styles.card,
+    {
+      backgroundColor: theme.colors.surface0,
+      borderColor: theme.colors.border,
+      ...(onUndo && compact
+        ? {
+            outlineColor: theme.colors.accent,
+            outlineWidth: 2,
+            outlineStyle: "solid" as const,
+          }
+        : {}),
+      borderLeftColor: card.projectId
+        ? projectAccentColor(projectAccent, card.projectId, theme)
+        : theme.colors.border,
+    },
+  ];
+  const content = (
+    <>
       {onUndo && (
         <HintButton
           hint={t.undoMoveHint}
@@ -2706,6 +2742,7 @@ export function TaskCard({
           hint={card.title}
           onHoverIn={() => setTitleHovered(true)}
           onHoverOut={() => setTitleHovered(false)}
+          onLongPress={Platform.OS === "web" ? undefined : openMenu}
           accessibilityRole="button"
           accessibilityLabel={`${isDraft ? t.edit : t.notes}: ${card.title}`}
           onPress={onEdit}
@@ -3222,6 +3259,22 @@ export function TaskCard({
             • {agent.title} · {t.activity[agent.activity]}
           </Text>
         ))}
+    </>
+  );
+  if (Platform.OS !== "web")
+    return (
+      <Pressable
+        ref={pointerRef}
+        accessible={false}
+        onLongPress={onContextMenu ? openMenu : undefined}
+        style={cardStyle}
+      >
+        {content}
+      </Pressable>
+    );
+  return (
+    <View ref={pointerRef} style={cardStyle}>
+      {content}
     </View>
   );
 }

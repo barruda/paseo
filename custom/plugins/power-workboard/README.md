@@ -65,10 +65,12 @@ this repo) with these differences:
 - **Ticket numbers.** Every ticket has a short, sequential number shown as `#42` on the card,
   before the details arrow, and at the top of its editor and panel. Numbers are global to the
   board (one board per plugin storage, all projects), assigned in creation order, and never
-  reused. Existing tickets get theirs in a migration. The board tools accept `42` or `#42`
-  wherever they take a task id, and `board_list_tasks`/`board_overview` show the number.
-- **Ticket panel.** Middle-click a card, or right-click it and choose **Open in panel**, to read
-  the ticket beside the board without leaving it. One panel at a time: opening another ticket
+  reused. Existing tickets get theirs in a migration. The board tools accept the UUID or the
+  short number as `42` or `#42` wherever they take a task id, and
+  `board_list_tasks`/`board_overview` show the number.
+- **Ticket panel.** Middle-click a card, right-click it and choose **Open in panel**, or
+  long-press it on a phone or tablet, to read the ticket beside the board without leaving it. The
+  context menu stays inside the screen near an edge. One panel at a time: opening another ticket
   replaces it. Close it with its X or Esc; left click keeps its usual behavior. The SDK workspace
   panel cannot carry a ticket id and the board is a surface, so the board owns this side panel.
 - **Checkpoints.** A task that does not fit in one session ends its turn with a `checkpoint`
