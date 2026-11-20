@@ -12,14 +12,20 @@ export function useNewerAssistantChat(
 ): { chat: AssistantChatRef; compacted: boolean } | null {
   // assistantAgentMaps returns the same snapshot until an agents map is replaced.
   const maps = useSessionStore((state) => assistantAgentMaps(state.sessions));
+  // The agents map lists only live agents; an archived one is in the agent details.
+  const agent = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    return session?.agents.get(agentId) ?? session?.agentDetails.get(agentId);
+  });
   return useMemo(
     () =>
       newerAssistantChat({
         serverId,
         agentId,
+        agent,
         agentsByServer: maps.agentsByServer,
         hydratedServerIds: maps.hydratedServerIds,
       }),
-    [maps, serverId, agentId],
+    [maps, agent, serverId, agentId],
   );
 }

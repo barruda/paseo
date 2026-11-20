@@ -143,7 +143,12 @@ export function useAssistantTabSweep(): void {
     // The session store changes many times a second while agents stream; rescan only when an
     // agents map was replaced.
     const onSession = () => {
-      const maps = Object.values(useSessionStore.getState().sessions).map((s) => s.agents);
+      // CUSTOM(assistant-desk-newest): the hydration flag too; after a reload it can flip without
+      // a new agents map, and the Desk refresh waits for it.
+      const maps = Object.values(useSessionStore.getState().sessions).flatMap((s) => [
+        s.agents,
+        s.hasHydratedAgents,
+      ]);
       if (maps.length === lastAgentMaps.length && maps.every((map, i) => map === lastAgentMaps[i]))
         return;
       lastAgentMaps = maps;
