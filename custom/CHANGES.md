@@ -8271,35 +8271,46 @@ power-workboard`. In the app, open the Projects Assistant chat, set "Compact at 
     session does not list yet is stored as `pending` (not persisted); `useAssistantTabSweep`
     finishes the open when the session lists it, and only selects the Desk if it is still the
     active one.
+  - The Explorer sidebar has a `projects_assistant` tab again, beside Files and Changes, opened
+    from its **+** (follow-up commit `custom: Projects Assistant mirror tab in the Explorer`). It
+    is a view of the Desk, not a second chat: `assistant-sidebar/mirror.ts` reads the Desk's
+    focused agent tab (`desk.agentTabId` when a terminal or file is in front, then any agent tab),
+    and the panel renders that agent with the ordinary agent panel. The Desk stays the owner, so
+    opening the Explorer tab creates no Desk tab; a new chat, a compaction successor or a restart
+    swaps the chat in the same Explorer tab. With no Desk or no agent tab, the panel says so and
+    offers **Open Projects Assistant Desk** (`openAssistantDesk`). The panel never retargets its
+    own tab, so it cannot turn into an agent tab. The **+** entry only appears in the Explorer and
+    only with Tasks mode on.
   - `useAssistantTabSweep` (mounted in `app/_layout.tsx`): a live chat's agent tabs in any other
     Desk and in workspace layouts are closed (restored ones silently; a tab opened later closes
-    and asks `openAssistantDesk`); tabs inside the assistant Desk are never swept; every old
-    `projects_assistant` tab closes silently; an archived chat is never swept (Conversations'
-    "Open in Desk"). Outside Tasks mode chat tabs are left alone (there is no assistant Desk).
-    Workspaces do not auto-open the chat (`agent-visibility.ts`).
-  - The `projects_assistant` target kind is no longer offered in any **+** launcher, but stays in
-    the model, storage schema, manifest and tab labels so stored tabs still parse until the sweep
-    closes them. `/exit` and `/clear` in the chat close the panel's own tab through the pane
-    context, as before.
+    and asks `openAssistantDesk`); tabs inside the assistant Desk are never swept; the Explorer's
+    `projects_assistant` mirror tab is not a chat tab and is never swept; an archived chat is never
+    swept (Conversations' "Open in Desk"). Outside Tasks mode chat tabs are left alone (there is
+    no assistant Desk). Workspaces do not auto-open the chat (`agent-visibility.ts`).
+  - The `projects_assistant` target kind is offered in the Explorer's **+** only, stays in the
+    model, storage schema, manifest and tab labels, and is closable like Docs. `/exit` and
+    `/clear` in the chat close the panel's own tab through the pane context, as before.
 - **Files:** `packages/app/src/assistant-sidebar/` (`model.ts`, `store.ts`, `open.ts`, `sweep.ts`,
-  `use-assistant-tab-sweep.ts`, `session-agent-maps.ts`, `panel.tsx` (old tab, kept), tests
-  `model.test.ts`, `desk.test.ts`, `sweep.test.ts`, `launch.test.ts`, `open.test.ts`,
-  `panel.test.tsx`, `use-assistant-tab-sweep.test.ts`, `session-agent-maps.test.ts`; `reveal.ts`
-  is gone). Plugin comments only: `client/assistant/nav.ts`, `ChatLauncher.tsx`,
-  `RestartChatPill.tsx`, `QuickStatus.tsx`.
+  `use-assistant-tab-sweep.ts`, `session-agent-maps.ts`, `mirror.ts`, `panel.tsx`, tests
+  `model.test.ts`, `desk.test.ts`, `mirror.test.ts`, `sweep.test.ts`, `launch.test.ts`,
+  `open.test.ts`, `panel.test.tsx`, `use-assistant-tab-sweep.test.ts`,
+  `session-agent-maps.test.ts`; `reveal.ts` is gone). Plugin comments only:
+  `client/assistant/nav.ts`, `ChatLauncher.tsx`, `RestartChatPill.tsx`, `QuickStatus.tsx`.
 - **Core files touched** (`CUSTOM(assistant-desk)`): `task-navigation/desks-store.ts`
   (`ASSISTANT_DESK_ID`, `showAssistantChat`, `selectAssistantDesk`, `showAssistantChatInDesk`);
   `utils/navigate-to-agent/index.ts` and `resolve.ts`; `plugins/host-navigation-model.ts`;
-  `task-navigation/sidebar.tsx` (`openTask`); `task-navigation/new-tab-menu.tsx`,
-  `workspace-tabs/launcher/index.tsx` and `internal/catalog.ts` (no `projects_assistant` launcher);
-  `workspace-tabs/agent-visibility.ts`; `panels/agent-panel.tsx`; `client-slash-commands/execute.ts`;
-  `app/_layout.tsx`; and, kept so stored tabs still parse, `workspace-tabs/model.ts`,
-  `identity.ts`, `stores/workspace-layout-storage.ts`, `panels/panel-manifest.ts`,
-  `register-panels.ts`, the tab labels and `workspace-tab-menu.ts`.
+  `task-navigation/sidebar.tsx` (`openTask`); `task-navigation/new-tab-menu.tsx` (Explorer-only
+  launch), `workspace-tabs/launcher/index.tsx` and `internal/catalog.ts` (`projectsAssistant` in
+  the supporting order, hidden outside Tasks mode); `workspace-tabs/agent-visibility.ts`;
+  `panels/agent-panel.tsx`; `client-slash-commands/execute.ts`; `app/_layout.tsx`; and
+  `workspace-tabs/model.ts`, `identity.ts`, `stores/workspace-layout-storage.ts`,
+  `panels/panel-manifest.ts`, `register-panels.ts`, the tab labels and `workspace-tab-menu.ts`.
 - **Re-apply:** Add the store action and constant to `desks-store.ts`, call `openAssistantDesk`
   from the `navigateToAgent` intercept (fall through on `null`), mount the sweep once, and keep the
-  label string equal to the plugin's `ASSISTANT_CHAT_AGENT_LABEL`. Do not add `projects_assistant`
-  to any launcher.
+  label string equal to the plugin's `ASSISTANT_CHAT_AGENT_LABEL`. Keep the Explorer mirror in
+  `assistant-sidebar/mirror.ts` reading the assistant Desk (not the session) and make its
+  `retargetCurrentTab` a no-op. Add `projectsAssistant` to the supporting launch order and to
+  `launchDeskTarget`'s Explorer branch; do not add it to a main pane's **+**.
 - **Verify:** `(cd packages/app && npx vitest run src/assistant-sidebar
 src/utils/navigate-to-agent/index.test.ts src/plugins/host-navigation.test.ts
 src/workspace-tabs/agent-visibility.test.ts src/workspace-tabs/launcher/internal/catalog.test.ts
@@ -8309,6 +8320,9 @@ src/task-navigation/store.test.ts src/client-slash-commands/execute.test.ts)` (i
   the chat, and the chat in the Command Center: each selects the **Projects Assistant** Desk with
   the chat open and the composer focused. Click again: still one tab. Restart the chat with the
   pill: the same tab shows the new chat. Delete the Desk, open the chat again: it comes back.
+  Open the Explorer's **+** and pick Projects Assistant: the tab shows the same chat as the Desk
+  and a message sent there appears in both; Restart chat swaps both to the new chat; close the
+  Desk's tab (or delete the Desk) and the Explorer tab shows **Open Projects Assistant Desk**.
   `/exit` in the chat closes its tab; an old conversation from Projects Conversations on **Open in
   Desk** stays in an ordinary tab. The Desk's **+** has no Projects Assistant entry.
 

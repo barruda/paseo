@@ -8,26 +8,33 @@ import {
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 
-describe("launching the Docs from the Desk's +", () => {
-  it("shows the Explorer even when it was closed", () => {
-    const scope = { serverId: "srv", workspaceId: "ws" };
-    const workspaceKey = "srv:ws";
-    const store = useWorkspaceLayoutStore.getState();
-    store.ensureExplorerSidebar(workspaceKey);
-    store.hideExplorerSidebar(workspaceKey);
-    expect(selectIsExplorerSidebarVisible(useWorkspaceLayoutStore.getState(), workspaceKey)).toBe(
-      false,
-    );
+function launchIntoExplorer(target: { kind: "docs" } | { kind: "projects_assistant" }): string[] {
+  const scope = { serverId: "srv", workspaceId: "ws" };
+  const workspaceKey = "srv:ws";
+  const store = useWorkspaceLayoutStore.getState();
+  store.ensureExplorerSidebar(workspaceKey);
+  store.hideExplorerSidebar(workspaceKey);
+  expect(selectIsExplorerSidebarVisible(useWorkspaceLayoutStore.getState(), workspaceKey)).toBe(
+    false,
+  );
 
-    launchDeskTarget(scope, { kind: "docs" }, { kind: "open" });
+  launchDeskTarget(scope, target, { kind: "open" });
 
-    const state = useWorkspaceLayoutStore.getState();
-    expect(selectIsExplorerSidebarVisible(state, workspaceKey)).toBe(true);
-    const layout = state.layoutByWorkspace[workspaceKey];
-    const pane = findPaneById(layout.root, selectExplorerSidebarPaneId(state, workspaceKey));
-    const kinds = collectAllTabs(layout.root)
-      .filter((tab) => pane!.tabIds.includes(tab.tabId))
-      .map((tab) => tab.target.kind);
-    expect(kinds).toContain("docs");
+  const state = useWorkspaceLayoutStore.getState();
+  expect(selectIsExplorerSidebarVisible(state, workspaceKey)).toBe(true);
+  const layout = state.layoutByWorkspace[workspaceKey];
+  const pane = findPaneById(layout.root, selectExplorerSidebarPaneId(state, workspaceKey));
+  return collectAllTabs(layout.root)
+    .filter((tab) => pane!.tabIds.includes(tab.tabId))
+    .map((tab) => tab.target.kind);
+}
+
+describe("launching an Explorer-only panel from the Desk's +", () => {
+  it("shows the Explorer even when it was closed, with the Docs", () => {
+    expect(launchIntoExplorer({ kind: "docs" })).toContain("docs");
+  });
+
+  it("puts the Projects Assistant mirror in the Explorer", () => {
+    expect(launchIntoExplorer({ kind: "projects_assistant" })).toContain("projects_assistant");
   });
 });

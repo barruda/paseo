@@ -758,7 +758,7 @@ function getFallbackTabLabel(
     return "Docs"; // CUSTOM(desk-docs)
   }
   if (tab.target.kind === "projects_assistant") {
-    return "Projects Assistant"; // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
+    return "Projects Assistant"; // CUSTOM(assistant-desk)
   }
   if (tab.target.kind === "pull_request") {
     return labels.pullRequest;

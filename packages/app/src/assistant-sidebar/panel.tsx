@@ -1,18 +1,20 @@
-// CUSTOM(assistant-desk): the old Projects Assistant tab of the Explorer sidebar, kept so stored tabs still
-// parse (the sweep closes them; it is no longer offered anywhere). It showed the live
-// assistant chat with the ordinary agent panel (history, composer, pwb cards), so a compaction or a
-// restart swaps the chat inside the same tab. See custom/CHANGES.md.
+// CUSTOM(assistant-desk): the Projects Assistant tab of the Explorer sidebar. It is a view of the
+// assistant Desk, not a second chat: it shows the Desk's focused agent tab with the ordinary agent
+// panel (history, composer, pwb cards), so a new chat, a compaction or a restart swaps the chat in
+// the same Explorer tab. When the Desk has no chat, it points back to the Desk. See custom/CHANGES.md.
 import { useCallback, useEffect, useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { Bot } from "lucide-react-native";
+import { Button } from "@/components/ui/button";
 import { AgentConversationPanel } from "@/panels/agent-panel";
 import { PaneProvider, usePaneContext, type PaneContextValue } from "@/panels/pane-context";
 import { definePanel, type PanelPresentation } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
-import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
-import { resolveAssistantChat, type AssistantChatRef } from "./model";
-import { assistantAgentMaps } from "./session-agent-maps";
+import { useDesksStore } from "@/task-navigation/desks-store";
+import type { AssistantChatRef } from "./model";
+import { assistantDeskChat } from "./mirror";
+import { openAssistantDesk } from "./open";
 import { useAssistantSidebarStore } from "./store";
 
 const ThemedBot = withUnistyles(Bot);
@@ -20,24 +22,18 @@ const ThemedBot = withUnistyles(Bot);
 // English only, like the other custom surfaces.
 const presentation = {
   label: () => "Projects Assistant",
-  subtitle: () => "Power Workboard's assistant chat",
+  subtitle: () => "The Projects Assistant Desk, mirrored here",
   tooltip: () => "Projects Assistant",
   icon: ThemedBot,
 } satisfies PanelPresentation;
 
 const SEPARATOR = "\u0000";
+const ignoreRetarget = () => undefined;
 
-/** The chat to show, as a stable `serverId\0agentId` key (empty when there is none). */
-function useAssistantChatKey(preferredServerId: string): string {
-  const remembered = useAssistantSidebarStore((state) => state.chat);
-  return useSessionStore((state) => {
-    const { agentsByServer, hydratedServerIds } = assistantAgentMaps(state.sessions);
-    const chat = resolveAssistantChat({
-      remembered,
-      agentsByServer,
-      preferredServerId,
-      hydratedServerIds,
-    });
+/** The chat the assistant Desk shows, as a stable `serverId\0agentId` key (empty when none). */
+function useMirrorChatKey(): string {
+  return useDesksStore((state) => {
+    const chat = assistantDeskChat(state.desks);
     return chat ? `${chat.serverId}${SEPARATOR}${chat.agentId}` : "";
   });
 }
@@ -50,29 +46,17 @@ function parseChatKey(key: string): AssistantChatRef | null {
 
 function AssistantSidebarPanel() {
   const pane = usePaneContext();
-  const chatKey = useAssistantChatKey(pane.serverId);
+  const chatKey = useMirrorChatKey();
   const chat = useMemo(() => parseChatKey(chatKey), [chatKey]);
   const chatWorkspaceId = useSessionStore((state) =>
     chat ? state.sessions[chat.serverId]?.agents.get(chat.agentId)?.workspaceId : undefined,
   );
+  const openDesk = useCallback(() => openAssistantDesk({ chat: null }), []);
 
-  // Remember the successor or fallback, so the next start shows it straight away.
+  // Keep the remembered chat in step with the Desk, so every other way to the chat opens it too.
   useEffect(() => {
     if (chat) useAssistantSidebarStore.getState().setChat(chat);
   }, [chat]);
-
-  // The agent panel retargets its tab when the conversation moves to another agent; here that
-  // means another chat in the same tab. Anything else (a client slash command's fresh draft) would
-  // turn this tab into an ordinary one, so it is ignored: Restart chat starts a new chat.
-  const retargetCurrentTab = useCallback(
-    (target: WorkspaceTabTarget) => {
-      if (target.kind !== "agent" || !chat) return;
-      useAssistantSidebarStore
-        .getState()
-        .setChat({ serverId: chat.serverId, agentId: target.agentId });
-    },
-    [chat],
-  );
 
   const value = useMemo<PaneContextValue | null>(
     () =>
@@ -82,18 +66,27 @@ function AssistantSidebarPanel() {
             serverId: chat.serverId,
             workspaceId: chatWorkspaceId ?? pane.workspaceId,
             target: { kind: "agent", agentId: chat.agentId },
-            retargetCurrentTab,
+            // The Desk owns the chat: never turn this Explorer tab into an agent tab.
+            retargetCurrentTab: ignoreRetarget,
           }
         : null,
-    [chat, chatWorkspaceId, pane, retargetCurrentTab],
+    [chat, chatWorkspaceId, pane],
   );
 
   if (!value) {
     return (
       <View style={styles.empty}>
         <Text style={styles.emptyText}>
-          No Projects Assistant chat yet. Open one from Power Workboard, on its Assistant tab.
+          The Projects Assistant Desk has no chat open. Open the Desk to start or pick one.
         </Text>
+        <Button
+          variant="secondary"
+          size="sm"
+          onPress={openDesk}
+          testID="projects-assistant-open-desk"
+        >
+          Open Projects Assistant Desk
+        </Button>
       </View>
     );
   }
@@ -114,6 +107,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
+    gap: theme.spacing[3],
     padding: theme.spacing[4],
     backgroundColor: theme.colors.surface0,
   },

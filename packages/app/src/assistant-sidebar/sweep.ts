@@ -1,8 +1,9 @@
 // CUSTOM(assistant-desk): the live Projects Assistant chat only stays as a tab of its own Desk
 // (ASSISTANT_DESK_ID). Its tabs anywhere else are closed: tabs restored from storage silently, a
 // tab some path opens later (a launcher that reaches a Desk directly) closes and the assistant
-// Desk shows the chat instead. The old Explorer `projects_assistant` tabs close silently. An
-// archived chat is not swept: opening it from Conversations shows that conversation in a normal tab.
+// Desk shows the chat instead. The Explorer's `projects_assistant` tab is a mirror of the Desk, not
+// a chat tab, so it is never swept. An archived chat is not swept either: opening it from
+// Conversations shows that conversation in a normal tab.
 import { ASSISTANT_DESK_ID } from "@/task-navigation/desks-store";
 import { isLiveAssistantChatAgent, type AssistantAgentFacts, type AssistantChatRef } from "./model";
 
@@ -26,8 +27,7 @@ export interface SweepLayoutTab {
 
 export interface AssistantTabSweep {
   deskTabIds: string[];
-  /** `agentId` is null for an old `projects_assistant` tab: nothing to unpin. */
-  layoutTabs: { workspaceKey: string; tabId: string; agentId: string | null }[];
+  layoutTabs: { workspaceKey: string; tabId: string; agentId: string }[];
   /** The chat a new tab asked for, to show in the assistant Desk instead. */
   reveal: AssistantChatRef | null;
 }
@@ -79,10 +79,6 @@ export function planAssistantTabSweep(input: {
   const isAssistant = (serverId: string, agentId: string) =>
     input.sweepChats !== false && isLiveAssistantChatAgent(input.agentFor(serverId, agentId));
   for (const tab of input.deskTabs) {
-    if (tab.target.kind === "projects_assistant") {
-      plan.deskTabIds.push(tab.id);
-      continue;
-    }
     if (tab.deskId === ASSISTANT_DESK_ID) continue;
     const agentId = tab.target.kind === "agent" ? tab.target.agentId : undefined;
     if (!agentId || !isAssistant(tab.serverId, agentId)) continue;
@@ -90,10 +86,8 @@ export function planAssistantTabSweep(input: {
     if (!input.known.has(deskTabKey(tab.id))) plan.reveal = { serverId: tab.serverId, agentId };
   }
   for (const tab of input.layoutTabs) {
-    if (tab.target.kind === "projects_assistant") {
-      plan.layoutTabs.push({ workspaceKey: tab.workspaceKey, tabId: tab.tabId, agentId: null });
-      continue;
-    }
+    // The Explorer's Projects Assistant tab mirrors the Desk; it is not a chat tab.
+    if (tab.target.kind === "projects_assistant") continue;
     const agentId = tab.target.kind === "agent" ? tab.target.agentId : undefined;
     const serverId = serverOf(tab.workspaceKey);
     if (!agentId || !isAssistant(serverId, agentId)) continue;

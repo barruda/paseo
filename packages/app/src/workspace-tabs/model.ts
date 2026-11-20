@@ -49,7 +49,7 @@ export type WorkspaceTabTarget =
   | { kind: "changes_tree" }
   | { kind: "files" }
   | { kind: "docs" } // CUSTOM(desk-docs)
-  | { kind: "projects_assistant" } // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
+  | { kind: "projects_assistant" } // CUSTOM(assistant-desk): the Explorer's mirror of the assistant Desk
   | { kind: "pull_request" }
   | WorkspaceFileTabTarget
   | WorkspaceWorkingDiffTabTarget

@@ -16,6 +16,7 @@ vi.mock("@/stores/navigation-active-workspace-store", () => ({
 
 import { useSessionStore, type Agent, type SessionState } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { collectAllTabs } from "@/stores/workspace-layout-actions";
 import {
   activeDesk,
   ASSISTANT_DESK_ID,
@@ -143,12 +144,23 @@ describe("useAssistantTabSweep", () => {
     expect(assistantDeskTabs()).toHaveLength(1);
   });
 
-  it("closes old projects_assistant tabs silently", () => {
-    useDesksStore.getState().openTab({ ...OWNER, target: { kind: "projects_assistant" } });
+  it("leaves the Explorer's Projects Assistant mirror tab alone", () => {
+    const workspaceKey = "s1:ws";
+    const layouts = useWorkspaceLayoutStore.getState();
+    const paneId = layouts.showExplorerSidebar(workspaceKey);
+    layouts.openTab({
+      workspaceKey,
+      target: { kind: "projects_assistant" },
+      intent: "reveal",
+      placement: paneId ? { mode: "pane", paneId } : undefined,
+    });
+
     renderHook(() => useAssistantTabSweep());
 
-    expect(deskTabIds()).toEqual([]);
-    expect(useDesksStore.getState().activeDeskId).toBe("primary");
+    const layout = useWorkspaceLayoutStore.getState().layoutByWorkspace[workspaceKey];
+    expect(
+      collectAllTabs(layout.root).some((tab) => tab.target.kind === "projects_assistant"),
+    ).toBe(true);
   });
 
   it("leaves an archived chat's tab alone", () => {

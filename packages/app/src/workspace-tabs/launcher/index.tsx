@@ -29,6 +29,7 @@ import {
   getTerminalProfileIcon,
   resolveTerminalProfiles,
 } from "@getpaseo/protocol/terminal-profiles";
+import { useTaskNavigationStore } from "@/task-navigation/store"; // CUSTOM(assistant-desk)
 import { getBuiltInLaunchOrder, type BuiltInLaunchItemId } from "./internal/catalog";
 
 export type WorkspaceTabLaunchPurpose = "primary" | "supporting";
@@ -84,6 +85,7 @@ const BUILT_IN_SELECTIONS = {
   diff: { kind: "target", target: { kind: "working_diff" } },
   files: { kind: "target", target: { kind: "files" } },
   docs: { kind: "target", target: { kind: "docs" } }, // CUSTOM(desk-docs)
+  projectsAssistant: { kind: "target", target: { kind: "projects_assistant" } }, // CUSTOM(assistant-desk)
   browser: { kind: "browser" },
   pullRequest: { kind: "target", target: { kind: "pull_request" } },
 } satisfies Record<BuiltInLaunchItemId, NewTabSelection>;
@@ -109,6 +111,8 @@ export function useWorkspaceTabLaunchCatalog(input: {
   const { config } = useDaemonConfig(serverId);
   const plugins = useInstalledPlugins();
   const isCompact = useIsCompactFormFactor();
+  // CUSTOM(assistant-desk): the mirror needs the Desk, which only exists in Tasks mode.
+  const desksEnabled = useTaskNavigationStore((state) => state.enabled);
 
   const launchSelection = useCallback(
     (selection: NewTabSelection) => (destination: WorkspaceTabLaunchDestination) => {
@@ -126,6 +130,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
     const filesPresentation = getLaunchPresentation("files");
     const pullRequestPresentation = getLaunchPresentation("pull_request");
     const docsPresentation = getLaunchPresentation("docs"); // CUSTOM(desk-docs)
+    const projectsAssistantPresentation = getLaunchPresentation("projects_assistant"); // CUSTOM(assistant-desk)
     const builtIns: Record<BuiltInLaunchItemId, WorkspaceTabLaunchItem & { hidden?: boolean }> = {
       agent: {
         id: "agent",
@@ -182,6 +187,16 @@ export function useWorkspaceTabLaunchCatalog(input: {
         disabled: false,
         panelKind: "docs",
         launch: launchSelection(BUILT_IN_SELECTIONS.docs),
+      },
+      // CUSTOM(assistant-desk): a mirror of the Projects Assistant Desk, only where the Desk exists.
+      projectsAssistant: {
+        id: "projectsAssistant",
+        label: projectsAssistantPresentation.label(t),
+        Icon: projectsAssistantPresentation.icon,
+        disabled: false,
+        panelKind: "projects_assistant",
+        hidden: !desksEnabled,
+        launch: launchSelection(BUILT_IN_SELECTIONS.projectsAssistant),
       },
       browser: {
         id: "browser",
@@ -263,6 +278,7 @@ export function useWorkspaceTabLaunchCatalog(input: {
     });
   }, [
     config?.terminalProfiles,
+    desksEnabled,
     editTerminalProfiles,
     isCompact,
     launchSelection,

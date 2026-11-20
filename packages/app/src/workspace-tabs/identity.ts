@@ -58,7 +58,7 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
     case "changes_tree":
     case "files":
     case "docs": // CUSTOM(desk-docs)
-    case "projects_assistant": // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
+    case "projects_assistant": // CUSTOM(assistant-desk): the Explorer's mirror of the assistant Desk
     case "pull_request":
       return { kind: value.kind };
     case "setup": {
@@ -251,7 +251,7 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
     target.kind === "changes_tree" ||
     target.kind === "files" ||
     target.kind === "docs" || // CUSTOM(desk-docs)
-    target.kind === "projects_assistant" || // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
+    target.kind === "projects_assistant" || // CUSTOM(assistant-desk): the Explorer's mirror of the assistant Desk
     target.kind === "pull_request"
   ) {
     return target.kind;
