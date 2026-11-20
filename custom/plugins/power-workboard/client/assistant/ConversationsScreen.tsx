@@ -6,6 +6,7 @@ import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { useQuery } from "@tanstack/react-query";
 import { assistantTreeRpc } from "../../shared/assistant-rpc";
 import { usePaseoLanguage } from "../paseo-language";
+import { useProjectAccents } from "../project-accents";
 import {
   filterTree,
   firstRunningAgent,
@@ -32,6 +33,7 @@ export function ConversationsScreen(props: PluginSurfaceProps) {
   const { width } = useWindowDimensions();
   const compact = props.layout.compact || width < COMPACT_WIDTH;
   const shared = useConversationSelection();
+  const accents = useProjectAccents(props.host.id);
   const tree = useQuery({
     queryKey: ["power-workboard", "assistant-tree", props.host.id],
     queryFn: () => callTree({}),
@@ -112,6 +114,7 @@ export function ConversationsScreen(props: PluginSurfaceProps) {
       compact={compact}
       t={t}
       theme={props.theme}
+      accents={accents}
     />
   );
   const threadPane = selected.agentId ? (

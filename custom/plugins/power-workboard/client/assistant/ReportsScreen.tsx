@@ -19,7 +19,8 @@ import {
   assistantReportsTaskRpc,
   assistantReportsTasksRpc,
 } from "../../shared/assistant-rpc";
-import { groupColorValue, projectColor } from "../colors";
+import { groupColorValue, projectAccentColor } from "../colors";
+import { useProjectAccents } from "../project-accents";
 import { usePaseoLocale } from "../paseo-language";
 import { consumeReportTaskRequest, useReportTaskRequest } from "./nav";
 import { relativeTime } from "./conversations-format";
@@ -45,6 +46,7 @@ export function ReportsScreen(props: PluginSurfaceProps) {
   const { width } = useWindowDimensions();
   const compact = props.layout.compact || width < COMPACT_WIDTH;
   const hostId = props.host.id;
+  const accents = useProjectAccents(hostId);
   const c = props.theme.colors;
 
   const tasks = useQuery({
@@ -171,7 +173,11 @@ export function ReportsScreen(props: PluginSurfaceProps) {
             <Chip
               key={project.id}
               label={project.name}
-              color={projectColor(project.name, props.theme)}
+              color={projectAccentColor(
+                accents.forProject(project.id, project.name),
+                project.id,
+                props.theme,
+              )}
               active={projectId === project.id}
               onPress={() => setProjectId(project.id)}
               theme={props.theme}
@@ -240,7 +246,13 @@ export function ReportsScreen(props: PluginSurfaceProps) {
                 <Text
                   style={[
                     styles.meta,
-                    { color: projectColor(task.projectName, props.theme) },
+                    {
+                      color: projectAccentColor(
+                        accents.forProject(task.projectId, task.projectName),
+                        task.projectId ?? task.projectName,
+                        props.theme,
+                      ),
+                    },
                   ]}
                   numberOfLines={1}
                 >
@@ -280,6 +292,7 @@ export function ReportsScreen(props: PluginSurfaceProps) {
       navigation={props.navigation}
       t={t}
       theme={props.theme}
+      accents={accents}
     />
   ) : (
     <View style={styles.empty}>

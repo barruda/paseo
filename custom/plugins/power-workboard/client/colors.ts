@@ -1,24 +1,13 @@
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
-  GROUP_COLORS,
   groupColorKey,
   type Group,
   type GroupColor,
+  type ProjectAccent,
 } from "../shared/model";
+import { PALETTE, projectPaletteAccent } from "../shared/project-color";
 
 type Theme = PluginSurfaceProps["theme"];
-const PALETTE: Record<GroupColor, readonly [string, string]> = {
-  gray: ["#64748b", "#94a3b8"],
-  blue: ["#2563eb", "#60a5fa"],
-  cyan: ["#0e7490", "#22d3ee"],
-  teal: ["#0f766e", "#2dd4bf"],
-  green: ["#15803d", "#4ade80"],
-  amber: ["#b45309", "#fbbf24"],
-  orange: ["#c2410c", "#fb923c"],
-  violet: ["#7c3aed", "#a78bfa"],
-  pink: ["#be185d", "#f472b6"],
-  red: ["#dc2626", "#f87171"],
-};
 export const groupColor = (group: Group, theme: Theme): string =>
   groupColorValue(groupColorKey(group), theme);
 
@@ -69,8 +58,19 @@ export function supplementalColor(
 
 /** A stable color per project, from its id, so its chip looks the same everywhere. */
 export function projectColor(id: string, theme: Theme): string {
-  const colors = GROUP_COLORS.filter((color) => color !== "gray");
-  let hash = 0;
-  for (const char of id) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
-  return groupColorValue(colors[hash % colors.length], theme);
+  const { light, dark } = projectPaletteAccent(id);
+  return supplementalColor(theme, light, dark);
+}
+
+/**
+ * CUSTOM(project-icon-colors): the project's accent, or the stable palette when the board has no
+ * accent for it (an old snapshot, or a task whose project is gone).
+ */
+export function projectAccentColor(
+  accent: ProjectAccent | null | undefined,
+  fallbackId: string,
+  theme: Theme,
+): string {
+  if (accent) return supplementalColor(theme, accent.light, accent.dark);
+  return projectColor(fallbackId, theme);
 }

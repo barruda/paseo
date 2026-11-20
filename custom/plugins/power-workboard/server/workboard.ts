@@ -40,6 +40,7 @@ import {
   type OrchestratorHold, // CUSTOM(resource-pools)
   type OrchestratorRuntime,
   type Pool, // CUSTOM(resource-pools)
+  type ProjectAccent, // CUSTOM(project-icon-colors)
   ORCHESTRATOR_LOG_LIMIT,
   type Refinement,
   type ConversationAgent,
@@ -4376,6 +4377,18 @@ export class Workboard {
   deskStatus(): DeskStatus {
     const data = this.store.current;
     return deskStatusOf(this.snapshot(data), data.assistant?.deliveries ?? {});
+  }
+  // CUSTOM(project-icon-colors): the assistant pages color project names without a board snapshot.
+  projectAccents(): {
+    projects: { id: string; name: string; accent: ProjectAccent | null }[];
+  } {
+    return {
+      projects: this.inventory.projects.map((project) => ({
+        id: project.id,
+        name: project.name,
+        accent: project.accent ?? null,
+      })),
+    };
   }
   // CUSTOM(assistant-quick): what the quick-message inbox needs from the chat agent.
   chatSend(agentId: string, text: string): Promise<void> {
