@@ -165,26 +165,30 @@ export function ItemFeedback({
 }
 
 /**
- * A row's comment icon plus its inline field, for any row: `children` is the row's content, which
- * keeps the full width and gets the icon at its end. Without `onFeedback` it is just the content.
+ * A row's comment icon plus its inline field, for any row. `children` is the row's content; by
+ * default it fills the width and the icon sits at its end, and with `inline` the content shrinks
+ * to its text and the icon follows it. Without `onFeedback` it is just the content.
  */
 export function Commentable({
   children,
   onFeedback,
   theme,
   labels,
+  inline = false,
 }: {
   children: React.ReactNode;
   onFeedback?: (feedback: string) => Promise<void>;
   theme: Theme;
   labels: CardLabels;
+  /** Put the comment button right after the content instead of at the row's far right. */
+  inline?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   if (!onFeedback) return <>{children}</>;
   return (
     <View style={styles.commentable}>
       <View style={styles.rowTop}>
-        <View style={styles.grow}>{children}</View>
+        <View style={inline ? styles.shrink : styles.grow}>{children}</View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={labels.comment}
@@ -524,6 +528,7 @@ const styles = StyleSheet.create({
   body: { fontSize: 13, lineHeight: 19 },
   small: { fontSize: 12, lineHeight: 17 },
   grow: { flex: 1, minWidth: 0 },
+  shrink: { flexShrink: 1, minWidth: 0 },
   rowTop: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   sentRow: { flexDirection: "row", alignItems: "center", gap: 4 },
   commentable: { gap: 6 },

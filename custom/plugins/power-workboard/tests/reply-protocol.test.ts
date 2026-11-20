@@ -5,7 +5,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ASSISTANT_CHAT_AGENT_LABEL,
   DONE_VERBS,
+  NEXT_DESCRIPTIONS,
+  NEXT_LOOK,
   NEXT_VALUES,
+  nextLegend,
   REPLY_ITEM_KIND,
   REPLY_ITEM_VERSION,
   REPLY_KEYS,
@@ -52,10 +55,27 @@ function docList(name: string): string[] {
 
 const fence = (body: string) => "```pwb\n" + body + "\n```";
 
+/** The `- \`value\`: description` lines between `<!-- name -->` markers. */
+function docDescriptions(name: string): Record<string, string> {
+  const start = doc.indexOf(`<!-- ${name} -->`);
+  const end = doc.indexOf(`<!-- /${name} -->`);
+  expect(start).toBeGreaterThanOrEqual(0);
+  expect(end).toBeGreaterThan(start);
+  return Object.fromEntries(
+    [...doc.slice(start, end).matchAll(/^- `([^`]+)`: (.+)$/gm)].map(
+      (match) => [match[1], match[2].trim()],
+    ),
+  );
+}
+
 describe("protocol doc", () => {
   it("lists the same verbs and next values as the parser", () => {
     expect(docList("done-verbs")).toEqual([...DONE_VERBS]);
     expect(docList("next-values")).toEqual([...NEXT_VALUES]);
+  });
+
+  it("gives the chip legend the same descriptions as the parser", () => {
+    expect(docDescriptions("next-values")).toEqual({ ...NEXT_DESCRIPTIONS });
   });
 
   it("names the parser's version and every key", () => {
@@ -451,5 +471,28 @@ describe("openTaskReport", () => {
     });
     setScreenOpener(null);
     expect(canOpenTaskReport()).toBe(false);
+  });
+});
+
+describe("the próximo chip legend", () => {
+  it("lists every value with its chip icon, tone and description", () => {
+    const legend = nextLegend("agente");
+    expect(legend.map((entry) => entry.value)).toEqual([...NEXT_VALUES]);
+    for (const entry of legend) {
+      expect(entry.icon).toBe(NEXT_LOOK[entry.value].icon);
+      expect(entry.tone).toBe(NEXT_LOOK[entry.value].tone);
+      expect(entry.description).toBe(NEXT_DESCRIPTIONS[entry.value]);
+    }
+  });
+
+  it("highlights only the current value", () => {
+    for (const current of NEXT_VALUES) {
+      expect(
+        nextLegend(current)
+          .filter((entry) => entry.current)
+          .map((entry) => entry.value),
+      ).toEqual([current]);
+    }
+    expect(nextLegend(null).some((entry) => entry.current)).toBe(false);
   });
 });
