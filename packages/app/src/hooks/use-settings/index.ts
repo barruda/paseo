@@ -11,6 +11,7 @@ import {
 } from "@/desktop/settings/desktop-settings";
 import { isElectronRuntime } from "@/desktop/host";
 import { isEmbedMode } from "@/embed/embed-mode"; // CUSTOM(agent-embed)
+import { resolveChatOptionsForEmbed } from "@/embed/embed-chat-options"; // CUSTOM(agent-embed)
 import {
   APP_SETTINGS_KEY,
   APP_SETTINGS_QUERY_KEY,
@@ -181,9 +182,8 @@ export function useAppSettings(): UseAppSettingsReturn {
   const settings = useMemo(() => {
     const normalized = normalizeAppSettings(data);
     // CUSTOM(agent-embed): every composer reader goes through here, not only useSettings.
-    return isEmbedMode() && normalized.chatOptions
-      ? { ...normalized, chatOptions: withEmbedChatOptions(normalized.chatOptions) }
-      : normalized;
+    const chatOptions = resolveChatOptionsForEmbed(normalized.chatOptions, isEmbedMode());
+    return chatOptions === normalized.chatOptions ? normalized : { ...normalized, chatOptions };
   }, [data]);
 
   return {
@@ -193,25 +193,6 @@ export function useAppSettings(): UseAppSettingsReturn {
     updateSettings,
     resetSettings,
   };
-}
-
-// CUSTOM(agent-embed): the board's agent iframe hides these composer controls.
-const EMBED_HIDDEN_CHAT_OPTIONS = {
-  "feature:plan_mode": false,
-  "feature:fast_mode": false,
-  "model-shortcut": false,
-  jev: false,
-  dictation: false,
-  voice: false,
-};
-const embedChatOptionsCache = new WeakMap<object, AppSettings["chatOptions"]>();
-function withEmbedChatOptions(chatOptions: AppSettings["chatOptions"]): AppSettings["chatOptions"] {
-  let merged = embedChatOptionsCache.get(chatOptions);
-  if (!merged) {
-    merged = { ...chatOptions, ...EMBED_HIDDEN_CHAT_OPTIONS };
-    embedChatOptionsCache.set(chatOptions, merged);
-  }
-  return merged;
 }
 
 export function useSettings(): UseSettingsReturn;

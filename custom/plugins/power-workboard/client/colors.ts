@@ -74,3 +74,16 @@ export function projectAccentColor(
   if (accent) return supplementalColor(theme, accent.light, accent.dark);
   return projectColor(fallbackId, theme);
 }
+
+/**
+ * CUSTOM(project-icon-colors): the app's letter box uses the same identity fill in both themes,
+ * independent of the accent (which the dark theme changes, and an image or a hand-picked color
+ * can replace). Falls back to the accent's light variant for an old snapshot without `letterFill`.
+ */
+export function projectLetterFill(
+  letterFill: string | undefined,
+  accent: ProjectAccent | null | undefined,
+  fallbackId: string,
+): string {
+  return letterFill ?? accent?.light ?? projectPaletteAccent(fallbackId).light;
+}

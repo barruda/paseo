@@ -73,6 +73,7 @@ export function fixture(initial: Partial<Data> = {}) {
         ),
       };
     },
+    projectIcons: () => ({ projects: [] }), // CUSTOM(project-icon-colors)
     workspace: async (id) =>
       structuredClone(inventory.workspaces.find((w) => w.id === id) ?? null),
     conversation: agentEvidence(),

@@ -6,6 +6,7 @@ import {
   projectPaletteAccent,
   projectViewKeys,
   resolveProjectAccent,
+  resolveProjectDefinitions,
 } from "../shared/project-color";
 
 function luminance(hex: string): number {
@@ -137,5 +138,127 @@ describe("resolveProjectAccent", () => {
     expect(
       resolveProjectAccent({ id, image: { kind: "unsupported" } }),
     ).toEqual(projectPaletteAccent(id));
+  });
+});
+
+describe("resolveProjectDefinitions", () => {
+  it("keeps a project that has its own icon", () => {
+    const definitions = resolveProjectDefinitions([
+      {
+        projectId: "a",
+        realPath: "/repo",
+        hasIcon: true,
+        customIcon: false,
+      },
+      {
+        projectId: "b",
+        realPath: "/repo",
+        hasIcon: true,
+        customIcon: true,
+      },
+    ]);
+    expect(definitions.get("a")).toBe("a");
+    expect(definitions.get("b")).toBe("b");
+  });
+
+  it("takes the icon from a sibling on the same real path", () => {
+    const definitions = resolveProjectDefinitions([
+      {
+        projectId: "link",
+        realPath: "/repo",
+        hasIcon: false,
+        customIcon: false,
+      },
+      {
+        projectId: "target",
+        realPath: "/repo",
+        hasIcon: true,
+        customIcon: false,
+      },
+    ]);
+    expect(definitions.get("link")).toBe("target");
+  });
+
+  it("prefers a hand-picked icon, then the lowest project id", () => {
+    const definitions = resolveProjectDefinitions([
+      {
+        projectId: "board",
+        realPath: "/repo",
+        hasIcon: false,
+        customIcon: false,
+      },
+      {
+        projectId: "automatic",
+        realPath: "/repo",
+        hasIcon: true,
+        customIcon: false,
+      },
+      {
+        projectId: "picked",
+        realPath: "/repo",
+        hasIcon: true,
+        customIcon: true,
+      },
+    ]);
+    expect(definitions.get("board")).toBe("picked");
+    expect(
+      resolveProjectDefinitions([
+        {
+          projectId: "board",
+          realPath: "/repo",
+          hasIcon: false,
+          customIcon: false,
+        },
+        {
+          projectId: "z",
+          realPath: "/repo",
+          hasIcon: true,
+          customIcon: false,
+        },
+        {
+          projectId: "a",
+          realPath: "/repo",
+          hasIcon: true,
+          customIcon: false,
+        },
+      ]).get("board"),
+    ).toBe("a");
+  });
+
+  it("keeps the project itself when nothing on its path has an icon", () => {
+    const definitions = resolveProjectDefinitions([
+      {
+        projectId: "a",
+        realPath: "/repo",
+        hasIcon: false,
+        customIcon: false,
+      },
+      {
+        projectId: "b",
+        realPath: "/repo",
+        hasIcon: false,
+        customIcon: false,
+      },
+    ]);
+    expect(definitions.get("a")).toBe("a");
+    expect(definitions.get("b")).toBe("b");
+  });
+
+  it("does not match different real paths", () => {
+    const definitions = resolveProjectDefinitions([
+      {
+        projectId: "a",
+        realPath: "/one",
+        hasIcon: false,
+        customIcon: false,
+      },
+      {
+        projectId: "b",
+        realPath: "/two",
+        hasIcon: true,
+        customIcon: false,
+      },
+    ]);
+    expect(definitions.get("a")).toBe("a");
   });
 });

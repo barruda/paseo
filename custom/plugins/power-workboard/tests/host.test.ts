@@ -111,7 +111,10 @@ it("keeps directory and subagent subscriptions across inventories, overlays off-
         };
       },
     },
-    projects: { list: async () => ({ projects: [] }) },
+    projects: {
+      list: async () => ({ projects: [] }),
+      subscribe: () => () => {},
+    },
   };
   const changed = vi.fn();
   const host = new PaseoHost(
@@ -185,7 +188,10 @@ function providerHost(
       }),
       ref: () => ({ timeline: { refetch: timeline } }),
     },
-    projects: { list: async () => ({ projects: [] }) },
+    projects: {
+      list: async () => ({ projects: [] }),
+      subscribe: () => () => {},
+    },
   };
   return new PaseoHost(
     api as unknown as PaseoApi,

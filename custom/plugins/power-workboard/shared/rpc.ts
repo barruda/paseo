@@ -17,6 +17,7 @@ import {
   poolsSchema,
   providerModelSchema, // CUSTOM(bulk-orchestrator-agent)
   projectAccentSchema, // CUSTOM(project-icon-colors)
+  projectIconDataSchema, // CUSTOM(project-icon-colors)
   settingsSchema,
   stageSchema,
   startSchema,
@@ -39,6 +40,21 @@ export const projectAccentsRpc = defineRpc({
         id: z.string(),
         name: z.string(),
         accent: projectAccentSchema.nullable(),
+      }),
+    ),
+  }),
+});
+// CUSTOM(project-icon-colors): the image the app shows for each board project. Fetched apart
+// from the snapshot so a 1.5 s poll never carries base64 icons.
+export const projectIconsRpc = defineRpc({
+  name: "workboard.project-icons",
+  input: z.object({}),
+  output: z.object({
+    projects: z.array(
+      z.object({
+        id: z.string(),
+        revision: z.string(),
+        icon: projectIconDataSchema.nullable(),
       }),
     ),
   }),

@@ -3082,6 +3082,54 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
   DreamMMO's badge is the same violet as its letter icon, gnome-custom's is its logo blue, a
   black-and-white logo is gray, and a project with no icon keeps its letter color in both themes.
 
+## project-icon-images: the board draws the app's project icons
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: draw the app's project icons on the board`, then
+  `custom: match the app's project placeholder in both themes`
+- **Why:** The color came from the app's icon, but the board still drew its own letter. paseo and
+  pipeline, which have images in Settings > Projects, showed a generated "P" on the board; projects
+  without an image did not always match the app's letter either, and the two registered pipeline
+  roots (a symlink and its target) were treated as unrelated projects.
+- **What:**
+  - The board project entry now carries the resolved `iconRevision`. The new
+    `workboard.project-icons` RPC serves the image bytes (and the SVG text, for the native
+    renderer) outside the 1.5 s snapshot. The revision is part of the query key, so the client
+    fetches once per revision and refetches when it changes, without a periodic poll; editing a
+    project in the app needs no plugin reload.
+  - `client/ProjectIcon.tsx` draws the image when the definition has one (raster through
+    `Image` with the app's `cover` fit, SVG through the host `Icon` on native and `Image` on
+    web), and otherwise the app's letter placeholder: the last path segment's first letter, white,
+    on the app's identity fill. The board project now carries that `letterFill` separately from
+    the accent, because the accent moves with the theme and an image or a hand-picked color
+    replaces it; the theme-selected accent still drives borders and chips. The image is drawn
+    before the initial, so a project with an image and an empty name still shows it. Uploaded
+    images keep the app's rule of no rounded corners; the letter box keeps its radius.
+  - Used by the cards, the project filter's trigger and options, the side panel, the task editor's
+    project chips and the Start task project list. The assistant pages keep the accents from
+    `workboard.project-accents`.
+  - `shared/project-color.ts` adds `resolveProjectDefinitions`: projects are matched by their
+    daemon project id, and a root path is compared with symlinks resolved. A board project takes
+    the icon from the best definition on its real path: its own when it has one, otherwise a
+    sibling with an icon (a hand-picked icon wins over an automatic one, then the lowest project
+    id). With no icon anywhere, it keeps its own record, so the letter and color are the ones the
+    app shows for that placement.
+  - The app has no separate project color field. An image project's accent is the dominant color
+    extracted from that image (gray when it is monochrome); a project without an image uses the
+    app's letter color.
+  - The plugin's `@getpaseo/*` dev dependencies move to 0.14.0 and the manifest requires Paseo
+    >= 0.13.0: the icon uses the `Icon` `icon` prop and `findSvgIconProblem` added in 0.13.0.
+- **Core files touched:** none.
+- **Re-apply:** None for the app. Run `npm install` in `custom/plugins/power-workboard` after
+  merging to pick up the 0.14.0 dev dependencies.
+- **Verify:** `(cd custom/plugins/power-workboard && npm run check)`. In the app, Power Workboard:
+  paseo and pipeline show the same images as Settings > Projects, cropped the same way; DreamMMO,
+  tdwey, supernotes and the other projects without an image show the same letter, fill and white
+  letter color as the app in both themes; the closed project filter shows the selected project's
+  icon; changing a project's icon in the app updates the board when the revision changes. The
+  app's custom icon text (the emoji/word typed into the generated icon) lives only in the app's
+  local storage and is not exposed by the daemon, so the board still shows the letter for it.
+
 ## plugin-modal-size: plugin modals at 80% of the window
 
 - **Added:** 2026-10-25 (based on upstream 0.11.2)
@@ -6249,19 +6297,33 @@ src/task-navigation/provider-subagent-rows.test.ts` (in the update script). By h
   `http://127.0.0.1:5178` (conversation shows, Enter sends, reply streams) and on another origin
   (blocked by CSP).
 
-## embed-hidden-controls: the embedded agent composer hides Plan, Fast, Ctrl+M, Jev and voice
+## embed-hidden-controls: the embedded agent composer hides Plan, Fast, Ctrl+M and Jev
 
 - **Added:** 2026-11-20
+- **Updated:** 2026-11-20: Dictation and Voice mode stay on in the embed, and every provider's
+  speed control (the zap icon) is hidden there.
 - **Commit:** see `git log --grep "embed-hidden-controls"`
-- **Why:** The Assets Board panel is narrow; those controls only add clutter there.
-- **What:** In embed mode (`?embed=1`) `useSettings` forces the Chat Options `feature:plan_mode`,
-  `feature:fast_mode`, `model-shortcut`, `jev`, `dictation` and `voice` off. The saved settings
-  and the normal app are unchanged.
-- **Core files touched:** `packages/app/src/hooks/use-settings/index.ts` (`CUSTOM(agent-embed)`).
-- **Re-apply:** after `useSettings` builds `settings`, when `isEmbedMode()`, replace
-  `settings.chatOptions` with a cached copy that has those keys set to `false`.
-- **Verify:** needs a daemon restart (the daemon serves the web UI). Open the Assets Board agent
-  panel: the composer has no plan, speed, Ctrl+M, Jev, mic or voice icon; the Paseo app still has them.
+- **Why:** The Assets Board panel is narrow; the plan and speed controls only add clutter there.
+  Dictation and Voice mode are the ones the panel needs, and the iframe already allows the
+  microphone. Provider speed controls do not share a chat-option key: Claude and OMP use
+  `fast_mode`, Codex `service_tier` and Cursor `fast`, and only `fast_mode` had its own key, so
+  Codex's Speed (a zap) still showed.
+- **What:** In embed mode (`?embed=1`) `useAppSettings` forces the Chat Options
+  `feature:plan_mode`, `feature:fast_mode`, `model-shortcut` and `jev` off, and the composer's
+  agent controls drop any feature whose icon is `zap`. Dictation and Voice mode keep their saved
+  state (on by default). The saved settings and the normal app are unchanged.
+- **Core files touched:** `packages/app/src/embed/embed-chat-options.ts` (new),
+  `packages/app/src/hooks/use-settings/index.ts`, `packages/app/src/composer/agent-controls/index.tsx`
+  and `packages/app/src/composer/voice-controls.ts` (new; the gates are shared with
+  `composer/index.tsx` and `composer/input/input.tsx`), all marked `CUSTOM(agent-embed)`.
+- **Re-apply:** after `useAppSettings` normalizes the settings, when `isEmbedMode()`, replace
+  `settings.chatOptions` with a cached copy that sets those keys to `false` and leaves `dictation`
+  and `voice` alone. In the agent controls, filter out features with `icon === "zap"` in embed mode.
+- **Verify:** `cd packages/app && npx vitest run src/embed src/composer/voice-controls.test.ts
+  --bail=1` (in the update script). Needs the app build and install; the daemon serves the web UI
+  and needs no restart. Reload the Assets Board agent panel: the composer has no plan, speed, Ctrl+M
+  or Jev control, and the Dictation mic and Voice mode buttons are there and work; the Paseo app
+  still has everything.
 
 ## tool-cancel: X on a running tool stops the agent's run
 

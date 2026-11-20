@@ -5,13 +5,15 @@ this repo) with these differences:
 
 - **Only registered tasks.** Nothing is imported. A workspace joins the board only when one of its
   tasks starts work on it, and only those workspaces and their agents are watched.
-- **Project colors from the project icon.** A project's badge, card border and accents use the
-  color of the icon the app shows for it: the dominant color of a repository favicon or logo
-  (weighted average that ignores transparent, near-white and near-black pixels), the app's letter
-  color when the project has no image, and the old stable palette when the icon cannot be read.
-  Each color is adjusted for the light and the dark theme, and the color is computed once per
-  icon revision and cached by the daemon plugin. Column colors picked by hand in Group settings
-  are untouched.
+- **Project icons and colors from the app.** A project's badge draws the image the app shows for
+  it (the card, the project filter's trigger and options, the side panel and the project
+  pickers), cropped the same way, and a project without an image keeps the app's letter box: the
+  identity fill and a white letter, in both themes. Card borders and accents use the icon's
+  dominant color (weighted average that ignores transparent, near-white and near-black pixels),
+  adjusted for the light and the dark theme. The image and color are computed once per icon
+  revision and cached by the daemon plugin; a new revision refetches the image without a poll. Two
+  registered roots that resolve to one directory (a symlink and its target) share the best
+  definition on that path. Column colors picked by hand in Group settings are untouched.
 - **Build and redeploy Paseo.** A board toolbar button (top right, before Settings) runs
   `custom/bin/build-paseo-if-needed-and-kill-daemons.sh` after a confirmation and shows its output;
   the daemons restart and every running agent stops.

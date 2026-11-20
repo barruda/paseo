@@ -127,6 +127,7 @@ import {
 } from "@/attachments/service";
 import { resolveAgentControlsMode } from "@/composer/agent-controls/mode";
 import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
+import { shouldShowVoiceModeButton } from "@/composer/voice-controls";
 import { resolveActiveSendBehavior } from "./input/state";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
@@ -1241,11 +1242,15 @@ function ComposerRightControlsSlot({
   showVoice,
   ...voiceProps
 }: ComposerRightControlsSlotProps) {
-  const hideVoiceForCompactInput = isCompact && hasSendableContent;
   // CUSTOM(voice-exit): shown while the agent works too; entering voice mode no longer
   // interrupts it.
-  const showVoiceModeButton =
-    showVoice && !isVoiceModeForAgent && hasAgent && !hideVoiceForCompactInput;
+  const showVoiceModeButton = shouldShowVoiceModeButton({
+    showVoice,
+    isVoiceModeForAgent,
+    hasAgent,
+    isCompact,
+    hasSendableContent,
+  });
   if (!showVoiceModeButton) return null;
   return (
     <View style={styles.rightControls}>

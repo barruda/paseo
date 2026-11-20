@@ -130,6 +130,50 @@ export function projectViewKeys(
   return result;
 }
 
+export interface ProjectDefinition {
+  projectId: string;
+  /** The root path with symlinks resolved. Two entries can share one. */
+  realPath: string;
+  hasIcon: boolean;
+  /** A hand-picked icon, which outranks one the daemon discovered automatically. */
+  customIcon: boolean;
+}
+
+/**
+ * CUSTOM(project-icon-colors): the app can list the same project twice when two registered
+ * roots resolve to one directory (a symlink and its target). Each board project keeps its own
+ * record, but takes its icon from the best definition on that real path: its own when it has
+ * one, otherwise a sibling with an icon (a hand-picked icon wins over an automatic one, then the
+ * lowest project id). Without an icon anywhere, it keeps its own record so its letter and color
+ * are the ones the app shows for that placement.
+ */
+export function resolveProjectDefinitions(
+  projects: readonly ProjectDefinition[],
+): Map<string, string> {
+  const groups = new Map<string, ProjectDefinition[]>();
+  for (const project of projects) {
+    const group = groups.get(project.realPath);
+    if (group) group.push(project);
+    else groups.set(project.realPath, [project]);
+  }
+  const result = new Map<string, string>();
+  for (const project of projects) {
+    if (project.hasIcon) {
+      result.set(project.projectId, project.projectId);
+      continue;
+    }
+    const siblings = (groups.get(project.realPath) ?? [])
+      .filter((candidate) => candidate.hasIcon)
+      .sort(
+        (left, right) =>
+          Number(right.customIcon) - Number(left.customIcon) ||
+          left.projectId.localeCompare(right.projectId),
+      );
+    result.set(project.projectId, siblings[0]?.projectId ?? project.projectId);
+  }
+  return result;
+}
+
 export type ProjectAccentImage =
   | { kind: "color"; color: string }
   | { kind: "monochrome" }
