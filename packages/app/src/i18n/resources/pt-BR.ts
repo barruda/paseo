@@ -1,3 +1,4 @@
+import { BRUNO_PLUGINS_PT_BR } from "./custom-bruno-plugins";
 import { TOOL_CANCEL_PT_BR } from "./custom-tool-cancel";
 import { STEER_PENDING_PT_BR } from "./custom-steer-pending";
 import { en, type TranslationResources } from "./en";
@@ -94,6 +95,7 @@ export const ptBR: TranslationResources = {
   },
   steerPending: STEER_PENDING_PT_BR, // CUSTOM(steer-pending)
   toolCancel: TOOL_CANCEL_PT_BR, // CUSTOM(tool-cancel)
+  brunoPlugins: BRUNO_PLUGINS_PT_BR, // CUSTOM(bruno-plugin-groups)
   shell: {
     menu: {
       toggleSidebar: "Alternar barra lateral",

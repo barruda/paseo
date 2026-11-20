@@ -1,3 +1,4 @@
+import { BRUNO_PLUGINS_EN } from "./custom-bruno-plugins";
 import { TOOL_CANCEL_EN } from "./custom-tool-cancel";
 import { STEER_PENDING_EN } from "./custom-steer-pending";
 import { VOICE_SETTINGS_EN } from "./custom-voice-settings";
@@ -90,6 +91,7 @@ export const en = {
   },
   steerPending: STEER_PENDING_EN, // CUSTOM(steer-pending)
   toolCancel: TOOL_CANCEL_EN, // CUSTOM(tool-cancel)
+  brunoPlugins: BRUNO_PLUGINS_EN, // CUSTOM(bruno-plugin-groups)
   shell: {
     menu: {
       toggleSidebar: "Toggle sidebar",

@@ -1824,6 +1824,7 @@ export function WorkboardTabs({
   open,
   onSelect,
   onClose,
+  trailing,
 }: {
   board: Board;
   t: Strings;
@@ -1832,6 +1833,8 @@ export function WorkboardTabs({
   open: string[];
   onSelect(tab: string): void;
   onClose(id: string): void;
+  /** CUSTOM(redeploy-button): pinned to the right end of the row. */
+  trailing?: ReactNode;
 }) {
   const language = usePaseoLanguage(); // CUSTOM(agent-profiles)
   const pageLabels = workboardPageLabels(usePaseoLocale()); // CUSTOM(workboard-inner-pages)
@@ -1919,6 +1922,7 @@ export function WorkboardTabs({
           </View>
         );
       })}
+      {trailing ? <View style={styles.tabsTrailing}>{trailing}</View> : null}
     </View>
   );
 }
@@ -2055,6 +2059,8 @@ const styles = StyleSheet.create({
     paddingTop: 8,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  // CUSTOM(redeploy-button)
+  tabsTrailing: { marginLeft: "auto", alignSelf: "center", paddingBottom: 6 },
   tab: {
     flexDirection: "row",
     alignItems: "center",

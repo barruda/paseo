@@ -1,6 +1,14 @@
 import { formatPluginInstallation } from "@getpaseo/protocol/plugin-source-reference";
 import { PluginSettingsMenuItems } from "@/plugins/settings";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Text, View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
@@ -26,6 +34,7 @@ import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useHostFeature } from "@/runtime/host-features";
 import { useHostRuntimeClient, useHostRuntimeIsConnected } from "@/runtime/host-runtime";
 import { SettingsSection } from "@/components/settings/headings/settings-section";
+import { isBrunoPlugin, pluginDisplayName } from "@/screens/settings/bruno-plugins";
 import { resolvePluginPageState } from "@/screens/settings/plugins-page-state";
 import { openPluginInstallForm } from "@/screens/settings/plugin-install-form-model";
 import { pluginRegistry, useInstalledPlugins } from "@/plugins/registry";
@@ -164,7 +173,7 @@ function PluginRow({
   )}`;
   return (
     <SettingsRow
-      label={plugin.id}
+      label={pluginDisplayName(plugin)} // CUSTOM(bruno-plugin-groups)
       labelAccessory={statusBadge}
       hint={hint}
       error={clientError ?? plugin.error}
@@ -408,6 +417,22 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
   const retry = useCallback(() => {
     void refetchPlugins();
   }, [refetchPlugins]);
+  // CUSTOM(bruno-plugin-groups): Bruno's plugins first, then third-party ones; empty groups are omitted.
+  const pluginGroups = useMemo(() => {
+    const all = plugins.data ?? [];
+    return [
+      {
+        key: "bruno",
+        title: t("brunoPlugins.brunoGroup"),
+        plugins: all.filter((plugin) => isBrunoPlugin(plugin)),
+      },
+      {
+        key: "third-party",
+        title: t("brunoPlugins.thirdPartyGroup"),
+        plugins: all.filter((plugin) => !isBrunoPlugin(plugin)),
+      },
+    ].filter((group) => group.plugins.length > 0);
+  }, [plugins.data, t]);
   const closeLogs = useCallback(() => setLogsPluginId(null), []);
 
   if (pageState === "offline") {
@@ -424,7 +449,7 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
     return <Alert size="md" variant="warning" title={t("settings.plugins.states.updateTitle")} />;
   }
 
-  let catalogContent = <Alert size="sm" title={t("settings.plugins.states.loading")} />;
+  let catalogContent: ReactNode = <Alert size="sm" title={t("settings.plugins.states.loading")} />;
   if (pageState === "error") {
     catalogContent = (
       <Alert
@@ -439,31 +464,43 @@ export function HostPluginsPage({ serverId }: { serverId: string }) {
       </Alert>
     );
   } else if (pageState !== "loading") {
-    catalogContent = (
-      <SettingsCard>
-        {plugins.data?.length ? (
-          plugins.data.map((plugin) => {
-            const clientError = pluginRegistry.getEvaluationError(serverId, plugin.id);
-            const pending = mutation.isPending && mutation.variables?.pluginId === plugin.id;
-            return (
-              <PluginRow
-                key={plugin.id}
-                serverId={serverId}
-                plugin={plugin}
-                clientError={clientError}
-                pending={mutation.isPending}
-                pendingAction={pending ? pluginRowAction(mutation.variables?.action) : undefined}
-                onAction={action}
-                onOpenLogs={setLogsPluginId}
-                supportsLogs={logsSupported}
-              />
-            );
-          })
+    catalogContent = plugins.data?.length ? (
+      // CUSTOM(bruno-plugin-groups)
+      pluginGroups.map((group) => {
+        const card = (
+          <SettingsCard>
+            {group.plugins.map((plugin) => {
+              const clientError = pluginRegistry.getEvaluationError(serverId, plugin.id);
+              const pending = mutation.isPending && mutation.variables?.pluginId === plugin.id;
+              return (
+                <PluginRow
+                  key={plugin.id}
+                  serverId={serverId}
+                  plugin={plugin}
+                  clientError={clientError}
+                  pending={mutation.isPending}
+                  pendingAction={pending ? pluginRowAction(mutation.variables?.action) : undefined}
+                  onAction={action}
+                  onOpenLogs={setLogsPluginId}
+                  supportsLogs={logsSupported}
+                />
+              );
+            })}
+          </SettingsCard>
+        );
+        return pluginGroups.length > 1 ? (
+          <SettingsSection key={group.key} title={group.title} flush>
+            {card}
+          </SettingsSection>
         ) : (
-          <View style={styles.empty}>
-            <Text style={settingsStyles.rowHint}>{t("settings.plugins.states.empty")}</Text>
-          </View>
-        )}
+          <View key={group.key}>{card}</View>
+        );
+      })
+    ) : (
+      <SettingsCard>
+        <View style={styles.empty}>
+          <Text style={settingsStyles.rowHint}>{t("settings.plugins.states.empty")}</Text>
+        </View>
       </SettingsCard>
     );
   }

@@ -8721,5 +8721,21 @@ tests/power-workboard.test.ts --bail=1`. Needs only `paseo plugin reload power-w
 - **Re-apply:** Plugin-only. Grep `CUSTOM(redeploy-button)`. The scripts live in `custom/bin/`
   (`build-paseo-if-needed-and-kill-daemons.sh`, `paseo-build.sh`, see `custom/README.md`).
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
-  tests/redeploy.test.ts tests/power-workboard.test.ts --bail=1`. Needs only
+tests/redeploy.test.ts tests/power-workboard.test.ts --bail=1`. Needs only
   `paseo plugin reload power-workboard`. Pressing the button restarts the daemons.
+
+## bruno-plugin-groups: Settings groups Bruno's plugins apart from third-party ones
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: Settings groups Bruno's plugins apart from third-party ones`
+- **Why:** The Plugins list mixed the plugins in `custom/plugins/` with third-party ones, so it was
+  hard to tell which were mine.
+- **What:** Settings > Plugins shows two groups, "Bruno's plugins" and "Third-party plugins". A
+  plugin is Bruno's when its installation identity is a directory ending in `/custom/plugins/<name>`;
+  its row label becomes `Bruno/<id>`. If only one group has plugins, no headings are shown. Ids in
+  testIDs, accessibility labels and actions are unchanged.
+- **Core files touched:** `packages/app/src/screens/settings/plugins-page.tsx`, new
+  `bruno-plugins.ts` (+ test), new `i18n/resources/custom-bruno-plugins.ts` wired into every locale file.
+- **Re-apply:** Grep `CUSTOM(bruno-plugin-groups)`.
+- **Verify:** `cd packages/app && npx vitest run src/screens/settings/bruno-plugins.test.ts
+src/screens/settings/plugins-page.test.tsx --bail=1`.
