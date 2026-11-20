@@ -84,6 +84,35 @@ async function finish(s: Setup, title: string) {
   s.advance(21_000);
   await s.board.refresh();
 }
+/** A task started by hand in the project folder, with an agent that keeps running. */
+async function manualRunner(s: Setup, title = "Manual") {
+  await s.board.mutate({
+    action: "create",
+    title,
+    description: "",
+    projectId: "p",
+  } as never);
+  const taskId = card(s.board, title).id;
+  await s.board.mutate({
+    action: "start",
+    taskId,
+    target: {
+      kind: "new",
+      source: { kind: "directory", path: "/fixture/p", projectId: "p" },
+    },
+  } as never);
+  const agentId = `manual-${title}`;
+  s.inventory.agents.push({
+    id: agentId,
+    workspaceId: card(s.board, title).workspaceId!,
+    title,
+    updatedAt: new Date(s.now()).toISOString(),
+    lastUserMessageAt: null,
+    archivedAt: null,
+    activity: "running",
+  });
+  return { taskId, agentId };
+}
 
 it("runs one folder-mode task at a time per project folder, across orchestrators", async () => {
   const s = setup({ defaultOrchestratorSeeded: true });
@@ -209,30 +238,7 @@ it("waits before committing while another task's agent runs in the folder", asyn
       (w) => w.id === card(s.board, "A").workspaceId,
     )!.projectKind = "git";
     // A manual task starts in the same folder while A runs, bypassing the folder queue.
-    await s.board.mutate({
-      action: "create",
-      title: "B",
-      description: "",
-      projectId: "p",
-    } as never);
-    const taskB = card(s.board, "B").id;
-    await s.board.mutate({
-      action: "start",
-      taskId: taskB,
-      target: {
-        kind: "new",
-        source: { kind: "directory", path: "/fixture/p", projectId: "p" },
-      },
-    } as never);
-    s.inventory.agents.push({
-      id: "manual-b",
-      workspaceId: card(s.board, "B").workspaceId!,
-      title: "B",
-      updatedAt: new Date(s.now()).toISOString(),
-      lastUserMessageAt: null,
-      archivedAt: null,
-      activity: "running",
-    });
+    const manual = await manualRunner(s, "B");
     await finish(s, "A");
     await vi.waitFor(() =>
       expect(s.store.current.assistant.deliveries[taskA]?.detail).toContain(
@@ -240,9 +246,179 @@ it("waits before committing while another task's agent runs in the folder", asyn
       ),
     );
     expect(s.host.commit).not.toHaveBeenCalled();
-    s.inventory.agents.find((a) => a.id === "manual-b")!.activity = "idle";
+    s.inventory.agents.find((a) => a.id === manual.agentId)!.activity = "idle";
     await vi.waitFor(() => expect(s.host.commit).toHaveBeenCalled());
     expect(s.host.mergeToBase).not.toHaveBeenCalled();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("waits before a prepare-pr commit while another task's agent runs in the folder", async () => {
+  const s = setup(
+    {
+      defaultOrchestratorSeeded: true,
+      assistant: assistantDataSchema.parse({
+        settings: { projects: { p: { action: "prepare-pr" } } },
+      }),
+    },
+    { folderRetryMs: 20 },
+  );
+  (s.host.lastReply as any).mockResolvedValue(report);
+  (s.host.gitDirty as any).mockResolvedValue(true);
+  await s.board.start();
+  try {
+    const id = await addOrchestrator(s.board, {
+      name: "Folder",
+      useWorktree: false,
+    });
+    await create(s, "A", id);
+    const taskA = card(s.board, "A").id;
+    s.inventory.workspaces.find(
+      (w) => w.id === card(s.board, "A").workspaceId,
+    )!.projectKind = "git";
+    const manual = await manualRunner(s, "B");
+    await finish(s, "A");
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.deliveries[taskA]?.detail).toContain(
+        'Waiting: "B" is still running in /fixture/p',
+      ),
+    );
+    expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe(
+      "preparing-pr",
+    );
+    expect(s.host.commit).not.toHaveBeenCalled();
+    s.inventory.agents.find((a) => a.id === manual.agentId)!.activity = "idle";
+    await vi.waitFor(() => expect(s.host.commit).toHaveBeenCalled());
+    expect(s.host.mergeToBase).not.toHaveBeenCalled();
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("waits before the approval commit while another task's agent runs in the folder", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true }, { folderRetryMs: 20 });
+  (s.host.lastReply as any).mockResolvedValue(report);
+  (s.host.gitDirty as any).mockResolvedValue(true);
+  await s.board.start();
+  try {
+    const id = await addOrchestrator(s.board, {
+      name: "Folder",
+      useWorktree: false,
+    });
+    await create(s, "A", id);
+    const taskA = card(s.board, "A").id;
+    s.inventory.workspaces.find(
+      (w) => w.id === card(s.board, "A").workspaceId,
+    )!.projectKind = "git";
+    await finish(s, "A");
+    expect(card(s.board, "A").stage).toBe("review");
+    const manual = await manualRunner(s, "B");
+    await s.board.refresh();
+    await s.board.mutate({
+      action: "review",
+      taskId: taskA,
+      outcome: "done",
+      feedback: "",
+    });
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.deliveries[taskA]?.detail).toContain(
+        'Waiting: "B" is still running in /fixture/p',
+      ),
+    );
+    expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe(
+      "committing",
+    );
+    expect(s.host.commit).not.toHaveBeenCalled();
+    s.inventory.agents.find((a) => a.id === manual.agentId)!.activity = "idle";
+    await vi.waitFor(() => expect(s.host.commit).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe(
+        "delivered",
+      ),
+    );
+    expect(s.store.current.assistant.deliveries[taskA]?.reason ?? null).toBe(
+      null,
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("sends a failed approval commit to Needs you", async () => {
+  const s = setup({ defaultOrchestratorSeeded: true });
+  (s.host.lastReply as any).mockResolvedValue(report);
+  (s.host.gitDirty as any).mockResolvedValue(true);
+  (s.host.commit as any).mockRejectedValue(new Error("commit failed"));
+  await s.board.start();
+  try {
+    const id = await addOrchestrator(s.board, {
+      name: "Folder",
+      useWorktree: false,
+    });
+    await create(s, "A", id);
+    const taskA = card(s.board, "A").id;
+    s.inventory.workspaces.find(
+      (w) => w.id === card(s.board, "A").workspaceId,
+    )!.projectKind = "git";
+    await finish(s, "A");
+    await s.board.mutate({
+      action: "review",
+      taskId: taskA,
+      outcome: "done",
+      feedback: "",
+    });
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe(
+        "needs-you",
+      ),
+    );
+    expect(s.store.current.assistant.deliveries[taskA]?.reason).toBe(
+      "merge-error",
+    );
+    expect(s.store.current.assistant.deliveries[taskA]?.detail).toContain(
+      "commit failed",
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("keeps the folder for a nothing-policy task until it is approved", async () => {
+  const s = setup({
+    defaultOrchestratorSeeded: true,
+    assistant: assistantDataSchema.parse({
+      settings: { projects: { p: { action: "nothing" } } },
+    }),
+  });
+  (s.host.lastReply as any).mockResolvedValue(report);
+  (s.host.gitDirty as any).mockResolvedValue(true);
+  await s.board.start();
+  try {
+    const id = await addOrchestrator(s.board, {
+      name: "Folder",
+      useWorktree: false,
+    });
+    await create(s, "A", id);
+    await create(s, "B", id);
+    const taskA = card(s.board, "A").id;
+    s.inventory.workspaces.find(
+      (w) => w.id === card(s.board, "A").workspaceId,
+    )!.projectKind = "git";
+    await finish(s, "A");
+    expect(card(s.board, "A").stage).toBe("review");
+    expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe("reported");
+    expect(card(s.board, "B").stage).toBe("ready");
+    await s.board.mutate({
+      action: "review",
+      taskId: taskA,
+      outcome: "done",
+      feedback: "",
+    });
+    await s.board.refresh();
+    await vi.waitFor(() =>
+      expect(card(s.board, "B").stage).toBe("in-progress"),
+    );
   } finally {
     s.board.dispose();
   }

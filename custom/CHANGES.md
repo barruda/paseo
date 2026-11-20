@@ -8961,7 +8961,7 @@ src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard
     not a git repository keeps falling back to its folder as before; the one-at-a-time rule and
     the no-merge delivery are for the explicit folder mode.
   - **One task per folder.** A folder-mode task starts only when no other task the board runs in
-    that `project.directory` is using it (folder mode, a non-git project, or a manual start),
+    that `project.directory` is using it (folder mode or an orchestrated non-git project task),
     whichever orchestrator owns it. The second task stays in Ready to start; the orchestrator's
     log says `Waiting: "<task>" is not delivered yet in <folder>` once and its status shows a
     `folder` hold, and the next pass starts it after the first frees the folder. The folder stays
@@ -8979,12 +8979,15 @@ src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard
     project's `mergeLock`, with the same `dependencyRefusal` protection) and then skips
     `merging`: it marks the delivery delivered and moves the task to Done. Before committing, it
     checks whether another board task's agent is still running in the folder; if one is, the
-    delivery stays in `committing`, shows `Waiting: "<task>" is still running in <folder>` in its
-    detail and the orchestrator's log, and retries on the next pass instead of failing. Approving a
-    folder task from Ready to review (Done) also commits it on the current branch, asynchronously,
-    when there is something to commit. A task whose agent already committed is not committed
-    again. The Done card offers Commit and PR description, not Merge into project, and the server
-    refuses a Merge for an in-place task.
+    delivery stays in `committing` (or `preparing-pr`) with a visible
+    `Waiting: "<task>" is still running in <folder>` detail and log line, and retries on the next
+    pass instead of failing. A manual start has no orchestration record and is not in the folder
+    queue, so only
+    this commit check protects against it. Approving a folder task from Ready to review (Done)
+    also commits it on the current branch through the delivery pipeline, so the folder stays busy
+    until the commit ends and a real failure goes to Needs you. A task whose agent already
+    committed is not committed again. The Done card offers Commit and PR description, not Merge
+    into project, and the server refuses a Merge for an in-place task.
   - **Review and diff.** `board_get_task` and `board_task_diff` diff an in-place task from
     `baseHead` (source `task start`) instead of a base branch, then add the uncommitted work. The
     header says `Mode: project folder (no worktree)` and lists the files that were already dirty
@@ -9009,6 +9012,8 @@ src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard
   Done card has no **Merge into project**.
 - **Tests:** `tests/orchestrator-in-place.test.ts` (one task per folder across orchestrators; B
   waits while A is not delivered and only starts after A's commit; Needs you dismiss and mark-done
-  release B; a commit waits while another task's agent runs in the folder; dirty folder recorded;
-  delivery commits without `mergeToBase`; diff from the starting HEAD; worktree unchanged) and
-  `tests/finish-buttons.test.ts` (no Merge for a folder-mode Done card).
+  release B; a nothing-policy task keeps the folder until approved; `committing`, `preparing-pr`
+  and the approval commit wait while another task's agent runs in the folder; a failed approval
+  commit goes to Needs you; dirty folder recorded; delivery commits without `mergeToBase`; diff
+  from the starting HEAD; worktree unchanged) and `tests/finish-buttons.test.ts` (no Merge for a
+  folder-mode Done card).
