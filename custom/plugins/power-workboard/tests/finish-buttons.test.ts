@@ -21,6 +21,20 @@ it("a committed card that is not merged keeps every button", () => {
   });
 });
 
+it("a folder-mode Done card never offers Merge", () => {
+  expect(finishButtons(undefined, true)).toEqual({
+    steps: ["commit", "pr"],
+    primary: "commit",
+  });
+  const committed = finishSchema.parse({
+    committedAt: "2026-11-20T12:00:00Z",
+  });
+  expect(finishButtons(committed, true)).toEqual({
+    steps: ["pr"],
+    primary: null,
+  });
+});
+
 it("a merged card drops Commit and Merge and keeps PR description, not highlighted", () => {
   const merged = finishSchema.parse({
     committedAt: "2026-11-17T23:54:30Z",

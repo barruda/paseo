@@ -8875,6 +8875,7 @@ tests/colors.test.ts --bail=1`. Needs only `paseo plugin reload power-workboard`
   In the app, two cards of the same project in different rails have the same left border, the
   project initial shows before the name, and each column header has its rail-colored top filete
   in the light and dark themes.
+
 ## project-manager-rename: Projects Assistant becomes Project Manager, Power Workboard becomes Workboard
 
 - **Added:** 2026-11-20
@@ -8945,3 +8946,62 @@ src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard
   **Model** row; the modal should find `flash` and show `DeepSeek`/`DeepInfra` on each result. The
   same fields appear in the bulk agent change and in Settings > Bruno's Customizations > Project
   Manager.
+
+## orchestrator-in-place: orchestrators can run tasks directly in the project folder
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: Orchestrators can run tasks directly in the project folder`
+- **Why:** A worktree per task is the right default, but some projects cannot afford one: huge
+  checkouts, LFS, or a tool that only works in the real folder. Those tasks need to run in place,
+  one at a time, without the board trying to merge the folder's branch into itself.
+- **What:**
+  - **Workspace choice.** An orchestrator's **Workspace** row in the General tab now says
+    **Worktree per task (default)** or **Directly in the project folder (no worktree)**, with a
+    one-line explanation under it. New orchestrators still default to worktree. A project that is
+    not a git repository keeps falling back to its folder as before; the one-at-a-time rule and
+    the no-merge delivery are for the explicit folder mode.
+  - **One task per folder.** A folder-mode task starts only when no other task the board runs in
+    that `project.directory` is using it (folder mode, a non-git project, or a manual start),
+    whichever orchestrator owns it. The second task stays
+    in Ready to start; the orchestrator's log says `Waiting: another task is running in <folder>`
+    once and its status shows a `folder` hold, and the next pass starts it after the first frees
+    the folder. A folder is busy while its agent runs a turn or the delivery is checking,
+    committing or fixing; Ready to review, Needs you and a checkpoint with an idle agent free it.
+    Folder mode also caps `maxConcurrent` at 1: the server uses 1 and the form shows the field
+    locked at 1 with the reason.
+  - **Dirty folder at start.** The task starts anyway. The orchestration stores `inPlace`,
+    `baseHead` (the folder's HEAD) and `initialDirty` (the `git status --porcelain` lines), and
+    the board logs a `folder-dirty` history event plus a warning in the orchestrator's log with
+    the count.
+  - **Delivery without merge.** The delivery's `committing` step commits in the folder (under the
+    project's `mergeLock`, with the same `dependencyRefusal` protection) and then skips
+    `merging`: it marks the delivery delivered and moves the task to Done. Approving a folder task
+    from Ready to review (Done) also commits it on the current branch, asynchronously, when there
+    is something to commit. A task whose agent already committed is not committed again. The Done
+    card offers Commit and PR description, not Merge into project, and the server refuses a Merge
+    for an in-place task.
+  - **Review and diff.** `board_get_task` and `board_task_diff` diff an in-place task from
+    `baseHead` (source `task start`) instead of a base branch, then add the uncommitted work. The
+    header says `Mode: project folder (no worktree)` and lists the files that were already dirty
+    when the task started, apart from the diff. `canMerge` is false for these tasks.
+  - **Safety.** The project folder's workspace is never archived (the auto-archive already only
+    touches worktrees) and the task never switches the folder's branch. Worktree orchestrators
+    behave exactly as before.
+- **Core files touched:** none.
+- **Re-apply:** Plugin-only. The server side is `CUSTOM(orchestrator-in-place)` in
+  `server/workboard.ts` (`inPlaceFolder`, `inPlaceDirectories`, `folderHold`, `logFolderWait`,
+  the `startCard` start state and `completeInPlace`) and in
+  `server/assistant/task-git.ts` (`baseHead` / `initialDirty`). The model fields are in
+  `shared/model.ts` (`Orchestration.inPlace/baseHead/initialDirty`, `Card.inPlace`), the hold kind
+  in `shared/hold.ts`, the history kind in `shared/assistant.ts`. The form is the Workspace chips
+  and the locked `At a time` field in `client/Orchestrators.tsx`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
+  Needs only `paseo plugin reload power-workboard`. In the app: open an orchestrator > General,
+  choose **Directly in the project folder (no worktree)**, Save; the `At a time` field shows 1
+  locked. Create two Ready to start tasks of that project: one runs, the other stays with
+  `Waiting: another task is running in <folder>` in the orchestrator's log. Approve the first
+  task; it gets a commit on the folder's current branch and no merge, and the second starts. The
+  Done card has no **Merge into project**.
+- **Tests:** `tests/orchestrator-in-place.test.ts` (one task per folder across orchestrators,
+  dirty folder recorded, delivery commits without `mergeToBase`, diff from the starting HEAD,
+  worktree unchanged) and `tests/finish-buttons.test.ts` (no Merge for a folder-mode Done card).

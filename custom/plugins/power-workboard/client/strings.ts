@@ -41,6 +41,7 @@ const zh = {
     holdRam: "等待内存：空闲 {free}%，资源池“{pool}”需要 {min}%",
     holdSettle:
       "等待内存稳定：资源池“{pool}”刚启动了一个代理，{time} 后再启动下一个",
+    holdFolder: "等待中：另一个任务正在 {directory} 中运行",
   },
   night: {
     badge: "夜间",
@@ -138,8 +139,13 @@ const zh = {
     mode: "模式",
     thinking: "思考强度",
     workspace: "Workspace",
-    worktree: "Git 项目用 worktree",
-    folder: "项目文件夹",
+    worktree: "每个任务用 worktree（默认）",
+    folder: "直接使用项目文件夹（不用 worktree）",
+    worktreeHint:
+      "Git 项目的每个任务有自己的 worktree，可以同时运行多个；非 Git 项目始终直接使用项目文件夹。",
+    folderHint:
+      "任务在这个项目文件夹里一次运行一个，并直接提交到该文件夹当前的分支。不会新建 worktree。",
+    folderConcurrency: "文件夹模式一次只运行一个任务，上限固定为 1。",
     instructions: "指令",
     instructionsPlaceholder: "加在每个任务提示前面",
     running: "运行中",
@@ -563,6 +569,8 @@ const zh = {
     "Add a Done group first": "请先添加 Done 分组。",
     "Only a Done task with a workspace can be finished":
       "只有带 workspace 的 Done 任务可以收尾。",
+    "This task runs in the project folder; its work is already on the branch":
+      "这个任务直接运行在项目文件夹里，改动已经在当前分支上。",
     // CUSTOM(projects-assistant)
     "A delivery step is already running for this task":
       "该任务已有交付步骤在运行。",
@@ -754,6 +762,7 @@ const en: typeof zh = {
     holdRam: "Waiting for RAM: {free}% free, pool “{pool}” needs {min}%",
     holdSettle:
       "Waiting for RAM to settle: pool “{pool}” just started an agent; the next one starts at {time}",
+    holdFolder: "Waiting: another task is running in {directory}",
   },
   night: {
     badge: "Night",
@@ -857,8 +866,14 @@ const en: typeof zh = {
     mode: "Mode",
     thinking: "Thinking",
     workspace: "Workspace",
-    worktree: "Worktree for git projects",
-    folder: "Project folder",
+    worktree: "Worktree per task (default)",
+    folder: "Directly in the project folder (no worktree)",
+    worktreeHint:
+      "Each task of a git project gets its own worktree, so several can run at once. A project that is not a git repository always runs in its folder.",
+    folderHint:
+      "Tasks run one at a time in this project folder and commit to the branch the folder is on. No worktree is created.",
+    folderConcurrency:
+      "Folder mode runs one task at a time; the limit is locked at 1.",
     instructions: "Instructions",
     instructionsPlaceholder: "Prepended to every task prompt",
     running: "running",
@@ -1314,6 +1329,8 @@ const en: typeof zh = {
     "Add a Done group first": "Add a Done group first.",
     "Only a Done task with a workspace can be finished":
       "Only a Done task with a workspace can be finished.",
+    "This task runs in the project folder; its work is already on the branch":
+      "This task runs in the project folder; its work is already on the branch.",
     // CUSTOM(projects-assistant)
     "A delivery step is already running for this task":
       "A delivery step is already running for this task.",

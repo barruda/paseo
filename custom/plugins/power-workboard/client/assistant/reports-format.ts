@@ -97,6 +97,7 @@ const EVENT_ICONS: Record<string, string> = {
   "task-moved": "ArrowRight",
   "task-started": "Play",
   "task-continued": "Play",
+  "folder-dirty": "FolderOpen", // CUSTOM(orchestrator-in-place)
   report: "FileText",
   checkpoint: "Flag", // CUSTOM(task-checkpoints)
   "usage-limit": "Clock", // CUSTOM(usage-limit)

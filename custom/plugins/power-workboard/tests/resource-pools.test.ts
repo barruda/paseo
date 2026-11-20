@@ -364,7 +364,7 @@ it("a pool with a RAM floor starts one agent, then waits for the RAM to settle",
     expect(hold).toMatchObject({ kind: "settle", poolId: "unity" });
     const startedAt =
       s.board.snapshot().orchestrations[card(s.board, "P1").id]!.startedAt;
-    expect(hold!.until).toBe(
+    expect(hold?.kind === "settle" ? hold.until : null).toBe(
       new Date(Date.parse(startedAt) + RAM_SETTLE_MS).toISOString(),
     );
     // Routine: the settle wait is in the status, not in the log.
@@ -775,7 +775,10 @@ it("a fix that waits 30 minutes for a slot goes to Needs you and still goes when
     const since = s.delivery("A")!.updatedAt;
     s.memory.reading = { availableBytes: 9 * GiB, totalBytes: 60 * GiB };
     await s.board.refresh();
-    expect(s.delivery("A")?.queuedFix?.hold?.freeRamPercent).toBe(15);
+    expect(s.delivery("A")?.queuedFix?.hold).toMatchObject({
+      kind: "ram",
+      freeRamPercent: 15,
+    });
     expect(s.delivery("A")?.updatedAt).toBe(since);
     expect(s.sentTo()).not.toContain(s.agentA.id);
     // A's fix still holds its pool slot: a new task waits for the pool, not only for the RAM.

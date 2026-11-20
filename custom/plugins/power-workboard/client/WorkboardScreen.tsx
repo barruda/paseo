@@ -2202,7 +2202,7 @@ function FinishActions({
         : finish?.committedAt
           ? t.finish.committed
           : null));
-  const { steps, primary } = finishButtons(finish);
+  const { steps, primary } = finishButtons(finish, card.inPlace); // CUSTOM(orchestrator-in-place)
   const pr =
     finish?.prBody !== null && finish?.prBody !== undefined
       ? `${finish.prTitle ? `# ${finish.prTitle}\n\n` : ""}${finish.prBody}`

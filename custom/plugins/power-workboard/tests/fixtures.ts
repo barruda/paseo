@@ -72,11 +72,15 @@ export function fixture(initial: Partial<Data> = {}) {
     workspace: async (id) =>
       structuredClone(inventory.workspaces.find((w) => w.id === id) ?? null),
     conversation: agentEvidence(),
-    create: vi.fn(async (_source, title, key) => {
+    create: vi.fn(async (source, title, key) => {
       if (created.has(key)) return created.get(key)!;
       const id = `w${created.size + 1}`;
       created.set(key, id);
-      inventory.workspaces.push(workspace(id, title));
+      const createdWorkspace = workspace(id, title);
+      // CUSTOM(orchestrator-in-place): a folder run reports the project folder it uses.
+      if (source.kind === "directory")
+        createdWorkspace.workspaceDirectory = source.path;
+      inventory.workspaces.push(createdWorkspace);
       return id;
     }),
     // CUSTOM(worktree-base)
@@ -149,6 +153,10 @@ export function fixture(initial: Partial<Data> = {}) {
     ),
     gitDirty: vi.fn(async (_directory: string) => true),
     gitStatusLines: vi.fn(async (_directory: string) => [] as string[]),
+    // CUSTOM(orchestrator-in-place)
+    gitHead: vi.fn(
+      async (_directory: string) => "0123456789abcdef0123456789abcdef01234567",
+    ),
     commit: vi.fn(async (_directory: string) => {}),
     mergeToBase: vi.fn(async (_directory: string, _options?: unknown) => {}),
     // CUSTOM(projects-assistant)

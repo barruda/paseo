@@ -111,6 +111,7 @@ const en = {
     "task-moved": "Task moved",
     "task-started": "Task started",
     "task-continued": "Task continued",
+    "folder-dirty": "Folder had uncommitted changes", // CUSTOM(orchestrator-in-place)
     report: "Agent report",
     checkpoint: "Checkpoint", // CUSTOM(task-checkpoints)
     "usage-limit": "Paused by the usage limit", // CUSTOM(usage-limit)
@@ -218,6 +219,7 @@ const pt: ReportsStrings = {
     "task-moved": "Tarefa movida",
     "task-started": "Tarefa iniciada",
     "task-continued": "Tarefa continuada",
+    "folder-dirty": "A pasta tinha mudanças não commitadas", // CUSTOM(orchestrator-in-place)
     report: "Relatório do agente",
     checkpoint: "Ponto de controle", // CUSTOM(task-checkpoints)
     "usage-limit": "Pausada pelo limite de uso", // CUSTOM(usage-limit)
