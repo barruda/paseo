@@ -39,6 +39,12 @@ bash "$helper" skip "$skipfile" "skip-me,trigger" >/dev/null
 check "skip file records the trigger" 'grep -q "trigger" "$skipfile"'
 check "skip file records the restart time" 'grep -q "\"at\":\"20" "$skipfile"'
 check "skip file is valid JSON" 'node -e "JSON.parse(require(\"fs\").readFileSync(process.argv[1], \"utf8\"))" "$skipfile"'
+set +e
+unwritable="$(bash "$helper" skip /dev/null/skip.json "trigger" 2>&1)"
+unwritable_status=$?
+set -e
+check "a skip file that cannot be written is logged" 'grep -q "could not" <<<"$unwritable"'
+check "a skip file that cannot be written fails cleanly" '[[ "$unwritable_status" -ne 0 ]]'
 
 home="$work/home"
 running="$home/agents/ws/running-1.json"
