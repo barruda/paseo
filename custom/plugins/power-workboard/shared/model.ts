@@ -843,6 +843,12 @@ export const boardSchema = z.object({
       // CUSTOM(project-icon-colors): the accent pair resolved from the project's icon.
       accent: projectAccentSchema.nullable().optional(),
       /**
+       * CUSTOM(project-icon-colors): the app's identity fill for the generated letter, in both
+       * themes. It is independent of `accent`, which the dark theme changes and an image or a
+       * hand-picked color can replace.
+       */
+      letterFill: z.string().optional(),
+      /**
        * CUSTOM(project-icon-colors): the revision of the icon the board resolved for this
        * project, so the client refetches its image only when the definition changes.
        */

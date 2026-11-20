@@ -1,6 +1,7 @@
 // CUSTOM(project-icon-colors): the board draws the same image the app shows for a project.
-// The snapshot only carries each project's icon revision; this query fetches the images apart,
-// and a new revision in the next poll makes it refetch without reloading the plugin.
+// The snapshot only carries each project's icon revision; this query fetches the images apart.
+// The revision is part of the query key, so a changed icon refetches on its own and the query
+// never needs a periodic poll.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRpc } from "@getpaseo/plugin/client";
@@ -26,7 +27,6 @@ export function useProjectIcons(
     queryKey: ["power-workboard", "project-icons", hostId, signature],
     queryFn: () => call({}),
     staleTime: Infinity,
-    refetchInterval: 60_000,
   });
   return useMemo(
     () =>

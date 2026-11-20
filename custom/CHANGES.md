@@ -3085,7 +3085,8 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 ## project-icon-images: the board draws the app's project icons
 
 - **Added:** 2026-11-20
-- **Commit:** `custom: draw the app's project icons on the board`
+- **Commit:** `custom: draw the app's project icons on the board`, then
+  `custom: match the app's project placeholder in both themes`
 - **Why:** The color came from the app's icon, but the board still drew its own letter. paseo and
   pipeline, which have images in Settings > Projects, showed a generated "P" on the board; projects
   without an image did not always match the app's letter either, and the two registered pipeline
@@ -3093,14 +3094,20 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **What:**
   - The board project entry now carries the resolved `iconRevision`. The new
     `workboard.project-icons` RPC serves the image bytes (and the SVG text, for the native
-    renderer) outside the 1.5 s snapshot. The client fetches it once per revision and refetches on
-    the next poll after the icon changes, so editing a project in the app needs no plugin reload.
+    renderer) outside the 1.5 s snapshot. The revision is part of the query key, so the client
+    fetches once per revision and refetches when it changes, without a periodic poll; editing a
+    project in the app needs no plugin reload.
   - `client/ProjectIcon.tsx` draws the image when the definition has one (raster through
-    `Image`, SVG through the host `Icon` on native and `Image` on web), and otherwise the app's
-    letter placeholder: the last path segment's first letter in the app's identity color. Uploaded
+    `Image` with the app's `cover` fit, SVG through the host `Icon` on native and `Image` on
+    web), and otherwise the app's letter placeholder: the last path segment's first letter, white,
+    on the app's identity fill. The board project now carries that `letterFill` separately from
+    the accent, because the accent moves with the theme and an image or a hand-picked color
+    replaces it; the theme-selected accent still drives borders and chips. The image is drawn
+    before the initial, so a project with an image and an empty name still shows it. Uploaded
     images keep the app's rule of no rounded corners; the letter box keeps its radius.
-  - Used by the cards, the project filter, the side panel, the task editor's project chips and the
-    Start task project list. The assistant pages keep the accents from `workboard.project-accents`.
+  - Used by the cards, the project filter's trigger and options, the side panel, the task editor's
+    project chips and the Start task project list. The assistant pages keep the accents from
+    `workboard.project-accents`.
   - `shared/project-color.ts` adds `resolveProjectDefinitions`: projects are matched by their
     daemon project id, and a root path is compared with symlinks resolved. A board project takes
     the icon from the best definition on its real path: its own when it has one, otherwise a
@@ -3116,11 +3123,12 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
 - **Re-apply:** None for the app. Run `npm install` in `custom/plugins/power-workboard` after
   merging to pick up the 0.14.0 dev dependencies.
 - **Verify:** `(cd custom/plugins/power-workboard && npm run check)`. In the app, Power Workboard:
-  paseo and pipeline show the same images as Settings > Projects; DreamMMO, tdwey, supernotes and
-  the other projects without an image show the same letter and color as the app; changing a
-  project's icon or name in the app updates the board on the next poll. The app's custom icon text
-  (the emoji/word typed into the generated icon) lives only in the app's local storage and is not
-  exposed by the daemon, so the board still shows the letter for it.
+  paseo and pipeline show the same images as Settings > Projects, cropped the same way; DreamMMO,
+  tdwey, supernotes and the other projects without an image show the same letter, fill and white
+  letter color as the app in both themes; the closed project filter shows the selected project's
+  icon; changing a project's icon in the app updates the board when the revision changes. The
+  app's custom icon text (the emoji/word typed into the generated icon) lives only in the app's
+  local storage and is not exposed by the daemon, so the board still shows the letter for it.
 
 ## plugin-modal-size: plugin modals at 80% of the window
 

@@ -10,6 +10,7 @@ import type {
   StartInput,
 } from "../shared/model";
 import {
+  identityAccent,
   projectViewKeys,
   resolveProjectAccent,
   resolveProjectDefinitions,
@@ -575,6 +576,8 @@ export class PaseoHost implements Host {
         directory: project.projectRootPath,
         isGit: project.projectKind === "git",
         accent,
+        // The app's letter box keeps one fill in both themes, whatever the accent does.
+        letterFill: viewKey ? identityAccent(viewKey).light : undefined,
         iconRevision: source?.revision,
       };
     });

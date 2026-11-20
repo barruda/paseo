@@ -14,7 +14,7 @@ import { Icon, ScrollView } from "@getpaseo/plugin/client/react-native";
 import type { Board, Card } from "../shared/model";
 import type { strings } from "./strings";
 import { cardAgentId } from "./board-utils";
-import { projectAccentColor } from "./colors";
+import { projectAccentColor, projectLetterFill } from "./colors";
 import { ProjectIcon } from "./ProjectIcon";
 import { projectIconFor, type ProjectIcons } from "./project-icons";
 import { RichText } from "./assistant/conversations-thread";
@@ -289,7 +289,11 @@ export function TaskPanel({
             <ProjectIcon
               name={project?.name ?? card.projectName}
               color={projectColor}
-              theme={theme}
+              fillColor={projectLetterFill(
+                project?.letterFill,
+                project?.accent,
+                card.projectId,
+              )}
               size={14}
               icon={projectIconFor(icons, card.projectId)}
             />

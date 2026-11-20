@@ -109,6 +109,13 @@ describe("project accents from the icon", () => {
     const byId = new Map(inventory.projects.map((p) => [p.id, p]));
     expect(byId.get("a")?.accent).toEqual(accentFromDominantColor("#0000ff"));
     expect(byId.get("b")?.accent).toEqual(identityAccent("remote:org/b"));
+    // The letter box keeps the app's identity fill even when the accent comes from the image.
+    expect(byId.get("a")?.letterFill).toBe(
+      identityAccent("remote:org/a").light,
+    );
+    expect(byId.get("b")?.letterFill).toBe(
+      identityAccent("remote:org/b").light,
+    );
   });
 
   it("reads an icon once per revision", async () => {

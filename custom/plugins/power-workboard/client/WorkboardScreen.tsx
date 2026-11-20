@@ -87,7 +87,12 @@ import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { BoardView } from "./BoardView";
 import { cardMenuItems } from "./card-menu"; // CUSTOM(task-panel)
 import { panelCardFor } from "./task-panel-state"; // CUSTOM(task-panel)
-import { groupColor, projectAccentColor, supplementalColor } from "./colors";
+import {
+  groupColor,
+  projectAccentColor,
+  projectLetterFill,
+  supplementalColor,
+} from "./colors";
 import { ProjectIcon } from "./ProjectIcon";
 import {
   projectIconFor,
@@ -1762,6 +1767,7 @@ function ProjectPicker({
     { id: "none", name: t.unassigned },
     ...board.projects,
   ];
+  const selectedProject = board.projects.find((item) => item.id === value);
   return (
     <View
       style={[styles.projectPicker, compact && styles.projectPickerCompact]}
@@ -1781,6 +1787,23 @@ function ProjectPicker({
           },
         ]}
       >
+        {selectedProject ? (
+          <ProjectIcon
+            name={selectedProject.name}
+            color={projectAccentColor(
+              selectedProject.accent,
+              selectedProject.id,
+              theme,
+            )}
+            fillColor={projectLetterFill(
+              selectedProject.letterFill,
+              selectedProject.accent,
+              selectedProject.id,
+            )}
+            size={14}
+            icon={projectIconFor(icons, selectedProject.id)}
+          />
+        ) : null}
         <Text
           numberOfLines={1}
           style={[
@@ -1837,7 +1860,11 @@ function ProjectPicker({
                             project.id,
                             theme,
                           )}
-                          theme={theme}
+                          fillColor={projectLetterFill(
+                            project.letterFill,
+                            project.accent,
+                            project.id,
+                          )}
                           size={14}
                           icon={projectIconFor(icons, project.id)}
                         />
@@ -2840,7 +2867,11 @@ export function TaskCard({
           <ProjectIcon
             name={project?.name ?? card.projectName}
             color={projectAccentColor(projectAccent, card.projectId, theme)}
-            theme={theme}
+            fillColor={projectLetterFill(
+              project?.letterFill,
+              projectAccent,
+              card.projectId,
+            )}
             icon={projectIconFor(icons, card.projectId)}
           />
         ) : null}
@@ -3681,7 +3712,11 @@ function TaskModal({
                       <ProjectIcon
                         name={project.name}
                         color={color}
-                        theme={theme}
+                        fillColor={projectLetterFill(
+                          project.letterFill,
+                          project.accent,
+                          project.id,
+                        )}
                         size={14}
                         icon={projectIconFor(icons, project.id)}
                       />
@@ -4190,7 +4225,11 @@ function StartModal({
                             item.id,
                             theme,
                           )}
-                          theme={theme}
+                          fillColor={projectLetterFill(
+                            item.letterFill,
+                            item.accent,
+                            item.id,
+                          )}
                           size={14}
                           icon={projectIconFor(icons, item.id)}
                         />
