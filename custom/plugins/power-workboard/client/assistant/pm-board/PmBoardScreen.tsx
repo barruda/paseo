@@ -19,12 +19,18 @@ import {
 } from "../../../shared/assistant-rpc";
 import {
   PM_CARD_STATUSES,
+  pmCardLinkTargets,
   type PmCard,
   type PmCardKind,
   type PmCardStatus,
 } from "../../../shared/pm-board";
 import { usePaseoLocale } from "../../paseo-language";
-import { consumePmCardRequest, usePmCardRequest, showReport } from "../nav";
+import {
+  consumePmCardRequest,
+  openTaskPanel,
+  showReport,
+  usePmCardRequest,
+} from "../nav";
 import { pmAge, pmBoardStrings, type PmBoardStrings } from "./pm-board-strings";
 
 const COMPACT_WIDTH = 900;
@@ -118,6 +124,10 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
   const openReport = (taskId: string) => {
     if (props.navigation) showReport(props.navigation, taskId);
   };
+  const openTask = (taskId: string) => {
+    openTaskPanel(taskId);
+  };
+  const taskNumbers = cards.data?.taskNumbers ?? {};
 
   const now = Date.now();
   const error = decide.error ?? reopen.error;
@@ -189,7 +199,9 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
                       }
                       onAnswer={answer}
                       onReopen={reopenCard}
+                      onOpenTask={openTask}
                       onOpenReport={openReport}
+                      taskNumbers={taskNumbers}
                     />
                   ))
                 )}
@@ -236,7 +248,9 @@ function CardView({
   onDraft,
   onAnswer,
   onReopen,
+  onOpenTask,
   onOpenReport,
+  taskNumbers,
 }: {
   card: PmCard;
   theme: Theme;
@@ -251,11 +265,13 @@ function CardView({
     input: { optionId?: string | null; answer?: string | null },
   ): void;
   onReopen(card: PmCard): void;
+  onOpenTask(taskId: string): void;
   onOpenReport(taskId: string): void;
+  taskNumbers: Readonly<Record<string, number>>;
 }) {
   const c = theme.colors;
   const [expanded, setExpanded] = useState(false);
-  const links = [...new Set([...card.links.taskIds, ...card.links.reportIds])];
+  const links = pmCardLinkTargets(card, taskNumbers);
   const waiting = card.status === "waiting";
   return (
     <View
@@ -378,15 +394,19 @@ function CardView({
       ) : null}
       {links.length > 0 ? (
         <View style={styles.links}>
-          {links.map((id) => (
+          {links.map((link) => (
             <Pressable
-              key={id}
+              key={`${link.kind}:${link.id}`}
               accessibilityRole="link"
-              onPress={() => onOpenReport(id)}
+              onPress={() =>
+                link.kind === "task"
+                  ? onOpenTask(link.id)
+                  : onOpenReport(link.id)
+              }
               style={[styles.link, { borderColor: c.border }]}
             >
               <Text style={{ color: c.accent }}>
-                {`${t.openReport}: ${id.slice(0, 8)}`}
+                {`${link.kind === "task" ? t.openTask : t.openReport}: ${link.label}`}
               </Text>
             </Pressable>
           ))}

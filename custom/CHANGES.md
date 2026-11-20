@@ -9266,7 +9266,14 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   - **The user answers.** On a proposal, each option is a button and there is a free-text field.
     One tap moves the card to Decidido with `decidedBy: user` and sends the answer to the PM chat as
     a message. **Reabrir** sends a decided card back to Esperando você and tells the PM. A card can
-    link to tasks and Reports tickets by id.
+    link to tasks and Reports tickets by id: a task chip shows `#N` and opens the ticket in the
+    board's side panel, a report chip opens Reports.
+  - **Deciding and limits.** `decidedBy`/`decidedAt` are recorded only when an update moves a card
+    into Decidido or when the kind is `decision`, so updating a notice never labels it "decided by
+    the Project Manager". `pm_card_decide` on a proposal needs an answer or one of its options
+    (on a decision, a decision or an answer); `pm_card_update` with status `decided` needs one of
+    the two. The 500-card limit is soft: creating past it drops only the oldest **Archived**
+    cards, and with nothing archived the board passes the limit and logs it.
   - **Reply protocol v3.** A trailing `[pm:<card id>]` on a line links to that card; a bare
     `[<task id>]` still opens the ticket in Reports. `docs/assistant-reply-protocol.md` and
     `docs/pm-board.md` describe it.
@@ -9283,9 +9290,10 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     `server/assistant/chat.ts` (the four tools, the `board_overview` section and the PM prompt),
     `server/assistant/views.ts` (`buildOverview`), `index.server.ts` (RPC handlers).
   - `shared/reply-protocol.ts` (`splitReplyIds`, `pmCardIds`, v3) and
-    `client/assistant/nav.ts` (`openPmCard`), `AssistantReplyCard.tsx` (the `[pm:id]` link),
-    `client/assistant/pm-board/`, `client/assistant/workboard-pages.ts`,
-    `client/WorkboardScreen.tsx`, `client/Orchestrators.tsx` (the tab badge).
+    `client/assistant/nav.ts` (`openPmCard`, `openTaskPanel`), `AssistantReplyCard.tsx` (the
+    `[pm:id]` link), `client/assistant/pm-board/`, `client/assistant/workboard-pages.ts`,
+    `client/WorkboardScreen.tsx` (the `params.task` panel request), `client/Orchestrators.tsx`
+    (the tab badge).
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
   Needs only `paseo plugin reload power-workboard`. In the app: the **Decisões** tab appears right
   after Board; ask the PM for a decision (or let it create a proposal); the card waits in
@@ -9293,7 +9301,9 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   você", and the PM chat gets `Resposta a "..." no card pm-...`; press **Reabrir**: the card returns
   to Esperando você and the chat gets a message. A code task still starts an agent from the Board.
 - **Tests:** `tests/pm-board.test.ts` (kind/column defaults, create/update/archive, a user's answer
-  with the message to the PM, a written answer, Reabrir, the overview section),
-  `tests/reply-protocol.test.ts` (v3 `[pm:<id>]`, mixed task and card ids, the doc's version) and
-  `tests/assistant-chat.test.ts` (the tools share the chat's MCP and decide a card);
-  `tests/workboard-pages.test.ts` (the new tab).
+  with the message to the PM, a written answer, Reabrir, the overview section, a notice keeping no
+  decider, the 500-card limit keeping active cards, deciding without an answer, the link labels),
+  `tests/reply-protocol.test.ts` (v3 `[pm:<id>]`, mixed task and card ids, the doc's version, a
+  task link opening the side panel) and `tests/assistant-chat.test.ts` (the tools share the chat's
+  MCP, decide a card and refuse one without a decision or answer); `tests/workboard-pages.test.ts`
+  (the new tab).

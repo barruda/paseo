@@ -922,3 +922,23 @@ it("creates, decides and reports a PM card from the chat tools", async () => {
     c.board.dispose();
   }
 });
+
+// CUSTOM(pm-board): a card is never closed without a decision or an answer.
+it("refuses pm_card_decide with neither a decision nor an answer", async () => {
+  const c = await chat();
+  try {
+    const created = await c.run("pm_card_create", {
+      kind: "proposal",
+      title: "Publicar?",
+      question: "Publicar o site agora?",
+    });
+    const id = /Created PM card (pm-[0-9a-f]{8})/.exec(created.text ?? "")![1];
+    const refused = await c.run("pm_card_decide", { id });
+    expect(refused.isError).toBe(true);
+    expect(refused.text).toMatch(/non-empty decision or answer/);
+    const still = c.board.pmCards().find((entry) => entry.id === id)!;
+    expect(still.status).toBe("waiting");
+  } finally {
+    c.board.dispose();
+  }
+});

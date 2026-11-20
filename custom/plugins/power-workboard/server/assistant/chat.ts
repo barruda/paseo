@@ -988,7 +988,7 @@ export function chatTools(
     define({
       name: "pm_card_update",
       description:
-        'Update one of your PM cards: title, question, options, recommendation, findings, decision, links or status. Use status "waiting" when an investigation now needs the user, and status "decided" with decision and decidedBy "pm" when you decide alone; the board records who decided and when. Replacing the options drops a recommendation that names none of them.',
+        'Update one of your PM cards: title, question, options, recommendation, findings, decision, answer, links or status. Use status "waiting" when an investigation now needs the user, and status "decided" with decision and decidedBy "pm" when you decide alone; the board records who decided and when. Closing a proposal or a decision needs a non-empty decision or answer. Replacing the options drops a recommendation that names none of them.',
       input: z.object({
         id: z.string(),
         title: z.string().min(1).max(500).optional(),
@@ -998,6 +998,7 @@ export function chatTools(
         why: z.string().max(2000).nullable().optional(),
         findings: z.string().max(20000).optional(),
         decision: z.string().max(5000).nullable().optional(),
+        answer: z.string().max(5000).nullable().optional(),
         status: pmCardStatusSchema.optional(),
         decidedBy: z.enum(["pm", "user"]).optional(),
         taskIds: z.array(z.string()).max(50).optional(),
@@ -1023,6 +1024,7 @@ export function chatTools(
           why: input.why,
           findings: input.findings,
           decision: input.decision,
+          answer: input.answer,
           status: input.status,
           decidedBy: input.decidedBy,
           links,
@@ -1035,16 +1037,22 @@ export function chatTools(
     define({
       name: "pm_card_decide",
       description:
-        "Record a decision you made alone on one of your PM cards (decidedBy pm), with the decision text. Use it for the calls that are yours, not for the user's: the user decides a proposal on the card itself, and the board records it with decidedBy user. When you answer a user's decision message, use pm_card_update or pm_card_decide to close the card.",
+        "Record a decision you made alone on one of your PM cards (decidedBy pm), with the decision text or the answer. Pass a non-empty decision or answer, or one of the card's options; a proposal or a decision is never closed empty. Use it for the calls that are yours, not for the user's: the user decides a proposal on the card itself, and the board records it with decidedBy user. When you answer a user's decision message, use pm_card_update or pm_card_decide to close the card.",
       input: z.object({
         id: z.string(),
-        decision: z.string().min(1).max(5000),
+        decision: z.string().max(5000).nullable().optional(),
+        answer: z.string().max(5000).nullable().optional(),
         answerOptionId: z.string().max(40).nullable().default(null),
       }),
-      async execute({ id, decision, answerOptionId }) {
+      async execute({ id, decision, answer, answerOptionId }) {
+        if (!decision?.trim() && !answer?.trim() && !answerOptionId)
+          throw new Error(
+            "Pass a non-empty decision or answer: a PM card cannot be decided without one.",
+          );
         const card = await board().pmCardDecide(id, {
           optionId: answerOptionId,
           decision,
+          answer,
           by: "pm",
         });
         return text(`Decided PM card ${card.id}: "${card.decision ?? ""}".`);

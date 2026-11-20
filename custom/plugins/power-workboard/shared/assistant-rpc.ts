@@ -163,7 +163,11 @@ export const assistantReportsTaskRpc = defineRpc({
 export const assistantPmCardsRpc = defineRpc({
   name: "workboard.assistant.pm.cards",
   input: z.object({}),
-  output: z.object({ cards: z.array(pmCardSchema) }),
+  output: z.object({
+    cards: z.array(pmCardSchema),
+    /** Short task numbers for the links under a card, by task id. */
+    taskNumbers: z.record(z.string(), z.number()).default({}),
+  }),
 });
 
 export const assistantPmDecideRpc = defineRpc({

@@ -21,7 +21,6 @@ import {
   replyTimelineItems,
   splitReply,
   splitReplyIds,
-  splitTaskIds,
 } from "../shared/reply-protocol";
 import {
   ASSISTANT_ROLE,
@@ -32,8 +31,10 @@ import { EVIDENCE_KINDS } from "../shared/assistant"; // CUSTOM(assistant-cards)
 import { itemFeedback, optionAnswer } from "../shared/card-answers";
 import {
   canOpenPmCard,
+  canOpenTaskPanel,
   canOpenTaskReport,
   openPmCard,
+  openTaskPanel,
   openTaskReport,
   setScreenOpener,
 } from "../client/assistant/nav";
@@ -369,29 +370,6 @@ describe("parseReplyBlock", () => {
   });
 });
 
-describe("splitTaskIds", () => {
-  it("takes every trailing id and leaves other brackets", () => {
-    expect(splitTaskIds("algo [WIP] [abcdef12] [01234567]")).toEqual({
-      text: "algo [WIP]",
-      ids: ["abcdef12", "01234567"],
-    });
-    expect(splitTaskIds("reseta [2026-11-20]").ids).toEqual([]);
-    expect(splitTaskIds("merge X [763ec569c]").ids).toEqual([]);
-    expect(
-      splitTaskIds("full [6F1D2C3A-1111-2222-3333-444455556666]").ids,
-    ).toEqual(["6f1d2c3a-1111-2222-3333-444455556666"]);
-    expect(splitTaskIds("curto [abc]")).toEqual({
-      text: "curto [abc]",
-      ids: [],
-    });
-    // CUSTOM(pm-board): a `[pm:<id>]` is stripped from the text and is not a task id.
-    expect(splitTaskIds("decidir x [pm:pm-abc12345]")).toEqual({
-      text: "decidir x",
-      ids: [],
-    });
-  });
-});
-
 // CUSTOM(pm-board): protocol v3 adds `[pm:<card id>]`.
 describe("parseReplyBlock v3", () => {
   it("reads a PM card id at the end of a line", () => {
@@ -427,6 +405,21 @@ describe("parseReplyBlock v3", () => {
       text: "movi X",
       taskIds: ["10b1b0d7"],
       pmCardIds: ["pm-abc12345"],
+    });
+    expect(splitReplyIds("algo [WIP] [abcdef12] [01234567]")).toEqual({
+      text: "algo [WIP]",
+      taskIds: ["abcdef12", "01234567"],
+      pmCardIds: [],
+    });
+    expect(splitReplyIds("reseta [2026-11-20]").taskIds).toEqual([]);
+    expect(splitReplyIds("merge X [763ec569c]").taskIds).toEqual([]);
+    expect(
+      splitReplyIds("full [6F1D2C3A-1111-2222-3333-444455556666]").taskIds,
+    ).toEqual(["6f1d2c3a-1111-2222-3333-444455556666"]);
+    expect(splitReplyIds("curto [abc]")).toEqual({
+      text: "curto [abc]",
+      taskIds: [],
+      pmCardIds: [],
     });
     expect(splitReplyIds("decidir x [PM:PM-ABC12345]").pmCardIds).toEqual([
       "pm-abc12345",
@@ -566,6 +559,25 @@ describe("openTaskReport", () => {
     });
     setScreenOpener(null);
     expect(canOpenTaskReport()).toBe(false);
+  });
+
+  // CUSTOM(pm-board): a task link on a decision card opens the ticket in the board's side panel.
+  it("opens the board on its board tab with the ticket in the panel", () => {
+    expect(openTaskPanel("abcdef12")).toBe(false);
+    const open = vi.fn();
+    setScreenOpener(open);
+    expect(canOpenTaskPanel()).toBe(true);
+    expect(openTaskPanel("abcdef12")).toBe(true);
+    expect(open).toHaveBeenCalledWith({
+      screenId: "power-workboard",
+      params: {
+        tab: "board",
+        request: expect.any(String),
+        task: "abcdef12",
+      },
+    });
+    setScreenOpener(null);
+    expect(canOpenTaskPanel()).toBe(false);
   });
 
   // CUSTOM(pm-board): a `[pm:<id>]` opens the Decisões tab on that card.

@@ -134,6 +134,24 @@ export function canOpenTaskReport(): boolean {
   return screenOpener !== null;
 }
 
+/** Opens the Workboard on its board with this ticket in the side panel. False when the host can't. */
+export function openTaskPanel(taskId: string): boolean {
+  if (!screenOpener) return false;
+  screenOpener({
+    screenId: "power-workboard",
+    params: {
+      tab: "board",
+      request: String(Date.now()),
+      task: taskId,
+    },
+  });
+  return true;
+}
+
+export function canOpenTaskPanel(): boolean {
+  return screenOpener !== null;
+}
+
 // CUSTOM(pm-board): open the Decisões tab on one card, from a reply's `[pm:<id>]` or a link.
 interface PmCardRequest {
   cardId: string;

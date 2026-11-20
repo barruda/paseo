@@ -235,6 +235,13 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const [statusCard, setStatusCard] = useState<Card | null>(null);
   // CUSTOM(task-panel): one side panel at a time, plus the card's context menu.
   const [panelTaskId, setPanelTaskId] = useState<string | null>(null);
+  // CUSTOM(pm-board): a task link on a decision card opens that ticket in the side panel.
+  const requestedTaskId = (params as { task?: unknown } | undefined)?.task;
+  useEffect(() => {
+    if (typeof requestedTaskId === "string" && requestedTaskId)
+      setPanelTaskId(requestedTaskId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey, requestedTaskId]);
   const [cardMenu, setCardMenu] = useState<CardMenuRequest | null>(null);
   const rootRef = useRef<View>(null);
   const [rootSize, setRootSize] = useState({ width: 0, height: 0 });
