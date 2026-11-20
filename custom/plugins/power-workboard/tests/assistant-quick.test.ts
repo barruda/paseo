@@ -79,16 +79,37 @@ describe("QuickInbox", () => {
     inbox.dispose();
   });
 
-  it("a failed send does not mark the tasks told", async () => {
-    const markTold = vi.fn();
+  it("holds the in-flight guard until the tasks are marked told", async () => {
+    const order: string[] = [];
     const { inbox } = setup({
       needsYou: () => ({ text: "- t1 | Task", ids: ["t1"] }),
+      sending: (ids) => {
+        order.push(`sending:${ids.join(",")}`);
+        return () => order.push("release");
+      },
+      markTold: () => order.push("told"),
+      send: async () => {
+        order.push("sent");
+      },
+    });
+    await inbox.ask({ text: "x", source: "app", waitMs: 0 });
+    expect(order).toEqual(["sending:t1", "sent", "told", "release"]);
+    inbox.dispose();
+  });
+
+  it("a failed send does not mark the tasks told", async () => {
+    const markTold = vi.fn();
+    const release = vi.fn();
+    const { inbox } = setup({
+      needsYou: () => ({ text: "- t1 | Task", ids: ["t1"] }),
+      sending: () => release,
       markTold,
       send: async () => Promise.reject(new Error("down")),
     });
     const ack = await inbox.ask({ text: "x", source: "app", waitMs: 0 });
     expect(ack.status).toBe("error");
     expect(markTold).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledTimes(1);
     inbox.dispose();
   });
 

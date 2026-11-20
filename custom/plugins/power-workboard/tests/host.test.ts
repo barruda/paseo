@@ -626,3 +626,20 @@ it("steers into the chat's turn instead of interrupting it", async () => {
   await host.steerAgent("a1", "hi");
   expect(send).toHaveBeenCalledWith("hi", { activeTurnBehavior: "steer" });
 });
+
+// CUSTOM(assistant-wake): the daemon stops the plugin to reload it, so the request times out.
+it("treats the plugin reload request's timeout as success and rethrows other errors", async () => {
+  const request = vi.fn(async () => {
+    throw new Error("Paseo request timed out: plugin.reload.request");
+  });
+  const host = new PaseoHost(
+    {} as PaseoApi,
+    { request } as unknown as PaseoCompat,
+    { serverId: "h", version: "0.9.1" },
+    () => {},
+  );
+  await expect(host.reloadPlugin()).resolves.toBeUndefined();
+  request.mockRejectedValueOnce(new Error("bridge closed"));
+  await expect(host.reloadPlugin()).rejects.toThrow("bridge closed");
+  host.dispose();
+});

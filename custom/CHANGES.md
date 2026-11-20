@@ -6658,13 +6658,16 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 ## assistant-needs-you: every wake carries the Needs you list
 
 - **Added:** 2026-11-20
-- **Commit:** `custom: Projects Assistant gets the Needs you list on every wake`
+- **Commit:** `custom: Projects Assistant gets the Needs you list on every wake`; follow-up
+  `custom: fix the Needs you wake edge cases`
 - **Why:** A task finished at 14:29 with `needs_input` and the `[Board]` notice did not reach the
   assistant while it answered two quick messages; the user had to ask why nothing moved. The
   notice was not lost or deduplicated: the board retried every 90 s while the chat was busy, so
   the batch landed about six minutes late, and a quick message never mentioned the parked task.
   Separately, running `plugin reload` in the middle of the assistant's own turn retired the
   attached `board_*` tools for the rest of that turn (`MCP error -32602: Tool ... not found`).
+  The post-delivery review found edge cases around compaction, quick messages, the reminder and
+  the deferred reload.
 - **What:**
   - `assistantNeedsYouBrief()` renders every task on Needs you (id, title, project, reason and
     detail, review policy, `waiting since <ISO> (<age>)`). The `[Board]` wake lists all of them,
@@ -6682,6 +6685,22 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     the MCP tool catalog per request from the attached plugin instance, and only reopens the stale
     session at the start of the next prompt (`reloadStalePluginSession`). The role text now says
     to use the tool and not a direct reload while the turn still needs the board.
+  - Compaction now clears the same state `openChat` does: `toldAt`/`firstToldAt`, the usage-limit
+    wait and a deferred reload. The new chat only has the summary, so it hears the Needs you list
+    again and the old chat's deferred reload does not run on its turn end.
+  - A quick message holds an in-flight guard (`markAssistantSending`) across its send, so the
+    `turn_started` that arrives while the message is on its way does not steer the same list into
+    that turn. The tasks are marked told only after the send resolves; a failed send releases the
+    guard without marking them.
+  - `delivery.firstToldAt` records the first telling of the current wait. A quick message or a
+    steer may rewrite `toldAt`, but a `board_report` (or an assistant action that leaves the task
+    in Needs you) after `firstToldAt` still counts as handled, so the 10-minute reminder does not
+    fire for a task already treated.
+  - The deferred reload runs only when `agentActivity(chatId)` is `idle`; an interrupted turn's
+    `turn_ended` no longer retires the tools in the middle of the turn that replaces it. The
+    reload request's timeout counts as success, since the daemon stops the plugin to reload it.
+  - A wake whose send fails restores the previous `lastToldAt`, so the user's turns in the next
+    60 s still steer the list in.
 - **Files:** `server/workboard.ts`, `server/assistant/{chat,quick}.ts`, `server/host.ts`,
   `shared/{assistant,quick}.ts`, `index.server.ts`,
   `tests/assistant-{engine,quick,chat,reports}.test.ts`, `tests/host.test.ts`.

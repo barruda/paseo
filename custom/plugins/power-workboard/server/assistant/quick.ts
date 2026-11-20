@@ -26,6 +26,12 @@ export interface QuickInboxDeps {
   serverId(): string | null;
   /** CUSTOM(assistant-wake): the tasks still waiting for the assistant, rendered for the prompt. */
   needsYou?(): { text: string; ids: string[] };
+  /**
+   * CUSTOM(assistant-wake): these tasks are on their way to the chat. The chat's turn may start
+   * before `send` resolves, and `chatTurnStarted` must not steer the same list into it. Returns
+   * the release to call once the tasks are marked told.
+   */
+  sending?(ids: string[]): () => void;
   /** CUSTOM(assistant-wake): mark those tasks as told once the message was sent. */
   markTold?(ids: string[]): void;
   now?: () => number;
@@ -79,15 +85,22 @@ export class QuickInbox {
       const before = await this.deps.lastReply(agentId);
       // CUSTOM(assistant-wake): every wake carries the Needs you list.
       const needsYou = this.deps.needsYou?.() ?? { text: "", ids: [] };
-      await this.deps.send(
-        agentId,
-        quickPrompt(entry.id, input.text, input.source, needsYou.text),
-      );
+      // Hold the in-flight guard across the send: the chat's turn starts while it is in flight,
+      // and `chatTurnStarted` must not steer this same list into it.
+      const release = this.deps.sending?.(needsYou.ids);
       try {
-        this.deps.markTold?.(needsYou.ids);
-      } catch (error) {
-        // The message was sent; a failed mark only means the next wake says it again.
-        console.error("Could not mark Needs you tasks told:", reason(error));
+        await this.deps.send(
+          agentId,
+          quickPrompt(entry.id, input.text, input.source, needsYou.text),
+        );
+        try {
+          this.deps.markTold?.(needsYou.ids);
+        } catch (error) {
+          // The message was sent; a failed mark only means the next wake says it again.
+          console.error("Could not mark Needs you tasks told:", reason(error));
+        }
+      } finally {
+        release?.();
       }
       entry.sentAt = this.stamp();
       this.watch(entry, agentId, before);
