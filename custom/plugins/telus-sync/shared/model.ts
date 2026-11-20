@@ -66,13 +66,94 @@ export const EXCLUDED_PLUGIN_SETTINGS: Record<string, string> = {
   "jev-router": "it stores the TypeSafe API key and the routing model choices",
 };
 
-/** A key whose value is a credential. Dropped wherever it appears in a settings file. */
-export const CREDENTIAL_KEY_PATTERN =
-  /(api[-_]?key|access[-_]?key|private[-_]?key|secret|token|password|passwd|authorization|credential)/i;
+/**
+ * Key names that are a credential on their own, whatever the casing or separators. Compared
+ * without `-`, `_` and `.`, so `api_key`, `api-key` and `apiKey` all hit.
+ */
+const CREDENTIAL_KEY_NAMES: readonly string[] = [
+  "apikey",
+  "apikeys",
+  "accesskey",
+  "privatekey",
+  "secretkey",
+  "signingkey",
+  "apitoken",
+  "accesstoken",
+  "authtoken",
+  "refreshtoken",
+  "bearertoken",
+  "sessiontoken",
+  "secret",
+  "secrets",
+  "token",
+  "tokens",
+  "password",
+  "passwd",
+  "authorization",
+  "credential",
+  "credentials",
+];
 
-/** A settings file that is credentials end to end; skipped as a whole. */
-export const CREDENTIAL_FILE_PATTERN =
-  /(secret|token|credentials?|creds?|auth|api[-_]?key|keypair|\.pem$|\.key$)/i;
+/**
+ * A key name that ends in a credential word is a credential (`githubToken`, `jwtSecret`,
+ * `dbPassword`). The plural `tokens` is left out on purpose: `maxTokens` and `max_tokens` are
+ * limits, not secrets.
+ */
+const CREDENTIAL_WORD_SUFFIX_PATTERN =
+  /(?:token|secret|secrets|password|passwords|passwd|credential|credentials|authorization)$/i;
+
+/**
+ * `key` only counts behind a qualifier, so `apiKey` and `sshKey` are credentials while `cacheKey`,
+ * `sortKey` and `hotkey` are ordinary settings.
+ */
+const QUALIFIED_KEY_SUFFIX_PATTERN =
+  /(?:api|access|private|secret|signing|auth|session|client|master|encryption|hmac|ssh|tls|gpg)[-_]?(?:key|keys)$/i;
+
+/** Whether a key holds a credential. Dropped wherever it appears in a settings file. */
+export function isCredentialKey(key: string): boolean {
+  if (CREDENTIAL_KEY_NAMES.includes(key.replace(/[-_.]/g, "").toLowerCase()))
+    return true;
+  return (
+    CREDENTIAL_WORD_SUFFIX_PATTERN.test(key) ||
+    QUALIFIED_KEY_SUFFIX_PATTERN.test(key)
+  );
+}
+
+/** File-name words that mean the file is credentials end to end. */
+const CREDENTIAL_FILE_WORDS: readonly string[] = [
+  "token",
+  "tokens",
+  "secret",
+  "secrets",
+  "credential",
+  "credentials",
+  "creds",
+  "auth",
+  "oauth",
+  "apikey",
+  "accesskey",
+  "privatekey",
+  "secretkey",
+  "keypair",
+  "key",
+  "keys",
+  "password",
+  "passwd",
+  "authorization",
+];
+
+/** Whether a settings file name says its content is credentials end to end. */
+export function isCredentialFileName(fileName: string): boolean {
+  if (/\.(?:pem|key)$/i.test(fileName)) return true;
+  const base = fileName.replace(/\.[^.]+$/, "");
+  const words = base
+    .split(/[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])/)
+    .filter(Boolean);
+  const last = words.at(-1)?.toLowerCase();
+  // Only the last word counts, so `tokens.json` and `apiToken.json` skip while `token-usage.json`,
+  // `password-policy.json` and `tokenizer.json` are ordinary settings.
+  return last !== undefined && CREDENTIAL_FILE_WORDS.includes(last);
+}
 
 /** Files under plugin-settings/ that are local backups, not live settings. */
 export const SKIPPED_SETTINGS_FILE_PATTERN = /\.bak($|[-_.])/i;

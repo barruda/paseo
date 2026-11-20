@@ -17,9 +17,16 @@ Settings > Plugins > telus-sync > **Sincronizar com Paseo Telus**.
 
 Plugin settings that hold execution data or agent model picks are excluded by id:
 `power-workboard`, `delegation`, `jev-router` (`shared/model.ts`, `EXCLUDED_PLUGIN_SETTINGS`).
-Files whose name looks like a credential and files that are not JSON are skipped, and every
-credential-looking key is dropped from JSON settings, including an `apiKey` inside
-`features.dictation`/`voiceMode`. Git remotes in `sources.json` lose any `user:token@`.
+Files whose name is a credential (`tokens.json`, `credentials.json`, `*.pem`, `*.key`) and files
+that are not JSON are skipped. Credential keys are dropped from JSON settings, including an
+`apiKey` inside `features.dictation`/`voiceMode`. The rules are an explicit key list plus a
+conservative suffix, so `openaiApiKey`, `oauthToken` and `clientSecret` are credentials while
+`maxTokens`, `tokenCount` and `tokenizerPath` are ordinary settings.
+
+A credential that only the Telus install already has is never deleted: the sync keeps its value,
+and when the whole branch exists only on the Telus side it keeps the branch too, so the settings
+the credential needs stay together. The preview lists each credential it kept. A credential coming
+from Personal is never written. Git remotes in `sources.json` lose any `user:token@`.
 
 ## What never travels
 

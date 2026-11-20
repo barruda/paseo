@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  buildPlan,
   executeSync,
   listHistory,
   resolveSyncPaths,
@@ -363,6 +364,58 @@ describe("allowlists and exclusion lists", () => {
       values: { prompt: "TLDR", nested: { turns: [{ ok: 1 }] } },
     });
   });
+
+  it("keeps settings that merely mention tokens or keys", () => {
+    const { value, removed } = scrubCredentials({
+      values: {
+        maxTokens: 800,
+        max_tokens: 512,
+        tokenCount: 3,
+        tokenizerPath: "/models/tokenizer.json",
+        cachedKeys: ["a"],
+        sortKey: "name",
+        hotkey: "Ctrl+K",
+        passwordPolicy: "strong",
+        authorizationLevel: 2,
+        openaiApiKey: "x",
+        "api-key": "x",
+        oauthToken: "x",
+        githubToken: "x",
+        jwtSecret: "x",
+        dbPassword: "x",
+        sshKey: "x",
+        api_token: "x",
+        proxyAuthorization: "x",
+        auth: { provider: "claude", accessToken: "y" },
+      },
+    });
+    expect(removed).toEqual([
+      "values.openaiApiKey",
+      "values.api-key",
+      "values.oauthToken",
+      "values.githubToken",
+      "values.jwtSecret",
+      "values.dbPassword",
+      "values.sshKey",
+      "values.api_token",
+      "values.proxyAuthorization",
+      "values.auth.accessToken",
+    ]);
+    expect(value).toEqual({
+      values: {
+        maxTokens: 800,
+        max_tokens: 512,
+        tokenCount: 3,
+        tokenizerPath: "/models/tokenizer.json",
+        cachedKeys: ["a"],
+        sortKey: "name",
+        hotkey: "Ctrl+K",
+        passwordPolicy: "strong",
+        authorizationLevel: 2,
+        auth: { provider: "claude" },
+      },
+    });
+  });
 });
 
 describe("sync", () => {
@@ -578,6 +631,116 @@ describe("sync", () => {
     expect(
       await fsp.readFile(path.join(paths.targetHome, "config.json"), "utf8"),
     ).toBe(broken);
+  });
+
+  it("keeps a credential only the Telus install has and never copies the Personal one", async () => {
+    const base = targetConfig();
+    const target = {
+      ...base,
+      features: {
+        ...base.features,
+        dictation: {
+          ...base.features.dictation,
+          stt: { apiKey: "telus-own-stt" },
+        },
+        voiceMode: {
+          ...base.features.voiceMode,
+          tts: { provider: "claude", apiKey: "telus-own-tts" },
+        },
+      },
+    };
+    await write(path.join(paths.targetHome, "config.json"), target);
+
+    const plan = await buildPlan(paths, ["ux"]);
+    const detail = plan.categories[0]?.items[0]?.detail ?? "";
+    expect(detail).toContain("features.dictation.stt.apiKey");
+    expect(detail).toContain("features.voiceMode.tts.apiKey");
+
+    const result = await executeSync(paths, ["ux"]);
+    expect(result.ok).toBe(true);
+    const config = (await read(path.join(paths.targetHome, "config.json"))) as {
+      features: Record<string, Record<string, unknown>>;
+    };
+    expect(config.features.dictation).toEqual({
+      enabled: true,
+      tuning: { silencePeakThreshold: 500 },
+      stt: { provider: "openai", apiKey: "telus-own-stt" },
+    });
+    // A branch only Telus has stays whole, so its credential keeps the settings it needs.
+    expect(config.features.voiceMode).toEqual({
+      enabled: true,
+      turnDetection: { silenceMs: 2000 },
+      tts: { provider: "claude", apiKey: "telus-own-tts" },
+    });
+    expect(JSON.stringify(config)).not.toContain("sk-personal");
+
+    // The kept credentials match the file, so the next run has nothing to write.
+    const second = await executeSync(paths, ["ux"]);
+    expect(second.copied).toBe(0);
+    expect(second.backupId).toBeNull();
+  });
+
+  it("copies settings whose names mention tokens and skips credential file names", async () => {
+    await write(
+      path.join(paths.sourceHome, "plugin-settings/summarizer/config.json"),
+      {
+        version: 1,
+        values: {
+          maxTokens: 800,
+          tokenizerPath: "/models/tokenizer.json",
+          apiKey: "summarizer-personal-secret",
+        },
+      },
+    );
+    await write(
+      path.join(paths.sourceHome, "plugin-settings/summarizer/tokenizer.json"),
+      { version: 1, model: { type: "BPE" } },
+    );
+    for (const file of ["tokens.json", "apiToken.json", "oauth.json"]) {
+      await write(
+        path.join(paths.sourceHome, "plugin-settings/summarizer", file),
+        { token: "x" },
+      );
+    }
+    for (const file of ["token-usage.json", "password-policy.json"]) {
+      await write(
+        path.join(paths.sourceHome, "plugin-settings/summarizer", file),
+        { version: 1 },
+      );
+    }
+
+    const result = await executeSync(paths, ["pluginSettings"]);
+    expect(result.ok).toBe(true);
+    expect(
+      await read(
+        path.join(paths.targetHome, "plugin-settings/summarizer/config.json"),
+      ),
+    ).toEqual({
+      version: 1,
+      values: { maxTokens: 800, tokenizerPath: "/models/tokenizer.json" },
+    });
+    expect(
+      await read(
+        path.join(
+          paths.targetHome,
+          "plugin-settings/summarizer/tokenizer.json",
+        ),
+      ),
+    ).toEqual({ version: 1, model: { type: "BPE" } });
+    for (const file of ["tokens.json", "apiToken.json", "oauth.json"]) {
+      expect(
+        await exists(
+          path.join(paths.targetHome, "plugin-settings/summarizer", file),
+        ),
+      ).toBe(false);
+    }
+    for (const file of ["token-usage.json", "password-policy.json"]) {
+      expect(
+        await read(
+          path.join(paths.targetHome, "plugin-settings/summarizer", file),
+        ),
+      ).toEqual({ version: 1 });
+    }
   });
 });
 

@@ -7,13 +7,13 @@ import {
   CATEGORY_IDS,
   CATEGORY_INFO,
   CONFIG_UX_ALLOWLIST,
-  CREDENTIAL_FILE_PATTERN,
-  CREDENTIAL_KEY_PATTERN,
   DESKTOP_SETTINGS_ALLOWLIST,
   EXCLUDED_PLUGIN_SETTINGS,
   MAX_BACKUPS,
   SKIPPED_SETTINGS_FILE_PATTERN,
   emptyRunResult,
+  isCredentialFileName,
+  isCredentialKey,
   type CategoryId,
   type HistoryEntry,
   type PreviewCategory,
@@ -397,7 +397,7 @@ export function scrubCredentials(
     const next: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(item)) {
       const dotted = at ? `${at}.${key}` : key;
-      if (CREDENTIAL_KEY_PATTERN.test(key)) {
+      if (isCredentialKey(key)) {
         removed.push(dotted);
         continue;
       }
@@ -406,6 +406,79 @@ export function scrubCredentials(
     return next;
   };
   return { value: walk(value, prefix), removed };
+}
+
+/**
+ * Applies the scrubbed source value over the Telus one, restoring credential keys the Telus file
+ * already has. Credentials never travel from Personal; replacing the whole block would otherwise
+ * delete a credential only the Telus install owns.
+ */
+function keepTargetCredentials(
+  source: unknown,
+  target: unknown,
+  at: string,
+  kept: string[],
+): unknown {
+  if (Array.isArray(source)) {
+    // Index-merge equal-length arrays; a different length means the source replaces the array.
+    if (!Array.isArray(target) || target.length !== source.length)
+      return source;
+    return source.map((item, index) =>
+      keepTargetCredentials(item, target[index], `${at}[${index}]`, kept),
+    );
+  }
+  if (!isRecord(source)) return source;
+  const targetRecord = isRecord(target) ? target : {};
+  const next: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(source)) {
+    const dotted = at ? `${at}.${key}` : key;
+    next[key] = keepTargetCredentials(child, targetRecord[key], dotted, kept);
+  }
+  for (const [key, child] of Object.entries(targetRecord)) {
+    if (Object.hasOwn(next, key)) continue;
+    const dotted = at ? `${at}.${key}` : key;
+    if (isCredentialKey(key)) {
+      next[key] = child;
+      kept.push(dotted);
+      continue;
+    }
+    // A branch only the Telus file has: keep it whole, so the credential and the settings it
+    // needs stay together. The rest of a branch is still replaced by the source.
+    if (hasCredential(child)) {
+      next[key] = child;
+      collectCredentialPaths(child, dotted, kept);
+    }
+  }
+  return next;
+}
+
+/** Whether a settings subtree holds a credential anywhere. */
+function hasCredential(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasCredential);
+  if (!isRecord(value)) return false;
+  return Object.entries(value).some(
+    ([key, child]) => isCredentialKey(key) || hasCredential(child),
+  );
+}
+
+/** Dotted paths of every credential in a settings subtree. */
+function collectCredentialPaths(
+  value: unknown,
+  at: string,
+  kept: string[],
+): void {
+  if (Array.isArray(value)) {
+    value.forEach((child, index) =>
+      collectCredentialPaths(child, `${at}[${index}]`, kept),
+    );
+    return;
+  }
+  if (!isRecord(value)) return;
+  for (const [key, child] of Object.entries(value)) {
+    const dotted = at ? `${at}.${key}` : key;
+    if (isCredentialKey(key)) kept.push(dotted);
+    else collectCredentialPaths(child, dotted, kept);
+  }
 }
 
 function categoryStatus(
@@ -459,21 +532,26 @@ async function buildUx(
   }
   const edits: JsonEdit[] = [];
   const labels: string[] = [];
+  const kept: string[] = [];
+  const target = await readJson(targetFile);
   for (const [top, subkeys] of Object.entries(CONFIG_UX_ALLOWLIST)) {
     const block = source[top];
     if (!isRecord(block)) continue;
     for (const subkey of subkeys) {
       if (!Object.hasOwn(block, subkey)) continue;
-      // Speech sites may hold an apiKey; scrub it like any other settings document.
-      edits.push({
-        path: [top, subkey],
-        value: redactUrlCredentials(scrubCredentials(block[subkey]).value),
-      });
+      // Speech sites may hold an apiKey; scrub it like any other settings document, then keep
+      // the one the Telus file already has so the replacement does not delete it.
+      const value = keepTargetCredentials(
+        redactUrlCredentials(scrubCredentials(block[subkey]).value),
+        getPath(target, [top, subkey]),
+        `${top}.${subkey}`,
+        kept,
+      );
+      edits.push({ path: [top, subkey], value });
       labels.push(`${top}.${subkey}`);
     }
   }
   const label = `config.json · ${labels.join(", ") || "no UX keys found"}`;
-  const target = await readJson(targetFile);
   let status: PreviewItem["status"] = "changed";
   if (!(await exists(targetFile))) status = "new";
   else
@@ -486,7 +564,15 @@ async function buildUx(
     category: makeCategory(
       "ux",
       edits.length
-        ? [{ label, status, detail: null }]
+        ? [
+            {
+              label,
+              status,
+              detail: kept.length
+                ? `Telus credentials kept: ${kept.join(", ")}`
+                : null,
+            },
+          ]
         : [
             {
               label,
@@ -496,6 +582,7 @@ async function buildUx(
           ],
       [
         "Only the config.json features block travels. Providers, MCP servers, env, directories and agent settings stay behind.",
+        "Credentials never travel from Personal. A credential only the Telus install has stays there, and the item above lists the ones kept.",
       ],
     ),
     operations: edits.length
@@ -784,7 +871,7 @@ async function buildPluginSettings(
         notes.push(`Skipped ${rel}: local backup file.`);
         continue;
       }
-      if (CREDENTIAL_FILE_PATTERN.test(path.basename(file))) {
+      if (isCredentialFileName(path.basename(file))) {
         notes.push(`Skipped ${rel}: the file name looks like a credential.`);
         continue;
       }

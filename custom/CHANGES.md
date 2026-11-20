@@ -8193,6 +8193,35 @@ tests/card-open-agent.test.ts`. Needs only `paseo plugin reload power-workboard`
   cursor turns to `col-resize` along the whole border and an accent line appears; dragging
   resizes, double-click resets.
 
+## telus-sync: keep Telus-only credentials and narrow the credential rules
+
+- **Added:** 2026-11-19 (based on `custom` at `e30e10550`)
+- **Commit:** `custom: telus-sync keeps Telus-only credentials and narrows the credential rules`
+- **Why:** Follow-up to [telus-sync](#telus-sync-copy-ux-and-plugin-configuration-from-paseo-personal-to-paseo-telus).
+  Applying the `features` block replaced each subkey whole, so an `apiKey` that existed only on
+  the Telus side (`features.dictation.stt`, `features.voiceMode.tts`) was deleted. The credential
+  patterns were also broad enough to discard legitimate settings such as `maxTokens`,
+  `tokenCount` and `tokenizerPath` (and the file `tokenizer.json`).
+- **What:**
+  - Applying `features` still starts from the scrubbed Personal value, then restores every
+    credential key the Telus `config.json` already has at that path. A branch only Telus has is
+    kept whole when it holds a credential, so the credential keeps the settings next to it. The
+    preview item's detail lists the kept paths. A Personal credential is still never written.
+  - Credential keys are an explicit list (`apiKey`, `token`, `password`, `authorization`,
+    `credential`, …), a suffix rule for credential words (`githubToken`, `jwtSecret`,
+    `dbPassword`) and `key` only behind a qualifier (`openaiApiKey`, `sshKey` but not
+    `sortKey`/`hotkey`). `maxTokens`, `max_tokens`, `tokenCount`, `tokenizerPath` and
+    `cachedKeys` travel. Credential file names are decided by the last word before the extension
+    (`tokens.json`, `apiToken.json`, `oauth.json`, `*.key`), so `tokenizer.json`,
+    `token-usage.json` and `password-policy.json` copy.
+- **Core files touched:** none. Plugin files: `shared/model.ts`, `server/sync.ts`,
+  `tests/sync.test.ts`, `README.md`.
+- **Re-apply:** Plugin-only; an upstream merge cannot conflict. Grep `CUSTOM(telus-sync)`.
+- **Verify:** `(cd custom/plugins/telus-sync && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)`.
+  In Personal, put an `apiKey` under `features.dictation.stt` in `~/.paseo-telus/config.json` by
+  hand, open Settings > Plugins > telus-sync and check the preview says it was kept, sync UX, then
+  confirm the key is still there and the Personal one is not.
+
 ## telus-sync: copy UX and plugin configuration from Paseo Personal to Paseo Telus
 
 - **Added:** 2026-11-19 (based on `custom` at `0a83c9e42`)
