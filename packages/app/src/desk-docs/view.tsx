@@ -35,8 +35,10 @@ import {
   fileNameOf,
   joinPath,
   parentPathOf,
+  projectFilterLabel,
   sortDocs,
   sortTreeEntries,
+  visibleProjects,
   type DocEntry,
   type DocRoot,
   type DocsSort,
@@ -62,6 +64,7 @@ export function DeskDocsView() {
   const docs = useDeskDocsStore((s) => s.docs);
   const roots = useDeskDocsStore((s) => s.roots);
   const sort = useDeskDocsStore((s) => s.sort);
+  const hiddenProjects = useDeskDocsStore((s) => s.hiddenProjects);
   const ordered = useMemo(() => {
     const hasContent = (project: DocsProject) =>
       docs.some((doc) => doc.projectRef === project.ref) ||
@@ -72,27 +75,113 @@ export function DeskDocsView() {
         a.name.localeCompare(b.name, undefined, { sensitivity: "base" }),
     );
   }, [projects, docs, roots]);
+  const visible = useMemo(
+    () => visibleProjects(ordered, hiddenProjects),
+    [ordered, hiddenProjects],
+  );
+  let list;
+  if (ordered.length === 0) {
+    list = <Text style={styles.empty}>No projects yet.</Text>;
+  } else if (visible.length === 0) {
+    list = <Text style={styles.empty}>No projects selected.</Text>;
+  } else {
+    list = visible.map((project) => (
+      <ProjectSection key={project.ref} project={project} docs={docs} roots={roots} sort={sort} />
+    ));
+  }
   return (
     <View style={styles.root} testID="desk-docs">
       <View style={styles.toolbar}>
+        <ProjectFilter projects={ordered} hidden={hiddenProjects} />
         <SortMenu sort={sort} />
       </View>
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent}>
-        {ordered.length === 0 ? (
-          <Text style={styles.empty}>No projects yet.</Text>
-        ) : (
-          ordered.map((project) => (
-            <ProjectSection
-              key={project.ref}
-              project={project}
-              docs={docs}
-              roots={roots}
-              sort={sort}
-            />
-          ))
-        )}
+        {list}
       </ScrollView>
     </View>
+  );
+}
+
+function ProjectFilter({ projects, hidden }: { projects: DocsProject[]; hidden: string[] }) {
+  const visibleCount = useMemo(() => {
+    const hiddenSet = new Set(hidden);
+    return projects.reduce((count, project) => count + (hiddenSet.has(project.ref) ? 0 : 1), 0);
+  }, [projects, hidden]);
+  const label = projectFilterLabel(projects.length, visibleCount);
+  const showAll = useCallback(() => useDeskDocsStore.getState().showAllProjects(), []);
+  const hideAll = useCallback(
+    () => useDeskDocsStore.getState().hideAllProjects(projects.map((project) => project.ref)),
+    [projects],
+  );
+  return (
+    <View style={styles.filterGroup}>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          testID="desk-docs-project-filter"
+          accessibilityRole="button"
+          accessibilityLabel={`Projects: ${label}`}
+          disabled={projects.length === 0}
+          style={styles.filterTrigger}
+        >
+          <Text style={styles.filterLabel} numberOfLines={1}>
+            {label}
+          </Text>
+          <ThemedChevronDown size={12} />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          side="bottom"
+          align="start"
+          width={220}
+          testID="desk-docs-project-filter-menu"
+        >
+          {projects.map((project) => (
+            <ProjectFilterItem
+              key={project.ref}
+              project={project}
+              hidden={hidden.includes(project.ref)}
+            />
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      <PressHighlight
+        testID="desk-docs-project-filter-all"
+        accessibilityRole="button"
+        accessibilityLabel="Show all projects"
+        disabled={projects.length === 0}
+        style={styles.filterButton}
+        onPress={showAll}
+      >
+        <Text style={styles.filterButtonLabel}>All</Text>
+      </PressHighlight>
+      <PressHighlight
+        testID="desk-docs-project-filter-none"
+        accessibilityRole="button"
+        accessibilityLabel="Hide all projects"
+        disabled={projects.length === 0}
+        style={styles.filterButton}
+        onPress={hideAll}
+      >
+        <Text style={styles.filterButtonLabel}>None</Text>
+      </PressHighlight>
+    </View>
+  );
+}
+
+function ProjectFilterItem({ project, hidden }: { project: DocsProject; hidden: boolean }) {
+  const toggle = useCallback(
+    () => useDeskDocsStore.getState().toggleProjectVisibility(project.ref),
+    [project.ref],
+  );
+  return (
+    <DropdownMenuItem
+      testID={`desk-docs-project-filter-${project.ref}`}
+      selected={!hidden}
+      showSelectedCheck
+      closeOnSelect={false}
+      onSelect={toggle}
+    >
+      {project.name}
+    </DropdownMenuItem>
   );
 }
 
@@ -469,12 +558,38 @@ const styles = StyleSheet.create((theme) => ({
   toolbar: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
+    gap: theme.spacing[2],
     paddingHorizontal: theme.spacing[3],
     height: 36,
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
   },
+  filterGroup: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  filterTrigger: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
+    height: buttonControlHeight.xs,
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+    flexShrink: 1,
+    minWidth: 0,
+  },
+  filterLabel: { flexShrink: 1, color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
+  filterButton: {
+    height: buttonControlHeight.xs,
+    justifyContent: "center",
+    paddingHorizontal: theme.spacing[2],
+    borderRadius: theme.borderRadius.md,
+  },
+  filterButtonLabel: { color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   sortTrigger: {
     flexDirection: "row",
     alignItems: "center",

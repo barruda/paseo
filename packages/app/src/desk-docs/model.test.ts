@@ -5,8 +5,10 @@ import {
   isDocPath,
   joinPath,
   parentPathOf,
+  projectFilterLabel,
   sortDocs,
   sortTreeEntries,
+  visibleProjects,
   type DocEntry,
   type StatFile,
 } from "./model";
@@ -151,6 +153,31 @@ describe("sorting", () => {
       "a.md",
     ]);
     expect(sortTreeEntries(entries, "name").map((e) => e.name)).toEqual(["a-dir", "z-dir", "a.md"]);
+  });
+});
+
+describe("project filter", () => {
+  const projects = [{ ref: "srv:a" }, { ref: "srv:b" }, { ref: "srv:c" }];
+
+  it("shows every project but the hidden ones", () => {
+    expect(visibleProjects(projects, []).map((p) => p.ref)).toEqual(["srv:a", "srv:b", "srv:c"]);
+    expect(visibleProjects(projects, ["srv:b"]).map((p) => p.ref)).toEqual(["srv:a", "srv:c"]);
+  });
+
+  it("leaves a project it has never seen visible, so a new project starts marked", () => {
+    const withNew = [...projects, { ref: "srv:new" }];
+    expect(visibleProjects(withNew, ["srv:a", "srv:c"]).map((p) => p.ref)).toEqual([
+      "srv:b",
+      "srv:new",
+    ]);
+  });
+
+  it("labels the trigger all, a count, or none", () => {
+    expect(projectFilterLabel(3, 3)).toBe("All projects");
+    expect(projectFilterLabel(3, 2)).toBe("2 projects");
+    expect(projectFilterLabel(3, 1)).toBe("1 project");
+    expect(projectFilterLabel(3, 0)).toBe("No projects");
+    expect(projectFilterLabel(0, 0)).toBe("No projects");
   });
 });
 

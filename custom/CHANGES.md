@@ -4999,15 +4999,21 @@ src/keyboard/keyboard-shortcuts.test.ts src/task-navigation/store.test.ts)`, and
   - Sorting, top right: **Most recent** (default; the file's modification time) or **A to Z**.
     Folders come before files: added folders above the documents, and inside a tree folders above
     files, each group sorted.
+  - A project filter comes first in the toolbar, then **All** and **None**, on the same row as the
+    sort menu. The combo lists every project with a check; unchecking one hides its section right
+    away and the menu stays open. Its label reads **All projects**, **N projects** or **No
+    projects**. The store keeps the hidden refs rather than the checked ones, so a project that
+    appears later starts checked. With every project hidden the list says **No projects selected.**
   - In Tasks mode the sidebar's **+** launches into the Desk, so `launchDeskTarget` sends a `docs`
     launch to the workspace's Explorer pane instead (Docs has no place in a Desk).
   - Clicking a document or a tree file opens it as a file tab. In Tasks mode it goes to the Desk
     named **Navegadores** (any case or accents, also "Navegador") and shows that Desk; with no such
     Desk, it opens in the Desk that is showing. In the workspace layout it opens in the project's
     workspace.
-- **Files:** `packages/app/src/desk-docs/` (`model.ts` pure capture and sort rules with
-  `model.test.ts`, `store.ts` persisted as `custom-desk-docs`, `capture.ts` the hook the agent view
-  calls, `projects.ts`, `open.ts`, `panel.tsx`, `view.tsx`). New files; no conflict risk.
+- **Files:** `packages/app/src/desk-docs/` (`model.ts` pure capture, sort and project-filter rules
+  with `model.test.ts`, `store.ts` persisted as `custom-desk-docs` with `store.test.ts`,
+  `capture.ts` the hook the agent view calls, `projects.ts`, `open.ts`, `panel.tsx`, `view.tsx`).
+  New files; no conflict risk.
 - **Core files touched** (marked `CUSTOM(desk-docs)`): the new `docs` tab target in
   `workspace-tabs/model.ts`, `workspace-tabs/identity.ts` (normalize, equality, deterministic id)
   and `stores/workspace-layout-storage.ts` (schema); `panels/panel-manifest.ts` and
@@ -5023,8 +5029,8 @@ src/keyboard/keyboard-shortcuts.test.ts src/task-navigation/store.test.ts)`, and
   `useDeskDocsCapture` with the chat links, the client, the workspace root and the session's file
   paths.
 - **Verify:** `(cd packages/app && npx vitest run src/desk-docs/model.test.ts
-src/workspace-tabs/launcher/internal/catalog.test.ts src/desk-docs/launch.test.ts)` (the update script runs
-  the Docs ones). In
+src/desk-docs/store.test.ts src/workspace-tabs/launcher/internal/catalog.test.ts
+src/desk-docs/launch.test.ts)` (the update script runs the Docs ones). In
   the app: in the Explorer sidebar, + > Docs. Ask an agent to write and link a Markdown file: the
   project lists it. Move the file and have the agent link the new path: still one entry. With a
   Desk named Navegadores, click the entry: that Desk shows with the file open. Use + to add a
