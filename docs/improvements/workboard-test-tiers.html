@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Níveis de teste no Workboard</title>
+<style>
+  :root {
+    --bg: #fbfaf8; --fg: #1d1d1b; --muted: #6b6a66; --line: #e3e1dc;
+    --card: #ffffff; --accent: #2f5fd0; --warn-bg: #fff6e0; --warn: #8a5a00;
+    --ok: #1f7a4d; --code-bg: #f1efea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --fg: #ecebe7; --muted: #9b9a95; --line: #2e2d2b;
+      --card: #1e1e1c; --accent: #7fa2ff; --warn-bg: #2d2412; --warn: #e7b65a;
+      --ok: #5fc995; --code-bg: #262624;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 900px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 6px; }
+  h2 { font-size: 1.25rem; margin: 40px 0 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .meta { color: var(--muted); font-size: .9rem; margin-bottom: 24px; }
+  code { font: .88em ui-monospace, "SF Mono", Menlo, monospace; background: var(--code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { background: var(--code-bg); padding: 14px; border-radius: 8px; overflow-x: auto; font-size: .85rem; line-height: 1.45; }
+  pre code { background: none; padding: 0; }
+  .tldr { background: var(--card); border: 1px solid var(--line); border-left: 4px solid var(--accent); border-radius: 8px; padding: 14px 18px; }
+  .tldr ul { margin: 0; padding-left: 20px; }
+  .callout { background: var(--warn-bg); color: var(--fg); border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
+  .callout strong { color: var(--warn); }
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  th { font-weight: 600; color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .03em; }
+  tr:last-child td { border-bottom: none; }
+  td.num { white-space: nowrap; color: var(--muted); }
+  .tiers { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .tier { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; }
+  .tier h3 { margin: 0 0 6px; font-size: 1rem; }
+  .tier p { margin: 0; color: var(--muted); font-size: .92rem; }
+  .ok { color: var(--ok); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Níveis de teste nos tickets do Workboard</h1>
+  <div class="meta">Achados de 2026-11-20 · sessão analisada: agente <code>f3854beb-6fe6-498a-91d2-6822f824533d</code> (TH-13 part 2, th-ai-core, worktree <code>th-ai-core-flimsy-hyena</code>)</div>
+
+  <div class="tldr">
+    <ul>
+      <li>O agente rodou três camadas: o <strong>teste restrito</strong> (4 suítes com Postgres real, ~30 s), o <strong><code>cargo test</code> completo</strong> (~876 testes, ~80 s, com o build wasm) e o <strong><code>cargo xtask check-server</code></strong> (~84 s).</li>
+      <li>O <code>cargo test</code> completo quase não testou o ticket: sem <code>TH_SERVER_TEST_DATABASE_URL</code>, as suítes de banco passam vazias.</li>
+      <li>Houve redundância: as suítes de banco e o squawk rodaram duas vezes.</li>
+      <li>A ordem de "rodar tudo" está fixa nas instruções do orquestrador e vale para qualquer ticket do projeto.</li>
+      <li>Neste projeto o custo foi tempo (~4 de 12 min), não token. A sessão custou US$ 4,89, quase tudo em cache de contexto.</li>
+    </ul>
+  </div>
+
+  <h2>Motivação</h2>
+  <p>Alguns projetos têm uma suíte de teste muito grande. Rodar tudo em cada ticket gasta tempo e token. A ideia é ter um modo configurável, por projeto ou por orquestrador e escolhido conforme a complexidade ou a gravidade do ticket, que rode só os testes restritos em vez da suíte inteira. A escolha poderia vir de um algoritmo de seleção no futuro. Esta página registra o que aconteceu numa sessão real, como ponto de partida.</p>
+
+  <h2>A sessão</h2>
+  <p>O ticket teve duas rodadas:</p>
+  <ul>
+    <li><strong>01:57, primeira rodada:</strong> o agente parou como <code>blocked</code> porque o TH-12 ainda não estava no <code>mvp-hardening</code>. Não rodou nenhum teste.</li>
+    <li><strong>16:09 a 16:21, segunda rodada:</strong> o revisor devolveu o ticket e o agente fez o trabalho. Os testes abaixo são todos desta rodada.</li>
+  </ul>
+
+  <h2>O que rodou, em ordem</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>Quando</th><th>Comando</th><th>O que cobre</th><th>Resultado / tempo</th></tr></thead>
+    <tbody>
+      <tr><td class="num">1</td><td class="num">16:12</td><td><code>squawk</code> nas migrations 0003, 0004 e 0005 (manual)</td><td>Lint de SQL das migrations novas</td><td><span class="ok">0 issues</span></td></tr>
+      <tr><td class="num">2</td><td class="num">16:16</td><td><code>cargo test -p th-server --test resume --test state --test database --test admin</code> com Postgres próprio (porta 55460) e <code>TH_SERVER_TEST_REQUIRE_DB=1</code></td><td><strong>Teste restrito</strong>: só as suítes ligadas ao ticket, contra banco real</td><td><span class="ok">51 ok</span>, ~30 s. Rodou duas vezes: o grep da primeira filtrou tudo e não mostrou nada</td></tr>
+      <tr><td class="num">3</td><td class="num">16:17</td><td><code>cargo test</code> no workspace inteiro (em background)</td><td>Suíte completa: 58 binários, ~876 testes</td><td><span class="ok">ok</span>, ~80 s junto com o item 4</td></tr>
+      <tr><td class="num">4</td><td class="num">16:18</td><td><code>cargo build --release --target wasm32-unknown-unknown -p th-ai-wasm</code></td><td>Build wasm do core</td><td><span class="ok">ok</span>, 9 s</td></tr>
+      <tr><td class="num">5</td><td class="num">16:17</td><td><code>npm run code</code> / <code>check</code> em <code>docs/diagrams</code> (skill update-docs)</td><td>Checagem dos docs gerados</td><td><span class="ok">ok</span></td></tr>
+      <tr><td class="num">6</td><td class="num">16:18</td><td><code>cargo xtask check-server</code></td><td>Squawk de novo; logins e migrate duas vezes num banco novo; <code>sqlx prepare --check</code>; todas as suítes de DB do th-server (admin, database, definitions, emr_signer, features, jobs, resume, state, traces)</td><td><span class="ok">ok</span>, ~84 s</td></tr>
+      <tr><td class="num">7</td><td class="num">16:20</td><td><code>cargo clippy</code> (3 vezes)</td><td>Warnings nos arquivos alterados</td><td>Achou "very complex type" em <code>tests/state.rs</code></td></tr>
+      <tr><td class="num">8</td><td class="num">16:20</td><td><code>cargo test ... state &lt;um teste&gt;</code></td><td>Revalidar só o teste refatorado depois do clippy</td><td><span class="ok">1 ok</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>De onde vieram as ordens</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>Origem</th><th>Onde fica</th><th>O que mandou rodar</th></tr></thead>
+    <tbody>
+      <tr><td><strong>1. Instruções do orquestrador</strong></td><td>Power Workboard → orquestrador "TH-AI-Core Orchestrator", campo <code>instructions</code> (<code>~/.paseo-telus/plugin-settings/power-workboard/workboard-data.json</code>, em <code>values.orchestrators[1].instructions</code>)</td><td><code>cargo test</code> + build wasm <strong>em todo ticket</strong>, além do <code>update-docs</code> se mexeu em <code>crates/</code></td></tr>
+      <tr><td><strong>2. Texto do ticket</strong></td><td>Critérios de aceite do card TH-13 part 2</td><td>Um teste por passo em Postgres real, <code>cargo test &amp;&amp; cargo build --target wasm32...</code> e <code>cargo xtask check-server</code></td></tr>
+      <tr><td><strong>3. Feedback do revisor</strong></td><td>Mensagem "The reviewer sent this task back…"</td><td>Repete tudo: <code>cargo test</code>, wasm, as suítes state/admin/database com Postgres e <code>check-server</code> num banco novo</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>O teste restrito (item 2) também foi pedido pelo revisor, mas os comandos exatos o agente tirou do <code>AGENTS.md</code> do repo (linhas 54–67), que lista um comando <code>cargo test -p ... --test X</code> por área.</p>
+  <p>Trecho das instruções do orquestrador que fixa o "roda tudo":</p>
+  <pre><code>- Run `cargo test` and the wasm build before ending your turn. Do not run
+  cargo xtask build-pss and do not touch ~/telus/pss-emr-surface unless the
+  ticket says so.</code></pre>
+
+  <h2>Achados</h2>
+  <div class="callout"><strong>O <code>cargo test</code> completo quase não testou o que importava.</strong> As suítes de banco do th-server pulam em silêncio quando falta <code>TH_SERVER_TEST_DATABASE_URL</code> (imprimem "skipped" e passam). No item 3 a variável não estava definida, então as suítes de DB rodaram vazias. Quem validou o ticket foram o teste restrito (item 2) e o <code>check-server</code> (item 6). O completo serviu só como garantia de regressão no resto do workspace.</div>
+  <ol>
+    <li><strong>Houve redundância.</strong> admin, state, resume e database rodaram com banco real duas vezes: no item 2 e de novo dentro do <code>check-server</code>. O squawk também rodou duas vezes.</li>
+    <li><strong>O agente já sabe escolher os testes.</strong> Ele selecionou as 4 suítes por conta própria, usando o mapa do <code>AGENTS.md</code>. O que obrigou a rodar tudo foi o texto fixo do orquestrador, repetido no ticket e pelo revisor.</li>
+    <li><strong>Neste projeto o custo foi tempo, não token.</strong> O agente filtrou a saída com <code>grep "test result|FAILED"</code> e rodou em background enquanto fazia os docs. Os testes tomaram ~4 dos 12 minutos e pesaram pouco nos tokens. A sessão (as duas rodadas) custou <strong>US$ 4,89</strong>, quase tudo em leitura de cache de contexto (~2,25 M tokens cacheados). Num projeto em que a suíte leva 20 minutos ou o agente lê a saída inteira, a conta muda bastante.</li>
+  </ol>
+
+  <h2>Proposta: níveis de teste no orquestrador</h2>
+  <p>Trocar a linha fixa "Run <code>cargo test</code>…" nas instruções do orquestrador por um nível escolhido por ticket. O padrão viria da configuração do projeto, e um algoritmo de seleção poderia decidir no futuro.</p>
+  <div class="tiers">
+    <div class="tier"><h3>Restrito</h3><p>Só as suítes ligadas aos arquivos alterados. O mapa área → comando vem do repo (no th-ai-core, o <code>AGENTS.md</code>). Para tickets pequenos e de baixo risco.</p></div>
+    <div class="tier"><h3>Gate do domínio</h3><p>O gate da área afetada, como o <code>cargo xtask check-server</code>: migrations, banco novo e todas as suítes daquele domínio. Para mudanças de schema, segurança e protocolo.</p></div>
+    <div class="tier"><h3>Completo</h3><p>A suíte inteira mais builds extras (wasm). Para tickets transversais, ou fica só na CI.</p></div>
+  </div>
+  <p>Pontos a decidir:</p>
+  <ul>
+    <li>Se o nível completo roda no agente ou só na CI.</li>
+    <li>Como evitar rodar o restrito e depois o gate com as mesmas suítes (o gate já cobre o restrito).</li>
+    <li>Suítes que pulam em silêncio sem dependência (aqui, o Postgres) devem falhar, ou ao menos aparecer como "skipped" no relatório, para o nível escolhido não passar vazio.</li>
+    <li>Onde fica o mapa arquivo → suíte: no repo (como o <code>AGENTS.md</code>) ou na configuração do projeto no Workboard.</li>
+  </ul>
+
+  <h2>Fontes</h2>
+  <ul>
+    <li>Registro do agente: <code>~/.paseo-telus/agents/home-bruno-telus-worktrees-th-ai-core-flimsy-hyena/f3854beb-6fe6-498a-91d2-6822f824533d.json</code></li>
+    <li>Transcript do Claude: <code>~/.claude/projects/-home-bruno-telus-worktrees-th-ai-core-flimsy-hyena/afcbed74-80ae-4722-b9f4-a4bc0f332104.jsonl</code></li>
+    <li>Comandos e resultados extraídos: <code>/home/bruno/uprojects/tmp/f3854beb-bash.txt</code></li>
+  </ul>
+</main>
+</body>
+</html>
