@@ -5,8 +5,10 @@ import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import {
+  GROUP_COLORS,
   defaultGroup,
   orderedGroups,
+  testTierSchema,
   type Card,
   type Group,
 } from "../../shared/model";
@@ -40,6 +42,7 @@ import type { QuickInbox } from "./quick";
 import { reportEntryInputSchema } from "../../shared/assistant-reports";
 import type { Data, Orchestration } from "../../shared/model";
 import { resolveTaskReference } from "../../shared/task-reference"; // CUSTOM(task-numbers)
+import { effectiveTestTier } from "../../shared/packages"; // CUSTOM(packages)
 import { orchestratorPart, type ReportStore } from "./reports";
 // CUSTOM(assistant-reply-protocol)
 import {
@@ -61,7 +64,7 @@ export const CHAT_LABEL = "pwb/assistant-chat";
 // CUSTOM(agent-profiles): the role text is the seed of the Project Manager profile's system-prompt.md;
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
 const BOARD_TOOLS =
-  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive";
+  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_run_package_gate, board_package_history, board_set_test_tier";
 
 // CUSTOM(task-numbers): the same reference is accepted everywhere a tool takes a task.
 const TASK_ID_HINT = "Task UUID, or its short number as 42 or #42";
@@ -87,6 +90,7 @@ export const ASSISTANT_ROLE = [
   `Manage tasks through your board tools (${BOARD_TOOLS}): create, move, start, continue and deliver every task there. Never edit a project's code, commit or merge outside board_task_action.`,
   "Every board tool that takes a task accepts its UUID or its short number as `42` or `#42`; the cards, board_list_tasks and board_overview show that number as `#42`.",
   'Investigation, proposals and decisions with the user go on your own board (the Decisões tab), not on the task board; code tasks and code reviews stay on the task board. Use pm_card_create, pm_card_update, pm_card_decide and pm_card_archive for them. An investigation is something you are looking into; a proposal is a choice the user must make (lay out the options with their gains and costs, recommend one, and the card waits in "Esperando você"); a decision is a call you already made on your own (kind decision, decidedBy pm); a notice is information the user should track. A PM card never starts an agent. Do not create a card for every event: only what the user should track. When you need the user, create a proposal and put its id in the reply\'s `seu` line as `[pm:<card id>]`.',
+  "Packages group tickets that already exist so the full suite runs once per package, by script, not once per ticket. Use the board_package_* tools. Create a package or move tickets only when the user asks; on your own, suggest a grouping with a proposal card linked to the ticket ids and let the user accept it. A ticket in a package runs the restricted suites; the risk rule raises a migration, auth, security or protocol diff to the gate level and records the decision on your board. A gate failure arrives as an investigation card with the suspected ticket: read board_package_history and explain it, do not create one card per failure.",
   "To review and diagnose, read freely: git log, git diff and git show in a task's worktree or the project's checkout, read any file, and run the task's tests in its worktree.",
   "Do not create Paseo agents to do a task: tasks go through the board so the orchestrators run them. A read-only reviewer subagent that helps you review a diff is fine. The one exception is the ship agent below.",
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
@@ -118,7 +122,7 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 // CUSTOM(assistant-compact): the rules alone open a chat started by compaction, which must not greet.
 export const CHAT_RULES =
-  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide and pm_card_archive. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
+  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_run_package_gate, board_package_history and board_set_test_tier. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS = `Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). ${CHAT_RULES}`;
 
@@ -433,8 +437,14 @@ export function chatTools(
           .snapshot()
           .orchestrators.find((o) => o.id === id)?.name ?? id)
       : "-";
-  const line = (c: Card) =>
-    `${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${columnOf(c)} (${c.stage}) | orchestrator: ${orchestratorName(c.orchestratorId)} | delivery: ${delivery(c.id)?.stage ?? "-"} | updated: ${c.updatedAt}`;
+  const line = (c: Card) => {
+    const pkg = c.packageId
+      ? board()
+          .snapshot()
+          .packages.find((item) => item.id === c.packageId)
+      : null;
+    return `${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${columnOf(c)} (${c.stage}) | orchestrator: ${orchestratorName(c.orchestratorId)} | delivery: ${delivery(c.id)?.stage ?? "-"} | package: ${pkg ? `${pkg.name} (${pkg.id})` : "-"} | tests: ${effectiveTestTier(c)} | updated: ${c.updatedAt}`;
+  };
   const managedAgent = (agentId: string) =>
     isManagedAgent(board().assistantSource().data, agentId);
 
@@ -514,6 +524,16 @@ export function chatTools(
             )
             .join("\n")}`,
           `Needs you:\n${needsYou.map((n) => `- ${taskNumbers.get(n.taskId) ? `#${taskNumbers.get(n.taskId)} | ` : ""}${n.taskId} | ${n.title} | project: ${n.projectName || n.projectId || "-"} | orchestrator: ${n.orchestratorName ?? "-"} | agent: ${n.agentId ?? "-"} | attempt: ${n.attempt ?? "-"} | since: ${n.since} | can merge: ${n.canMerge ? "yes" : "no"} | ${n.reason}${n.detail ? `: ${n.detail}` : ""}`).join("\n") || "- nothing"}`,
+          // CUSTOM(packages): the open packages and their last gate.
+          `Packages:\n${
+            snapshot.packages
+              .filter((pkg) => pkg.status === "open")
+              .map(
+                (pkg) =>
+                  `- ${pkg.id} | ${pkg.name} | project: ${pkg.projectName || pkg.projectId} | ${pkg.merged}/${pkg.total} merged | gate: ${pkg.lastRun?.status ?? "none"}${pkg.suspectTaskIds.length ? ` | suspect: ${pkg.suspectTaskIds.map((id) => (taskNumbers.get(id) ? `#${taskNumbers.get(id)}` : id)).join(", ")}` : ""}`,
+              )
+              .join("\n") || "- none"
+          }`,
           // CUSTOM(pm-board): your own board, apart from the task board.
           `Project Manager board (investigations, proposals and decisions; code tasks and code reviews stay on the task board):\ninvestigating ${pm.investigating}, waiting for the user ${pm.waiting}, decided ${pm.decided}, archived ${pm.archived}\n${pm.cards.map((c) => `- ${c.id} | ${c.kind} | ${c.title} | since: ${c.since}`).join("\n") || "- nothing waiting"}`,
           `Project Manager: ${settings.enabled ? "on" : "off"}, default action ${settings.defaultAction}; per project: ${
@@ -787,7 +807,7 @@ export function chatTools(
     define({
       name: "board_set_project_policy",
       description:
-        "Change a project's delivery policy (project by id or name). Only the fields you pass change; a project without its own policy starts from the default action. action: review, merge, prepare-pr, notify or nothing. review: self or fresh-agent (you cannot change fresh-agent to self; only the user does, in Settings). Returns the resulting policy.",
+        "Change a project's delivery policy (project by id or name). Only the fields you pass change; a project without its own policy starts from the default action. action: review, merge, prepare-pr, notify or nothing. review: self or fresh-agent (you cannot change fresh-agent to self; only the user does, in Settings). The package gate: gateCommand (empty uses verifyCommand), gateRequiredEnv (a missing one fails the gate instead of letting suites skip), gateEnv (NAME=value set for the run), gateSetupCommand, gateRiskPaths (globs that escalate a ticket's diff to the gate) and gateRunIn (worktree or checkout). Returns the resulting policy.",
       input: z.object({
         project: z.string().describe("A project's id or name"),
         action: z.enum(ASSISTANT_ACTIONS).optional(),
@@ -796,6 +816,13 @@ export function chatTools(
         autoFixes: z.number().int().min(0).max(3).optional(),
         observe: z.boolean().optional(),
         review: z.enum(REVIEW_POLICIES).optional(),
+        // CUSTOM(packages): the package gate and the risk rule.
+        gateCommand: z.string().max(2000).optional(),
+        gateRequiredEnv: z.array(z.string().trim().min(1)).optional(),
+        gateEnv: z.record(z.string(), z.string()).optional(),
+        gateSetupCommand: z.string().max(2000).optional(),
+        gateRiskPaths: z.array(z.string().trim().min(1)).optional(),
+        gateRunIn: z.enum(["worktree", "checkout"]).optional(),
       }),
       async execute(input) {
         const projectId = resolveProject(input.project);
@@ -814,6 +841,38 @@ export function chatTools(
           patch.verifyCommand = input.verifyCommand;
         if (input.autoFixes !== undefined) patch.autoFixes = input.autoFixes;
         if (input.observe !== undefined) patch.observe = input.observe;
+        if (
+          input.gateCommand !== undefined ||
+          input.gateRequiredEnv !== undefined ||
+          input.gateEnv !== undefined ||
+          input.gateSetupCommand !== undefined ||
+          input.gateRiskPaths !== undefined ||
+          input.gateRunIn !== undefined
+        ) {
+          const tests = (
+            settings.projects[projectId] ??
+            projectPolicySchema.parse({ action: settings.defaultAction })
+          ).tests;
+          patch.tests = {
+            ...tests,
+            ...(input.gateCommand !== undefined
+              ? { gateCommand: input.gateCommand }
+              : {}),
+            ...(input.gateRequiredEnv !== undefined
+              ? { gateRequiredEnv: input.gateRequiredEnv }
+              : {}),
+            ...(input.gateEnv !== undefined ? { gateEnv: input.gateEnv } : {}),
+            ...(input.gateSetupCommand !== undefined
+              ? { gateSetupCommand: input.gateSetupCommand }
+              : {}),
+            ...(input.gateRiskPaths !== undefined
+              ? { gateRiskPaths: input.gateRiskPaths }
+              : {}),
+            ...(input.gateRunIn !== undefined
+              ? { gateRunIn: input.gateRunIn }
+              : {}),
+          };
+        }
         const current =
           settings.projects[projectId] ??
           projectPolicySchema.parse({ action: settings.defaultAction });
@@ -836,7 +895,7 @@ export function chatTools(
         const name =
           saved.projects.find((p) => p.id === projectId)?.name ?? projectId;
         return text(
-          `${name} (${projectId}): action ${policy.action}${policy.observe ? " (observe)" : ""}, review ${reviewPolicyFor(saved.settings, projectId)}, base branch ${policy.baseBranch || "the project's current branch"}, check command ${policy.verifyCommand || "none"}, auto-fixes ${policy.autoFixes}.`,
+          `${name} (${projectId}): action ${policy.action}${policy.observe ? " (observe)" : ""}, review ${reviewPolicyFor(saved.settings, projectId)}, base branch ${policy.baseBranch || "the project's current branch"}, check command ${policy.verifyCommand || "none"}, auto-fixes ${policy.autoFixes}, package gate ${policy.tests.gateCommand || policy.verifyCommand || "none"}, gate env ${policy.tests.gateRequiredEnv.join(", ") || "none"}, risk paths ${policy.tests.gateRiskPaths.join(", ") || "none"}.`,
         );
       },
     }),
@@ -967,6 +1026,7 @@ export function chatTools(
         decision: z.string().max(5000).nullable().default(null),
         taskIds: z.array(z.string()).max(50).default([]),
         reportIds: z.array(z.string()).max(50).default([]),
+        packageIds: z.array(z.string()).max(50).default([]),
       }),
       async execute(input) {
         const card = await board().pmCardCreate({
@@ -978,7 +1038,11 @@ export function chatTools(
           why: input.why,
           findings: input.findings,
           decision: input.decision,
-          links: { taskIds: input.taskIds, reportIds: input.reportIds },
+          links: {
+            taskIds: input.taskIds,
+            reportIds: input.reportIds,
+            packageIds: input.packageIds,
+          },
         });
         return text(
           `Created PM card ${card.id} (${card.kind}, ${card.status}): "${card.title}".`,
@@ -1003,6 +1067,7 @@ export function chatTools(
         decidedBy: z.enum(["pm", "user"]).optional(),
         taskIds: z.array(z.string()).max(50).optional(),
         reportIds: z.array(z.string()).max(50).optional(),
+        packageIds: z.array(z.string()).max(50).optional(),
       }),
       async execute(input) {
         const current = board()
@@ -1010,10 +1075,11 @@ export function chatTools(
           .find((card) => card.id === input.id);
         if (!current) throw new Error(`No PM card with id ${input.id}.`);
         const links =
-          input.taskIds || input.reportIds
+          input.taskIds || input.reportIds || input.packageIds
             ? {
                 taskIds: input.taskIds ?? current.links.taskIds,
                 reportIds: input.reportIds ?? current.links.reportIds,
+                packageIds: input.packageIds ?? current.links.packageIds,
               }
             : undefined;
         const card = await board().pmCardUpdate(input.id, {
@@ -1066,6 +1132,208 @@ export function chatTools(
       async execute({ id }) {
         const card = await board().pmCardArchive(id);
         return text(`Archived PM card ${card.id}: "${card.title}".`);
+      },
+    }),
+    // CUSTOM(packages): packages group tickets that already exist and run the full suite once per
+    // package. The PM creates and moves them only when the user asks; on its own it suggests.
+    define({
+      name: "board_package_create",
+      description:
+        "Create a package: a group of existing tickets of one project whose full suite runs once, by script, instead of once per ticket. Create it only when the user asks. To suggest a grouping on your own, create a proposal card with the task ids instead (the user accepts it on the task board). A package needs a name and a project; everything else has a default.",
+      input: z.object({
+        name: z.string().trim().min(1).max(80),
+        projectId: z.string().min(1),
+        taskIds: z.array(z.string()).max(200).default([]),
+      }),
+      async execute(input) {
+        await board().mutate(
+          {
+            action: "package-create",
+            name: input.name,
+            projectId: input.projectId,
+            taskIds: input.taskIds,
+          },
+          "assistant",
+        );
+        const pkg = board()
+          .snapshot()
+          .packages.filter(
+            (item) =>
+              item.name === input.name && item.projectId === input.projectId,
+          )
+          .at(-1);
+        return text(
+          `Created package ${pkg ? pkg.id : input.name} with ${input.taskIds.length} ticket(s).`,
+        );
+      },
+    }),
+    define({
+      name: "board_package_update",
+      description:
+        "Update a package: name, color, trigger (night, onClose, everyMerges), gate override, tier policy or status. Closing a package is board_package_close.",
+      input: z.object({
+        packageId: z.string(),
+        name: z.string().trim().min(1).max(80).optional(),
+        color: z.enum(GROUP_COLORS).optional(),
+        branch: z.string().trim().max(200).nullable().optional(),
+        status: z.enum(["open", "closed"]).optional(),
+        night: z.boolean().optional(),
+        onClose: z.boolean().optional(),
+        everyMerges: z.number().int().min(1).max(100).nullable().optional(),
+      }),
+      async execute(input) {
+        const current = board()
+          .snapshot()
+          .packages.find((item) => item.id === input.packageId);
+        if (!current) throw new Error(`No package with id ${input.packageId}.`);
+        await board().mutate(
+          {
+            action: "package-update",
+            packageId: input.packageId,
+            name: input.name,
+            color: input.color,
+            branch: input.branch,
+            status: input.status,
+            trigger:
+              input.night === undefined &&
+              input.onClose === undefined &&
+              input.everyMerges === undefined
+                ? undefined
+                : {
+                    night: input.night ?? current.trigger.night,
+                    onClose: input.onClose ?? current.trigger.onClose,
+                    everyMerges:
+                      input.everyMerges === undefined
+                        ? current.trigger.everyMerges
+                        : input.everyMerges,
+                  },
+          },
+          "assistant",
+        );
+        return text(`Updated package ${input.packageId}.`);
+      },
+    }),
+    define({
+      name: "board_package_assign",
+      description:
+        "Add tickets to a package. A ticket is in at most one package; assigning moves it. All tickets must belong to the package's project.",
+      input: z.object({
+        packageId: z.string(),
+        taskIds: z.array(z.string()).min(1).max(200),
+      }),
+      async execute(input) {
+        await board().mutate(
+          {
+            action: "package-assign",
+            packageId: input.packageId,
+            taskIds: input.taskIds,
+          },
+          "assistant",
+        );
+        return text(
+          `Added ${input.taskIds.length} ticket(s) to package ${input.packageId}.`,
+        );
+      },
+    }),
+    define({
+      name: "board_package_remove",
+      description:
+        "Remove tickets from their package; they go back to the default full level.",
+      input: z.object({ taskIds: z.array(z.string()).min(1).max(200) }),
+      async execute(input) {
+        await board().mutate(
+          { action: "package-remove", taskIds: input.taskIds },
+          "assistant",
+        );
+        return text(
+          `Removed ${input.taskIds.length} ticket(s) from their package.`,
+        );
+      },
+    }),
+    define({
+      name: "board_package_close",
+      description:
+        "Close a package. It stops taking tickets and runs its gate on close when runGate is true (the default).",
+      input: z.object({
+        packageId: z.string(),
+        runGate: z.boolean().default(true),
+      }),
+      async execute(input) {
+        await board().mutate(
+          {
+            action: "package-close",
+            packageId: input.packageId,
+            runGate: input.runGate,
+          },
+          "assistant",
+        );
+        return text(`Closed package ${input.packageId}.`);
+      },
+    }),
+    define({
+      name: "board_run_package_gate",
+      description:
+        "Run a package's gate now, by script (no agent). It runs in the background; board_package_history shows the result.",
+      input: z.object({ packageId: z.string() }),
+      async execute(input) {
+        await board().mutate(
+          { action: "package-run-gate", packageId: input.packageId },
+          "assistant",
+        );
+        return text(`Started the gate of package ${input.packageId}.`);
+      },
+    }),
+    define({
+      name: "board_package_history",
+      description:
+        "Read a package's gate runs: when, trigger, result, duration and the suspected ticket.",
+      input: z.object({ packageId: z.string() }),
+      async execute(input) {
+        const runs = board().packageRuns(input.packageId);
+        if (!runs.length) return text("No gate run yet.");
+        return text(
+          runs
+            .map(
+              (run) =>
+                `${run.startedAt} · ${run.trigger} · ${run.status}${run.durationMs === null ? "" : ` · ${Math.round(run.durationMs / 1000)}s`}${run.suspectTaskId ? ` · suspect ${run.suspectTaskId}` : ""}`,
+            )
+            .join("\n"),
+        );
+      },
+    }),
+    define({
+      name: "board_set_test_tier",
+      description:
+        "Change one ticket's test level with a reason: restricted (the suites of its area), gate (the package gate runs for it) or full. Only a ticket in a package can use restricted or gate. The board records the decision on its PM board.",
+      input: z.object({
+        taskId: z.string(),
+        tier: testTierSchema,
+        reason: z.string().max(2000).default(""),
+      }),
+      async execute(input) {
+        const current = card(input.taskId);
+        await board().mutate(
+          {
+            action: "set-test-tier",
+            taskId: current.id,
+            tier: input.tier,
+            reason: input.reason,
+          },
+          "assistant",
+        );
+        await board().pmCardCreate({
+          kind: "decision",
+          title: `#${current.number} moved to ${input.tier}`,
+          decision:
+            input.reason.trim() ||
+            `The Project Manager moved this ticket to the ${input.tier} level.`,
+          links: {
+            taskIds: [current.id],
+            reportIds: [],
+            packageIds: current.packageId ? [current.packageId] : [],
+          },
+        });
+        return text(`Set #${current.number} to ${input.tier}.`);
       },
     }),
   ];

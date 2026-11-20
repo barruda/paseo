@@ -20,6 +20,11 @@ import {
   finishSchema,
   nightSettingsSchema,
   NIGHT_LOG_LIMIT,
+  packageRunSchema,
+  packageSchema,
+  PACKAGE_OUTPUT_LIMIT,
+  PACKAGE_RUN_LIMIT,
+  testTierOverrideSchema,
   orchestratorConfigSchema,
   orchestratorSchema,
   providerModelSchema, // CUSTOM(bulk-orchestrator-agent)
@@ -39,6 +44,9 @@ import {
   type OrchestratorConfig,
   type OrchestratorHold, // CUSTOM(resource-pools)
   type OrchestratorRuntime,
+  type Package,
+  type PackageRun,
+  type PackageTrigger,
   type Pool, // CUSTOM(resource-pools)
   type ProjectAccent, // CUSTOM(project-icon-colors)
   ORCHESTRATOR_LOG_LIMIT,
@@ -109,6 +117,20 @@ import {
   CHAT_HISTORY_TASK_ID, // CUSTOM(assistant-compact)
 } from "../shared/assistant";
 import { worktreeBaseName } from "./assistant/task-git";
+import {
+  effectiveTestTier,
+  missingGateEnv,
+  nextPackageColor,
+  packageViews,
+  resolvePackageGate,
+  riskyPaths,
+  testSectionFor,
+} from "../shared/packages"; // CUSTOM(packages)
+import {
+  changedPaths,
+  defaultGateDirectory,
+  runPackageGate,
+} from "./package-gate"; // CUSTOM(packages)
 import { parseReport } from "./assistant/report";
 import {
   ASSISTANT_SEED_PROMPT,
@@ -196,6 +218,8 @@ export interface AssistantOptions {
   compactSettleMs?: number;
   /** CUSTOM(orchestrator-in-place): wait before retrying a commit held by another task in the folder. */
   folderRetryMs?: number;
+  /** CUSTOM(packages): the gate runner; tests inject a fake. */
+  packageGate?: typeof runPackageGate;
   /** CUSTOM(assistant-compact): a quick message to this chat still waits for its answer. */
   chatQueued?: (agentId: string) => boolean;
   /** CUSTOM(restart-resume): the restart script's skip file; tests point it elsewhere. */
@@ -787,6 +811,7 @@ export class Workboard {
         data.orchestrators.map((o) => [o.id, this.orchestratorStatus(o, data)]),
       ),
       projects: this.inventory.projects,
+      packages: packageViews(data, this.inventory.projects), // CUSTOM(packages)
       cards: data.tasks.map((task) => {
         const workspace = this.inventory.workspaces.find(
           (w) => w.id === task.workspaceId,
@@ -1600,6 +1625,32 @@ export class Workboard {
             input.id,
             "info",
             "Stopped: no new tasks start; running agents keep going",
+          );
+        } else if (input.action === "package-create") {
+          await this.packageCreate(
+            input.name,
+            input.projectId,
+            input.taskIds,
+            by === "assistant" ? "assistant" : "user",
+          );
+        } else if (input.action === "package-assign") {
+          await this.packageAssign(input.packageId, input.taskIds);
+        } else if (input.action === "package-remove") {
+          await this.packageRemove(input.taskIds);
+        } else if (input.action === "package-delete") {
+          await this.packageDelete(input.packageId);
+        } else if (input.action === "package-update") {
+          await this.packageUpdate(input.packageId, input);
+        } else if (input.action === "package-close") {
+          await this.packageClose(input.packageId, input.runGate);
+        } else if (input.action === "package-run-gate") {
+          await this.startPackageGate(input.packageId, "manual");
+        } else if (input.action === "set-test-tier") {
+          await this.setTestTier(
+            input.taskId,
+            input.tier,
+            input.reason,
+            by === "assistant" ? "pm" : "user",
           );
         } else if (input.action === "settings") {
           await this.saveSettings(
@@ -3651,42 +3702,68 @@ export class Workboard {
           this.store.current.assistant.attempts[taskId]?.at(-1)?.agentId ??
           null;
         if (stage === "verifying") {
-          const command = policy.verifyCommand.trim();
-          if (!command) {
+          const checks: { command: string; env?: NodeJS.ProcessEnv }[] = [];
+          const verify = policy.verifyCommand.trim();
+          if (verify) checks.push({ command: verify });
+          // CUSTOM(packages): a risky package ticket runs the package gate here, by script.
+          const escalated = await this.escalatedGate(task, policy, directory);
+          const gate = escalated?.command.trim() ?? "";
+          if (gate && gate !== verify) {
+            const missing = escalated
+              ? missingGateEnv(escalated, process.env)
+              : [];
+            if (missing.length) {
+              const detail = `Missing required environment: ${missing.join(", ")}. The gate fails instead of letting suites skip.`;
+              await this.record(taskId, "verify-failed", detail);
+              if (delivery.fixesUsed < policy.autoFixes)
+                await this.serial(() => this.requestFix(taskId, gate, detail));
+              else await needsYou("verify-failed", detail);
+              return;
+            }
+            checks.push({ command: gate, env: escalated?.env });
+          }
+          if (!checks.length) {
             await to("committing");
             continue;
           }
-          const result = await (this.assistantOptions.verify ?? runVerify)(
-            command,
-            directory,
-          );
-          if (stageNow() !== "verifying") return;
-          await this.serial(() =>
-            this.patchDelivery(taskId, { verifyOutput: result.output }),
-          );
-          if (result.passed) {
+          let failed = false;
+          for (const check of checks) {
+            const runner = this.assistantOptions.verify ?? runVerify;
+            const result = check.env
+              ? await runner(check.command, directory, { env: check.env })
+              : await runner(check.command, directory);
+            if (stageNow() !== "verifying") return;
+            await this.serial(() =>
+              this.patchDelivery(taskId, { verifyOutput: result.output }),
+            );
+            if (result.passed) {
+              await this.record(
+                taskId,
+                "verify-passed",
+                `Check passed: ${check.command}`,
+              );
+              continue;
+            }
             await this.record(
               taskId,
-              "verify-passed",
-              `Check passed: ${command}`,
+              "verify-failed",
+              `Check failed: ${check.command}`,
+              {
+                detail: result.output.slice(-4000),
+              },
             );
-            await to("committing");
-            continue;
+            if (delivery.fixesUsed < policy.autoFixes)
+              await this.serial(() =>
+                this.requestFix(taskId, check.command, result.output),
+              );
+            else
+              await needsYou("verify-failed", `Check failed: ${check.command}`);
+            failed = true;
+            break;
           }
-          await this.record(
-            taskId,
-            "verify-failed",
-            `Check failed: ${command}`,
-            {
-              detail: result.output.slice(-4000),
-            },
-          );
-          if (delivery.fixesUsed < policy.autoFixes)
-            await this.serial(() =>
-              this.requestFix(taskId, command, result.output),
-            );
-          else await needsYou("verify-failed", `Check failed: ${command}`);
-          return;
+          if (failed) return;
+          await to("committing");
+          continue;
         }
         if (stage === "committing") {
           if (await this.host.gitDirty(directory)) {
@@ -3778,6 +3855,35 @@ export class Workboard {
             return await needsYou(kind, failure);
           }
           await this.serial(() => this.completeMerge(taskId));
+          // CUSTOM(packages): the merge commit is the bisect's pivot; the package counts merges
+          // for its every-N trigger.
+          const mergedTask = this.store.current.tasks.find(
+            (item) => item.id === taskId,
+          );
+          const project = mergedTask
+            ? this.inventory.projects.find(
+                (item) => item.id === this.projectIdOf(mergedTask),
+              )
+            : null;
+          if (project) {
+            try {
+              const head = await this.host.gitHead(project.directory);
+              await this.serial(() =>
+                this.setFinish(taskId, { mergeCommit: head }),
+              );
+            } catch {
+              // A missing merge commit only weakens the bisect; the delivery stays merged.
+            }
+          }
+          if (mergedTask?.packageId) {
+            const packageId = mergedTask.packageId;
+            await this.serial(() =>
+              this.store.update((data) => {
+                const pkg = data.packages.find((item) => item.id === packageId);
+                if (pkg) pkg.mergedSinceGate += 1;
+              }),
+            );
+          }
           await this.record(taskId, "merged", "Merged into the base branch");
           await this.record(taskId, "done", "Done");
           return;
@@ -3981,7 +4087,7 @@ export class Workboard {
         "No agent to send the conflict to",
       );
     const base = await worktreeBaseName(directory, policyBase.trim() || null);
-    const prompt = conflictPrompt(base);
+    const prompt = conflictPrompt(base, this.testSection(this.task(taskId))); // CUSTOM(packages)
     // CUSTOM(resource-pools): with no free slot the fix waits for a pass that has one.
     const hold = await this.reactivationHold(taskId, record.orchestratorId);
     const wait = hold && holdText(hold);
@@ -4032,7 +4138,11 @@ export class Workboard {
         "verify-failed",
         "No agent to send the failure to",
       );
-    const prompt = fixPrompt(command, output);
+    const prompt = fixPrompt(
+      command,
+      output,
+      this.testSection(this.task(taskId)),
+    ); // CUSTOM(packages)
     // CUSTOM(resource-pools): with no free slot the fix waits for a pass that has one.
     const hold = await this.reactivationHold(taskId, record.orchestratorId);
     const wait = hold && holdText(hold);
@@ -4396,6 +4506,425 @@ export class Workboard {
       now: new Date(),
     };
   }
+  // CUSTOM(packages): package mutations. A package is a label with a gate, created after the
+  // tickets exist; the delivery still merges into the project's base (2b adds the branch).
+  private async packageCreate(
+    name: string,
+    projectId: string,
+    taskIds: readonly string[],
+    createdBy: "user" | "assistant",
+  ): Promise<void> {
+    const project = this.inventory.projects.find((p) => p.id === projectId);
+    if (!project) throw new Error("package-project-not-found");
+    const tasks = this.store.current.tasks.filter((task) =>
+      taskIds.includes(task.id),
+    );
+    if (tasks.length !== new Set(taskIds).size)
+      throw new Error("package-tasks-missing");
+    for (const task of tasks)
+      if (this.projectIdOf(task) !== projectId)
+        throw new Error("package-project-mismatch");
+    const id = `pkg_${randomUUID().slice(0, 8)}`;
+    const now = this.stamp();
+    await this.store.update((data) => {
+      const pkg = packageSchema.parse({
+        id,
+        name,
+        projectId,
+        color: nextPackageColor(data.packages),
+        createdAt: now,
+        createdBy,
+      });
+      data.packages.push(pkg);
+      for (const task of data.tasks)
+        if (taskIds.includes(task.id)) {
+          task.packageId = id;
+          task.testTier = null;
+          task.updatedAt = this.stamp(task.updatedAt);
+        }
+    });
+    this.changed();
+  }
+
+  private async packageAssign(
+    packageId: string,
+    taskIds: readonly string[],
+  ): Promise<void> {
+    const pkg = this.store.current.packages.find((p) => p.id === packageId);
+    if (!pkg) throw new Error("package-not-found");
+    if (pkg.status !== "open") throw new Error("package-closed");
+    const tasks = this.store.current.tasks.filter((task) =>
+      taskIds.includes(task.id),
+    );
+    if (tasks.length !== new Set(taskIds).size)
+      throw new Error("package-tasks-missing");
+    for (const task of tasks)
+      if (this.projectIdOf(task) !== pkg.projectId)
+        throw new Error("package-project-mismatch");
+    await this.store.update((data) => {
+      for (const task of data.tasks)
+        if (taskIds.includes(task.id)) {
+          task.packageId = packageId;
+          task.testTier = null;
+          task.updatedAt = this.stamp(task.updatedAt);
+        }
+    });
+    this.changed();
+  }
+
+  private async packageRemove(taskIds: readonly string[]): Promise<void> {
+    await this.store.update((data) => {
+      for (const task of data.tasks)
+        if (taskIds.includes(task.id)) {
+          task.packageId = null;
+          task.testTier = null;
+          task.updatedAt = this.stamp(task.updatedAt);
+        }
+    });
+    this.changed();
+  }
+
+  private async packageDelete(packageId: string): Promise<void> {
+    if (this.store.current.tasks.some((task) => task.packageId === packageId))
+      throw new Error("package-not-empty");
+    await this.store.update((data) => {
+      data.packages = data.packages.filter((pkg) => pkg.id !== packageId);
+      data.packageRuns = data.packageRuns.filter(
+        (run) => run.packageId !== packageId,
+      );
+    });
+    this.changed();
+  }
+
+  private async packageUpdate(
+    packageId: string,
+    input: Extract<Mutation, { action: "package-update" }>,
+  ): Promise<void> {
+    const pkg = this.store.current.packages.find((p) => p.id === packageId);
+    if (!pkg) throw new Error("package-not-found");
+    await this.store.update((data) => {
+      const current = data.packages.find((item) => item.id === packageId);
+      if (!current) return;
+      if (input.name !== undefined) current.name = input.name;
+      if (input.color !== undefined) current.color = input.color;
+      if (input.branch !== undefined) current.branch = input.branch;
+      if (input.gate !== undefined) current.gate = input.gate;
+      if (input.trigger !== undefined) current.trigger = input.trigger;
+      if (input.tierPolicy !== undefined) current.tierPolicy = input.tierPolicy;
+      if (input.status !== undefined) {
+        current.status = input.status;
+        current.closedAt = input.status === "closed" ? this.stamp() : null;
+      }
+    });
+    this.changed();
+  }
+
+  private async packageClose(
+    packageId: string,
+    runGate: boolean,
+  ): Promise<void> {
+    const pkg = this.store.current.packages.find((p) => p.id === packageId);
+    if (!pkg) throw new Error("package-not-found");
+    await this.store.update((data) => {
+      const current = data.packages.find((item) => item.id === packageId);
+      if (!current) return;
+      current.status = "closed";
+      current.closedAt = this.stamp();
+    });
+    if (runGate) await this.startPackageGate(packageId, "close");
+    this.changed();
+  }
+
+  private async setTestTier(
+    taskId: string,
+    tier: "restricted" | "gate" | "full",
+    reason: string,
+    by: "rule" | "pm" | "user",
+  ): Promise<void> {
+    const task = this.store.current.tasks.find((item) => item.id === taskId);
+    if (!task) throw new Error("package-task-not-found");
+    if (tier !== "full" && !task.packageId)
+      throw new Error("package-tier-needs-package");
+    if (tier === "full" && task.packageId)
+      throw new Error("package-tier-full-package");
+    await this.store.update((data) => {
+      const current = data.tasks.find((item) => item.id === taskId);
+      if (!current) return;
+      current.testTier = testTierOverrideSchema.parse({
+        tier,
+        reason: reason.trim(),
+        by,
+        at: this.stamp(),
+      });
+      current.updatedAt = this.stamp(current.updatedAt);
+    });
+    this.changed();
+  }
+
+  /** The test section a ticket's prompts carry; empty outside a package. */
+  private testSection(task: Task): string {
+    if (!task.packageId) return "";
+    const pkg = this.store.current.packages.find(
+      (item) => item.id === task.packageId,
+    );
+    return testSectionFor(
+      task,
+      this.policy(this.projectIdOf(task)),
+      pkg?.name ?? "package",
+      pkg ?? null,
+    );
+  }
+
+  /**
+   * The risk rule: a package ticket whose diff touches a project risk path moves to the gate
+   * level and the PM board records the decision. Returns the gate to run, if any.
+   */
+  private async escalatedGate(
+    task: Task,
+    policy: ProjectPolicy,
+    directory: string,
+  ): Promise<ReturnType<typeof resolvePackageGate> | null> {
+    const pkg = task.packageId
+      ? this.store.current.packages.find((item) => item.id === task.packageId)
+      : null;
+    if (!pkg || !pkg.tierPolicy.escalateOnRisk) return null;
+    const gate = resolvePackageGate(pkg, policy);
+    if (effectiveTestTier(task) === "gate") return gate;
+    let paths: string[] = [];
+    try {
+      paths = await changedPaths(directory, policy.baseBranch.trim() || null);
+    } catch {
+      return null;
+    }
+    const risky = riskyPaths(paths, policy.tests.gateRiskPaths);
+    if (!risky.length) return null;
+    const reason = `diff touched ${risky.join(", ")}`;
+    await this.serial(() =>
+      this.store.update((data) => {
+        const current = data.tasks.find((item) => item.id === task.id);
+        if (!current) return;
+        current.testTier = testTierOverrideSchema.parse({
+          tier: "gate",
+          reason,
+          by: "rule",
+          at: this.stamp(),
+        });
+        current.updatedAt = this.stamp(current.updatedAt);
+      }),
+    );
+    await this.packageEscalationCard(pkg, task, risky);
+    return gate;
+  }
+
+  private async packageEscalationCard(
+    pkg: Package,
+    task: Task,
+    risky: readonly string[],
+  ): Promise<void> {
+    if (!this.assistantOn()) return;
+    const exists = this.pmCards().some(
+      (card) =>
+        card.kind === "decision" &&
+        card.status !== "archived" &&
+        card.links.taskIds.includes(task.id) &&
+        card.title.toLowerCase().includes("gate"),
+    );
+    if (exists) return;
+    await this.pmCardCreate({
+      kind: "decision",
+      title: `#${task.number} escalated to gate`,
+      decision: `The diff touched ${risky.join(", ")}. The package gate runs for this ticket.`,
+      findings: `Package: ${pkg.name}. Matched: ${risky.join(", ")}.`,
+      links: { taskIds: [task.id], reportIds: [], packageIds: [pkg.id] },
+    });
+  }
+
+  private packageGates = new Set<string>();
+
+  /** Starts one gate run in the background; the snapshot shows it as running. */
+  private async startPackageGate(
+    packageId: string,
+    trigger: PackageTrigger,
+  ): Promise<PackageRun | null> {
+    if (this.packageGates.has(packageId)) return null;
+    const pkg = this.store.current.packages.find((p) => p.id === packageId);
+    if (!pkg) throw new Error("package-not-found");
+    const run = packageRunSchema.parse({
+      id: `pkgrun-${randomUUID().slice(0, 8)}`,
+      packageId,
+      trigger,
+      status: "running",
+      startedAt: this.stamp(),
+    });
+    this.packageGates.add(packageId);
+    await this.store.update((data) => {
+      data.packageRuns.push(run);
+      this.trimPackageRuns(data);
+    });
+    this.changed();
+    void this.executePackageGate(run.id, packageId);
+    return run;
+  }
+
+  private trimPackageRuns(data: Data): void {
+    const counts = new Map<string, number>();
+    for (const run of data.packageRuns) {
+      const count = (counts.get(run.packageId) ?? 0) + 1;
+      counts.set(run.packageId, count);
+    }
+    data.packageRuns = data.packageRuns.filter((run) => {
+      if ((counts.get(run.packageId) ?? 0) <= PACKAGE_RUN_LIMIT) return true;
+      counts.set(run.packageId, (counts.get(run.packageId) ?? 0) - 1);
+      return false;
+    });
+  }
+
+  private async executePackageGate(
+    runId: string,
+    packageId: string,
+  ): Promise<void> {
+    try {
+      const data = this.store.current;
+      const pkg = data.packages.find((item) => item.id === packageId);
+      if (!pkg) return;
+      const project = this.inventory.projects.find(
+        (item) => item.id === pkg.projectId,
+      );
+      if (!project) throw new Error(`No project with id ${pkg.projectId}.`);
+      const policy = this.policy(pkg.projectId);
+      const lastPassed = [...data.packageRuns]
+        .filter((run) => run.packageId === packageId && run.status === "passed")
+        .sort((left, right) =>
+          right.startedAt.localeCompare(left.startedAt),
+        )[0];
+      const result = await (
+        this.assistantOptions.packageGate ?? runPackageGate
+      )({
+        pkg,
+        project,
+        policy,
+        tasks: data.tasks,
+        finishes: data.finishes,
+        trigger:
+          data.packageRuns.find((run) => run.id === runId)?.trigger ?? "manual",
+        lastPassedCommit: lastPassed?.commit ?? null,
+        gateDirectory: defaultGateDirectory(),
+        run: this.assistantOptions.verify ?? runVerify,
+      });
+      await this.serial(() =>
+        this.store.update((next) => {
+          const index = next.packageRuns.findIndex((run) => run.id === runId);
+          if (index >= 0)
+            next.packageRuns[index] = packageRunSchema.parse({
+              ...result,
+              id: runId,
+            });
+          const current = next.packages.find((item) => item.id === packageId);
+          if (current) current.mergedSinceGate = 0;
+        }),
+      );
+      if (
+        result.status === "failed" ||
+        result.status === "missing-deps" ||
+        result.status === "error"
+      ) {
+        const suspect = result.suspectTaskId
+          ? this.store.current.tasks.find(
+              (task) => task.id === result.suspectTaskId,
+            )
+          : null;
+        const findings = [
+          `Run ${result.id}: ${result.status} (${result.trigger}).`,
+          result.commit ? `Commit: ${result.commit}` : "",
+          suspect ? `Suspect: #${suspect.number} ${suspect.title}` : "",
+          "Output (tail):",
+          "```",
+          result.output.slice(-4000),
+          "```",
+        ]
+          .filter(Boolean)
+          .join("\n");
+        const existing = this.pmCards().find(
+          (card) =>
+            card.kind === "investigation" &&
+            card.status !== "archived" &&
+            card.links.packageIds.includes(pkg.id),
+        );
+        if (existing)
+          await this.pmCardUpdate(existing.id, {
+            title: `Package gate failed: ${pkg.name}`,
+            findings,
+            links: {
+              ...existing.links,
+              taskIds: suspect ? [suspect.id] : existing.links.taskIds,
+              packageIds: [pkg.id],
+            },
+          });
+        else
+          await this.pmCardCreate({
+            kind: "investigation",
+            title: `Package gate failed: ${pkg.name}`,
+            findings,
+            links: {
+              taskIds: suspect ? [suspect.id] : [],
+              reportIds: [],
+              packageIds: [pkg.id],
+            },
+          });
+      }
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      await this.serial(() =>
+        this.store.update((data) => {
+          const index = data.packageRuns.findIndex((run) => run.id === runId);
+          const current = data.packageRuns[index];
+          if (current)
+            data.packageRuns[index] = packageRunSchema.parse({
+              ...current,
+              status: "error",
+              finishedAt: this.stamp(),
+              output: detail.slice(-PACKAGE_OUTPUT_LIMIT),
+            });
+        }),
+      );
+    } finally {
+      this.packageGates.delete(packageId);
+      this.changed();
+    }
+  }
+
+  /** The tick's gate triggers: once per night window, and every N merges (2b). */
+  private async runPackageGates(): Promise<void> {
+    const data = this.store.current;
+    const nightStart = openWindowStart(nightSchedule(data.night), this.now());
+    for (const pkg of data.packages) {
+      if (pkg.status !== "open" || this.packageGates.has(pkg.id)) continue;
+      if (pkg.trigger.night && nightStart !== null) {
+        const key = new Date(nightStart).toISOString();
+        if (pkg.lastNightWindowStart !== key) {
+          await this.store.update((next) => {
+            const current = next.packages.find((item) => item.id === pkg.id);
+            if (current) current.lastNightWindowStart = key;
+          });
+          await this.startPackageGate(pkg.id, "night");
+          continue;
+        }
+      }
+      if (
+        pkg.trigger.everyMerges !== null &&
+        pkg.mergedSinceGate >= pkg.trigger.everyMerges
+      )
+        await this.startPackageGate(pkg.id, "merges");
+    }
+  }
+
+  // CUSTOM(packages): the gate history of one package, read by its detail page.
+  packageRuns(packageId: string): PackageRun[] {
+    return this.store.current.packageRuns
+      .filter((run) => run.packageId === packageId)
+      .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+  }
+
   // CUSTOM(pm-board): the Project Manager's own cards. They never touch a task, a workspace or an
   // agent; this board only stores them, so a card can never start code work.
   pmCards(): PmCard[] {
@@ -5300,6 +5829,7 @@ export class Workboard {
       if (launch) this.launch(taskId); // CUSTOM(projects-assistant)
     }
     await this.promoteScheduled(); // CUSTOM(night-tasks)
+    await this.runPackageGates(); // CUSTOM(packages)
     // CUSTOM(resource-pools): one RAM reading per pass; fixes waiting for a slot go before new tasks.
     await this.readPoolMemory();
     await this.sendQueuedFixes();
@@ -6290,6 +6820,7 @@ export class Workboard {
           task,
           config.instructions,
           this.assistantOn(),
+          this.testSection(task), // CUSTOM(packages)
         ), // CUSTOM(projects-assistant)
         labels: BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
       });
@@ -6363,15 +6894,17 @@ export class Workboard {
     const checkpoint = record.checkpoint;
     const limited = checkpoint && record.limited; // CUSTOM(usage-limit)
     const progress = this.store.current.assistant.progress[taskId];
+    const tests = this.testSection(this.task(taskId)); // CUSTOM(packages)
     const nextPrompt = limited
-      ? usageLimitResumePrompt(progress, this.assistantOn())
+      ? usageLimitResumePrompt(progress, this.assistantOn(), tests)
       : checkpoint
         ? checkpointResumePrompt(
             progress,
             record.waitingFor,
             this.assistantOn(),
+            tests,
           )
-        : continuationPrompt(feedback, this.assistantOn()); // CUSTOM(projects-assistant)
+        : continuationPrompt(feedback, this.assistantOn(), tests); // CUSTOM(projects-assistant)
     // CUSTOM(usage-limit)
     const resumed = (title: string, fresh: boolean) =>
       limited
@@ -6395,7 +6928,7 @@ export class Workboard {
           unattended: runsUnattended(settings),
           title: task.title,
           prompt: [
-            orchestratorPrompt(task, settings.instructions),
+            orchestratorPrompt(task, settings.instructions, false, tests),
             // CUSTOM(task-checkpoints): the new agent gets the checklist, last summary and branch.
             handoffSection({
               progress,

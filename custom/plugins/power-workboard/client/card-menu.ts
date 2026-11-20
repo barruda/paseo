@@ -19,6 +19,11 @@ export function cardMenuItems({
   onOpenAgent,
   onEdit,
   onStatus,
+  packageName,
+  onAddToPackage,
+  onRemoveFromPackage,
+  onAskPmToGroup,
+  selectionCount = 0,
 }: {
   card: Card;
   agentId: string | null;
@@ -29,6 +34,12 @@ export function cardMenuItems({
   onOpenAgent(agentId: string): void;
   onEdit(): void;
   onStatus(): void;
+  // CUSTOM(packages)
+  packageName?: string | null;
+  onAddToPackage?(): void;
+  onRemoveFromPackage?(): void;
+  onAskPmToGroup?(): void;
+  selectionCount?: number;
 }): CardMenuItem[] {
   return [
     {
@@ -54,6 +65,36 @@ export function cardMenuItems({
             label: t.openAgent,
             icon: "Bot",
             onPress: () => onOpenAgent(agentId),
+          },
+        ]
+      : []),
+    ...(onAddToPackage
+      ? [
+          {
+            id: "package-add",
+            label: t.packages.addToPackage,
+            icon: "PackagePlus",
+            onPress: onAddToPackage,
+          },
+        ]
+      : []),
+    ...(packageName && onRemoveFromPackage
+      ? [
+          {
+            id: "package-remove",
+            label: t.packages.removeFromPackage,
+            icon: "PackageMinus",
+            onPress: onRemoveFromPackage,
+          },
+        ]
+      : []),
+    ...(selectionCount > 1 && onAskPmToGroup
+      ? [
+          {
+            id: "package-ask",
+            label: t.packages.askPmToGroup,
+            icon: "Bot",
+            onPress: onAskPmToGroup,
           },
         ]
       : []),

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { deskStatusSchema } from "./desk-status";
 import {
   FINISH_STEPS,
+  GROUP_COLORS,
   boardSchema,
   orchestratorConfigSchema,
   orchestratorSchema,
@@ -10,6 +11,9 @@ import {
   groupsSchema,
   groupSchema,
   nightSettingsSchema,
+  packageGateSchema,
+  packageRunSchema,
+  packageStatusSchema,
   poolsSchema,
   providerModelSchema, // CUSTOM(bulk-orchestrator-agent)
   projectAccentSchema, // CUSTOM(project-icon-colors)
@@ -17,6 +21,7 @@ import {
   stageSchema,
   startSchema,
   taskTimingSchema,
+  testTierSchema, // CUSTOM(packages)
 } from "./model";
 
 export const snapshotRpc = defineRpc({
@@ -174,6 +179,56 @@ export const mutationSchema = z.discriminatedUnion("action", [
   // CUSTOM(night-tasks): the night window and power-off, and canceling a power-off countdown.
   z.object({ action: z.literal("night-settings"), night: nightSettingsSchema }),
   z.object({ action: z.literal("night-shutdown-cancel") }),
+  // CUSTOM(packages): a package is created with a name; everything else has a default. Creating
+  // and assigning in one mutation makes the toast's Undo a single step.
+  z.object({
+    action: z.literal("package-create"),
+    name: z.string().trim().min(1).max(80),
+    projectId: z.string().min(1),
+    taskIds: z.array(z.string()).max(200).default([]),
+  }),
+  z.object({
+    action: z.literal("package-assign"),
+    packageId: z.string().min(1),
+    taskIds: z.array(z.string()).min(1).max(200),
+  }),
+  z.object({
+    action: z.literal("package-remove"),
+    taskIds: z.array(z.string()).min(1).max(200),
+  }),
+  z.object({ action: z.literal("package-delete"), packageId: z.string() }),
+  z.object({
+    action: z.literal("package-update"),
+    packageId: z.string(),
+    name: z.string().trim().min(1).max(80).optional(),
+    color: z.enum(GROUP_COLORS).optional(),
+    status: packageStatusSchema.optional(),
+    branch: z.string().trim().max(200).nullable().optional(),
+    gate: packageGateSchema.nullable().optional(),
+    trigger: z
+      .object({
+        night: z.boolean(),
+        onClose: z.boolean(),
+        everyMerges: z.number().int().min(1).max(100).nullable(),
+      })
+      .optional(),
+    tierPolicy: z.object({ escalateOnRisk: z.boolean() }).optional(),
+  }),
+  z.object({
+    action: z.literal("package-close"),
+    packageId: z.string(),
+    runGate: z.boolean().default(true),
+  }),
+  z.object({
+    action: z.literal("package-run-gate"),
+    packageId: z.string(),
+  }),
+  z.object({
+    action: z.literal("set-test-tier"),
+    taskId: z.string(),
+    tier: testTierSchema,
+    reason: z.string().max(2000).default(""),
+  }),
   z.object({
     action: z.literal("settings"),
     revision: z.number(),
@@ -189,6 +244,13 @@ export const mutateRpc = defineRpc({
   name: "workboard.mutate",
   input: mutationSchema,
   output: boardSchema,
+});
+// CUSTOM(packages): the gate history of one package, read by its detail page. The board snapshot
+// only carries the last run, so the 1.5 s poll does not grow.
+export const packageRunsRpc = defineRpc({
+  name: "workboard.package.runs",
+  input: z.object({ packageId: z.string().min(1) }),
+  output: z.object({ runs: z.array(packageRunSchema) }),
 });
 
 // CUSTOM(workboard-images): save a pasted image on the daemon host, and read one back to show it.

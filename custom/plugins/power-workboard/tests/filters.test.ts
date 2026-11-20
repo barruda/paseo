@@ -70,6 +70,7 @@ describe("remembered board filters", () => {
       ),
     ).toEqual({
       projectId: "p1",
+      packageId: "all",
       search: "test",
       attentionOnly: true,
       activity: "running",

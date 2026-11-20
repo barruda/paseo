@@ -14,6 +14,7 @@ import type {
 } from "../../shared/assistant";
 import type { Board, Card, Data, Task } from "../../shared/model";
 import { buildPmOverview } from "../../shared/pm-board"; // CUSTOM(pm-board)
+import { packageViews } from "../../shared/packages"; // CUSTOM(packages)
 import type { TimelineReader } from "../conversations";
 import type { Agent } from "../host";
 import { localDay } from "./history";
@@ -192,12 +193,26 @@ export function buildOverview(source: ViewSource): Overview {
   }
   needsYou.sort((left, right) => time(right.since) - time(left.since));
   running.sort((left, right) => time(right.startedAt) - time(left.startedAt));
+  // CUSTOM(packages): the open packages and their last gate, for the PM overview and tools.
+  const packages = packageViews(data, board.projects ?? [])
+    .filter((pkg) => pkg.status === "open")
+    .map((pkg) => ({
+      id: pkg.id,
+      name: pkg.name,
+      projectName: pkg.projectName,
+      status: pkg.status,
+      total: pkg.total,
+      merged: pkg.merged,
+      gate: pkg.lastRun?.status ?? ("none" as const),
+      suspectTaskIds: pkg.suspectTaskIds,
+      since: pkg.lastRun?.finishedAt ?? pkg.createdAt,
+    }));
   return {
     enabled: data.assistant?.settings?.enabled ?? true,
     needsYou,
     running,
     queued: queuedCount(board),
-    pm: buildPmOverview(data.assistant?.pmBoard), // CUSTOM(pm-board)
+    pm: buildPmOverview(data.assistant?.pmBoard, packages), // CUSTOM(pm-board, packages)
   };
 }
 

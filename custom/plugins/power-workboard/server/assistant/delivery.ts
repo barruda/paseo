@@ -10,13 +10,19 @@ export interface VerifyResult {
   passed: boolean;
   output: string;
 }
+/** CUSTOM(packages): the gate needs extra env and a longer timeout than a merge check. */
+export interface VerifyOptions {
+  env?: NodeJS.ProcessEnv;
+  timeoutMs?: number;
+}
 export type VerifyRunner = (
   command: string,
   directory: string,
+  options?: VerifyOptions,
 ) => Promise<VerifyResult>;
 
 /** Runs `sh -c command` in the directory and keeps the tail of the combined output. */
-export const runVerify: VerifyRunner = (command, directory) =>
+export const runVerify: VerifyRunner = (command, directory, options = {}) =>
   new Promise((resolve) => {
     let output = "";
     let settled = false;
@@ -29,20 +35,21 @@ export const runVerify: VerifyRunner = (command, directory) =>
     const child = spawn("sh", ["-c", command], {
       cwd: directory,
       stdio: ["ignore", "pipe", "pipe"],
+      env: options.env ? { ...process.env, ...options.env } : process.env,
     });
     const take = (chunk: Buffer) => {
       output = (output + chunk.toString()).slice(-VERIFY_OUTPUT_LIMIT);
     };
     child.stdout.on("data", take);
     child.stderr.on("data", take);
+    const timeout = options.timeoutMs ?? VERIFY_TIMEOUT_MS;
     const timer = setTimeout(() => {
       child.kill("SIGKILL");
-      output =
-        `${output}\nTimed out after ${VERIFY_TIMEOUT_MS / 60000} minutes`.slice(
-          -VERIFY_OUTPUT_LIMIT,
-        );
+      output = `${output}\nTimed out after ${timeout / 60000} minutes`.slice(
+        -VERIFY_OUTPUT_LIMIT,
+      );
       finish({ passed: false, output });
-    }, VERIFY_TIMEOUT_MS);
+    }, timeout);
     child.on("error", (error) =>
       finish({ passed: false, output: `${output}\n${error.message}`.trim() }),
     );

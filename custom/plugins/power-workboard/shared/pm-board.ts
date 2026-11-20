@@ -52,6 +52,8 @@ export type PmCardOption = z.infer<typeof pmCardOptionSchema>;
 export const pmCardLinksSchema = z.object({
   taskIds: z.array(z.string()).max(50).default([]),
   reportIds: z.array(z.string()).max(50).default([]),
+  /** CUSTOM(packages): the package a gate failure, close proposal or escalation belongs to. */
+  packageIds: z.array(z.string()).max(50).default([]),
 });
 export type PmCardLinks = z.infer<typeof pmCardLinksSchema>;
 
@@ -122,6 +124,27 @@ export const pmCardSummarySchema = z.object({
 });
 export type PmCardSummary = z.infer<typeof pmCardSummarySchema>;
 
+/** CUSTOM(packages): the package line of the PM overview, so the PM sees gate state and suspects. */
+export const pmPackageSummarySchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  projectName: z.string(),
+  status: z.enum(["open", "closed"]),
+  total: z.number().int().min(0),
+  merged: z.number().int().min(0),
+  gate: z.enum([
+    "none",
+    "running",
+    "passed",
+    "failed",
+    "missing-deps",
+    "error",
+  ]),
+  suspectTaskIds: z.array(z.string()).default([]),
+  since: z.string(),
+});
+export type PmPackageSummary = z.infer<typeof pmPackageSummarySchema>;
+
 export const pmOverviewSchema = z.object({
   investigating: z.number().int().min(0),
   waiting: z.number().int().min(0),
@@ -129,6 +152,8 @@ export const pmOverviewSchema = z.object({
   archived: z.number().int().min(0),
   /** The cards in `waiting`, newest update first. */
   cards: z.array(pmCardSummarySchema),
+  /** CUSTOM(packages): open packages and their last gate, newest first. */
+  packages: z.array(pmPackageSummarySchema).default([]),
 });
 export type PmOverview = z.infer<typeof pmOverviewSchema>;
 
@@ -198,7 +223,7 @@ export function newPmCard(
     answerOptionId: null,
     decidedBy: decided ? (input.decidedBy ?? "pm") : null,
     decidedAt: decided ? now : null,
-    links: input.links ?? { taskIds: [], reportIds: [] },
+    links: input.links ?? { taskIds: [], reportIds: [], packageIds: [] },
     createdAt: now,
     updatedAt: now,
   };
@@ -258,7 +283,10 @@ export function pmCardSummary(card: PmCard): PmCardSummary {
   };
 }
 
-export function buildPmOverview(board: PmBoard | null | undefined): PmOverview {
+export function buildPmOverview(
+  board: PmBoard | null | undefined,
+  packages: readonly PmPackageSummary[] = [],
+): PmOverview {
   const cards = board?.cards ?? [];
   return {
     investigating: pmCardsIn(cards, "investigating").length,
@@ -266,6 +294,7 @@ export function buildPmOverview(board: PmBoard | null | undefined): PmOverview {
     decided: pmCardsIn(cards, "decided").length,
     archived: pmCardsIn(cards, "archived").length,
     cards: pmCardsIn(cards, "waiting").map(pmCardSummary),
+    packages: [...packages],
   };
 }
 

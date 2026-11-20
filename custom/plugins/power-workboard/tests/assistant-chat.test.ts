@@ -175,6 +175,15 @@ it("the session_open hook attaches the tools only to the chat agent's own sessio
       "pm_card_update",
       "pm_card_decide",
       "pm_card_archive",
+      // CUSTOM(packages)
+      "board_package_create",
+      "board_package_update",
+      "board_package_assign",
+      "board_package_remove",
+      "board_package_close",
+      "board_run_package_gate",
+      "board_package_history",
+      "board_set_test_tier",
     ]);
     expect(attachChatTools({ ...base, labels: {} }, c.tools)).toBeUndefined();
     expect(
@@ -744,6 +753,20 @@ it("board_set_project_policy creates a policy from the default action and update
       verifyCommand: "npm test",
       autoFixes: 2,
       baseBranch: "main",
+      tests: {
+        gateCommand: "",
+        gateRequiredEnv: [],
+        gateEnv: {},
+        gateSetupCommand: "",
+        gateRiskPaths: [
+          "**/migrations/**",
+          "**/migration/**",
+          "**/auth/**",
+          "**/security/**",
+          "**/protocol/**",
+        ],
+        gateRunIn: "worktree",
+      },
     });
     expect(c.store.current.assistant.settings.reviews.p).toBe("fresh-agent");
   } finally {

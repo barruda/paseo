@@ -119,6 +119,28 @@ this repo) with these differences:
   reviews stay on the task board. Data in `data.assistant.pmBoard`, page in
   [docs/pm-board.md](docs/pm-board.md).
 
+- **Packages.** A **Package** groups tickets that already exist, so the full suite runs once per
+  package, by script, instead of once per ticket. It is not a board column (`Group` stays the
+  column). Select tickets with Ctrl/Cmd+click or Shift+click (a drag on empty column space selects
+  an area) and use **Add to package** in the selection bar or a card's menu; on a phone, long-press
+  a card to enter selection. The menu searches the open packages of the project and creates one
+  from the typed name. The cards get the package chip and a test-level chip; **Undo** restores the
+  previous assignment (and deletes a package created by that action). **Columns | Packages** on the
+  board switches to one rail per open package plus a last **No package** rail, with progress and
+  the last gate. A ticket without a package is unchanged: the same prompt and the same tests. A
+  ticket in a package gets the **restricted** level in its prompt (the suites of its area, never the
+  full suite); a diff that touches a project risk path (migrations, auth, security or protocol by
+  default) raises it to **gate** and the PM board records the decision. The package gate is the
+  project's `tests.gateCommand` (else `verifyCommand`), run in a dedicated git worktree by the
+  board, never an agent. It runs nightly (the existing night window), on close, manually and, when
+  configured, every N merges; `tests.gateRequiredEnv` that is missing fails the run instead of
+  letting suites skip. A failed run bisects the package's merge commits and opens **one**
+  investigation card on the PM board with the suspect ticket; the history is in the package's
+  detail. A package's own integration branch, the PM's **select these tickets** suggestion, drag to
+  a rail and the marquee are the next step, not this one. Data lives
+  in `data.packages`/`data.packageRuns`; the PM tools are `board_package_*` and
+  `board_set_test_tier`; `shared/packages.ts` holds the pure tier, risk and bisect logic.
+
 - **Night tasks and start times.** A draft's **When** (task editor) puts it in Scheduled: a
   night task starts inside the night window (Orchestrators tab, Night tasks), taken by any
   enabled orchestrator whatever its schedule; a task with a start time moves to Ready to start

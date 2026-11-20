@@ -6,19 +6,35 @@ import {
   type BoardFilters,
 } from "./filters";
 import type { strings } from "./strings";
+import type { PackageView } from "../shared/model";
 
 export function FilterPanel({
   filters,
   onChange,
+  packages,
   t,
 }: {
   filters: BoardFilters;
   onChange(patch: Partial<BoardFilters>): void;
+  packages: readonly PackageView[];
   t: ReturnType<typeof strings>;
 }) {
   return (
     <View style={styles.panel}>
       <SettingsCard>
+        <SettingsSelect
+          label={t.packages.title}
+          value={filters.packageId}
+          options={[
+            { value: "all", label: t.packages.allPackages },
+            { value: "none", label: t.packages.noPackage },
+            ...packages.map((pkg) => ({
+              value: pkg.id,
+              label: pkg.name,
+            })),
+          ]}
+          onValueChange={(packageId: string) => onChange({ packageId })}
+        />
         <SettingsSelect
           label={t.agentFilter}
           value={filters.activity}

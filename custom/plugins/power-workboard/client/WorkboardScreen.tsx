@@ -49,6 +49,8 @@ import {
   type Stage,
   type FinishStep,
   type TaskTiming,
+  type PackageRun,
+  type PackageView,
 } from "../shared/model";
 import {
   defaultAtText,
@@ -61,9 +63,10 @@ import {
   redeployPaseoRpc,
   saveImageRpc,
   snapshotRpc,
+  packageRunsRpc,
   type Mutation,
 } from "../shared/rpc";
-import { assistantPmCardsRpc } from "../shared/assistant-rpc"; // CUSTOM(pm-board)
+import { assistantAskRpc, assistantPmCardsRpc } from "../shared/assistant-rpc"; // CUSTOM(pm-board, packages)
 import {
   attentionReasons,
   cardAgentId,
@@ -75,6 +78,7 @@ import {
   splitTitleArea,
   visibleCards,
   withOptimisticStages,
+  cardsForStage,
 } from "./board-utils";
 import { groupTitle, stageTitle, strings } from "./strings";
 import {
@@ -96,6 +100,20 @@ import {
   type BoardFilters,
 } from "./filters";
 import { FilterPanel } from "./FilterPanel";
+import { PackagesView } from "./PackagesView"; // CUSTOM(packages)
+import { PackageMenu } from "./PackageMenu"; // CUSTOM(packages)
+import { PackageDetail } from "./PackageDetail"; // CUSTOM(packages)
+import { PackageAdjust } from "./PackageAdjust"; // CUSTOM(packages)
+import {
+  EMPTY_SELECTION,
+  clearSelection,
+  longPressCard,
+  pressCard,
+  selectionModifiers,
+  type SelectionModifiers,
+  type SelectionState,
+} from "./selection"; // CUSTOM(packages)
+import { effectiveTestTier } from "../shared/packages"; // CUSTOM(packages)
 import {
   newOrchestrator,
   ASSISTANT_TAB,
@@ -227,6 +245,26 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const [openOrchestrators, setOpenOrchestrators] = useState<string[]>([]);
   const [filters, setFilters] = useState(() => loadBoardFilters(props.host.id));
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // CUSTOM(packages): the Packages view, multiple selection, the package menu/detail and the undo
+  // of an assignment.
+  const [viewMode, setViewMode] = useState<"columns" | "packages">("columns");
+  const [selection, setSelection] = useState<SelectionState>(EMPTY_SELECTION);
+  const [packageMenu, setPackageMenu] = useState<{
+    taskIds: string[];
+  } | null>(null);
+  const [packageDetailId, setPackageDetailId] = useState<string | null>(null);
+  const [packageAdjustId, setPackageAdjustId] = useState<string | null>(null);
+  const [packageUndo, setPackageUndo] = useState<{
+    packageId: string;
+    created: boolean;
+    name: string;
+    previous: { taskId: string; packageId: string | null }[];
+  } | null>(null);
+  useEffect(() => {
+    if (!packageUndo) return;
+    const timer = setTimeout(() => setPackageUndo(null), 12_000);
+    return () => clearTimeout(timer);
+  }, [packageUndo]);
   const storageWarned = useRef(false);
   const { projectId, search, attentionOnly } = filters;
   const [selectedStage, setSelectedStage] = useState<Stage | null>(null);
@@ -278,6 +316,20 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     queryKey: ["power-workboard", props.host.id],
     queryFn: () => callSnapshot({}),
     refetchInterval: 1_500,
+  });
+  // CUSTOM(packages): the gate history is only read while a package detail is open.
+  const callPackageRuns = useRpc(packageRunsRpc);
+  const callAsk = useRpc(assistantAskRpc);
+  const packageRunsQuery = useQuery({
+    queryKey: [
+      "power-workboard",
+      "package-runs",
+      props.host.id,
+      packageDetailId,
+    ],
+    queryFn: () => callPackageRuns({ packageId: packageDetailId as string }),
+    enabled: !!packageDetailId,
+    refetchInterval: 2_000,
   });
   // CUSTOM(pm-board): the count on the Decisões tab. The page polls its own cards; this only
   // needs the number waiting for the user.
@@ -434,11 +486,190 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const cards = visibleCards(board, projectId, search, attentionOnly, filters);
   const filterCount = activeFilterCount(filters);
   const hasActiveFilter = filterCount > 0;
+  // CUSTOM(packages): selection and package actions. The board snapshot updates optimistically
+  // through `mutate`, so the chips appear as soon as the mutation answers.
+  const selectedCards = board.cards.filter((card) =>
+    selection.ids.has(card.id),
+  );
+  const selectCard = (
+    card: Card,
+    event: { nativeEvent?: SelectionModifiers },
+  ) => {
+    const order = cardsForStage(
+      board.cards,
+      card.stage as Stage,
+      board.cardOrderByStage,
+    ).map((item) => item.id);
+    setSelection(
+      pressCard(
+        selection,
+        card.id,
+        selectionModifiers(event),
+        order,
+        selection.ids.size > 0,
+      ),
+    );
+  };
+  const selectOnLongPress = (card: Card) => {
+    setSelection(longPressCard(selection, card.id));
+  };
+  const rememberPackageUndo = (
+    taskIds: readonly string[],
+    packageId: string,
+    created: boolean,
+    name: string,
+  ) =>
+    setPackageUndo({
+      packageId,
+      created,
+      name,
+      previous: taskIds.map((taskId) => ({
+        taskId,
+        packageId:
+          board.cards.find((card) => card.id === taskId)?.packageId ?? null,
+      })),
+    });
+  const createPackage = async (name: string) => {
+    const taskIds = packageMenu?.taskIds ?? [];
+    const projectIds = new Set(
+      taskIds.map(
+        (id) => board.cards.find((card) => card.id === id)?.projectId ?? null,
+      ),
+    );
+    if (projectIds.size !== 1 || projectIds.has(null)) {
+      toast.error(t.packages.addToPackage);
+      return;
+    }
+    const projectId = [...projectIds][0] as string;
+    const next = await mutate(
+      { action: "package-create", name, projectId, taskIds },
+      "package-create",
+    );
+    if (!next) return;
+    const created = next.packages.find(
+      (pkg) => pkg.name === name && pkg.projectId === projectId,
+    );
+    if (created) rememberPackageUndo(taskIds, created.id, true, name);
+    setSelection(clearSelection());
+    setPackageMenu(null);
+  };
+  const assignPackage = async (packageId: string) => {
+    const taskIds = packageMenu?.taskIds ?? [];
+    const pkg = board.packages.find((item) => item.id === packageId);
+    const next = await mutate(
+      { action: "package-assign", packageId, taskIds },
+      "package-assign",
+    );
+    if (!next) return;
+    if (pkg) rememberPackageUndo(taskIds, packageId, false, pkg.name);
+    setSelection(clearSelection());
+    setPackageMenu(null);
+  };
+  const removeFromPackage = async (taskIds: readonly string[]) => {
+    const next = await mutate(
+      { action: "package-remove", taskIds: [...taskIds] },
+      "package-remove",
+    );
+    if (next) {
+      setSelection(clearSelection());
+      setPackageMenu(null);
+    }
+  };
+  const undoPackage = async () => {
+    if (!packageUndo) return;
+    for (const item of packageUndo.previous) {
+      if (item.packageId)
+        await mutate(
+          {
+            action: "package-assign",
+            packageId: item.packageId,
+            taskIds: [item.taskId],
+          },
+          `package-undo:${item.taskId}`,
+        );
+      else
+        await mutate(
+          { action: "package-remove", taskIds: [item.taskId] },
+          `package-undo:${item.taskId}`,
+        );
+    }
+    if (packageUndo.created)
+      await mutate(
+        { action: "package-delete", packageId: packageUndo.packageId },
+        "package-delete",
+      );
+    setPackageUndo(null);
+  };
+  const askPmToGroup = async (taskIds: readonly string[]) => {
+    const numbers = taskIds
+      .map((id) => board.cards.find((card) => card.id === id)?.number)
+      .filter((number): number is number => typeof number === "number")
+      .map((number) => `#${number}`)
+      .join(", ");
+    setPackageMenu(null);
+    try {
+      await callAsk({
+        text: `Group ${numbers} into a package and propose the grouping on your board. Do not create it without my ok.`,
+        source: "package-menu",
+        waitMs: 0,
+      });
+      toast.show(t.packages.askPmToGroup, { variant: "success" });
+    } catch {
+      toast.error(t.packages.askPmToGroup);
+    }
+  };
+  const runPackageGate = async (packageId: string) => {
+    const next = await mutate(
+      { action: "package-run-gate", packageId },
+      "package-run-gate",
+    );
+    if (next) toast.show(t.packages.runGate, { variant: "success" });
+  };
+  const closePackage = async (packageId: string) => {
+    const next = await mutate(
+      { action: "package-close", packageId, runGate: true },
+      "package-close",
+    );
+    if (next) setPackageDetailId(null);
+  };
+  const updatePackage = async (
+    packageId: string,
+    patch: { name?: string; night?: boolean; onClose?: boolean },
+  ) => {
+    const pkg = board.packages.find((item) => item.id === packageId);
+    if (!pkg) return;
+    const next = await mutate(
+      {
+        action: "package-update",
+        packageId,
+        name: patch.name,
+        trigger:
+          patch.night === undefined && patch.onClose === undefined
+            ? undefined
+            : {
+                night: patch.night ?? pkg.trigger.night,
+                onClose: patch.onClose ?? pkg.trigger.onClose,
+                everyMerges: pkg.trigger.everyMerges,
+              },
+      },
+      "package-update",
+    );
+    if (next) setPackageAdjustId(null);
+  };
   const allCards = visibleCards(board, "all", "", false);
   const conflicts = cards.filter((card) => card.stage === "conflict");
   const archived = board.cards.filter((card) => card.archived !== null);
   // CUSTOM(task-panel): one ticket at a time; switching replaces the panel's content.
   const panelCard = panelCardFor(board.cards, panelTaskId);
+  // CUSTOM(packages)
+  const packageDetail =
+    board.packages.find((pkg) => pkg.id === packageDetailId) ?? null;
+  const packageAdjust =
+    board.packages.find((pkg) => pkg.id === packageAdjustId) ?? null;
+  const packageMenuProjectId = packageMenu
+    ? (board.cards.find((card) => card.id === packageMenu.taskIds[0])
+        ?.projectId ?? null)
+    : null;
   const writesDisabled = !board.connected || boardQuery.isError;
   const groupsPending = pendingMutationIds.has("settings:groups");
   const draftPending = pendingMutationIds.has(
@@ -839,6 +1070,103 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       durationMs: hidden ? 6000 : 2500,
     });
   };
+  // CUSTOM(packages): one renderer for the columns and the package rails.
+  const renderTaskCard = (card: Card, dragHandle: ReactNode = null) => (
+    <TaskCard
+      card={card}
+      board={board}
+      t={t}
+      theme={props.theme}
+      disabled={writesDisabled}
+      pending={
+        pendingMutationIds.has(`stage:${card.id}`) ||
+        pendingMutationIds.has(`card-order:${card.stage}`)
+      }
+      compact={props.layout.compact}
+      dragHandle={dragHandle}
+      onUndo={moveUndos.has(card.id) ? () => undoMove(card.id) : undefined}
+      onOpen={() => {
+        if (!props.navigation) {
+          toast.error(t.navigationUnavailable);
+          return;
+        }
+        if (card.workspaceId)
+          props.navigation.openWorkspace({
+            workspaceId: card.workspaceId,
+            serverId: board.serverId,
+          });
+      }}
+      onEdit={() =>
+        setDraft({
+          task: card,
+          title: card.title,
+          description: card.description,
+          projectId: card.projectId,
+          orchestratorId: card.orchestratorId,
+          timing: card.timing,
+        })
+      }
+      onStart={() => setStarting({ card })}
+      onOpenAgent={openAgent}
+      onRefine={async () => {
+        const next = await mutate({
+          action: "refine",
+          taskId: card.id,
+        });
+        const agentId = next?.refinements[card.id]?.agentId;
+        if (!agentId) return;
+        if (!props.navigation) {
+          toast.error(t.navigationUnavailable);
+          return;
+        }
+        props.navigation.openAgent({
+          agentId,
+          serverId: board.serverId,
+        });
+      }}
+      onReview={async (outcome, feedback) => {
+        const next = await mutate({
+          action: "review",
+          taskId: card.id,
+          outcome,
+          feedback,
+        });
+        if (
+          next &&
+          outcome === "continue" &&
+          next.orchestrations[card.id]?.status === "queued"
+        )
+          toast.show(t.review.queued);
+        return !!next;
+      }}
+      onFinish={(step) =>
+        void mutate({ action: "finish", taskId: card.id, step })
+      }
+      onStatus={() => setStatusCard(card)}
+      onArchive={() => setArchivingDraft(card)}
+      onCancelBinding={() => setCancelingBinding(card)}
+      onDetachDraft={(draftId) => setDetachingDraft({ card, draftId })}
+      onOpenPanel={() => setPanelTaskId(card.id)}
+      onContextMenu={openCardMenu}
+      selected={selection.ids.has(card.id)}
+      selectionActive={selection.ids.size > 0}
+      onSelect={(event) => selectCard(card, event)}
+      onLongPressSelect={() => selectOnLongPress(card)}
+      packageName={
+        board.packages.find((pkg) => pkg.id === card.packageId)?.name ?? null
+      }
+      testTier={effectiveTestTier(card)}
+      suspect={board.packages.some((pkg) =>
+        pkg.suspectTaskIds.includes(card.id),
+      )}
+      onAddToPackage={() => setPackageMenu({ taskIds: [card.id] })}
+      onRemoveFromPackage={() => void removeFromPackage([card.id])}
+      onAskPmToGroup={() =>
+        void askPmToGroup(selectedCards.map((item) => item.id))
+      }
+      selectionCount={selection.ids.size}
+    />
+  );
   return (
     <View
       ref={rootRef}
@@ -1083,8 +1411,153 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           </Pressable>
         </View>
       </View>
+      {/* CUSTOM(packages): the board view toggle, the selection bar and the assignment undo. */}
+      <View style={styles.packageBar}>
+        <View
+          style={[
+            styles.viewToggle,
+            { borderColor: props.theme.colors.border },
+          ]}
+        >
+          {(["columns", "packages"] as const).map((mode) => (
+            <Pressable
+              key={mode}
+              accessibilityRole="button"
+              accessibilityState={{ selected: viewMode === mode }}
+              onPress={() => setViewMode(mode)}
+              style={[
+                styles.viewToggleButton,
+                viewMode === mode && {
+                  backgroundColor: props.theme.colors.accent,
+                },
+              ]}
+            >
+              <Text
+                style={{
+                  color:
+                    viewMode === mode
+                      ? props.theme.colors.accentForeground
+                      : props.theme.colors.foreground,
+                }}
+              >
+                {mode === "columns"
+                  ? t.packages.columnsView
+                  : t.packages.packagesView}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        {selection.ids.size > 0 && (
+          <View
+            style={[
+              styles.selectionBar,
+              {
+                borderColor: props.theme.colors.accent,
+                backgroundColor: props.theme.colors.surface1,
+              },
+            ]}
+          >
+            <Text
+              accessibilityLiveRegion="polite"
+              style={{ color: props.theme.colors.foreground, flex: 1 }}
+            >
+              {t.packages.selected.replace(
+                "{count}",
+                String(selection.ids.size),
+              )}
+            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t.packages.addToPackage}
+              onPress={() =>
+                setPackageMenu({
+                  taskIds: selectedCards.map((card) => card.id),
+                })
+              }
+              style={[
+                styles.toolbarButton,
+                { backgroundColor: props.theme.colors.accent },
+              ]}
+            >
+              <Icon
+                name="PackagePlus"
+                size={15}
+                color={props.theme.colors.accentForeground}
+              />
+              <Text style={{ color: props.theme.colors.accentForeground }}>
+                {t.packages.addToPackage}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={t.packages.clear}
+              onPress={() => setSelection(clearSelection())}
+              style={styles.toolbarButton}
+            >
+              <Icon
+                name="X"
+                size={15}
+                color={props.theme.colors.foregroundMuted}
+              />
+              <Text style={{ color: props.theme.colors.foreground }}>
+                {t.packages.clear}
+              </Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+      {packageUndo && (
+        <View
+          style={[
+            styles.packageUndo,
+            { borderColor: props.theme.colors.border },
+          ]}
+        >
+          <Text style={{ color: props.theme.colors.foreground, flex: 1 }}>
+            {t.packages.added
+              .replace("{count}", String(packageUndo.previous.length))
+              .replace("{name}", packageUndo.name)}
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => void undoPackage()}
+            style={styles.toolbarButton}
+          >
+            <Icon name="Undo2" size={15} color={props.theme.colors.accent} />
+            <Text style={{ color: props.theme.colors.accent }}>
+              {t.packages.undo}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            onPress={() => setPackageAdjustId(packageUndo.packageId)}
+            style={styles.toolbarButton}
+          >
+            <Text style={{ color: props.theme.colors.foreground }}>
+              {t.packages.adjust}
+            </Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t.closeMenu}
+            onPress={() => setPackageUndo(null)}
+            style={styles.toolbarButton}
+          >
+            <Icon
+              name="X"
+              size={15}
+              color={props.theme.colors.foregroundMuted}
+            />
+          </Pressable>
+        </View>
+      )}
       {filtersOpen && (
-        <FilterPanel filters={filters} onChange={updateFilters} t={t} />
+        <FilterPanel
+          filters={filters}
+          onChange={updateFilters}
+          packages={board.packages}
+          t={t}
+        />
       )}
       {(hasActiveFilter || filtersOpen) && (
         <View style={styles.filterSummary}>
@@ -1167,214 +1640,149 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       )}
       <View style={styles.boardRow}>
         <View style={styles.boardArea}>
-          <BoardView
-            key={props.host.id}
-            hostId={props.host.id}
-            groupColor={(group) => groupColor(group, props.theme)}
-            disabled={writesDisabled}
-            pendingStages={new Set(optimisticStages.keys())}
-            reordering={pendingMutationIds.has("reorder-groups")}
-            highlightedCards={new Set(moveUndos.keys())}
-            cards={cards}
-            fullCards={board.cards}
-            cardOrderByStage={board.cardOrderByStage}
-            filterKey={JSON.stringify(filters)}
-            orderPending={
-              new Set(
-                [...pendingMutationIds]
-                  .filter((id) => id.startsWith("card-order:"))
-                  .map((id) => id.slice("card-order:".length)),
-              )
-            }
-            onReorderCards={(card, expectedOrder, cardOrder) =>
-              saveCardOrder({
-                action: "reorder-cards",
-                taskId: card.id,
-                stage: card.stage as Stage,
-                expectedOrder,
-                cardOrder,
-              })
-            }
-            onResetCardOrder={(stage, expectedOrder) =>
-              saveCardOrder({
-                action: "reset-card-order",
-                stage,
-                expectedOrder,
-              })
-            }
-            hasActiveFilter={hasActiveFilter}
-            onClearFilters={clearFilters}
-            onCreateTask={writesDisabled ? undefined : createTask}
-            renderQuickCreate={(group) =>
-              group.kind === "todo" ? (
-                <QuickCreate
-                  key={group.id}
-                  disabled={writesDisabled}
-                  t={t}
-                  theme={props.theme}
-                  groupName={groupTitle(group, t)}
-                  onCreate={async (title) => {
-                    const next = await mutate(
-                      {
-                        action: "create",
-                        stage: group.id,
-                        title,
-                        description: "",
-                        projectId:
-                          projectId === "all" || projectId === "none"
-                            ? null
-                            : projectId,
-                      },
-                      `create:${group.id}`,
-                    );
-                    if (!next) return false;
-                    notifyTaskSaved(next, undefined, true);
-                    return true;
-                  }}
-                />
-              ) : null
-            }
-            groups={orderedGroups({
-              ...board.settings,
-              groupOrder: optimisticOrder ?? board.settings.groupOrder,
-            })}
-            compact={props.layout.compact}
-            stage={
-              board.settings.groups.find((group) => group.id === selectedStage)
-                ?.id ??
-              defaultWorkspaceGroup(
-                board.settings.groups,
-                board.settings.defaultStartGroup,
-              )
-            }
-            setStage={setSelectedStage}
-            t={t}
-            theme={props.theme}
-            onStage={setStage}
-            onReorder={async (groupOrder, expectedGroupOrder) => {
-              if (mutationPending.current.has("reorder-groups")) {
-                toast.error(t.mutationPending);
-                return false;
+          {viewMode === "columns" ? (
+            <BoardView
+              key={props.host.id}
+              hostId={props.host.id}
+              groupColor={(group) => groupColor(group, props.theme)}
+              disabled={writesDisabled}
+              pendingStages={new Set(optimisticStages.keys())}
+              reordering={pendingMutationIds.has("reorder-groups")}
+              highlightedCards={new Set(moveUndos.keys())}
+              cards={cards}
+              fullCards={board.cards}
+              cardOrderByStage={board.cardOrderByStage}
+              filterKey={JSON.stringify(filters)}
+              orderPending={
+                new Set(
+                  [...pendingMutationIds]
+                    .filter((id) => id.startsWith("card-order:"))
+                    .map((id) => id.slice("card-order:".length)),
+                )
               }
-              setOptimisticOrder(groupOrder);
-              const next = await mutate({
-                action: "reorder-groups",
-                groupOrder,
-                expectedGroupOrder,
-              });
-              setOptimisticOrder(null);
-              if (next)
-                toast.show(t.layoutSaved, {
-                  variant: "success",
-                  durationMs: 1600,
+              onReorderCards={(card, expectedOrder, cardOrder) =>
+                saveCardOrder({
+                  action: "reorder-cards",
+                  taskId: card.id,
+                  stage: card.stage as Stage,
+                  expectedOrder,
+                  cardOrder,
+                })
+              }
+              onResetCardOrder={(stage, expectedOrder) =>
+                saveCardOrder({
+                  action: "reset-card-order",
+                  stage,
+                  expectedOrder,
+                })
+              }
+              hasActiveFilter={hasActiveFilter}
+              onClearFilters={clearFilters}
+              onCreateTask={writesDisabled ? undefined : createTask}
+              renderQuickCreate={(group) =>
+                group.kind === "todo" ? (
+                  <QuickCreate
+                    key={group.id}
+                    disabled={writesDisabled}
+                    t={t}
+                    theme={props.theme}
+                    groupName={groupTitle(group, t)}
+                    onCreate={async (title) => {
+                      const next = await mutate(
+                        {
+                          action: "create",
+                          stage: group.id,
+                          title,
+                          description: "",
+                          projectId:
+                            projectId === "all" || projectId === "none"
+                              ? null
+                              : projectId,
+                        },
+                        `create:${group.id}`,
+                      );
+                      if (!next) return false;
+                      notifyTaskSaved(next, undefined, true);
+                      return true;
+                    }}
+                  />
+                ) : null
+              }
+              groups={orderedGroups({
+                ...board.settings,
+                groupOrder: optimisticOrder ?? board.settings.groupOrder,
+              })}
+              compact={props.layout.compact}
+              stage={
+                board.settings.groups.find(
+                  (group) => group.id === selectedStage,
+                )?.id ??
+                defaultWorkspaceGroup(
+                  board.settings.groups,
+                  board.settings.defaultStartGroup,
+                )
+              }
+              setStage={setSelectedStage}
+              t={t}
+              theme={props.theme}
+              onStage={setStage}
+              onReorder={async (groupOrder, expectedGroupOrder) => {
+                if (mutationPending.current.has("reorder-groups")) {
+                  toast.error(t.mutationPending);
+                  return false;
+                }
+                setOptimisticOrder(groupOrder);
+                const next = await mutate({
+                  action: "reorder-groups",
+                  groupOrder,
+                  expectedGroupOrder,
                 });
-              return !!next;
-            }}
-            onEdit={editGroup}
-            onAdd={() => editGroup(newGroup(board.settings.groups))}
-            deleteReason={deleteReason}
-            onDelete={async (group) => {
-              const reason = deleteReason(group);
-              if (reason) {
-                toast.show(reason, { variant: "warning" });
-                return false;
+                setOptimisticOrder(null);
+                if (next)
+                  toast.show(t.layoutSaved, {
+                    variant: "success",
+                    durationMs: 1600,
+                  });
+                return !!next;
+              }}
+              onEdit={editGroup}
+              onAdd={() => editGroup(newGroup(board.settings.groups))}
+              deleteReason={deleteReason}
+              onDelete={async (group) => {
+                const reason = deleteReason(group);
+                if (reason) {
+                  toast.show(reason, { variant: "warning" });
+                  return false;
+                }
+                return !!(await mutate({
+                  action: "settings",
+                  revision: board.revision,
+                  expectedSettings: board.settings,
+                  settings: {
+                    ...board.settings,
+                    groups: board.settings.groups.filter(
+                      (item) => item.id !== group.id,
+                    ),
+                  },
+                }));
+              }}
+              renderCard={renderTaskCard}
+            />
+          ) : (
+            <PackagesView
+              board={board}
+              cards={cards}
+              packages={board.packages}
+              groups={orderedGroups(board.settings)}
+              t={t}
+              theme={props.theme}
+              onOpenPackage={(pkg) => setPackageDetailId(pkg.id)}
+              onSelectCard={(card) =>
+                setSelection(longPressCard(selection, card.id))
               }
-              return !!(await mutate({
-                action: "settings",
-                revision: board.revision,
-                expectedSettings: board.settings,
-                settings: {
-                  ...board.settings,
-                  groups: board.settings.groups.filter(
-                    (item) => item.id !== group.id,
-                  ),
-                },
-              }));
-            }}
-            renderCard={(card, dragHandle) => (
-              <TaskCard
-                card={card}
-                board={board}
-                t={t}
-                theme={props.theme}
-                disabled={writesDisabled}
-                pending={
-                  pendingMutationIds.has(`stage:${card.id}`) ||
-                  pendingMutationIds.has(`card-order:${card.stage}`)
-                }
-                compact={props.layout.compact}
-                dragHandle={dragHandle}
-                onUndo={
-                  moveUndos.has(card.id) ? () => undoMove(card.id) : undefined
-                }
-                onOpen={() => {
-                  if (!props.navigation) {
-                    toast.error(t.navigationUnavailable);
-                    return;
-                  }
-                  if (card.workspaceId)
-                    props.navigation.openWorkspace({
-                      workspaceId: card.workspaceId,
-                      serverId: board.serverId,
-                    });
-                }}
-                onEdit={() =>
-                  setDraft({
-                    task: card,
-                    title: card.title,
-                    description: card.description,
-                    projectId: card.projectId,
-                    orchestratorId: card.orchestratorId,
-                    timing: card.timing,
-                  })
-                }
-                onStart={() => setStarting({ card })}
-                onOpenAgent={openAgent}
-                onRefine={async () => {
-                  const next = await mutate({
-                    action: "refine",
-                    taskId: card.id,
-                  });
-                  const agentId = next?.refinements[card.id]?.agentId;
-                  if (!agentId) return;
-                  if (!props.navigation) {
-                    toast.error(t.navigationUnavailable);
-                    return;
-                  }
-                  props.navigation.openAgent({
-                    agentId,
-                    serverId: board.serverId,
-                  });
-                }}
-                onReview={async (outcome, feedback) => {
-                  const next = await mutate({
-                    action: "review",
-                    taskId: card.id,
-                    outcome,
-                    feedback,
-                  });
-                  if (
-                    next &&
-                    outcome === "continue" &&
-                    next.orchestrations[card.id]?.status === "queued"
-                  )
-                    toast.show(t.review.queued);
-                  return !!next;
-                }}
-                onFinish={(step) =>
-                  void mutate({ action: "finish", taskId: card.id, step })
-                }
-                onStatus={() => setStatusCard(card)}
-                onArchive={() => setArchivingDraft(card)}
-                onCancelBinding={() => setCancelingBinding(card)}
-                onDetachDraft={(draftId) =>
-                  setDetachingDraft({ card, draftId })
-                }
-                onOpenPanel={() => setPanelTaskId(card.id)}
-                onContextMenu={openCardMenu}
-              />
-            )}
-          />
+              renderCard={(card) => renderTaskCard(card, null)}
+            />
+          )}
         </View>
         {panelCard && (
           <TaskPanel
@@ -1419,6 +1827,56 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           t={t}
           theme={props.theme}
           onClose={() => setCardMenu(null)}
+        />
+      )}
+      {packageMenu && (
+        <PackageMenu
+          packages={board.packages.filter(
+            (pkg) => pkg.projectId === packageMenuProjectId,
+          )}
+          taskIds={packageMenu.taskIds}
+          hasPackage={packageMenu.taskIds.some(
+            (id) =>
+              board.cards.find((card) => card.id === id)?.packageId != null,
+          )}
+          t={t}
+          theme={props.theme}
+          onClose={() => setPackageMenu(null)}
+          onAssign={(packageId) => void assignPackage(packageId)}
+          onCreate={(name) => void createPackage(name)}
+          onRemove={() => void removeFromPackage(packageMenu.taskIds)}
+          onAskPm={() => void askPmToGroup(packageMenu.taskIds)}
+        />
+      )}
+      {packageDetail && (
+        <PackageDetail
+          pkg={packageDetail}
+          board={board}
+          runs={packageRunsQuery.data?.runs ?? []}
+          t={t}
+          theme={props.theme}
+          onClose={() => setPackageDetailId(null)}
+          onRunGate={() => void runPackageGate(packageDetail.id)}
+          onAdjust={() => {
+            setPackageAdjustId(packageDetail.id);
+            setPackageDetailId(null);
+          }}
+          onClosePackage={() => void closePackage(packageDetail.id)}
+        />
+      )}
+      {packageAdjust && (
+        <PackageAdjust
+          pkg={packageAdjust}
+          t={t}
+          theme={props.theme}
+          onClose={() => setPackageAdjustId(null)}
+          onSave={(patch) =>
+            void updatePackage(packageAdjust.id, {
+              name: patch.name,
+              night: patch.night,
+              onClose: patch.onClose,
+            })
+          }
         />
       )}
       {editingGroup && (
@@ -2623,6 +3081,17 @@ export function TaskCard({
   onContextMenu,
   compact = false,
   dragHandle = null,
+  selected = false,
+  selectionActive = false,
+  onSelect,
+  onLongPressSelect,
+  packageName = null,
+  testTier,
+  suspect = false,
+  onAddToPackage,
+  onRemoveFromPackage,
+  onAskPmToGroup,
+  selectionCount = 0,
 }: {
   card: Card;
   board: Board;
@@ -2648,6 +3117,18 @@ export function TaskCard({
   compact?: boolean;
   /** CUSTOM(card-open-agent): the board's drag handle, shown at the end of the action row. */
   dragHandle?: ReactNode;
+  // CUSTOM(packages)
+  selected?: boolean;
+  selectionActive?: boolean;
+  onSelect?(event: { nativeEvent?: SelectionModifiers }): void;
+  onLongPressSelect?(): void;
+  packageName?: string | null;
+  testTier?: "restricted" | "gate" | "full";
+  suspect?: boolean;
+  onAddToPackage?(): void;
+  onRemoveFromPackage?(): void;
+  onAskPmToGroup?(): void;
+  selectionCount?: number;
 }) {
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [titleHovered, setTitleHovered] = useState(false);
@@ -2717,6 +3198,11 @@ export function TaskCard({
         onOpenAgent,
         onEdit,
         onStatus,
+        packageName,
+        onAddToPackage,
+        onRemoveFromPackage,
+        onAskPmToGroup,
+        selectionCount,
       }),
     });
   const pointerRef = useCardPointerActions({
@@ -2731,6 +3217,13 @@ export function TaskCard({
       backgroundColor: theme.colors.surface0,
       borderColor: theme.colors.border,
       ...(onUndo && compact
+        ? {
+            outlineColor: theme.colors.accent,
+            outlineWidth: 2,
+            outlineStyle: "solid" as const,
+          }
+        : {}),
+      ...(selected
         ? {
             outlineColor: theme.colors.accent,
             outlineWidth: 2,
@@ -2769,7 +3262,34 @@ export function TaskCard({
           onLongPress={Platform.OS === "web" ? undefined : openMenu}
           accessibilityRole="button"
           accessibilityLabel={`${isDraft ? t.edit : t.notes}: ${card.title}`}
-          onPress={onEdit}
+          onPress={(event) => {
+            const native = event.nativeEvent as typeof event.nativeEvent & {
+              ctrlKey?: boolean;
+              metaKey?: boolean;
+              shiftKey?: boolean;
+            };
+            const web = event as unknown as {
+              ctrlKey?: boolean;
+              metaKey?: boolean;
+              shiftKey?: boolean;
+            };
+            const modifiers = {
+              ctrlKey: native.ctrlKey ?? web.ctrlKey,
+              metaKey: native.metaKey ?? web.metaKey,
+              shiftKey: native.shiftKey ?? web.shiftKey,
+            };
+            if (
+              onSelect &&
+              (selectionActive ||
+                modifiers.ctrlKey ||
+                modifiers.metaKey ||
+                modifiers.shiftKey)
+            ) {
+              onSelect({ nativeEvent: modifiers });
+              return;
+            }
+            onEdit();
+          }}
           style={styles.cardTitlePressable}
         >
           <Text
@@ -2818,6 +3338,64 @@ export function TaskCard({
           {normalLabels.length ? ` · ${normalLabels.join(" · ")}` : ""}
         </Text>
       </View>
+      {(packageName || (testTier && testTier !== "full") || suspect) && (
+        <View style={styles.cardChips}>
+          {packageName && (
+            <View
+              style={[styles.cardChip, { borderColor: theme.colors.border }]}
+            >
+              <Icon
+                name="Package"
+                size={11}
+                color={theme.colors.foregroundMuted}
+              />
+              <Text
+                numberOfLines={1}
+                style={[
+                  styles.cardChipText,
+                  { color: theme.colors.foregroundMuted },
+                ]}
+              >
+                {packageName}
+              </Text>
+            </View>
+          )}
+          {testTier && testTier !== "full" && (
+            <Text
+              style={[
+                styles.cardChip,
+                styles.cardChipText,
+                {
+                  borderColor:
+                    testTier === "gate"
+                      ? theme.colors.statusWarning
+                      : theme.colors.border,
+                  color:
+                    testTier === "gate"
+                      ? theme.colors.statusWarning
+                      : theme.colors.foregroundMuted,
+                },
+              ]}
+            >
+              {t.packages.tier[testTier]}
+            </Text>
+          )}
+          {suspect && (
+            <Text
+              style={[
+                styles.cardChip,
+                styles.cardChipText,
+                {
+                  borderColor: theme.colors.statusDanger,
+                  color: theme.colors.statusDanger,
+                },
+              ]}
+            >
+              {t.packages.suspect}
+            </Text>
+          )}
+        </View>
+      )}
       {card.timing && <TimingChip timing={card.timing} t={t} theme={theme} />}
       {request && (
         <View style={styles.changeRequest}>
@@ -3185,6 +3763,23 @@ export function TaskCard({
               <Icon name="Pin" size={13} color={theme.colors.foregroundMuted} />
             </HintButton>
           )}
+          {Platform.OS !== "web" && onContextMenu && (
+            <HintButton
+              hint={t.packages.menu}
+              accessibilityRole="button"
+              accessibilityLabel={t.packages.menu}
+              onPress={(event) =>
+                menuAt(event.nativeEvent.pageX, event.nativeEvent.pageY)
+              }
+              style={styles.iconAction}
+            >
+              <Icon
+                name="MoreHorizontal"
+                size={13}
+                color={theme.colors.foregroundMuted}
+              />
+            </HintButton>
+          )}
           {dragHandle}
         </View>
       </View>
@@ -3290,7 +3885,13 @@ export function TaskCard({
       <Pressable
         ref={pointerRef}
         accessible={false}
-        onLongPress={onContextMenu ? openMenu : undefined}
+        onLongPress={
+          onLongPressSelect
+            ? () => onLongPressSelect()
+            : onContextMenu
+              ? openMenu
+              : undefined
+        }
         style={cardStyle}
       >
         {content}
@@ -5349,6 +5950,49 @@ const styles = StyleSheet.create({
   settingsContent: { width: "100%", maxWidth: 760, alignSelf: "center" },
   settingsPreview: { gap: 4 },
   hintText: { fontSize: 13, lineHeight: 18 },
+  packageBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingHorizontal: 12,
+    paddingBottom: 8,
+  },
+  viewToggle: { flexDirection: "row", borderWidth: 1, borderRadius: 8 },
+  viewToggleButton: { paddingHorizontal: 10, paddingVertical: 6 },
+  selectionBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flex: 1,
+    minWidth: 260,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  packageUndo: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginHorizontal: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+  },
+  cardChips: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  cardChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 3,
+    borderWidth: 1,
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+  },
+  cardChipText: { fontSize: 10 },
 });
 
 export function mutationErrorText(

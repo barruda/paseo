@@ -34,6 +34,31 @@ export const ASSISTANT_DEFAULT_ACTIONS = [
 ] as const;
 export const assistantDefaultActionSchema = z.enum(ASSISTANT_DEFAULT_ACTIONS);
 
+// CUSTOM(packages): the package gate and the risk rule. A package inherits this and may override
+// it. `gateCommand` empty falls back to `verifyCommand`.
+export const DEFAULT_RISK_PATHS = [
+  "**/migrations/**",
+  "**/migration/**",
+  "**/auth/**",
+  "**/security/**",
+  "**/protocol/**",
+] as const;
+export const projectTestsSchema = z.object({
+  gateCommand: z.string().max(2000).default(""),
+  /** Env the gate needs; a missing one fails the gate instead of letting suites skip. */
+  gateRequiredEnv: z.array(z.string().trim().min(1)).default([]),
+  /** Env set for the gate run, e.g. TH_SERVER_TEST_REQUIRE_DB=1. */
+  gateEnv: z.record(z.string(), z.string()).default({}),
+  /** Runs once in a fresh gate worktree before the gate (npm ci, ...). */
+  gateSetupCommand: z.string().max(2000).default(""),
+  /** Path globs whose presence in a ticket's diff escalates it to the gate level. */
+  gateRiskPaths: z
+    .array(z.string().trim().min(1))
+    .default(() => [...DEFAULT_RISK_PATHS]),
+  gateRunIn: z.enum(["worktree", "checkout"]).default("worktree"),
+});
+export type ProjectTests = z.infer<typeof projectTestsSchema>;
+
 export const projectPolicySchema = z.object({
   action: assistantActionSchema.default("review"),
   /** Record what the action would do, without doing it. */
@@ -44,6 +69,7 @@ export const projectPolicySchema = z.object({
   autoFixes: z.number().int().min(0).max(3).default(1),
   /** Branch the merge targets; empty means the project checkout's current branch. */
   baseBranch: z.string().max(200).default(""),
+  tests: projectTestsSchema.default(() => projectTestsSchema.parse({})),
 });
 export type ProjectPolicy = z.infer<typeof projectPolicySchema>;
 

@@ -60,7 +60,9 @@ export function visibleCards(
   projectId: string,
   search: string,
   attentionOnly: boolean,
-  filters: Pick<BoardFilters, "activity" | "changeRequest"> = DEFAULT_FILTERS,
+  filters: Pick<BoardFilters, "activity" | "changeRequest"> & {
+    packageId?: string;
+  } = DEFAULT_FILTERS,
 ): Card[] {
   const needle = search.trim().toLocaleLowerCase();
   return board.cards.filter(
@@ -71,6 +73,10 @@ export function visibleCards(
         (projectId === "none"
           ? card.projectId === null
           : card.projectId === projectId)) &&
+      ((filters.packageId ?? "all") === "all" ||
+        (filters.packageId === "none"
+          ? card.packageId === null
+          : card.packageId === filters.packageId)) &&
       (!attentionOnly || attentionReasons(card).length > 0) &&
       (filters.activity === "all" || card.activity === filters.activity) &&
       matchesRequest(card, filters.changeRequest) &&

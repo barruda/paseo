@@ -282,6 +282,7 @@ describe("PM card links", () => {
       links: {
         taskIds: ["abcdef12-1111-2222-3333-444455556666", "deadbeef"],
         reportIds: ["cafebabe-1111-2222-3333-444455556666"],
+        packageIds: [],
       },
     });
     expect(

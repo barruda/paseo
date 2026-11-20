@@ -53,12 +53,14 @@ export function checkpointResumePrompt(
   progress: TaskProgress | undefined,
   waitingFor: string | null,
   assistant = false,
+  tests = "",
 ): string {
   return [
     `The Workboard resumes this task from checkpoint ${progress?.checkpoints ?? 1}. Continue it in this workspace without waiting for confirmation.`,
     waitingFor ? `You were waiting for: ${waitingFor}. Check it first.` : "",
     progress ? progressMarkdown(progress) : "",
     "When you are done, reply with a short summary of what you changed and what a reviewer should check.",
+    tests,
     assistant ? assistantSection() : "",
   ]
     .filter(Boolean)
@@ -69,11 +71,13 @@ export function checkpointResumePrompt(
 export function usageLimitResumePrompt(
   progress: TaskProgress | undefined,
   assistant = false,
+  tests = "",
 ): string {
   return [
     "You stopped because the plan's usage limit was reached. It has reset: continue the task from where you stopped, in this workspace, without waiting for confirmation.",
     progress ? progressMarkdown(progress) : "",
     "When you are done, reply with a short summary of what you changed and what a reviewer should check.",
+    tests,
     assistant ? assistantSection() : "",
   ]
     .filter(Boolean)
@@ -103,17 +107,20 @@ export function handoffSection(input: {
 }
 
 /** What the agent receives when a check the Project Manager ran on its work failed. */
-export function fixPrompt(command: string, output: string): string {
+export function fixPrompt(command: string, output: string, tests = ""): string {
   return [
     "The Project Manager ran a check on your work before delivering it, and it failed. Fix the problem in this workspace without waiting for confirmation.",
     `Command: ${command}`,
     `Output (tail):\n\n${output.trim() || "(no output)"}`,
+    tests,
     assistantSection(),
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 // CUSTOM(assistant-autonomy): what the agent receives when merging its branch hit a conflict.
-export function conflictPrompt(baseBranch: string): string {
+export function conflictPrompt(baseBranch: string, tests = ""): string {
   const base = baseBranch.trim() || "the base branch";
   return [
     `The Project Manager tried to merge your branch into ${base}, but ${base} moved and the merge conflicts. Resolve it in this workspace without waiting for confirmation.`,
@@ -124,8 +131,11 @@ export function conflictPrompt(baseBranch: string): string {
       "4. Commit the merge and end with a clean `git status`.",
       "5. Do not push.",
     ].join("\n"),
+    tests,
     assistantSection(),
-  ].join("\n\n");
+  ]
+    .filter(Boolean)
+    .join("\n\n");
 }
 
 /** The first message an orchestrated agent receives. */
@@ -133,6 +143,7 @@ export function orchestratorPrompt(
   task: Task,
   instructions: string,
   assistant = false, // CUSTOM(projects-assistant)
+  tests = "", // CUSTOM(packages)
 ): string {
   return [
     instructions.trim(),
@@ -140,6 +151,7 @@ export function orchestratorPrompt(
     task.description.trim(),
     "---",
     "You were started by the Workboard orchestrator for the task above. Do the whole task in this workspace without waiting for confirmation. When you are done, reply with a short summary of what you changed and what a reviewer should check.",
+    tests,
     assistant ? assistantSection() : "", // CUSTOM(projects-assistant)
   ]
     .filter(Boolean)
@@ -150,6 +162,7 @@ export function orchestratorPrompt(
 export function continuationPrompt(
   feedback: string,
   assistant = false, // CUSTOM(projects-assistant)
+  tests = "", // CUSTOM(packages)
 ): string {
   return [
     "The reviewer sent this task back to you from the Workboard. Continue it in this workspace without waiting for confirmation.",
@@ -157,6 +170,7 @@ export function continuationPrompt(
       ? `Reviewer feedback:\n\n${feedback.trim()}`
       : "The reviewer left no notes: finish what is still missing.",
     "When you are done, reply with a short summary of what you changed and what a reviewer should check.",
+    tests,
     assistant ? assistantSection() : "", // CUSTOM(projects-assistant)
   ]
     .filter(Boolean)

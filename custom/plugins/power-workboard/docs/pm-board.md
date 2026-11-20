@@ -64,6 +64,17 @@ Cards can link to tasks and their Reports tickets by id (`links.taskIds`, `links
 task chip shows `#N` when the ticket has a number (the id's first 8 characters otherwise) and opens
 the ticket in the board's side panel; a report chip opens the ticket in Reports.
 
+## Packages on this board
+
+A package's gate failure opens one `investigation` card linked to the package
+(`links.packageIds`) and, when the bisect finds one, to the suspect ticket (`links.taskIds`). A
+later failure updates the same open investigation instead of creating another. A tier the PM
+changes with `board_set_test_tier` records a `decision` card (`#N moved to gate`) with the reason,
+and the risk rule's automatic escalation does the same. `board_overview` lists the open packages
+with their merged counts, last gate and suspect; `board_package_history` reads one package's runs.
+The board's cards are not a place to start code work: a package's correction still goes through the
+task board.
+
 ## What stays on the task board
 
 Code tasks, their orchestrators and their deliveries are unchanged. Code reviews, including the

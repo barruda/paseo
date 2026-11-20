@@ -9,6 +9,7 @@ import {
 } from "./shared/migrations";
 import {
   mutateRpc,
+  packageRunsRpc,
   readImageRpc,
   saveImageRpc,
   snapshotRpc,
@@ -225,6 +226,11 @@ export default function contribute(server: PluginServerContext) {
   server.handle(mutateRpc, (input) => {
     if (!board) throw new Error(error);
     return board.mutate(input);
+  });
+  // CUSTOM(packages): the gate history of one package.
+  server.handle(packageRunsRpc, (input) => {
+    if (!board) throw new Error(error);
+    return { runs: board.packageRuns(input.packageId) };
   });
   server.handle(writeTicketRpc, async (input) => {
     if (!board) throw new Error(error);

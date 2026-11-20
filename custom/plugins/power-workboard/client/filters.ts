@@ -23,6 +23,8 @@ export const REQUEST_FILTERS = [
 ] as const;
 const filterSchema = z.object({
   projectId: z.string().min(1).catch("all"),
+  // CUSTOM(packages): "all", "none" (no package), or a package id.
+  packageId: z.string().min(1).catch("all"),
   search: z.string().catch(""),
   attentionOnly: z.boolean().catch(false),
   activity: z.enum(ACTIVITY_FILTERS).catch("all"),
@@ -40,6 +42,7 @@ export function parseFilters(raw: string | null): BoardFilters {
 export function activeFilterCount(filters: BoardFilters): number {
   return [
     filters.projectId !== "all",
+    filters.packageId !== "all",
     !!filters.search.trim(),
     filters.attentionOnly,
     filters.activity !== "all",

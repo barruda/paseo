@@ -9307,3 +9307,82 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   task link opening the side panel) and `tests/assistant-chat.test.ts` (the tools share the chat's
   MCP, decide a card and refuse one without a decision or answer); `tests/workboard-pages.test.ts`
   (the new tab).
+
+## packages: group tickets after creation and run the full suite once per package
+
+- **Added:** 2026-11-20 (based on upstream 0.11.2, on `custom`)
+- **Commit:** `custom: group tickets into packages with one gate per package`
+- **Why:** Every ticket paid for the full suite in its own agent turn, and the fixed "run everything"
+  line in the orchestrator's instructions could not tell a migration from a one-file change. The
+  analysis in `docs/improvements/workboard-test-tiers.html` found three layers run per ticket, two
+  of them redundant, and suites that skipped silently when a database URL was missing. A package
+  groups tickets that already exist, runs the full suite once for the package by script, and gives
+  each ticket only the suites of its area.
+- **What:**
+  - **A Package is a label with a gate, not a board column.** `Group` stays the column; the code
+    uses `Package`/`pkg` because `package` is reserved in an ES module. It is created after the
+    tickets exist, per project, with a name; everything else has a default. A ticket belongs to at
+    most one package.
+  - **Selection.** Ctrl/Cmd+click and Shift+click (interval in the column) on the web, a drag on
+    empty column space for an area, and long-press on a card for touch. The selection bar has
+    **Add to package** and **Clear**. The menu searches the project's open packages and creates one
+    from the typed name; Enter chooses the first item. The toast banner offers **Undo** (restores
+    the previous package ids and deletes a package this action created) and **Adjust**.
+  - **Cards and views.** A package chip and a test-level chip on the card; a **Columns | Packages**
+    toggle; one rail per open package plus a last **No package** rail with progress, the last gate
+    and the suspect; a package filter; a package detail with the merge order, the config, the runs
+    and **Run gate now**.
+  - **Test levels.** `full` is the ticket without a package (today's prompt, unchanged);
+    `restricted` is the default in a package (the suites of its area, plus the project's verify
+    command runs in the delivery, never twice); `gate` runs the package gate for that ticket. The
+    engine appends a `## Tests — …` section after the orchestrator's `instructions` and states that
+    it replaces any earlier test line, so no orchestrator has to change. The risk rule raises a
+    ticket to `gate` when its diff touches a project risk glob (migrations, auth, security and
+    protocol by default), records a decision card on the PM board and runs the gate in the ticket's
+    worktree before the merge.
+  - **The gate.** `tests.gateCommand` (else `verifyCommand`) runs by script in a dedicated git
+    worktree under `<PASEO_HOME>/plugin-data/power-workboard/gates/<packageId>`, never by an agent.
+    Triggers: nightly (the existing night window, once per window), on close, manually and every N
+    merges. `tests.gateRequiredEnv` missing fails the run (`missing-deps`) instead of letting
+    suites skip; `tests.gateEnv` sets the strict flags. A failed run bisects the package's merge
+    commits (`finish.mergeCommit`, recorded at merge) and opens exactly one investigation card on
+    the PM board with the suspect ticket. The history is capped at 50 runs per package; the board
+    snapshot carries only the last run summary.
+  - **PM tools.** `board_package_create/update/assign/remove/close`, `board_run_package_gate`,
+    `board_package_history` and `board_set_test_tier`, plus a `Packages` section in
+    `board_overview` and package/tests fields in `board_list_tasks`. The PM creates or moves tickets
+    only when the user asks; on its own it suggests.
+  - **Not in this step:** a package's own integration branch, the PM's one-tap "select these
+    tickets" suggestion, drag a card onto a rail, the web marquee and Needs you grouped by package.
+    The model already has `branch` (null by default).
+- **Core files touched:** none.
+- **Re-apply:** Plugin-only, marked `CUSTOM(packages)`:
+  - `shared/model.ts` (test tiers, package/gate/run/view schemas, `task.packageId`/`testTier`,
+    `finish.mergeCommit`, `data.packages`/`data.packageRuns`, `board.packages`), `shared/packages.ts`
+    (tiers, gate resolution, risk globs, progress, views, merge order, bisect, prompt section),
+    `shared/assistant.ts` (`projectTestsSchema`, default risk paths, `projectPolicy.tests`),
+    `shared/pm-board.ts` (`links.packageIds`, `pmOverview.packages`), `shared/rpc.ts` (package
+    mutations, `workboard.package.runs`).
+  - `server/package-gate.ts` (worktree, env guard, runner, bisect), `server/workboard.ts`
+    (mutations, snapshot views, tick triggers, escalation in `verifying`, `mergeCommit`, test
+    section in every prompt), `server/orchestrator.ts` (`tests` argument on the prompt builders),
+    `server/assistant/delivery.ts` (`VerifyOptions`), `server/assistant/views.ts`,
+    `server/assistant/chat.ts` (tools, overview, package line), `index.server.ts`.
+  - `client/selection.ts`, `client/PackageMenu.tsx`, `client/PackagesView.tsx`,
+    `client/PackageDetail.tsx`, `client/PackageAdjust.tsx`, `client/WorkboardScreen.tsx`,
+    `client/TaskPanel` menu via `client/card-menu.ts`, `client/FilterPanel.tsx`,
+    `client/filters.ts`, `client/board-utils.ts`, `client/strings.ts`.
+  - Docs: the plugin README and `docs/pm-board.md`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
+  Needs only `paseo plugin reload power-workboard` (or the PM's `board_reload_plugin`); no daemon
+  restart. In the app: create three tickets, Ctrl+click them, **Add to package**, type a name and
+  Enter; the three cards get the chip, **Undo** removes it, the **Packages** view shows the rail
+  with "0 of 3 merged", and **Run gate now** in the detail starts a run (configure
+  `tests.gateCommand` first). A project with `tests.gateRiskPaths` matching a ticket's diff raises
+  it to gate and the PM board gets a decision card; a failing gate opens one investigation card with
+  the suspect.
+- **Tests:** `tests/packages.test.ts` (tiers, prompt section, gate resolution, required env, risk
+  globs, progress/views, bisect, colors, merge target), `tests/package-gate.test.ts` (missing env,
+  no command, pass, bisect to the suspect, merge order, bisect error),
+  `tests/workboard-packages.test.ts` (create/assign/remove/delete, project guard, tier override,
+  close, one investigation card), `tests/selection.test.ts` (toggle, range, plain press, long-press).

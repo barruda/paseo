@@ -439,6 +439,120 @@ export const nightRuntimeSchema = z.object({
   log: z.array(z.object({ at: z.string(), text: z.string() })).default([]),
 });
 export type NightRuntime = z.infer<typeof nightRuntimeSchema>;
+
+// CUSTOM(packages): a package groups tickets that already exist so the full suite runs once for
+// the package, by script, instead of once per ticket. It is not a board column: `Group` stays the
+// column, and `package` is a reserved word in ES modules, so the code uses `Package`/`pkg`.
+export const TEST_TIERS = ["restricted", "gate", "full"] as const;
+export const testTierSchema = z.enum(TEST_TIERS);
+export type TestTier = z.infer<typeof testTierSchema>;
+export const testTierOverrideSchema = z.object({
+  tier: testTierSchema,
+  reason: z.string().max(2000).default(""),
+  by: z.enum(["rule", "pm", "user"]).default("pm"),
+  at: z.string(),
+});
+export type TestTierOverride = z.infer<typeof testTierOverrideSchema>;
+export const PACKAGE_STATUSES = ["open", "closed"] as const;
+export const packageStatusSchema = z.enum(PACKAGE_STATUSES);
+export type PackageStatus = z.infer<typeof packageStatusSchema>;
+export const PACKAGE_TRIGGERS = ["night", "close", "manual", "merges"] as const;
+export const packageTriggerSchema = z.enum(PACKAGE_TRIGGERS);
+export type PackageTrigger = z.infer<typeof packageTriggerSchema>;
+/** The package gate inherits the project's tests policy; a field here overrides it. */
+export const packageGateSchema = z.object({
+  command: z.string().max(2000).default(""),
+  requiredEnv: z.array(z.string().trim().min(1)).default([]),
+  env: z.record(z.string(), z.string()).default({}),
+  setupCommand: z.string().max(2000).default(""),
+  runIn: z.enum(["worktree", "checkout"]).default("worktree"),
+});
+export type PackageGate = z.infer<typeof packageGateSchema>;
+export const packageSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().trim().min(1).max(80),
+  projectId: z.string().min(1),
+  color: z.enum(GROUP_COLORS).optional(),
+  status: packageStatusSchema.default("open"),
+  createdAt: z.string(),
+  createdBy: z.enum(["user", "assistant"]).default("user"),
+  /** 2b: an integration branch; null keeps the tickets merging into the project's base. */
+  branch: z.string().trim().max(200).nullable().default(null),
+  gate: packageGateSchema.nullable().default(null),
+  trigger: z
+    .object({
+      night: z.boolean().default(true),
+      onClose: z.boolean().default(true),
+      everyMerges: z.number().int().min(1).max(100).nullable().default(null),
+    })
+    .default(() => ({ night: true, onClose: true, everyMerges: null })),
+  tierPolicy: z
+    .object({ escalateOnRisk: z.boolean().default(true) })
+    .default(() => ({ escalateOnRisk: true })),
+  closedAt: z.string().nullable().default(null),
+  /** The night window whose gate already ran, so one night runs it once. */
+  lastNightWindowStart: z.string().nullable().default(null),
+  /** Merges since the last gate run; the `everyMerges` trigger reads it. */
+  mergedSinceGate: z.number().int().min(0).default(0),
+});
+export type Package = z.infer<typeof packageSchema>;
+export const PACKAGE_RUN_STATUSES = [
+  "running",
+  "passed",
+  "failed",
+  "missing-deps",
+  "error",
+] as const;
+export const packageRunStatusSchema = z.enum(PACKAGE_RUN_STATUSES);
+export type PackageRunStatus = z.infer<typeof packageRunStatusSchema>;
+export const PACKAGE_OUTPUT_LIMIT = 8000;
+export const PACKAGE_RUN_LIMIT = 50;
+export const packageRunSchema = z.object({
+  id: z.string(),
+  packageId: z.string(),
+  trigger: packageTriggerSchema,
+  status: packageRunStatusSchema,
+  startedAt: z.string(),
+  finishedAt: z.string().nullable().default(null),
+  durationMs: z.number().int().min(0).nullable().default(null),
+  /** The integration commit the gate ran at. */
+  commit: z.string().nullable().default(null),
+  /** Tail of the combined output. */
+  output: z.string().max(PACKAGE_OUTPUT_LIMIT).default(""),
+  suspectTaskId: z.string().nullable().default(null),
+  suspectCommit: z.string().nullable().default(null),
+});
+export type PackageRun = z.infer<typeof packageRunSchema>;
+/** What the board snapshot carries per package: counts and the last run, not the whole history. */
+export const packageViewSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  projectId: z.string(),
+  projectName: z.string(),
+  color: z.enum(GROUP_COLORS),
+  status: packageStatusSchema,
+  branch: z.string().nullable(),
+  trigger: packageSchema.shape.trigger,
+  tierPolicy: packageSchema.shape.tierPolicy,
+  /** CUSTOM(packages): the gate resolved from the package override and the project policy. */
+  gate: z.object({
+    command: z.string(),
+    requiredEnv: z.array(z.string()),
+    env: z.record(z.string(), z.string()),
+    setupCommand: z.string(),
+    runIn: z.enum(["worktree", "checkout"]),
+  }),
+  createdAt: z.string(),
+  closedAt: z.string().nullable(),
+  total: z.number().int().min(0),
+  merged: z.number().int().min(0),
+  canceled: z.number().int().min(0),
+  lastRun: packageRunSchema.nullable(),
+  /** Tickets the last failed run points at. */
+  suspectTaskIds: z.array(z.string()).default([]),
+});
+export type PackageView = z.infer<typeof packageViewSchema>;
+
 export const taskSchema = z.object({
   id: z.string(),
   /** CUSTOM(task-numbers): the short, sequential reference shown as `#42`; 0 on pre-v10 data. */
@@ -477,6 +591,9 @@ export const taskSchema = z.object({
   /** The orchestrator that should run this task; null lets any one for its project take it. */
   orchestratorId: z.string().nullable().default(null),
   timing: taskTimingSchema.nullable().default(null), // CUSTOM(night-tasks)
+  // CUSTOM(packages): the package this ticket belongs to (at most one), and its test level.
+  packageId: z.string().nullable().default(null),
+  testTier: testTierOverrideSchema.nullable().default(null),
   binding: z
     .object({
       operationId: z.string(),
@@ -664,6 +781,8 @@ export const finishSchema = z.object({
   running: z.enum(["commit", "pr", "merge"]).nullable().default(null),
   committedAt: z.string().nullable().default(null),
   mergedAt: z.string().nullable().default(null),
+  /** CUSTOM(packages): the merge commit in the base branch, the package bisect's pivot. */
+  mergeCommit: z.string().nullable().default(null),
   prTitle: z.string().nullable().default(null),
   prBody: z.string().nullable().default(null),
   error: z.string().nullable().default(null),
@@ -717,6 +836,9 @@ export const dataSchema = z
     nightRuntime: nightRuntimeSchema.default(() =>
       nightRuntimeSchema.parse({}),
     ),
+    // CUSTOM(packages)
+    packages: z.array(packageSchema).default([]),
+    packageRuns: z.array(packageRunSchema).default([]),
   })
   .superRefine((data, context) => {
     const ids = new Set<string>();
@@ -826,6 +948,8 @@ export const boardSchema = z.object({
       waiting: z.number(),
     })
     .default({ open: false, nextStartAt: null, waiting: 0 }),
+  // CUSTOM(packages): the open and closed packages with their counts and last gate run.
+  packages: z.array(packageViewSchema).default([]),
   projects: z.array(
     z.object({
       id: z.string(),
@@ -870,6 +994,8 @@ export function newTask(
     archived: null,
     orchestratorId: null,
     timing: null,
+    packageId: null,
+    testTier: null,
     binding: null,
   };
 }
