@@ -1,6 +1,13 @@
 import { Platform, type ViewStyle } from "react-native";
 import { columnWidth } from "./board-utils";
 import { DEFAULT_FILTERS, parseFilters, type BoardFilters } from "./filters";
+import {
+  beginPackageDrag,
+  endPackageDrag,
+  markPackageDragMoved,
+  movePackageDrag,
+  type PackageDragState,
+} from "./package-drag";
 
 type KeyEvent = {
   key: string;
@@ -203,18 +210,45 @@ export function marqueeGesture(
 // RNW does not forward HTML5 drag props, so the card records itself on pointerdown and the rail
 // that receives the pointerup assigns it. A plain click clears the card on the document's
 // pointerup before it can leak into a later drag.
-let packageDragCard: string | null = null;
+let packageDrag: PackageDragState | null = null;
+let packageDragCleanup: (() => void) | null = null;
 
 export function packageCardPointer(id: string): Record<string, unknown> {
   if (Platform.OS !== "web") return {};
   return {
-    onPointerDown: () => {
-      packageDragCard = id;
-      const clear = () => {
-        packageDragCard = null;
-        document.removeEventListener("pointerup", clear);
+    onPointerDown: (event: {
+      button?: number;
+      clientX?: number;
+      clientY?: number;
+      nativeEvent?: { clientX?: number; clientY?: number };
+    }) => {
+      if (event.button !== undefined && event.button !== 0) return;
+      packageDragCleanup?.();
+      packageDrag = beginPackageDrag(
+        id,
+        event.clientX ?? event.nativeEvent?.clientX ?? 0,
+        event.clientY ?? event.nativeEvent?.clientY ?? 0,
+      );
+      const move = (event: { clientX: number; clientY: number }) => {
+        packageDrag = movePackageDrag(
+          packageDrag,
+          event.clientX,
+          event.clientY,
+        );
       };
+      const clear = () => {
+        packageDrag = null;
+        packageDragCleanup?.();
+      };
+      packageDragCleanup = () => {
+        document.removeEventListener("pointermove", move);
+        document.removeEventListener("pointerup", clear);
+        document.removeEventListener("pointercancel", clear);
+        packageDragCleanup = null;
+      };
+      document.addEventListener("pointermove", move);
       document.addEventListener("pointerup", clear);
+      document.addEventListener("pointercancel", clear);
     },
   };
 }
@@ -226,14 +260,20 @@ export function packageRailPointer(
   if (Platform.OS !== "web") return {};
   return {
     onPointerEnter: () => {
-      if (packageDragCard) onOver(true);
+      if (!packageDrag) return;
+      packageDrag = markPackageDragMoved(packageDrag);
+      onOver(true);
     },
     onPointerLeave: () => onOver(false),
     onPointerUp: () => {
-      const cardId = packageDragCard;
-      packageDragCard = null;
+      const cardId = endPackageDrag(packageDrag);
+      packageDrag = null;
       onOver(false);
       if (cardId) onDropCard(cardId);
+    },
+    onPointerCancel: () => {
+      packageDrag = null;
+      onOver(false);
     },
   };
 }

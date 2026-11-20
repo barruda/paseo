@@ -65,6 +65,15 @@ it("aborts a conflicted merge and throws the git error", async () => {
   ).toBe(true);
 });
 
+it("accepts a valid branch name and rejects one git refuses", async () => {
+  const ok = vi.fn(async () => "");
+  expect(await git(ok).validBranch("/p", "pkg/auth")).toBe(true);
+  const bad = vi.fn(async () => {
+    throw new Error("fatal: '-bad' is not a valid branch name");
+  });
+  expect(await git(bad).validBranch("/p", "-bad")).toBe(false);
+});
+
 it("returns null when a ref does not exist", async () => {
   const exec = vi.fn(async () => {
     throw new Error("no such ref");

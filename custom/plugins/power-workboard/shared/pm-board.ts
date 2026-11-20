@@ -187,7 +187,6 @@ export interface PmCardUpdateInput {
   question?: string | null;
   options?: PmCardOption[];
   recommend?: string | null;
-  action?: PmCardAction | null;
   why?: string | null;
   findings?: string;
   decision?: string | null;

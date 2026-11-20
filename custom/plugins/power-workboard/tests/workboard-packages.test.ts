@@ -418,7 +418,8 @@ async function gitPackageBoard() {
   vi.mocked(f.host.currentBranch).mockResolvedValue("main");
   const packageGit = {
     ensureBranch: vi.fn(async () => "created" as const),
-    refCommit: vi.fn(async () => "package-commit"),
+    refCommit: vi.fn(async (): Promise<string | null> => "package-commit"),
+    validBranch: vi.fn(async () => true),
     addWorktree: vi.fn(async () => {}),
     removeWorktree: vi.fn(async () => {}),
     mergeIntoBranch: vi.fn(async () => {}),
@@ -512,6 +513,7 @@ it("refuses a branch on a project that is not git, and changing a branch that ha
         prBody: null,
         error: null,
       };
+      data.packages[0]!.branchMergeCount = 1;
     });
     await expect(
       f.board.mutate({
@@ -574,6 +576,144 @@ it("keeps the package open when integrating its branch fails", async () => {
     ).rejects.toThrow("package-branch-merge-failed");
     expect(f.board.snapshot().packages[0]!.status).toBe("open");
     expect(f.packageGit.removeWorktree).toHaveBeenCalled();
+  } finally {
+    f.board.dispose();
+  }
+});
+
+// CUSTOM(packages): review #123. A ticket merged into the base does not block the branch.
+it("sets a branch after a ticket already merged into the base", async () => {
+  const f = await gitPackageBoard();
+  try {
+    await f.store.update((data) => {
+      data.finishes[f.taskId] = {
+        running: null,
+        committedAt: null,
+        mergedAt: "2026-01-02T00:00:00Z",
+        mergeCommit: "base-commit",
+        mergeTarget: null,
+        prTitle: null,
+        prBody: null,
+        error: null,
+      };
+    });
+    const board = await f.board.mutate({
+      action: "package-update",
+      packageId: f.packageId,
+      branch: "pkg/auth",
+    });
+    expect(board.packages[0]!.branch).toBe("pkg/auth");
+  } finally {
+    f.board.dispose();
+  }
+});
+
+// CUSTOM(packages): review #123. The package, not its current tickets, locks the branch.
+it("locks the branch while an open package holds a merged ticket", async () => {
+  const f = await gitPackageBoard();
+  try {
+    await f.board.mutate({
+      action: "package-update",
+      packageId: f.packageId,
+      branch: "pkg/auth",
+    });
+    await f.store.update((data) => {
+      data.finishes[f.taskId] = {
+        running: null,
+        committedAt: null,
+        mergedAt: "2026-01-02T00:00:00Z",
+        mergeCommit: "branch-commit",
+        mergeTarget: "pkg/auth",
+        prTitle: null,
+        prBody: null,
+        error: null,
+      };
+      data.packages[0]!.branchMergeCount = 1;
+    });
+    await expect(
+      f.board.mutate({ action: "package-remove", taskIds: [f.taskId] }),
+    ).rejects.toThrow("package-branch-ticket-merged");
+    const other = await f.board.mutate({
+      action: "package-create",
+      name: "Other",
+      projectId: "p",
+      taskIds: [],
+    });
+    const otherId = other.packages.find((pkg) => pkg.name === "Other")!.id;
+    await expect(
+      f.board.mutate({
+        action: "package-assign",
+        packageId: otherId,
+        taskIds: [f.taskId],
+      }),
+    ).rejects.toThrow("package-branch-ticket-merged");
+    // Even a path that drops the ticket from the package cannot unlock the branch.
+    await f.store.update((data) => {
+      const task = data.tasks.find((item) => item.id === f.taskId)!;
+      task.packageId = null;
+    });
+    await expect(
+      f.board.mutate({
+        action: "package-update",
+        packageId: f.packageId,
+        branch: null,
+      }),
+    ).rejects.toThrow("package-branch-has-merges");
+    // Once the package closes, the branch is integrated and the ticket may leave.
+    await f.board.mutate({
+      action: "package-close",
+      packageId: f.packageId,
+      runGate: false,
+    });
+    const closed = await f.board.mutate({
+      action: "package-remove",
+      taskIds: [f.taskId],
+    });
+    expect(
+      closed.cards.find((card) => card.id === f.taskId)!.packageId,
+    ).toBeNull();
+  } finally {
+    f.board.dispose();
+  }
+});
+
+// CUSTOM(packages): review #123. A branch that had merges and vanished is not recreated.
+it("fails to close when the package branch vanished after merges", async () => {
+  const f = await gitPackageBoard();
+  try {
+    await f.board.mutate({
+      action: "package-update",
+      packageId: f.packageId,
+      branch: "pkg/auth",
+    });
+    await f.store.update((data) => {
+      data.packages[0]!.branchMergeCount = 1;
+    });
+    f.packageGit.refCommit.mockResolvedValue(null);
+    await expect(
+      f.board.mutate({
+        action: "package-close",
+        packageId: f.packageId,
+        runGate: false,
+      }),
+    ).rejects.toThrow("package-branch-missing");
+    expect(f.board.snapshot().packages[0]!.status).toBe("open");
+  } finally {
+    f.board.dispose();
+  }
+});
+
+it("rejects an invalid branch name", async () => {
+  const f = await gitPackageBoard();
+  try {
+    f.packageGit.validBranch.mockResolvedValue(false);
+    await expect(
+      f.board.mutate({
+        action: "package-update",
+        packageId: f.packageId,
+        branch: "bad name",
+      }),
+    ).rejects.toThrow("package-branch-invalid");
   } finally {
     f.board.dispose();
   }

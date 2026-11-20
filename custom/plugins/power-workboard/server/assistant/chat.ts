@@ -10,6 +10,7 @@ import {
   orderedGroups,
   packageGateSchema,
   testTierSchema,
+  type Board,
   type Card,
   type Group,
 } from "../../shared/model";
@@ -433,8 +434,13 @@ export function chatTools(
       .settings.groups.find((g) => g.id === c.stage);
     return group ? groupName(group) : c.stage;
   };
-  /** One card line. It takes the snapshot so a list of N cards reads the board once, not N times. */
-  const line = (c: Card, snapshot = board().snapshot()) => {
+  /** One card line. It takes the snapshot and deliveries so a list of N cards reads the board
+   * once, not N times. */
+  const line = (
+    c: Card,
+    snapshot: Board,
+    deliveries: Data["assistant"]["deliveries"],
+  ) => {
     const pkg = c.packageId
       ? snapshot.packages.find((item) => item.id === c.packageId)
       : null;
@@ -443,7 +449,7 @@ export function chatTools(
       ? (snapshot.orchestrators.find((o) => o.id === c.orchestratorId)?.name ??
         c.orchestratorId)
       : "-";
-    return `${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${group ? groupName(group) : c.stage} (${c.stage}) | orchestrator: ${orchestrator} | delivery: ${delivery(c.id)?.stage ?? "-"} | package: ${pkg ? `${pkg.name} (${pkg.id})` : "-"} | tests: ${effectiveTestTier(c)} | updated: ${c.updatedAt}`;
+    return `${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${group ? groupName(group) : c.stage} (${c.stage}) | orchestrator: ${orchestrator} | delivery: ${deliveries[c.id]?.stage ?? "-"} | package: ${pkg ? `${pkg.name} (${pkg.id})` : "-"} | tests: ${effectiveTestTier(c)} | updated: ${c.updatedAt}`;
   };
   const managedAgent = (agentId: string) =>
     isManagedAgent(board().assistantSource().data, agentId);
@@ -567,7 +573,8 @@ export function chatTools(
           ? resolveProject(input.projectId)
           : null;
         const query = input.query?.toLowerCase();
-        const snapshot = board().snapshot();
+        const source = board().assistantSource();
+        const snapshot = source.board;
         const cards = snapshot.cards
           .filter(
             (c) =>
@@ -580,7 +587,11 @@ export function chatTools(
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           .slice(0, input.limit);
         return text(
-          cards.map((card) => line(card, snapshot)).join("\n") || "No tasks.",
+          cards
+            .map((card) =>
+              line(card, snapshot, source.data.assistant.deliveries),
+            )
+            .join("\n") || "No tasks.",
         );
       },
     }),
@@ -598,7 +609,7 @@ export function chatTools(
         const finish = data.finishes[id];
         const attempts = data.assistant.attempts[id] ?? [];
         const parts = [
-          line(c),
+          line(c, board().snapshot(), data.assistant.deliveries),
           `Description:\n${c.description || "(empty)"}`,
           `Run: ${run ? `${run.status}, agent ${run.agentId ?? "-"}${run.error ? `, error: ${run.error}` : ""}` : "none"}`,
           `Last summary: ${run?.summary ?? "-"}`,

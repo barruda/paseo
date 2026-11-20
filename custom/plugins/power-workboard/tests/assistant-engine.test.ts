@@ -1317,7 +1317,8 @@ it("starts the task worktree from the policy's base branch, so the merge into it
 it("merges a package ticket into the package's branch and records the target", async () => {
   const packageGit = {
     ensureBranch: vi.fn(async () => "created" as const),
-    refCommit: vi.fn(async () => "package-commit"),
+    refCommit: vi.fn(async (): Promise<string | null> => "package-commit"),
+    validBranch: vi.fn(async () => true),
     addWorktree: vi.fn(async () => {}),
     removeWorktree: vi.fn(async () => {}),
     mergeIntoBranch: vi.fn(async () => {}),
@@ -1363,6 +1364,7 @@ it("merges a package ticket into the package's branch and records the target", a
       mergeTarget: "pkg/auth",
       mergeCommit: "package-commit",
     });
+    expect(s.store.current.packages[0]!.branchMergeCount).toBe(1);
   } finally {
     s.board.dispose();
   }

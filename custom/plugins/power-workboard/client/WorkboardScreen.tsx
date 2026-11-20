@@ -130,6 +130,7 @@ import {
   type SelectionState,
 } from "./selection"; // CUSTOM(packages)
 import { effectiveTestTier } from "../shared/packages"; // CUSTOM(packages)
+import { canAssignPackage } from "./package-drag"; // CUSTOM(packages)
 import {
   newOrchestrator,
   ASSISTANT_TAB,
@@ -609,6 +610,9 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     packageId: string | null,
     cardId: string,
   ) => {
+    const card = board.cards.find((item) => item.id === cardId);
+    // A click on a card in its own rail is not a move, and would reset its test level.
+    if (!canAssignPackage(card?.packageId ?? null, packageId)) return;
     if (!packageId) {
       await removeFromPackage([cardId]);
       return;

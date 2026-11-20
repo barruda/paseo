@@ -13,6 +13,8 @@ export interface PackageGitOps {
   ): Promise<"created" | "exists">;
   /** The commit a ref points at, or null when the ref does not exist. */
   refCommit(projectDirectory: string, ref: string): Promise<string | null>;
+  /** Whether git accepts the name as a branch (`check-ref-format --branch`). */
+  validBranch(projectDirectory: string, branch: string): Promise<boolean>;
   /** Adds (or replaces) a worktree checked out on the branch. */
   addWorktree(
     projectDirectory: string,
@@ -68,6 +70,20 @@ export function packageGitOps(exec: GitExec = runGit): PackageGitOps {
         ).trim();
       } catch {
         return null;
+      }
+    },
+    async validBranch(projectDirectory, branch) {
+      try {
+        await exec([
+          "-C",
+          projectDirectory,
+          "check-ref-format",
+          "--branch",
+          branch,
+        ]);
+        return true;
+      } catch {
+        return false;
       }
     },
     async addWorktree(projectDirectory, worktree, branch) {

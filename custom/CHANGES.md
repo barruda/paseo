@@ -9380,6 +9380,10 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   integration branch, the marquee, drag to a rail, the PM's select-tasks suggestion, Needs you and
   the Decisões filter by package, the gate fields in Settings, the close proposal and the review
   #120's three non-blocking items).
+- **Follow-up 3:** `custom: fix package branch locks and rail drag` (review #123: a branch after a
+  base merge, the package-level branch lock and ticket removal, the click-versus-drag threshold and
+  the same-package guard, the remaining `board_list_tasks` snapshot, the merge commit read inside
+  the lock, a vanished branch, branch-name validation and the dead `PmCardUpdateInput.action`).
 - **Why:** Every ticket paid for the full suite in its own agent turn, and the fixed "run everything"
   line in the orchestrator's instructions could not tell a migration from a one-file change. The
   analysis in `docs/improvements/workboard-test-tiers.html` found three layers run per ticket, two
@@ -9426,7 +9430,11 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     package's tickets go to it (`finish.mergeTarget` records where each merge landed). Closing the
     package merges the branch into the base through the daemon's merge, in a temporary worktree,
     under the project's merge lock; a failed integration keeps the package open. A branch that
-    already has merges cannot be replaced or cleared, so its work is never stranded.
+    already has merges cannot be replaced or cleared, so its work is never stranded: the count
+    lives on the package (`branchMergeCount`), so moving a ticket out does not unlock it, and a
+    ticket merged into an open package's branch cannot leave the package until it closes. If the
+    branch vanishes after merges, the merge/close fails with a clear message instead of recreating
+    it from the base, and the branch name is validated with `git check-ref-format --branch`.
   - **Selection and drag (2b).** A marquee drag on an empty part of a column selects the cards it
     touches on the web; Ctrl/Cmd adds to the selection. In the Packages view, a card drags onto a
     rail with the pointer (web/desktop) and its menu does the same on a phone; **No package**
@@ -9491,9 +9499,12 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
 - **Tests:** `tests/packages.test.ts` (tiers, prompt section, gate resolution, required env, risk
   globs, progress/views, bisect, colors, merge target, the gate run per merge),
   `tests/package-gate.test.ts` (missing env, no command, pass, bisect to the suspect, merge order,
-  bisect error), `tests/package-git.test.ts` (branch creation, worktree merge, abort, missing ref),
+  bisect error), `tests/package-git.test.ts` (branch creation/validation, worktree merge, abort,
+  missing ref), `tests/package-drag.test.ts` (a click is not a drag, the threshold, another rail, the
+  same-package guard),
   `tests/workboard-packages.test.ts` (create/assign/remove/delete, project guard, tier override,
-  close, one investigation card, branch creation/refusal/close integration),
+  close, one investigation card, branch creation/refusal/close integration, a branch after a
+  base merge, the package-level branch lock and ticket removal, a vanished branch),
   `tests/selection.test.ts` (toggle, range, plain press, long-press, marquee geometry),
   `tests/assistant-engine.test.ts` (a package ticket merges into the package branch),
   `tests/assistant-chat.test.ts` (select-tasks suggestion, close proposal),

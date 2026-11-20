@@ -3875,52 +3875,68 @@ export class Workboard {
             (item) => item.id === this.projectIdOf(task),
           );
           if (branch && project?.isGit) {
-            const base =
-              policy.baseBranch.trim() ||
-              (await this.host.currentBranch(projectDirectory)) ||
-              "HEAD";
-            await this.packageGit
-              .ensureBranch(projectDirectory, branch, base)
-              .catch(() => undefined);
-          }
-          try {
-            if (branch && pkg) {
-              // The ticket worktree's stored base is the project's, so the daemon's merge RPC
-              // refuses a different target. Merge the ticket's branch into the package branch
-              // in a temporary worktree instead, and never touch the user's checkout.
-              const source = await this.host.currentBranch(directory);
-              if (!source) throw new Error("package-branch-source-missing");
-              const worktree = join(defaultGateDirectory(), `${pkg.id}-ticket`);
-              await this.mergeLock.run(pkg.projectId, () =>
-                this.packageGit.mergeIntoBranch(
-                  projectDirectory,
-                  worktree,
-                  branch,
-                  source,
-                ),
-              );
-              mergeHead = await this.packageGit
-                .refCommit(projectDirectory, branch)
-                .catch(() => null);
-            } else {
-              await this.mergeLock.run(
-                this.projectIdOf(task) ?? directory,
-                async () => {
-                  await this.host.mergeToBase(directory, {
-                    baseRef,
-                    requireCleanTarget: true,
-                    strategy: "merge",
-                  });
-                  // CUSTOM(packages): read the merge commit inside the lock, before another
-                  // merge can move the base.
-                  mergeHead = await this.host
-                    .gitHead(projectDirectory)
-                    .catch(() => null);
-                },
-              );
+            // A branch that had merges and vanished outside the app is not recreated from the
+            // base: those commits would be stranded silently.
+            const existing = await this.packageGit.refCommit(
+              projectDirectory,
+              branch,
+            );
+            if (!existing && pkg && pkg.branchMergeCount > 0)
+              failure = `package-branch-missing: the package branch ${branch} no longer exists and ${pkg.branchMergeCount} merge(s) went to it.`;
+            else {
+              const base =
+                policy.baseBranch.trim() ||
+                (await this.host.currentBranch(projectDirectory)) ||
+                "HEAD";
+              await this.packageGit
+                .ensureBranch(projectDirectory, branch, base)
+                .catch(() => undefined);
             }
-          } catch (error) {
-            failure = message(error);
+          }
+          if (failure === null) {
+            try {
+              if (branch && pkg) {
+                // The ticket worktree's stored base is the project's, so the daemon's merge RPC
+                // refuses a different target. Merge the ticket's branch into the package branch
+                // in a temporary worktree instead, and never touch the user's checkout.
+                const source = await this.host.currentBranch(directory);
+                if (!source) throw new Error("package-branch-source-missing");
+                const worktree = join(
+                  defaultGateDirectory(),
+                  `${pkg.id}-ticket`,
+                );
+                await this.mergeLock.run(pkg.projectId, async () => {
+                  await this.packageGit.mergeIntoBranch(
+                    projectDirectory,
+                    worktree,
+                    branch,
+                    source,
+                  );
+                  // Read the merge commit inside the lock, as the base path does.
+                  mergeHead = await this.packageGit
+                    .refCommit(projectDirectory, branch)
+                    .catch(() => null);
+                });
+              } else {
+                await this.mergeLock.run(
+                  this.projectIdOf(task) ?? directory,
+                  async () => {
+                    await this.host.mergeToBase(directory, {
+                      baseRef,
+                      requireCleanTarget: true,
+                      strategy: "merge",
+                    });
+                    // CUSTOM(packages): read the merge commit inside the lock, before another
+                    // merge can move the base.
+                    mergeHead = await this.host
+                      .gitHead(projectDirectory)
+                      .catch(() => null);
+                  },
+                );
+              }
+            } catch (error) {
+              failure = message(error);
+            }
           }
           if (failure !== null && !isUpToDate(failure)) {
             const kind = classifyMergeError(failure);
@@ -3970,7 +3986,10 @@ export class Workboard {
             await this.serial(() =>
               this.store.update((data) => {
                 const pkg = data.packages.find((item) => item.id === packageId);
-                if (pkg) pkg.mergedSinceGate += 1;
+                if (pkg) {
+                  pkg.mergedSinceGate += 1;
+                  if (branch) pkg.branchMergeCount += 1;
+                }
               }),
             );
           }
@@ -4602,6 +4621,21 @@ export class Workboard {
       now: new Date(),
     };
   }
+  /**
+   * CUSTOM(packages): the open package whose branch already holds this ticket's merge. While a
+   * package is open, that ticket cannot leave it: its commit is on the package branch and only
+   * the package's close integrates that branch into the base. A closed package already did.
+   */
+  private branchLockedPackage(taskId: string): Package | null {
+    const data = this.store.current;
+    const task = data.tasks.find((item) => item.id === taskId);
+    if (!task?.packageId) return null;
+    const pkg = data.packages.find((item) => item.id === task.packageId);
+    if (!pkg || pkg.status !== "open" || !pkg.branch) return null;
+    const target = data.finishes[taskId]?.mergeTarget;
+    return target && target === pkg.branch ? pkg : null;
+  }
+
   // CUSTOM(packages): package mutations. A package is a label with a gate, created after the
   // tickets exist; the delivery still merges into the project's base (2b adds the branch).
   private async packageCreate(
@@ -4620,6 +4654,9 @@ export class Workboard {
     for (const task of tasks)
       if (this.projectIdOf(task) !== projectId)
         throw new Error("package-project-mismatch");
+    for (const task of tasks)
+      if (this.branchLockedPackage(task.id))
+        throw new Error("package-branch-ticket-merged");
     const id = `pkg_${randomUUID().slice(0, 8)}`;
     const now = this.stamp();
     await this.store.update((data) => {
@@ -4657,6 +4694,9 @@ export class Workboard {
     for (const task of tasks)
       if (this.projectIdOf(task) !== pkg.projectId)
         throw new Error("package-project-mismatch");
+    for (const task of tasks)
+      if (task.packageId !== packageId && this.branchLockedPackage(task.id))
+        throw new Error("package-branch-ticket-merged");
     await this.store.update((data) => {
       for (const task of data.tasks)
         if (taskIds.includes(task.id)) {
@@ -4669,6 +4709,9 @@ export class Workboard {
   }
 
   private async packageRemove(taskIds: readonly string[]): Promise<void> {
+    for (const taskId of taskIds)
+      if (this.branchLockedPackage(taskId))
+        throw new Error("package-branch-ticket-merged");
     await this.store.update((data) => {
       for (const task of data.tasks)
         if (taskIds.includes(task.id)) {
@@ -4750,13 +4793,10 @@ export class Workboard {
       (item) => item.id === pkg.projectId,
     );
     if (!project?.isGit) throw new Error("package-branch-needs-git");
-    const mergedInto = Object.entries(this.store.current.finishes).some(
-      ([taskId, finish]) =>
-        finish.mergeTarget === pkg.branch &&
-        this.store.current.tasks.find((task) => task.id === taskId)
-          ?.packageId === pkg.id,
-    );
-    if (mergedInto) throw new Error("package-branch-has-merges");
+    // The count lives on the package, so moving a ticket out cannot unlock the branch.
+    if (pkg.branchMergeCount > 0) throw new Error("package-branch-has-merges");
+    if (next && !(await this.packageGit.validBranch(project.directory, next)))
+      throw new Error("package-branch-invalid");
     if (next) {
       const policy = this.policy(pkg.projectId);
       const base =
@@ -4786,6 +4826,11 @@ export class Workboard {
       (await this.host.currentBranch(project.directory)) ||
       "";
     if (!base || base === branch) return;
+    const existing = await this.packageGit.refCommit(project.directory, branch);
+    if (!existing) {
+      if (pkg.branchMergeCount > 0) throw new Error("package-branch-missing");
+      return;
+    }
     const worktree = join(defaultGateDirectory(), `${pkg.id}-merge`);
     try {
       // The whole worktree lifetime stays under the lock, so a ticket merge and this

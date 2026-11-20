@@ -143,7 +143,10 @@ this repo) with these differences:
   detail, with the gate result that covered each merge. A package may have an **integration
   branch**: the next merges of its tickets go there and it merges into the project's base when the
   package closes; tickets already merged stay in the base, and a branch with merges cannot be
-  replaced or cleared. The project's gate fields are in Settings > Bruno's Customizations >
+  replaced or cleared. While the package is open, a ticket merged into its branch cannot leave the
+  package (its commit is on that branch); it can leave after the close integrates the branch. If
+  the branch disappears outside the app after receiving merges, the board fails with a clear
+  message instead of recreating it from the base. The project's gate fields are in Settings > Bruno's Customizations >
   Project Manager as well as in `board_set_project_policy`.
   The PM suggests a grouping with a proposal card whose action is `select-tasks`: **Select these
   tickets** only marks the tickets and opens the package menu, and **Ignore** dismisses it; nothing

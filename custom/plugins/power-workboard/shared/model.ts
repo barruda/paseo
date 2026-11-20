@@ -486,6 +486,11 @@ export const packageSchema = z.object({
   createdBy: z.enum(["user", "assistant"]).default("user"),
   /** 2b: an integration branch; null keeps the tickets merging into the project's base. */
   branch: z.string().trim().max(200).nullable().default(null),
+  /**
+   * CUSTOM(packages): how many tickets merged into the current branch. It lives on the package,
+   * not on its tickets, so moving a ticket cannot unlock the branch and strand its commits.
+   */
+  branchMergeCount: z.number().int().min(0).default(0),
   gate: packageGateSchema.nullable().default(null),
   trigger: z
     .object({

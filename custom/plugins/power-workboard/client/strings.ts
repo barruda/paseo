@@ -547,6 +547,11 @@ const zh = {
       "该分支已有工单合入；请先关闭包再更换或清除分支。",
     "package-branch-merge-failed": "无法把包的分支合入基础分支：",
     "package-branch-source-missing": "无法确定该工单的分支。",
+    "package-branch-invalid": "分支名称无效。",
+    "package-branch-missing":
+      "包的分支不存在，但已有工单合入其中；请先恢复分支再关闭包。",
+    "package-branch-ticket-merged":
+      "该工单已合入包的集成分支；关闭包之前不能把它移出。",
     "no-conversation": "尚无对话",
     "conversation-unknown": "对话时间待核实",
     "labels-conflict": "标签冲突",
@@ -1386,6 +1391,11 @@ const en: typeof zh = {
     "package-branch-merge-failed":
       "Could not merge the package branch into the base:",
     "package-branch-source-missing": "Could not determine the ticket's branch.",
+    "package-branch-invalid": "That is not a valid branch name.",
+    "package-branch-missing":
+      "The package branch is missing, but tickets already merged into it. Restore it before closing the package.",
+    "package-branch-ticket-merged":
+      "This ticket already merged into the package branch; it cannot leave the package before the package closes.",
     "no-conversation": "No conversation yet",
     "conversation-unknown": "Conversation time needs verification",
     "labels-conflict": "Label conflict",
