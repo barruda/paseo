@@ -3,7 +3,8 @@
 # behind the committed source.
 #
 #   paseo-build.sh build       Build from the working tree as it is, record its source, install.
-#   paseo-build.sh if-needed   Same, only when `status` says the installed build is behind.
+#   paseo-build.sh if-needed   Same, only when `status` says the installed build is behind
+#                              (checked again once the lock is held).
 #   paseo-build.sh status      Exit 0 when the installed build is up to date, 10 when it is behind
 #                              (prints why), 1 on error.
 #   paseo-build.sh snapshot    Record the working tree as a commit and print it (for the update script).
@@ -14,6 +15,9 @@
 # refs/paseo-builds/. A build is behind when HEAD differs from that snapshot in a file that goes
 # into the app. Builds made without this script have no record; for those the commit in the
 # install folder's name (HEAD at install time) stands in, which can only cause an extra build.
+#
+# One build at a time: two builds clean the same dist folders and break each other, so a second
+# one waits on a lock in the git dir.
 set -euo pipefail
 
 ROOT="$(git -C "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" rev-parse --show-toplevel)"
@@ -93,6 +97,15 @@ status() {
   return 10
 }
 
+# Wait for any other build of this checkout to finish.
+lock() {
+  exec 9>"$(git rev-parse --git-path paseo-build.lock)"
+  if ! flock -n 9; then
+    echo "== Waiting for another build of this checkout to finish"
+    flock 9
+  fi
+}
+
 build() {
   [[ -d "$(git rev-parse --git-path rebase-merge)" || -d "$(git rev-parse --git-path rebase-apply)" ]] &&
     die "A rebase is in progress; finish it before building."
@@ -134,16 +147,22 @@ build() {
 }
 
 case "${1:-}" in
-  build) build ;;
+  build)
+    lock
+    build
+    ;;
   if-needed)
-    if status; then exit 0; fi
+    lock
+    rc=0
+    status || rc=$?
+    ((rc == 10)) || exit "$rc"
     build
     ;;
   status) status ;;
   snapshot) snapshot ;;
   stamp) stamp "${2:-}" "${3:-}" ;;
   *)
-    sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'
     exit 2
     ;;
 esac

@@ -102,7 +102,8 @@ from, uncommitted and untracked files included (kept by refs under `refs/paseo-b
 installed build is behind when `HEAD` differs from that snapshot in a file that goes into the app:
 changes under `custom/` (directory plugins load from source on daemon start), docs, Markdown and
 tests don't count. A build made with a bare `npm run build:desktop` has no snapshot; the commit in
-its install folder's name stands in, which only ever causes one extra build.
+its install folder's name stands in, which only ever causes one extra build. One build runs at a
+time: a second `paseo-build.sh` waits on a lock, since two builds clean the same `dist` folders.
 
 Installed builds have the auto-updater off, so they never replace themselves with upstream's
 release; updates only come from this script.

@@ -31,7 +31,7 @@ if [[ "${1:-}" != --in-service ]]; then
   for arg in "$@"; do
     case "$arg" in
       --no-build) build=no ;;
-      --force-build) build=yes ;;
+      --force-build) build=build ;;
       *) echo "Unknown option: $arg (use --no-build or --force-build)" >&2; exit 2 ;;
     esac
   done
@@ -40,7 +40,7 @@ if [[ "${1:-}" != --in-service ]]; then
     "$PASEO_BUILD" status || rc=$?
     case "$rc" in
       0) build=no ;;
-      10) build=yes ;;
+      10) build=if-needed ;;
       *) echo "Could not tell whether the build is current; rerun with --no-build or --force-build" >&2; exit 1 ;;
     esac
   fi
@@ -52,7 +52,7 @@ if [[ "${1:-}" != --in-service ]]; then
     echo "Could not start the kill-paseos-and-daemons service (is a run still going?)" >&2
     exit 1
   fi
-  if [[ "$build" == yes ]]; then
+  if [[ "$build" != no ]]; then
     echo "Building and installing Paseo (a few minutes), then restarting the daemons and windows," \
       "in a systemd user service. A failed build restarts nothing. Log: $LOG"
   else
@@ -63,9 +63,10 @@ fi
 
 log() { echo "[$(date +%T)] $*"; }
 
-if [[ "${2:-no}" == yes ]]; then
-  log "Building and installing Paseo"
-  if ! "$PASEO_BUILD" build; then
+# if-needed checks again once it holds the build lock: another build may have finished meanwhile.
+if [[ "${2:-no}" != no ]]; then
+  log "Building and installing Paseo ($2)"
+  if ! "$PASEO_BUILD" "$2"; then
     log "FAILED: the build or install failed; nothing was stopped"
     notify-send -u critical "Paseo build failed" "Daemons not restarted. Log: $LOG" 2>/dev/null || true
     exit 1
