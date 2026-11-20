@@ -13,13 +13,22 @@ const COMMIT_LIST_LIMIT = 20;
 export const DEFAULT_DIFF_BYTES = 60_000;
 export const MAX_DIFF_BYTES = 400_000;
 
-/** Where the base came from: the project's delivery policy or the worktree Paseo created. */
-export type BaseSource = "project policy" | "worktree metadata";
+/**
+ * Where the base came from: the project's delivery policy, the worktree Paseo created, or
+ * (CUSTOM(orchestrator-in-place)) the HEAD of the project folder when the task started.
+ */
+export type BaseSource = "project policy" | "worktree metadata" | "task start";
 
 export interface TaskCheckout {
   directory: string;
   /** The project's `baseBranch` delivery policy, when set; it wins over the worktree's own base. */
   policyBase: string | null;
+  /** CUSTOM(orchestrator-in-place): a task that runs in the project folder, not a worktree. */
+  inPlace?: boolean;
+  /** CUSTOM(orchestrator-in-place): the folder's HEAD when the task started; the diff's base. */
+  baseHead?: string | null;
+  /** CUSTOM(orchestrator-in-place): `git status --porcelain` lines the folder already had. */
+  initialDirty?: string[];
 }
 
 interface GitError {
@@ -116,6 +125,10 @@ export interface TaskGitState {
   commits: string[];
   uncommitted: number;
   files: FileStat[];
+  /** CUSTOM(orchestrator-in-place): the task runs in the project folder. */
+  inPlace: boolean;
+  /** CUSTOM(orchestrator-in-place): files already dirty when the task started. */
+  initialDirty: string[];
 }
 
 async function untrackedFiles(
@@ -176,12 +189,23 @@ export async function taskGitState(
     const head = (await git(root, ["rev-parse", "--short", "HEAD"])).trim();
     branch = `(detached at ${head})`;
   }
-  const base = await resolveBase(root, checkout.policyBase);
+  // CUSTOM(orchestrator-in-place): an in-place task diffs from the folder's HEAD at start.
+  const base = checkout.baseHead
+    ? { ref: checkout.baseHead, source: "task start" as const }
+    : await resolveBase(root, checkout.policyBase);
   let mergeBase: string | null = null;
   let baseError: string | null = null;
   if (base) {
     try {
-      mergeBase = (await git(root, ["merge-base", base.ref, "HEAD"])).trim();
+      mergeBase = checkout.baseHead
+        ? (
+            await git(root, [
+              "rev-parse",
+              "--verify",
+              `${checkout.baseHead}^{commit}`,
+            ])
+          ).trim()
+        : (await git(root, ["merge-base", base.ref, "HEAD"])).trim();
     } catch (error) {
       baseError = (error as Error).message;
     }
@@ -254,6 +278,8 @@ export async function taskGitState(
     commits,
     uncommitted,
     files: [...tracked, ...untracked],
+    inPlace: checkout.inPlace ?? false,
+    initialDirty: checkout.initialDirty ?? [],
   };
 }
 
@@ -270,6 +296,11 @@ export function describeGitState(state: TaskGitState): string {
     `Branch: ${state.branch}`,
     `Base: ${base}`,
   ];
+  // CUSTOM(orchestrator-in-place)
+  if (state.inPlace)
+    lines.push(
+      "Mode: project folder (no worktree); the task commits on the branch the folder is on",
+    );
   if (state.baseError)
     lines.push(
       `Base does not resolve (${state.baseError}); the diff below is against HEAD`,
@@ -289,6 +320,19 @@ export function describeGitState(state: TaskGitState): string {
   lines.push(
     `Uncommitted: ${state.uncommitted ? `${state.uncommitted} files` : "none"}`,
   );
+  // CUSTOM(orchestrator-in-place): say which files were already dirty, apart from the diff.
+  if (state.initialDirty.length) {
+    const shown = state.initialDirty.slice(0, 50);
+    lines.push(
+      `Already uncommitted when the task started (${state.initialDirty.length} files; may appear in the diff below):\n${shown
+        .map((line) => `- ${line}`)
+        .join("\n")}${
+        state.initialDirty.length > shown.length
+          ? `\n- ... ${state.initialDirty.length - shown.length} more`
+          : ""
+      }`,
+    );
+  }
   const added = state.files.reduce((sum, f) => sum + (f.added ?? 0), 0);
   const removed = state.files.reduce((sum, f) => sum + (f.removed ?? 0), 0);
   lines.push(

@@ -190,6 +190,8 @@ export interface Host {
   gitDirty(directory: string): Promise<boolean>;
   /** CUSTOM(assistant-autonomy): the paths `git status --porcelain` lists, one `XY path` line each. */
   gitStatusLines(directory: string): Promise<string[]>;
+  /** CUSTOM(orchestrator-in-place): the checkout's HEAD, the base an in-place task's diff uses. */
+  gitHead(directory: string): Promise<string>;
   /** Commit everything in the checkout with a generated message, as the app's Git menu does. */
   commit(directory: string): Promise<void>;
   /** Merge the checkout's branch into its base branch in the main checkout. */
@@ -871,6 +873,18 @@ export class PaseoHost implements Host {
       },
     );
     return stdout.split("\n").filter((line) => line.trim().length > 0);
+  }
+  // CUSTOM(orchestrator-in-place)
+  async gitHead(directory: string): Promise<string> {
+    const { stdout } = await execute(
+      "git",
+      ["-C", directory, "rev-parse", "HEAD"],
+      {
+        timeout: 15000,
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+      },
+    );
+    return stdout.trim();
   }
   async commit(directory: string): Promise<void> {
     await this.checkout("checkout_commit", { cwd: directory, addAll: true });

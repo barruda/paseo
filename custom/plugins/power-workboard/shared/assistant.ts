@@ -443,6 +443,7 @@ export const HISTORY_EVENT_KINDS = [
   "task-moved",
   "task-started",
   "task-continued",
+  "folder-dirty", // CUSTOM(orchestrator-in-place): the project folder had uncommitted changes
   "report",
   "checkpoint", // CUSTOM(task-checkpoints)
   "usage-limit", // CUSTOM(usage-limit): a task or the chat paused by the plan's usage limit

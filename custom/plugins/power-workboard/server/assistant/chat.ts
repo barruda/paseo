@@ -573,7 +573,7 @@ export function chatTools(
     }),
     define({
       name: "board_task_diff",
-      description: `Read only. The task's diff against its base branch: its commits, uncommitted edits and new untracked files, after a header with the worktree, branch, base and diffstat. Output is cut at maxBytes (default ${DEFAULT_DIFF_BYTES}); when it is cut, call again with path set to one file or folder from the diffstat.`,
+      description: `Read only. The task's diff against its base branch (or, for a task that runs directly in the project folder, the HEAD it started at): its commits, uncommitted edits and new untracked files, after a header with the worktree, branch, base and diffstat. Output is cut at maxBytes (default ${DEFAULT_DIFF_BYTES}); when it is cut, call again with path set to one file or folder from the diffstat.`,
       input: z.object({
         taskId: z.string(),
         path: z

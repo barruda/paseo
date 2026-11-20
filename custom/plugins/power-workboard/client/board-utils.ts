@@ -117,11 +117,19 @@ export function shortDate(value: string, locale: string): string {
  * that, and a change made there later is not offered for another merge. PR description stays as
  * a plain button.
  */
-export function finishButtons(finish: Pick<Finish, "mergedAt"> | undefined): {
+export function finishButtons(
+  finish: Pick<Finish, "mergedAt" | "committedAt"> | undefined,
+  // CUSTOM(orchestrator-in-place): there is no separate branch to merge.
+  inPlace = false,
+): {
   steps: FinishStep[];
   primary: FinishStep | null;
 } {
   if (finish?.mergedAt) return { steps: ["pr"], primary: null };
+  if (inPlace)
+    return finish?.committedAt
+      ? { steps: ["pr"], primary: null }
+      : { steps: ["commit", "pr"], primary: "commit" };
   return { steps: ["commit", "pr", "merge"], primary: "merge" };
 }
 

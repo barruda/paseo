@@ -68,6 +68,12 @@ function time(at: string, locale: string): string {
     minute: "2-digit",
   });
 }
+/** CUSTOM(orchestrator-in-place): folder mode runs one task at a time. */
+export function orchestratorConcurrency(
+  config: Pick<OrchestratorConfig, "useWorktree" | "maxConcurrent">,
+): number {
+  return config.useWorktree ? config.maxConcurrent : 1;
+}
 
 export function scheduleSummary(schedule: Schedule, t: Strings): string {
   const panel = t.panel;
@@ -373,7 +379,7 @@ export function OrchestratorsPanel(
                 {[
                   projectName(board, config.projectId, t),
                   scheduleSummary(config.schedule, t),
-                  `${status?.running ?? 0}/${config.maxConcurrent} ${panel.running}`,
+                  `${status?.running ?? 0}/${orchestratorConcurrency(config)} ${panel.running}`,
                   `${status?.waiting ?? 0} ${panel.waiting}`,
                   // CUSTOM(task-checkpoints)
                   status?.paused
@@ -1174,7 +1180,8 @@ function fromDraft(id: string, draft: Draft, enabled: boolean) {
     poolId: draft.poolId,
     enabled,
     schedule,
-    maxConcurrent: Number(draft.maxConcurrent),
+    // CUSTOM(orchestrator-in-place): folder mode runs one task at a time.
+    maxConcurrent: draft.useWorktree ? Number(draft.maxConcurrent) : 1,
     batchSize: Number(draft.batchSize),
     maxCheckpoints: Number(draft.maxCheckpoints), // CUSTOM(task-checkpoints)
     provider: draft.provider,
@@ -1270,13 +1277,18 @@ export function OrchestratorTab(
   const input = (
     value: string,
     onChange: (value: string) => void,
-    options: { multiline?: boolean; label: string; placeholder?: string } = {
+    options: {
+      multiline?: boolean;
+      label: string;
+      placeholder?: string;
+      editable?: boolean;
+    } = {
       label: "",
     },
   ) => (
     <TextInput
       accessibilityLabel={options.label}
-      editable={!disabled}
+      editable={!disabled && options.editable !== false}
       value={value}
       onChangeText={onChange}
       multiline={options.multiline}
@@ -1373,7 +1385,7 @@ export function OrchestratorTab(
       <View style={styles.stats}>
         {stat(
           panel.running,
-          `${state?.running ?? runs.length}/${config.maxConcurrent}`,
+          `${state?.running ?? runs.length}/${orchestratorConcurrency(config)}`,
         )}
         {stat(panel.waiting, String(state?.waiting ?? 0))}
         {/* CUSTOM(task-checkpoints) */}
@@ -1390,7 +1402,7 @@ export function OrchestratorTab(
         </Text>
       )}
       <Text style={[styles.label, { color: theme.colors.foreground }]}>
-        {panel.runningNow} ({runs.length}/{config.maxConcurrent})
+        {panel.runningNow} ({runs.length}/{orchestratorConcurrency(config)})
       </Text>
       {runs.length === 0 && (
         <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
@@ -1498,9 +1510,10 @@ export function OrchestratorTab(
                 edit({ useWorktree: true }),
               )}
               {chip("folder", panel.folder, !draft.useWorktree, () =>
-                edit({ useWorktree: false }),
+                edit({ useWorktree: false, maxConcurrent: "1" }),
               )}
             </View>,
+            draft.useWorktree ? panel.worktreeHint : panel.folderHint,
           )}
         </>,
       )}
@@ -1599,11 +1612,17 @@ export function OrchestratorTab(
         <View style={styles.inline}>
           {field(
             panel.maxConcurrent,
-            input(
-              draft.maxConcurrent,
-              (maxConcurrent) => edit({ maxConcurrent }),
-              { label: panel.maxConcurrent },
-            ),
+            draft.useWorktree
+              ? input(
+                  draft.maxConcurrent,
+                  (maxConcurrent) => edit({ maxConcurrent }),
+                  { label: panel.maxConcurrent },
+                )
+              : input("1", () => {}, {
+                  label: panel.maxConcurrent,
+                  editable: false,
+                }),
+            draft.useWorktree ? undefined : panel.folderConcurrency,
           )}
           {field(
             panel.batchSize,

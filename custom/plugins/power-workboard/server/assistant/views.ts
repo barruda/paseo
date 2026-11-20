@@ -135,7 +135,9 @@ export function buildOverview(source: ViewSource): Overview {
         canMerge:
           task.projectId !== null &&
           projects.get(task.projectId)?.isGit === true &&
-          task.workspaceId !== null,
+          task.workspaceId !== null &&
+          // CUSTOM(orchestrator-in-place): its work is already on the folder's branch.
+          data.orchestrations?.[taskId]?.inPlace !== true,
         // CUSTOM(resource-pools)
         hold:
           delivery.reason === "fix-waiting"

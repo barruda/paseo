@@ -9038,3 +9038,74 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   **Model** row; the modal should find `flash` and show `DeepSeek`/`DeepInfra` on each result. The
   same fields appear in the bulk agent change and in Settings > Bruno's Customizations > Project
   Manager.
+
+## orchestrator-in-place: orchestrators can run tasks directly in the project folder
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: Orchestrators can run tasks directly in the project folder`
+- **Why:** A worktree per task is the right default, but some projects cannot afford one: huge
+  checkouts, LFS, or a tool that only works in the real folder. Those tasks need to run in place,
+  one at a time, without the board trying to merge the folder's branch into itself.
+- **What:**
+  - **Workspace choice.** An orchestrator's **Workspace** row in the General tab now says
+    **Worktree per task (default)** or **Directly in the project folder (no worktree)**, with a
+    one-line explanation under it. New orchestrators still default to worktree. A project that is
+    not a git repository keeps falling back to its folder as before; the one-at-a-time rule and
+    the no-merge delivery are for the explicit folder mode.
+  - **One task per folder.** A folder-mode task starts only when no other task the board runs in
+    that `project.directory` is using it (folder mode or an orchestrated non-git project task),
+    whichever orchestrator owns it. The second task stays in Ready to start; the orchestrator's
+    log says `Waiting: "<task>" is not delivered yet in <folder>` once and its status shows a
+    `folder` hold, and the next pass starts it after the first frees the folder. The folder stays
+    busy from the start until the delivery is `delivered` or `dismissed`, or until the task goes
+    back to Backlog/Ready or to Done without a pending delivery. In progress, Ready to review,
+    Needs you, a checkpoint and every delivery stage (including `reported`) keep it, so the commit
+    can never run while another task is still using the folder. Folder mode also caps
+    `maxConcurrent` at 1: the server uses 1 and the form shows the field locked at 1 with the
+    reason.
+  - **Dirty folder at start.** The task starts anyway. The orchestration stores `inPlace`,
+    `baseHead` (the folder's HEAD) and `initialDirty` (the `git status --porcelain` lines), and
+    the board logs a `folder-dirty` history event plus a warning in the orchestrator's log with
+    the count.
+  - **Delivery without merge.** The delivery's `committing` step commits in the folder (under the
+    project's `mergeLock`, with the same `dependencyRefusal` protection) and then skips
+    `merging`: it marks the delivery delivered and moves the task to Done. Before committing, it
+    checks whether another board task's agent is still running in the folder; if one is, the
+    delivery stays in `committing` (or `preparing-pr`) with a visible
+    `Waiting: "<task>" is still running in <folder>` detail and log line, and retries on the next
+    pass instead of failing. A manual start has no orchestration record and is not in the folder
+    queue, so only
+    this commit check protects against it. Approving a folder task from Ready to review (Done)
+    also commits it on the current branch through the delivery pipeline, so the folder stays busy
+    until the commit ends and a real failure goes to Needs you. A task whose agent already
+    committed is not committed again. The Done card offers Commit and PR description, not Merge
+    into project, and the server refuses a Merge for an in-place task.
+  - **Review and diff.** `board_get_task` and `board_task_diff` diff an in-place task from
+    `baseHead` (source `task start`) instead of a base branch, then add the uncommitted work. The
+    header says `Mode: project folder (no worktree)` and lists the files that were already dirty
+    when the task started, apart from the diff. `canMerge` is false for these tasks.
+  - **Safety.** The project folder's workspace is never archived (the auto-archive already only
+    touches worktrees) and the task never switches the folder's branch. Worktree orchestrators
+    behave exactly as before.
+- **Core files touched:** none.
+- **Re-apply:** Plugin-only. The server side is `CUSTOM(orchestrator-in-place)` in
+  `server/workboard.ts` (`inPlaceFolder`, `inPlaceDirectories`, `folderHold`, `logFolderWait`,
+  the `startCard` start state and `completeInPlace`) and in
+  `server/assistant/task-git.ts` (`baseHead` / `initialDirty`). The model fields are in
+  `shared/model.ts` (`Orchestration.inPlace/baseHead/initialDirty`, `Card.inPlace`), the hold kind
+  in `shared/hold.ts`, the history kind in `shared/assistant.ts`. The form is the Workspace chips
+  and the locked `At a time` field in `client/Orchestrators.tsx`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
+  Needs only `paseo plugin reload power-workboard`. In the app: open an orchestrator > General,
+  choose **Directly in the project folder (no worktree)**, Save; the `At a time` field shows 1
+  locked. Create two Ready to start tasks of that project: one runs, the other stays with
+  `Waiting: another task is running in <folder>` in the orchestrator's log. Approve the first
+  task; it gets a commit on the folder's current branch and no merge, and the second starts. The
+  Done card has no **Merge into project**.
+- **Tests:** `tests/orchestrator-in-place.test.ts` (one task per folder across orchestrators; B
+  waits while A is not delivered and only starts after A's commit; Needs you dismiss and mark-done
+  release B; a nothing-policy task keeps the folder until approved; `committing`, `preparing-pr`
+  and the approval commit wait while another task's agent runs in the folder; a failed approval
+  commit goes to Needs you; dirty folder recorded; delivery commits without `mergeToBase`; diff
+  from the starting HEAD; worktree unchanged) and `tests/finish-buttons.test.ts` (no Merge for a
+  folder-mode Done card).

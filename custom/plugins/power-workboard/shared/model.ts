@@ -545,6 +545,15 @@ export const orchestrationSchema = z.object({
   limited: z.boolean().default(false),
   /** CUSTOM(usage-limit): limit pauses in a row; a turn that ends normally resets it. */
   limitPauses: z.number().int().min(0).default(0),
+  /**
+   * CUSTOM(orchestrator-in-place): the task runs in the project folder instead of a worktree, so
+   * only one such task runs there at a time and its delivery commits without merging.
+   */
+  inPlace: z.boolean().default(false),
+  /** CUSTOM(orchestrator-in-place): the folder's HEAD when the task started; the diff's base. */
+  baseHead: z.string().nullable().default(null),
+  /** CUSTOM(orchestrator-in-place): `git status --porcelain` lines the folder already had. */
+  initialDirty: z.array(z.string()).default([]),
 });
 export type Orchestration = z.infer<typeof orchestrationSchema>;
 /**
@@ -756,6 +765,8 @@ export const cardSchema = taskSchema.extend({
   changeRequestUnavailable: z.boolean(),
   activity: activitySchema,
   pinState: pinStateSchema,
+  /** CUSTOM(orchestrator-in-place): runs in the project folder; no worktree to merge. */
+  inPlace: z.boolean().default(false),
   dueAt: z.string().nullable(),
   agents: z.array(
     z.object({

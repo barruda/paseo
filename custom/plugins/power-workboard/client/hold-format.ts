@@ -9,6 +9,8 @@ export interface HoldTemplates {
   holdRam: string;
   /** {pool}, {time} */
   holdSettle: string;
+  /** {task}, {directory} */
+  holdFolder: string;
 }
 
 export function formatHold(
@@ -16,6 +18,10 @@ export function formatHold(
   templates: HoldTemplates,
   locale: string,
 ): string {
+  if (hold.kind === "folder")
+    return templates.holdFolder
+      .replace("{task}", hold.taskTitle ?? "another task")
+      .replace("{directory}", hold.directory);
   if (hold.kind === "pool")
     return templates.holdPool
       .replace("{pool}", hold.poolName)
