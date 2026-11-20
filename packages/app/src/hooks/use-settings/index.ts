@@ -178,7 +178,13 @@ export function useAppSettings(): UseAppSettingsReturn {
       throw err;
     }
   }, [queryClient]);
-  const settings = useMemo(() => normalizeAppSettings(data), [data]);
+  const settings = useMemo(() => {
+    const normalized = normalizeAppSettings(data);
+    // CUSTOM(agent-embed): every composer reader goes through here, not only useSettings.
+    return isEmbedMode() && normalized.chatOptions
+      ? { ...normalized, chatOptions: withEmbedChatOptions(normalized.chatOptions) }
+      : normalized;
+  }, [data]);
 
   return {
     settings,
@@ -258,9 +264,6 @@ export function useSettings<TSelected>(
     manageBuiltInDaemon: desktopSettings.settings.daemon.manageBuiltInDaemon,
     releaseChannel: desktopSettings.settings.releaseChannel,
   };
-  if (isEmbedMode() && settings.chatOptions) {
-    settings.chatOptions = withEmbedChatOptions(settings.chatOptions);
-  }
 
   if (selector) {
     return selector(settings);
