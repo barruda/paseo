@@ -72,6 +72,7 @@ import { RenderProfile } from "@/utils/render-profiler";
 import { useComposerHeight } from "./height";
 import { ComposerInputPresentation } from "./presentation";
 import { resolveComposerInputMode, type ComposerInputMode } from "@/composer/input-mode";
+import { shouldShowDictationButton } from "@/composer/voice-controls";
 import type { NativePastedFile } from "@/composer/native-pasted-image";
 import {
   EditingTextInput,
@@ -2267,9 +2268,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         "context-meter": beforeVoiceContent,
         dictation: (
           <VoiceButtonTooltip
-            visible={
-              mode.showVoice && (chatOptions.dictation !== false || isRealtimeVoiceForCurrentAgent)
-            }
+            visible={shouldShowDictationButton({
+              showVoice: mode.showVoice,
+              dictationEnabled: chatOptions.dictation !== false,
+              isRealtimeVoiceForCurrentAgent,
+            })}
             onVoicePress={handleVoicePress}
             isDictationStartEnabled={isDictationStartEnabled}
             voiceButtonAccessibilityLabel={voiceButtonAccessibilityLabel}

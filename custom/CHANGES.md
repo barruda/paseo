@@ -6249,19 +6249,33 @@ src/task-navigation/provider-subagent-rows.test.ts` (in the update script). By h
   `http://127.0.0.1:5178` (conversation shows, Enter sends, reply streams) and on another origin
   (blocked by CSP).
 
-## embed-hidden-controls: the embedded agent composer hides Plan, Fast, Ctrl+M, Jev and voice
+## embed-hidden-controls: the embedded agent composer hides Plan, Fast, Ctrl+M and Jev
 
 - **Added:** 2026-11-20
+- **Updated:** 2026-11-20: Dictation and Voice mode stay on in the embed, and every provider's
+  speed control (the zap icon) is hidden there.
 - **Commit:** see `git log --grep "embed-hidden-controls"`
-- **Why:** The Assets Board panel is narrow; those controls only add clutter there.
-- **What:** In embed mode (`?embed=1`) `useSettings` forces the Chat Options `feature:plan_mode`,
-  `feature:fast_mode`, `model-shortcut`, `jev`, `dictation` and `voice` off. The saved settings
-  and the normal app are unchanged.
-- **Core files touched:** `packages/app/src/hooks/use-settings/index.ts` (`CUSTOM(agent-embed)`).
-- **Re-apply:** after `useSettings` builds `settings`, when `isEmbedMode()`, replace
-  `settings.chatOptions` with a cached copy that has those keys set to `false`.
-- **Verify:** needs a daemon restart (the daemon serves the web UI). Open the Assets Board agent
-  panel: the composer has no plan, speed, Ctrl+M, Jev, mic or voice icon; the Paseo app still has them.
+- **Why:** The Assets Board panel is narrow; the plan and speed controls only add clutter there.
+  Dictation and Voice mode are the ones the panel needs, and the iframe already allows the
+  microphone. Provider speed controls do not share a chat-option key: Claude and OMP use
+  `fast_mode`, Codex `service_tier` and Cursor `fast`, and only `fast_mode` had its own key, so
+  Codex's Speed (a zap) still showed.
+- **What:** In embed mode (`?embed=1`) `useAppSettings` forces the Chat Options
+  `feature:plan_mode`, `feature:fast_mode`, `model-shortcut` and `jev` off, and the composer's
+  agent controls drop any feature whose icon is `zap`. Dictation and Voice mode keep their saved
+  state (on by default). The saved settings and the normal app are unchanged.
+- **Core files touched:** `packages/app/src/embed/embed-chat-options.ts` (new),
+  `packages/app/src/hooks/use-settings/index.ts`, `packages/app/src/composer/agent-controls/index.tsx`
+  and `packages/app/src/composer/voice-controls.ts` (new; the gates are shared with
+  `composer/index.tsx` and `composer/input/input.tsx`), all marked `CUSTOM(agent-embed)`.
+- **Re-apply:** after `useAppSettings` normalizes the settings, when `isEmbedMode()`, replace
+  `settings.chatOptions` with a cached copy that sets those keys to `false` and leaves `dictation`
+  and `voice` alone. In the agent controls, filter out features with `icon === "zap"` in embed mode.
+- **Verify:** `cd packages/app && npx vitest run src/embed src/composer/voice-controls.test.ts
+  --bail=1` (in the update script). Needs the app build and install; the daemon serves the web UI
+  and needs no restart. Reload the Assets Board agent panel: the composer has no plan, speed, Ctrl+M
+  or Jev control, and the Dictation mic and Voice mode buttons are there and work; the Paseo app
+  still has everything.
 
 ## tool-cancel: X on a running tool stops the agent's run
 

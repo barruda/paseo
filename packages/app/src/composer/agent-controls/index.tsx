@@ -29,6 +29,8 @@ import { useShallow } from "zustand/shallow";
 import { Settings2, Star } from "lucide-react-native";
 import { getAgentFeatureIcon, ThinkingIcon } from "@/agent-controls/icons";
 import { formatThinkingOptionLabel } from "@/agent-controls/labels";
+import { isEmbedMode } from "@/embed/embed-mode"; // CUSTOM(agent-embed)
+import { isEmbedHiddenFeature } from "@/embed/embed-chat-options"; // CUSTOM(agent-embed)
 import { ComboboxTrigger } from "@/components/ui/combobox-trigger";
 import { CombinedModelSelector } from "@/components/combined-model-selector";
 import {
@@ -875,8 +877,13 @@ function ControlledAgentControls({
   const options = chatSettings.chatOptions;
   const showCriticToggle = chatSettings.showCriticToggle;
   const showJevRouterToggle = chatSettings.showJevRouterToggle;
-  const visibleFeatures = features?.filter((feature) =>
-    chatOptionEnabled(options, featureChatOptionKey(feature.id)),
+  // CUSTOM(agent-embed): the board's narrow panel hides every speed control, including
+  // provider-specific ones whose chat-option key is `feature:other`.
+  const embed = isEmbedMode();
+  const visibleFeatures = features?.filter(
+    (feature) =>
+      chatOptionEnabled(options, featureChatOptionKey(feature.id)) &&
+      !(embed && isEmbedHiddenFeature(feature)),
   );
   const visibleModeControl = chatOptionEnabled(options, "mode") ? modeControl : null;
 
