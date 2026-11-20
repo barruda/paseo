@@ -4030,6 +4030,9 @@ function mapPermissionRequest(
   params: RequestPermissionRequest,
   snapshot: ACPToolSnapshot,
 ): AgentPermissionRequest {
+  // A chooser keeps kind "tool" with one action per option: the app's question card needs
+  // the Claude `questions` input, which an ACP chooser does not have. The manager recognizes
+  // the duplicate allow kinds and never auto-approves it.
   const kind: AgentPermissionRequestKind = snapshot.kind === "switch_mode" ? "mode" : "tool";
   const chooserText = isACPChooserRequest(params.options)
     ? extractToolText(params.toolCall.content)

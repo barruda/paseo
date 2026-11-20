@@ -1,5 +1,6 @@
 import { expect, it } from "vitest";
 import {
+  chmod,
   lutimes,
   mkdir,
   mkdtemp,
@@ -10,6 +11,9 @@ import {
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { Workboard } from "../server/workboard";
+import { settingsSchema } from "../shared/model";
+import { fixture } from "./fixtures";
 import { cleanupScratchDirectory, tmpCleanupDue } from "../server/tmp-cleanup";
 
 const HOUR = 60 * 60_000;
@@ -103,4 +107,41 @@ it("runs at most once an hour", () => {
   expect(tmpCleanupDue(null, NOW, HOUR)).toBe(true);
   expect(tmpCleanupDue(NOW, NOW + HOUR - 1, HOUR)).toBe(false);
   expect(tmpCleanupDue(NOW, NOW + HOUR, HOUR)).toBe(true);
+});
+
+it("records an unreadable entry and keeps going", async () => {
+  const { target } = await scratch();
+  const locked = join(target, "locked");
+  await mkdir(locked);
+  await chmod(locked, 0o000);
+  try {
+    const result = await cleanupScratchDirectory({
+      path: target,
+      maxAgeMs: 24 * HOUR,
+      now: NOW,
+    });
+    expect(result.removed).toEqual([]);
+    expect(result.errors.length).toBeGreaterThan(0);
+  } finally {
+    await chmod(locked, 0o700);
+  }
+});
+
+it("a cleanup error does not reject the board tick", async () => {
+  const { target } = await scratch();
+  const locked = join(target, "locked");
+  await mkdir(locked);
+  await chmod(locked, 0o000);
+  const setup = fixture({
+    settings: settingsSchema.parse({
+      tmpCleanup: { path: target, maxAgeHours: 24 },
+    }),
+  });
+  const board = new Workboard(setup.host, setup.store, () => NOW);
+  try {
+    await expect((board as any).cleanTmpIfDue()).resolves.toBeUndefined();
+  } finally {
+    await chmod(locked, 0o700);
+    board.dispose();
+  }
 });

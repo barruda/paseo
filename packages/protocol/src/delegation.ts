@@ -53,7 +53,6 @@ export const DEFAULT_DELEGATION = {
   paseoModel: "",
   paseoThinkingOptionId: "",
   implementerUnattended: true,
-  searchUnattended: true,
   when: "balanced",
   review: true,
   searchModel: "off",
@@ -85,8 +84,6 @@ export const DelegationSettingsSchema = z.object({
    * so it never stops for a permission nobody sees. Applies to the Paseo runner.
    */
   implementerUnattended: z.boolean().default(DEFAULT_DELEGATION.implementerUnattended),
-  /** CUSTOM(unattended-automation): same for a Paseo search agent. */
-  searchUnattended: z.boolean().default(DEFAULT_DELEGATION.searchUnattended),
   when: z.enum(DELEGATION_WHEN).default(DEFAULT_DELEGATION.when),
   /** The session reads the diff, reruns the checks and sends fixes back to the same subagent. */
   review: z.boolean().default(DEFAULT_DELEGATION.review),

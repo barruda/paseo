@@ -787,6 +787,21 @@ export interface RetiredInternalAgent {
   lastMessage: string | null;
 }
 
+/** CUSTOM(unattended-automation): provider metadata that offers two alternatives of one allow kind. */
+function hasDuplicateAllowOptions(request: AgentPermissionRequest): boolean {
+  const options = request.metadata?.options;
+  if (!Array.isArray(options)) return false;
+  const kinds = new Set<string>();
+  for (const option of options) {
+    if (typeof option !== "object" || option === null) continue;
+    const kind = (option as { kind?: unknown }).kind;
+    if (typeof kind !== "string" || !kind.startsWith("allow")) continue;
+    if (kinds.has(kind)) return true;
+    kinds.add(kind);
+  }
+  return false;
+}
+
 export class AgentManager {
   private readonly pluginLifecycle: PluginLifecycle | undefined;
   private readonly retiredInternalAgents = new Map<
@@ -5162,6 +5177,10 @@ export class AgentManager {
     if (!isUnattendedAgentConfig(agent.config)) return false;
     // A question asks for an answer, not for an allow reply; it always reaches the user.
     if (request.kind === "question") return false;
+    // CUSTOM(unattended-automation): two selectable allow choices of the same kind are a
+    // chooser, not a permission; picking one would answer a question nobody read. A normal
+    // allow-once/allow-always pair is not a chooser and still auto-approves.
+    if (hasDuplicateAllowOptions(request)) return false;
     const label = request.title ?? request.name;
     this.logger.info(
       {

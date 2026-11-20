@@ -69,6 +69,8 @@ export type Agent = Pick<
   | "lastUserMessageAt"
   | "archivedAt"
 > & {
+  /** CUSTOM(unattended-automation): board labels, for finding hidden board subagents. */
+  labels?: Record<string, string>;
   activity: Card["activity"];
   /** CUSTOM(unattended-automation): the wait is a permission prompt, not just idle input. */
   waitingPermission?: boolean;

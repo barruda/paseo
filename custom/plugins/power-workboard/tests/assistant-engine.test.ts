@@ -9,7 +9,11 @@ import {
   reviewPolicyFor,
   type HistoryEvent,
 } from "../shared/assistant";
-import { orchestratorConfigSchema, type Data } from "../shared/model";
+import {
+  BOARD_AGENT_LABEL,
+  orchestratorConfigSchema,
+  type Data,
+} from "../shared/model";
 import { fixture } from "./fixtures";
 import { buildOverview } from "../server/assistant/views"; // CUSTOM(task-checkpoints)
 import { COMPACT_QUESTION } from "../server/assistant/compact"; // CUSTOM(assistant-compact)
@@ -2927,5 +2931,32 @@ it("the automatic-permission setting reaches the agent the board starts", async 
     );
   } finally {
     off.board.dispose();
+  }
+});
+
+it("a hidden board subagent waiting on a permission brings the task to Needs you", async () => {
+  const s = await scenario();
+  try {
+    s.inventory.agents.push({
+      id: "board-child",
+      workspaceId: s.agent.workspaceId,
+      title: "Review subagent",
+      updatedAt: new Date().toISOString(),
+      lastUserMessageAt: null,
+      archivedAt: null,
+      activity: "waiting",
+      waitingPermission: true,
+      parentAgentId: s.agent.id,
+      labels: { [BOARD_AGENT_LABEL]: "true" },
+    });
+    await s.board.refresh();
+    s.advance(91_000);
+    await s.board.refresh();
+    expect(s.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "permission",
+    });
+  } finally {
+    s.board.dispose();
   }
 });

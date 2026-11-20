@@ -259,7 +259,7 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
     expect(refinement.status).toBe("chatting");
     expect(host.startAgentIn).toHaveBeenCalledWith(
       "/fixture",
-      expect.objectContaining({ modeId: "default" }),
+      expect.objectContaining({ modeId: "default", unattended: true }),
     );
     expect(
       (host.startAgentIn as any).mock.calls[0][1].prompt as string,
@@ -290,6 +290,33 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
     await board.mutate({ action: "refine", taskId: task.id });
     expect(host.startAgentIn).toHaveBeenCalledTimes(2);
     expect(board.snapshot().refinements[task.id].status).toBe("chatting");
+  } finally {
+    board.dispose();
+  }
+});
+
+it("refinement follows the automatic-permission refinement role", async () => {
+  const setup = fixture({
+    defaultOrchestratorSeeded: true,
+    settings: settingsSchema.parse({
+      autoPermission: { enabled: true, refinement: false },
+    }),
+  });
+  setup.inventory.projects.push(project);
+  const board = new Workboard(setup.host, setup.store, setup.now);
+  await board.start();
+  try {
+    await board.mutate({
+      action: "create",
+      title: "rough idea",
+      description: "make it faster",
+      projectId: "p",
+    });
+    const task = byTitle(board, "rough idea");
+    await board.mutate({ action: "refine", taskId: task.id });
+    expect((setup.host.startAgentIn as any).mock.calls[0][1].unattended).toBe(
+      false,
+    );
   } finally {
     board.dispose();
   }

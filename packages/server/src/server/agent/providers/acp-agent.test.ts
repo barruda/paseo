@@ -1416,6 +1416,7 @@ describe("ACPAgentSession Zed parity", () => {
     expect(requested).toMatchObject({
       type: "permission_requested",
       request: {
+        kind: "tool",
         detail: {
           type: "plain_text",
           label: "AskUserQuestion",
@@ -1557,6 +1558,7 @@ describe("ACPAgentSession Zed parity", () => {
     expect(requested).toMatchObject({
       type: "permission_requested",
       request: {
+        kind: "tool",
         actions: [
           { id: "q0_opt_0", label: "Narrow fix", behavior: "allow" },
           { id: "q0_opt_1", label: "Protocol fix", behavior: "allow" },

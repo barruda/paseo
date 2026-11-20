@@ -48,6 +48,7 @@ import {
   type Task,
   type TaskTiming,
   BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
+  BOARD_AGENT_LABEL, // CUSTOM(hidden-board-agents)
   autoPermissionFor, // CUSTOM(unattended-automation)
   TMP_CLEANUP_INTERVAL_MS, // CUSTOM(unattended-automation)
 } from "../shared/model";
@@ -2430,6 +2431,16 @@ export class Workboard {
       this.armWake();
     }
   }
+  /** CUSTOM(unattended-automation): a hidden board subagent of this task waits on a permission. */
+  private waitingBoardChild(parentAgentId: string | null): boolean {
+    if (!parentAgentId) return false;
+    return this.inventory.agents.some(
+      (candidate) =>
+        candidate.parentAgentId === parentAgentId &&
+        candidate.waitingPermission === true &&
+        candidate.labels?.[BOARD_AGENT_LABEL] === "true",
+    );
+  }
   /**
    * CUSTOM(unattended-automation): layer C. An automatic agent stuck on a permission goes to
    * Needs you with the reason and wakes the Projects Assistant. The delivery is created only
@@ -4387,8 +4398,9 @@ export class Workboard {
         continue;
       }
       // CUSTOM(unattended-automation): layer C. Whatever layer B could not approve, the
-      // board surfaces within PERMISSION_WAIT_MS instead of leaving the task silent.
-      if (agent.waitingPermission) {
+      // board surfaces within PERMISSION_WAIT_MS instead of leaving the task silent. A
+      // hidden board subagent of this agent counts as the task waiting.
+      if (agent.waitingPermission || this.waitingBoardChild(record.agentId)) {
         const since = record.permissionSince ?? this.stamp();
         if (!record.sawRunning || record.idleSince || !record.permissionSince)
           await this.setOrchestration(taskId, {

@@ -8302,7 +8302,8 @@ tests/assistant-engine.test.ts`. Needs only `paseo plugin reload power-workboard
 ## unattended-automation: automatic agents get full permission on every provider, and the scratch folder is cleaned hourly
 
 - **Added:** 2026-11-19 (based on `custom` at `e30e10550`)
-- **Commit:** `custom: automatic agents run with full permission on every provider`
+- **Commit:** `custom: automatic agents run with full permission on every provider` and
+  `custom: keep ACP choosers and board subagents out of silent permissions`
 - **Why:** On 2026-11-19 the board's OpenCode/DeepSeek agent for task `35ee60d0`
   (`8e8a998b`) sat for a long time on OpenCode's "Access external directory"
   prompt, for a `cd` into another worktree and for a `npx vitest ... >
@@ -8325,20 +8326,26 @@ tests/assistant-engine.test.ts`. Needs only `paseo plugin reload power-workboard
     `settings.unattended`. The Power Workboard passes it for the orchestrator,
     the Projects Assistant, refinement and the ship role, and the delegation
     policy asks for it for the Paseo implementer. A stated `false` opts a child
-    out even under an unattended parent.
+    out even under an unattended parent and drops a full-access mode the caller
+    carried over from another provider.
   - B: `AgentManager.onStreamPermissionRequested` auto-approves any permission
-    (except a question, which needs an answer) for an agent whose config is
-    already unattended, logs it and writes a `notification` timeline item.
-    OpenCode's provider-level auto-approval now covers every kind, not only
-    `tool`, and records the same timeline item; ACP does too.
-  - C: the board tick sees `waitingPermission` on its agents. After 90 s it puts
-    the task on Needs you with reason `permission`, wakes the Projects
+    (except a question, and except a request that offers two alternatives of one
+    `allow` kind, the ACP chooser shape) for an agent whose config is already
+    unattended, logs it and writes a `notification` timeline item. ACP's
+    chooser keeps `kind: "tool"` (the app's question card needs a `questions`
+    input it does not have), so the manager's duplicate-allow-kind guard is what
+    stops it from picking the first option. OpenCode's provider-level
+    auto-approval covers every kind, not only `tool`, and records the same
+    timeline item; ACP does too.
+  - C: the board tick sees `waitingPermission` on its agents and on hidden board
+    subagents (`paseo.board-agent`) created by the task's agent. After 90 s it
+    puts the task on Needs you with reason `permission`, wakes the Projects
     Assistant, and drops that Needs you when the agent runs again.
   - Settings: Power Workboard `autoPermission` (`enabled`, then per-role
     `orchestrator`, `assistant`, `refinement`, `ship`, all on by default) in
-    Settings > Power Workboard; delegation gains `implementerUnattended` and
-    `searchUnattended`, both on by default. With them off the agent asks and
-    layer C still warns.
+    Settings > Power Workboard; delegation gains `implementerUnattended`, on by
+    default. With it off the agent asks and layer C still warns. Search stays a
+    native Agent-tool subagent, so it has no unattended flag.
   - Scratch folder: the board's existing tick calls a background pass at most
     once an hour (once at start) that removes first-level entries of
     `/home/bruno/uprojects/tmp` whose newest mtime is older than 24 h. It never
@@ -8359,16 +8366,23 @@ tests/assistant-engine.test.ts`. Needs only `paseo plugin reload power-workboard
   optional and the wire schemas pure; keep `auto_accept` out of the mode list
   (OpenCode users can rename/delete agents). Add a provider to
   `PROVIDER_UNATTENDED_MODES` only when its mode id is stable; otherwise rely on
-  the `isUnattended` mode marker or the heuristic. The cleanup test needs
-  `lutimes` for the symlink mtime. Register the new tests in
+  the `isUnattended` mode marker or the heuristic. Keep the ACP chooser as
+  `kind: "tool"` with one action per option; do not map it to `question` (the
+  app renders questions from a Claude-shaped `questions` input). The manager's
+  `hasDuplicateAllowOptions` is the guard that keeps it from being auto-approved.
+  The cleanup test needs `lutimes` for the symlink mtime. Register the new tests
+  in
   `custom/update-paseo-source-and-apply-customization.sh`.
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx
 vitest run --bail=1`; `(cd packages/server && npx vitest run
 src/server/agent/unattended-mode.test.ts
-src/server/agent/providers/opencode-agent.full-access.test.ts)`; `(cd
-packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t
-unattended)`; `(cd custom/plugins/delegation && npx vitest run --bail=1)`;
-  `npm run typecheck`. Needs `paseo plugin reload power-workboard` and
+src/server/agent/providers/opencode-agent.full-access.test.ts
+src/server/agent/provider-snapshot-manager.test.ts
+src/server/agent/providers/acp-agent.test.ts -t "chooser")`; `(cd packages/server
+&& npx vitest run src/server/agent/agent-manager.test.ts -t
+"unattended|never auto-approves a question|chooser-shaped")`; `(cd packages/server && npx
+vitest run src/server/agent/mcp-server.test.ts -t unattended)`; `(cd
+custom/plugins/delegation && npx vitest run --bail=1)`; `npm run typecheck`. Needs `paseo plugin reload power-workboard` and
   `paseo plugin reload delegation`, plus a daemon restart for the protocol and
   permission-manager changes. In the app: start a task with an OpenCode or
   DeepSeek orchestrator and watch it `cd` outside the worktree and write under
