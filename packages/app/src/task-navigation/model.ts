@@ -1,5 +1,6 @@
 // CUSTOM(task-navigation): a task projection independent of workspace ordering and tab placement.
 import type { Agent } from "@/stores/session-store";
+import type { SidebarAgentTab } from "@/board-agents/classify"; // CUSTOM(sidebar-agent-tabs)
 
 export type TaskState =
   | "needs-you"
@@ -27,6 +28,8 @@ export interface TaskAgent {
   attentionReason: Agent["attentionReason"];
   parentAgentId: string | null;
   updatedAt: Date;
+  /** CUSTOM(sidebar-agent-tabs): which tab of the Tasks sidebar lists this agent. */
+  sidebarTab: SidebarAgentTab;
 }
 export interface TaskWorkspace {
   serverId: string;

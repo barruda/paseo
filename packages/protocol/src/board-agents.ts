@@ -6,6 +6,12 @@ import { getParentAgentIdFromLabels } from "./agent-labels.js";
 export const BOARD_AGENT_LABEL = "paseo.board-agent";
 /** Set by the power-workboard plugin on the Projects Assistant chat. */
 export const ASSISTANT_CHAT_LABEL = "pwb/assistant-chat";
+/**
+ * CUSTOM(sidebar-agent-tabs): set by the power-workboard plugin on a task's refinement chat. It
+ * places the chat in the sidebar's Orchestrators tab; it is deliberately not part of
+ * `isBoardAgent`, so the chat keeps auto-opening and notifying like it always did.
+ */
+export const REFINEMENT_CHAT_LABEL = "pwb/refinement-chat";
 
 const MAX_PARENT_HOPS = 4;
 

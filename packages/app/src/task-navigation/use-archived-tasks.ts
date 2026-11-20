@@ -3,10 +3,10 @@
 import { useMemo } from "react";
 import equal from "fast-deep-equal";
 import { useStoreWithEqualityFn } from "zustand/traditional";
-import { isBoardAgent } from "@getpaseo/protocol/board-agents";
+import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import { useAgentHistory } from "@/hooks/use-agent-history";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
-import { isBoardAgentInSession } from "@/board-agents/visibility"; // CUSTOM(hidden-board-agents)
+import { classifySidebarAgent, type SidebarAgentTab } from "@/board-agents/classify"; // CUSTOM(sidebar-agent-tabs)
 import { useSessionStore } from "@/stores/session-store";
 import { buildTaskTree, taskKey, type TaskAgent, type TaskNode, type TaskWorkspace } from "./model";
 
@@ -18,8 +18,8 @@ export interface ArchivedEntry {
   provider: string;
   status: TaskAgent["status"];
   archivedAt: Date;
-  /** CUSTOM(hidden-board-agents): started by the Power Workboard or the Projects Assistant. */
-  board: boolean;
+  /** CUSTOM(sidebar-agent-tabs): which tab of the Tasks sidebar lists the agent. */
+  sidebarTab: SidebarAgentTab;
 }
 
 function toTaskAgent(entry: ArchivedEntry): TaskAgent {
@@ -38,12 +38,14 @@ function toTaskAgent(entry: ArchivedEntry): TaskAgent {
     // Archived crews stay flat: a parent may be archived at a different time than its children.
     parentAgentId: null,
     updatedAt: entry.archivedAt,
+    sidebarTab: entry.sidebarTab,
   };
 }
 
 function selectArchivedInSession(state: ReturnType<typeof useSessionStore.getState>) {
   const result: ArchivedEntry[] = [];
   for (const [serverId, session] of Object.entries(state.sessions)) {
+    const getAgent = (id: string) => session.agents.get(id) ?? session.agentDetails?.get(id);
     for (const agent of session.agents.values()) {
       if (!agent.archivedAt) continue;
       result.push({
@@ -54,7 +56,7 @@ function selectArchivedInSession(state: ReturnType<typeof useSessionStore.getSta
         provider: agent.provider,
         status: agent.status,
         archivedAt: agent.archivedAt,
-        board: isBoardAgentInSession(agent, session.agents, session.agentDetails),
+        sidebarTab: classifySidebarAgent(agent, getAgent),
       });
     }
   }
@@ -65,15 +67,14 @@ const NO_ENTRIES: ArchivedEntry[] = [];
 
 /**
  * History pages and sessions archived in this app session, one per agent, newest wins from the
- * session. CUSTOM(hidden-board-agents): board agents stay out unless `includeBoardAgents`; a
+ * session. CUSTOM(sidebar-agent-tabs): every archived agent is kept and tagged with its tab; a
  * history entry's parent chain is resolved against the other history entries of its host.
  */
 export function mergeArchivedAgents(input: {
   historyAgents: readonly AggregatedAgent[];
   sessionArchived: readonly ArchivedEntry[];
-  includeBoardAgents: boolean;
 }): TaskAgent[] {
-  const { historyAgents, sessionArchived, includeBoardAgents } = input;
+  const { historyAgents, sessionArchived } = input;
   const historyLabels = new Map<string, Record<string, string> | undefined>();
   for (const agent of historyAgents)
     historyLabels.set(taskKey(agent.serverId, agent.id), agent.labels);
@@ -81,19 +82,14 @@ export function mergeArchivedAgents(input: {
   for (const agent of historyAgents) {
     if (!agent.archivedAt) continue;
     const key = taskKey(agent.serverId, agent.id);
-    const board = isBoardAgent(agent.labels, (id) =>
-      historyLabels.get(taskKey(agent.serverId, id)),
+    const sidebarTab = classifySidebarAgent(
+      { labels: agent.labels, parentAgentId: getParentAgentIdFromLabels(agent.labels) },
+      (id) => ({ labels: historyLabels.get(taskKey(agent.serverId, id)) }),
     );
-    if (board && !includeBoardAgents) continue;
-    byKey.set(key, toTaskAgent({ ...agent, archivedAt: agent.archivedAt, board }));
+    byKey.set(key, toTaskAgent({ ...agent, archivedAt: agent.archivedAt, sidebarTab }));
   }
   for (const entry of sessionArchived) {
-    const key = taskKey(entry.serverId, entry.id);
-    if (entry.board && !includeBoardAgents) {
-      byKey.delete(key);
-      continue;
-    }
-    byKey.set(key, toTaskAgent(entry));
+    byKey.set(taskKey(entry.serverId, entry.id), toTaskAgent(entry));
   }
   return [...byKey.values()];
 }
@@ -110,7 +106,6 @@ export interface ArchivedTasks {
 export function useArchivedTasks(
   enabled: boolean,
   workspaces: readonly TaskWorkspace[],
-  includeBoardAgents: boolean, // CUSTOM(hidden-board-agents)
 ): ArchivedTasks {
   // CUSTOM(history-archived-tab): ask the daemon for archived sessions only.
   const history = useAgentHistory({ enabled, view: "archived" });
@@ -122,12 +117,12 @@ export function useArchivedTasks(
   const historyAgents = history.agents;
   const roots = useMemo(() => {
     if (!enabled) return [];
-    const agents = mergeArchivedAgents({ historyAgents, sessionArchived, includeBoardAgents });
+    const agents = mergeArchivedAgents({ historyAgents, sessionArchived });
     return buildTaskTree({ agents, workspaces }).sort(
       (a, b) =>
         b.agent.updatedAt.getTime() - a.agent.updatedAt.getTime() || a.key.localeCompare(b.key),
     );
-  }, [enabled, historyAgents, sessionArchived, workspaces, includeBoardAgents]);
+  }, [enabled, historyAgents, sessionArchived, workspaces]);
   return {
     roots,
     loaded: enabled && !history.isInitialLoad,
