@@ -120,19 +120,23 @@ describe("profile folders", () => {
     );
   });
 
-  it("frees a dirty base checkout as soon as a merge waits on it", () => {
-    // CUSTOM(assistant-dirty-checkout): no waiting out the board's retries.
+  it("stashes a dirty base checkout only when no agent is working in it", () => {
+    // CUSTOM(assistant-dirty-checkout): the checkout may be another agent's live work.
     expect(ASSISTANT_SEED_PROMPT).toContain(
       '"Waiting for a clean checkout" (in board_get_task or in Needs you)',
     );
+    expect(ASSISTANT_SEED_PROMPT).toContain("call list_agents");
     expect(ASSISTANT_SEED_PROMPT).toContain(
-      "handle the checkout yourself instead of waiting for the board to give up",
+      "any agent, of any origin, whose cwd is that checkout and that is running or touched it recently",
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "If one is there, do not stash and do not touch the checkout: let the board keep retrying the merge",
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "if it gives up, tell the user which agent is in the checkout and which tasks are waiting on it",
     );
     expect(ASSISTANT_SEED_PROMPT).not.toContain(
       "When it gives up because the base checkout has uncommitted edits",
-    );
-    expect(ASSISTANT_SEED_PROMPT).toContain(
-      "a worktree or branch of a task still in progress, or files that match the diff of an open task, mean they belong to a board ticket",
     );
     expect(ASSISTANT_SEED_PROMPT).toContain(
       "/home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/",
@@ -144,7 +148,7 @@ describe("profile folders", () => {
       "run the tests of each approved task that was waiting on the checkout",
     );
     expect(ASSISTANT_SEED_PROMPT).toContain("merge-now with wait=true");
-    expect(ASSISTANT_SEED_PROMPT).toContain("`git stash pop`");
+    expect(ASSISTANT_SEED_PROMPT).toContain("`git stash pop` right after");
     expect(ASSISTANT_SEED_PROMPT).toContain(
       "Never discard those edits: no `checkout --`, no `reset --hard`, no `stash drop` without a pop.",
     );
