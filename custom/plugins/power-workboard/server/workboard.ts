@@ -50,6 +50,7 @@ import {
   type TaskTiming,
   BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
   BOARD_AGENT_LABEL, // CUSTOM(hidden-board-agents)
+  REFINEMENT_CHAT_LABEL, // CUSTOM(sidebar-agent-tabs)
   TMP_CLEANUP_INTERVAL_MS, // CUSTOM(unattended-automation)
 } from "../shared/model";
 import { cleanupScratchDirectory, tmpCleanupDue } from "./tmp-cleanup"; // CUSTOM(unattended-automation)
@@ -2062,6 +2063,7 @@ export class Workboard {
       thinkingOptionId: settings.thinkingOptionId,
       title: `Refine: ${task.title}`.slice(0, 200),
       prompt: refinementPrompt(task, settings.instructions),
+      labels: { [REFINEMENT_CHAT_LABEL]: "true" }, // CUSTOM(sidebar-agent-tabs)
       // CUSTOM(unattended-automation)
       unattended: true, // refinement chats have no form: full access
     });

@@ -17,7 +17,7 @@ function historyAgent(id: string, labels: Record<string, string> = {}): Aggregat
   } as AggregatedAgent;
 }
 
-function sessionEntry(id: string, board: boolean): ArchivedEntry {
+function sessionEntry(id: string, sidebarTab: ArchivedEntry["sidebarTab"]): ArchivedEntry {
   return {
     serverId: "s",
     id,
@@ -25,31 +25,39 @@ function sessionEntry(id: string, board: boolean): ArchivedEntry {
     provider: "claude",
     status: "closed",
     archivedAt: ARCHIVED_AT,
-    board,
+    sidebarTab,
   };
 }
 
-// CUSTOM(hidden-board-agents)
+// CUSTOM(sidebar-agent-tabs)
 describe("mergeArchivedAgents", () => {
   const historyAgents = [
     historyAgent("mine"),
+    historyAgent("mine-child", { "paseo.parent-agent-id": "mine" }),
     historyAgent("board", { "paseo.board-agent": "true" }),
     historyAgent("chat", { "pwb/assistant-chat": "true" }),
     historyAgent("ship", { "paseo.parent-agent-id": "chat" }),
   ];
-  const sessionArchived = [sessionEntry("fresh-board", true), sessionEntry("fresh", false)];
+  const sessionArchived = [
+    sessionEntry("fresh-board", "orchestrators"),
+    sessionEntry("fresh", "user"),
+  ];
 
-  it("leaves board agents out by default", () => {
-    const ids = mergeArchivedAgents({ historyAgents, sessionArchived, includeBoardAgents: false })
-      .map((agent) => agent.id)
-      .sort();
-    expect(ids).toEqual(["chat", "fresh", "mine"]);
-  });
-
-  it("shows them when Show board agents is on", () => {
-    const ids = mergeArchivedAgents({ historyAgents, sessionArchived, includeBoardAgents: true })
-      .map((agent) => agent.id)
-      .sort();
-    expect(ids).toEqual(["board", "chat", "fresh", "fresh-board", "mine", "ship"]);
+  it("keeps every archived agent and tags its tab", () => {
+    const tabs = Object.fromEntries(
+      mergeArchivedAgents({ historyAgents, sessionArchived }).map((agent) => [
+        agent.id,
+        agent.sidebarTab,
+      ]),
+    );
+    expect(tabs).toEqual({
+      mine: "user",
+      "mine-child": "user",
+      board: "orchestrators",
+      chat: "orchestrators",
+      ship: "workers",
+      "fresh-board": "orchestrators",
+      fresh: "user",
+    });
   });
 });
