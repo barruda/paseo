@@ -89,6 +89,11 @@ import { cardMenuItems } from "./card-menu"; // CUSTOM(task-panel)
 import { panelCardFor } from "./task-panel-state"; // CUSTOM(task-panel)
 import { groupColor, projectAccentColor, supplementalColor } from "./colors";
 import { ProjectIcon } from "./ProjectIcon";
+import {
+  projectIconFor,
+  useProjectIcons,
+  type ProjectIcons,
+} from "./project-icons";
 import { loadBoardFilters, saveBoardFilters, toggleButtonState } from "./web";
 import {
   activeFilterCount,
@@ -291,6 +296,11 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     pmCardsQuery.data?.cards.filter((card) => card.status === "waiting")
       .length ?? 0;
   const serverBoard = boardQuery.data;
+  // CUSTOM(project-icon-colors): the images the cards and project lists draw.
+  const projectIcons = useProjectIcons(
+    props.host.id,
+    serverBoard?.projects ?? [],
+  );
   const language = usePaseoLanguage();
   const t = strings(language);
   const mutationPending = useRef(new Set<string>());
@@ -890,6 +900,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           </Pressable>
           <ProjectPicker
             board={board}
+            icons={projectIcons}
             value={projectId}
             setValue={(projectId) => updateFilters({ projectId })}
             t={t}
@@ -1295,6 +1306,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               <TaskCard
                 card={card}
                 board={board}
+                icons={projectIcons}
                 t={t}
                 theme={props.theme}
                 disabled={writesDisabled}
@@ -1380,6 +1392,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           <TaskPanel
             card={panelCard}
             board={board}
+            icons={projectIcons}
             t={t}
             theme={props.theme}
             compact={props.layout.compact}
@@ -1450,6 +1463,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
         pending={draftPending}
         form={draft}
         board={board}
+        icons={projectIcons}
         t={t}
         theme={props.theme}
         onClose={() => setDraft(null)}
@@ -1490,6 +1504,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
         stage={starting?.stage}
         card={starting?.card ?? null}
         board={board}
+        icons={projectIcons}
         t={t}
         theme={props.theme}
         onClose={() => setStarting(null)}
@@ -1726,6 +1741,7 @@ function Centered({
 }
 function ProjectPicker({
   board,
+  icons,
   value,
   setValue,
   t,
@@ -1733,6 +1749,7 @@ function ProjectPicker({
   compact,
 }: {
   board: Board;
+  icons: ProjectIcons;
   value: string;
   setValue(value: string): void;
   t: ReturnType<typeof strings>;
@@ -1786,46 +1803,66 @@ function ProjectPicker({
         <Modal open title={t.selectProject} onOpenChange={setOpen}>
           <Modal.Content>
             <ScrollView style={styles.choiceList}>
-              {options.map((option) => (
-                <Pressable
-                  accessibilityRole="button"
-                  key={option.id}
-                  {...toggleButtonState(option.id === value)}
-                  style={({ pressed }) => [
-                    styles.menuItem,
-                    {
-                      backgroundColor:
-                        option.id === value
-                          ? theme.colors.accent
-                          : pressed
-                            ? theme.colors.surface2
-                            : "transparent",
-                    },
-                  ]}
-                  onPress={() => {
-                    setValue(option.id);
-                    setOpen(false);
-                  }}
-                >
-                  <Text
-                    style={{
-                      color:
-                        option.id === value
-                          ? theme.colors.accentForeground
-                          : theme.colors.foreground,
+              {options.map((option) => {
+                const project = board.projects.find(
+                  (item) => item.id === option.id,
+                );
+                return (
+                  <Pressable
+                    accessibilityRole="button"
+                    key={option.id}
+                    {...toggleButtonState(option.id === value)}
+                    style={({ pressed }) => [
+                      styles.menuItem,
+                      {
+                        backgroundColor:
+                          option.id === value
+                            ? theme.colors.accent
+                            : pressed
+                              ? theme.colors.surface2
+                              : "transparent",
+                      },
+                    ]}
+                    onPress={() => {
+                      setValue(option.id);
+                      setOpen(false);
                     }}
                   >
-                    {option.name}
-                  </Text>
-                  {option.id === value && (
-                    <Icon
-                      name="Check"
-                      size={16}
-                      color={theme.colors.accentForeground}
-                    />
-                  )}
-                </Pressable>
-              ))}
+                    <View style={styles.projectChoiceRow}>
+                      {project ? (
+                        <ProjectIcon
+                          name={project.name}
+                          color={projectAccentColor(
+                            project.accent,
+                            project.id,
+                            theme,
+                          )}
+                          theme={theme}
+                          size={14}
+                          icon={projectIconFor(icons, project.id)}
+                        />
+                      ) : null}
+                      <Text
+                        style={{
+                          color:
+                            option.id === value
+                              ? theme.colors.accentForeground
+                              : theme.colors.foreground,
+                        }}
+                      >
+                        {option.name}
+                      </Text>
+                      {option.id === value && (
+                        <Icon
+                          name="Check"
+                          size={16}
+                          color={theme.colors.accentForeground}
+                        />
+                      )}
+                    </View>
+                  </Pressable>
+                );
+              })}
             </ScrollView>
           </Modal.Content>
         </Modal>
@@ -2603,6 +2640,7 @@ function ShutdownBanner({
 export function TaskCard({
   card,
   board,
+  icons,
   t,
   theme,
   disabled,
@@ -2626,6 +2664,7 @@ export function TaskCard({
 }: {
   card: Card;
   board: Board;
+  icons: ProjectIcons;
   t: ReturnType<typeof strings>;
   theme: PluginSurfaceProps["theme"];
   disabled: boolean;
@@ -2695,9 +2734,8 @@ export function TaskCard({
   // orchestration line carries it when it shows (not in review); otherwise it gets its own line.
   const record = board.orchestrations[card.id];
   const inReview = !isDraft && !card.binding && group?.kind === "review";
-  const projectAccent = board.projects.find(
-    (project) => project.id === card.projectId,
-  )?.accent;
+  const project = board.projects.find((item) => item.id === card.projectId);
+  const projectAccent = project?.accent;
   const agentId = cardAgentId(card, record);
   const standaloneAgentLink = !!agentId && (inReview || !record);
   // CUSTOM(task-panel): middle click and the context menu open the side panel; left click keeps
@@ -2800,9 +2838,10 @@ export function TaskCard({
       <View style={styles.cardProjectRow}>
         {card.projectId && card.projectName ? (
           <ProjectIcon
-            name={card.projectName}
+            name={project?.name ?? card.projectName}
             color={projectAccentColor(projectAccent, card.projectId, theme)}
             theme={theme}
+            icon={projectIconFor(icons, card.projectId)}
           />
         ) : null}
         <Text
@@ -3307,6 +3346,7 @@ function TaskModal({
   pending,
   form,
   board,
+  icons,
   t,
   theme,
   onClose,
@@ -3316,6 +3356,7 @@ function TaskModal({
   pending: boolean;
   form: DraftForm;
   board: Board;
+  icons: ProjectIcons;
   t: ReturnType<typeof strings>;
   theme: PluginSurfaceProps["theme"];
   onClose(): void;
@@ -3636,9 +3677,19 @@ function TaskModal({
                       },
                     ]}
                   >
-                    <View
-                      style={[styles.colorDot, { backgroundColor: color }]}
-                    />
+                    {project.id ? (
+                      <ProjectIcon
+                        name={project.name}
+                        color={color}
+                        theme={theme}
+                        size={14}
+                        icon={projectIconFor(icons, project.id)}
+                      />
+                    ) : (
+                      <View
+                        style={[styles.colorDot, { backgroundColor: color }]}
+                      />
+                    )}
                     <Text
                       style={{
                         color: theme.colors.foreground,
@@ -3903,6 +3954,7 @@ function StartModal({
   stage,
   card,
   board,
+  icons,
   t,
   theme,
   onClose,
@@ -3913,6 +3965,7 @@ function StartModal({
   card: Card | null;
   stage?: Stage;
   board: Board;
+  icons: ProjectIcons;
   t: ReturnType<typeof strings>;
   theme: PluginSurfaceProps["theme"];
   onClose(): void;
@@ -4129,9 +4182,22 @@ function StartModal({
                         },
                       ]}
                     >
-                      <Text style={{ color: theme.colors.foreground }}>
-                        {item.name}
-                      </Text>
+                      <View style={styles.projectChoiceRow}>
+                        <ProjectIcon
+                          name={item.name}
+                          color={projectAccentColor(
+                            item.accent,
+                            item.id,
+                            theme,
+                          )}
+                          theme={theme}
+                          size={14}
+                          icon={projectIconFor(icons, item.id)}
+                        />
+                        <Text style={{ color: theme.colors.foreground }}>
+                          {item.name}
+                        </Text>
+                      </View>
                     </Pressable>
                   ))}
                 </ScrollView>
@@ -5079,6 +5145,11 @@ const styles = StyleSheet.create({
   },
   disabledControl: { opacity: 0.5 },
   menuItem: { padding: 12 },
+  projectChoiceRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
   stageMenuItem: {
     minHeight: 40,
     padding: 12,

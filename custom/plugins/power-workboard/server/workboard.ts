@@ -41,6 +41,7 @@ import {
   type OrchestratorRuntime,
   type Pool, // CUSTOM(resource-pools)
   type ProjectAccent, // CUSTOM(project-icon-colors)
+  type ProjectIconData, // CUSTOM(project-icon-colors)
   ORCHESTRATOR_LOG_LIMIT,
   type Refinement,
   type ConversationAgent,
@@ -4553,6 +4554,21 @@ export class Workboard {
         name: project.name,
         accent: project.accent ?? null,
       })),
+    };
+  }
+  // CUSTOM(project-icon-colors): the image the app shows for each board project.
+  projectIcons(): {
+    projects: {
+      id: string;
+      revision: string;
+      icon: ProjectIconData | null;
+    }[];
+  } {
+    const known = new Set(this.inventory.projects.map((project) => project.id));
+    return {
+      projects: this.host
+        .projectIcons()
+        .projects.filter((project) => known.has(project.id)),
     };
   }
   // CUSTOM(assistant-quick): what the quick-message inbox needs from the chat agent.

@@ -6,13 +6,20 @@ import type {
   ConversationGate,
   ConversationReason,
   ProjectAccent,
+  ProjectIconData,
   StartInput,
 } from "../shared/model";
-import { projectViewKeys, resolveProjectAccent } from "../shared/project-color";
+import {
+  projectViewKeys,
+  resolveProjectAccent,
+  resolveProjectDefinitions,
+} from "../shared/project-color";
 import type { ConversationWindow, TimelineReader } from "./conversations";
 import { readConversationTime } from "./conversations";
 import { dominantColorFromIcon } from "./dominant-color";
 import { execFile } from "node:child_process";
+import { realpath } from "node:fs/promises";
+import { resolve } from "node:path";
 import { promisify } from "node:util";
 import { z } from "zod";
 import { checkGitSafety } from "./git-safety";
@@ -148,6 +155,10 @@ export interface Host {
   identity: { serverId: string; version: string; startedAt?: string | null };
   /** With `tracked`, only those workspaces (and their agents) are listed and observed. */
   inventory(tracked?: ReadonlySet<string>): Promise<Inventory>;
+  /** CUSTOM(project-icon-colors): the icon image the app shows, keyed by board project. */
+  projectIcons(): {
+    projects: { id: string; revision: string; icon: ProjectIconData | null }[];
+  };
   workspace(id: string): Promise<Workspace | null>;
   conversation(
     agent: Agent,
@@ -295,16 +306,28 @@ export class PaseoHost implements Host {
   private agentWorkspaces = new Map<string, string | undefined>();
   /** Provider children per parent, keyed by the parent activity Paseo last reported. */
   private childRecords = new Map<string, ChildRecord>();
-  /** CUSTOM(project-icon-colors): the accent per project and icon revision, computed once. */
-  private projectAccents = new Map<
+  /** CUSTOM(project-icon-colors): the icon per project and revision, read once. */
+  private projectIconCache = new Map<
     string,
-    { revision: string; viewKey: string; accent: ProjectAccent }
+    { revision: string; icon: ProjectIconData | null }
+  >();
+  /** The definition each board project resolved to, after matching symlinked roots. */
+  private resolvedProjectIcons = new Map<
+    string,
+    { revision: string; icon: ProjectIconData | null }
+  >();
+  /** The accent per project, icon revision and view key, so its image is decoded once. */
+  private projectAccentCache = new Map<
+    string,
+    { revision: string; viewKey: string; accent: ProjectAccent | undefined }
   >();
   /** A failing icon RPC waits a minute instead of running on every inventory pass. */
-  private projectAccentFailures = new Map<
+  private projectIconFailures = new Map<
     string,
-    { revision: string; viewKey: string; retryAt: number }
+    { revision: string; retryAt: number }
   >();
+  /** Root path to its real path, so a symlink and its target match once. */
+  private projectRealPaths = new Map<string, string>();
   constructor(
     private api: PaseoApi,
     private compat: PaseoCompat,
@@ -399,6 +422,11 @@ export class PaseoHost implements Host {
           "agent.provider_subagents.update",
         ]);
         this.own(events);
+        // CUSTOM(project-icon-colors): an icon or name change in the app refreshes the board.
+        const releaseProjects = this.api.projects.subscribe(() =>
+          this.changed(),
+        );
+        this.subscriptions.push(async () => releaseProjects());
         await events.ready;
       } catch (error) {
         await Promise.allSettled(
@@ -480,18 +508,76 @@ export class PaseoHost implements Host {
         });
     }
     const viewKeys = projectViewKeys(projects.projects, this.identity.serverId);
-    const projectEntries = await Promise.all(
+    const icons = new Map<
+      string,
+      { revision: string; icon: ProjectIconData | null } | undefined
+    >();
+    const realPaths = new Map<string, string>();
+    await Promise.all(
       projects.projects.map(async (project) => {
-        const viewKey = viewKeys.get(project.projectId);
-        return {
-          id: project.projectId,
-          name: project.projectDisplayName,
-          directory: project.projectRootPath,
-          isGit: project.projectKind === "git",
-          accent: await this.projectAccent(project, viewKey),
-        };
+        const [icon, realPath] = await Promise.all([
+          this.projectIcon(project),
+          this.projectRealPath(project.projectRootPath),
+        ]);
+        icons.set(project.projectId, icon);
+        realPaths.set(project.projectId, realPath);
       }),
     );
+    // CUSTOM(project-icon-colors): a symlink and its target are the same project. Both board
+    // entries take the icon from the best definition on that real path.
+    const definitions = resolveProjectDefinitions(
+      projects.projects.map((project) => ({
+        projectId: project.projectId,
+        realPath: realPaths.get(project.projectId) ?? project.projectRootPath,
+        hasIcon: icons.get(project.projectId)?.icon != null,
+        customIcon: Boolean(project.projectCustomIconRevision),
+      })),
+    );
+    const projectEntries = projects.projects.map((project) => {
+      const viewKey = viewKeys.get(project.projectId);
+      const sourceId = definitions.get(project.projectId) ?? project.projectId;
+      const source = icons.get(sourceId);
+      if (source) this.resolvedProjectIcons.set(project.projectId, source);
+      else this.resolvedProjectIcons.delete(project.projectId);
+      const revision = source?.revision ?? "unreadable";
+      const key = viewKey ?? "";
+      const cached = this.projectAccentCache.get(project.projectId);
+      let accent: ProjectAccent | undefined;
+      if (cached && cached.revision === revision && cached.viewKey === key) {
+        accent = cached.accent;
+      } else {
+        const image =
+          source === undefined
+            ? undefined
+            : source.icon
+              ? dominantColorFromIcon(
+                  Buffer.from(source.icon.data, "base64"),
+                  source.icon.mimeType,
+                )
+              : null;
+        accent =
+          image === undefined
+            ? undefined
+            : resolveProjectAccent({
+                id: project.projectId,
+                viewKey,
+                image,
+              });
+        this.projectAccentCache.set(project.projectId, {
+          revision,
+          viewKey: key,
+          accent,
+        });
+      }
+      return {
+        id: project.projectId,
+        name: project.projectDisplayName,
+        directory: project.projectRootPath,
+        isGit: project.projectKind === "git",
+        accent,
+        iconRevision: source?.revision,
+      };
+    });
     return {
       workspaces: [...workspaceMap.values()],
       agents: [...agentMap.values()].filter(
@@ -502,56 +588,72 @@ export class PaseoHost implements Host {
     };
   }
   /**
-   * CUSTOM(project-icon-colors): the project's accent from the icon the app shows for it.
-   * Keyed by the daemon's icon revision, so an unchanged icon costs no request.
+   * CUSTOM(project-icon-colors): the icons the board resolved, for the client to draw. Kept out
+   * of the snapshot so its 1.5 s poll never carries the images.
    */
-  private async projectAccent(
-    project: {
-      projectId: string;
-      projectIconRevision?: string;
-    },
-    viewKey: string | undefined,
-  ): Promise<ProjectAccent | undefined> {
+  projectIcons(): {
+    projects: { id: string; revision: string; icon: ProjectIconData | null }[];
+  } {
+    return {
+      projects: [...this.resolvedProjectIcons].map(([id, record]) => ({
+        id,
+        revision: record.revision,
+        icon:
+          record.icon?.mimeType === "image/svg+xml"
+            ? {
+                ...record.icon,
+                svg: Buffer.from(record.icon.data, "base64").toString("utf8"),
+              }
+            : record.icon,
+      })),
+    };
+  }
+  /**
+   * CUSTOM(project-icon-colors): the icon the app shows for the project. Keyed by the daemon's
+   * icon revision, so an unchanged icon costs no request.
+   */
+  private async projectIcon(project: {
+    projectId: string;
+    projectIconRevision?: string;
+  }): Promise<{ revision: string; icon: ProjectIconData | null } | undefined> {
     const revision = project.projectIconRevision ?? "";
-    const key = viewKey ?? "";
-    const cached = this.projectAccents.get(project.projectId);
-    if (cached && cached.revision === revision && cached.viewKey === key)
-      return cached.accent;
-    const failure = this.projectAccentFailures.get(project.projectId);
+    const cached = this.projectIconCache.get(project.projectId);
+    if (cached && cached.revision === revision) return cached;
+    const failure = this.projectIconFailures.get(project.projectId);
     if (
       failure &&
       failure.revision === revision &&
-      failure.viewKey === key &&
       Date.now() < failure.retryAt
     )
       return undefined;
-    let icon: { data: string; mimeType: string } | null;
+    let icon: ProjectIconData | null;
     try {
       icon = await this.compat.projectIcon(project.projectId);
     } catch {
       // An unreadable icon leaves the client on the stable palette.
-      this.projectAccentFailures.set(project.projectId, {
+      this.projectIconFailures.set(project.projectId, {
         revision,
-        viewKey: key,
         retryAt: Date.now() + 60_000,
       });
       return undefined;
     }
-    this.projectAccentFailures.delete(project.projectId);
-    const image = icon
-      ? dominantColorFromIcon(Buffer.from(icon.data, "base64"), icon.mimeType)
-      : null;
-    const accent = resolveProjectAccent({
-      id: project.projectId,
-      viewKey,
-      image,
-    });
-    this.projectAccents.set(project.projectId, {
-      revision,
-      viewKey: key,
-      accent,
-    });
-    return accent;
+    this.projectIconFailures.delete(project.projectId);
+    const record = { revision, icon };
+    this.projectIconCache.set(project.projectId, record);
+    return record;
+  }
+  /** A root path with symlinks resolved, cached: two registered roots can be one project. */
+  private async projectRealPath(rootPath: string): Promise<string> {
+    const cached = this.projectRealPaths.get(rootPath);
+    if (cached) return cached;
+    let real: string;
+    try {
+      real = await realpath(rootPath);
+    } catch {
+      real = resolve(rootPath);
+    }
+    this.projectRealPaths.set(rootPath, real);
+    return real;
   }
   /**
    * Provider children are cached per parent activity. Re-listing them costs the daemon one

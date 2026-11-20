@@ -77,6 +77,14 @@ export const projectAccentSchema = z.object({
   dark: z.string(),
 });
 export type ProjectAccent = z.infer<typeof projectAccentSchema>;
+// CUSTOM(project-icon-colors): the image the app renders for a project, as the daemon serves it.
+export const projectIconDataSchema = z.object({
+  data: z.string(),
+  mimeType: z.string(),
+  /** SVG text, so the client can draw it without decoding base64. */
+  svg: z.string().optional(),
+});
+export type ProjectIconData = z.infer<typeof projectIconDataSchema>;
 export const groupSchema = z.object({
   id: stageSchema,
   name: z.string().trim().min(1).max(80).nullable().default(null),
@@ -834,6 +842,11 @@ export const boardSchema = z.object({
       isGit: z.boolean(),
       // CUSTOM(project-icon-colors): the accent pair resolved from the project's icon.
       accent: projectAccentSchema.nullable().optional(),
+      /**
+       * CUSTOM(project-icon-colors): the revision of the icon the board resolved for this
+       * project, so the client refetches its image only when the definition changes.
+       */
+      iconRevision: z.string().optional(),
     }),
   ),
 });
