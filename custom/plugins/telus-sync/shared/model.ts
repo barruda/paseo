@@ -29,7 +29,7 @@ export const CATEGORY_INFO: Record<CategoryId, CategoryInfo> = {
   desktop: {
     title: "App preferences (desktop)",
     description:
-      "desktop-settings.json: notification sounds and flexible tab movement. Daemon behaviour and the update channel stay as they are.",
+      "desktop-settings.json: notification sounds and flexible tab movement. Quit Paseo Telus first: it caches the file and would overwrite the sync on its next save. Daemon behaviour and the update channel stay as they are.",
   },
   plugins: {
     title: "Installed and enabled plugins",
