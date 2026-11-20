@@ -1,7 +1,7 @@
 // CUSTOM(assistant-desk): the Projects Assistant chat (custom/plugins/power-workboard) lives in
 // its own Desk (one reused tab), never as a tab of any other Desk or workspace pane. These are the
 // pure rules; see custom/CHANGES.md.
-import { findAgentSuccessor } from "@/task-navigation/agent-successor";
+import { AGENT_REPLACES_LABEL, findAgentSuccessor } from "@/task-navigation/agent-successor";
 
 /** The label the plugin's `CHAT_LABEL` puts on the chat agent (value "true"). */
 export const ASSISTANT_CHAT_LABEL = "pwb/assistant-chat";
@@ -91,4 +91,67 @@ function newestLiveChat(agents: ReadonlyMap<string, AssistantAgentFacts>): strin
     }
   }
   return found?.agentId ?? null;
+}
+
+/**
+ * CUSTOM(assistant-desk-newest): for an archived assistant chat, the live chat to go to instead.
+ * Null unless the agent is an archived assistant chat and a different live chat exists.
+ * `compacted` is true when some agent on the server names this one in AGENT_REPLACES_LABEL (the
+ * plugin's automatic restart on the context limit).
+ */
+export function newerAssistantChat(input: {
+  serverId: string;
+  agentId: string;
+  agentsByServer: ReadonlyMap<string, ReadonlyMap<string, AssistantAgentFacts>>;
+  hydratedServerIds?: ReadonlySet<string>;
+}): { chat: AssistantChatRef; compacted: boolean } | null {
+  const { serverId, agentId, agentsByServer, hydratedServerIds } = input;
+  const agents = agentsByServer.get(serverId);
+  const agent = agents?.get(agentId);
+  if (!agents || !agent || !isAssistantChatAgent(agent) || !agent.archivedAt) return null;
+  const target = resolveAssistantChat({
+    remembered: { serverId, agentId },
+    agentsByServer,
+    preferredServerId: serverId,
+    hydratedServerIds,
+  });
+  if (!target || (target.serverId === serverId && target.agentId === agentId)) return null;
+  const targetAgent = agentsByServer.get(target.serverId)?.get(target.agentId);
+  if (!targetAgent || targetAgent.archivedAt) return null;
+  let compacted = false;
+  for (const other of agents.values()) {
+    if (other.labels?.[AGENT_REPLACES_LABEL] === agentId) {
+      compacted = true;
+      break;
+    }
+  }
+  return { chat: target, compacted };
+}
+
+/**
+ * CUSTOM(assistant-desk-newest): the chat the assistant Desk's stale chat tab should switch to,
+ * or null to leave the Desk alone. Nothing changes when `current` is already shown (an old chat
+ * opened on purpose next to it stays) or the Desk has no chat tab; while the user is looking at
+ * the Desk (`inView`) it only changes when `force` (the Desk just came into view).
+ */
+export function planAssistantDeskRefresh<
+  T extends { serverId: string; target: { kind: string } },
+>(input: {
+  tabs: readonly T[];
+  current: AssistantChatRef | null;
+  isChatTab: (tab: T) => boolean;
+  inView: boolean;
+  force: boolean;
+}): AssistantChatRef | null {
+  const { tabs, current, isChatTab, inView, force } = input;
+  if (!current) return null;
+  if (inView && !force) return null;
+  const shown = tabs.some(
+    (tab) =>
+      tab.serverId === current.serverId &&
+      tab.target.kind === "agent" &&
+      (tab.target as { agentId?: string }).agentId === current.agentId,
+  );
+  if (shown) return null;
+  return tabs.some(isChatTab) ? current : null;
 }

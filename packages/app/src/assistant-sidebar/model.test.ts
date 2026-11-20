@@ -5,6 +5,8 @@ import {
   ASSISTANT_CHAT_LABEL,
   isAssistantChatAgent,
   isLiveAssistantChatAgent,
+  newerAssistantChat,
+  planAssistantDeskRefresh,
   resolveAssistantChat,
   type AssistantAgentFacts,
 } from "./model";
@@ -146,5 +148,89 @@ describe("resolveAssistantChat", () => {
     expect(
       resolveAssistantChat({ remembered: null, agentsByServer, preferredServerId: "s1" }),
     ).toBeNull();
+  });
+});
+
+describe("newerAssistantChat", () => {
+  const hydrated = new Set(["s1"]);
+  const REPLACES = (id: string) => ({ ...CHAT, [AGENT_REPLACES_LABEL]: id });
+  const ask = (agents: Record<string, AssistantAgentFacts>, agentId = "old") =>
+    newerAssistantChat({
+      serverId: "s1",
+      agentId,
+      agentsByServer: servers({ s1: agents }),
+      hydratedServerIds: hydrated,
+    });
+
+  it("is null for a live agent", () => {
+    expect(ask({ old: { labels: CHAT }, b: { labels: CHAT } })).toBeNull();
+  });
+
+  it("is null for an archived agent that is not a chat", () => {
+    expect(ask({ old: { archivedAt: ARCHIVED }, b: { labels: CHAT } })).toBeNull();
+  });
+
+  it("points an archived chat at its live successor, compacted", () => {
+    expect(
+      ask({ old: { labels: CHAT, archivedAt: ARCHIVED }, b: { labels: REPLACES("old") } }),
+    ).toEqual({ chat: { serverId: "s1", agentId: "b" }, compacted: true });
+  });
+
+  it("points an archived chat without a successor at another live chat, not compacted", () => {
+    expect(ask({ old: { labels: CHAT, archivedAt: ARCHIVED }, b: { labels: CHAT } })).toEqual({
+      chat: { serverId: "s1", agentId: "b" },
+      compacted: false,
+    });
+  });
+
+  it("skips an archived successor for the newest live chat, still compacted", () => {
+    expect(
+      ask({
+        old: { labels: CHAT, archivedAt: ARCHIVED },
+        mid: { labels: REPLACES("old"), archivedAt: ARCHIVED },
+        c: { labels: REPLACES("mid") },
+      }),
+    ).toEqual({ chat: { serverId: "s1", agentId: "c" }, compacted: true });
+  });
+
+  it("is null when no live chat exists", () => {
+    expect(ask({ old: { labels: CHAT, archivedAt: ARCHIVED } })).toBeNull();
+  });
+});
+
+describe("planAssistantDeskRefresh", () => {
+  const tab = (agentId: string) => ({
+    serverId: "s1",
+    target: { kind: "agent", agentId },
+  });
+  const current = { serverId: "s1", agentId: "new" };
+  const isChatTab = (t: { target: { kind: string; agentId?: string } }) =>
+    t.target.kind === "agent";
+  const plan = (over: Partial<Parameters<typeof planAssistantDeskRefresh>[0]> = {}) =>
+    planAssistantDeskRefresh({
+      tabs: [tab("old")],
+      current,
+      isChatTab,
+      inView: false,
+      force: false,
+      ...over,
+    });
+
+  it("leaves the Desk when the current chat is already shown", () => {
+    expect(plan({ tabs: [tab("old"), tab("new")] })).toBeNull();
+  });
+
+  it("retargets a stale chat tab when not in view", () => {
+    expect(plan()).toEqual(current);
+  });
+
+  it("waits while in view, unless forced", () => {
+    expect(plan({ inView: true })).toBeNull();
+    expect(plan({ inView: true, force: true })).toEqual(current);
+  });
+
+  it("does nothing without a chat tab or without a current chat", () => {
+    expect(plan({ tabs: [{ serverId: "s1", target: { kind: "file" } }] })).toBeNull();
+    expect(plan({ current: null })).toBeNull();
   });
 });

@@ -8326,6 +8326,42 @@ src/task-navigation/store.test.ts src/client-slash-commands/execute.test.ts)` (i
   `/exit` in the chat closes its tab; an old conversation from Projects Conversations on **Open in
   Desk** stays in an ordinary tab. The Desk's **+** has no Projects Assistant entry.
 
+## assistant-desk-newest: the Projects Assistant Desk follows the newest chat
+
+- **Added:** 2026-11-20
+- **Commit:** `custom: Projects Assistant Desk always follows the newest chat`
+- **Why:** After an automatic compaction the Desk kept showing the archived chat ("This agent is
+  archived / Unarchive"). The tab only moved when the app saw the archive happen
+  (`useAgentSuccessorTabs`), so a missed transition (app closed or reopened, a late session
+  update) left it on the old chat, and clicking the Desk chip only selected the Desk.
+- **What:**
+  - State-based refresh (`refreshAssistantDesk` in `assistant-sidebar/open.ts`, rule
+    `planAssistantDeskRefresh` in `model.ts`): when the Desk has a chat tab and none shows the
+    current chat (`resolveAssistantChat`), the chat tab is retargeted to it without selecting the
+    Desk (`showAssistantChat({ select: false })`), and the remembered chat is updated. An old chat
+    opened next to the current one is left alone.
+  - While the user looks at the Desk (`isAssistantDeskInView`: Tasks mode, Desk active, board chip
+    not selected) nothing swaps under them, the successor follow included (`followAgentTabs`
+    `exceptDeskIds`). When the Desk comes into view (chip click, board deselected, app start) the
+    refresh is forced before it paints. `useAssistantTabSweep` runs it after each sweep.
+  - The archived callout of an assistant chat with a different live chat says "A sessão foi
+    finalizada e compactada automaticamente." (or "Esta conversa do Projects Assistant foi
+    encerrada." without a `paseo.replaces-agent` successor) and shows **Ir para a nova sessão**
+    (`navigateToAgent`) instead of Unarchive. Strings live in `assistant-sidebar/strings.ts`
+    (en and pt-BR), outside the locale files. The Explorer mirror shows the same callout.
+- **Core files touched** (`CUSTOM(assistant-desk-newest)`): `task-navigation/desks-store.ts`
+  (`showAssistantChat` `select`, `followAgentTabs` `exceptDeskIds`),
+  `task-navigation/use-agent-successor-tabs.ts`, `components/archived-agent-callout.tsx`. The rest
+  is in `packages/app/src/assistant-sidebar/` (`newer-chat.ts`, `strings.ts` new).
+- **Re-apply:** add the two optional inputs to the Desks store, pass `exceptDeskIds` from
+  `followAgentSuccessor`, and in `ArchivedAgentCallout` return the new-session branch when
+  `useNewerAssistantChat` is non-null, before the Unarchive callout.
+- **Verify:** `(cd packages/app && npx vitest run src/assistant-sidebar --bail=1)` (in the update
+  script). App build only, no daemon restart. In Tasks mode, with the Desk not selected, let the
+  chat compact (or use Restart chat): opening the Desk shows the new chat. Stay on the Desk during
+  a compaction: the old chat stays with the message and **Ir para a nova sessão**, which opens the
+  new chat in the same tab.
+
 ## card-open-agent: Power Workboard cards link their agent in every column; pin and move sit in the action row; wider column-resize strip
 
 - **Added:** 2026-11-19 (based on `custom` at `60bc73d0d`)

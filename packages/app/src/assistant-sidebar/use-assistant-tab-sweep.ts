@@ -3,10 +3,17 @@
 import { useEffect } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { useDeskWorkboardStore } from "@/task-navigation/desk-workboard-store";
 import { ASSISTANT_DESK_ID, deskTabs, useDesksStore } from "@/task-navigation/desks-store";
 import type { AssistantAgentFacts } from "./model";
 import { useTaskNavigationStore } from "@/task-navigation/store";
-import { openAssistantDesk, sessionAgent, showAssistantChatFor } from "./open";
+import {
+  isAssistantDeskInView,
+  openAssistantDesk,
+  refreshAssistantDesk,
+  sessionAgent,
+  showAssistantChatFor,
+} from "./open";
 import { useAssistantSidebarStore } from "./store";
 import {
   planAssistantTabSweep,
@@ -57,7 +64,48 @@ export function useAssistantTabSweep(): void {
     let lastDesks: unknown = null;
     let lastLayouts: unknown = null;
 
+    // CUSTOM(assistant-desk-newest): refreshing the Desk mutates the stores this effect watches.
+    let busy = false;
+    let lastInView = false;
+    // Set when the Desk comes into view; cleared once a forced refresh could decide.
+    let forcePending = false;
+    let lastActiveDeskId: unknown = null;
+    let lastSelected: unknown = null;
+    let lastEnabled: unknown = null;
+
+    const refreshDesk = () => {
+      if (!useDesksStore.persist.hasHydrated()) return;
+      const inView = isAssistantDeskInView();
+      if (inView && !lastInView) forcePending = true;
+      lastInView = inView;
+      const decided = refreshAssistantDesk({ force: forcePending });
+      if (decided && inView) forcePending = false;
+    };
+
     const sweep = () => {
+      if (busy) return;
+      busy = true;
+      try {
+        sweepTabs();
+        refreshDesk();
+      } finally {
+        busy = false;
+      }
+    };
+
+    const onViewChange = () => {
+      const { activeDeskId } = useDesksStore.getState();
+      const { selected } = useDeskWorkboardStore.getState();
+      const { enabled } = useTaskNavigationStore.getState();
+      if (activeDeskId === lastActiveDeskId && selected === lastSelected && enabled === lastEnabled)
+        return;
+      lastActiveDeskId = activeDeskId;
+      lastSelected = selected;
+      lastEnabled = enabled;
+      sweep();
+    };
+
+    const sweepTabs = () => {
       if (sweeping) return;
       if (!useDesksStore.persist.hasHydrated() || !useWorkspaceLayoutStore.persist.hasHydrated())
         return;
@@ -115,6 +163,9 @@ export function useAssistantTabSweep(): void {
         sweep();
       }),
       useSessionStore.subscribe(onSession),
+      useDesksStore.subscribe(onViewChange),
+      useDeskWorkboardStore.subscribe(onViewChange),
+      useTaskNavigationStore.subscribe(onViewChange),
       useDesksStore.persist.onFinishHydration(sweep),
       useWorkspaceLayoutStore.persist.onFinishHydration(sweep),
     ];

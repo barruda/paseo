@@ -79,3 +79,49 @@ describe("showAssistantChat", () => {
     expect(deskTabs(desk).find((tab) => tab.id === chat.id)).toBeTruthy();
   });
 });
+
+describe("showAssistantChat with select: false (CUSTOM(assistant-desk-newest))", () => {
+  it("retargets the old chat tab without changing the active Desk", () => {
+    const store = useDesksStore.getState();
+    store.showAssistantChat({ tab: chatTab("old"), isChatTab: isChat(["old", "new"]) });
+    store.selectDesk("primary");
+    store.showAssistantChat({
+      tab: chatTab("new"),
+      isChatTab: isChat(["old", "new"]),
+      select: false,
+    });
+    expect(useDesksStore.getState().activeDeskId).toBe("primary");
+    expect(deskTabs(assistantDesk()!).map((tab) => tab.target)).toEqual([
+      { kind: "agent", agentId: "new" },
+    ]);
+  });
+
+  it("is a no-op when the Desk is missing", () => {
+    useDesksStore
+      .getState()
+      .showAssistantChat({ tab: chatTab("a"), isChatTab: isChat(["a"]), select: false });
+    expect(assistantDesk()).toBeUndefined();
+    expect(useDesksStore.getState().activeDeskId).toBe("primary");
+  });
+});
+
+describe("followAgentTabs exceptDeskIds", () => {
+  it("leaves the excepted Desk alone", () => {
+    const store = useDesksStore.getState();
+    store.showAssistantChat({ tab: chatTab("old"), isChatTab: isChat(["old"]) });
+    store.selectDesk("primary");
+    store.openTab(chatTab("old"), true);
+    store.followAgentTabs({
+      serverId: "s1",
+      from: "old",
+      to: "new",
+      toWorkspaceId: "ws",
+      exceptDeskIds: [ASSISTANT_DESK_ID],
+    });
+    expect(deskTabs(assistantDesk()!).map((tab) => tab.target)).toEqual([
+      { kind: "agent", agentId: "old" },
+    ]);
+    const primary = useDesksStore.getState().desks.find((d) => d.id === "primary")!;
+    expect(deskTabs(primary).map((tab) => tab.target)).toEqual([{ kind: "agent", agentId: "new" }]);
+  });
+});

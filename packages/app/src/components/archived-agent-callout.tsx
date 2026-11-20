@@ -8,6 +8,9 @@ import { KeyboardTranslateView } from "@/keyboard/shift";
 import { Button } from "@/components/ui/button";
 import type { Theme } from "@/styles/theme";
 import { toErrorMessage } from "@/utils/error-messages";
+import { useNewerAssistantChat } from "@/assistant-sidebar/newer-chat"; // CUSTOM(assistant-desk-newest)
+import { assistantDeskStrings } from "@/assistant-sidebar/strings"; // CUSTOM(assistant-desk-newest)
+import { navigateToAgent } from "@/utils/navigate-to-agent"; // CUSTOM(assistant-desk-newest)
 
 interface ArchivedAgentCalloutProps {
   serverId: string;
@@ -15,7 +18,8 @@ interface ArchivedAgentCalloutProps {
 }
 
 export function ArchivedAgentCallout({ serverId, agentId }: ArchivedAgentCalloutProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const newer = useNewerAssistantChat(serverId, agentId); // CUSTOM(assistant-desk-newest)
   const client = useHostRuntimeClient(serverId);
   const isConnected = useHostRuntimeIsConnected(serverId);
   const [isUnarchiving, setIsUnarchiving] = useState(false);
@@ -32,6 +36,34 @@ export function ArchivedAgentCallout({ serverId, agentId }: ArchivedAgentCallout
       setIsUnarchiving(false);
     }
   }, [client, isConnected, isUnarchiving, agentId]);
+
+  const handleGoToNew = useCallback(() => {
+    if (newer) navigateToAgent({ serverId: newer.chat.serverId, agentId: newer.chat.agentId });
+  }, [newer]);
+
+  // CUSTOM(assistant-desk-newest): an archived assistant chat with a live successor offers the
+  // new session instead of Unarchive (unarchiving would leave two live chats).
+  if (newer) {
+    const strings = assistantDeskStrings(i18n.resolvedLanguage);
+    return (
+      <KeyboardTranslateView style={styles.container}>
+        <View style={styles.inputAreaContainer}>
+          <View style={styles.inputAreaContent}>
+            <View style={styles.calloutStack}>
+              <View style={styles.callout}>
+                <Text style={styles.calloutText}>
+                  {newer.compacted ? strings.compacted : strings.ended}
+                </Text>
+                <Button size="sm" variant="default" onPress={handleGoToNew}>
+                  {strings.goToNew}
+                </Button>
+              </View>
+            </View>
+          </View>
+        </View>
+      </KeyboardTranslateView>
+    );
+  }
 
   return (
     <KeyboardTranslateView style={styles.container}>

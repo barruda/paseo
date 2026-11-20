@@ -7,12 +7,19 @@ import { navigateToHostWorkspaceRoute } from "@/navigation/workspace-route-navig
 import { getLastWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore } from "@/stores/session-store";
 import { useDeskWorkboardStore } from "@/task-navigation/desk-workboard-store";
-import { useDesksStore, type DeskTab, type DeskTabInput } from "@/task-navigation/desks-store";
+import {
+  ASSISTANT_DESK_ID,
+  deskTabs,
+  useDesksStore,
+  type DeskTab,
+  type DeskTabInput,
+} from "@/task-navigation/desks-store";
 import { useTaskNavigationStore } from "@/task-navigation/store";
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import {
   isAssistantChatAgent,
   isLiveAssistantChatAgent,
+  planAssistantDeskRefresh,
   resolveAssistantChat,
   type AssistantChatRef,
 } from "./model";
@@ -136,4 +143,50 @@ export function openAssistantDesk(input: {
     focusComposerSoon(chat?.serverId ?? null);
   }
   return route;
+}
+
+/**
+ * CUSTOM(assistant-desk-newest): whether the user is looking at the assistant Desk: Tasks mode on,
+ * the Desk active and the board chip (which covers the Desks) not selected.
+ */
+export function isAssistantDeskInView(): boolean {
+  return (
+    useTaskNavigationStore.getState().enabled &&
+    useDesksStore.getState().activeDeskId === ASSISTANT_DESK_ID &&
+    useDeskWorkboardStore.getState().selected === null
+  );
+}
+
+/**
+ * CUSTOM(assistant-desk-newest): points the assistant Desk's stale chat tab at the newest live chat
+ * (state-based, see planAssistantDeskRefresh) without selecting the Desk. Returns whether it could
+ * decide: false while Tasks mode is off, the Desk is missing, or the chat's session has not
+ * loaded its agents, so the caller can retry.
+ */
+export function refreshAssistantDesk(input: { force: boolean }): boolean {
+  if (!useTaskNavigationStore.getState().enabled) return false;
+  const desk = useDesksStore.getState().desks.find((entry) => entry.id === ASSISTANT_DESK_ID);
+  if (!desk) return false;
+  const current = currentAssistantChat(null);
+  if (!current) return false;
+  if (!useSessionStore.getState().sessions[current.serverId]?.hasHydratedAgents) return false;
+  if (!isAssistantChatInSession(current.serverId, current.agentId)) return true;
+  const workspaceId = sessionAgent(current.serverId, current.agentId)?.workspaceId;
+  if (!workspaceId) return false;
+  const remembered = useAssistantSidebarStore.getState().chat;
+  const isChatTab = (tab: DeskTab) => isAssistantChatTab(tab, remembered);
+  const target = planAssistantDeskRefresh({
+    tabs: deskTabs(desk),
+    current,
+    isChatTab,
+    inView: isAssistantDeskInView(),
+    force: input.force,
+  });
+  if (target) {
+    useDesksStore
+      .getState()
+      .showAssistantChat({ tab: assistantChatTab(target, workspaceId), isChatTab, select: false });
+    useAssistantSidebarStore.getState().setChat(target);
+  }
+  return true;
 }

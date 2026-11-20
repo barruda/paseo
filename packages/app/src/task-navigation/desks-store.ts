@@ -89,7 +89,12 @@ interface DesksState {
    * CUSTOM(assistant-desk): shows the Projects Assistant chat in its own Desk, created when
    * missing, reusing the tab the chat already has there; selects that Desk.
    */
-  showAssistantChat(input: { tab: DeskTabInput; isChatTab: (tab: DeskTab) => boolean }): void;
+  showAssistantChat(input: {
+    tab: DeskTabInput;
+    isChatTab: (tab: DeskTab) => boolean;
+    /** CUSTOM(assistant-desk-newest): false updates the Desk only; no select, no create. */
+    select?: boolean;
+  }): void;
   /** CUSTOM(assistant-desk): selects the assistant Desk, creating it when missing. */
   selectAssistantDesk(): void;
   /** Unpinned opens replace the Desk's preview tab; pinned opens keep their tab. */
@@ -117,6 +122,8 @@ interface DesksState {
     from: string;
     to: string;
     toWorkspaceId: string | null;
+    /** CUSTOM(assistant-desk-newest): Desks left alone (the assistant Desk while in view). */
+    exceptDeskIds?: readonly string[];
   }): void;
   /** Moves a tab of the active Desk into another Desk as a kept tab, leaving that Desk unselected. */
   moveTabToDesk(id: string, deskId: string): void;
@@ -551,6 +558,16 @@ export const useDesksStore = create<DesksState>()(
           if (get().desks.some((d) => d.id === id)) set({ activeDeskId: id });
         },
         showAssistantChat: (input) => {
+          // CUSTOM(assistant-desk-newest): select: false only updates an existing Desk.
+          if (input.select === false) {
+            if (!get().desks.some((desk) => desk.id === ASSISTANT_DESK_ID)) return;
+            set((state) => ({
+              desks: state.desks.map((desk) =>
+                desk.id === ASSISTANT_DESK_ID ? showAssistantChatInDesk(desk, input) : desk,
+              ),
+            }));
+            return;
+          }
           if (!get().initialized) set({ initialized: true });
           set((state) => {
             const base = state.desks.some((desk) => desk.id === ASSISTANT_DESK_ID)
@@ -654,10 +671,11 @@ export const useDesksStore = create<DesksState>()(
             });
             return changed ? { desks } : {};
           }),
-        followAgentTabs: ({ serverId, from, to, toWorkspaceId }) =>
+        followAgentTabs: ({ serverId, from, to, toWorkspaceId, exceptDeskIds }) =>
           set((state) => {
             let changed = false;
             const desks = state.desks.map((desk) => {
+              if (exceptDeskIds?.includes(desk.id)) return desk; // CUSTOM(assistant-desk-newest)
               const agentTab = (agentId: string) => (tab: DeskTab) =>
                 tab.serverId === serverId &&
                 tab.target.kind === "agent" &&

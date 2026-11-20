@@ -13,7 +13,8 @@ import {
   planAgentSuccessorFollows,
 } from "./agent-successor";
 import { detectNewlyArchived } from "./desk-archive-close";
-import { useDesksStore } from "./desks-store";
+import { isAssistantDeskInView } from "@/assistant-sidebar/open"; // CUSTOM(assistant-desk-newest)
+import { ASSISTANT_DESK_ID, useDesksStore } from "./desks-store";
 
 function carryDraft({ serverId, fromAgentId, toAgentId }: AgentSuccessorFollow): void {
   const drafts = useDraftStore.getState();
@@ -59,6 +60,9 @@ export function followAgentSuccessor(follow: AgentSuccessorFollow): void {
     from: follow.fromAgentId,
     to: follow.toAgentId,
     toWorkspaceId: follow.toWorkspaceId,
+    // CUSTOM(assistant-desk-newest): while the user reads the assistant Desk, the old tab stays
+    // and the archived callout offers the new session.
+    exceptDeskIds: isAssistantDeskInView() ? [ASSISTANT_DESK_ID] : undefined,
   });
   followWorkspaceTabs(follow);
 }

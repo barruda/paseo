@@ -204,3 +204,88 @@ describe("useAssistantTabSweep", () => {
     expect(useAssistantSidebarStore.getState().pending).toBeNull();
   });
 });
+
+describe("newest chat (CUSTOM(assistant-desk-newest))", () => {
+  const seedStale = () => {
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "old" } });
+    seedSession({
+      agents: [
+        ["old", agent({ id: "old", archivedAt: new Date() })],
+        ["new", agent({ id: "new", labels: { ...CHAT, "paseo.replaces-agent": "old" } })],
+      ],
+    });
+    useDesksStore.getState().showAssistantChat({
+      tab: { ...OWNER, target: { kind: "agent", agentId: "old" } },
+      isChatTab: () => false,
+    });
+  };
+  const targets = () => assistantDeskTabs().map((tab) => tab.target);
+
+  it("retargets a stale chat tab while the Desk is not active", () => {
+    seedStale();
+    useDesksStore.getState().selectDesk("primary");
+    renderHook(() => useAssistantTabSweep());
+
+    expect(targets()).toEqual([{ kind: "agent", agentId: "new" }]);
+    expect(useDesksStore.getState().activeDeskId).toBe("primary");
+    expect(useAssistantSidebarStore.getState().chat).toEqual({
+      serverId: "s1",
+      agentId: "new",
+    });
+  });
+
+  it("keeps the tab while in view and refreshes when the Desk comes into view again", () => {
+    seedStale();
+    renderHook(() => useAssistantTabSweep());
+    // The first evaluation after start forces, so the tab already follows.
+    expect(targets()).toEqual([{ kind: "agent", agentId: "new" }]);
+
+    act(() => {
+      useDesksStore.getState().selectDesk("primary");
+      useDesksStore.getState().showAssistantChat({
+        tab: { ...OWNER, target: { kind: "agent", agentId: "old" } },
+        isChatTab: () => true,
+        select: false,
+      });
+    });
+    // Not in view: the refresh retargets right away.
+    expect(targets()).toEqual([{ kind: "agent", agentId: "new" }]);
+
+    act(() => {
+      useDesksStore.getState().selectDesk(ASSISTANT_DESK_ID);
+    });
+    expect(useDesksStore.getState().activeDeskId).toBe(ASSISTANT_DESK_ID);
+
+    // While in view a stale tab is left alone.
+    act(() => {
+      useDesksStore.getState().showAssistantChat({
+        tab: { ...OWNER, target: { kind: "agent", agentId: "old" } },
+        isChatTab: () => true,
+      });
+    });
+    expect(targets()).toEqual([{ kind: "agent", agentId: "old" }]);
+
+    act(() => {
+      useDesksStore.getState().selectDesk("primary");
+    });
+    expect(targets()).toEqual([{ kind: "agent", agentId: "new" }]);
+  });
+
+  it("forces a refresh when the Desk comes into view with a stale tab", () => {
+    seedStale();
+    renderHook(() => useAssistantTabSweep());
+    // Sweep ran with the Desk in view and force: already new. Make it stale while in view.
+    act(() => {
+      useDesksStore.getState().showAssistantChat({
+        tab: { ...OWNER, target: { kind: "agent", agentId: "old" } },
+        isChatTab: () => true,
+      });
+    });
+    expect(targets()).toEqual([{ kind: "agent", agentId: "old" }]);
+    act(() => {
+      useDesksStore.getState().selectDesk("primary");
+      useDesksStore.getState().selectDesk(ASSISTANT_DESK_ID);
+    });
+    expect(targets()).toEqual([{ kind: "agent", agentId: "new" }]);
+  });
+});
