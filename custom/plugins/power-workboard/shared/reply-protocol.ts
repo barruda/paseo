@@ -134,12 +134,6 @@ export function splitReplyIds(value: string): {
   return { text: text.trim(), taskIds, pmCardIds };
 }
 
-/** Splits the trailing `[id]` groups off a value (task ids only). */
-export function splitTaskIds(value: string): { text: string; ids: string[] } {
-  const { text, taskIds } = splitReplyIds(value);
-  return { text, ids: taskIds };
-}
-
 export interface ReplyLine {
   /** The text without the verb and the ids. */
   text: string;

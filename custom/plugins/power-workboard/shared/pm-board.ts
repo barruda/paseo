@@ -2,6 +2,7 @@
 // between the user and the PM live here, apart from the task board. A card here never starts an
 // agent or a workspace: code tasks and code reviews stay on the task board.
 import { z } from "zod";
+import { taskNumberLabel } from "./task-reference";
 
 export const PM_CARD_KINDS = [
   "investigation",
@@ -35,6 +36,7 @@ export const pmDeciderSchema = z.enum(PM_DECIDERS);
 export type PmDecider = z.infer<typeof pmDeciderSchema>;
 
 export const PM_CARD_ID_PREFIX = "pm-";
+/** The soft limit: over it, creating a card drops the oldest archived ones, never an active one. */
 export const PM_CARD_LIMIT = 500;
 export const PM_OPTION_LIMIT = 8;
 
@@ -79,11 +81,35 @@ export const pmCardSchema = z.object({
 });
 export type PmCard = z.infer<typeof pmCardSchema>;
 
-/** Stored inside the board's data (`data.assistant.pmBoard`). */
+/**
+ * Stored inside the board's data (`data.assistant.pmBoard`). The array has no hard maximum: the
+ * board keeps every active card and may pass `PM_CARD_LIMIT` when there is nothing archived.
+ */
 export const pmBoardSchema = z.object({
-  cards: z.array(pmCardSchema).max(PM_CARD_LIMIT).default([]),
+  cards: z.array(pmCardSchema).default([]),
 });
 export type PmBoard = z.infer<typeof pmBoardSchema>;
+
+/**
+ * The cards to keep after a create. Over the limit, only the oldest archived cards go; an active
+ * card is never dropped, so the board can pass the limit when nothing is archived. The array is
+ * newest first, so the last archived entry is the oldest one.
+ */
+export function trimPmCards(
+  cards: PmCard[],
+  limit: number = PM_CARD_LIMIT,
+): PmCard[] {
+  if (cards.length <= limit) return cards;
+  const kept = [...cards];
+  for (
+    let index = kept.length - 1;
+    index >= 0 && kept.length > limit;
+    index--
+  ) {
+    if (kept[index]!.status === "archived") kept.splice(index, 1);
+  }
+  return kept;
+}
 
 /** What the overview tells the PM: counts per column and the cards waiting for the user. */
 export const pmCardSummarySchema = z.object({
@@ -132,6 +158,11 @@ export interface PmCardUpdateInput {
   answer?: string | null;
   answerOptionId?: string | null;
   links?: PmCardLinks;
+}
+
+/** Kinds whose cards must record a decision or an answer before they can be closed. */
+export function pmNeedsAnswerToDecide(kind: PmCardKind): boolean {
+  return kind === "proposal" || kind === "decision";
 }
 
 /** The recommendation when it names one of the options; null otherwise. */
@@ -186,6 +217,34 @@ export function pmCardsIn(
 /** How many cards wait for the user, for the tab and status bar badges. */
 export function pmWaitingCount(cards: readonly PmCard[]): number {
   return cards.filter((card) => card.status === "waiting").length;
+}
+
+/** A chip under a PM card: a task or a Reports ticket the user can open. */
+export interface PmCardLinkTarget {
+  kind: "task" | "report";
+  id: string;
+  /** `#42` for a task with a number, or the id's first 8 characters. */
+  label: string;
+}
+
+/** The card's links, tasks first, each id once. */
+export function pmCardLinkTargets(
+  card: PmCard,
+  taskNumbers: Readonly<Record<string, number>> = {},
+): PmCardLinkTarget[] {
+  const unique = (ids: readonly string[]) => [...new Set(ids)];
+  return [
+    ...unique(card.links.taskIds).map((id) => ({
+      kind: "task" as const,
+      id,
+      label: taskNumberLabel(taskNumbers[id] ?? 0) || id.slice(0, 8),
+    })),
+    ...unique(card.links.reportIds).map((id) => ({
+      kind: "report" as const,
+      id,
+      label: id.slice(0, 8),
+    })),
+  ];
 }
 
 export function pmCardSummary(card: PmCard): PmCardSummary {

@@ -1,6 +1,6 @@
 // CUSTOM(pm-board): the Project Manager's own board, its cards, the user's answer and reopen, and
 // the overview the PM reads.
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { fixture } from "./fixtures";
 import { Workboard } from "../server/workboard";
 import { buildOverview } from "../server/assistant/views";
@@ -9,7 +9,13 @@ import {
   reopenPmCardOnBoard,
 } from "../server/assistant/pm-board";
 import { assistantDataSchema } from "../shared/assistant";
-import { buildPmOverview, newPmCard, pmWaitingCount } from "../shared/pm-board";
+import {
+  buildPmOverview,
+  newPmCard,
+  pmCardLinkTargets,
+  pmWaitingCount,
+  PM_CARD_LIMIT,
+} from "../shared/pm-board";
 
 const now = "2026-11-20T12:00:00.000Z";
 
@@ -20,10 +26,21 @@ async function pmBoard() {
   const board = new Workboard(setup.host, setup.store, () => clock);
   return {
     board,
+    setup,
     advance: (ms: number) => {
       clock += ms;
     },
   };
+}
+
+/** A board seeded directly, so a limit test does not create hundreds of cards through the store. */
+function seedCards(count: number, archived = false, start = 0) {
+  return Array.from({ length: count }, (_, index) =>
+    newPmCard(`pm-seed${String(start + index).padStart(4, "0")}`, now, {
+      kind: "notice",
+      title: `Notice ${start + index}`,
+    }),
+  ).map((card) => (archived ? { ...card, status: "archived" as const } : card));
 }
 
 const option = (id: string, label: string, gains: string | null = null) => ({
@@ -125,6 +142,165 @@ describe("PM board store", () => {
     expect(reopened.answer).toBeNull();
     expect(reopened.answerOptionId).toBeNull();
     expect(reopened.decision).toBeNull();
+  });
+});
+
+describe("decidedBy on updates", () => {
+  it("leaves a notice without a decider when it is updated", async () => {
+    const { board, advance } = await pmBoard();
+    const notice = await board.pmCardCreate({
+      kind: "notice",
+      title: "Aviso",
+    });
+    expect(notice.status).toBe("decided");
+    expect(notice.decidedBy).toBeNull();
+    expect(notice.decidedAt).toBeNull();
+
+    advance(1_000);
+    const updated = await board.pmCardUpdate(notice.id, {
+      status: "decided",
+      findings: "Mais contexto.",
+    });
+    expect(updated.decidedBy).toBeNull();
+    expect(updated.decidedAt).toBeNull();
+  });
+
+  it("records the decider when a proposal becomes decided", async () => {
+    const { board } = await pmBoard();
+    const card = await board.pmCardCreate({
+      kind: "proposal",
+      title: "Publicar?",
+      question: "Publicar agora?",
+    });
+    const decided = await board.pmCardUpdate(card.id, {
+      status: "decided",
+      decision: "Publico amanhã",
+    });
+    expect(decided.decidedBy).toBe("pm");
+    expect(decided.decidedAt).not.toBeNull();
+  });
+});
+
+describe("the 500-card limit", () => {
+  it("drops the oldest archived card before any active one", async () => {
+    const { board, setup } = await pmBoard();
+    await setup.store.update((data) => {
+      data.assistant.pmBoard.cards = [
+        ...seedCards(PM_CARD_LIMIT - 1),
+        ...seedCards(1, true, PM_CARD_LIMIT - 1),
+      ];
+    });
+    const created = await board.pmCardCreate({
+      kind: "notice",
+      title: "O 501º",
+    });
+    const cards = board.pmCards();
+    expect(cards).toHaveLength(PM_CARD_LIMIT);
+    expect(cards.some((card) => card.id === created.id)).toBe(true);
+    expect(cards.some((card) => card.status === "archived")).toBe(false);
+    // No active card was dropped.
+    for (const seeded of seedCards(PM_CARD_LIMIT - 1))
+      expect(cards.some((card) => card.id === seeded.id)).toBe(true);
+  });
+
+  it("keeps every card when there is nothing archived to drop", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { board, setup } = await pmBoard();
+      await setup.store.update((data) => {
+        data.assistant.pmBoard.cards = seedCards(PM_CARD_LIMIT);
+      });
+      const created = await board.pmCardCreate({
+        kind: "notice",
+        title: "O 501º",
+      });
+      const cards = board.pmCards();
+      expect(cards).toHaveLength(PM_CARD_LIMIT + 1);
+      expect(cards.some((card) => card.id === created.id)).toBe(true);
+      for (const seeded of seedCards(PM_CARD_LIMIT))
+        expect(cards.some((card) => card.id === seeded.id)).toBe(true);
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("no archived card is left to drop"),
+      );
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
+
+describe("closing a card without an answer", () => {
+  it("refuses a proposal decided with no decision and no answer", async () => {
+    const { board } = await pmBoard();
+    const card = await board.pmCardCreate({
+      kind: "proposal",
+      title: "Publicar?",
+      question: "Publicar agora?",
+    });
+    await expect(
+      board.pmCardUpdate(card.id, { status: "decided" }),
+    ).rejects.toThrow(/non-empty decision or answer/);
+    await expect(board.pmCardDecide(card.id, { by: "pm" })).rejects.toThrow(
+      /non-empty answer or one of its options/,
+    );
+  });
+
+  it("refuses a proposal decided with only the decision text", async () => {
+    const { board } = await pmBoard();
+    const card = await board.pmCardCreate({
+      kind: "proposal",
+      title: "Publicar?",
+      question: "Publicar agora?",
+    });
+    await expect(
+      board.pmCardDecide(card.id, { decision: "Publico amanhã", by: "pm" }),
+    ).rejects.toThrow(/non-empty answer or one of its options/);
+  });
+
+  it("records the answer when the PM decides a proposal", async () => {
+    const { board } = await pmBoard();
+    const card = await board.pmCardCreate({
+      kind: "proposal",
+      title: "Publicar?",
+      question: "Publicar agora?",
+    });
+    const decided = await board.pmCardDecide(card.id, {
+      decision: "Publico amanhã",
+      answer: "Amanhã",
+      by: "pm",
+    });
+    expect(decided.status).toBe("decided");
+    expect(decided.answer).toBe("Amanhã");
+    expect(decided.decision).toBe("Publico amanhã");
+  });
+});
+
+describe("PM card links", () => {
+  it("labels a task with its ticket number and a report with its id", () => {
+    const card = newPmCard("pm-1", now, {
+      kind: "notice",
+      title: "N",
+      links: {
+        taskIds: ["abcdef12-1111-2222-3333-444455556666", "deadbeef"],
+        reportIds: ["cafebabe-1111-2222-3333-444455556666"],
+      },
+    });
+    expect(
+      pmCardLinkTargets(card, {
+        "abcdef12-1111-2222-3333-444455556666": 42,
+      }),
+    ).toEqual([
+      {
+        kind: "task",
+        id: "abcdef12-1111-2222-3333-444455556666",
+        label: "#42",
+      },
+      { kind: "task", id: "deadbeef", label: "deadbeef" },
+      {
+        kind: "report",
+        id: "cafebabe-1111-2222-3333-444455556666",
+        label: "cafebabe",
+      },
+    ]);
   });
 });
 

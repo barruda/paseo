@@ -8,7 +8,6 @@ const en = {
   subtitle:
     "Investigations, proposals and decisions between you and the Project Manager. Code tasks and code reviews stay on the Board.",
   loading: "Loading…",
-  loadFailed: "Could not load the decisions.",
   retry: "Try again",
   columns: {
     investigating: "Investigating",
@@ -28,8 +27,6 @@ const en = {
     decided: "Nothing decided yet.",
     archived: "Nothing archived.",
   } satisfies Record<PmCardStatus, string>,
-  question: "Question",
-  findings: "Findings",
   decision: "Decision",
   recommended: "recommended",
   gains: "gains",
@@ -57,7 +54,6 @@ const pt: PmBoardStrings = {
   subtitle:
     "Investigações, propostas e decisões entre você e o Project Manager. As tarefas de código e as revisões de código ficam no Board.",
   loading: "Carregando…",
-  loadFailed: "Não foi possível carregar as decisões.",
   retry: "Tentar de novo",
   columns: {
     investigating: "Investigando",
@@ -77,8 +73,6 @@ const pt: PmBoardStrings = {
     decided: "Nada decidido ainda.",
     archived: "Nada arquivado.",
   },
-  question: "Pergunta",
-  findings: "Descobertas",
   decision: "Decisão",
   recommended: "recomendado",
   gains: "ganha",

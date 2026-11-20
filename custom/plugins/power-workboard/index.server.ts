@@ -303,7 +303,10 @@ export default function contribute(server: PluginServerContext) {
   });
   // CUSTOM(pm-board): the Project Manager's own board. A user's answer and a reopen also reach the
   // PM chat as a message, so it can act on what the user decided.
-  server.handle(assistantPmCardsRpc, () => ({ cards: ready().pmCards() }));
+  server.handle(assistantPmCardsRpc, () => {
+    const board = ready();
+    return { cards: board.pmCards(), taskNumbers: board.pmTaskNumbers() };
+  });
   const pmMessage = async (text: string): Promise<string | null> => {
     try {
       const ack = await inbox.ask({ text, source: "pm-board", waitMs: 0 });

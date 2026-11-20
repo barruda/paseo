@@ -17,7 +17,13 @@ A card has a **kind** and a **status** (its column):
 | `notice`        | Decided         | information the user should track; use it sparingly           |
 
 Columns: **Investigating · Esperando você · Decidido · Arquivado**. A "pending decision" is a
-proposal in Esperando você; a decided card records `decidedBy` (`user` or `pm`) and `decidedAt`.
+proposal in Esperando você; a decided card records `decidedBy` (`user` or `pm`) and `decidedAt`
+only when the update moves it into Decidido, or when its kind is `decision`. A `notice` starts
+Decidido without a decider, and updating it never makes it read "decided by the Project Manager".
+
+The board holds 500 cards as a soft limit. Creating a card past it drops only the oldest
+**Archived** cards; an active card is never deleted. When nothing is archived the board passes the
+limit and the daemon log says so, so an investigation or a proposal is not lost to a new notice.
 
 The data lives in `data.assistant.pmBoard` (the board's own store), and the page reads it through
 `workboard.assistant.pm.cards` at its own poll, so the task board's 1.5 s snapshot does not grow.
@@ -34,6 +40,10 @@ costs}`) and `recommend`. Do not ask an empty question.
   reopen it.
 - Move an **investigation** to `waiting` when it needs the user.
 - Use a **notice** only when the user should track something, not for every event.
+- `pm_card_decide` on a `proposal` needs an `answer` or one of the card's options; on a
+  `decision` it needs a non-empty `decision` or `answer`. `pm_card_update` with status `decided`
+  needs one of the two for either kind. Closing a card without it fails with a message instead of
+  leaving a decided card nobody answered.
 
 A reply that needs a decision ends its `seu` line with the card id: `seu: decidir <x>
 [pm:pm-abc12345]`. The chat draws it as a link to the card.
@@ -50,8 +60,9 @@ free-text field. One tap calls `workboard.assistant.pm.card.decide`, which:
 **Reabrir** on a decided card moves it back to Esperando você, clears the decision, and tells the
 PM. If the message cannot be sent, the card still moves and the page says so.
 
-Cards can link to tasks and their Reports tickets by id (`links.taskIds`, `links.reportIds`); the
-chips open the ticket in Reports.
+Cards can link to tasks and their Reports tickets by id (`links.taskIds`, `links.reportIds`). A
+task chip shows `#N` when the ticket has a number (the id's first 8 characters otherwise) and opens
+the ticket in the board's side panel; a report chip opens the ticket in Reports.
 
 ## What stays on the task board
 

@@ -61,8 +61,10 @@ import {
   newPmCard,
   normalizePmRecommend,
   pmAnswerOption,
+  pmNeedsAnswerToDecide,
   PM_CARD_ID_PREFIX,
   PM_CARD_LIMIT,
+  trimPmCards,
   type PmCard,
   type PmCardCreateInput,
   type PmCardUpdateInput,
@@ -4399,6 +4401,12 @@ export class Workboard {
   pmCards(): PmCard[] {
     return this.store.current.assistant.pmBoard.cards;
   }
+  /** The short number of each board task, by id, for the links under a PM card. */
+  pmTaskNumbers(): Record<string, number> {
+    return Object.fromEntries(
+      this.store.current.tasks.map((task) => [task.id, task.number]),
+    );
+  }
   async pmCardCreate(input: PmCardCreateInput): Promise<PmCard> {
     const card = newPmCard(
       `${PM_CARD_ID_PREFIX}${randomUUID().slice(0, 8)}`,
@@ -4407,10 +4415,12 @@ export class Workboard {
     );
     await this.serial(() =>
       this.store.update((data) => {
-        data.assistant.pmBoard.cards = [
-          card,
-          ...data.assistant.pmBoard.cards,
-        ].slice(0, PM_CARD_LIMIT);
+        const cards = trimPmCards([card, ...data.assistant.pmBoard.cards]);
+        if (cards.length > PM_CARD_LIMIT)
+          console.warn(
+            `PM board passed its ${PM_CARD_LIMIT}-card limit (${cards.length} cards): no archived card is left to drop.`,
+          );
+        data.assistant.pmBoard.cards = cards;
       }),
     );
     return card;
@@ -4444,12 +4454,27 @@ export class Workboard {
           ...(input.links !== undefined ? { links: input.links } : {}),
           updatedAt: this.stamp(current.updatedAt),
         };
+        const becomingDecided =
+          next.status === "decided" && current.status !== "decided";
+        // Closing a proposal or a decision without a decision or an answer leaves the user
+        // without what they were waiting for.
+        if (becomingDecided && pmNeedsAnswerToDecide(current.kind)) {
+          const decision = (input.decision ?? current.decision ?? "").trim();
+          const answer = (input.answer ?? current.answer ?? "").trim();
+          if (!decision && !answer)
+            throw new Error(
+              `PM card ${id} is a ${current.kind}: record a non-empty decision or answer before marking it decided.`,
+            );
+        }
         // A decision records who decided and when; reopening or going back to investigating
-        // clears both. Archiving keeps the record.
+        // clears both. Archiving keeps the record. A notice starts decided without a decider, and
+        // updating it must not turn it into "decided by the Project Manager".
         if (next.status === "decided") {
-          if (input.decidedBy !== undefined) next.decidedBy = input.decidedBy;
-          next.decidedBy ??= "pm";
-          next.decidedAt ??= next.updatedAt;
+          if (current.status !== "decided" || current.kind === "decision") {
+            if (input.decidedBy !== undefined) next.decidedBy = input.decidedBy;
+            next.decidedBy ??= "pm";
+            next.decidedAt ??= next.updatedAt;
+          }
         } else if (
           next.status === "waiting" ||
           next.status === "investigating"
@@ -4481,12 +4506,23 @@ export class Workboard {
       throw new Error(
         `Card ${id} has no option "${input.optionId}". Options: ${current.options.map((item) => item.id).join(", ") || "none"}.`,
       );
+    const decision = input.decision?.trim() || null;
     const answer = input.answer?.trim() || option?.label || null;
+    // A proposal is the user's choice: closing it without an answer records nothing of what was
+    // chosen, so the decision text alone is not enough.
+    if (current.kind === "proposal" && !answer)
+      throw new Error(
+        `PM card ${id} is a proposal: pass a non-empty answer or one of its options before deciding it.`,
+      );
+    if (pmNeedsAnswerToDecide(current.kind) && !decision && !answer)
+      throw new Error(
+        `PM card ${id} is a ${current.kind}: pass a non-empty decision or answer before deciding it.`,
+      );
     return this.pmCardUpdate(id, {
       status: "decided",
       answer,
       answerOptionId: option?.id ?? null,
-      decision: input.decision ?? answer,
+      decision: decision ?? answer,
       decidedBy: input.by,
     });
   }
