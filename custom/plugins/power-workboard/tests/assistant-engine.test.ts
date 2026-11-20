@@ -56,8 +56,8 @@ interface Options {
   /** CUSTOM(worktree-base): the project checkout's current branch. */
   currentBranch?: string | null;
   settings?: Record<string, unknown>;
-  /** CUSTOM(unattended-automation): board settings, distinct from the assistant's. */
-  boardSettings?: Record<string, unknown>;
+  /** CUSTOM(unattended-automation): fields of the orchestrator the task runs under. */
+  orchestrator?: Record<string, unknown>;
   git?: boolean;
   assistant?: AssistantOptions;
 }
@@ -67,9 +67,6 @@ async function scenario(options: Options = {}) {
   const history = memoryHistory();
   const setup = fixture({
     defaultOrchestratorSeeded: true,
-    ...(options.boardSettings
-      ? { settings: options.boardSettings as Data["settings"] }
-      : {}),
     assistant: assistantDataSchema.parse({
       settings: {
         ...options.settings,
@@ -106,6 +103,7 @@ async function scenario(options: Options = {}) {
     orchestrator: orchestratorConfigSchema.omit({ id: true }).parse({
       name: "Always",
       schedule: { kind: "window", start: "00:00", end: "00:00" },
+      ...options.orchestrator,
     }),
   });
   const card = board.snapshot().cards.find((c) => c.title === "Task")!;
@@ -3195,23 +3193,33 @@ it("an automatic agent waiting on a permission reaches Needs you within about tw
   }
 });
 
-it("the automatic-permission setting reaches the agent the board starts", async () => {
-  const on = await scenario();
-  try {
-    expect((on.host.startAgent as any).mock.calls[0][1].unattended).toBe(true);
-  } finally {
-    on.board.dispose();
-  }
-  const off = await scenario({
-    boardSettings: { autoPermission: { enabled: false } },
+it("the orchestrator's Permissions field decides what the board starts", async () => {
+  const start = async (orchestrator?: Record<string, unknown>) => {
+    const s = await scenario({ orchestrator });
+    try {
+      return (s.host.startAgent as any).mock.calls[0][1];
+    } finally {
+      s.board.dispose();
+    }
+  };
+  expect(await start()).toMatchObject({ modeId: null, unattended: true });
+  expect(await start({ modeId: "default" })).toMatchObject({
+    modeId: "default",
+    unattended: false,
   });
-  try {
-    expect((off.host.startAgent as any).mock.calls[0][1].unattended).toBe(
-      false,
-    );
-  } finally {
-    off.board.dispose();
-  }
+  expect(await start({ modeId: "bypassPermissions" })).toMatchObject({
+    modeId: "bypassPermissions",
+    unattended: true,
+  });
+  expect(
+    await start({
+      provider: "opencode/deepseek/deepseek-v4",
+      autoAccept: false,
+    }),
+  ).toMatchObject({ unattended: false });
+  expect(
+    await start({ provider: "opencode/deepseek/deepseek-v4", modeId: "plan" }),
+  ).toMatchObject({ modeId: "plan", unattended: true });
 });
 
 it("a hidden board subagent waiting on a permission brings the task to Needs you", async () => {

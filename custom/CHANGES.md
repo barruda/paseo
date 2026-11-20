@@ -8542,10 +8542,14 @@ tests/assistant-engine.test.ts`. Needs only `paseo plugin reload power-workboard
     subagents (`paseo.board-agent`) created by the task's agent. After 90 s it
     puts the task on Needs you with reason `permission`, wakes the Projects
     Assistant, and drops that Needs you when the agent runs again.
-  - Settings: Power Workboard `autoPermission` (`enabled`, then per-role
-    `orchestrator`, `assistant`, `refinement`, `ship`, all on by default) in
-    Settings > Power Workboard; delegation gains `implementerUnattended`, on by
-    default. With it off the agent asks and layer C still warns. Search stays a
+  - Settings: a **Permissions** field in each orchestrator's Agent tab and on the Projects
+    Assistant page, defaulting to the maximum (2026-11-20: replaced the global
+    `autoPermission` toggle, which is gone). For mode providers (Claude, Codex, Copilot, OMP...)
+    the mode is the permission and an empty `modeId` means full access; for OpenCode, Cursor,
+    Kimi, Kiro and Trae (`shared/permission.ts`) the mode stays the agent and a second select sets
+    `autoAccept`. The board sends `unattended: runsUnattended(config)`; a lowered permission makes
+    the agent ask and layer C still warns. Refinement chats and the ship agent have no form and
+    stay unattended. Delegation gains `implementerUnattended`, on by default. Search stays a
     native Agent-tool subagent, so it has no unattended flag.
   - Scratch folder: the board's existing tick calls a background pass at most
     once an hour (once at start) that removes first-level entries of
@@ -8559,8 +8563,8 @@ tests/assistant-engine.test.ts`. Needs only `paseo plugin reload power-workboard
   `provider-snapshot-manager.ts`, `create-agent/create.ts`, `agent-manager.ts`,
   `tools/paseo-tools.ts`, `providers/opencode-agent.ts`,
   `providers/acp-agent.ts`, `packages/app/src/delegation/sheet.tsx`. Plugin
-  files: `custom/plugins/power-workboard/shared/model.ts`, `shared/assistant.ts`,
-  `server/host.ts`, `server/workboard.ts`, `server/tmp-cleanup.ts` (new),
+  files: `custom/plugins/power-workboard/shared/model.ts`, `shared/assistant.ts`, `shared/permission.ts` (new),
+  `client/Profiles.tsx`, `server/host.ts`, `server/workboard.ts`, `server/tmp-cleanup.ts` (new),
   `client/WorkboardScreen.tsx`, `client/strings.ts`,
   `client/assistant/dashboard-strings.ts`, `custom/plugins/delegation/shared/policy.ts`.
 - **Re-apply:** grep `CUSTOM(unattended-automation)`. Keep the protocol field
@@ -8587,8 +8591,8 @@ custom/plugins/delegation && npx vitest run --bail=1)`; `npm run typecheck`. Nee
   `paseo plugin reload delegation`, plus a daemon restart for the protocol and
   permission-manager changes. In the app: start a task with an OpenCode or
   DeepSeek orchestrator and watch it `cd` outside the worktree and write under
-  `/home/bruno/uprojects/tmp` without a prompt; turn "Automatic agents get full
-  permission" off and confirm the prompt appears and the task reaches Needs you
+  `/home/bruno/uprojects/tmp` without a prompt; set the orchestrator's Permissions to
+  Always ask (or OpenCode's to "Ask before tools") and confirm the prompt appears and the task reaches Needs you
   with "Waiting for a permission" after about a minute and a half.
 
 ## board-drag-selection: Power Workboard drag handles never start a text selection

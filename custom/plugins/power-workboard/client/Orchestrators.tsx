@@ -140,6 +140,7 @@ export function newOrchestrator(board: Board, t: Strings) {
     name: `${t.panel.newName} ${board.orchestrators.length + 1}`,
     provider: defaults.provider,
     modeId: defaults.modeId,
+    autoAccept: defaults.autoAccept, // CUSTOM(unattended-automation)
     thinkingOptionId: defaults.thinkingOptionId,
     useWorktree: defaults.useWorktree,
     instructions: defaults.instructions,
@@ -1111,6 +1112,7 @@ type Draft = {
   maxCheckpoints: string; // CUSTOM(task-checkpoints)
   provider: string;
   modeId: string;
+  autoAccept: boolean; // CUSTOM(unattended-automation)
   thinkingOptionId: string;
   useWorktree: boolean;
   instructions: string;
@@ -1133,6 +1135,7 @@ function toDraft(config: OrchestratorConfig): Draft {
     maxCheckpoints: String(config.maxCheckpoints), // CUSTOM(task-checkpoints)
     provider: config.provider,
     modeId: config.modeId ?? "",
+    autoAccept: config.autoAccept,
     thinkingOptionId: config.thinkingOptionId ?? "",
     useWorktree: config.useWorktree,
     instructions: config.instructions,
@@ -1174,6 +1177,7 @@ function fromDraft(id: string, draft: Draft, enabled: boolean) {
     maxCheckpoints: Number(draft.maxCheckpoints), // CUSTOM(task-checkpoints)
     provider: draft.provider,
     modeId: draft.modeId.trim() || null,
+    autoAccept: draft.autoAccept,
     thinkingOptionId: draft.thinkingOptionId.trim() || null,
     useWorktree: draft.useWorktree,
     instructions: draft.instructions,
@@ -1640,6 +1644,7 @@ export function OrchestratorTab(
           value={{
             provider: draft.provider,
             modeId: draft.modeId,
+            autoAccept: draft.autoAccept,
             thinkingOptionId: draft.thinkingOptionId,
           }}
           onChange={(change) => edit(change)}

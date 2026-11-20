@@ -80,16 +80,29 @@ daemon, which stops its running agents.
 A daemon-side change with an unchanged version needs the daemon stopped by hand. The daemon runs
 under a long-lived `Paseo Supervisor` that respawns it from the build the supervisor started from,
 so neither reopening the window nor Settings > Restart daemon picks up new daemon code. Run
-`kill-paseos-and-daemons.sh` (`custom/bin/`, linked into `~/.local/bin` under that name and as
-`restart-paseos-and-daemons.sh`). It stops the daemons
+`build-paseo-if-needed-and-kill-daemons.sh` (`custom/bin/`, linked into `~/.local/bin` under that
+name and as `kill-paseos-and-daemons.sh` and `restart-paseos-and-daemons.sh`). It first checks
+whether the installed build is behind the committed source (`paseo-build.sh status`, below) and,
+if it is, builds and installs from the working tree before stopping anything; a failed build stops
+nothing and sends a desktop notification. `--no-build` skips the check, `--force-build` builds
+anyway. Then it stops the daemons
 (`~/.paseo` and `~/.paseo-telus`), closes the open Paseo windows, and reopens them from their
 launchers, giving each step 5 s before it kills. It then waits up to 30 s for each window and
 its daemon and launches a window once more if it did not come back. When neither the paseo-telus window nor its daemon
 is running, it leaves paseo-telus alone. This stops the running agents. It first moves itself
 into a transient systemd user service (`setsid` alone keeps it in the cgroup of the Paseo that ran
 it, which can take it down halfway), so it also works as `!kill-paseos-and-daemons.sh` from a
-Paseo chat or from a Paseo terminal, both of which the daemon owns. Its log is
+Paseo chat or from a Paseo terminal, both of which the daemon owns. Its log, build included, is
 `~/.local/state/kill-paseos-and-daemons.log`.
+
+`custom/bin/paseo-build.sh build` builds the desktop app from the working tree as it is and
+installs it; `if-needed` does that only when `status` says the installed build is behind. Each
+build folder holds a `paseo-build-source` file naming a snapshot commit of the tree it was built
+from, uncommitted and untracked files included (kept by refs under `refs/paseo-builds/`). The
+installed build is behind when `HEAD` differs from that snapshot in a file that goes into the app:
+changes under `custom/` (directory plugins load from source on daemon start), docs, Markdown and
+tests don't count. A build made with a bare `npm run build:desktop` has no snapshot; the commit in
+its install folder's name stands in, which only ever causes one extra build.
 
 Installed builds have the auto-updater off, so they never replace themselves with upstream's
 release; updates only come from this script.

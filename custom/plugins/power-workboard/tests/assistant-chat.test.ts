@@ -105,7 +105,7 @@ it("chat.open creates the chat agent once, reuses it, and recreates it when arch
     expect(start).toMatchObject({
       provider: "claude/claude-opus-5-5",
       thinkingOptionId: "high",
-      modeId: "bypassPermissions",
+      modeId: null,
       title: "Projects Assistant",
       labels: { [CHAT_LABEL]: "true" },
       prompt: expect.stringContaining(CHAT_INSTRUCTIONS),
@@ -768,16 +768,29 @@ it("board_task_action merge-now with wait returns the final stage; without it, t
   }
 });
 
-it("the assistant and ship roles follow the automatic-permission setting", async () => {
-  const c = await chat({
-    settings: { autoPermission: { assistant: false, ship: false } },
-  });
+it("the assistant's Permissions field decides unattended; the ship agent stays unattended", async () => {
+  const c = await chat();
   try {
-    await c.board.openChat(false);
-    const start = (c.host.startAgentIn as any).mock.calls[0][1];
-    expect(start.unattended).toBe(false);
-    expect(start.systemPrompt).toContain('"unattended": false');
+    await c.store.update((data) => {
+      data.assistant.settings.chat.modeId = "default";
+    });
+    await c.board.openChat(true);
+    const start = (c.host.startAgentIn as any).mock.calls.at(-1)[1];
+    expect(start).toMatchObject({ modeId: "default", unattended: false });
+    expect(start.systemPrompt).toContain('"unattended": true');
   } finally {
     c.board.dispose();
+  }
+  const o = await chat();
+  try {
+    await o.store.update((data) => {
+      data.assistant.settings.chat.provider = "opencode/deepseek/deepseek-v4";
+      data.assistant.settings.chat.autoAccept = false;
+    });
+    await o.board.openChat(true);
+    const start = (o.host.startAgentIn as any).mock.calls.at(-1)[1];
+    expect(start.unattended).toBe(false);
+  } finally {
+    o.board.dispose();
   }
 });

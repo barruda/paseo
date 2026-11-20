@@ -82,8 +82,11 @@ workspace labels.
 
 Each orchestrator is stored in `orchestrators` (`shared/model.ts`, `orchestratorConfigSchema`);
 schedules are in `shared/schedule.ts`. `orchestrator` holds the defaults new orchestrators start
-from (`claude/claude-opus-5-5`, `bypassPermissions`, `medium`, worktree) and `refineModeId`
-(`default`) for refinement chats, with no UI yet.
+from (`claude/claude-opus-5-5`, full access, `medium`, worktree) and `refineModeId`
+(`default`) for refinement chats, with no UI yet. Permission is a per-orchestrator and
+Projects Assistant field (**Permissions**, full access by default): the mode for Claude, Codex and
+other mode providers, the `auto_accept` feature (`autoAccept`) for OpenCode, Cursor, Kimi, Kiro and Trae
+(`shared/permission.ts`).
 
 ## Quick messages and the ack contract
 

@@ -50,10 +50,10 @@ import {
   type TaskTiming,
   BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
   BOARD_AGENT_LABEL, // CUSTOM(hidden-board-agents)
-  autoPermissionFor, // CUSTOM(unattended-automation)
   TMP_CLEANUP_INTERVAL_MS, // CUSTOM(unattended-automation)
 } from "../shared/model";
 import { cleanupScratchDirectory, tmpCleanupDue } from "./tmp-cleanup"; // CUSTOM(unattended-automation)
+import { runsUnattended } from "../shared/permission"; // CUSTOM(unattended-automation)
 import {
   dueTrigger,
   nextRunAt,
@@ -2059,7 +2059,7 @@ export class Workboard {
       title: `Refine: ${task.title}`.slice(0, 200),
       prompt: refinementPrompt(task, settings.instructions),
       // CUSTOM(unattended-automation)
-      unattended: autoPermissionFor(this.store.current.settings, "refinement"),
+      unattended: true, // refinement chats have no form: full access
     });
     await this.setRefinement(taskId, {
       agentId,
@@ -4264,10 +4264,7 @@ export class Workboard {
     const chat = this.store.current.assistant.settings.chat;
     // CUSTOM(unattended-automation): the ship agent is created through create_agent, so the
     // assistant is told which permission mode its role setting asks for.
-    const shipUnattended = autoPermissionFor(
-      this.store.current.settings,
-      "ship",
-    );
+    const shipUnattended = true;
     const permissionNote = `Automatic agents: when you create the ship agent with create_agent, pass settings: {"unattended": ${shipUnattended}}. It must not stop for a permission prompt.`;
     const profile = await this.agentProfile(
       this.profileRef(ASSISTANT_PROFILE),
@@ -4292,7 +4289,7 @@ export class Workboard {
         ...(replaces ? { [AGENT_REPLACES_LABEL]: replaces } : {}),
       },
       // CUSTOM(unattended-automation)
-      unattended: autoPermissionFor(this.store.current.settings, "assistant"),
+      unattended: runsUnattended(chat),
     });
   }
   // CUSTOM(assistant-compact): once a turn leaves the chat at its token limit, the board restarts
@@ -5602,10 +5599,7 @@ export class Workboard {
         modeId: config.modeId,
         thinkingOptionId: config.thinkingOptionId,
         // CUSTOM(unattended-automation)
-        unattended: autoPermissionFor(
-          this.store.current.settings,
-          "orchestrator",
-        ),
+        unattended: runsUnattended(config),
         title: task.title,
         prompt: orchestratorPrompt(
           task,
@@ -5697,10 +5691,7 @@ export class Workboard {
           modeId: settings.modeId,
           thinkingOptionId: settings.thinkingOptionId,
           // CUSTOM(unattended-automation)
-          unattended: autoPermissionFor(
-            this.store.current.settings,
-            "orchestrator",
-          ),
+          unattended: runsUnattended(settings),
           title: task.title,
           prompt: [
             orchestratorPrompt(task, settings.instructions),

@@ -4460,60 +4460,6 @@ export function SettingsPage({
               />
             </SettingsCard>
           </SettingsSection>
-          <SettingsSection title={t.autoPermissionTitle}>
-            <SettingsCard>
-              <SettingsSwitch
-                label={t.autoPermission}
-                hint={t.autoPermissionHint}
-                value={settings.autoPermission.enabled}
-                onValueChange={async (value) => {
-                  await persist(
-                    {
-                      ...settings,
-                      autoPermission: {
-                        ...settings.autoPermission,
-                        enabled: value,
-                      },
-                    },
-                    "auto-permission",
-                  );
-                }}
-                disabled={controlDisabled("auto-permission")}
-                testID="workboard-auto-permission"
-              />
-              {(
-                [
-                  ["orchestrator", t.autoPermissionOrchestrator],
-                  ["assistant", t.autoPermissionAssistant],
-                  ["refinement", t.autoPermissionRefinement],
-                  ["ship", t.autoPermissionShip],
-                ] as const
-              ).map(([role, label]) => (
-                <SettingsSwitch
-                  key={role}
-                  label={label}
-                  value={settings.autoPermission[role]}
-                  onValueChange={async (value) => {
-                    await persist(
-                      {
-                        ...settings,
-                        autoPermission: {
-                          ...settings.autoPermission,
-                          [role]: value,
-                        },
-                      },
-                      `auto-permission-${role}`,
-                    );
-                  }}
-                  disabled={
-                    !settings.autoPermission.enabled ||
-                    controlDisabled(`auto-permission-${role}`)
-                  }
-                  testID={`workboard-auto-permission-${role}`}
-                />
-              ))}
-            </SettingsCard>
-          </SettingsSection>
           <SettingsSection title={t.tmpCleanupTitle}>
             <SettingsCard>
               <SettingsInput

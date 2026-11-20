@@ -63,9 +63,11 @@ rules agents get wrong.
 - Build from this checkout as it is, including other agents' uncommitted work in the tree; the
   user prefers that over a clean worktree or waiting. Mention in your report which uncommitted
   files went into the build.
-- Core change: `npm run build:desktop -- --linux dir` (only the folder the install copies; the
-  full build fails at rpm on Ubuntu), then
-  `custom/update-paseo-source-and-apply-customization.sh --install-only`. If no daemon restart is
+- Core change: `custom/bin/paseo-build.sh build` (builds only the folder the install copies,
+  records which source it came from, and runs
+  `custom/update-paseo-source-and-apply-customization.sh --install-only`). Use it instead of a bare
+  `npm run build:desktop`, whose build has no source record and gets rebuilt by the restart
+  command. If no daemon restart is
   needed, run `custom/reopen-paseo-clients.sh` yourself, without asking: it closes each open Paseo window and
   reopens it from its launcher (so it keeps its dock slot). It skips clients whose daemon stops on
   quit (`paseo-telus`, `keepRunningAfterQuit` off): reopening those stops their running agents, so
@@ -83,8 +85,10 @@ rules agents get wrong.
   ```bash
   kill-paseos-and-daemons.sh
   ```
-  It stops the daemons, closes the open Paseo windows and reopens them; their running agents
-  stop. It skips paseo-telus when neither its window nor its daemon is running.
+  It is `build-paseo-if-needed-and-kill-daemons.sh` under its old name: when the installed build
+  is behind the committed source it builds and installs first, then stops the daemons, closes the
+  open Paseo windows and reopens them; their running agents stop. It skips paseo-telus when
+  neither its window nor its daemon is running.
   From a Paseo chat or terminal, run it as `!kill-paseos-and-daemons.sh`.
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user
   first when the upstream version changed: reopening the app restarts the daemon, which stops its

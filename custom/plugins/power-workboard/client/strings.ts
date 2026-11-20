@@ -432,14 +432,6 @@ const zh = {
     "按“进行中”分组判断；离开该分组时仅取消插件添加的置顶，保留你手动置顶的 workspace。",
   settingsTitle: "设置",
   generalSettings: "通用",
-  autoPermissionTitle: "自动 Agent 权限",
-  autoPermission: "自动 Agent 默认拥有完全权限",
-  autoPermissionHint:
-    "看板启动的 Agent（编排器、Projects Assistant、细化、ship）不再请求权限。关闭后它们会重新请求，等待过久仍会进入 Needs you。",
-  autoPermissionOrchestrator: "任务编排器",
-  autoPermissionAssistant: "Projects Assistant",
-  autoPermissionRefinement: "细化对话",
-  autoPermissionShip: "Ship agent",
   tmpCleanupTitle: "临时文件夹清理",
   tmpCleanupPath: "路径",
   tmpCleanupPathHint:
@@ -1173,14 +1165,6 @@ const en: typeof zh = {
     "Use the In progress group. Leaving it removes only the pin added by this plugin; manually pinned workspaces stay pinned.",
   settingsTitle: "Settings",
   generalSettings: "General",
-  autoPermissionTitle: "Automatic agents",
-  autoPermission: "Automatic agents get full permission",
-  autoPermissionHint:
-    "Agents the board starts (orchestrators, the Projects Assistant, refinement, ship) never ask for permission. Turned off they ask again, and a long wait still reaches Needs you.",
-  autoPermissionOrchestrator: "Task orchestrators",
-  autoPermissionAssistant: "Projects Assistant",
-  autoPermissionRefinement: "Refinement chats",
-  autoPermissionShip: "Ship agent",
   tmpCleanupTitle: "Scratch folder cleanup",
   tmpCleanupPath: "Path",
   tmpCleanupPathHint:

@@ -79,8 +79,10 @@ export const assistantChatSettingsSchema = z.object({
   /** `provider/model`. */
   provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
   thinkingOptionId: z.string().trim().min(1).nullable().default("high"),
-  /** It only uses the board's tools and runs in an empty folder, so it doesn't stop to ask. */
-  modeId: z.string().trim().min(1).nullable().default("bypassPermissions"),
+  /** CUSTOM(unattended-automation): the permission of a mode provider; empty is full access. */
+  modeId: z.string().trim().min(1).nullable().default(null),
+  /** CUSTOM(unattended-automation): the permission of a feature provider (OpenCode...). */
+  autoAccept: z.boolean().default(true),
   // CUSTOM(agent-profiles): the assistant's profile settings; its content is in the profile folder.
   skills: skillSelectionSchema.default(() => skillSelectionSchema.parse({})),
   memory: z.boolean().default(true),

@@ -40,6 +40,10 @@ import {
   type SkillSelection,
 } from "../shared/profiles";
 import { usePaseoLanguage } from "./paseo-language";
+import {
+  fullAccessModeOf,
+  isFeaturePermissionProvider,
+} from "../shared/permission"; // CUSTOM(unattended-automation)
 import { profileStrings, type ProfileStrings } from "./profiles-strings";
 
 type Theme = PluginSurfaceProps["theme"];
@@ -70,6 +74,8 @@ function withCurrent(
 export interface AgentValue {
   provider: string;
   modeId: string;
+  /** CUSTOM(unattended-automation): the permission of OpenCode-like providers. */
+  autoAccept: boolean;
   thinkingOptionId: string;
 }
 
@@ -161,7 +167,7 @@ export function AgentFields({
             "claude/claude-opus-5-5",
           )}
           {text(
-            s.freeMode,
+            s.permissions,
             value.modeId,
             (modeId) => onChange({ ...value, modeId }),
             "bypassPermissions",
@@ -208,6 +214,7 @@ export function AgentFields({
       modeId: nextModes.some((mode) => mode.id === value.modeId)
         ? value.modeId
         : "",
+      autoAccept: value.autoAccept,
       thinkingOptionId: nextModel?.thinkingOptions?.some(
         (o) => o.id === value.thinkingOptionId,
       )
@@ -230,73 +237,122 @@ export function AgentFields({
     />
   );
   const none = { value: DEFAULT, label: s.providerDefault };
+  // CUSTOM(unattended-automation): same rule as the server; empty mode is full access.
+  const featureProvider = isFeaturePermissionProvider(provider);
+  const permissionModes = modes.data ?? [];
+  const fullMode = fullAccessModeOf(permissionModes);
   return (
-    <SettingsCard>
-      {select(
-        s.provider,
-        provider,
-        (catalog.data ?? []).map((entry) => ({
-          value: entry.provider,
-          label: entry.provider,
-        })),
-        (next) => void pick(next),
-      )}
-      {models.isError
-        ? text(
-            s.model,
-            model,
-            (next) => onChange({ ...value, provider: `${provider}/${next}` }),
-            "",
+    <>
+      <SettingsCard>
+        {select(
+          s.provider,
+          provider,
+          (catalog.data ?? []).map((entry) => ({
+            value: entry.provider,
+            label: entry.provider,
+          })),
+          (next) => void pick(next),
+        )}
+        {models.isError
+          ? text(
+              s.model,
+              model,
+              (next) => onChange({ ...value, provider: `${provider}/${next}` }),
+              "",
+            )
+          : select(
+              s.model,
+              model,
+              [
+                ...(model ? [] : [none]),
+                ...modelList
+                  .filter((entry) => entry.isSelectable !== false)
+                  .map((entry) => ({ value: entry.id, label: entry.label })),
+              ],
+              (next) => {
+                const entry = modelList.find(
+                  (candidate) => candidate.id === next,
+                );
+                onChange({
+                  ...value,
+                  provider: `${provider}/${next}`,
+                  thinkingOptionId: entry?.thinkingOptions?.some(
+                    (o) => o.id === value.thinkingOptionId,
+                  )
+                    ? value.thinkingOptionId
+                    : "",
+                });
+              },
+            )}
+        {featureProvider ? (
+          <>
+            {select(
+              s.mode,
+              value.modeId,
+              [
+                none,
+                ...(modes.data ?? []).map((mode) => ({
+                  value: mode.id,
+                  label: mode.label,
+                })),
+              ],
+              (modeId) => onChange({ ...value, modeId }),
+            )}
+            <SettingsSelect<string>
+              label={s.permissions}
+              value={value.autoAccept ? "full" : "ask"}
+              options={[
+                { value: "full", label: s.permissionFull },
+                { value: "ask", label: s.permissionAsk },
+              ]}
+              onValueChange={(next) =>
+                onChange({ ...value, autoAccept: next === "full" })
+              }
+              disabled={disabled}
+            />
+          </>
+        ) : modes.isError ? (
+          text(
+            s.permissions,
+            value.modeId,
+            (modeId) => onChange({ ...value, modeId }),
+            "bypassPermissions",
           )
-        : select(
-            s.model,
-            model,
-            [
-              ...(model ? [] : [none]),
-              ...modelList
-                .filter((entry) => entry.isSelectable !== false)
-                .map((entry) => ({ value: entry.id, label: entry.label })),
-            ],
-            (next) => {
-              const entry = modelList.find(
-                (candidate) => candidate.id === next,
-              );
-              onChange({
-                ...value,
-                provider: `${provider}/${next}`,
-                thinkingOptionId: entry?.thinkingOptions?.some(
-                  (o) => o.id === value.thinkingOptionId,
-                )
-                  ? value.thinkingOptionId
-                  : "",
-              });
-            },
-          )}
-      {select(
-        s.mode,
-        value.modeId,
-        [
-          none,
-          ...(modes.data ?? []).map((mode) => ({
-            value: mode.id,
-            label: mode.label,
-          })),
-        ],
-        (modeId) => onChange({ ...value, modeId }),
-      )}
-      {select(
-        s.thinking,
-        value.thinkingOptionId,
-        [
-          none,
-          ...thinking.map((option) => ({
-            value: option.id,
-            label: option.label,
-          })),
-        ],
-        (thinkingOptionId) => onChange({ ...value, thinkingOptionId }),
-      )}
-    </SettingsCard>
+        ) : (
+          <SettingsSelect<string>
+            label={s.permissions}
+            value={value.modeId || fullMode?.id || DEFAULT}
+            options={withCurrent(
+              permissionModes.map((mode) => ({
+                value: mode.id,
+                label:
+                  mode.id === fullMode?.id
+                    ? `${mode.label} ${s.permissionDefault}`
+                    : mode.label,
+              })),
+              value.modeId,
+            )}
+            onValueChange={(modeId) => onChange({ ...value, modeId })}
+            disabled={disabled}
+          />
+        )}
+        {select(
+          s.thinking,
+          value.thinkingOptionId,
+          [
+            none,
+            ...thinking.map((option) => ({
+              value: option.id,
+              label: option.label,
+            })),
+          ],
+          (thinkingOptionId) => onChange({ ...value, thinkingOptionId }),
+        )}
+      </SettingsCard>
+      <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+        {s.permissionsHint}
+      </Text>
+    </>
   );
 }
 
@@ -730,6 +786,7 @@ const draftOf = (chat: AssistantChatSettings) => ({
   agent: {
     provider: chat.provider,
     modeId: chat.modeId ?? "",
+    autoAccept: chat.autoAccept,
     thinkingOptionId: chat.thinkingOptionId ?? "",
   },
   skills: chat.skills,
@@ -782,6 +839,7 @@ export function AssistantProfileTab({
     const chat = assistantChatSettingsSchema.safeParse({
       provider: draft.agent.provider,
       modeId: draft.agent.modeId.trim() || null,
+      autoAccept: draft.agent.autoAccept,
       thinkingOptionId: draft.agent.thinkingOptionId.trim() || null,
       skills: draft.skills,
       memory: draft.memory,

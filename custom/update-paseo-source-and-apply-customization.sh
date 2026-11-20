@@ -518,8 +518,12 @@ step "Building the desktop app"
 # Only the unpacked app: install_build copies linux-unpacked and nothing else. The packages
 # electron-builder.yml also lists (AppImage, deb, rpm, tar.gz) cost minutes, and rpm fails
 # outright on machines without rpmbuild (Ubuntu).
+# Record the source the build comes from, so build-paseo-if-needed-and-kill-daemons.sh can tell
+# whether the installed build is behind (custom/bin/paseo-build.sh).
+build_source="$("$ROOT/custom/bin/paseo-build.sh" snapshot)"
 npm run build:desktop -- --linux dir
 [[ -x "$RELEASE_DIR/Paseo" ]] || die "Build finished but $RELEASE_DIR/Paseo is missing."
+"$ROOT/custom/bin/paseo-build.sh" stamp "$RELEASE_DIR" "$build_source"
 
 if $INSTALL; then
   install_build

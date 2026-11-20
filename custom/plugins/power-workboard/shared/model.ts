@@ -178,31 +178,6 @@ const preferences = {
   defaultStartWorkGroup: stageSchema.nullable().default(null),
   pinInProgressWorkspaces: z.boolean().default(true),
 };
-// CUSTOM(unattended-automation): automatic agents run with the provider's full-access mode
-// unless the user turns that off, per role.
-export const AUTO_PERMISSION_ROLES = [
-  "orchestrator",
-  "assistant",
-  "refinement",
-  "ship",
-] as const;
-export type AutoPermissionRole = (typeof AUTO_PERMISSION_ROLES)[number];
-export const autoPermissionSchema = z.object({
-  enabled: z.boolean().default(true),
-  orchestrator: z.boolean().default(true),
-  assistant: z.boolean().default(true),
-  refinement: z.boolean().default(true),
-  ship: z.boolean().default(true),
-});
-export type AutoPermission = z.infer<typeof autoPermissionSchema>;
-/** Whether an automatic agent of this role may run without asking for permission. */
-export function autoPermissionFor(
-  settings: Pick<Settings, "autoPermission">,
-  role: AutoPermissionRole,
-): boolean {
-  const value = settings.autoPermission;
-  return value.enabled && value[role];
-}
 // CUSTOM(unattended-automation): remove first-level entries of the scratch folder older than
 // this many hours; the board runs the pass at most once an hour.
 export const TMP_CLEANUP_DEFAULT_PATH = "/home/bruno/uprojects/tmp";
@@ -223,9 +198,6 @@ export const settingsSchema = z.object({
   groups: groupsSchema.default(DEFAULT_GROUPS),
   groupOrder: groupOrderSchema.default([]),
   pools: poolsSchema.default([]), // CUSTOM(resource-pools)
-  autoPermission: autoPermissionSchema.default(() =>
-    autoPermissionSchema.parse({}),
-  ),
   tmpCleanup: tmpCleanupSchema.default(() => tmpCleanupSchema.parse({})),
 });
 export type Settings = z.infer<typeof settingsSchema>;
@@ -586,7 +558,13 @@ export const providerModelSchema = z
 export const orchestratorSchema = z.object({
   /** Provider and model in `provider/model` format. */
   provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
-  modeId: z.string().trim().min(1).nullable().default("bypassPermissions"),
+  /**
+   * CUSTOM(unattended-automation): for a mode provider this is the permission; empty means full
+   * access (the default). For OpenCode and similar it is the agent, and `autoAccept` is the permission.
+   */
+  modeId: z.string().trim().min(1).nullable().default(null),
+  /** CUSTOM(unattended-automation): feature providers auto-accept every prompt by default. */
+  autoAccept: z.boolean().default(true),
   thinkingOptionId: z.string().trim().min(1).nullable().default("medium"),
   /** A git project gets one worktree per task; otherwise the agent works in the project folder. */
   useWorktree: z.boolean().default(true),
@@ -608,7 +586,13 @@ export const orchestratorConfigSchema = z.object({
   /** Tasks one run (Run now or a daily time) takes in all. */
   batchSize: z.number().int().min(1).max(50).default(5),
   provider: z.string().trim().min(3).default("claude/claude-opus-5-5"),
-  modeId: z.string().trim().min(1).nullable().default("bypassPermissions"),
+  /**
+   * CUSTOM(unattended-automation): for a mode provider this is the permission; empty means full
+   * access (the default). For OpenCode and similar it is the agent, and `autoAccept` is the permission.
+   */
+  modeId: z.string().trim().min(1).nullable().default(null),
+  /** CUSTOM(unattended-automation): feature providers auto-accept every prompt by default. */
+  autoAccept: z.boolean().default(true),
   thinkingOptionId: z.string().trim().min(1).nullable().default("medium"),
   useWorktree: z.boolean().default(true),
   instructions: z.string().max(20000).default(""),
