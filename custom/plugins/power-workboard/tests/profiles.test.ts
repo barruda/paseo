@@ -120,12 +120,28 @@ describe("profile folders", () => {
     );
   });
 
-  it("stashes a dirty base checkout, merges, and pops instead of asking", () => {
+  it("frees a dirty base checkout as soon as a merge waits on it", () => {
+    // CUSTOM(assistant-dirty-checkout): no waiting out the board's retries.
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      '"Waiting for a clean checkout" (in board_get_task or in Needs you)',
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "handle the checkout yourself instead of waiting for the board to give up",
+    );
+    expect(ASSISTANT_SEED_PROMPT).not.toContain(
+      "When it gives up because the base checkout has uncommitted edits",
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "a worktree or branch of a task still in progress, or files that match the diff of an open task, mean they belong to a board ticket",
+    );
     expect(ASSISTANT_SEED_PROMPT).toContain(
       "/home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/",
     );
     expect(ASSISTANT_SEED_PROMPT).toContain(
       '`git stash push -u -m "assistant: <origin>, reaplicar após merges"`',
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "run the tests of each approved task that was waiting on the checkout",
     );
     expect(ASSISTANT_SEED_PROMPT).toContain("merge-now with wait=true");
     expect(ASSISTANT_SEED_PROMPT).toContain("`git stash pop`");
