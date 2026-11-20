@@ -10,6 +10,7 @@ import {
   useDesktopSettings,
 } from "@/desktop/settings/desktop-settings";
 import { isElectronRuntime } from "@/desktop/host";
+import { isEmbedMode } from "@/embed/embed-mode"; // CUSTOM(agent-embed)
 import {
   APP_SETTINGS_KEY,
   APP_SETTINGS_QUERY_KEY,
@@ -188,6 +189,25 @@ export function useAppSettings(): UseAppSettingsReturn {
   };
 }
 
+// CUSTOM(agent-embed): the board's agent iframe hides these composer controls.
+const EMBED_HIDDEN_CHAT_OPTIONS = {
+  "feature:plan_mode": false,
+  "feature:fast_mode": false,
+  "model-shortcut": false,
+  jev: false,
+  dictation: false,
+  voice: false,
+};
+const embedChatOptionsCache = new WeakMap<object, AppSettings["chatOptions"]>();
+function withEmbedChatOptions(chatOptions: AppSettings["chatOptions"]): AppSettings["chatOptions"] {
+  let merged = embedChatOptionsCache.get(chatOptions);
+  if (!merged) {
+    merged = { ...chatOptions, ...EMBED_HIDDEN_CHAT_OPTIONS };
+    embedChatOptionsCache.set(chatOptions, merged);
+  }
+  return merged;
+}
+
 export function useSettings(): UseSettingsReturn;
 export function useSettings<TSelected>(selector: SettingsSelector<TSelected>): TSelected;
 export function useSettings<TSelected>(
@@ -238,6 +258,9 @@ export function useSettings<TSelected>(
     manageBuiltInDaemon: desktopSettings.settings.daemon.manageBuiltInDaemon,
     releaseChannel: desktopSettings.settings.releaseChannel,
   };
+  if (isEmbedMode() && settings.chatOptions) {
+    settings.chatOptions = withEmbedChatOptions(settings.chatOptions);
+  }
 
   if (selector) {
     return selector(settings);
