@@ -84,7 +84,6 @@ const BUILT_IN_SELECTIONS = {
   diff: { kind: "target", target: { kind: "working_diff" } },
   files: { kind: "target", target: { kind: "files" } },
   docs: { kind: "target", target: { kind: "docs" } }, // CUSTOM(desk-docs)
-  assistant: { kind: "target", target: { kind: "projects_assistant" } }, // CUSTOM(assistant-sidebar)
   browser: { kind: "browser" },
   pullRequest: { kind: "target", target: { kind: "pull_request" } },
 } satisfies Record<BuiltInLaunchItemId, NewTabSelection>;
@@ -127,7 +126,6 @@ export function useWorkspaceTabLaunchCatalog(input: {
     const filesPresentation = getLaunchPresentation("files");
     const pullRequestPresentation = getLaunchPresentation("pull_request");
     const docsPresentation = getLaunchPresentation("docs"); // CUSTOM(desk-docs)
-    const assistantPresentation = getLaunchPresentation("projects_assistant"); // CUSTOM(assistant-sidebar)
     const builtIns: Record<BuiltInLaunchItemId, WorkspaceTabLaunchItem & { hidden?: boolean }> = {
       agent: {
         id: "agent",
@@ -184,15 +182,6 @@ export function useWorkspaceTabLaunchCatalog(input: {
         disabled: false,
         panelKind: "docs",
         launch: launchSelection(BUILT_IN_SELECTIONS.docs),
-      },
-      // CUSTOM(assistant-sidebar)
-      assistant: {
-        id: "assistant",
-        label: assistantPresentation.label(t),
-        Icon: assistantPresentation.icon,
-        disabled: false,
-        panelKind: "projects_assistant",
-        launch: launchSelection(BUILT_IN_SELECTIONS.assistant),
       },
       browser: {
         id: "browser",

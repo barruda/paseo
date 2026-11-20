@@ -1,5 +1,6 @@
 import type { PluginTimelineItemProps } from '@getpaseo/plugin/client';
 import { Text, View } from 'react-native';
+import { formatTokensPerSecond } from '../shared/rate.ts';
 import type { UsageTimeline } from '../shared/timeline.ts';
 import { fmtCost, fmtDuration, tokensLine, statusColor } from './ui.tsx';
 
@@ -12,6 +13,7 @@ export function UsageTimelineRow({ item, theme }: PluginTimelineItemProps<UsageT
   const details = [modelEffort || null, row.status === 'completed' ? null : row.status,
     row.usageGap ? 'usage gap' : null,
     tokens ? `${row.quality === 'partial' ? '≈ ' : ''}${tokens}` : 'usage unavailable',
+    formatTokensPerSecond(row.output, row.durationMs),
     cost ? `${row.costSource !== 'reported' ? '≈' : ''}${cost}` : null,
     row.durationMs === null ? null : fmtDuration(row.durationMs),
   ].filter(Boolean).join(' · ');

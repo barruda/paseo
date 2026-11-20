@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-// CUSTOM(assistant-sidebar)
+// CUSTOM(assistant-desk)
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -9,13 +9,21 @@ const routes = vi.hoisted(() => ({ workspace: [] as string[] }));
 vi.mock("@/navigation/workspace-route-navigation", () => ({
   navigateToHostWorkspaceRoute: (route: string) => routes.workspace.push(route),
 }));
+vi.mock("@/chat-esc-focus/registry", () => ({ focusChatComposer: () => true }));
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
   getLastWorkspaceSelection: () => null,
 }));
 
 import { useSessionStore, type Agent, type SessionState } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { activeDesk, deskTabs, initialDesks, useDesksStore } from "@/task-navigation/desks-store";
+import {
+  activeDesk,
+  ASSISTANT_DESK_ID,
+  deskTabs,
+  initialDesks,
+  useDesksStore,
+} from "@/task-navigation/desks-store";
+import { useTaskNavigationStore } from "@/task-navigation/store";
 import { ASSISTANT_CHAT_LABEL } from "./model";
 import { useAssistantSidebarStore } from "./store";
 import { useAssistantTabSweep } from "./use-assistant-tab-sweep";
@@ -83,23 +91,27 @@ beforeEach(() => {
     splitSizesByWorkspace: {},
   });
   useSessionStore.setState({ sessions: {} });
-  useAssistantSidebarStore.setState({ chat: null, requestSeq: 0, handledSeq: 0 });
+  useAssistantSidebarStore.setState({ chat: null, pending: null });
+  useTaskNavigationStore.setState({ enabled: true });
 });
 
+const assistantDeskTabs = () =>
+  deskTabs(useDesksStore.getState().desks.find((desk) => desk.id === ASSISTANT_DESK_ID)!);
+
 describe("useAssistantTabSweep", () => {
-  it("closes a chat tab restored from storage without revealing the sidebar", () => {
+  it("closes a chat tab restored from storage without opening the assistant Desk", () => {
     seedSession({ agents: [["chat", agent()]] });
     const tabId = openChatTab();
 
     renderHook(() => useAssistantTabSweep());
 
     expect(deskTabIds()).toEqual([]);
-    expect(useAssistantSidebarStore.getState().requestSeq).toBe(0);
+    expect(useDesksStore.getState().activeDeskId).toBe("primary");
     expect(routes.workspace).toEqual([]);
     expect(tabId).toBeTruthy();
   });
 
-  it("closes a chat tab opened later and shows the sidebar chat instead", () => {
+  it("closes a chat tab opened later in another Desk and shows the assistant Desk instead", () => {
     seedSession({ agents: [["chat", agent()]] });
     renderHook(() => useAssistantTabSweep());
 
@@ -107,12 +119,36 @@ describe("useAssistantTabSweep", () => {
       openChatTab();
     });
 
-    expect(deskTabIds()).toEqual([]);
-    expect(routes.workspace).toEqual(["/h/s1/workspace/ws"]);
-    expect(useAssistantSidebarStore.getState()).toMatchObject({
-      chat: { serverId: "s1", agentId: "chat" },
-      requestSeq: 1,
+    expect(useAssistantSidebarStore.getState().chat).toEqual({ serverId: "s1", agentId: "chat" });
+    expect(useDesksStore.getState().activeDeskId).toBe(ASSISTANT_DESK_ID);
+    expect(assistantDeskTabs().map((tab) => tab.target)).toEqual([
+      { kind: "agent", agentId: "chat" },
+    ]);
+    expect(deskTabs(useDesksStore.getState().desks.find((desk) => desk.id === "primary")!)).toEqual(
+      [],
+    );
+  });
+
+  it("leaves the chat tab inside the assistant Desk alone", () => {
+    seedSession({ agents: [["chat", agent()]] });
+    renderHook(() => useAssistantTabSweep());
+
+    act(() => {
+      useDesksStore.getState().showAssistantChat({
+        tab: { ...OWNER, target: { kind: "agent", agentId: "chat" } },
+        isChatTab: () => false,
+      });
     });
+
+    expect(assistantDeskTabs()).toHaveLength(1);
+  });
+
+  it("closes old projects_assistant tabs silently", () => {
+    useDesksStore.getState().openTab({ ...OWNER, target: { kind: "projects_assistant" } });
+    renderHook(() => useAssistantTabSweep());
+
+    expect(deskTabIds()).toEqual([]);
+    expect(useDesksStore.getState().activeDeskId).toBe("primary");
   });
 
   it("leaves an archived chat's tab alone", () => {
@@ -122,7 +158,37 @@ describe("useAssistantTabSweep", () => {
     const tabId = openChatTab();
 
     expect(deskTabIds()).toEqual([tabId]);
-    expect(useAssistantSidebarStore.getState().requestSeq).toBe(0);
     expect(routes.workspace).toEqual([]);
+  });
+
+  it("finishes a pending open once the session lists the agent", () => {
+    renderHook(() => useAssistantTabSweep());
+    act(() => {
+      useDesksStore.getState().selectAssistantDesk();
+      useAssistantSidebarStore.getState().setPending({ serverId: "s1", agentId: "chat" });
+      seedSession({ agents: [["chat", agent()]] });
+    });
+
+    expect(useAssistantSidebarStore.getState().pending).toBeNull();
+    expect(assistantDeskTabs()).toHaveLength(1);
+    expect(useDesksStore.getState().activeDeskId).toBe(ASSISTANT_DESK_ID);
+  });
+
+  it("does not steal the focus from another Desk when the pending open finishes", () => {
+    renderHook(() => useAssistantTabSweep());
+    act(() => {
+      useDesksStore.getState().selectAssistantDesk();
+      useAssistantSidebarStore.getState().setPending({ serverId: "s1", agentId: "chat" });
+      seedSession({ agents: [["chat", agent()]] });
+    });
+    expect(assistantDeskTabs()).toHaveLength(1);
+
+    act(() => {
+      useDesksStore.getState().selectDesk("primary");
+      useAssistantSidebarStore.getState().setPending({ serverId: "s1", agentId: "chat" });
+      seedSession({ agents: [["chat", agent()]] });
+    });
+    expect(useDesksStore.getState().activeDeskId).toBe("primary");
+    expect(useAssistantSidebarStore.getState().pending).toBeNull();
   });
 });

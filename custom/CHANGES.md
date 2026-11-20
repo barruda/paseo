@@ -4795,6 +4795,23 @@ notification"` (all in the update script). By hand: turn the critic on with a st
   open the TokenLedger panel of a Claude agent: **trace ↗** opens the turn in MLflow, and a row
   click scrolls the chat to that turn's prompt.
 
+## token-ledger: per-turn tokens per second
+
+- **Added:** 2026-11-19
+- **Commit:** `custom: token-ledger shows output tokens per second`
+- **Why:** Paseo shows a turn's duration and the plugin its token counts, but neither shows how
+  fast the reply came out. Speed is how you compare models and routes at a glance.
+- **What:** The timeline summary and each turn row append `N tok/s`, and the in-progress card
+  shows a running rate next to its elapsed time. The rate is `output / (durationMs / 1000)`, so it
+  includes tool waits inside the turn and runs below the provider's generation rate.
+- **Files:** plugin-only: `shared/rate.ts` (+ test), `client/timeline.tsx`, `client/panel.tsx`.
+- **Re-apply:** Compute from `output` and `durationMs`, which the timeline schema and turn rows
+  already carry; no daemon or schema change. Add the string after the token figures in the
+  timeline row, after the duration in a turn row, and next to the elapsed time in the in-flight
+  card.
+- **Verify:** `(cd custom/plugins/token-ledger && npx tsc --noEmit && npm test)`. In the app,
+  finish a turn: its timeline row and ledger row show `N tok/s`.
+
 ## usage-cache-writes: agent usage carries Claude's cache write tokens
 
 - **Added:** 2026-11-03 (based on upstream v0.14.0)
@@ -6601,10 +6618,10 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     else the `baseRef` the daemon stored in `<git dir>/paseo/worktree.json`, the same order
     `checkout_merge` uses. The git calls run with `GIT_OPTIONAL_LOCKS=0` and never stage (no
     `add -N`), so a review never touches the worktree or its index. Its Assistant tab calls an RPC and then
-    `navigation.openAgent`, which shows the chat in the Projects Assistant tab of the right sidebar
-    and leaves the board for the Desk (see
-    [assistant-sidebar](#assistant-sidebar-the-projects-assistant-chat-is-a-tab-of-the-right-sidebar);
-    until 2026-11-19 it opened as a Desk tab).
+    `navigation.openAgent`, which shows the chat in the Projects Assistant Desk
+    and leaves the board for the Desks (see
+    [assistant-desk](#assistant-desk-the-projects-assistant-chat-is-its-own-desk);
+    until 2026-11-19 it opened as a tab of the Desk, then until 2026-11-20 in the right sidebar).
   - **Where:** the pages are tabs inside Power Workboard (see
     [workboard-inner-pages](#workboard-inner-pages-the-projects-assistant-pages-are-tabs-inside-power-workboard));
     they were Desk chips until 2026-11-19.
@@ -7127,7 +7144,6 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **What:** Do Not Disturb (DND) is desktop-only state in `$PASEO_HOME/do-not-disturb.json`
   (`{enabled, until}`), so each launcher profile (personal, TELUS) has its own and a script can
   flip it without the app or the daemon. While it is on:
-
   - the Electron main process sends no system (GNOME) notification and so no sound;
   - the app's toast host drops every toast except errors (errors report a failure of something
     the user just did). Plugin toasts, Power Workboard's included, go through the same host.
@@ -8209,112 +8225,73 @@ power-workboard`. In the app, open the Projects Assistant chat, set "Compact at 
   sending, and wait 15 s: the same tab now shows the new chat with your words in its composer,
   and other agents' tabs are unchanged. Put the limit back afterwards.
 
-## assistant-sidebar: the Projects Assistant chat is a tab of the right sidebar
+## assistant-desk: the Projects Assistant chat is its own Desk
 
-- **Added:** 2026-11-19 (based on `custom` at `60bc73d0d`)
-- **Commit:** `custom: Projects Assistant chat lives in a tab of the right sidebar`
-- **Why:** The chat opened as one more tab in the Desk, among the task tabs, and every open could
-  leave another copy behind. The user wants one fixed place for it, beside Files and Changes,
-  like the board got its single chip in
-  [workboard-chip-only](#workboard-chip-only-power-workboard-always-opens-on-its-desk-chip-with-a-status-icon).
+- **Added:** 2026-11-20 (replaces `assistant-sidebar`, 2026-11-19, which put the chat in a
+  `projects_assistant` tab of the right sidebar)
+- **Commit:** `custom: Projects Assistant chat gets its own Desk`
+- **Why:** The sidebar tab did not show from the board: clicking Assistant in Power Workboard tried
+  to open it in the Desk and nothing appeared. The user wants one Desk (a chip beside "Desk
+  Principal") that always reuses the same tab for the chat.
 - **What:**
-  - New Explorer singleton tab **Projects Assistant** (target kind `projects_assistant`, Explorer
-    host only, no close button; close it from the tab's context menu and bring it back from the
-    sidebar's **+** or any way to the chat). It renders the ordinary agent panel (history,
-    composer, `pwb` cards, Restart pill) for the live chat, through a nested `PaneProvider` whose
-    target is the chat agent.
-  - Which chat: the one last opened (`custom-assistant-sidebar` store); once it is archived, the
-    agent that replaces it (`paseo.replaces-agent`, so a compaction swaps the chat inside the same
-    tab with no action); else any live agent labeled `pwb/assistant-chat` (a restart archives the
-    old chat without naming it), the newest by `createdAt` with an id tie-break so the choice never
-    depends on the map's order, on the remembered server first, then the workspace's; else the
-    archived chat; with none, a line pointing to Power Workboard's Assistant tab. A remembered
-    chat the loaded session no longer lists (the app restarted after a chat restart) is gone and
-    the live chat wins; before the list loads it is kept, since it may be the chat just created.
-  - Every way to the chat ends in `openAssistantSidebar`: `navigateToAgent` sends any **live**
-    agent the session knows by the label there (notifications, Command Center, agent lists, the
-    Tasks sidebar row, the plugin's `openAgent`, "Open in Desk" in Conversations), and the plugin
-    passes `assistantSidebar: true` from the Assistant tab, the Restart pill and the status-bar
-    topic, for a chat too new for the session to list. An archived chat is left to ordinary
-    navigation, and the sweep leaves its tab alone: "Open in Desk" in Conversations shows that
-    archived conversation in a normal tab while the sidebar keeps showing the live chat. It
-    deselects the board chip, shows the last workspace's route, and the focused Desk or workspace
-    screen (`useAssistantSidebarReveal`) opens its Explorer on that tab (the Desk also opens the
-    sidebar for its focused tab) and, on web wide layouts, focuses the composer. Without a
-    workspace to
-    show, it remembers the chat and leaves no reveal request for an unrelated screen to consume.
-  - One instance: the tab is a singleton per Explorer, and the **live** chat never keeps a tab of
-    its own. `useAssistantTabSweep` (mounted beside `useAgentSuccessorTabs`) closes agent tabs of a
-    live chat in Desks and workspace layouts and unpins them: tabs restored from storage close
-    silently, a tab opened later (a path that skips `navigateToAgent`) closes and the sidebar tab
-    shows instead. The set of restored tabs shrinks as tabs go away, so a tab that comes back
-    counts as newly opened. An archived chat is not swept, so its tab stays. Workspaces no longer
-    auto-open the chat (`agent-visibility.ts`).
-  - The Desk's **+** reveals the Explorer (`showExplorerSidebar`, compact overlay included) before
-    adding the tab; the tab is useless in a hidden sidebar. `/exit` in the chat closes the tab
-    the panel is in through the pane context, not `closeTab` with the chat's workspace key, which
-    could close a same-id tab elsewhere.
-  - In Tasks mode the Explorer is the focused Desk tab's workspace, so each workspace's sidebar
-    has its own Projects Assistant tab, showing the same chat.
-- **Follow-up (2026-11-19):** from the review of the first commit.
-  - `/exit` and `/clear` close the panel's tab through a plain close in every host (Desk, workspace
-    pane, Explorer sidebar). The workspace pane used to give the pane the tab button's guarded
-    close, which confirmed and archived a running agent, and then `/exit` archived it again.
-    `client-slash-commands/execute.ts` runs the command once: `/clear` retargets to a draft,
-    `/exit` closes and archives once.
-  - The panel keeps the per-server agent maps cached (`assistant-sidebar/session-agent-maps.ts`),
-    rebuilding them only when an agents map or a hydration flag is replaced, instead of on every
-    session update while agents stream.
-  - New tests: `open.test.ts` (`isAssistantChatInSession`, `currentAssistantChat`,
-    `openAssistantSidebar`), `reveal.test.tsx`, `panel.test.tsx`,
-    `use-assistant-tab-sweep.test.ts`, `session-agent-maps.test.ts`,
-    `utils/navigate-to-agent/index.test.ts` and `client-slash-commands/execute.test.ts`. `sweep.ts`
-    now takes the agent facts and decides live vs archived itself, so the archived-tab test is
-    meaningful.
-- **Files:** `packages/app/src/assistant-sidebar/` (`model.ts` pure rules, `store.ts`, `open.ts`,
-  `reveal.ts`, `panel.tsx`, `sweep.ts`, `use-assistant-tab-sweep.ts`,
-  `session-agent-maps.ts`, tests `model.test.ts`, `sweep.test.ts`, `launch.test.ts`,
-  `open.test.ts`, `reveal.test.tsx`, `panel.test.tsx`, `use-assistant-tab-sweep.test.ts` and
-  `session-agent-maps.test.ts`). Plugin: `client/assistant/nav.ts`
-  (`openAssistantChat`), `ChatLauncher.tsx`, `RestartChatPill.tsx`, `QuickStatus.tsx`. The `/exit`
-  fix is `panels/agent-panel.tsx` and `client-slash-commands/execute.ts`
-  (`execute.test.ts`); the plain pane close is `screens/workspace/workspace-screen.tsx`.
-- **Core files touched** (`CUSTOM(assistant-sidebar)`): the target kind wherever `docs` is listed
-  (`workspace-tabs/model.ts`, `identity.ts`, `stores/workspace-layout-storage.ts`,
-  `panels/panel-manifest.ts`, `panels/register-panels.ts`, the launcher's `index.tsx` and
-  `internal/catalog.ts` with its test, the tab labels in `workspace-desktop-tabs-row.tsx` and
-  `compact-workspace-header/tab-switcher.tsx`, the close id in `workspace-tab-menu.ts`);
-  `task-navigation/new-tab-menu.tsx` (`launchDeskTarget` sends it to the Explorer like Docs);
-  `utils/navigate-to-agent/index.ts` and `resolve.ts`; `plugins/host-navigation-model.ts` (passes
-  `assistantSidebar`); `task-navigation/desk-screen.tsx` and `screens/workspace/workspace-screen.tsx`
-  (`useAssistantSidebarReveal`); `workspace-tabs/agent-visibility.ts`; `task-navigation/sidebar.tsx` (`openTask`: a Tasks row of the
-  chat opens the sidebar); `app/_layout.tsx`.
-- **Re-apply:** Model `projects_assistant` on `docs` (a field-less singleton target, Explorer host,
-  `showCloseButton: false`). Its panel wraps `AgentConversationPanel` in a `PaneProvider` whose
-  `target` is `{ kind: "agent", agentId }` of the resolved chat and whose `retargetCurrentTab`
-  turns an agent retarget into a new remembered chat. Intercept `navigateToAgent` before
-  `resolveNavigateToAgent`. Call the reveal hook wherever a screen owns an Explorer and knows if
-  it has the focus. Keep the label string the same as the plugin's `ASSISTANT_CHAT_AGENT_LABEL`.
-- **Verify:** `(cd packages/app && npx vitest run src/assistant-sidebar/model.test.ts
-src/assistant-sidebar/sweep.test.ts src/assistant-sidebar/launch.test.ts
-src/assistant-sidebar/open.test.ts src/assistant-sidebar/reveal.test.tsx
-src/assistant-sidebar/panel.test.tsx src/assistant-sidebar/use-assistant-tab-sweep.test.ts
-src/assistant-sidebar/session-agent-maps.test.ts src/utils/navigate-to-agent/index.test.ts
-src/client-slash-commands/execute.test.ts src/workspace-tabs/agent-visibility.test.ts
-src/plugins/host-navigation.test.ts src/workspace-tabs/launcher/internal/catalog.test.ts)` (in
-  the update script). Needs an app build and `paseo plugin reload power-workboard`; no daemon
-  restart.
-  In Tasks mode: the Desk has no Projects Assistant tab after the update. Click the status bar's
-  topic, Power Workboard's Assistant tab, a notification of the chat, and the chat in the Command
-  Center: each opens the right sidebar on **Projects Assistant** with the composer focused, and no
-  Desk tab appears. Click again: still one tab. With the sidebar closed (Ctrl+E), the same clicks
-  open it, and so does the Desk's **+** > Projects Assistant. Restart the chat with the pill: the
-  tab shows the new chat; close and reopen the app: still the new chat, not the archived one.
-  `/exit` in the sidebar chat closes the sidebar tab, not another one; `/exit` while the chat runs
-  in an ordinary workspace tab closes that tab with no extra confirmation and archives the agent
-  once. Open an old conversation from Projects Conversations on **Open in Desk**: it stays in the
-  tab it opened in, and the sidebar keeps showing the live chat. Compact (set "Compact at" low):
-  the tab moves to the new chat with no click.
+  - In Tasks mode the chat lives in the Desk `projects-assistant` (`ASSISTANT_DESK_ID`, named
+    "Projects Assistant"). `useDesksStore.showAssistantChat` creates it when missing (the user may
+    have deleted it; it comes back on the next open), focuses the tab that already shows the chat,
+    else retargets an older chat tab in place (after a restart or compaction) and closes any other
+    chat tab there, else opens the chat as a kept tab, and selects the Desk. The layout rule is
+    the pure `showAssistantChatInDesk`.
+  - Which chat: the one last opened (`custom-assistant-sidebar` store, key unchanged); once
+    archived, the agent that replaces it (`paseo.replaces-agent`); else the newest live agent
+    labeled `pwb/assistant-chat`; else the archived chat (rules in `assistant-sidebar/model.ts`).
+  - Every way to the chat ends in `openAssistantDesk` (`assistant-sidebar/open.ts`):
+    `navigateToAgent` sends any **live** agent the session knows by the label there, the plugin
+    passes `assistantSidebar: true` (flag name kept) for a chat too new for the session, and the
+    Tasks sidebar row calls it. It remembers the chat, selects the Desk, deselects the board chip,
+    shows the last workspace's route and, on web, focuses the composer. With Tasks mode off it
+    returns `null` and `navigateToAgent` continues with ordinary navigation. A chat whose agent the
+    session does not list yet is stored as `pending` (not persisted); `useAssistantTabSweep`
+    finishes the open when the session lists it, and only selects the Desk if it is still the
+    active one.
+  - `useAssistantTabSweep` (mounted in `app/_layout.tsx`): a live chat's agent tabs in any other
+    Desk and in workspace layouts are closed (restored ones silently; a tab opened later closes
+    and asks `openAssistantDesk`); tabs inside the assistant Desk are never swept; every old
+    `projects_assistant` tab closes silently; an archived chat is never swept (Conversations'
+    "Open in Desk"). Outside Tasks mode chat tabs are left alone (there is no assistant Desk).
+    Workspaces do not auto-open the chat (`agent-visibility.ts`).
+  - The `projects_assistant` target kind is no longer offered in any **+** launcher, but stays in
+    the model, storage schema, manifest and tab labels so stored tabs still parse until the sweep
+    closes them. `/exit` and `/clear` in the chat close the panel's own tab through the pane
+    context, as before.
+- **Files:** `packages/app/src/assistant-sidebar/` (`model.ts`, `store.ts`, `open.ts`, `sweep.ts`,
+  `use-assistant-tab-sweep.ts`, `session-agent-maps.ts`, `panel.tsx` (old tab, kept), tests
+  `model.test.ts`, `desk.test.ts`, `sweep.test.ts`, `launch.test.ts`, `open.test.ts`,
+  `panel.test.tsx`, `use-assistant-tab-sweep.test.ts`, `session-agent-maps.test.ts`; `reveal.ts`
+  is gone). Plugin comments only: `client/assistant/nav.ts`, `ChatLauncher.tsx`,
+  `RestartChatPill.tsx`, `QuickStatus.tsx`.
+- **Core files touched** (`CUSTOM(assistant-desk)`): `task-navigation/desks-store.ts`
+  (`ASSISTANT_DESK_ID`, `showAssistantChat`, `selectAssistantDesk`, `showAssistantChatInDesk`);
+  `utils/navigate-to-agent/index.ts` and `resolve.ts`; `plugins/host-navigation-model.ts`;
+  `task-navigation/sidebar.tsx` (`openTask`); `task-navigation/new-tab-menu.tsx`,
+  `workspace-tabs/launcher/index.tsx` and `internal/catalog.ts` (no `projects_assistant` launcher);
+  `workspace-tabs/agent-visibility.ts`; `panels/agent-panel.tsx`; `client-slash-commands/execute.ts`;
+  `app/_layout.tsx`; and, kept so stored tabs still parse, `workspace-tabs/model.ts`,
+  `identity.ts`, `stores/workspace-layout-storage.ts`, `panels/panel-manifest.ts`,
+  `register-panels.ts`, the tab labels and `workspace-tab-menu.ts`.
+- **Re-apply:** Add the store action and constant to `desks-store.ts`, call `openAssistantDesk`
+  from the `navigateToAgent` intercept (fall through on `null`), mount the sweep once, and keep the
+  label string equal to the plugin's `ASSISTANT_CHAT_AGENT_LABEL`. Do not add `projects_assistant`
+  to any launcher.
+- **Verify:** `(cd packages/app && npx vitest run src/assistant-sidebar
+src/utils/navigate-to-agent/index.test.ts src/plugins/host-navigation.test.ts
+src/workspace-tabs/agent-visibility.test.ts src/workspace-tabs/launcher/internal/catalog.test.ts
+src/task-navigation/store.test.ts src/client-slash-commands/execute.test.ts)` (in the update
+  script). Needs an app build and `paseo plugin reload power-workboard`; no daemon restart.
+  In Tasks mode: click the status bar's topic, Power Workboard's Assistant tab, a notification of
+  the chat, and the chat in the Command Center: each selects the **Projects Assistant** Desk with
+  the chat open and the composer focused. Click again: still one tab. Restart the chat with the
+  pill: the same tab shows the new chat. Delete the Desk, open the chat again: it comes back.
+  `/exit` in the chat closes its tab; an old conversation from Projects Conversations on **Open in
+  Desk** stays in an ordinary tab. The Desk's **+** has no Projects Assistant entry.
 
 ## card-open-agent: Power Workboard cards link their agent in every column; pin and move sit in the action row; wider column-resize strip
 

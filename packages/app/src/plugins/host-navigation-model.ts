@@ -4,7 +4,7 @@ import { isHttpUrl } from "@/utils/http-url";
 
 interface HostNavigationOwner {
   browserAvailable: boolean;
-  /** CUSTOM(assistant-sidebar): `assistantSidebar` marks the Projects Assistant chat. */
+  /** CUSTOM(assistant-desk): `assistantSidebar` marks the Projects Assistant chat. */
   openAgent(input: { serverId: string; agentId: string; assistantSidebar?: boolean }): void;
   /** CUSTOM(turn-jump) */
   requestTurnJump?(input: { serverId: string; agentId: string; turnStartedAt: string }): void;
@@ -29,7 +29,7 @@ export function createPluginHostNavigation(
       if (turnStartedAt) {
         owner.requestTurnJump?.({ serverId: destinationServerId, agentId, turnStartedAt });
       }
-      // CUSTOM(assistant-sidebar): the Power Workboard plugin passes `assistantSidebar: true` for its
+      // CUSTOM(assistant-desk): the Power Workboard plugin passes `assistantSidebar: true` for its
       // chat, which may be too new for the session to know by its label. Not in the plugin types.
       const { assistantSidebar } = input as { assistantSidebar?: boolean };
       owner.openAgent({

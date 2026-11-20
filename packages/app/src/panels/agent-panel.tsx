@@ -1641,7 +1641,7 @@ function ActiveAgentComposer({
           setup: buildDraftAgentSetup(agent),
         }),
         retargetCurrentTab,
-        // CUSTOM(assistant-sidebar): the tab this panel is in, whatever host shows it.
+        // CUSTOM(assistant-desk): the tab this panel is in, whatever host shows it.
         closeCurrentTab,
         // CUSTOM(clear-keeps-agent): /clear leaves the old agent as its own idle task.
         archiveAgent: () => archiveAgent({ serverId, agentId }),

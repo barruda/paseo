@@ -1,10 +1,13 @@
-// CUSTOM(assistant-sidebar): mounted once for the whole app; see sweep.ts.
+// CUSTOM(assistant-desk): mounted once for the whole app; see sweep.ts. Also finishes the open of a
+// chat the session did not list yet when it was opened (`pending`).
 import { useEffect } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
-import { deskTabs, useDesksStore } from "@/task-navigation/desks-store";
+import { ASSISTANT_DESK_ID, deskTabs, useDesksStore } from "@/task-navigation/desks-store";
 import type { AssistantAgentFacts } from "./model";
-import { openAssistantSidebar } from "./open";
+import { useTaskNavigationStore } from "@/task-navigation/store";
+import { openAssistantDesk, sessionAgent, showAssistantChatFor } from "./open";
+import { useAssistantSidebarStore } from "./store";
 import {
   planAssistantTabSweep,
   pruneKnownTabs,
@@ -13,8 +16,30 @@ import {
   type SweepLayoutTab,
 } from "./sweep";
 
+/** Shows the pending chat once the session lists its agent with a workspace. */
+function finishPending(): void {
+  const store = useAssistantSidebarStore.getState();
+  const { pending } = store;
+  if (!pending || !sessionAgent(pending.serverId, pending.agentId)?.workspaceId) return;
+  store.setPending(null);
+  const desks = useDesksStore.getState();
+  const previousDeskId = desks.activeDeskId;
+  showAssistantChatFor(pending, store.chat);
+  // Selecting the Desk is only wanted if the user is still on it; otherwise stay where they are.
+  if (previousDeskId !== ASSISTANT_DESK_ID) useDesksStore.getState().selectDesk(previousDeskId);
+}
+
 function collectTabs(): { deskTabs: SweepDeskTab[]; layoutTabs: SweepLayoutTab[] } {
-  const desks = useDesksStore.getState().desks.flatMap((desk) => deskTabs(desk));
+  const desks = useDesksStore
+    .getState()
+    .desks.flatMap((desk) =>
+      deskTabs(desk).map((tab) => ({
+        id: tab.id,
+        serverId: tab.serverId,
+        target: tab.target,
+        deskId: desk.id,
+      })),
+    );
   const layouts = useWorkspaceLayoutStore.getState();
   const layoutTabs = Object.keys(layouts.layoutByWorkspace).flatMap((workspaceKey) =>
     layouts.getWorkspaceTabs(workspaceKey).map((tab) => ({
@@ -38,15 +63,17 @@ export function useAssistantTabSweep(): void {
       if (sweeping) return;
       if (!useDesksStore.persist.hasHydrated() || !useWorkspaceLayoutStore.persist.hasHydrated())
         return;
+      finishPending();
       const tabs = collectTabs();
       if (!known) known = tabKeys(tabs);
       else known = pruneKnownTabs(known, tabs);
       const sessions = useSessionStore.getState().sessions;
-      // The plan keeps an archived chat's tab (Conversations' "Open in Desk"): only a live chat
-      // belongs in the single sidebar tab.
+      // The plan keeps an archived chat's tab (Conversations' "Open in Desk") and everything in
+      // the assistant Desk: only a live chat outside that Desk is swept.
       const plan = planAssistantTabSweep({
         ...tabs,
         known,
+        sweepChats: useTaskNavigationStore.getState().enabled,
         agentFor: (serverId, agentId): AssistantAgentFacts | undefined =>
           sessions[serverId]?.agents.get(agentId) ?? sessions[serverId]?.agentDetails.get(agentId),
       });
@@ -59,12 +86,12 @@ export function useAssistantTabSweep(): void {
         for (const tab of plan.layoutTabs) {
           layouts.closeTab(tab.workspaceKey, tab.tabId);
           // A pinned agent would get its tab back on the next reconcile.
-          layouts.unpinAgent(tab.workspaceKey, tab.agentId);
+          if (tab.agentId) layouts.unpinAgent(tab.workspaceKey, tab.agentId);
         }
       } finally {
         sweeping = false;
       }
-      if (plan.reveal) openAssistantSidebar({ chat: plan.reveal });
+      if (plan.reveal) openAssistantDesk({ chat: plan.reveal });
     };
 
     // The session store changes many times a second while agents stream; rescan only when an

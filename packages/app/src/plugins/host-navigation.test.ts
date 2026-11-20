@@ -20,7 +20,7 @@ describe("plugin host navigation", () => {
     return { navigation, destinations, browsers, workspaces };
   }
 
-  // CUSTOM(assistant-sidebar)
+  // CUSTOM(assistant-desk)
   it("passes the Projects Assistant flag through to the agent open", () => {
     const { navigation, destinations } = setup();
     (navigation.openAgent as (input: { agentId: string; assistantSidebar?: boolean }) => void)({

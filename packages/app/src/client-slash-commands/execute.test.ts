@@ -1,4 +1,4 @@
-// CUSTOM(assistant-sidebar)
+// CUSTOM(assistant-desk)
 import { describe, expect, it, vi } from "vitest";
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { runClientSlashCommand, type ClientSlashCommandEffects } from "./execute";

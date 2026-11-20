@@ -1,4 +1,4 @@
-// CUSTOM(assistant-sidebar)
+// CUSTOM(assistant-desk)
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const routes = vi.hoisted(() => ({
@@ -13,11 +13,21 @@ vi.mock("@/stores/navigation-active-workspace-store", () => ({
   getLastWorkspaceSelection: () => routes.last,
 }));
 
+vi.mock("@/chat-esc-focus/registry", () => ({ focusChatComposer: () => true }));
+
+import {
+  activeDesk,
+  ASSISTANT_DESK_ID,
+  deskTabs,
+  initialDesks,
+  useDesksStore,
+} from "@/task-navigation/desks-store";
+import { useTaskNavigationStore } from "@/task-navigation/store";
 import { AGENT_REPLACES_LABEL } from "@/task-navigation/agent-successor";
 import { useDeskWorkboardStore } from "@/task-navigation/desk-workboard-store";
 import { useSessionStore, type Agent, type SessionState } from "@/stores/session-store";
 import { ASSISTANT_CHAT_LABEL } from "./model";
-import { currentAssistantChat, isAssistantChatInSession, openAssistantSidebar } from "./open";
+import { currentAssistantChat, isAssistantChatInSession, openAssistantDesk } from "./open";
 import { useAssistantSidebarStore } from "./store";
 
 const CHAT = { [ASSISTANT_CHAT_LABEL]: "true" };
@@ -59,12 +69,9 @@ beforeEach(() => {
   routes.last = null;
   useSessionStore.setState({ sessions: {} });
   useDeskWorkboardStore.setState({ selected: null });
-  useAssistantSidebarStore.setState({
-    chat: null,
-    requestSeq: 0,
-    handledSeq: 0,
-    focusComposer: false,
-  });
+  useAssistantSidebarStore.setState({ chat: null, pending: null });
+  useTaskNavigationStore.setState({ enabled: true });
+  useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary", initialized: true });
 });
 
 describe("isAssistantChatInSession", () => {
@@ -103,38 +110,58 @@ describe("currentAssistantChat", () => {
   });
 });
 
-describe("openAssistantSidebar", () => {
-  it("remembers the chat, shows the last workspace, and drops the board chip", () => {
+describe("openAssistantDesk", () => {
+  it("returns null in workspace mode, so ordinary navigation runs", () => {
+    useTaskNavigationStore.setState({ enabled: false });
+    expect(openAssistantDesk({ chat: { serverId: "s1", agentId: "chat" } })).toBeNull();
+    expect(routes.workspace).toEqual([]);
+    expect(useAssistantSidebarStore.getState().chat).toEqual({ serverId: "s1", agentId: "chat" });
+  });
+
+  it("shows the chat in its own Desk, drops the board chip and shows the last workspace", () => {
     routes.last = { serverId: "s1", workspaceId: "ws" };
+    seedSession({ agents: [["chat", agent({ labels: CHAT, workspaceId: "ws-chat" })]] });
     useDeskWorkboardStore.setState({ selected: "power-workboard" });
 
-    const route = openAssistantSidebar({ chat: { serverId: "s1", agentId: "chat" } });
+    const route = openAssistantDesk({ chat: { serverId: "s1", agentId: "chat" } });
 
     expect(route).toBe("/h/s1/workspace/ws");
     expect(routes.workspace).toEqual(["/h/s1/workspace/ws"]);
-    expect(useAssistantSidebarStore.getState()).toMatchObject({
-      chat: { serverId: "s1", agentId: "chat" },
-      requestSeq: 1,
-      focusComposer: true,
-    });
+    const desks = useDesksStore.getState();
+    expect(desks.activeDeskId).toBe(ASSISTANT_DESK_ID);
+    expect(deskTabs(activeDesk(desks)).map((tab) => [tab.workspaceId, tab.target])).toEqual([
+      ["ws-chat", { kind: "agent", agentId: "chat" }],
+    ]);
     expect(useDeskWorkboardStore.getState().selected).toBeNull();
+    expect(useAssistantSidebarStore.getState().pending).toBeNull();
+  });
+
+  it("opening twice keeps one tab", () => {
+    seedSession({ agents: [["chat", agent({ labels: CHAT })]] });
+    openAssistantDesk({ chat: { serverId: "s1", agentId: "chat" } });
+    openAssistantDesk({ chat: { serverId: "s1", agentId: "chat" } });
+    expect(deskTabs(activeDesk(useDesksStore.getState()))).toHaveLength(1);
   });
 
   it("falls back to the chat's own workspace when no workspace was shown yet", () => {
     seedSession({ agents: [["chat", agent({ labels: CHAT, workspaceId: "ws-chat" })]] });
 
-    expect(openAssistantSidebar({ chat: { serverId: "s1", agentId: "chat" } })).toBe(
+    expect(openAssistantDesk({ chat: { serverId: "s1", agentId: "chat" } })).toBe(
       "/h/s1/workspace/ws-chat",
     );
     expect(routes.workspace).toEqual(["/h/s1/workspace/ws-chat"]);
   });
 
-  it("only remembers the chat when there is no workspace to show it in", () => {
-    expect(openAssistantSidebar({ chat: { serverId: "s1", agentId: "chat" } })).toBe("");
+  it("keeps a chat the session does not list yet as pending and still selects the Desk", () => {
+    expect(openAssistantDesk({ chat: { serverId: "s1", agentId: "chat" } })).toBe("");
     expect(routes.workspace).toEqual([]);
     expect(useAssistantSidebarStore.getState()).toMatchObject({
       chat: { serverId: "s1", agentId: "chat" },
-      requestSeq: 0,
+      pending: { serverId: "s1", agentId: "chat" },
     });
+    const desks = useDesksStore.getState();
+    expect(desks.activeDeskId).toBe(ASSISTANT_DESK_ID);
+    expect(desks.desks.some((desk) => desk.id === ASSISTANT_DESK_ID)).toBe(true);
+    expect(deskTabs(activeDesk(desks))).toEqual([]);
   });
 });

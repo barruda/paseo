@@ -58,7 +58,7 @@ function normalizeSimpleWorkspaceTabTarget(value: WorkspaceTabTarget): Workspace
     case "changes_tree":
     case "files":
     case "docs": // CUSTOM(desk-docs)
-    case "projects_assistant": // CUSTOM(assistant-sidebar)
+    case "projects_assistant": // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
     case "pull_request":
       return { kind: value.kind };
     case "setup": {
@@ -168,7 +168,7 @@ function secondaryWorkspaceTabTargetsEqual(
   return customSingletonTargetsEqual(left, right) || historySearchTabTargetsEqual(left, right);
 }
 
-/** CUSTOM(desk-docs), CUSTOM(assistant-sidebar): custom singleton targets have no fields. */
+/** CUSTOM(desk-docs), CUSTOM(assistant-desk): custom singleton targets have no fields. */
 function customSingletonTargetsEqual(left: WorkspaceTabTarget, right: WorkspaceTabTarget): boolean {
   return (left.kind === "docs" || left.kind === "projects_assistant") && left.kind === right.kind;
 }
@@ -251,7 +251,7 @@ export function buildDeterministicWorkspaceTabId(target: WorkspaceTabTarget): st
     target.kind === "changes_tree" ||
     target.kind === "files" ||
     target.kind === "docs" || // CUSTOM(desk-docs)
-    target.kind === "projects_assistant" || // CUSTOM(assistant-sidebar)
+    target.kind === "projects_assistant" || // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
     target.kind === "pull_request"
   ) {
     return target.kind;

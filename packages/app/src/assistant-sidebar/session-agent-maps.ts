@@ -1,4 +1,4 @@
-// CUSTOM(assistant-sidebar): the session store updates many times a second while agents stream.
+// CUSTOM(assistant-desk): the session store updates many times a second while agents stream.
 // The panel and open.ts only need the timestamp-free agent facts, so rebuild the per-server
 // snapshot only when an agents map (or its hydration flag) was replaced, like the sweep does.
 import type { SessionState } from "@/stores/session-store";

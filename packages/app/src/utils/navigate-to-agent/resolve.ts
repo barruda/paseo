@@ -9,7 +9,7 @@ export interface NavigateToAgentInput {
   // (cold deep-links). Otherwise the workspace is read from the store.
   workspaceId?: string | null;
   pin?: boolean;
-  /** CUSTOM(assistant-sidebar): a Projects Assistant chat the session may not list yet. */
+  /** CUSTOM(assistant-desk): a Projects Assistant chat the session may not list yet. */
   assistantSidebar?: boolean;
 }
 

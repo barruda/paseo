@@ -28,6 +28,23 @@ export const scheduleSchema = z.discriminatedUnion("kind", [
 ]);
 export type Schedule = z.infer<typeof scheduleSchema>;
 
+/** The "Automatic" preset: a window open all day, every day (equal start and end is 24h). */
+export const AUTOMATIC_SCHEDULE: Schedule = {
+  kind: "window",
+  days: [0, 1, 2, 3, 4, 5, 6],
+  start: "00:00",
+  end: "00:00",
+};
+
+/** True for a window on all 7 days whose start equals its end: always open. */
+export function isAutomaticSchedule(schedule: Schedule): boolean {
+  return (
+    schedule.kind === "window" &&
+    schedule.start === schedule.end &&
+    new Set(schedule.days).size === 7
+  );
+}
+
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
 /** A trigger missed by more than this (daemon down) is skipped instead of run late. */

@@ -51,7 +51,7 @@ function RestartChatContent(props: PluginButtonContentProps) {
       // Paseo passes button content the same navigation surfaces get (CUSTOM(assistant-restart-pill)
       // in the app); an older app has none, and the new chat is then reachable from the Desk chip.
       // The plugin's pinned @getpaseo/plugin types predate that field, hence the cast.
-      // CUSTOM(assistant-sidebar): the new chat shows in the sidebar's Projects Assistant tab.
+      // CUSTOM(assistant-desk): the new chat shows in the Projects Assistant Desk.
       const { navigation } = props as typeof props &
         Pick<PluginSurfaceProps, "navigation">;
       if (navigation) openAssistantChat(navigation, agentId);

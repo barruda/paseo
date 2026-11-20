@@ -102,7 +102,6 @@ import { DeskLauncherProvider } from "./new-tab-menu";
 // CUSTOM(reopen-closed-tab)
 import { rememberClosedDeskTabs, useReopenClosedTabShortcut } from "./reopen-closed-tab";
 import { DeskExplorerDock, useDeskExplorer } from "./desk-explorer";
-import { useAssistantSidebarReveal } from "@/assistant-sidebar/reveal"; // CUSTOM(assistant-sidebar)
 import { useCommitMessageFocusStore } from "@/git/commit-selection/focus-request";
 import {
   findDiffTabToReuse,
@@ -249,14 +248,6 @@ export function DeskScreen() {
     focusedDeskTabId,
   );
   const explorer = useDeskExplorer(explorerScope, explorerTabId);
-  // CUSTOM(assistant-sidebar): the Projects Assistant opens in this Desk's sidebar.
-  useAssistantSidebarReveal({
-    workspaceKey: explorer.workspaceKey,
-    enabled: isFocused && hydrated,
-    onRevealed: () => {
-      if (explorerTabId) useDesksStore.getState().setTabExplorerOpen(explorerTabId, true);
-    },
-  });
   const resolveOwnerRef = useRef(resolveOwner);
   resolveOwnerRef.current = resolveOwner;
   const ownerOf = useCallback((tabId: string) => resolveOwnerRef.current(tabId), []);

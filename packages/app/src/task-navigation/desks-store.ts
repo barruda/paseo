@@ -85,6 +85,13 @@ interface DesksState {
   /** Drops a Desk; its tabs are only references, so the agents and workspaces stay. Keeps one Desk. */
   deleteDesk(id: string): void;
   selectDesk(id: string): void;
+  /**
+   * CUSTOM(assistant-desk): shows the Projects Assistant chat in its own Desk, created when
+   * missing, reusing the tab the chat already has there; selects that Desk.
+   */
+  showAssistantChat(input: { tab: DeskTabInput; isChatTab: (tab: DeskTab) => boolean }): void;
+  /** CUSTOM(assistant-desk): selects the assistant Desk, creating it when missing. */
+  selectAssistantDesk(): void;
   /** Unpinned opens replace the Desk's preview tab; pinned opens keep their tab. */
   openTab(tab: DeskTabInput, pin?: boolean, placement?: WorkspaceTabPlacement): void;
   /** CUSTOM(link-context-tab): opens a kept tab and leaves the focus on the tab you were in. */
@@ -179,6 +186,44 @@ const createNodeId = defaultWorkspaceLayoutIds.createNodeId;
 function createDesk(id: string, name: string): Desk {
   return { id, name, layout: createDefaultLayout(), owners: {}, previewTabId: null };
 }
+/** CUSTOM(assistant-desk): the Desk that holds the Projects Assistant chat. */
+export const ASSISTANT_DESK_ID = "projects-assistant";
+const ASSISTANT_DESK_NAME = "Projects Assistant";
+
+/**
+ * CUSTOM(assistant-desk): pure layout rule of showAssistantChat. The tab of the same chat is
+ * focused; else an older chat tab is retargeted in place; else the chat opens as a kept tab.
+ * Only one chat tab remains.
+ */
+export function showAssistantChatInDesk(
+  desk: Desk,
+  input: { tab: DeskTabInput; isChatTab: (tab: DeskTab) => boolean },
+): Desk {
+  const chatTabs = deskTabs(desk).filter(input.isChatTab);
+  const same = deskTabs(desk).find((tab) => sameDeskTarget(tab, input.tab));
+  const keep = same ?? chatTabs[0];
+  if (!keep)
+    return openInDesk({ ...desk, previewTabId: null }, input.tab, true, FOCUSED_PANE_PLACEMENT);
+  let next = desk;
+  let keepId = keep.id;
+  if (!same) {
+    next = updateDeskTab(next, keep.id, {
+      serverId: input.tab.serverId,
+      workspaceId: input.tab.workspaceId,
+      target: input.tab.target,
+    });
+    keepId = deskTabs(next).find((tab) => sameDeskTarget(tab, input.tab))?.id ?? keep.id;
+  }
+  for (const tab of chatTabs) {
+    if (tab.id === keep.id || tab.id === keepId) continue;
+    next = withLayout(
+      next,
+      closeTabInLayout({ layout: next.layout, tabId: tab.id, explorerSidebarPaneId: null }),
+    );
+  }
+  return withLayout(next, focusTabInLayout({ layout: next.layout, tabId: keepId }));
+}
+
 export const initialDesks = (): Desk[] => [createDesk("primary", "Primary tasks")];
 
 function migrateLegacyDesk(desk: LegacyDesk | Desk): Desk {
@@ -505,6 +550,27 @@ export const useDesksStore = create<DesksState>()(
         selectDesk: (id) => {
           if (get().desks.some((d) => d.id === id)) set({ activeDeskId: id });
         },
+        showAssistantChat: (input) => {
+          if (!get().initialized) set({ initialized: true });
+          set((state) => {
+            const base = state.desks.some((desk) => desk.id === ASSISTANT_DESK_ID)
+              ? state.desks
+              : [...state.desks, createDesk(ASSISTANT_DESK_ID, ASSISTANT_DESK_NAME)];
+            return {
+              desks: base.map((desk) =>
+                desk.id === ASSISTANT_DESK_ID ? showAssistantChatInDesk(desk, input) : desk,
+              ),
+              activeDeskId: ASSISTANT_DESK_ID,
+            };
+          });
+        },
+        selectAssistantDesk: () =>
+          set((state) => ({
+            desks: state.desks.some((desk) => desk.id === ASSISTANT_DESK_ID)
+              ? state.desks
+              : [...state.desks, createDesk(ASSISTANT_DESK_ID, ASSISTANT_DESK_NAME)],
+            activeDeskId: ASSISTANT_DESK_ID,
+          })),
         openTab: (input, pin = false, placement = FOCUSED_PANE_PLACEMENT) => {
           if (!get().initialized) set({ initialized: true });
           if (input.target.kind === "agent") {

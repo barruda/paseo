@@ -1,4 +1,5 @@
-// CUSTOM(assistant-sidebar): the Projects Assistant tab of the Explorer sidebar. It shows the live
+// CUSTOM(assistant-desk): the old Projects Assistant tab of the Explorer sidebar, kept so stored tabs still
+// parse (the sweep closes them; it is no longer offered anywhere). It showed the live
 // assistant chat with the ordinary agent panel (history, composer, pwb cards), so a compaction or a
 // restart swaps the chat inside the same tab. See custom/CHANGES.md.
 import { useCallback, useEffect, useMemo } from "react";

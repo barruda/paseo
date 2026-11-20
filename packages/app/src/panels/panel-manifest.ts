@@ -167,7 +167,7 @@ const manifests = {
     compactSheet: null,
     resourceKey: () => "docs",
   },
-  // CUSTOM(assistant-sidebar): the Projects Assistant chat, one tab beside Files and Changes.
+  // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
   projects_assistant: {
     kind: "projects_assistant",
     supportedHosts: ["explorer"],

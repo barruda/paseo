@@ -1,6 +1,6 @@
-// CUSTOM(assistant-sidebar): the Projects Assistant chat (custom/plugins/power-workboard) lives in
-// one tab of the Explorer sidebar, beside Files and Changes, never as a tab of its own in a Desk or
-// a workspace pane. These are the pure rules; see custom/CHANGES.md.
+// CUSTOM(assistant-desk): the Projects Assistant chat (custom/plugins/power-workboard) lives in
+// its own Desk (one reused tab), never as a tab of any other Desk or workspace pane. These are the
+// pure rules; see custom/CHANGES.md.
 import { findAgentSuccessor } from "@/task-navigation/agent-successor";
 
 /** The label the plugin's `CHAT_LABEL` puts on the chat agent (value "true"). */
@@ -24,16 +24,15 @@ export function isAssistantChatAgent(agent: AssistantAgentFacts | undefined | nu
 }
 
 /**
- * A chat the sidebar tab owns. An archived chat is not one: its tab stays exactly where the user
- * opened it (Conversations' "Open in Desk") instead of being swept into the sidebar, which would
- * show whatever live chat replaced it.
+ * A chat the assistant Desk owns. An archived chat is not one: its tab stays exactly where the
+ * user opened it (Conversations' "Open in Desk") instead of being swept into the assistant Desk.
  */
 export function isLiveAssistantChatAgent(agent: AssistantAgentFacts | undefined | null): boolean {
   return isAssistantChatAgent(agent) && !agent?.archivedAt;
 }
 
 /**
- * The chat the sidebar tab shows. The remembered chat while it is live; once it is archived, the
+ * The chat the assistant Desk shows. The remembered chat while it is live; once it is archived, the
  * live agent that replaces it (a compaction, see CUSTOM(agent-successor)); else any live chat,
  * on `preferredServerId` first (a restart archives the old chat without naming it); else the
  * remembered chat as it is, so the tab shows the archived chat rather than nothing.

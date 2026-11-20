@@ -1,4 +1,4 @@
-// CUSTOM(assistant-sidebar)
+// CUSTOM(assistant-desk)
 import { describe, expect, it } from "vitest";
 import { AGENT_REPLACES_LABEL } from "@/task-navigation/agent-successor";
 import {

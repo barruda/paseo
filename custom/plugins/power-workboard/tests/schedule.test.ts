@@ -1,6 +1,8 @@
 import { expect, it } from "vitest";
 import {
+  AUTOMATIC_SCHEDULE,
   dueTrigger,
+  isAutomaticSchedule,
   nextRunAt,
   nightSchedule,
   openWindowStart,
@@ -53,4 +55,22 @@ it("the night window runs every day and knows when it opened", () => {
   expect(openWindowStart(night, at(27, 5, 59))).toBe(at(26, 22));
   expect(openWindowStart(night, at(27, 6))).toBeNull();
   expect(nextRunAt(night, at(27, 6))).toBe(at(27, 22));
+});
+
+it("treats Automatic as a window that is always open", () => {
+  expect(isAutomaticSchedule(AUTOMATIC_SCHEDULE)).toBe(true);
+  expect(isAutomaticSchedule({ kind: "manual" })).toBe(false);
+  expect(
+    isAutomaticSchedule({ ...AUTOMATIC_SCHEDULE, days: [1, 2] } as Schedule),
+  ).toBe(false);
+  expect(
+    isAutomaticSchedule({ ...AUTOMATIC_SCHEDULE, end: "06:00" } as Schedule),
+  ).toBe(false);
+  for (const [day, hours, minutes] of [
+    [26, 0, 0],
+    [26, 3, 30],
+    [27, 12, 0],
+    [31, 23, 59],
+  ])
+    expect(windowOpen(AUTOMATIC_SCHEDULE, at(day, hours, minutes))).toBe(true);
 });

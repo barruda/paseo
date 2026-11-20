@@ -182,7 +182,7 @@ function getCloseButtonTestId(tab: WorkspaceTabDescriptor): string {
   if (
     tab.target.kind === "files" ||
     tab.target.kind === "docs" || // CUSTOM(desk-docs)
-    tab.target.kind === "projects_assistant" || // CUSTOM(assistant-sidebar)
+    tab.target.kind === "projects_assistant" || // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
     tab.target.kind === "pull_request"
   ) {
     return `workspace-${tab.target.kind}-close`;

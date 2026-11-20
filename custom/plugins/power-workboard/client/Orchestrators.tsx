@@ -15,7 +15,12 @@ import {
   type Pool,
 } from "../shared/model";
 import type { Mutation } from "../shared/rpc";
-import { timeOfDaySchema, type Schedule } from "../shared/schedule";
+import {
+  AUTOMATIC_SCHEDULE,
+  isAutomaticSchedule,
+  timeOfDaySchema,
+  type Schedule,
+} from "../shared/schedule";
 import { ConfirmationModal } from "./ConfirmationModal";
 import { HintButton } from "./Hint";
 import type { strings } from "./strings";
@@ -64,6 +69,7 @@ function time(at: string, locale: string): string {
 export function scheduleSummary(schedule: Schedule, t: Strings): string {
   const panel = t.panel;
   if (schedule.kind === "manual") return panel.scheduleManual;
+  if (isAutomaticSchedule(schedule)) return panel.scheduleKinds.automatic;
   const days =
     schedule.days.length === 7
       ? panel.everyDay
@@ -134,6 +140,7 @@ export function newOrchestrator(board: Board, t: Strings) {
     thinkingOptionId: defaults.thinkingOptionId,
     useWorktree: defaults.useWorktree,
     instructions: defaults.instructions,
+    schedule: AUTOMATIC_SCHEDULE,
   });
 }
 
@@ -865,7 +872,7 @@ type Draft = {
   name: string;
   projectId: string | null;
   poolId: string | null; // CUSTOM(resource-pools)
-  kind: Schedule["kind"];
+  kind: Schedule["kind"] | "automatic";
   days: number[];
   start: string;
   end: string;
@@ -887,7 +894,7 @@ function toDraft(config: OrchestratorConfig): Draft {
     name: config.name,
     projectId: config.projectId,
     poolId: config.poolId,
-    kind: schedule.kind,
+    kind: isAutomaticSchedule(schedule) ? "automatic" : schedule.kind,
     days: schedule.kind === "manual" ? [0, 1, 2, 3, 4, 5, 6] : schedule.days,
     start: schedule.kind === "window" ? schedule.start : "22:00",
     end: schedule.kind === "window" ? schedule.end : "06:00",
@@ -909,21 +916,23 @@ function fromDraft(id: string, draft: Draft, enabled: boolean) {
   const schedule =
     draft.kind === "manual"
       ? { kind: "manual" }
-      : draft.kind === "window"
-        ? {
-            kind: "window",
-            days: draft.days,
-            start: draft.start.trim(),
-            end: draft.end.trim(),
-          }
-        : {
-            kind: "daily",
-            days: draft.days,
-            times: draft.times
-              .split(/[,\s]+/)
-              .map((value) => value.trim())
-              .filter(Boolean),
-          };
+      : draft.kind === "automatic"
+        ? AUTOMATIC_SCHEDULE
+        : draft.kind === "window"
+          ? {
+              kind: "window",
+              days: draft.days,
+              start: draft.start.trim(),
+              end: draft.end.trim(),
+            }
+          : {
+              kind: "daily",
+              days: draft.days,
+              times: draft.times
+                .split(/[,\s]+/)
+                .map((value) => value.trim())
+                .filter(Boolean),
+            };
   return orchestratorConfigSchema.safeParse({
     id,
     name: draft.name,
@@ -1050,23 +1059,27 @@ export function OrchestratorTab(
     label: string,
     selected: boolean,
     onPress: () => void,
-  ) => (
-    <Pressable
-      key={key}
-      accessibilityRole="button"
-      {...toggleButtonState(selected)}
-      disabled={disabled}
-      onPress={onPress}
-      style={[
+    hint?: string,
+  ) => {
+    const common = {
+      accessibilityRole: "button" as const,
+      ...toggleButtonState(selected),
+      disabled,
+      onPress,
+      style: [
         styles.chip,
         { borderColor: theme.colors.border },
         selected && { backgroundColor: theme.colors.surface2 },
         disabled && styles.disabled,
-      ]}
-    >
-      <Text style={{ color: theme.colors.foreground }}>{label}</Text>
-    </Pressable>
-  );
+      ],
+      children: <Text style={{ color: theme.colors.foreground }}>{label}</Text>,
+    };
+    return hint ? (
+      <HintButton key={key} hint={hint} {...common} />
+    ) : (
+      <Pressable key={key} {...common} />
+    );
+  };
   const state = board.orchestratorStatus[config.id];
   const pill = !config.enabled
     ? { text: panel.disabled, color: theme.colors.statusWarning }
@@ -1285,15 +1298,21 @@ export function OrchestratorTab(
           {field(
             panel.schedule,
             <View style={styles.chips}>
-              {(["manual", "window", "daily"] as const).map((kind) =>
-                chip(kind, panel.scheduleKinds[kind], draft.kind === kind, () =>
-                  edit({ kind }),
-                ),
+              {(["automatic", "window", "daily", "manual"] as const).map(
+                (kind) =>
+                  chip(
+                    kind,
+                    panel.scheduleKinds[kind],
+                    draft.kind === kind,
+                    () => edit({ kind }),
+                    panel.scheduleHints[kind],
+                  ),
               )}
             </View>,
             panel.scheduleHints[draft.kind],
           )}
           {draft.kind !== "manual" &&
+            draft.kind !== "automatic" &&
             field(
               panel.daysLabel,
               <View style={styles.chips}>

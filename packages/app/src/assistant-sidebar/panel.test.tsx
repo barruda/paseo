@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-// CUSTOM(assistant-sidebar)
+// CUSTOM(assistant-desk)
 import { cleanup, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -80,7 +80,7 @@ function renderPanel() {
 
 beforeEach(() => {
   useSessionStore.setState({ sessions: {} });
-  useAssistantSidebarStore.setState({ chat: null, requestSeq: 0, handledSeq: 0 });
+  useAssistantSidebarStore.setState({ chat: null, pending: null });
 });
 
 afterEach(cleanup);

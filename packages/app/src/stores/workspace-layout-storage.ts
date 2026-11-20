@@ -28,7 +28,7 @@ export const WorkspaceTabTargetStorageSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("changes_tree") }),
   z.strictObject({ kind: z.literal("files") }),
   z.strictObject({ kind: z.literal("docs") }), // CUSTOM(desk-docs)
-  z.strictObject({ kind: z.literal("projects_assistant") }), // CUSTOM(assistant-sidebar)
+  z.strictObject({ kind: z.literal("projects_assistant") }), // CUSTOM(assistant-desk): kept so stored tabs still parse; the sweep closes them
   z.strictObject({ kind: z.literal("pull_request") }),
   z.strictObject({
     kind: z.literal("file"),

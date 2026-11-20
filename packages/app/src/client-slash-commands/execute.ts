@@ -1,5 +1,5 @@
-// CUSTOM(assistant-sidebar): one place for the composer's client slash commands. The pane context's
-// close drops the tab plainly in every host (Desk, workspace pane, Explorer sidebar), so `/exit`
+// CUSTOM(assistant-desk): one place for the composer's client slash commands. The pane context's
+// close drops the tab plainly in every host (Desk, workspace pane), so `/exit`
 // archives the agent once here instead of also going through the tab button's guarded close.
 import type { WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { clientSlashCommandArchivesAgent } from "./clear-keeps-agent";

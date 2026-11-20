@@ -12,6 +12,7 @@ import type { Ctx, InFlight, TurnRow } from "../shared/ledger.ts";
 import { preferences } from "../shared/preferences.ts";
 import { ledgerTrace } from "../shared/trace.ts";
 import { cacheRatio } from "../shared/pricing.ts";
+import { formatTokensPerSecond } from "../shared/rate.ts";
 import {
   fmtCost,
   fmtCostSmall,
@@ -28,15 +29,15 @@ import {
   UsageCoverageNote,
 } from "./ui.tsx";
 
-function useElapsed(startedAt: string | null): string {
+function useElapsedMs(startedAt: string | null): number | null {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!startedAt) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [startedAt]);
-  if (!startedAt) return "";
-  return fmtDuration(Math.max(0, now - Date.parse(startedAt)));
+  if (!startedAt) return null;
+  return Math.max(0, now - Date.parse(startedAt));
 }
 
 function CtxBar({ ctx, theme }: { ctx: Ctx; theme: PluginTheme }) {
@@ -61,7 +62,9 @@ function CtxBar({ ctx, theme }: { ctx: Ctx; theme: PluginTheme }) {
 }
 
 function InFlightCard({ inFlight, seq, theme }: { inFlight: InFlight; seq: number; theme: PluginTheme }) {
-  const elapsed = useElapsed(inFlight.startedAt);
+  const elapsedMs = useElapsedMs(inFlight.startedAt);
+  const elapsed = elapsedMs === null ? "" : fmtDuration(elapsedMs);
+  const rate = formatTokensPerSecond(inFlight.output, elapsedMs);
   const tokens = tokensLine(inFlight.input, inFlight.cached, inFlight.output, inFlight.cacheWrite);
   const pct = fmtPct(cacheRatio(inFlight.input, inFlight.cached, inFlight.cacheWrite));
   const ctx = inFlight.ctxUsed !== null && inFlight.ctxMax !== null ? { used: inFlight.ctxUsed, max: inFlight.ctxMax } : null;
@@ -83,6 +86,7 @@ function InFlightCard({ inFlight, seq, theme }: { inFlight: InFlight; seq: numbe
         </Text>
         <Text style={{ color: theme.colors.foregroundMuted, fontSize: 12, fontVariant: ["tabular-nums"] }}>
           {elapsed}
+          {rate ? ` · ${rate}` : ""}
         </Text>
       </View>
       {tokens ? (
@@ -195,6 +199,7 @@ function RecordRow({ record, theme, dense, onOpenTurn, traceLink }: {
   const hasUsage = record.input !== null || record.cached !== null || record.output !== null || record.cacheWrite != null;
   const split = record.costBreakdown;
   const pct = fmtPct(cacheRatio(record.input, record.cached, record.cacheWrite));
+  const rate = formatTokensPerSecond(record.output, record.durationMs);
   const cacheCost = split ? fmtCostSmall(split.cacheUsd) : "–";
   const costDetail =
     record.costSource === "override"
@@ -240,6 +245,7 @@ function RecordRow({ record, theme, dense, onOpenTurn, traceLink }: {
             style={{ color: theme.colors.foregroundMuted, fontSize: 10, fontVariant: ["tabular-nums"] }}
           >
             {fmtDuration(record.durationMs)}
+              {rate ? ` · ${rate}` : ""}
               {record.usageGap ? ' · gap' : record.quality === "partial" ? " ≈" : ""}
           </Text>
           {traceLink}

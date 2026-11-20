@@ -1,6 +1,5 @@
-// CUSTOM(assistant-sidebar): which Projects Assistant chat the sidebar tab shows, and the pending
-// request to reveal it. The Desk or workspace screen that has the focus handles the request,
-// since only it knows which Explorer is on screen.
+// CUSTOM(assistant-desk): which Projects Assistant chat the assistant Desk shows, and the chat
+// whose open is waiting for the session to list its agent (not persisted).
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { z } from "zod";
 import { create } from "zustand";
@@ -9,17 +8,12 @@ import { createValidatedPersistStorage } from "@/storage/validated-persist-stora
 import type { AssistantChatRef } from "./model";
 
 interface AssistantSidebarState {
-  /** The chat last opened; the tab follows its successor and falls back to any live chat. */
+  /** The chat last opened; the Desk follows its successor and falls back to any live chat. */
   chat: AssistantChatRef | null;
-  /** Bumped by every open; not persisted. */
-  requestSeq: number;
-  /** The last request a screen revealed. */
-  handledSeq: number;
-  /** Whether the request should focus the composer once the chat shows. */
-  focusComposer: boolean;
-  request(chat: AssistantChatRef | null, focusComposer: boolean): void;
+  /** A chat the session did not list yet when it was opened; not persisted. */
+  pending: AssistantChatRef | null;
   setChat(chat: AssistantChatRef): void;
-  markHandled(seq: number): void;
+  setPending(chat: AssistantChatRef | null): void;
 }
 
 const chatSchema = z.object({ serverId: z.string(), agentId: z.string() });
@@ -28,22 +22,14 @@ export const useAssistantSidebarStore = create<AssistantSidebarState>()(
   persist(
     (set) => ({
       chat: null,
-      requestSeq: 0,
-      handledSeq: 0,
-      focusComposer: false,
-      request: (chat, focusComposer) =>
-        set((state) => ({
-          chat: chat ?? state.chat,
-          requestSeq: state.requestSeq + 1,
-          focusComposer,
-        })),
+      pending: null,
       setChat: (chat) =>
         set((state) =>
           state.chat?.serverId === chat.serverId && state.chat.agentId === chat.agentId
             ? state
             : { chat },
         ),
-      markHandled: (seq) => set((state) => (state.handledSeq >= seq ? state : { handledSeq: seq })),
+      setPending: (pending) => set({ pending }),
     }),
     {
       name: "custom-assistant-sidebar",

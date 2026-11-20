@@ -211,8 +211,8 @@ describe("workspace agent visibility", () => {
     expect(result.autoOpenAgentIds).toEqual(new Set([plain.id]));
   });
 
-  // CUSTOM(assistant-sidebar)
-  it("never auto-opens the Projects Assistant chat, which lives in the sidebar", () => {
+  // CUSTOM(assistant-desk)
+  it("never auto-opens the Projects Assistant chat, which lives in its own Desk", () => {
     const chat = makeAgent({
       id: "chat",
       cwd: "/repo",

@@ -85,11 +85,20 @@ const zh = {
     project: "项目",
     projectHint: "所有项目：接收没有自己编排器的项目中未指定的任务。",
     schedule: "计划",
-    scheduleKinds: { manual: "手动", window: "时间窗口", daily: "每天定时" },
+    scheduleKinds: {
+      automatic: "自动",
+      window: "时间窗口",
+      daily: "每天定时",
+      manual: "手动",
+    },
     scheduleHints: {
-      manual: "只在点击“立即运行”时开始。",
-      window: "窗口打开期间持续取任务，不限数量；结束早于开始表示跨越午夜。",
-      daily: "每个时间点开始一轮，最多取一批任务。",
+      automatic:
+        "始终开启：任务移到“待开始”后，只要有空闲名额就立即开始，不限时段。",
+      window:
+        "仅在所选日期的这段时间内自动领取任务；结束早于开始表示跨越午夜。",
+      daily: "每到一个时间点，从“待开始”领取一批任务，然后等待下一个时间点。",
+      manual:
+        "不会自动领取任务：任务留在“待开始”，直到你点击“立即运行”，届时领取当时已有的任务。",
     },
     scheduleManual: "手动",
     enabled: "已启用",
@@ -784,15 +793,20 @@ const en: typeof zh = {
       "All projects: takes unassigned tasks of projects that have no orchestrator of their own.",
     schedule: "Schedule",
     scheduleKinds: {
-      manual: "Manual",
+      automatic: "Automatic",
       window: "Time window",
       daily: "Daily times",
+      manual: "Manual",
     },
     scheduleHints: {
-      manual: "Starts only when you press Run now.",
+      automatic:
+        "Always on: a task moved to Ready to start begins as soon as a slot is free, any time of day.",
       window:
-        "Keeps taking tasks, with no batch limit, while the window is open. An end before the start crosses midnight.",
-      daily: "At each time, one run that takes up to a batch of tasks.",
+        "Takes tasks on its own, only between these hours on the chosen days. An end before the start crosses midnight.",
+      daily:
+        "At each time, takes one batch from Ready to start, then waits for the next time.",
+      manual:
+        "Takes nothing on its own: tasks wait in Ready to start until you press Run now, which takes what is there at that moment.",
     },
     scheduleManual: "Manual",
     enabled: "Enabled",

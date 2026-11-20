@@ -21,7 +21,7 @@ function isAutoOpenAgent(
   return (
     isWorkspaceRootAgent(agent, parentAgent) &&
     !isBoardAgentInSession(agent, sessionAgents, agentDetails) &&
-    // CUSTOM(assistant-sidebar): the Projects Assistant chat lives in the sidebar tab.
+    // CUSTOM(assistant-desk): the Projects Assistant chat lives in its own Desk.
     !isAssistantChatAgent(agent)
   );
 }

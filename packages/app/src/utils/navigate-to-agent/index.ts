@@ -4,7 +4,7 @@ import { isEmbedMode } from "@/embed/embed-mode";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore } from "@/stores/session-store";
 import { resolveNavigateToAgent, type NavigateToAgentInput } from "./resolve";
-import { isAssistantChatInSession, openAssistantSidebar } from "@/assistant-sidebar/open"; // CUSTOM(assistant-sidebar)
+import { isAssistantChatInSession, openAssistantDesk } from "@/assistant-sidebar/open"; // CUSTOM(assistant-desk)
 
 export type { NavigateToAgentInput } from "./resolve";
 
@@ -15,9 +15,13 @@ export function navigateToAgent(input: NavigateToAgentInput): string {
     window.open(link);
     return link;
   }
-  // CUSTOM(assistant-sidebar): the Projects Assistant chat only shows in its sidebar tab.
+  // CUSTOM(assistant-desk): the Projects Assistant chat shows in its own Desk (Tasks mode). With
+  // Tasks mode off openAssistantDesk returns null and ordinary navigation runs.
   if (input.assistantSidebar || isAssistantChatInSession(input.serverId, input.agentId)) {
-    return openAssistantSidebar({ chat: { serverId: input.serverId, agentId: input.agentId } });
+    const route = openAssistantDesk({
+      chat: { serverId: input.serverId, agentId: input.agentId },
+    });
+    if (route !== null) return route;
   }
   return resolveNavigateToAgent(input, {
     readAgentNavTarget: ({ serverId, agentId }) => {

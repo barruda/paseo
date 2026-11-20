@@ -1,4 +1,4 @@
-// CUSTOM(assistant-sidebar)
+// CUSTOM(assistant-desk)
 import { describe, expect, it } from "vitest";
 import type { SessionState } from "@/stores/session-store";
 import { createAssistantAgentMapsCache } from "./session-agent-maps";

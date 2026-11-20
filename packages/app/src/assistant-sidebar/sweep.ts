@@ -1,7 +1,9 @@
-// CUSTOM(assistant-sidebar): the live Projects Assistant chat never stays as a tab of its own.
-// Tabs restored from storage close silently; a tab some path opens later (a row of the Tasks
-// sidebar, a launcher that reaches the Desk directly) closes and the sidebar tab shows instead.
-// An archived chat is not swept: opening it from Conversations shows that conversation.
+// CUSTOM(assistant-desk): the live Projects Assistant chat only stays as a tab of its own Desk
+// (ASSISTANT_DESK_ID). Its tabs anywhere else are closed: tabs restored from storage silently, a
+// tab some path opens later (a launcher that reaches a Desk directly) closes and the assistant
+// Desk shows the chat instead. The old Explorer `projects_assistant` tabs close silently. An
+// archived chat is not swept: opening it from Conversations shows that conversation in a normal tab.
+import { ASSISTANT_DESK_ID } from "@/task-navigation/desks-store";
 import { isLiveAssistantChatAgent, type AssistantAgentFacts, type AssistantChatRef } from "./model";
 
 interface SweepTarget {
@@ -11,6 +13,7 @@ interface SweepTarget {
 
 export interface SweepDeskTab {
   id: string;
+  deskId: string;
   serverId: string;
   target: SweepTarget;
 }
@@ -23,8 +26,9 @@ export interface SweepLayoutTab {
 
 export interface AssistantTabSweep {
   deskTabIds: string[];
-  layoutTabs: { workspaceKey: string; tabId: string; agentId: string }[];
-  /** The chat a new tab asked for, to show in the sidebar instead. */
+  /** `agentId` is null for an old `projects_assistant` tab: nothing to unpin. */
+  layoutTabs: { workspaceKey: string; tabId: string; agentId: string | null }[];
+  /** The chat a new tab asked for, to show in the assistant Desk instead. */
   reveal: AssistantChatRef | null;
 }
 
@@ -48,8 +52,8 @@ export function tabKeys(input: {
 
 /**
  * `known` holds the keys of tabs that were already there when the app started. Tabs that went
- * away drop out, so a tab that comes back with the same key counts as newly opened and reveals
- * the sidebar instead of closing silently.
+ * away drop out, so a tab that comes back with the same key counts as newly opened and asks for
+ * the assistant Desk instead of closing silently.
  */
 export function pruneKnownTabs(
   known: ReadonlySet<string>,
@@ -61,24 +65,35 @@ export function pruneKnownTabs(
 
 /**
  * `known` holds the keys of tabs that were already there when the app started. Only tabs of a
- * live chat are swept; an archived chat keeps the tab the user opened it in.
+ * live chat are swept, and never the ones inside the assistant Desk.
  */
 export function planAssistantTabSweep(input: {
   deskTabs: readonly SweepDeskTab[];
   layoutTabs: readonly SweepLayoutTab[];
   agentFor: (serverId: string, agentId: string) => AssistantAgentFacts | undefined | null;
   known: ReadonlySet<string>;
+  /** False outside Tasks mode, where there is no assistant Desk: chat tabs are left alone. */
+  sweepChats?: boolean;
 }): AssistantTabSweep {
   const plan: AssistantTabSweep = { deskTabIds: [], layoutTabs: [], reveal: null };
   const isAssistant = (serverId: string, agentId: string) =>
-    isLiveAssistantChatAgent(input.agentFor(serverId, agentId));
+    input.sweepChats !== false && isLiveAssistantChatAgent(input.agentFor(serverId, agentId));
   for (const tab of input.deskTabs) {
+    if (tab.target.kind === "projects_assistant") {
+      plan.deskTabIds.push(tab.id);
+      continue;
+    }
+    if (tab.deskId === ASSISTANT_DESK_ID) continue;
     const agentId = tab.target.kind === "agent" ? tab.target.agentId : undefined;
     if (!agentId || !isAssistant(tab.serverId, agentId)) continue;
     plan.deskTabIds.push(tab.id);
     if (!input.known.has(deskTabKey(tab.id))) plan.reveal = { serverId: tab.serverId, agentId };
   }
   for (const tab of input.layoutTabs) {
+    if (tab.target.kind === "projects_assistant") {
+      plan.layoutTabs.push({ workspaceKey: tab.workspaceKey, tabId: tab.tabId, agentId: null });
+      continue;
+    }
     const agentId = tab.target.kind === "agent" ? tab.target.agentId : undefined;
     const serverId = serverOf(tab.workspaceKey);
     if (!agentId || !isAssistant(serverId, agentId)) continue;

@@ -1,6 +1,6 @@
 // CUSTOM(projects-assistant): the Assistant tab of the Power Workboard (CUSTOM(workboard-inner-pages);
 // it was a Desk chip before). It opens the real chat agent (a normal Paseo agent with board tools)
-// in the Projects Assistant tab of the app's right sidebar (CUSTOM(assistant-sidebar)); the Desk
+// in the Projects Assistant Desk of the app (CUSTOM(assistant-desk)); the Desk
 // then leaves the board, and `onOpened` hands the board its previous tab.
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";

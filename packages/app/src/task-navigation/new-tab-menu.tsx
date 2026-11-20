@@ -36,8 +36,7 @@ export function launchDeskTarget(
   isCompact = false,
 ) {
   // CUSTOM(desk-docs): Docs only lives in the workspace's Explorer sidebar, which the Desk docks.
-  // CUSTOM(assistant-sidebar): so does the Projects Assistant.
-  if (target.kind === "docs" || target.kind === "projects_assistant") {
+  if (target.kind === "docs") {
     openDocsInExplorer(scope, target, destination, isCompact);
     return;
   }
@@ -60,10 +59,10 @@ export function launchDeskTarget(
   );
 }
 
-/** CUSTOM(desk-docs): puts the Docs (or Projects Assistant) tab in the scope's Explorer pane. */
+/** CUSTOM(desk-docs): puts the Docs tab in the scope's Explorer pane. */
 function openDocsInExplorer(
   scope: DeskTabOwner,
-  target: Extract<WorkspaceTabTarget, { kind: "docs" | "projects_assistant" }>,
+  target: Extract<WorkspaceTabTarget, { kind: "docs" }>,
   destination: TerminalTabDestination,
   isCompact: boolean,
 ) {

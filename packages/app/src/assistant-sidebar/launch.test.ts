@@ -1,4 +1,4 @@
-// CUSTOM(assistant-sidebar)
+// CUSTOM(assistant-desk)
 import { describe, expect, it } from "vitest";
 import { launchDeskTarget } from "@/task-navigation/new-tab-menu";
 import { collectAllTabs, findPaneById } from "@/stores/workspace-layout-actions";
@@ -8,7 +8,7 @@ import {
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 
-describe("launching the Projects Assistant from the Desk's +", () => {
+describe("launching the Docs from the Desk's +", () => {
   it("shows the Explorer even when it was closed", () => {
     const scope = { serverId: "srv", workspaceId: "ws" };
     const workspaceKey = "srv:ws";
@@ -19,7 +19,7 @@ describe("launching the Projects Assistant from the Desk's +", () => {
       false,
     );
 
-    launchDeskTarget(scope, { kind: "projects_assistant" }, { kind: "open" });
+    launchDeskTarget(scope, { kind: "docs" }, { kind: "open" });
 
     const state = useWorkspaceLayoutStore.getState();
     expect(selectIsExplorerSidebarVisible(state, workspaceKey)).toBe(true);
@@ -28,6 +28,6 @@ describe("launching the Projects Assistant from the Desk's +", () => {
     const kinds = collectAllTabs(layout.root)
       .filter((tab) => pane!.tabIds.includes(tab.tabId))
       .map((tab) => tab.target.kind);
-    expect(kinds).toContain("projects_assistant");
+    expect(kinds).toContain("docs");
   });
 });

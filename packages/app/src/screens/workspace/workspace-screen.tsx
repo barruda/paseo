@@ -11,7 +11,6 @@ import { stepRecentTab, useWorkspaceRecentTabs } from "@/workspace-tabs/recent-t
 import { RecentTabSwitcher } from "@/workspace-tabs/recent-tab-switcher";
 import type { LayoutChangeEvent } from "react-native";
 import { ExplorerSidebarDock } from "@/screens/workspace/explorer-sidebar";
-import { useAssistantSidebarReveal } from "@/assistant-sidebar/reveal"; // CUSTOM(assistant-sidebar)
 import { ExplorerFrame } from "./explorer-sidebar/frame";
 import { WorkspaceTabDragScope } from "@/components/workspace-tab-drag-scope";
 import {
@@ -1290,8 +1289,6 @@ function WorkspaceScreenContent({
     isCompact: isMobile,
     workspaceKey: persistenceKey,
   });
-  // CUSTOM(assistant-sidebar): the Projects Assistant opens in this workspace's sidebar.
-  useAssistantSidebarReveal({ workspaceKey: persistenceKey, enabled: isRouteFocused });
   const hasPullRequest = useWorkspacePullRequestDiscovery({
     workspaceKey: persistenceKey,
     serverId: normalizedServerId,
@@ -3021,7 +3018,7 @@ function WorkspaceScreenContent({
                 });
               }
             : undefined,
-        // CUSTOM(assistant-sidebar): closing from inside the panel (`/exit`, `/clear`) drops the
+        // CUSTOM(assistant-desk): closing from inside the panel (`/exit`, `/clear`) drops the
         // tab only. It must not run the tab button's guarded close, which confirms and archives a
         // running agent; `/exit` archives once itself after this returns.
         onCloseCurrentTab:
