@@ -399,4 +399,59 @@ describe("OpenCode auto_accept feature", () => {
 
     await session.close();
   });
+
+  test("auto-approves external_directory and records it in the timeline", async () => {
+    const { openCodeClient, runtime } = mockOpenCodeClient({
+      events: [
+        {
+          type: "permission.asked",
+          properties: {
+            id: "permission-external-1",
+            sessionID: "session-1",
+            permission: "external_directory",
+            patterns: ["/home/bruno/uprojects/tmp/*"],
+            metadata: {
+              reason: "Write a scratch file outside the worktree",
+            },
+          },
+        },
+        idleEvent(),
+      ],
+    });
+    const receivedEvents: AgentStreamEvent[] = [];
+
+    const client = new OpenCodeAgentClient(createTestLogger(), undefined, {
+      serverManager: runtime,
+      createClient: runtime.createClient,
+    });
+    const session = await client.createSession({
+      provider: "opencode",
+      cwd: "/tmp/project",
+      modeId: "build",
+      featureValues: { auto_accept: true },
+    });
+    session.subscribe((event) => receivedEvents.push(event));
+
+    await session.run("Write outside the project");
+
+    expect(openCodeClient.calls.permissionReply).toEqual([
+      {
+        requestID: "permission-external-1",
+        directory: "/tmp/project",
+        reply: "once",
+      },
+    ]);
+    expect(receivedEvents.filter((event) => event.type === "permission_requested")).toEqual([]);
+    expect(
+      receivedEvents.filter(
+        (event) =>
+          event.type === "timeline" &&
+          event.item.type === "notification" &&
+          event.item.message.includes("Access external directory"),
+      ),
+    ).toHaveLength(1);
+    expect(session.getPendingPermissions()).toEqual([]);
+
+    await session.close();
+  });
 });

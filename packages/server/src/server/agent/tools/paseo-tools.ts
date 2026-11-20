@@ -1102,6 +1102,14 @@ function createToolCatalog(
         .record(z.string(), z.unknown())
         .optional()
         .describe("Provider-specific feature values, for example { fast_mode: true } for Codex."),
+      // CUSTOM(unattended-automation): automation that must not stop for approval. The daemon
+      // resolves the provider's full-access mode; false opts out of a parent's inheritance.
+      unattended: z
+        .boolean()
+        .optional()
+        .describe(
+          "Automation that must not stop for permission: the daemon resolves the provider's full-access mode. false opts out even under an unattended parent.",
+        ),
     })
     .strict();
   const UpdateAgentSettingsInputSchema = z
@@ -1657,6 +1665,10 @@ function createToolCatalog(
               : {}),
           },
           mode: parsedArgs.settings?.modeId,
+          // CUSTOM(unattended-automation)
+          ...(parsedArgs.settings?.unattended !== undefined
+            ? { unattended: parsedArgs.settings.unattended }
+            : {}),
           promptFailure: "throw",
           notifyOnFinish,
           detached: resolvedArgs.detached,

@@ -7127,6 +7127,7 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **What:** Do Not Disturb (DND) is desktop-only state in `$PASEO_HOME/do-not-disturb.json`
   (`{enabled, until}`), so each launcher profile (personal, TELUS) has its own and a script can
   flip it without the app or the daemon. While it is on:
+
   - the Electron main process sends no system (GNOME) notification and so no sound;
   - the app's toast host drops every toast except errors (errors report a failure of something
     the user just did). Plugin toasts, Power Workboard's included, go through the same host.
@@ -8488,6 +8489,97 @@ tests/assistant-engine.test.ts`. Needs only `paseo plugin reload power-workboard
   ..."); open a task agent's report with options in its chat or in Reports and tap one (the task
   goes back to Ready to start with that answer); comment on an outcome; in Reports, a ticket you
   moved by hand shows "you" and stays its own row. Check light and dark, desktop and phone width.
+
+## unattended-automation: automatic agents get full permission on every provider, and the scratch folder is cleaned hourly
+
+- **Added:** 2026-11-19 (based on `custom` at `e30e10550`)
+- **Commit:** `custom: automatic agents run with full permission on every provider` and
+  `custom: keep ACP choosers and board subagents out of silent permissions`
+- **Why:** On 2026-11-19 the board's OpenCode/DeepSeek agent for task `35ee60d0`
+  (`8e8a998b`) sat for a long time on OpenCode's "Access external directory"
+  prompt, for a `cd` into another worktree and for a `npx vitest ... >
+/home/bruno/uprojects/tmp/...`, and nobody was told. The board sent Claude's
+  fixed `modeId: "bypassPermissions"`, which OpenCode does not have, so the
+  agent ran without `auto_accept`; the OpenCode provider also only
+  auto-approved `kind === "tool"`. A provider or mode added later could repeat
+  the same silent stop.
+- **What:** Three layers, one setting.
+  - A: one resolver in `packages/server/src/server/agent/unattended-mode.ts`.
+    Claude -> `bypassPermissions`, Codex -> `full-access`, OpenCode -> the
+    `auto_accept` feature plus a mode that exists in the user's config, other
+    providers -> the mode marked `isUnattended` or a heuristic on mode id/label
+    (`bypass`, `full`, `yolo`, `danger`, `never ask`, `allow-all`...). The
+    daemon applies it to every create it treats as unattended
+    (`ProviderSnapshotManager.resolveCreateConfig`), replaces a requested mode
+    the provider does not have, and re-resolves on a model change
+    (`AgentManager.setAgentModel`). `create_agent_request`/`agent.create.request`
+    gain an optional `unattended` field; `create_agent` gains
+    `settings.unattended`. The Power Workboard passes it for the orchestrator,
+    the Projects Assistant, refinement and the ship role, and the delegation
+    policy asks for it for the Paseo implementer. A stated `false` opts a child
+    out even under an unattended parent and drops a full-access mode the caller
+    carried over from another provider.
+  - B: `AgentManager.onStreamPermissionRequested` auto-approves any permission
+    (except a question, and except a request that offers two alternatives of one
+    `allow` kind, the ACP chooser shape) for an agent whose config is already
+    unattended, logs it and writes a `notification` timeline item. ACP's
+    chooser keeps `kind: "tool"` (the app's question card needs a `questions`
+    input it does not have), so the manager's duplicate-allow-kind guard is what
+    stops it from picking the first option. OpenCode's provider-level
+    auto-approval covers every kind, not only `tool`, and records the same
+    timeline item; ACP does too.
+  - C: the board tick sees `waitingPermission` on its agents and on hidden board
+    subagents (`paseo.board-agent`) created by the task's agent. After 90 s it
+    puts the task on Needs you with reason `permission`, wakes the Projects
+    Assistant, and drops that Needs you when the agent runs again.
+  - Settings: Power Workboard `autoPermission` (`enabled`, then per-role
+    `orchestrator`, `assistant`, `refinement`, `ship`, all on by default) in
+    Settings > Power Workboard; delegation gains `implementerUnattended`, on by
+    default. With it off the agent asks and layer C still warns. Search stays a
+    native Agent-tool subagent, so it has no unattended flag.
+  - Scratch folder: the board's existing tick calls a background pass at most
+    once an hour (once at start) that removes first-level entries of
+    `/home/bruno/uprojects/tmp` whose newest mtime is older than 24 h. It never
+    removes the folder itself, unlinks symlinks instead of following them and
+    reports errors without failing the tick. Path and hours are board settings.
+- **Core files touched:** all marked `CUSTOM(unattended-automation)`:
+  `packages/protocol/src/messages.ts`, `packages/protocol/src/delegation.ts`,
+  `packages/client/src/daemon-client.ts`, `packages/server/src/server/session.ts`,
+  `packages/server/src/server/agent/unattended-mode.ts` (new),
+  `provider-snapshot-manager.ts`, `create-agent/create.ts`, `agent-manager.ts`,
+  `tools/paseo-tools.ts`, `providers/opencode-agent.ts`,
+  `providers/acp-agent.ts`, `packages/app/src/delegation/sheet.tsx`. Plugin
+  files: `custom/plugins/power-workboard/shared/model.ts`, `shared/assistant.ts`,
+  `server/host.ts`, `server/workboard.ts`, `server/tmp-cleanup.ts` (new),
+  `client/WorkboardScreen.tsx`, `client/strings.ts`,
+  `client/assistant/dashboard-strings.ts`, `custom/plugins/delegation/shared/policy.ts`.
+- **Re-apply:** grep `CUSTOM(unattended-automation)`. Keep the protocol field
+  optional and the wire schemas pure; keep `auto_accept` out of the mode list
+  (OpenCode users can rename/delete agents). Add a provider to
+  `PROVIDER_UNATTENDED_MODES` only when its mode id is stable; otherwise rely on
+  the `isUnattended` mode marker or the heuristic. Keep the ACP chooser as
+  `kind: "tool"` with one action per option; do not map it to `question` (the
+  app renders questions from a Claude-shaped `questions` input). The manager's
+  `hasDuplicateAllowOptions` is the guard that keeps it from being auto-approved.
+  The cleanup test needs `lutimes` for the symlink mtime. Register the new tests
+  in
+  `custom/update-paseo-source-and-apply-customization.sh`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx
+vitest run --bail=1`; `(cd packages/server && npx vitest run
+src/server/agent/unattended-mode.test.ts
+src/server/agent/providers/opencode-agent.full-access.test.ts
+src/server/agent/provider-snapshot-manager.test.ts
+src/server/agent/providers/acp-agent.test.ts -t "chooser")`; `(cd packages/server
+&& npx vitest run src/server/agent/agent-manager.test.ts -t
+"unattended|never auto-approves a question|chooser-shaped")`; `(cd packages/server && npx
+vitest run src/server/agent/mcp-server.test.ts -t unattended)`; `(cd
+custom/plugins/delegation && npx vitest run --bail=1)`; `npm run typecheck`. Needs `paseo plugin reload power-workboard` and
+  `paseo plugin reload delegation`, plus a daemon restart for the protocol and
+  permission-manager changes. In the app: start a task with an OpenCode or
+  DeepSeek orchestrator and watch it `cd` outside the worktree and write under
+  `/home/bruno/uprojects/tmp` without a prompt; turn "Automatic agents get full
+  permission" off and confirm the prompt appears and the task reaches Needs you
+  with "Waiting for a permission" after about a minute and a half.
 
 ## board-drag-selection: Power Workboard drag handles never start a text selection
 

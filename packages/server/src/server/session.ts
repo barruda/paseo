@@ -4694,6 +4694,8 @@ export class Session {
           env,
           provisionalTitle,
           firstAgentContext,
+          // CUSTOM(unattended-automation)
+          ...(msg.unattended !== undefined ? { unattended: msg.unattended } : {}),
         },
       );
       createdAgentId = snapshot.id;

@@ -12,6 +12,7 @@ import {
   chatTools,
 } from "../server/assistant/chat";
 import { Store } from "../server/store";
+import { settingsSchema } from "../shared/model";
 import { fixture, workspace } from "./fixtures";
 
 const project = {
@@ -21,12 +22,17 @@ const project = {
   isGit: true,
 };
 
-async function chat() {
+async function chat(options: { settings?: unknown } = {}) {
   const directory = path.join(
     mkdtempSync(path.join(os.tmpdir(), "pwb-chat-")),
     "chat",
   );
-  const setup = fixture({ defaultOrchestratorSeeded: true });
+  const setup = fixture({
+    defaultOrchestratorSeeded: true,
+    ...(options.settings
+      ? { settings: settingsSchema.parse(options.settings) }
+      : {}),
+  });
   setup.inventory.projects.push(project);
   const board = new Workboard(setup.host, setup.store, setup.now, 60000, {
     chatDirectory: directory,
@@ -102,7 +108,8 @@ it("chat.open creates the chat agent once, reuses it, and recreates it when arch
       modeId: "bypassPermissions",
       title: "Projects Assistant",
       labels: { [CHAT_LABEL]: "true" },
-      prompt: CHAT_INSTRUCTIONS,
+      prompt: expect.stringContaining(CHAT_INSTRUCTIONS),
+      unattended: true, // CUSTOM(unattended-automation)
     });
     // CUSTOM(hidden-board-agents): the chat itself is not a hidden board agent.
     expect(start.labels).toEqual({ [CHAT_LABEL]: "true" });
@@ -758,5 +765,19 @@ it("board_task_action merge-now with wait returns the final stage; without it, t
     );
   } finally {
     clearInterval(timer);
+  }
+});
+
+it("the assistant and ship roles follow the automatic-permission setting", async () => {
+  const c = await chat({
+    settings: { autoPermission: { assistant: false, ship: false } },
+  });
+  try {
+    await c.board.openChat(false);
+    const start = (c.host.startAgentIn as any).mock.calls[0][1];
+    expect(start.unattended).toBe(false);
+    expect(start.systemPrompt).toContain('"unattended": false');
+  } finally {
+    c.board.dispose();
   }
 });

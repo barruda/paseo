@@ -2630,6 +2630,18 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           { toolCallId: params.toolCall.toolCallId, optionId: allowOption.optionId },
           "Auto-accepting ACP permission request",
         );
+        // CUSTOM(unattended-automation): the approval leaves a trace in the agent timeline.
+        this.pushEvent({
+          type: "timeline",
+          provider: this.provider,
+          item: {
+            type: "notification",
+            level: "info",
+            message: `Auto-approved ${this.provider} permission: ${
+              params.toolCall.title ?? params.toolCall.kind ?? "tool call"
+            }`,
+          },
+        });
         return {
           outcome: { outcome: "selected", optionId: allowOption.optionId },
         };
@@ -4018,6 +4030,9 @@ function mapPermissionRequest(
   params: RequestPermissionRequest,
   snapshot: ACPToolSnapshot,
 ): AgentPermissionRequest {
+  // A chooser keeps kind "tool" with one action per option: the app's question card needs
+  // the Claude `questions` input, which an ACP chooser does not have. The manager recognizes
+  // the duplicate allow kinds and never auto-approves it.
   const kind: AgentPermissionRequestKind = snapshot.kind === "switch_mode" ? "mode" : "tool";
   const chooserText = isACPChooserRequest(params.options)
     ? extractToolText(params.toolCall.content)

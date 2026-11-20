@@ -1903,6 +1903,11 @@ export const CreateAgentRequestMessageSchema = z.object({
   internal: z.boolean().optional(),
   // Workspace creation intent, rejected when selecting an existing workspace.
   background: z.boolean().optional(),
+  /**
+   * CUSTOM(unattended-automation): automation that must not stop for approval. The daemon
+   * resolves the provider's full-access mode; callers never name a provider mode.
+   */
+  unattended: z.boolean().optional(),
   labels: z.record(z.string(), z.string()).default({}),
   requestId: z.string(),
 });

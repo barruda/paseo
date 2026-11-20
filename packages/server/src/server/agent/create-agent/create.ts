@@ -59,6 +59,11 @@ export interface CreateAgentFromSessionInput {
   env?: Record<string, string>;
   provisionalTitle: string | null;
   firstAgentContext: FirstAgentContext;
+  /**
+   * CUSTOM(unattended-automation): the caller is automation that must not stop for approval.
+   * The daemon resolves the provider's full-access mode; the caller never spells it out.
+   */
+  unattended?: boolean;
 }
 
 export interface CreateAgentFromMcpInput {
@@ -225,7 +230,10 @@ async function resolveSessionCreateAgent(
     requestedMode: builtSessionConfig.modeId,
     featureValues: builtSessionConfig.featureValues,
     parent: null,
-    unattended: false,
+    unattended: input.unattended ?? false,
+    // CUSTOM(unattended-automation): the session caller states the value, so a later
+    // `false` is never overridden by inheritance it does not have anyway.
+    unattendedExplicit: input.unattended !== undefined,
   });
   const sessionConfig: AgentSessionConfig = {
     ...builtSessionConfig,
@@ -370,6 +378,9 @@ async function resolveMcpProviderCreateConfig(params: {
     featureValues: params.input.features ?? passthroughConfig?.featureValues,
     parent: params.parentAgent,
     unattended: params.input.unattended ?? false,
+    // CUSTOM(unattended-automation): a caller that passes `unattended: false` opts out,
+    // even when the parent runs unattended.
+    unattendedExplicit: params.input.unattended !== undefined,
   });
 }
 

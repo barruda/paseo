@@ -352,6 +352,14 @@ if $VERIFY; then
   # Worktree setup hardlinks the main checkout's node_modules when the lockfiles match.
   bash custom/scripts/worktree-deps.test.sh
   (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
+  # Automatic agents get full permission: one resolution per provider, OpenCode auto_accept,
+  # the daemon's central approval and the board's Needs you fallback.
+  (cd packages/server && npx vitest run src/server/agent/unattended-mode.test.ts src/server/agent/providers/opencode-agent.full-access.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/create-agent/create.test.ts -t "unattended" --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "unattended|never auto-approves a question|chooser-shaped" --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/provider-snapshot-manager.test.ts --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/mcp-server.test.ts -t "unattended" --bail=1)
+  (cd packages/server && npx vitest run src/server/agent/providers/acp-agent.test.ts -t "chooser" --bail=1)
   # Telus sync: allowlists, credential/exclusion lists, backup, rollback and backup retention.
   (cd custom/plugins/telus-sync && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
   # Timeline transformers get the chat's agent; a row that replaced a reply keeps the copy button.

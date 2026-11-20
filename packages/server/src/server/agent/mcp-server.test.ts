@@ -3382,6 +3382,43 @@ describe("create_agent MCP tool", () => {
     );
   });
 
+  it("passes settings.unattended from an automation caller to the resolver", async () => {
+    const { agentManager, agentStorage, spies } = createTestDeps();
+    spies.agentManager.createAgent.mockResolvedValue({
+      id: "child-agent",
+      cwd: existingCwd,
+      lifecycle: "idle",
+      currentModeId: "full-access",
+      availableModes: [],
+      config: { title: "Child" },
+    } as ManagedAgent);
+    const providerSnapshot = createOpenCodeManager();
+    providerSnapshot.stub.resolveCreateConfig.mockResolvedValue({
+      modeId: "full-access",
+      featureValues: undefined,
+    });
+
+    const server = await createAgentMcpServer({
+      agentManager,
+      agentStorage,
+      providerSnapshotManager: providerSnapshot.manager,
+      ensureWorkspaceForCreate,
+      logger,
+    });
+    const tool = registeredTool(server, "create_agent");
+    await tool.handler({
+      ...detachedDirectoryWorkspace(existingCwd),
+      title: "Unattended child",
+      provider: "codex/gpt-5.4",
+      settings: { unattended: true },
+      initialPrompt: "Do work",
+    });
+
+    expect(providerSnapshot.stub.resolveCreateConfig).toHaveBeenCalledWith(
+      expect.objectContaining({ unattended: true, unattendedExplicit: true }),
+    );
+  });
+
   it("accepts an explicit valid mode across providers", async () => {
     const { agentManager, agentStorage, spies } = createTestDeps();
     spies.agentManager.getAgent.mockReturnValue({

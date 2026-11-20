@@ -12838,3 +12838,401 @@ test("thread_started and usage_updated live events do not bump updatedAt; real a
     rmSync(workdir, { recursive: true, force: true });
   }
 });
+
+test("auto-approves an unknown permission kind for an unattended agent and records it", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unattended-permission-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const responded: string[] = [];
+
+  class UnattendedPermissionSession extends TestAgentSession {
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = "turn-unattended-permission";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "permission_requested",
+          provider: this.provider,
+          request: {
+            id: "perm-unknown-1",
+            provider: this.provider,
+            kind: "other",
+            name: "A permission kind the daemon has never seen",
+            // A normal allow-once/allow-always pair is not a chooser.
+            actions: [
+              { id: "deny", label: "Deny", behavior: "deny" },
+              { id: "always", label: "Always allow", behavior: "allow" },
+              { id: "once", label: "Allow once", behavior: "allow" },
+            ],
+          },
+          turnId,
+        });
+      }, 0);
+      return { turnId };
+    }
+
+    override async respondToPermission(requestId: string, _response: unknown): Promise<void> {
+      responded.push(requestId);
+      setTimeout(() => {
+        this.pushEvent({
+          type: "permission_resolved",
+          provider: this.provider,
+          requestId,
+          resolution: { behavior: "allow" },
+        });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId: "turn-unattended-permission",
+        });
+      }, 0);
+    }
+  }
+
+  class UnattendedPermissionClient implements AgentClient {
+    readonly provider = "codex" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new UnattendedPermissionSession(config);
+    }
+
+    async resumeSession(config?: Partial<AgentSessionConfig>): Promise<AgentSession> {
+      return new UnattendedPermissionSession({
+        provider: "codex",
+        cwd: config?.cwd ?? process.cwd(),
+        modeId: config?.modeId,
+      });
+    }
+  }
+
+  const attentionReasons: string[] = [];
+  const manager = new AgentManager({
+    clients: { codex: new UnattendedPermissionClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000133",
+    onAgentAttention: ({ reason }) => attentionReasons.push(reason),
+  });
+
+  const agent = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      modeId: "full-access",
+      title: "Unattended permission test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  await manager.runAgent(agent.id, "do work");
+
+  await vi.waitFor(() => expect(responded).toEqual(["perm-unknown-1"]));
+  expect(manager.getAgent(agent.id)?.pendingPermissions.size).toBe(0);
+  expect(attentionReasons).not.toContain("permission");
+  expect(
+    manager
+      .getTimeline(agent.id)
+      .some(
+        (item) =>
+          item.type === "notification" && item.message.includes("Auto-approved codex permission"),
+      ),
+  ).toBe(true);
+});
+
+test("changing the model re-resolves an unattended agent's no-approval mode", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unattended-model-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const appliedModes: string[] = [];
+  let currentMode = "build";
+
+  class ResolvingSession extends TestAgentSession {
+    override async getAvailableModes() {
+      return [
+        { id: "build", label: "Build" },
+        { id: "yolo", label: "Yolo" },
+      ];
+    }
+
+    override async getCurrentMode() {
+      return currentMode;
+    }
+
+    override async setMode(modeId: string): Promise<void> {
+      currentMode = modeId;
+      appliedModes.push(modeId);
+    }
+  }
+
+  class ResolvingClient implements AgentClient {
+    readonly provider = "future-agent" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new ResolvingSession(config);
+    }
+
+    async resumeSession(config?: Partial<AgentSessionConfig>): Promise<AgentSession> {
+      return new ResolvingSession({
+        provider: "future-agent",
+        cwd: config?.cwd ?? process.cwd(),
+        modeId: config?.modeId,
+      });
+    }
+  }
+
+  const manager = new AgentManager({
+    clients: { "future-agent": new ResolvingClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000134",
+  });
+
+  const agent = await manager.createAgent(
+    {
+      provider: "future-agent",
+      cwd: workdir,
+      modeId: "build",
+      featureValues: { auto_accept: true },
+      title: "Re-resolution test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+  await manager.setAgentModel(agent.id, "new-model");
+
+  expect(appliedModes).toContain("yolo");
+  expect(manager.getAgent(agent.id)?.config.modeId).toBe("yolo");
+});
+
+test("never auto-approves a question from an unattended agent", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unattended-question-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const responded: string[] = [];
+
+  class UnattendedQuestionSession extends TestAgentSession {
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = "turn-unattended-question";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "permission_requested",
+          provider: this.provider,
+          request: {
+            id: "perm-question-1",
+            provider: this.provider,
+            kind: "question",
+            name: "Which path should Paseo take?",
+            actions: [
+              { id: "q0_opt_0", label: "Narrow fix", behavior: "allow" },
+              { id: "q0_opt_1", label: "Protocol fix", behavior: "allow" },
+            ],
+          },
+          turnId,
+        });
+      }, 0);
+      return { turnId };
+    }
+
+    override async respondToPermission(requestId: string, _response: unknown): Promise<void> {
+      responded.push(requestId);
+      setTimeout(() => {
+        this.pushEvent({
+          type: "permission_resolved",
+          provider: this.provider,
+          requestId,
+          resolution: { behavior: "allow" },
+        });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId: "turn-unattended-question",
+        });
+      }, 0);
+    }
+  }
+
+  class UnattendedQuestionClient implements AgentClient {
+    readonly provider = "codex" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new UnattendedQuestionSession(config);
+    }
+
+    async resumeSession(config?: Partial<AgentSessionConfig>): Promise<AgentSession> {
+      return new UnattendedQuestionSession({
+        provider: "codex",
+        cwd: config?.cwd ?? process.cwd(),
+        modeId: config?.modeId,
+      });
+    }
+  }
+
+  const attentionReasons: string[] = [];
+  const manager = new AgentManager({
+    clients: { codex: new UnattendedQuestionClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000135",
+    onAgentAttention: ({ reason }) => attentionReasons.push(reason),
+  });
+
+  const agent = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      modeId: "full-access",
+      title: "Unattended question test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  const stream = manager.streamAgent(agent.id, "ask");
+  await stream.next(); // turn_started
+  await stream.next(); // permission_requested
+
+  expect(responded).toEqual([]);
+  expect(manager.getAgent(agent.id)?.pendingPermissions.size).toBe(1);
+  expect(attentionReasons).toContain("permission");
+  expect(manager.getTimeline(agent.id).some((item) => item.type === "notification")).toBe(false);
+
+  await manager.respondToPermission(agent.id, "perm-question-1", {
+    behavior: "allow",
+    updatedInput: { answers: { Decision: "Protocol fix" } },
+  });
+  while (!(await stream.next()).done) {
+    // drain
+  }
+});
+
+test("never auto-approves an ACP chooser-shaped tool permission", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-unattended-chooser-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+  const responded: string[] = [];
+
+  class UnattendedChooserSession extends TestAgentSession {
+    override async startTurn(): Promise<{ turnId: string }> {
+      const turnId = "turn-unattended-chooser";
+      setTimeout(() => {
+        this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+        this.pushEvent({
+          type: "permission_requested",
+          provider: this.provider,
+          request: {
+            id: "perm-chooser-1",
+            provider: this.provider,
+            kind: "tool",
+            name: "AskUserQuestion",
+            title: "AskUserQuestion",
+            actions: [
+              { id: "q0_opt_0", label: "Narrow fix", behavior: "allow" },
+              { id: "q0_opt_1", label: "Protocol fix", behavior: "allow" },
+              { id: "q0_skip", label: "Skip", behavior: "deny" },
+            ],
+            // ACP's raw chooser options: two alternatives of the same allow kind.
+            metadata: {
+              options: [
+                { optionId: "q0_opt_0", name: "Narrow fix", kind: "allow_once" },
+                { optionId: "q0_opt_1", name: "Protocol fix", kind: "allow_once" },
+                { optionId: "q0_skip", name: "Skip", kind: "reject_once" },
+              ],
+            },
+          },
+          turnId,
+        });
+      }, 0);
+      return { turnId };
+    }
+
+    override async respondToPermission(
+      requestId: string,
+      _response: unknown,
+    ): Promise<void> {
+      responded.push(requestId);
+      setTimeout(() => {
+        this.pushEvent({
+          type: "permission_resolved",
+          provider: this.provider,
+          requestId,
+          resolution: { behavior: "allow" },
+        });
+        this.pushEvent({
+          type: "turn_completed",
+          provider: this.provider,
+          turnId: "turn-unattended-chooser",
+        });
+      }, 0);
+    }
+  }
+
+  class UnattendedChooserClient implements AgentClient {
+    readonly provider = "codex" as const;
+    readonly capabilities = TEST_CAPABILITIES;
+
+    async isAvailable(): Promise<boolean> {
+      return true;
+    }
+
+    async createSession(config: AgentSessionConfig): Promise<AgentSession> {
+      return new UnattendedChooserSession(config);
+    }
+
+    async resumeSession(config?: Partial<AgentSessionConfig>): Promise<AgentSession> {
+      return new UnattendedChooserSession({
+        provider: "codex",
+        cwd: config?.cwd ?? process.cwd(),
+        modeId: config?.modeId,
+      });
+    }
+  }
+
+  const attentionReasons: string[] = [];
+  const manager = new AgentManager({
+    clients: { codex: new UnattendedChooserClient() },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000136",
+    onAgentAttention: ({ reason }) => attentionReasons.push(reason),
+  });
+
+  const agent = await manager.createAgent(
+    {
+      provider: "codex",
+      cwd: workdir,
+      modeId: "full-access",
+      title: "Unattended chooser test",
+    },
+    undefined,
+    { workspaceId: undefined },
+  );
+
+  const stream = manager.streamAgent(agent.id, "choose");
+  await stream.next(); // turn_started
+  await stream.next(); // permission_requested
+
+  expect(responded).toEqual([]);
+  expect(manager.getAgent(agent.id)?.pendingPermissions.size).toBe(1);
+  expect(attentionReasons).toContain("permission");
+
+  await manager.respondToPermission(agent.id, "perm-chooser-1", {
+    behavior: "allow",
+    selectedActionId: "q0_opt_1",
+  });
+  while (!(await stream.next()).done) {
+    // drain
+  }
+});

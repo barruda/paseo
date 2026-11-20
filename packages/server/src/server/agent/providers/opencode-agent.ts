@@ -5469,11 +5469,23 @@ class OpenCodeAgentSession implements AgentSession {
         const directory =
           (eventSessionId ? this.childSessionCwds.get(eventSessionId) : undefined) ??
           this.config.cwd;
-        const autoApproved = await this.tryAutoApproveToolPermission(
+        const autoApproved = await this.tryAutoApprovePermission(
           translatedEvent.request,
           directory,
         );
         if (autoApproved) {
+          // CUSTOM(unattended-automation): the approval leaves a trace in the agent timeline.
+          events.push({
+            type: "timeline",
+            provider: "opencode",
+            item: {
+              type: "notification",
+              level: "info",
+              message: `Auto-approved ${translatedEvent.request.provider} permission: ${
+                translatedEvent.request.title ?? translatedEvent.request.name
+              }`,
+            },
+          });
           continue;
         }
         this.pendingPermissions.set(translatedEvent.request.id, translatedEvent.request);
@@ -5507,14 +5519,21 @@ class OpenCodeAgentSession implements AgentSession {
     return true;
   }
 
-  private async tryAutoApproveToolPermission(
+  private async tryAutoApprovePermission(
     request: AgentPermissionRequest,
     directory: string,
   ): Promise<boolean> {
-    if (!this.autoAcceptEnabled || request.kind !== "tool") {
+    // CUSTOM(unattended-automation): `external_directory`, `bash`, `edit` and any future
+    // kind are all approved, not just `kind === "tool"`. Questions are excluded: they need
+    // an answer, not an allow reply.
+    if (!this.autoAcceptEnabled || request.kind === "question") {
       return false;
     }
 
+    this.logger.info(
+      { requestId: request.id, kind: request.kind, name: request.name },
+      "Auto-approving OpenCode permission",
+    );
     try {
       await this.client.permission.reply({
         requestID: request.id,

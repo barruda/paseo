@@ -51,6 +51,12 @@ import {
 } from "./agent-configuration-validator.js";
 import type { ProviderRegistration } from "@getpaseo/plugin/server/provider";
 import { PluginAgentClientRegistry } from "./plugin-provider.js";
+// CUSTOM(unattended-automation): one resolution of a provider's no-approval mode.
+import {
+  isFullAccessModeId,
+  resolveUnattendedCreateConfig,
+  sanitizeRequestedMode,
+} from "./unattended-mode.js";
 
 const DEFAULT_REFRESH_TIMEOUT_MS = 120_000;
 const MAX_REFRESH_TIMEOUT_MS = 2_147_483_647;
@@ -163,6 +169,11 @@ export interface ResolveProviderCreateConfigOptions {
   featureValues: Record<string, unknown> | undefined;
   parent: ManagedAgent | null;
   unattended: boolean;
+  /**
+   * CUSTOM(unattended-automation): the caller stated `unattended` on purpose. A stated
+   * `false` opts the child out even under an unattended parent.
+   */
+  unattendedExplicit?: boolean;
 }
 
 export interface ResolvedProviderCreateConfig {
@@ -560,13 +571,41 @@ export class ProviderSnapshotManager {
     });
     const definition = this.requireProvider(input.provider);
     const parent = input.parent ? this.resolveParent(input.parent) : null;
-    return definition.resolveCreateConfig({
+    const unattended = input.unattendedExplicit
+      ? input.unattended
+      : input.unattended || parent?.isUnattended === true;
+    const availableModes = entry.modes ?? [];
+    // CUSTOM(unattended-automation): an automatic agent never fails because a stored mode
+    // belongs to another provider; the central resolution below replaces it.
+    let requestedMode = input.requestedMode;
+    if (unattended) {
+      requestedMode = sanitizeRequestedMode({
+        provider: input.provider,
+        modeId: input.requestedMode,
+        availableModes,
+      });
+    } else if (
+      input.unattendedExplicit &&
+      isFullAccessModeId(input.provider, input.requestedMode)
+    ) {
+      // CUSTOM(unattended-automation): a caller that says "not unattended" does not get a
+      // full-access mode it inherited from a template; the provider default asks.
+      requestedMode = undefined;
+    }
+    const resolved = definition.resolveCreateConfig({
       provider: input.provider,
-      requestedMode: input.requestedMode,
+      requestedMode,
       featureValues: input.featureValues,
       parent,
-      unattended: input.unattended || parent?.isUnattended === true,
-      availableModes: entry.modes ?? [],
+      unattended,
+      availableModes,
+    });
+    if (!unattended) return resolved;
+    return resolveUnattendedCreateConfig({
+      provider: input.provider,
+      modeId: resolved.modeId,
+      featureValues: resolved.featureValues,
+      availableModes,
     });
   }
 

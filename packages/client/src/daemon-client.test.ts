@@ -363,6 +363,7 @@ test.each([
       callerAgentId: "parent",
       env: { CREATION_CONTEXT: "preserved" },
       labels: { source: "test" },
+      unattended: true, // CUSTOM(unattended-automation)
       idempotencyKey: "creation",
       clientMessageId: "first-message",
       initialPrompt: "Start this agent",
@@ -391,6 +392,7 @@ test.each([
       callerAgentId: input.callerAgentId,
       env: input.env,
       labels: input.labels,
+      unattended: input.unattended,
       clientMessageId: input.clientMessageId,
       initialPrompt: input.initialPrompt,
       images: input.images,

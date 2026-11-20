@@ -498,6 +498,11 @@ export interface CreateAgentRequestOptions extends AgentConfigOverrides {
   worktree?: CreateAgentRequestMessage["worktree"];
   autoArchive?: CreateAgentRequestMessage["autoArchive"];
   background?: CreateAgentRequestMessage["background"];
+  /**
+   * CUSTOM(unattended-automation): automation that must not stop for approval. The daemon
+   * resolves the provider's full-access mode.
+   */
+  unattended?: CreateAgentRequestMessage["unattended"];
   /** @deprecated Use createWorkspace({ source, agent, idempotencyKey }); rejected by createAgent. */
   worktreeName?: string;
   requestId?: string;
@@ -3305,6 +3310,7 @@ export class DaemonClient {
       ...(options.worktree ? { worktree: options.worktree } : {}),
       ...(options.autoArchive !== undefined ? { autoArchive: options.autoArchive } : {}),
       ...(options.background !== undefined ? { background: options.background } : {}),
+      ...(options.unattended !== undefined ? { unattended: options.unattended } : {}),
       ...(options.worktreeName ? { worktreeName: options.worktreeName } : {}),
       ...(options.labels && Object.keys(options.labels).length > 0
         ? { labels: options.labels }

@@ -384,7 +384,7 @@ describe("the engine applies the profile", () => {
       await s.board.openChat(false);
       const start = (s.host.startAgentIn as any).mock.calls[0][1];
       const directory = path.join(s.profilesDirectory, ASSISTANT_PROFILE);
-      expect(start.prompt).toBe(CHAT_INSTRUCTIONS);
+      expect(start.prompt).toContain(CHAT_INSTRUCTIONS);
       expect(start.systemPrompt).toContain("You are the Projects Assistant");
       expect(start.providerOptions).toEqual({
         plugins: [{ type: "local", path: directory }],

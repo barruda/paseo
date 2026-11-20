@@ -28,6 +28,7 @@ export const REASON_LABELS: Record<NeedsYouReason, string> = {
   stalled: "Stalled", // CUSTOM(task-checkpoints)
   "fix-waiting": "Fix waiting for a slot", // CUSTOM(resource-pools)
   "usage-limit": "Usage limit hit again", // CUSTOM(usage-limit)
+  permission: "Waiting for a permission", // CUSTOM(unattended-automation)
 };
 
 export const KIND_LABELS: Record<HistoryEventKind, string> = {
