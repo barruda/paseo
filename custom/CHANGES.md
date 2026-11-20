@@ -8819,6 +8819,7 @@ tests/colors.test.ts --bail=1`. Needs only `paseo plugin reload power-workboard`
   In the app, two cards of the same project in different rails have the same left border, the
   project initial shows before the name, and each column header has its rail-colored top filete
   in the light and dark themes.
+
 ## project-manager-rename: Projects Assistant becomes Project Manager, Power Workboard becomes Workboard
 
 - **Added:** 2026-11-20
@@ -8855,3 +8856,32 @@ src/assistant-sidebar/desk.test.ts)`. Needs `paseo plugin reload power-workboard
   tab, Explorer mirror and Settings item say **Project Manager**; the existing assistant Desk shows
   **Project Manager**. A live `system-prompt.md` keeps the old names until the new `ASSISTANT_ROLE`
   text is copied there by hand.
+
+## subagent-track-open-tab: a subagent row opens its tab in the current Desk
+
+- **Added:** 2026-11-20 (based on `custom` at `fcfa4b6aa`)
+- **Commit:** `custom: a subagent row opens its tab in the current Desk`
+- **Why:** With Tasks mode (Desks) on, clicking a subagent in the composer's chip opened a tab in
+  the workspace layout store, which the Desk screen never renders: the chip closed and nothing
+  else happened. The same click works when Desks are off, which is why the upstream e2e test
+  (no Desks) stayed green.
+- **What:** `openSubagentTab` opens the row's target through `openDeskTargetInMainContent` first,
+  the same bridge `open-supporting-view.ts` uses for Changes and pull requests (and never the
+  focused bottom-panel terminal), and falls back to
+  `openPreferredWorkspaceTarget` (workspace panes, with the "open in side pane" preference) when
+  Tasks mode is off. Covers provider subagents (OpenCode, Claude Task/Agent, Codex) and Paseo
+  subagents in the same workspace; a Paseo subagent in another workspace still goes through
+  `navigateToAgent`, which was already Desk-aware. An already-open target is focused, not
+  duplicated, because the Desk reuses the tab with the same owner and target.
+- **Core files touched:** `packages/app/src/panels/agent-tracks.tsx` (the target callback), new
+  `packages/app/src/subagents/open-tab.ts`, plus new `open-tab.test.ts` and
+  `track.browser.test.tsx`; the tests are wired into the update script. `docs/agent-lifecycle.md`
+  (the subagents track section) records where the click opens.
+- **Re-apply:** Grep `CUSTOM(desks)` in `open-tab.ts`. Wherever the subagents track opens a row's
+  target, call `openDeskTargetInMainContent` first and keep `openPreferredWorkspaceTarget` as the
+  fallback.
+- **Verify:** `(cd packages/app && npx vitest run src/subagents/open-tab.test.ts
+src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. With Tasks mode on,
+  click a provider subagent row in the composer's "N working" chip: its tab opens and takes focus in
+  the current Desk, and the chip closes. Repeat for a Paseo subagent; a second click focuses the same
+  tab instead of adding one.

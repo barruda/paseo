@@ -288,6 +288,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/agent-stream/scroll-arrows.test.ts --bail=1)
   # Subagent rows start with "Claude subagent" or "Paseo subagent".
   (cd packages/app && npx vitest run src/subagents/track-presentation.test.ts src/task-navigation/provider-subagent-rows.test.ts --bail=1)
+  # A subagent row opens its tab in the current Desk, or in the workspace panes without Desks.
+  (cd packages/app && npx vitest run src/subagents/open-tab.test.ts src/subagents/track.browser.test.tsx --bail=1)
   (cd packages/app && npx vitest run src/keyboard/voice-escape.test.ts src/composer/submission/writer.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/providers/codex-app-server-agent.test.ts --bail=1)
   (cd packages/app && npx vitest run src/composer/project-icon-model.test.ts --bail=1)
