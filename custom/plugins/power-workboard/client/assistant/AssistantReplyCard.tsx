@@ -14,9 +14,11 @@ import {
   DONE_FALLBACK_ICON,
   DONE_VERB_ICON,
   NEXT_LOOK,
+  nextLegend,
   replyDetails,
   shortTaskId,
   splitReply,
+  type NextValue,
   type ReplyItemData,
   type ReplyLine,
   type ReplySplit,
@@ -82,7 +84,12 @@ function LineText({
   strong?: boolean;
 }) {
   const id = line.taskIds[0];
-  const style = [styles.body, styles.grow, strong && styles.strong, { color }];
+  const style = [
+    styles.body,
+    styles.shrink,
+    strong && styles.strong,
+    { color },
+  ];
   if (!id || !canOpenTaskReport())
     return (
       <Text selectable style={style}>
@@ -94,7 +101,7 @@ function LineText({
       accessibilityRole="link"
       accessibilityLabel={`${line.text} (${shortTaskId(id)})`}
       onPress={() => openTaskReport(id)}
-      style={[styles.row, styles.grow]}
+      style={[styles.row, styles.shrink]}
     >
       <Text style={[style, styles.link, { color: theme.colors.accent }]}>
         {line.text || shortTaskId(id)}
@@ -142,9 +149,106 @@ function IconLine({
   );
   if (!onFeedback || !labels) return row;
   return (
-    <Commentable theme={theme} labels={labels} onFeedback={onFeedback}>
+    <Commentable theme={theme} labels={labels} onFeedback={onFeedback} inline>
       {row}
     </Commentable>
+  );
+}
+
+/**
+ * The `próximo` chip and its legend. Hovering opens the legend on desktop web; keyboard focus and
+ * a long press open it anywhere. The legend is a child of the hover View and starts at the chip's
+ * bottom edge, so moving into it never leaves the hover target (docs/hover.md).
+ */
+function NextChip({
+  next,
+  theme,
+  hoverable,
+}: {
+  next: { value: NextValue | null; text: string };
+  theme: Theme;
+  hoverable: boolean;
+}) {
+  const [hovered, setHovered] = useState(false);
+  const [pinned, setPinned] = useState(false);
+  const look = NEXT_LOOK[next.value ?? "other"];
+  const color = toneColor(look.tone, theme);
+  const open = hovered || pinned;
+  const c = theme.colors;
+  return (
+    <View
+      style={styles.nextWrap}
+      onPointerEnter={hoverable ? () => setHovered(true) : undefined}
+      onPointerLeave={hoverable ? () => setHovered(false) : undefined}
+    >
+      <Pressable
+        focusable
+        accessibilityRole="button"
+        accessibilityLabel={`próximo: ${next.text}`}
+        accessibilityHint="mostra o que cada valor quer dizer"
+        accessibilityState={{ expanded: open }}
+        onFocus={() => setPinned(true)}
+        onBlur={() => setPinned(false)}
+        onLongPress={() => setPinned((value) => !value)}
+        style={[
+          styles.chip,
+          { borderColor: color, backgroundColor: wash(color) },
+        ]}
+      >
+        <Icon name={look.icon} size={13} color={color} />
+        <Text style={[styles.chipText, { color }]} numberOfLines={1}>
+          {next.text}
+        </Text>
+      </Pressable>
+      {open ? (
+        <View style={styles.legendWrap}>
+          <View
+            accessible
+            accessibilityLabel="legenda do próximo"
+            style={[
+              styles.legend,
+              { backgroundColor: c.surface2, borderColor: c.border },
+            ]}
+          >
+            <Text style={[styles.legendTitle, { color: c.foregroundMuted }]}>
+              quem move a seguir
+            </Text>
+            {nextLegend(next.value).map((entry) => {
+              const rowColor = toneColor(entry.tone, theme);
+              return (
+                <View
+                  key={entry.value}
+                  accessibilityState={{ selected: entry.current }}
+                  style={[
+                    styles.legendRow,
+                    entry.current && {
+                      borderColor: rowColor,
+                      backgroundColor: wash(rowColor),
+                    },
+                  ]}
+                >
+                  <Icon name={entry.icon} size={12} color={rowColor} />
+                  <Text style={[styles.legendValue, { color: rowColor }]}>
+                    {entry.value}
+                  </Text>
+                  <Text
+                    style={[
+                      styles.legendText,
+                      {
+                        color: entry.current ? c.foreground : c.foregroundMuted,
+                      },
+                      entry.current && styles.strong,
+                    ]}
+                  >
+                    {entry.description}
+                  </Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -180,7 +284,7 @@ function ReplyCard({
     : yoursAction
       ? c.statusWarning
       : c.border;
-  const next = reply.next ? NEXT_LOOK[reply.next.value ?? "other"] : null;
+  const hasNext = reply.next !== null;
   const hasBody =
     reply.done.length +
       reply.outcomes.length +
@@ -189,7 +293,6 @@ function ReplyCard({
       reply.blockers.length +
       reply.extra.length >
     0;
-  const nextColor = next ? toneColor(next.tone, theme) : c.foregroundMuted;
 
   return (
     <View
@@ -268,7 +371,7 @@ function ReplyCard({
         />
       ) : null}
 
-      {hasBody && (reply.question || next || reply.yours) ? (
+      {hasBody && (reply.question || hasNext || reply.yours) ? (
         <View style={[styles.divider, { borderColor: c.border }]} />
       ) : null}
 
@@ -289,26 +392,15 @@ function ReplyCard({
         />
       ) : null}
 
-      {next || (reply.yours && reply.yours.none) ? (
+      {hasNext || (reply.yours && reply.yours.none) ? (
         <View style={styles.footer}>
-          {next && reply.next ? (
-            <View
-              style={[
-                styles.chip,
-                { borderColor: nextColor, backgroundColor: wash(nextColor) },
-              ]}
-              accessibilityLabel={`próximo: ${reply.next.text}`}
-            >
-              <Icon name={next.icon} size={13} color={nextColor} />
-              <Text
-                style={[styles.chipText, { color: nextColor }]}
-                numberOfLines={1}
-              >
-                {reply.next.text}
-              </Text>
-            </View>
+          {reply.next ? (
+            <NextChip
+              next={reply.next}
+              theme={theme}
+              hoverable={layout.platform === "web" && !layout.compact}
+            />
           ) : null}
-          <View style={styles.grow} />
           {reply.yours && reply.yours.none ? (
             <View
               style={[styles.seal, { borderColor: c.border }]}
@@ -446,7 +538,7 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", alignItems: "center", gap: 6 },
   rowTop: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   iconSlot: { width: 16, height: 20, justifyContent: "center" },
-  grow: { flex: 1, minWidth: 0 },
+  shrink: { flexShrink: 1, minWidth: 0 },
   body: { fontSize: 13, lineHeight: 20 },
   strong: { fontWeight: "600" },
   link: { textDecorationLine: "underline" },
@@ -467,6 +559,50 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   chipText: { fontSize: 12, fontWeight: "600" },
+  nextWrap: { position: "relative" },
+  legendWrap: {
+    position: "absolute",
+    top: "100%",
+    left: 0,
+    paddingTop: 6,
+    zIndex: 20,
+  },
+  legend: {
+    width: 268,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 8,
+    gap: 3,
+    elevation: 8,
+    shadowColor: "#000000",
+    shadowOpacity: 0.18,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  legendTitle: {
+    fontSize: 10,
+    fontWeight: "700",
+    textTransform: "uppercase",
+    letterSpacing: 0.4,
+    marginBottom: 2,
+  },
+  legendRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "transparent",
+    borderRadius: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+  },
+  legendValue: {
+    fontSize: 12,
+    lineHeight: 16,
+    fontWeight: "700",
+    minWidth: 52,
+  },
+  legendText: { fontSize: 12, lineHeight: 16, flexShrink: 1 },
   seal: {
     flexDirection: "row",
     alignItems: "center",

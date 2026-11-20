@@ -52,6 +52,19 @@ export const NEXT_VALUES = [
 export type NextValue = (typeof NEXT_VALUES)[number];
 
 /**
+ * One line per `próximo` value, shown in the chip's legend. The protocol doc lists the same
+ * lines; a test compares them, so change both together.
+ */
+export const NEXT_DESCRIPTIONS: Record<NextValue, string> = {
+  sigo: "I carry on by myself.",
+  agente: "it went back to the task's agent.",
+  revisão: "an independent reviewer is looking at it.",
+  você: "stopped, waiting for the user.",
+  espera: "waiting on something outside (a limit, CI, a time).",
+  fim: "delivered, nothing pending.",
+};
+
+/**
  * The evidence word a `pedido` line starts with. The canonical words are the report's
  * EVIDENCE_KINDS; the Portuguese ones are aliases.
  */
@@ -447,3 +460,23 @@ export const NEXT_LOOK: Record<
   fim: { icon: "CircleCheckBig", tone: "success" },
   other: { icon: "Circle", tone: "muted" },
 };
+
+/** One row of the `próximo` chip's legend. */
+export interface NextLegendEntry {
+  value: NextValue;
+  icon: string;
+  tone: ReplyTone;
+  description: string;
+  /** True for the value the chip shows, so the legend can highlight it. */
+  current: boolean;
+}
+
+/** The legend behind the `próximo` chip: every value in enum order, the current one flagged. */
+export function nextLegend(current: NextValue | null): NextLegendEntry[] {
+  return NEXT_VALUES.map((value) => ({
+    value,
+    ...NEXT_LOOK[value],
+    description: NEXT_DESCRIPTIONS[value],
+    current: value === current,
+  }));
+}

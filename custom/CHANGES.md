@@ -7938,7 +7938,8 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
 ## assistant-reply-protocol: the Projects Assistant ends replies with a `pwb` block the chat draws
 
 - **Added:** 2026-11-19 (based on `custom` at `f9439fa66`)
-- **Commit:** `custom: Projects Assistant replies end with a pwb block drawn as icons in its chat`
+- **Commit:** `custom: Projects Assistant replies end with a pwb block drawn as icons in its chat`;
+  follow-up `custom: the próximo chip explains its values and keeps its controls beside the text`
 - **Why:** The user (ADHD) wants to scan the assistant's chat fast: what was done, who moves next
   and whether they have to do anything, with the rest one click away. The format will keep
   changing, so it lives in one versioned doc.
@@ -7960,8 +7961,15 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
   Workboard on Reports with that ticket (the client's `openScreen` plus `requestReportTask`;
   Reports now also matches a short id prefix). The assistant's seed prompt (`ASSISTANT_ROLE`) and
   `CHAT_INSTRUCTIONS` ask for the block; the rule text is built from the parser's enums.
+  **Follow-up (2026-11-20):** the `próximo` chip carries its legend — hovering it on desktop web,
+  focusing it, or a long press on touch opens a compact panel with the six values, each with the
+  chip's icon and color and a one-line description, the current one highlighted. The `seu` seal
+  sits right after the chip instead of at the card's right edge, and each line's comment button
+  follows its text, after the open (↗) link. The one-liners live in `NEXT_DESCRIPTIONS` next to
+  `NEXT_VALUES`, and the protocol test compares them with the doc's `next-values` list.
 - **Core files touched:** none. Plugin files: `shared/reply-protocol.ts`,
-  `client/assistant/AssistantReplyCard.tsx`, `client/assistant/nav.ts` (`openTaskReport`),
+  `client/assistant/AssistantReplyCard.tsx`, `client/assistant/card-parts.tsx` (`inline`
+  comment button), `client/assistant/nav.ts` (`openTaskReport`),
   `client/assistant/ReportsScreen.tsx` (short id), `client/assistant/TaskReportCard.tsx` (exports
   `MarkdownText` and `wash`), `index.client.tsx` (registration, before the report card's),
   `server/assistant/chat.ts`, `docs/assistant-reply-protocol.md`, `README.md`,
@@ -7973,13 +7981,17 @@ tests/usage-limit.test.ts tests/assistant-engine.test.ts tests/checkpoint-format
   without an `id`: the host keys plugin items by that id as is, and a
   fixed one collides across replies. Changing the protocol means editing the doc and
   `shared/reply-protocol.ts` together and bumping the version; the test compares their lists.
-  Grep `CUSTOM(assistant-reply-protocol)`.
+  The chip legend's one-liners are `NEXT_DESCRIPTIONS`, next to `NEXT_VALUES`, and `nextLegend`
+  pairs each value with `NEXT_LOOK`'s icon and tone; change them with the doc's `next-values`
+  list. Grep `CUSTOM(assistant-reply-protocol)`.
 - **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
 tests/reply-protocol.test.ts`. Needs only `paseo plugin reload power-workboard` (and a new
   assistant chat, or the next reply, to pick up the prompt). In the assistant's chat a reply ends
-  in the card; hover or click "detalhes"; click a `feito` line with an id to land on that ticket in
-  Reports. A task agent's chat still shows a `pwb` block as a code block (as Markdown). Check
-  light and dark.
+  in the card; hover the `próximo` chip to see the six values with the current one highlighted,
+  then move the mouse away (on a phone, long press the chip); the `seu` seal sits next to the
+  chip; the comment icon of a `feito` line sits right after its text and still opens the field.
+  Hover or click "detalhes"; click a `feito` line with an id to land on that ticket in Reports. A
+  task agent's chat still shows a `pwb` block as a code block (as Markdown). Check light and dark.
 
 ## workboard-chip-only: Power Workboard always opens on its Desk chip, with a status icon
 
