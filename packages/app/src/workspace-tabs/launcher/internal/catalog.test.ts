@@ -21,6 +21,7 @@ describe("getBuiltInLaunchOrder", () => {
       "diff",
       "files",
       "docs",
+      "assistant", // CUSTOM(assistant-sidebar)
       "agent",
       "browser",
       "pullRequest",

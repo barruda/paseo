@@ -13,6 +13,7 @@ import {
 import { assistantChatOpenRpc } from "../../shared/assistant-rpc";
 import { ASSISTANT_CHAT_AGENT_LABEL } from "../../shared/reply-protocol";
 import { readPaseoLanguage, usePaseoLanguage } from "../paseo-language";
+import { openAssistantChat } from "./nav";
 import type { Language } from "../strings";
 
 /** The label `CHAT_LABEL` (server/assistant/chat.ts) puts on the chat agent. */
@@ -50,11 +51,10 @@ function RestartChatContent(props: PluginButtonContentProps) {
       // Paseo passes button content the same navigation surfaces get (CUSTOM(assistant-restart-pill)
       // in the app); an older app has none, and the new chat is then reachable from the Desk chip.
       // The plugin's pinned @getpaseo/plugin types predate that field, hence the cast.
-      (
-        props as typeof props & Pick<PluginSurfaceProps, "navigation">
-      ).navigation?.openAgent({
-        agentId,
-      });
+      // CUSTOM(assistant-sidebar): the new chat shows in the sidebar's Projects Assistant tab.
+      const { navigation } = props as typeof props &
+        Pick<PluginSurfaceProps, "navigation">;
+      if (navigation) openAssistantChat(navigation, agentId);
       close();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));

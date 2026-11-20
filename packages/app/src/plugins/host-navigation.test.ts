@@ -20,6 +20,20 @@ describe("plugin host navigation", () => {
     return { navigation, destinations, browsers, workspaces };
   }
 
+  // CUSTOM(assistant-sidebar)
+  it("passes the Projects Assistant flag through to the agent open", () => {
+    const { navigation, destinations } = setup();
+    (navigation.openAgent as (input: { agentId: string; assistantSidebar?: boolean }) => void)({
+      agentId: "chat",
+      assistantSidebar: true,
+    });
+    navigation.openAgent({ agentId: "plain" });
+    expect(destinations).toEqual([
+      { serverId: "selected", agentId: "chat", assistantSidebar: true },
+      { serverId: "selected", agentId: "plain" },
+    ]);
+  });
+
   it("creates and focuses a local browser in the selected or explicit host workspace", () => {
     const { navigation, destinations, browsers } = setup();
     navigation.openBrowser!({ url: "https://example.com/one", workspaceId: "one" });

@@ -134,6 +134,47 @@ function defaultAppDir(home: string): string {
   return path.join(os.homedir(), ".config", name);
 }
 
+export interface AppRunningState {
+  running: boolean;
+  pid: number | null;
+}
+
+/**
+ * Whether an Electron app is using this profile. Chromium leaves `SingletonLock` behind as a
+ * `hostname-pid` symlink on POSIX and a file elsewhere; a lock whose process is gone is stale.
+ * Unreadable or unparsable locks are treated as running, because the cost of a wrong write is
+ * higher than of a wrong warning.
+ */
+export async function detectAppRunning(
+  appDir: string,
+): Promise<AppRunningState> {
+  const lock = path.join(appDir, "SingletonLock");
+  let marker: string | null = null;
+  try {
+    marker = await fsp.readlink(lock);
+  } catch {
+    try {
+      marker = (await fsp.readFile(lock, "utf8")).trim();
+    } catch {
+      return { running: false, pid: null };
+    }
+  }
+  if (!marker) return { running: true, pid: null };
+  const match = /-(\d+)$/.exec(marker);
+  if (!match) return { running: true, pid: null };
+  const pid = Number(match[1]);
+  if (!Number.isSafeInteger(pid) || pid <= 0)
+    return { running: true, pid: null };
+  try {
+    process.kill(pid, 0);
+    return { running: true, pid };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EPERM")
+      return { running: true, pid };
+    return { running: false, pid: null };
+  }
+}
+
 /**
  * The Paseo Personal daemon is the only one that syncs: it reads its own home and writes the
  * sibling one. Any other daemon reports why the feature is unavailable.
@@ -370,9 +411,9 @@ export function redactUrlCredentials(value: unknown): unknown {
       try {
         const url = new URL(item);
         if (url.username || url.password) {
-          url.username = "";
-          url.password = "";
-          next[key] = url.toString();
+          // URL.host excludes the userinfo, so rebuilding from it drops credentials.
+          next[key] =
+            `${url.protocol}//${url.host}${url.pathname}${url.search}${url.hash}`;
           continue;
         }
       } catch {
@@ -655,20 +696,50 @@ async function buildDesktop(
     )
       ? "same"
       : "changed";
+  const running = await detectAppRunning(paths.targetAppDir);
+  const notes = [
+    "Only notification sounds and flexible tab movement travel. keepRunningAfterQuit, daemon management and the release channel stay as they are.",
+    "Theme, fonts, sidebar layout and keyboard shortcuts live in the client's own storage, not here; see the note at the top of this screen.",
+  ];
+  if (running.running) {
+    notes.unshift(
+      status === "same"
+        ? "Paseo Telus is open. App preferences are already the same, so nothing is written."
+        : `Paseo Telus is open${
+            running.pid ? ` (pid ${running.pid})` : ""
+          }. Its main process caches desktop-settings.json and writes the whole file on its next save, which would undo this sync. Quit it and sync again.`,
+    );
+  } else {
+    notes.unshift(
+      "Quit Paseo Telus before syncing app preferences. Its main process caches desktop-settings.json and writes the whole file on its next save, so a sync while it runs can be lost. Reopen it afterwards.",
+    );
+  }
+  const itemLabel = `desktop-settings.json · ${labels.join(", ")}`;
+  // A running app owns an in-memory copy of the whole file; writing now would be undone by its
+  // next save. Skip the write instead of warning after the fact.
+  if (running.running && status !== "same") {
+    return {
+      category: makeCategory(
+        "desktop",
+        [
+          {
+            label: itemLabel,
+            status: "unavailable",
+            detail: `Would update ${labels.join(", ")}. Paseo Telus is open${
+              running.pid ? ` (pid ${running.pid})` : ""
+            }; quit it and sync again.`,
+          },
+        ],
+        notes,
+      ),
+      operations: [],
+    };
+  }
   return {
     category: makeCategory(
       "desktop",
-      [
-        {
-          label: `desktop-settings.json · ${labels.join(", ")}`,
-          status,
-          detail: null,
-        },
-      ],
-      [
-        "Only notification sounds and flexible tab movement travel. keepRunningAfterQuit, daemon management and the release channel stay as they are.",
-        "Theme, fonts, sidebar layout and keyboard shortcuts live in the client's own storage, not here; see the note at the top of this screen.",
-      ],
+      [{ label: itemLabel, status, detail: null }],
+      notes,
     ),
     operations: edits.length
       ? [
@@ -728,8 +799,9 @@ async function buildPlugins(
   const operations: Operation[] = [];
   const notes: string[] = [];
   if (isRecord(source.plugins)) {
+    const sourcePlugins = source.plugins;
     const plugins = rewriteHomePaths(
-      source.plugins,
+      sourcePlugins,
       paths.sourceHome,
       paths.targetHome,
     ) as Record<string, unknown>;
@@ -738,16 +810,75 @@ async function buildPlugins(
       { path: ["plugins"], value: plugins },
     ];
     const target = await readJson(targetFile);
-    const status: PreviewItem["status"] = !(await exists(targetFile))
+    const targetExists = await exists(targetFile);
+    const targetPlugins =
+      isRecord(target) && isRecord(target.plugins) ? target.plugins : null;
+    const enabled = source.pluginsEnabled === true;
+    const enabledStatus: PreviewItem["status"] = !targetExists
       ? "new"
-      : edits.every((edit) => deepEqual(getPath(target, edit.path), edit.value))
+      : deepEqual(getPath(target, ["pluginsEnabled"]), enabled)
         ? "same"
         : "changed";
     items.push({
-      label: `config.json · pluginsEnabled and plugins (${Object.keys(plugins).length} plugins)`,
-      status,
-      detail: null,
+      label: "config.json · pluginsEnabled",
+      status: enabledStatus,
+      detail: enabled ? "On" : "Off",
     });
+    const managedRoot = path.join(paths.sourceHome, "plugins");
+    for (const [name, value] of Object.entries(plugins).sort(
+      ([left], [right]) => left.localeCompare(right),
+    )) {
+      if (!isRecord(value)) continue;
+      const pluginEnabled = value.enabled === true;
+      const pluginPath = typeof value.path === "string" ? value.path : null;
+      const sourceEntry = sourcePlugins[name];
+      const sourcePath =
+        isRecord(sourceEntry) && typeof sourceEntry.path === "string"
+          ? sourceEntry.path
+          : null;
+      const copied = sourcePath !== null && isInside(managedRoot, sourcePath);
+      const existing =
+        targetPlugins && isRecord(targetPlugins[name])
+          ? targetPlugins[name]
+          : null;
+      if (!targetExists || !existing) {
+        items.push({
+          label: `plugins.${name}`,
+          status: "new",
+          detail: `${pluginEnabled ? "enabled" : "disabled"}${
+            copied ? " · source copied into the Telus home" : ""
+          }`,
+        });
+        continue;
+      }
+      const changes: string[] = [];
+      if ((existing.enabled === true) !== pluginEnabled)
+        changes.push(`enabled ${existing.enabled === true} → ${pluginEnabled}`);
+      const existingPath =
+        typeof existing.path === "string" ? existing.path : null;
+      if (existingPath !== pluginPath)
+        changes.push(
+          copied ? "path moved into the Telus home" : "path updated",
+        );
+      // The operation rewrites the whole entry, so any other field (source, ref, ...) also counts.
+      if (!changes.length && !deepEqual(existing, value))
+        changes.push("entry updated");
+      items.push({
+        label: `plugins.${name}`,
+        status: changes.length ? "changed" : "same",
+        detail: changes.length ? changes.join("; ") : null,
+      });
+    }
+    if (targetPlugins) {
+      for (const name of Object.keys(targetPlugins).sort()) {
+        if (Object.hasOwn(plugins, name)) continue;
+        items.push({
+          label: `plugins.${name}`,
+          status: "changed",
+          detail: "removed: not configured on the Personal side",
+        });
+      }
+    }
     operations.push({
       kind: "json-edit",
       category: "plugins",
@@ -1091,6 +1222,9 @@ export async function executeSync(
           `${category.title}: ${item.label} — ${item.detail ?? "unavailable"}`,
       ),
   );
+  const appliedCategories = CATEGORY_IDS.filter((id) =>
+    plan.operations.some((operation) => operation.category === id),
+  );
   if (!changes) {
     return emptyRunResult({
       ok: true,
@@ -1098,7 +1232,7 @@ export async function executeSync(
       same,
       skipped: unavailable,
       warnings,
-      apply: applyNotes(ordered),
+      apply: applyNotes(appliedCategories),
     });
   }
   await fsp.mkdir(paths.backupRoot, { recursive: true });
@@ -1187,7 +1321,7 @@ export async function executeSync(
       same,
       skipped: unavailable,
       warnings,
-      apply: applyNotes(ordered),
+      apply: applyNotes(appliedCategories),
       error: null,
     };
   } catch (error) {
@@ -1211,7 +1345,9 @@ export async function executeSync(
 function applyNotes(categories: CategoryId[]): string[] {
   const notes: string[] = [];
   if (categories.includes("desktop"))
-    notes.push("Reopen the Paseo Telus window to load the app preferences.");
+    notes.push(
+      "Reopen Paseo Telus to load the app preferences. Quit it before syncing app preferences again: its main process caches desktop-settings.json and writes the whole file on its next save.",
+    );
   if (categories.includes("ux"))
     notes.push(
       "Restart the Paseo Telus daemon (Settings > Restart daemon) to apply the daemon UX configuration. The sync does not restart it.",
@@ -1293,9 +1429,23 @@ export async function rollbackSync(
   if (manifest?.tool !== "telus-sync" || !Array.isArray(manifest.items))
     return emptyRunResult({ error: `No telus-sync backup named ${backupId}.` });
   const items = manifest.items as ManifestItem[];
+  const itemCategories = CATEGORY_IDS.filter((id) =>
+    items.some((item) => item.category === id),
+  );
   const createdDirs = Array.isArray(manifest.createdDirs)
     ? (manifest.createdDirs as string[])
     : [];
+  if (itemCategories.includes("desktop")) {
+    const running = await detectAppRunning(paths.targetAppDir);
+    if (running.running)
+      return emptyRunResult({
+        backupId,
+        backupPath: backupDir,
+        error: `Paseo Telus is open${
+          running.pid ? ` (pid ${running.pid})` : ""
+        }. Quit it before rolling back app preferences; its next save would write its cached desktop-settings.json over the restored file.`,
+      });
+  }
   let restored = 0;
   try {
     const filesRoot = path.join(backupDir, "files");
@@ -1328,9 +1478,6 @@ export async function rollbackSync(
       rolledBackAt: new Date().toISOString(),
     };
     await writeJson(path.join(backupDir, "manifest.json"), updated);
-    const categories = (manifest.categories ?? []).filter((category) =>
-      (CATEGORY_IDS as readonly string[]).includes(category),
-    ) as CategoryId[];
     return {
       ok: true,
       backupId,
@@ -1339,7 +1486,7 @@ export async function rollbackSync(
       same: 0,
       skipped: 0,
       warnings: [],
-      apply: applyNotes(categories),
+      apply: applyNotes(itemCategories),
       error: null,
     };
   } catch (error) {

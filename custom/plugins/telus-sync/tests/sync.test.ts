@@ -1,9 +1,11 @@
+import { spawn } from "node:child_process";
 import fsp from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   buildPlan,
+  detectAppRunning,
   executeSync,
   listHistory,
   resolveSyncPaths,
@@ -744,7 +746,116 @@ describe("sync", () => {
   });
 });
 
+async function deadProcessPid(): Promise<number> {
+  const child = spawn(process.execPath, ["-e", ""], { stdio: "ignore" });
+  const pid = child.pid;
+  if (!pid) throw new Error("The helper process did not start.");
+  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  return pid;
+}
+
+describe("preview", () => {
+  it("shows each plugin's enabled state and path change", async () => {
+    const target = targetConfig();
+    (target.plugins as Record<string, unknown>).lobby = {
+      source: "directory",
+      path: path.join(paths.targetHome, "plugins/lobby/old"),
+      enabled: false,
+    };
+    await write(path.join(paths.targetHome, "config.json"), target);
+
+    const plan = await buildPlan(paths, ["plugins"]);
+    const category = plan.categories[0]!;
+    const lobby = category.items.find((item) => item.label === "plugins.lobby");
+    expect(lobby?.status).toBe("changed");
+    expect(lobby?.detail).toContain("enabled false → true");
+    expect(lobby?.detail).toContain("path moved into the Telus home");
+    expect(
+      category.items.find((item) => item.label === "plugins.shared"),
+    ).toMatchObject({ status: "new", detail: "disabled" });
+    expect(
+      category.items.find(
+        (item) => item.label === "config.json · pluginsEnabled",
+      ),
+    ).toMatchObject({ status: "changed", detail: "On" });
+    expect(
+      category.items.find((item) => item.label === "plugins.keep"),
+    ).toMatchObject({
+      status: "changed",
+      detail: "removed: not configured on the Personal side",
+    });
+  });
+
+  it("records the theme and visuals decision in the desktop preview", async () => {
+    const plan = await buildPlan(paths, ["desktop"]);
+    const notes = plan.categories[0]!.notes.join(" ");
+    expect(notes).toContain(
+      "Theme, fonts, sidebar layout and keyboard shortcuts",
+    );
+    expect(notes).toContain("Quit Paseo Telus before syncing");
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "defers app preferences while Paseo Telus is open",
+    async () => {
+      const lock = path.join(paths.targetAppDir, "SingletonLock");
+      await fsp.symlink(`fakehost-${process.pid}`, lock);
+      expect((await detectAppRunning(paths.targetAppDir)).running).toBe(true);
+
+      const plan = await buildPlan(paths, ["desktop"]);
+      const desktop = plan.categories[0]!;
+      expect(desktop.items[0]?.status).toBe("unavailable");
+      expect(desktop.items[0]?.detail).toContain("Paseo Telus is open");
+      expect(desktop.notes.join(" ")).toContain("Quit it and sync again");
+      expect(plan.operations).toEqual([]);
+
+      const before = await read(
+        path.join(paths.targetAppDir, "desktop-settings.json"),
+      );
+      const result = await executeSync(paths, ["desktop"]);
+      expect(result.ok).toBe(true);
+      expect(result.copied).toBe(0);
+      expect(result.warnings.join(" ")).toContain("Paseo Telus is open");
+      expect(
+        await read(path.join(paths.targetAppDir, "desktop-settings.json")),
+      ).toEqual(before);
+
+      await fsp.rm(lock);
+      const after = await buildPlan(paths, ["desktop"]);
+      expect(after.categories[0]?.items[0]?.status).toBe("changed");
+      expect(after.operations).toHaveLength(1);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "treats a lock whose process is gone as stale",
+    async () => {
+      const pid = await deadProcessPid();
+      await fsp.symlink(
+        `fakehost-${pid}`,
+        path.join(paths.targetAppDir, "SingletonLock"),
+      );
+      expect((await detectAppRunning(paths.targetAppDir)).running).toBe(false);
+    },
+  );
+});
+
 describe("rollback", () => {
+  it.skipIf(process.platform === "win32")(
+    "refuses a desktop rollback while Paseo Telus is open",
+    async () => {
+      const result = await executeSync(paths, ["desktop"]);
+      expect(result.ok).toBe(true);
+      await fsp.symlink(
+        `fakehost-${process.pid}`,
+        path.join(paths.targetAppDir, "SingletonLock"),
+      );
+      const restored = await rollbackSync(paths, result.backupId!);
+      expect(restored.ok).toBe(false);
+      expect(restored.error).toContain("Paseo Telus is open");
+    },
+  );
+
   it("restores the original Telus files and removes what the sync created", async () => {
     const configBefore = await fsp.readFile(
       path.join(paths.targetHome, "config.json"),

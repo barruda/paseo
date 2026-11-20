@@ -4,6 +4,7 @@ import { useIdleOpenTabLabels } from "@/task-navigation/use-idle-open-tab-labels
 // CUSTOM(auto-archive-skip-pinned)
 import { usePinnedTaskLabels } from "@/task-navigation/use-pinned-task-labels";
 import { useAgentSuccessorTabs } from "@/task-navigation/use-agent-successor-tabs"; // CUSTOM(agent-successor)
+import { useAssistantTabSweep } from "@/assistant-sidebar/use-assistant-tab-sweep"; // CUSTOM(assistant-sidebar)
 import { useActiveWorkspaceSelection } from "@/stores/navigation-active-workspace-store";
 import { useIsExplorerSidebarOpen } from "@/workspace-tabs/explorer-sidebar";
 import { ComposerEditingSessionsProvider } from "@/composer/editing-session";
@@ -930,6 +931,7 @@ function PinnedTaskLabelsReporter() {
 // CUSTOM(agent-successor): tabs of an archived agent follow the agent that replaced it.
 function AgentSuccessorTabs() {
   useAgentSuccessorTabs();
+  useAssistantTabSweep(); // CUSTOM(assistant-sidebar)
   return null;
 }
 

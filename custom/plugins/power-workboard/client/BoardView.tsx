@@ -42,10 +42,12 @@ import {
 } from "./board-utils";
 import { groupTitle, stageTitle, strings } from "./strings";
 import {
+  dragAreaProps,
   dragCursor,
   duringDrag,
   keyboardProps,
   loadColumnWidths,
+  noSelectText,
   saveColumnWidths,
 } from "./web";
 import {
@@ -1430,6 +1432,7 @@ function TaskDragShell({
         <View
           {...handlers}
           {...orderKeys}
+          {...dragAreaProps(disabled)}
           tabIndex={0}
           accessibilityHint={orderHint}
           accessible
@@ -1438,6 +1441,7 @@ function TaskDragShell({
           testID={`workboard-drag-${card.id}`}
           style={[
             styles.cardHandle,
+            noSelectText(),
             dragCursor(),
             { opacity: disabled && !moving ? 0.35 : 1 },
           ]}
@@ -1584,6 +1588,7 @@ function BoardColumn({
               }
               return false;
             })}
+            {...dragAreaProps(disabled || reordering)}
             accessibilityRole="button"
             accessibilityLabel={`${t.groupOptions}: ${groupTitle(group, t)}`}
             accessibilityHint={`${t.dragGroup}. ${t.groupKeyboardHint}`}
@@ -1592,6 +1597,7 @@ function BoardColumn({
             testID={`workboard-column-drag-${group.id}`}
             style={[
               styles.columnTitle,
+              noSelectText(),
               collapsed && styles.columnTitleCollapsed,
               dragCursor(),
             ]}
@@ -1686,6 +1692,7 @@ function BoardColumn({
             }
             return false;
           })}
+          {...dragAreaProps(disabled)}
           accessibilityRole="adjustable"
           accessibilityLabel={`${t.resizeColumn}: ${groupTitle(group, t)}`}
           accessibilityHint={t.resizeHint}
@@ -1705,7 +1712,7 @@ function BoardColumn({
           onBlur={() => setResizeFocused(false)}
           onPointerEnter={() => setResizeHovered(true)}
           onPointerLeave={() => setResizeHovered(false)}
-          style={[styles.resize, dragCursor(true)]}
+          style={[styles.resize, noSelectText(), dragCursor(true)]}
         >
           <Pressable
             disabled={disabled}
