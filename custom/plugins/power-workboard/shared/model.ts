@@ -570,6 +570,18 @@ export const orchestrationSchema = z.object({
   limitPauses: z.number().int().min(0).default(0),
 });
 export type Orchestration = z.infer<typeof orchestrationSchema>;
+/**
+ * CUSTOM(bulk-orchestrator-agent): `provider/model` with both parts, for the bulk agent change.
+ * The stored orchestrator keeps the looser schema above so an old board still loads.
+ */
+export const providerModelSchema = z
+  .string()
+  .trim()
+  .min(3)
+  .refine((value) => {
+    const slash = value.indexOf("/");
+    return slash > 0 && slash < value.length - 1;
+  }, "provider-model-invalid");
 /** Agent settings new orchestrators start from; refinement chats use them too. */
 export const orchestratorSchema = z.object({
   /** Provider and model in `provider/model` format. */

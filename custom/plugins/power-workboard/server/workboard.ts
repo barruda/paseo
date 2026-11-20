@@ -19,6 +19,7 @@ import {
   NIGHT_LOG_LIMIT,
   orchestratorConfigSchema,
   orchestratorSchema,
+  providerModelSchema, // CUSTOM(bulk-orchestrator-agent)
   newTask,
   orderedGroups,
   resolveStage,
@@ -1423,6 +1424,38 @@ export class Workboard {
               : data.orchestrators.map((o) => (o.id === id ? next : o));
           });
           await this.log(id, "info", created ? "Created" : "Settings saved");
+          await this.orchestrate();
+        } else if (input.action === "orchestrators-set-agent") {
+          // CUSTOM(bulk-orchestrator-agent)
+          const provider = providerModelSchema.safeParse(input.provider);
+          if (!provider.success) throw new Error("provider-model-invalid");
+          const ids = new Set(input.ids);
+          const selected = this.store.current.orchestrators.filter((o) =>
+            ids.has(o.id),
+          );
+          if (selected.length === 0)
+            throw new Error("No orchestrators selected");
+          await this.store.update((data) => {
+            data.orchestrators = data.orchestrators.map((config) =>
+              ids.has(config.id)
+                ? // Same parse as "orchestrator-save": the mode is stored as the form
+                  // saves it, and the agent start resolves the provider's full-access
+                  // mode from `unattended` (`autoPermissionFor`).
+                  orchestratorConfigSchema.parse({
+                    ...config,
+                    provider: provider.data,
+                    modeId: input.modeId,
+                    thinkingOptionId: input.thinkingOptionId,
+                  })
+                : config,
+            );
+          });
+          for (const config of selected)
+            await this.log(
+              config.id,
+              "info",
+              `Agent changed to ${input.provider}`,
+            );
           await this.orchestrate();
         } else if (input.action === "finish") {
           await this.startFinish(input.taskId, input.step);

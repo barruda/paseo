@@ -125,6 +125,15 @@ const zh = {
     atCheckpointStat: "检查点",
     agent: "Agent",
     agentHint: "提供方/模型、模式、思考强度",
+    // CUSTOM(bulk-orchestrator-agent)
+    select: "选择",
+    selected: "{count} 个已选择",
+    selectAll: "全选",
+    clearSelection: "清除选择",
+    changeAgent: "更改 Agent",
+    changeAgentTitle: "更改 {count} 个编排器的 Agent",
+    changeAgentHint: "以第一个所选编排器的设置为起点",
+    apply: "应用",
     provider: "提供方/模型",
     mode: "模式",
     thinking: "思考强度",
@@ -551,6 +560,8 @@ const zh = {
     "No workspace was created": "没有创建 workspace，请重试。",
     "Only a draft can be refined": "只有草稿可以完善。",
     "Orchestrator no longer exists": "编排器已不存在，请刷新。",
+    "No orchestrators selected": "没有选择编排器。", // CUSTOM(bulk-orchestrator-agent)
+    "provider-model-invalid": "请选择提供方和模型（provider/model）。", // CUSTOM(bulk-orchestrator-agent)
     "Pool no longer exists": "资源池已不存在，请刷新。", // CUSTOM(resource-pools)
     "Add a Done group first": "请先添加 Done 分组。",
     "Only a Done task with a workspace can be finished":
@@ -836,6 +847,15 @@ const en: typeof zh = {
     atCheckpointStat: "At checkpoint",
     agent: "Agent",
     agentHint: "provider/model, mode, thinking",
+    // CUSTOM(bulk-orchestrator-agent)
+    select: "Select",
+    selected: "{count} selected",
+    selectAll: "Select all",
+    clearSelection: "Clear",
+    changeAgent: "Change agent",
+    changeAgentTitle: "Change the agent of {count} orchestrators",
+    changeAgentHint: "Starts from the first selected orchestrator's settings",
+    apply: "Apply",
     provider: "Provider/model",
     mode: "Mode",
     thinking: "Thinking",
@@ -1293,6 +1313,8 @@ const en: typeof zh = {
     "No workspace was created": "No workspace was created. Retry it.",
     "Only a draft can be refined": "Only a draft can be refined.",
     "Pool no longer exists": "The pool no longer exists. Refresh.", // CUSTOM(resource-pools)
+    "No orchestrators selected": "No orchestrators selected.", // CUSTOM(bulk-orchestrator-agent)
+    "provider-model-invalid": "Choose a provider and a model (provider/model).", // CUSTOM(bulk-orchestrator-agent)
     "Orchestrator no longer exists":
       "The orchestrator no longer exists. Refresh.",
     "Add a Done group first": "Add a Done group first.",

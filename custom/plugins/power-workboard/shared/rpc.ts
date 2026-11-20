@@ -11,6 +11,7 @@ import {
   groupSchema,
   nightSettingsSchema,
   poolsSchema,
+  providerModelSchema, // CUSTOM(bulk-orchestrator-agent)
   settingsSchema,
   stageSchema,
   startSchema,
@@ -116,6 +117,14 @@ export const mutationSchema = z.discriminatedUnion("action", [
     orchestrator: orchestratorConfigSchema.extend({
       id: z.string().min(1).optional(),
     }),
+  }),
+  // CUSTOM(bulk-orchestrator-agent): provider/model, mode and thinking for several at once.
+  z.object({
+    action: z.literal("orchestrators-set-agent"),
+    ids: z.array(z.string()).min(1),
+    provider: providerModelSchema,
+    modeId: z.string().trim().min(1).nullable(),
+    thinkingOptionId: z.string().trim().min(1).nullable(),
   }),
   z.object({ action: z.literal("orchestrator-delete"), id: z.string() }),
   // CUSTOM(resource-pools): the list order decides which orchestrator is a project's first.

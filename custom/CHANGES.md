@@ -8638,3 +8638,32 @@ tests/profiles.test.ts --bail=1`. Needs only `paseo plugin reload power-workboar
   does not touch an existing `system-prompt.md`: the live assistant keeps the old text in
   `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md` until the same
   paragraph is copied there by hand.
+
+## bulk-orchestrator-agent: change the agent of several orchestrators at once
+
+- **Added:** 2026-11-20 (based on `custom` at `cddcd9cf9`)
+- **Commit:** `custom: Power Workboard changes the agent of several orchestrators at once`
+- **Why:** Moving the board to another provider or model meant opening each orchestrator's tab and
+  saving its agent fields one by one. The edit was stashed on 2026-11-19 to free the checkout for a
+  merge and never came back; this recovers it against the current `custom`.
+- **What:** In the Orchestrators tab each row has a checkbox. Selecting one or more shows a bar with
+  **Select all**, **Clear** and **Change agent**. The modal reuses the same `AgentFields` as the
+  orchestrator form, starting from the first selected orchestrator's provider/model, mode and
+  thinking. **Apply** sends `orchestrators-set-agent` with the selected ids; the server validates
+  `provider/model` (both parts, `provider-model-invalid` otherwise), stores mode and thinking
+  through the same `orchestratorConfigSchema.parse` as `orchestrator-save`, writes
+  `Agent changed to <provider>` to each selected orchestrator's log, leaves every other
+  orchestrator alone, and refuses an empty selection (`No orchestrators selected`). The stored
+  `modeId` is the form's; when an agent starts, the daemon resolves the provider's full-access mode
+  from `unattended` (`autoPermissionFor`), as for a single orchestrator save.
+- **Core files touched:** none. Plugin files: `client/Orchestrators.tsx`, `client/strings.ts`,
+  `server/workboard.ts`, `shared/rpc.ts`, `shared/model.ts`, `tests/power-workboard.test.ts`,
+  `README.md`.
+- **Re-apply:** Plugin-only. Grep `CUSTOM(bulk-orchestrator-agent)`. Keep the new
+  `providerModelSchema` in `shared/model.ts` for the mutation input only; the stored
+  `orchestratorConfigSchema` stays looser so old boards load.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/power-workboard.test.ts --bail=1`. Needs only `paseo plugin reload power-workboard`. In the
+  app: Orchestrators tab, tick two orchestrators, **Change agent**, pick a provider/model, mode and
+  thinking, **Apply**; both rows change and each one's log says "Agent changed to …" while the other
+  rows keep theirs.

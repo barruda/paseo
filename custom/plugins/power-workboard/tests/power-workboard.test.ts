@@ -643,6 +643,61 @@ it("a task chosen for an orchestrator goes to it; others go to their project's o
   }
 });
 
+it("changes the agent of several orchestrators at once and leaves the rest alone", async () => {
+  const { board } = orchestrated();
+  await board.start();
+  try {
+    const first = await addOrchestrator(board, { name: "First" });
+    const second = await addOrchestrator(board, { name: "Second" });
+    const untouched = await addOrchestrator(board, { name: "Untouched" });
+    const view = await board.mutate({
+      action: "orchestrators-set-agent",
+      ids: [first, second],
+      provider: "codex/gpt-5",
+      modeId: "read-only",
+      thinkingOptionId: "high",
+    });
+    const find = (id: string) =>
+      view.orchestrators.find((config) => config.id === id)!;
+    for (const id of [first, second]) {
+      expect(find(id)).toMatchObject({
+        provider: "codex/gpt-5",
+        modeId: "read-only",
+        thinkingOptionId: "high",
+      });
+      expect(logText(board, id)).toContain("Agent changed to codex/gpt-5");
+    }
+    expect(find(untouched)).toMatchObject({
+      provider: "claude/claude-opus-5-5",
+      modeId: "bypassPermissions",
+      thinkingOptionId: "medium",
+    });
+    expect(logText(board, untouched)).not.toContain(
+      "Agent changed to codex/gpt-5",
+    );
+    await expect(
+      board.mutate({
+        action: "orchestrators-set-agent",
+        ids: [],
+        provider: "codex/gpt-5",
+        modeId: null,
+        thinkingOptionId: null,
+      }),
+    ).rejects.toThrow("No orchestrators selected");
+    await expect(
+      board.mutate({
+        action: "orchestrators-set-agent",
+        ids: [first],
+        provider: "codex",
+        modeId: null,
+        thinkingOptionId: null,
+      }),
+    ).rejects.toThrow("provider-model-invalid");
+  } finally {
+    board.dispose();
+  }
+});
+
 it("a new board gets an always-on default orchestrator once", async () => {
   const setup = fixture();
   setup.inventory.projects.push(project);

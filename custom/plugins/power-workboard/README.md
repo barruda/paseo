@@ -18,7 +18,9 @@ this repo) with these differences:
   project, or else from the branch the project checkout is on), moves to In progress, and gets an
   agent whose first
   message is the task's title and description. When the agent's turn ends the task moves to
-  Ready to review. Cards link to the agent's chat.
+  Ready to review. Cards link to the agent's chat. Tick several orchestrators in the list and
+  **Change agent** to give them all the same provider/model, mode and thinking at once; each
+  one's log records the change.
 - **Resource pools.** Orchestrators can share a pool (Orchestrators tab, **Resource pools**): a
   task starts only with a free slot in its orchestrator and in its pool, and nothing of a pool
   starts while the machine's free RAM (`MemAvailable` in `/proc/meminfo`) is under the pool's

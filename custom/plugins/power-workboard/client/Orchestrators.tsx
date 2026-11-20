@@ -3,12 +3,14 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import {
   Icon,
+  Modal,
   ScrollView,
   TextInput,
 } from "@getpaseo/plugin/client/react-native";
 import {
   orchestratorConfigSchema,
   poolsSchema,
+  providerModelSchema, // CUSTOM(bulk-orchestrator-agent)
   type Board,
   type OrchestratorConfig,
   type OrchestratorHold,
@@ -32,6 +34,7 @@ import {
   ProfilePromptField,
   ProfileSkillsMemory,
   useProfileContent,
+  type AgentValue,
 } from "./Profiles";
 import { usePaseoLanguage, usePaseoLocale } from "./paseo-language";
 // CUSTOM(workboard-inner-pages)
@@ -151,6 +154,25 @@ export function OrchestratorsPanel(
   const { board, t, theme, disabled, mutate } = props;
   const panel = t.panel;
   const profileText = profileStrings(usePaseoLanguage()); // CUSTOM(agent-profiles)
+  // CUSTOM(bulk-orchestrator-agent)
+  const [selected, setSelected] = useState<string[]>([]);
+  const [editing, setEditing] = useState(false);
+  useEffect(() => {
+    const ids = new Set(board.orchestrators.map((config) => config.id));
+    setSelected((previous) => {
+      const next = previous.filter((id) => ids.has(id));
+      return next.length === previous.length ? previous : next;
+    });
+  }, [board.orchestrators]);
+  const selectedConfigs = board.orchestrators.filter((config) =>
+    selected.includes(config.id),
+  );
+  const toggleSelected = (id: string) =>
+    setSelected((previous) =>
+      previous.includes(id)
+        ? previous.filter((item) => item !== id)
+        : [...previous, id],
+    );
   return (
     <ScrollView contentContainerStyle={styles.page}>
       <View style={styles.header}>
@@ -178,6 +200,73 @@ export function OrchestratorsPanel(
       <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
         {panel.intro}
       </Text>
+      {/* CUSTOM(bulk-orchestrator-agent): what to do with the selected orchestrators */}
+      {selectedConfigs.length > 0 && (
+        <View
+          style={[
+            styles.selectionBar,
+            {
+              borderColor: theme.colors.accent,
+              backgroundColor: theme.colors.surface1,
+            },
+          ]}
+        >
+          <Text style={[styles.rowTitle, { color: theme.colors.foreground }]}>
+            {panel.selected.replace("{count}", String(selectedConfigs.length))}
+          </Text>
+          <View style={styles.inline}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={disabled}
+              onPress={() =>
+                setSelected(board.orchestrators.map((config) => config.id))
+              }
+              style={[
+                styles.button,
+                { backgroundColor: theme.colors.surface2 },
+                disabled && styles.disabled,
+              ]}
+            >
+              <Text style={{ color: theme.colors.foreground }}>
+                {panel.selectAll}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={disabled}
+              onPress={() => setSelected([])}
+              style={[
+                styles.button,
+                { backgroundColor: theme.colors.surface2 },
+                disabled && styles.disabled,
+              ]}
+            >
+              <Text style={{ color: theme.colors.foreground }}>
+                {panel.clearSelection}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={disabled}
+              onPress={() => setEditing(true)}
+              style={[
+                styles.button,
+                { backgroundColor: theme.colors.accent },
+                disabled && styles.disabled,
+              ]}
+            >
+              <Icon
+                name="SlidersHorizontal"
+                size={14}
+                color={theme.colors.accentForeground}
+              />
+              <Text style={{ color: theme.colors.accentForeground }}>
+                {panel.changeAgent}
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      )}
       {/* CUSTOM(agent-profiles): the assistant's profile, always first */}
       <View
         style={[
@@ -217,6 +306,7 @@ export function OrchestratorsPanel(
         // CUSTOM(resource-pools)
         const role = projectRole(board.orchestrators, config);
         const warning = firstDisabledWarning(board, config, t);
+        const checked = selected.includes(config.id); // CUSTOM(bulk-orchestrator-agent)
         return (
           <View
             key={config.id}
@@ -230,6 +320,23 @@ export function OrchestratorsPanel(
               },
             ]}
           >
+            {/* CUSTOM(bulk-orchestrator-agent) */}
+            <Pressable
+              accessibilityRole="checkbox"
+              accessibilityLabel={`${panel.select}: ${config.name}`}
+              accessibilityState={{ checked, disabled }}
+              disabled={disabled}
+              onPress={() => toggleSelected(config.id)}
+              style={styles.checkbox}
+            >
+              <Icon
+                name={checked ? "SquareCheck" : "Square"}
+                size={18}
+                color={
+                  checked ? theme.colors.accent : theme.colors.foregroundMuted
+                }
+              />
+            </Pressable>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${panel.open}: ${config.name}`}
@@ -311,7 +418,129 @@ export function OrchestratorsPanel(
           </View>
         );
       })}
+      {/* CUSTOM(bulk-orchestrator-agent) */}
+      {editing && selectedConfigs.length > 0 && (
+        <BulkAgentModal
+          configs={selectedConfigs}
+          t={t}
+          theme={theme}
+          disabled={disabled}
+          mutate={mutate}
+          onClose={() => setEditing(false)}
+          onApplied={() => {
+            setEditing(false);
+            setSelected([]);
+          }}
+        />
+      )}
     </ScrollView>
+  );
+}
+
+/** CUSTOM(bulk-orchestrator-agent): one agent for every selected orchestrator. */
+function BulkAgentModal({
+  configs,
+  t,
+  theme,
+  disabled,
+  mutate,
+  onClose,
+  onApplied,
+}: {
+  configs: OrchestratorConfig[];
+  t: Strings;
+  theme: Theme;
+  disabled: boolean;
+  mutate: Mutate;
+  onClose(): void;
+  onApplied(): void;
+}) {
+  const panel = t.panel;
+  const ps = profileStrings(usePaseoLanguage());
+  const first = configs[0];
+  const [value, setValue] = useState<AgentValue>({
+    provider: first?.provider ?? "",
+    modeId: first?.modeId ?? "",
+    thinkingOptionId: first?.thinkingOptionId ?? "",
+  });
+  const [pending, setPending] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const valid = providerModelSchema.safeParse(value.provider).success;
+  const apply = async () => {
+    if (disabled || pending || !valid) return;
+    setPending(true);
+    setFailed(false);
+    try {
+      const ok = !!(await mutate({
+        action: "orchestrators-set-agent",
+        ids: configs.map((config) => config.id),
+        provider: value.provider,
+        modeId: value.modeId.trim() || null,
+        thinkingOptionId: value.thinkingOptionId.trim() || null,
+      }));
+      if (ok) onApplied();
+      else setFailed(true);
+    } catch {
+      setFailed(true);
+    } finally {
+      setPending(false);
+    }
+  };
+  return (
+    <Modal
+      open
+      title={panel.changeAgentTitle.replace("{count}", String(configs.length))}
+      onOpenChange={(open) => {
+        if (!open && !pending) onClose();
+      }}
+    >
+      <Modal.Content>
+        <AgentFields
+          value={value}
+          onChange={setValue}
+          disabled={disabled || pending}
+          theme={theme}
+          s={ps}
+        />
+        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+          {panel.changeAgentHint}
+        </Text>
+        {failed && (
+          <Text style={{ color: theme.colors.statusDanger }}>
+            {t.confirmationFailed}
+          </Text>
+        )}
+        <View style={styles.modalActions}>
+          <Pressable
+            accessibilityRole="button"
+            disabled={pending}
+            onPress={onClose}
+            style={[
+              styles.button,
+              { backgroundColor: theme.colors.surface2 },
+              pending && styles.disabled,
+            ]}
+          >
+            <Text style={{ color: theme.colors.foreground }}>{t.cancel}</Text>
+          </Pressable>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityState={{ busy: pending }}
+            disabled={disabled || pending || !valid}
+            onPress={() => void apply()}
+            style={[
+              styles.button,
+              { backgroundColor: theme.colors.accent },
+              (disabled || pending || !valid) && styles.disabled,
+            ]}
+          >
+            <Text style={{ color: theme.colors.accentForeground }}>
+              {pending ? t.working : panel.apply}
+            </Text>
+          </Pressable>
+        </View>
+      </Modal.Content>
+    </Modal>
   );
 }
 
@@ -1718,6 +1947,24 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+  },
+  // CUSTOM(bulk-orchestrator-agent)
+  selectionBar: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  checkbox: { padding: 6, borderRadius: 6 },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: 8,
+    paddingTop: 8,
   },
   rowMain: { flex: 1, gap: 4 },
   rowTitle: { fontSize: 14, fontWeight: "600" },
