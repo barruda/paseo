@@ -87,8 +87,16 @@ rules agents get wrong.
   ```
   It is `build-paseo-if-needed-and-kill-daemons.sh` under its old name: when the installed build
   is behind the committed source it builds and installs first, then stops the daemons, closes the
-  open Paseo windows and reopens them; their running agents stop. It skips paseo-telus when
-  neither its window nor its daemon is running.
+  open Paseo windows and reopens them. It skips paseo-telus when neither its window nor its daemon
+  is running.
+  It records the agents that were running before the stop and sends each one a "continue" once
+  its daemon is back (the restart was intentional; continue where you stopped), so agents, Paseo
+  subagents, board workers and the Projects Assistant chat resume on their own. The agent that ran
+  the script (`PASEO_AGENT_ID`) is skipped, so its continue cannot make it restart Paseo again;
+  `--skip-agent <id>` leaves another agent alone. The Power Workboard also resumes a task whose
+  agent is idle and whose last activity is before the current daemon started, instead of closing
+  it as `no-report` when the script's continue is late. Details in "Updating" in
+  `custom/README.md`.
   From a Paseo chat or terminal, run it as `!kill-paseos-and-daemons.sh`.
 - Pulling upstream: `custom/update-paseo-source-and-apply-customization.sh --install`. Warn the user
   first when the upstream version changed: reopening the app restarts the daemon, which stops its

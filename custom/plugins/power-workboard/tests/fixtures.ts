@@ -57,7 +57,11 @@ export function fixture(initial: Partial<Data> = {}) {
   const created = new Map<string, string>();
   let pinWrites = 0;
   const host: Host = {
-    identity: { serverId: "fixture-host", version: "0.9.1" },
+    identity: {
+      serverId: "fixture-host",
+      version: "0.9.1",
+      startedAt: null, // CUSTOM(restart-resume)
+    },
     inventory: async (tracked) => {
       const copy = structuredClone(inventory);
       if (!tracked) return copy;

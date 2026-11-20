@@ -3,11 +3,14 @@
 # (custom/bin/paseo-build.sh status), then stop the Paseo daemons (~/.paseo and ~/.paseo-telus),
 # close the Paseo windows that are open, and reopen them from their launchers. paseo-telus is left
 # alone when neither its window nor its daemon is running. Every step waits at most 5 s before
-# killing. This stops every running agent on the daemons it restarts. A failed build stops
-# nothing.
+# killing. This stops every running agent on the daemons it restarts, then sends each one a
+# "continue" once its daemon is back (paseo-restart-resume.sh). A failed build stops nothing.
 #
-#   --no-build     Restart without checking the build.
-#   --force-build  Build and install even when the installed build is up to date.
+#   --no-build          Restart without checking the build.
+#   --force-build       Build and install even when the installed build is up to date.
+#   --skip-agent <id>   Never resume this agent. The agent that ran this script is skipped
+#                       automatically through PASEO_AGENT_ID, so its "continue" cannot make it
+#                       restart Paseo again.
 #
 # Also linked as kill-paseos-and-daemons.sh and restart-paseos-and-daemons.sh.
 #
@@ -16,9 +19,12 @@
 set -euo pipefail
 
 TIMEOUT=5
-LOG="${XDG_STATE_HOME:-$HOME/.local/state}/kill-paseos-and-daemons.log"
+STATE="${XDG_STATE_HOME:-$HOME/.local/state}"
+LOG="$STATE/kill-paseos-and-daemons.log"
+RESUME_STATE="$STATE/paseo-restart-resume.tsv"
 SELF="$(readlink -f "$0")"
 PASEO_BUILD="$(dirname "$SELF")/paseo-build.sh"
+PASEO_RESUME="$(dirname "$SELF")/paseo-restart-resume.sh"
 
 # Run the work in a transient user service, outside every Paseo: run from a Paseo terminal or a
 # `!` command, this script is a child of the daemon it is about to stop, and setsid alone would
@@ -28,13 +34,29 @@ PASEO_BUILD="$(dirname "$SELF")/paseo-build.sh"
 # still going. KillMode=process keeps whatever the reopen leaves behind alive when it exits.
 if [[ "${1:-}" != --in-service ]]; then
   build=check
-  for arg in "$@"; do
-    case "$arg" in
-      --no-build) build=no ;;
-      --force-build) build=build ;;
-      *) echo "Unknown option: $arg (use --no-build or --force-build)" >&2; exit 2 ;;
+  # CUSTOM(restart-resume): never resume the agent that asked for the restart.
+  skip_agents=()
+  [[ -n "${PASEO_AGENT_ID:-}" ]] && skip_agents+=("$PASEO_AGENT_ID")
+  while (( $# )); do
+    case "$1" in
+      --no-build) build=no; shift ;;
+      --force-build) build=build; shift ;;
+      --skip-agent)
+        [[ -n "${2:-}" ]] || { echo "--skip-agent needs an agent id" >&2; exit 2; }
+        skip_agents+=("$2")
+        shift 2
+        ;;
+      --skip-agent=*)
+        skip_agents+=("${1#*=}")
+        shift
+        ;;
+      *)
+        echo "Unknown option: $1 (use --no-build, --force-build or --skip-agent <id>)" >&2
+        exit 2
+        ;;
     esac
   done
+  skip="$(IFS=,; echo "${skip_agents[*]}")"
   if [[ "$build" == check ]]; then
     rc=0
     "$PASEO_BUILD" status || rc=$?
@@ -48,7 +70,7 @@ if [[ "${1:-}" != --in-service ]]; then
   : >"$LOG"
   if ! systemd-run --user --quiet --collect --unit=kill-paseos-and-daemons \
     -p KillMode=process -p StandardInput=null -p "StandardOutput=append:$LOG" \
-    -p "StandardError=append:$LOG" -- "$SELF" --in-service "$build"; then
+    -p "StandardError=append:$LOG" -- "$SELF" --in-service "$build" "$skip"; then
     echo "Could not start the kill-paseos-and-daemons service (is a run still going?)" >&2
     exit 1
   fi
@@ -62,6 +84,10 @@ if [[ "${1:-}" != --in-service ]]; then
 fi
 
 log() { echo "[$(date +%T)] $*"; }
+
+# The agents to leave alone: the one that ran this script, passed through the service as an
+# argument because the service does not inherit the caller's environment.
+SKIP_AGENTS="${3:-}"
 
 # if-needed checks again once it holds the build lock: another build may have finished meanwhile.
 if [[ "${2:-no}" != no ]]; then
@@ -144,6 +170,19 @@ for target in "${ALL_TARGETS[@]}"; do
   TARGETS+=("$target")
 done
 
+# CUSTOM(restart-resume): remember what was running before the daemons go down, so each one can
+# be told to continue when its daemon is back. A daemon that is already down has nothing running.
+log "Recording the agents that are running"
+mkdir -p "$STATE"
+: >"$RESUME_STATE"
+for target in "${TARGETS[@]}"; do
+  IFS='|' read -r launcher home _ <<<"$target"
+  if [[ -n "$(daemon_processes "$home")" ]]; then
+    bash "$PASEO_RESUME" snapshot "$RESUME_STATE" "$home" "$SKIP_AGENTS" | sed 's/^/  /' ||
+      log "Could not record the agents of $home; the restart goes on"
+  fi
+done
+
 log "Stopping the daemons"
 for target in "${TARGETS[@]}"; do
   IFS='|' read -r launcher home _ <<<"$target"
@@ -193,6 +232,15 @@ wait_until_up() {
   return 1
 }
 
+# CUSTOM(restart-resume): tell the agents this daemon had running to continue. The helper skips
+# agents that are gone, already running, or already got a message after the restart.
+resume_agents() {
+  local home="$1"
+  [[ -s "$RESUME_STATE" ]] || return 0
+  bash "$PASEO_RESUME" resume "$RESUME_STATE" "$home" "$PASEO_CLI" "$SKIP_AGENTS" | sed 's/^/  /' ||
+    log "Could not resume the agents of $home; the restart goes on"
+}
+
 log "Reopening"
 for target in "${TARGETS[@]}"; do
   IFS='|' read -r launcher _ _ <<<"$target"
@@ -208,6 +256,7 @@ for target in "${TARGETS[@]}"; do
   IFS='|' read -r launcher home config _ <<<"$target"
   if pid="$(wait_until_up "$config" "$home")"; then
     log " $launcher: window pid $pid, daemon running"
+    resume_agents "$home"
     continue
   fi
   log " $launcher did not come back in 30s (window: $(window_pid "$config" || echo none)," \
@@ -215,6 +264,7 @@ for target in "${TARGETS[@]}"; do
   launch "$launcher"
   if pid="$(wait_until_up "$config" "$home")"; then
     log " $launcher: window pid $pid, daemon running"
+    resume_agents "$home"
   else
     log " FAILED: $launcher is still not up"
     failed=1

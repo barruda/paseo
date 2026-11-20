@@ -203,6 +203,156 @@ it("orchestrates Ready to start tasks up to the limit and moves finished ones to
   }
 });
 
+// CUSTOM(restart-resume): one running task whose board can be replaced by a "restarted" one.
+async function startedTask() {
+  const setup = fixture({ defaultOrchestratorSeeded: true });
+  setup.inventory.projects.push(project);
+  let now = Date.parse("2026-09-23T00:00:00Z");
+  const board = new Workboard(setup.host, setup.store, () => now);
+  await board.start();
+  await board.mutate({
+    action: "create",
+    title: "Task",
+    description: "Do it",
+    projectId: "p",
+  });
+  await toReady(board, "Task");
+  await addOrchestrator(board);
+  const task = byTitle(board, "Task");
+  const agent = setup.inventory.agents.find(
+    (a) => a.workspaceId === task.workspaceId,
+  )!;
+  await board.refresh();
+  return {
+    host: setup.host,
+    store: setup.store,
+    board,
+    task,
+    agent,
+    setNow: (ms: number) => {
+      now = ms;
+    },
+    now: () => now,
+  };
+}
+
+/** Replace the board as a daemon restart does: the agent is idle, last active before the boot. */
+async function restarted(
+  task: Awaited<ReturnType<typeof startedTask>>,
+  daemonStart: string,
+  at: number,
+) {
+  task.board.dispose();
+  task.agent.activity = "idle";
+  task.agent.updatedAt = new Date(
+    Date.parse(daemonStart) - 60_000,
+  ).toISOString();
+  task.agent.lastUserMessageAt = new Date(
+    Date.parse(daemonStart) - 3_600_000,
+  ).toISOString();
+  task.host.identity.startedAt = daemonStart;
+  task.setNow(at);
+  const board = new Workboard(task.host, task.store, task.now);
+  await board.start();
+  return board;
+}
+
+it("a task cut by a daemon restart gets a continue instead of a no-report finish", async () => {
+  const task = await startedTask();
+  const board = await restarted(
+    task,
+    "2026-09-23T00:05:00Z",
+    Date.parse("2026-09-23T00:05:10Z"),
+  );
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).toHaveBeenCalledWith(
+      task.agent.id,
+      expect.stringContaining("Continue from where you stopped"),
+    );
+    expect(
+      task.store.current.assistant.deliveries[task.task.id],
+    ).toBeUndefined();
+    expect(board.snapshot().orchestrations[task.task.id].status).toBe(
+      "running",
+    );
+    expect(stageOf(board, "Task")).toBe("in-progress");
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a restart resume is sent once, then the turn gets its grace", async () => {
+  const task = await startedTask();
+  const board = await restarted(
+    task,
+    "2026-09-23T00:05:00Z",
+    Date.parse("2026-09-23T00:05:10Z"),
+  );
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).toHaveBeenCalledTimes(1);
+    // The inventory still shows the old activity: the grace stops a second continue.
+    task.agent.activity = "idle";
+    task.setNow(Date.parse("2026-09-23T00:06:00Z"));
+    await board.refresh();
+    expect(task.host.sendAgent).toHaveBeenCalledTimes(1);
+    expect(
+      task.store.current.assistant.deliveries[task.task.id],
+    ).toBeUndefined();
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a resume that never starts a turn settles as no-report after the grace", async () => {
+  const task = await startedTask();
+  const board = await restarted(
+    task,
+    "2026-09-23T00:05:00Z",
+    Date.parse("2026-09-23T00:05:10Z"),
+  );
+  try {
+    await board.refresh();
+    task.agent.activity = "idle";
+    task.setNow(Date.parse("2026-09-23T00:07:00Z")); // past the 90 s grace
+    await board.refresh();
+    task.setNow(Date.parse("2026-09-23T00:07:30Z")); // past the idle settle
+    await board.refresh();
+    expect(task.store.current.assistant.deliveries[task.task.id]).toMatchObject(
+      {
+        reason: "no-report",
+      },
+    );
+  } finally {
+    board.dispose();
+  }
+});
+
+it("a task whose agent ran after the daemon start is not resumed", async () => {
+  const task = await startedTask();
+  task.board.dispose();
+  task.host.identity.startedAt = "2026-09-23T00:05:00Z";
+  task.agent.activity = "idle";
+  task.agent.updatedAt = "2026-09-23T00:05:30Z";
+  task.setNow(Date.parse("2026-09-23T00:05:40Z"));
+  const board = new Workboard(task.host, task.store, task.now);
+  await board.start();
+  try {
+    await board.refresh();
+    expect(task.host.sendAgent).not.toHaveBeenCalled();
+    task.setNow(Date.parse("2026-09-23T00:06:10Z"));
+    await board.refresh();
+    expect(task.store.current.assistant.deliveries[task.task.id]).toMatchObject(
+      {
+        reason: "no-report",
+      },
+    );
+  } finally {
+    board.dispose();
+  }
+});
+
 it("disabling stops new starts and a task without a project waits for an edit", async () => {
   const { board, host } = orchestrated();
   await board.start();

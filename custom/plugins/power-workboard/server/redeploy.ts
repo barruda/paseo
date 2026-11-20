@@ -32,7 +32,9 @@ function executable(file: string): boolean {
 export function defaultScriptCandidates(): string[] {
   const candidates: string[] = [];
   if (typeof __dirname === "string") {
-    candidates.push(path.resolve(__dirname, "..", "..", "..", "bin", SCRIPT_NAME));
+    candidates.push(
+      path.resolve(__dirname, "..", "..", "..", "bin", SCRIPT_NAME),
+    );
   }
   candidates.push(path.join(os.homedir(), ".local", "bin", SCRIPT_NAME));
   return candidates;
@@ -50,6 +52,8 @@ export function redeployPaseo(
     });
   }
   const env = { ...process.env };
+  // The button is user-triggered, so there is no agent to leave out of the resume here. The
+  // script itself skips the agent that ran it through PASEO_AGENT_ID (CUSTOM(restart-resume)).
   delete env.PASEO_AGENT_ID;
   return new Promise((resolve) => {
     execFile(

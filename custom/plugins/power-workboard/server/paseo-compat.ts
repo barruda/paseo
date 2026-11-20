@@ -165,9 +165,19 @@ export class PaseoCompat {
       )
     ).output;
   }
-  async identity(): Promise<{ serverId: string; version: string }> {
+  // CUSTOM(restart-resume): `startedAt` is when the daemon process started, for spotting turns
+  // a restart cut. Optional because older daemons do not send it.
+  async identity(): Promise<{
+    serverId: string;
+    version: string;
+    startedAt?: string | null;
+  }> {
     const info = z
-      .object({ serverId: z.string(), version: z.string() })
+      .object({
+        serverId: z.string(),
+        version: z.string(),
+        startedAt: z.string().nullable().optional(),
+      })
       .parse(
         await this.request(
           "daemon.get_status.request",

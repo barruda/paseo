@@ -141,7 +141,8 @@ export interface MergeOptions {
   requireCleanTarget?: boolean;
 }
 export interface Host {
-  identity: { serverId: string; version: string };
+  /** CUSTOM(restart-resume): `startedAt` is when the daemon started, when it reports it. */
+  identity: { serverId: string; version: string; startedAt?: string | null };
   /** With `tracked`, only those workspaces (and their agents) are listed and observed. */
   inventory(tracked?: ReadonlySet<string>): Promise<Inventory>;
   workspace(id: string): Promise<Workspace | null>;

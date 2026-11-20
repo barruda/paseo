@@ -351,6 +351,8 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/plugins/custom-shell-command-plugin.e2e.test.ts src/server/plugins/custom-workspace-tasks-plugin.e2e.test.ts src/server/plugins/custom-warp-plugin.e2e.test.ts src/server/plugins/custom-btw-plugin.e2e.test.ts src/server/plugins/custom-critic-plugin.e2e.test.ts src/server/plugins/custom-jev-router-plugin.e2e.test.ts src/server/plugins/custom-delegation-plugin.e2e.test.ts --bail=1)
   # Worktree setup hardlinks the main checkout's node_modules when the lockfiles match.
   bash custom/scripts/worktree-deps.test.sh
+  # Restart resume: snapshot running agents and continue them after the daemon is back.
+  bash custom/scripts/restart-resume.test.sh
   (cd custom/plugins/power-workboard && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)
   # Automatic agents get full permission: one resolution per provider, OpenCode auto_accept,
   # the daemon's central approval and the board's Needs you fallback.

@@ -197,6 +197,14 @@ const DEFAULT_MAX_CHECKPOINTS = 5;
 const MAX_RESUME_DELAY_MS = 7 * 24 * 60 * 60 * 1000;
 /** CUSTOM(board-turn-end): an agent must stay idle this long before the board calls the turn over. */
 const IDLE_SETTLE_MS = 20_000;
+/**
+ * CUSTOM(restart-resume): what a task agent hears when a daemon restart cut its turn. The last
+ * sentence stops an agent that was restarting Paseo from doing it again in a loop.
+ */
+const RESTART_RESUME_MESSAGE =
+  "The Paseo daemon restarted and cut your last turn. Continue from where you stopped. The restart was intentional: do not restart it again.";
+/** CUSTOM(restart-resume): after a resume, a turn this long to start before the board settles it. */
+const RESTART_RESUME_GRACE_MS = 90_000;
 /** CUSTOM(assistant-wake): how soon to look again while the chat is busy with another turn. */
 const BUSY_WAKE_RETRY_MS = 10_000;
 /** CUSTOM(assistant-wake): a task told and left waiting this long is told again once. */
@@ -360,6 +368,8 @@ export class Workboard {
   private lateChecked = new Map<string, string>();
   /** CUSTOM(board-turn-end): one pending refresh for when an idle settle window ends. */
   private settleTimer: ReturnType<typeof setTimeout> | undefined;
+  /** CUSTOM(restart-resume): when the current daemon started; earlier activity was cut by it. */
+  private restartCutoff = 0;
   private pendingMutations = 0;
   private connectionGeneration = 0;
   private epoch = 0;
@@ -482,6 +492,13 @@ export class Workboard {
   }
   async start(): Promise<void> {
     await this.serial(async () => {
+      // CUSTOM(restart-resume): the daemon start is the cutoff; fall back to this boot when an
+      // older daemon does not report it.
+      const daemonStartedAt = this.host.identity.startedAt;
+      const daemonStart = daemonStartedAt ? Date.parse(daemonStartedAt) : NaN;
+      this.restartCutoff = Number.isFinite(daemonStart)
+        ? daemonStart
+        : this.now();
       await this.load();
       await this.store.update((data) => {
         for (const task of data.tasks)
@@ -4539,6 +4556,49 @@ export class Workboard {
   }
   // End CUSTOM(projects-assistant) -------------------------------------------------------------
   /**
+   * CUSTOM(restart-resume): the agent was idle when the current daemon started, so a restart cut
+   * its turn. Send one "continue" instead of letting the idle settle close the task as
+   * no-report. Returns true when the caller must skip the normal idle handling. Inside `serial`.
+   */
+  private async resumeAfterRestart(
+    taskId: string,
+    record: Orchestration,
+    agent: Agent,
+  ): Promise<boolean> {
+    if (Date.parse(agent.updatedAt) >= this.restartCutoff) return false;
+    const handledAt = record.restartResumeAt
+      ? Date.parse(record.restartResumeAt)
+      : 0;
+    if (handledAt >= this.restartCutoff)
+      return this.now() - handledAt < RESTART_RESUME_GRACE_MS;
+    const task = this.task(taskId);
+    try {
+      await this.host.sendAgent(record.agentId!, RESTART_RESUME_MESSAGE);
+    } catch (error) {
+      await this.log(
+        record.orchestratorId,
+        "warn",
+        `"${task.title}": could not resume after the daemon restart: ${message(error)}`,
+        taskId,
+        record.agentId,
+      );
+      return false;
+    }
+    await this.setOrchestration(taskId, {
+      sawRunning: true,
+      idleSince: null,
+      restartResumeAt: this.stamp(),
+    });
+    await this.log(
+      record.orchestratorId,
+      "info",
+      `"${task.title}": resumed after the daemon restart`,
+      taskId,
+      record.agentId,
+    );
+    return true;
+  }
+  /**
    * CUSTOM(board-turn-end): the agent ended another turn after the task settled as no-report
    * (typically a background subagent handed back). Re-read its reply once per turn and, when it
    * is now a valid report, deliver as if it had arrived on time. Runs inside `serial`.
@@ -4778,6 +4838,9 @@ export class Workboard {
           );
         continue;
       }
+      // CUSTOM(restart-resume): the daemon restarted and cut this turn; send "continue"
+      // instead of letting the idle settle close it as no-report.
+      if (await this.resumeAfterRestart(taskId, record, agent)) continue;
       // Idle before it was ever seen running means it may not have started yet.
       if (!record.sawRunning && elapsed < 90_000) continue;
       // CUSTOM(board-turn-end): idle must hold for a while; a subagent may be about to hand back.

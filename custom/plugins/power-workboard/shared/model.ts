@@ -498,6 +498,11 @@ export const orchestrationSchema = z.object({
   sawRunning: z.boolean().default(false),
   /** CUSTOM(board-turn-end): since when the agent has been continuously idle; null while it runs. */
   idleSince: z.string().nullable().default(null),
+  /**
+   * CUSTOM(restart-resume): when this task was resumed after a daemon restart, so the same
+   * restart never sends a second "continue" and the turn gets a grace period to start.
+   */
+  restartResumeAt: z.string().nullable().default(null),
   /** CUSTOM(unattended-automation): since when the agent has been waiting on a permission. */
   permissionSince: z.string().nullable().default(null),
   /** CUSTOM(unattended-automation): this wait was already raised to Needs you. */

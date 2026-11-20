@@ -89,11 +89,22 @@ anyway. Then it stops the daemons
 (`~/.paseo` and `~/.paseo-telus`), closes the open Paseo windows, and reopens them from their
 launchers, giving each step 5 s before it kills. It then waits up to 30 s for each window and
 its daemon and launches a window once more if it did not come back. When neither the paseo-telus window nor its daemon
-is running, it leaves paseo-telus alone. This stops the running agents. It first moves itself
-into a transient systemd user service (`setsid` alone keeps it in the cgroup of the Paseo that ran
-it, which can take it down halfway), so it also works as `!kill-paseos-and-daemons.sh` from a
-Paseo chat or from a Paseo terminal, both of which the daemon owns. Its log, build included, is
-`~/.local/state/kill-paseos-and-daemons.log`.
+is running, it leaves paseo-telus alone. This stops the running agents, then resumes them. It first
+moves itself into a transient systemd user service (`setsid` alone keeps it in the cgroup of the
+Paseo that ran it, which can take it down halfway), so it also works as
+`!kill-paseos-and-daemons.sh` from a Paseo chat or from a Paseo terminal, both of which the daemon
+owns. Its log, build included, is `~/.local/state/kill-paseos-and-daemons.log`.
+
+Before stopping, it records every agent whose stored status is `running` or `initializing` (normal
+agents, Paseo subagents, board workers and the Projects Assistant chat) in
+`~/.local/state/paseo-restart-resume.tsv`. As each daemon comes back, every recorded agent of that
+home gets one message saying the restart was intentional and to continue where it stopped. An agent
+that is gone, already running again, or already got a message after the restart is skipped;
+failures are logged and the rest go on. The agent that ran the script is skipped through
+`PASEO_AGENT_ID`, so its "continue" cannot make it restart Paseo again; `--skip-agent <id>` adds
+another id to leave alone. The Power Workboard has the same rule on its side: a task whose agent is
+idle and whose last activity is before the current daemon started is resumed instead of being
+closed as `no-report` when the script's continue is late.
 
 `custom/bin/paseo-build.sh build` builds the desktop app from the working tree as it is and
 installs it; `if-needed` does that only when `status` says the installed build is behind. Each
