@@ -120,8 +120,8 @@ import { applyLegacyDaemonWorkspaceOwnership } from "@/workspace/legacy-daemon-w
 import { moveDeskTabToWorkspace } from "@/draft-worktree/create"; // CUSTOM(draft-worktree)
 import type { WorkspaceFileOpenRequest } from "@/workspace/file-open";
 import { buildDraftAgentSetup, type ClientSlashCommand } from "@/client-slash-commands";
-// CUSTOM(clear-keeps-agent): /clear does not archive the agent.
-import { clientSlashCommandArchivesAgent } from "@/client-slash-commands/clear-keeps-agent";
+// CUSTOM(clear-keeps-agent): /clear does not archive the agent; /exit archives it once.
+import { runClientSlashCommand } from "@/client-slash-commands/execute";
 
 interface ChatAgentStateShape {
   serverId: string | null;
@@ -1594,9 +1594,8 @@ function ActiveAgentComposer({
   );
   const paneContext = usePaneContext();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
-  const { workspaceId, tabId, retargetCurrentTab } = paneContext;
+  const { workspaceId, closeCurrentTab, retargetCurrentTab } = paneContext;
   const { archiveAgent } = useArchiveAgent();
-  const closeWorkspaceTab = useWorkspaceLayoutStore((state) => state.closeTab);
   const hideWorkspaceAgent = useWorkspaceLayoutStore((state) => state.hideAgent);
   const unpinWorkspaceAgent = useWorkspaceLayoutStore((state) => state.unpinAgent);
   const workspaceAttachmentScopeKey = useWorkspaceAttachmentScopeKey({
@@ -1630,36 +1629,31 @@ function ActiveAgentComposer({
       }
 
       const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
-      if (workspaceKey) {
-        unpinWorkspaceAgent(workspaceKey, agentId);
-        hideWorkspaceAgent(workspaceKey, agentId);
-      }
-
-      if (command.kind === "replace-agent-with-draft") {
-        retargetCurrentTab({
+      await runClientSlashCommand(command, {
+        detachFromLayout: () => {
+          if (!workspaceKey) return;
+          unpinWorkspaceAgent(workspaceKey, agentId);
+          hideWorkspaceAgent(workspaceKey, agentId);
+        },
+        buildDraftTarget: () => ({
           kind: "draft",
           draftId: generateDraftId(),
           setup: buildDraftAgentSetup(agent),
-        });
-      } else if (workspaceKey) {
-        closeWorkspaceTab(workspaceKey, tabId);
-      }
-
-      // CUSTOM(clear-keeps-agent): /clear leaves the old agent as its own idle task.
-      if (!clientSlashCommandArchivesAgent(command)) {
-        return;
-      }
-
-      await archiveAgent({ serverId, agentId });
+        }),
+        retargetCurrentTab,
+        // CUSTOM(assistant-sidebar): the tab this panel is in, whatever host shows it.
+        closeCurrentTab,
+        // CUSTOM(clear-keeps-agent): /clear leaves the old agent as its own idle task.
+        archiveAgent: () => archiveAgent({ serverId, agentId }),
+      });
     },
     [
       agentId,
       archiveAgent,
-      closeWorkspaceTab,
+      closeCurrentTab,
       hideWorkspaceAgent,
       retargetCurrentTab,
       serverId,
-      tabId,
       unpinWorkspaceAgent,
       workspaceId,
     ],

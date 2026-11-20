@@ -6597,8 +6597,10 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     else the `baseRef` the daemon stored in `<git dir>/paseo/worktree.json`, the same order
     `checkout_merge` uses. The git calls run with `GIT_OPTIONAL_LOCKS=0` and never stage (no
     `add -N`), so a review never touches the worktree or its index. Its Assistant tab calls an RPC and then
-    `navigation.openAgent`, which opens the agent as a Desk tab and leaves the board for the
-    Desk (the Desk's navigation wrapper deselects the chip even if that tab was already active).
+    `navigation.openAgent`, which shows the chat in the Projects Assistant tab of the right sidebar
+    and leaves the board for the Desk (see
+    [assistant-sidebar](#assistant-sidebar-the-projects-assistant-chat-is-a-tab-of-the-right-sidebar);
+    until 2026-11-19 it opened as a Desk tab).
   - **Where:** the pages are tabs inside Power Workboard (see
     [workboard-inner-pages](#workboard-inner-pages-the-projects-assistant-pages-are-tabs-inside-power-workboard));
     they were Desk chips until 2026-11-19.
@@ -8162,6 +8164,113 @@ power-workboard`. In the app, open the Projects Assistant chat, set "Compact at 
   sending, and wait 15 s: the same tab now shows the new chat with your words in its composer,
   and other agents' tabs are unchanged. Put the limit back afterwards.
 
+## assistant-sidebar: the Projects Assistant chat is a tab of the right sidebar
+
+- **Added:** 2026-11-19 (based on `custom` at `60bc73d0d`)
+- **Commit:** `custom: Projects Assistant chat lives in a tab of the right sidebar`
+- **Why:** The chat opened as one more tab in the Desk, among the task tabs, and every open could
+  leave another copy behind. The user wants one fixed place for it, beside Files and Changes,
+  like the board got its single chip in
+  [workboard-chip-only](#workboard-chip-only-power-workboard-always-opens-on-its-desk-chip-with-a-status-icon).
+- **What:**
+  - New Explorer singleton tab **Projects Assistant** (target kind `projects_assistant`, Explorer
+    host only, no close button; close it from the tab's context menu and bring it back from the
+    sidebar's **+** or any way to the chat). It renders the ordinary agent panel (history,
+    composer, `pwb` cards, Restart pill) for the live chat, through a nested `PaneProvider` whose
+    target is the chat agent.
+  - Which chat: the one last opened (`custom-assistant-sidebar` store); once it is archived, the
+    agent that replaces it (`paseo.replaces-agent`, so a compaction swaps the chat inside the same
+    tab with no action); else any live agent labeled `pwb/assistant-chat` (a restart archives the
+    old chat without naming it), the newest by `createdAt` with an id tie-break so the choice never
+    depends on the map's order, on the remembered server first, then the workspace's; else the
+    archived chat; with none, a line pointing to Power Workboard's Assistant tab. A remembered
+    chat the loaded session no longer lists (the app restarted after a chat restart) is gone and
+    the live chat wins; before the list loads it is kept, since it may be the chat just created.
+  - Every way to the chat ends in `openAssistantSidebar`: `navigateToAgent` sends any **live**
+    agent the session knows by the label there (notifications, Command Center, agent lists, the
+    Tasks sidebar row, the plugin's `openAgent`, "Open in Desk" in Conversations), and the plugin
+    passes `assistantSidebar: true` from the Assistant tab, the Restart pill and the status-bar
+    topic, for a chat too new for the session to list. An archived chat is left to ordinary
+    navigation, and the sweep leaves its tab alone: "Open in Desk" in Conversations shows that
+    archived conversation in a normal tab while the sidebar keeps showing the live chat. It
+    deselects the board chip, shows the last workspace's route, and the focused Desk or workspace
+    screen (`useAssistantSidebarReveal`) opens its Explorer on that tab (the Desk also opens the
+    sidebar for its focused tab) and, on web wide layouts, focuses the composer. Without a
+    workspace to
+    show, it remembers the chat and leaves no reveal request for an unrelated screen to consume.
+  - One instance: the tab is a singleton per Explorer, and the **live** chat never keeps a tab of
+    its own. `useAssistantTabSweep` (mounted beside `useAgentSuccessorTabs`) closes agent tabs of a
+    live chat in Desks and workspace layouts and unpins them: tabs restored from storage close
+    silently, a tab opened later (a path that skips `navigateToAgent`) closes and the sidebar tab
+    shows instead. The set of restored tabs shrinks as tabs go away, so a tab that comes back
+    counts as newly opened. An archived chat is not swept, so its tab stays. Workspaces no longer
+    auto-open the chat (`agent-visibility.ts`).
+  - The Desk's **+** reveals the Explorer (`showExplorerSidebar`, compact overlay included) before
+    adding the tab; the tab is useless in a hidden sidebar. `/exit` in the chat closes the tab
+    the panel is in through the pane context, not `closeTab` with the chat's workspace key, which
+    could close a same-id tab elsewhere.
+  - In Tasks mode the Explorer is the focused Desk tab's workspace, so each workspace's sidebar
+    has its own Projects Assistant tab, showing the same chat.
+- **Follow-up (2026-11-19):** from the review of the first commit.
+  - `/exit` and `/clear` close the panel's tab through a plain close in every host (Desk, workspace
+    pane, Explorer sidebar). The workspace pane used to give the pane the tab button's guarded
+    close, which confirmed and archived a running agent, and then `/exit` archived it again.
+    `client-slash-commands/execute.ts` runs the command once: `/clear` retargets to a draft,
+    `/exit` closes and archives once.
+  - The panel keeps the per-server agent maps cached (`assistant-sidebar/session-agent-maps.ts`),
+    rebuilding them only when an agents map or a hydration flag is replaced, instead of on every
+    session update while agents stream.
+  - New tests: `open.test.ts` (`isAssistantChatInSession`, `currentAssistantChat`,
+    `openAssistantSidebar`), `reveal.test.tsx`, `panel.test.tsx`,
+    `use-assistant-tab-sweep.test.ts`, `session-agent-maps.test.ts`,
+    `utils/navigate-to-agent/index.test.ts` and `client-slash-commands/execute.test.ts`. `sweep.ts`
+    now takes the agent facts and decides live vs archived itself, so the archived-tab test is
+    meaningful.
+- **Files:** `packages/app/src/assistant-sidebar/` (`model.ts` pure rules, `store.ts`, `open.ts`,
+  `reveal.ts`, `panel.tsx`, `sweep.ts`, `use-assistant-tab-sweep.ts`,
+  `session-agent-maps.ts`, tests `model.test.ts`, `sweep.test.ts`, `launch.test.ts`,
+  `open.test.ts`, `reveal.test.tsx`, `panel.test.tsx`, `use-assistant-tab-sweep.test.ts` and
+  `session-agent-maps.test.ts`). Plugin: `client/assistant/nav.ts`
+  (`openAssistantChat`), `ChatLauncher.tsx`, `RestartChatPill.tsx`, `QuickStatus.tsx`. The `/exit`
+  fix is `panels/agent-panel.tsx` and `client-slash-commands/execute.ts`
+  (`execute.test.ts`); the plain pane close is `screens/workspace/workspace-screen.tsx`.
+- **Core files touched** (`CUSTOM(assistant-sidebar)`): the target kind wherever `docs` is listed
+  (`workspace-tabs/model.ts`, `identity.ts`, `stores/workspace-layout-storage.ts`,
+  `panels/panel-manifest.ts`, `panels/register-panels.ts`, the launcher's `index.tsx` and
+  `internal/catalog.ts` with its test, the tab labels in `workspace-desktop-tabs-row.tsx` and
+  `compact-workspace-header/tab-switcher.tsx`, the close id in `workspace-tab-menu.ts`);
+  `task-navigation/new-tab-menu.tsx` (`launchDeskTarget` sends it to the Explorer like Docs);
+  `utils/navigate-to-agent/index.ts` and `resolve.ts`; `plugins/host-navigation-model.ts` (passes
+  `assistantSidebar`); `task-navigation/desk-screen.tsx` and `screens/workspace/workspace-screen.tsx`
+  (`useAssistantSidebarReveal`); `workspace-tabs/agent-visibility.ts`; `task-navigation/sidebar.tsx` (`openTask`: a Tasks row of the
+  chat opens the sidebar); `app/_layout.tsx`.
+- **Re-apply:** Model `projects_assistant` on `docs` (a field-less singleton target, Explorer host,
+  `showCloseButton: false`). Its panel wraps `AgentConversationPanel` in a `PaneProvider` whose
+  `target` is `{ kind: "agent", agentId }` of the resolved chat and whose `retargetCurrentTab`
+  turns an agent retarget into a new remembered chat. Intercept `navigateToAgent` before
+  `resolveNavigateToAgent`. Call the reveal hook wherever a screen owns an Explorer and knows if
+  it has the focus. Keep the label string the same as the plugin's `ASSISTANT_CHAT_AGENT_LABEL`.
+- **Verify:** `(cd packages/app && npx vitest run src/assistant-sidebar/model.test.ts
+src/assistant-sidebar/sweep.test.ts src/assistant-sidebar/launch.test.ts
+src/assistant-sidebar/open.test.ts src/assistant-sidebar/reveal.test.tsx
+src/assistant-sidebar/panel.test.tsx src/assistant-sidebar/use-assistant-tab-sweep.test.ts
+src/assistant-sidebar/session-agent-maps.test.ts src/utils/navigate-to-agent/index.test.ts
+src/client-slash-commands/execute.test.ts src/workspace-tabs/agent-visibility.test.ts
+src/plugins/host-navigation.test.ts src/workspace-tabs/launcher/internal/catalog.test.ts)` (in
+  the update script). Needs an app build and `paseo plugin reload power-workboard`; no daemon
+  restart.
+  In Tasks mode: the Desk has no Projects Assistant tab after the update. Click the status bar's
+  topic, Power Workboard's Assistant tab, a notification of the chat, and the chat in the Command
+  Center: each opens the right sidebar on **Projects Assistant** with the composer focused, and no
+  Desk tab appears. Click again: still one tab. With the sidebar closed (Ctrl+E), the same clicks
+  open it, and so does the Desk's **+** > Projects Assistant. Restart the chat with the pill: the
+  tab shows the new chat; close and reopen the app: still the new chat, not the archived one.
+  `/exit` in the sidebar chat closes the sidebar tab, not another one; `/exit` while the chat runs
+  in an ordinary workspace tab closes that tab with no extra confirmation and archives the agent
+  once. Open an old conversation from Projects Conversations on **Open in Desk**: it stays in the
+  tab it opened in, and the sidebar keeps showing the live chat. Compact (set "Compact at" low):
+  the tab moves to the new chat with no click.
+
 ## card-open-agent: Power Workboard cards link their agent in every column; pin and move sit in the action row; wider column-resize strip
 
 - **Added:** 2026-11-19 (based on `custom` at `60bc73d0d`)
@@ -8193,6 +8302,35 @@ tests/card-open-agent.test.ts`. Needs only `paseo plugin reload power-workboard`
   of the ⌄ 📄 ⇄ row and dragging ⋮⋮ still moves the card. Hover the gap right of a column: the
   cursor turns to `col-resize` along the whole border and an accent line appears; dragging
   resizes, double-click resets.
+
+## telus-sync: keep Telus-only credentials and narrow the credential rules
+
+- **Added:** 2026-11-19 (based on `custom` at `e30e10550`)
+- **Commit:** `custom: telus-sync keeps Telus-only credentials and narrows the credential rules`
+- **Why:** Follow-up to [telus-sync](#telus-sync-copy-ux-and-plugin-configuration-from-paseo-personal-to-paseo-telus).
+  Applying the `features` block replaced each subkey whole, so an `apiKey` that existed only on
+  the Telus side (`features.dictation.stt`, `features.voiceMode.tts`) was deleted. The credential
+  patterns were also broad enough to discard legitimate settings such as `maxTokens`,
+  `tokenCount` and `tokenizerPath` (and the file `tokenizer.json`).
+- **What:**
+  - Applying `features` still starts from the scrubbed Personal value, then restores every
+    credential key the Telus `config.json` already has at that path. A branch only Telus has is
+    kept whole when it holds a credential, so the credential keeps the settings next to it. The
+    preview item's detail lists the kept paths. A Personal credential is still never written.
+  - Credential keys are an explicit list (`apiKey`, `token`, `password`, `authorization`,
+    `credential`, …), a suffix rule for credential words (`githubToken`, `jwtSecret`,
+    `dbPassword`) and `key` only behind a qualifier (`openaiApiKey`, `sshKey` but not
+    `sortKey`/`hotkey`). `maxTokens`, `max_tokens`, `tokenCount`, `tokenizerPath` and
+    `cachedKeys` travel. Credential file names are decided by the last word before the extension
+    (`tokens.json`, `apiToken.json`, `oauth.json`, `*.key`), so `tokenizer.json`,
+    `token-usage.json` and `password-policy.json` copy.
+- **Core files touched:** none. Plugin files: `shared/model.ts`, `server/sync.ts`,
+  `tests/sync.test.ts`, `README.md`.
+- **Re-apply:** Plugin-only; an upstream merge cannot conflict. Grep `CUSTOM(telus-sync)`.
+- **Verify:** `(cd custom/plugins/telus-sync && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npx vitest run --bail=1)`.
+  In Personal, put an `apiKey` under `features.dictation.stt` in `~/.paseo-telus/config.json` by
+  hand, open Settings > Plugins > telus-sync and check the preview says it was kept, sync UX, then
+  confirm the key is still there and the Personal one is not.
 
 ## telus-sync: copy UX and plugin configuration from Paseo Personal to Paseo Telus
 
@@ -8227,8 +8365,16 @@ tests/card-open-agent.test.ts`. Needs only `paseo plugin reload power-workboard`
     because they hold execution state, model picks or keys. A Telus `config.json` that is not a
     JSON object is left untouched and the run fails instead of overwriting it.
   - Left out on purpose: theme, fonts, sidebar layout and keyboard shortcuts, which live in the
-    Electron client's localStorage and cannot be written safely into the other Electron profile
-    while it runs. The screen and the plugin README say so.
+    Electron client's localStorage. Decision recorded on the screen ("Theme and visuals stay on the
+    Telus side") and in the README: Chromium locks and caches the profile, writing it while Telus
+    runs can lose the change or corrupt the store, and there is no supported export/import.
+  - The desktop category is written only while Paseo Telus is closed. The preview reads the Telus
+    Electron profile's `SingletonLock`; when its process is alive the category is shown unavailable
+    with the reason instead of being written, and the preview and the run say to quit the app
+    first and reopen it after. A rollback of a backup that touched `desktop` is refused while the
+    app runs. This covers the app's cached whole-file write, which would otherwise undo the sync.
+  - The plugins preview lists each plugin separately with its enabled state and, when changed, the
+    path that moved into the Telus home, instead of one aggregate line.
   - The UI is English like the rest of Settings; the screen title is the one the ticket asked for.
 - **Core files touched:** none. Plugin files: `paseo-plugin.json`, `package.json`, `tsconfig.json`,
   `vitest.config.ts`, `index.client.tsx`, `index.server.ts`, `client/SettingsScreen.tsx`,
@@ -8389,3 +8535,65 @@ custom/plugins/delegation && npx vitest run --bail=1)`; `npm run typecheck`. Nee
   `/home/bruno/uprojects/tmp` without a prompt; turn "Automatic agents get full
   permission" off and confirm the prompt appears and the task reaches Needs you
   with "Waiting for a permission" after about a minute and a half.
+
+## board-drag-selection: Power Workboard drag handles never start a text selection
+
+- **Added:** 2026-11-19 (based on `custom` at `e30e10550`)
+- **Commit:** `custom: Power Workboard drag handles never start a text selection`
+- **Why:** A mousedown on a card grip, a column title or the resize strip began a native text
+  selection. Once a selection exists, react-native-web's responder system terminates the Pressable
+  that grabbed the gesture, resets its tracked pointers and then ignores every mousemove, so the
+  column and resize handles (which only take over after 6 px) never start and the browser keeps
+  extending the selection across the column. `duringDrag`'s `user-select: none` on `body` only ran
+  after a drag had started, and never cleared a selection that already existed.
+- **What:** `dragAreaProps(disabled)` cancels the web `mousedown` default, clears the current
+  selection and focuses the area again (preventDefault would otherwise stop the browser from
+  focusing it, which breaks the resize strip's arrow keys and the title's keyboard reorder). It
+  cancels `mousedown`, not `pointerdown`: cancelling `pointerdown` also drops the compatibility
+  `mousedown` that react-native-web uses to grant the gesture. `noSelectText()` adds
+  `user-select: none` to the drag area only, so text elsewhere stays selectable. Both are no-ops on
+  native. The card grip, the column title and the resize strip apply them, and `duringDrag` clears
+  any selection when a drag actually begins.
+- **Core files touched:** none. Plugin files: `client/web.ts` (`dragAreaProps`, `noSelectText`,
+  `duringDrag`), `client/BoardView.tsx` (`TaskDragShell`, the column title `Pressable`, the resize
+  strip), `tests/react-native.ts` (`Platform.OS` is mutable so a test can enter web mode),
+  `tests/drag-area.test.ts` (new, jsdom).
+- **Re-apply:** Plugin-only. Grep `CUSTOM(board-drag-selection)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/drag-area.test.ts`. Needs only `paseo plugin reload power-workboard`. In the app, select some
+  text on the board first (drag over a card's summary), then drag a card grip, a column title and
+  the resize strip: each drag starts, the old selection is gone and no new one appears. A plain
+  click on the column title still opens its menu, a double-click on the resize strip still resets
+  the width, and text outside the grips is still selectable.
+
+## assistant-dirty-checkout: the Projects Assistant stashes a dirty checkout instead of asking
+
+- **Added:** 2026-11-20 (based on `custom` at `1e3310424`)
+- **Commit:** `custom: Projects Assistant stashes a dirty checkout instead of asking`
+- **Why:** On 2026-11-20 the board gave up on five paseo merges after twelve retries each because
+  the base checkout had uncommitted edits from other sessions. The assistant escalated with
+  "commit or stash?". That decision is obvious, so it must take it every time instead of spending
+  the user's attention on it.
+- **What:** The "Fix small blockers yourself" paragraph of `ASSISTANT_ROLE` no longer treats a
+  dirty checkout as a retry the assistant only steps in for. When the board gives up on it, the
+  assistant: saves `git diff` and the untracked files in
+  `/home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/`; runs
+  `git stash push -u -m "assistant: <origin>, reaplicar após merges"` in that checkout; runs
+  `merge-now` with `wait=true` on each approved task that was waiting, one at a time, checking
+  `git log` for the commits on the base branch and Done on the cards; then `git stash pop` and
+  tells the user what merged, where the backup is and that the edits are back. It escalates only
+  when the pop conflicts, leaving the stash intact and naming it, and never discards the edits (no
+  `checkout --`, `reset --hard` or `stash drop` without a pop). The
+  "Ask before anything destructive or hard to undo" rule stays for everything else.
+- **Core files touched:** none. Plugin files: `server/assistant/chat.ts`,
+  `tests/profiles.test.ts`.
+- **Re-apply:** Plugin-only. In `ASSISTANT_ROLE`, find "When it gives up because the base checkout
+  has uncommitted edits" and keep the sequence above, with the backup path, the stash command with
+  `-u`, one merge-now at a time with `wait=true`, the git-log/Done check, the pop and the report,
+  escalation only on a conflicting pop, and the never-discard list. Keep "Ask before anything
+  destructive or hard to undo" for the rest.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/profiles.test.ts --bail=1`. Needs only `paseo plugin reload power-workboard`. A seed change
+  does not touch an existing `system-prompt.md`: the live assistant keeps the old text in
+  `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md` until the same
+  paragraph is copied there by hand.

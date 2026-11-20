@@ -11,15 +11,22 @@ Settings > Plugins > telus-sync > **Sincronizar com Paseo Telus**.
 | Category                      | Files and keys                                                                                                                                                                                                                                 |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | UX preferences on the daemon  | `config.json`: `features.dictation`, `features.voiceMode`, `features.webUi`                                                                                                                                                                    |
-| App preferences (desktop)     | `desktop-settings.json`: `notifications.playSound`, `tabs.flexibleMovement`                                                                                                                                                                    |
+| App preferences (desktop)     | `desktop-settings.json`: `notifications.playSound`, `tabs.flexibleMovement`. Needs Paseo Telus closed; the app caches the file.                                                                                                                |
 | Installed and enabled plugins | `config.json`: `pluginsEnabled`, `plugins` (paths under the source home rewritten); `plugins/` managed sources (without `.git`, `.npmrc` or dotenv files); `plugins/sources.json` with URL credentials stripped; `custom-plugins-applied.json` |
 | Plugin settings               | `plugin-settings/<id>/*.json`, with credential keys removed                                                                                                                                                                                    |
 
 Plugin settings that hold execution data or agent model picks are excluded by id:
 `power-workboard`, `delegation`, `jev-router` (`shared/model.ts`, `EXCLUDED_PLUGIN_SETTINGS`).
-Files whose name looks like a credential and files that are not JSON are skipped, and every
-credential-looking key is dropped from JSON settings, including an `apiKey` inside
-`features.dictation`/`voiceMode`. Git remotes in `sources.json` lose any `user:token@`.
+Files whose name is a credential (`tokens.json`, `credentials.json`, `*.pem`, `*.key`) and files
+that are not JSON are skipped. Credential keys are dropped from JSON settings, including an
+`apiKey` inside `features.dictation`/`voiceMode`. The rules are an explicit key list plus a
+conservative suffix, so `openaiApiKey`, `oauthToken` and `clientSecret` are credentials while
+`maxTokens`, `tokenCount` and `tokenizerPath` are ordinary settings.
+
+A credential that only the Telus install already has is never deleted: the sync keeps its value,
+and when the whole branch exists only on the Telus side it keeps the branch too, so the settings
+the credential needs stay together. The preview lists each credential it kept. A credential coming
+from Personal is never written. Git remotes in `sources.json` lose any `user:token@`.
 
 ## What never travels
 
@@ -28,10 +35,22 @@ Credentials (`local-credential`, `daemon-keypair.json`, `push-tokens.json`, `ser
 `projects/`, `schedules/`, `runtime/`, `plugin-data/`. From `config.json` only the keys in
 `CONFIG_UX_ALLOWLIST` and the plugin list travel.
 
+## Decision: theme and visuals are not synced
+
 Theme, fonts, sidebar layout and keyboard shortcuts live in the Electron client's localStorage
-(`~/.config/Paseo*/Local Storage`), not in the daemon. Writing another Electron profile's
-LevelDB while that app runs is not safe, so this screen leaves them out and says so; set them by
-hand on the Telus side.
+(`~/.config/Paseo*/Local Storage`), not in the daemon. The sync does not read or write them, and
+the screen says so above the checklist.
+
+This is deliberate. Chromium keeps that profile locked and caches it in memory, so writing
+another profile's LevelDB while Paseo Telus runs can be lost or corrupt the store. There is no
+supported export/import for the app settings blob, and hand-editing LevelDB is fragile enough
+that a visual preference does not justify it. Set those preferences by hand in Paseo Telus.
+
+`desktop-settings.json` is different: it is a plain JSON file owned by the Electron main process.
+The sync writes it only while Paseo Telus is closed. If the app is open, the desktop category is
+reported unavailable with the reason, because the running app caches the whole document and
+writes it back on its next save, undoing the sync. Reopen the app after a sync to load the new
+values.
 
 ## Backup and rollback
 

@@ -757,6 +757,9 @@ function getFallbackTabLabel(
   if (tab.target.kind === "docs") {
     return "Docs"; // CUSTOM(desk-docs)
   }
+  if (tab.target.kind === "projects_assistant") {
+    return "Projects Assistant"; // CUSTOM(assistant-sidebar)
+  }
   if (tab.target.kind === "pull_request") {
     return labels.pullRequest;
   }

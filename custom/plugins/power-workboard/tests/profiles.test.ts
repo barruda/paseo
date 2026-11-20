@@ -120,6 +120,23 @@ describe("profile folders", () => {
     );
   });
 
+  it("stashes a dirty base checkout, merges, and pops instead of asking", () => {
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "/home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/",
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      '`git stash push -u -m "assistant: <origin>, reaplicar após merges"`',
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain("merge-now with wait=true");
+    expect(ASSISTANT_SEED_PROMPT).toContain("`git stash pop`");
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "Never discard those edits: no `checkout --`, no `reset --hard`, no `stash drop` without a pop.",
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "Ask before anything destructive or hard to undo",
+    );
+  });
+
   it("rejects ids that could leave the profiles folder", async () => {
     const profiles = new Profiles(await temporary());
     expect(() => profiles.directory("../x")).toThrow();

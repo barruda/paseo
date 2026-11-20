@@ -7,13 +7,13 @@ import {
   CATEGORY_IDS,
   CATEGORY_INFO,
   CONFIG_UX_ALLOWLIST,
-  CREDENTIAL_FILE_PATTERN,
-  CREDENTIAL_KEY_PATTERN,
   DESKTOP_SETTINGS_ALLOWLIST,
   EXCLUDED_PLUGIN_SETTINGS,
   MAX_BACKUPS,
   SKIPPED_SETTINGS_FILE_PATTERN,
   emptyRunResult,
+  isCredentialFileName,
+  isCredentialKey,
   type CategoryId,
   type HistoryEntry,
   type PreviewCategory,
@@ -132,6 +132,47 @@ function defaultAppDir(home: string): string {
   if (process.platform === "win32")
     return path.join(process.env.APPDATA ?? os.homedir(), name);
   return path.join(os.homedir(), ".config", name);
+}
+
+export interface AppRunningState {
+  running: boolean;
+  pid: number | null;
+}
+
+/**
+ * Whether an Electron app is using this profile. Chromium leaves `SingletonLock` behind as a
+ * `hostname-pid` symlink on POSIX and a file elsewhere; a lock whose process is gone is stale.
+ * Unreadable or unparsable locks are treated as running, because the cost of a wrong write is
+ * higher than of a wrong warning.
+ */
+export async function detectAppRunning(
+  appDir: string,
+): Promise<AppRunningState> {
+  const lock = path.join(appDir, "SingletonLock");
+  let marker: string | null = null;
+  try {
+    marker = await fsp.readlink(lock);
+  } catch {
+    try {
+      marker = (await fsp.readFile(lock, "utf8")).trim();
+    } catch {
+      return { running: false, pid: null };
+    }
+  }
+  if (!marker) return { running: true, pid: null };
+  const match = /-(\d+)$/.exec(marker);
+  if (!match) return { running: true, pid: null };
+  const pid = Number(match[1]);
+  if (!Number.isSafeInteger(pid) || pid <= 0)
+    return { running: true, pid: null };
+  try {
+    process.kill(pid, 0);
+    return { running: true, pid };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "EPERM")
+      return { running: true, pid };
+    return { running: false, pid: null };
+  }
 }
 
 /**
@@ -370,9 +411,9 @@ export function redactUrlCredentials(value: unknown): unknown {
       try {
         const url = new URL(item);
         if (url.username || url.password) {
-          url.username = "";
-          url.password = "";
-          next[key] = url.toString();
+          // URL.host excludes the userinfo, so rebuilding from it drops credentials.
+          next[key] =
+            `${url.protocol}//${url.host}${url.pathname}${url.search}${url.hash}`;
           continue;
         }
       } catch {
@@ -397,7 +438,7 @@ export function scrubCredentials(
     const next: Record<string, unknown> = {};
     for (const [key, child] of Object.entries(item)) {
       const dotted = at ? `${at}.${key}` : key;
-      if (CREDENTIAL_KEY_PATTERN.test(key)) {
+      if (isCredentialKey(key)) {
         removed.push(dotted);
         continue;
       }
@@ -406,6 +447,79 @@ export function scrubCredentials(
     return next;
   };
   return { value: walk(value, prefix), removed };
+}
+
+/**
+ * Applies the scrubbed source value over the Telus one, restoring credential keys the Telus file
+ * already has. Credentials never travel from Personal; replacing the whole block would otherwise
+ * delete a credential only the Telus install owns.
+ */
+function keepTargetCredentials(
+  source: unknown,
+  target: unknown,
+  at: string,
+  kept: string[],
+): unknown {
+  if (Array.isArray(source)) {
+    // Index-merge equal-length arrays; a different length means the source replaces the array.
+    if (!Array.isArray(target) || target.length !== source.length)
+      return source;
+    return source.map((item, index) =>
+      keepTargetCredentials(item, target[index], `${at}[${index}]`, kept),
+    );
+  }
+  if (!isRecord(source)) return source;
+  const targetRecord = isRecord(target) ? target : {};
+  const next: Record<string, unknown> = {};
+  for (const [key, child] of Object.entries(source)) {
+    const dotted = at ? `${at}.${key}` : key;
+    next[key] = keepTargetCredentials(child, targetRecord[key], dotted, kept);
+  }
+  for (const [key, child] of Object.entries(targetRecord)) {
+    if (Object.hasOwn(next, key)) continue;
+    const dotted = at ? `${at}.${key}` : key;
+    if (isCredentialKey(key)) {
+      next[key] = child;
+      kept.push(dotted);
+      continue;
+    }
+    // A branch only the Telus file has: keep it whole, so the credential and the settings it
+    // needs stay together. The rest of a branch is still replaced by the source.
+    if (hasCredential(child)) {
+      next[key] = child;
+      collectCredentialPaths(child, dotted, kept);
+    }
+  }
+  return next;
+}
+
+/** Whether a settings subtree holds a credential anywhere. */
+function hasCredential(value: unknown): boolean {
+  if (Array.isArray(value)) return value.some(hasCredential);
+  if (!isRecord(value)) return false;
+  return Object.entries(value).some(
+    ([key, child]) => isCredentialKey(key) || hasCredential(child),
+  );
+}
+
+/** Dotted paths of every credential in a settings subtree. */
+function collectCredentialPaths(
+  value: unknown,
+  at: string,
+  kept: string[],
+): void {
+  if (Array.isArray(value)) {
+    value.forEach((child, index) =>
+      collectCredentialPaths(child, `${at}[${index}]`, kept),
+    );
+    return;
+  }
+  if (!isRecord(value)) return;
+  for (const [key, child] of Object.entries(value)) {
+    const dotted = at ? `${at}.${key}` : key;
+    if (isCredentialKey(key)) kept.push(dotted);
+    else collectCredentialPaths(child, dotted, kept);
+  }
 }
 
 function categoryStatus(
@@ -459,21 +573,26 @@ async function buildUx(
   }
   const edits: JsonEdit[] = [];
   const labels: string[] = [];
+  const kept: string[] = [];
+  const target = await readJson(targetFile);
   for (const [top, subkeys] of Object.entries(CONFIG_UX_ALLOWLIST)) {
     const block = source[top];
     if (!isRecord(block)) continue;
     for (const subkey of subkeys) {
       if (!Object.hasOwn(block, subkey)) continue;
-      // Speech sites may hold an apiKey; scrub it like any other settings document.
-      edits.push({
-        path: [top, subkey],
-        value: redactUrlCredentials(scrubCredentials(block[subkey]).value),
-      });
+      // Speech sites may hold an apiKey; scrub it like any other settings document, then keep
+      // the one the Telus file already has so the replacement does not delete it.
+      const value = keepTargetCredentials(
+        redactUrlCredentials(scrubCredentials(block[subkey]).value),
+        getPath(target, [top, subkey]),
+        `${top}.${subkey}`,
+        kept,
+      );
+      edits.push({ path: [top, subkey], value });
       labels.push(`${top}.${subkey}`);
     }
   }
   const label = `config.json · ${labels.join(", ") || "no UX keys found"}`;
-  const target = await readJson(targetFile);
   let status: PreviewItem["status"] = "changed";
   if (!(await exists(targetFile))) status = "new";
   else
@@ -486,7 +605,15 @@ async function buildUx(
     category: makeCategory(
       "ux",
       edits.length
-        ? [{ label, status, detail: null }]
+        ? [
+            {
+              label,
+              status,
+              detail: kept.length
+                ? `Telus credentials kept: ${kept.join(", ")}`
+                : null,
+            },
+          ]
         : [
             {
               label,
@@ -496,6 +623,7 @@ async function buildUx(
           ],
       [
         "Only the config.json features block travels. Providers, MCP servers, env, directories and agent settings stay behind.",
+        "Credentials never travel from Personal. A credential only the Telus install has stays there, and the item above lists the ones kept.",
       ],
     ),
     operations: edits.length
@@ -568,20 +696,50 @@ async function buildDesktop(
     )
       ? "same"
       : "changed";
+  const running = await detectAppRunning(paths.targetAppDir);
+  const notes = [
+    "Only notification sounds and flexible tab movement travel. keepRunningAfterQuit, daemon management and the release channel stay as they are.",
+    "Theme, fonts, sidebar layout and keyboard shortcuts live in the client's own storage, not here; see the note at the top of this screen.",
+  ];
+  if (running.running) {
+    notes.unshift(
+      status === "same"
+        ? "Paseo Telus is open. App preferences are already the same, so nothing is written."
+        : `Paseo Telus is open${
+            running.pid ? ` (pid ${running.pid})` : ""
+          }. Its main process caches desktop-settings.json and writes the whole file on its next save, which would undo this sync. Quit it and sync again.`,
+    );
+  } else {
+    notes.unshift(
+      "Quit Paseo Telus before syncing app preferences. Its main process caches desktop-settings.json and writes the whole file on its next save, so a sync while it runs can be lost. Reopen it afterwards.",
+    );
+  }
+  const itemLabel = `desktop-settings.json · ${labels.join(", ")}`;
+  // A running app owns an in-memory copy of the whole file; writing now would be undone by its
+  // next save. Skip the write instead of warning after the fact.
+  if (running.running && status !== "same") {
+    return {
+      category: makeCategory(
+        "desktop",
+        [
+          {
+            label: itemLabel,
+            status: "unavailable",
+            detail: `Would update ${labels.join(", ")}. Paseo Telus is open${
+              running.pid ? ` (pid ${running.pid})` : ""
+            }; quit it and sync again.`,
+          },
+        ],
+        notes,
+      ),
+      operations: [],
+    };
+  }
   return {
     category: makeCategory(
       "desktop",
-      [
-        {
-          label: `desktop-settings.json · ${labels.join(", ")}`,
-          status,
-          detail: null,
-        },
-      ],
-      [
-        "Only notification sounds and flexible tab movement travel. keepRunningAfterQuit, daemon management and the release channel stay as they are.",
-        "Theme, fonts, sidebar layout and keyboard shortcuts live in the client's own storage, not here; see the note at the top of this screen.",
-      ],
+      [{ label: itemLabel, status, detail: null }],
+      notes,
     ),
     operations: edits.length
       ? [
@@ -641,8 +799,9 @@ async function buildPlugins(
   const operations: Operation[] = [];
   const notes: string[] = [];
   if (isRecord(source.plugins)) {
+    const sourcePlugins = source.plugins;
     const plugins = rewriteHomePaths(
-      source.plugins,
+      sourcePlugins,
       paths.sourceHome,
       paths.targetHome,
     ) as Record<string, unknown>;
@@ -651,16 +810,75 @@ async function buildPlugins(
       { path: ["plugins"], value: plugins },
     ];
     const target = await readJson(targetFile);
-    const status: PreviewItem["status"] = !(await exists(targetFile))
+    const targetExists = await exists(targetFile);
+    const targetPlugins =
+      isRecord(target) && isRecord(target.plugins) ? target.plugins : null;
+    const enabled = source.pluginsEnabled === true;
+    const enabledStatus: PreviewItem["status"] = !targetExists
       ? "new"
-      : edits.every((edit) => deepEqual(getPath(target, edit.path), edit.value))
+      : deepEqual(getPath(target, ["pluginsEnabled"]), enabled)
         ? "same"
         : "changed";
     items.push({
-      label: `config.json · pluginsEnabled and plugins (${Object.keys(plugins).length} plugins)`,
-      status,
-      detail: null,
+      label: "config.json · pluginsEnabled",
+      status: enabledStatus,
+      detail: enabled ? "On" : "Off",
     });
+    const managedRoot = path.join(paths.sourceHome, "plugins");
+    for (const [name, value] of Object.entries(plugins).sort(
+      ([left], [right]) => left.localeCompare(right),
+    )) {
+      if (!isRecord(value)) continue;
+      const pluginEnabled = value.enabled === true;
+      const pluginPath = typeof value.path === "string" ? value.path : null;
+      const sourceEntry = sourcePlugins[name];
+      const sourcePath =
+        isRecord(sourceEntry) && typeof sourceEntry.path === "string"
+          ? sourceEntry.path
+          : null;
+      const copied = sourcePath !== null && isInside(managedRoot, sourcePath);
+      const existing =
+        targetPlugins && isRecord(targetPlugins[name])
+          ? targetPlugins[name]
+          : null;
+      if (!targetExists || !existing) {
+        items.push({
+          label: `plugins.${name}`,
+          status: "new",
+          detail: `${pluginEnabled ? "enabled" : "disabled"}${
+            copied ? " · source copied into the Telus home" : ""
+          }`,
+        });
+        continue;
+      }
+      const changes: string[] = [];
+      if ((existing.enabled === true) !== pluginEnabled)
+        changes.push(`enabled ${existing.enabled === true} → ${pluginEnabled}`);
+      const existingPath =
+        typeof existing.path === "string" ? existing.path : null;
+      if (existingPath !== pluginPath)
+        changes.push(
+          copied ? "path moved into the Telus home" : "path updated",
+        );
+      // The operation rewrites the whole entry, so any other field (source, ref, ...) also counts.
+      if (!changes.length && !deepEqual(existing, value))
+        changes.push("entry updated");
+      items.push({
+        label: `plugins.${name}`,
+        status: changes.length ? "changed" : "same",
+        detail: changes.length ? changes.join("; ") : null,
+      });
+    }
+    if (targetPlugins) {
+      for (const name of Object.keys(targetPlugins).sort()) {
+        if (Object.hasOwn(plugins, name)) continue;
+        items.push({
+          label: `plugins.${name}`,
+          status: "changed",
+          detail: "removed: not configured on the Personal side",
+        });
+      }
+    }
     operations.push({
       kind: "json-edit",
       category: "plugins",
@@ -784,7 +1002,7 @@ async function buildPluginSettings(
         notes.push(`Skipped ${rel}: local backup file.`);
         continue;
       }
-      if (CREDENTIAL_FILE_PATTERN.test(path.basename(file))) {
+      if (isCredentialFileName(path.basename(file))) {
         notes.push(`Skipped ${rel}: the file name looks like a credential.`);
         continue;
       }
@@ -1004,6 +1222,9 @@ export async function executeSync(
           `${category.title}: ${item.label} — ${item.detail ?? "unavailable"}`,
       ),
   );
+  const appliedCategories = CATEGORY_IDS.filter((id) =>
+    plan.operations.some((operation) => operation.category === id),
+  );
   if (!changes) {
     return emptyRunResult({
       ok: true,
@@ -1011,7 +1232,7 @@ export async function executeSync(
       same,
       skipped: unavailable,
       warnings,
-      apply: applyNotes(ordered),
+      apply: applyNotes(appliedCategories),
     });
   }
   await fsp.mkdir(paths.backupRoot, { recursive: true });
@@ -1100,7 +1321,7 @@ export async function executeSync(
       same,
       skipped: unavailable,
       warnings,
-      apply: applyNotes(ordered),
+      apply: applyNotes(appliedCategories),
       error: null,
     };
   } catch (error) {
@@ -1124,7 +1345,9 @@ export async function executeSync(
 function applyNotes(categories: CategoryId[]): string[] {
   const notes: string[] = [];
   if (categories.includes("desktop"))
-    notes.push("Reopen the Paseo Telus window to load the app preferences.");
+    notes.push(
+      "Reopen Paseo Telus to load the app preferences. Quit it before syncing app preferences again: its main process caches desktop-settings.json and writes the whole file on its next save.",
+    );
   if (categories.includes("ux"))
     notes.push(
       "Restart the Paseo Telus daemon (Settings > Restart daemon) to apply the daemon UX configuration. The sync does not restart it.",
@@ -1206,9 +1429,23 @@ export async function rollbackSync(
   if (manifest?.tool !== "telus-sync" || !Array.isArray(manifest.items))
     return emptyRunResult({ error: `No telus-sync backup named ${backupId}.` });
   const items = manifest.items as ManifestItem[];
+  const itemCategories = CATEGORY_IDS.filter((id) =>
+    items.some((item) => item.category === id),
+  );
   const createdDirs = Array.isArray(manifest.createdDirs)
     ? (manifest.createdDirs as string[])
     : [];
+  if (itemCategories.includes("desktop")) {
+    const running = await detectAppRunning(paths.targetAppDir);
+    if (running.running)
+      return emptyRunResult({
+        backupId,
+        backupPath: backupDir,
+        error: `Paseo Telus is open${
+          running.pid ? ` (pid ${running.pid})` : ""
+        }. Quit it before rolling back app preferences; its next save would write its cached desktop-settings.json over the restored file.`,
+      });
+  }
   let restored = 0;
   try {
     const filesRoot = path.join(backupDir, "files");
@@ -1241,9 +1478,6 @@ export async function rollbackSync(
       rolledBackAt: new Date().toISOString(),
     };
     await writeJson(path.join(backupDir, "manifest.json"), updated);
-    const categories = (manifest.categories ?? []).filter((category) =>
-      (CATEGORY_IDS as readonly string[]).includes(category),
-    ) as CategoryId[];
     return {
       ok: true,
       backupId,
@@ -1252,7 +1486,7 @@ export async function rollbackSync(
       same: 0,
       skipped: 0,
       warnings: [],
-      apply: applyNotes(categories),
+      apply: applyNotes(itemCategories),
       error: null,
     };
   } catch (error) {

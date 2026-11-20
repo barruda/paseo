@@ -220,22 +220,32 @@ export function TelusSyncSettingsScreen(props: PluginSurfaceProps) {
                 ? `${chosen.length} of ${ALL_CATEGORIES.length} categories selected`
                 : "Choose at least one category"
             }
-            hint={`Source: ${status?.sourceHome ?? ""} → target: ${status?.targetHome ?? ""}`}
+            hint={`Source: ${status?.sourceHome ?? ""} → target: ${
+              status?.targetHome ?? ""
+            }`}
             actionLabel={busy ? "Working…" : "Sync now"}
             onPress={() => void sync()}
             disabled={busy || !chosen.length}
             error={error}
           />
         </SettingsCard>
+        <SettingsCard>
+          <SettingsRow label="Theme and visuals stay on the Telus side">
+            <Text style={muted}>
+              Theme, fonts, sidebar layout and keyboard shortcuts live in the
+              Telus Electron profile&apos;s localStorage, not in the daemon.
+              Writing another app profile while it runs can lose the change or
+              corrupt the store, so the sync leaves them out on purpose. Set
+              them by hand in Paseo Telus Settings.
+            </Text>
+          </SettingsRow>
+        </SettingsCard>
         <Text style={muted}>
           Never copied: credentials (local-credential, daemon-keypair.json,
           tokens, server-id, cli-client-id), agent and provider definitions,
           agent profiles, and anything under agents/, projects/, schedules/ or
           runtime/. From config.json only the features block and the plugin list
-          travel. Theme, fonts, sidebar layout and keyboard shortcuts live in
-          the client&apos;s own Electron storage (localStorage), which cannot be
-          written safely while the other app is open; set those by hand on the
-          Telus side.
+          travel.
         </Text>
       </SettingsSection>
 
@@ -247,7 +257,13 @@ export function TelusSyncSettingsScreen(props: PluginSurfaceProps) {
           {preview.map((category) => (
             <SettingsRow
               key={category.category}
-              label={`${category.title}: ${category.changed} to change, ${category.same} already the same${category.unavailable ? `, ${category.unavailable} unavailable` : ""}`}
+              label={`${category.title}: ${category.changed} to change, ${
+                category.same
+              } already the same${
+                category.unavailable
+                  ? `, ${category.unavailable} unavailable`
+                  : ""
+              }`}
             >
               {category.items.map((item) => (
                 <Text

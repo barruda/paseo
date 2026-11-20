@@ -4,6 +4,7 @@ import { isEmbedMode } from "@/embed/embed-mode";
 import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
 import { useSessionStore } from "@/stores/session-store";
 import { resolveNavigateToAgent, type NavigateToAgentInput } from "./resolve";
+import { isAssistantChatInSession, openAssistantSidebar } from "@/assistant-sidebar/open"; // CUSTOM(assistant-sidebar)
 
 export type { NavigateToAgentInput } from "./resolve";
 
@@ -13,6 +14,10 @@ export function navigateToAgent(input: NavigateToAgentInput): string {
     const link = buildAgentDeepLink({ serverId: input.serverId, agentId: input.agentId });
     window.open(link);
     return link;
+  }
+  // CUSTOM(assistant-sidebar): the Projects Assistant chat only shows in its sidebar tab.
+  if (input.assistantSidebar || isAssistantChatInSession(input.serverId, input.agentId)) {
+    return openAssistantSidebar({ chat: { serverId: input.serverId, agentId: input.agentId } });
   }
   return resolveNavigateToAgent(input, {
     readAgentNavTarget: ({ serverId, agentId }) => {

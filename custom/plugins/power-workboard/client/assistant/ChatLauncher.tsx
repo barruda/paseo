@@ -1,10 +1,12 @@
 // CUSTOM(projects-assistant): the Assistant tab of the Power Workboard (CUSTOM(workboard-inner-pages);
 // it was a Desk chip before). It opens the real chat agent (a normal Paseo agent with board tools)
-// as a Desk tab; the Desk then leaves the board, and `onOpened` hands the board its previous tab.
+// in the Projects Assistant tab of the app's right sidebar (CUSTOM(assistant-sidebar)); the Desk
+// then leaves the board, and `onOpened` hands the board its previous tab.
 import { useEffect, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { assistantChatOpenRpc } from "../../shared/assistant-rpc";
+import { openAssistantChat } from "./nav";
 
 type Props = PluginSurfaceProps & { onOpened?: () => void };
 
@@ -30,7 +32,7 @@ export function ChatLauncher(props: Props) {
     try {
       const { agentId } = await call({ fresh });
       if (!navigation) throw new Error(text.unavailable);
-      navigation.openAgent({ agentId });
+      openAssistantChat(navigation, agentId);
       onOpened?.();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));

@@ -16,6 +16,7 @@ declare const window: {
   };
   addEventListener(name: string, callback: () => void): void;
   removeEventListener(name: string, callback: () => void): void;
+  getSelection?(): { removeAllRanges(): void } | null;
 };
 declare const document: {
   body: { style: { userSelect: string; cursor: string } };
@@ -98,6 +99,35 @@ export function dragCursor(resize = false): ViewStyle {
     : {};
 }
 
+// CUSTOM(board-drag-selection): a mousedown on a drag area starts a native text selection, and
+// react-native-web drops every mousemove once a selection terminates the gesture it is about to
+// hand to the handle (the column and resize handles only take over after 6 px). The drag then
+// never starts and the browser keeps extending the selection over the board. Cancelling the
+// mousedown default and clearing the ranges fixes that; focus is restored by hand because
+// preventDefault stops the browser from focusing the area.
+export function dragAreaProps(disabled = false) {
+  if (Platform.OS !== "web") return {};
+  return {
+    onMouseDown(event: {
+      button?: number;
+      preventDefault(): void;
+      currentTarget?: { focus?: () => void } | null;
+    }) {
+      if (disabled || (event.button !== undefined && event.button !== 0))
+        return;
+      event.preventDefault();
+      window.getSelection?.()?.removeAllRanges();
+      event.currentTarget?.focus?.();
+    },
+  };
+}
+
+export function noSelectText(): ViewStyle {
+  return Platform.OS === "web"
+    ? ({ userSelect: "none" } as unknown as ViewStyle)
+    : {};
+}
+
 export function keyboardProps(
   onKey: (key: string, event: KeyEvent) => boolean,
 ) {
@@ -123,6 +153,7 @@ export function duringDrag(cancel: () => void, resize = false): () => void {
   const { cursor, userSelect } = document.body.style;
   document.body.style.cursor = resize ? "col-resize" : "grabbing";
   document.body.style.userSelect = "none";
+  window.getSelection?.()?.removeAllRanges();
   const onKey = (event: KeyEvent) => {
     if (event.key === "Escape") {
       event.preventDefault();

@@ -4,7 +4,8 @@ import { isHttpUrl } from "@/utils/http-url";
 
 interface HostNavigationOwner {
   browserAvailable: boolean;
-  openAgent(input: { serverId: string; agentId: string }): void;
+  /** CUSTOM(assistant-sidebar): `assistantSidebar` marks the Projects Assistant chat. */
+  openAgent(input: { serverId: string; agentId: string; assistantSidebar?: boolean }): void;
   /** CUSTOM(turn-jump) */
   requestTurnJump?(input: { serverId: string; agentId: string; turnStartedAt: string }): void;
   openWorkspace(input: NavigateToWorkspaceInput): void;
@@ -21,13 +22,21 @@ export function createPluginHostNavigation(
   owner: HostNavigationOwner,
 ): NonNullable<PluginSurfaceProps["navigation"]> {
   return {
-    openAgent: ({ agentId, serverId: targetServerId, turnStartedAt }) => {
+    openAgent: (input) => {
+      const { agentId, serverId: targetServerId, turnStartedAt } = input;
       const destinationServerId = targetServerId ?? serverId;
       // CUSTOM(turn-jump): the request waits in a store until the agent's chat has its prompts.
       if (turnStartedAt) {
         owner.requestTurnJump?.({ serverId: destinationServerId, agentId, turnStartedAt });
       }
-      owner.openAgent({ serverId: destinationServerId, agentId });
+      // CUSTOM(assistant-sidebar): the Power Workboard plugin passes `assistantSidebar: true` for its
+      // chat, which may be too new for the session to know by its label. Not in the plugin types.
+      const { assistantSidebar } = input as { assistantSidebar?: boolean };
+      owner.openAgent({
+        serverId: destinationServerId,
+        agentId,
+        ...(assistantSidebar ? { assistantSidebar: true } : {}),
+      });
     },
     openWorkspace: ({ workspaceId, serverId: targetServerId }) =>
       owner.openWorkspace({ serverId: targetServerId ?? serverId, workspaceId }),
