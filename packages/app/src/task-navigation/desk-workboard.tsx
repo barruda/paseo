@@ -35,7 +35,7 @@ import {
   POWER_WORKBOARD_PLUGIN_ID,
   deskStatusPollMs,
   deskStatusSchema,
-  deskWorkboardStatusBucket,
+  deskWorkboardStatusMark,
   isDeskSurfaceOpen,
   type DeskSurfaceDefinition,
 } from "./desk-workboard-model";
@@ -130,8 +130,9 @@ export function DeskWorkboardChipIcon({
     refetchInterval: (query) => deskStatusPollMs(query.state.status === "error"),
     retry: false,
   });
+  const mark = deskWorkboardStatusMark(data);
   return (
-    <StatusIcon statusBucket={deskWorkboardStatusBucket(data)} size={14} backdrop="surface0">
+    <StatusIcon statusBucket={mark.bucket} showRunning={mark.running} size={14} backdrop="surface0">
       <ThemedWorkflow size={14} uniProps={active ? activeIconMapping : mutedIconMapping} />
     </StatusIcon>
   );

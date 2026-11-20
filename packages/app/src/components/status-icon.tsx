@@ -19,6 +19,12 @@ interface StatusIconProps {
   size?: number;
   statusDotBorderColor?: string;
   backdrop: SurfaceBackdrop;
+  /**
+   * CUSTOM(workboard-chip-status): keep the running ring while another bucket owns the corner.
+   * The Power Workboard chip shows the amber alert and the ring at once when a task runs and
+   * another one needs the user.
+   */
+  showRunning?: boolean;
 }
 const DEFAULT_STATUS_DOT_OFFSET = -2;
 const STATUS_ALERT_OFFSET = -3;
@@ -34,10 +40,12 @@ export function StatusIcon({
   size = 14,
   statusDotBorderColor,
   backdrop,
+  showRunning,
 }: StatusIconProps): ReactElement {
   const bucket = statusBucket;
   // CUSTOM(background-waiting): waiting is the same ring, violet and slower.
-  const isRunning = bucket === "running" || bucket === "waiting";
+  // CUSTOM(workboard-chip-status): `showRunning` lets a caller keep the ring under another mark.
+  const isRunning = showRunning ?? (bucket === "running" || bucket === "waiting");
   let statusDotColor: string | undefined;
   if (bucket === "failed") statusDotColor = styles.statusDotFailed.color;
   else if (bucket === "attention") statusDotColor = styles.statusDotAttention.color;

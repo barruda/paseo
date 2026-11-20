@@ -167,3 +167,24 @@ export function deskWorkboardStatusBucket(
   if (status.running > 0) return "running";
   return null;
 }
+
+export interface DeskWorkboardStatusMark {
+  /** The corner mark: the amber alert, the review dot, the running ring, or nothing. */
+  bucket: "needs_input" | "attention" | "running" | null;
+  /** The ring keeps turning while a task runs, even when an attention mark wins the corner. */
+  running: boolean;
+}
+
+/**
+ * CUSTOM(workboard-chip-status): the chip's colour and animation. The state that wants the user
+ * wins the corner as before, but a task still running keeps the blue ring around it, so the chip
+ * stays amber (or green) and animated at the same time.
+ */
+export function deskWorkboardStatusMark(
+  status: DeskWorkboardStatus | null | undefined,
+): DeskWorkboardStatusMark {
+  return {
+    bucket: deskWorkboardStatusBucket(status),
+    running: (status?.running ?? 0) > 0,
+  };
+}
