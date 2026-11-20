@@ -8473,3 +8473,35 @@ tests/drag-area.test.ts`. Needs only `paseo plugin reload power-workboard`. In t
   the resize strip: each drag starts, the old selection is gone and no new one appears. A plain
   click on the column title still opens its menu, a double-click on the resize strip still resets
   the width, and text outside the grips is still selectable.
+
+## assistant-dirty-checkout: the Projects Assistant stashes a dirty checkout instead of asking
+
+- **Added:** 2026-11-20 (based on `custom` at `1e3310424`)
+- **Commit:** `custom: Projects Assistant stashes a dirty checkout instead of asking`
+- **Why:** On 2026-11-20 the board gave up on five paseo merges after twelve retries each because
+  the base checkout had uncommitted edits from other sessions. The assistant escalated with
+  "commit or stash?". That decision is obvious, so it must take it every time instead of spending
+  the user's attention on it.
+- **What:** The "Fix small blockers yourself" paragraph of `ASSISTANT_ROLE` no longer treats a
+  dirty checkout as a retry the assistant only steps in for. When the board gives up on it, the
+  assistant: saves `git diff` and the untracked files in
+  `/home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/`; runs
+  `git stash push -u -m "assistant: <origin>, reaplicar após merges"` in that checkout; runs
+  `merge-now` with `wait=true` on each approved task that was waiting, one at a time, checking
+  `git log` for the commits on the base branch and Done on the cards; then `git stash pop` and
+  tells the user what merged, where the backup is and that the edits are back. It escalates only
+  when the pop conflicts, leaving the stash intact and naming it, and never discards the edits (no
+  `checkout --`, `reset --hard` or `stash drop` without a pop). The
+  "Ask before anything destructive or hard to undo" rule stays for everything else.
+- **Core files touched:** none. Plugin files: `server/assistant/chat.ts`,
+  `tests/profiles.test.ts`.
+- **Re-apply:** Plugin-only. In `ASSISTANT_ROLE`, find "When it gives up because the base checkout
+  has uncommitted edits" and keep the sequence above, with the backup path, the stash command with
+  `-u`, one merge-now at a time with `wait=true`, the git-log/Done check, the pop and the report,
+  escalation only on a conflicting pop, and the never-discard list. Keep "Ask before anything
+  destructive or hard to undo" for the rest.
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run
+tests/profiles.test.ts --bail=1`. Needs only `paseo plugin reload power-workboard`. A seed change
+  does not touch an existing `system-prompt.md`: the live assistant keeps the old text in
+  `~/.paseo/plugin-data/power-workboard/profiles/assistant/system-prompt.md` until the same
+  paragraph is copied there by hand.

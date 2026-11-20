@@ -103,7 +103,9 @@ describe("profile folders", () => {
       "Never edit a project's code, commit or merge outside board_task_action.",
     );
     expect(ASSISTANT_SEED_PROMPT).toContain("read-only reviewer subagent");
-    expect(ASSISTANT_SEED_PROMPT).toContain("merge-now with wait=true without asking");
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "merge-now with wait=true without asking",
+    );
     // CUSTOM(assistant-review-policy): the critical projects come from the settings, not the prompt.
     expect(ASSISTANT_SEED_PROMPT).not.toContain("DreamMMO");
     expect(ASSISTANT_SEED_PROMPT).toContain(
@@ -115,6 +117,23 @@ describe("profile folders", () => {
     );
     expect(ASSISTANT_SEED_PROMPT).toContain(
       "instead of ending with a question",
+    );
+  });
+
+  it("stashes a dirty base checkout, merges, and pops instead of asking", () => {
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "/home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/",
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      '`git stash push -u -m "assistant: <origin>, reaplicar após merges"`',
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain("merge-now with wait=true");
+    expect(ASSISTANT_SEED_PROMPT).toContain("`git stash pop`");
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "Never discard those edits: no `checkout --`, no `reset --hard`, no `stash drop` without a pop.",
+    );
+    expect(ASSISTANT_SEED_PROMPT).toContain(
+      "Ask before anything destructive or hard to undo",
     );
   });
 
