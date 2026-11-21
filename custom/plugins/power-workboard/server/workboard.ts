@@ -987,6 +987,24 @@ export class Workboard {
                     : (this.archiveDeferrals.get(task.id)?.reason ?? null);
       }
       for (const task of data.tasks) {
+        // CUSTOM(done-auto-archive): an archive left uncertain (daemon restart, timeout) whose
+        // workspace left the active list did finish natively; only a workspace still listed
+        // (archivingAt included) needs the user's confirmation.
+        if (
+          task.archived?.status === "uncertain" &&
+          task.workspaceId &&
+          !task.binding &&
+          !inventory.workspaces.some((w) => w.id === task.workspaceId)
+        ) {
+          task.archived = {
+            ...task.archived,
+            status: "archived",
+            detail:
+              "No longer in Paseo active workspaces after an uncertain native archive; archive time and cleanup unknown",
+          };
+          task.issue = null;
+          continue;
+        }
         if (
           task.workspaceId &&
           !inventory.workspaces.some((w) => w.id === task.workspaceId) &&
@@ -1090,19 +1108,39 @@ export class Workboard {
         seenWhileLive: live.has(agent.parentAgentId!),
       }));
     const current = new Set(readings.map(({ agent }) => agent.id));
+    // CUSTOM(done-auto-archive): a provider child lives inside its parent's turn, so while no agent
+    // of this workspace is busy, a parent whose children can't be listed (archived, or the
+    // listing failed) bounds them with its own activity time, which `upper` already holds.
+    const quiet = readings.every(
+      ({ agent }) =>
+        agent.activity !== "running" && agent.activity !== "waiting",
+    );
+    const parentBounds = (childId: string) => {
+      const parentId = childId.split("/provider/")[0];
+      const parent = readings.find(
+        ({ agent }) => agent.id === parentId && !agent.parentAgentId,
+      )?.agent;
+      return (
+        quiet &&
+        !!parent &&
+        (parent.childEnumeration === "refused" ||
+          parent.childEnumeration === "unavailable") &&
+        Number.isFinite(Date.parse(parent.updatedAt))
+      );
+    };
     let blocked = false;
     for (const entry of recorded) {
       if (current.has(entry.id)) continue;
       agentsEvidence.push(entry);
       // A vanished child cannot be re-read, so this workspace can no longer claim an exact
       // time. Its recorded observation still participates in both bounds; without one nothing
-      // bounds its conversation any more.
+      // bounds its conversation any more, unless its quiet parent does.
       reasons.add("child-enumeration-unavailable");
       const time = entry.lastObservedAt
         ? Date.parse(entry.lastObservedAt)
         : null;
       if (time === null || !Number.isFinite(time)) {
-        blocked = true;
+        if (!parentBounds(entry.id)) blocked = true;
         continue;
       }
       lower = Math.max(lower ?? time, time);

@@ -7309,7 +7309,13 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   a detached HEAD, busy agents, open terminals and running scripts still defer the archive. The
   delay setting now accepts 0 (archive as soon as the task is Done or Canceled) and defaults to 0,
   and automatic archive is on by default. Schema version 9 migrates existing data to automatic
-  archive on with a 0-day delay, once.
+  archive on with a 0-day delay, once. Two cases used to leave a card in Done for good. An
+  archive left `uncertain` (the daemon restarted mid-archive, or the call timed out) resolves to
+  archived once its workspace is no longer in Paseo's active list; while the workspace is still
+  listed it keeps asking for "Confirm archived". And a recorded provider child that vanished
+  without an observed time no longer blocks the archive gate when its parent can't list children
+  (archived parent, or the listing failed) and no agent of the workspace is running or waiting:
+  the parent's activity time bounds it, since a child lives inside its parent's turn.
 - **Core files touched:** none (plugin only).
 - **Re-apply:** re-apply the plugin changes in `custom/plugins/power-workboard`: `checkGitSafety`
   takes the policy base, `PaseoHost.safety` passes it, `scan()` supplies it from the task's
@@ -7318,6 +7324,9 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `cd custom/plugins/power-workboard && npm run check`. Merge a task into the base
   branch from its Done card: its workspace is archived within a scan. A Done task with an unmerged
   commit stays, with the issue "Its branch has work that is not merged into the base branch yet".
+  The tests "resolves an uncertain archive whose workspace is gone…" and "gates on the parent when
+  its vanished children can't be listed…" in `tests/power-workboard.test.ts` cover the two stuck
+  cases.
 
 ## auto-archive-worktrees: a worktree whose chats are all archived and whose branch is merged is archived
 
@@ -9585,3 +9594,45 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
   the chat, and no Desk opens; click Files, then the button again: the same tab comes back (one
   tab). **Open in main area** in that tab selects the Project Manager Desk (the button lights up).
   Clicking the status bar topic or the Workboard's Assistant tab also opens the sidebar tab.
+
+## assistant-draft-carry: the Project Manager's composer text survives a chat restart
+
+- **Added:** 2026-11-21 (on `custom` at `d11a17ec4`)
+- **Commit:** `custom: carry the Project Manager composer draft to the restarted chat`
+- **Why:** When the Project Manager chat restarted on the context limit, the text in its
+  composer, typed or dictated, was gone in the new chat. `CUSTOM(agent-successor)` already
+  carried drafts, but only for an archive the app sees in place (an agent whose `archivedAt` turns
+  on). A daemon-side archive reaches the app as a `remove` from the active agent list, and
+  `removeFromDirectory` (`runtime/directory-sync/internal/agent-store.ts`) deletes the agent's
+  draft, so that carry never ran for the plugin's compaction or Restart chat.
+- **What:**
+  - `assistant-sidebar/draft-carry.ts` subscribes to the session store (from
+    `useAssistantTabSweep`, before its own subscriptions). When a live chat labeled
+    `pwb/assistant-chat` leaves the agents map or is archived, its draft (text and attachments)
+    moves to the chat that takes over: its `paseo.replaces-agent` successor, else the newest live
+    assistant chat on that server. The listener fires inside `setAgents`, before
+    `removeFromDirectory` deletes the draft and before React mounts the new chat's composer, so
+    the composer hydrates with the text, and the cursor ends after it. Dictated text is already in
+    the draft (`CUSTOM(dictation-live-text)` writes partials there), so it moves too.
+  - New chat composer already has text: both are kept, its text first, a blank line, then the
+    carried text; attachments are joined without duplicates. Nothing is discarded.
+  - Empty composer: nothing changes. Other agents' drafts are untouched.
+  - No chat has taken over yet when the old one leaves: a copy waits 60 s for one. If the old
+    chat comes back instead (a transient removal), its draft is put back.
+  - Dictation: the old composer unmounts on the swap, which already stopped the microphone. It now
+    also cancels the daemon's dictation stream (`hooks/use-dictation.ts` unmount cleanup), which
+    used to stay open. This applies to every composer that unmounts mid-dictation. The text
+    dictated so far moves with the draft; dictation does not continue in the new chat.
+- **Core files touched:** `packages/app/src/hooks/use-dictation.ts` (one line in the unmount
+  cleanup, `CUSTOM(assistant-draft-carry)`). The rest is in `packages/app/src/assistant-sidebar/`:
+  `draft-carry.ts` and `draft-carry.test.ts` (new), one line in `use-assistant-tab-sweep.ts`.
+- **Re-apply:** keep `startAssistantDraftCarry()` subscribed to the session store before anything
+  that swaps the chat, and check that `removeFromDirectory` still updates `agents` before it
+  deletes the draft (the test drives the real `AgentStoreProjection.removeFromDirectory`). In
+  `useDictation`'s unmount cleanup, call `senderRef.current?.cancel()` before `dispose()`.
+- **Verify:** `(cd packages/app && npx vitest run src/assistant-sidebar/draft-carry.test.ts
+--bail=1)` (in the update script). App build only, no daemon restart. Set "Compact at (tokens)"
+  low (say 20000), send the Project Manager a message, and once it answers type a few words in
+  its composer without sending (or dictate a sentence and leave the microphone on). After the
+  compaction the new chat shows your words with the cursor at the end (if you stayed on the Desk,
+  after **Ir para a nova sessão**), and the microphone is off. Put the limit back afterwards.
