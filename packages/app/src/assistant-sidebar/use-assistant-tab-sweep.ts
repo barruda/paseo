@@ -5,6 +5,7 @@ import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { useDeskWorkboardStore } from "@/task-navigation/desk-workboard-store";
 import { ASSISTANT_DESK_ID, deskTabs, useDesksStore } from "@/task-navigation/desks-store";
+import { startAssistantDraftCarry } from "./draft-carry"; // CUSTOM(assistant-draft-carry)
 import type { AssistantAgentFacts } from "./model";
 import { useTaskNavigationStore } from "@/task-navigation/store";
 import {
@@ -156,6 +157,9 @@ export function useAssistantTabSweep(): void {
     };
 
     const unsubscribers = [
+      // CUSTOM(assistant-draft-carry): subscribed first, so the old chat's draft has moved before
+      // the sweep and the Desk refresh below show the new chat.
+      startAssistantDraftCarry(),
       // Only tab changes matter, not focus, widths or tab state.
       useDesksStore.subscribe((state) => {
         if (state.desks === lastDesks) return;
