@@ -420,6 +420,8 @@ if $VERIFY; then
   # A Desk tab closes when its agent gets archived while the app watches.
   (cd packages/app && npx vitest run src/task-navigation/desk-archive-close.test.ts src/task-navigation/idle-open-tab-labels.test.ts src/task-navigation/agent-successor.test.ts --bail=1)
   (cd packages/app && npx vitest run src/assistant-sidebar/model.test.ts src/assistant-sidebar/desk.test.ts src/assistant-sidebar/mirror.test.ts src/assistant-sidebar/sweep.test.ts src/assistant-sidebar/launch.test.ts src/assistant-sidebar/open.test.ts src/assistant-sidebar/panel.test.tsx src/assistant-sidebar/use-assistant-tab-sweep.test.ts src/assistant-sidebar/use-assistant-tab-follow.test.ts src/assistant-sidebar/session-agent-maps.test.ts src/assistant-sidebar/draft-carry.test.ts src/utils/navigate-to-agent/index.test.ts src/client-slash-commands/execute.test.ts src/workspace-tabs/agent-visibility.test.ts src/plugins/host-navigation.test.ts src/workspace-tabs/launcher/internal/catalog.test.ts --bail=1)
+  # Shift+Tab in Tasks mode steps through the Workboard chip, the Desks and the Project Manager.
+  (cd packages/app && npx vitest run src/task-navigation/header-cycle.test.ts --bail=1)
   # Right sidebar lock across views (explorer-lock); the Project Manager button is in open.test.ts.
   (cd packages/app && npx vitest run src/explorer-lock/model.test.ts --bail=1)
   # Idle runtime cleanup period (host setting, applied live).

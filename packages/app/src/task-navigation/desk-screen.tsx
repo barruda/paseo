@@ -134,6 +134,9 @@ import {
 import { PressHighlight } from "@/components/ui/press-highlight";
 import { openAssistantSidebar } from "@/assistant-sidebar/open";
 import { useHasAssistantChat } from "@/assistant-sidebar/use-has-assistant-chat";
+// CUSTOM(header-cycle)
+import { blurAssistantPanel, isAssistantPanelFocused } from "@/assistant-sidebar/focus";
+import { headerCycleItems, nextHeaderCycleItem } from "./header-cycle";
 // CUSTOM(desk-workboard)
 import {
   DeskWorkboardChipIcon,
@@ -158,11 +161,39 @@ function chipDesks(desks: Desk[]): Desk[] {
   return desks.filter((entry) => entry.id !== ASSISTANT_DESK_ID);
 }
 
-/** CUSTOM(pm-sidebar): Next Desk cycles through the chips, so it skips the Project Manager Desk. */
-function nextChipDeskId(desks: Desk[], currentId: string): string {
-  const cycle = chipDesks(desks);
-  const index = cycle.findIndex((d) => d.id === currentId);
-  return cycle[(index + 1) % cycle.length]?.id ?? currentId;
+/**
+ * CUSTOM(header-cycle): Shift+Tab steps through the header in its order: the open surface chips
+ * (Workboard), the Desk chips, then the Project Manager button, as clicks on them would. The
+ * Project Manager Desk has no chip (CUSTOM(pm-sidebar)), so it is only the button's place.
+ */
+function stepHeaderCycle(input: { surfaceIds: string[]; projectManager: boolean }): void {
+  const store = useDesksStore.getState();
+  const surfaces = useDeskWorkboardStore.getState();
+  const target = nextHeaderCycleItem(
+    headerCycleItems({
+      surfaceIds: input.surfaceIds,
+      deskIds: chipDesks(store.desks).map((entry) => entry.id),
+      projectManager: input.projectManager,
+    }),
+    {
+      selectedSurfaceId: surfaces.selected,
+      projectManagerCurrent: isAssistantPanelFocused() || store.activeDeskId === ASSISTANT_DESK_ID,
+      activeDeskId: store.activeDeskId,
+    },
+  );
+  if (!target) return;
+  if (target.kind === "project-manager") {
+    void openAssistantSidebar({ chat: null });
+    return;
+  }
+  // A focus left in the Project Manager tab would keep the cycle standing on it.
+  blurAssistantPanel();
+  if (target.kind === "surface") {
+    surfaces.select(target.id);
+    return;
+  }
+  surfaces.deselect();
+  store.selectDesk(target.id);
 }
 const extraMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundExtraMuted,
@@ -329,7 +360,13 @@ export function DeskScreen() {
         return true;
       }
       if (action.id === "task.desk.next") {
-        store.selectDesk(nextChipDeskId(store.desks, current.id)); // CUSTOM(pm-sidebar)
+        // CUSTOM(header-cycle)
+        stepHeaderCycle({
+          surfaceIds: surfaceEntries
+            .filter((entry) => entry.open)
+            .map((entry) => entry.definition.id),
+          projectManager: showProjectManager,
+        });
         return true;
       }
       if (action.id === "workspace.pane.split.right" || action.id === "workspace.pane.split.down") {

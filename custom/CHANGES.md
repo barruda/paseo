@@ -9672,3 +9672,38 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
   its composer without sending (or dictate a sentence and leave the microphone on). After the
   compaction the new chat shows your words with the cursor at the end (if you stayed on the Desk,
   after **Ir para a nova sessão**), and the microphone is off. Put the limit back afterwards.
+
+## header-cycle: Shift+Tab in Tasks mode steps through the Workboard, the Desks and the Project Manager
+
+- **Added:** 2026-11-21
+- **Commit:** `custom: Shift+Tab in Tasks mode cycles the Workboard, the Desks and the Project Manager`
+- **Why:** Shift+Tab (Next Desk) only went through the Desk chips. The user wants it to reach every
+  item of the Desk header, so the board and the Project Manager are one key away too.
+- **What:**
+  - Shift+Tab (`task.desk.next`) goes through the header in its order: the open surface chips
+    (Workboard), the Desk chips, the Project Manager button, then back to the start
+    (`task-navigation/header-cycle.ts`, `stepHeaderCycle` in `desk-screen.tsx`). Each step does
+    what a click does: the Workboard step selects the chip; a Desk step deselects it and selects
+    the Desk; the Project Manager step calls `openAssistantSidebar` (one tab, no Desk, opens a
+    closed sidebar, focuses the composer on web).
+  - Where the cycle stands: the selected surface chip, else the Project Manager when the keyboard
+    focus is in its sidebar tab (`assistant-sidebar/focus.ts`, the panel's roots carry
+    `testID="projects-assistant-panel"`) or its Desk is active, else the active Desk. Any step
+    away from the Project Manager blurs its tab, or the next Shift+Tab would stand on it again.
+    Native has no DOM focus to read, so there the step after the Project Manager is the next one
+    after the active Desk.
+  - No Workboard chip (plugin not loaded, chip closed) or no Project Manager button: those items
+    are skipped. The binding and its precedence are unchanged. The help label reads "Next Desk /
+    Workboard / Project Manager"; the header shortcut strip keeps the short "Next Desk".
+- **Core files touched** (`CUSTOM(header-cycle)`): `task-navigation/desk-screen.tsx` (the
+  handler, replaces `nextChipDeskId`), `assistant-sidebar/panel.tsx` (testIDs),
+  `keyboard/keyboard-shortcuts.ts` (help label). New: `task-navigation/header-cycle.ts` and its
+  test, `assistant-sidebar/focus.ts`.
+- **Re-apply:** In the Desk screen's `task.desk.next` handler call `stepHeaderCycle` with the open
+  surface ids and whether the Project Manager button shows. Keep the testID on every root the
+  Project Manager panel returns.
+- **Verify:** `(cd packages/app && npx vitest run src/task-navigation/header-cycle.test.ts
+--bail=1)` (in the update script). App build only, no daemon restart. In Tasks mode with two Desks
+  and the Workboard chip: on the first Desk press Shift+Tab: the second Desk; again: the right
+  sidebar opens on the Project Manager tab with the cursor in its composer (no Desk opens); again:
+  the Workboard chip; again: the first Desk. Close the Workboard chip: the cycle skips it.
