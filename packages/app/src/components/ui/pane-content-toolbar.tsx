@@ -12,6 +12,7 @@ import { DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Shortcut } from "@/components/ui/shortcut";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import { isWeb } from "@/constants/platform";
 import type { ShortcutKey } from "@/utils/format-shortcut";
 import {
   iconButtonChromeGlyphSize,
@@ -60,6 +61,9 @@ interface ToolbarButtonCommonProps extends Omit<
   /** What the tooltip says when it is not the label, e.g. a status. Defaults to the label. */
   tooltip?: ReactNode;
   selected?: boolean;
+  // CUSTOM(explorer-toggle-tab-row): a disclosure button (our tab-row Explorer toggle) reports
+  // whether what it controls is open.
+  expanded?: boolean;
   compact?: boolean;
   /** A circular highlight, for buttons inside a pill-shaped container. */
   round?: boolean;
@@ -83,6 +87,7 @@ export function ToolbarButton({
   label,
   tooltip: tooltipBody,
   selected = false,
+  expanded,
   compact = false,
   round = false,
   shortcut,
@@ -103,9 +108,15 @@ export function ToolbarButton({
     style,
   });
   const accessibilityState = useMemo(
-    () => ({ disabled: Boolean(disabled), selected }),
-    [disabled, selected],
+    () => ({ disabled: Boolean(disabled), selected, expanded }),
+    [disabled, selected, expanded],
   );
+  // CUSTOM(explorer-toggle-tab-row): web drops accessibilityState.expanded, so set aria-expanded
+  // directly, as HeaderToggleButton does.
+  const ariaExpandedProps =
+    isWeb && typeof expanded === "boolean"
+      ? ({ "aria-expanded": expanded } as Record<string, boolean>)
+      : null;
   const tooltip = (
     <TooltipContent side={tooltipSide} align="center" offset={8}>
       <View style={styles.tooltipRow}>
@@ -140,6 +151,7 @@ export function ToolbarButton({
     <Tooltip delayDuration={300} enabledOnDesktop enabledOnMobile={false}>
       <TooltipTrigger
         {...props}
+        {...ariaExpandedProps}
         disabled={disabled}
         testID={testID}
         accessibilityRole="button"

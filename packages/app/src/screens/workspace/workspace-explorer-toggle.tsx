@@ -198,6 +198,7 @@ export function WorkspaceTabRowExplorerToggle({
       shortcut={[tooltipKeys]}
       tooltipSide="left"
       testID="workspace-explorer-toggle"
+      expanded={Boolean(accessibilityState.expanded)}
       onPress={onPress}
     >
       <Icon size={21} uniProps={mutedIconColorMapping} />
