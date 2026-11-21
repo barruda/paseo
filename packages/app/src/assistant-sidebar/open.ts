@@ -18,7 +18,11 @@ import { useTaskNavigationStore } from "@/task-navigation/store";
 import { deskExplorerTarget, ensureExplorerPane } from "@/task-navigation/desk-explorer-target"; // CUSTOM(pm-sidebar)
 import { explorerLockEnabled } from "@/explorer-lock/settings"; // CUSTOM(pm-sidebar)
 import { useExplorerLockStore } from "@/explorer-lock/store"; // CUSTOM(pm-sidebar)
-import { findPaneById, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store"; // CUSTOM(pm-sidebar)
+import {
+  findPaneById,
+  selectExplorerSidebarPaneId,
+  useWorkspaceLayoutStore,
+} from "@/stores/workspace-layout-store"; // CUSTOM(pm-sidebar)
 import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model"; // CUSTOM(pm-sidebar)
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import {
@@ -26,6 +30,7 @@ import {
   isLiveAssistantChatAgent,
   planAssistantDeskRefresh,
   planAssistantSidebarOpen,
+  planAssistantTabCleanup,
   resolveAssistantChat,
   type AssistantChatRef,
 } from "./model";
@@ -112,8 +117,6 @@ function assistantSidebarDock(): {
   tabId: string | null;
   locked: boolean;
 } | null {
-  if (isAssistantDeskInView()) return null;
-  if (useWorkspaceLayoutStore.getState().layoutMode === "compact") return null;
   const target = deskExplorerTarget(useDesksStore.getState(), getLastWorkspaceSelection());
   const workspaceKey = target.scope ? buildWorkspaceTabPersistenceKey(target.scope) : null;
   const locked = explorerLockEnabled("tasks");
@@ -121,7 +124,11 @@ function assistantSidebarDock(): {
   return { workspaceKey, tabId: target.tabId, locked };
 }
 
-/** CUSTOM(pm-sidebar): focuses the Explorer pane's Project Manager tab, or opens one there. */
+/**
+ * CUSTOM(pm-sidebar): focuses the Explorer pane's Project Manager tab, or opens one there, then
+ * closes every other Project Manager tab (other workspaces' Explorers, duplicates), so there is
+ * one, in the Explorer on screen.
+ */
 function revealAssistantTab(workspaceKey: string, paneId: string | null): void {
   const layouts = useWorkspaceLayoutStore.getState();
   const layout = layouts.layoutByWorkspace[workspaceKey];
@@ -130,23 +137,74 @@ function revealAssistantTab(workspaceKey: string, paneId: string | null): void {
     ? layouts.getWorkspaceTabs(workspaceKey).filter((tab) => pane.tabIds.includes(tab.tabId))
     : [];
   const plan = planAssistantSidebarOpen(tabs);
+  let keepTabId: string | null;
   if (plan.kind === "focus" && paneId) {
     layouts.selectTabInPane(workspaceKey, paneId, plan.tabId);
-    return;
+    keepTabId = plan.tabId;
+  } else {
+    keepTabId = layouts.openTab({
+      workspaceKey,
+      target: { kind: "projects_assistant" },
+      intent: "reveal",
+      placement: paneId ? { mode: "pane", paneId } : undefined,
+    });
   }
-  layouts.openTab({
-    workspaceKey,
-    target: { kind: "projects_assistant" },
-    intent: "reveal",
-    placement: paneId ? { mode: "pane", paneId } : undefined,
-  });
+  if (keepTabId) closeOtherAssistantTabs({ workspaceKey, tabId: keepTabId });
+}
+
+/** CUSTOM(pm-sidebar): closes every Project Manager tab but `keep`. */
+function closeOtherAssistantTabs(keep: { workspaceKey: string; tabId: string }): void {
+  const layouts = useWorkspaceLayoutStore.getState();
+  const tabs = Object.keys(layouts.layoutByWorkspace).flatMap((workspaceKey) =>
+    layouts.getWorkspaceTabs(workspaceKey).map((tab) => ({
+      workspaceKey,
+      tabId: tab.tabId,
+      target: tab.target,
+    })),
+  );
+  for (const tab of planAssistantTabCleanup({ tabs, keep })) {
+    layouts.closeTab(tab.workspaceKey, tab.tabId);
+  }
+}
+
+/** CUSTOM(pm-sidebar): whether the workspace's Explorer has the Project Manager tab in front. */
+export function explorerShowsAssistant(workspaceKey: string): boolean {
+  const layouts = useWorkspaceLayoutStore.getState();
+  const layout = layouts.layoutByWorkspace[workspaceKey];
+  if (!layout) return false;
+  const pane = findPaneById(layout.root, selectExplorerSidebarPaneId(layouts, workspaceKey));
+  const focusedTabId = pane?.focusedTabId;
+  if (!focusedTabId) return false;
+  return layouts
+    .getWorkspaceTabs(workspaceKey)
+    .some((tab) => tab.tabId === focusedTabId && tab.target.kind === "projects_assistant");
+}
+
+/**
+ * CUSTOM(pm-sidebar): moves the Project Manager tab into this workspace's Explorer (the locked
+ * right sidebar moved to another workspace while it showed the Project Manager).
+ */
+export function followAssistantTab(workspaceKey: string): void {
+  revealAssistantTab(workspaceKey, ensureExplorerPane(workspaceKey));
+}
+
+/**
+ * CUSTOM(pm-sidebar): closes the Project Manager Desk. The right sidebar is the chat's place, so
+ * going back to it closes the Desk: a Desk left hidden would keep a second copy of the chat.
+ */
+export function closeAssistantDesk(): void {
+  const desks = useDesksStore.getState();
+  if (desks.desks.some((desk) => desk.id === ASSISTANT_DESK_ID)) {
+    desks.deleteDesk(ASSISTANT_DESK_ID);
+  }
 }
 
 /**
  * CUSTOM(pm-sidebar): the Project Manager's default place. Opens the right sidebar (the Explorer of
  * the Desk's current workspace) and focuses its Project Manager tab, or opens one. `chat` becomes
- * the remembered chat; null keeps it. Falls back to the Desk (openAssistantDesk) when the Desk is
- * already showing the chat, on compact layouts, or when there is no workspace to dock beside.
+ * the remembered chat and the chat the sidebar shows, even before the session lists it; null
+ * keeps the remembered one. The Project Manager Desk is closed (in view or hidden). Falls back to
+ * the Desk (openAssistantDesk) on compact layouts, or when there is no workspace to dock beside.
  * Returns the route shown, or null when Tasks mode is off.
  */
 export function openAssistantSidebar(input: {
@@ -157,10 +215,18 @@ export function openAssistantSidebar(input: {
     if (input.chat) useAssistantSidebarStore.getState().setChat(input.chat);
     return null;
   }
+  if (useWorkspaceLayoutStore.getState().layoutMode === "compact") return openAssistantDesk(input);
+  closeAssistantDesk();
   const dock = assistantSidebarDock();
   if (!dock) return openAssistantDesk(input);
   const chat = input.chat ?? currentAssistantChat(null);
-  if (chat) useAssistantSidebarStore.getState().setChat(chat);
+  const store = useAssistantSidebarStore.getState();
+  if (chat) store.setChat(chat);
+  // A chat created a moment ago: the sidebar shows it until the session lists it.
+  if (input.chat) {
+    const listed = Boolean(sessionAgent(input.chat.serverId, input.chat.agentId));
+    store.setRequested(listed ? null : input.chat);
+  }
   // The board chip covers the Desk and its Explorer.
   useDeskWorkboardStore.getState().deselect();
   const paneId = ensureExplorerPane(dock.workspaceKey);

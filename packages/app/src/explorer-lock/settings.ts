@@ -1,7 +1,7 @@
 // CUSTOM(explorer-lock): reads "Keep the right sidebar open or closed" (Settings > Bruno's
 // Customizations > Tabs). On by default in Tasks mode, off in the workspace view.
 import { queryClient } from "@/data/query-client";
-import { useSettings } from "@/hooks/use-settings";
+import { useAppSettings } from "@/hooks/use-settings";
 import {
   APP_SETTINGS_QUERY_KEY,
   DEFAULT_CLIENT_SETTINGS,
@@ -15,6 +15,11 @@ export function explorerLockEnabled(mode: ExplorerLockMode): boolean {
   return isExplorerLockOn(settings ?? DEFAULT_CLIENT_SETTINGS, mode);
 }
 
-export function useExplorerLockEnabled(mode: ExplorerLockMode): boolean {
-  return useSettings((settings) => isExplorerLockOn(settings, mode));
+/** The switch, and whether the settings have loaded (before that it holds the default). */
+export function useExplorerLockSetting(mode: ExplorerLockMode): {
+  lockOn: boolean;
+  settingsLoaded: boolean;
+} {
+  const { settings, isLoading } = useAppSettings();
+  return { lockOn: isExplorerLockOn(settings, mode), settingsLoaded: !isLoading };
 }

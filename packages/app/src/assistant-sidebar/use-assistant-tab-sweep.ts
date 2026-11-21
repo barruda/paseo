@@ -1,5 +1,5 @@
 // CUSTOM(assistant-desk): mounted once for the whole app; see sweep.ts. Also finishes the open of a
-// chat the session did not list yet when it was opened (`pending`).
+// chat the session did not list yet when it was opened (`pending`, and the sidebar's `requested`).
 import { useEffect } from "react";
 import { useSessionStore } from "@/stores/session-store";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
@@ -35,6 +35,16 @@ function finishPending(): void {
   showAssistantChatFor(pending, store.chat);
   // Selecting the Desk is only wanted if the user is still on it; otherwise stay where they are.
   if (previousDeskId !== ASSISTANT_DESK_ID) useDesksStore.getState().selectDesk(previousDeskId);
+}
+
+/**
+ * CUSTOM(pm-sidebar): once the session lists the chat the sidebar was asked for, the ordinary
+ * resolution (remembered chat, successor, newest live) takes over again.
+ */
+function finishRequested(): void {
+  const store = useAssistantSidebarStore.getState();
+  const { requested } = store;
+  if (requested && sessionAgent(requested.serverId, requested.agentId)) store.setRequested(null);
 }
 
 function collectTabs(): { deskTabs: SweepDeskTab[]; layoutTabs: SweepLayoutTab[] } {
@@ -87,6 +97,7 @@ export function useAssistantTabSweep(): void {
       if (busy) return;
       busy = true;
       try {
+        finishRequested();
         sweepTabs();
         refreshDesk();
       } finally {
