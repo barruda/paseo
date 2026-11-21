@@ -488,6 +488,24 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     },
     [cache, callMutation, props.host.id, t, toast],
   );
+  // CUSTOM(packages): a PM suggestion's "Select these tickets" opens the board with them
+  // selected and the package menu ready; it creates nothing. Above the loading returns below
+  // (a hook after them changes the hook count once the board arrives), and it runs again when
+  // the board first loads.
+  const requestedSelect = (params as { select?: unknown } | undefined)?.select;
+  const requestedPackageMenu = (params as { packageMenu?: unknown } | undefined)
+    ?.packageMenu;
+  const boardLoaded = !!serverBoard;
+  useEffect(() => {
+    if (!serverBoard) return;
+    if (typeof requestedSelect !== "string" || !requestedSelect) return;
+    const known = new Set(serverBoard.cards.map((card) => card.id));
+    const ids = requestedSelect.split(",").filter((id) => known.has(id));
+    if (!ids.length) return;
+    setSelection({ ids: new Set(ids), anchor: ids[ids.length - 1]! });
+    if (requestedPackageMenu === "1") setPackageMenu({ taskIds: ids });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestKey, requestedSelect, requestedPackageMenu, boardLoaded]);
   if (boardQuery.isPending)
     return <Centered theme={props.theme} text={t.loading} />;
   if (!serverBoard)
@@ -539,20 +557,6 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const selectOnLongPress = (card: Card) => {
     setSelection(longPressCard(selection, card.id));
   };
-  // CUSTOM(packages): a PM suggestion's "Select these tickets" opens the board with them
-  // selected and the package menu ready; it creates nothing.
-  const requestedSelect = (params as { select?: unknown } | undefined)?.select;
-  const requestedPackageMenu = (params as { packageMenu?: unknown } | undefined)
-    ?.packageMenu;
-  useEffect(() => {
-    if (typeof requestedSelect !== "string" || !requestedSelect) return;
-    const known = new Set(board.cards.map((card) => card.id));
-    const ids = requestedSelect.split(",").filter((id) => known.has(id));
-    if (!ids.length) return;
-    setSelection({ ids: new Set(ids), anchor: ids[ids.length - 1]! });
-    if (requestedPackageMenu === "1") setPackageMenu({ taskIds: ids });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [requestKey, requestedSelect, requestedPackageMenu]);
   const rememberPackageUndo = (
     taskIds: readonly string[],
     packageId: string,
