@@ -139,6 +139,7 @@ import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { upgradeEffortBeforeSend } from "@/jev-router/upgrade"; // CUSTOM(jev-router)
 import { ComposerKeyboardScopeProvider, useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { markComposerFocused, releaseComposerFocus } from "@/composer/focused-composer"; // CUSTOM(model-picker-focus)
+import { useComposerEscRouting } from "@/composer/esc-focus-target"; // CUSTOM(chat-esc-focus)
 import { useAppSettings } from "@/hooks/use-settings";
 import { RenderProfile } from "@/utils/render-profiler";
 import { AfterPaintPublication } from "@/composer/after-paint-publication";
@@ -646,7 +647,7 @@ function ComposerKeyboardRegistration({
   isMessageInputFocused: boolean;
   handlerId: string;
 }) {
-  const { isActiveComposer } = useComposerKeyboardScope();
+  const { isActiveComposer, composerId } = useComposerKeyboardScope();
   const handleKeyboardAction = useCallback(
     (action: KeyboardActionDefinition): boolean =>
       dispatchComposerKeyboardAction({
@@ -682,8 +683,6 @@ function ComposerKeyboardRegistration({
     handlerId,
     actions: [
       "message-input.voice-exit",
-      "agent.interrupt",
-      "message-input.focus",
       "message-input.send",
       "message-input.dictation-toggle",
       "message-input.dictation-cancel",
@@ -695,6 +694,15 @@ function ComposerKeyboardRegistration({
     enabled: isActiveComposer,
     priority: resolveKeyboardPriority(isMessageInputFocused),
     isActive: () => isActiveComposer,
+    handle: handleKeyboardAction,
+  });
+  // CUSTOM(chat-esc-focus): Focus message input and Interrupt agent pick between the central
+  // composer and a side panel's (the Project Manager tab) by role, not registration order.
+  useComposerEscRouting({
+    handlerId,
+    composerId,
+    enabled: isActiveComposer,
+    isMessageInputFocused,
     handle: handleKeyboardAction,
   });
   return null;

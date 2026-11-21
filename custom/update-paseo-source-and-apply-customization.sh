@@ -443,7 +443,7 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/agent/tts-manager.test.ts src/server/agent/pcm-chunker.test.ts src/server/agent/mcp-server.test.ts --bail=1)
   # Claude TTS chunks play gapless on web/Electron.
   (cd packages/app && npx vitest run src/audio/pcm-schedule.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts src/composer/esc-focus-target.test.tsx --bail=1)
   # Big idle Claude sessions get a keep-alive ping before their prompt cache expires.
   (cd packages/app && npx vitest run src/cache-warmup/model.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent/agent-manager.test.ts -t "keep-alive ping" --bail=1)

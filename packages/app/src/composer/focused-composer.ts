@@ -29,6 +29,14 @@ function composerIdOfActiveElement(): string | null {
 }
 
 /**
+ * CUSTOM(chat-esc-focus): the composer whose input (or toolbar chip) holds the caret right now. On
+ * native there is no active element to read, so the composer focused last stands in.
+ */
+export function composerIdHoldingCaret(): string | null {
+  return isWeb ? composerIdOfActiveElement() : lastFocusedComposerId;
+}
+
+/**
  * The composer the keyboard acts on: on web the one holding the focused element (its text input
  * or one of its toolbar chips), otherwise the composer whose text input was focused last.
  */

@@ -26,6 +26,7 @@ import { assistantAgentMaps } from "./session-agent-maps";
 import { useAssistantSidebarStore } from "./store";
 import { assistantDeskStrings } from "./strings";
 import { ASSISTANT_PANEL_TEST_ID } from "./focus"; // CUSTOM(header-cycle)
+import { SecondaryComposerProvider } from "@/composer/esc-focus-target"; // CUSTOM(chat-esc-focus)
 
 const ThemedBot = withUnistyles(Bot);
 
@@ -197,7 +198,10 @@ function AssistantSidebarPanel() {
       {openInMain}
       <View style={styles.chat}>
         <PaneProvider key={chatKey} value={value}>
-          <AgentConversationPanel />
+          {/* CUSTOM(chat-esc-focus): Esc and the chat's Enter/scroll return to the central composer. */}
+          <SecondaryComposerProvider>
+            <AgentConversationPanel />
+          </SecondaryComposerProvider>
         </PaneProvider>
       </View>
     </View>

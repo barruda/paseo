@@ -26,3 +26,11 @@ export function useKeyboardActionDispatcher(): KeyboardActionDispatcher {
   }
   return dispatcher;
 }
+
+/**
+ * CUSTOM(chat-esc-focus): the dispatcher when one is mounted. The chat timeline uses it to hand
+ * focus to the central composer and must keep rendering where no provider exists.
+ */
+export function useOptionalKeyboardActionDispatcher(): KeyboardActionDispatcher | null {
+  return useContext(KeyboardActionDispatcherContext);
+}

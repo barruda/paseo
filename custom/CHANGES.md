@@ -431,6 +431,8 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     message input root as `dataSet`; `composer/agent-controls/index.tsx`, `use-model-picker-source.ts`,
     `jev-router/use-locked-cycle-keys.ts` and `composer/draft/workspace-tab.tsx` (which passes
     `draft-tab:<tabId>`) gate their handlers with `isActive: () => isComposerKeyboardTarget(id)`.
+    chat-esc-focus reads the same ids through `composerIdHoldingCaret()` to route Esc and Esc Esc
+    (see that entry).
 - **Re-apply:** Add a message-input keyboard kind that dispatches `message-input.model-picker`,
   bind Ctrl+M to it in the message-input focus scope, and set the mode-cycle binding's combo to
   `""` (keep its id so saved overrides survive). Copy each model's thinking options onto the
@@ -1783,9 +1785,26 @@ isBrowserInBottomPanel(input.browserId)`.
   or nowhere, and scrolling the chat back to the bottom does the same unless chat text is
   selected. With several chats on screen (Desk panes), only the chat last clicked or scrolled
   reacts when nothing is focused.
+  Since 2026-11-21, Focus message input lands in the central composer (the focused pane's agent
+  tab or draft, a Desk pane, an embedded agent screen), never in a side panel's: the Project
+  Manager tab and any agent dragged into Explorer. The Explorer dock is always "pane focused", so
+  its composer competed with the central one. With the caret in it, its focus handler had the
+  higher priority (200 vs 100) and Esc left the caret there; with nothing focused, the newest
+  registration won. Composers under `SecondaryComposerProvider` now take the focus action at
+  priority 50, so they get it only when no primary composer is active (a side panel alone on
+  screen still gets the caret). The same goes for Esc after selecting text, Enter and scrolling to
+  the bottom in a side panel's chat: they dispatch Focus message input instead of focusing their
+  own composer. Esc Esc interrupts the agent whose composer held the caret when the sequence
+  started: the first Esc records that composer when it moves the caret away, and for the chord
+  window (`CHORD_TIMEOUT_MS`) the side panel's interrupt handler runs first (priority 300). A side
+  panel only interrupts from its own caret or that origin, so Esc Esc in the central chat no
+  longer falls through to a running Project Manager when the central agent is idle. Primary
+  composers keep their old priorities, so embedded composers behave as before.
 - **Files:** `packages/app/src/chat-esc-focus/`: `model.ts` (pure Esc rules), `registry.ts`
   (composers register their focus function per server and agent), `surface.web.tsx` (window
   keydown listener, bubble phase), `surface.tsx` (native passthrough), `types.ts`. No conflict risk.
+  `packages/app/src/composer/esc-focus-target.tsx` (`SecondaryComposerProvider`, the focus and
+  interrupt priorities, the Esc origin, `useComposerEscRouting`) and its test.
 - **Core files touched:** `agent-stream/view.tsx` renders `ChatEscFocusSurface` in place of
   `AssistantSelectionCopySurface` (it wraps that surface, so JSX depth stays the same);
   `components/ui/hover-card.tsx` (`keyPressed`) closes a card without focus inside on Esc and
@@ -1794,7 +1813,12 @@ isBrowserInBottomPanel(input.browserId)`.
   `hooks/use-keyboard-shortcuts.ts` resets a pending chord on `pointerdown`;
   `composer/index.tsx` calls `useRegisterChatComposerFocus(serverId, agentId,
 focusMessageInputForKeyboardAction)`; `agent-stream/view.tsx` passes its `isNearBottom` state
-  to the surface.
+  to the surface. Side panels: `composer/index.tsx` (`ComposerKeyboardRegistration`) drops
+  `agent.interrupt` and `message-input.focus` from its handler and calls `useComposerEscRouting`;
+  `composer/focused-composer.ts` exports `composerIdHoldingCaret`;
+  `keyboard/keyboard-action-dispatcher-context.tsx` adds `useOptionalKeyboardActionDispatcher`;
+  `screens/workspace/explorer-sidebar.tsx` wraps the dock's `WorkspacePanelHost` in
+  `SecondaryComposerProvider` (as does the custom `assistant-sidebar/panel.tsx`).
 - **Re-apply:** Wrap the chat timeline's selection-copy surface in a DOM element the Esc listener
   can test the selection against, and keep `enabled={!readOnly}`. In the composer, register the
   same focus function the `message-input.focus` keyboard action uses, keyed by server and agent.
@@ -1802,15 +1826,23 @@ focusMessageInputForKeyboardAction)`; `agent-stream/view.tsx` passes its `isNear
   card closes it and returns `false`. In `resolveInitialChordStep`, when a single combo matches
   and every advancing chord candidate repeats one combo, return the single match with the chord
   armed and `preventDefault: false`. In `useKeyboardShortcuts`, a capture `pointerdown` listener
-  resets a pending chord.
+  resets a pending chord. For side panels, register the composer's `message-input.focus` and
+  `agent.interrupt` in their own handlers: a composer under the Explorer dock takes focus at a
+  priority below every primary composer, and interrupt at one above them, active only while its
+  input holds the caret or it was the caret holder the last focus action moved away from (within
+  the chord timeout). Its chat's Esc/Enter/scroll dispatch `message-input.focus`.
 - **Verify:** `(cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts
-src/keyboard/keyboard-shortcuts.test.ts)` and `(cd packages/app && npx vitest run --project
+src/composer/esc-focus-target.test.tsx src/keyboard/keyboard-shortcuts.test.ts)` and `(cd packages/app && npx vitest run --project
 browser src/components/ui/hover-card.browser.test.tsx)` (the update script runs them). With
   `Escape` bound to Focus message input, click a sidebar row and press Esc once: the caret is in
   the composer; click the chat and press Esc again within a second: the caret returns and the
   agent keeps running. In the app, select a word in an agent reply, press Esc: the selection clears
   and the caret is in that agent's composer. Click the chat background and press Enter: the
   caret is back in the composer. Scroll up, then scroll back down: the caret returns.
+  With the Project Manager open in the Explorer sidebar, click its composer and press Esc: the
+  caret is in the central tab's composer. Click the sidebar's chat text, select a word, press Esc:
+  same. With the Project Manager running, type in its composer and press Esc Esc: the Project
+  Manager stops and the central agent keeps running.
 
 ## chat-code-run: Run button on suggested shell commands
 

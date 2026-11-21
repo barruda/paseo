@@ -16,6 +16,7 @@ import type { WorkspaceTabDescriptor } from "@/screens/workspace/workspace-tabs-
 import type { SplitPane } from "@/stores/workspace-layout-store";
 import type { WorkspaceTab } from "@/workspace-tabs/model";
 import { WindowChromeRegion, WindowChromeSafeArea } from "@/utils/desktop-window";
+import { SecondaryComposerProvider } from "@/composer/esc-focus-target"; // CUSTOM(chat-esc-focus)
 
 interface ExplorerSidebarDockProps extends Pick<
   WorkspaceDesktopTabsRowProps,
@@ -163,16 +164,19 @@ export function ExplorerSidebarDock({
             <View pointerEvents="none" style={styles.tabRailDivider} />
           </WindowChromeSafeArea>
           <View style={styles.content}>
-            <WorkspacePanelHost
-              paneId={pane.id}
-              tabs={tabs}
-              activeTabId={activeTabId}
-              normalizedServerId={normalizedServerId}
-              normalizedWorkspaceId={normalizedWorkspaceId}
-              isWorkspaceFocused={isWorkspaceFocused}
-              isPaneFocused
-              buildPaneContentModel={buildPaneContentModel}
-            />
+            {/* CUSTOM(chat-esc-focus): an agent in Explorer never takes Esc from the central composer. */}
+            <SecondaryComposerProvider>
+              <WorkspacePanelHost
+                paneId={pane.id}
+                tabs={tabs}
+                activeTabId={activeTabId}
+                normalizedServerId={normalizedServerId}
+                normalizedWorkspaceId={normalizedWorkspaceId}
+                isWorkspaceFocused={isWorkspaceFocused}
+                isPaneFocused
+                buildPaneContentModel={buildPaneContentModel}
+              />
+            </SecondaryComposerProvider>
           </View>
         </View>
       </WindowChromeRegion>

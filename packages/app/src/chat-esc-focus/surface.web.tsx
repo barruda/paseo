@@ -1,4 +1,4 @@
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, type CSSProperties } from "react";
 import { AssistantSelectionCopySurface } from "@/assistant-selection-copy/surface";
 // CUSTOM(chat-comments)
 import { ChatCommentSurface } from "@/chat-comments/surface";
@@ -11,6 +11,8 @@ import {
   type ChatEscapeFocusKind,
 } from "./model";
 import { focusChatComposer } from "./registry";
+import { useIsSecondaryComposer } from "@/composer/esc-focus-target";
+import { useOptionalKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import type { ChatEscFocusSurfaceProps } from "./types";
 
 // CUSTOM(chat-esc-focus): wraps the chat's selection-copy surface. Esc with chat text selected
@@ -64,6 +66,16 @@ export function ChatEscFocusSurface({
 }: ChatEscFocusSurfaceProps) {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const wasNearBottomRef = useRef(isNearBottom);
+  // A side panel's chat (the Project Manager tab) sends the caret to the central composer, like
+  // Focus message input does; the action falls back to this chat's composer when it is alone.
+  const secondary = useIsSecondaryComposer();
+  const dispatcher = useOptionalKeyboardActionDispatcher();
+  const focusComposer = useCallback((): boolean => {
+    if (secondary && dispatcher) {
+      return dispatcher.dispatch({ id: "message-input.focus", scope: "message-input" });
+    }
+    return focusChatComposer(serverId, agentId);
+  }, [agentId, dispatcher, secondary, serverId]);
 
   useEffect(() => {
     const root = rootRef.current;
@@ -87,15 +99,15 @@ export function ChatEscFocusSurface({
     wasNearBottomRef.current = isNearBottom;
     const root = rootRef.current;
     if (!enabled || !root) return;
-    const focusComposer = shouldReachBottomFocusComposer({
+    const shouldFocus = shouldReachBottomFocusComposer({
       wasNearBottom,
       isNearBottom,
       hasTimelineSelection: hasSelectionInside(root, window.getSelection()),
       focus: classifyFocus(root),
       isLastInteracted: isLastInteracted(root),
     });
-    if (focusComposer) focusChatComposer(serverId, agentId);
-  }, [agentId, enabled, isNearBottom, serverId]);
+    if (shouldFocus) focusComposer();
+  }, [enabled, focusComposer, isNearBottom]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -108,7 +120,7 @@ export function ChatEscFocusSurface({
         const active = document.activeElement;
         if (focus === "timeline" && active?.closest("button, a, [role='button']")) return;
         if (!shouldEnterFocusComposer({ focus, isLastInteracted: isLastInteracted(root) })) return;
-        if (focusChatComposer(serverId, agentId)) event.preventDefault();
+        if (focusComposer()) event.preventDefault();
         return;
       }
       if (!isPlainEscape(event)) return;
@@ -119,11 +131,11 @@ export function ChatEscFocusSurface({
       });
       if (!returnToComposer) return;
       selection?.removeAllRanges();
-      focusChatComposer(serverId, agentId);
+      focusComposer();
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [agentId, enabled, serverId]);
+  }, [enabled, focusComposer]);
 
   return (
     <div ref={rootRef} style={DISPLAY_CONTENTS}>
