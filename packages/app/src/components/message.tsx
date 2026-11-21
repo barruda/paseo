@@ -628,24 +628,36 @@ const assistantTurnFooterStylesheet = StyleSheet.create((theme) => ({
     marginTop: 0,
     marginLeft: -theme.spacing[1],
   },
+  // CUSTOM(turn-footer-wrap): v0.17.0 gave this button `flex: 1, minWidth: 0` so the labels
+  // wrap at the chat width. With the token-ledger usage row after it (turn-usage-inline), the
+  // row kept its full width and squeezed the button to zero: "Worked for 25s" painted one
+  // letter per line. The button now takes its content's width and never shrinks; the usage
+  // row (`trailing`) takes what is left and wraps instead.
   labelButton: {
-    flex: 1,
+    flexShrink: 0,
     minHeight: 24,
-    flexDirection: "row",
-    alignItems: "center",
-    minWidth: 0,
+    flexDirection: "column",
+    justifyContent: "center",
+    alignItems: "flex-start",
   },
   label: {
-    width: "100%",
-    flexShrink: 0,
     color: theme.colors.foregroundMuted,
     fontSize: STREAM_METADATA_FONT_SIZE,
   },
-  overlappingLabel: {
-    marginLeft: "-100%",
-  },
+  // CUSTOM(turn-footer-wrap): both labels stack in the button's column, so its width is the
+  // wider of the two and the hover swap moves nothing. The hidden one keeps its width at no
+  // height.
   hiddenLabel: {
+    height: 0,
+    overflow: "hidden",
     opacity: 0,
+  },
+  // CUSTOM(turn-footer-wrap): the room left after the controls and the timing label.
+  trailing: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 24,
+    justifyContent: "center",
   },
 }));
 
@@ -734,11 +746,11 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
           accessibilityRole={canSwap ? "button" : undefined}
           accessibilityLabel={canSwap ? `${durationLabel}, ended ${timestampLabel}` : primaryLabel}
         >
-          {/* Both labels participate in layout at the available width. Overlapping their
-              columns reserves the taller wrapped height without measuring text or characters. */}
+          {/* CUSTOM(turn-footer-wrap): one line each, stacked; see `labelButton`. */}
           <Text
             testID={!showTimestamp ? "turn-footer-timing-label" : undefined}
             aria-hidden={showTimestamp}
+            numberOfLines={1}
             style={[
               assistantTurnFooterStylesheet.label,
               showTimestamp && assistantTurnFooterStylesheet.hiddenLabel,
@@ -750,9 +762,9 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
             <Text
               testID={showTimestamp ? "turn-footer-timing-label" : undefined}
               aria-hidden={!showTimestamp}
+              numberOfLines={1}
               style={[
                 assistantTurnFooterStylesheet.label,
-                assistantTurnFooterStylesheet.overlappingLabel,
                 !showTimestamp && assistantTurnFooterStylesheet.hiddenLabel,
               ]}
             >
@@ -761,7 +773,7 @@ export const AssistantTurnFooter = memo(function AssistantTurnFooter({
           ) : null}
         </Pressable>
       ) : null}
-      {trailing}
+      {trailing ? <View style={assistantTurnFooterStylesheet.trailing}>{trailing}</View> : null}
     </View>
   );
 });

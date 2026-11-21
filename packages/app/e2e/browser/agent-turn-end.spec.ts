@@ -469,8 +469,9 @@ test("footer timing fits the chat column and swapping labels keeps controls in p
   agent,
 }) => {
   await openAgentRoute(page, agent);
-  await expectFooterWithinWidth(page, 140);
-  await expectFooterWithinWidth(page, 150);
+  // CUSTOM(turn-footer-wrap): the timing label stays on one line, so the narrowest footer must
+  // fit the controls and "Worked for 26s" side by side (upstream wrapped it inside 140px).
+  await expectFooterWithinWidth(page, 220);
   await expectFooterWithinWidth(page, 300);
   await expectFooterWithinWidth(page, 880);
 });

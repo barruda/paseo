@@ -1,6 +1,7 @@
 import type { PluginTimelineItemProps } from '@getpaseo/plugin/client';
 import { Text, View } from 'react-native';
 import { formatTokensPerSecond } from '../shared/rate.ts';
+import { joinWrappableSegments } from '../shared/segments.ts';
 import type { UsageTimeline } from '../shared/timeline.ts';
 import { fmtCost, fmtDuration, tokensLine, statusColor } from './ui.tsx';
 
@@ -16,12 +17,15 @@ export function UsageTimelineRow({ item, theme }: PluginTimelineItemProps<UsageT
     formatTokensPerSecond(row.output, row.durationMs),
     cost ? `${row.costSource !== 'reported' ? '≈' : ''}${cost}` : null,
     row.durationMs === null ? null : fmtDuration(row.durationMs),
-  ].filter(Boolean).join(' · ');
+  ].filter((segment): segment is string => Boolean(segment));
+  // CUSTOM(turn-footer-wrap): the turn footer gives this row only the width left after its
+  // controls and "Worked for", so the line wraps between figures instead of overflowing.
+  const line = joinWrappableSegments(details);
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 4 }}>
       <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: statusColor(row.status, theme) }} />
-      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1, fontVariant: ['tabular-nums'] }}>
-        {details}
+      <Text style={{ color: theme.colors.foregroundMuted, fontSize: 11, flexShrink: 1, minWidth: 0, fontVariant: ['tabular-nums'] }}>
+        {line}
       </Text>
     </View>
   );

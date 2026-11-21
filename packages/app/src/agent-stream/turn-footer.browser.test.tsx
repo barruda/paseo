@@ -1,5 +1,6 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
+import { Text } from "react-native";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { i18n } from "@/i18n/i18next";
 import type { TurnTiming } from "@/timeline/turn-time";
@@ -40,19 +41,35 @@ const reply: StreamItem = {
   timestamp: FRIDAY_NIGHT,
 };
 
-function renderCompletedFooter(timing: TurnTiming): void {
+function renderCompletedFooter(timing: TurnTiming, withUsage = false): void {
   act(() =>
     root.render(
       <CompletedTurnFooterRow
         strategy={createNativeStreamStrategy()}
-        items={[reply]}
+        items={withUsage ? [reply, usage] : [reply]}
         timing={timing}
         startIndex={0}
         supportsTimelineCursor={false}
+        renderTurnUsage={withUsage ? renderUsage : undefined}
       />,
     ),
   );
 }
+
+// CUSTOM(turn-footer-wrap): the token-ledger usage row the footer draws after its timing.
+const usage: StreamItem = {
+  kind: "plugin",
+  id: "usage",
+  timestamp: FRIDAY_NIGHT,
+  pluginId: "token-ledger",
+  pluginItemId: "usage",
+  itemKind: "turn-usage",
+  version: 1,
+  data: {},
+};
+const USAGE_TEXT =
+  "claude-opus-5-5 / high · in 16 · cache 517.1k · write 4.9k · out 2.0k · 79 tok/s · $0.32 · 45s";
+const renderUsage = () => <Text>{USAGE_TEXT}</Text>;
 
 /** How many painted lines each footer label takes. */
 function paintedLinesByLabel(element: HTMLElement): Record<string, number> {
@@ -92,3 +109,29 @@ it.each([
     "Friday 11:11 PM": 1,
   });
 });
+
+// CUSTOM(turn-footer-wrap): a long usage row used to squeeze "Worked for" to one letter per line.
+it.each([240, 360, 880])(
+  "keeps the timing on one line and wraps the usage row in the room left (%ipx)",
+  (width) => {
+    host.style.width = `${width}px`;
+    renderCompletedFooter({ completedAt: FRIDAY_NIGHT, durationMs: 25_000 }, true);
+
+    const lines = paintedLinesByLabel(host);
+    expect(lines["Worked for 25s"]).toBe(1);
+    expect(lines["Friday 11:11 PM"]).toBe(1);
+    const usageNode = Array.from(host.querySelectorAll("div")).find(
+      (element) => element.textContent === USAGE_TEXT && element.children.length === 0,
+    )!;
+    const usageBounds = usageNode.getBoundingClientRect();
+    const hostBounds = host.getBoundingClientRect();
+    const timingBounds = host
+      .querySelector('[data-testid="turn-footer-timing-label"]')!
+      .getBoundingClientRect();
+    expect(usageBounds.left).toBeGreaterThanOrEqual(timingBounds.right);
+    expect(usageBounds.right).toBeLessThanOrEqual(hostBounds.right + 0.5);
+    if (width < 880) {
+      expect(lines[USAGE_TEXT]).toBeGreaterThan(1);
+    }
+  },
+);

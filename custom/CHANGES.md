@@ -10043,3 +10043,31 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
   list, focus the tab in the layout store without switching the mobile panel.
 - **Verify:** desktop `e2e/task-navigation.spec.ts` "Phone sidebar lists tasks, opens one in its
   workspace and switches to Workspaces" (in the update script).
+
+## turn-footer-wrap: "Worked for" stays on one line and the usage row wraps beside it
+
+- **Added:** 2026-11-21 (based on upstream 0.17.0, `ed786e799`)
+- **Commit:** `custom: the turn footer keeps "Worked for" on one line and wraps the usage row`
+- **Why:** Upstream v0.17.0 (#9007) gave the footer's timing button `flex: 1, minWidth: 0` so its
+  labels wrap at the chat width. With the token-ledger usage row drawn after it
+  (turn-usage-inline), the row kept its full one-line width and squeezed the button to zero:
+  "Worked for 25s" painted one letter per line and the figures ran past the edge.
+- **What:** The timing button takes its content's width and never shrinks; its two labels (duration
+  and end time) stack in a column, one line each, so the hover swap keeps the width. The usage row
+  sits in a `flex: 1, minWidth: 0` box after it and wraps. The token-ledger row glues each figure's
+  words with no-break spaces (`shared/segments.ts`), so a line breaks after a `·` or after the
+  model's `/`, never between "cache" and its number.
+- **Core files touched** (marked `CUSTOM(turn-footer-wrap)`):
+  - `packages/app/src/components/message.tsx`: `assistantTurnFooterStylesheet` (`labelButton`,
+    `label`, `hiddenLabel`, `trailing`) and the label markup in `AssistantTurnFooter`.
+  - `packages/app/e2e/browser/agent-turn-end.spec.ts`: the narrowest footer width goes from 140px
+    to 220px, since one line of controls plus "Worked for 26s" needs about 200px.
+- **Plugin files:** `custom/plugins/token-ledger/client/timeline.tsx`, `shared/segments.ts` (+ test).
+- **Re-apply:** In `AssistantTurnFooter`, keep the timing button at its content width
+  (`flexShrink: 0`, no `flex: 1`), render each label with `numberOfLines={1}`, and reserve the
+  hidden label's width with `height: 0` instead of overlapping columns. Wrap `trailing` in a view
+  with `flex: 1, minWidth: 0`.
+- **Verify:** `(cd packages/app && npx vitest run src/agent-stream/turn-footer.browser.test.tsx)`
+  (in the update script) and the token-ledger `npm test`. In the app, finish a turn and narrow the
+  window or open the PM sidebar: "Worked for" stays on one line next to the copy and fork icons, and
+  the model and token figures wrap below each other to its right.

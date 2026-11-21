@@ -335,6 +335,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/task-navigation/provider-subagent-rows.test.ts --bail=1)
   # Token ledger fork: MLflow trace links, turn jumps, Claude cache writes.
   (cd custom/plugins/token-ledger && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npm test)
+  # turn-footer-wrap: "Worked for" stays on one line; the usage row wraps in the room left.
+  (cd packages/app && npx vitest run src/agent-stream/turn-footer.browser.test.tsx --bail=1)
   # Chat Polish fork: a command that only exited nonzero is not counted as failed (command-outcome).
   (cd custom/plugins/paseo-chat-polish && { [ -d node_modules ] || npm ci --no-audit --no-fund; } && npx tsc --noEmit && npm test)
   (cd packages/app && npx vitest run src/turn-jump/model.test.ts src/plugins/host-navigation.test.ts --bail=1)
