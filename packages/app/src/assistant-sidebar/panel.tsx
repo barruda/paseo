@@ -4,11 +4,14 @@
 // same Explorer tab. "Open in main area" opens the assistant Desk; nothing else does. While that
 // Desk is on screen this tab only says so, with "Show here" to come back (which closes the Desk),
 // so the chat never has two composers on screen. See custom/CHANGES.md.
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo } from "react";
+// CUSTOM(pm-sidebar-decisions): plugin views (Power Workboard's open decisions) get a header
+// button each; one opens over the chat, which stays mounted underneath so its draft, scroll and
+// focus come back with the header's back arrow.
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
-import { Bot, SquareArrowOutUpRight } from "lucide-react-native";
+import { ArrowLeft, Bot, ListChecks, SquareArrowOutUpRight } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
 import { useRetainedPanelActive } from "@/components/retained-panel";
 import { AgentConversationPanel } from "@/panels/agent-panel";
@@ -25,7 +28,14 @@ import { openAssistantDesk, openAssistantSidebar } from "./open";
 import { assistantAgentMaps } from "./session-agent-maps";
 import { useAssistantSidebarStore } from "./store";
 import { assistantDeskStrings } from "./strings";
-import { ASSISTANT_PANEL_TEST_ID } from "./focus"; // CUSTOM(header-cycle)
+import { ASSISTANT_PANEL_TEST_ID, parkAssistantPanelFocus } from "./focus"; // CUSTOM(header-cycle)
+// CUSTOM(pm-sidebar-decisions)
+import {
+  AssistantSidebarViewBadge,
+  AssistantSidebarViewBody,
+  useAssistantSidebarViews,
+  type AssistantSidebarView,
+} from "./plugin-views";
 import { SecondaryComposerProvider } from "@/composer/esc-focus-target"; // CUSTOM(chat-esc-focus)
 
 const ThemedBot = withUnistyles(Bot);
@@ -114,6 +124,52 @@ function parseChatKey(key: string): AssistantChatRef | null {
   return { serverId: key.slice(0, split), agentId: key.slice(split + 1) };
 }
 
+/**
+ * CUSTOM(pm-sidebar-decisions): which plugin view covers the chat, if any. A view whose plugin
+ * goes away falls back to the chat. Opening one parks the chat's focus; closing gives it back.
+ */
+function useOpenSidebarView(views: readonly AssistantSidebarView[]) {
+  const [openKey, setOpenKey] = useState<string | null>(null);
+  const restoreFocus = useRef<(() => void) | null>(null);
+  const open = views.find((entry) => entry.key === openKey) ?? null;
+  const show = useCallback((key: string) => {
+    restoreFocus.current ??= parkAssistantPanelFocus();
+    setOpenKey(key);
+  }, []);
+  const close = useCallback(() => {
+    setOpenKey(null);
+    const restore = restoreFocus.current;
+    restoreFocus.current = null;
+    // After the overlay is gone, so the focus lands on a visible element.
+    if (restore) requestAnimationFrame(restore);
+  }, []);
+  return { open, show, close };
+}
+
+/** CUSTOM(pm-sidebar-decisions): a plugin view's header button, its badge after the title. */
+function SidebarViewButton({
+  entry,
+  onShow,
+}: {
+  entry: AssistantSidebarView;
+  onShow: (key: string) => void;
+}) {
+  const show = useCallback(() => onShow(entry.key), [entry.key, onShow]);
+  const badge = useMemo(() => <AssistantSidebarViewBadge entry={entry} />, [entry]);
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      leftIcon={ListChecks}
+      onPress={show}
+      trailing={badge}
+      testID={`projects-assistant-view-${entry.key}`}
+    >
+      {entry.title}
+    </Button>
+  );
+}
+
 function AssistantSidebarPanel() {
   const pane = usePaneContext();
   const chatKey = useMirrorChatKey();
@@ -127,6 +183,8 @@ function AssistantSidebarPanel() {
   const showHere = useCallback(() => void openAssistantSidebar({ chat: chat ?? null }), [chat]);
   const deskInView = useAssistantDeskInView();
   const panelActive = useRetainedPanelActive();
+  const views = useAssistantSidebarViews(chat?.serverId ?? null);
+  const { open: openView, show: showView, close: closeView } = useOpenSidebarView(views);
   // While the Desk is on screen it shows (and syncs) the chat; this tab shows only a note.
   useViewedSidebarChat(chat, panelActive && !deskInView);
 
@@ -152,6 +210,24 @@ function AssistantSidebarPanel() {
 
   const openInMain = (
     <View style={styles.bar}>
+      {openView ? (
+        <Button
+          variant="ghost"
+          size="sm"
+          leftIcon={ArrowLeft}
+          onPress={closeView}
+          accessibilityLabel={strings.backToChat}
+          testID="projects-assistant-back-to-chat"
+        >
+          {openView.title}
+        </Button>
+      ) : null}
+      <View style={styles.barSpacer} />
+      {views
+        .filter((entry) => entry !== openView)
+        .map((entry) => (
+          <SidebarViewButton key={entry.key} entry={entry} onShow={showView} />
+        ))}
       <Button
         variant="ghost"
         size="sm"
@@ -197,14 +273,26 @@ function AssistantSidebarPanel() {
     <View style={styles.root} testID={ASSISTANT_PANEL_TEST_ID}>
       {openInMain}
       <View style={styles.chat}>
-        <PaneProvider key={chatKey} value={value}>
-          {/* CUSTOM(chat-esc-focus): Esc and the chat's Enter/scroll return to the central composer;
-          Esc Esc never stops the Project Manager. CUSTOM(pm-focus): its composer takes the caret
-          only when the user opens it (openAssistantSidebar), not on every remount. */}
-          <SecondaryComposerProvider interruptsOnEsc={false} autoFocus={false}>
-            <AgentConversationPanel />
-          </SecondaryComposerProvider>
-        </PaneProvider>
+        <View
+          style={styles.chat}
+          importantForAccessibility={openView ? "no-hide-descendants" : "auto"}
+          accessibilityElementsHidden={openView !== null}
+        >
+          <PaneProvider key={chatKey} value={value}>
+            {/* CUSTOM(chat-esc-focus): Esc and the chat's Enter/scroll return to the central composer;
+            Esc Esc never stops the Project Manager. CUSTOM(pm-focus): its composer takes the caret
+            only when the user opens it (openAssistantSidebar), not on every remount. */}
+            <SecondaryComposerProvider interruptsOnEsc={false} autoFocus={false}>
+              <AgentConversationPanel />
+            </SecondaryComposerProvider>
+          </PaneProvider>
+        </View>
+        {/* CUSTOM(pm-sidebar-decisions): over the chat, not instead of it, so the chat keeps its state. */}
+        {openView ? (
+          <View style={styles.viewOverlay} testID="projects-assistant-view">
+            <AssistantSidebarViewBody key={openView.key} entry={openView} onClose={closeView} />
+          </View>
+        ) : null}
       </View>
     </View>
   );
@@ -222,7 +310,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   bar: {
     flexDirection: "row",
-    justifyContent: "flex-end",
+    alignItems: "center",
     paddingHorizontal: theme.spacing[2],
     paddingVertical: theme.spacing[1],
     borderBottomWidth: 1,
@@ -232,6 +320,13 @@ const styles = StyleSheet.create((theme) => ({
   chat: {
     flex: 1,
     minHeight: 0,
+  },
+  barSpacer: {
+    flex: 1,
+  },
+  viewOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: theme.colors.surface0,
   },
   empty: {
     flex: 1,

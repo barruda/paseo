@@ -22,6 +22,9 @@ export type {
   PluginStatusBarSide,
   PluginStatusBarItemProps,
   PluginStatusBarItemContribution,
+  // CUSTOM(pm-sidebar-decisions)
+  PluginAssistantSidebarViewProps,
+  PluginAssistantSidebarViewContribution,
   PluginWorkspaceRowBadgeItemProps,
   PluginWorkspaceRowBadgeItemContribution,
   PluginIcon,

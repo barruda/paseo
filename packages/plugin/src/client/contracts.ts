@@ -166,6 +166,23 @@ export interface PluginStatusBarItemContribution<Text extends PluginText = strin
   Component: ComponentType<PluginStatusBarItemProps>;
 }
 
+// CUSTOM(pm-sidebar-decisions): a view the Project Manager tab of the right sidebar swaps in for
+// its chat. The tab's header gets a button with the view's title (and its Badge), and a back
+// arrow while the view is open; the chat stays mounted underneath.
+export interface PluginAssistantSidebarViewProps extends PluginHostProps {
+  /** Returns the tab to the chat. */
+  close(): void;
+}
+
+export interface PluginAssistantSidebarViewContribution<Text extends PluginText = string> {
+  id: string;
+  /** The header button's label and the view's accessibility label. */
+  title: Text;
+  Component: ComponentType<PluginAssistantSidebarViewProps>;
+  /** Drawn after the title in the header button, such as a count. Renders nothing to hide it. */
+  Badge?: ComponentType<PluginHostProps>;
+}
+
 export interface PluginSidebarViewProps extends Pick<PluginHostProps, "theme" | "layout"> {
   active: { workspace: WorkspaceRef | null; agent: AgentRef | null };
   navigation: {
@@ -294,6 +311,10 @@ export interface PluginClientContext extends PluginCommandCapabilities, PluginCl
   addSidebarFooterItem(contribution: PluginSidebarItemContribution<PluginText>): PluginCleanup;
   // CUSTOM(status-bar): adds an item to the window's status bar.
   addStatusBarItem(contribution: PluginStatusBarItemContribution<PluginText>): PluginCleanup;
+  // CUSTOM(pm-sidebar-decisions): adds a view to the right sidebar's Project Manager tab.
+  addAssistantSidebarView(
+    contribution: PluginAssistantSidebarViewContribution<PluginText>,
+  ): PluginCleanup;
   addAgentPanel(contribution: PluginAgentPanelContribution<PluginText>): PluginCleanup;
   addWorkspaceRowBadgeItem(
     contribution: PluginWorkspaceRowBadgeItemContribution<PluginText>,

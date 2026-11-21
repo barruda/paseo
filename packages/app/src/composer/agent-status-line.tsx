@@ -131,15 +131,16 @@ export function StatusDetails({
 }
 
 const styles = StyleSheet.create((theme) => ({
-  // Sits in the composer's bottom padding: the negative margin takes 10 px of it, so the box
-  // moves up only a little.
+  // Sits right under the composer box. Upstream v0.17 (e9f897a66) moved the composer's 16 px
+  // bottom padding from Composer's inputAreaContainer to the dock slot (composer/dock), which
+  // now wraps this line too. That padding is below the line, so the line brings its own gap
+  // above and needs no padding of its own below.
   row: {
     width: "100%",
     maxWidth: theme.contentMaxWidth,
     alignSelf: "center",
-    marginTop: -10,
+    marginTop: theme.spacing[1.5],
     paddingHorizontal: theme.spacing[4] + theme.spacing[2],
-    paddingBottom: theme.spacing[2],
     // CUSTOM(bottom-panel-toggle-inline): the bottom panel toggle sits left of the summary.
     flexDirection: "row",
     alignItems: "center",
