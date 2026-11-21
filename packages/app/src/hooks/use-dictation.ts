@@ -474,6 +474,10 @@ export function useDictation(options: UseDictationOptions): UseDictationResult {
       attemptGuard.cancel();
       stopDurationTracking();
       void audioStop.current().catch(() => undefined);
+      // CUSTOM(assistant-draft-carry): a composer that unmounts mid-dictation (the Project
+      // Manager chat swapped to its successor) also ends the daemon's stream instead of leaving
+      // it open. No-op when no stream is active.
+      senderRef.current?.cancel();
       senderRef.current?.dispose();
     };
   }, [stopDurationTracking]);
