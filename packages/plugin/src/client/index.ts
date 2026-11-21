@@ -20,6 +20,9 @@ export type {
   PluginStatusBarSide,
   PluginStatusBarItemProps,
   PluginStatusBarItemContribution,
+  // CUSTOM(pm-sidebar-decisions)
+  PluginAssistantSidebarViewProps,
+  PluginAssistantSidebarViewContribution,
   PluginIcon,
   PluginPanelLocation,
   PluginOpenPanelOptions,

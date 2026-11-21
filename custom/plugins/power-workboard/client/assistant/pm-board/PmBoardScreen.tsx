@@ -12,17 +12,13 @@ import {
 import { useMutation } from "@tanstack/react-query";
 import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { ScrollView, TextInput } from "@getpaseo/plugin/client/react-native";
-import {
-  assistantPmDecideRpc,
-  assistantPmReopenRpc,
-} from "../../../shared/assistant-rpc";
+import { assistantPmReopenRpc } from "../../../shared/assistant-rpc";
 import {
   PM_CARD_STATUSES,
   pmCardLinkTargets,
   pmCardPackageIds,
   pmPackagesOnBoard,
   type PmCard,
-  type PmCardKind,
   type PmCardStatus,
 } from "../../../shared/pm-board";
 import { usePaseoLocale } from "../../paseo-language";
@@ -35,6 +31,7 @@ import {
 } from "../nav";
 import { pmAge, pmBoardStrings, type PmBoardStrings } from "./pm-board-strings";
 import { OptionTiles } from "../card-parts"; // CUSTOM(pm-cards-look)
+import { kindColor, usePmDecide } from "./pm-card-shared"; // CUSTOM(pm-sidebar-decisions)
 import { usePmCards, useRefreshPmCards } from "./pm-cards-query";
 
 const COMPACT_WIDTH = 900;
@@ -53,7 +50,6 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
   const { width } = useWindowDimensions();
   const compact = props.layout.compact || width < COMPACT_WIDTH;
   const hostId = props.host.id;
-  const callDecide = useRpc(assistantPmDecideRpc);
   const callReopen = useRpc(assistantPmReopenRpc);
   const request = usePmCardRequest();
   const [pending, setPending] = useState<string | null>(null);
@@ -65,12 +61,7 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
   // CUSTOM(pm-chat-sync): the chat's reply cards read the same query, so they follow this page.
   const cards = usePmCards(hostId);
   const refresh = useRefreshPmCards(hostId);
-  const decide = useMutation({
-    mutationFn: (input: {
-      cardId: string;
-      optionId?: string | null;
-      answer?: string | null;
-    }) => callDecide(input),
+  const decide = usePmDecide({
     onSuccess: (result) => {
       setPending(null);
       setDrafts((current) => ({ ...current, [result.card.id]: "" }));
@@ -304,15 +295,6 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
     </View>
   );
 }
-
-const kindColor = (kind: PmCardKind, theme: Theme) =>
-  kind === "decision"
-    ? theme.colors.statusSuccess
-    : kind === "proposal"
-      ? theme.colors.accent
-      : kind === "investigation"
-        ? theme.colors.statusWarning
-        : theme.colors.foregroundMuted;
 
 function CardView({
   card,

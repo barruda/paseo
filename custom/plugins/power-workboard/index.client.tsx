@@ -33,6 +33,12 @@ import {
 } from "./shared/task-report";
 // CUSTOM(assistant-reply-protocol)
 import { AssistantReplyItem } from "./client/assistant/AssistantReplyCard";
+import {
+  PmSidebarDecisionsBadge,
+  PmSidebarDecisionsView,
+} from "./client/assistant/pm-board/PmSidebarDecisions"; // CUSTOM(pm-sidebar-decisions)
+import { pmBoardStrings } from "./client/assistant/pm-board/pm-board-strings";
+import { readPaseoLocale } from "./client/paseo-language";
 import { setScreenOpener } from "./client/assistant/nav";
 import {
   REPLY_ITEM_KIND,
@@ -174,6 +180,26 @@ export default function contribute(client: PluginClientContext) {
           title: "Project Manager status",
           Component: QuickStatusItem,
         })) ?? (() => {});
+  // CUSTOM(pm-sidebar-decisions): the PM chat's "Decisions" view in the right sidebar, with the
+  // open-decision count as a badge. Hosts without the slot skip it. The pinned types predate it.
+  const removeDecisionsView =
+    (
+      client as unknown as {
+        addAssistantSidebarView?(view: {
+          id: string;
+          title: string;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Component: ComponentType<any>;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          Badge?: ComponentType<any>;
+        }): () => void;
+      }
+    ).addAssistantSidebarView?.({
+      id: "pm-decisions",
+      title: pmBoardStrings(readPaseoLocale()).sidebarTitle,
+      Component: PmSidebarDecisionsView,
+      Badge: PmSidebarDecisionsBadge,
+    }) ?? (() => {});
   const removeAssistantCommand = client.addSlashCommand({
     name: "assistant",
     description: "Project Manager: send this message without leaving this chat",
@@ -249,6 +275,7 @@ export default function contribute(client: PluginClientContext) {
     removeReportText();
     removeReportCard();
     removeReportTransformer();
+    removeDecisionsView(); // CUSTOM(pm-sidebar-decisions)
     removeAssistantCommand();
     removeStatus();
     removeWriteTicket();

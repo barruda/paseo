@@ -43,6 +43,7 @@ import type {
   PluginScreenContribution,
   PluginSidebarItemContribution,
   PluginStatusBarItemContribution, // CUSTOM(status-bar)
+  PluginAssistantSidebarViewContribution, // CUSTOM(pm-sidebar-decisions)
   PluginWorkspacePanelContribution,
 } from "./types";
 import type { ComponentType } from "react";
@@ -162,6 +163,9 @@ export function runPluginClientBundle(
   // CUSTOM(status-bar)
   const statusBarItems: PluginStatusBarItemContribution[] = [];
   const statusBarItemIds = new Set<string>();
+  // CUSTOM(pm-sidebar-decisions)
+  const assistantSidebarViews: PluginAssistantSidebarViewContribution[] = [];
+  const assistantSidebarViewIds = new Set<string>();
   const filePanelIds = new Set<string>();
   const workspacePanelIds = new Set<string>();
   const commandCenterItemIds = new Set<string>();
@@ -258,6 +262,30 @@ export function runPluginClientBundle(
       () => statusBarItemIds.delete(normalizedId),
     );
   }
+  // CUSTOM(pm-sidebar-decisions): validates and registers one Project Manager tab view.
+  function addAssistantSidebarView(
+    contribution: PluginAssistantSidebarViewContribution,
+  ): PluginCleanup {
+    const normalizedId = requireId(contribution.id, "assistant sidebar view id");
+    if (assistantSidebarViewIds.has(normalizedId)) {
+      throw new Error(`Duplicate assistant sidebar view: ${normalizedId}`);
+    }
+    const title = normalizePluginText(contribution.title);
+    if (!title) throw new Error(`Assistant sidebar view ${normalizedId} has no title`);
+    if (!isComponentType(contribution.Component)) {
+      throw new Error(`Assistant sidebar view ${normalizedId} is not a component`);
+    }
+    const { Badge } = contribution;
+    if (Badge !== undefined && !isComponentType(Badge)) {
+      throw new Error(`Assistant sidebar view ${normalizedId} has an invalid Badge`);
+    }
+    assistantSidebarViewIds.add(normalizedId);
+    return register(
+      assistantSidebarViews,
+      { id: normalizedId, title, Component: contribution.Component, Badge },
+      () => assistantSidebarViewIds.delete(normalizedId),
+    );
+  }
   function registerPanel(contribution: PluginWorkspacePanelContribution): PluginCleanup {
     const normalizedId = requireId(contribution.id, "workspace panel id");
     if (workspacePanelIds.has(normalizedId)) {
@@ -323,6 +351,10 @@ export function runPluginClientBundle(
     // CUSTOM(status-bar)
     addStatusBarItem(contribution: PluginStatusBarItemContribution) {
       return addStatusBarItem(contribution);
+    },
+    // CUSTOM(pm-sidebar-decisions)
+    addAssistantSidebarView(contribution: PluginAssistantSidebarViewContribution) {
+      return addAssistantSidebarView(contribution);
     },
     // COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
     // Titled by its id; a legacy item pointing at it lends the header its own title instead.
@@ -634,6 +666,7 @@ export function runPluginClientBundle(
     sidebarItems: collector.sidebarItems,
     legacySidebarItems: collector.legacySidebarItems,
     statusBarItems, // CUSTOM(status-bar)
+    assistantSidebarViews, // CUSTOM(pm-sidebar-decisions)
     filePanels: collector.filePanels,
     workspacePanels: collector.workspacePanels as EvaluatedPlugin["workspacePanels"],
     commandCenterItems: collector.commandCenterItems,

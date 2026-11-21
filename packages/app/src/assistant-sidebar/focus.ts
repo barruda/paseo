@@ -21,3 +21,16 @@ export function isAssistantPanelFocused(): boolean {
 export function blurAssistantPanel(): void {
   focusedAssistantElement()?.blur();
 }
+
+/**
+ * CUSTOM(pm-sidebar-decisions): takes the focus out of the Project Manager tab while a view covers
+ * its chat, and returns a way to give it back to the same element (the composer keeps its caret).
+ */
+export function parkAssistantPanelFocus(): () => void {
+  const element = focusedAssistantElement();
+  if (!element) return () => undefined;
+  element.blur();
+  return () => {
+    if (element.isConnected) element.focus();
+  };
+}

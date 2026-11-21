@@ -15,6 +15,7 @@ import type {
   PluginSidebarContribution as SDKPluginSidebarContribution,
   PluginSidebarItemContribution as SDKPluginSidebarItemContribution,
   PluginStatusBarItemContribution as SDKPluginStatusBarItemContribution, // CUSTOM(status-bar)
+  PluginAssistantSidebarViewContribution as SDKPluginAssistantSidebarViewContribution, // CUSTOM(pm-sidebar-decisions)
   PluginScreenContribution as SDKPluginScreenContribution,
   PluginSettingsScreenContribution as SDKPluginSettingsScreenContribution,
   PluginTimelineRendererContribution,
@@ -33,6 +34,8 @@ type PluginSidebarContribution = SDKPluginSidebarContribution<PluginText>;
 type PluginSidebarItemContribution = SDKPluginSidebarItemContribution<PluginText>;
 // CUSTOM(status-bar)
 type PluginStatusBarItemContribution = SDKPluginStatusBarItemContribution<PluginText>;
+// CUSTOM(pm-sidebar-decisions)
+type PluginAssistantSidebarViewContribution = SDKPluginAssistantSidebarViewContribution<PluginText>;
 type PluginScreenContribution = SDKPluginScreenContribution<PluginText>;
 type PluginSettingsScreenContribution = SDKPluginSettingsScreenContribution<PluginText>;
 type WorkspacePanelInput = SDKPluginWorkspacePanelContribution<PluginText>;
@@ -57,6 +60,8 @@ export interface EvaluatedPlugin {
   legacySidebarItems: PluginSidebarContribution[];
   // CUSTOM(status-bar): optional so fixtures that build an EvaluatedPlugin literal need no edit.
   statusBarItems?: PluginStatusBarItemContribution[];
+  // CUSTOM(pm-sidebar-decisions): optional for the same reason.
+  assistantSidebarViews?: PluginAssistantSidebarViewContribution[];
   filePanels: PluginFilePanelContribution[];
   workspacePanels: EvaluatedPluginWorkspacePanelContribution[];
   commandCenterItems: PluginCommandCenterItemContribution[];
@@ -91,6 +96,7 @@ export type {
   PluginSidebarContribution,
   PluginSidebarItemContribution,
   PluginStatusBarItemContribution, // CUSTOM(status-bar)
+  PluginAssistantSidebarViewContribution, // CUSTOM(pm-sidebar-decisions)
   PluginScreenContribution,
   PluginSettingsScreenContribution,
   PluginThemeContribution,

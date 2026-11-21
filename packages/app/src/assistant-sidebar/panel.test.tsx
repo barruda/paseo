@@ -30,6 +30,23 @@ vi.mock("@/panels/agent-panel", async () => {
   };
 });
 
+// CUSTOM(pm-sidebar-decisions): plugin views stand in for Power Workboard's decisions list.
+const sidebarViews = vi.hoisted(() => ({ list: [] as unknown[] }));
+vi.mock("./plugin-views", async () => {
+  const ReactModule = await vi.importActual<typeof import("react")>("react");
+  return {
+    useAssistantSidebarViews: () => sidebarViews.list,
+    AssistantSidebarViewBadge: () =>
+      ReactModule.createElement("span", { "data-testid": "view-badge" }, "3"),
+    AssistantSidebarViewBody: ({ onClose }: { onClose: () => void }) =>
+      ReactModule.createElement(
+        "button",
+        { "data-testid": "view-body", type: "button", onClick: onClose },
+        "decisions",
+      ),
+  };
+});
+
 import { PaneProvider, type PaneContextValue } from "@/panels/pane-context";
 import { useSessionStore, type Agent, type SessionState } from "@/stores/session-store";
 import { initialDesks, useDesksStore, type DeskTab } from "@/task-navigation/desks-store";
@@ -105,6 +122,7 @@ beforeEach(() => {
   useSessionStore.setState({ sessions: {} });
   useAssistantSidebarStore.setState({ chat: null, pending: null, requested: null });
   useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary", initialized: true });
+  sidebarViews.list = [];
 });
 
 afterEach(cleanup);
@@ -238,5 +256,81 @@ describe("Projects Assistant sidebar panel", () => {
     renderPanel();
     expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("chat");
     expect(useAssistantSidebarStore.getState().chat).toEqual({ serverId: "s1", agentId: "chat" });
+  });
+});
+
+// CUSTOM(pm-sidebar-decisions)
+describe("Projects Assistant sidebar panel views", () => {
+  const VIEW_KEY = "power-workboard/pm-decisions";
+  const openButton = `projects-assistant-view-${VIEW_KEY}`;
+
+  function withDecisions(): void {
+    sidebarViews.list = [{ key: VIEW_KEY, title: "Decisões" }];
+    seedSession([["chat", agent()]]);
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });
+  }
+
+  it("has no view button when no plugin adds a view", () => {
+    seedSession([["chat", agent()]]);
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });
+    renderPanel();
+    expect(screen.queryByTestId(openButton)).toBeNull();
+    expect(screen.queryByTestId("projects-assistant-back-to-chat")).toBeNull();
+  });
+
+  it("puts the view's button, with its badge, next to Open in main area", () => {
+    withDecisions();
+    renderPanel();
+    const button = screen.getByTestId(openButton);
+    expect(button.textContent).toContain("Decisões");
+    expect(screen.getByTestId("view-badge").textContent).toBe("3");
+    expect(screen.getByTestId("projects-assistant-open-main")).toBeTruthy();
+  });
+
+  it("opens the view over the chat and goes back with the arrow, keeping the chat mounted", async () => {
+    withDecisions();
+    renderPanel();
+    const chatNode = screen.getByTestId("agent-panel");
+    const desksBefore = useDesksStore.getState();
+
+    await act(async () => fireEvent.click(screen.getByTestId(openButton)));
+    expect(screen.getByTestId("view-body")).toBeTruthy();
+    expect(screen.getByTestId("projects-assistant-back-to-chat").textContent).toContain("Decisões");
+    expect(screen.queryByTestId(openButton)).toBeNull();
+    // The chat stays mounted under the view, so its draft, scroll and focus survive.
+    expect(screen.getByTestId("agent-panel")).toBe(chatNode);
+    // Only the tab changed: no Desk, no other tab.
+    expect(openAssistantDesk).not.toHaveBeenCalled();
+    expect(openAssistantSidebar).not.toHaveBeenCalled();
+    expect(useDesksStore.getState().activeDeskId).toBe(desksBefore.activeDeskId);
+    expect(useDesksStore.getState().desks).toBe(desksBefore.desks);
+
+    await act(async () => fireEvent.click(screen.getByTestId("projects-assistant-back-to-chat")));
+    expect(screen.queryByTestId("view-body")).toBeNull();
+    expect(screen.queryByTestId("projects-assistant-back-to-chat")).toBeNull();
+    expect(screen.getByTestId(openButton)).toBeTruthy();
+    expect(screen.getByTestId("agent-panel")).toBe(chatNode);
+  });
+
+  it("lets the view close itself back to the chat", async () => {
+    withDecisions();
+    renderPanel();
+    await act(async () => fireEvent.click(screen.getByTestId(openButton)));
+    await act(async () => fireEvent.click(screen.getByTestId("view-body")));
+    expect(screen.queryByTestId("view-body")).toBeNull();
+  });
+
+  it("falls back to the chat when the view's plugin goes away", async () => {
+    withDecisions();
+    const view = renderPanel();
+    await act(async () => fireEvent.click(screen.getByTestId(openButton)));
+    sidebarViews.list = [];
+    view.rerender(
+      <PaneProvider value={paneContext}>
+        <Panel />
+      </PaneProvider>,
+    );
+    expect(screen.queryByTestId("view-body")).toBeNull();
+    expect(screen.getByTestId("agent-panel")).toBeTruthy();
   });
 });

@@ -7,6 +7,8 @@ const en = {
   title: "Project Manager decisions",
   subtitle:
     "Investigations, proposals and decisions between you and the Project Manager. Code tasks and code reviews stay on the Board.",
+  sidebarTitle: "Decisions",
+  sidebarEmpty: "Nothing waiting for you",
   loading: "Loading…",
   retry: "Try again",
   columns: {
@@ -57,6 +59,8 @@ const pt: PmBoardStrings = {
   title: "Decisões do Project Manager",
   subtitle:
     "Investigações, propostas e decisões entre você e o Project Manager. As tarefas de código e as revisões de código ficam no Board.",
+  sidebarTitle: "Decisões",
+  sidebarEmpty: "Nada esperando você",
   loading: "Carregando…",
   retry: "Tentar de novo",
   columns: {
