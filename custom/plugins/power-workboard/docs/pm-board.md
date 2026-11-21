@@ -46,7 +46,8 @@ costs}`) and `recommend`. Do not ask an empty question.
   leaving a decided card nobody answered.
 
 A reply that needs a decision ends its `seu` line with the card id: `seu: decidir <x>
-[pm:pm-abc12345]`. The chat draws it as a link to the card.
+[pm:pm-abc12345]`. The chat draws it as a link to the card. In that reply's `opção` lines, use the
+card's option ids, so a tap in the chat decides the card (the chat falls back to the label).
 
 ## The user answers
 
@@ -59,6 +60,47 @@ free-text field. One tap calls `workboard.assistant.pm.card.decide`, which:
 
 **Reabrir** on a decided card moves it back to Esperando você, clears the decision, and tells the
 PM. If the message cannot be sent, the card still moves and the page says so.
+
+## The chat follows the card
+
+A reply whose `seu` line (or, without one, its `pergunta`) cites `[pm:<id>]` reads the card's live
+state through the same `workboard.assistant.pm.cards` query as the Decisões page: one query key per
+host, polled every 5 s, refreshed at once after a decide or a reopen on either side. Old replies in
+the history follow it too. The mapping is `replyCardView` in
+[`shared/reply-card-sync.ts`](../shared/reply-card-sync.ts):
+
+| card                         | the reply's block                                                                        |
+| ---------------------------- | ---------------------------------------------------------------------------------------- |
+| Investigando, Esperando você | pending, as before: amber `seu`, open options                                            |
+| Decidido                     | green: the chosen option marked, the others faded, "decidido por você/pelo PM em <hora>" |
+| Arquivado                    | neutral, "arquivado"                                                                     |
+| gone, or not loaded yet      | as before                                                                                |
+
+Reopening the card turns the block back to pending. The chosen option is the block's option with
+the card's `answerOptionId`, else with the same label; a written answer with no matching option
+shows after the "decidido" line.
+
+Every decision has to land on the card, or the chat stays amber. There are four ways:
+
+1. **The user on the Decisões page:** the page calls `workboard.assistant.pm.card.decide`.
+2. **The user in the chat.** A tap on an option of a block whose card waits in Esperando você
+   calls the same RPC, with the card's matching option, or the option's label as the answer when
+   none matches. The board records `decidedBy: user` and sends the PM the usual `Resposta a "..."
+no card <id>` message, instead of the plain `Resposta a "..."` a block without a card sends.
+   While the cards load, the block takes no taps, so a tap never skips the card. A typed answer is
+   the PM's job: it calls `pm_card_decide` on the card in the same turn with `decidedBy: "user"`,
+   the user's words as `answer` and `answerOptionId` when they name an option.
+3. **The PM with `pm_card_decide`:** `decidedBy: pm` is the default.
+4. **The PM in the chat**, settling a question it left open: it calls `pm_card_decide` with
+   `decidedBy: "pm"` in the same turn.
+
+The rule for 2 and 4 is `PM_CHAT_SYNC_RULE` in `server/assistant/chat.ts`. It goes into the seed
+prompt, into `CHAT_RULES` (the first message of every new or compacted chat) and into the
+`pm_card_decide` description; `tests/reply-protocol.test.ts` checks all three. A live
+`system-prompt.md` seeded before the rule only gets it through `CHAT_RULES` and the tool.
+
+`pm_card_decide` refuses a card the user already decided, so the PM cannot write over a choice
+that came from a tap; the user reopens the card to change it.
 
 Cards can link to tasks and their Reports tickets by id (`links.taskIds`, `links.reportIds`). A
 task chip shows `#N` when the ticket has a number (the id's first 8 characters otherwise) and opens

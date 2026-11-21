@@ -996,6 +996,52 @@ it("creates a select-tasks suggestion and a close proposal for a package", async
   }
 });
 
+// CUSTOM(pm-chat-sync): a typed answer in the chat lands on the card as the user's, and a card the
+// user already decided is not decided again.
+it("records a typed chat answer as the user's and refuses to redecide it", async () => {
+  const c = await chat();
+  try {
+    const created = await c.run("pm_card_create", {
+      kind: "proposal",
+      title: "Publicar?",
+      question: "Publicar o site agora?",
+      options: [
+        { id: "a", label: "Sim" },
+        { id: "b", label: "Esperar" },
+      ],
+    });
+    const id = /Created PM card (pm-[0-9a-f]{8})/.exec(created.text ?? "")![1];
+    const decided = await c.run("pm_card_decide", {
+      id,
+      answer: "pode esperar o CI",
+      answerOptionId: "b",
+      decidedBy: "user",
+    });
+    expect(decided.isError).toBeUndefined();
+    const card = c.board.pmCards().find((entry) => entry.id === id)!;
+    expect(card).toMatchObject({
+      status: "decided",
+      decidedBy: "user",
+      answerOptionId: "b",
+      answer: "pode esperar o CI",
+    });
+
+    const again = await c.run("pm_card_decide", {
+      id,
+      decision: "Publico agora",
+    });
+    expect(again.isError).toBe(true);
+    expect(again.text).toMatch(/already decided by the user/);
+    const still = c.board.pmCards().find((entry) => entry.id === id)!;
+    expect(still).toMatchObject({
+      decidedBy: "user",
+      answer: "pode esperar o CI",
+    });
+  } finally {
+    c.board.dispose();
+  }
+});
+
 // CUSTOM(pm-board): a card is never closed without a decision or an answer.
 it("refuses pm_card_decide with neither a decision nor an answer", async () => {
   const c = await chat();

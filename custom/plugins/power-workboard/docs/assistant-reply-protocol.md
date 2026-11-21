@@ -135,7 +135,10 @@ the card id at the end of a line as `[pm:pm-abc12345]`:
 
 The `seu` line of a reply that needs a decision ends with the proposal's id:
 `seu: decidir <x> [pm:pm-abc12345]`. A card id is stripped from the line's text and opens the
-Decisões tab on that card; a bare task id still opens the ticket in Reports.
+Decisões tab on that card; a bare task id still opens the ticket in Reports. The block then follows the card: green
+once it is decided, neutral once it is archived, pending again when it is reopened, and a tap on an
+option decides the card. [The chat follows the card](pm-board.md#the-chat-follows-the-card) has
+the details.
 
 ## What goes where
 

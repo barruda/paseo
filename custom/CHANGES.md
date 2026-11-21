@@ -9788,3 +9788,48 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
   and the Workboard chip: on the first Desk press Shift+Tab: the second Desk; again: the right
   sidebar opens on the Project Manager tab with the cursor in its composer (no Desk opens); again:
   the Workboard chip; again: the first Desk. Close the Workboard chip: the cycle skips it.
+
+## pm-chat-sync: the Project Manager chat follows the Decisões board
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: the Project Manager chat follows its Decisões cards`
+- **Why:** A reply whose `seu` line cited a PM card (`[pm:<id>]`) stayed amber, with its question
+  open, after the decision was made on the board, by the PM or in the chat. The user wants the chat
+  and the board in step: a decided card reads green in the chat, with the chosen option.
+- **What:**
+  - **The block reads the card.** A `pwb` block that cites `[pm:<id>]` (on `seu`, else on
+    `pergunta`) reads the card through the Decisões page's own query (`pm-cards-query.ts`, one key
+    per host, 5 s poll), so old replies follow it too. Decided: green edge and `seu`, the chosen
+    option marked and the others faded, "decidido por você/pelo PM em <hora>". Archived: neutral,
+    "arquivado". Reopened: pending again. A missing card, or a host whose query fails, draws as
+    before.
+  - **A tap decides the card.** On a block whose card waits in Esperando você, an option button
+    calls `workboard.assistant.pm.card.decide` (the card's option with the same id, else the same
+    label, else the label as the answer), so the card moves to Decidido with `decidedBy: user` and
+    the PM gets the usual `Resposta a "..." no card <id>` message. While the cards load, the block
+    takes no taps.
+  - **The PM keeps the card in step.** `PM_CHAT_SYNC_RULE` (seed prompt, `CHAT_RULES`, the
+    `pm_card_decide` description): a typed answer is recorded with `pm_card_decide` and
+    `decidedBy: "user"` in the same turn; a question the PM settles in the chat with
+    `decidedBy: "pm"` in the same turn; a `Resposta a ... no card` message is already recorded.
+    `pm_card_decide` takes `decidedBy` (default `pm`) and refuses a card the user already decided.
+  - Docs: `docs/pm-board.md` ("The chat follows the card", the four ways a decision lands) and a
+    pointer in `docs/assistant-reply-protocol.md`. The protocol format is unchanged (still v3).
+- **Core files touched:** none.
+- **Re-apply:** Plugin-only, marked `CUSTOM(pm-chat-sync)`: `shared/reply-card-sync.ts` (the
+  mapping and the chat → card input), `client/assistant/pm-board/pm-cards-query.ts` (shared query,
+  also used by `PmBoardScreen.tsx`), `client/assistant/AssistantReplyCard.tsx` (`YoursBox`,
+  `Resolution`, the tap path), `client/assistant/card-parts.tsx` (`QuestionBlock`'s `resolved`),
+  `client/assistant/reports-strings.ts` (labels), `server/assistant/chat.ts` (`PM_CHAT_SYNC_RULE`,
+  `pm_card_decide`'s `decidedBy` and guard).
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
+  Needs only `paseo plugin reload power-workboard`; a chat opened before the reload gets the rule
+  only in its tool description until it is compacted or restarted. In the app: get the PM to ask
+  a decision with `seu: decidir ... [pm:<id>]`; decide the card on the Decisões tab: within 5 s
+  the chat block turns green with the option marked and "decidido por você em <hora>"; press
+  Reabrir: it turns amber again; tap an option in the chat block: the card moves to Decidido
+  (decidedBy user) and the PM gets `Resposta a "..." no card <id>`.
+- **Tests:** `tests/reply-card-sync.test.ts` (card state → block state: none, missing, pending,
+  decided by user/pm, notice, archived, reopen; option matching; chat → card on a real board with
+  the PM message), `tests/reply-protocol.test.ts` (the prompts carry the rule),
+  `tests/assistant-chat.test.ts` (`pm_card_decide` with `decidedBy: "user"` and the refusal).

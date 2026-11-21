@@ -7,6 +7,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import {
   useAgent,
   usePaseo,
+  useRpc,
   type PluginTimelineItemProps,
 } from "@getpaseo/plugin/client";
 import { Icon } from "@getpaseo/plugin/client/react-native";
@@ -36,6 +37,18 @@ import {
   openTaskReport,
 } from "./nav"; // CUSTOM(pm-board)
 import { useIsNewestReply } from "./newest-reply"; // CUSTOM(assistant-cards)
+// CUSTOM(pm-chat-sync)
+import { assistantPmDecideRpc } from "../../shared/assistant-rpc";
+import {
+  chatCanDecide,
+  chatPickDecideInput,
+  decidedTimeLabel,
+  replyCardView,
+  replyPmCardId,
+  type ReplyCardView,
+} from "../../shared/reply-card-sync";
+import type { CardOption } from "./card-parts";
+import { usePmCards, useRefreshPmCards } from "./pm-board/pm-cards-query";
 
 type Theme = PluginTimelineItemProps["theme"];
 type Layout = PluginTimelineItemProps["layout"];
@@ -58,6 +71,7 @@ export function AssistantReplyItem({
   layout,
   agentId,
   timestamp,
+  host,
 }: PluginTimelineItemProps<ReplyItemData>) {
   const text = item.data.text;
   const split = useMemo(() => splitReply(text), [text]);
@@ -71,6 +85,7 @@ export function AssistantReplyItem({
         layout={layout}
         agentId={agentId}
         time={timestamp.getTime()}
+        hostId={host.id}
       />
     </View>
   );
@@ -279,12 +294,14 @@ function ReplyCard({
   layout,
   agentId,
   time,
+  hostId,
 }: {
   split: ReplySplit;
   theme: Theme;
   layout: Layout;
   agentId: string;
   time: number;
+  hostId: string;
 }) {
   const { reply } = split;
   const paseo = usePaseo();
@@ -297,14 +314,50 @@ function ReplyCard({
   const live = newest && running !== true;
   const say = (text: string) => paseo.agents.ref(agentId).send(text);
   const c = theme.colors;
+  // CUSTOM(pm-chat-sync): a block that cites a PM card follows the card's live state, from the
+  // same poll the Decisões page uses; old replies in the history follow it too.
+  const cardId = replyPmCardId(reply);
+  const cards = usePmCards(hostId, cardId !== null);
+  const refreshCards = useRefreshPmCards(hostId);
+  const callDecide = useRpc(assistantPmDecideRpc);
+  // A host that cannot answer the query draws the block as before (as if the card were gone).
+  const view = replyCardView(
+    cardId,
+    cards.data?.cards ?? (cards.isError ? [] : undefined),
+    reply.question?.options ?? [],
+  );
+  const settled = view.state === "decided" || view.state === "archived";
+  const sayPick = (option: CardOption) =>
+    say(optionAnswer(reply.question?.text ?? "", option));
+  // A tap on a waiting card decides it through the board, which also tells the PM. A block whose
+  // card has not loaded yet takes no taps, so a tap never skips the card.
+  const pickOnCard = async (option: CardOption) => {
+    if (view.state !== "pending") return;
+    await callDecide(chatPickDecideInput(view.card, option));
+    await refreshCards();
+  };
+  const onPick = cardId
+    ? chatCanDecide(view)
+      ? pickOnCard
+      : view.state === "missing" && live
+        ? sayPick
+        : undefined
+    : live
+      ? sayPick
+      : undefined;
   const details = replyDetails(split);
   const blocked = reply.blockers.length > 0;
   const yoursAction = reply.yours !== null && !reply.yours.none;
-  const edge = blocked
-    ? c.statusDanger
-    : yoursAction
-      ? c.statusWarning
-      : c.border;
+  const edge =
+    view.state === "decided"
+      ? c.statusSuccess
+      : view.state === "archived"
+        ? c.border
+        : blocked
+          ? c.statusDanger
+          : yoursAction
+            ? c.statusWarning
+            : c.border;
   const hasNext = reply.next !== null;
   const hasBody =
     reply.done.length +
@@ -398,19 +451,25 @@ function ReplyCard({
 
       {reply.question ? (
         <QuestionBlock
+          key={view.state}
           question={reply.question.text}
           options={reply.question.options}
           recommend={reply.question.recommend}
           why={reply.question.why}
           theme={theme}
           labels={labels}
-          onPick={
-            live
-              ? (option) =>
-                  say(optionAnswer(reply.question?.text ?? "", option))
-              : undefined
+          onPick={onPick}
+          resolved={
+            view.state === "decided"
+              ? { tone: "success", optionId: view.optionId }
+              : view.state === "archived"
+                ? { tone: "muted", optionId: null }
+                : null
           }
         />
+      ) : null}
+      {settled && !yoursAction ? (
+        <Resolution view={view} theme={theme} labels={labels} />
       ) : null}
 
       {hasNext || (reply.yours && reply.yours.none) ? (
@@ -437,29 +496,122 @@ function ReplyCard({
       ) : null}
 
       {reply.yours && !reply.yours.none ? (
-        <View
-          style={[
-            styles.yours,
-            {
-              borderColor: c.statusWarning,
-              backgroundColor: wash(c.statusWarning),
-            },
-          ]}
-        >
-          <View style={styles.iconSlot}>
-            <Icon name="Hand" size={14} color={c.statusWarning} />
-          </View>
-          <Text style={[styles.yoursLabel, { color: c.statusWarning }]}>
-            seu:
-          </Text>
+        <YoursBox
+          line={reply.yours}
+          view={view}
+          theme={theme}
+          labels={labels}
+        />
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * CUSTOM(pm-chat-sync): the `seu` line. Amber while it waits for the user; green once its PM card
+ * is decided, neutral once it is archived, each with who decided and when.
+ */
+function YoursBox({
+  line,
+  view,
+  theme,
+  labels,
+}: {
+  line: ReplyLine;
+  view: ReplyCardView;
+  theme: Theme;
+  labels: CardLabels;
+}) {
+  const c = theme.colors;
+  const decided = view.state === "decided";
+  const archived = view.state === "archived";
+  const tone = decided
+    ? c.statusSuccess
+    : archived
+      ? c.foregroundMuted
+      : c.statusWarning;
+  return (
+    <View
+      style={[
+        styles.yours,
+        {
+          borderColor: archived ? c.border : tone,
+          backgroundColor: archived ? "transparent" : wash(tone),
+        },
+      ]}
+    >
+      <View style={styles.iconSlot}>
+        <Icon
+          name={decided ? "CircleCheckBig" : archived ? "Archive" : "Hand"}
+          size={14}
+          color={tone}
+        />
+      </View>
+      <View style={[styles.yoursBody, styles.shrink]}>
+        <View style={styles.rowTop}>
+          <Text style={[styles.yoursLabel, { color: tone }]}>seu:</Text>
           <LineText
-            line={reply.yours}
-            color={c.foreground}
+            line={line}
+            color={decided || archived ? c.foregroundMuted : c.foreground}
             theme={theme}
-            strong
+            strong={!decided && !archived}
           />
         </View>
-      ) : null}
+        {decided || archived ? (
+          <Resolution view={view} theme={theme} labels={labels} bare />
+        ) : null}
+      </View>
+    </View>
+  );
+}
+
+/** "decidido por você em 14:32", the decision when no option shows it, or "arquivado". */
+function Resolution({
+  view,
+  theme,
+  labels,
+  bare,
+}: {
+  view: ReplyCardView;
+  theme: Theme;
+  labels: CardLabels;
+  bare?: boolean;
+}) {
+  const c = theme.colors;
+  if (view.state !== "decided" && view.state !== "archived") return null;
+  const decided = view.state === "decided";
+  const color = decided ? c.statusSuccess : c.foregroundMuted;
+  let text = labels.archived;
+  if (decided) {
+    const who =
+      view.by === "user"
+        ? labels.decidedByYou
+        : view.by === "pm"
+          ? labels.decidedByPm
+          : labels.decided;
+    const time = decidedTimeLabel(view.at, Date.now());
+    text = time ? `${who} ${labels.at} ${time}` : who;
+  }
+  const detail =
+    decided && view.optionId === null && view.text ? view.text : null;
+  return (
+    <View
+      accessibilityLabel={detail ? `${text}: ${detail}` : text}
+      style={[styles.resolution, !bare && styles.resolutionRow]}
+    >
+      {bare ? null : (
+        <Icon
+          name={decided ? "CircleCheckBig" : "Archive"}
+          size={13}
+          color={color}
+        />
+      )}
+      <Text style={[styles.resolutionText, styles.shrink, { color }]}>
+        {text}
+        {detail ? (
+          <Text style={{ color: c.foregroundMuted }}>{`: ${detail}`}</Text>
+        ) : null}
+      </Text>
     </View>
   );
 }
@@ -644,6 +796,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   yoursLabel: { fontSize: 13, lineHeight: 20, fontWeight: "700" },
+  yoursBody: { flexGrow: 1, gap: 2 },
+  resolution: { flexDirection: "row", alignItems: "center", gap: 6 },
+  resolutionRow: { marginTop: 2 },
+  resolutionText: { fontSize: 12, lineHeight: 18, fontWeight: "600" },
   details: { position: "relative" },
   detailsLabel: { fontSize: 12, fontWeight: "600" },
   detailsBody: { paddingLeft: 22, paddingTop: 4 },

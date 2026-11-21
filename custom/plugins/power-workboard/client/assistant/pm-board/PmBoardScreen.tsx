@@ -9,11 +9,10 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useRpc, type PluginSurfaceProps } from "@getpaseo/plugin/client";
 import { ScrollView, TextInput } from "@getpaseo/plugin/client/react-native";
 import {
-  assistantPmCardsRpc,
   assistantPmDecideRpc,
   assistantPmReopenRpc,
 } from "../../../shared/assistant-rpc";
@@ -35,6 +34,7 @@ import {
   usePmCardRequest,
 } from "../nav";
 import { pmAge, pmBoardStrings, type PmBoardStrings } from "./pm-board-strings";
+import { usePmCards, useRefreshPmCards } from "./pm-cards-query";
 
 const COMPACT_WIDTH = 900;
 
@@ -52,11 +52,8 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
   const { width } = useWindowDimensions();
   const compact = props.layout.compact || width < COMPACT_WIDTH;
   const hostId = props.host.id;
-  const callCards = useRpc(assistantPmCardsRpc);
   const callDecide = useRpc(assistantPmDecideRpc);
   const callReopen = useRpc(assistantPmReopenRpc);
-  const cache = useQueryClient();
-  const base = ["power-workboard", "pm-board", hostId] as const;
   const request = usePmCardRequest();
   const [pending, setPending] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -64,13 +61,9 @@ export function PmBoardScreen(props: PluginSurfaceProps) {
   // CUSTOM(packages): one package filter for the whole page.
   const [packageFilter, setPackageFilter] = useState<string | null>(null);
 
-  const cards = useQuery({
-    queryKey: base,
-    queryFn: () => callCards({}),
-    refetchInterval: 5_000,
-  });
-
-  const refresh = () => cache.invalidateQueries({ queryKey: base });
+  // CUSTOM(pm-chat-sync): the chat's reply cards read the same query, so they follow this page.
+  const cards = usePmCards(hostId);
+  const refresh = useRefreshPmCards(hostId);
   const decide = useMutation({
     mutationFn: (input: {
       cardId: string;

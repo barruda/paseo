@@ -76,6 +76,15 @@ const TASK_ID_HINT = "Task UUID, or its short number as 42 or #42";
 // checkout's, since the Project Manager runs in an empty folder; the words come from the parser.
 export const REPLY_PROTOCOL_DOC =
   "/home/bruno/projetos/paseo/custom/plugins/power-workboard/docs/assistant-reply-protocol.md";
+/**
+ * CUSTOM(pm-chat-sync): keeps the PM board in step with the chat. A reply block that cites a card
+ * as `[pm:<id>]` turns green in the chat once the card is decided, so every decision has to land
+ * on the card: the user's taps already do; a typed answer and the PM's own call in the chat need
+ * pm_card_decide in the same turn. tests/reply-protocol.test.ts checks the prompts carry it.
+ */
+export const PM_CHAT_SYNC_RULE =
+  'Keep your PM board in step with the chat: the chat draws a decided card\'s reply green. A message "Resposta a \"<question>\" no card <id>: ..." comes from a tap on the card or on the chat\'s option button, and the board already recorded it with decidedBy user: do not decide that card again. When the user answers an open proposal by typing in the chat, call pm_card_decide on its card in the same turn with decidedBy "user", their answer in their words, and answerOptionId when it names one of the options. When you settle in the chat a question you had left open on a card, call pm_card_decide with decidedBy "pm" in the same turn. In a block whose question is a card, write the `opção` lines with the card\'s option ids, so a tap in the chat decides the card.';
+
 export const REPLY_PROTOCOL_RULE = [
   `End every reply to the user with a \`\`\`${REPLY_FENCE} block, protocol v${REPLY_PROTOCOL_VERSION} in ${REPLY_PROTOCOL_DOC}. One \`key: value\` per line, no braces, in this order:`,
   `- \`feito: <verb> <short task title> [<first 8 characters of the task id>]\`, one line per thing done; the verb is one of ${DONE_VERBS.join(", ")}.`,
@@ -93,6 +102,7 @@ export const ASSISTANT_ROLE = [
   `Manage tasks through your board tools (${BOARD_TOOLS}): create, move, start, continue and deliver every task there. Never edit a project's code, commit or merge outside board_task_action.`,
   "Every board tool that takes a task accepts its UUID or its short number as `42` or `#42`; the cards, board_list_tasks and board_overview show that number as `#42`.",
   'Investigation, proposals and decisions with the user go on your own board (the Decisões tab), not on the task board; code tasks and code reviews stay on the task board. Use pm_card_create, pm_card_update, pm_card_decide and pm_card_archive for them. An investigation is something you are looking into; a proposal is a choice the user must make (lay out the options with their gains and costs, recommend one, and the card waits in "Esperando você"); a decision is a call you already made on your own (kind decision, decidedBy pm); a notice is information the user should track. A PM card never starts an agent. Do not create a card for every event: only what the user should track. When you need the user, create a proposal and put its id in the reply\'s `seu` line as `[pm:<card id>]`.',
+  PM_CHAT_SYNC_RULE, // CUSTOM(pm-chat-sync)
   "Packages group tickets that already exist so the full suite runs once per package, by script, not once per ticket. Use the board_package_* tools. Create a package or move tickets only when the user asks; on your own, suggest a grouping with a proposal card with action select-tasks and the ticket ids in taskIds: the card offers Select these tickets and Ignore, and selecting only marks the tickets and opens the package menu, so it never creates the package. A package may have an integration branch: its next merges go there, and it merges into the base when the package closes; tickets already merged stay in the base. A ticket in a package runs the restricted suites; the risk rule raises a migration, auth, security or protocol diff to the gate level and records the decision on your board. A gate failure arrives as an investigation card with the suspected ticket: read board_package_history and explain it, do not create one card per failure. When a package is complete, propose closing it with board_package_propose_close; never close it on your own.",
   "To review and diagnose, read freely: git log, git diff and git show in a task's worktree or the project's checkout, read any file, and run the task's tests in its worktree.",
   "Do not create Paseo agents to do a task: tasks go through the board so the orchestrators run them. A read-only reviewer subagent that helps you review a diff is fine. The one exception is the ship agent below.",
@@ -125,7 +135,8 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 // CUSTOM(assistant-compact): the rules alone open a chat started by compaction, which must not greet.
 export const CHAT_RULES =
-  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_package_propose_close, board_run_package_gate, board_package_history and board_set_test_tier. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications.';
+  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_package_propose_close, board_run_package_gate, board_package_history and board_set_test_tier. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications. ' +
+  PM_CHAT_SYNC_RULE; // CUSTOM(pm-chat-sync)
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS = `Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). ${CHAT_RULES}`;
 
@@ -1117,24 +1128,34 @@ export function chatTools(
     }),
     define({
       name: "pm_card_decide",
-      description:
-        "Record a decision you made alone on one of your PM cards (decidedBy pm), with the decision text or the answer. Pass a non-empty decision or answer, or one of the card's options; a proposal or a decision is never closed empty. Use it for the calls that are yours, not for the user's: the user decides a proposal on the card itself, and the board records it with decidedBy user. When you answer a user's decision message, use pm_card_update or pm_card_decide to close the card.",
+      description: `Record a decision on one of your PM cards, with the decision text or the answer. Pass a non-empty decision or answer, or one of the card's options; a proposal or a decision is never closed empty. decidedBy is "pm" (the default) when the call is yours, and "user" when the user answered by typing in the chat. ${PM_CHAT_SYNC_RULE} A card the user already decided is refused: ask the user to reopen it to change it.`,
       input: z.object({
         id: z.string(),
         decision: z.string().max(5000).nullable().optional(),
         answer: z.string().max(5000).nullable().optional(),
         answerOptionId: z.string().max(40).nullable().default(null),
+        // CUSTOM(pm-chat-sync): "user" when the user answered by typing in the chat.
+        decidedBy: z.enum(["pm", "user"]).default("pm"),
       }),
-      async execute({ id, decision, answer, answerOptionId }) {
+      async execute({ id, decision, answer, answerOptionId, decidedBy }) {
         if (!decision?.trim() && !answer?.trim() && !answerOptionId)
           throw new Error(
             "Pass a non-empty decision or answer: a PM card cannot be decided without one.",
+          );
+        // CUSTOM(pm-chat-sync): an answer from the card or from a chat button is already recorded
+        // as the user's; deciding it again would write over what the user chose.
+        const current = board()
+          .pmCards()
+          .find((card) => card.id === id);
+        if (current?.status === "decided" && current.decidedBy === "user")
+          throw new Error(
+            `PM card ${id} is already decided by the user${current.decidedAt ? ` (${current.decidedAt})` : ""}: nothing to record. To change it, ask the user to reopen it.`,
           );
         const card = await board().pmCardDecide(id, {
           optionId: answerOptionId,
           decision,
           answer,
-          by: "pm",
+          by: decidedBy,
         });
         return text(`Decided PM card ${card.id}: "${card.decision ?? ""}".`);
       },

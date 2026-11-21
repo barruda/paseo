@@ -23,6 +23,13 @@ export interface CardLabels {
   sendFailed: string;
   byUser: string;
   byAssistant: string;
+  /** CUSTOM(pm-chat-sync): a chat block whose PM card is decided or archived. */
+  chosen: string;
+  decidedByYou: string;
+  decidedByPm: string;
+  decided: string;
+  at: string;
+  archived: string;
 }
 
 const en = {
@@ -86,6 +93,12 @@ const en = {
     sendFailed: "Could not send.",
     byUser: "you",
     byAssistant: "Project Manager",
+    chosen: "chosen",
+    decidedByYou: "decided by you",
+    decidedByPm: "decided by the PM",
+    decided: "decided",
+    at: "at",
+    archived: "archived",
   },
   reportStatus: {
     done: "Done",
@@ -194,6 +207,12 @@ const pt: ReportsStrings = {
     sendFailed: "Não foi possível enviar.",
     byUser: "você",
     byAssistant: "Project Manager",
+    chosen: "escolhida",
+    decidedByYou: "decidido por você",
+    decidedByPm: "decidido pelo PM",
+    decided: "decidido",
+    at: "em",
+    archived: "arquivado",
   },
   reportStatus: {
     done: "Concluído",

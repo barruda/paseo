@@ -25,6 +25,8 @@ import {
 import {
   ASSISTANT_ROLE,
   CHAT_INSTRUCTIONS,
+  CHAT_RULES,
+  PM_CHAT_SYNC_RULE,
   CHAT_LABEL,
 } from "../server/assistant/chat";
 import { EVIDENCE_KINDS } from "../shared/assistant"; // CUSTOM(assistant-cards)
@@ -100,6 +102,18 @@ describe("protocol doc", () => {
     expect(ASSISTANT_ROLE).toContain("docs/assistant-reply-protocol.md");
     expect(ASSISTANT_ROLE).toContain("```pwb");
     expect(CHAT_INSTRUCTIONS).toContain("```pwb");
+  });
+
+  // CUSTOM(pm-chat-sync): a typed answer and the PM's own call in the chat land on the card.
+  it("tells the PM to decide the card in the same turn when the chat decides", () => {
+    expect(PM_CHAT_SYNC_RULE).toContain('decidedBy "user"');
+    expect(PM_CHAT_SYNC_RULE).toContain('decidedBy "pm"');
+    expect(PM_CHAT_SYNC_RULE).toContain("in the same turn");
+    expect(PM_CHAT_SYNC_RULE).toContain("by typing in the chat");
+    expect(PM_CHAT_SYNC_RULE).toContain("do not decide that card again");
+    expect(ASSISTANT_ROLE).toContain(PM_CHAT_SYNC_RULE);
+    expect(CHAT_RULES).toContain(PM_CHAT_SYNC_RULE);
+    expect(CHAT_INSTRUCTIONS).toContain(PM_CHAT_SYNC_RULE);
   });
 });
 

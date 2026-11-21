@@ -223,6 +223,9 @@ function OptionRow({
   theme,
   labels,
   onPress,
+  pickedText,
+  pickedColor,
+  faded,
 }: {
   option: CardOption;
   recommended: boolean;
@@ -232,9 +235,15 @@ function OptionRow({
   theme: Theme;
   labels: CardLabels;
   onPress?: () => void;
+  /** CUSTOM(pm-chat-sync): what the picked mark says and its color; "sent" by default. */
+  pickedText?: string;
+  pickedColor?: string;
+  /** CUSTOM(pm-chat-sync): an option nobody chose on a decided card. */
+  faded?: boolean;
 }) {
   const c = theme.colors;
   const disabled = locked || busy;
+  const pickColor = pickedColor ?? c.statusSuccess;
   const content = (
     <>
       <View style={styles.optionHead}>
@@ -258,9 +267,9 @@ function OptionRow({
         ) : null}
         {picked ? (
           <View style={styles.sentRow}>
-            <Icon name="Check" size={12} color={c.statusSuccess} />
-            <Text style={[styles.small, { color: c.statusSuccess }]}>
-              {labels.sent}
+            <Icon name="Check" size={12} color={pickColor} />
+            <Text style={[styles.small, { color: pickColor }]}>
+              {pickedText ?? labels.sent}
             </Text>
           </View>
         ) : busy ? (
@@ -284,9 +293,14 @@ function OptionRow({
   const style = [
     styles.option,
     {
-      borderColor: recommended || picked ? c.accent : c.border,
+      borderColor:
+        picked && pickedColor
+          ? pickedColor
+          : recommended || picked
+            ? c.accent
+            : c.border,
       backgroundColor: c.surface0,
-      opacity: disabled && !picked && !busy ? 0.55 : 1,
+      opacity: faded ? 0.45 : disabled && !picked && !busy ? 0.55 : 1,
     },
   ];
   if (!onPress) return <View style={style}>{content}</View>;
@@ -316,6 +330,7 @@ export function QuestionBlock({
   theme,
   labels,
   onPick,
+  resolved,
 }: {
   question: string;
   options: CardOption[];
@@ -324,8 +339,18 @@ export function QuestionBlock({
   theme: Theme;
   labels: CardLabels;
   onPick?: (option: CardOption) => Promise<void>;
+  /**
+   * CUSTOM(pm-chat-sync): the question is settled on the PM board. `success` draws it green with
+   * the chosen option marked and the others faded; `muted` draws it neutral (archived). No taps.
+   */
+  resolved?: { tone: "success" | "muted"; optionId: string | null } | null;
 }) {
   const c = theme.colors;
+  const tone = resolved
+    ? resolved.tone === "success"
+      ? c.statusSuccess
+      : c.foregroundMuted
+    : c.statusWarning;
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -347,14 +372,24 @@ export function QuestionBlock({
       style={[
         styles.question,
         {
-          borderColor: c.statusWarning,
-          backgroundColor: wash(c.statusWarning),
+          borderColor: resolved?.tone === "muted" ? c.border : tone,
+          backgroundColor: resolved?.tone === "muted" ? c.surface0 : wash(tone),
         },
       ]}
     >
       {question ? (
         <View style={styles.rowTop}>
-          <Icon name="CircleHelp" size={14} color={c.statusWarning} />
+          <Icon
+            name={
+              resolved
+                ? resolved.tone === "success"
+                  ? "CircleCheckBig"
+                  : "Archive"
+                : "CircleHelp"
+            }
+            size={14}
+            color={tone}
+          />
           <Text
             selectable
             style={[styles.questionText, styles.grow, { color: c.foreground }]}
@@ -370,12 +405,29 @@ export function QuestionBlock({
               key={option.id}
               option={option}
               recommended={recommend === option.id}
-              picked={pickedId === option.id}
-              locked={pickedId !== null || sendingId !== null}
-              busy={sendingId === option.id}
+              picked={
+                resolved
+                  ? resolved.optionId === option.id
+                  : pickedId === option.id
+              }
+              locked={
+                resolved != null || pickedId !== null || sendingId !== null
+              }
+              busy={!resolved && sendingId === option.id}
               theme={theme}
               labels={labels}
-              onPress={onPick ? () => void pick(option) : undefined}
+              onPress={
+                onPick && !resolved ? () => void pick(option) : undefined
+              }
+              pickedText={resolved ? labels.chosen : undefined}
+              pickedColor={
+                resolved?.tone === "success" ? c.statusSuccess : undefined
+              }
+              faded={
+                resolved != null &&
+                resolved.optionId !== null &&
+                resolved.optionId !== option.id
+              }
             />
           ))}
         </View>
