@@ -336,6 +336,7 @@ describe("VoiceAssistantWebSocketServer notification payloads", () => {
       agentId: "board-1",
       provider: "claude",
       reason: "finished",
+      attentionTimestamp: new Date(),
     });
     expect(readAttentionRequiredMessage(ws).shouldNotify).toBe(false);
 
@@ -344,6 +345,7 @@ describe("VoiceAssistantWebSocketServer notification payloads", () => {
       agentId: "board-1",
       provider: "claude",
       reason: "finished",
+      attentionTimestamp: new Date(),
     });
     expect(pushNotifications.sent).toEqual([]);
   });
@@ -368,6 +370,7 @@ describe("VoiceAssistantWebSocketServer notification payloads", () => {
       agentId: "ship",
       provider: "claude",
       reason: "finished",
+      attentionTimestamp: new Date(),
     });
 
     expect(pushNotifications.sent).toEqual([]);

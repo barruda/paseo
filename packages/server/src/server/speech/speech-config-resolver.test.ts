@@ -215,7 +215,9 @@ describe("resolveSpeechConfig", () => {
     // present even when no speech site uses the local provider and no
     // models directory is configured; otherwise voice mode reports
     // turn_detection_unavailable.
-    expect(result.speech.local).toEqual({
+    // CUSTOM(local-speech-gpu): the local config also carries executionProvider, cudaLibDir and
+    // customModels, so match upstream's fields without forbidding ours.
+    expect(result.speech.local).toMatchObject({
       modelsDir: path.join("/tmp/paseo-home", "models", "local-speech"),
       models: {
         dictationStt: "parakeet-tdt-0.6b-v2-int8",
@@ -252,7 +254,8 @@ describe("resolveSpeechConfig", () => {
       explicit: false,
       enabled: true,
     });
-    expect(result.speech.local).toEqual({
+    // CUSTOM(local-speech-gpu): see the matching note above.
+    expect(result.speech.local).toMatchObject({
       modelsDir: path.join("/tmp/paseo-home", "models", "local-speech"),
       models: {
         dictationStt: "parakeet-tdt-0.6b-v2-int8",

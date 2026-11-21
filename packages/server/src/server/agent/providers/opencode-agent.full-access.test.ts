@@ -528,7 +528,7 @@ describe("OpenCode auto_accept feature", () => {
       provider: "opencode",
       cwd: "/tmp/project",
       modeId: "build",
-      featureValues: { auto_accept: true },
+      providerOptions: { auto_accept: true },
     });
     session.subscribe((event) => receivedEvents.push(event));
 

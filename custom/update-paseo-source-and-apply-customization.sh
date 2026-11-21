@@ -389,7 +389,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run --project browser src/components/ui/hover-card.browser.test.tsx --bail=1)
   (cd packages/app && npx vitest run src/file-panels/html-preview-assets.test.ts src/file-panels/html-preview-navigation.test.ts src/file-panels/html-preview-url.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/html-preview-protocol.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/model-picker/model.test.ts src/model-picker/project.test.ts src/model-picker/focus-routing.test.tsx src/composer/focused-composer.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts src/desktop/browser/shortcuts.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/model-picker/model.test.ts src/model-picker/project.test.ts src/model-picker/focus-routing.test.tsx src/composer/focused-composer.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts src/keyboard/internal/sources/electron-browser.test.ts --bail=1)
   (cd packages/app && npx vitest run src/screens/workspace/workspace-tab-menu.test.ts src/screens/workspace/tab-file-path.test.ts --bail=1)
   (cd packages/app && npx vitest run src/components/sidebar/done-task-archive.test.ts --bail=1)
   (cd packages/app && npx vitest run src/active-workspace-cycle/model.test.ts --bail=1)
@@ -407,7 +407,7 @@ if $VERIFY; then
   # A new bottom panel opens Warp.
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-default.test.ts --bail=1)
   # Ctrl+J crosses ahead of the page in browser tabs.
-  (cd packages/app && npx vitest run src/desktop/browser/shortcuts.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/keyboard/internal/sources/electron-browser.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/browser-keyboard/policy.test.ts --bail=1)
   # Warp tabs without the browser toolbar.
   (cd packages/app && npx vitest run src/desktop/browser/store/state.test.ts src/plugins/host-navigation.test.ts --bail=1)
