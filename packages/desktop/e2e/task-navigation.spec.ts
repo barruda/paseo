@@ -53,8 +53,11 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await expect(sidebar).toBeVisible();
     await expect(sidebar.getByTestId(`task-agent-${first.agentId}`)).toBeVisible();
     await expect(sidebar.getByTestId(`task-agent-${second.agentId}`)).toBeVisible();
-    await expect(sidebar.getByTestId(`task-agent-${second.agentId}`)).toContainText(
-      "Ready to review",
+    // CUSTOM(task-row-compact): the row has no "Ready to review" text line; the dot says it and
+    // the accessible label carries it.
+    await expect(sidebar.getByTestId(`task-agent-${second.agentId}`)).toHaveAttribute(
+      "aria-label",
+      /Ready to review/,
     );
 
     await sidebar.getByTestId("task-navigation-search").fill("terrain");
@@ -302,7 +305,9 @@ test("Desks preview and pin across projects, restore tab sets, filter, and prese
     await page.getByText("Title A–Z", { exact: true }).click();
     await expect(sidebar.getByTestId("task-navigation-sort")).toContainText("Title A–Z");
 
-    await expect(page.getByTestId("header-shortcuts")).not.toContainText("New workspace");
+    await expect(
+      page.getByTestId("header-shortcuts").filter({ hasText: "New workspace" }),
+    ).toHaveCount(0);
     await page.keyboard.down("Control");
     await expect(sidebar.getByTestId("task-shortcut-1")).toBeVisible();
     const firstTask = sidebar.getByTestId(/^task-agent-/).first();
