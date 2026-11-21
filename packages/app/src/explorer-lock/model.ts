@@ -91,3 +91,28 @@ export function planWorkspaceExplorerLock(input: {
   }
   return null;
 }
+
+/**
+ * The right sidebar's width. Locked, one saved width wins over the frame's own (per workspace),
+ * so changing the central content changes nothing; with no saved width yet the frame's own stays.
+ */
+export function resolveExplorerLockWidth(input: {
+  lockOn: boolean;
+  hydrated: boolean;
+  compact: boolean;
+  lockedWidth: number | null;
+  ownWidth: number | undefined;
+}): { locked: boolean; width: number | undefined } {
+  const locked = input.lockOn && input.hydrated && !input.compact;
+  return { locked, width: locked ? (input.lockedWidth ?? input.ownWidth) : input.ownWidth };
+}
+
+/** The first time the lock applies with no saved width, the width on screen becomes the locked one. */
+export function shouldSeedLockedWidth(input: {
+  locked: boolean;
+  active: boolean;
+  lockedWidth: number | null;
+  ownWidth: number | undefined;
+}): boolean {
+  return input.locked && input.active && input.lockedWidth === null && input.ownWidth !== undefined;
+}

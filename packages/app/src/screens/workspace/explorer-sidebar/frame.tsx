@@ -10,6 +10,8 @@ import { MobilePanelOverlay } from "@/mobile-panels/presentation";
 import { RetainedPanelActivity } from "@/components/retained-panel";
 import { resolveExplorerSidebarWidth } from "@/components/explorer-sidebar-layout";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
+import { useExplorerLockWidth } from "@/explorer-lock/use-explorer-lock-width"; // CUSTOM(explorer-lock): locked width
+import type { ExplorerLockMode } from "@/explorer-lock/model"; // CUSTOM(explorer-lock)
 import { useExplorerGeometry } from "./geometry";
 import type { ExplorerFrameProps } from "./frame-props";
 
@@ -20,7 +22,8 @@ function ExplorerFrameBase({
   isOpen,
   isWorkspaceActive,
   persistenceKey,
-}: ExplorerFrameProps) {
+  lockedWidth, // CUSTOM(explorer-lock)
+}: ExplorerFrameProps & { lockedWidth?: LockedExplorerWidth }) {
   const [containerWidth, setContainerWidth] = useState(0);
   const measureContainer = useCallback(({ nativeEvent }: LayoutChangeEvent) => {
     const { width, height } = nativeEvent.layout;
@@ -39,12 +42,14 @@ function ExplorerFrameBase({
     (width: number) => resize(persistenceKey, width),
     [persistenceKey, resize],
   );
+  // CUSTOM(explorer-lock): locked, one shared width replaces the per-workspace one.
+  const requestedWidth = lockedWidth ? lockedWidth.requestedWidth : storedWidth;
   const geometry = useExplorerGeometry({
-    width: resolveExplorerSidebarWidth({ requestedWidth: storedWidth, containerWidth }),
+    width: resolveExplorerSidebarWidth({ requestedWidth, containerWidth }),
     containerWidth,
     overlay,
     resizeEnabled,
-    onResize,
+    onResize: lockedWidth?.onResize ?? onResize, // CUSTOM(explorer-lock)
   });
   return (
     <RetainedPanelActivity active={active}>
@@ -67,9 +72,44 @@ function ExplorerFrameBase({
     </RetainedPanelActivity>
   );
 }
-export const ExplorerFrame = withUnistyles(ExplorerFrameBase, (theme) => ({
+const StyledExplorerFrame = withUnistyles(ExplorerFrameBase, (theme) => ({
   surfaceColor: theme.colors.surfaceSidebar,
 }));
+
+// CUSTOM(explorer-lock): a frame given a `lockMode` reads the lock setting (react-query) in its own
+// wrapper, so a frame without one keeps working outside the app's providers.
+interface LockedExplorerWidth {
+  requestedWidth: number | undefined;
+  onResize: (width: number) => void;
+}
+
+function LockedExplorerFrame({
+  lockMode,
+  ...props
+}: ExplorerFrameProps & { lockMode: ExplorerLockMode }) {
+  const ownWidth = useWorkspaceLayoutStore(
+    (state) => state.explorerSidebarWidthByWorkspace[props.persistenceKey],
+  );
+  const resize = useWorkspaceLayoutStore((state) => state.resizeExplorerSidebar);
+  const { persistenceKey } = props;
+  const resizeOwn = useCallback(
+    (width: number) => resize(persistenceKey, width),
+    [persistenceKey, resize],
+  );
+  const lockedWidth = useExplorerLockWidth({
+    mode: lockMode,
+    overlay: props.presentation === "overlay",
+    active: props.isWorkspaceActive,
+    ownWidth,
+    resizeOwn,
+  });
+  return <StyledExplorerFrame {...props} lockedWidth={lockedWidth} />;
+}
+
+export function ExplorerFrame({ lockMode, ...props }: ExplorerFrameProps) {
+  if (lockMode) return <LockedExplorerFrame {...props} lockMode={lockMode} />;
+  return <StyledExplorerFrame {...props} />;
+}
 const styles = StyleSheet.create({
   content: { flex: 1, minHeight: 0 },
   // Measure the workspace row even when the dock is closed. The gesture host stays in its slot.

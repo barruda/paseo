@@ -3821,6 +3821,7 @@ function WorkspaceScreenContent({
         isWorkspaceActive={isRouteFocused}
         persistenceKey={persistenceKey}
         isOpen={isExplorerSidebarShowing && !desktopFocusModeEnabled}
+        lockMode="workspaces" // CUSTOM(explorer-lock): locked width
       >
         {dock}
       </ExplorerFrame>

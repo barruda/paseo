@@ -151,7 +151,7 @@ import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { upgradeEffortBeforeSend } from "@/jev-router/upgrade"; // CUSTOM(jev-router)
 import { ComposerKeyboardScopeProvider, useComposerKeyboardScope } from "@/composer/keyboard-scope";
 import { markComposerFocused, releaseComposerFocus } from "@/composer/focused-composer"; // CUSTOM(model-picker-focus)
-import { useComposerEscRouting } from "@/composer/esc-focus-target"; // CUSTOM(chat-esc-focus)
+import { useComposerAutoFocus, useComposerEscRouting } from "@/composer/esc-focus-target"; // CUSTOM(chat-esc-focus), CUSTOM(pm-focus)
 import { usePaneHost } from "@/panels/pane-context";
 import { OverlayDismissalScope, useDismissOverlays } from "@/components/ui/overlay-dismissal";
 import type { PaneHost } from "@/panels/panel-manifest";
@@ -2825,7 +2825,9 @@ function ComposerContentImpl({
   );
 
   // Focusing the composer on a touch screen raises the on-screen keyboard over the conversation.
-  const messageInputAutoFocus = autoFocus && isDesktopWebBreakpoint && hasFinePointer;
+  // CUSTOM(pm-focus): the Project Manager tab's composer never takes the caret on its own.
+  const allowedAutoFocus = useComposerAutoFocus(autoFocus, autoFocusKey);
+  const messageInputAutoFocus = allowedAutoFocus && isDesktopWebBreakpoint && hasFinePointer;
   const submitLoadingPressHandler = isAgentRunning ? handleCancelAgent : undefined;
   const sendErrorNode = useMemo(
     () =>
