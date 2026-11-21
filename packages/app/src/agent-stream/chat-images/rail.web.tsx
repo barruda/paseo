@@ -30,7 +30,9 @@ const JUMP_TIMEOUT_MS = 3000;
 // Lands the image a little below the top edge instead of flush against it.
 const IMAGE_TOP_MARGIN = 16;
 
-function resolveThumbSize(panelWidth: number, contentMaxWidth: number): number | null {
+function resolveThumbSize(panelWidth: number, contentMaxWidth: number | undefined): number | null {
+  // Full-width chat (upstream width presets): no gutter beside the column.
+  if (contentMaxWidth === undefined) return null;
   const gutter = (panelWidth - contentMaxWidth) / 2;
   if (gutter >= LARGE_THUMB + RAIL_INSET * 2) return LARGE_THUMB;
   if (gutter >= SMALL_THUMB + RAIL_INSET * 2) return SMALL_THUMB;

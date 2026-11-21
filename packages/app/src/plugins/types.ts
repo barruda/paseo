@@ -11,10 +11,14 @@ import type {
   PluginFilePanelContribution as SDKPluginFilePanelContribution,
   PluginCommandCenterItemContribution as SDKPluginCommandCenterItemContribution,
   PluginClientSlashCommandContribution as SDKPluginClientSlashCommandContribution,
+  PluginComposerItemContribution,
+  PluginNewWorkspaceItemContribution,
   PluginComposerPillContribution as SDKPluginComposerPillContribution,
   PluginSidebarContribution as SDKPluginSidebarContribution,
+  PluginSidebarViewContribution,
   PluginSidebarItemContribution as SDKPluginSidebarItemContribution,
   PluginStatusBarItemContribution as SDKPluginStatusBarItemContribution, // CUSTOM(status-bar)
+  PluginWorkspaceRowBadgeItemContribution as SDKPluginWorkspaceRowBadgeItemContribution,
   PluginScreenContribution as SDKPluginScreenContribution,
   PluginSettingsScreenContribution as SDKPluginSettingsScreenContribution,
   PluginTimelineRendererContribution,
@@ -33,6 +37,8 @@ type PluginSidebarContribution = SDKPluginSidebarContribution<PluginText>;
 type PluginSidebarItemContribution = SDKPluginSidebarItemContribution<PluginText>;
 // CUSTOM(status-bar)
 type PluginStatusBarItemContribution = SDKPluginStatusBarItemContribution<PluginText>;
+type PluginWorkspaceRowBadgeItemContribution =
+  SDKPluginWorkspaceRowBadgeItemContribution<PluginText>;
 type PluginScreenContribution = SDKPluginScreenContribution<PluginText>;
 type PluginSettingsScreenContribution = SDKPluginSettingsScreenContribution<PluginText>;
 type WorkspacePanelInput = SDKPluginWorkspacePanelContribution<PluginText>;
@@ -51,13 +57,17 @@ export interface EvaluatedPlugin {
   cleanup: PluginCleanup;
   surfaces: PluginScreenContribution[];
   settingsScreens: PluginSettingsScreenContribution[];
+  sidebarViews: PluginSidebarViewContribution<PluginText>[];
   sidebarItems: Record<PluginSidebarSection, PluginSidebarItemContribution[]>;
   // COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
   /** `addSidebarItem` registrations, so `/plugin/<id>/sidebar/<item>` routes keep resolving. */
   legacySidebarItems: PluginSidebarContribution[];
   // CUSTOM(status-bar): optional so fixtures that build an EvaluatedPlugin literal need no edit.
   statusBarItems?: PluginStatusBarItemContribution[];
+  workspaceRowBadgeItems: PluginWorkspaceRowBadgeItemContribution[];
   filePanels: PluginFilePanelContribution[];
+  composerItems: PluginComposerItemContribution[];
+  newWorkspaceItems: PluginNewWorkspaceItemContribution[];
   workspacePanels: EvaluatedPluginWorkspacePanelContribution[];
   commandCenterItems: PluginCommandCenterItemContribution[];
   clientSlashCommands: PluginClientSlashCommandContribution[];
@@ -76,6 +86,8 @@ export interface InstalledPlugin extends EvaluatedPlugin {
   paseo: PaseoApi;
   /** Calls one of the plugin's server RPC methods on its host. */
   invoke(method: string, input: unknown): Promise<unknown>;
+  /** Subscribes to one of the plugin's server subscriptions; released with the lifetime. */
+  subscribe: import("@getpaseo/plugin/client/host").PluginSubscribe;
   serverId: string;
   requirements?: PluginRequirements;
   clientBundle: string;
@@ -87,10 +99,13 @@ export type {
   PluginAttachmentSourceContribution,
   PluginCommandCenterItemContribution,
   PluginClientSlashCommandContribution,
+  PluginComposerItemContribution,
+  PluginNewWorkspaceItemContribution,
   PluginComposerPillContribution,
   PluginSidebarContribution,
   PluginSidebarItemContribution,
   PluginStatusBarItemContribution, // CUSTOM(status-bar)
+  PluginWorkspaceRowBadgeItemContribution,
   PluginScreenContribution,
   PluginSettingsScreenContribution,
   PluginThemeContribution,

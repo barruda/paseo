@@ -11,6 +11,8 @@ export interface NavigateToAgentInput {
   pin?: boolean;
   /** CUSTOM(assistant-desk): a Projects Assistant chat the session may not list yet. */
   assistantSidebar?: boolean;
+  /** Opens the agent with its composer, where a compact layout would show a sheet without one. */
+  asTab?: boolean;
 }
 
 export interface AgentNavTarget {
@@ -43,5 +45,6 @@ export function resolveNavigateToAgent(
     workspaceId,
     target: { kind: "agent", agentId: input.agentId },
     pin: input.pin,
+    asTab: input.asTab,
   });
 }

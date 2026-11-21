@@ -11,21 +11,6 @@ export interface WorkspaceAgentVisibility {
   foreignAgentIds: Set<string>;
 }
 
-// CUSTOM(hidden-board-agents): a root agent opens a tab by itself unless it is a board agent.
-function isAutoOpenAgent(
-  agent: Agent,
-  parentAgent: Agent | undefined,
-  sessionAgents: Map<string, Agent> | undefined,
-  agentDetails: Map<string, Agent> | undefined,
-): boolean {
-  return (
-    isWorkspaceRootAgent(agent, parentAgent) &&
-    !isBoardAgentInSession(agent, sessionAgents, agentDetails) &&
-    // CUSTOM(assistant-desk): the Projects Assistant chat lives in its own Desk.
-    !isAssistantChatAgent(agent)
-  );
-}
-
 export function deriveWorkspaceAgentVisibility(input: {
   sessionAgents: Map<string, Agent> | undefined;
   agentDetails?: Map<string, Agent> | undefined;
@@ -53,13 +38,11 @@ export function deriveWorkspaceAgentVisibility(input: {
       continue;
     }
     if (!agent.archivedAt) {
+      // A background agent stays active so a tab opened by id isn't pruned, but never auto-opens.
       activeAgentIds.add(agent.id);
-      const parentAgent = agent.parentAgentId
-        ? (sessionAgents?.get(agent.parentAgentId) ?? agentDetails?.get(agent.parentAgentId))
-        : undefined;
       // CUSTOM(hidden-board-agents): board agents never open a tab by themselves; a tab the user
       // opened by hand stays because the agent is still in activeAgentIds.
-      if (isAutoOpenAgent(agent, parentAgent, sessionAgents, agentDetails)) {
+      if (shouldAutoOpenAgent({ agent, sessionAgents, agentDetails })) {
         autoOpenAgentIds.add(agent.id);
       }
     }
@@ -74,6 +57,27 @@ export function deriveWorkspaceAgentVisibility(input: {
     }
   }
   return { activeAgentIds, autoOpenAgentIds, foreignAgentIds };
+}
+
+// CUSTOM(hidden-board-agents): a root agent opens a tab by itself unless it is a board agent.
+function shouldAutoOpenAgent(input: {
+  agent: Agent;
+  sessionAgents: Map<string, Agent> | undefined;
+  agentDetails: Map<string, Agent> | undefined;
+}): boolean {
+  const { agent, sessionAgents, agentDetails } = input;
+  if (agent.background) {
+    return false;
+  }
+  const parentAgent = agent.parentAgentId
+    ? (sessionAgents?.get(agent.parentAgentId) ?? agentDetails?.get(agent.parentAgentId))
+    : undefined;
+  return (
+    isWorkspaceRootAgent(agent, parentAgent) &&
+    !isBoardAgentInSession(agent, sessionAgents, agentDetails) &&
+    // CUSTOM(assistant-desk): the Projects Assistant chat lives in its own Desk.
+    !isAssistantChatAgent(agent)
+  );
 }
 
 interface AgentMapsSnapshot {

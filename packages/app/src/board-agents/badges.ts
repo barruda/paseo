@@ -10,9 +10,9 @@ import type { Agent, WorkspaceDescriptor } from "@/stores/session-store";
 import { isBoardAgentInSession } from "./visibility";
 
 export interface BoardBadgeSession {
-  workspaces: Map<string, WorkspaceDescriptor>;
-  agents?: Map<string, Agent>;
-  agentDetails?: Map<string, Agent>;
+  workspaces: ReadonlyMap<string, WorkspaceDescriptor>;
+  agents?: ReadonlyMap<string, Agent>;
+  agentDetails?: ReadonlyMap<string, Agent>;
 }
 
 type BadgeAgent = Pick<
@@ -45,6 +45,7 @@ function statusFromAgents(agents: readonly BadgeAgent[]): WorkspaceStateBucket {
 /** One status per workspace that counts for the badge, with board agents left out. */
 export function workspaceStatusesWithoutBoardAgents(
   session: BoardBadgeSession,
+  includeWorkspace: (workspace: WorkspaceDescriptor) => boolean = () => true,
 ): WorkspaceStateBucket[] {
   const otherAgentsByWorkspace = new Map<string, Agent[]>();
   const boardWorkspaceIds = new Set<string>();
@@ -60,6 +61,7 @@ export function workspaceStatusesWithoutBoardAgents(
   }
   const statuses: WorkspaceStateBucket[] = [];
   for (const workspace of session.workspaces.values()) {
+    if (!includeWorkspace(workspace)) continue;
     if (!boardWorkspaceIds.has(workspace.id)) {
       statuses.push(workspace.status);
       continue;

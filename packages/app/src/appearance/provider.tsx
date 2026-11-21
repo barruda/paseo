@@ -70,25 +70,23 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     return options.find((option) => option.id === settings.pluginThemeId) ?? null;
   }, [options, settings.pluginThemeId, settings.theme]);
 
+  const baseContentMaxWidth = resolveContentMaxWidth(settings);
   useEffect(() => {
     if (isLoading) return;
     applyTheme({ preference: settings.theme, contributedTheme: selected });
     // CUSTOM(content-width-boost): the panel's -/+/maximize buttons scale the configured width.
-    const contentMaxWidth = boostContentMaxWidth(
-      resolveContentMaxWidth({ contentMaxWidth: settings.contentMaxWidth }),
-      widthBoost,
-    );
+    const boostedContentMaxWidth = boostContentMaxWidth(baseContentMaxWidth, widthBoost);
     applyAppearance({
       uiFontFamily: settings.uiFontFamily,
       monoFontFamily: settings.monoFontFamily,
       uiBaseFontSize: settings.uiBaseFontSize,
       contentFontSize: settings.contentFontSize,
       codeFontSize: settings.codeFontSize,
-      contentMaxWidth,
+      contentMaxWidth: boostedContentMaxWidth,
       syntaxTheme: settings.syntaxTheme,
     });
     setHasAppliedAppearance(true);
-    useContentWidthBoostStore.getState().setAppliedWidth(contentMaxWidth);
+    useContentWidthBoostStore.getState().setAppliedWidth(boostedContentMaxWidth ?? null);
   }, [
     isLoading,
     selected,
@@ -98,7 +96,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     settings.uiBaseFontSize,
     settings.contentFontSize,
     settings.codeFontSize,
-    settings.contentMaxWidth,
+    baseContentMaxWidth,
     settings.syntaxTheme,
     widthBoost,
   ]);

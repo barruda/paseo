@@ -19,6 +19,7 @@ import {
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { ChevronDown } from "lucide-react-native";
 import { ICON_SIZE, type Theme } from "@/styles/theme";
+import { Tooltip, TooltipContent, TooltipTrigger } from "./tooltip";
 
 const ThemedChevronDown = withUnistyles(ChevronDown);
 
@@ -38,6 +39,7 @@ interface ComboboxTriggerProps extends Omit<PressableProps, "style" | "children"
   style?: TriggerStyleProp;
   children?: ReactNode;
   chevron?: ReactNode | null;
+  tooltip?: ReactNode;
   // Fill the Pressable's width and use the standard sidebar-row gap, so the
   // trigger reads as a full-width row: the label expands and the chevron pins to
   // the trailing edge. Default (false) keeps the content-width pill used by the
@@ -49,7 +51,8 @@ interface ComboboxTriggerProps extends Omit<PressableProps, "style" | "children"
 }
 
 export const ComboboxTrigger = forwardRef<View, ComboboxTriggerProps>(function ComboboxTrigger(
-  { children, chevron, style, block = false, onFocus, onBlur, onChevronPress, ...props },
+  { children, chevron, tooltip, style, block = false, onFocus, onBlur, onChevronPress, ...props },
+
   ref,
 ): ReactElement {
   const [focused, setFocused] = useState(false);
@@ -83,7 +86,7 @@ export const ComboboxTrigger = forwardRef<View, ComboboxTriggerProps>(function C
     [block, isSplit],
   );
 
-  return (
+  const button = (
     <Pressable
       ref={ref}
       collapsable={false}
@@ -117,6 +120,16 @@ export const ComboboxTrigger = forwardRef<View, ComboboxTriggerProps>(function C
           ))}
       </View>
     </Pressable>
+  );
+
+  if (!tooltip) return button;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{button}</TooltipTrigger>
+      <TooltipContent side="top" align="center" offset={8}>
+        {tooltip}
+      </TooltipContent>
+    </Tooltip>
   );
 });
 

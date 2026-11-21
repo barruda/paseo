@@ -1,4 +1,5 @@
-import { createReadStream, existsSync, readdirSync } from "node:fs";
+import { createReadStream } from "node:fs";
+import { access, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline";
@@ -36,7 +37,7 @@ export interface HistoryContentIndexerOptions {
 export function openHistoryContentIndexer(input: {
   paseoHome: string;
   agentManager: HistoryContentIndexerOptions["agentManager"];
-  agentStorage: Pick<AgentStorage, "list">;
+  agentStorage: Pick<AgentStorage, "listAll">;
   logger: Logger;
 }): () => void {
   let index: HistoryContentIndex;
@@ -50,7 +51,7 @@ export function openHistoryContentIndexer(input: {
   const stop = startHistoryContentIndexer({
     index,
     agentManager: input.agentManager,
-    listStoredAgents: () => input.agentStorage.list(),
+    listStoredAgents: () => input.agentStorage.listAll(),
     logger: input.logger,
   });
   return () => {
@@ -158,11 +159,11 @@ export async function backfillHistoryContent(input: {
       });
       format = CLAUDE_TRANSCRIPT;
     } else if (sessionId && record.provider === "codex") {
-      codexRollouts ??= listCodexRollouts(input.env);
+      codexRollouts ??= await listCodexRollouts(input.env);
       file = codexRollouts.get(sessionId) ?? null;
       format = CODEX_ROLLOUT;
     }
-    if (file && format && existsSync(file)) {
+    if (file && format && (await pathExists(file))) {
       input.index.addMessages(record.id, await readTranscript(file, format));
       count += 1;
     }
@@ -258,14 +259,21 @@ export function parseCodexRolloutLine(line: unknown): HistoryMessage | null {
 }
 
 /** Thread id -> rollout file, across live and archived Codex sessions. */
-function listCodexRollouts(env: NodeJS.ProcessEnv): Map<string, string> {
+async function pathExists(file: string): Promise<boolean> {
+  return access(file).then(
+    () => true,
+    () => false,
+  );
+}
+
+async function listCodexRollouts(env: NodeJS.ProcessEnv): Promise<Map<string, string>> {
   const home = env.CODEX_HOME ?? path.join(os.homedir(), ".codex");
   const rollouts = new Map<string, string>();
   const pattern =
     /^rollout-.+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jsonl$/;
   for (const root of [path.join(home, "sessions"), path.join(home, "archived_sessions")]) {
-    if (!existsSync(root)) continue;
-    for (const entry of readdirSync(root, { recursive: true, withFileTypes: true })) {
+    if (!(await pathExists(root))) continue;
+    for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
       if (!entry.isFile()) continue;
       const match = pattern.exec(entry.name);
       if (match) rollouts.set(match[1], path.join(entry.parentPath, entry.name));

@@ -21,6 +21,7 @@ import {
   collectAllTabs,
   findPaneById,
   selectExplorerSidebarPaneId,
+  selectPaneFocusSuspended,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import {
@@ -149,6 +150,9 @@ export function DeskExplorerDock({
   ...tabActions
 }: DeskExplorerDockProps) {
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
+  const paneFocusSuspended = useWorkspaceLayoutStore((state) =>
+    selectPaneFocusSuspended(state, workspaceKey),
+  );
   const layout = useWorkspaceLayoutStore((state) => state.layoutByWorkspace[workspaceKey] ?? null);
   const paneId = useWorkspaceLayoutStore((state) =>
     selectExplorerSidebarPaneId(state, workspaceKey),
@@ -218,6 +222,7 @@ export function DeskExplorerDock({
             normalizedServerId={scope.serverId}
             normalizedWorkspaceId={scope.workspaceId}
             isWorkspaceFocused={isFocused}
+            paneFocusSuspended={paneFocusSuspended}
             closingTabIds={NO_CLOSING_TABS}
             onSelectTab={selectTab}
             onCloseTab={closeTab}

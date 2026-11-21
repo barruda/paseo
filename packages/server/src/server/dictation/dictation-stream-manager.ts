@@ -331,7 +331,7 @@ export class DictationStreamManager {
   }): Promise<void> {
     const state = this.streams.get(params.dictationId);
     if (!state) {
-      this.failDictationStream(params.dictationId, "Dictation stream not started", true);
+      this.emitUnknownStreamError(params.dictationId);
       return;
     }
 
@@ -514,6 +514,15 @@ export class DictationStreamManager {
     return path;
   }
 
+  // Chunks keep arriving for a stream the daemon already dropped, one error
+  // per chunk; the failure that dropped it is logged where it happened.
+  private emitUnknownStreamError(dictationId: string): void {
+    this.emit({
+      type: "dictation_stream_error",
+      payload: { dictationId, error: "Dictation stream not started", retryable: true },
+    });
+  }
+
   private failDictationStream(dictationId: string, error: string, retryable: boolean): void {
     // CUSTOM(dictation-live-text): these only reached the client, so daemon.log couldn't explain a lost dictation.
     this.logger.warn({ dictationId, error, retryable }, "Dictation stream failed");
@@ -533,7 +542,7 @@ export class DictationStreamManager {
     if (!state || this.streams.get(dictationId) !== state) return;
     // CUSTOM(dictation-live-text)
     this.logger.warn(
-      { dictationId, error, retryable, debugRecordingPath },
+      { dictationId, error, retryable, ackSeq: state.ackSeq, debugRecordingPath },
       "Dictation stream failed",
     );
     this.emit({

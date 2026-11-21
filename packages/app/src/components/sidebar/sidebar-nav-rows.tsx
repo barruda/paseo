@@ -48,6 +48,12 @@ interface SidebarNavRowsProps extends SidebarNavRowProps {
   firstRowTrailing?: ReactNode;
 }
 
+/** The top-level items the user keeps visible, in display order. */
+export function useVisibleSidebarNavItems() {
+  const { items } = useSidebarNavItems("header");
+  return useMemo(() => items.filter((item) => item.visible), [items]);
+}
+
 // CUSTOM(sidebar-show-more): keep daily controls fixed and disclose secondary navigation on demand.
 // `firstRowTrailing` (the phone's close button) sits beside History, the first row.
 export function SidebarNavRows({ style, onBeforeNavigate, firstRowTrailing }: SidebarNavRowsProps) {

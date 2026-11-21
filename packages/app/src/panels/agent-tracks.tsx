@@ -1,5 +1,5 @@
 import type { AgentAddress } from "@getpaseo/protocol/addresses";
-import { Fragment, memo, useCallback, type ReactElement } from "react";
+import { Fragment, memo, useCallback, useMemo, type ReactElement } from "react";
 import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { COMMIT_WIP_PILL_ALWAYS_SHOWN, CommitWipPill } from "@/composer/commit-wip-pill";
@@ -11,19 +11,26 @@ import { GitSyncTrailingPills } from "@/git-sync/pills"; // CUSTOM(git-sync)
 import { useGitSync } from "@/git-sync/use-git-sync"; // CUSTOM(git-sync)
 import { useAgentStatusSummary } from "@/composer/agent-status-line";
 import { useWorkspaceHasDiffStat } from "@/composer/workspace-diff-stat";
+import { BackgroundWorkTrack, createHostBackgroundWorkModel } from "@/background-work";
+import type { ArchiveFinishedStatus } from "@/subagents/archive-finished";
 import { AgentTaskList } from "@/composer/task-list";
 import { ComposerTrackBar } from "@/composer/tracks";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { usePaneContext } from "@/panels/pane-context";
 import { useSettings } from "@/hooks/use-settings";
-import { PluginComposerPill, usePluginComposerPillEntries } from "@/plugins";
+import {
+  PluginComposerPill,
+  useHasPluginComposerPills,
+  usePluginComposerPillEntries,
+} from "@/plugins";
 import { useSessionStore } from "@/stores/session-store";
 import {
-  type ArchiveFinishedStatus,
+  useArchiveFinishedSubagents,
   useArchiveSubagent,
   useDetachSubagent,
   useSubagentSheetTab,
   type SubagentRow,
+  useSubagentsForParent,
 } from "@/subagents";
 import { ParentAgentPill } from "@/subagents/parent";
 import { SubagentsTrack } from "@/subagents/track";
@@ -58,11 +65,6 @@ export const AgentTracks = memo(function AgentTracks({
   agentId,
   cwd,
   parentAgentId,
-  subagentRows,
-  tasks,
-  archiveFinishedStatus,
-  onArchiveFinished,
-  hasPluginComposerPills,
 }: {
   serverId: string;
   workspaceId: string;
@@ -70,12 +72,16 @@ export const AgentTracks = memo(function AgentTracks({
   /** CUSTOM(worktree-pill): the checkout the Worktree pill acts on. */
   cwd: string;
   parentAgentId: string | null;
-  subagentRows: SubagentRow[];
-  tasks: TodoEntry[] | undefined;
-  archiveFinishedStatus: ArchiveFinishedStatus;
-  onArchiveFinished: () => void;
-  hasPluginComposerPills: boolean;
 }): ReactElement | null {
+  const subagentRows = useSubagentsForParent({ serverId, parentAgentId: agentId });
+  const tasks = useSessionStore((state): TodoEntry[] | undefined =>
+    state.sessions[serverId]?.agentTasks.get(agentId),
+  );
+  const archiveFinishedSubagents = useArchiveFinishedSubagents({
+    serverId,
+    parentAgentId: agentId,
+    rows: subagentRows,
+  });
   const { tabId } = usePaneContext();
   const hasWorkspaceDiffStat = useWorkspaceHasDiffStat(serverId, workspaceId);
   // CUSTOM(worktree-pill-done): a done worktree session leads the row with a green Worktree pill.
@@ -86,11 +92,21 @@ export const AgentTracks = memo(function AgentTracks({
   // CUSTOM(git-sync): conflicts and worktrees to bring in, for the git chips.
   const gitSync = useGitSync({ serverId, workspaceId, agentId });
   const backgroundTools = useAgentBackgroundTools(serverId, agentId); // CUSTOM(background-tools)
+  const backgroundWorkCount = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    const agent = session?.agents.get(agentId) ?? session?.agentDetails.get(agentId);
+    return agent?.backgroundWork?.count ?? 0;
+  });
+  const backgroundModel = useMemo(
+    () => createHostBackgroundWorkModel(serverId, agentId),
+    [serverId, agentId],
+  );
   const isCompact = useIsCompactFormFactor();
   const openInSidePane = useSettings((settings) => settings.openInSidePane);
   const options = useSettings((settings) => settings.chatOptions);
   const orderSetting = useSettings((settings) => settings.chatOptionOrder);
   const pluginPills = usePluginComposerPillEntries(serverId, workspaceId, agentId);
+  const hasPluginComposerPills = useHasPluginComposerPills(serverId, workspaceId, agentId);
   const show = (key: string) => chatOptionEnabled(options, key);
   const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
   const canDetachSubagents = useSessionStore(
@@ -153,10 +169,11 @@ export const AgentTracks = memo(function AgentTracks({
       parentAgentId,
       subagentRows,
       tasks,
-      archiveFinishedStatus,
+      archiveFinishedStatus: archiveFinishedSubagents.status,
       hasPluginComposerPills,
       options,
       hasBackgroundToolsRunning: hasBackgroundTools(backgroundTools),
+      hasBackgroundWork: backgroundWorkCount > 0,
     })
   ) {
     return null;
@@ -177,8 +194,8 @@ export const AgentTracks = memo(function AgentTracks({
         onOpenProviderSubagent={handleOpenProviderSubagent}
         sheetTabFor={sheetTabFor}
         onArchiveSubagent={archiveSubagent}
-        onArchiveFinished={onArchiveFinished}
-        archiveFinishedStatus={archiveFinishedStatus}
+        onArchiveFinished={archiveFinishedSubagents.archiveFinished}
+        archiveFinishedStatus={archiveFinishedSubagents.status}
         onDetachSubagent={canDetachSubagents ? detachSubagent : undefined}
       />
     ) : null,
@@ -233,6 +250,8 @@ export const AgentTracks = memo(function AgentTracks({
 
   return (
     <ComposerTrackBar>
+      {/* Upstream's Background work track; CUSTOM(background-tools) below keeps its own chip. */}
+      <BackgroundWorkTrack model={backgroundModel} count={backgroundWorkCount} />
       {/* CUSTOM(worktree-pill-done): a done worktree session leads the row, whatever the order. */}
       {isDone && show("worktree") ? (
         <WorktreePill
@@ -262,6 +281,8 @@ export const AgentTracks = memo(function AgentTracks({
   );
 });
 
+// One branch per pill.
+// eslint-disable-next-line complexity
 export function hasAgentTracks({
   parentAgentId,
   subagentRows,
@@ -270,6 +291,7 @@ export function hasAgentTracks({
   hasPluginComposerPills = false,
   options = {},
   hasBackgroundToolsRunning = false,
+  hasBackgroundWork = false,
 }: {
   parentAgentId: string | null;
   subagentRows: readonly SubagentRow[];
@@ -278,8 +300,11 @@ export function hasAgentTracks({
   hasPluginComposerPills?: boolean;
   options?: Record<string, boolean>;
   hasBackgroundToolsRunning?: boolean;
+  /** Upstream's Background work track: the agent reports background work. */
+  hasBackgroundWork?: boolean;
 }): boolean {
   return (
+    hasBackgroundWork ||
     // CUSTOM(commit-wip): Commit: wip shows with or without changes, so the row always does.
     (chatOptionEnabled(options, "commit") && COMMIT_WIP_PILL_ALWAYS_SHOWN) ||
     (chatOptionEnabled(options, "parent") && parentAgentId !== null) ||

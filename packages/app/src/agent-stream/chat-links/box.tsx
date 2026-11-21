@@ -13,7 +13,7 @@ export interface ChatLinksBoxProps {
   sessionPaths?: readonly string[];
   onOpenWorkspaceFile: (target: InlinePathTarget, disposition: OpenFileDisposition) => void;
   toast?: ToastApi | null;
-  contentMaxWidth: number;
+  contentMaxWidth: number | undefined;
   /** Distance from the bottom of the chat that keeps the box clear of the composer. */
   bottomOffset: number;
   /** Height the box takes from the bottom of the gutter, so the image strip stays above it. */

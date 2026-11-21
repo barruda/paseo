@@ -73,6 +73,7 @@ export class DictationStreamSender {
 
   private startGeneration = 0;
   private startPromise: Promise<void> | null = null;
+  private streamError: Error | null = null;
 
   // CUSTOM(dictation-live-text)
   private readonly onStreamInterrupted: ((error: Error) => void) | undefined;
@@ -149,6 +150,7 @@ export class DictationStreamSender {
     this.acknowledgedSeq = -1;
     this.streamReady = false;
     this.startPromise = null;
+    this.streamError = null;
     this.startGeneration += 1;
     this.resolveDrainWaiters();
   }
@@ -220,6 +222,7 @@ export class DictationStreamSender {
     this.sendSeq = 0;
     this.acknowledgedSeq = -1;
     this.streamReady = false;
+    this.streamError = null;
 
     const start = (async () => {
       await client.startDictationStream(dictationId, this.format);
@@ -319,8 +322,18 @@ export class DictationStreamSender {
     if (message.payload.dictationId !== this.dictationId) {
       return;
     }
-    // startDictationStream and finishDictationStream wait for this error themselves.
-    if (!this.streamReady || this.finishing) {
+    // While finishing, the flush waits on delivery that never comes: record the error so
+    // waitForFlushDrain throws it instead of timing out. (The daemon drops a stream after an
+    // error and answers later chunks with errors instead of acks.)
+    if (this.finishing) {
+      if (!this.streamError) {
+        this.streamError = new Error(message.payload.error);
+        this.resolveDrainWaiters();
+      }
+      return;
+    }
+    // startDictationStream waits for this error itself.
+    if (!this.streamReady) {
       return;
     }
     this.onStreamInterrupted?.(new Error(message.payload.error));
@@ -339,6 +352,15 @@ export class DictationStreamSender {
   private holdStream(): void {
     this.resetStreamForReplay();
     this.streamHeld = true;
+  }
+
+  private throwStreamError(): void {
+    const error = this.streamError;
+    if (!error) {
+      return;
+    }
+    this.invalidateStream();
+    throw error;
   }
 
   private invalidateStream(): void {
@@ -365,11 +387,13 @@ export class DictationStreamSender {
 
   private async waitForFlushDrain(finalSeq: number): Promise<void> {
     while (this.hasPendingDelivery(finalSeq)) {
+      this.throwStreamError();
       const client = this.client;
       if (!client?.isConnected || !this.dictationId || !this.streamReady) {
         throw new Error("Failed to flush dictation stream");
       }
       const result = await this.waitForDrainSignal();
+      this.throwStreamError();
       if (result.kind === "timed-out") {
         this.invalidateStream();
         throw new Error("Timed out waiting for dictation stream delivery");

@@ -4,11 +4,16 @@ import type {
   FetchAgentHistoryOptions,
   FetchAgentHistoryPageInfo,
 } from "@getpaseo/client/internal/daemon-client";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
+import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import { useShallow } from "zustand/shallow";
 import type { AggregatedAgent } from "@/hooks/use-aggregated-agents";
-import { getHostRuntimeStore, isHostRuntimeConnected, useHosts } from "@/runtime/host-runtime";
+import {
+  getHostRuntimeStore,
+  useHostRuntimeConnectionStatuses,
+  useHosts,
+} from "@/runtime/host-runtime";
 import { useSessionStore } from "@/stores/session-store";
 import { buildAgentDirectoryState } from "@/utils/agent-directory-sync";
 import { agentHistoryQueryKey, allAgentHistoryQueryKey } from "./agent-history-query-key";
@@ -47,6 +52,8 @@ export interface AgentHistoryResult {
   isArchivedUnavailable: boolean;
   /** More sessions matched than the ranked page holds. Narrow the query. */
   isSearchTruncated: boolean;
+  /** The agents answer the previous query; the current one is loading (`keepPreviousResults`). */
+  isPreviousResults: boolean;
   /** Hosts that failed while others succeeded. The list still renders. */
   hostErrors: AgentHistoryHostError[];
   refreshAll: () => Promise<void>;
@@ -261,15 +268,17 @@ export function useAgentHistory(options: {
   search?: string;
   view?: AgentHistoryView;
   includeSubagents?: boolean;
+  /**
+   * Leave out hosts that predate search, instead of searching no host. For a surface that adds
+   * history matches to other results, where a missing host is not a claim of "no matches".
+   */
+  searchableHostsOnly?: boolean;
+  /** Keep the previous query's results until the next query's arrive. */
+  keepPreviousResults?: boolean;
 }): AgentHistoryResult {
   const { t } = useTranslation();
   const daemons = useHosts();
   const runtime = getHostRuntimeStore();
-  const runtimeVersion = useSyncExternalStore(
-    (onStoreChange) => runtime.subscribeAll(onStoreChange),
-    () => runtime.getVersion(),
-    () => runtime.getVersion(),
-  );
   const serverId = useMemo(() => {
     const value = options.serverId;
     return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
@@ -277,22 +286,32 @@ export function useAgentHistory(options: {
   const view = options.view ?? "active";
   const includeSubagents = options.includeSubagents ?? false;
   const enabledOption = options.enabled ?? true;
+  const requestedServerIds = useMemo(
+    () => (serverId ? [serverId] : daemons.map((daemon) => daemon.serverId)),
+    [daemons, serverId],
+  );
+  const searchableServerIds = useSessionStore(
+    useShallow((state) =>
+      requestedServerIds.filter(
+        (id) => state.sessions[id]?.serverInfo?.features?.agentHistorySearch === true,
+      ),
+    ),
+  );
+  const serverIds = options.searchableHostsOnly ? searchableServerIds : requestedServerIds;
+  const connectionStatuses = useHostRuntimeConnectionStatuses(serverIds);
   // A host the user asked about splits two ways: one this fetch can reach, and
   // one whose sessions will be missing from the answer. Both come out of here,
   // because dropping the unreachable ones silently is what lets the list — and
   // worse, "No sessions match" — overstate what was actually searched.
   const { targetHosts, unreachableHosts } = useMemo(() => {
-    void runtimeVersion;
     const serverLabelById = new Map(daemons.map((daemon) => [daemon.serverId, daemon.label]));
-    const serverIds = serverId ? [serverId] : daemons.map((daemon) => daemon.serverId);
     const hosts: AgentHistoryHost[] = [];
     const unreachable: AgentHistoryHostError[] = [];
 
     for (const targetServerId of serverIds) {
-      const snapshot = runtime.getSnapshot(targetServerId);
       const client = runtime.getClient(targetServerId);
       const serverName = serverLabelById.get(targetServerId) ?? targetServerId;
-      if (!client || !isHostRuntimeConnected(snapshot)) {
+      if (!client || connectionStatuses.get(targetServerId) !== "online") {
         unreachable.push({ serverId: targetServerId, serverName });
         continue;
       }
@@ -300,7 +319,7 @@ export function useAgentHistory(options: {
     }
 
     return { targetHosts: hosts, unreachableHosts: unreachable };
-  }, [daemons, runtime, runtimeVersion, serverId]);
+  }, [daemons, runtime, connectionStatuses, serverIds]);
   const targetServerIds = useMemo(() => targetHosts.map((host) => host.serverId), [targetHosts]);
   // One gate, checked before the field is offered: a fleet where any host
   // predates search has no search, rather than a list that silently omits that
@@ -345,6 +364,7 @@ export function useAgentHistory(options: {
     [daemons],
   );
 
+  const queryEnabled = Boolean(enabled && targetHosts.length > 0);
   const historyQuery = useInfiniteQuery<
     AgentHistoryBatchPage,
     Error,
@@ -353,8 +373,11 @@ export function useAgentHistory(options: {
     AgentHistoryCursorByServerId | null
   >({
     queryKey,
-    enabled: Boolean(enabled && targetHosts.length > 0),
+    enabled: queryEnabled,
     staleTime: 30_000,
+    // Previous results stand in only until the next query's arrive. With no host to search,
+    // nothing will arrive, so they would stand in, and read as still loading, indefinitely.
+    ...(options.keepPreviousResults && queryEnabled ? { placeholderData: keepPreviousData } : {}),
     initialPageParam: null,
     getNextPageParam: getNextAgentHistoryPageParam,
     queryFn: async ({ pageParam }) => {
@@ -378,6 +401,7 @@ export function useAgentHistory(options: {
     isFetching,
     isFetchingNextPage,
     isLoading,
+    isPlaceholderData,
     refetch,
   } = historyQuery;
 
@@ -424,6 +448,7 @@ export function useAgentHistory(options: {
     isSearchSupported,
     isArchivedUnavailable: view === "archived" && !isArchivedSupported,
     isSearchTruncated,
+    isPreviousResults: isPlaceholderData,
     hostErrors,
     refreshAll,
     loadMore,

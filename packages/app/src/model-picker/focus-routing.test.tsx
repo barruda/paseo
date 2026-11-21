@@ -31,7 +31,7 @@ function controlsFor(ownerKey: string): AgentControlCommandCenterSource {
     providerDefinitions: [],
     models: { providers: [], selectedProvider: "claude", selectedModelId: "opus", select: vi.fn() },
     thinking: { options: [], selectedId: "high", select: vi.fn() },
-    features: { list: [] },
+    optionControls: null,
   };
 }
 

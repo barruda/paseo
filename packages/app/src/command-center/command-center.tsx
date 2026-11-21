@@ -1,8 +1,9 @@
+import { useOverlayRegistration, type KeyboardInputEvent } from "@/keyboard";
+import { Modal } from "@/components/ui/modal";
 import equal from "fast-deep-equal";
 import { recordRenderProfileReasons } from "@/utils/render-profiler";
 import {
   FlatList,
-  Modal,
   Pressable,
   Text,
   View,
@@ -23,11 +24,12 @@ import {
   useSyncExternalStore,
 } from "react";
 import { useTranslation } from "react-i18next";
-import type { TFunction } from "i18next";
-import { Archive, Check, ChevronRight, Folder, X } from "lucide-react-native";
+import { Check, ChevronRight, Folder, X } from "lucide-react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { BottomSheetFlatList, type BottomSheetFlatListMethods } from "@gorhom/bottom-sheet";
-import { useAgentDescriptor, resolveAgentLabel } from "@/agent-presentation";
+import { resolveAgentLabel } from "@/agent-presentation";
+import { useArchivedWorkspaceSearch, type ArchivedWorkspace } from "@/archived-workspaces";
+import { ArchivedBadge } from "@/components/archived-badge";
 import { StatusIcon } from "@/components/status-icon";
 import { useWorkspaceStatus } from "@/workspace-status";
 import type { SurfaceBackdrop } from "@/styles/surface-backdrop";
@@ -35,12 +37,14 @@ import type { Theme } from "@/styles/theme";
 import { HighlightedText, type HighlightedTextProps } from "@/components/ui/highlighted-text";
 import { findHighlightRanges } from "@/components/ui/highlighted-text-segments";
 import { MaterialFileIcon } from "@/components/material-file-icon";
+import { useProviderIcon } from "@/components/provider-icons";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import {
   EditingTextInput as TextInput,
   type EditingTextInputHandle,
 } from "@/components/ui/text-input";
+import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Shortcut } from "@/components/ui/shortcut";
 import {
   IsolatedBottomSheetModal,
@@ -48,25 +52,23 @@ import {
 } from "@/components/ui/isolated-bottom-sheet-modal";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { isNative, isWeb } from "@/constants/platform";
-import { useAggregatedAgents } from "@/hooks/use-aggregated-agents";
-// CUSTOM(search-expand-archived)
-import { useAgentHistory } from "@/hooks/use-agent-history";
-import { StatusBadge } from "@/components/ui/status-badge";
+import { useAggregatedAgents, type AggregatedAgent } from "@/hooks/use-aggregated-agents";
 import { useProjects } from "@/hooks/use-projects";
 import { useTimeAgo } from "@/hooks/use-time-ago";
 import { createProjectIconTarget } from "@/projects/icon-target";
 import { useProjectIcons } from "@/projects/icons";
-import {
-  OverlayLayerProvider,
-  useGlobalWebOverlayLayer,
-  useWebOverlayRegistration,
-} from "@/lib/overlay-root";
-import { useHosts } from "@/runtime/host-runtime";
+import { OverlayLayerProvider, useGlobalOverlayLayer } from "@/lib/overlay-root";
+import { useHostRuntimeConnectionStatuses, useHosts } from "@/runtime/host-runtime";
+import { useHydratedWorkspaceServerIds } from "@/stores/session-store-hooks";
 import {
   useKeyboardShortcutsStore,
   type CommandCenterScope,
 } from "@/stores/keyboard-shortcuts-store";
-import { navigateToWorkspace } from "@/stores/navigation-active-workspace-store";
+import { useSidebarViewStore } from "@/stores/sidebar-view-store";
+import {
+  navigateToWorkspace,
+  useActiveWorkspaceSelection,
+} from "@/stores/navigation-active-workspace-store";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import {
   clearCommandCenterFocusRestoreElement,
@@ -74,10 +76,8 @@ import {
 } from "@/utils/command-center-focus-restore";
 import { focusWithRetries } from "@/utils/web-focus";
 import { navigateToAgent } from "@/utils/navigate-to-agent";
-import { shortenPath } from "@/utils/shorten-path";
-// CUSTOM(tasks-mode-hide-workspace)
-import { useTaskNavigationStore } from "@/task-navigation/store";
 import { projectIconPlaceholderLabelFromDisplayName } from "@/utils/project-display-name";
+import { getProjectSummaryForHostProject } from "@/utils/projects";
 import {
   COMMAND_CENTER_LINE_HEIGHT,
   COMMAND_CENTER_LIST_METRICS,
@@ -85,29 +85,27 @@ import {
   type CommandCenterListMetrics,
 } from "./list-metrics";
 import { useCommandCenterContributions } from "./provider";
-import { filterAndRankWorkspaces } from "./workspace-search";
+import { createWorkspaceRanker } from "./workspace-search";
 import {
-  buildContributionSections,
-  filterAndRankBuiltInResults,
   joinSubtitleParts,
   PINNED_SECTION_BAND,
   projectCommandCenterRows,
-  type CommandCenterAgentResult,
   type CommandCenterFileResult,
   type CommandCenterListRow,
   type CommandCenterResult,
   type CommandCenterResultSection,
-  type CommandCenterSearchFields,
+  type CommandCenterWorkspaceAgent,
   type CommandCenterWorkspaceResult,
 } from "./results";
-import { createCommandCenterInteraction, type CommandCenterInteraction } from "./interaction";
-// CUSTOM(search-expand-archived)
+import { buildCommandCenterSections } from "./sections";
 import {
-  isArchivedExpansionActive,
-  selectArchivedAgents,
-  shouldOfferArchivedExpansion,
-  shouldResetArchivedExpansion,
-} from "./expand-archived";
+  availableCommandCenterTabs,
+  resolveCommandCenterTab,
+  rotateCommandCenterTab,
+  type CommandCenterTab,
+} from "./tabs";
+import { createCommandCenterInteraction, type CommandCenterInteraction } from "./interaction";
+// CUSTOM(workspace-content-search)
 import { useWorkspaceContentSearch } from "./workspace-content-search";
 import { useWorkspaceFileSearch } from "./workspace-file-search";
 import { describeWorkspaceFilePath } from "./workspace-file-search-model";
@@ -119,24 +117,16 @@ const ThemedTextInput = withUnistyles(TextInput, (theme) => ({
   placeholderTextColor: theme.colors.foregroundMuted,
 }));
 const ThemedFolder = withUnistyles(Folder, (theme) => ({ color: theme.colors.foregroundMuted }));
+const ThemedX = withUnistyles(X, (theme) => ({ color: theme.colors.foregroundMuted }));
 const ThemedCheck = withUnistyles(Check, (theme) => ({ color: theme.colors.foreground }));
 const ThemedChevronRight = withUnistyles(ChevronRight, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
-const ThemedArchive = withUnistyles(Archive, (theme) => ({
-  color: theme.colors.foregroundMuted,
-}));
-const ThemedX = withUnistyles(X, (theme) => ({ color: theme.colors.foregroundMuted }));
 const ThemedLoadingSpinner = withUnistyles(LoadingSpinner, (theme) => ({
   color: theme.colors.foregroundMuted,
 }));
 const COMMAND_CENTER_SNAP_POINTS = ["60%", "90%"];
 const KEYBOARD_SHOULD_PERSIST_TAPS = "always" as const;
-
-/** `cwd` is not rendered, so a path match must never outrank a match on text the user can see. */
-function agentSearchFields(result: CommandCenterAgentResult): CommandCenterSearchFields {
-  return { visible: [result.title, result.subtitle], hidden: [result.agent.cwd] };
-}
 
 function createWorkspaceResultAction(serverId: string, workspaceId: string) {
   return () => {
@@ -145,33 +135,73 @@ function createWorkspaceResultAction(serverId: string, workspaceId: string) {
   };
 }
 
-function createAgentResultAction(serverId: string, agentId: string) {
-  return () => {
+function createAgentResultAction(serverId: string) {
+  return (agentId: string) => {
     clearCommandCenterFocusRestoreElement();
     navigateToAgent({ serverId, agentId });
   };
 }
 
-/**
- * Build every pinned row. Deliberately not keyed on `query`: none of this work depends on what
- * was typed. Ordering belongs to `filterAndRankBuiltInResults`, which ranks on every keystroke.
- */
-function useBuiltInRows(open: boolean): {
-  workspaces: CommandCenterWorkspaceResult[];
-  agents: CommandCenterAgentResult[];
-  // CUSTOM(search-expand-archived)
-  agentsLoading: boolean;
-  shownAgents: readonly { id: string; serverId: string }[];
-} {
-  const { t } = useTranslation();
-  const previousRows = useRef(
-    new Map<string, CommandCenterAgentResult | CommandCenterWorkspaceResult>(),
+const NO_WORKSPACE_AGENTS: readonly CommandCenterWorkspaceAgent[] = [];
+
+/** Each workspace's titled agents, most recent first, keyed `serverId:workspaceId`. */
+function groupWorkspaceAgents(
+  agents: readonly AggregatedAgent[],
+): Map<string, CommandCenterWorkspaceAgent[]> {
+  const byWorkspace = new Map<string, CommandCenterWorkspaceAgent[]>();
+  const newestFirst = [...agents].sort(
+    (left, right) => right.lastActivityAt.getTime() - left.lastActivityAt.getTime(),
   );
-  const { agents, isLoading: agentsLoading } = useAggregatedAgents({ demand: open });
-  const { projects } = useProjects({ enabled: open });
-  const showHost = useHosts().length > 1;
-  // CUSTOM(tasks-mode-hide-workspace): in Tasks mode a session's subtitle names its project.
-  const tasksMode = useTaskNavigationStore((state) => state.enabled);
+  for (const agent of newestFirst) {
+    const title = resolveAgentLabel(agent.title);
+    if (!agent.workspaceId || !title) continue;
+    const key = `${agent.serverId}:${agent.workspaceId}`;
+    const list = byWorkspace.get(key) ?? [];
+    list.push({ id: agent.id, title, provider: agent.provider });
+    byWorkspace.set(key, list);
+  }
+  return byWorkspace;
+}
+
+function createArchivedAgentAction(serverId: string, workspaceId: string) {
+  // Opening on an agent with the tab pinned is what offers Unarchive, as History does.
+  return (agentId: string) => {
+    clearCommandCenterFocusRestoreElement();
+    navigateToAgent({ serverId, agentId, workspaceId, pin: true });
+  };
+}
+
+function titledAgents(
+  agents: readonly { id: string; title: string | null; provider: string }[],
+): CommandCenterWorkspaceAgent[] {
+  return agents.flatMap((agent) => {
+    const title = resolveAgentLabel(agent.title);
+    return title ? [{ id: agent.id, title, provider: agent.provider }] : [];
+  });
+}
+
+interface WorkspaceRows {
+  active: CommandCenterWorkspaceResult[];
+  archived: CommandCenterWorkspaceResult[];
+  /** The workspace list has not loaded yet, so rows are still arriving. */
+  loading: boolean;
+}
+
+/**
+ * Build every workspace row. Deliberately not keyed on `query`: none of this work depends on
+ * what was typed. Ordering belongs to the workspace ranker, which ranks on every keystroke.
+ * Archived rows come from the host's history search, so they change with its results.
+ */
+function useWorkspaceRows(
+  open: boolean,
+  archivedWorkspaces: readonly ArchivedWorkspace[],
+): WorkspaceRows {
+  const previousRows = useRef(new Map<string, CommandCenterWorkspaceResult>());
+  const { agents, isInitialLoad: agentsLoading } = useAggregatedAgents({ demand: open });
+  const { projects, isLoading: projectsLoading } = useProjects({ enabled: open });
+  const hosts = useHosts();
+  const workspacesArriving = useWorkspacesArriving(open, hosts);
+  const showHost = hosts.length > 1;
   const iconTargets = useMemo(
     () =>
       open
@@ -189,24 +219,26 @@ function useBuiltInRows(open: boolean): {
   );
   const iconDataByProjectViewKey = useProjectIcons({ projects: iconTargets });
 
-  return useMemo(() => {
+  const active = useMemo(() => {
     if (!open) {
       previousRows.current.clear();
-      return { workspaces: [], agents: [], agentsLoading, shownAgents: agents };
+      return [];
     }
-    // Built-in IDs identify immutable navigation targets. Reuse their callbacks and unchanged
+    // Workspace IDs identify immutable navigation targets. Reuse their callbacks and unchanged
     // row data so a directory update does not invalidate every mounted ResultRow.
-    const nextRows = new Map<string, CommandCenterAgentResult | CommandCenterWorkspaceResult>();
-    const preserve = <T extends CommandCenterAgentResult | CommandCenterWorkspaceResult>(
-      row: T,
-    ): T => {
+    const nextRows = new Map<string, CommandCenterWorkspaceResult>();
+    const preserve = (row: CommandCenterWorkspaceResult): CommandCenterWorkspaceResult => {
       const previous = previousRows.current.get(row.id);
-      if (previous) row.run = previous.run;
-      const stable = previous && equal(previous, row) ? (previous as T) : row;
+      if (previous) {
+        row.run = previous.run;
+        row.openAgent = previous.openAgent;
+      }
+      const stable = previous && equal(previous, row) ? previous : row;
       nextRows.set(row.id, stable);
       return stable;
     };
-    const allWorkspaces: CommandCenterWorkspaceResult[] = [];
+    const agentsByWorkspace = groupWorkspaceAgents(agents);
+    const rows: CommandCenterWorkspaceResult[] = [];
     for (const project of projects) {
       const workspaceProject = {
         viewKey: project.viewKey,
@@ -216,10 +248,11 @@ function useBuiltInRows(open: boolean): {
       for (const host of project.hosts) {
         for (const workspace of host.workspaces) {
           if (workspace.archivingAt) continue;
-          allWorkspaces.push(
+          const key = `${host.serverId}:${workspace.id}`;
+          rows.push(
             preserve({
               kind: "workspace",
-              id: `workspace:${host.serverId}:${workspace.id}`,
+              id: `workspace:${key}`,
               title: workspace.title ?? workspace.name,
               subtitle: joinSubtitleParts([
                 showHost ? host.serverName : null,
@@ -231,142 +264,85 @@ function useBuiltInRows(open: boolean): {
               project: workspaceProject,
               changeRequestNumber: workspace.changeRequestNumber,
               activityAt: workspace.statusEnteredAt,
+              agents: agentsByWorkspace.get(key) ?? NO_WORKSPACE_AGENTS,
+              matchedAgent: null,
+              archived: false,
+              background: workspace.background,
               run: createWorkspaceResultAction(host.serverId, workspace.id),
+              openAgent: createAgentResultAction(host.serverId),
             }),
           );
         }
       }
     }
-    const workspaceTitleByKey = new Map(
-      allWorkspaces.map((workspace) => [
-        workspace.id.slice("workspace:".length),
-        tasksMode ? workspace.project.name : workspace.title,
-      ]),
-    );
-    const agentRows = agents.map<CommandCenterAgentResult>((agent) => {
-      const workspaceTitle = agent.workspaceId
-        ? workspaceTitleByKey.get(`${agent.serverId}:${agent.workspaceId}`)
-        : undefined;
-      return preserve({
-        kind: "agent",
-        id: `agent:${agent.serverId}:${agent.id}`,
-        agent,
-        title: resolveAgentLabel(agent.title) ?? t("workspace.tabs.loading"),
-        subtitle: joinSubtitleParts([
-          showHost ? agent.serverLabel : null,
-          workspaceTitle ?? shortenPath(agent.cwd),
-        ]),
-        activityAt: agent.lastActivityAt,
-        run: createAgentResultAction(agent.serverId, agent.id),
-      });
-    });
     previousRows.current = nextRows;
-    return { workspaces: allWorkspaces, agents: agentRows, agentsLoading, shownAgents: agents };
-  }, [agents, agentsLoading, iconDataByProjectViewKey, open, projects, showHost, t, tasksMode]);
-}
+    return rows;
+  }, [agents, iconDataByProjectViewKey, open, projects, showHost]);
 
-function useBuiltInSections(
-  open: boolean,
-  query: string,
-  scoped: boolean,
-  archivedExpanded: boolean,
-  expandArchived: () => void,
-): CommandCenterResultSection[] {
-  const { t } = useTranslation();
-  const rows = useBuiltInRows(open);
-  // CUSTOM(search-expand-archived): archived sessions come from agent history, and only after
-  // the user pressed the button, so nothing archived is fetched before then.
-  const showHost = useHosts().length > 1;
-  const history = useAgentHistory({
-    enabled: isArchivedExpansionActive({ open, query, expanded: archivedExpanded }),
-    search: query,
-    view: "archived",
-  });
-  const archivedRows = useMemo<CommandCenterAgentResult[]>(() => {
-    if (!open || !archivedExpanded) return [];
-    return selectArchivedAgents(history.agents, rows.shownAgents).map((agent) => ({
-      kind: "agent",
-      id: `agent:${agent.serverId}:${agent.id}`,
-      agent,
-      title: resolveAgentLabel(agent.title) ?? t("workspace.tabs.loading"),
-      subtitle: joinSubtitleParts([showHost ? agent.serverLabel : null, shortenPath(agent.cwd)]),
-      activityAt: agent.lastActivityAt,
-      run: createAgentResultAction(agent.serverId, agent.id),
-    }));
-  }, [archivedExpanded, history.agents, open, rows.shownAgents, showHost, t]);
-  const expandRow = useMemo<CommandCenterResult>(
-    () => ({ kind: "expand-archived", id: "expand-archived", run: expandArchived }),
-    [expandArchived],
-  );
-  // CUSTOM(tasks-mode-hide-workspace): Tasks mode has no workspaces to jump to.
-  const tasksMode = useTaskNavigationStore((state) => state.enabled);
-
-  return useMemo(() => {
-    if (!open) return [];
-    const workspaceSection: CommandCenterResultSection[] = tasksMode
-      ? []
-      : [
-          {
-            id: "workspaces",
-            band: PINNED_SECTION_BAND,
-            rank: 2,
-            title: t("shell.commandCenter.workspaces"),
-            results: filterAndRankWorkspaces(rows.workspaces, query),
+  const archived = useMemo(() => {
+    const activeIds = new Set(active.map((row) => row.id));
+    const hostLabels = new Map(hosts.map((host) => [host.serverId, host.label]));
+    return archivedWorkspaces.flatMap<CommandCenterWorkspaceResult>((workspace) => {
+      const id = `workspace:${workspace.key}`;
+      // The host's history can trail its workspace list; the active row wins.
+      if (activeIds.has(id)) return [];
+      const project = workspace.projectKey
+        ? getProjectSummaryForHostProject(projects, workspace.serverId, workspace.projectKey)
+        : undefined;
+      const projectName = project?.projectName ?? workspace.projectName ?? workspace.name;
+      const openAgent = createArchivedAgentAction(workspace.serverId, workspace.workspaceId);
+      const latestAgentId = workspace.agents[0].id;
+      return [
+        {
+          kind: "workspace",
+          id,
+          title: workspace.name,
+          subtitle: joinSubtitleParts([
+            showHost ? (hostLabels.get(workspace.serverId) ?? workspace.serverId) : null,
+            projectName,
+            workspace.branch,
+          ]),
+          serverId: workspace.serverId,
+          workspaceId: workspace.workspaceId,
+          project: {
+            viewKey: project?.viewKey ?? `archived:${workspace.key}`,
+            name: projectName,
+            iconDataUri: project ? (iconDataByProjectViewKey.get(project.viewKey) ?? null) : null,
           },
-        ];
-    return [
-      ...workspaceSection,
-      {
-        id: "agents",
-        band: PINNED_SECTION_BAND,
-        rank: 3,
-        title: t("shell.commandCenter.agents"),
-        results: [
-          ...filterAndRankBuiltInResults(rows.agents, query, agentSearchFields),
-          // The server already ranked archived matches when it supports history search.
-          ...(history.isSearchSupported
-            ? archivedRows
-            : filterAndRankBuiltInResults(archivedRows, query, agentSearchFields)),
-          ...(shouldOfferArchivedExpansion({
-            query,
-            scoped,
-            agentsLoading: rows.agentsLoading,
-            expanded: archivedExpanded,
-          })
-            ? [expandRow]
-            : []),
-        ],
-      },
-    ];
-  }, [
-    archivedExpanded,
-    archivedRows,
-    expandRow,
-    history.isSearchSupported,
-    open,
-    query,
-    rows,
-    scoped,
-    t,
-    tasksMode,
-  ]);
+          changeRequestNumber: null,
+          activityAt: workspace.archivedAt,
+          agents: titledAgents(workspace.agents),
+          matchedAgent: null,
+          archived: true,
+          background: false,
+          run: () => openAgent(latestAgentId),
+          openAgent,
+        },
+      ];
+    });
+  }, [active, archivedWorkspaces, hosts, iconDataByProjectViewKey, projects, showHost]);
+
+  return {
+    active,
+    archived,
+    // Opening a workspace route loads that workspace before the rest of the directory, so rows
+    // are no sign that the list is complete.
+    loading: agentsLoading || projectsLoading || workspacesArriving,
+  };
 }
 
-interface CommandCenterState {
-  open: boolean;
-  scope: CommandCenterScope;
-  clearScope(): void;
-  query: string;
-  setQuery(query: string): void;
-  activeId: string | null;
-  rows: readonly CommandCenterListRow[];
-  offsets: readonly number[];
-  inputRef: React.RefObject<EditingTextInputHandle | null>;
-  fileSearchLoading: boolean;
-  fileSearchError: string | null;
-  close(): void;
-  select(result: CommandCenterResult): void;
-  key(key: string): boolean;
+/**
+ * An online host's workspaces have not arrived yet. Its agent directory reports ready before
+ * the workspace snapshot lands, so until then the workspace rows are incomplete.
+ */
+function useWorkspacesArriving(open: boolean, hosts: readonly { serverId: string }[]): boolean {
+  const serverIds = useMemo(() => (open ? hosts.map((host) => host.serverId) : []), [hosts, open]);
+  const connectionStatuses = useHostRuntimeConnectionStatuses(serverIds);
+  const hydratedServerIds = useHydratedWorkspaceServerIds(serverIds);
+  return serverIds.some(
+    (serverId) =>
+      connectionStatuses.get(serverId) === "online" && !hydratedServerIds.includes(serverId),
+  );
 }
 
 // CUSTOM(workspace-content-search): text matches, as file rows with the matching line under them.
@@ -404,6 +380,28 @@ function useContentSearchSection(enabled: boolean, query: string) {
   return { sections, loading, error };
 }
 
+interface CommandCenterState {
+  open: boolean;
+  /** The tabs on offer, in the order Tab walks them. */
+  tabs: readonly CommandCenterTab[];
+  tab: CommandCenterTab;
+  /** CUSTOM(workspace-content-search): "content" while the palette searches inside files. */
+  scope: CommandCenterScope;
+  clearScope(): void;
+  selectTab(tab: CommandCenterTab): void;
+  query: string;
+  setQuery(query: string): void;
+  activeId: string | null;
+  rows: readonly CommandCenterListRow[];
+  offsets: readonly number[];
+  inputRef: React.RefObject<EditingTextInputHandle | null>;
+  fileSearchLoading: boolean;
+  fileSearchError: string | null;
+  close(): void;
+  select(result: CommandCenterResult): void;
+  key(event: { key: string; shiftKey?: boolean }): boolean;
+}
+
 function useCommandCenterState(
   listMetrics: CommandCenterListMetrics,
   interaction: CommandCenterInteraction,
@@ -411,108 +409,152 @@ function useCommandCenterState(
   const keyboardActionDispatcher = useKeyboardActionDispatcher();
   const { t } = useTranslation();
   const open = useKeyboardShortcutsStore((state) => state.commandCenterOpen);
-  const scope = useKeyboardShortcutsStore((state) => state.commandCenterScope);
+  const requestedTab = useKeyboardShortcutsStore((state) => state.commandCenterTab);
   const setOpen = useKeyboardShortcutsStore((state) => state.setCommandCenterOpen);
+  const setTab = useKeyboardShortcutsStore((state) => state.setCommandCenterTab);
+  // CUSTOM(workspace-content-search)
+  const requestedScope = useKeyboardShortcutsStore((state) => state.commandCenterScope);
   const setScope = useKeyboardShortcutsStore((state) => state.setCommandCenterScope);
   const snapshot = useCommandCenterContributions();
   const inputRef = useRef<EditingTextInputHandle>(null);
   const previousOpenRef = useRef(open);
   const { query, activeId } = useSyncExternalStore(interaction.subscribe, interaction.getSnapshot);
-  // CUSTOM(search-expand-archived)
-  const [archivedExpanded, setArchivedExpanded] = useState(false);
-  const expandArchived = useCallback(() => setArchivedExpanded(true), []);
-  useEffect(() => {
-    if (shouldResetArchivedExpansion({ open, query })) setArchivedExpanded(false);
-  }, [open, query]);
-  const builtInSections = useBuiltInSections(
-    open,
-    query,
-    scope !== null,
-    archivedExpanded,
-    expandArchived,
-  );
+  const activeWorkspace = useActiveWorkspaceSelection();
+  const hasWorkspace = activeWorkspace !== null;
+  const tabs = useMemo(() => availableCommandCenterTabs({ hasWorkspace }), [hasWorkspace]);
+  // CUSTOM(workspace-content-search): searching inside files needs an open workspace. The
+  // interaction treats it like the Files tab: both are served by the daemon.
+  const scope: CommandCenterScope = requestedScope === "content" && hasWorkspace ? "content" : null;
+  const tab = scope === "content" ? "files" : resolveCommandCenterTab(requestedTab, tabs);
+  const showBackground = useSidebarViewStore((state) => state.showBackground);
+  const listsWorkspaces = scope === null && (tab === "all" || tab === "workspaces");
+  const archivedSearch = useArchivedWorkspaceSearch(query, {
+    enabled: open && listsWorkspaces,
+  });
+  const workspaceRows = useWorkspaceRows(open, archivedSearch.workspaces);
+  const [rankWorkspaces] = useState(createWorkspaceRanker);
+  const currentWorkspaceId = activeWorkspace
+    ? `workspace:${activeWorkspace.serverId}:${activeWorkspace.workspaceId}`
+    : null;
   const {
     entries: fileSearchEntries,
     loading: fileSearchLoading,
     error: fileSearchError,
     openFile,
   } = useWorkspaceFileSearch({
-    enabled: open && (scope === "files" || (scope === null && Boolean(query.trim()))),
+    enabled:
+      open &&
+      scope === null &&
+      tabs.includes("files") &&
+      (tab === "files" || (tab === "all" && Boolean(query.trim()))),
     query,
   });
   // CUSTOM(workspace-content-search)
   const contentSearch = useContentSearchSection(open && scope === "content", query);
-  const scopedLoading = scope === "content" ? contentSearch.loading : fileSearchLoading;
-  const scopedError = scope === "content" ? contentSearch.error : fileSearchError;
-  const fileSections = useMemo<CommandCenterResultSection[]>(() => {
-    const results = fileSearchEntries.map<CommandCenterFileResult>((entry) => ({
-      kind: "file",
-      id: `file:${entry.path}`,
-      filePath: entry.path,
-      title: entry.name,
-      subtitle: entry.directory,
-      run: () => openFile(entry.path),
-    }));
-    // File rows are matched by the daemon, so they carry no client-side score and cannot be
-    // relevance-compared against the rows that do. Pinning them keeps the section comparator
-    // total: band is decided before any score is read.
-    return [
-      {
-        id: "files",
-        band: PINNED_SECTION_BAND,
-        rank: 4,
-        title: t("shell.commandCenter.files"),
-        results,
-      },
-    ];
-  }, [fileSearchEntries, openFile, t]);
-  const contributionSections = useMemo(
-    () => buildContributionSections(snapshot.contributions, query),
-    [query, snapshot.contributions],
+  const files = useMemo(
+    () =>
+      fileSearchEntries.map<CommandCenterFileResult>((entry) => ({
+        kind: "file",
+        id: `file:${entry.path}`,
+        filePath: entry.path,
+        title: entry.name,
+        subtitle: entry.directory,
+        run: () => openFile(entry.path),
+      })),
+    [fileSearchEntries, openFile],
   );
-  const projection = useMemo(() => {
-    if (scope === "content") return projectCommandCenterRows(contentSearch.sections, listMetrics);
-    return projectCommandCenterRows(
-      scope === "files"
-        ? fileSections
-        : [...contributionSections, ...fileSections, ...builtInSections],
-      listMetrics,
-    );
-  }, [
-    builtInSections,
-    contentSearch.sections,
-    contributionSections,
-    fileSections,
-    listMetrics,
-    scope,
-  ]);
+  const sections = useMemo(
+    () =>
+      open
+        ? buildCommandCenterSections({
+            tab,
+            query,
+            rankWorkspaces,
+            workspaces: workspaceRows.active,
+            archivedWorkspaces: workspaceRows.archived,
+            archivedMatchedByHost: archivedSearch.matchedByHost,
+            showBackground,
+            currentWorkspaceId,
+            contributions: snapshot.contributions,
+            files,
+            titles: {
+              recentWorkspaces: t("shell.commandCenter.recentWorkspaces"),
+              workspaces: t("shell.commandCenter.workspaces"),
+              files: t("shell.commandCenter.files"),
+            },
+          })
+        : [],
+    [
+      archivedSearch.matchedByHost,
+      currentWorkspaceId,
+      files,
+      open,
+      query,
+      rankWorkspaces,
+      showBackground,
+      snapshot.contributions,
+      t,
+      tab,
+      workspaceRows,
+    ],
+  );
+  const projection = useMemo(
+    () =>
+      projectCommandCenterRows(
+        scope === "content" ? contentSearch.sections : sections,
+        listMetrics,
+      ),
+    [contentSearch.sections, listMetrics, scope, sections],
+  );
+  const loading =
+    scope === "content"
+      ? contentSearch.loading
+      : fileSearchLoading || (listsWorkspaces && (archivedSearch.pending || workspaceRows.loading));
   useLayoutEffect(() => {
-    interaction.update({ open, scope, query, projection, loading: scopedLoading });
-  }, [interaction, open, scope, query, projection, scopedLoading]);
+    interaction.update({ open, tab, query, projection, loading });
+  }, [interaction, open, tab, query, projection, loading]);
 
   const close = useCallback(() => setOpen(false), [setOpen]);
   const select = useCallback(
     (result: CommandCenterResult) => {
-      // CUSTOM(search-expand-archived): the button widens the search; the palette stays open.
-      if (result.kind === "expand-archived") {
-        result.run();
-        return;
-      }
       setOpen(false);
       void result.run();
     },
     [setOpen],
   );
+  const clearScope = useCallback(() => {
+    setScope(null);
+    setTab("all");
+    inputRef.current?.focus();
+  }, [setScope, setTab]);
+  const selectTab = useCallback(
+    (next: CommandCenterTab) => {
+      setTab(next);
+      // A tab click must not take typing away from the search field.
+      inputRef.current?.focus();
+    },
+    [setTab],
+  );
   const key = useCallback(
-    (pressed: string): boolean => {
+    (event: { key: string; shiftKey?: boolean }): boolean => {
       if (!open) return false;
+      const pressed = event.key;
       const results = projection.selectableResults;
       if (pressed === "Escape") {
         close();
         return true;
       }
-      if (pressed === "Backspace" && !query.trim() && scope) {
-        setScope(null);
+      if (pressed === "Tab") {
+        if (scope === "content") return false;
+        setTab(rotateCommandCenterTab(tab, event.shiftKey ? "previous" : "next", tabs));
+        return true;
+      }
+      if (pressed === "Backspace" && !query.trim() && scope === "content") {
+        clearScope();
+        return true;
+      }
+      if (pressed === "Backspace" && !query.trim() && tab !== "all") {
+        setTab("all");
         return true;
       }
       if (pressed === "Enter") {
@@ -525,14 +567,17 @@ function useCommandCenterState(
       return interaction.move(pressed === "ArrowDown" ? "next" : "previous");
     },
     [
+      clearScope,
       close,
       open,
       projection.selectableResults,
       query,
       activeId,
       scope,
+      tab,
+      tabs,
       select,
-      setScope,
+      setTab,
       interaction,
     ],
   );
@@ -558,16 +603,19 @@ function useCommandCenterState(
 
   return {
     open,
+    tabs,
+    tab,
     scope,
-    clearScope: () => setScope(null),
+    clearScope,
+    selectTab,
     query,
     setQuery: interaction.setQuery,
     activeId,
     rows: projection.rows,
     offsets: projection.offsets,
     inputRef,
-    fileSearchLoading: scopedLoading,
-    fileSearchError: scopedError,
+    fileSearchLoading: scope === "content" ? contentSearch.loading : fileSearchLoading,
+    fileSearchError: scope === "content" ? contentSearch.error : fileSearchError,
     close,
     select,
     key,
@@ -691,74 +739,37 @@ function SubtitleWithTimestamp({
   );
 }
 
-const providerIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
-
-function AgentResultContent({
-  result,
+/**
+ * The third line of a workspace that matched only through one of its agents: which agent, so the
+ * user can tell why the row is here. It starts on the title's rail.
+ */
+function MatchedAgentLine({
+  agent,
+  serverId,
   query,
-  backdrop,
 }: {
-  result: CommandCenterAgentResult;
+  agent: CommandCenterWorkspaceAgent;
+  serverId: string;
   query: string;
-  backdrop: SurfaceBackdrop;
 }) {
-  const { t } = useTranslation();
-  const agent = result.agent;
-  const descriptor = useAgentDescriptor(
-    { kind: "agent", agentId: agent.id },
-    { serverId: agent.serverId },
-  );
-  const Icon = useMemo(
-    () => withUnistyles(descriptor.icon, providerIconMapping),
-    [descriptor.icon],
-  );
+  const ProviderIcon = useProviderIcon(agent.provider, serverId);
+  const Icon = useMemo(() => withUnistyles(ProviderIcon, providerIconMapping), [ProviderIcon]);
   return (
-    <View style={styles.rowContent} testID={`command-center-agent-${agent.serverId}:${agent.id}`}>
-      <View style={styles.rowMain}>
-        <View style={styles.iconSlot}>
-          <StatusIcon statusBucket={descriptor.statusBucket} size={16} backdrop={backdrop}>
-            <View accessibilityRole="image" accessibilityLabel={descriptor.subtitle}>
-              <Icon size={16} />
-            </View>
-          </StatusIcon>
-        </View>
-        <View style={styles.textContent}>
-          <QueryHighlightedText
-            query={query}
-            text={result.title}
-            style={styles.title}
-            numberOfLines={1}
-          />
-          <SubtitleWithTimestamp
-            query={query}
-            subtitle={result.subtitle}
-            activityAt={result.activityAt}
-            testID="command-center-agent-subtitle"
-          />
-        </View>
+    <View style={styles.agentLine} testID="command-center-workspace-agent">
+      <View style={styles.agentLineIcon}>
+        <Icon size={12} />
       </View>
-      {/* CUSTOM(search-expand-archived) */}
-      {agent.archivedAt ? <StatusBadge label={t("agentList.badges.archived")} size="xs" /> : null}
+      <QueryHighlightedText
+        query={query}
+        text={agent.title}
+        style={[styles.subtitle, styles.subtitleText]}
+        numberOfLines={1}
+      />
     </View>
   );
 }
 
-// CUSTOM(search-expand-archived)
-function ExpandArchivedContent() {
-  const { t } = useTranslation();
-  return (
-    <View style={styles.rowContent} testID="command-center-expand-archived">
-      <View style={styles.rowMain}>
-        <View style={styles.iconSlot}>
-          <ThemedArchive size={16} />
-        </View>
-        <Text style={styles.title} numberOfLines={1}>
-          {t("shell.commandCenter.expandArchived")}
-        </Text>
-      </View>
-    </View>
-  );
-}
+const providerIconMapping = (theme: Theme) => ({ color: theme.colors.foregroundMuted });
 
 function WorkspaceResultIcon({
   result,
@@ -770,24 +781,27 @@ function WorkspaceResultIcon({
   const statusBucket = useWorkspaceStatus(result.serverId, result.workspaceId);
   return (
     <StatusIcon statusBucket={statusBucket} size={16} backdrop={backdrop}>
-      <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden>
-        <WorkspaceProjectIcon project={result.project} />
-      </View>
+      <DecorativeProjectIcon project={result.project} />
     </StatusIcon>
   );
 }
 
-/** The same project icon the sidebar's workspace rows lead with: its image, or a lettered square. */
-function WorkspaceProjectIcon({ project }: { project: CommandCenterWorkspaceResult["project"] }) {
+/**
+ * The same project icon the sidebar's workspace rows lead with: its image, or a lettered square.
+ * Hidden from assistive tech so the fallback's initial does not prefix the row's name.
+ */
+function DecorativeProjectIcon({ project }: { project: CommandCenterWorkspaceResult["project"] }) {
   const initial = projectIconPlaceholderLabelFromDisplayName(project.name).charAt(0).toUpperCase();
   return (
-    <ProjectIconView
-      iconDataUri={project.iconDataUri}
-      initial={initial}
-      projectViewKey={project.viewKey}
-      size={16}
-      textStyle={styles.projectIconFallbackText}
-    />
+    <View accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden>
+      <ProjectIconView
+        iconDataUri={project.iconDataUri}
+        initial={initial}
+        projectViewKey={project.viewKey}
+        size={16}
+        textStyle={styles.projectIconFallbackText}
+      />
+    </View>
   );
 }
 
@@ -872,18 +886,18 @@ function ResultContent({
       </View>
     );
   }
-  if (result.kind === "expand-archived") return <ExpandArchivedContent />;
-  if (result.kind === "agent") {
-    return <AgentResultContent result={result} query={query} backdrop={backdrop} />;
-  }
   if (result.kind === "workspace") {
     const key = result.id.slice("workspace:".length);
     return (
       <View style={styles.rowContent} testID={`command-center-workspace-${key}`}>
         <View style={styles.rowMain}>
-          {/* Decorative: the fallback icon's initial must not prefix the row's accessible name. */}
           <View style={styles.iconSlot}>
-            <WorkspaceResultIcon result={result} backdrop={backdrop} />
+            {/* An archived workspace runs nothing, so it has no status to show. */}
+            {result.archived ? (
+              <DecorativeProjectIcon project={result.project} />
+            ) : (
+              <WorkspaceResultIcon result={result} backdrop={backdrop} />
+            )}
           </View>
           <View style={styles.textContent}>
             <QueryHighlightedText
@@ -898,8 +912,16 @@ function ResultContent({
               activityAt={result.activityAt}
               testID="command-center-workspace-subtitle"
             />
+            {result.matchedAgent ? (
+              <MatchedAgentLine
+                agent={result.matchedAgent}
+                serverId={result.serverId}
+                query={query}
+              />
+            ) : null}
           </View>
         </View>
+        {result.archived ? <ArchivedBadge /> : null}
       </View>
     );
   }
@@ -983,6 +1005,25 @@ function SectionRow({ row }: { row: Extract<CommandCenterListRow, { kind: "secti
   );
 }
 
+// Escape arrives without asking; it is registered for `agent.interrupt` anyway.
+// Backspace stays off deliberately — on web it returns a tab to All when the field is empty,
+// but a registered command would stop the search field deleting text.
+
+const TAB_PLACEHOLDER_KEYS = {
+  all: "shell.commandCenter.placeholder",
+  workspaces: "shell.commandCenter.workspacePlaceholder",
+  files: "shell.commandCenter.filePlaceholder",
+  actions: "shell.commandCenter.actionPlaceholder",
+} as const satisfies Record<CommandCenterTab, string>;
+
+/** The search field names what the tab searches; All names only the kinds on offer. */
+function placeholderKey(tab: CommandCenterTab, tabs: readonly CommandCenterTab[]) {
+  if (tab === "all" && !tabs.includes("files")) {
+    return "shell.commandCenter.placeholderWithoutFiles";
+  }
+  return TAB_PLACEHOLDER_KEYS[tab];
+}
+
 export function CommandCenter() {
   const { t } = useTranslation();
   const isCompact = useIsCompactFormFactor();
@@ -1000,7 +1041,7 @@ export function CommandCenter() {
     interaction,
   );
   const showBottomSheet = isCompact && isNative;
-  const modalLayer = useGlobalWebOverlayLayer("modal", isWeb && state.open && !showBottomSheet);
+  const modalLayer = useGlobalOverlayLayer("modal", state.open);
   const { sheetRef, handleSheetChange, handleSheetDismiss } = useIsolatedBottomSheetVisibility({
     visible: state.open,
     isEnabled: showBottomSheet,
@@ -1060,10 +1101,6 @@ export function CommandCenter() {
       ),
     [state.fileSearchError, state.fileSearchLoading, state.query, state.scope, t],
   );
-  const { scopeChipLabel, inputPlaceholder, searchingLabel } = describeScope(state.scope, t);
-  const panelInputRef = state.inputRef;
-  const focusPanelInput = useCallback(() => panelInputRef.current?.focus(), [panelInputRef]);
-  const focusSheetInput = useCallback(() => bottomSheetInputRef.current?.focus(), []);
   const fileSearchError = useMemo(
     () =>
       state.fileSearchError ? (
@@ -1102,24 +1139,52 @@ export function CommandCenter() {
       : {}),
     scrollEventThrottle: 16,
   };
-  const keyPress = useCallback(
-    ({ nativeEvent: { key } }: { nativeEvent: { key: string } }) => state.key(key),
-    [state],
-  );
-  const submit = useCallback(() => state.key("Enter"), [state]);
-  const handleWebOverlayKeyDown = useCallback(
-    (event: KeyboardEvent) => {
-      if (!state.key(event.key)) return false;
+  const submit = useCallback(() => state.key({ key: "Enter" }), [state]);
+  const handleOverlayKeyDown = useCallback(
+    (event: KeyboardInputEvent) => {
+      if (!state.key(event)) return false;
       event.preventDefault();
       return true;
     },
     [state],
   );
-  const setWebOverlayScope = useWebOverlayRegistration({
-    active: isWeb && state.open && !showBottomSheet,
+  const setOverlayScope = useOverlayRegistration({
+    keys: ["Escape", "Enter", "ArrowUp", "ArrowDown", "Tab"],
+    active: state.open,
     layer: modalLayer,
-    onKeyDown: handleWebOverlayKeyDown,
+    onKeyDown: handleOverlayKeyDown,
   });
+
+  const tabOptions = useMemo<SegmentedControlOption<CommandCenterTab>[]>(
+    () =>
+      state.tabs.map((tab) => ({
+        value: tab,
+        label: t(`shell.commandCenter.tabs.${tab}`),
+        testID: `command-center-tab-${tab}`,
+      })),
+    [state.tabs, t],
+  );
+  const tabs = (
+    <SegmentedControl
+      options={tabOptions}
+      value={state.tab}
+      onValueChange={state.selectTab}
+      size="sm"
+      testID="command-center-tabs"
+    />
+  );
+  // CUSTOM(workspace-content-search): the "In files" chip replaces the tabs while searching text.
+  const contentScope = state.scope === "content";
+  const placeholder = contentScope
+    ? t("shell.commandCenter.contentSearch.placeholder")
+    : t(placeholderKey(state.tab, state.tabs));
+  const searchingLabel = contentScope
+    ? t("shell.commandCenter.contentSearch.searching")
+    : t("shell.commandCenter.searchingFiles");
+  const panelInputRef = state.inputRef;
+  const focusPanelInput = useCallback(() => panelInputRef.current?.focus(), [panelInputRef]);
+  const focusSheetInput = useCallback(() => bottomSheetInputRef.current?.focus(), []);
+  const tabBar = contentScope ? null : <View style={styles.tabBar}>{tabs}</View>;
 
   if (showBottomSheet) {
     return (
@@ -1139,56 +1204,24 @@ export function CommandCenter() {
         keyboardBlurBehavior="restore"
         accessible={false}
       >
-        <View style={[styles.bottomSheetHeader, styles.searchRow]} testID="command-center-header">
-          {scopeChipLabel ? (
-            <ScopeChip
-              label={scopeChipLabel}
-              onRemove={state.clearScope}
-              onFocusFromOutside={focusSheetInput}
-            />
-          ) : null}
-          <ThemedBottomSheetTextInput
-            testID="command-center-input"
-            ref={bottomSheetInputRef}
-            initialValue={state.query}
-            variant="bottom-sheet"
-            onChangeText={state.setQuery}
-            onKeyPress={keyPress}
-            onSubmitEditing={submit}
-            placeholder={inputPlaceholder}
-            style={[styles.input, styles.growingInput]}
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoFocus
-          />
-          <FileSearchLoadingIndicator loading={state.fileSearchLoading} label={searchingLabel} />
-        </View>
-        {fileSearchError}
-        <BottomSheetFlatList ref={bottomSheetListRef} {...commonListProps} />
-      </IsolatedBottomSheetModal>
-    );
-  }
-  if (!state.open) return null;
-  return (
-    <OverlayLayerProvider layer={isWeb ? modalLayer : 0}>
-      <Modal visible transparent animationType="fade" onRequestClose={state.close}>
-        <View style={styles.overlay}>
-          <Pressable style={styles.backdrop} onPress={state.close} />
-          <View ref={setWebOverlayScope} testID="command-center-panel" style={styles.panel}>
-            <View style={[styles.header, styles.searchRow]} testID="command-center-header">
-              {scopeChipLabel ? (
+        <OverlayLayerProvider layer={modalLayer}>
+          <View style={styles.header} testID="command-center-header">
+            <View style={styles.searchRow}>
+              {contentScope ? (
                 <ScopeChip
-                  label={scopeChipLabel}
+                  label={t("shell.commandCenter.contentSearch.scope")}
                   onRemove={state.clearScope}
-                  onFocusFromOutside={focusPanelInput}
+                  onFocusFromOutside={focusSheetInput}
                 />
               ) : null}
-              <ThemedTextInput
+              <ThemedBottomSheetTextInput
                 testID="command-center-input"
-                ref={state.inputRef}
+                ref={bottomSheetInputRef}
                 initialValue={state.query}
+                variant="bottom-sheet"
                 onChangeText={state.setQuery}
-                placeholder={inputPlaceholder}
+                onSubmitEditing={submit}
+                placeholder={placeholder}
                 style={[styles.input, styles.growingInput]}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -1199,6 +1232,48 @@ export function CommandCenter() {
                 label={searchingLabel}
               />
             </View>
+          </View>
+          {tabBar}
+          {fileSearchError}
+          <BottomSheetFlatList ref={bottomSheetListRef} {...commonListProps} />
+        </OverlayLayerProvider>
+      </IsolatedBottomSheetModal>
+    );
+  }
+  if (!state.open) return null;
+  return (
+    <OverlayLayerProvider layer={modalLayer}>
+      <Modal visible transparent animationType="fade" onRequestClose={state.close}>
+        <View style={styles.overlay}>
+          <Pressable style={styles.backdrop} onPress={state.close} />
+          <View ref={setOverlayScope} testID="command-center-panel" style={styles.panel}>
+            <View style={styles.header} testID="command-center-header">
+              <View style={styles.searchRow}>
+                {contentScope ? (
+                  <ScopeChip
+                    label={t("shell.commandCenter.contentSearch.scope")}
+                    onRemove={state.clearScope}
+                    onFocusFromOutside={focusPanelInput}
+                  />
+                ) : null}
+                <ThemedTextInput
+                  testID="command-center-input"
+                  ref={state.inputRef}
+                  initialValue={state.query}
+                  onChangeText={state.setQuery}
+                  placeholder={placeholder}
+                  style={[styles.input, styles.growingInput]}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  autoFocus
+                />
+                <FileSearchLoadingIndicator
+                  loading={state.fileSearchLoading}
+                  label={searchingLabel}
+                />
+              </View>
+            </View>
+            {tabBar}
             {fileSearchError}
             <FlatList ref={listRef} {...commonListProps} />
           </View>
@@ -1206,24 +1281,6 @@ export function CommandCenter() {
       </Modal>
     </OverlayLayerProvider>
   );
-}
-
-function describeScope(scope: CommandCenterScope, t: TFunction) {
-  if (scope === "content") {
-    return {
-      scopeChipLabel: t("shell.commandCenter.contentSearch.scope"),
-      inputPlaceholder: t("shell.commandCenter.contentSearch.placeholder"),
-      searchingLabel: t("shell.commandCenter.contentSearch.searching"),
-    };
-  }
-  return {
-    scopeChipLabel: scope === "files" ? t("shell.commandCenter.files") : null,
-    inputPlaceholder:
-      scope === "files"
-        ? t("shell.commandCenter.filePlaceholder")
-        : t("shell.commandCenter.placeholder"),
-    searchingLabel: t("shell.commandCenter.searchingFiles"),
-  };
 }
 
 function FileSearchLoadingIndicator({ loading, label }: { loading: boolean; label: string }) {
@@ -1311,11 +1368,12 @@ const styles = StyleSheet.create((theme) => ({
     borderBottomWidth: 1,
     borderBottomColor: theme.colors.border,
   },
-  bottomSheetHeader: {
+  // Below the divider, above the list. The first section label brings its own top gap, so the
+  // pills sit with equal space above and below. A fixed bar, so switching tabs never moves the
+  // field or the list.
+  tabBar: {
     paddingHorizontal: theme.spacing[4],
-    paddingVertical: theme.spacing[3],
-    borderBottomWidth: 1,
-    borderBottomColor: theme.colors.border,
+    paddingTop: COMMAND_CENTER_SECTION_GAP,
   },
   input: {
     fontSize: theme.fontSize.base,
@@ -1323,9 +1381,6 @@ const styles = StyleSheet.create((theme) => ({
     color: theme.colors.foreground,
     outlineWidth: 0,
   },
-  growingInput: { flex: 1, minWidth: 0 },
-  searchRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
-  fileSearchStatus: { width: 14, height: 14, alignItems: "center", justifyContent: "center" },
   scopeChip: {
     // Stretching to the row rather than setting a height keeps the chip exactly as tall as the
     // input's line box, so showing or dropping the scope can never resize the header.
@@ -1345,6 +1400,9 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: theme.fontSize.base,
     fontWeight: "500",
   },
+  growingInput: { flex: 1, minWidth: 0 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing[2] },
+  fileSearchStatus: { width: 14, height: 14, alignItems: "center", justifyContent: "center" },
   results: { flex: 1 },
   // Sections and rows take their height from list-metrics; these styles only place content in it.
   section: { justifyContent: "flex-end" },
@@ -1397,6 +1455,14 @@ const styles = StyleSheet.create((theme) => ({
   },
   subtitleLine: { flexDirection: "row", minWidth: 0 },
   subtitleText: { flexShrink: 1, minWidth: 0 },
+  agentLine: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1.5],
+    minWidth: 0,
+    height: COMMAND_CENTER_LINE_HEIGHT.agent,
+  },
+  agentLineIcon: { width: 12, alignItems: "center", justifyContent: "center" },
   iconSlot: {
     width: 16,
     height: COMMAND_CENTER_LINE_HEIGHT.singleLine,

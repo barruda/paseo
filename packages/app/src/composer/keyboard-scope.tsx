@@ -23,23 +23,27 @@ interface ComposerKeyboardScopeValue {
    * shortcuts that act on its agent (Ctrl+M, ←/→) run only when its input holds the caret.
    */
   composerId: string;
+  /** The composer whose settings appear in Command Center. */
+  isCommandCenterTarget: boolean;
 }
 
 const ComposerKeyboardScopeContext = createContext<ComposerKeyboardScopeValue>({
   isPaneFocused: false,
   isActiveComposer: false,
   composerId: "",
+  isCommandCenterTarget: false,
 });
 
 export function ComposerKeyboardScopeProvider({
   isPaneFocused,
   isActiveComposer,
   composerId,
+  isCommandCenterTarget,
   children,
 }: PropsWithChildren<ComposerKeyboardScopeValue>): ReactElement {
   const value = useMemo(
-    () => ({ isPaneFocused, isActiveComposer, composerId }),
-    [isPaneFocused, isActiveComposer, composerId],
+    () => ({ isPaneFocused, isActiveComposer, composerId, isCommandCenterTarget }),
+    [isPaneFocused, isActiveComposer, composerId, isCommandCenterTarget],
   );
   return (
     <ComposerKeyboardScopeContext.Provider value={value}>

@@ -32,7 +32,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { buttonControlHeight } from "@/components/ui/control-geometry";
+import { CONTROL_HEIGHTS } from "@/components/ui/control-geometry";
 import { ToolbarButton } from "@/components/ui/pane-content-toolbar";
 import { AdaptiveRenameModal } from "@/components/rename-modal";
 import { ScreenHeader } from "@/components/headers/screen-header";
@@ -817,7 +817,7 @@ export function DeskScreen() {
         {activeIsPreview && !workboardSelected ? (
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             leftIcon={Pin}
             onPress={keep}
             testID="desk-keep-preview"
@@ -963,6 +963,8 @@ export function DeskScreen() {
                   tabLanes={flexibleTabs} // CUSTOM(tab-lanes), CUSTOM(flexible-tabs)
                   layout={desk.layout}
                   renderMainHeader={renderHeader}
+                  // The Desk has its own header; a compact pane header shows the same one.
+                  renderCompactHeader={renderHeader}
                   externalExplorerSidebar={externalExplorerSidebar}
                   renderTopRightTabRowAction={renderTabRowExplorerToggle}
                   workspaceKey={`desk:${desk.id}`}
@@ -1514,7 +1516,7 @@ const styles = StyleSheet.create((theme) => ({
     flexShrink: 1,
   },
   deskTab: {
-    height: buttonControlHeight.xs,
+    height: CONTROL_HEIGHTS.sm,
     maxWidth: 200,
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
@@ -1545,19 +1547,19 @@ const styles = StyleSheet.create((theme) => ({
     backgroundColor: theme.colors.border,
   },
   newDeskButton: {
-    width: buttonControlHeight.xs,
-    height: buttonControlHeight.xs,
+    width: CONTROL_HEIGHTS.sm,
+    height: CONTROL_HEIGHTS.sm,
   },
   // CUSTOM(desk-workboard)
   newDeskMenuTrigger: {
-    width: buttonControlHeight.xs,
-    height: buttonControlHeight.xs,
+    width: CONTROL_HEIGHTS.sm,
+    height: CONTROL_HEIGHTS.sm,
     borderRadius: theme.borderRadius.md,
     alignItems: "center",
     justifyContent: "center",
   },
   workboardTab: {
-    height: buttonControlHeight.xs,
+    height: CONTROL_HEIGHTS.sm,
     flexDirection: "row",
     alignItems: "center",
     borderRadius: theme.borderRadius.md,

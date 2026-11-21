@@ -36,13 +36,13 @@ const FULL_ACCESS_PATTERN =
 export interface UnattendedCreateConfigInput {
   provider: string;
   modeId?: string;
-  featureValues?: Record<string, unknown>;
+  providerOptions?: Record<string, unknown>;
   availableModes?: AgentMode[];
 }
 
 export interface ResolvedUnattendedCreateConfig {
   modeId: string | undefined;
-  featureValues: Record<string, unknown> | undefined;
+  providerOptions: Record<string, unknown> | undefined;
 }
 
 function modeIdOrUndefined(modeId: string | null | undefined): string | undefined {
@@ -72,14 +72,14 @@ export function providerUnattendedMode(provider: string): string | undefined {
  * whether a permission request arriving at the manager should be auto-approved.
  */
 export function isUnattendedAgentConfig(
-  config: Pick<AgentSessionConfig, "provider" | "modeId" | "featureValues">,
+  config: Pick<AgentSessionConfig, "provider" | "modeId" | "providerOptions">,
 ): boolean {
   const modeId = modeIdOrUndefined(config.modeId);
   if (modeId) {
     if (providerUnattendedMode(config.provider) === modeId) return true;
     if (FULL_ACCESS_PATTERN.test(modeId)) return true;
   }
-  return config.featureValues?.[AUTO_ACCEPT_FEATURE] === true;
+  return config.providerOptions?.[AUTO_ACCEPT_FEATURE] === true;
 }
 
 /** Whether this mode id is the provider's own or a recognizable full-access mode. */
@@ -127,7 +127,7 @@ export function resolveUnattendedCreateConfig(
 
   return {
     modeId,
-    featureValues: withAutoAccept(input.provider, input.featureValues),
+    providerOptions: withAutoAccept(input.provider, input.providerOptions),
   };
 }
 
@@ -149,9 +149,9 @@ function resolveOpenCodeMode(
 
 function withAutoAccept(
   provider: string,
-  featureValues: Record<string, unknown> | undefined,
+  providerOptions: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
-  if (!AUTO_ACCEPT_PROVIDERS.has(provider) && featureValues?.[AUTO_ACCEPT_FEATURE] === undefined)
-    return featureValues;
-  return { ...featureValues, [AUTO_ACCEPT_FEATURE]: true };
+  if (!AUTO_ACCEPT_PROVIDERS.has(provider) && providerOptions?.[AUTO_ACCEPT_FEATURE] === undefined)
+    return providerOptions;
+  return { ...providerOptions, [AUTO_ACCEPT_FEATURE]: true };
 }

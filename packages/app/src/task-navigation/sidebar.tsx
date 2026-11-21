@@ -682,7 +682,7 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
         return (
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             onPress={loadMoreArchived}
             disabled={item.loading}
             testID="task-archived-load-more"
@@ -1002,7 +1002,7 @@ function TaskFilterButton({
   return (
     <Button
       variant={selected ? "secondary" : "ghost"}
-      size="xs"
+      size="sm"
       onPress={select}
       accessibilityLabel={count === null ? entry.label : `${entry.label}, ${count} tasks`}
       accessibilityState={accessibilityState}

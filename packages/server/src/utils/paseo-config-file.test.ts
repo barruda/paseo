@@ -3,10 +3,10 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { writeFile, truncate, rm } from "node:fs/promises";
-import { measureMainThreadWork } from "../test-utils/main-thread-work.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { build } from "esbuild";
 import { isPlatform } from "../test-utils/platform.js";
 import {
   readPaseoConfig,
@@ -14,12 +14,50 @@ import {
   PaseoConfigRawSchema,
   getWorktreeSetupCommands,
   getWorktreeTeardownCommands,
+  getWorktreeTeardownTimeoutMs,
 } from "./worktree.js";
 import {
   readPaseoConfigForEdit,
   statPaseoConfigPath,
   writePaseoConfigForEdit,
 } from "./paseo-config-file.js";
+
+let probeDirectory: string;
+let probePath: string;
+
+beforeAll(async () => {
+  probeDirectory = mkdtempSync(join(tmpdir(), "paseo-config-probe-"));
+  probePath = join(probeDirectory, "config-responsiveness.mjs");
+  // Compile before starting the measured process. A runtime TypeScript loader
+  // owns MessagePorts that the responsiveness probe otherwise charges as work.
+  await build({
+    entryPoints: [
+      fileURLToPath(new URL("./test-fixtures/config-responsiveness.ts", import.meta.url)),
+    ],
+    outfile: probePath,
+    bundle: true,
+    platform: "node",
+    format: "esm",
+  });
+});
+
+afterAll(() => {
+  rmSync(probeDirectory, { recursive: true, force: true });
+});
+
+async function measureConfigRead(directory: string) {
+  const { stdout, stderr } = await promisify(execFile)(process.execPath, [probePath, directory], {
+    timeout: 15_000,
+  });
+  process.stderr.write(stderr);
+  return JSON.parse(stdout) as {
+    result: Awaited<ReturnType<typeof readPaseoConfigForEdit>>;
+    blockingMs: number;
+    filesystemRequests: number;
+    yields: number;
+    workerMessages: number;
+  };
+}
 
 describe("paseo config file substrate", () => {
   let tempDir: string;
@@ -67,6 +105,35 @@ describe("paseo config file substrate", () => {
     );
   });
 
+  it("excludes test-runner and loader activity from the config read budget", async () => {
+    await writeFile(join(tempDir, "paseo.json"), JSON.stringify({ worktree: { setup: "npm ci" } }));
+    const unrelatedWork = new Promise<void>((resolve) => {
+      setImmediate(() => {
+        const threadCpuUsage: (previous?: NodeJS.CpuUsage) => NodeJS.CpuUsage = Reflect.get(
+          process,
+          "threadCpuUsage",
+        );
+        const start = threadCpuUsage();
+        let elapsed: NodeJS.CpuUsage;
+        do {
+          elapsed = threadCpuUsage(start);
+        } while (elapsed.user + elapsed.system < 60_000);
+        resolve();
+      });
+    });
+    const { result, blockingMs, filesystemRequests, workerMessages } =
+      await measureConfigRead(tempDir);
+    await unrelatedWork;
+    expect(workerMessages).toBe(0);
+    expect(result).toEqual({
+      ok: true,
+      config: { worktree: { setup: "npm ci" } },
+      revision: await statPaseoConfigPath(tempDir),
+    });
+    expect(filesystemRequests).toBeGreaterThan(0);
+    expect(blockingMs).toBeLessThan(20);
+  });
+
   it("keeps main-thread work below 20ms while admitting large configs", async () => {
     const config = {
       scripts: Object.fromEntries(
@@ -75,14 +142,13 @@ describe("paseo config file substrate", () => {
       worktree: { setup: "npm ci" },
     };
     await writeFile(join(tempDir, "paseo.json"), JSON.stringify(config));
-    const { result, blockingMs, filesystemRequests, yields } = await measureMainThreadWork(
-      "project config 7000 scripts main-thread work",
-      () => readPaseoConfigForEdit(tempDir),
-    );
+    const { result, blockingMs, filesystemRequests, yields, workerMessages } =
+      await measureConfigRead(tempDir);
     expect(result).toEqual({ ok: true, config, revision: await statPaseoConfigPath(tempDir) });
     expect(blockingMs).toBeLessThan(20);
     expect(filesystemRequests).toBeGreaterThan(0);
     expect(yields).toBeGreaterThan(0);
+    expect(workerMessages).toBe(0);
   });
 
   it("rejects a 32MiB config with main-thread work below 20ms", async () => {
@@ -90,12 +156,11 @@ describe("paseo config file substrate", () => {
       join(tempDir, "paseo.json"),
       JSON.stringify({ extra: "x".repeat(32 * 1024 * 1024) }),
     );
-    const { result, blockingMs, filesystemRequests } = await measureMainThreadWork(
-      "project config 32MiB main-thread work",
-      () => readPaseoConfigForEdit(tempDir),
-    );
+    const { result, blockingMs, filesystemRequests, workerMessages } =
+      await measureConfigRead(tempDir);
     expect(blockingMs).toBeLessThan(20);
     expect(filesystemRequests).toBeGreaterThan(0);
+    expect(workerMessages).toBe(0);
     expect(result).toEqual({ ok: false, error: { code: "invalid_project_config" } });
   });
 
@@ -230,6 +295,34 @@ describe("paseo config file substrate", () => {
     expect(await getWorktreeSetupCommands(tempDir)).toEqual(["npm install"]);
     expect(await getWorktreeTeardownCommands(tempDir)).toEqual(["npm run clean", "npm run reset"]);
   });
+
+  it("reads the teardown time limit and defaults to one minute", async () => {
+    expect(await getWorktreeTeardownTimeoutMs(tempDir)).toBe(60_000);
+
+    for (const teardownTimeoutMs of [1, 300_000, 2_147_483_647]) {
+      writeFileSync(
+        join(tempDir, "paseo.json"),
+        JSON.stringify({ worktree: { teardownTimeoutMs } }),
+      );
+      expect(await getWorktreeTeardownTimeoutMs(tempDir)).toBe(teardownTimeoutMs);
+    }
+  });
+
+  it.each([0, -1000, 1500.5, 2_147_483_648, "90000", null, true, { ms: 90_000 }])(
+    "falls back to the default teardown time limit for %j and keeps the commands",
+    async (teardownTimeoutMs) => {
+      const config = { worktree: { teardown: "npm run clean", teardownTimeoutMs } };
+      writeFileSync(join(tempDir, "paseo.json"), JSON.stringify(config));
+
+      expect(await getWorktreeTeardownTimeoutMs(tempDir)).toBe(60_000);
+      expect(await getWorktreeTeardownCommands(tempDir)).toEqual(["npm run clean"]);
+      expect(await readPaseoConfigForEdit(tempDir)).toEqual({
+        ok: true,
+        config,
+        revision: await statPaseoConfigPath(tempDir),
+      });
+    },
+  );
 
   it("writes pretty JSON with a trailing newline when revision matches", async () => {
     writeFileSync(join(tempDir, "paseo.json"), JSON.stringify({ worktree: { setup: "old" } }));

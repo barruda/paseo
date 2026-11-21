@@ -30,6 +30,11 @@ export function findPluginIcon(name: string): LucideIcon | null {
   return findLucideIcon(name);
 }
 
+/** Whether `name` is a Lucide icon, so a caller can fall back before drawing nothing. */
+export function isLucideIconName(name: string): boolean {
+  return findLucideIcon(name) !== null;
+}
+
 function isComponent(value: unknown): boolean {
   return (
     typeof value === "function" ||

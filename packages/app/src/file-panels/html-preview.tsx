@@ -1,10 +1,10 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useMemo } from "react";
 import { StyleSheet } from "react-native-unistyles";
 import { WebView } from "react-native-webview";
 import { withPreviewCsp } from "./html-preview-csp";
 import type { HtmlPreviewSource } from "./html-preview-url";
 import type { PreviewAssetLoader } from "./html-preview-assets";
-import { htmlPreviewNavigationKind } from "./html-preview-navigation";
+import { useHtmlPreviewNavigationGuard } from "./html-preview-navigation";
 
 // A preview is a viewer, not a browser. Only the document Paseo hands the WebView
 // loads; navigations the page attempts afterwards are refused, so a link, a
@@ -50,21 +50,7 @@ export function FileHtmlPreview({
 }) {
   const document = useMemo(() => withPreviewCsp(html), [html]);
   const source = useMemo(() => ({ html: document, baseUrl: BASE_URL }), [document]);
-  // Latched per document rather than once for the lifetime of the WebView: the
-  // file pane re-renders with new content on every live-file refresh, and each of
-  // those is a fresh initial load that has to be allowed through.
-  const loadedDocumentRef = useRef<string | null>(null);
-  const allowOnlyInitialDocument = useCallback(
-    ({ url }: { url: string }) => {
-      const navigationKind = htmlPreviewNavigationKind(url);
-      if (navigationKind === "fragment") return true;
-      if (navigationKind === "blocked") return false;
-      if (loadedDocumentRef.current === document) return false;
-      loadedDocumentRef.current = document;
-      return true;
-    },
-    [document],
-  );
+  const allowOnlyInitialDocument = useHtmlPreviewNavigationGuard(document);
 
   return (
     <WebView

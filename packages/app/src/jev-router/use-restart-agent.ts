@@ -33,9 +33,6 @@ export function useRestartAgent(serverId: string, agentId: string) {
       setBusy(true);
       try {
         await request.onBeforeRestart?.();
-        const featureValues = Object.fromEntries(
-          (agent.features ?? []).map((feature) => [feature.id, feature.value]),
-        );
         const created = await client.createAgent({
           config: {
             provider: agent.provider,
@@ -43,7 +40,7 @@ export function useRestartAgent(serverId: string, agentId: string) {
             ...(agent.currentModeId ? { modeId: agent.currentModeId } : {}),
             model: request.model,
             ...(request.thinkingOptionId ? { thinkingOptionId: request.thinkingOptionId } : {}),
-            featureValues,
+            ...(agent.options ? { providerOptions: agent.options } : {}),
           },
           ...(agent.workspaceId ? { workspaceId: agent.workspaceId } : {}),
           initialPrompt: request.prompt,

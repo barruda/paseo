@@ -25,7 +25,7 @@ import {
   WORKSPACE_TREE_ICON_SIZE,
   treeRowPaddingLeft,
 } from "@/components/tree-primitives";
-import { buttonControlHeight } from "@/components/ui/control-geometry";
+import { CONTROL_HEIGHTS } from "@/components/ui/control-geometry";
 import { useToast } from "@/contexts/toast-context";
 import { pickDirectory } from "@/desktop/pick-directory";
 import { useIsLocalDaemon } from "@/hooks/use-is-local-daemon";
@@ -733,7 +733,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-    height: buttonControlHeight.xs,
+    height: CONTROL_HEIGHTS.sm,
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
     flexShrink: 1,
@@ -741,7 +741,7 @@ const styles = StyleSheet.create((theme) => ({
   },
   filterLabel: { flexShrink: 1, color: theme.colors.foregroundMuted, fontSize: theme.fontSize.sm },
   filterButton: {
-    height: buttonControlHeight.xs,
+    height: CONTROL_HEIGHTS.sm,
     justifyContent: "center",
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
@@ -751,7 +751,7 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     gap: theme.spacing[1],
-    height: buttonControlHeight.xs,
+    height: CONTROL_HEIGHTS.sm,
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
   },

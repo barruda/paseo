@@ -50,7 +50,7 @@ it("the Escape that exits voice never starts the Escape Escape interrupt chord",
         event,
         context: {
           isMac: false,
-          isDesktop: true,
+          usesDesktopBindings: true,
           focusScope: "message-input",
           commandCenterOpen: false,
         },

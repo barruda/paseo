@@ -154,7 +154,7 @@ function AssistantSidebarPanel() {
     <View style={styles.bar}>
       <Button
         variant="ghost"
-        size="xs"
+        size="sm"
         leftIcon={SquareArrowOutUpRight}
         onPress={openDesk}
         testID="projects-assistant-open-main"

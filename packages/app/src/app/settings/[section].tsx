@@ -35,7 +35,7 @@ function SettingsDaemonRedirect() {
 }
 
 export default function SettingsSectionRoute() {
-  const params = useLocalSearchParams<{ section?: string; addHost?: string }>();
+  const params = useLocalSearchParams<{ section?: string }>();
   const rawSection = typeof params.section === "string" ? params.section : "";
   // CUSTOM(bruno-customizations): the old single "customizations" page is now Composer.
   // COMPAT(customizationsSlug): added 2026-11-13, remove after 2027-05-13.
@@ -43,7 +43,6 @@ export default function SettingsSectionRoute() {
     if (rawSection === "customizations") return "customizations-composer";
     return isSettingsSectionSlug(rawSection) ? rawSection : "general";
   })();
-  const openAddHostIntent = typeof params.addHost === "string" ? params.addHost : null;
   const view = useMemo(() => ({ kind: "section" as const, section }), [section]);
 
   // COMPAT(settingsDaemonRedirect): added 2026-07-08, remove after 2027-01-08.
@@ -55,5 +54,5 @@ export default function SettingsSectionRoute() {
     );
   }
 
-  return <SettingsScreen view={view} openAddHostIntent={openAddHostIntent} />;
+  return <SettingsScreen view={view} />;
 }

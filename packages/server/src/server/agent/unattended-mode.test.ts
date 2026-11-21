@@ -29,7 +29,7 @@ describe("unattended create-config resolution", () => {
         modeId: "plan",
         availableModes: claudeModes,
       }),
-    ).toEqual({ modeId: "bypassPermissions", featureValues: undefined });
+    ).toEqual({ modeId: "bypassPermissions", providerOptions: undefined });
   });
 
   test("Codex uses its full-access mode", () => {
@@ -39,7 +39,7 @@ describe("unattended create-config resolution", () => {
         modeId: "auto",
         availableModes: codexModes,
       }),
-    ).toEqual({ modeId: "full-access", featureValues: undefined });
+    ).toEqual({ modeId: "full-access", providerOptions: undefined });
   });
 
   test("OpenCode uses auto_accept and a mode that exists in the user's config", () => {
@@ -51,7 +51,7 @@ describe("unattended create-config resolution", () => {
       }),
     ).toEqual({
       modeId: "build",
-      featureValues: { auto_accept: true },
+      providerOptions: { auto_accept: true },
     });
   });
 
@@ -64,7 +64,7 @@ describe("unattended create-config resolution", () => {
       }),
     ).toEqual({
       modeId: undefined,
-      featureValues: { auto_accept: true },
+      providerOptions: { auto_accept: true },
     });
   });
 
@@ -79,7 +79,7 @@ describe("unattended create-config resolution", () => {
         modeId: "ask",
         availableModes: modes,
       }),
-    ).toEqual({ modeId: "yolo", featureValues: undefined });
+    ).toEqual({ modeId: "yolo", providerOptions: undefined });
     expect(
       resolveUnattendedCreateConfig({
         provider: "future-agent",
@@ -89,7 +89,7 @@ describe("unattended create-config resolution", () => {
           { id: "ask", label: "Always Ask" },
         ],
       }),
-    ).toEqual({ modeId: "custom", featureValues: undefined });
+    ).toEqual({ modeId: "custom", providerOptions: undefined });
   });
 
   test("a provider with no full-access candidate keeps a requested mode that exists", () => {
@@ -100,7 +100,7 @@ describe("unattended create-config resolution", () => {
         modeId: "custom",
         availableModes: modes,
       }),
-    ).toEqual({ modeId: "custom", featureValues: undefined });
+    ).toEqual({ modeId: "custom", providerOptions: undefined });
   });
 });
 
@@ -111,11 +111,11 @@ describe("re-resolution after a model or provider change", () => {
         provider: "opencode",
         modeId: "bypassPermissions",
         availableModes: openCodeModes,
-        featureValues: undefined,
+        providerOptions: undefined,
       }),
     ).toEqual({
       modeId: undefined,
-      featureValues: { auto_accept: true },
+      providerOptions: { auto_accept: true },
     });
   });
 
@@ -125,11 +125,11 @@ describe("re-resolution after a model or provider change", () => {
         provider: "opencode",
         modeId: "bypassPermissions",
         availableModes: undefined,
-        featureValues: undefined,
+        providerOptions: undefined,
       }),
     ).toEqual({
       modeId: undefined,
-      featureValues: { auto_accept: true },
+      providerOptions: { auto_accept: true },
     });
   });
 
@@ -140,7 +140,7 @@ describe("re-resolution after a model or provider change", () => {
         modeId: "old-bypass",
         availableModes: claudeModes,
       }),
-    ).toEqual({ modeId: "bypassPermissions", featureValues: undefined });
+    ).toEqual({ modeId: "bypassPermissions", providerOptions: undefined });
   });
 });
 
@@ -151,7 +151,7 @@ describe("unattended detection", () => {
       isUnattendedAgentConfig({
         provider: "opencode",
         modeId: undefined,
-        featureValues: { auto_accept: true },
+        providerOptions: { auto_accept: true },
       }),
     ).toBe(true);
     expect(isUnattendedAgentConfig({ provider: "future-agent", modeId: "yolo" })).toBe(true);
