@@ -25,6 +25,7 @@ import { openAssistantDesk, openAssistantSidebar } from "./open";
 import { assistantAgentMaps } from "./session-agent-maps";
 import { useAssistantSidebarStore } from "./store";
 import { assistantDeskStrings } from "./strings";
+import { ASSISTANT_PANEL_TEST_ID } from "./focus"; // CUSTOM(header-cycle)
 
 const ThemedBot = withUnistyles(Bot);
 
@@ -163,7 +164,7 @@ function AssistantSidebarPanel() {
   );
   if (deskInView) {
     return (
-      <View style={styles.empty}>
+      <View style={styles.empty} testID={ASSISTANT_PANEL_TEST_ID}>
         <Text style={styles.emptyText}>{strings.openedInMain}</Text>
         <Button
           variant="secondary"
@@ -178,7 +179,7 @@ function AssistantSidebarPanel() {
   }
   if (!value) {
     return (
-      <View style={styles.empty}>
+      <View style={styles.empty} testID={ASSISTANT_PANEL_TEST_ID}>
         <Text style={styles.emptyText}>{strings.noChat}</Text>
         <Button
           variant="secondary"
@@ -192,7 +193,7 @@ function AssistantSidebarPanel() {
     );
   }
   return (
-    <View style={styles.root}>
+    <View style={styles.root} testID={ASSISTANT_PANEL_TEST_ID}>
       {openInMain}
       <View style={styles.chat}>
         <PaneProvider key={chatKey} value={value}>

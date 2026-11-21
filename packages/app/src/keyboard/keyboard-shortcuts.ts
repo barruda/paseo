@@ -328,7 +328,12 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     combo: "Shift+Tab",
     repeat: false,
     when: { tasksMode: true, commandCenter: false },
-    help: { id: "task-next-desk", section: "tasks", label: "Next Desk" },
+    // CUSTOM(header-cycle): Shift+Tab also steps onto the Workboard chip and the Project Manager.
+    help: {
+      id: "task-next-desk",
+      section: "tasks",
+      label: "Next Desk / Workboard / Project Manager",
+    },
   },
   {
     id: "task-draft-project",
