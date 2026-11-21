@@ -69,6 +69,7 @@ import {
 import { assistantAskRpc, assistantPmCardsRpc } from "../shared/assistant-rpc"; // CUSTOM(pm-board, packages)
 import {
   attentionReasons,
+  agentGone,
   cardAgentId,
   finishButtons,
   finishInlineLayout,
@@ -90,7 +91,15 @@ import {
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { BoardView } from "./BoardView";
 import { cardMenuItems } from "./card-menu"; // CUSTOM(task-panel)
-import { panelCardFor } from "./task-panel-state"; // CUSTOM(task-panel)
+import {
+  clampPanelWidth,
+  loadPanelWidth,
+  middleClickPanel,
+  openPanel,
+  panelCardFor,
+  savePanelWidth,
+  type PanelState,
+} from "./task-panel-state"; // CUSTOM(task-panel)
 import {
   groupColor,
   projectAccentColor,
@@ -149,6 +158,7 @@ import {
   CardContextMenu,
   TaskPanel,
   useCardPointerActions,
+  useMiddleClick,
   type CardMenuRequest,
 } from "./TaskPanel";
 // CUSTOM(workboard-inner-pages): the Project Manager pages, as tabs of the board.
@@ -293,12 +303,15 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const [starting, setStarting] = useState<StartForm>(null);
   const [statusCard, setStatusCard] = useState<Card | null>(null);
   // CUSTOM(task-panel): one side panel at a time, plus the card's context menu.
-  const [panelTaskId, setPanelTaskId] = useState<string | null>(null);
+  const [panel, setPanel] = useState<PanelState | null>(null);
+  const [panelWidth, setPanelWidth] = useState(() =>
+    loadPanelWidth(props.host.id),
+  );
   // CUSTOM(pm-board): a task link on a decision card opens that ticket in the side panel.
   const requestedTaskId = (params as { task?: unknown } | undefined)?.task;
   useEffect(() => {
     if (typeof requestedTaskId === "string" && requestedTaskId)
-      setPanelTaskId(requestedTaskId);
+      setPanel(openPanel(requestedTaskId, "ticket", null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestKey, requestedTaskId]);
   const [cardMenu, setCardMenu] = useState<CardMenuRequest | null>(null);
@@ -742,7 +755,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const conflicts = cards.filter((card) => card.stage === "conflict");
   const archived = board.cards.filter((card) => card.archived !== null);
   // CUSTOM(task-panel): one ticket at a time; switching replaces the panel's content.
-  const panelCard = panelCardFor(board.cards, panelTaskId);
+  const panelCard = panelCardFor(board.cards, panel?.taskId ?? null);
   // CUSTOM(packages)
   const packageDetail =
     board.packages.find((pkg) => pkg.id === packageDetailId) ?? null;
@@ -770,7 +783,20 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       setCardMenu({ ...request, x: request.x - x, y: request.y - y });
     });
   };
-  const openAgent = (agentId: string) => {
+  const openAgent = (agentId: string, card?: Card) => {
+    // CUSTOM(task-panel): a settled task whose agent was deleted has nothing to open.
+    if (
+      card &&
+      agentGone(
+        card,
+        agentId,
+        groupKind(card.stage, board.settings.groups) === "done" ||
+          card.archived !== null,
+      )
+    ) {
+      toast.error(t.agentGone);
+      return;
+    }
     if (!props.navigation) {
       toast.error(t.navigationUnavailable);
       return;
@@ -1190,7 +1216,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
         })
       }
       onStart={() => setStarting({ card })}
-      onOpenAgent={openAgent}
+      onOpenAgent={(agentId) => openAgent(agentId, card)}
       onRefine={async () => {
         const next = await mutate({
           action: "refine",
@@ -1229,7 +1255,12 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       onArchive={() => setArchivingDraft(card)}
       onCancelBinding={() => setCancelingBinding(card)}
       onDetachDraft={(draftId) => setDetachingDraft({ card, draftId })}
-      onOpenPanel={() => setPanelTaskId(card.id)}
+      onOpenPanel={() => setPanel(openPanel(card.id, "ticket", null))}
+      onOpenAgentInPanel={(agentId) =>
+        setPanel(
+          middleClickPanel({ taskId: card.id, agentId, onAgentLink: true }),
+        )
+      }
       onContextMenu={openCardMenu}
       selected={selection.ids.has(card.id)}
       selectionActive={selection.ids.size > 0}
@@ -1866,7 +1897,9 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               t={t}
               theme={props.theme}
               onOpenPackage={(pkg) => setPackageDetailId(pkg.id)}
-              onOpenCard={(card) => setPanelTaskId(card.id)}
+              onOpenCard={(card) =>
+                setPanel(openPanel(card.id, "ticket", null))
+              }
               onLongPressCard={(card) =>
                 setSelection(longPressCard(selection, card.id))
               }
@@ -1885,7 +1918,24 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             t={t}
             theme={props.theme}
             compact={props.layout.compact}
-            onClose={() => setPanelTaskId(null)}
+            onClose={() => setPanel(null)}
+            view={panel?.view ?? "ticket"}
+            viewAgentId={panel?.agentId ?? null}
+            onShowTicket={() =>
+              setPanel((p) => p && openPanel(p.taskId, "ticket", null))
+            }
+            onShowAgent={(id) =>
+              setPanel((p) => p && openPanel(p.taskId, "agent", id))
+            }
+            width={clampPanelWidth(panelWidth, rootSize.width)}
+            containerWidth={rootSize.width}
+            onResize={setPanelWidth}
+            onResizeEnd={(width) => {
+              setPanelWidth(width);
+              savePanelWidth(props.host.id, width);
+            }}
+            hostId={props.host.id}
+            navigation={props.navigation}
             onOpenWorkspace={
               panelCard.workspaceId && props.navigation
                 ? () =>
@@ -1895,7 +1945,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                     })
                 : undefined
             }
-            onOpenAgent={openAgent}
+            onOpenAgent={(id) => openAgent(id, panelCard)}
             onEdit={() =>
               setDraft({
                 task: panelCard,
@@ -2440,12 +2490,14 @@ function OrchestrationLine({
   t,
   theme,
   onOpenAgent,
+  onOpenAgentInPanel,
 }: {
   card: Card;
   board: Board;
   t: ReturnType<typeof strings>;
   theme: PluginSurfaceProps["theme"];
   onOpenAgent(agentId: string): void;
+  onOpenAgentInPanel?(agentId: string): void;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false); // CUSTOM(task-checkpoints)
   const record = board.orchestrations[card.id];
@@ -2537,6 +2589,9 @@ function OrchestrationLine({
             t={t}
             theme={theme}
             onPress={() => onOpenAgent(agentId)}
+            onMiddleClick={
+              onOpenAgentInPanel ? () => onOpenAgentInPanel(agentId) : undefined
+            }
           />
         )}
       </View>
@@ -2874,12 +2929,16 @@ function OpenAgentLink({
   t,
   theme,
   onPress,
+  onMiddleClick,
 }: {
   t: ReturnType<typeof strings>;
   theme: PluginSurfaceProps["theme"];
   onPress(): void;
+  /** CUSTOM(task-panel): middle click opens the panel in Agent view instead of the card's Ticket. */
+  onMiddleClick?(): void;
 }) {
-  return (
+  const middleRef = useMiddleClick(onMiddleClick);
+  const link = (
     <HintButton
       hint={t.openAgentHint}
       accessibilityRole="link"
@@ -2900,6 +2959,7 @@ function OpenAgentLink({
       </Text>
     </HintButton>
   );
+  return onMiddleClick ? <View ref={middleRef}>{link}</View> : link;
 }
 
 /**
@@ -3221,6 +3281,7 @@ export function TaskCard({
   onDetachDraft,
   onUndo,
   onOpenPanel,
+  onOpenAgentInPanel,
   onContextMenu,
   compact = false,
   dragHandle = null,
@@ -3257,6 +3318,8 @@ export function TaskCard({
   onUndo?(): Promise<void>;
   /** CUSTOM(task-panel): open this ticket in the right-hand panel. */
   onOpenPanel?(): void;
+  /** CUSTOM(task-panel): middle click on Open agent shows that agent in the panel. */
+  onOpenAgentInPanel?(agentId: string): void;
   onContextMenu?(request: CardMenuRequest): void;
   compact?: boolean;
   /** CUSTOM(card-open-agent): the board's drag handle, shown at the end of the action row. */
@@ -3632,6 +3695,7 @@ export function TaskCard({
           t={t}
           theme={theme}
           onOpenAgent={onOpenAgent}
+          onOpenAgentInPanel={onOpenAgentInPanel}
         />
       )}
       {standaloneAgentLink && agentId && (
@@ -3641,6 +3705,9 @@ export function TaskCard({
             t={t}
             theme={theme}
             onPress={() => onOpenAgent(agentId)}
+            onMiddleClick={
+              onOpenAgentInPanel ? () => onOpenAgentInPanel(agentId) : undefined
+            }
           />
         </View>
       )}

@@ -1,5 +1,5 @@
 import { expect, it } from "vitest";
-import { cardAgentId } from "../client/board-utils";
+import { agentGone, cardAgentId } from "../client/board-utils";
 
 const agent = (id: string, archived = false) => ({
   id,
@@ -39,4 +39,12 @@ it("no agent, no link", () => {
   expect(
     cardAgentId({ workspaceId: "ws", agents: [] }, { agentId: null }),
   ).toBeNull();
+});
+
+it("agentGone: a settled task whose agent is missing from the inventory", () => {
+  const card = { workspaceId: "ws", agents: [agent("old", true)] };
+  expect(agentGone(card, "deleted", true)).toBe(true);
+  expect(agentGone(card, "old", true)).toBe(false);
+  expect(agentGone(card, "deleted", false)).toBe(false);
+  expect(agentGone({ workspaceId: null, agents: [] }, "x", true)).toBe(false);
 });

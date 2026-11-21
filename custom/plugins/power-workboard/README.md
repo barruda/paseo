@@ -73,7 +73,11 @@ this repo) with these differences:
 - **Ticket panel.** Middle-click a card, right-click it and choose **Open in panel**, or
   long-press it on a phone or tablet, to read the ticket beside the board without leaving it. The
   context menu stays inside the screen near an edge. One panel at a time: opening another ticket
-  replaces it. Close it with its X or Esc; left click keeps its usual behavior. The SDK workspace
+  replaces it. Close it with its X or Esc; left click keeps its usual behavior. On the web, drag
+  the panel's left edge to resize it (the width is remembered per viewer). Its **Ticket** and
+  **Agent** tabs switch between the ticket and the task agent's conversation, read-only; middle-click
+  a card's **Open agent** link to open the panel straight in the Agent view. Open agent on a
+  Done or archived task whose agent was deleted shows a message instead. The SDK workspace
   panel cannot carry a ticket id and the board is a surface, so the board owns this side panel.
 - **Checkpoints.** A task that does not fit in one session ends its turn with a `checkpoint`
   report (`progress {done, next}`, optional `resumeAfter` and `waitingFor`). The engine commits

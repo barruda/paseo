@@ -17,13 +17,18 @@ import { cardAgentId } from "./board-utils";
 import { projectAccentColor, projectLetterFill } from "./colors";
 import { ProjectIcon } from "./ProjectIcon";
 import { projectIconFor, type ProjectIcons } from "./project-icons";
-import { RichText } from "./assistant/conversations-thread";
+import { ConversationThread, RichText } from "./assistant/conversations-thread";
+import { conversationsStrings } from "./assistant/conversations-strings";
+import { usePaseoLanguage } from "./paseo-language";
 import { onEscapeKey } from "./web";
 import type { CardMenuItem } from "./card-menu";
 import {
   MENU_EDGE,
   clampMenuPosition,
   menuSize,
+  middleClickHandler,
+  resizedPanelWidth,
+  type PanelView,
   type Size,
 } from "./task-panel-state";
 
@@ -33,6 +38,7 @@ type Strings = ReturnType<typeof strings>;
 // has no fixed positioning, so there the menu is absolute inside the board root.
 const FIXED = { position: "fixed" } as unknown as ViewStyle;
 const ABSOLUTE = { position: "absolute" } as ViewStyle;
+const COL_RESIZE = { cursor: "col-resize" } as unknown as ViewStyle;
 const OVERLAY = Platform.OS === "web" ? FIXED : ABSOLUTE;
 
 export type CardMenuRequest = {
@@ -49,10 +55,109 @@ type WebEvent = {
   clientY?: number;
 };
 
+declare const document: { body: { style: { userSelect: string } } };
+declare const window: {
+  addEventListener(name: string, callback: (event: WebEvent) => void): void;
+  removeEventListener(name: string, callback: (event: WebEvent) => void): void;
+};
+
 type WebNode = {
   addEventListener(name: string, callback: (event: WebEvent) => void): void;
   removeEventListener(name: string, callback: (event: WebEvent) => void): void;
 };
+
+const noAutoscroll = (event: WebEvent) => {
+  if (event.button === 1) event.preventDefault?.();
+};
+
+/** CUSTOM(task-panel): middle click alone on a view (web only), e.g. the Open agent link. */
+export function useMiddleClick(onMiddleClick: (() => void) | undefined) {
+  const ref = useRef<View>(null);
+  const middle = useRef(onMiddleClick);
+  middle.current = onMiddleClick;
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const node = ref.current as unknown as WebNode | null;
+    if (!node) return;
+    const open = middleClickHandler(() => middle.current?.());
+    node.addEventListener("auxclick", open);
+    node.addEventListener("mousedown", noAutoscroll);
+    return () => {
+      node.removeEventListener("auxclick", open);
+      node.removeEventListener("mousedown", noAutoscroll);
+    };
+  }, []);
+  return ref;
+}
+
+/**
+ * CUSTOM(task-panel): the resize handle on the panel's left edge. Web only: native has no
+ * mouse, and its panel is full screen, so it gets no handle.
+ */
+function useResizeHandle({
+  enabled,
+  width,
+  containerWidth,
+  onResize,
+  onResizeEnd,
+}: {
+  /** The handle is mounted; the listeners bind again when it comes back (compact → wide). */
+  enabled: boolean;
+  width: number;
+  containerWidth: number;
+  onResize(width: number): void;
+  onResizeEnd(width: number): void;
+}) {
+  const ref = useRef<View>(null);
+  const [dragging, setDragging] = useState(false);
+  const latest = useRef({ width, containerWidth, onResize, onResizeEnd });
+  latest.current = { width, containerWidth, onResize, onResizeEnd };
+  useEffect(() => {
+    if (Platform.OS !== "web" || !enabled) return;
+    const node = ref.current as unknown as WebNode | null;
+    if (!node) return;
+    let stop: (() => void) | null = null;
+    const start = (event: WebEvent) => {
+      if (event.button !== 0) return;
+      event.preventDefault?.();
+      const startX = event.clientX ?? 0;
+      const startWidth = latest.current.width;
+      let last = startWidth;
+      const body = document.body;
+      const previousSelect = body.style.userSelect;
+      body.style.userSelect = "none";
+      setDragging(true);
+      const move = (e: WebEvent) => {
+        last = resizedPanelWidth(
+          startWidth,
+          startX,
+          e.clientX ?? startX,
+          latest.current.containerWidth,
+        );
+        latest.current.onResize(last);
+      };
+      const finish = () => {
+        stop?.();
+        latest.current.onResizeEnd(last);
+      };
+      stop = () => {
+        window.removeEventListener("mousemove", move);
+        window.removeEventListener("mouseup", finish);
+        body.style.userSelect = previousSelect;
+        stop = null;
+        setDragging(false);
+      };
+      window.addEventListener("mousemove", move);
+      window.addEventListener("mouseup", finish);
+    };
+    node.addEventListener("mousedown", start);
+    return () => {
+      node.removeEventListener("mousedown", start);
+      stop?.();
+    };
+  }, [enabled]);
+  return { ref, dragging };
+}
 
 /**
  * CUSTOM(task-panel): middle click and the context menu on web. Native has no pointer events;
@@ -74,15 +179,8 @@ export function useCardPointerActions({
     if (Platform.OS !== "web") return;
     const node = ref.current as unknown as WebNode | null;
     if (!node) return;
-    const open = (event: WebEvent) => {
-      if (event.button !== 1) return;
-      event.preventDefault?.();
-      event.stopPropagation?.();
-      middle.current();
-    };
-    const preventScroll = (event: WebEvent) => {
-      if (event.button === 1) event.preventDefault?.();
-    };
+    const open = middleClickHandler(() => middle.current());
+    const preventScroll = noAutoscroll;
     const showMenu = (event: WebEvent) => {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -207,6 +305,16 @@ export function TaskPanel({
   onOpenAgent,
   onEdit,
   onStatus,
+  view,
+  viewAgentId,
+  onShowTicket,
+  onShowAgent,
+  width,
+  containerWidth,
+  onResize,
+  onResizeEnd,
+  hostId,
+  navigation,
 }: {
   card: Card;
   board: Board;
@@ -219,6 +327,16 @@ export function TaskPanel({
   onOpenAgent?(agentId: string): void;
   onEdit?(): void;
   onStatus?(): void;
+  view: PanelView;
+  viewAgentId: string | null;
+  onShowTicket(): void;
+  onShowAgent(agentId: string): void;
+  width: number;
+  containerWidth: number;
+  onResize(width: number): void;
+  onResizeEnd(width: number): void;
+  hostId: string;
+  navigation: PluginSurfaceProps["navigation"];
 }) {
   const group = board.settings.groups.find((item) => item.id === card.stage);
   const stage = group ? (group.name ?? group.label) : card.stage;
@@ -232,18 +350,73 @@ export function TaskPanel({
     ? projectAccentColor(project?.accent, card.projectId, theme)
     : theme.colors.foregroundMuted;
   useEffect(() => onEscapeKey(onClose), [onClose]);
+  const resize = useResizeHandle({
+    enabled: !compact,
+    width,
+    containerWidth,
+    onResize,
+    onResizeEnd,
+  });
+  const showAgent = view === "agent" && viewAgentId !== null;
+  const tab = (
+    id: "ticket" | "agent",
+    label: string,
+    selected: boolean,
+    onPress: () => void,
+  ) => (
+    <Pressable
+      testID={`workboard-panel-tab-${id}`}
+      accessibilityRole="tab"
+      accessibilityState={{ selected }}
+      accessibilityLabel={label}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.tab,
+        {
+          borderColor: selected ? theme.colors.accent : theme.colors.border,
+          backgroundColor:
+            selected || pressed ? theme.colors.surface2 : "transparent",
+        },
+      ]}
+    >
+      <Text
+        style={[
+          styles.tabText,
+          {
+            color: selected
+              ? theme.colors.accent
+              : theme.colors.foregroundMuted,
+          },
+        ]}
+      >
+        {label}
+      </Text>
+    </Pressable>
+  );
   return (
     <View
       testID="workboard-ticket-panel"
       style={[
         styles.panel,
-        compact && styles.panelCompact,
+        compact ? styles.panelCompact : { width },
         {
           borderColor: theme.colors.border,
           backgroundColor: theme.colors.surface0,
         },
       ]}
     >
+      {Platform.OS === "web" && !compact ? (
+        <View
+          ref={resize.ref}
+          testID="workboard-panel-resize"
+          accessibilityLabel={t.ticketPanel.resize}
+          style={[
+            styles.resizeHandle,
+            COL_RESIZE,
+            resize.dragging && { backgroundColor: theme.colors.accent },
+          ]}
+        />
+      ) : null}
       <View style={[styles.header, { borderColor: theme.colors.border }]}>
         <View style={styles.heading}>
           {card.number > 0 ? (
@@ -280,141 +453,230 @@ export function TaskPanel({
           <Icon name="X" size={16} color={theme.colors.foregroundMuted} />
         </Pressable>
       </View>
-      <ScrollView
-        style={styles.panelScroll}
-        contentContainerStyle={styles.content}
+      <View
+        accessibilityRole="tablist"
+        style={[styles.tabRow, { borderColor: theme.colors.border }]}
       >
-        <View style={styles.projectMetaRow}>
-          {card.projectId && card.projectName ? (
-            <ProjectIcon
-              name={project?.name ?? card.projectName}
-              color={projectColor}
-              fillColor={projectLetterFill(
-                project?.letterFill,
-                project?.accent,
-                card.projectId,
-              )}
-              size={14}
-              icon={projectIconFor(icons, card.projectId)}
-            />
-          ) : null}
-          <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
-            {card.projectName || t.unassigned}
-            {` · ${stage}`}
-          </Text>
+        {tab("ticket", t.ticketPanel.ticketTab, !showAgent, onShowTicket)}
+        {agentId
+          ? tab("agent", t.ticketPanel.agentTab, showAgent, () =>
+              onShowAgent(agentId),
+            )
+          : null}
+      </View>
+      {showAgent ? (
+        <View style={styles.agentView}>
+          <PanelAgent
+            agentId={viewAgentId}
+            card={card}
+            theme={theme}
+            hostId={hostId}
+            navigation={navigation}
+            onBack={onShowTicket}
+            onSelectAgent={onShowAgent}
+          />
         </View>
-        {labels.length > 0 ? (
-          <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
-            {labels.join(" · ")}
-          </Text>
-        ) : null}
-        {card.timing ? (
-          <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
-            {card.timing.kind === "night"
-              ? t.night.badge
-              : new Date(card.timing.at).toLocaleString(t.locale, {
-                  month: "short",
-                  day: "numeric",
-                  hour: "2-digit",
-                  minute: "2-digit",
-                })}
-          </Text>
-        ) : null}
-        <View
-          style={[
-            styles.section,
-            {
-              borderColor: theme.colors.border,
-              backgroundColor: theme.colors.surface1,
-            },
-          ]}
+      ) : (
+        <ScrollView
+          style={styles.panelScroll}
+          contentContainerStyle={styles.content}
         >
-          <Text
+          <View style={styles.projectMetaRow}>
+            {card.projectId && card.projectName ? (
+              <ProjectIcon
+                name={project?.name ?? card.projectName}
+                color={projectColor}
+                fillColor={projectLetterFill(
+                  project?.letterFill,
+                  project?.accent,
+                  card.projectId,
+                )}
+                size={14}
+                icon={projectIconFor(icons, card.projectId)}
+              />
+            ) : null}
+            <Text
+              style={[styles.meta, { color: theme.colors.foregroundMuted }]}
+            >
+              {card.projectName || t.unassigned}
+              {` · ${stage}`}
+            </Text>
+          </View>
+          {labels.length > 0 ? (
+            <Text
+              style={[styles.meta, { color: theme.colors.foregroundMuted }]}
+            >
+              {labels.join(" · ")}
+            </Text>
+          ) : null}
+          {card.timing ? (
+            <Text
+              style={[styles.meta, { color: theme.colors.foregroundMuted }]}
+            >
+              {card.timing.kind === "night"
+                ? t.night.badge
+                : new Date(card.timing.at).toLocaleString(t.locale, {
+                    month: "short",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+            </Text>
+          ) : null}
+          <View
             style={[
-              styles.sectionTitle,
-              { color: theme.colors.foregroundMuted },
+              styles.section,
+              {
+                borderColor: theme.colors.border,
+                backgroundColor: theme.colors.surface1,
+              },
             ]}
           >
-            {t.ticketPanel.description}
-          </Text>
-          {card.description.trim() ? (
-            <RichText
-              text={card.description}
-              color={theme.colors.foreground}
-              theme={theme}
-            />
-          ) : (
-            <Text
-              style={[styles.body, { color: theme.colors.foregroundMuted }]}
-            >
-              {t.ticketPanel.emptyDescription}
-            </Text>
-          )}
-        </View>
-        {record?.summary ? (
-          <View style={styles.section}>
             <Text
               style={[
                 styles.sectionTitle,
                 { color: theme.colors.foregroundMuted },
               ]}
             >
-              {t.ticketPanel.summary}
+              {t.ticketPanel.description}
             </Text>
-            <Text
-              selectable
-              style={[styles.body, { color: theme.colors.foreground }]}
-            >
-              {record.summary}
-            </Text>
+            {card.description.trim() ? (
+              <RichText
+                text={card.description}
+                color={theme.colors.foreground}
+                theme={theme}
+              />
+            ) : (
+              <Text
+                style={[styles.body, { color: theme.colors.foregroundMuted }]}
+              >
+                {t.ticketPanel.emptyDescription}
+              </Text>
+            )}
           </View>
-        ) : null}
-        <View style={styles.actions}>
-          {card.workspaceId && onOpenWorkspace ? (
-            <PanelAction
-              icon="ArrowUpRight"
-              label={t.openWorkspace}
-              theme={theme}
-              onPress={onOpenWorkspace}
-            />
+          {record?.summary ? (
+            <View style={styles.section}>
+              <Text
+                style={[
+                  styles.sectionTitle,
+                  { color: theme.colors.foregroundMuted },
+                ]}
+              >
+                {t.ticketPanel.summary}
+              </Text>
+              <Text
+                selectable
+                style={[styles.body, { color: theme.colors.foreground }]}
+              >
+                {record.summary}
+              </Text>
+            </View>
           ) : null}
-          {agentId && onOpenAgent ? (
-            <PanelAction
-              icon="Bot"
-              label={t.openAgent}
-              theme={theme}
-              onPress={() => onOpenAgent(agentId)}
-            />
-          ) : null}
-          {onEdit ? (
-            <PanelAction
-              icon="FileText"
-              label={t.edit}
-              theme={theme}
-              onPress={onEdit}
-            />
-          ) : null}
-          {onStatus ? (
-            <PanelAction
-              icon="ArrowRightLeft"
-              label={t.status}
-              theme={theme}
-              onPress={onStatus}
-            />
-          ) : null}
-        </View>
-        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
-          {`${t.ticketPanel.created} ${new Date(card.createdAt).toLocaleString(t.locale)}`}
-          {` · ${t.ticketPanel.updated} ${new Date(card.updatedAt).toLocaleString(t.locale)}`}
-        </Text>
-      </ScrollView>
+          <View style={styles.actions}>
+            {card.workspaceId && onOpenWorkspace ? (
+              <PanelAction
+                icon="ArrowUpRight"
+                label={t.openWorkspace}
+                theme={theme}
+                onPress={onOpenWorkspace}
+              />
+            ) : null}
+            {agentId && onOpenAgent ? (
+              <PanelAction
+                icon="Bot"
+                label={t.openAgent}
+                theme={theme}
+                onPress={() => onOpenAgent(agentId)}
+              />
+            ) : null}
+            {onEdit ? (
+              <PanelAction
+                icon="FileText"
+                label={t.edit}
+                theme={theme}
+                onPress={onEdit}
+              />
+            ) : null}
+            {onStatus ? (
+              <PanelAction
+                icon="ArrowRightLeft"
+                label={t.status}
+                theme={theme}
+                onPress={onStatus}
+              />
+            ) : null}
+          </View>
+          <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+            {`${t.ticketPanel.created} ${new Date(card.createdAt).toLocaleString(t.locale)}`}
+            {` · ${t.ticketPanel.updated} ${new Date(card.updatedAt).toLocaleString(t.locale)}`}
+          </Text>
+        </ScrollView>
+      )}
     </View>
   );
 }
 
+function PanelAgent({
+  agentId,
+  card,
+  theme,
+  hostId,
+  navigation,
+  onBack,
+  onSelectAgent,
+}: {
+  agentId: string;
+  card: Card;
+  theme: Theme;
+  hostId: string;
+  navigation: PluginSurfaceProps["navigation"];
+  onBack(): void;
+  onSelectAgent(agentId: string): void;
+}) {
+  const language = usePaseoLanguage();
+  return (
+    <ConversationThread
+      agentId={agentId}
+      taskId={card.id}
+      taskTitle={null}
+      navigation={navigation}
+      hostId={hostId}
+      compact={false}
+      onBack={onBack}
+      onSelectAgent={onSelectAgent}
+      now={Date.now()}
+      t={conversationsStrings(language)}
+      theme={theme}
+      readOnly
+    />
+  );
+}
+
 const styles = StyleSheet.create({
+  resizeHandle: {
+    position: "absolute",
+    left: -3,
+    top: 0,
+    bottom: 0,
+    width: 6,
+    zIndex: 40,
+  },
+  tabRow: {
+    flexDirection: "row",
+    gap: 6,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+  },
+  tab: {
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  tabText: { fontSize: 12, fontWeight: "600" },
+  agentView: { flex: 1, minHeight: 0 },
   panel: {
-    width: 380,
     minWidth: 0,
     minHeight: 0,
     borderLeftWidth: 1,

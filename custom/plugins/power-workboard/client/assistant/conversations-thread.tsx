@@ -430,6 +430,7 @@ export function ConversationThread(props: {
   now: number;
   t: ConversationsStrings;
   theme: Theme;
+  readOnly?: boolean;
 }) {
   const { t, theme, agentId } = props;
   const c = theme.colors;
@@ -738,84 +739,89 @@ export function ConversationThread(props: {
         </ScrollView>
       )}
 
-      <View style={[styles.composer, { borderColor: c.border }]}>
-        <View style={styles.quickRow}>
-          {quick(
-            t.continueWithFeedback,
-            () => setFeedbackMode(!feedbackMode),
-            feedbackMode,
-          )}
-          {quick(t.markDone, () => {
-            if (taskId) void run({ type: "mark-done", taskId });
-          })}
-          {quick(t.mergeNow, () => setConfirmMerge(true))}
-        </View>
-        {confirmMerge ? (
-          <View
-            style={[
-              styles.card,
-              { borderColor: c.statusWarning, backgroundColor: c.surface1 },
-            ]}
-          >
-            <Text style={[styles.body, { color: c.foreground }]}>
-              {t.mergeConfirm}
-            </Text>
-            <View style={styles.quickRow}>
-              {quick(t.confirm, () => {
-                setConfirmMerge(false);
-                if (taskId) void run({ type: "merge-now", taskId });
-              })}
-              {quick(t.cancel, () => setConfirmMerge(false))}
-            </View>
+      {/* CUSTOM(task-panel): the board's side panel shows the agent read-only; "Open in Desk" is the way to talk to it. */}
+      {props.readOnly ? null : (
+        <View style={[styles.composer, { borderColor: c.border }]}>
+          <View style={styles.quickRow}>
+            {quick(
+              t.continueWithFeedback,
+              () => setFeedbackMode(!feedbackMode),
+              feedbackMode,
+            )}
+            {quick(t.markDone, () => {
+              if (taskId) void run({ type: "mark-done", taskId });
+            })}
+            {quick(t.mergeNow, () => setConfirmMerge(true))}
           </View>
-        ) : null}
-        {error ? (
-          <Text style={[styles.meta, { color: c.statusDanger }]}>{error}</Text>
-        ) : null}
-        <View style={styles.inputRow}>
-          <TextInput
-            multiline
-            accessibilityLabel={
-              feedbackMode ? t.feedbackPlaceholder : t.composerPlaceholder
-            }
-            value={text}
-            onChangeText={setText}
-            placeholder={
-              feedbackMode ? t.feedbackPlaceholder : t.composerPlaceholder
-            }
-            placeholderTextColor={c.foregroundMuted}
-            style={[
-              styles.input,
-              {
-                color: c.foreground,
-                borderColor: c.border,
-                backgroundColor: c.surface1,
-              },
-            ]}
-          />
-          <Pressable
-            accessibilityRole="button"
-            disabled={sending || text.trim().length === 0}
-            onPress={() => void submit()}
-            style={[
-              styles.send,
-              {
-                backgroundColor: c.accent,
-                opacity: sending || text.trim().length === 0 ? 0.5 : 1,
-              },
-            ]}
-          >
-            <Text
+          {confirmMerge ? (
+            <View
               style={[
-                styles.meta,
-                { color: c.accentForeground, fontWeight: "600" },
+                styles.card,
+                { borderColor: c.statusWarning, backgroundColor: c.surface1 },
               ]}
             >
-              {sending ? t.sending : feedbackMode ? t.sendFeedback : t.send}
+              <Text style={[styles.body, { color: c.foreground }]}>
+                {t.mergeConfirm}
+              </Text>
+              <View style={styles.quickRow}>
+                {quick(t.confirm, () => {
+                  setConfirmMerge(false);
+                  if (taskId) void run({ type: "merge-now", taskId });
+                })}
+                {quick(t.cancel, () => setConfirmMerge(false))}
+              </View>
+            </View>
+          ) : null}
+          {error ? (
+            <Text style={[styles.meta, { color: c.statusDanger }]}>
+              {error}
             </Text>
-          </Pressable>
+          ) : null}
+          <View style={styles.inputRow}>
+            <TextInput
+              multiline
+              accessibilityLabel={
+                feedbackMode ? t.feedbackPlaceholder : t.composerPlaceholder
+              }
+              value={text}
+              onChangeText={setText}
+              placeholder={
+                feedbackMode ? t.feedbackPlaceholder : t.composerPlaceholder
+              }
+              placeholderTextColor={c.foregroundMuted}
+              style={[
+                styles.input,
+                {
+                  color: c.foreground,
+                  borderColor: c.border,
+                  backgroundColor: c.surface1,
+                },
+              ]}
+            />
+            <Pressable
+              accessibilityRole="button"
+              disabled={sending || text.trim().length === 0}
+              onPress={() => void submit()}
+              style={[
+                styles.send,
+                {
+                  backgroundColor: c.accent,
+                  opacity: sending || text.trim().length === 0 ? 0.5 : 1,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.meta,
+                  { color: c.accentForeground, fontWeight: "600" },
+                ]}
+              >
+                {sending ? t.sending : feedbackMode ? t.sendFeedback : t.send}
+              </Text>
+            </Pressable>
+          </View>
         </View>
-      </View>
+      )}
     </View>
   );
 }

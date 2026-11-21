@@ -26,6 +26,32 @@ export function openDeskTarget(input: {
       return activeDeskTab(useDesksStore.getState())?.id ?? null;
     }
   }
+  return openArchivedWorkspaceAgent(input);
+}
+
+/**
+ * CUSTOM(archived-agent-open): the session lists only live workspaces, so an agent of an archived
+ * one (a Done task's) matched nothing above and its launcher opened no tab: the Desk kept showing
+ * what it had, often the Project Manager. Agent tabs open anyway, the way the Tasks sidebar's
+ * Archived filter opens them; other targets of an unknown workspace still return null.
+ */
+function openArchivedWorkspaceAgent(input: {
+  workspaceKey: string | null;
+  target: WorkspaceTabTarget;
+  pin?: boolean;
+  placement?: WorkspaceTabPlacement;
+}): string | null {
+  if (input.target.kind !== "agent" || !input.workspaceKey) return null;
+  for (const serverId of Object.keys(useSessionStore.getState().sessions)) {
+    const prefix = `${serverId}:`;
+    if (!input.workspaceKey.startsWith(prefix)) continue;
+    const workspaceId = input.workspaceKey.slice(prefix.length).trim();
+    if (!workspaceId) return null;
+    useDesksStore
+      .getState()
+      .openTab({ serverId, workspaceId, target: input.target }, input.pin ?? true, input.placement);
+    return activeDeskTab(useDesksStore.getState())?.id ?? null;
+  }
   return null;
 }
 

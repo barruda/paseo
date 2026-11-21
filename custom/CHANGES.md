@@ -7035,7 +7035,8 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 ## workboard-ticket-numbers-and-panel: `#42` on every ticket, and a ticket beside the board
 
 - **Added:** 2026-11-20. Changed 2026-11-20: long-press on native, the menu stays on screen, and
-  the tools document the short number.
+  the tools document the short number. Changed 2026-11-21: resize and an Agent view, see
+  `task-panel-agent, archived-agent-open`.
 - **Commit:** `custom: Workboard tickets get a short number and open in a side panel`, then
   `custom: Workboard panel opens by touch and its menu stays on screen`
 - **Why:** Tickets only had UUIDs, which are impossible to say in conversation, and reading a
@@ -9672,3 +9673,55 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
   its composer without sending (or dictate a sentence and leave the microphone on). After the
   compaction the new chat shows your words with the cursor at the end (if you stayed on the Desk,
   after **Ir para a nova sessão**), and the microphone is off. Put the limit back afterwards.
+
+## task-panel-agent, archived-agent-open: the Workboard panel resizes and shows the agent; a Done task's Open agent opens its agent
+
+- **Added:** 2026-11-21
+- **Commit:** `custom: Workboard panel resizes and shows the task agent; Open agent of a Done task opens its agent`
+- **Why:** The board's side panel (see `workboard-ticket-numbers-and-panel`) had a fixed width and
+  only showed the ticket. Open agent on a Done task opened the Project Manager instead of the
+  task's agent.
+- **What:**
+  - Bug cause (`archived-agent-open`): a Done task's workspace is archived, and the session lists
+    only live workspaces. In Tasks mode `navigateToWorkspace` hands the tab to `openDeskTarget`,
+    which matched the workspace against `session.workspaces`, found nothing and returned `null`,
+    so no Desk tab opened. The Desk Workboard's `openAgent` then deselects the board, and the Desk
+    kept showing what it had: the Project Manager when the board was opened from there.
+    `openDeskTarget` now opens an **agent** tab for a workspace the session does not list, on a
+    host whose session exists, the way the Tasks sidebar's Archived filter already does. Other
+    targets (file, terminal) of an unknown workspace still return `null`.
+  - Panel width (web, wide layout): a handle on the panel's left edge drags its width between
+    320 and 960 px, always leaving the board 360 px (`clampPanelWidth`, `resizedPanelWidth`).
+    The width is saved per viewer and host in `localStorage`
+    (`power-workboard:panel-width:<host>`). Native has no handle: its compact panel is full
+    screen.
+  - Panel views: a **Ticket** / **Agent** tab row under the panel's title says which one is on
+    screen and switches back. Agent shows the task agent's conversation with the Projects
+    Conversations reader (`ConversationThread`, new `readOnly` prop), read-only: no composer, no
+    Mark done / Merge. It reads archived agents too. Its **Open in Desk** button is the way to
+    talk to the agent. Read-only because a composer beside the board would be a second way to
+    send to a task agent the orchestrator is watching, with Merge and Mark done one click away.
+  - Middle click on a card's **Open agent** link opens the panel in the Agent view on that agent
+    (`useMiddleClick` on the link stops the event, so the card's own middle click, which opens the
+    Ticket view, does not also fire). Left click on Open agent is unchanged.
+  - Open agent on a Done or archived task whose agent is not in the card's agents (the server
+    lists the workspace's agents, archived ones included) shows "This task's agent no longer
+    exists." instead of navigating (`agentGone`).
+- **Core files touched:** `packages/app/src/task-navigation/open-desk-target.ts`
+  (`openArchivedWorkspaceAgent`, `CUSTOM(archived-agent-open)`; the file is itself a
+  customization of `desks`) and its test in `task-navigation/store.test.ts`. Plugin:
+  `client/TaskPanel.tsx`, `client/task-panel-state.ts`, `client/WorkboardScreen.tsx`,
+  `client/board-utils.ts`, `client/strings.ts`, `client/assistant/conversations-thread.tsx`,
+  `README.md`, tests `task-panel-state.test.ts` and `card-open-agent.test.ts`.
+- **Re-apply:** in `openDeskTarget`, after the loop over the session's workspaces, fall back to
+  opening the Desk tab for an `agent` target whose `workspaceKey` starts with a known session's
+  `serverId:`. In the plugin, the panel state is `PanelState` (`taskId`, `view`, `agentId`); the
+  card passes `onOpenAgentInPanel` down to both `OpenAgentLink`s.
+- **Verify:** `(cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1)`
+  and `(cd packages/app && npx vitest run src/task-navigation/store.test.ts --bail=1)` (both in
+  the update script). Needs an app build (core change) and a plugin reload; no daemon restart.
+  In the app, with Tasks mode on: open the Workboard, click Open agent on a Done card: the
+  task's archived chat opens, never the Project Manager. Middle-click a card: the panel opens on
+  the Ticket tab. Middle-click a card's Open agent link: the panel opens on the Agent tab with
+  the conversation and no composer; click Ticket to go back. Drag the panel's left edge, close
+  the panel, open it again: same width.

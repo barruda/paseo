@@ -546,3 +546,33 @@ it("routes existing launchers into Desks only when enabled, preserving source la
     session.clearSession("bridge-host");
   }
 });
+
+// CUSTOM(archived-agent-open): a Done task's workspace is archived, so the session does not list it.
+it("opens an agent of a workspace the session no longer lists, never another tab", () => {
+  const session = useSessionStore.getState();
+  session.initializeSession("archive-host", null);
+  session.setWorkspaces("archive-host", new Map());
+  const input = {
+    workspaceKey: "archive-host:archived-workspace",
+    target: { kind: "agent" as const, agentId: "done-task-agent" },
+    pin: true,
+  };
+  try {
+    useTaskNavigationStore.getState().setEnabled(true);
+    const tabId = openDeskTarget(input);
+    expect(tabId).not.toBeNull();
+    expect(activeDeskTab(useDesksStore.getState())).toMatchObject({
+      id: tabId,
+      serverId: "archive-host",
+      workspaceId: "archived-workspace",
+      target: input.target,
+    });
+    // Only agent tabs: a file or terminal of a workspace nobody lists has nothing to show.
+    expect(openDeskTarget({ ...input, target: { kind: "terminal", terminalId: "t" } })).toBeNull();
+    // An unknown host still opens nothing.
+    expect(openDeskTarget({ ...input, workspaceKey: "other-host:archived-workspace" })).toBeNull();
+  } finally {
+    useTaskNavigationStore.getState().setEnabled(false);
+    session.clearSession("archive-host");
+  }
+});

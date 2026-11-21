@@ -171,6 +171,23 @@ export function cardAgentId(
   );
 }
 
+/**
+ * CUSTOM(task-panel): the server's card.agents lists the workspace's agents including archived
+ * ones, so on a settled task an id missing from it is an agent that was deleted. Live tasks are
+ * skipped because a just-created agent can reach the orchestration record before the inventory.
+ */
+export function agentGone(
+  card: Pick<Card, "workspaceId" | "agents">,
+  agentId: string,
+  settled: boolean,
+): boolean {
+  return (
+    settled &&
+    card.workspaceId !== null &&
+    !card.agents.some((agent) => agent.id === agentId)
+  );
+}
+
 export function stageAtX(
   x: number,
   columns: Partial<Record<Stage, { left: number; right: number }>>,

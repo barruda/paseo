@@ -22,6 +22,7 @@ const zh = {
   orchestratorAutomatic: "自动（按项目）",
   openAgent: "打开 Agent",
   openAgentHint: "打开这个任务的 Agent 会话",
+  agentGone: "这个任务的 Agent 已不存在。",
   openInPanel: "在面板中打开",
   closeMenu: "关闭菜单",
   ticketPanel: {
@@ -31,6 +32,9 @@ const zh = {
     created: "创建于",
     updated: "更新于",
     summary: "最近回复",
+    ticketTab: "工单",
+    agentTab: "Agent",
+    resize: "调整面板宽度",
   },
   pools: {
     title: "资源池",
@@ -829,6 +833,7 @@ const en: typeof zh = {
   orchestratorAutomatic: "Automatic (by project)",
   openAgent: "Open agent",
   openAgentHint: "Open this task's agent chat",
+  agentGone: "This task's agent no longer exists.",
   openInPanel: "Open in panel",
   closeMenu: "Close menu",
   ticketPanel: {
@@ -838,6 +843,9 @@ const en: typeof zh = {
     created: "Created",
     updated: "Updated",
     summary: "Last reply",
+    ticketTab: "Ticket",
+    agentTab: "Agent",
+    resize: "Resize panel",
   },
   pools: {
     title: "Resource pools",
