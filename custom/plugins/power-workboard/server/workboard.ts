@@ -79,6 +79,10 @@ import {
   type PmCardUpdateInput,
   type PmDecider,
 } from "../shared/pm-board"; // CUSTOM(pm-board)
+import {
+  buildReplyTaskStates,
+  type ReplyTaskState,
+} from "../shared/reply-task-sync"; // CUSTOM(pm-chat-task-sync)
 import { cleanupScratchDirectory, tmpCleanupDue } from "./tmp-cleanup"; // CUSTOM(unattended-automation)
 import { runsUnattended } from "../shared/permission"; // CUSTOM(unattended-automation)
 import {
@@ -862,15 +866,7 @@ export class Workboard {
           (["waiting", "error", "attention", "running"] as const).find((a) =>
             activities.includes(a),
           ) ?? "idle";
-        const stage = task.workspaceId
-          ? workspace
-            ? resolveStage(
-                workspace.labels,
-                data.settings.groups,
-                data.settings.defaultStartGroup,
-              )
-            : task.lastStage
-          : task.draftStage;
+        const stage = this.taskStage(task, data, workspace);
         return {
           ...task,
           stage,
@@ -5256,6 +5252,38 @@ export class Workboard {
       .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
   }
 
+  /** The column a task shows in: its workspace's labels, else its last or draft stage. */
+  private taskStage(
+    task: Task,
+    data: Data,
+    workspace = this.inventory.workspaces.find(
+      (w) => w.id === task.workspaceId,
+    ),
+  ): Stage {
+    return task.workspaceId
+      ? workspace
+        ? resolveStage(
+            workspace.labels,
+            data.settings.groups,
+            data.settings.defaultStartGroup,
+          )
+        : task.lastStage
+      : task.draftStage;
+  }
+  /**
+   * CUSTOM(pm-chat-task-sync): the state of the tasks a chat reply's `seu` line cites, without
+   * the board snapshot (the chat polls this every few seconds).
+   */
+  replyTaskStates(refs: readonly string[]): ReplyTaskState[] {
+    const data = this.store.current;
+    return buildReplyTaskStates(refs, {
+      tasks: data.tasks,
+      deliveries: data.assistant.deliveries,
+      orchestrations: data.orchestrations,
+      groups: data.settings.groups,
+      stageOf: (task) => this.taskStage(task, data),
+    });
+  }
   // CUSTOM(pm-board): the Project Manager's own cards. They never touch a task, a workspace or an
   // agent; this board only stores them, so a card can never start code work.
   pmCards(): PmCard[] {

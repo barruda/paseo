@@ -102,6 +102,26 @@ prompt, into `CHAT_RULES` (the first message of every new or compacted chat) and
 `pm_card_decide` refuses a card the user already decided, so the PM cannot write over a choice
 that came from a tap; the user reopens the card to change it.
 
+### A `seu` that cites only tasks
+
+A `seu` line with task ids (`seu: testar #138 [10b1b0d7]`) and no `[pm:<id>]` anywhere in the
+block follows the tasks instead. The chat calls `workboard.assistant.tasks.state` with the ids;
+the board answers from its stored data (column, Needs you, last change), without the snapshot,
+which is too big to poll. Every reply on screen registers its ids in
+`client/assistant/task-states-query.ts`, so a chat polls once per host every 5 s whatever its
+length. The mapping is `replyTaskView` in [`shared/reply-task-sync.ts`](../shared/reply-task-sync.ts):
+
+| cited tasks                                          | the `seu` line                                    |
+| ---------------------------------------------------- | ------------------------------------------------- |
+| one still in Needs you                               | amber, as before                                  |
+| none in Needs you, all in Done                       | green, "#138 Done · <hora>"                       |
+| none in Needs you, one elsewhere                     | neutral, "#138 Done · #140 em andamento · <hora>" |
+| none on the board, not loaded yet, or the call fails | as before                                         |
+
+A task leaves Needs you when its delivery leaves `needs-you` (merged, dismissed, sent back), when
+it moves to Done or Canceled, or when its agent runs again. A `seu` without ids (`seu: reiniciar
+hub`) cannot be checked and stays amber.
+
 Cards can link to tasks and their Reports tickets by id (`links.taskIds`, `links.reportIds`). A
 task chip shows `#N` when the ticket has a number (the id's first 8 characters otherwise) and opens
 the ticket in the board's side panel; a report chip opens the ticket in Reports.

@@ -30,6 +30,8 @@ export interface CardLabels {
   decided: string;
   at: string;
   archived: string;
+  /** CUSTOM(pm-chat-task-sync): a task the `seu` line cites, back with its agent. */
+  taskRunning: string;
 }
 
 const en = {
@@ -99,6 +101,7 @@ const en = {
     decided: "decided",
     at: "at",
     archived: "archived",
+    taskRunning: "in progress",
   },
   reportStatus: {
     done: "Done",
@@ -213,6 +216,7 @@ const pt: ReportsStrings = {
     decided: "decidido",
     at: "em",
     archived: "arquivado",
+    taskRunning: "em andamento",
   },
   reportStatus: {
     done: "Concluído",

@@ -49,6 +49,13 @@ import {
 } from "../../shared/reply-card-sync";
 import type { CardOption } from "./card-parts";
 import { usePmCards, useRefreshPmCards } from "./pm-board/pm-cards-query";
+// CUSTOM(pm-chat-task-sync)
+import {
+  replyTaskLabel,
+  replyTaskView,
+  type ReplyTaskView,
+} from "../../shared/reply-task-sync";
+import { useCitedTaskStates } from "./task-states-query";
 
 type Theme = PluginTimelineItemProps["theme"];
 type Layout = PluginTimelineItemProps["layout"];
@@ -327,6 +334,17 @@ function ReplyCard({
     reply.question?.options ?? [],
   );
   const settled = view.state === "decided" || view.state === "archived";
+  // CUSTOM(pm-chat-task-sync): a `seu` that cites tasks and no PM card follows the tasks: amber
+  // while one waits in Needs you, neutral or green once none does. A failed call draws as before.
+  const yoursTaskIds =
+    cardId === null && reply.yours && !reply.yours.none
+      ? reply.yours.taskIds
+      : [];
+  const taskStates = useCitedTaskStates(hostId, yoursTaskIds);
+  const taskView = replyTaskView(
+    yoursTaskIds,
+    taskStates.isError ? undefined : taskStates.data?.tasks,
+  );
   const sayPick = (option: CardOption) =>
     say(optionAnswer(reply.question?.text ?? "", option));
   // A tap on a waiting card decides it through the board, which also tells the PM. A block whose
@@ -353,11 +371,15 @@ function ReplyCard({
       ? c.statusSuccess
       : view.state === "archived"
         ? c.border
-        : blocked
-          ? c.statusDanger
-          : yoursAction
-            ? c.statusWarning
-            : c.border;
+        : taskView.state === "settled"
+          ? taskView.tone === "success"
+            ? c.statusSuccess
+            : c.border
+          : blocked
+            ? c.statusDanger
+            : yoursAction
+              ? c.statusWarning
+              : c.border;
   const hasNext = reply.next !== null;
   const hasBody =
     reply.done.length +
@@ -499,6 +521,7 @@ function ReplyCard({
         <YoursBox
           line={reply.yours}
           view={view}
+          taskView={taskView}
           theme={theme}
           labels={labels}
         />
@@ -510,21 +533,28 @@ function ReplyCard({
 /**
  * CUSTOM(pm-chat-sync): the `seu` line. Amber while it waits for the user; green once its PM card
  * is decided, neutral once it is archived, each with who decided and when.
+ * CUSTOM(pm-chat-task-sync): without a PM card, green once every cited task is Done and neutral
+ * once none waits in Needs you, with each task's state.
  */
 function YoursBox({
   line,
   view,
+  taskView,
   theme,
   labels,
 }: {
   line: ReplyLine;
   view: ReplyCardView;
+  taskView: ReplyTaskView;
   theme: Theme;
   labels: CardLabels;
 }) {
   const c = theme.colors;
-  const decided = view.state === "decided";
-  const archived = view.state === "archived";
+  const tasksSettled = taskView.state === "settled";
+  const decided =
+    view.state === "decided" || (tasksSettled && taskView.tone === "success");
+  const archived =
+    view.state === "archived" || (tasksSettled && taskView.tone === "muted");
   const tone = decided
     ? c.statusSuccess
     : archived
@@ -542,7 +572,15 @@ function YoursBox({
     >
       <View style={styles.iconSlot}>
         <Icon
-          name={decided ? "CircleCheckBig" : archived ? "Archive" : "Hand"}
+          name={
+            decided
+              ? "CircleCheckBig"
+              : tasksSettled
+                ? "CircleCheck"
+                : archived
+                  ? "Archive"
+                  : "Hand"
+          }
           size={14}
           color={tone}
         />
@@ -557,8 +595,11 @@ function YoursBox({
             strong={!decided && !archived}
           />
         </View>
-        {decided || archived ? (
+        {view.state === "decided" || view.state === "archived" ? (
           <Resolution view={view} theme={theme} labels={labels} bare />
+        ) : null}
+        {taskView.state === "settled" ? (
+          <TaskResolution view={taskView} theme={theme} labels={labels} />
         ) : null}
       </View>
     </View>
@@ -611,6 +652,32 @@ function Resolution({
         {detail ? (
           <Text style={{ color: c.foregroundMuted }}>{`: ${detail}`}</Text>
         ) : null}
+      </Text>
+    </View>
+  );
+}
+
+/** CUSTOM(pm-chat-task-sync): "#138 Done · #140 em andamento · 14:32" under a settled `seu`. */
+function TaskResolution({
+  view,
+  theme,
+  labels,
+}: {
+  view: Extract<ReplyTaskView, { state: "settled" }>;
+  theme: Theme;
+  labels: CardLabels;
+}) {
+  const c = theme.colors;
+  const color = view.tone === "success" ? c.statusSuccess : c.foregroundMuted;
+  const time = decidedTimeLabel(view.at, Date.now());
+  const text = [
+    ...view.tasks.map((task) => replyTaskLabel(task, labels)),
+    ...(time ? [time] : []),
+  ].join(" · ");
+  return (
+    <View accessibilityLabel={text} style={styles.resolution}>
+      <Text style={[styles.resolutionText, styles.shrink, { color }]}>
+        {text}
       </Text>
     </View>
   );

@@ -26,6 +26,11 @@ import {
   reportTimelineSchema,
 } from "./assistant-reports"; // CUSTOM(assistant-reports)
 import { pmCardSchema } from "./pm-board"; // CUSTOM(pm-board)
+import {
+  replyTaskStateSchema,
+  TASK_REF_PATTERN,
+  TASK_STATES_MAX,
+} from "./reply-task-sync"; // CUSTOM(pm-chat-task-sync)
 
 const settingsOutput = z.object({
   settings: assistantSettingsSchema,
@@ -203,5 +208,19 @@ export const assistantPmReopenRpc = defineRpc({
   output: z.object({
     card: pmCardSchema,
     messageId: z.string().nullable(),
+  }),
+});
+
+// CUSTOM(pm-chat-task-sync): the state of the tasks a chat reply's `seu` line cites, so the line
+// leaves amber once they stop waiting for the user. Small on purpose: the chat polls it.
+export const assistantTaskStatesRpc = defineRpc({
+  name: "workboard.assistant.tasks.state",
+  input: z.object({
+    /** Task ids: the first 8 hex characters or the whole UUID. */
+    ids: z.array(z.string().regex(TASK_REF_PATTERN)).max(TASK_STATES_MAX),
+  }),
+  output: z.object({
+    /** One per id the board knows; an unknown id is left out. */
+    tasks: z.array(replyTaskStateSchema),
   }),
 });

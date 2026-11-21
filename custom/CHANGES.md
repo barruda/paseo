@@ -9833,3 +9833,41 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
   decided by user/pm, notice, archived, reopen; option matching; chat → card on a real board with
   the PM message), `tests/reply-protocol.test.ts` (the prompts carry the rule),
   `tests/assistant-chat.test.ts` (`pm_card_decide` with `decidedBy: "user"` and the refusal).
+
+## pm-chat-task-sync: a `seu` that cites a task leaves amber once the task moves on
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: the PM chat's seu line follows the tasks it cites`
+- **Why:** A `seu` line that cites only tasks (`seu: testar #138 [10b1b0d7]`) stayed amber forever,
+  even after the task left Needs you or reached Done. pm-chat-sync covered `[pm:<id>]` only: the
+  board snapshot is too big to poll every 5 s, so the tasks needed a small RPC.
+- **What:**
+  - **RPC `workboard.assistant.tasks.state`** (`ids`: task ids, 8 hex characters or the whole
+    UUID, at most 200). For each id the board knows it answers the column, the phase
+    (`needs-you`, `running`, `done`, `canceled`, `archived`, `other`), `needsYou` and the last
+    change (task, delivery or agent run). It reads the stored data and resolves the column with
+    `Workboard.taskStage` (extracted from `snapshot`), not the snapshot.
+  - **One query per host.** Every reply on screen registers its `seu` ids
+    (`client/assistant/task-states-query.ts`); one query asks for the union every 5 s and keeps the
+    last answer while a reply scrolls in or out.
+  - **The `seu` line.** Amber while a cited task waits in Needs you. Once none does: green when
+    every cited task is in Done, neutral otherwise, with "#138 Done · #140 em andamento · <hora>".
+    A task leaves Needs you when its delivery does, when it moves to Done or Canceled, or when its
+    agent runs again. A `[pm:<id>]` in the block wins (pm-chat-sync). No id, unknown task, not
+    loaded or a failed call: drawn as before.
+  - Docs: `docs/pm-board.md` ("A `seu` that cites only tasks") and a pointer in
+    `docs/assistant-reply-protocol.md`. The pwb protocol is unchanged.
+- **Core files touched:** none.
+- **Re-apply:** Plugin-only, marked `CUSTOM(pm-chat-task-sync)`: `shared/reply-task-sync.ts` (phase,
+  state builder, `replyTaskView`, label), `shared/assistant-rpc.ts` (`assistantTaskStatesRpc`),
+  `server/workboard.ts` (`taskStage`, `replyTaskStates`), `index.server.ts` (handler),
+  `client/assistant/task-states-query.ts` (shared query), `client/assistant/AssistantReplyCard.tsx`
+  (`yoursTaskIds`, edge colour, `YoursBox`'s `taskView`, `TaskResolution`),
+  `client/assistant/reports-strings.ts` (`taskRunning`).
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`.
+  Needs only `paseo plugin reload power-workboard`. In the app: find a PM reply whose `seu` cites a
+  task in Needs you (amber); dismiss it, merge it or move it to Done on the board: within 5 s the
+  `seu` turns neutral (or green for Done) with the task's state, in old replies too.
+- **Tests:** `tests/reply-task-sync.test.ts` (task → phase, ref lookup, the `seu` view for none,
+  pending, green and neutral, labels, the RPC's input bounds and its answer on a real board before
+  and after a dismiss, the per-host id union).

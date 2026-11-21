@@ -38,6 +38,7 @@ import {
   assistantPmCardsRpc, // CUSTOM(pm-board)
   assistantPmDecideRpc,
   assistantPmReopenRpc,
+  assistantTaskStatesRpc, // CUSTOM(pm-chat-task-sync)
 } from "./shared/assistant-rpc";
 import {
   decidePmCardOnBoard,
@@ -338,6 +339,10 @@ export default function contribute(server: PluginServerContext) {
   server.handle(assistantPmReopenRpc, (input) =>
     reopenPmCardOnBoard(ready(), pmMessage, input.cardId),
   );
+  // CUSTOM(pm-chat-task-sync): the tasks a chat reply's `seu` line cites.
+  server.handle(assistantTaskStatesRpc, (input) => ({
+    tasks: ready().replyTaskStates(input.ids),
+  }));
   // CUSTOM(agent-profiles): the profile of an orchestrator or of the assistant chat.
   server.handle(profilesGetRpc, (input) => ready().profileView(input.profile));
   server.handle(profilesSetSystemPromptRpc, async (input) => {
