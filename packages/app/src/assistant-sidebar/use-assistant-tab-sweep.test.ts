@@ -92,7 +92,7 @@ beforeEach(() => {
     splitSizesByWorkspace: {},
   });
   useSessionStore.setState({ sessions: {} });
-  useAssistantSidebarStore.setState({ chat: null, pending: null });
+  useAssistantSidebarStore.setState({ chat: null, pending: null, requested: null });
   useTaskNavigationStore.setState({ enabled: true });
 });
 
@@ -287,5 +287,26 @@ describe("newest chat (CUSTOM(assistant-desk-newest))", () => {
       useDesksStore.getState().selectDesk(ASSISTANT_DESK_ID);
     });
     expect(targets()).toEqual([{ kind: "agent", agentId: "new" }]);
+  });
+});
+
+// CUSTOM(pm-sidebar)
+describe("the sidebar's requested chat", () => {
+  it("lets go of the requested chat once the session lists it", () => {
+    useAssistantSidebarStore.setState({
+      chat: { serverId: "s1", agentId: "chat" },
+      requested: { serverId: "s1", agentId: "chat" },
+    });
+    seedSession({ agents: [] });
+    renderHook(() => useAssistantTabSweep());
+    expect(useAssistantSidebarStore.getState().requested).toEqual({
+      serverId: "s1",
+      agentId: "chat",
+    });
+
+    act(() => seedSession({ agents: [["chat", agent()]] }));
+
+    expect(useAssistantSidebarStore.getState().requested).toBeNull();
+    expect(useAssistantSidebarStore.getState().chat).toEqual({ serverId: "s1", agentId: "chat" });
   });
 });

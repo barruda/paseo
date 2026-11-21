@@ -1,8 +1,9 @@
-// CUSTOM(assistant-desk): the Explorer's Project Manager tab is not a second chat. It shows the
-// assistant Desk's focused agent tab when that Desk has one, so both views stay on the same chat;
-// CUSTOM(pm-sidebar): else the current chat (remembered, its successor, or the newest live one),
-// since the right sidebar is the chat's default place and the Desk may not exist. A new chat, a
-// compaction successor or a restart swaps the chat in the same Explorer tab. See custom/CHANGES.md.
+// CUSTOM(assistant-desk), CUSTOM(pm-sidebar): which chat the Explorer's Project Manager tab shows.
+// The right sidebar is the chat's default place, so the chat it was asked for wins: a chat the
+// session does not list yet, else the current chat (remembered, its successor, or the newest live
+// one). The assistant Desk's chat is only the last resort; a Desk left hidden never decides what
+// the sidebar shows. A new chat, a compaction successor or a restart swaps the chat in the same
+// Explorer tab. See custom/CHANGES.md.
 import { findPaneById } from "@/stores/workspace-layout-actions";
 import {
   ASSISTANT_DESK_ID,
@@ -39,9 +40,11 @@ export function assistantDeskChat(desks: readonly Desk[]): AssistantMirrorChat |
 }
 
 /** CUSTOM(pm-sidebar): the chat the Explorer's Project Manager tab shows. */
-export function assistantSidebarChat(
-  desks: readonly Desk[],
-  current: AssistantMirrorChat | null,
-): AssistantMirrorChat | null {
-  return assistantDeskChat(desks) ?? current;
+export function assistantSidebarChat(input: {
+  desks: readonly Desk[];
+  /** A chat the sidebar was asked for that the session does not list yet. */
+  requested: AssistantMirrorChat | null;
+  current: AssistantMirrorChat | null;
+}): AssistantMirrorChat | null {
+  return input.requested ?? input.current ?? assistantDeskChat(input.desks);
 }

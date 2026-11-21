@@ -7,7 +7,8 @@ import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const openAssistantDesk = vi.hoisted(() => vi.fn());
-vi.mock("./open", () => ({ openAssistantDesk }));
+const openAssistantSidebar = vi.hoisted(() => vi.fn());
+vi.mock("./open", () => ({ openAssistantDesk, openAssistantSidebar }));
 
 vi.mock("@/panels/agent-panel", async () => {
   const ReactModule = await vi.importActual<typeof import("react")>("react");
@@ -27,6 +28,8 @@ vi.mock("@/panels/agent-panel", async () => {
 import { PaneProvider, type PaneContextValue } from "@/panels/pane-context";
 import { useSessionStore, type Agent, type SessionState } from "@/stores/session-store";
 import { initialDesks, useDesksStore, type DeskTab } from "@/task-navigation/desks-store";
+import { useDeskWorkboardStore } from "@/task-navigation/desk-workboard-store";
+import { useTaskNavigationStore } from "@/task-navigation/store";
 import { assistantSidebarPanelRegistration } from "./panel";
 import { ASSISTANT_CHAT_LABEL } from "./model";
 import { useAssistantSidebarStore } from "./store";
@@ -91,36 +94,83 @@ function renderPanel() {
 
 beforeEach(() => {
   openAssistantDesk.mockClear();
+  openAssistantSidebar.mockClear();
+  useTaskNavigationStore.setState({ enabled: true });
+  useDeskWorkboardStore.setState({ selected: null });
   useSessionStore.setState({ sessions: {} });
-  useAssistantSidebarStore.setState({ chat: null, pending: null });
+  useAssistantSidebarStore.setState({ chat: null, pending: null, requested: null });
   useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary", initialized: true });
 });
 
 afterEach(cleanup);
 
 describe("Projects Assistant sidebar panel", () => {
-  it("shows the chat the assistant Desk has in front, through a pane pointed at that agent", () => {
+  it("shows the remembered chat through a pane pointed at that agent", () => {
     seedSession([["chat", agent()]]);
-    showChat("chat");
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });
     renderPanel();
     expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("chat");
   });
 
-  it("follows the Desk when its chat changes", () => {
+  it("shows the chat it was asked for, not a hidden Desk's", () => {
+    seedSession([
+      ["desk-chat", agent({ id: "desk-chat" })],
+      ["asked", agent({ id: "asked" })],
+    ]);
+    showChat("desk-chat");
+    useDesksStore.getState().selectDesk("primary");
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "asked" } });
+    renderPanel();
+
+    expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("asked");
+    // The hidden Desk does not overwrite the remembered chat.
+    expect(useAssistantSidebarStore.getState().chat).toEqual({ serverId: "s1", agentId: "asked" });
+  });
+
+  it("shows a chat the session does not list yet instead of the newest live one", () => {
+    seedSession([["old", agent({ id: "old" })]]);
+    useAssistantSidebarStore.setState({
+      chat: { serverId: "s1", agentId: "new" },
+      requested: { serverId: "s1", agentId: "new" },
+    });
+    renderPanel();
+    expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("new");
+  });
+
+  it("follows the remembered chat when it changes", async () => {
     seedSession([
       ["chat", agent()],
       ["next", agent({ id: "next" })],
     ]);
-    showChat("chat");
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });
     renderPanel();
 
-    act(() => showChat("next"));
+    await act(async () =>
+      useAssistantSidebarStore.getState().setChat({ serverId: "s1", agentId: "next" }),
+    );
 
     expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("next");
   });
 
+  it("while the Project Manager Desk is on screen, says so instead of a second composer", async () => {
+    seedSession([["chat", agent()]]);
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });
+    showChat("chat");
+    renderPanel();
+
+    expect(screen.queryByTestId("agent-panel")).toBeNull();
+    expect(screen.getByText(/open in the main area/)).toBeTruthy();
+    fireEvent.click(screen.getByTestId("projects-assistant-show-here"));
+    expect(openAssistantSidebar).toHaveBeenCalledWith({
+      chat: { serverId: "s1", agentId: "chat" },
+    });
+
+    // The board chip covers the Desk: the chat is back in the sidebar.
+    await act(async () => useDeskWorkboardStore.setState({ selected: "power-workboard" }));
+    expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("chat");
+  });
+
   it("asks to open the main area when there is no chat at all", () => {
-    useDesksStore.getState().selectAssistantDesk();
     renderPanel();
     expect(screen.queryByTestId("agent-panel")).toBeNull();
     expect(screen.getByText(/No Project Manager chat yet/)).toBeTruthy();
@@ -156,10 +206,11 @@ describe("Projects Assistant sidebar panel", () => {
     expect(openAssistantDesk).toHaveBeenCalledWith({ chat: { serverId: "s1", agentId: "chat" } });
   });
 
-  it("remembers the Desk's chat so the next start shows it straight away", () => {
-    seedSession([["chat", agent()]]);
+  it("falls back to the Desk's chat when there is no other, and remembers it", () => {
     showChat("chat");
+    useDesksStore.getState().selectDesk("primary");
     renderPanel();
+    expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("chat");
     expect(useAssistantSidebarStore.getState().chat).toEqual({ serverId: "s1", agentId: "chat" });
   });
 });

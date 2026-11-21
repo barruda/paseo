@@ -86,15 +86,36 @@ describe("assistantSidebarChat", () => {
     useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary", initialized: true });
   });
 
+  const desks = () => useDesksStore.getState().desks;
+
   it("shows the current chat when there is no Project Manager Desk", () => {
     const current = { serverId: "s1", agentId: "live" };
-    expect(assistantSidebarChat(useDesksStore.getState().desks, current)).toEqual(current);
+    expect(assistantSidebarChat({ desks: desks(), requested: null, current })).toEqual(current);
   });
 
-  it("prefers the Desk's chat so both views agree", () => {
+  it("shows the chat it was asked for over a hidden Desk's chat", () => {
     showChat("desk-chat");
+    const current = { serverId: "s1", agentId: "other" };
+    expect(assistantSidebarChat({ desks: desks(), requested: null, current })).toEqual(current);
+  });
+
+  it("shows a chat the session does not list yet over the current one", () => {
+    showChat("desk-chat");
+    const requested = { serverId: "s1", agentId: "new" };
     expect(
-      assistantSidebarChat(useDesksStore.getState().desks, { serverId: "s1", agentId: "other" }),
-    ).toEqual({ serverId: "s1", agentId: "desk-chat" });
+      assistantSidebarChat({
+        desks: desks(),
+        requested,
+        current: { serverId: "s1", agentId: "old" },
+      }),
+    ).toEqual(requested);
+  });
+
+  it("falls back to the Desk's chat when there is no current chat", () => {
+    showChat("desk-chat");
+    expect(assistantSidebarChat({ desks: desks(), requested: null, current: null })).toEqual({
+      serverId: "s1",
+      agentId: "desk-chat",
+    });
   });
 });

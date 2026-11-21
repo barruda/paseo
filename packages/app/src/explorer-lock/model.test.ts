@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isExplorerLockOn,
+  lockSwitchTurnedOn,
   planWorkspaceExplorerLock,
   resolveDeskExplorerOpen,
   type WorkspaceExplorerLockView,
@@ -63,6 +64,7 @@ describe("planWorkspaceExplorerLock", () => {
   const view = (patch: Partial<WorkspaceExplorerLockView>): WorkspaceExplorerLockView => ({
     active: true,
     lockOn: true,
+    settingsLoaded: true,
     workspaceKey: "s1:a",
     visible: false,
     ...patch,
@@ -140,5 +142,55 @@ describe("planWorkspaceExplorerLock", () => {
         lockedOpen: false,
       }),
     ).toBeNull();
+  });
+
+  it("applies the saved state when the lock comes on with the settings load", () => {
+    // Read before the settings loaded: the default (off). The saved settings turn it on.
+    expect(
+      planWorkspaceExplorerLock({
+        previous: view({ lockOn: false, settingsLoaded: false, visible: false }),
+        current: view({ visible: false }),
+        lockedOpen: true,
+      }),
+    ).toEqual({ kind: "apply", open: true });
+  });
+
+  it("does nothing before the settings load", () => {
+    expect(
+      planWorkspaceExplorerLock({
+        previous: view({ settingsLoaded: false, visible: false }),
+        current: view({ settingsLoaded: false, visible: true }),
+        lockedOpen: false,
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("lockSwitchTurnedOn", () => {
+  const loaded = { settingsLoaded: true };
+
+  it("is a toggle when the switch goes on after the settings loaded", () => {
+    expect(lockSwitchTurnedOn({ lockOn: false, ...loaded }, { lockOn: true, ...loaded })).toBe(
+      true,
+    );
+  });
+
+  it("is not a toggle when the saved settings arrive on load", () => {
+    expect(
+      lockSwitchTurnedOn(
+        { lockOn: false, settingsLoaded: false },
+        { lockOn: true, settingsLoaded: true },
+      ),
+    ).toBe(false);
+    expect(lockSwitchTurnedOn(null, { lockOn: true, ...loaded })).toBe(false);
+  });
+
+  it("is not a toggle when the switch stays on or goes off", () => {
+    expect(lockSwitchTurnedOn({ lockOn: true, ...loaded }, { lockOn: true, ...loaded })).toBe(
+      false,
+    );
+    expect(lockSwitchTurnedOn({ lockOn: true, ...loaded }, { lockOn: false, ...loaded })).toBe(
+      false,
+    );
   });
 });

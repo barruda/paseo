@@ -31,9 +31,10 @@ import {
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { activeDesk, useDesksStore, type DeskTabOwner } from "./desks-store";
 import { ensureExplorerPane } from "./desk-explorer-target";
-import { resolveDeskExplorerOpen } from "@/explorer-lock/model"; // CUSTOM(explorer-lock)
-import { useExplorerLockEnabled } from "@/explorer-lock/settings"; // CUSTOM(explorer-lock)
+import { lockSwitchTurnedOn, resolveDeskExplorerOpen } from "@/explorer-lock/model"; // CUSTOM(explorer-lock)
+import { useExplorerLockSetting } from "@/explorer-lock/settings"; // CUSTOM(explorer-lock)
 import { useExplorerLockHydrated, useExplorerLockStore } from "@/explorer-lock/store"; // CUSTOM(explorer-lock)
+import { useAssistantTabFollow } from "@/assistant-sidebar/use-assistant-tab-follow"; // CUSTOM(pm-sidebar)
 
 const NO_DESK_DRAG = {
   activeDragTabId: null,
@@ -63,7 +64,7 @@ export function useDeskExplorer(scope: DeskTabOwner | null, tabId: string | null
     Boolean(tabId && activeDesk(state).explorerTabIds?.includes(tabId)),
   );
   // CUSTOM(explorer-lock): with the lock on, one saved open/closed state replaces each tab's own.
-  const lockOn = useExplorerLockEnabled("tasks");
+  const { lockOn, settingsLoaded } = useExplorerLockSetting("tasks");
   const lockHydrated = useExplorerLockHydrated();
   const lockedOpen = useExplorerLockStore((state) => state.open);
   const { locked, open: isTabOpen } = resolveDeskExplorerOpen({
@@ -74,17 +75,22 @@ export function useDeskExplorer(scope: DeskTabOwner | null, tabId: string | null
     tabOpen: isOwnTabOpen,
   });
   const isOpen = isCompactExplorer ? isWorkspaceOpen : isTabOpen;
-  // Turning the lock on keeps what is on screen.
-  const lastLockOn = useRef(lockOn);
+  // Turning the lock on keeps what is on screen; the settings arriving on load is not a toggle.
+  const lastLockSwitch = useRef({ lockOn, settingsLoaded });
   useEffect(() => {
-    const wasOn = lastLockOn.current;
-    lastLockOn.current = lockOn;
-    if (lockOn && !wasOn && lockHydrated) useExplorerLockStore.getState().setOpen(isOwnTabOpen);
-  }, [isOwnTabOpen, lockHydrated, lockOn]);
+    const previous = lastLockSwitch.current;
+    const current = { lockOn, settingsLoaded };
+    lastLockSwitch.current = current;
+    if (lockHydrated && lockSwitchTurnedOn(previous, current)) {
+      useExplorerLockStore.getState().setOpen(isOwnTabOpen);
+    }
+  }, [isOwnTabOpen, lockHydrated, lockOn, settingsLoaded]);
 
   useEffect(() => {
     if (isTabOpen && workspaceKey && !isCompactExplorer) ensureExplorerPane(workspaceKey);
   }, [isCompactExplorer, isTabOpen, workspaceKey]);
+  // CUSTOM(pm-sidebar): the Project Manager tab follows the locked sidebar to the next workspace.
+  useAssistantTabFollow({ workspaceKey, lockedOpen: locked && isTabOpen });
 
   // Changes, folder links and plugins reveal the Explorer through the workspace layout; when they
   // do it for the focused tab's workspace, the tab opens its Explorer too.

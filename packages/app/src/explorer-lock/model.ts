@@ -29,11 +29,26 @@ export function resolveDeskExplorerOpen(input: {
   return { locked, open: locked ? input.lockedOpen : input.tabOpen };
 }
 
+/**
+ * Whether the lock switch was just turned on by the user. A switch read before the settings
+ * loaded holds the default, so its change on load is the saved value arriving, not a toggle.
+ */
+export function lockSwitchTurnedOn(
+  previous: { lockOn: boolean; settingsLoaded: boolean } | null,
+  current: { lockOn: boolean; settingsLoaded: boolean },
+): boolean {
+  return Boolean(
+    previous?.settingsLoaded && current.settingsLoaded && !previous.lockOn && current.lockOn,
+  );
+}
+
 /** What one workspace screen sees on a render. */
 export interface WorkspaceExplorerLockView {
   /** The screen is the focused route and docks the Explorer (not a compact overlay). */
   active: boolean;
   lockOn: boolean;
+  /** The settings have loaded; before that `lockOn` is the default. */
+  settingsLoaded: boolean;
   workspaceKey: string;
   visible: boolean;
 }
@@ -55,11 +70,16 @@ export function planWorkspaceExplorerLock(input: {
   lockedOpen: boolean;
 }): WorkspaceExplorerLockAction {
   const { previous, current, lockedOpen } = input;
-  if (!current.active || !current.lockOn) return null;
+  if (!current.settingsLoaded || !current.active || !current.lockOn) return null;
+  // A view seen before the settings loaded is not compared against: the lock coming on with the
+  // saved settings applies the saved state like a screen coming into view.
   const sameView = Boolean(
-    previous && previous.active && previous.workspaceKey === current.workspaceKey,
+    previous &&
+    previous.settingsLoaded &&
+    previous.active &&
+    previous.workspaceKey === current.workspaceKey,
   );
-  if (sameView && !previous!.lockOn) {
+  if (sameView && lockSwitchTurnedOn(previous, current)) {
     // Turning the lock on keeps what is on screen.
     return current.visible === lockedOpen ? null : { kind: "record", open: current.visible };
   }

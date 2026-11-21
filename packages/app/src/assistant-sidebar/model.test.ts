@@ -9,7 +9,9 @@ import {
   newerAssistantChat,
   planAssistantDeskRefresh,
   planAssistantSidebarOpen,
+  planAssistantTabCleanup,
   resolveAssistantChat,
+  shouldFollowAssistantTab,
   type AssistantAgentFacts,
 } from "./model";
 
@@ -281,5 +283,44 @@ describe("hasAssistantChat", () => {
       ["s1", new Map([["a", { labels: { [ASSISTANT_CHAT_LABEL]: "true" } }]])],
     ]);
     expect(hasAssistantChat({ remembered: null, agentsByServer: labeled })).toBe(true);
+  });
+});
+
+// CUSTOM(pm-sidebar)
+describe("planAssistantTabCleanup", () => {
+  const pm = { kind: "projects_assistant" };
+  it("closes the Project Manager tabs of other workspaces and duplicates, keeping the shown one", () => {
+    expect(
+      planAssistantTabCleanup({
+        tabs: [
+          { workspaceKey: "s1:a", tabId: "pm-a", target: pm },
+          { workspaceKey: "s1:a", tabId: "files-a", target: { kind: "files" } },
+          { workspaceKey: "s1:b", tabId: "pm-b", target: pm },
+          { workspaceKey: "s1:b", tabId: "pm-b2", target: pm },
+        ],
+        keep: { workspaceKey: "s1:b", tabId: "pm-b" },
+      }),
+    ).toEqual([
+      { workspaceKey: "s1:a", tabId: "pm-a" },
+      { workspaceKey: "s1:b", tabId: "pm-b2" },
+    ]);
+  });
+});
+
+describe("shouldFollowAssistantTab", () => {
+  const base = {
+    previousWorkspaceKey: "s1:a",
+    workspaceKey: "s1:b",
+    lockedOpen: true,
+    previousShowsAssistant: true,
+  };
+  it("follows the locked, open sidebar to another workspace when it showed the Project Manager", () => {
+    expect(shouldFollowAssistantTab(base)).toBe(true);
+  });
+  it("stays when the sidebar showed another tab, is closed or unlocked, or the workspace is the same", () => {
+    expect(shouldFollowAssistantTab({ ...base, previousShowsAssistant: false })).toBe(false);
+    expect(shouldFollowAssistantTab({ ...base, lockedOpen: false })).toBe(false);
+    expect(shouldFollowAssistantTab({ ...base, workspaceKey: "s1:a" })).toBe(false);
+    expect(shouldFollowAssistantTab({ ...base, previousWorkspaceKey: null })).toBe(false);
   });
 });

@@ -29,6 +29,8 @@ import { useSessionStore, type Agent, type SessionState } from "@/stores/session
 import { ASSISTANT_CHAT_LABEL } from "./model";
 import {
   currentAssistantChat,
+  explorerShowsAssistant,
+  followAssistantTab,
   isAssistantChatInSession,
   openAssistantDesk,
   openAssistantSidebar,
@@ -83,7 +85,7 @@ beforeEach(() => {
   routes.last = null;
   useSessionStore.setState({ sessions: {} });
   useDeskWorkboardStore.setState({ selected: null });
-  useAssistantSidebarStore.setState({ chat: null, pending: null });
+  useAssistantSidebarStore.setState({ chat: null, pending: null, requested: null });
   useTaskNavigationStore.setState({ enabled: true });
   useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary", initialized: true });
   // CUSTOM(pm-sidebar)
@@ -268,13 +270,85 @@ describe("openAssistantSidebar", () => {
     expect(useExplorerLockStore.getState().open).toBe(false);
   });
 
-  it("while the Project Manager Desk is in view, stays there", () => {
+  it("from the Project Manager Desk, closes the Desk and goes back to the sidebar", () => {
     routes.last = { serverId: "s1", workspaceId: "ws" };
     useDesksStore.getState().selectAssistantDesk();
 
     openAssistantSidebar({ chat: null });
 
-    expect(useDesksStore.getState().activeDeskId).toBe(ASSISTANT_DESK_ID);
-    expect(assistantTabs()).toHaveLength(0);
+    const desks = useDesksStore.getState();
+    expect(desks.desks.some((desk) => desk.id === ASSISTANT_DESK_ID)).toBe(false);
+    expect(desks.activeDeskId).toBe("primary");
+    expect(assistantTabs()).toHaveLength(1);
+  });
+
+  it("closes a Project Manager Desk left hidden, so it never decides the sidebar's chat", () => {
+    routes.last = { serverId: "s1", workspaceId: "ws" };
+    seedSession({ agents: [["chat", agent({ labels: CHAT })]] });
+    useDesksStore.getState().selectAssistantDesk();
+    useDesksStore.getState().selectDesk("primary");
+
+    openAssistantSidebar({ chat: { serverId: "s1", agentId: "chat" } });
+
+    expect(useDesksStore.getState().desks.some((desk) => desk.id === ASSISTANT_DESK_ID)).toBe(
+      false,
+    );
+  });
+
+  it("asks the sidebar to show a chat the session does not list yet", () => {
+    routes.last = { serverId: "s1", workspaceId: "ws" };
+    seedSession({ agents: [["old", agent({ labels: CHAT })]] });
+
+    openAssistantSidebar({ chat: { serverId: "s1", agentId: "new" } });
+
+    const store = useAssistantSidebarStore.getState();
+    expect(store.chat).toEqual({ serverId: "s1", agentId: "new" });
+    expect(store.requested).toEqual({ serverId: "s1", agentId: "new" });
+
+    openAssistantSidebar({ chat: { serverId: "s1", agentId: "old" } });
+    expect(useAssistantSidebarStore.getState().requested).toBeNull();
+  });
+
+  it("keeps one Project Manager tab: opening it beside another workspace closes the old one", () => {
+    routes.last = { serverId: "s1", workspaceId: "other" };
+    openAssistantSidebar({ chat: null });
+    expect(
+      useWorkspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs("s1:other")
+        .filter((tab) => tab.target.kind === "projects_assistant"),
+    ).toHaveLength(1);
+
+    routes.last = { serverId: "s1", workspaceId: "ws" };
+    openAssistantSidebar({ chat: null });
+
+    expect(assistantTabs()).toHaveLength(1);
+    expect(
+      useWorkspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs("s1:other")
+        .filter((tab) => tab.target.kind === "projects_assistant"),
+    ).toHaveLength(0);
+  });
+});
+
+// CUSTOM(pm-sidebar)
+describe("followAssistantTab", () => {
+  it("moves the Project Manager tab into the next workspace's Explorer", () => {
+    routes.last = { serverId: "s1", workspaceId: "a" };
+    openAssistantSidebar({ chat: null });
+    expect(explorerShowsAssistant("s1:a")).toBe(true);
+    expect(explorerShowsAssistant("s1:b")).toBe(false);
+
+    followAssistantTab("s1:b");
+
+    expect(explorerShowsAssistant("s1:b")).toBe(true);
+    const tabsOf = (key: string) =>
+      useWorkspaceLayoutStore
+        .getState()
+        .getWorkspaceTabs(key)
+        .filter((tab) => tab.target.kind === "projects_assistant");
+    expect(tabsOf("s1:a")).toHaveLength(0);
+    expect(tabsOf("s1:b")).toHaveLength(1);
   });
 });

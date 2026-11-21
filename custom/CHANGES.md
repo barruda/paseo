@@ -8543,7 +8543,8 @@ power-workboard`. In the app, open the Projects Assistant chat, set "Compact at 
 ## assistant-desk: the Projects Assistant chat is its own Desk
 
 > Since `pm-sidebar` (2026-11-21) the chat opens in the right sidebar by default and this Desk only
-> opens from the tab's **Open in main area**; the Desk has no chip. See that entry.
+> opens from the tab's **Open in main area**; the Desk has no chip and closes when the chat goes
+> back to the sidebar. See that entry.
 
 - **Added:** 2026-11-20 (replaces `assistant-sidebar`, 2026-11-19, which put the chat in a
   `projects_assistant` tab of the right sidebar)
@@ -9544,7 +9545,8 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
 ## explorer-lock, pm-sidebar: the right sidebar keeps its state across views; Project Manager opens there
 
 - **Added:** 2026-11-21
-- **Commit:** `custom: lock the right sidebar across views and open the Project Manager in it`
+- **Commit:** `custom: lock the right sidebar across views and open the Project Manager in it`;
+  follow-up `custom: keep one Project Manager, in the right sidebar, across Desks and workspaces`
 - **Why:** The right sidebar (Explorer) opened and closed as the user moved between tabs, agents and
   Desks, because its state belonged to each Desk tab (Tasks mode) or each workspace. The Project
   Manager was a Desk that took over the main area; the user wants it beside the work, one click
@@ -9558,20 +9560,38 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     (`useWorkspaceExplorerLock`, rule `planWorkspaceExplorerLock`: a workspace coming into view is
     shown or hidden to match, an open or close made there becomes the saved state). Turning a
     switch on keeps what is on screen. Compact overlays keep their own state. Off, nothing changes.
+    The settings load after the first render with the defaults, so the switch coming on with the
+    saved settings is not a toggle: `lockSwitchTurnedOn` and `planWorkspaceExplorerLock` only
+    record what is on screen when the switch changes after the settings loaded
+    (`useExplorerLockSetting` gives `settingsLoaded`); before that the saved state is applied.
   - `pm-sidebar`: the Desk header has a **Project Manager** button where the Project Manager Desk
     chip was; the Desk has no chip any more (`chipDesks`) and Next Desk skips it. The button, and
     every other way to the chat (`navigateToAgent` for a live chat, the Tasks sidebar row, a chat
     tab swept from another Desk), call `openAssistantSidebar`: it opens the right sidebar of the
     Desk's current workspace (saved state on with the lock, else the focused Desk tab's) and
     focuses its Project Manager tab, or opens one (`planAssistantSidebarOpen`). It falls back to
-    `openAssistantDesk` while the Project Manager Desk is in view, on compact layouts, or with no
-    workspace to dock beside. The Project Manager tab renders the Desk's chat when the Desk exists,
-    else the current chat (`assistantSidebarChat`); its **Open in main area** link
-    (`openAssistantDesk`) is the only way to the Desk. The button shows once a chat is known
-    (`useHasAssistantChat`) and is highlighted while the Project Manager Desk is active.
+    `openAssistantDesk` on compact layouts or with no workspace to dock beside. The button shows
+    once a chat is known (`useHasAssistantChat`) and is highlighted while the Project Manager Desk
+    is active.
+  - The sidebar wins over the Desk. The Project Manager tab shows the chat it was asked for:
+    `openAssistantSidebar({chat})` remembers it, and a chat the session does not list yet (just
+    created) is kept in `requested` (not persisted) until the session lists it; else the current
+    chat (remembered, successor, newest live); the Desk's chat only when there is none
+    (`assistantSidebarChat`). Before, a Desk left over from the old chip decided the chat and
+    rewrote the remembered one, so a chat opened from the Tasks sidebar row showed another.
+  - The Desk opens only from the tab's **Open in main area** link (`openAssistantDesk`) and closes
+    when the chat goes back to the sidebar: `openAssistantSidebar` deletes the Project Manager Desk
+    (`closeAssistantDesk`), in view or hidden, so the header button pressed on the Desk is its
+    close. While the Desk is on screen the sidebar tab shows "open in the main area" and **Show
+    here** instead of the chat, so the same chat never has two composers on screen.
+  - One Project Manager tab. Revealing it closes every other `projects_assistant` tab, in any
+    workspace (`planAssistantTabCleanup`). The tab lives in a workspace's Explorer, so when the
+    locked, open sidebar moves to another workspace (a task of another workspace, another Desk)
+    while showing it, `useAssistantTabFollow` (called from `useDeskExplorer`) moves it there
+    (`shouldFollowAssistantTab`, `followAssistantTab`).
 - **Files:** `packages/app/src/explorer-lock/` (`model.ts`, `store.ts`, `settings.ts`,
   `strings.ts`, `use-workspace-explorer-lock.ts`, `model.test.ts`);
-  `assistant-sidebar/use-has-assistant-chat.ts`; `task-navigation/desk-explorer-target.ts`
+  `assistant-sidebar/use-has-assistant-chat.ts`, `use-assistant-tab-follow.ts` (and its test); `task-navigation/desk-explorer-target.ts`
   (`deskExplorerTarget`, `ensureExplorerPane` moved out of `desk-explorer.tsx`).
 - **Core files touched** (`CUSTOM(explorer-lock)`, `CUSTOM(pm-sidebar)`):
   `hooks/use-settings/storage.ts` (two settings), `bruno-config/config-file.ts` and
@@ -9588,6 +9608,8 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   workspace screen computes its Explorer visibility. In the Desk header filter the assistant Desk
   out of the chips and render `ProjectManagerButton` after them. Point `navigateToAgent`'s
   assistant intercept, the Tasks sidebar row and the sweep's `reveal` at `openAssistantSidebar`.
+  In `useDeskExplorer`, after the `ensureExplorerPane` effect, call
+  `useAssistantTabFollow({ workspaceKey, lockedOpen: locked && isTabOpen })`.
 - **Verify:** `(cd packages/app && npx vitest run src/explorer-lock src/assistant-sidebar
 src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app build; no daemon
   restart. In Tasks mode: open the right sidebar, click other tabs, agents and Desks: it stays
@@ -9595,8 +9617,14 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
   Customizations > Tabs: turn the Tasks mode switch off and each tab remembers its own again.
   Click **Project Manager** in the header: the right sidebar opens on the Project Manager tab with
   the chat, and no Desk opens; click Files, then the button again: the same tab comes back (one
-  tab). **Open in main area** in that tab selects the Project Manager Desk (the button lights up).
-  Clicking the status bar topic or the Workboard's Assistant tab also opens the sidebar tab.
+  tab). **Open in main area** in that tab selects the Project Manager Desk (the button lights up)
+  and the sidebar tab says it is open in the main area; **Show here** (or the button) closes the
+  Desk and shows the chat in the sidebar again. Clicking the status bar topic or the Workboard's
+  Assistant tab also opens the sidebar tab. With the Project Manager tab in front, open a task of
+  another workspace from the Tasks sidebar: the tab moves to that workspace's sidebar, and only
+  one Project Manager tab exists. Open an archived Project Manager chat from its Tasks sidebar
+  row: the sidebar shows that chat. Workspaces switch on, sidebar closed in the saved state:
+  reload a workspace with its sidebar open: it closes (the saved state wins on load).
 
 ## assistant-draft-carry: the Project Manager's composer text survives a chat restart
 

@@ -1,8 +1,9 @@
 // CUSTOM(assistant-desk), CUSTOM(pm-sidebar): the Project Manager tab of the Explorer sidebar, the
 // chat's default place. It renders the chat (assistantSidebarChat) with the ordinary agent panel
 // (history, composer, pwb cards), so a new chat, a compaction or a restart swaps the chat in the
-// same Explorer tab. "Open in main area" opens the assistant Desk; nothing else does. See
-// custom/CHANGES.md.
+// same Explorer tab. "Open in main area" opens the assistant Desk; nothing else does. While that
+// Desk is on screen this tab only says so, with "Show here" to come back (which closes the Desk),
+// so the chat never has two composers on screen. See custom/CHANGES.md.
 import { useCallback, useEffect, useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
@@ -13,10 +14,12 @@ import { AgentConversationPanel } from "@/panels/agent-panel";
 import { PaneProvider, usePaneContext, type PaneContextValue } from "@/panels/pane-context";
 import { definePanel, type PanelPresentation } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
-import { useDesksStore } from "@/task-navigation/desks-store";
+import { useDeskWorkboardStore } from "@/task-navigation/desk-workboard-store";
+import { ASSISTANT_DESK_ID, useDesksStore } from "@/task-navigation/desks-store";
+import { useTaskNavigationStore } from "@/task-navigation/store";
 import { resolveAssistantChat, type AssistantChatRef } from "./model";
 import { assistantSidebarChat } from "./mirror";
-import { openAssistantDesk } from "./open";
+import { openAssistantDesk, openAssistantSidebar } from "./open";
 import { assistantAgentMaps } from "./session-agent-maps";
 import { useAssistantSidebarStore } from "./store";
 import { assistantDeskStrings } from "./strings";
@@ -41,6 +44,7 @@ function chatKeyOf(chat: AssistantChatRef | null): string {
 /** The chat this tab shows, as a stable `serverId\0agentId` key (empty when none). */
 function useMirrorChatKey(): string {
   const remembered = useAssistantSidebarStore((state) => state.chat);
+  const requestedKey = useAssistantSidebarStore((state) => chatKeyOf(state.requested));
   // assistantAgentMaps returns the same snapshot until an agents map is replaced.
   const maps = useSessionStore((state) => assistantAgentMaps(state.sessions));
   const currentKey = useMemo(
@@ -56,8 +60,22 @@ function useMirrorChatKey(): string {
     [maps, remembered],
   );
   return useDesksStore((state) =>
-    chatKeyOf(assistantSidebarChat(state.desks, parseChatKey(currentKey))),
+    chatKeyOf(
+      assistantSidebarChat({
+        desks: state.desks,
+        requested: parseChatKey(requestedKey),
+        current: parseChatKey(currentKey),
+      }),
+    ),
   );
+}
+
+/** Whether the Project Manager Desk is on screen (see isAssistantDeskInView). */
+function useAssistantDeskInView(): boolean {
+  const enabled = useTaskNavigationStore((state) => state.enabled);
+  const deskActive = useDesksStore((state) => state.activeDeskId === ASSISTANT_DESK_ID);
+  const boardSelected = useDeskWorkboardStore((state) => state.selected !== null);
+  return enabled && deskActive && !boardSelected;
 }
 
 function parseChatKey(key: string): AssistantChatRef | null {
@@ -76,6 +94,8 @@ function AssistantSidebarPanel() {
   const { i18n } = useTranslation();
   const strings = assistantDeskStrings(i18n.resolvedLanguage);
   const openDesk = useCallback(() => openAssistantDesk({ chat: chat ?? null }), [chat]);
+  const showHere = useCallback(() => void openAssistantSidebar({ chat: chat ?? null }), [chat]);
+  const deskInView = useAssistantDeskInView();
 
   // Keep the remembered chat in step with what this tab shows, so every other way opens it too.
   useEffect(() => {
@@ -110,6 +130,21 @@ function AssistantSidebarPanel() {
       </Button>
     </View>
   );
+  if (deskInView) {
+    return (
+      <View style={styles.empty}>
+        <Text style={styles.emptyText}>{strings.openedInMain}</Text>
+        <Button
+          variant="secondary"
+          size="sm"
+          onPress={showHere}
+          testID="projects-assistant-show-here"
+        >
+          {strings.showHere}
+        </Button>
+      </View>
+    );
+  }
   if (!value) {
     return (
       <View style={styles.empty}>

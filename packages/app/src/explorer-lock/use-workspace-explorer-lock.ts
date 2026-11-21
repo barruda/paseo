@@ -5,7 +5,7 @@
 import { useEffect, useRef } from "react";
 import { useWorkspaceLayoutStore } from "@/stores/workspace-layout-store";
 import { planWorkspaceExplorerLock, type WorkspaceExplorerLockView } from "./model";
-import { useExplorerLockEnabled } from "./settings";
+import { useExplorerLockSetting } from "./settings";
 import { useExplorerLockHydrated, useExplorerLockStore } from "./store";
 
 export function useWorkspaceExplorerLock(input: {
@@ -15,7 +15,7 @@ export function useWorkspaceExplorerLock(input: {
   compact: boolean;
   visible: boolean;
 }): void {
-  const lockOn = useExplorerLockEnabled("workspaces");
+  const { lockOn, settingsLoaded } = useExplorerLockSetting("workspaces");
   const hydrated = useExplorerLockHydrated();
   const lockedOpen = useExplorerLockStore((state) => state.open);
   const previous = useRef<WorkspaceExplorerLockView | null>(null);
@@ -23,7 +23,7 @@ export function useWorkspaceExplorerLock(input: {
   const active = input.routeFocused && !input.compact;
   useEffect(() => {
     if (!hydrated || !workspaceKey) return;
-    const current = { workspaceKey, active, visible, lockOn };
+    const current = { workspaceKey, active, visible, lockOn, settingsLoaded };
     const action = planWorkspaceExplorerLock({
       previous: previous.current,
       current,
@@ -38,5 +38,5 @@ export function useWorkspaceExplorerLock(input: {
     const store = useWorkspaceLayoutStore.getState();
     if (action.open) store.showExplorerSidebar(workspaceKey);
     else store.hideExplorerSidebar(workspaceKey);
-  }, [active, hydrated, lockOn, lockedOpen, visible, workspaceKey]);
+  }, [active, hydrated, lockOn, lockedOpen, settingsLoaded, visible, workspaceKey]);
 }

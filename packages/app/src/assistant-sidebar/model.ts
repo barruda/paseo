@@ -182,3 +182,42 @@ export function hasAssistantChat(input: {
   }
   return false;
 }
+
+/**
+ * CUSTOM(pm-sidebar): there is one Project Manager tab, in the Explorer it was last shown in. The
+ * Project Manager tabs to close: every one but `keep`, in any workspace.
+ */
+export function planAssistantTabCleanup(input: {
+  tabs: readonly { workspaceKey: string; tabId: string; target: { kind: string } }[];
+  keep: { workspaceKey: string; tabId: string };
+}): { workspaceKey: string; tabId: string }[] {
+  const { tabs, keep } = input;
+  return tabs
+    .filter(
+      (tab) =>
+        tab.target.kind === "projects_assistant" &&
+        !(tab.workspaceKey === keep.workspaceKey && tab.tabId === keep.tabId),
+    )
+    .map(({ workspaceKey, tabId }) => ({ workspaceKey, tabId }));
+}
+
+/**
+ * CUSTOM(pm-sidebar): the Project Manager tab follows the locked right sidebar to the next
+ * workspace when the Explorer it left was showing it.
+ */
+export function shouldFollowAssistantTab(input: {
+  previousWorkspaceKey: string | null;
+  workspaceKey: string | null;
+  /** The sidebar is locked and open on the new workspace. */
+  lockedOpen: boolean;
+  /** The previous workspace's Explorer had the Project Manager tab in front. */
+  previousShowsAssistant: boolean;
+}): boolean {
+  return Boolean(
+    input.previousWorkspaceKey &&
+    input.workspaceKey &&
+    input.previousWorkspaceKey !== input.workspaceKey &&
+    input.lockedOpen &&
+    input.previousShowsAssistant,
+  );
+}
