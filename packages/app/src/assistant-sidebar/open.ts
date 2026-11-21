@@ -111,6 +111,15 @@ function focusComposerSoon(preferredServerId: string | null): void {
   setTimeout(attempt, FOCUS_RETRY_MS);
 }
 
+/**
+ * CUSTOM(pm-focus): the user opened the right sidebar with the Project Manager tab in front. Its
+ * composer has no autoFocus (the tab remounts whenever it follows another workspace), so the
+ * explicit opens focus it here and in openAssistantSidebar.
+ */
+export function focusAssistantComposer(): void {
+  if (isWeb) focusComposerSoon(null);
+}
+
 /** CUSTOM(pm-sidebar): where the Project Manager tab docks, or null to use the Desk instead. */
 function assistantSidebarDock(): {
   workspaceKey: string;

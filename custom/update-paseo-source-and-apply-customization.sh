@@ -425,7 +425,7 @@ if $VERIFY; then
   # Shift+Tab in Tasks mode steps through the Workboard chip, the Desks and the Project Manager.
   (cd packages/app && npx vitest run src/task-navigation/header-cycle.test.ts --bail=1)
   # Right sidebar lock across views (explorer-lock); the Project Manager button is in open.test.ts.
-  (cd packages/app && npx vitest run src/explorer-lock/model.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/explorer-lock/model.test.ts src/explorer-lock/store.test.ts --bail=1)
   # Idle runtime cleanup period (host setting, applied live).
   (cd packages/server && npx vitest run src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts src/server/daemon-config-store.test.ts --bail=1)
   # Auto-archive of closed sessions (host setting).

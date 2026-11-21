@@ -368,6 +368,7 @@ export function SplitContainer({
             isWorkspaceActive={isWorkspaceFocused}
             persistenceKey={externalExplorerSidebar.workspaceKey}
             isOpen
+            lockMode="tasks" // CUSTOM(explorer-lock): locked width
           >
             {externalExplorerSidebar.render()}
           </ExplorerFrame>

@@ -10,6 +10,9 @@ import { createValidatedPersistStorage } from "@/storage/validated-persist-stora
 interface ExplorerLockState {
   open: boolean;
   setOpen(open: boolean): void;
+  /** The locked sidebar width shared by every Explorer frame; null until one is known. */
+  width: number | null;
+  setWidth(width: number): void;
 }
 
 export const useExplorerLockStore = create<ExplorerLockState>()(
@@ -17,12 +20,25 @@ export const useExplorerLockStore = create<ExplorerLockState>()(
     (set) => ({
       open: false,
       setOpen: (open) => set((state) => (state.open === open ? state : { open })),
+      width: null,
+      setWidth: (width) =>
+        set((state) =>
+          !Number.isFinite(width) || width <= 0 || state.width === width ? state : { width },
+        ),
     }),
     {
       name: "custom-explorer-lock",
       version: 1,
-      storage: createValidatedPersistStorage(AsyncStorage, z.object({ open: z.boolean() })),
-      partialize: (state) => ({ open: state.open }),
+      storage: createValidatedPersistStorage(
+        AsyncStorage,
+        z.object({ open: z.boolean(), width: z.number().nullable().optional() }),
+      ),
+      partialize: (state) => ({ open: state.open, width: state.width }),
+      // Saved data from before the width was locked has none.
+      merge: (persisted, current) => {
+        const saved = (persisted ?? {}) as Partial<{ open: boolean; width: number | null }>;
+        return { ...current, ...saved, width: saved.width ?? null };
+      },
     },
   ),
 );

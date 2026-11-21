@@ -8,7 +8,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("@/navigation/workspace-route-navigation", () => ({
   navigateToHostWorkspaceRoute: () => undefined,
 }));
-vi.mock("@/chat-esc-focus/registry", () => ({ focusChatComposer: () => true }));
+const focusChatComposer = vi.hoisted(() => vi.fn(() => true));
+vi.mock("@/chat-esc-focus/registry", () => ({ focusChatComposer }));
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
   getLastWorkspaceSelection: () => null,
 }));
@@ -49,6 +50,25 @@ describe("useAssistantTabFollow", () => {
     expect(explorerShowsAssistant(B)).toBe(true);
     expect(assistantTabCount(A)).toBe(0);
     expect(assistantTabCount(B)).toBe(1);
+  });
+
+  // CUSTOM(pm-focus): switching the project in the central composer moves the Desk to another
+  // workspace; the tab follows, but the caret stays in the composer where the switch was made.
+  it("follows a project switch without focusing the Project Manager composer", () => {
+    vi.useFakeTimers();
+    focusChatComposer.mockClear();
+    try {
+      const { rerender } = renderHook((props) => useAssistantTabFollow(props), {
+        initialProps: { workspaceKey: A, lockedOpen: true },
+      });
+      rerender({ workspaceKey: B, lockedOpen: true });
+      vi.advanceTimersByTime(5000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(explorerShowsAssistant(B)).toBe(true);
+    expect(focusChatComposer).not.toHaveBeenCalled();
   });
 
   it("leaves it behind when the sidebar is closed or unlocked", () => {

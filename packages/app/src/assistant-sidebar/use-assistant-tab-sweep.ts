@@ -149,8 +149,9 @@ export function useAssistantTabSweep(): void {
       } finally {
         sweeping = false;
       }
-      // CUSTOM(pm-sidebar): the chat's place is the right sidebar now.
-      if (plan.reveal) openAssistantSidebar({ chat: plan.reveal });
+      // CUSTOM(pm-sidebar): the chat's place is the right sidebar now. CUSTOM(pm-focus): the
+      // sweep runs on its own (a chat tab opened by a workspace switch), so the caret stays put.
+      if (plan.reveal) openAssistantSidebar({ chat: plan.reveal, focusComposer: false });
     };
 
     // The session store changes many times a second while agents stream; rescan only when an

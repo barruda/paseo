@@ -1763,6 +1763,7 @@ isBrowserInBottomPanel(input.browserId)`.
 
 - **Added:** 2026-10-16
 - **Commit:** `custom: return to the composer with Esc after selecting chat text`
+  (Esc Esc sparing the Project Manager: `custom: the Project Manager composer stops stealing the caret; Esc Esc spares it; the right sidebar lock keeps the width`, shared with pm-focus and explorer-lock)
 - **Why:** After selecting text in the chat with the mouse, or after scrolling up to read,
   typing again needed a click back into the composer.
 - **What:** On web and desktop, Esc with a non-empty text selection inside an agent's chat timeline
@@ -1800,6 +1801,13 @@ isBrowserInBottomPanel(input.browserId)`.
   panel only interrupts from its own caret or that origin, so Esc Esc in the central chat no
   longer falls through to a running Project Manager when the central agent is idle. Primary
   composers keep their old priorities, so embedded composers behave as before.
+  Since 2026-11-21 (later the same day), Esc Esc never stops the Project Manager: its tab's
+  `SecondaryComposerProvider` passes `interruptsOnEsc={false}`. From its composer, Esc and Esc Esc
+  both move the caret to the central composer; the second Esc still reaches the Project Manager's
+  interrupt handler (its caret or origin, priority 300), which swallows it without interrupting,
+  so the central composer that just took the caret does not stop its own agent either. The Stop
+  button is the way to stop the Project Manager. An agent dragged into Explorer keeps the
+  interrupt, and Esc Esc in the central composer still stops the central agent.
 - **Files:** `packages/app/src/chat-esc-focus/`: `model.ts` (pure Esc rules), `registry.ts`
   (composers register their focus function per server and agent), `surface.web.tsx` (window
   keydown listener, bubble phase), `surface.tsx` (native passthrough), `types.ts`. No conflict risk.
@@ -1818,7 +1826,8 @@ focusMessageInputForKeyboardAction)`; `agent-stream/view.tsx` passes its `isNear
   `composer/focused-composer.ts` exports `composerIdHoldingCaret`;
   `keyboard/keyboard-action-dispatcher-context.tsx` adds `useOptionalKeyboardActionDispatcher`;
   `screens/workspace/explorer-sidebar.tsx` wraps the dock's `WorkspacePanelHost` in
-  `SecondaryComposerProvider` (as does the custom `assistant-sidebar/panel.tsx`).
+  `SecondaryComposerProvider` (as does the custom `assistant-sidebar/panel.tsx`, with
+  `interruptsOnEsc={false}`).
 - **Re-apply:** Wrap the chat timeline's selection-copy surface in a DOM element the Esc listener
   can test the selection against, and keep `enabled={!readOnly}`. In the composer, register the
   same focus function the `message-input.focus` keyboard action uses, keyed by server and agent.
@@ -1830,7 +1839,9 @@ focusMessageInputForKeyboardAction)`; `agent-stream/view.tsx` passes its `isNear
   `agent.interrupt` in their own handlers: a composer under the Explorer dock takes focus at a
   priority below every primary composer, and interrupt at one above them, active only while its
   input holds the caret or it was the caret holder the last focus action moved away from (within
-  the chord timeout). Its chat's Esc/Enter/scroll dispatch `message-input.focus`.
+  the chord timeout). Its chat's Esc/Enter/scroll dispatch `message-input.focus`. The Project
+  Manager tab's provider sets `interruptsOnEsc={false}`: its interrupt handler stays registered
+  and active the same way but returns `true` without interrupting.
 - **Verify:** `(cd packages/app && npx vitest run src/chat-esc-focus/model.test.ts
 src/composer/esc-focus-target.test.tsx src/keyboard/keyboard-shortcuts.test.ts)` and `(cd packages/app && npx vitest run --project
 browser src/components/ui/hover-card.browser.test.tsx)` (the update script runs them). With
@@ -1841,8 +1852,10 @@ browser src/components/ui/hover-card.browser.test.tsx)` (the update script runs 
   caret is back in the composer. Scroll up, then scroll back down: the caret returns.
   With the Project Manager open in the Explorer sidebar, click its composer and press Esc: the
   caret is in the central tab's composer. Click the sidebar's chat text, select a word, press Esc:
-  same. With the Project Manager running, type in its composer and press Esc Esc: the Project
-  Manager stops and the central agent keeps running.
+  same. With the Project Manager running, click its composer and press Esc: the caret is in the
+  central composer and the Project Manager keeps running; click it again and press Esc Esc: same,
+  and the central agent keeps running too. Its Stop button stops it. Esc Esc in the central
+  composer of a running agent stops that agent.
 
 ## chat-code-run: Run button on suggested shell commands
 
@@ -9621,7 +9634,7 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
 
 - **Added:** 2026-11-21
 - **Commit:** `custom: lock the right sidebar across views and open the Project Manager in it`;
-  follow-up `custom: keep one Project Manager, in the right sidebar, across Desks and workspaces`
+  follow-up `custom: keep one Project Manager, in the right sidebar, across Desks and workspaces`; the width: `custom: the Project Manager composer stops stealing the caret; Esc Esc spares it; the right sidebar lock keeps the width`
 - **Why:** The right sidebar (Explorer) opened and closed as the user moved between tabs, agents and
   Desks, because its state belonged to each Desk tab (Tasks mode) or each workspace. The Project
   Manager was a Desk that took over the main area; the user wants it beside the work, one click
@@ -9639,6 +9652,15 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     saved settings is not a toggle: `lockSwitchTurnedOn` and `planWorkspaceExplorerLock` only
     record what is on screen when the switch changes after the settings loaded
     (`useExplorerLockSetting` gives `settingsLoaded`); before that the saved state is applied.
+  - The lock holds the width too (2026-11-21). Each Explorer frame stores its width per workspace
+    (`explorerSidebarWidthByWorkspace`), so every central content had its own. Locked, one saved
+    width (`width` in the same store, shared by both modes) replaces it
+    (`resolveExplorerLockWidth`), and resizing writes the saved width, never the per-workspace
+    one, so turning the lock off brings each content's own width back. With no saved width yet,
+    the width on screen becomes the saved one (`shouldSeedLockedWidth`), so turning the lock on
+    does not jump to the default. `ExplorerFrame` takes `lockMode` ("tasks" from the Desk's
+    `split-container.tsx`, "workspaces" from `workspace-screen.tsx`); a frame without it reads no
+    settings, so it still renders outside the app's providers (`frame.browser.test.tsx`).
   - `pm-sidebar`: the Desk header has a **Project Manager** button where the Project Manager Desk
     chip was; the Desk has no chip any more (`chipDesks`) and Next Desk skips it. The button, and
     every other way to the chat (`navigateToAgent` for a live chat, the Tasks sidebar row, a chat
@@ -9669,14 +9691,17 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     only publish their panes' `agent` tabs, and this is a `projects_assistant` tab, so without it
     the chat's timeline stayed `cold` and the tab showed a spinner forever after the app opened.
 - **Files:** `packages/app/src/explorer-lock/` (`model.ts`, `store.ts`, `settings.ts`,
-  `strings.ts`, `use-workspace-explorer-lock.ts`, `model.test.ts`);
+  `strings.ts`, `use-workspace-explorer-lock.ts`, `use-explorer-lock-width.ts`, `model.test.ts`,
+  `store.test.ts`);
   `assistant-sidebar/use-has-assistant-chat.ts`, `use-assistant-tab-follow.ts` (and its test); `task-navigation/desk-explorer-target.ts`
   (`deskExplorerTarget`, `ensureExplorerPane` moved out of `desk-explorer.tsx`).
 - **Core files touched** (`CUSTOM(explorer-lock)`, `CUSTOM(pm-sidebar)`):
   `hooks/use-settings/storage.ts` (two settings), `bruno-config/config-file.ts` and
   `use-bruno-config-file.ts`, `screens/settings/bruno-customizations/section.tsx`,
   `screens/settings/settings-search-index.ts`, `screens/workspace/workspace-screen.tsx` (one hook
-  call), `task-navigation/desk-explorer.tsx`, `task-navigation/desk-screen.tsx` (button, chip
+  call, `lockMode="workspaces"` on its `ExplorerFrame`), `components/split-container.tsx`
+  (`lockMode="tasks"`), `screens/workspace/explorer-sidebar/frame.tsx` and `frame-props.ts`
+  (`lockMode`, the `LockedExplorerFrame` wrapper), `task-navigation/desk-explorer.tsx`, `task-navigation/desk-screen.tsx` (button, chip
   filter, Next Desk), `task-navigation/sidebar.tsx`, `utils/navigate-to-agent/index.ts`,
   `assistant-sidebar/open.ts`, `model.ts`, `mirror.ts`, `panel.tsx`, `strings.ts`,
   `use-assistant-tab-sweep.ts`; `packages/desktop/e2e/task-navigation.spec.ts` turns the Tasks
@@ -9688,7 +9713,9 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   out of the chips and render `ProjectManagerButton` after them. Point `navigateToAgent`'s
   assistant intercept, the Tasks sidebar row and the sweep's `reveal` at `openAssistantSidebar`.
   In `useDeskExplorer`, after the `ensureExplorerPane` effect, call
-  `useAssistantTabFollow({ workspaceKey, lockedOpen: locked && isTabOpen })`.
+  `useAssistantTabFollow({ workspaceKey, lockedOpen: locked && isTabOpen })`. Width: give
+  `ExplorerFrame` an optional `lockMode`; with it, a wrapper calls `useExplorerLockWidth` and hands
+  the frame the width to request and the resize callback; without it the frame is upstream's.
 - **Verify:** `(cd packages/app && npx vitest run src/explorer-lock src/assistant-sidebar
 src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app build; no daemon
   restart. In Tasks mode: open the right sidebar, click other tabs, agents and Desks: it stays
@@ -9705,6 +9732,49 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
   one Project Manager tab exists. Open an archived Project Manager chat from its Tasks sidebar
   row: the sidebar shows that chat. Workspaces switch on, sidebar closed in the saved state:
   reload a workspace with its sidebar open: it closes (the saved state wins on load).
+  Width: in Tasks mode with the lock on, drag the right sidebar's edge, then switch tasks, Desks
+  and agents of other workspaces: the width stays; reload: same width. Turn the lock off: each
+  workspace shows its own width again.
+
+## pm-focus: the Project Manager composer takes the caret only when the user opens it
+
+- **Added:** 2026-11-21
+- **Commit:** `custom: the Project Manager composer stops stealing the caret; Esc Esc spares it; the right sidebar lock keeps the width`
+- **Why:** Switching the project in the central composer moved the caret to the Project Manager
+  composer in the right sidebar. The agent panel's composer has `autoFocus`, and the Explorer dock
+  is always "pane focused", so every mount of the Project Manager tab took the caret: the tab
+  following the locked sidebar to another workspace (a project switch moves the Desk tab there),
+  the chat restarting, the tab sweep revealing it.
+- **What:** The composer in the Project Manager tab never focuses itself on mount
+  (`SecondaryComposerProvider autoFocus={false}` in `assistant-sidebar/panel.tsx`,
+  `useComposerAutoFocus` in `composer/esc-focus-target.tsx`). A later focus request on that
+  composer (a file attached to it, which bumps `autoFocusKey`) still focuses it. The caret goes
+  there only from explicit opens: `openAssistantSidebar` (header **Project Manager** button,
+  Shift+Tab cycle, Tasks sidebar row, **Show here**, links through `navigateToAgent` such as the
+  status bar topic) and `useDeskExplorer`'s toggle when it opens the right sidebar with the
+  Project Manager tab in front (`focusAssistantComposer`). The tab sweep reveals the chat with
+  `focusComposer: false`, and following the sidebar to another workspace never focuses. The
+  Project Manager Desk (main area) is a primary composer and keeps its autofocus.
+- **Files:** `packages/app/src/composer/esc-focus-target.tsx` (`autoFocus` option,
+  `useComposerAutoFocus`), `assistant-sidebar/open.ts` (`focusAssistantComposer`),
+  `assistant-sidebar/panel.tsx`, `assistant-sidebar/use-assistant-tab-sweep.ts`; tests in
+  `composer/esc-focus-target.test.tsx`, `assistant-sidebar/open.test.ts`, `panel.test.tsx`,
+  `use-assistant-tab-follow.test.ts`, `use-assistant-tab-sweep.test.ts`.
+- **Core files touched** (`CUSTOM(pm-focus)`): `composer/index.tsx` passes its `autoFocus` and
+  `autoFocusKey` through `useComposerAutoFocus` before `messageInputAutoFocus`;
+  `task-navigation/desk-explorer.tsx` (toggle).
+- **Re-apply:** Wherever the composer turns its `autoFocus` prop into the input's autofocus, gate
+  it with `useComposerAutoFocus(autoFocus, autoFocusKey)`. Give the Project Manager tab's
+  `SecondaryComposerProvider` `autoFocus={false}`. Keep `openAssistantSidebar` focusing the
+  composer (`focusComposerSoon`), and pass `focusComposer: false` from automatic callers.
+- **Verify:** `(cd packages/app && npx vitest run src/composer/esc-focus-target.test.tsx
+src/assistant-sidebar)` (in the update script). Needs an app build; no daemon restart. In Tasks
+  mode, with the Project Manager tab in the right sidebar (lock on, sidebar open): type in a draft's
+  composer, switch its project in the project picker: the caret stays in that composer and the
+  Project Manager tab moves to the new workspace's sidebar. Click another task, another Desk:
+  the caret does not jump to the Project Manager. Click the **Project Manager** header button:
+  the caret is in its composer. Close the right sidebar and open it again with the toolbar
+  button: the caret is in its composer.
 
 ## assistant-draft-carry: the Project Manager's composer text survives a chat restart
 

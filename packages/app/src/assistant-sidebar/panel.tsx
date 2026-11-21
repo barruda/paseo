@@ -198,8 +198,10 @@ function AssistantSidebarPanel() {
       {openInMain}
       <View style={styles.chat}>
         <PaneProvider key={chatKey} value={value}>
-          {/* CUSTOM(chat-esc-focus): Esc and the chat's Enter/scroll return to the central composer. */}
-          <SecondaryComposerProvider>
+          {/* CUSTOM(chat-esc-focus): Esc and the chat's Enter/scroll return to the central composer;
+          Esc Esc never stops the Project Manager. CUSTOM(pm-focus): its composer takes the caret
+          only when the user opens it (openAssistantSidebar), not on every remount. */}
+          <SecondaryComposerProvider interruptsOnEsc={false} autoFocus={false}>
             <AgentConversationPanel />
           </SecondaryComposerProvider>
         </PaneProvider>

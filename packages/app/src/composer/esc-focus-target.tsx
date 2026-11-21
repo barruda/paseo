@@ -7,24 +7,68 @@
 // pane's chat, a Desk pane, an embedded agent screen) is active, and only interrupts its own agent
 // when the Esc sequence started in it. Primary composers keep their old priorities, so embedded
 // composers outside the sidebar behave as before.
+// The Project Manager tab goes further (`interruptsOnEsc={false}`, `autoFocus={false}`): Esc Esc
+// from its composer moves the caret and never stops it (the Stop button does), and its composer
+// never takes the caret on mount; only explicit opens focus it (`openAssistantSidebar`).
 
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, type ReactNode } from "react";
 import { composerIdHoldingCaret } from "@/composer/focused-composer";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { CHORD_TIMEOUT_MS } from "@/keyboard/keyboard-shortcuts";
 
-const SecondaryComposerContext = createContext(false);
+interface SecondaryComposerOptions {
+  secondary: boolean;
+  /** Esc Esc that starts in this composer interrupts its agent. */
+  interruptsOnEsc: boolean;
+  /** The composer may take the caret when it mounts or its pane gets focus. */
+  autoFocus: boolean;
+}
+
+const PRIMARY: SecondaryComposerOptions = {
+  secondary: false,
+  interruptsOnEsc: true,
+  autoFocus: true,
+};
+
+const SecondaryComposerContext = createContext<SecondaryComposerOptions>(PRIMARY);
 
 /** Marks every composer and chat below it as a side panel's (see the file comment). */
-export function SecondaryComposerProvider({ children }: { children: ReactNode }) {
+export function SecondaryComposerProvider({
+  children,
+  interruptsOnEsc = true,
+  autoFocus = true,
+}: {
+  children: ReactNode;
+  interruptsOnEsc?: boolean;
+  autoFocus?: boolean;
+}) {
+  const value = useMemo(
+    () => ({ secondary: true, interruptsOnEsc, autoFocus }),
+    [autoFocus, interruptsOnEsc],
+  );
   return (
-    <SecondaryComposerContext.Provider value={true}>{children}</SecondaryComposerContext.Provider>
+    <SecondaryComposerContext.Provider value={value}>{children}</SecondaryComposerContext.Provider>
   );
 }
 
-export function useIsSecondaryComposer(): boolean {
+export function useSecondaryComposerOptions(): SecondaryComposerOptions {
   return useContext(SecondaryComposerContext);
+}
+
+export function useIsSecondaryComposer(): boolean {
+  return useSecondaryComposerOptions().secondary;
+}
+
+/**
+ * The composer's own `autoFocus`. Under a provider that forbids it, mounting never takes the caret;
+ * a later focus request (`autoFocusKey` changing, as when a file is attached to this composer)
+ * still does.
+ */
+export function useComposerAutoFocus(requested: boolean, autoFocusKey?: string): boolean {
+  const { autoFocus } = useSecondaryComposerOptions();
+  const mountKey = useRef(autoFocusKey);
+  return requested && (autoFocus || autoFocusKey !== mountKey.current);
 }
 
 /** The composer handlers' usual priority: the one whose input has the caret goes first. */
@@ -102,7 +146,7 @@ export function useComposerEscRouting(input: {
   isMessageInputFocused: boolean;
   handle: (action: KeyboardActionDefinition) => boolean;
 }): void {
-  const secondary = useIsSecondaryComposer();
+  const { secondary, interruptsOnEsc } = useSecondaryComposerOptions();
   const { handlerId, composerId, enabled, isMessageInputFocused, handle } = input;
 
   useKeyboardActionHandler({
@@ -128,6 +172,9 @@ export function useComposerEscRouting(input: {
     isActive: secondary ? () => shouldSecondaryInterrupt(composerId, Date.now()) : undefined,
     handle: (action) => {
       if (secondary) clearEscapeOrigin();
+      // Swallowed, not passed on: the central composer that just took the caret would otherwise
+      // interrupt its own agent with an Esc Esc the user started in this composer.
+      if (!interruptsOnEsc) return true;
       return handle(action);
     },
   });
