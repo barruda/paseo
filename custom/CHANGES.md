@@ -10046,3 +10046,60 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
   list, focus the tab in the layout store without switching the mobile panel.
 - **Verify:** desktop `e2e/task-navigation.spec.ts` "Phone sidebar lists tasks, opens one in its
   workspace and switches to Workspaces" (in the update script).
+
+## pm-sidebar-decisions: a Decisões view in the right sidebar's Project Manager tab
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: Decisões view in the Project Manager sidebar tab`
+- **Why:** The open decisions lived only on the Workboard's Decisões tab in the main area. The user
+  wants them next to the PM chat in the right sidebar, as a sub-view of the tab, without touching
+  the central content.
+- **What:**
+  - **Plugin API:** `client.addAssistantSidebarView({ id, title, Component, Badge? })`. The PM
+    tab's header gets a ghost button per view (`ListChecks` icon, the title, then the `Badge`)
+    beside "Open in main area". Pressing it covers the chat with the view; the header then shows a
+    ← arrow with the view's title on the left, which goes back. `Component` gets the host props
+    plus `close()`; `Badge` gets the host props. Both render in the plugin's runtime (installation
+    query client, RPC, client state, toast) under their own error boundary, like status bar items.
+    Only views of plugins on the chat's host show; a view whose plugin unloads falls back to the
+    chat.
+  - **The chat is kept, not swapped.** The view is an absolute overlay over the chat, which stays
+    mounted (hidden from accessibility), so the composer draft and the scroll position survive.
+    Opening a view blurs the focused element of the tab (web) and the arrow gives the focus back to
+    it. The view state is local to the panel: switching the Explorer tab returns to the chat.
+  - **Power Workboard's view** (`pm-decisions`, title "Decisões"/"Decisions" from the Paseo
+    locale at plugin load): one scrollable column of compact cards, investigations in progress on
+    top, then the proposals waiting for the user; newest on top inside each group, so the one
+    waiting longest is at the bottom, and the list opens scrolled to the end and stays there while
+    the user is near the end. Card: kind and age, an image only when the findings or the question
+    carry a Markdown image (`http(s)` or `data:image/`; `PmCard` has no image field), the title
+    (2 lines) and a summary (2 lines: the question, else the findings as plain text). A waiting
+    card decides like the board: `OptionTiles`, the select-tasks pair, or a one-line answer when
+    there are no options. Empty: "Nada esperando você". The badge is the count of waiting cards,
+    hidden at 0. It reads `usePmCards` in the host's installation query client, the one the chat's
+    reply cards use, so a decision here turns the chat block green at once; the Workboard page
+    (its own query client) follows on its 5 s poll.
+  - `kindColor` and the decide mutation moved to `pm-board/pm-card-shared.ts`, shared with the
+    Decisões page.
+- **Core files touched** (marked `CUSTOM(pm-sidebar-decisions)`): `packages/plugin/src/client/contracts.ts`,
+  `client/index.ts` (types); `packages/app/src/plugins/types.ts`, `evaluate.ts`;
+  `packages/app/src/assistant-sidebar/panel.tsx`, `strings.ts` (`backToChat`), `focus.ts`
+  (`parkAssistantPanelFocus`), new `plugin-views.tsx`.
+- **Re-apply:** restore the SDK types and `addAssistantSidebarView` in `evaluate.ts` next to
+  `addStatusBarItem` (validated id, title, Component, optional Badge component; returned as
+  `assistantSidebarViews`). Copy `assistant-sidebar/plugin-views.tsx` (it mirrors the status bar
+  host's environment and error boundary). In `panel.tsx`: `useOpenSidebarView` over
+  `useAssistantSidebarViews(chat.serverId)`, the arrow and the view buttons in the header bar, and
+  the view as an absolute overlay inside the chat's container, after the chat. Plugin side:
+  `client/assistant/pm-board/PmSidebarDecisions.tsx`, `pm-sidebar-list.ts`, `pm-card-shared.ts`,
+  the `sidebarTitle`/`sidebarEmpty` strings and the cast registration in `index.client.tsx`.
+- **Verify:** `(cd packages/app && npx vitest run src/assistant-sidebar/panel.test.tsx src/plugins/evaluate.test.ts --bail=1)`
+  (both in the update script) and the plugin suite. Needs an app build and install, then a
+  `plugin reload power-workboard`. In the app: the PM tab of the right sidebar shows "Decisões N"
+  next to "Abrir no conteúdo central"; pressing it shows the list (the central tabs don't change),
+  scrolled to the oldest proposal at the bottom; ← goes back to the chat with the draft and scroll
+  as they were; picking a tile removes the card within a moment and the chat's block turns green.
+- **Tests:** `panel.test.tsx` ("Projects Assistant sidebar panel views": button and badge, open
+  over the chat and back with the chat node kept, the view's own close, plugin gone),
+  `evaluate.test.ts` (registration and malformed views), plugin `tests/pm-sidebar-list.test.ts`
+  (order, count, empty list, image, summary).

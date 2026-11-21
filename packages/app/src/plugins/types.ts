@@ -18,6 +18,7 @@ import type {
   PluginSidebarViewContribution,
   PluginSidebarItemContribution as SDKPluginSidebarItemContribution,
   PluginStatusBarItemContribution as SDKPluginStatusBarItemContribution, // CUSTOM(status-bar)
+  PluginAssistantSidebarViewContribution as SDKPluginAssistantSidebarViewContribution, // CUSTOM(pm-sidebar-decisions)
   PluginWorkspaceRowBadgeItemContribution as SDKPluginWorkspaceRowBadgeItemContribution,
   PluginScreenContribution as SDKPluginScreenContribution,
   PluginSettingsScreenContribution as SDKPluginSettingsScreenContribution,
@@ -37,6 +38,8 @@ type PluginSidebarContribution = SDKPluginSidebarContribution<PluginText>;
 type PluginSidebarItemContribution = SDKPluginSidebarItemContribution<PluginText>;
 // CUSTOM(status-bar)
 type PluginStatusBarItemContribution = SDKPluginStatusBarItemContribution<PluginText>;
+// CUSTOM(pm-sidebar-decisions)
+type PluginAssistantSidebarViewContribution = SDKPluginAssistantSidebarViewContribution<PluginText>;
 type PluginWorkspaceRowBadgeItemContribution =
   SDKPluginWorkspaceRowBadgeItemContribution<PluginText>;
 type PluginScreenContribution = SDKPluginScreenContribution<PluginText>;
@@ -64,6 +67,8 @@ export interface EvaluatedPlugin {
   legacySidebarItems: PluginSidebarContribution[];
   // CUSTOM(status-bar): optional so fixtures that build an EvaluatedPlugin literal need no edit.
   statusBarItems?: PluginStatusBarItemContribution[];
+  // CUSTOM(pm-sidebar-decisions): optional for the same reason.
+  assistantSidebarViews?: PluginAssistantSidebarViewContribution[];
   workspaceRowBadgeItems: PluginWorkspaceRowBadgeItemContribution[];
   filePanels: PluginFilePanelContribution[];
   composerItems: PluginComposerItemContribution[];
@@ -105,6 +110,7 @@ export type {
   PluginSidebarContribution,
   PluginSidebarItemContribution,
   PluginStatusBarItemContribution, // CUSTOM(status-bar)
+  PluginAssistantSidebarViewContribution, // CUSTOM(pm-sidebar-decisions)
   PluginWorkspaceRowBadgeItemContribution,
   PluginScreenContribution,
   PluginSettingsScreenContribution,

@@ -11,6 +11,8 @@ export interface AssistantDeskStrings {
   /** CUSTOM(pm-sidebar): the tab while the Project Manager Desk is on screen, and its way back. */
   openedInMain: string;
   showHere: string;
+  /** CUSTOM(pm-sidebar-decisions): the header's back arrow while a plugin view covers the chat. */
+  backToChat: string;
 }
 
 export const assistantDeskStringsEn: AssistantDeskStrings = {
@@ -21,6 +23,7 @@ export const assistantDeskStringsEn: AssistantDeskStrings = {
   noChat: "No Project Manager chat yet. Open it in the main area to start one.",
   openedInMain: "The Project Manager is open in the main area.",
   showHere: "Show here",
+  backToChat: "Back to the chat",
 };
 
 export const assistantDeskStringsPtBr: AssistantDeskStrings = {
@@ -31,6 +34,7 @@ export const assistantDeskStringsPtBr: AssistantDeskStrings = {
   noChat: "Ainda não há conversa do Project Manager. Abra no conteúdo central para começar uma.",
   openedInMain: "O Project Manager está aberto no conteúdo central.",
   showHere: "Mostrar aqui",
+  backToChat: "Voltar ao chat",
 };
 
 export function assistantDeskStrings(language: string | undefined): AssistantDeskStrings {

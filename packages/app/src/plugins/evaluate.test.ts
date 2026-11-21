@@ -342,6 +342,54 @@ describe("evaluatePluginClientBundle", () => {
     ).toThrow(message);
   });
 
+  // CUSTOM(pm-sidebar-decisions)
+  it("registers a normalized assistant sidebar view", () => {
+    const plugin = evaluatePluginClientBundle(
+      "example",
+      bundle(`
+        function View() { return null; }
+        function Badge() { return null; }
+        plugin.addAssistantSidebarView({ id: " decisions ", title: " Decisions ", Component: View, Badge });
+        plugin.addAssistantSidebarView({ id: "plain", title: "Plain", Component: View });
+      `),
+    );
+
+    expect(
+      plugin.assistantSidebarViews?.map(({ id, title, Badge }) => ({
+        id,
+        title,
+        badge: Badge !== undefined,
+      })),
+    ).toEqual([
+      { id: "decisions", title: "Decisions", badge: true },
+      { id: "plain", title: "Plain", badge: false },
+    ]);
+  });
+
+  it.each([
+    [
+      `plugin.addAssistantSidebarView({ id: "a", title: "A", Component: View });
+       plugin.addAssistantSidebarView({ id: "a", title: "B", Component: View });`,
+      "Duplicate assistant sidebar view: a",
+    ],
+    [
+      `plugin.addAssistantSidebarView({ id: "a", title: " ", Component: View });`,
+      "Assistant sidebar view a has no title",
+    ],
+    [
+      `plugin.addAssistantSidebarView({ id: "a", title: "A", Component: "A" });`,
+      "Assistant sidebar view a is not a component",
+    ],
+    [
+      `plugin.addAssistantSidebarView({ id: "a", title: "A", Component: View, Badge: 3 });`,
+      "Assistant sidebar view a has an invalid Badge",
+    ],
+  ])("rejects a malformed assistant sidebar view: %s", (call, message) => {
+    expect(() =>
+      evaluatePluginClientBundle("example", bundle(`function View() { return null; } ${call}`)),
+    ).toThrow(message);
+  });
+
   it("collects workspace row badge items and rejects duplicate and malformed ones", () => {
     const plugin = evaluatePluginClientBundle(
       "example",
