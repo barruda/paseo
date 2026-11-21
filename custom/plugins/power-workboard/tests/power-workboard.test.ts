@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { agentEvidence } from "./fixtures";
-import { Workboard } from "../server/workboard";
+import { refinementChatTitle, Workboard } from "../server/workboard";
 import {
   BOARD_AGENT_LABEL, // CUSTOM(hidden-board-agents)
   DEFAULT_GROUPS,
@@ -564,7 +564,11 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
     expect(refinement.status).toBe("chatting");
     expect(host.startAgentIn).toHaveBeenCalledWith(
       "/fixture",
-      expect.objectContaining({ modeId: "default", unattended: true }),
+      expect.objectContaining({
+        modeId: "default",
+        unattended: true,
+        title: "rough idea · refine",
+      }),
     );
     expect(
       (host.startAgentIn as any).mock.calls[0][1].prompt as string,
@@ -601,6 +605,14 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
   } finally {
     board.dispose();
   }
+});
+
+it("the refinement chat name ends with the kind, even for a long title", () => {
+  expect(refinementChatTitle("X")).toBe("X · refine");
+  const long = refinementChatTitle(`${"a".repeat(190)} ${"b".repeat(300)}`);
+  expect(long.length).toBeLessThanOrEqual(200);
+  expect(long.endsWith(" · refine")).toBe(true);
+  expect(long.startsWith("a".repeat(190))).toBe(true);
 });
 
 it("a refinement needs a project", async () => {

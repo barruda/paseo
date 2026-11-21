@@ -230,6 +230,16 @@ export interface AssistantOptions {
   /** CUSTOM(restart-resume): the restart script's skip file; tests point it elsewhere. */
   restartStateFile?: string;
 }
+/** Longest agent title the board sets. */
+const AGENT_TITLE_MAX = 200;
+/**
+ * The refinement chat's agent name. The kind goes last so the agent list still reads by task
+ * title; the title is cut first so a long one keeps the suffix.
+ */
+export function refinementChatTitle(title: string): string {
+  const suffix = " · refine";
+  return `${title.slice(0, AGENT_TITLE_MAX - suffix.length).trimEnd()}${suffix}`;
+}
 /**
  * CUSTOM(night-tasks): a power-off arms only this soon after the night was last active (its
  * window open or a night task running), so turning the option on by day never powers off.
@@ -2192,7 +2202,7 @@ export class Workboard {
       provider: settings.provider,
       modeId: defaults.refineModeId,
       thinkingOptionId: settings.thinkingOptionId,
-      title: `Refine: ${task.title}`.slice(0, 200),
+      title: refinementChatTitle(task.title),
       prompt: refinementPrompt(task, settings.instructions),
       labels: { [REFINEMENT_CHAT_LABEL]: "true" }, // CUSTOM(sidebar-agent-tabs)
       // CUSTOM(unattended-automation)
