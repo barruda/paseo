@@ -1,6 +1,6 @@
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { isAssistantChatAgent } from "@/assistant-sidebar/model"; // CUSTOM(assistant-sidebar)
-import { openAssistantDesk } from "@/assistant-sidebar/open"; // CUSTOM(assistant-desk)
+import { openAssistantSidebar } from "@/assistant-sidebar/open"; // CUSTOM(assistant-desk), CUSTOM(pm-sidebar)
 import { useShowShortcutBadges } from "@/hooks/use-show-shortcut-badges";
 import { TaskProjectIcon, TaskProjectIconsProvider } from "./project-icon";
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -570,9 +570,9 @@ export function TaskNavigationSidebar({ onBeforeNavigate }: { onBeforeNavigate?:
   const openTask = useCallback(
     (node: TaskNode, pin = false) => {
       onBeforeNavigate?.();
-      // CUSTOM(assistant-desk): the Projects Assistant chat opens in its own Desk.
+      // CUSTOM(pm-sidebar): the Project Manager chat opens in the right sidebar.
       if (isAssistantChatAgent(node.agent)) {
-        openAssistantDesk({ chat: { serverId: node.agent.serverId, agentId: node.agent.id } });
+        openAssistantSidebar({ chat: { serverId: node.agent.serverId, agentId: node.agent.id } });
         return;
       }
       // CUSTOM(task-navigation-compact): without Desks the task opens as the workspace's agent tab.

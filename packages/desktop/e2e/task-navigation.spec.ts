@@ -494,6 +494,13 @@ test("Tasks mode docks the focused task's Explorer", async ({ page }) => {
     manageBuiltInDaemon: false,
     platform: "linux",
   });
+  // CUSTOM(explorer-lock): this spec covers the per-tab state, which the lock (on by default in
+  // Tasks mode) replaces.
+  await page.addInitScript(() => {
+    const key = "@paseo:app-settings";
+    const settings = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify({ ...settings, explorerLockTasks: false }));
+  });
   const first = await seedMockAgentWorkspace({
     repoPrefix: "task-explorer-",
     title: "Explorer task",

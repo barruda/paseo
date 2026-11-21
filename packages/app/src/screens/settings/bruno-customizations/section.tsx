@@ -27,6 +27,8 @@ import { useInstalledPlugin } from "@/plugins/registry";
 import { VoiceSettingsPage } from "@/screens/settings/voice/voice-settings-page";
 import { settingsStyles } from "@/styles/settings";
 import { useFlexibleTabMovement } from "@/tab-lanes/settings";
+import { useTranslation } from "react-i18next";
+import { explorerLockStrings } from "@/explorer-lock/strings"; // CUSTOM(explorer-lock)
 
 // ---------------------------------------------------------------------------
 // Composer
@@ -202,12 +204,51 @@ export function BrunoChatPage() {
 
 export function BrunoTabsPage() {
   return (
-    <SettingsSection title="Tasks mode tabs">
+    <>
+      <SettingsSection title="Tasks mode tabs">
+        <View style={settingsStyles.card}>
+          <FlexibleTabMovementRow first />
+          <DeskPreviewTabsRow />
+          <RecentTabsSkipPinnedRow />
+          <HeaderShortcutsRow />
+        </View>
+      </SettingsSection>
+      <ExplorerLockSection />
+    </>
+  );
+}
+
+// CUSTOM(explorer-lock): "Keep the right sidebar open or closed", per mode.
+function ExplorerLockSection() {
+  const { settings, updateSettings } = useAppSettings();
+  const { i18n } = useTranslation();
+  const strings = explorerLockStrings(i18n.resolvedLanguage);
+  const setTasks = useCallback(
+    (explorerLockTasks: boolean) => void updateSettings({ explorerLockTasks }),
+    [updateSettings],
+  );
+  const setWorkspaces = useCallback(
+    (explorerLockWorkspaces: boolean) => void updateSettings({ explorerLockWorkspaces }),
+    [updateSettings],
+  );
+  return (
+    <SettingsSection title={strings.section}>
       <View style={settingsStyles.card}>
-        <FlexibleTabMovementRow first />
-        <DeskPreviewTabsRow />
-        <RecentTabsSkipPinnedRow />
-        <HeaderShortcutsRow />
+        <ToggleRow
+          first
+          title={strings.tasksTitle}
+          hint={strings.tasksHint}
+          value={settings.explorerLockTasks}
+          onValueChange={setTasks}
+          testID="explorer-lock-tasks-toggle"
+        />
+        <ToggleRow
+          title={strings.workspacesTitle}
+          hint={strings.workspacesHint}
+          value={settings.explorerLockWorkspaces}
+          onValueChange={setWorkspaces}
+          testID="explorer-lock-workspaces-toggle"
+        />
       </View>
     </SettingsSection>
   );

@@ -117,6 +117,10 @@ export interface AppSettings {
   recentTabsSkipPinned: boolean;
   /** CUSTOM(header-shortcuts): the shortcut hints in the workspace header. Off by default. */
   headerShortcuts: boolean;
+  /** CUSTOM(explorer-lock): the right sidebar keeps its open/closed state across Tasks mode views. On by default. */
+  explorerLockTasks: boolean;
+  /** CUSTOM(explorer-lock): the same in the workspace view. Off by default. */
+  explorerLockWorkspaces: boolean;
   /** CUSTOM(bruno-customizations): the critic's composer icon. On by default. */
   showCriticToggle: boolean;
   /** CUSTOM(bruno-customizations): the Jev router's composer icon. On by default. */
@@ -184,6 +188,8 @@ export const DEFAULT_CLIENT_SETTINGS: AppSettings = {
   deskPreviewTabs: false, // CUSTOM(desk-preview-tabs)
   recentTabsSkipPinned: false, // CUSTOM(recent-tabs)
   headerShortcuts: false, // CUSTOM(header-shortcuts)
+  explorerLockTasks: true, // CUSTOM(explorer-lock)
+  explorerLockWorkspaces: false, // CUSTOM(explorer-lock)
   showCriticToggle: true, // CUSTOM(bruno-customizations)
   showJevRouterToggle: true, // CUSTOM(bruno-customizations)
   vimKeybindings: false,
@@ -303,6 +309,8 @@ const StoredAppSettingsSchema = z
     deskPreviewTabs: z.boolean().catch(false), // CUSTOM(desk-preview-tabs)
     recentTabsSkipPinned: z.boolean().catch(false), // CUSTOM(recent-tabs)
     headerShortcuts: z.boolean().catch(false), // CUSTOM(header-shortcuts)
+    explorerLockTasks: z.boolean().catch(true), // CUSTOM(explorer-lock)
+    explorerLockWorkspaces: z.boolean().catch(false), // CUSTOM(explorer-lock)
     showCriticToggle: z.boolean().catch(true), // CUSTOM(bruno-customizations)
     showJevRouterToggle: z.boolean().catch(true), // CUSTOM(bruno-customizations)
     vimKeybindings: z.boolean().catch(false),

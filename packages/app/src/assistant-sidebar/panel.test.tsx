@@ -1,7 +1,7 @@
 /**
  * @vitest-environment jsdom
  */
-// CUSTOM(assistant-desk)
+// CUSTOM(assistant-desk), CUSTOM(pm-sidebar)
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -119,17 +119,41 @@ describe("Projects Assistant sidebar panel", () => {
     expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("next");
   });
 
-  it("points the user to the Desk when the Desk has no chat", () => {
+  it("asks to open the main area when there is no chat at all", () => {
     useDesksStore.getState().selectAssistantDesk();
     renderPanel();
     expect(screen.queryByTestId("agent-panel")).toBeNull();
-    expect(screen.getByText(/has no chat open/)).toBeTruthy();
+    expect(screen.getByText(/No Project Manager chat yet/)).toBeTruthy();
   });
 
   it("opens the Desk from the empty state", () => {
     renderPanel();
     fireEvent.click(screen.getByTestId("projects-assistant-open-desk"));
     expect(openAssistantDesk).toHaveBeenCalledWith({ chat: null });
+  });
+
+  // CUSTOM(pm-sidebar): the right sidebar is the chat's default place; the Desk may not exist.
+  it("shows the remembered chat without a Project Manager Desk", () => {
+    seedSession([["chat", agent()]]);
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });
+    renderPanel();
+    expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("chat");
+    expect(openAssistantDesk).not.toHaveBeenCalled();
+  });
+
+  it("shows the newest live chat when none is remembered", () => {
+    seedSession([["live", agent({ id: "live" })]]);
+    renderPanel();
+    expect(screen.getByTestId("agent-panel").getAttribute("data-agent")).toBe("live");
+  });
+
+  it("opens the chat in the main area only from its link", () => {
+    seedSession([["chat", agent()]]);
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });
+    renderPanel();
+    expect(openAssistantDesk).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("projects-assistant-open-main"));
+    expect(openAssistantDesk).toHaveBeenCalledWith({ chat: { serverId: "s1", agentId: "chat" } });
   });
 
   it("remembers the Desk's chat so the next start shows it straight away", () => {

@@ -16,7 +16,7 @@ import { useIsFocused } from "expo-router/react-navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
-import { Pin, Plus, X } from "lucide-react-native";
+import { Bot, Pin, Plus, X } from "lucide-react-native";
 import type { ListTerminalsResponse } from "@getpaseo/protocol/messages";
 import { Button } from "@/components/ui/button";
 import {
@@ -119,6 +119,7 @@ import {
 } from "@/workspace-tabs/recent-tabs";
 import { RecentTabSwitcher } from "@/workspace-tabs/recent-tab-switcher";
 import {
+  ASSISTANT_DESK_ID, // CUSTOM(pm-sidebar)
   useDesksStore,
   activeDesk,
   activeDeskTab,
@@ -129,6 +130,10 @@ import {
   type DeskTab,
   type DeskTabOwner,
 } from "./desks-store";
+// CUSTOM(pm-sidebar)
+import { PressHighlight } from "@/components/ui/press-highlight";
+import { openAssistantSidebar } from "@/assistant-sidebar/open";
+import { useHasAssistantChat } from "@/assistant-sidebar/use-has-assistant-chat";
 // CUSTOM(desk-workboard)
 import {
   DeskWorkboardChipIcon,
@@ -146,6 +151,19 @@ const noop = () => undefined;
 type DeskNaming = { mode: "create" } | { mode: "rename"; deskId: string };
 const ThemedPlus = withUnistyles(Plus);
 const ThemedX = withUnistyles(X);
+const ThemedBot = withUnistyles(Bot); // CUSTOM(pm-sidebar)
+
+/** CUSTOM(pm-sidebar): the Project Manager Desk has no chip; the Project Manager button stands in. */
+function chipDesks(desks: Desk[]): Desk[] {
+  return desks.filter((entry) => entry.id !== ASSISTANT_DESK_ID);
+}
+
+/** CUSTOM(pm-sidebar): Next Desk cycles through the chips, so it skips the Project Manager Desk. */
+function nextChipDeskId(desks: Desk[], currentId: string): string {
+  const cycle = chipDesks(desks);
+  const index = cycle.findIndex((d) => d.id === currentId);
+  return cycle[(index + 1) % cycle.length]?.id ?? currentId;
+}
 const extraMutedColorMapping = (theme: Theme) => ({
   color: theme.colors.foregroundExtraMuted,
 });
@@ -171,7 +189,9 @@ export function DeskScreen() {
   ensurePanelsRegistered();
   const screenId = useId();
   const portalHost = `desk-floating-panels:${screenId}`;
-  const desks = useDesksStore((s) => s.desks);
+  const allDesks = useDesksStore((s) => s.desks);
+  const desks = useMemo(() => chipDesks(allDesks), [allDesks]); // CUSTOM(pm-sidebar)
+  const showProjectManager = useHasAssistantChat(); // CUSTOM(pm-sidebar)
   const desk = useDesksStore(activeDesk);
   const active = useDesksStore(activeDeskTab);
   const contextTab = useDesksStore(deskContextTab);
@@ -309,8 +329,7 @@ export function DeskScreen() {
         return true;
       }
       if (action.id === "task.desk.next") {
-        const index = store.desks.findIndex((d) => d.id === current.id);
-        store.selectDesk(store.desks[(index + 1) % store.desks.length]!.id);
+        store.selectDesk(nextChipDeskId(store.desks, current.id)); // CUSTOM(pm-sidebar)
         return true;
       }
       if (action.id === "workspace.pane.split.right" || action.id === "workspace.pane.split.down") {
@@ -708,8 +727,11 @@ export function DeskScreen() {
       .filter((entry) => entry.open)
       .reduce((sum, entry) => sum + entry.definition.label.length * 7 + 40, 0);
     const deskChips = desks.reduce((sum, entry) => sum + entry.name.length * 7 + 28, 0);
-    return 110 + chips + deskChips + (activeIsPreview && !workboardSelected ? 90 : 0);
-  }, [activeIsPreview, desks, surfaceEntries, workboardSelected]);
+    const projectManager = showProjectManager ? 140 : 0; // CUSTOM(pm-sidebar)
+    return (
+      110 + chips + deskChips + projectManager + (activeIsPreview && !workboardSelected ? 90 : 0)
+    );
+  }, [activeIsPreview, desks, showProjectManager, surfaceEntries, workboardSelected]);
   const headerLeft = useMemo(
     () => (
       <View style={styles.headerLeft}>
@@ -751,6 +773,9 @@ export function DeskScreen() {
               onDelete={deleteDesk}
             />
           ))}
+          {showProjectManager ? (
+            <ProjectManagerButton selected={desk.id === ASSISTANT_DESK_ID && !workboardSelected} />
+          ) : null}
         </View>
         {activeIsPreview && !workboardSelected ? (
           <Button
@@ -773,6 +798,7 @@ export function DeskScreen() {
       desks,
       keep,
       renameDesk,
+      showProjectManager,
       closedSurfaces,
       surfaceEntries,
       selectedSurface,
@@ -958,7 +984,12 @@ export function DeskScreen() {
         <DeskTerminalTabs />
         <DeskArchivedAgentTabs />
         <FloatingPanelPortalHost name={portalHost} />
-        <DeskNameModal naming={naming} desks={desks} onClose={closeNaming} onSubmit={submitName} />
+        <DeskNameModal
+          naming={naming}
+          desks={allDesks}
+          onClose={closeNaming}
+          onSubmit={submitName}
+        />
         {renaming ? (
           <DeskTabRename
             key={renaming.tab.tabId}
@@ -1290,6 +1321,31 @@ function DeskTabChip({
     </ContextMenu>
   );
 }
+/**
+ * CUSTOM(pm-sidebar): opens the Project Manager tab in the right sidebar. Selected while the
+ * Project Manager Desk ("Open in main area") is the active Desk.
+ */
+function ProjectManagerButton({ selected }: { selected: boolean }) {
+  const open = useCallback(() => void openAssistantSidebar({ chat: null }), []);
+  const accessibilityState = useMemo(() => ({ selected }), [selected]);
+  return (
+    <PressHighlight
+      testID="desk-project-manager"
+      accessibilityRole="button"
+      accessibilityLabel="Project Manager"
+      accessibilityState={accessibilityState}
+      aria-selected={selected}
+      style={[styles.deskTab, styles.projectManagerButton, selected && styles.deskTabSelected]}
+      onPress={open}
+    >
+      <ThemedBot size={14} uniProps={extraMutedColorMapping} />
+      <Text style={[styles.deskTabText, selected && styles.deskTabTextSelected]} numberOfLines={1}>
+        Project Manager
+      </Text>
+    </PressHighlight>
+  );
+}
+
 /** CUSTOM(desk-workboard): a plugin surface's tab; × or right-click > Close moves it into +. */
 function DeskWorkboardChip({
   id,
@@ -1426,6 +1482,12 @@ const styles = StyleSheet.create((theme) => ({
     paddingHorizontal: theme.spacing[2],
     borderRadius: theme.borderRadius.md,
     justifyContent: "center",
+  },
+  // CUSTOM(pm-sidebar)
+  projectManagerButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: theme.spacing[1],
   },
   // CUSTOM(desk-header): a soft green, so the selected Desk doesn't read as a selected tab.
   deskTabSelected: {

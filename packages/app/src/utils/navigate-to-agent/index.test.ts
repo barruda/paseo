@@ -1,15 +1,15 @@
-// CUSTOM(assistant-desk)
+// CUSTOM(assistant-desk), CUSTOM(pm-sidebar)
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   isAssistantChatInSession: vi.fn(() => false),
-  openAssistantDesk: vi.fn(() => "/h/s1/workspace/ws"),
+  openAssistantSidebar: vi.fn(() => "/h/s1/workspace/ws"),
   navigateToWorkspace: vi.fn(() => "/h/s1/workspace/ws"),
 }));
 
 vi.mock("@/assistant-sidebar/open", () => ({
   isAssistantChatInSession: mocks.isAssistantChatInSession,
-  openAssistantDesk: mocks.openAssistantDesk,
+  openAssistantSidebar: mocks.openAssistantSidebar,
 }));
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
   navigateToWorkspace: mocks.navigateToWorkspace,
@@ -34,18 +34,18 @@ function seedAgent(agent: Partial<Agent>): void {
 beforeEach(() => {
   useSessionStore.setState({ sessions: {} });
   mocks.isAssistantChatInSession.mockReset().mockReturnValue(false);
-  mocks.openAssistantDesk.mockClear();
+  mocks.openAssistantSidebar.mockClear();
   mocks.navigateToWorkspace.mockClear();
 });
 
 describe("navigateToAgent with the Projects Assistant", () => {
-  it("sends a live chat the session knows to the assistant Desk, whatever route it was asked for", () => {
+  it("sends a live chat the session knows to the right sidebar, whatever route it was asked for", () => {
     mocks.isAssistantChatInSession.mockReturnValue(true);
 
     const route = navigateToAgent({ serverId: "s1", agentId: "chat", pin: true });
 
     expect(route).toBe("/h/s1/workspace/ws");
-    expect(mocks.openAssistantDesk).toHaveBeenCalledWith({
+    expect(mocks.openAssistantSidebar).toHaveBeenCalledWith({
       chat: { serverId: "s1", agentId: "chat" },
     });
     expect(mocks.navigateToWorkspace).not.toHaveBeenCalled();
@@ -54,7 +54,7 @@ describe("navigateToAgent with the Projects Assistant", () => {
   it("trusts the flag the plugin passes for a chat the session does not list yet", () => {
     navigateToAgent({ serverId: "s1", agentId: "brand-new", assistantSidebar: true });
 
-    expect(mocks.openAssistantDesk).toHaveBeenCalledWith({
+    expect(mocks.openAssistantSidebar).toHaveBeenCalledWith({
       chat: { serverId: "s1", agentId: "brand-new" },
     });
   });
@@ -62,7 +62,7 @@ describe("navigateToAgent with the Projects Assistant", () => {
   it("falls back to ordinary navigation when Tasks mode is off", () => {
     seedAgent({ id: "chat", workspaceId: "ws" });
     mocks.isAssistantChatInSession.mockReturnValue(true);
-    mocks.openAssistantDesk.mockReturnValueOnce(null as unknown as string);
+    mocks.openAssistantSidebar.mockReturnValueOnce(null as unknown as string);
 
     navigateToAgent({ serverId: "s1", agentId: "chat" });
 
@@ -79,7 +79,7 @@ describe("navigateToAgent with the Projects Assistant", () => {
 
     navigateToAgent({ serverId: "s1", agentId: "chat" });
 
-    expect(mocks.openAssistantDesk).not.toHaveBeenCalled();
+    expect(mocks.openAssistantSidebar).not.toHaveBeenCalled();
     expect(mocks.navigateToWorkspace).toHaveBeenCalledWith({
       serverId: "s1",
       workspaceId: "ws",

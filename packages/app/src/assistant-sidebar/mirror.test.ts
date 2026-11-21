@@ -6,7 +6,7 @@ import {
   useDesksStore,
   type DeskTab,
 } from "@/task-navigation/desks-store";
-import { assistantDeskChat } from "./mirror";
+import { assistantDeskChat, assistantSidebarChat } from "./mirror";
 
 const OWNER = { serverId: "s1", workspaceId: "ws" };
 const chatTab = (agentId: string) => ({ ...OWNER, target: { kind: "agent" as const, agentId } });
@@ -77,5 +77,24 @@ describe("assistantDeskChat", () => {
       serverId: "s1",
       agentId: "chat",
     });
+  });
+});
+
+// CUSTOM(pm-sidebar)
+describe("assistantSidebarChat", () => {
+  beforeEach(() => {
+    useDesksStore.setState({ desks: initialDesks(), activeDeskId: "primary", initialized: true });
+  });
+
+  it("shows the current chat when there is no Project Manager Desk", () => {
+    const current = { serverId: "s1", agentId: "live" };
+    expect(assistantSidebarChat(useDesksStore.getState().desks, current)).toEqual(current);
+  });
+
+  it("prefers the Desk's chat so both views agree", () => {
+    showChat("desk-chat");
+    expect(
+      assistantSidebarChat(useDesksStore.getState().desks, { serverId: "s1", agentId: "other" }),
+    ).toEqual({ serverId: "s1", agentId: "desk-chat" });
   });
 });

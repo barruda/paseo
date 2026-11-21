@@ -116,6 +116,10 @@ export const SETTINGS_SEARCH_INDEX: Partial<
       "Skip pinned tabs",
       "Last visited tab shortcut",
       "Header shortcuts",
+      // CUSTOM(explorer-lock)
+      "Right sidebar",
+      "Keep the right sidebar open or closed",
+      "Barra lateral direita",
     ],
   },
   "customizations-voice": { i18nKeys: ["settings.voiceSettings", "settings.voice"] },

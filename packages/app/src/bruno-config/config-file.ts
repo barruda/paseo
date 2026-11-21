@@ -19,6 +19,8 @@ const AppSectionSchema = z
     deskPreviewTabs: z.boolean().optional(),
     recentTabsSkipPinned: z.boolean().optional(),
     headerShortcuts: z.boolean().optional(),
+    explorerLockTasks: z.boolean().optional(), // CUSTOM(explorer-lock)
+    explorerLockWorkspaces: z.boolean().optional(),
     showCriticToggle: z.boolean().optional(),
     showJevRouterToggle: z.boolean().optional(),
   })

@@ -70,6 +70,7 @@ import { useOpenOutsideWorkspaceFolder } from "@/workspace/open-in-file-manager/
 import { getOrCreateClientId } from "@/utils/client-id";
 import { selectIsAgentListOpen, usePanelStore } from "@/stores/panel-store";
 import { toggleDesktopSidebarsWithCheckoutIntent } from "@/utils/desktop-sidebar-toggle";
+import { useWorkspaceExplorerLock } from "@/explorer-lock/use-workspace-explorer-lock"; // CUSTOM(explorer-lock)
 import {
   isExplorerSidebarOpen,
   openExplorerSidebarView,
@@ -1288,6 +1289,13 @@ function WorkspaceScreenContent({
   const isExplorerSidebarShowing = useIsExplorerSidebarOpen({
     isCompact: isMobile,
     workspaceKey: persistenceKey,
+  });
+  // CUSTOM(explorer-lock): with the lock on, the Explorer keeps one open/closed state across workspaces.
+  useWorkspaceExplorerLock({
+    workspaceKey: persistenceKey,
+    routeFocused: isRouteFocused,
+    compact: isMobile,
+    visible: isExplorerSidebarShowing,
   });
   const hasPullRequest = useWorkspacePullRequestDiscovery({
     workspaceKey: persistenceKey,

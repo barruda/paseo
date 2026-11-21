@@ -159,3 +159,26 @@ export function planAssistantDeskRefresh<
   if (shown) return null;
   return tabs.some(isChatTab) ? current : null;
 }
+
+/**
+ * CUSTOM(pm-sidebar): the Project Manager button reuses the Explorer's Project Manager tab when
+ * the pane already has one, else opens a new one there.
+ */
+export function planAssistantSidebarOpen(
+  tabs: readonly { tabId: string; target: { kind: string } }[],
+): { kind: "focus"; tabId: string } | { kind: "open" } {
+  const existing = tabs.find((tab) => tab.target.kind === "projects_assistant");
+  return existing ? { kind: "focus", tabId: existing.tabId } : { kind: "open" };
+}
+
+/** CUSTOM(pm-sidebar): whether the Desk header shows the Project Manager button. */
+export function hasAssistantChat(input: {
+  remembered: AssistantChatRef | null;
+  agentsByServer: ReadonlyMap<string, ReadonlyMap<string, AssistantAgentFacts>>;
+}): boolean {
+  if (input.remembered) return true;
+  for (const agents of input.agentsByServer.values()) {
+    for (const agent of agents.values()) if (isAssistantChatAgent(agent)) return true;
+  }
+  return false;
+}

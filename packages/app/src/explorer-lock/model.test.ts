@@ -1,0 +1,144 @@
+// CUSTOM(explorer-lock)
+import { describe, expect, it } from "vitest";
+import {
+  isExplorerLockOn,
+  planWorkspaceExplorerLock,
+  resolveDeskExplorerOpen,
+  type WorkspaceExplorerLockView,
+} from "./model";
+import { DEFAULT_CLIENT_SETTINGS } from "@/hooks/use-settings/storage";
+
+describe("isExplorerLockOn", () => {
+  it("is on in Tasks mode and off in workspaces by default", () => {
+    expect(isExplorerLockOn(DEFAULT_CLIENT_SETTINGS, "tasks")).toBe(true);
+    expect(isExplorerLockOn(DEFAULT_CLIENT_SETTINGS, "workspaces")).toBe(false);
+  });
+
+  it("follows each mode's own setting", () => {
+    const settings = { explorerLockTasks: false, explorerLockWorkspaces: true };
+    expect(isExplorerLockOn(settings, "tasks")).toBe(false);
+    expect(isExplorerLockOn(settings, "workspaces")).toBe(true);
+  });
+});
+
+describe("resolveDeskExplorerOpen", () => {
+  const base = { lockOn: true, hydrated: true, compact: false };
+
+  it("locked, an open sidebar stays open on a tab that had it closed", () => {
+    expect(resolveDeskExplorerOpen({ ...base, lockedOpen: true, tabOpen: true }).open).toBe(true);
+    // The next tab, agent or Desk: its own state is closed, the sidebar stays open.
+    expect(resolveDeskExplorerOpen({ ...base, lockedOpen: true, tabOpen: false })).toEqual({
+      locked: true,
+      open: true,
+    });
+  });
+
+  it("locked, a closed sidebar stays closed on a tab that had it open", () => {
+    expect(resolveDeskExplorerOpen({ ...base, lockedOpen: false, tabOpen: true })).toEqual({
+      locked: true,
+      open: false,
+    });
+  });
+
+  it("unlocked, each tab keeps its own state as before", () => {
+    const off = { ...base, lockOn: false, lockedOpen: true };
+    expect(resolveDeskExplorerOpen({ ...off, tabOpen: false })).toEqual({
+      locked: false,
+      open: false,
+    });
+    expect(resolveDeskExplorerOpen({ ...off, tabOpen: true }).open).toBe(true);
+  });
+
+  it("does not apply the default before the saved state loads, nor on compact overlays", () => {
+    expect(
+      resolveDeskExplorerOpen({ ...base, hydrated: false, lockedOpen: false, tabOpen: true }),
+    ).toEqual({ locked: false, open: true });
+    expect(
+      resolveDeskExplorerOpen({ ...base, compact: true, lockedOpen: false, tabOpen: true }),
+    ).toEqual({ locked: false, open: true });
+  });
+});
+
+describe("planWorkspaceExplorerLock", () => {
+  const view = (patch: Partial<WorkspaceExplorerLockView>): WorkspaceExplorerLockView => ({
+    active: true,
+    lockOn: true,
+    workspaceKey: "s1:a",
+    visible: false,
+    ...patch,
+  });
+
+  it("opens the next workspace's sidebar when the locked state is open", () => {
+    expect(
+      planWorkspaceExplorerLock({
+        previous: null,
+        current: view({ workspaceKey: "s1:b", visible: false }),
+        lockedOpen: true,
+      }),
+    ).toEqual({ kind: "apply", open: true });
+  });
+
+  it("closes the next workspace's sidebar when the locked state is closed", () => {
+    expect(
+      planWorkspaceExplorerLock({
+        previous: view({ active: false, workspaceKey: "s1:b", visible: true }),
+        current: view({ workspaceKey: "s1:b", visible: true }),
+        lockedOpen: false,
+      }),
+    ).toEqual({ kind: "apply", open: false });
+  });
+
+  it("records an open or close the user makes in the focused workspace", () => {
+    expect(
+      planWorkspaceExplorerLock({
+        previous: view({ visible: false }),
+        current: view({ visible: true }),
+        lockedOpen: false,
+      }),
+    ).toEqual({ kind: "record", open: true });
+    expect(
+      planWorkspaceExplorerLock({
+        previous: view({ visible: true }),
+        current: view({ visible: false }),
+        lockedOpen: true,
+      }),
+    ).toEqual({ kind: "record", open: false });
+  });
+
+  it("does nothing once the sidebar matches the locked state", () => {
+    expect(
+      planWorkspaceExplorerLock({
+        previous: view({ visible: false }),
+        current: view({ visible: true }),
+        lockedOpen: true,
+      }),
+    ).toBeNull();
+  });
+
+  it("keeps what is on screen when the lock is turned on", () => {
+    expect(
+      planWorkspaceExplorerLock({
+        previous: view({ lockOn: false, visible: true }),
+        current: view({ visible: true }),
+        lockedOpen: false,
+      }),
+    ).toEqual({ kind: "record", open: true });
+  });
+
+  it("leaves every workspace alone with the lock off, or when the screen is not focused", () => {
+    expect(
+      planWorkspaceExplorerLock({
+        previous: null,
+        current: view({ lockOn: false, visible: false }),
+        lockedOpen: true,
+      }),
+    ).toBeNull();
+    expect(
+      planWorkspaceExplorerLock({
+        previous: view({ visible: false }),
+        current: view({ active: false, visible: true }),
+        lockedOpen: false,
+      }),
+    ).toBeNull();
+  });
+});

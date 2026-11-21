@@ -9,7 +9,7 @@ import type { AssistantAgentFacts } from "./model";
 import { useTaskNavigationStore } from "@/task-navigation/store";
 import {
   isAssistantDeskInView,
-  openAssistantDesk,
+  openAssistantSidebar,
   refreshAssistantDesk,
   sessionAgent,
   showAssistantChatFor,
@@ -137,7 +137,8 @@ export function useAssistantTabSweep(): void {
       } finally {
         sweeping = false;
       }
-      if (plan.reveal) openAssistantDesk({ chat: plan.reveal });
+      // CUSTOM(pm-sidebar): the chat's place is the right sidebar now.
+      if (plan.reveal) openAssistantSidebar({ chat: plan.reveal });
     };
 
     // The session store changes many times a second while agents stream; rescan only when an

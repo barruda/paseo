@@ -57,6 +57,8 @@ const APP_KEYS = [
   "deskPreviewTabs",
   "recentTabsSkipPinned",
   "headerShortcuts",
+  "explorerLockTasks", // CUSTOM(explorer-lock)
+  "explorerLockWorkspaces",
   "showCriticToggle",
   "showJevRouterToggle",
 ] as const;

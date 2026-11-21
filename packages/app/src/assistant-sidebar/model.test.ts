@@ -3,10 +3,12 @@ import { describe, expect, it } from "vitest";
 import { AGENT_REPLACES_LABEL } from "@/task-navigation/agent-successor";
 import {
   ASSISTANT_CHAT_LABEL,
+  hasAssistantChat,
   isAssistantChatAgent,
   isLiveAssistantChatAgent,
   newerAssistantChat,
   planAssistantDeskRefresh,
+  planAssistantSidebarOpen,
   resolveAssistantChat,
   type AssistantAgentFacts,
 } from "./model";
@@ -246,5 +248,38 @@ describe("planAssistantDeskRefresh", () => {
   it("does nothing without a chat tab or without a current chat", () => {
     expect(plan({ tabs: [{ serverId: "s1", target: { kind: "file" } }] })).toBeNull();
     expect(plan({ current: null })).toBeNull();
+  });
+});
+
+// CUSTOM(pm-sidebar)
+describe("planAssistantSidebarOpen", () => {
+  it("focuses the pane's Project Manager tab when it has one", () => {
+    expect(
+      planAssistantSidebarOpen([
+        { tabId: "files", target: { kind: "files" } },
+        { tabId: "pm", target: { kind: "projects_assistant" } },
+      ]),
+    ).toEqual({ kind: "focus", tabId: "pm" });
+  });
+
+  it("opens a new one otherwise", () => {
+    expect(planAssistantSidebarOpen([{ tabId: "files", target: { kind: "files" } }])).toEqual({
+      kind: "open",
+    });
+    expect(planAssistantSidebarOpen([])).toEqual({ kind: "open" });
+  });
+});
+
+describe("hasAssistantChat", () => {
+  it("is true with a remembered chat or any labeled agent, false otherwise", () => {
+    const empty = new Map<string, ReadonlyMap<string, AssistantAgentFacts>>();
+    expect(hasAssistantChat({ remembered: null, agentsByServer: empty })).toBe(false);
+    expect(
+      hasAssistantChat({ remembered: { serverId: "s1", agentId: "a" }, agentsByServer: empty }),
+    ).toBe(true);
+    const labeled = new Map([
+      ["s1", new Map([["a", { labels: { [ASSISTANT_CHAT_LABEL]: "true" } }]])],
+    ]);
+    expect(hasAssistantChat({ remembered: null, agentsByServer: labeled })).toBe(true);
   });
 });

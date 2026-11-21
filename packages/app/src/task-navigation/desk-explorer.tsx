@@ -30,6 +30,10 @@ import {
 } from "@/workspace-tabs/explorer-sidebar";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { activeDesk, useDesksStore, type DeskTabOwner } from "./desks-store";
+import { ensureExplorerPane } from "./desk-explorer-target";
+import { resolveDeskExplorerOpen } from "@/explorer-lock/model"; // CUSTOM(explorer-lock)
+import { useExplorerLockEnabled } from "@/explorer-lock/settings"; // CUSTOM(explorer-lock)
+import { useExplorerLockHydrated, useExplorerLockStore } from "@/explorer-lock/store"; // CUSTOM(explorer-lock)
 
 const NO_DESK_DRAG = {
   activeDragTabId: null,
@@ -49,25 +53,34 @@ export interface DeskExplorer {
   toggle: () => void;
 }
 
-/** The dock renders the workspace's Explorer pane, so a workspace without one gets a hidden one. */
-function ensureExplorerPane(workspaceKey: string): void {
-  const store = useWorkspaceLayoutStore.getState();
-  const layout = store.layoutByWorkspace[workspaceKey];
-  if (layout && findPaneById(layout.root, selectExplorerSidebarPaneId(store, workspaceKey))) return;
-  store.showExplorerSidebar(workspaceKey);
-  store.hideExplorerSidebar(workspaceKey);
-}
-
 export function useDeskExplorer(scope: DeskTabOwner | null, tabId: string | null): DeskExplorer {
   const isCompact = useIsCompactFormFactor();
   const hasMacTrafficLights = useHasWindowChromeObstruction("top-left");
   const workspaceKey = scope ? buildWorkspaceTabPersistenceKey(scope) : null;
   const isCompactExplorer = resolveExplorerSidebarPresentation({ isCompact }) === "overlay";
   const isWorkspaceOpen = useIsExplorerSidebarOpen({ isCompact, workspaceKey });
-  const isTabOpen = useDesksStore((state) =>
+  const isOwnTabOpen = useDesksStore((state) =>
     Boolean(tabId && activeDesk(state).explorerTabIds?.includes(tabId)),
   );
+  // CUSTOM(explorer-lock): with the lock on, one saved open/closed state replaces each tab's own.
+  const lockOn = useExplorerLockEnabled("tasks");
+  const lockHydrated = useExplorerLockHydrated();
+  const lockedOpen = useExplorerLockStore((state) => state.open);
+  const { locked, open: isTabOpen } = resolveDeskExplorerOpen({
+    lockOn,
+    hydrated: lockHydrated,
+    compact: isCompactExplorer,
+    lockedOpen,
+    tabOpen: isOwnTabOpen,
+  });
   const isOpen = isCompactExplorer ? isWorkspaceOpen : isTabOpen;
+  // Turning the lock on keeps what is on screen.
+  const lastLockOn = useRef(lockOn);
+  useEffect(() => {
+    const wasOn = lastLockOn.current;
+    lastLockOn.current = lockOn;
+    if (lockOn && !wasOn && lockHydrated) useExplorerLockStore.getState().setOpen(isOwnTabOpen);
+  }, [isOwnTabOpen, lockHydrated, lockOn]);
 
   useEffect(() => {
     if (isTabOpen && workspaceKey && !isCompactExplorer) ensureExplorerPane(workspaceKey);
@@ -81,17 +94,19 @@ export function useDeskExplorer(scope: DeskTabOwner | null, tabId: string | null
     lastWorkspace.current = { workspaceKey, isWorkspaceOpen };
     if (!tabId || last.workspaceKey !== workspaceKey) return;
     if (!last.isWorkspaceOpen && isWorkspaceOpen) {
-      useDesksStore.getState().setTabExplorerOpen(tabId, true);
+      if (locked) useExplorerLockStore.getState().setOpen(true);
+      else useDesksStore.getState().setTabExplorerOpen(tabId, true);
     }
-  }, [isWorkspaceOpen, tabId, workspaceKey]);
+  }, [isWorkspaceOpen, locked, tabId, workspaceKey]);
 
   const toggle = useCallback(() => {
     if (isCompactExplorer) {
       toggleExplorerSidebar({ isCompact, workspaceKey });
       return;
     }
-    if (tabId) useDesksStore.getState().setTabExplorerOpen(tabId, !isTabOpen);
-  }, [isCompact, isCompactExplorer, isTabOpen, tabId, workspaceKey]);
+    if (locked) useExplorerLockStore.getState().setOpen(!isTabOpen);
+    else if (tabId) useDesksStore.getState().setTabExplorerOpen(tabId, !isTabOpen);
+  }, [isCompact, isCompactExplorer, isTabOpen, locked, tabId, workspaceKey]);
   return {
     workspaceKey,
     isOpen,

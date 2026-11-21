@@ -15,11 +15,17 @@ import {
   type DeskTabInput,
 } from "@/task-navigation/desks-store";
 import { useTaskNavigationStore } from "@/task-navigation/store";
+import { deskExplorerTarget, ensureExplorerPane } from "@/task-navigation/desk-explorer-target"; // CUSTOM(pm-sidebar)
+import { explorerLockEnabled } from "@/explorer-lock/settings"; // CUSTOM(pm-sidebar)
+import { useExplorerLockStore } from "@/explorer-lock/store"; // CUSTOM(pm-sidebar)
+import { findPaneById, useWorkspaceLayoutStore } from "@/stores/workspace-layout-store"; // CUSTOM(pm-sidebar)
+import { buildWorkspaceTabPersistenceKey } from "@/workspace-tabs/model"; // CUSTOM(pm-sidebar)
 import { buildHostWorkspaceRoute } from "@/utils/host-routes";
 import {
   isAssistantChatAgent,
   isLiveAssistantChatAgent,
   planAssistantDeskRefresh,
+  planAssistantSidebarOpen,
   resolveAssistantChat,
   type AssistantChatRef,
 } from "./model";
@@ -98,6 +104,74 @@ function focusComposerSoon(preferredServerId: string | null): void {
     if (Date.now() - startedAt < FOCUS_GIVE_UP_MS) setTimeout(attempt, FOCUS_RETRY_MS);
   };
   setTimeout(attempt, FOCUS_RETRY_MS);
+}
+
+/** CUSTOM(pm-sidebar): where the Project Manager tab docks, or null to use the Desk instead. */
+function assistantSidebarDock(): {
+  workspaceKey: string;
+  tabId: string | null;
+  locked: boolean;
+} | null {
+  if (isAssistantDeskInView()) return null;
+  if (useWorkspaceLayoutStore.getState().layoutMode === "compact") return null;
+  const target = deskExplorerTarget(useDesksStore.getState(), getLastWorkspaceSelection());
+  const workspaceKey = target.scope ? buildWorkspaceTabPersistenceKey(target.scope) : null;
+  const locked = explorerLockEnabled("tasks");
+  if (!workspaceKey || (!locked && !target.tabId)) return null;
+  return { workspaceKey, tabId: target.tabId, locked };
+}
+
+/** CUSTOM(pm-sidebar): focuses the Explorer pane's Project Manager tab, or opens one there. */
+function revealAssistantTab(workspaceKey: string, paneId: string | null): void {
+  const layouts = useWorkspaceLayoutStore.getState();
+  const layout = layouts.layoutByWorkspace[workspaceKey];
+  const pane = paneId && layout ? findPaneById(layout.root, paneId) : null;
+  const tabs = pane
+    ? layouts.getWorkspaceTabs(workspaceKey).filter((tab) => pane.tabIds.includes(tab.tabId))
+    : [];
+  const plan = planAssistantSidebarOpen(tabs);
+  if (plan.kind === "focus" && paneId) {
+    layouts.selectTabInPane(workspaceKey, paneId, plan.tabId);
+    return;
+  }
+  layouts.openTab({
+    workspaceKey,
+    target: { kind: "projects_assistant" },
+    intent: "reveal",
+    placement: paneId ? { mode: "pane", paneId } : undefined,
+  });
+}
+
+/**
+ * CUSTOM(pm-sidebar): the Project Manager's default place. Opens the right sidebar (the Explorer of
+ * the Desk's current workspace) and focuses its Project Manager tab, or opens one. `chat` becomes
+ * the remembered chat; null keeps it. Falls back to the Desk (openAssistantDesk) when the Desk is
+ * already showing the chat, on compact layouts, or when there is no workspace to dock beside.
+ * Returns the route shown, or null when Tasks mode is off.
+ */
+export function openAssistantSidebar(input: {
+  chat: AssistantChatRef | null;
+  focusComposer?: boolean;
+}): string | null {
+  if (!useTaskNavigationStore.getState().enabled) {
+    if (input.chat) useAssistantSidebarStore.getState().setChat(input.chat);
+    return null;
+  }
+  const dock = assistantSidebarDock();
+  if (!dock) return openAssistantDesk(input);
+  const chat = input.chat ?? currentAssistantChat(null);
+  if (chat) useAssistantSidebarStore.getState().setChat(chat);
+  // The board chip covers the Desk and its Explorer.
+  useDeskWorkboardStore.getState().deselect();
+  const paneId = ensureExplorerPane(dock.workspaceKey);
+  if (dock.locked) useExplorerLockStore.getState().setOpen(true);
+  else if (dock.tabId) useDesksStore.getState().setTabExplorerOpen(dock.tabId, true);
+  revealAssistantTab(dock.workspaceKey, paneId);
+  const selection = getLastWorkspaceSelection();
+  const route = selection ? buildHostWorkspaceRoute(selection.serverId, selection.workspaceId) : "";
+  if (route) navigateToHostWorkspaceRoute(route);
+  if ((input.focusComposer ?? true) && isWeb) focusComposerSoon(chat?.serverId ?? null);
+  return route;
 }
 
 /**

@@ -8530,6 +8530,9 @@ power-workboard`. In the app, open the Projects Assistant chat, set "Compact at 
 
 ## assistant-desk: the Projects Assistant chat is its own Desk
 
+> Since `pm-sidebar` (2026-11-21) the chat opens in the right sidebar by default and this Desk only
+> opens from the tab's **Open in main area**; the Desk has no chip. See that entry.
+
 - **Added:** 2026-11-20 (replaces `assistant-sidebar`, 2026-11-19, which put the chat in a
   `projects_assistant` tab of the right sidebar)
 - **Commit:** `custom: Projects Assistant chat gets its own Desk`
@@ -9525,3 +9528,60 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   (select-tasks action, package filter helpers), `tests/mutation-errors.test.ts` (branch errors),
   `packages/app/src/screens/settings/bruno-customizations/projects-assistant-model.test.ts`
   (gate defaults, the tests patch, env/list parsing).
+
+## explorer-lock, pm-sidebar: the right sidebar keeps its state across views; Project Manager opens there
+
+- **Added:** 2026-11-21
+- **Commit:** `custom: lock the right sidebar across views and open the Project Manager in it`
+- **Why:** The right sidebar (Explorer) opened and closed as the user moved between tabs, agents and
+  Desks, because its state belonged to each Desk tab (Tasks mode) or each workspace. The Project
+  Manager was a Desk that took over the main area; the user wants it beside the work, one click
+  away, and the main area only on request.
+- **What:**
+  - `explorer-lock`: Settings > Bruno's Customizations > Tabs > **Right sidebar** has two switches
+    (en and pt-BR strings in `explorer-lock/strings.ts`): **Keep the right sidebar open or closed
+    in Tasks mode** (on by default) and **… in workspaces** (off by default). On, one saved
+    open/closed state (`custom-explorer-lock` store, persisted) replaces the per-Desk-tab state
+    (`useDeskExplorer`, rule `resolveDeskExplorerOpen`) or the per-workspace state
+    (`useWorkspaceExplorerLock`, rule `planWorkspaceExplorerLock`: a workspace coming into view is
+    shown or hidden to match, an open or close made there becomes the saved state). Turning a
+    switch on keeps what is on screen. Compact overlays keep their own state. Off, nothing changes.
+  - `pm-sidebar`: the Desk header has a **Project Manager** button where the Project Manager Desk
+    chip was; the Desk has no chip any more (`chipDesks`) and Next Desk skips it. The button, and
+    every other way to the chat (`navigateToAgent` for a live chat, the Tasks sidebar row, a chat
+    tab swept from another Desk), call `openAssistantSidebar`: it opens the right sidebar of the
+    Desk's current workspace (saved state on with the lock, else the focused Desk tab's) and
+    focuses its Project Manager tab, or opens one (`planAssistantSidebarOpen`). It falls back to
+    `openAssistantDesk` while the Project Manager Desk is in view, on compact layouts, or with no
+    workspace to dock beside. The Project Manager tab renders the Desk's chat when the Desk exists,
+    else the current chat (`assistantSidebarChat`); its **Open in main area** link
+    (`openAssistantDesk`) is the only way to the Desk. The button shows once a chat is known
+    (`useHasAssistantChat`) and is highlighted while the Project Manager Desk is active.
+- **Files:** `packages/app/src/explorer-lock/` (`model.ts`, `store.ts`, `settings.ts`,
+  `strings.ts`, `use-workspace-explorer-lock.ts`, `model.test.ts`);
+  `assistant-sidebar/use-has-assistant-chat.ts`; `task-navigation/desk-explorer-target.ts`
+  (`deskExplorerTarget`, `ensureExplorerPane` moved out of `desk-explorer.tsx`).
+- **Core files touched** (`CUSTOM(explorer-lock)`, `CUSTOM(pm-sidebar)`):
+  `hooks/use-settings/storage.ts` (two settings), `bruno-config/config-file.ts` and
+  `use-bruno-config-file.ts`, `screens/settings/bruno-customizations/section.tsx`,
+  `screens/settings/settings-search-index.ts`, `screens/workspace/workspace-screen.tsx` (one hook
+  call), `task-navigation/desk-explorer.tsx`, `task-navigation/desk-screen.tsx` (button, chip
+  filter, Next Desk), `task-navigation/sidebar.tsx`, `utils/navigate-to-agent/index.ts`,
+  `assistant-sidebar/open.ts`, `model.ts`, `mirror.ts`, `panel.tsx`, `strings.ts`,
+  `use-assistant-tab-sweep.ts`; `packages/desktop/e2e/task-navigation.spec.ts` turns the Tasks
+  lock off for the per-tab Explorer test.
+- **Re-apply:** Add the two settings with their defaults. In `useDeskExplorer` read the open state
+  through `resolveDeskExplorerOpen` and write the saved state instead of the tab's when locked
+  (toggle and the workspace-reveal follow). Call `useWorkspaceExplorerLock` right after the
+  workspace screen computes its Explorer visibility. In the Desk header filter the assistant Desk
+  out of the chips and render `ProjectManagerButton` after them. Point `navigateToAgent`'s
+  assistant intercept, the Tasks sidebar row and the sweep's `reveal` at `openAssistantSidebar`.
+- **Verify:** `(cd packages/app && npx vitest run src/explorer-lock src/assistant-sidebar
+src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app build; no daemon
+  restart. In Tasks mode: open the right sidebar, click other tabs, agents and Desks: it stays
+  open; close it and switch again: it stays closed; reload: same state. Settings > Bruno's
+  Customizations > Tabs: turn the Tasks mode switch off and each tab remembers its own again.
+  Click **Project Manager** in the header: the right sidebar opens on the Project Manager tab with
+  the chat, and no Desk opens; click Files, then the button again: the same tab comes back (one
+  tab). **Open in main area** in that tab selects the Project Manager Desk (the button lights up).
+  Clicking the status bar topic or the Workboard's Assistant tab also opens the sidebar tab.
