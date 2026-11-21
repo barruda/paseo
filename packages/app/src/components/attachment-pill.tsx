@@ -134,9 +134,10 @@ export function AttachmentLabel({ icon, title, subtitle }: AttachmentLabelProps)
 
 /** Square image preview pill body. */
 export function AttachmentThumbnail({ metadata }: { metadata: AttachmentMetadata }) {
-  const uri = useAttachmentPreviewUrl(metadata);
-  const source = useMemo(() => ({ uri: uri ?? "" }), [uri]);
-  if (!uri) {
+  const preview = useAttachmentPreviewUrl(metadata);
+  const uri = preview.status === "ready" ? preview.url : null;
+  const source = useMemo(() => (uri ? { uri } : null), [uri]);
+  if (!uri || !source) {
     return <View style={styles.thumbnailPlaceholder} />;
   }
   // CUSTOM(attachment-thumbnail-zoom): hovering the thumbnail shows the image magnified.

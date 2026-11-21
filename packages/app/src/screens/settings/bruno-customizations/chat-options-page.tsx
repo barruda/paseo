@@ -10,7 +10,7 @@ import type { PluginIcon } from "@getpaseo/plugin/client";
 import { SettingsRow, SettingsSection } from "@/components/settings";
 import { DraggableList, type DraggableRenderItemInfo } from "@/components/draggable-list";
 import { Switch } from "@/components/ui/switch";
-import { createControlGeometry } from "@/components/ui/control-geometry";
+import { switchGeometryForLayout } from "@/components/ui/control-geometry";
 import {
   CHAT_OPTIONS,
   FIXED_CHAT_OPTION_HINTS,
@@ -268,7 +268,7 @@ const styles = StyleSheet.create((theme) => ({
     flex: 1,
   },
   switchPlaceholder: {
-    minHeight: createControlGeometry(theme).switchControl.minHeight,
+    minHeight: switchGeometryForLayout("md", false).reservedHeight,
   },
   // Lines fixed rows up with the movable ones, which start after the grip handle.
   fixedRow: {

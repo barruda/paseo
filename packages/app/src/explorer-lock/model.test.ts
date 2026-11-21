@@ -5,6 +5,8 @@ import {
   lockSwitchTurnedOn,
   planWorkspaceExplorerLock,
   resolveDeskExplorerOpen,
+  resolveExplorerLockWidth,
+  shouldSeedLockedWidth,
   type WorkspaceExplorerLockView,
 } from "./model";
 import { DEFAULT_CLIENT_SETTINGS } from "@/hooks/use-settings/storage";
@@ -192,5 +194,43 @@ describe("lockSwitchTurnedOn", () => {
     expect(lockSwitchTurnedOn({ lockOn: true, ...loaded }, { lockOn: false, ...loaded })).toBe(
       false,
     );
+  });
+});
+
+describe("resolveExplorerLockWidth", () => {
+  const base = { lockOn: true, hydrated: true, compact: false };
+
+  it("locked, every content gets the same width", () => {
+    const a = resolveExplorerLockWidth({ ...base, lockedWidth: 420, ownWidth: 300 });
+    const b = resolveExplorerLockWidth({ ...base, lockedWidth: 420, ownWidth: 500 });
+    expect(a).toEqual({ locked: true, width: 420 });
+    expect(b).toEqual({ locked: true, width: 420 });
+  });
+
+  it("locked with no saved width falls back to the own width", () => {
+    expect(resolveExplorerLockWidth({ ...base, lockedWidth: null, ownWidth: 300 }).width).toBe(300);
+  });
+
+  it("unlocked, not hydrated or compact keep the own width", () => {
+    for (const off of [{ lockOn: false }, { hydrated: false }, { compact: true }]) {
+      expect(
+        resolveExplorerLockWidth({ ...base, ...off, lockedWidth: 420, ownWidth: 300 }),
+      ).toEqual({ locked: false, width: 300 });
+    }
+  });
+});
+
+describe("shouldSeedLockedWidth", () => {
+  const base = { locked: true, active: true, lockedWidth: null, ownWidth: 300 };
+
+  it("seeds from the active frame's own width when none is saved", () => {
+    expect(shouldSeedLockedWidth(base)).toBe(true);
+  });
+
+  it("does not seed when unlocked, inactive, already saved or without an own width", () => {
+    expect(shouldSeedLockedWidth({ ...base, locked: false })).toBe(false);
+    expect(shouldSeedLockedWidth({ ...base, active: false })).toBe(false);
+    expect(shouldSeedLockedWidth({ ...base, lockedWidth: 420 })).toBe(false);
+    expect(shouldSeedLockedWidth({ ...base, ownWidth: undefined })).toBe(false);
   });
 });

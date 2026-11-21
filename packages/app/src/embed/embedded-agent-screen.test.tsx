@@ -85,7 +85,7 @@ describe("EmbeddedAgentScreen", () => {
       focus: { isInteractive: boolean };
     };
     expect(document.querySelector('[data-testid="agent-panel"]')).not.toBeNull();
-    expect(props).toMatchObject({ serverId: "srv", workspaceId: "ws", agentId: "agent-1" });
+    expect(props).toMatchObject({ serverId: "srv", workspaceId: "ws" });
     expect(props.isPaneFocused).toBe(true);
     expect(props.pane.host).toBe("main");
     expect(props.pane.tabId).toBe("embed:agent-1");

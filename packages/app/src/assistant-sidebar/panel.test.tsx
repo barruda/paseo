@@ -19,12 +19,19 @@ vi.mock("@/panels/agent-panel", async () => {
   const ReactModule = await vi.importActual<typeof import("react")>("react");
   const { usePaneContext } =
     await vi.importActual<typeof import("@/panels/pane-context")>("@/panels/pane-context");
+  const { useSecondaryComposerOptions } = await vi.importActual<
+    typeof import("@/composer/esc-focus-target")
+  >("@/composer/esc-focus-target");
   return {
     AgentConversationPanel: () => {
       const pane = usePaneContext();
+      const composer = useSecondaryComposerOptions();
       return ReactModule.createElement("div", {
         "data-testid": "agent-panel",
         "data-agent": pane.target.kind === "agent" ? pane.target.agentId : "",
+        "data-secondary": String(composer.secondary),
+        "data-autofocus": String(composer.autoFocus),
+        "data-interrupts-on-esc": String(composer.interruptsOnEsc),
       });
     },
   };
@@ -147,6 +154,17 @@ describe("Projects Assistant sidebar panel", () => {
     expect(prepareAgentTimeline).toHaveBeenCalledWith("s1", "chat");
     view.unmount();
     expect(replaceVisibleAgentIds).toHaveBeenLastCalledWith(source, []);
+  });
+
+  // CUSTOM(chat-esc-focus), CUSTOM(pm-focus)
+  it("renders its composer as a side panel's that never autofocuses nor stops on Esc Esc", () => {
+    seedSession([["chat", agent()]]);
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });
+    renderPanel();
+    const panel = screen.getByTestId("agent-panel");
+    expect(panel.getAttribute("data-secondary")).toBe("true");
+    expect(panel.getAttribute("data-autofocus")).toBe("false");
+    expect(panel.getAttribute("data-interrupts-on-esc")).toBe("false");
   });
 
   it("shows the remembered chat through a pane pointed at that agent", () => {

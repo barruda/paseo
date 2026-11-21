@@ -19,7 +19,7 @@ const draftTarget: WorkspaceTabTarget = {
     modeId: null,
     model: null,
     thinkingOptionId: null,
-    featureValues: {},
+    providerOptions: {},
   },
 };
 

@@ -159,7 +159,7 @@ function SidebarViewButton({
   return (
     <Button
       variant="ghost"
-      size="xs"
+      size="sm"
       leftIcon={ListChecks}
       onPress={show}
       trailing={badge}
@@ -213,7 +213,7 @@ function AssistantSidebarPanel() {
       {openView ? (
         <Button
           variant="ghost"
-          size="xs"
+          size="sm"
           leftIcon={ArrowLeft}
           onPress={closeView}
           accessibilityLabel={strings.backToChat}
@@ -230,7 +230,7 @@ function AssistantSidebarPanel() {
         ))}
       <Button
         variant="ghost"
-        size="xs"
+        size="sm"
         leftIcon={SquareArrowOutUpRight}
         onPress={openDesk}
         testID="projects-assistant-open-main"
@@ -279,8 +279,10 @@ function AssistantSidebarPanel() {
           accessibilityElementsHidden={openView !== null}
         >
           <PaneProvider key={chatKey} value={value}>
-            {/* CUSTOM(chat-esc-focus): Esc and the chat's Enter/scroll return to the central composer. */}
-            <SecondaryComposerProvider>
+            {/* CUSTOM(chat-esc-focus): Esc and the chat's Enter/scroll return to the central composer;
+            Esc Esc never stops the Project Manager. CUSTOM(pm-focus): its composer takes the caret
+            only when the user opens it (openAssistantSidebar), not on every remount. */}
+            <SecondaryComposerProvider interruptsOnEsc={false} autoFocus={false}>
               <AgentConversationPanel />
             </SecondaryComposerProvider>
           </PaneProvider>

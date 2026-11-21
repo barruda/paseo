@@ -106,8 +106,11 @@ export function CriticSettingsSheet({
   const { draft } = state;
   const snapshot = useProvidersSnapshot(serverId);
   const providers = useMemo(
-    () => buildSelectableProviderSelectorProviders(snapshot.entries),
-    [snapshot.entries],
+    () =>
+      buildSelectableProviderSelectorProviders(snapshot.entries, {
+        selectedProvider: draft.provider,
+      }),
+    [draft.provider, snapshot.entries],
   );
   const { pickImages } = useImageAttachmentPicker();
   const header = useMemo<SheetHeader>(() => ({ title: "Critic" }), []);

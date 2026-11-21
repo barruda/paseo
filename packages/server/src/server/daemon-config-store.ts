@@ -6,6 +6,14 @@ import {
 } from "./persisted-config.js";
 import { ProviderOverrideSchema } from "./agent/provider-launch-config.js";
 import {
+  convertLegacyClaudeUltracode,
+  convertLegacyOptions,
+  foldProfileFeatureValues,
+  resolveAdapter,
+  withLegacyProfileFeatureValues,
+} from "./agent/option-controls.js";
+import type { AgentProfile } from "@getpaseo/protocol/agent-profile";
+import {
   MutableDaemonConfigSchema,
   MutableDaemonConfigPatchSchema,
 } from "@getpaseo/protocol/messages";
@@ -22,6 +30,7 @@ type ProviderOverride = import("./agent/provider-launch-config.js").ProviderOver
 interface SupportedMutableConfigPatch {
   relay?: { enabled?: boolean; requireProtectedSecurity?: boolean };
   mcp?: { injectIntoAgents?: boolean };
+  usage?: { enabled: boolean };
   browserTools?: { enabled?: boolean };
   providers?: MutableDaemonConfig["providers"];
   removeProviders?: string[];
@@ -32,6 +41,8 @@ interface SupportedMutableConfigPatch {
   idleRuntimeCleanupMinutes?: number; // CUSTOM(idle-cleanup-period)
   idleRuntimeCleanupClosedTabMinutes?: number; // CUSTOM(idle-closed-tab)
   autoArchiveClosedDays?: number; // CUSTOM(auto-archive-closed)
+  resumeOnStartup?: boolean;
+  resumePrompt?: string;
   appendSystemPrompt?: string;
   // CUSTOM(github-account)
   github?: { configDir?: string };
@@ -172,6 +183,62 @@ function omitProvidersFromOverrides(
   return Object.keys(nextOverrides).length > 0 ? nextOverrides : undefined;
 }
 
+/**
+ * Profiles are held and persisted with `options` only, in the current keys: a profile is old
+ * data entering, so it is converted for the adapter its provider runs on, which `config.json`'s
+ * `providers` section names through `extends`.
+ */
+function foldConfigProfiles<T extends { agentProfiles?: AgentProfile[] }>(input: {
+  config: T;
+  providers: Record<string, ProviderOverride> | undefined;
+  source: "stored" | "client write";
+  held?: AgentProfile[];
+}): T {
+  const { config, providers, source, held = [] } = input;
+  if (!config.agentProfiles) return config;
+  const convert = (provider: string, options: Record<string, unknown> | undefined) =>
+    convertLegacyOptions({
+      provider: resolveAdapter({ provider, extendsOf: (id) => providers?.[id]?.extends }),
+      options,
+    });
+  const identity = (_provider: string, options: Record<string, unknown> | undefined) => options;
+  const foldWith = (profile: AgentProfile, convertWith: typeof convert) => {
+    const folded = foldProfileFeatureValues<
+      Pick<AgentProfile, "provider" | "options" | "featureValues">
+    >({
+      profile,
+      stored: held.find((candidate) => candidate.id === profile.id),
+      source,
+      convert: convertWith,
+    });
+    const { providerOptions, ...converted } = convertLegacyClaudeUltracode(
+      { ...folded, thinkingOptionId: profile.thinkingOptionId, providerOptions: folded.options },
+      resolveAdapter({ provider: profile.provider, extendsOf: (id) => providers?.[id]?.extends }),
+    );
+    return { ...converted, options: providerOptions };
+  };
+  return {
+    ...config,
+    agentProfiles: config.agentProfiles.map((profile) => {
+      // A malformed value rejects a client write before anything is committed.
+      if (source === "client write") return foldWith(profile, convert);
+      try {
+        return foldWith(profile, convert);
+      } catch {
+        // A hand-edited `config.json` value that cannot convert must not stop the daemon from
+        // starting; it keeps its keys and is rejected when an agent is created from it.
+        return foldWith(profile, identity);
+      }
+    }),
+  };
+}
+
+/** The config API boundary: the unchanged app reads profile options from `featureValues`. */
+export function toWireDaemonConfig(config: MutableDaemonConfig): MutableDaemonConfig {
+  if (!config.agentProfiles) return config;
+  return { ...config, agentProfiles: config.agentProfiles.map(withLegacyProfileFeatureValues) };
+}
+
 function getValueAtPath(config: MutableDaemonConfig, path: string): unknown {
   return path
     .split(".")
@@ -187,6 +254,7 @@ const RELOADABLE_PATHS = [
   "daemon.relay.requireProtectedSecurity",
   "daemon.mcp.enabled",
   "daemon.mcp.injectIntoAgents",
+  "daemon.usage.enabled",
   "daemon.browserTools.enabled",
   "daemon.hostnames",
   "daemon.cors.allowedOrigins",
@@ -205,6 +273,8 @@ const RELOADABLE_PATHS = [
   "agents.idleRuntimeCleanupMinutes", // CUSTOM(idle-cleanup-period)
   "agents.idleRuntimeCleanupClosedTabMinutes", // CUSTOM(idle-closed-tab)
   "agents.autoArchiveClosedDays", // CUSTOM(auto-archive-closed)
+  "agents.resumeOnStartup",
+  "agents.resumePrompt",
   "agents.providers",
   "agents.catalogRefreshTimeoutMs",
   "agents.metadataGeneration",
@@ -222,6 +292,7 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["daemon.relay.requireProtectedSecurity", "relay.requireProtectedSecurity"],
   ["daemon.mcp.enabled", "mcp.enabled"],
   ["daemon.mcp.injectIntoAgents", "mcp.injectIntoAgents"],
+  ["daemon.usage.enabled", "usage.enabled"],
   ["daemon.browserTools.enabled", "browserTools.enabled"],
   ["daemon.hostnames", "hostnames"],
   ["daemon.cors.allowedOrigins", "cors.allowedOrigins"],
@@ -240,6 +311,8 @@ const PERSISTED_TO_MUTABLE_PATH = new Map<string, string>([
   ["agents.idleRuntimeCleanupMinutes", "idleRuntimeCleanupMinutes"], // CUSTOM(idle-cleanup-period)
   ["agents.idleRuntimeCleanupClosedTabMinutes", "idleRuntimeCleanupClosedTabMinutes"], // CUSTOM(idle-closed-tab)
   ["agents.autoArchiveClosedDays", "autoArchiveClosedDays"], // CUSTOM(auto-archive-closed)
+  ["agents.resumeOnStartup", "resumeOnStartup"],
+  ["agents.resumePrompt", "resumePrompt"],
   ["agents.providers", "providers"],
   ["agents.catalogRefreshTimeoutMs", "catalogRefreshTimeoutMs"],
   ["agents.metadataGeneration", "metadataGeneration"],
@@ -301,6 +374,7 @@ function pickRelayPatch(
 function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMutableConfigPatch {
   return {
     ...pickRelayPatch(patch.relay),
+    usage: patch.usage,
     ...(patch.mcp?.injectIntoAgents !== undefined
       ? { mcp: { injectIntoAgents: patch.mcp.injectIntoAgents } }
       : {}),
@@ -318,6 +392,7 @@ function pickSupportedPatchFields(patch: MutableDaemonConfigPatch): SupportedMut
     ...(patch.enableTerminalAgentHooks !== undefined
       ? { enableTerminalAgentHooks: patch.enableTerminalAgentHooks }
       : {}),
+    ...restartRecoveryPatch(patch),
     ...(patch.idleRuntimeCleanup !== undefined
       ? { idleRuntimeCleanup: patch.idleRuntimeCleanup }
       : {}),
@@ -342,6 +417,18 @@ function pickGithubPatch(
 ): Pick<SupportedMutableConfigPatch, "github"> {
   const configDir = patch.github?.configDir;
   return configDir === undefined ? {} : { github: { configDir } };
+}
+
+// CUSTOM(voice-settings, github-account): readback fixes for the patches deepMerge gets wrong.
+function applyCustomPatchesToReadback(
+  merged: MutableDaemonConfig,
+  patch: Pick<SupportedMutableConfigPatch, "github" | "speech">,
+): void {
+  // The custom model list is replaced, not merged by index.
+  if (patch.speech?.customModels !== undefined && merged.speech) {
+    merged.speech = { ...merged.speech, customModels: patch.speech.customModels };
+  }
+  applyGithubPatchToReadback(merged, patch);
 }
 
 // CUSTOM(github-account): readback drops an empty or cleared configDir.
@@ -417,7 +504,7 @@ export class DaemonConfigStore {
     this.startupPersisted = options.startupPersisted ?? loadPersistedConfig(paseoHome, this.logger);
     this.lastKnownPersisted = this.startupPersisted;
     this.current = MutableDaemonConfigSchema.parse({
-      ...initial,
+      ...foldConfigProfiles({ config: initial, providers: initial.providers, source: "stored" }),
       relay: initial.relay ?? { enabled: true },
       ...this.readSpeech(this.startupPersisted),
     });
@@ -447,6 +534,18 @@ export class DaemonConfigStore {
     return this.enqueue(() => this.applySupportedPatch({ skills: { selection } }));
   }
 
+  private foldPatchProfiles<
+    T extends { agentProfiles?: AgentProfile[]; providers?: Record<string, ProviderOverride> },
+  >(submittedPatch: T): T {
+    return foldConfigProfiles({
+      config: submittedPatch,
+      // The provider graph this request will commit, so `extends` survives a partial edit.
+      providers: deepMerge(this.current.providers ?? {}, submittedPatch.providers ?? {}),
+      source: "client write",
+      held: this.current.agentProfiles,
+    });
+  }
+
   private async applySupportedPatch(
     parsedPatch: SupportedMutableConfigPatch,
   ): Promise<MutableDaemonConfig> {
@@ -455,7 +554,8 @@ export class DaemonConfigStore {
         "Relay is controlled by a daemon launch override. Remove PASEO_RELAY_ENABLED or the relay CLI flag before changing it here.",
       );
     }
-    const { removeProviders = [], ...patch } = parsedPatch;
+    const { removeProviders = [], ...submittedPatch } = parsedPatch;
+    const patch = this.foldPatchProfiles(submittedPatch);
     const { features: speechPatch, ...configPatch } = patch;
     const removedProviders = Array.from(new Set(removeProviders));
     const merged = deepMerge(this.current, configPatch);
@@ -464,11 +564,7 @@ export class DaemonConfigStore {
       merged.skills = { selection: parsedPatch.skills.selection };
     }
     if (parsedPatch.plugins !== undefined) merged.plugins = parsedPatch.plugins;
-    // CUSTOM(voice-settings): the custom model list is replaced, not merged by index.
-    if (parsedPatch.speech?.customModels !== undefined && merged.speech) {
-      merged.speech = { ...merged.speech, customModels: parsedPatch.speech.customModels };
-    }
-    applyGithubPatchToReadback(merged, parsedPatch);
+    applyCustomPatchesToReadback(merged, parsedPatch);
     const next = MutableDaemonConfigSchema.parse(
       omitMetadataGenerationProvidersFromConfig(
         omitProvidersFromConfig(merged, removedProviders),
@@ -479,7 +575,16 @@ export class DaemonConfigStore {
     const configChanged = !isEqualValue(this.current, next);
 
     // A replaced API key leaves the speech view unchanged, so a speech patch always persists.
-    if (!configChanged && removedProviders.length === 0 && speechPatch === undefined) {
+    // Profiles held folded in memory may still be on disk with `featureValues`; saving them writes `options`.
+    const profilesStaleOnDisk =
+      patch.agentProfiles !== undefined &&
+      !isEqualValue(patch.agentProfiles, this.lastKnownPersisted.daemon?.agentProfiles);
+    if (
+      !configChanged &&
+      removedProviders.length === 0 &&
+      speechPatch === undefined &&
+      !profilesStaleOnDisk
+    ) {
       return this.current;
     }
 
@@ -537,7 +642,11 @@ export class DaemonConfigStore {
     // Plugin source changes require the plugin lifecycle operation or a daemon
     // restart. The global switch is independently reloadable.
     const desired = MutableDaemonConfigSchema.parse({
-      ...resolved.mutable,
+      ...foldConfigProfiles({
+        config: resolved.mutable,
+        providers: resolved.mutable.providers,
+        source: "stored",
+      }),
       plugins: this.current.plugins,
       ...this.readSpeech(persisted),
     });
@@ -758,6 +867,7 @@ function mergeMutableAgentPatch(
     patch.providers === undefined &&
     patch.metadataGeneration === undefined &&
     patch.skills === undefined &&
+    !hasRestartRecoveryPatch(patch) &&
     patch.idleRuntimeCleanup === undefined &&
     !hasIdleMinutesPatch(patch) &&
     removeProviders.length === 0
@@ -792,6 +902,7 @@ function mergeMutableAgentPatch(
     next["skills"] = { selection: patch.skills.selection };
   }
 
+  Object.assign(next, restartRecoveryPatch(patch));
   if (patch.idleRuntimeCleanup !== undefined) {
     next["idleRuntimeCleanup"] = patch.idleRuntimeCleanup;
   }
@@ -816,6 +927,7 @@ function mergeMutableDaemonPatch(
   if (patch.mcp?.injectIntoAgents !== undefined) {
     next.mcp = { ...next.mcp, injectIntoAgents: patch.mcp.injectIntoAgents };
   }
+  if (patch.usage) next.usage = patch.usage;
   if (patch.browserTools?.enabled !== undefined) {
     next.browserTools = { ...next.browserTools, enabled: patch.browserTools.enabled };
   }
@@ -1077,4 +1189,15 @@ function pickIdleMinutesPatch(
 
 function clampIdleCleanupMinutes(minutes: number): number {
   return Math.min(1440, Math.max(5, Math.round(minutes)));
+}
+function hasRestartRecoveryPatch(patch: SupportedMutableConfigPatch) {
+  return patch.resumeOnStartup !== undefined || patch.resumePrompt !== undefined;
+}
+function restartRecoveryPatch(
+  patch: Pick<MutableDaemonConfigPatch, "resumeOnStartup" | "resumePrompt">,
+) {
+  return {
+    ...(patch.resumeOnStartup !== undefined ? { resumeOnStartup: patch.resumeOnStartup } : {}),
+    ...(patch.resumePrompt !== undefined ? { resumePrompt: patch.resumePrompt } : {}),
+  };
 }

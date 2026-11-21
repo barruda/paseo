@@ -56,9 +56,9 @@ function completionId(completion: ShellCompletion): string {
 
 function toOption(completion: ShellCompletion): AutocompleteOption {
   if (completion.type === "history") {
-    return { id: completionId(completion), label: completion.command, kind: "command" };
+    return { id: completionId(completion), label: completion.command, icon: "command" };
   }
-  return { id: completionId(completion), label: completion.value, kind: completion.kind };
+  return { id: completionId(completion), label: completion.value, icon: completion.kind };
 }
 
 /**

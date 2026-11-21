@@ -12,7 +12,7 @@ export interface ChatImagesRailProps {
   client: DaemonClient | null;
   serverId: string;
   workspaceRoot: string;
-  contentMaxWidth: number;
+  contentMaxWidth: number | undefined;
   viewportRef: RefObject<StreamViewportHandle | null>;
   visibleMessageIds: ReadonlySet<string>;
   revealLoadedMessage: (messageId: string) => boolean;

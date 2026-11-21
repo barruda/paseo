@@ -259,16 +259,32 @@ function isLegacyProviderEntry(value: unknown): boolean {
 }
 
 function normalizeAgentProviders(value: unknown): unknown {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return value;
+  if (!isConfigRecord(value)) return value;
+
+  let rawProviders = value;
+  const goose = configRecord(value.goose);
+  // COMPAT(gooseProvider): added in v0.17.0, remove after 2027-05-20 once legacy configs have migrated.
+  if (goose?.extends === "acp") {
+    const { extends: _base, description: _description, command, ...overrides } = goose;
+    const usesDefaultCommand =
+      Array.isArray(command) &&
+      command.length === 2 &&
+      command[0] === "goose" &&
+      command[1] === "acp";
+    rawProviders = {
+      ...value,
+      goose: {
+        ...overrides,
+        ...(command !== undefined && !usesDefaultCommand ? { command } : {}),
+      },
+    };
   }
 
-  const rawProviders = value as Record<string, unknown>;
   const hasLegacyEntries = Object.values(rawProviders).some((entry) =>
     isLegacyProviderEntry(entry),
   );
   if (!hasLegacyEntries) {
-    return value;
+    return rawProviders;
   }
 
   const legacyEntries: Record<string, unknown> = {};
@@ -284,7 +300,7 @@ function normalizeAgentProviders(value: unknown): unknown {
 
   const parsedLegacyEntries = AgentProviderRuntimeSettingsMapSchema.safeParse(legacyEntries);
   if (!parsedLegacyEntries.success) {
-    return value;
+    return rawProviders;
   }
 
   return {
@@ -319,6 +335,7 @@ export const PersistedConfigSchema = z
           })
           .passthrough()
           .optional(),
+        usage: z.object({ enabled: z.boolean().optional() }).optional(),
         browserTools: z
           .object({
             enabled: z.boolean().optional(),
@@ -416,6 +433,8 @@ export const PersistedConfigSchema = z
         idleRuntimeCleanupClosedTabMinutes: z.number().int().min(5).max(1440).optional(),
         // CUSTOM(auto-archive-closed): days; 0 is off, absent means 2.
         autoArchiveClosedDays: z.number().int().min(0).max(365).optional(),
+        resumeOnStartup: z.boolean().optional(),
+        resumePrompt: z.string().optional(),
         catalogRefreshTimeoutMs: z.number().int().positive().max(2_147_483_647).optional(),
         metadataGeneration: AgentMetadataGenerationSchema.optional(),
         skills: z.object({ selection: AgentSkillSelectionSchema.optional() }).strict().optional(),

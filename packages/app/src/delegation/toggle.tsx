@@ -16,7 +16,7 @@ import { AgentControlTrigger } from "@/composer/agent-controls/control";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useFetchQuery } from "@/data/query";
 import { useInstalledPlugin } from "@/plugins/registry";
-import { pluginSettingsKey } from "@/plugins/settings/use-settings";
+import { pluginSettingsKey } from "@/plugins/settings/query";
 import type { InstalledPlugin } from "@/plugins/types";
 import { toErrorMessage } from "@/utils/error-messages";
 import { DelegationSheet } from "./sheet";

@@ -50,6 +50,7 @@ const LANGUAGE_ALIASES: Record<string, string> = {
   elixir: "ex",
   // CUSTOM(ruby-highlight): ```ruby fences.
   ruby: "rb",
+  terraform: "tf",
 };
 
 function fenceLanguageToExtension(info: string | null | undefined): string | null {

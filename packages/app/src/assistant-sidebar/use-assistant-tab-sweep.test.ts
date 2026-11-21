@@ -9,7 +9,8 @@ const routes = vi.hoisted(() => ({ workspace: [] as string[] }));
 vi.mock("@/navigation/workspace-route-navigation", () => ({
   navigateToHostWorkspaceRoute: (route: string) => routes.workspace.push(route),
 }));
-vi.mock("@/chat-esc-focus/registry", () => ({ focusChatComposer: () => true }));
+const focusChatComposer = vi.hoisted(() => vi.fn(() => true));
+vi.mock("@/chat-esc-focus/registry", () => ({ focusChatComposer }));
 vi.mock("@/stores/navigation-active-workspace-store", () => ({
   getLastWorkspaceSelection: () => null,
 }));
@@ -115,10 +116,16 @@ describe("useAssistantTabSweep", () => {
   it("closes a chat tab opened later in another Desk and shows the assistant Desk instead", () => {
     seedSession({ agents: [["chat", agent()]] });
     renderHook(() => useAssistantTabSweep());
+    // CUSTOM(pm-focus): the sweep is not the user opening the Project Manager.
+    vi.useFakeTimers();
+    focusChatComposer.mockClear();
 
     act(() => {
       openChatTab();
     });
+    vi.advanceTimersByTime(5000);
+    vi.useRealTimers();
+    expect(focusChatComposer).not.toHaveBeenCalled();
 
     expect(useAssistantSidebarStore.getState().chat).toEqual({ serverId: "s1", agentId: "chat" });
     expect(useDesksStore.getState().activeDeskId).toBe(ASSISTANT_DESK_ID);

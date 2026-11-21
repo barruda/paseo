@@ -17,6 +17,8 @@ export type MessageInputKeyboardActionKind =
   | "voice-toggle"
   | "voice-mute-toggle"
   | "mode-cycle"
+  | "model-toggle"
+  | "effort-cycle"
   // CUSTOM(model-picker)
   | "model-picker"
   // CUSTOM(active-workspace-cycle)
@@ -70,6 +72,7 @@ export type KeyboardActionId =
   | "workspace.project.pick"
   | "worktree.new"
   | "workspace.archive"
+  | "workspace.archive.undo"
   | "workspace.pin"
   // CUSTOM(workspace-rename-f2)
   | "workspace.rename"

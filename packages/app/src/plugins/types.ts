@@ -11,11 +11,15 @@ import type {
   PluginFilePanelContribution as SDKPluginFilePanelContribution,
   PluginCommandCenterItemContribution as SDKPluginCommandCenterItemContribution,
   PluginClientSlashCommandContribution as SDKPluginClientSlashCommandContribution,
+  PluginComposerItemContribution,
+  PluginNewWorkspaceItemContribution,
   PluginComposerPillContribution as SDKPluginComposerPillContribution,
   PluginSidebarContribution as SDKPluginSidebarContribution,
+  PluginSidebarViewContribution,
   PluginSidebarItemContribution as SDKPluginSidebarItemContribution,
   PluginStatusBarItemContribution as SDKPluginStatusBarItemContribution, // CUSTOM(status-bar)
   PluginAssistantSidebarViewContribution as SDKPluginAssistantSidebarViewContribution, // CUSTOM(pm-sidebar-decisions)
+  PluginWorkspaceRowBadgeItemContribution as SDKPluginWorkspaceRowBadgeItemContribution,
   PluginScreenContribution as SDKPluginScreenContribution,
   PluginSettingsScreenContribution as SDKPluginSettingsScreenContribution,
   PluginTimelineRendererContribution,
@@ -36,6 +40,8 @@ type PluginSidebarItemContribution = SDKPluginSidebarItemContribution<PluginText
 type PluginStatusBarItemContribution = SDKPluginStatusBarItemContribution<PluginText>;
 // CUSTOM(pm-sidebar-decisions)
 type PluginAssistantSidebarViewContribution = SDKPluginAssistantSidebarViewContribution<PluginText>;
+type PluginWorkspaceRowBadgeItemContribution =
+  SDKPluginWorkspaceRowBadgeItemContribution<PluginText>;
 type PluginScreenContribution = SDKPluginScreenContribution<PluginText>;
 type PluginSettingsScreenContribution = SDKPluginSettingsScreenContribution<PluginText>;
 type WorkspacePanelInput = SDKPluginWorkspacePanelContribution<PluginText>;
@@ -54,6 +60,7 @@ export interface EvaluatedPlugin {
   cleanup: PluginCleanup;
   surfaces: PluginScreenContribution[];
   settingsScreens: PluginSettingsScreenContribution[];
+  sidebarViews: PluginSidebarViewContribution<PluginText>[];
   sidebarItems: Record<PluginSidebarSection, PluginSidebarItemContribution[]>;
   // COMPAT(pluginSidebarAliases): added in v0.11.0, remove after 2027-03-29
   /** `addSidebarItem` registrations, so `/plugin/<id>/sidebar/<item>` routes keep resolving. */
@@ -62,7 +69,10 @@ export interface EvaluatedPlugin {
   statusBarItems?: PluginStatusBarItemContribution[];
   // CUSTOM(pm-sidebar-decisions): optional for the same reason.
   assistantSidebarViews?: PluginAssistantSidebarViewContribution[];
+  workspaceRowBadgeItems: PluginWorkspaceRowBadgeItemContribution[];
   filePanels: PluginFilePanelContribution[];
+  composerItems: PluginComposerItemContribution[];
+  newWorkspaceItems: PluginNewWorkspaceItemContribution[];
   workspacePanels: EvaluatedPluginWorkspacePanelContribution[];
   commandCenterItems: PluginCommandCenterItemContribution[];
   clientSlashCommands: PluginClientSlashCommandContribution[];
@@ -81,6 +91,8 @@ export interface InstalledPlugin extends EvaluatedPlugin {
   paseo: PaseoApi;
   /** Calls one of the plugin's server RPC methods on its host. */
   invoke(method: string, input: unknown): Promise<unknown>;
+  /** Subscribes to one of the plugin's server subscriptions; released with the lifetime. */
+  subscribe: import("@getpaseo/plugin/client/host").PluginSubscribe;
   serverId: string;
   requirements?: PluginRequirements;
   clientBundle: string;
@@ -92,11 +104,14 @@ export type {
   PluginAttachmentSourceContribution,
   PluginCommandCenterItemContribution,
   PluginClientSlashCommandContribution,
+  PluginComposerItemContribution,
+  PluginNewWorkspaceItemContribution,
   PluginComposerPillContribution,
   PluginSidebarContribution,
   PluginSidebarItemContribution,
   PluginStatusBarItemContribution, // CUSTOM(status-bar)
   PluginAssistantSidebarViewContribution, // CUSTOM(pm-sidebar-decisions)
+  PluginWorkspaceRowBadgeItemContribution,
   PluginScreenContribution,
   PluginSettingsScreenContribution,
   PluginThemeContribution,

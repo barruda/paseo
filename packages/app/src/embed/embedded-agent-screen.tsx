@@ -141,13 +141,14 @@ function EmbeddedConversation({
   targetKey: string;
   onOpenWorkspaceFile: PaneContextValue["openFileInWorkspace"];
 }) {
+  const target = useMemo(() => ({ kind: "agent" as const, agentId }), [agentId]);
   return (
     <ComposerEditingScope tabId={tabId} targetKey={targetKey}>
       <RetainedChatContent>
         <AgentPanelContent
           serverId={serverId}
           workspaceId={workspaceId}
-          agentId={agentId}
+          target={target}
           isPaneFocused
           onOpenWorkspaceFile={onOpenWorkspaceFile}
         />

@@ -22,6 +22,9 @@ function installed(
     queryClient: new QueryClient(),
     paseo: {} as InstalledPlugin["paseo"],
     invoke: async () => undefined,
+    subscribe: () => {
+      throw new Error("Subscriptions are not used here");
+    },
     settingsScreens: settingsScreenIds.map((id) => ({
       id,
       title: `Title ${id}`,
@@ -34,6 +37,10 @@ function installed(
       footer: footerIds.map((id) => ({ id, title: `Item ${id}`, Component: () => null })),
     },
     legacySidebarItems: [],
+    sidebarViews: [],
+    workspaceRowBadgeItems: [],
+    composerItems: [],
+    newWorkspaceItems: [],
     filePanels: [],
     workspacePanels: [],
     commandCenterItems: [],

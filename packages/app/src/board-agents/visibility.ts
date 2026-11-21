@@ -4,8 +4,8 @@ import type { Agent } from "@/stores/session-store";
 
 export function isBoardAgentInSession(
   agent: { labels: Record<string, string> },
-  agents: Map<string, Agent> | undefined,
-  agentDetails?: Map<string, Agent>,
+  agents: ReadonlyMap<string, Agent> | undefined,
+  agentDetails?: ReadonlyMap<string, Agent>,
 ): boolean {
   return isBoardAgent(
     agent.labels,

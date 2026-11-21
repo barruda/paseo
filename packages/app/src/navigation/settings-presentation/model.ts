@@ -1,3 +1,5 @@
+import type { ActiveWorkspaceSelection } from "@/stores/last-workspace-selection";
+import { parseHostWorkspaceRouteFromPathname } from "@/utils/host-routes";
 import { createStore } from "zustand/vanilla";
 
 interface SettingsRouteEntry {
@@ -9,12 +11,14 @@ interface SettingsSelectionState {
   selectedServerId: string | null;
   // CUSTOM(settings-filter): survives the sibling-route remounts of the sidebar.
   filterQuery: string;
+  sidebarReturn: (ActiveWorkspaceSelection & { phase: "opening" | "covered" }) | null;
 }
 
 export function createSettingsPresentation() {
   const store = createStore<SettingsSelectionState>(() => ({
     selectedServerId: null,
     filterQuery: "",
+    sidebarReturn: null,
   }));
   const enteredRoutes = new Map<string, string>();
   let inSettings = false;
@@ -22,6 +26,21 @@ export function createSettingsPresentation() {
   let sidebarOwner: object | null = null;
   // CUSTOM(settings-last-page): in-memory, deliberately not reset when leaving Settings.
   let lastPathname: string | null = null;
+
+  function beginSidebarVisit(workspace: ActiveWorkspaceSelection) {
+    store.setState({ sidebarReturn: { ...workspace, phase: "opening" } });
+  }
+
+  function presentContent() {
+    const origin = store.getState().sidebarReturn;
+    if (origin?.phase === "opening") {
+      store.setState({ sidebarReturn: { ...origin, phase: "covered" } });
+    }
+  }
+
+  function clearSidebarReturn() {
+    if (store.getState().sidebarReturn) store.setState({ sidebarReturn: null });
+  }
 
   function attachSidebar() {
     const owner = {};
@@ -42,20 +61,27 @@ export function createSettingsPresentation() {
   function enterRoute(
     { key, pathname }: SettingsRouteEntry,
     workspaceServerId: string | null,
-  ): void {
+  ): boolean {
     const isSettings = pathname === "/settings" || pathname.startsWith("/settings/");
     if (!isSettings) {
       // CUSTOM(settings-last-page): keep sidebarOffset so the scroll position comes back.
+      const origin = store.getState().sidebarReturn;
+      const destination = parseHostWorkspaceRouteFromPathname(pathname);
+      const discardSidebar =
+        origin !== null &&
+        (origin.serverId !== destination?.serverId ||
+          origin.workspaceId !== destination?.workspaceId);
+      clearSidebarReturn();
       sidebarOwner = null;
       store.setState({ filterQuery: "" }); // CUSTOM(settings-filter)
       inSettings = false;
       enteredRoutes.clear();
-      return;
+      return discardSidebar;
     }
     // CUSTOM(settings-last-page)
     if (pathname !== "/settings") lastPathname = pathname;
     // A retained route returning through Back must not replay its old host intent.
-    if (enteredRoutes.get(key) === pathname) return;
+    if (enteredRoutes.get(key) === pathname) return false;
     const isNewVisit = !inSettings;
     inSettings = true;
     enteredRoutes.set(key, pathname);
@@ -66,6 +92,7 @@ export function createSettingsPresentation() {
     } else if (isNewVisit) {
       store.setState({ selectedServerId: workspaceServerId });
     }
+    return false;
   }
 
   function selectHost(serverId: string): void {
@@ -89,5 +116,8 @@ export function createSettingsPresentation() {
     attachSidebar,
     setFilterQuery,
     getLastSettingsPathname,
+    beginSidebarVisit,
+    clearSidebarReturn,
+    presentContent,
   };
 }

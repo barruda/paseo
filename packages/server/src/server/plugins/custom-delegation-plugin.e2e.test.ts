@@ -109,8 +109,11 @@ test("an Opus session gets the rule, the card and a log line", async () => {
       cwd: env.root,
     });
     await expect(waitForCard(env.client, agent.id)).resolves.toEqual({
+      implementerRunner: "claude",
       implementerModel: "sonnet",
       implementerEffort: "low",
+      paseoProvider: "claude",
+      paseoModel: "",
       when: "balanced",
       review: true,
       searchModel: "haiku",

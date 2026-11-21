@@ -16,7 +16,7 @@ import type {
 } from "@/command-center/contributions";
 import { useCommandCenterActions } from "@/command-center/provider";
 import { getIsElectron } from "@/constants/platform";
-import { getIsElectronRuntime } from "@/constants/layout";
+import { usesDesktopBindings } from "@/keyboard";
 import { invokeDesktopCommand } from "@/desktop/electron/invoke";
 import { listenToDesktopEvent } from "@/desktop/electron/events";
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
@@ -64,7 +64,7 @@ export function DoNotDisturbRuntime() {
   const { t } = useTranslation();
   const { overrides } = useKeyboardShortcutOverrides();
   const shortcutPlatform = useMemo(
-    () => ({ isMac: getShortcutOs() === "mac", isDesktop: getIsElectronRuntime() }),
+    () => ({ isMac: getShortcutOs() === "mac", usesDesktopBindings }),
     [],
   );
 

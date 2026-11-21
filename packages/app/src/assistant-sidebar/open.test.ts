@@ -1,5 +1,5 @@
 // CUSTOM(assistant-desk), CUSTOM(pm-sidebar)
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const routes = vi.hoisted(() => ({
   workspace: [] as string[],
@@ -13,7 +13,8 @@ vi.mock("@/stores/navigation-active-workspace-store", () => ({
   getLastWorkspaceSelection: () => routes.last,
 }));
 
-vi.mock("@/chat-esc-focus/registry", () => ({ focusChatComposer: () => true }));
+const focusChatComposer = vi.hoisted(() => vi.fn((_serverId: string, _agentId: string) => true));
+vi.mock("@/chat-esc-focus/registry", () => ({ focusChatComposer }));
 
 import {
   activeDesk,
@@ -30,6 +31,7 @@ import { ASSISTANT_CHAT_LABEL } from "./model";
 import {
   currentAssistantChat,
   explorerShowsAssistant,
+  focusAssistantComposer,
   followAssistantTab,
   isAssistantChatInSession,
   openAssistantDesk,
@@ -350,5 +352,52 @@ describe("followAssistantTab", () => {
         .filter((tab) => tab.target.kind === "projects_assistant");
     expect(tabsOf("s1:a")).toHaveLength(0);
     expect(tabsOf("s1:b")).toHaveLength(1);
+  });
+});
+
+// CUSTOM(pm-focus): the Project Manager composer takes the caret only when the user opens it.
+describe("Project Manager composer focus", () => {
+  const PM = { serverId: "s1", agentId: "chat" };
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    routes.last = { serverId: "s1", workspaceId: "a" };
+    seedSession({ agents: [["chat", agent({ labels: CHAT })]] });
+    focusChatComposer.mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("opening the sidebar (header button, a link to the chat) focuses its composer", () => {
+    openAssistantSidebar({ chat: null });
+    vi.advanceTimersByTime(500);
+    expect(focusChatComposer).toHaveBeenCalledWith("s1", "chat");
+
+    focusChatComposer.mockClear();
+    openAssistantSidebar({ chat: PM });
+    vi.advanceTimersByTime(500);
+    expect(focusChatComposer).toHaveBeenCalledWith("s1", "chat");
+  });
+
+  it("an automatic open (the tab sweep) leaves the caret where it is", () => {
+    openAssistantSidebar({ chat: PM, focusComposer: false });
+    vi.advanceTimersByTime(5000);
+    expect(focusChatComposer).not.toHaveBeenCalled();
+  });
+
+  it("the tab following the sidebar to another workspace does not focus it", () => {
+    openAssistantSidebar({ chat: null, focusComposer: false });
+    followAssistantTab("s1:b");
+    vi.advanceTimersByTime(5000);
+    expect(explorerShowsAssistant("s1:b")).toBe(true);
+    expect(focusChatComposer).not.toHaveBeenCalled();
+  });
+
+  it("focusAssistantComposer focuses the current chat's composer", () => {
+    focusAssistantComposer();
+    vi.advanceTimersByTime(500);
+    expect(focusChatComposer).toHaveBeenCalledWith("s1", "chat");
   });
 });

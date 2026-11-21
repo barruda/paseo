@@ -114,6 +114,7 @@ function mountCard(question: QuestionInput | QuestionInput[]) {
     currentQuestion,
     openTab,
     onRespond,
+    view,
   };
 }
 
@@ -269,5 +270,35 @@ describe("QuestionFormCard click to answer", () => {
 
     card.submit();
     expect(card.submittedAnswers()).toEqual({ Surface: "App", Notes: "Ship it" });
+  });
+});
+
+// Upstream's explicit-navigation checks, kept for the answers that still wait for Next/Submit:
+// multi-select, and a description click that only selects.
+describe("QuestionFormCard explicit navigation", () => {
+  it("keeps picked options visible until Next and submits only on Submit (multi-select)", () => {
+    const card = mountCard([multiSelectQuestion, { ...multiSelectQuestion, header: "More" }]);
+    card.check("Apple");
+    expect(card.view.getByRole("checkbox", { name: "Apple" }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    expect(card.onRespond).not.toHaveBeenCalled();
+    act(() => card.view.getByRole("button", { name: "Next" }).click());
+    card.check("Banana");
+    expect(card.onRespond).not.toHaveBeenCalled();
+    card.submit();
+    expect(card.submittedAnswers()).toEqual({ Fruits: "Apple", More: "Banana" });
+  });
+
+  it("selects an option when its description is clicked without submitting (multi-select)", () => {
+    const card = mountCard({
+      ...multiSelectQuestion,
+      options: [{ label: "Apple", description: "A red fruit" }],
+    });
+    act(() => card.view.getByText("A red fruit").click());
+    expect(card.view.getByRole("checkbox", { name: "Apple" }).getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    expect(card.onRespond).not.toHaveBeenCalled();
   });
 });

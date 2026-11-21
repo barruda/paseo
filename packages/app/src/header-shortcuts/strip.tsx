@@ -6,9 +6,8 @@ import { Shortcut } from "@/components/ui/shortcut";
 import { useIsCompactFormFactor } from "@/constants/layout";
 import { useSettings } from "@/hooks/use-settings"; // CUSTOM(header-shortcuts)
 import { useKeyboardShortcutOverrides } from "@/hooks/use-keyboard-shortcut-overrides";
-import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
+import { useHardwareKeyboardPresent, usesDesktopBindings } from "@/keyboard";
 import { resolveShortcutKeysForAction } from "@/keyboard/keyboard-shortcuts";
-import { getIsElectronRuntime } from "@/constants/layout";
 import { formatShortcut, type ShortcutKey } from "@/utils/format-shortcut";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import { countFittingShortcuts, estimateShortcutWidth, STRIP_MARGIN_PX } from "./fit";
@@ -40,13 +39,13 @@ export function HeaderShortcutsStrip({
 }) {
   const desks = useTaskNavigationStore((s) => s.enabled);
   const compact = useIsCompactFormFactor();
-  const available = useKeyboardShortcutsAvailable();
+  const available = useHardwareKeyboardPresent();
   const widths = useHeaderWidths(layoutKey);
   const { overrides } = useKeyboardShortcutOverrides();
   const enabled = useSettings((settings) => settings.headerShortcuts); // CUSTOM(header-shortcuts)
   if (!enabled || compact || !available || !widths) return null;
 
-  const platform = { isMac: getShortcutOs() === "mac", isDesktop: getIsElectronRuntime() };
+  const platform = { isMac: getShortcutOs() === "mac", usesDesktopBindings };
   const entries = HEADER_SHORTCUTS.flatMap((entry) => {
     if (desks && entry.id === "new-workspace") return [];
     const keys = resolveShortcutKeysForAction(

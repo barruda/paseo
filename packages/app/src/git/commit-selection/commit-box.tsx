@@ -175,7 +175,7 @@ function CommitBoxContent({
         <View style={styles.actions}>
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             onPress={selectAll}
             disabled={count === filePaths.length}
             testID="commit-select-all"
@@ -184,7 +184,7 @@ function CommitBoxContent({
           </Button>
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             onPress={selectNone}
             disabled={count === 0}
             testID="commit-select-none"
@@ -194,7 +194,7 @@ function CommitBoxContent({
           <View style={styles.spacer} />
           <Button
             variant="ghost"
-            size="xs"
+            size="sm"
             leftIcon={Trash2}
             onPress={pressDiscard}
             disabled={count === 0}

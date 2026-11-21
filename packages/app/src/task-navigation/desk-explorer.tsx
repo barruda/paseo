@@ -21,6 +21,7 @@ import {
   collectAllTabs,
   findPaneById,
   selectExplorerSidebarPaneId,
+  selectPaneFocusSuspended,
   useWorkspaceLayoutStore,
 } from "@/stores/workspace-layout-store";
 import {
@@ -35,6 +36,7 @@ import { lockSwitchTurnedOn, resolveDeskExplorerOpen } from "@/explorer-lock/mod
 import { useExplorerLockSetting } from "@/explorer-lock/settings"; // CUSTOM(explorer-lock)
 import { useExplorerLockHydrated, useExplorerLockStore } from "@/explorer-lock/store"; // CUSTOM(explorer-lock)
 import { useAssistantTabFollow } from "@/assistant-sidebar/use-assistant-tab-follow"; // CUSTOM(pm-sidebar)
+import { explorerShowsAssistant, focusAssistantComposer } from "@/assistant-sidebar/open"; // CUSTOM(pm-focus)
 
 const NO_DESK_DRAG = {
   activeDragTabId: null,
@@ -112,6 +114,10 @@ export function useDeskExplorer(scope: DeskTabOwner | null, tabId: string | null
     }
     if (locked) useExplorerLockStore.getState().setOpen(!isTabOpen);
     else if (tabId) useDesksStore.getState().setTabExplorerOpen(tabId, !isTabOpen);
+    else return;
+    // CUSTOM(pm-focus): opening the sidebar on the Project Manager tab is opening the Project Manager.
+    if (!isTabOpen && workspaceKey && explorerShowsAssistant(workspaceKey))
+      focusAssistantComposer();
   }, [isCompact, isCompactExplorer, isTabOpen, locked, tabId, workspaceKey]);
   return {
     workspaceKey,
@@ -149,6 +155,9 @@ export function DeskExplorerDock({
   ...tabActions
 }: DeskExplorerDockProps) {
   const [hoveredCloseTabKey, setHoveredCloseTabKey] = useState<string | null>(null);
+  const paneFocusSuspended = useWorkspaceLayoutStore((state) =>
+    selectPaneFocusSuspended(state, workspaceKey),
+  );
   const layout = useWorkspaceLayoutStore((state) => state.layoutByWorkspace[workspaceKey] ?? null);
   const paneId = useWorkspaceLayoutStore((state) =>
     selectExplorerSidebarPaneId(state, workspaceKey),
@@ -218,6 +227,7 @@ export function DeskExplorerDock({
             normalizedServerId={scope.serverId}
             normalizedWorkspaceId={scope.workspaceId}
             isWorkspaceFocused={isFocused}
+            paneFocusSuspended={paneFocusSuspended}
             closingTabIds={NO_CLOSING_TABS}
             onSelectTab={selectTab}
             onCloseTab={closeTab}

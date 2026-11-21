@@ -20,7 +20,7 @@ interface ContentWidthBoostState {
   windowMaximized: boolean;
   /** Width last patched into the theme by the appearance provider. */
   appliedWidth: number | null;
-  setAppliedWidth(width: number): void;
+  setAppliedWidth(width: number | null): void;
   grow(): void;
   shrink(): void;
   toggleFull(): void;
@@ -53,11 +53,12 @@ export const useContentWidthBoostStore = create<ContentWidthBoostState>()(
   ),
 );
 
+// `undefined` is upstream's full-width preset: nothing to boost.
 export function boostContentMaxWidth(
-  baseWidth: number,
+  baseWidth: number | undefined,
   state: { stepIndex: number; windowMaximized: boolean },
-): number {
-  if (!state.windowMaximized) return baseWidth;
+): number | undefined {
+  if (baseWidth === undefined || !state.windowMaximized) return baseWidth;
   const step = CONTENT_WIDTH_BOOST_STEPS[state.stepIndex] ?? 1;
   return step === "full" ? FULL_WIDTH : Math.round(baseWidth * step);
 }
@@ -78,6 +79,7 @@ export function useContentWidthBoostRerender(): void {
   useContentWidthBoostStore((s) => s.appliedWidth);
 }
 
-export function useAppliedContentMaxWidth(fallback: number): number {
+// upstream width presets may leave the width unset (full width), so the fallback can be too
+export function useAppliedContentMaxWidth(fallback: number | undefined): number | undefined {
   return useContentWidthBoostStore((s) => s.appliedWidth) ?? fallback;
 }

@@ -25,11 +25,8 @@ import { isWeb } from "@/constants/platform";
 import { useKeyboardActionDispatcher } from "@/keyboard/keyboard-action-dispatcher-context";
 import { getShortcutOs } from "@/utils/shortcut-platform";
 import { focusWithRetries } from "@/utils/web-focus";
-import {
-  OverlayLayerProvider,
-  useGlobalWebOverlayLayer,
-  useWebOverlayRegistration,
-} from "@/lib/overlay-root";
+import { OverlayLayerProvider, useGlobalOverlayLayer } from "@/lib/overlay-root";
+import { useOverlayRegistration, type KeyboardInputEvent } from "@/keyboard";
 import {
   buildModelPickerRows,
   MODEL_PICKER_PROJECT_KEY,
@@ -121,6 +118,17 @@ function toSelection(controls: AgentControlCommandCenterSource): ModelPickerSele
 }
 
 /** Ctrl+M in a composer: pick a model from any provider, and its effort, from the keyboard. */
+const MODEL_PICKER_OVERLAY_KEYS = [
+  "Escape",
+  "Enter",
+  "ArrowDown",
+  "ArrowUp",
+  "ArrowLeft",
+  "ArrowRight",
+  "d",
+  "D",
+] as const;
+
 export function ModelPicker() {
   const controls = useModelPickerStore((state) => state.controls);
   const sourceId = useModelPickerStore((state) => state.sourceId);
@@ -140,7 +148,7 @@ function ModelPickerPanel({
 }) {
   const close = useModelPickerStore((state) => state.close);
   const setPendingEffort = useModelPickerStore((state) => state.setPendingEffort);
-  const modalLayer = useGlobalWebOverlayLayer("modal", isWeb);
+  const modalLayer = useGlobalOverlayLayer("modal", isWeb);
   const inputRef = useRef<EditingTextInputHandle>(null);
   const listRef = useRef<FlatList<PickerRow>>(null);
   const [query, setQueryState] = useState("");
@@ -339,7 +347,7 @@ function ModelPickerPanel({
   );
 
   const handleWebKeyDown = useCallback(
-    (event: KeyboardEvent) => {
+    (event: KeyboardInputEvent) => {
       const modifier = getShortcutOs() === "mac" ? event.metaKey : event.ctrlKey;
       if (!key(event.key, modifier)) return false;
       event.preventDefault();
@@ -347,7 +355,8 @@ function ModelPickerPanel({
     },
     [key],
   );
-  const setWebOverlayScope = useWebOverlayRegistration({
+  const setWebOverlayScope = useOverlayRegistration({
+    keys: MODEL_PICKER_OVERLAY_KEYS,
     active: isWeb,
     layer: modalLayer,
     onKeyDown: handleWebKeyDown,

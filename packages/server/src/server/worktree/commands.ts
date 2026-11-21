@@ -1,3 +1,5 @@
+import { basename } from "node:path";
+
 import { computeWorktreePath, isPaseoOwnedWorktreeCwd } from "../../utils/worktree.js";
 import {
   archiveByScope,
@@ -206,11 +208,29 @@ async function resolveWorktreeSlugPath(
   repoRoot: string,
   worktreeSlug: string,
 ): Promise<string> {
-  // CUSTOM(project-worktrees-root): computeWorktreePath adds the `<project>-` folder prefix.
-  return computeWorktreePath(
-    repoRoot,
-    worktreeSlug,
-    dependencies.paseoHome,
-    dependencies.paseoWorktreesBaseRoot,
-  );
+  // Worktrees can live anywhere (legacy root or wherever
+  // a plugin placed them), so a slug resolves against the
+  // discovered worktree list for the repo, never a guessed path.
+  const worktrees = await dependencies.workspaceGitService.listWorktrees(repoRoot);
+  let match = worktrees.find((entry) => basename(entry.path) === worktreeSlug);
+  if (!match) {
+    // CUSTOM(project-worktrees-root): beside the project the folder is `<project>-<slug>`;
+    // computeWorktreePath names it, and only a listed worktree counts.
+    const projectPath = await computeWorktreePath(
+      repoRoot,
+      worktreeSlug,
+      dependencies.paseoHome,
+      dependencies.paseoWorktreesBaseRoot,
+    );
+    match = worktrees.find((entry) => entry.path === projectPath);
+  }
+  if (!match) {
+    const found = worktrees.map((entry) => basename(entry.path));
+    throw new Error(
+      found.length > 0
+        ? `Paseo worktree not found for slug ${worktreeSlug}: found ${found.join(", ")}`
+        : `Paseo worktree not found for slug ${worktreeSlug}`,
+    );
+  }
+  return match.path;
 }

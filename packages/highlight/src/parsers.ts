@@ -1,5 +1,7 @@
 import { defineLanguageFacet, Language, StreamLanguage } from "@codemirror/language";
 import { dart } from "@codemirror/legacy-modes/mode/clike";
+import { dockerFile } from "@codemirror/legacy-modes/mode/dockerfile";
+import { shell } from "@codemirror/legacy-modes/mode/shell";
 import { ruby } from "@codemirror/legacy-modes/mode/ruby";
 import { swift } from "@codemirror/legacy-modes/mode/swift";
 import { parser as jsParser } from "@lezer/javascript";
@@ -21,6 +23,7 @@ import { csharpLanguage } from "./csharp/language.js";
 import { astroParser } from "./astro/parser.js";
 import { vueParser } from "./vue/parser.js";
 import { nixLanguage } from "./nix/language.js";
+import { hclLanguage } from "./hcl/language.js";
 import { parser as svelteBaseParser } from "./svelte/parser.js";
 import { configureNesting, defaultNesting } from "./svelte/nesting.js";
 
@@ -28,6 +31,8 @@ function language(parser: Parser): Language {
   return new Language(defineLanguageFacet(), parser);
 }
 
+const shellLanguage = StreamLanguage.define(shell);
+const dockerfileLanguage = StreamLanguage.define(dockerFile);
 const rubyLanguage = StreamLanguage.define(ruby);
 
 const languagesByExtension: Record<string, Language> = {
@@ -77,6 +82,12 @@ const languagesByExtension: Record<string, Language> = {
   yml: language(yamlParser),
   // Rust
   rs: language(rustParser),
+  // Shell
+  sh: shellLanguage,
+  bash: shellLanguage,
+  zsh: shellLanguage,
+  // Docker
+  dockerfile: dockerfileLanguage,
   // Swift
   swift: StreamLanguage.define(swift),
   // Dart
@@ -90,6 +101,10 @@ const languagesByExtension: Record<string, Language> = {
   cs: csharpLanguage,
   // Nix
   nix: nixLanguage,
+  // Terraform / HCL
+  tf: hclLanguage,
+  tfvars: hclLanguage,
+  hcl: hclLanguage,
   // Elixir
   ex: language(elixirParser),
   exs: language(elixirParser),
@@ -108,9 +123,19 @@ const languagesByFilename: Record<string, Language> = {
 };
 
 export function getLanguageForFile(filename: string): Language | null {
-  const byName = languagesByFilename[filename.split(/[\\/]/).pop() ?? ""];
+  const basename = filename.slice(
+    Math.max(filename.lastIndexOf("/"), filename.lastIndexOf("\\")) + 1,
+  );
+  if (basename.toLowerCase() === "dockerfile") return dockerfileLanguage;
+  // CUSTOM(ruby-highlight)
+  const byName = languagesByFilename[basename];
   if (byName) return byName;
-  const ext = filename.split(".").pop()?.toLowerCase();
+
+  const dot = basename.lastIndexOf(".");
+  // Callers also pass bare language keys for code fences.
+  if (dot === -1 && basename !== filename) return null;
+
+  const ext = basename.slice(dot + 1).toLowerCase();
   if (!ext) return null;
   return languagesByExtension[ext] ?? null;
 }

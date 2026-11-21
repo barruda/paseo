@@ -2,12 +2,12 @@ import { View } from "react-native";
 import { StyleSheet } from "react-native-unistyles";
 import { Shortcut } from "@/components/ui/shortcut";
 import { useShortcutKeys } from "@/hooks/use-shortcut-keys";
-import { useKeyboardShortcutsAvailable } from "@/keyboard/availability";
+import { useHardwareKeyboardPresent } from "@/keyboard";
 
 /** The model picker's shortcut, shown at the end of the composer controls so it's discoverable. */
 export function ModelPickerShortcutChip() {
   const keys = useShortcutKeys("open-model-picker");
-  const available = useKeyboardShortcutsAvailable();
+  const available = useHardwareKeyboardPresent();
   if (!keys || !available) return null;
   return (
     <View style={styles.chip} testID="model-picker-shortcut-chip">

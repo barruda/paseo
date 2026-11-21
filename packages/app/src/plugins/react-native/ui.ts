@@ -11,6 +11,7 @@ export {
 export { ExternalLink } from "@/components/ui/external-link";
 
 export { SidebarRow, SidebarSeparator } from "@/plugins/sidebar-items/kit";
+export { WorkspaceRowBadge } from "@/plugins/workspace-row-badge-items/kit";
 
 // CUSTOM(status-bar)
 export { StatusBarItem } from "@/plugins/status-bar/kit";
@@ -23,6 +24,7 @@ export { FilePanelLoading as Loading } from "@/file-panels/loading";
 export { SettingsGroup } from "@/components/settings";
 
 export { Icon } from "../icons";
+export { Action, Combobox, Select, Toggle } from "./composer-controls";
 export { Modal } from "./modal";
 export { ScrollView, FlatList } from "./scroll-view";
 export { TextInput } from "./text-input";

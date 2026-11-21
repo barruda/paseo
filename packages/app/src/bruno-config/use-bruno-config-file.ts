@@ -13,7 +13,7 @@ import { useDesktopSettings } from "@/desktop/settings/desktop-settings";
 import { useDaemonConfig } from "@/hooks/use-daemon-config";
 import { useAppSettings } from "@/hooks/use-settings";
 import { downloadTextFile, pickTextFile } from "@/keyboard/shortcut-file-io";
-import { pluginSettingsKey } from "@/plugins/settings/use-settings";
+import { pluginSettingsKey } from "@/plugins/settings/query";
 import { useInstalledPlugin } from "@/plugins/registry";
 import type { InstalledPlugin } from "@/plugins/types";
 import { toErrorMessage } from "@/utils/error-messages";

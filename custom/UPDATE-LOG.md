@@ -68,3 +68,10 @@ Written by update-paseo-source-and-apply-customization.sh. Newest last.
 - Upstream commits pulled: 0
 - Backup tag: `custom-backup/20261030-103528`
 - Customization commits on top: 206
+
+## 2026-11-21 18:54
+
+- Upstream: `8419c2122` → `70300fcda` (v0.17.0, v0.17.0)
+- Upstream commits pulled: 563
+- Backup tag: `custom-backup/20261121-182047`
+- Customization commits on top: 506

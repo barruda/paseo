@@ -11,8 +11,6 @@ import { AppearanceSection } from "./appearance-section";
 
 const GENERAL = "general";
 
-function noop() {}
-
 export function AppearanceTabs() {
   const plugins = useInstalledPlugins();
   const tabs = useMemo(() => resolveAppearancePluginTabs(plugins), [plugins]);
@@ -42,8 +40,6 @@ export function AppearanceTabs() {
           serverId={activeTab.serverId}
           pluginId={activeTab.pluginId}
           screenId={activeTab.screenId}
-          showBackToPlugins={false}
-          onBackToPlugins={noop}
         />
       ) : (
         <AppearanceSection />

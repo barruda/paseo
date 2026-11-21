@@ -16,7 +16,7 @@ import { FormTextInput } from "@/components/ui/form-field";
 import { SegmentedControl, type SegmentedControlOption } from "@/components/ui/segmented-control";
 import { Switch } from "@/components/ui/switch";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
-import { pluginSettingsKey } from "@/plugins/settings/use-settings";
+import { pluginSettingsKey } from "@/plugins/settings/query";
 import type { InstalledPlugin } from "@/plugins/types";
 import { toErrorMessage } from "@/utils/error-messages";
 import {

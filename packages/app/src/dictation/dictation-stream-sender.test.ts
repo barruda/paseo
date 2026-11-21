@@ -69,10 +69,16 @@ class FakeDaemonClient {
     this.isConnected = isConnected;
   }
 
-  emitStreamError(dictationId: string, retryable: boolean): void {
+  // Either `retryable` (our restart tests) or the error text (upstream's drain tests).
+  emitStreamError(dictationId: string, retryableOrError: boolean | string): void {
     const message = {
       type: "dictation_stream_error",
-      payload: { dictationId, error: "Local speech worker exited", retryable },
+      payload: {
+        dictationId,
+        error:
+          typeof retryableOrError === "string" ? retryableOrError : "Local speech worker exited",
+        retryable: typeof retryableOrError === "string" ? true : retryableOrError,
+      },
     } as SessionOutboundMessage;
     for (const listener of this.rawMessageListeners) {
       listener(message);
@@ -428,6 +434,32 @@ describe("DictationStreamSender", () => {
 
     client.emitAck("d1", 1);
     await expect(finish).resolves.toEqual({ dictationId: "d1", text: "ok" });
+  });
+
+  // Overlap with CUSTOM(dictation-live-text): an error while recording restarts or holds the
+  // stream (see "a stream that dies while recording"), so finish no longer fails with that error.
+  // Upstream's finish-time rejection still runs for an error that arrives during finish.
+  it.skip("fails finish with the daemon's stream error instead of waiting for acks", async () => {
+    const client = new FakeDaemonClient();
+    client.autoAck = false;
+    let nextId = 0;
+    const sender = new DictationStreamSender({
+      client,
+      format: "audio/pcm;rate=16000;bits=16",
+      createDictationId: () => `d${++nextId}`,
+    });
+
+    sender.enqueueSegment("seg0");
+    await tick();
+    client.emitStreamError("d1", "Local speech worker request timed out: commit");
+    sender.enqueueSegment("seg1");
+    await tick();
+
+    const finish = sender.finish(1);
+    await expect(promiseOutcome(finish, 1000)).resolves.toBe("rejected");
+    await expect(finish).rejects.toThrow("Local speech worker request timed out");
+    expect(client.finishes).toEqual([]);
+    expect(sender.getSegmentCount()).toBe(2);
   });
 
   it("does not replay long buffered native dictation in one synchronous burst", async () => {

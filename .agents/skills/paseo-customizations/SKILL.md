@@ -34,6 +34,15 @@ rules agents get wrong.
 - Run `npm run typecheck`, `npm run lint -- <files>`, and `npm run format:files -- <files>` before
   committing, per the repo's `CLAUDE.md`.
 - After committing, back up with `git push --force-with-lease fork custom`.
+- **A commit under `custom/plugins/<id>/` is not done until that plugin is reloaded.** The app
+  runs the plugin as last loaded, not as committed, so an unreloaded commit never reaches the
+  user (the PM card redesign `5865569e8` sat unseen for hours this way). In the main checkout,
+  reload right after the commit, in the same turn, on each daemon:
+  `npx tsx packages/cli/src/index.js plugin reload <id> --home ~/.paseo` (and `~/.paseo-telus`).
+  The Projects Assistant reloads `power-workboard` itself only for changes merged through the
+  Workboard; any other agent that commits plugin code owns its reload. A change that also touches
+  `packages/` needs the reload and the build (see "Shipping" below). In a worktree, don't reload:
+  say in the report that the plugin still needs a reload once the change reaches `custom`.
 - Any Warp change (`custom/plugins/warp/`, the Warp browser tab options or keyboard routing, or
   `~/projetos/warp-web-custom`) updates `docs/custom-warp-web-embedded.md` in the same task.
 
@@ -56,7 +65,7 @@ rules agents get wrong.
   build. A second build or dev stack from a worktree runs next to the main checkout's, and the
   user can't tell which version they are using. Do it only once the user asks, and then say which
   checkout the build came from.
-- Plugin-only change: no rebuild. Reload it on each daemon:
+- Plugin-only change: no rebuild, but the reload is mandatory (see Rules). Reload it on each daemon:
   `npx tsx packages/cli/src/index.js plugin reload <id> --home ~/.paseo` (and `~/.paseo-telus`).
 - New plugin: it must be installed on each daemon once. See "One-time setup: plugins" in
   `custom/README.md`. Plugins run unsandboxed, so ask before enabling `pluginsEnabled` on a daemon.

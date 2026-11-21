@@ -341,7 +341,9 @@ if $VERIFY; then
   (cd packages/server && npx vitest run src/server/agent/agent-projections.test.ts --bail=1)
   # agent-profiles: Claude providerOptions plugins, skills and autoMemoryDirectory.
   (cd packages/server && npx vitest run src/server/agent/provider-options.test.ts --bail=1)
-  npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr custom/plugins/btw custom/plugins/critic custom/plugins/jev-router custom/plugins/delegation custom/plugins/later packages/app/src/critic/model.test.ts packages/app/src/critic/form-model.test.ts packages/app/src/jev-router/model.test.ts packages/app/src/jev-router/cycle.test.ts packages/app/src/jev-router/form-model.test.ts packages/app/src/jev-router/new-draft-default.test.ts packages/app/src/jev-router/flash-signal.test.ts packages/app/src/jev-router/skip-next.test.ts packages/app/src/jev-router/triple-esc.test.ts packages/app/src/jev-router/replace-agent-tab.test.ts packages/app/src/delegation/form-model.test.ts packages/app/src/delegation/report-model.test.ts packages/app/src/plugins/client-slash-commands/model.test.ts packages/app/src/plugins/buttons/model.test.ts packages/app/src/shell-command-composer/model.test.ts packages/app/src/file-explorer/folder-links.test.ts --bail=1
+  npx vitest run custom/plugins/shell-command custom/plugins/workspace-tasks custom/plugins/beautiful-chat custom/plugins/tldr custom/plugins/btw custom/plugins/critic custom/plugins/jev-router custom/plugins/delegation custom/plugins/later --bail=1
+  # App tests run with the app's setup: expo modules in their import graph need __DEV__.
+  (cd packages/app && npx vitest run src/critic/model.test.ts src/critic/form-model.test.ts src/jev-router/model.test.ts src/jev-router/cycle.test.ts src/jev-router/form-model.test.ts src/jev-router/new-draft-default.test.ts src/jev-router/flash-signal.test.ts src/jev-router/skip-next.test.ts src/jev-router/triple-esc.test.ts src/jev-router/replace-agent-tab.test.ts src/delegation/form-model.test.ts src/delegation/report-model.test.ts src/plugins/client-slash-commands/model.test.ts src/plugins/buttons/model.test.ts src/shell-command-composer/model.test.ts src/file-explorer/folder-links.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/agent-status-summary.test.ts src/server/lean-claude.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/worktree-merge-status.test.ts --bail=1)
   # The status summary survives daemon restarts; New Agent tab names; pinned tabs.
@@ -387,7 +389,7 @@ if $VERIFY; then
   (cd packages/app && npx vitest run --project browser src/components/ui/hover-card.browser.test.tsx --bail=1)
   (cd packages/app && npx vitest run src/file-panels/html-preview-assets.test.ts src/file-panels/html-preview-navigation.test.ts src/file-panels/html-preview-url.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/html-preview-protocol.test.ts --bail=1)
-  (cd packages/app && npx vitest run src/model-picker/model.test.ts src/model-picker/project.test.ts src/model-picker/focus-routing.test.tsx src/composer/focused-composer.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts src/desktop/browser/shortcuts.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/model-picker/model.test.ts src/model-picker/project.test.ts src/model-picker/focus-routing.test.tsx src/composer/focused-composer.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts src/keyboard/internal/sources/electron-browser.test.ts --bail=1)
   (cd packages/app && npx vitest run src/screens/workspace/workspace-tab-menu.test.ts src/screens/workspace/tab-file-path.test.ts --bail=1)
   (cd packages/app && npx vitest run src/components/sidebar/done-task-archive.test.ts --bail=1)
   (cd packages/app && npx vitest run src/active-workspace-cycle/model.test.ts --bail=1)
@@ -405,7 +407,7 @@ if $VERIFY; then
   # A new bottom panel opens Warp.
   (cd packages/app && npx vitest run src/workspace-tabs/bottom-panel-default.test.ts --bail=1)
   # Ctrl+J crosses ahead of the page in browser tabs.
-  (cd packages/app && npx vitest run src/desktop/browser/shortcuts.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/keyboard/internal/sources/electron-browser.test.ts --bail=1)
   (cd packages/desktop && npx vitest run src/features/browser-keyboard/policy.test.ts --bail=1)
   # Warp tabs without the browser toolbar.
   (cd packages/app && npx vitest run src/desktop/browser/store/state.test.ts src/plugins/host-navigation.test.ts --bail=1)
@@ -423,7 +425,7 @@ if $VERIFY; then
   # Shift+Tab in Tasks mode steps through the Workboard chip, the Desks and the Project Manager.
   (cd packages/app && npx vitest run src/task-navigation/header-cycle.test.ts --bail=1)
   # Right sidebar lock across views (explorer-lock); the Project Manager button is in open.test.ts.
-  (cd packages/app && npx vitest run src/explorer-lock/model.test.ts --bail=1)
+  (cd packages/app && npx vitest run src/explorer-lock/model.test.ts src/explorer-lock/store.test.ts --bail=1)
   # Idle runtime cleanup period (host setting, applied live).
   (cd packages/server && npx vitest run src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts src/server/daemon-config-store.test.ts --bail=1)
   # Auto-archive of closed sessions (host setting).

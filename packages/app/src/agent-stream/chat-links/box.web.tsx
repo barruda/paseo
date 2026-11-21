@@ -35,7 +35,12 @@ const END_TOLERANCE = 4;
 
 type BoxLayout = { mode: "inline"; width: number } | { mode: "toggle" };
 
-function resolveBoxLayout(panelWidth: number, contentMaxWidth: number): BoxLayout | null {
+function resolveBoxLayout(
+  panelWidth: number,
+  contentMaxWidth: number | undefined,
+): BoxLayout | null {
+  // Full-width chat (upstream width presets): no gutter beside the column.
+  if (contentMaxWidth === undefined) return null;
   const room = (panelWidth - contentMaxWidth) / 2 - RAIL_INSET * 2;
   if (room >= BOX_MIN_WIDTH) return { mode: "inline", width: Math.min(BOX_MAX_WIDTH, room) };
   if (room >= TOGGLE_SIZE) return { mode: "toggle" };

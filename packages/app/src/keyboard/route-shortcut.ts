@@ -37,7 +37,13 @@ export type ShortcutAction =
   | { kind: "router-push"; route: string }
   | { kind: "open-project-picker" }
   | { kind: "callback"; name: ShortcutCallbackName }
-  | { kind: "command-center-toggle"; nextOpen: boolean; scope?: "files" | "content" }
+  | {
+      kind: "command-center-toggle";
+      nextOpen: boolean;
+      tab?: "files";
+      // CUSTOM(workspace-content-search)
+      scope?: "content";
+    }
   | { kind: "shortcuts-dialog-toggle"; nextOpen: boolean };
 
 const NONE: ShortcutAction = { kind: "none" };
@@ -59,6 +65,7 @@ const PASSTHROUGH_DISPATCH: Record<string, KeyboardActionDefinition> = {
   "workspace.new": { id: "workspace.new", scope: "sidebar" },
   "workspace.project.pick": { id: "workspace.project.pick", scope: "workspace" },
   "workspace.archive": { id: "workspace.archive", scope: "sidebar" },
+  "workspace.archive.undo": { id: "workspace.archive.undo", scope: "global" },
   "workspace.pin": { id: "workspace.pin", scope: "sidebar" },
   // CUSTOM(workspace-rename-f2)
   "workspace.tab.rename-current": { id: "workspace.tab.rename-current", scope: "workspace" },
@@ -107,6 +114,8 @@ const MESSAGE_INPUT_DISPATCH: Record<
   },
   "voice-toggle": { id: "message-input.voice-toggle", scope: "message-input" },
   "voice-mute-toggle": { id: "message-input.voice-mute-toggle", scope: "message-input" },
+  "model-toggle": { id: "message-input.model-toggle", scope: "message-input" },
+  "effort-cycle": { id: "message-input.effort-cycle", scope: "message-input" },
   "mode-cycle": { id: "message-input.mode-cycle", scope: "message-input" },
   // CUSTOM(model-picker)
   "model-picker": { id: "message-input.model-picker", scope: "message-input" },
@@ -216,7 +225,7 @@ function routeScopedCommandCenter(action: string, ctx: ShortcutRoutingContext): 
   if (action === "command-center.content") {
     return inWorkspace ? { kind: "command-center-toggle", nextOpen: true, scope: "content" } : NONE;
   }
-  if (inWorkspace) return { kind: "command-center-toggle", nextOpen: true, scope: "files" };
+  if (inWorkspace) return { kind: "command-center-toggle", nextOpen: true, tab: "files" };
   return dispatch({ id: "workspace.project.pick", scope: "workspace" });
 }
 

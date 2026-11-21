@@ -3,7 +3,7 @@
 
 import { settingsRpc } from "@getpaseo/plugin";
 import { JEV_ROUTER_SETTINGS_ID, JevRouterSettingsSchema } from "@getpaseo/protocol/jev-router";
-import { pluginSettingsKey } from "@/plugins/settings/use-settings";
+import { pluginSettingsKey } from "@/plugins/settings/query";
 import type { InstalledPlugin } from "@/plugins/types";
 
 const rpc = settingsRpc(JEV_ROUTER_SETTINGS_ID);

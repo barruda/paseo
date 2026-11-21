@@ -1,12 +1,13 @@
 // CUSTOM(tab-lanes): vertical geometry of a pane's tab rows. One row keeps the tab bar's height.
-import { buttonControlHeight } from "@/components/ui/control-geometry";
-import { WORKSPACE_SECONDARY_HEADER_HEIGHT } from "@/constants/layout";
+import { controlHeightForLayout } from "@/components/ui/control-geometry";
 
 export const TAB_LANES_DROP_KIND = "tab-lanes";
-export const LANE_CHIP_HEIGHT = buttonControlHeight.xs;
+// Lanes only exist on pointer layouts, so these are the pointer-sized control and tab bar heights.
+export const LANE_CHIP_HEIGHT = controlHeightForLayout("sm", false);
+const TAB_BAR_HEIGHT = 36;
 export const LANE_ROW_GAP = 4;
 export const LANE_ROW_STEP = LANE_CHIP_HEIGHT + LANE_ROW_GAP;
-export const LANE_PADDING_TOP = (WORKSPACE_SECONDARY_HEADER_HEIGHT - LANE_CHIP_HEIGHT) / 2;
+export const LANE_PADDING_TOP = (TAB_BAR_HEIGHT - LANE_CHIP_HEIGHT) / 2;
 export const LANE_PADDING_X = 4;
 /** The row that shows below the last one while a tab is dragged. */
 export const LANE_EXTRA_ROW_HEIGHT = LANE_CHIP_HEIGHT + LANE_ROW_GAP + 1;

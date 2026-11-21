@@ -131,7 +131,12 @@ describe("bottom panel", () => {
         shiftKey: false,
         repeat: false,
       },
-      context: { isMac, isDesktop: true, focusScope: "terminal", commandCenterOpen: false },
+      context: {
+        isMac,
+        usesDesktopBindings: true,
+        focusScope: "terminal",
+        commandCenterOpen: false,
+      },
       chordState: { candidateIndices: [], step: 0, timeoutId: null },
       onChordReset: () => undefined,
     });
