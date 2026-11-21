@@ -2359,10 +2359,11 @@ status` and `!ls`, type `!g` + Up: `git status` shows. Type `!cat packages/ap` +
 - **What:**
   - A line of small, soft text under the composer box (12 px, muted) with the session's topic,
     at most 6 words, like a tab title ("Resumo de sessão em uma frase"). It is plain text, not a
-    pill, so it doesn't compete for attention or squeeze the pills; the box moves up about 12 px
-    to make room. Hover it (press it on mobile) for the current request and status in full, plus
-    when, by which model and at what cost the summary was written. It appears once the agent has
-    a summary; summaries from before the topic existed show the request instead.
+    pill, so it doesn't compete for attention or squeeze the pills. It sits 6 px under the box,
+    with the dock's bottom padding below it. Hover it (press it on mobile) for the current
+    request and status in full, plus when, by which model and at what cost the summary was
+    written. It appears once the agent has a summary; summaries from before the topic existed
+    show the request instead.
   - The daemon writes the summary with Haiku through a lean `claude -p` call
     (`lean-claude.ts`: no tools, settings, MCP servers, CLAUDE.md or saved session), about 1-2k
     tokens and $0.0003-0.0007 at list price per call. Not the metadata model: that path starts a
@@ -2399,8 +2400,10 @@ status` and `!ls`, type `!g` + Up: `git status` shows. Type `!cat packages/ap` +
 - **Re-apply:** Add the optional `statusSummary` to the agent snapshot and copy it from the managed
   agent in the payload projection. Start `AgentStatusSummaries` in bootstrap with
   `createLeanClaudeStatusGenerate(config.paseoHome)`. In the app, carry the field through snapshot
-  normalization and render `AgentStatusLine` right after the agent composer; its negative top
-  margin tucks it into the composer's bottom padding.
+  normalization and render `AgentStatusLine` right after the agent composer. Since upstream v0.17
+  (`e9f897a66`) the composer's bottom padding lives on the dock slot, below the line, so the
+  line keeps a 6 px top margin and no bottom padding. If upstream moves that padding back into
+  `Composer`, the line would float too far down: tuck it in with a negative top margin again.
 - **Verify:** `(cd packages/server && npx vitest run src/server/agent-status-summary.test.ts
 src/server/lean-claude.test.ts)` (the update script runs them). On a daemon from this build,
   send an agent a message: a few seconds later the line under the composer box shows the request
