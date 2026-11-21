@@ -17,6 +17,11 @@ export function useModelPickerSource(input: {
   enabled: boolean;
   controls: AgentControlCommandCenterSource;
   project?: ModelPickerProjectSource | null;
+  /**
+   * CUSTOM(model-picker-focus): checked when Ctrl+M fires, so only the composer holding the caret
+   * opens the picker (several composers can be enabled at once).
+   */
+  isActive?: () => boolean;
 }): () => void {
   const { sourceId, enabled, controls } = input;
   const project = input.project ?? null;
@@ -41,6 +46,7 @@ export function useModelPickerSource(input: {
     actions: MODEL_PICKER_ACTIONS,
     enabled,
     priority: 200,
+    isActive: input.isActive,
     handle,
   });
 

@@ -1328,7 +1328,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       textReplacement,
       submitLabel,
     } = resolveMessageInputProps(props);
-    const { isPaneFocused } = useComposerKeyboardScope();
+    const { isPaneFocused, composerId } = useComposerKeyboardScope();
+    // CUSTOM(model-picker-focus): `@/composer/focused-composer` reads it from the focused element.
+    const composerDataSet = useMemo(() => (composerId ? { composerId } : undefined), [composerId]);
     const mode = resolveComposerInputMode(inputMode);
     const { t } = useTranslation();
     const isCompact = useIsCompactFormFactor();
@@ -2385,6 +2387,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
         ref={rootRef}
         style={isFullscreen ? styles.fullscreenContainer : styles.container}
         testID="message-input-root"
+        dataSet={composerDataSet}
         onLayout={handleComposerLayout}
       >
         <MessageInputAutoFocus

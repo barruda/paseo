@@ -361,8 +361,10 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
 
 ## model-picker: Ctrl+M picks the model and effort from the keyboard
 
-- **Added:** 2026-10-08 (based on upstream 0.11.0-beta.2, `b5b43edd6`)
-- **Commit:** `custom: Shift+Tab model and effort picker`
+- **Added:** 2026-10-08 (based on upstream 0.11.0-beta.2, `b5b43edd6`). Changed 2026-11-21:
+  Ctrl+M and ←/→ act on the composer holding the caret.
+- **Commit:** `custom: Shift+Tab model and effort picker`, then
+  `custom: Ctrl+M and ←/→ act on the composer that holds the caret`
 - **Why:** Changing model or effort meant reaching for the composer's dropdowns, or opening the
   command center and typing "model". The model dropdown also searches one provider at a time.
 - **What:**
@@ -392,9 +394,23 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   - Clicking the composer's model chip (desktop layout) opens this picker instead of the model
     dropdown: `CombinedModelSelector` takes `onTriggerPress`, and `AgentControls` /
     `DraftAgentControls` pass an opener (`useModelPickerSource` returns one).
+  - **The target is the composer with the caret** (2026-11-21). Several composers count as active
+    at once: the focused pane's chat and the Project Manager tab in the right sidebar both get
+    `isPaneFocused`, and so would any other `AgentConversationPanel` mounted in a panel. Each
+    registered its Ctrl+M handler and the ←/→ cycling handlers
+    ([task-shortcuts](#task-shortcuts-keyboard-navigation-and-draft-selection-in-tasks-mode),
+    [jev-router-modes](#jev-router-modes-model-focused-or-effort-focused-and-a-locked--)) at the same
+    priority, so the dispatcher ran the newest one, usually the central tab's, even with the
+    caret in the sidebar. The focus check (`isFocusedComposerCaretAtEnd`) read the focused
+    textarea, not the handler's own, so → at the end of the PM's text changed the central agent's
+    effort. Now `composer/focused-composer.ts` names the composer that owns the keyboard (on web,
+    the `data-composer-id` of the focused element's message input root; otherwise the composer
+    whose input took focus last), and those handlers run only for it. Any composer built on
+    `Composer` gets this without per-place code. With the picker open, its keys work as before.
 - **Files:** `packages/app/src/model-picker/` (`model.ts` list/effort/favorite logic with
   `model.test.ts`, `store.ts`, `favorites-store.ts`, `use-model-picker-source.ts`,
-  `model-picker.tsx`). New files; no conflict risk.
+  `model-picker.tsx`, `focus-routing.test.tsx`), `packages/app/src/composer/focused-composer.ts`
+  (+ test). New files; no conflict risk.
 - **Core files touched** (each marked `CUSTOM(model-picker)`):
   - `packages/app/src/keyboard/actions.ts`, `keyboard-action-dispatcher.ts`, `route-shortcut.ts`:
     the `model-picker` message-input kind and its `message-input.model-picker` action.
@@ -409,17 +425,29 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     draft side builds its own controls object from its props, resolving an untouched draft's empty
     model to the provider's default.
   - `packages/app/src/app/_layout.tsx`: `<ModelPicker />` next to `<CommandCenter />`.
+  - Focus targeting (marked `CUSTOM(model-picker-focus)`): `composer/keyboard-scope.tsx` carries a
+    `composerId`; `composer/index.tsx` makes one per `Composer` (or takes `keyboardTargetId`),
+    marks it on input focus and releases it on unmount; `composer/input/input.tsx` puts it on the
+    message input root as `dataSet`; `composer/agent-controls/index.tsx`, `use-model-picker-source.ts`,
+    `jev-router/use-locked-cycle-keys.ts` and `composer/draft/workspace-tab.tsx` (which passes
+    `draft-tab:<tabId>`) gate their handlers with `isActive: () => isComposerKeyboardTarget(id)`.
 - **Re-apply:** Add a message-input keyboard kind that dispatches `message-input.model-picker`,
   bind Ctrl+M to it in the message-input focus scope, and set the mode-cycle binding's combo to
   `""` (keep its id so saved overrides survive). Copy each model's thinking options onto the
   provider selector rows. Call `useModelPickerSource` from the running agent's command-center
   registration (same source id, enabled flag, and controls) and from the draft agent controls (an
   `AgentControlCommandCenterSource` built from its props, enabled while it is the active composer).
-  Mount `<ModelPicker />` in the root layout.
-- **Verify:** `(cd packages/app && npx vitest run src/model-picker/model.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts)`
+  Mount `<ModelPicker />` in the root layout. Give every composer an id in its keyboard scope,
+  record it when its text input focuses (and on the input root for web), and pass
+  `isActive: () => isComposerKeyboardTarget(id)` to every handler that changes that composer's
+  model or effort from the keyboard (Ctrl+M, ←/→, the jev lock, the draft tab's arrows).
+- **Verify:** `(cd packages/app && npx vitest run src/model-picker/model.test.ts src/model-picker/focus-routing.test.tsx src/composer/focused-composer.test.ts src/keyboard/keyboard-shortcuts.test.ts src/keyboard/route-shortcut.test.ts)`
   (the update script runs it). In the app, focus a message input (New Workspace screen and a running
   agent), press Ctrl+M, type part of a model name, press → and Enter, and check the composer's
-  model and effort controls.
+  model and effort controls. With the Project Manager open in the right sidebar, click its
+  composer, press Ctrl+M, → and Enter: the PM's effort changes and the central tab's does not;
+  then the other way round. With the caret inside the PM composer's text (not at its end), ←/→
+  only move the caret, and no agent's model or effort changes.
 
 ## copy-full-file-path: "Copy full file path" in the file tab menu
 

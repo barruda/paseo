@@ -18,21 +18,28 @@ interface ComposerKeyboardScopeValue {
    * pane, which does not take pane focus.
    */
   isActiveComposer: boolean;
+  /**
+   * CUSTOM(model-picker-focus): identifies this composer to `@/composer/focused-composer`, so
+   * shortcuts that act on its agent (Ctrl+M, ←/→) run only when its input holds the caret.
+   */
+  composerId: string;
 }
 
 const ComposerKeyboardScopeContext = createContext<ComposerKeyboardScopeValue>({
   isPaneFocused: false,
   isActiveComposer: false,
+  composerId: "",
 });
 
 export function ComposerKeyboardScopeProvider({
   isPaneFocused,
   isActiveComposer,
+  composerId,
   children,
 }: PropsWithChildren<ComposerKeyboardScopeValue>): ReactElement {
   const value = useMemo(
-    () => ({ isPaneFocused, isActiveComposer }),
-    [isPaneFocused, isActiveComposer],
+    () => ({ isPaneFocused, isActiveComposer, composerId }),
+    [isPaneFocused, isActiveComposer, composerId],
   );
   return (
     <ComposerKeyboardScopeContext.Provider value={value}>

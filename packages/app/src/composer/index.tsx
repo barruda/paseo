@@ -30,6 +30,7 @@ import {
   useMemo,
   useSyncExternalStore,
   useImperativeHandle,
+  useId,
   memo,
   type ReactElement,
 } from "react";
@@ -137,6 +138,7 @@ import { ComposerRecall } from "@/composer/recall";
 import { createMessageSubmissionWriter } from "@/composer/submission/writer";
 import { upgradeEffortBeforeSend } from "@/jev-router/upgrade"; // CUSTOM(jev-router)
 import { ComposerKeyboardScopeProvider, useComposerKeyboardScope } from "@/composer/keyboard-scope";
+import { markComposerFocused, releaseComposerFocus } from "@/composer/focused-composer"; // CUSTOM(model-picker-focus)
 import { useAppSettings } from "@/hooks/use-settings";
 import { RenderProfile } from "@/utils/render-profiler";
 import { AfterPaintPublication } from "@/composer/after-paint-publication";
@@ -1059,6 +1061,11 @@ interface ComposerProps {
    * and nothing else — never branch on it at the call site.
    */
   inputMode?: ComposerInputMode;
+  /**
+   * CUSTOM(model-picker-focus): this composer's id in `@/composer/focused-composer`. Callers
+   * that gate their own shortcuts on it (the draft tab) pass one; otherwise it is generated.
+   */
+  keyboardTargetId?: string;
   /** Renders the current text as static text on the same surface, for content there is nothing to type into. */
   readOnly?: boolean;
   /** Replaces the submit icon with this label, still inside the composer's own toolbar row. */
@@ -1308,7 +1315,11 @@ function ComposerVoiceModeButton({
   );
 }
 
-export function Composer({ isPaneFocused, ...props }: ComposerProps) {
+export function Composer({ isPaneFocused, keyboardTargetId, ...props }: ComposerProps) {
+  // CUSTOM(model-picker-focus): the id shortcuts use to tell this composer's caret from others'.
+  const generatedComposerId = `composer:${useId()}`;
+  const composerId = keyboardTargetId ?? generatedComposerId;
+  useEffect(() => () => releaseComposerFocus(composerId), [composerId]);
   // A compact overlay panel (agent list, explorer) covers the pane without taking its
   // focus. The composer gives up input from the moment the user asks for the panel,
   // not when its motion settles, so the exit action and autocomplete never race it.
@@ -1321,6 +1332,7 @@ export function Composer({ isPaneFocused, ...props }: ComposerProps) {
     <ComposerKeyboardScopeProvider
       isPaneFocused={isPaneFocused}
       isActiveComposer={isPaneFocused && !coveredByOverlayPanel}
+      composerId={composerId}
     >
       <RenderProfile id="ComposerContent">
         <ComposerContent {...props} />
@@ -1329,7 +1341,7 @@ export function Composer({ isPaneFocused, ...props }: ComposerProps) {
   );
 }
 
-type ComposerContentProps = Omit<ComposerProps, "isPaneFocused">;
+type ComposerContentProps = Omit<ComposerProps, "isPaneFocused" | "keyboardTargetId">;
 
 const ComposerContent = memo(ComposerContentImpl);
 
@@ -1492,6 +1504,7 @@ function ComposerContentImpl({
   const isFullscreen = useComposerFullscreen(editingSession);
   const [sendError, setSendError] = useState<string | null>(null);
   const [isMessageInputFocused, setIsMessageInputFocused] = useState(false);
+  const { composerId } = useComposerKeyboardScope(); // CUSTOM(model-picker-focus)
   const [isGithubPickerOpen, setIsGithubPickerOpen] = useState(false);
   const [githubSearchQuery, setGithubSearchQuery] = useState("");
   const [lightboxMetadata, setLightboxMetadata] = useState<AttachmentMetadata | null>(null);
@@ -2523,10 +2536,11 @@ function ComposerContentImpl({
     (focused: boolean) => {
       setIsMessageInputFocused(focused);
       if (focused) {
+        markComposerFocused(composerId); // CUSTOM(model-picker-focus)
         onAttentionInputFocus?.();
       }
     },
-    [onAttentionInputFocus],
+    [composerId, onAttentionInputFocus],
   );
 
   const handleLightboxClose = useCallback(() => {
