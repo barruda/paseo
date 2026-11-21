@@ -11,6 +11,8 @@ export interface CardLabels {
   notDoneKind: { skipped: string; unverified: string; outside: string };
   recommended: string;
   why: string;
+  /** CUSTOM(pm-cards-look): the lead word of the recommendation line. */
+  recommend: string;
   pick: string;
   sent: string;
   sending: string;
@@ -83,6 +85,7 @@ const en = {
     },
     recommended: "recommended",
     why: "Why",
+    recommend: "I recommend",
     pick: "Answer with this option",
     sent: "sent",
     sending: "Sending…",
@@ -198,6 +201,7 @@ const pt: ReportsStrings = {
     },
     recommended: "recomendado",
     why: "Por quê",
+    recommend: "Recomendo",
     pick: "Responder com esta opção",
     sent: "enviado",
     sending: "Enviando…",

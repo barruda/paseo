@@ -104,12 +104,16 @@ function LineText({
   color,
   theme,
   strong,
+  oneLine,
 }: {
   line: ReplyLine;
   color: string;
   theme: Theme;
   strong?: boolean;
+  /** CUSTOM(pm-cards-look): one line with an ellipsis. */
+  oneLine?: boolean;
 }) {
+  const lines = oneLine ? 1 : undefined;
   const style = [
     styles.body,
     styles.shrink,
@@ -126,7 +130,10 @@ function LineText({
         onPress={() => openPmCard(pmCardId)}
         style={[styles.row, styles.shrink]}
       >
-        <Text style={[style, styles.link, { color: theme.colors.accent }]}>
+        <Text
+          numberOfLines={lines}
+          style={[style, styles.link, { color: theme.colors.accent }]}
+        >
           {line.text || pmCardId}
         </Text>
         <Icon name="ArrowUpRight" size={12} color={theme.colors.accent} />
@@ -135,7 +142,7 @@ function LineText({
   const id = line.taskIds[0];
   if (!id || !canOpenTaskReport())
     return (
-      <Text selectable style={style}>
+      <Text selectable numberOfLines={lines} style={style}>
         {line.text}
       </Text>
     );
@@ -146,7 +153,10 @@ function LineText({
       onPress={() => openTaskReport(id)}
       style={[styles.row, styles.shrink]}
     >
-      <Text style={[style, styles.link, { color: theme.colors.accent }]}>
+      <Text
+        numberOfLines={lines}
+        style={[style, styles.link, { color: theme.colors.accent }]}
+      >
         {line.text || shortTaskId(id)}
       </Text>
       <Icon name="ArrowUpRight" size={12} color={theme.colors.accent} />
@@ -163,6 +173,8 @@ function IconLine({
   textColor,
   onFeedback,
   labels,
+  hoverable,
+  oneLine,
 }: {
   icon: string;
   iconColor: string;
@@ -172,6 +184,9 @@ function IconLine({
   textColor?: string;
   onFeedback?: (feedback: string) => Promise<void>;
   labels?: CardLabels;
+  hoverable?: boolean;
+  /** CUSTOM(pm-cards-look): the title on one line with an ellipsis. */
+  oneLine?: boolean;
 }) {
   const row = (
     <View style={styles.rowTop}>
@@ -187,12 +202,19 @@ function IconLine({
         line={line}
         color={textColor ?? theme.colors.foreground}
         theme={theme}
+        oneLine={oneLine}
       />
     </View>
   );
   if (!onFeedback || !labels) return row;
   return (
-    <Commentable theme={theme} labels={labels} onFeedback={onFeedback} inline>
+    <Commentable
+      theme={theme}
+      labels={labels}
+      onFeedback={onFeedback}
+      inline
+      hoverable={hoverable}
+    >
       {row}
     </Commentable>
   );
@@ -366,20 +388,7 @@ function ReplyCard({
   const details = replyDetails(split);
   const blocked = reply.blockers.length > 0;
   const yoursAction = reply.yours !== null && !reply.yours.none;
-  const edge =
-    view.state === "decided"
-      ? c.statusSuccess
-      : view.state === "archived"
-        ? c.border
-        : taskView.state === "settled"
-          ? taskView.tone === "success"
-            ? c.statusSuccess
-            : c.border
-          : blocked
-            ? c.statusDanger
-            : yoursAction
-              ? c.statusWarning
-              : c.border;
+  const hoverable = layout.platform === "web" && !layout.compact;
   const hasNext = reply.next !== null;
   const hasBody =
     reply.done.length +
@@ -396,7 +405,6 @@ function ReplyCard({
         styles.card,
         {
           borderColor: c.border,
-          borderLeftColor: edge,
           backgroundColor: c.surface1,
         },
       ]}
@@ -410,6 +418,8 @@ function ReplyCard({
           line={line}
           theme={theme}
           labels={labels}
+          hoverable={hoverable}
+          oneLine
           onFeedback={
             live ? (text) => say(itemFeedback(line.text, text)) : undefined
           }
@@ -423,6 +433,7 @@ function ReplyCard({
         }))}
         theme={theme}
         labels={labels}
+        hoverable={hoverable}
         onFeedback={
           live ? (item, text) => say(itemFeedback(item, text)) : undefined
         }
@@ -462,7 +473,7 @@ function ReplyCard({
         <Details
           markdown={details}
           initiallyOpen={blocked}
-          hoverable={layout.platform === "web" && !layout.compact}
+          hoverable={hoverable}
           theme={theme}
         />
       ) : null}
@@ -494,18 +505,17 @@ function ReplyCard({
         <Resolution view={view} theme={theme} labels={labels} />
       ) : null}
 
-      {hasNext || (reply.yours && reply.yours.none) ? (
+      {hasNext || reply.yours ? (
         <View style={styles.footer}>
           {reply.next ? (
-            <NextChip
-              next={reply.next}
-              theme={theme}
-              hoverable={layout.platform === "web" && !layout.compact}
-            />
+            <NextChip next={reply.next} theme={theme} hoverable={hoverable} />
           ) : null}
           {reply.yours && reply.yours.none ? (
             <View
-              style={[styles.seal, { borderColor: c.border }]}
+              style={[
+                styles.seal,
+                { borderColor: c.border, backgroundColor: c.surface2 },
+              ]}
               accessibilityLabel="seu: nada"
             >
               <Icon name="Check" size={12} color={c.foregroundMuted} />
@@ -514,17 +524,16 @@ function ReplyCard({
               </Text>
             </View>
           ) : null}
+          {reply.yours && !reply.yours.none ? (
+            <YoursBox
+              line={reply.yours}
+              view={view}
+              taskView={taskView}
+              theme={theme}
+              labels={labels}
+            />
+          ) : null}
         </View>
-      ) : null}
-
-      {reply.yours && !reply.yours.none ? (
-        <YoursBox
-          line={reply.yours}
-          view={view}
-          taskView={taskView}
-          theme={theme}
-          labels={labels}
-        />
       ) : null}
     </View>
   );
@@ -767,14 +776,13 @@ const styles = StyleSheet.create({
   reply: { gap: 8 },
   card: {
     borderWidth: 1,
-    borderLeftWidth: 3,
-    borderRadius: 8,
+    borderRadius: 12,
     paddingHorizontal: 12,
     paddingVertical: 12,
     gap: 8,
     marginVertical: 4,
   },
-  divider: { borderTopWidth: StyleSheet.hairlineWidth, marginVertical: 2 },
+  divider: { borderTopWidth: 1, borderStyle: "dashed", marginVertical: 2 },
   row: { flexDirection: "row", alignItems: "center", gap: 6 },
   rowTop: { flexDirection: "row", alignItems: "flex-start", gap: 6 },
   iconSlot: { width: 16, height: 20, justifyContent: "center" },
@@ -782,9 +790,15 @@ const styles = StyleSheet.create({
   body: { fontSize: 13, lineHeight: 20 },
   strong: { fontWeight: "600" },
   link: { textDecorationLine: "underline" },
-  verb: { fontSize: 12, lineHeight: 20, fontWeight: "600" },
+  verb: {
+    fontSize: 12,
+    lineHeight: 20,
+    fontFamily: "monospace",
+    minWidth: 62,
+  },
   footer: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "center",
     gap: 8,
     marginTop: 2,
@@ -844,22 +858,26 @@ const styles = StyleSheet.create({
   },
   legendText: { fontSize: 12, lineHeight: 16, flexShrink: 1 },
   seal: {
+    marginLeft: "auto",
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
     borderWidth: 1,
     borderRadius: 999,
-    paddingHorizontal: 7,
-    paddingVertical: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
-  sealText: { fontSize: 11 },
+  sealText: { fontSize: 12 },
   yours: {
     flexDirection: "row",
     alignItems: "flex-start",
     gap: 6,
+    marginLeft: "auto",
+    maxWidth: "100%",
+    flexShrink: 1,
     borderWidth: 1,
-    borderRadius: 6,
-    paddingHorizontal: 8,
+    borderRadius: 14,
+    paddingHorizontal: 11,
     paddingVertical: 6,
   },
   yoursLabel: { fontSize: 13, lineHeight: 20, fontWeight: "700" },

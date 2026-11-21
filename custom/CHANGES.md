@@ -9871,3 +9871,38 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
 - **Tests:** `tests/reply-task-sync.test.ts` (task → phase, ref lookup, the `seu` view for none,
   pending, green and neutral, labels, the RPC's input bounds and its answer on a real board before
   and after a dismiss, the per-host id union).
+
+## pm-cards-look: the Project Manager's chat card as a rail, its decisions as tiles
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: Project Manager cards as a rail and decision tiles`
+- **Why:** The report part of the PM's chat card was a column of pills with the proof always
+  showing, under a thick colored edge, and the decision options were a stack of boxes. Picked from
+  mocks: "R1 Trilho" for the report, "D1 Blocos" for the decision.
+- **What:**
+  - **Report (Trilho).** `OutcomeMap` draws a vertical rail: a dot per "pedido" in the evidence
+    color, the quoted ask on one line with the evidence word (mono) after it, and the comment
+    button at the right. The proof and the full ask show while the pointer is over the row (desktop
+    web, `hoverable`), on keyboard focus, or after a tap; the comment button is invisible (still
+    laid out) until then, and an open comment field keeps the row open. Not-done rows join the
+    rail. The "WHAT YOU ASKED" title is now the list's accessibility label. Done lines show the
+    verb in mono with a fixed width and the title on one line.
+  - **Card.** A plain rounded card (no colored left edge); a dashed divider; the footer is one
+    wrapping row with the `próximo` chip on the left and the `seu` as a pill on the right (the
+    "seu: nada" seal too, in gray). `YoursBox` keeps its states.
+  - **Decision (Blocos).** `OptionTiles` (card-parts.tsx) draws the options as tiles with the id,
+    label, `+ gains`, `− costs`, a "recomendado" tag, a green chosen tile and faded others. The chat
+    card and the PM board's waiting card share it. The chat's question is no longer a washed box,
+    and a pending one ends with "Recomendo **<option>**: <why>." (`labels.recommend`). The board's
+    card has no `why` in its data, so it shows no such line.
+  - `reports-timeline` has no layout/platform, so its rows keep the default (tap to reveal).
+- **Core files touched:** none.
+- **Re-apply:** Plugin-only, marked `CUSTOM(pm-cards-look)`: `shared/option-tiles.ts`,
+  `client/assistant/card-parts.tsx` (`OptionTiles`, `QuestionBlock`, `RailRow`, `OutcomeMap`,
+  `Commentable`'s `hoverable`), `client/assistant/AssistantReplyCard.tsx` (card, footer,
+  `YoursBox`, `IconLine`), `client/assistant/TaskReportCard.tsx`, `pm-board/PmBoardScreen.tsx`,
+  `client/assistant/reports-strings.ts` (`recommend`).
+- **Verify:** `cd custom/plugins/power-workboard && npx tsc --noEmit && npx vitest run --bail=1`,
+  then `paseo plugin reload power-workboard`. In a PM reply on desktop: hover a "pedido" row to see
+  the proof and the comment button; tap it on a narrow window; pick a tile on a waiting decision.
+- **Tests:** `tests/option-tiles.test.ts` (recommended, chosen, faded, archived, sending, locked).

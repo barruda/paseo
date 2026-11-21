@@ -69,6 +69,7 @@ function SectionTitle({ text, theme }: { text: string; theme: Theme }) {
 export function TaskReportCard({
   item,
   theme,
+  layout,
   agentId,
 }: PluginTimelineItemProps<ReportCardData>) {
   const report = item.data;
@@ -134,6 +135,7 @@ export function TaskReportCard({
         notDone={report.notDone ?? []}
         theme={theme}
         labels={cardLabels}
+        hoverable={layout.platform === "web" && !layout.compact}
         onFeedback={(text, feedback) =>
           answer(itemFeedback(text, feedback), null)
         }

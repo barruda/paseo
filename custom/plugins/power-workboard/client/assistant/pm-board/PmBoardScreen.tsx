@@ -34,6 +34,7 @@ import {
   usePmCardRequest,
 } from "../nav";
 import { pmAge, pmBoardStrings, type PmBoardStrings } from "./pm-board-strings";
+import { OptionTiles } from "../card-parts"; // CUSTOM(pm-cards-look)
 import { usePmCards, useRefreshPmCards } from "./pm-cards-query";
 
 const COMPACT_WIDTH = 900;
@@ -415,44 +416,18 @@ function CardView({
         </View>
       ) : null}
       {waiting && card.action !== "select-tasks" && card.options.length > 0 ? (
-        <View style={styles.options}>
-          {card.options.map((option) => (
-            <Pressable
-              key={option.id}
-              accessibilityRole="button"
-              disabled={busy}
-              onPress={() => onAnswer(card, { optionId: option.id })}
-              style={({ pressed }) => [
-                styles.option,
-                {
-                  borderColor: c.border,
-                  opacity: busy ? 0.6 : pressed ? 0.8 : 1,
-                },
-              ]}
-            >
-              <View style={styles.optionHead}>
-                <Text style={[styles.optionLabel, { color: c.foreground }]}>
-                  {option.label}
-                </Text>
-                {card.recommend === option.id ? (
-                  <Text style={[styles.meta, { color: c.statusSuccess }]}>
-                    {t.recommended}
-                  </Text>
-                ) : null}
-              </View>
-              {option.gains ? (
-                <Text style={[styles.meta, { color: c.foregroundMuted }]}>
-                  + {t.gains}: {option.gains}
-                </Text>
-              ) : null}
-              {option.costs ? (
-                <Text style={[styles.meta, { color: c.foregroundMuted }]}>
-                  − {t.costs}: {option.costs}
-                </Text>
-              ) : null}
-            </Pressable>
-          ))}
-        </View>
+        <OptionTiles
+          options={card.options}
+          recommend={card.recommend}
+          disabled={busy}
+          onPick={(option) => onAnswer(card, { optionId: option.id })}
+          theme={theme}
+          labels={{
+            recommended: t.recommended,
+            sending: t.sending,
+            chosen: "",
+          }}
+        />
       ) : null}
       {waiting && card.action !== "select-tasks" ? (
         <View style={styles.answerRow}>
