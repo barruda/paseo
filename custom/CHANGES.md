@@ -2944,7 +2944,10 @@ bridge types a command into a new session after Warp bootstraps it`) types the c
     `/write-ticket [focus]` in that chat (a plugin slash command) asks the agent for the final
     ticket between `<ticket>` tags; when its turn ends the plugin replaces the draft's title and
     description with it. The card shows the refinement state; moving it to Ready to start is
-    still the user's call. Reopening uses the same chat while its agent is not archived.
+    still the user's call. Reopening uses the same chat while its agent is not archived. The chat
+    is named `<task title> · refine` (`refinementChatTitle()`; it was `Refine: <title>` until
+    2026-11-21): the kind goes last so the agent list reads by subject, and the title is cut so
+    the suffix fits in 200 characters. Task workers keep the bare task title.
   - **Orchestrators:** the board screen has tabs: **Board**, **Orchestrators** (the admin
     panel), and one closable tab per opened orchestrator. Create as many as needed. Each one has a
     name, a project (or all projects), a schedule, how many tasks at a time, how many tasks per
