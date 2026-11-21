@@ -4,13 +4,15 @@
 // same Explorer tab. "Open in main area" opens the assistant Desk; nothing else does. While that
 // Desk is on screen this tab only says so, with "Show here" to come back (which closes the Desk),
 // so the chat never has two composers on screen. See custom/CHANGES.md.
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo } from "react";
 import { Text, View } from "react-native";
 import { StyleSheet, withUnistyles } from "react-native-unistyles";
 import { useTranslation } from "react-i18next";
 import { Bot, SquareArrowOutUpRight } from "lucide-react-native";
 import { Button } from "@/components/ui/button";
+import { useRetainedPanelActive } from "@/components/retained-panel";
 import { AgentConversationPanel } from "@/panels/agent-panel";
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { PaneProvider, usePaneContext, type PaneContextValue } from "@/panels/pane-context";
 import { definePanel, type PanelPresentation } from "@/panels/panel-registry";
 import { useSessionStore } from "@/stores/session-store";
@@ -78,6 +80,32 @@ function useAssistantDeskInView(): boolean {
   return enabled && deskActive && !boardSelected;
 }
 
+/**
+ * Registers the chat this tab shows with the viewed-timeline sync, which is what fetches and
+ * follows its timeline. The workspace and the Desk only publish the agent tabs of their own panes,
+ * and this Explorer tab is a `projects_assistant` tab, so without this the chat stays "cold" (a
+ * spinner) after the app opens unless another view happens to show it.
+ */
+function useViewedSidebarChat(chat: AssistantChatRef | null, active: boolean): void {
+  const sourceId = `pm-sidebar:${useId()}`;
+  const serverId = chat?.serverId ?? "";
+  const agentId = active ? (chat?.agentId ?? null) : null;
+  const viewedTimelineSync = useSessionStore(
+    (state) => state.sessions[serverId]?.viewedTimelineSync ?? null,
+  );
+  useEffect(() => {
+    if (!agentId) return;
+    void getHostRuntimeStore()
+      .prepareAgentTimeline(serverId, agentId)
+      .catch(() => undefined);
+  }, [agentId, serverId]);
+  useLayoutEffect(() => {
+    if (!agentId || !viewedTimelineSync) return;
+    viewedTimelineSync.replaceVisibleAgentIds(sourceId, [agentId]);
+    return () => viewedTimelineSync.replaceVisibleAgentIds(sourceId, []);
+  }, [agentId, sourceId, viewedTimelineSync]);
+}
+
 function parseChatKey(key: string): AssistantChatRef | null {
   const split = key.indexOf(SEPARATOR);
   if (split < 0) return null;
@@ -96,6 +124,9 @@ function AssistantSidebarPanel() {
   const openDesk = useCallback(() => openAssistantDesk({ chat: chat ?? null }), [chat]);
   const showHere = useCallback(() => void openAssistantSidebar({ chat: chat ?? null }), [chat]);
   const deskInView = useAssistantDeskInView();
+  const panelActive = useRetainedPanelActive();
+  // While the Desk is on screen it shows (and syncs) the chat; this tab shows only a note.
+  useViewedSidebarChat(chat, panelActive && !deskInView);
 
   // Keep the remembered chat in step with what this tab shows, so every other way opens it too.
   useEffect(() => {

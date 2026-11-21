@@ -10,6 +10,11 @@ const openAssistantDesk = vi.hoisted(() => vi.fn());
 const openAssistantSidebar = vi.hoisted(() => vi.fn());
 vi.mock("./open", () => ({ openAssistantDesk, openAssistantSidebar }));
 
+const prepareAgentTimeline = vi.hoisted(() => vi.fn(() => Promise.resolve()));
+vi.mock("@/runtime/host-runtime", () => ({
+  getHostRuntimeStore: () => ({ prepareAgentTimeline }),
+}));
+
 vi.mock("@/panels/agent-panel", async () => {
   const ReactModule = await vi.importActual<typeof import("react")>("react");
   const { usePaneContext } =
@@ -105,6 +110,27 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Projects Assistant sidebar panel", () => {
+  it("registers the chat it shows with the viewed-timeline sync, so its history loads", () => {
+    seedSession([["chat", agent()]]);
+    const replaceVisibleAgentIds = vi.fn();
+    const session = useSessionStore.getState().sessions.s1!;
+    useSessionStore.setState({
+      sessions: {
+        s1: {
+          ...session,
+          viewedTimelineSync: { replaceVisibleAgentIds },
+        } as unknown as SessionState,
+      },
+    });
+    useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });
+    const view = renderPanel();
+    const source = replaceVisibleAgentIds.mock.calls[0]?.[0];
+    expect(replaceVisibleAgentIds).toHaveBeenCalledWith(source, ["chat"]);
+    expect(prepareAgentTimeline).toHaveBeenCalledWith("s1", "chat");
+    view.unmount();
+    expect(replaceVisibleAgentIds).toHaveBeenLastCalledWith(source, []);
+  });
+
   it("shows the remembered chat through a pane pointed at that agent", () => {
     seedSession([["chat", agent()]]);
     useAssistantSidebarStore.setState({ chat: { serverId: "s1", agentId: "chat" } });

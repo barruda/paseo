@@ -9589,6 +9589,10 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     locked, open sidebar moves to another workspace (a task of another workspace, another Desk)
     while showing it, `useAssistantTabFollow` (called from `useDeskExplorer`) moves it there
     (`shouldFollowAssistantTab`, `followAssistantTab`).
+  - The tab registers its chat with the session's `viewedTimelineSync` itself
+    (`useViewedSidebarChat` in `panel.tsx`), while it shows the chat. The workspace and the Desk
+    only publish their panes' `agent` tabs, and this is a `projects_assistant` tab, so without it
+    the chat's timeline stayed `cold` and the tab showed a spinner forever after the app opened.
 - **Files:** `packages/app/src/explorer-lock/` (`model.ts`, `store.ts`, `settings.ts`,
   `strings.ts`, `use-workspace-explorer-lock.ts`, `model.test.ts`);
   `assistant-sidebar/use-has-assistant-chat.ts`, `use-assistant-tab-follow.ts` (and its test); `task-navigation/desk-explorer-target.ts`
@@ -9615,6 +9619,7 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
   restart. In Tasks mode: open the right sidebar, click other tabs, agents and Desks: it stays
   open; close it and switch again: it stays closed; reload: same state. Settings > Bruno's
   Customizations > Tabs: turn the Tasks mode switch off and each tab remembers its own again.
+  Reopen the app with the Project Manager tab in front: the chat loads (no endless spinner).
   Click **Project Manager** in the header: the right sidebar opens on the Project Manager tab with
   the chat, and no Desk opens; click Files, then the button again: the same tab comes back (one
   tab). **Open in main area** in that tab selects the Project Manager Desk (the button lights up)
