@@ -106,7 +106,64 @@ describe("background tools presentation", () => {
       expect(isWaitingBackgroundTool(shell("./check.sh", "Run check"))).toBe(false);
     });
 
+    // 2026-11-21: an agent ended its turn on a long update script writing a log and a
+    // `tail -f | grep` watching it; the tab showed it done.
+    const updateJob = shell(
+      `cd /home/bruno/projetos/paseo && /home/bruno/projetos/paseo/.git/custom-update.sh --continue --install > /home/bruno/uprojects/tmp/continue.log 2>&1; echo "EXIT $?" >> /home/bruno/uprojects/tmp/continue.log`,
+      "Commit merge, verify, build and install the update",
+    );
+    const logWatcher = shell(
+      `tail -n +1 -f /home/bruno/uprojects/tmp/continue.log | grep -E --line-buffered '^==>|^EXIT|FAIL|Error|error:'`,
+      "update script steps and failures",
+    );
+
+    test("recognises a finite job and the log watcher that follows it", () => {
+      expect(isWaitingBackgroundTool(updateJob)).toBe(true);
+      expect(isWaitingBackgroundTool(logWatcher)).toBe(true);
+      expect(buildBackgroundToolsSegments([updateJob, { ...logWatcher, id: "s2" }])).toEqual([
+        { bucket: "waiting", text: "2 waiting" },
+      ]);
+      expect(hasWaitingBackgroundTools([updateJob])).toBe(true);
+    });
+
+    test("recognises finite jobs by exit code, log file or description", () => {
+      expect(isWaitingBackgroundTool(shell("./long.sh; echo $? > /x/rc"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("npm run build > /x/build.log 2>&1"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("npx vitest run a.test.ts &> out.txt"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("make install | tee -a make.log"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("npx vite build > vite.log"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("./ci.sh", "Run the tests"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("./go.sh", "Compilar e testar o app"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("./go.sh", "Deploy to staging"))).toBe(true);
+      // Not enough on its own: no log file, a /dev/null sink, a non-work description.
+      expect(isWaitingBackgroundTool(shell("npm run build"))).toBe(false);
+      expect(isWaitingBackgroundTool(shell("npm run build > /dev/null 2>&1"))).toBe(false);
+      expect(isWaitingBackgroundTool(shell("./run.sh > run.log 2>&1", "Run it"))).toBe(false);
+    });
+
+    test("recognises a filtered log watcher", () => {
+      expect(isWaitingBackgroundTool(shell("tail -f b.log | grep --line-buffered x"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("tail -F b.log | grep -E 'EXIT|FAIL'"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("tail --follow b.log | rg error"))).toBe(true);
+      expect(isWaitingBackgroundTool(shell("tail -f b.log | grep foo"))).toBe(false);
+      expect(
+        isWaitingBackgroundTool(shell("tail -f b.log | grep --line-buffered x & npm run dev")),
+      ).toBe(false);
+    });
+
     test("leaves services and non-shells alone", () => {
+      expect(isWaitingBackgroundTool(shell("npm run dev > dev.log 2>&1", "Build and serve"))).toBe(
+        false,
+      );
+      expect(isWaitingBackgroundTool(shell("npx vite > vite.log"))).toBe(false);
+      expect(isWaitingBackgroundTool(shell("python3 -m http.server", "Serve the build"))).toBe(
+        false,
+      );
+      expect(isWaitingBackgroundTool(shell("./srv.sh", "Start the test server"))).toBe(false);
+      expect(isWaitingBackgroundTool(shell("npm run test -- --watch > t.log"))).toBe(false);
+      expect(isWaitingBackgroundTool(shell("docker compose up > up.log", "Build images"))).toBe(
+        false,
+      );
       expect(isWaitingBackgroundTool(daemon)).toBe(false);
       expect(isWaitingBackgroundTool(shell("npm run dev"))).toBe(false);
       expect(isWaitingBackgroundTool(shell("npx vite --watch"))).toBe(false);

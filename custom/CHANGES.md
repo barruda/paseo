@@ -5821,13 +5821,25 @@ src/desk-docs/launch.test.ts)` (the update script runs the Docs ones). In
 - **Why:** An agent often ends its turn on a background `until …; do sleep 10; done` and Claude
   Code wakes it when that shell exits. The tab showed it finished, with nothing in the timeline
   saying it would come back.
-- **What:** App only; the daemon still sends the plain `backgroundTasks` list. A shell counts as
-  waiting when its command is a wait (`until … do`, `while … sleep`, a leading `sleep N`,
-  `tail --pid`, `inotifywait`, `gh run watch`, `gh pr checks --watch`, bash `wait`) or its
-  description starts with wait/aguard/esper, and the command is not a service (`npm run dev`,
-  `dev-daemon`, `serve`, `vite`, `expo start`, `--watch`, `tail -f`, `docker compose up` without
-  `-d`), which always vetoes. The heuristic lives in `background-tools/presentation.ts`; add a
-  pattern there when an agent's wait is missed. A waiting shell lifts a done or unread agent tab to
+- **What:** App only; the daemon still sends the plain `backgroundTasks` list. Claude Code wakes
+  the agent when any background shell exits, so a shell counts as waiting when it ends on its own
+  and the command is not a service. Waits: the command is a wait (`until … do`, `while … sleep`,
+  a leading `sleep N`, `tail --pid`, `inotifywait`, `gh run watch`, `gh pr checks --watch`, bash
+  `wait`) or the description starts with wait/aguard/esper. Finite jobs (added 2026-11-21, after
+  an agent ended its turn on an update script and the tab looked done): the command records its
+  exit code (`echo "EXIT $?"`, `echo $? > rc`), or it runs a build/test/install word (`build`,
+  `test`, `install`, `update`, `deploy`, `vitest`, `make`, …) redirected to a file (`>`, `>>`,
+  `&>`, `| tee`; not `/dev/null`), or the description has a finite-work verb (build, install,
+  test, verify, commit, merge, deploy, compilar, testar, …) and no server/daemon/serve/watch
+  word. Log watchers: `tail -f <file> | grep` (or `rg`/`awk`) with `--line-buffered` or a filter
+  on EXIT/FAIL/error/done/passed; their `tail -f` does not veto. Services always veto: `npm run
+dev`, `dev-daemon`, `serve`, `http.server`, `vite` (not `vite build`), `expo start`, `--watch`,
+  a bare `tail -f`, `docker compose up` without `-d`. The heuristic lives in
+  `background-tools/presentation.ts`; add a pattern there when an agent's wait is missed. Since
+  upstream v0.17.0 the daemon also sends a `backgroundWork` summary that counts every Claude
+  background shell, and upstream's tab and workspace-row buckets show any of them as `running`
+  (blue, "Running background work"); then the tab never reaches done, so the violet lift below
+  applies only with an older daemon. The Tasks sidebar still uses this heuristic. A waiting shell lifts a done or unread agent tab to
   `waiting`: the status ring in violet (`statusDotWaiting`, hue 300, same generation rule as the
   dot band) turning 2.5× slower. needs_input, failed and running still win. The Tasks sidebar gets
   a `Waiting` state (violet dot) under "In progress" and the "working" filter, and is no longer
@@ -5853,8 +5865,10 @@ src/desk-docs/launch.test.ts)` (the update script runs the Docs ones). In
 - **Verify:** No daemon restart. Tests: `background-tools/presentation.test.ts`,
   `task-navigation/model.test.ts`, `subagents/running.test.ts` (already in the update script). In
   the app: ask an agent to run `sleep 120` in the background and end its turn; the tab shows the
-  violet slow ring, the chip says `1 waiting`, the Tasks row has a violet dot under "In progress";
-  when the shell exits the agent wakes and the ring turns blue.
+  violet slow ring (blue with a v0.17.0+ daemon), the chip says `1 waiting`, the Tasks row has a
+  violet dot under "In progress"; when the shell exits the agent wakes and the ring turns blue.
+  Same for `npm run build > /tmp/b.log 2>&1; echo "EXIT $?" >> /tmp/b.log` plus
+  `tail -f /tmp/b.log | grep --line-buffered EXIT`: the chip says `2 waiting`.
 
 ## github-account: GitHub account per host in Bruno's Customizations
 
