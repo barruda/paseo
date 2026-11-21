@@ -1421,6 +1421,22 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     when: { commandCenter: false, terminal: false },
     payload: { type: "message-input", kind: "dictation-confirm" },
   },
+  {
+    // CUSTOM(dictation-ctrl-enter-sends): Ctrl/Cmd+Enter while recording stops dictation and sends the transcript.
+    id: "message-input-dictation-confirm-send-cmd-enter-mac",
+    action: "message-input.action",
+    combo: "Cmd+Enter",
+    when: { mac: true, commandCenter: false, terminal: false },
+    payload: { type: "message-input", kind: "dictation-confirm-send" },
+  },
+  {
+    // CUSTOM(dictation-ctrl-enter-sends)
+    id: "message-input-dictation-confirm-send-ctrl-enter-non-mac",
+    action: "message-input.action",
+    combo: "Ctrl+Enter",
+    when: { mac: false, commandCenter: false, terminal: false },
+    payload: { type: "message-input", kind: "dictation-confirm-send" },
+  },
 
   {
     id: "message-input-voice-mute-toggle",

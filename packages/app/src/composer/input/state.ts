@@ -105,9 +105,6 @@ interface MessageInputKeyboardActions {
   isDictationRecording: () => boolean;
   markTranscriptForSend: () => void;
   confirmDictation: () => void | Promise<void>;
-  // CUSTOM(dictation-hold-enter-sends): true when the Enter hold owns this press (see
-  // dictation-hold-enter.ts). Absent where key releases can't be watched.
-  holdDictationEnter?: () => boolean;
   cancelDictation: () => void | Promise<void>;
   startDictation: () => void | Promise<void>;
   toggleRealtimeVoice: () => void;
@@ -193,8 +190,12 @@ export function runMessageInputKeyboardAction(
     actions.focusInput();
     return true;
   }
-  // CUSTOM(dictation-hold-enter-sends): a short Enter still inserts, on release; holding sends.
-  if (action === "dictation-confirm" && actions.holdDictationEnter?.()) {
+  // CUSTOM(dictation-ctrl-enter-sends): Ctrl/Cmd+Enter while recording stops dictation and sends
+  // the transcript; otherwise it falls through to the text box's own Ctrl+Enter behavior.
+  if (action === "dictation-confirm-send") {
+    if (!actions.isDictationRecording()) return false;
+    actions.markTranscriptForSend();
+    void actions.confirmDictation();
     return true;
   }
   if (action === "send" || action === "dictation-confirm") {

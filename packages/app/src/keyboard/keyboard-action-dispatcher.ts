@@ -19,6 +19,8 @@ export type KeyboardActionId =
   | "message-input.dictation-toggle"
   | "message-input.dictation-cancel"
   | "message-input.dictation-confirm"
+  // CUSTOM(dictation-ctrl-enter-sends)
+  | "message-input.dictation-confirm-send"
   | "message-input.voice-toggle"
   | "message-input.voice-mute-toggle"
   | "message-input.mode-cycle"
@@ -88,6 +90,8 @@ export type KeyboardActionDefinition =
   | { id: "message-input.dictation-toggle"; scope: KeyboardActionScope }
   | { id: "message-input.dictation-cancel"; scope: KeyboardActionScope }
   | { id: "message-input.dictation-confirm"; scope: KeyboardActionScope }
+  // CUSTOM(dictation-ctrl-enter-sends)
+  | { id: "message-input.dictation-confirm-send"; scope: KeyboardActionScope }
   | { id: "message-input.voice-toggle"; scope: KeyboardActionScope }
   | { id: "message-input.voice-mute-toggle"; scope: KeyboardActionScope }
   | { id: "message-input.mode-cycle"; scope: KeyboardActionScope }

@@ -340,6 +340,22 @@ describe("keyboard-shortcuts", () => {
       payload: { kind: "dictation-toggle" },
     },
     {
+      // CUSTOM(dictation-ctrl-enter-sends)
+      name: "routes Ctrl+Enter to dictation confirm-and-send on non-mac",
+      event: { key: "Enter", code: "Enter", ctrlKey: true },
+      context: { isMac: false, focusScope: "message-input" },
+      action: "message-input.action",
+      payload: { kind: "dictation-confirm-send" },
+    },
+    {
+      // CUSTOM(dictation-ctrl-enter-sends)
+      name: "routes Cmd+Enter to dictation confirm-and-send on mac",
+      event: { key: "Enter", code: "Enter", metaKey: true },
+      context: { isMac: true, focusScope: "message-input" },
+      action: "message-input.action",
+      payload: { kind: "dictation-confirm-send" },
+    },
+    {
       // CUSTOM(model-picker)
       name: "routes Ctrl+M to the model picker from the message input",
       event: { key: "m", code: "KeyM", ctrlKey: true },
@@ -538,16 +554,6 @@ describe("keyboard-shortcuts", () => {
       name: "does not repeat the workspace cycle while Shift+Tab is held",
       event: { key: "Tab", code: "Tab", shiftKey: true, repeat: true },
       context: { focusScope: "message-input" },
-    },
-    {
-      name: "does not bind Cmd+Enter as a rebindable message queue shortcut",
-      event: { key: "Enter", code: "Enter", metaKey: true },
-      context: { isMac: true, focusScope: "message-input" },
-    },
-    {
-      name: "does not bind Ctrl+Enter as a rebindable message queue shortcut",
-      event: { key: "Enter", code: "Enter", ctrlKey: true },
-      context: { isMac: false, focusScope: "message-input" },
     },
     {
       name: "does not interrupt agent when terminal is focused",

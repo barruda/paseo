@@ -617,7 +617,11 @@ function dispatchComposerKeyboardAction(args: DispatchComposerKeyboardActionArgs
   const passthroughAction = resolveMessageInputPassthroughAction(action.id);
   if (!passthroughAction) return false;
   const result = messageInputRef.current?.runKeyboardAction(passthroughAction);
-  if (passthroughAction === "send" || passthroughAction === "dictation-confirm") {
+  if (
+    passthroughAction === "send" ||
+    passthroughAction === "dictation-confirm" ||
+    passthroughAction === "dictation-confirm-send" // CUSTOM(dictation-ctrl-enter-sends)
+  ) {
     return result ?? false;
   }
   return true;
@@ -682,6 +686,7 @@ function ComposerKeyboardRegistration({
       "message-input.dictation-toggle",
       "message-input.dictation-cancel",
       "message-input.dictation-confirm",
+      "message-input.dictation-confirm-send", // CUSTOM(dictation-ctrl-enter-sends)
       "message-input.voice-toggle",
       "message-input.voice-mute-toggle",
     ],
@@ -724,6 +729,9 @@ function resolveMessageInputPassthroughAction(
       return "send";
     case "message-input.dictation-confirm":
       return "dictation-confirm";
+    // CUSTOM(dictation-ctrl-enter-sends)
+    case "message-input.dictation-confirm-send":
+      return "dictation-confirm-send";
     case "message-input.dictation-toggle":
       return "dictation-toggle";
     case "message-input.dictation-cancel":

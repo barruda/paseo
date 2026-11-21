@@ -35,7 +35,6 @@ import { ICON_SIZE, type Theme } from "@/styles/theme";
 import { ArrowUp, Mic, MicOff, CornerDownLeft, Plus, Square } from "lucide-react-native";
 import * as Haptics from "expo-haptics";
 import { useDictation } from "@/hooks/use-dictation";
-import { useDictationEnterHold } from "@/composer/input/dictation-hold-enter"; // CUSTOM(dictation-hold-enter-sends)
 import { hasFinePointer } from "@/hooks/use-fine-pointer";
 import { DictationOverlay } from "@/components/dictation-controls";
 import { RealtimeVoiceOverlay } from "@/components/realtime-voice-overlay";
@@ -1483,7 +1482,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
             sendAfterTranscriptRef.current = true;
           },
           confirmDictation,
-          holdDictationEnter: () => dictationEnterHold.press(), // CUSTOM(dictation-hold-enter-sends)
           cancelDictation,
           startDictation: startDictationIfAvailable,
           toggleRealtimeVoice: handleToggleRealtimeVoiceShortcut,
@@ -1636,19 +1634,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(
       canStart: canStartDictation,
       canConfirm: canConfirmDictation,
       enableDuration: true,
-    });
-
-    // CUSTOM(dictation-hold-enter-sends): holding Enter while recording sends the transcript.
-    const dictationEnterHold = useDictationEnterHold({
-      isRecording: isDictationActive,
-      confirm: () => {
-        sendAfterTranscriptRef.current = false;
-        void confirmDictation();
-      },
-      confirmAndSend: () => {
-        sendAfterTranscriptRef.current = true;
-        void confirmDictation();
-      },
     });
 
     const isRealtimeVoiceForCurrentAgent = computeIsRealtimeVoiceForAgent(

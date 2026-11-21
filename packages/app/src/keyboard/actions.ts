@@ -12,6 +12,8 @@ export type MessageInputKeyboardActionKind =
   | "dictation-toggle"
   | "dictation-cancel"
   | "dictation-confirm"
+  // CUSTOM(dictation-ctrl-enter-sends)
+  | "dictation-confirm-send"
   | "voice-toggle"
   | "voice-mute-toggle"
   | "mode-cycle"

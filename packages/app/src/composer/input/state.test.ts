@@ -17,7 +17,6 @@ import {
   runMessageInputKeyboardAction,
   stopRealtimeVoice,
 } from "./state";
-import { createDictationEnterHold, DICTATION_HOLD_ENTER_SEND_MS } from "./dictation-hold-enter";
 
 // CUSTOM(dictation-live-text)
 describe("composeDictationText", () => {
@@ -200,168 +199,39 @@ describe("dictation keyboard behavior", () => {
   });
 });
 
-// CUSTOM(dictation-hold-enter-sends)
-function createHoldEnterKeyboard() {
-  let isRecording = false;
-  let now = 0;
-  let pending: { at: number; callback: () => void } | null = null;
-  const actions: string[] = [];
-  const hold = createDictationEnterHold({
-    isRecording: () => isRecording,
-    confirm: () => {
-      actions.push("insert");
-      isRecording = false;
-    },
-    confirmAndSend: () => {
-      actions.push("send");
-      isRecording = false;
-    },
-    timer: {
-      set: (callback, ms) => {
-        pending = { at: now + ms, callback };
-        return pending;
-      },
-      clear: (handle) => {
-        if (pending === handle) pending = null;
-      },
-    },
-  });
-  const run = (action: "dictation-confirm" | "dictation-toggle") =>
-    runMessageInputKeyboardAction(action, {
+// CUSTOM(dictation-ctrl-enter-sends)
+describe("Ctrl+Enter during dictation", () => {
+  function run(action: "dictation-confirm" | "dictation-confirm-send", isRecording: boolean) {
+    const calls: string[] = [];
+    const handled = runMessageInputKeyboardAction(action, {
       focusInput: () => undefined,
       isDictationRecording: () => isRecording,
-      markTranscriptForSend: () => actions.push("send transcript"),
+      markTranscriptForSend: () => calls.push("send transcript"),
       confirmDictation: () => {
-        actions.push("confirm");
-        isRecording = false;
-      },
-      holdDictationEnter: hold.press,
-      startDictation: () => {
-        isRecording = true;
+        calls.push("confirm");
       },
       cancelDictation: () => undefined,
+      startDictation: () => undefined,
       toggleRealtimeVoice: () => undefined,
       isRealtimeVoiceActive: false,
       toggleRealtimeVoiceMute: () => undefined,
     });
+    return { handled, calls };
+  }
 
-  return {
-    actions,
-    startDictation: () => run("dictation-toggle"),
-    // The global shortcut runs first, then the composer's window listener sees the keydown.
-    keyDownEnter: ({ repeat = false, seenByWindow = true } = {}) => {
-      const handled = run("dictation-confirm");
-      if (seenByWindow) hold.keyDown(repeat);
-      return handled;
-    },
-    keyUpEnter: () => hold.keyUp(),
-    blur: () => hold.blur(),
-    advance: (ms: number) => {
-      now += ms;
-      if (pending && pending.at <= now) {
-        const { callback } = pending;
-        pending = null;
-        callback();
-      }
-    },
-  };
-}
-
-describe("holding Enter during dictation", () => {
-  it("a short Enter puts the transcript in the composer when released", () => {
-    const keyboard = createHoldEnterKeyboard();
-    keyboard.startDictation();
-
-    expect(keyboard.keyDownEnter()).toBe(true);
-    keyboard.advance(DICTATION_HOLD_ENTER_SEND_MS - 100);
-    expect(keyboard.actions).toEqual([]);
-    keyboard.keyUpEnter();
-    keyboard.advance(DICTATION_HOLD_ENTER_SEND_MS);
-
-    expect(keyboard.actions).toEqual(["insert"]);
+  it("stops dictation and sends the transcript while recording", () => {
+    expect(run("dictation-confirm-send", true)).toEqual({
+      handled: true,
+      calls: ["send transcript", "confirm"],
+    });
   });
 
-  it("a held Enter sends the transcript once the threshold passes", () => {
-    const keyboard = createHoldEnterKeyboard();
-    keyboard.startDictation();
-
-    keyboard.keyDownEnter();
-    keyboard.advance(DICTATION_HOLD_ENTER_SEND_MS);
-    expect(keyboard.actions).toEqual(["send"]);
-    keyboard.keyUpEnter();
-
-    expect(keyboard.actions).toEqual(["send"]);
+  it("does nothing and reports unhandled when not recording", () => {
+    expect(run("dictation-confirm-send", false)).toEqual({ handled: false, calls: [] });
   });
 
-  it("swallows auto-repeat until Enter is released, without confirming twice", () => {
-    const keyboard = createHoldEnterKeyboard();
-    keyboard.startDictation();
-
-    keyboard.keyDownEnter();
-    for (let i = 0; i < 20; i += 1) {
-      keyboard.advance(50);
-      // Returning true keeps the repeat away from the text box (no newline, no message send).
-      expect(keyboard.keyDownEnter({ repeat: true })).toBe(true);
-    }
-    keyboard.keyUpEnter();
-
-    expect(keyboard.actions).toEqual(["send"]);
-    // After the release, Enter is the composer's again.
-    expect(keyboard.keyDownEnter()).toBe(false);
-  });
-
-  it("leaves Enter alone outside dictation", () => {
-    const keyboard = createHoldEnterKeyboard();
-
-    expect(keyboard.keyDownEnter()).toBe(false);
-    keyboard.advance(DICTATION_HOLD_ENTER_SEND_MS);
-    keyboard.keyUpEnter();
-
-    expect(keyboard.actions).toEqual([]);
-  });
-
-  it("inserts when the window never saw Enter go down, as in an embedded browser", () => {
-    const keyboard = createHoldEnterKeyboard();
-    keyboard.startDictation();
-
-    keyboard.keyDownEnter({ seenByWindow: false });
-    keyboard.advance(DICTATION_HOLD_ENTER_SEND_MS);
-
-    expect(keyboard.actions).toEqual(["insert"]);
-  });
-
-  it("inserts when the window loses focus before the threshold", () => {
-    const keyboard = createHoldEnterKeyboard();
-    keyboard.startDictation();
-
-    keyboard.keyDownEnter();
-    keyboard.blur();
-    keyboard.advance(DICTATION_HOLD_ENTER_SEND_MS);
-
-    expect(keyboard.actions).toEqual(["insert"]);
-  });
-
-  it("frees Enter on the next fresh press when a hold's keyup was lost", () => {
-    const keyboard = createHoldEnterKeyboard();
-    keyboard.startDictation();
-    keyboard.keyDownEnter();
-    keyboard.advance(DICTATION_HOLD_ENTER_SEND_MS);
-
-    keyboard.keyDownEnter();
-
-    expect(keyboard.keyDownEnter()).toBe(false);
-  });
-
-  it("does nothing at the threshold when dictation was cancelled during the hold", () => {
-    const keyboard = createHoldEnterKeyboard();
-    keyboard.startDictation();
-    keyboard.keyDownEnter();
-    keyboard.startDictation(); // Ctrl+D again: confirms with send, recording stops
-
-    keyboard.advance(DICTATION_HOLD_ENTER_SEND_MS);
-    keyboard.keyUpEnter();
-
-    expect(keyboard.actions).toEqual(["send transcript", "confirm"]);
+  it("keeps a plain Enter confirming without sending", () => {
+    expect(run("dictation-confirm", true)).toEqual({ handled: true, calls: ["confirm"] });
   });
 });
 
@@ -387,7 +257,7 @@ describe("dictation transcript behavior", () => {
     ]);
   });
 
-  // CUSTOM(dictation-hold-enter-sends): a held Enter over silence must not send the box.
+  // CUSTOM(dictation-ctrl-enter-sends): Ctrl+Enter over silence must not send the box.
   it("sends nothing when an auto-sent transcript comes back empty", () => {
     const actions: string[] = [];
 
