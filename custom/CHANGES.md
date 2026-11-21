@@ -6740,8 +6740,11 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     with feedback, Mark done, Dismiss, Open conversation), running now, numbers and per-day /
     per-project / per-orchestrator bars for 7/14/30 days, filterable history. No badge.
   - **Told in the chat** (`assistant.settings.chat.wakeOnNeedsYou`, default on, a switch in the
-    Projects Assistant profile): tasks entering Needs you are batched for 90 s and sent as one
-    `[Board]` message to the assistant chat agent (`assistant.chatAgentId`). Each line carries
+    Projects Assistant profile): tasks entering Needs you are batched for 12 s
+    (`assistant.settings.chat.wakeDelaySeconds`, 3-300 s, in Settings > Bruno's Customizations >
+    Project Manager > Chat) and sent as one `[Board]` message to the assistant chat agent
+    (`assistant.chatAgentId`). The Dashboard's Needs you card counts down to that wake and then
+    says since when the Project Manager knows about the task. Each line carries
     the reason and the project's review policy (`review: self` or `fresh-agent`). The message
     tells the assistant to handle the tasks first, as its instructions say: review and merge,
     answer an agent's question or give the ok when it can do so with no real risk, fix small
@@ -6839,7 +6842,8 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 
 - **Added:** 2026-11-20
 - **Commit:** `custom: Projects Assistant gets the Needs you list on every wake`; follow-up
-  `custom: fix the Needs you wake edge cases`
+  `custom: fix the Needs you wake edge cases`; follow-up
+  `custom: tell the Project Manager about Needs you sooner`
 - **Why:** A task finished at 14:29 with `needs_input` and the `[Board]` notice did not reach the
   assistant while it answered two quick messages; the user had to ask why nothing moved. The
   notice was not lost or deduplicated: the board retried every 90 s while the chat was busy, so
@@ -6859,6 +6863,12 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     the first idle moment. `requeueUntold` sends one reminder for a task told 10 minutes ago with
     no `board_report` or action since (`delivery.remindedAt`), and `board_report` now stamps
     `delivery.reportedAt`, which suppresses it.
+  - The first wake waits 12 s instead of 90 s (`assistant.settings.chat.wakeDelaySeconds`, 3-300 s,
+    edited in Settings > Bruno's Customizations > Project Manager > Chat). Tasks that arrive close
+    together still share one message; the busy retry and the 10-minute reminder are unchanged.
+    While a wake is armed the Dashboard's Needs you card shows "Notifying the PM in N s"; once the
+    chat is told it shows "With the PM since HH:MM", so a waiting card never looks stalled. The
+    board exposes the deadline as `notifyAt` and the telling as `toldAt` on each Needs you item.
   - `board_reload_plugin` defers the reload to the chat's `agent.turn_ended`
     (`Workboard.requestPluginReload` / `chatTurnEnded`), so board tools stay attached for the whole
     turn. A direct `plugin reload` still retires them until the next message: the daemon rebuilds

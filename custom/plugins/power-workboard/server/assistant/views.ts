@@ -27,6 +27,8 @@ export interface ViewSource {
   /** The inventory's agents (tracked workspaces only). */
   agents: Agent[];
   now: Date;
+  /** CUSTOM(assistant-wake): when the pending wake fires; absent when none is armed. */
+  notifyAt?: string | null;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -114,6 +116,10 @@ export function buildOverview(source: ViewSource): Overview {
     (data.packages ?? []).map((pkg) => [pkg.id, pkg.name]),
   );
   const seenRunning = new Set<string>();
+  // CUSTOM(assistant-wake): only a chat that will be told gets a countdown.
+  const canNotify =
+    (data.assistant?.settings?.chat.wakeOnNeedsYou ?? false) &&
+    !!data.assistant?.chatAgentId;
 
   for (const [taskId, delivery] of Object.entries(
     data.assistant?.deliveries ?? {},
@@ -138,6 +144,10 @@ export function buildOverview(source: ViewSource): Overview {
           ? attempts[attempts.length - 1].index
           : delivery.attempt,
         since: delivery.updatedAt,
+        // CUSTOM(assistant-wake)
+        notifyAt:
+          canNotify && !delivery.toldAt ? (source.notifyAt ?? null) : null,
+        toldAt: delivery.firstToldAt ?? delivery.toldAt ?? null,
         canMerge:
           task.projectId !== null &&
           projects.get(task.projectId)?.isGit === true &&

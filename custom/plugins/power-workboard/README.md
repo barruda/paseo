@@ -190,9 +190,12 @@ You can write to the Project Manager without opening its chat.
 
 Every message that wakes the Project Manager carries the current **Needs you** list (task, project,
 reason, review policy and since when): the `[Board]` wake lists every task still waiting, a quick
-message appends it, and a user message gets it steered into the same turn. While the chat is busy
+message appends it, and a user message gets it steered into the same turn. The first wake waits 12 s
+(`assistant.settings.chat.wakeDelaySeconds`, 3-300 s, in Settings > Bruno's Customizations >
+Project Manager > Chat), so tasks arriving close together share one message. While the chat is busy
 the wake looks again every 10 s; a task told 10 minutes ago with no `board_report` or action since
-is told once more (`delivery.toldAt`, `remindedAt`, `reportedAt`). `board_reload_plugin` reloads
+is told once more (`delivery.toldAt`, `remindedAt`, `reportedAt`). The Dashboard's Needs you card
+counts down to the wake and then says since when the Project Manager knows about the task. `board_reload_plugin` reloads
 the plugin when the chat's turn ends, so the board tools stay attached for the whole turn.
 
 Each message reaches the Project Manager wrapped as `[Quick message <id> from <source>]`. The Project Manager

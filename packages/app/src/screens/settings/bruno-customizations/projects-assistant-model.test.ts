@@ -41,6 +41,7 @@ describe("projects assistant settings model", () => {
         skills: { mode: "all", names: [] },
         memory: true,
         wakeOnNeedsYou: true,
+        wakeDelaySeconds: 12,
         compactAtTokens: 180_000,
       },
     });
@@ -60,6 +61,7 @@ describe("projects assistant settings model", () => {
       skills: { mode: "all", names: [] },
       memory: true,
       wakeOnNeedsYou: true,
+      wakeDelaySeconds: 12,
       compactAtTokens: 180_000,
     });
     expect(chatSettingsValid(edited)).toBe(true);
@@ -89,6 +91,16 @@ describe("projects assistant settings model", () => {
     expect(chatSettingsValid(off)).toBe(true);
     expect(chatSettingsValid(patchChatSettings(base, { compactAtTokens: "180k" }))).toBe(false);
     expect(chatSettingsValid(patchChatSettings(base, { compactAtTokens: "-5" }))).toBe(false);
+  });
+
+  // CUSTOM(assistant-wake)
+  it("edits the wake delay as text and defaults to 12 s", () => {
+    const base = assistantSettingsSchema.parse({});
+    expect(base.chat.wakeDelaySeconds).toBe(12);
+    expect(patchChatSettings(base, { wakeDelaySeconds: "20" }).chat.wakeDelaySeconds).toBe(20);
+    expect(patchChatSettings(base, { wakeDelaySeconds: " " }).chat.wakeDelaySeconds).toBe(12);
+    expect(chatSettingsValid(patchChatSettings(base, { wakeDelaySeconds: "2" }))).toBe(false);
+    expect(chatSettingsValid(patchChatSettings(base, { wakeDelaySeconds: "abc" }))).toBe(false);
   });
 
   it("rejects merge as the default action", () => {

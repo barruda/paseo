@@ -126,6 +126,10 @@ export const dashboardStrings = {
   offHint: "Turn it on in Settings → Bruno's Customizations → Project Manager",
   needsYou: "Needs you",
   needsYouEmpty: "Nothing needs you",
+  // CUSTOM(assistant-wake)
+  notifyIn: (seconds: number) => `Notifying the PM in ${seconds} s`,
+  notifyNow: "Notifying the PM…",
+  withPm: (time: string) => `With the PM since ${time}`,
   running: "Running now",
   runningEmpty: "Nothing is running",
   queued: (n: number) => `${n} queued`,

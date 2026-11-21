@@ -23,6 +23,7 @@ import {
   ASSISTANT_ACTIONS,
   ASSISTANT_DEFAULT_ACTIONS,
   DEFAULT_COMPACT_AT_TOKENS,
+  DEFAULT_WAKE_DELAY_SECONDS,
   GATE_RUN_IN,
   GATE_RUN_IN_LABELS,
   MAX_AUTO_FIXES,
@@ -153,6 +154,11 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
     (compactAtTokens: string) => handleChat({ compactAtTokens }),
     [handleChat],
   );
+  // CUSTOM(assistant-wake)
+  const handleWakeDelay = useCallback(
+    (wakeDelaySeconds: string) => handleChat({ wakeDelaySeconds }),
+    [handleChat],
+  );
   const handleProjectChange = useCallback(
     (update: (settings: AssistantSettings) => AssistantSettings) =>
       setDraft((current) => (current ? update(current) : current)),
@@ -235,6 +241,13 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               initialValue={String(draft.chat.compactAtTokens)}
               onChangeText={handleCompactAt}
               placeholder={String(DEFAULT_COMPACT_AT_TOKENS)}
+            />
+            <SettingsInput
+              label="Wake delay (s)"
+              hint="How long tasks that need you are batched before the board tells the Project Manager. A busy chat retries every 10 s."
+              initialValue={String(draft.chat.wakeDelaySeconds)}
+              onChangeText={handleWakeDelay}
+              placeholder={String(DEFAULT_WAKE_DELAY_SECONDS)}
             />
           </SettingsCard>
           <Text style={settingsStyles.sectionHeaderTitle}>Per project</Text>

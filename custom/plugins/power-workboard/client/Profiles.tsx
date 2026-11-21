@@ -1140,6 +1140,7 @@ const draftOf = (chat: AssistantChatSettings) => ({
   skills: chat.skills,
   memory: chat.memory,
   wakeOnNeedsYou: chat.wakeOnNeedsYou, // CUSTOM(assistant-wake)
+  wakeDelaySeconds: chat.wakeDelaySeconds, // CUSTOM(assistant-wake)
 });
 
 /** The Project Manager's fixed entry: the same editor, without project or schedule fields. */
@@ -1192,6 +1193,7 @@ export function AssistantProfileTab({
       skills: draft.skills,
       memory: draft.memory,
       wakeOnNeedsYou: draft.wakeOnNeedsYou,
+      wakeDelaySeconds: draft.wakeDelaySeconds,
     });
     if (!chat.success) {
       setError(

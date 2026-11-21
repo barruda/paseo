@@ -1,6 +1,6 @@
 // CUSTOM(projects-assistant): the Projects Dashboard. Opens with what needs the user, then what is
 // running, the numbers, charts and the history of the assistant's decisions.
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Pressable,
   StyleSheet,
@@ -48,6 +48,7 @@ import {
   formatTime,
   groupNeedsYou,
   isWide,
+  wakeStatusLine,
 } from "./dashboard-format";
 import { formatClock, progressBadge } from "../checkpoint-format"; // CUSTOM(task-checkpoints)
 import {
@@ -271,6 +272,18 @@ function Button({
 
 // ---- Needs you ----
 
+/** CUSTOM(assistant-wake): a second clock, only while a card counts down to the wake. */
+function useWakeClock(active: boolean): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!active) return;
+    setNow(Date.now());
+    const timer = setInterval(() => setNow(Date.now()), 1_000);
+    return () => clearInterval(timer);
+  }, [active]);
+  return now;
+}
+
 function NeedsYouSection({
   props,
   accents,
@@ -281,6 +294,7 @@ function NeedsYouSection({
   items: NeedsYouItem[] | null;
 }) {
   const { theme } = props;
+  const now = useWakeClock(!!items?.some((item) => item.notifyAt));
   return (
     <Section
       theme={theme}
@@ -309,6 +323,7 @@ function NeedsYouSection({
                 props={props}
                 accents={accents}
                 item={item}
+                now={now}
               />
             ))}
           </View>
@@ -322,10 +337,12 @@ export function NeedsYouCard({
   props,
   accents,
   item,
+  now = Date.now(),
 }: {
   props: Props;
   accents: ProjectAccents;
   item: NeedsYouItem;
+  now?: number;
 }) {
   const { theme } = props;
   const callAction = useRpc(assistantActionRpc);
@@ -360,6 +377,7 @@ export function NeedsYouCard({
     item.reason === "fix-waiting"
       ? fixWaitedText(item.hold, locale)
       : item.detail;
+  const wake = wakeStatusLine(item, now);
 
   return (
     <View
@@ -387,6 +405,16 @@ export function NeedsYouCard({
         </Text>
         <Text style={[styles.meta, muted]}>{formatAge(item.since)}</Text>
       </View>
+      {wake ? (
+        <Text
+          style={[
+            styles.meta,
+            { color: item.notifyAt ? theme.colors.statusWarning : muted.color },
+          ]}
+        >
+          {wake}
+        </Text>
+      ) : null}
       {detail ? (
         <Pressable onPress={() => setExpanded((value) => !value)}>
           <Text

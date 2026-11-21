@@ -17,6 +17,7 @@ import {
   isWide,
   maxDayTotal,
   periodRange,
+  wakeStatusLine,
 } from "../client/assistant/dashboard-format";
 import {
   KIND_LABELS,
@@ -61,6 +62,20 @@ describe("dashboard formatting", () => {
     expect(isWide(true, 1400)).toBe(false);
     expect(isWide(false, 899)).toBe(false);
     expect(isWide(false, 900)).toBe(true);
+  });
+  // CUSTOM(assistant-wake)
+  it("shows the countdown until the PM is told, then since when", () => {
+    const now = Date.parse("2026-01-10T12:00:00Z");
+    expect(
+      wakeStatusLine({ notifyAt: "2026-01-10T12:00:12Z", toldAt: null }, now),
+    ).toBe("Notifying the PM in 12 s");
+    expect(
+      wakeStatusLine({ notifyAt: "2026-01-10T11:59:59Z", toldAt: null }, now),
+    ).toBe("Notifying the PM…");
+    expect(
+      wakeStatusLine({ notifyAt: null, toldAt: "2026-01-10T11:07:00" }, now),
+    ).toBe("With the PM since 11:07");
+    expect(wakeStatusLine({}, now)).toBeNull();
   });
 });
 

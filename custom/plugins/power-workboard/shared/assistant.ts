@@ -101,6 +101,8 @@ export function reviewPolicyFor(
 
 /** CUSTOM(assistant-compact): the chat restarts with a summary once its context reaches this. */
 export const DEFAULT_COMPACT_AT_TOKENS = 180_000;
+/** CUSTOM(assistant-wake): the first wake waits this long, so tasks arriving together share it. */
+export const DEFAULT_WAKE_DELAY_SECONDS = 12;
 /** The agent behind the Project Manager chat (a real Paseo agent with board tools). */
 export const assistantChatSettingsSchema = z.object({
   /** `provider/model`. */
@@ -115,6 +117,16 @@ export const assistantChatSettingsSchema = z.object({
   memory: z.boolean().default(true),
   /** CUSTOM(assistant-wake): tell the chat agent, in a batch, when a task needs the user. */
   wakeOnNeedsYou: z.boolean().default(true),
+  /**
+   * CUSTOM(assistant-wake): seconds before the first wake, so tasks that arrive close together
+   * share one message. A busy chat keeps its own 10 s retry.
+   */
+  wakeDelaySeconds: z
+    .number()
+    .int()
+    .min(3)
+    .max(300)
+    .default(DEFAULT_WAKE_DELAY_SECONDS),
   /**
    * CUSTOM(assistant-compact): once a turn leaves the chat's context at this many tokens or more,
    * the board restarts the chat with a short summary of the recent conversation. 0 turns it off.
@@ -554,6 +566,13 @@ export const needsYouItemSchema = z.object({
   report: reportSchema.nullable(),
   attempt: z.number().int().nullable(),
   since: z.string(),
+  /**
+   * CUSTOM(assistant-wake): when the pending wake fires, while the Project Manager has not been
+   * told about this wait; null otherwise.
+   */
+  notifyAt: z.string().nullable().optional(),
+  /** CUSTOM(assistant-wake): when the Project Manager was told about this wait. */
+  toldAt: z.string().nullable().optional(),
   /** A git project whose work can be merged now. */
   canMerge: z.boolean(),
   /** CUSTOM(resource-pools): for `fix-waiting`: why the fix still waits. */

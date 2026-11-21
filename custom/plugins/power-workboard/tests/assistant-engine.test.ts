@@ -819,10 +819,26 @@ it("a delivery interrupted at merging resumes on start", async () => {
 });
 
 // CUSTOM(assistant-wake): tasks that need the user are told to the chat agent in one batch.
-async function wake(options: { chat?: boolean; setting?: boolean } = {}) {
+async function wake(
+  options: {
+    chat?: boolean;
+    setting?: boolean;
+    /** null: use the stored default instead of the test's 5 ms. */
+    delayMs?: number | null;
+    wakeDelaySeconds?: number;
+  } = {},
+) {
   const s = await scenario({
-    settings: { chat: { wakeOnNeedsYou: options.setting ?? true } },
-    assistant: { wakeDelayMs: 5 },
+    settings: {
+      chat: {
+        wakeOnNeedsYou: options.setting ?? true,
+        ...(options.wakeDelaySeconds !== undefined
+          ? { wakeDelaySeconds: options.wakeDelaySeconds }
+          : {}),
+      },
+    },
+    assistant:
+      options.delayMs === null ? {} : { wakeDelayMs: options.delayMs ?? 5 },
   });
   let chatId: string | null = null;
   if (options.chat ?? true) {
@@ -909,6 +925,53 @@ it("a busy chat agent is not interrupted; the batch goes when it is idle", async
     expect(s.sent()).toHaveLength(0);
     s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
     await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
+  } finally {
+    s.board.dispose();
+  }
+});
+
+// CUSTOM(assistant-wake): the first wake is quick, and the card can say when it comes.
+it("the first wake waits 12 s by default", async () => {
+  const s = await wake({ delayMs: null });
+  try {
+    await s.blocked();
+    const delivery = s.delivery()!;
+    const notifyAt = Date.parse(s.board.assistantSource().notifyAt ?? "");
+    const delay = notifyAt - Date.parse(delivery.updatedAt);
+    expect(delay).toBeGreaterThanOrEqual(11_999);
+    expect(delay).toBeLessThanOrEqual(12_000);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("the wake delay comes from the chat settings", async () => {
+  const s = await wake({ delayMs: null, wakeDelaySeconds: 30 });
+  try {
+    await s.blocked();
+    const delivery = s.delivery()!;
+    const notifyAt = Date.parse(s.board.assistantSource().notifyAt ?? "");
+    const delay = notifyAt - Date.parse(delivery.updatedAt);
+    expect(delay).toBeGreaterThanOrEqual(29_999);
+    expect(delay).toBeLessThanOrEqual(30_000);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a waiting card shows the countdown, then when the chat was told", async () => {
+  const s = await wake();
+  try {
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "running";
+    await s.blocked();
+    const waiting = buildOverview(s.board.assistantSource()).needsYou[0]!;
+    expect(waiting.notifyAt).toBeTruthy();
+    expect(waiting.toldAt).toBeNull();
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "idle";
+    await vi.waitFor(() => expect(s.delivery()?.toldAt).toBeTruthy());
+    const told = buildOverview(s.board.assistantSource()).needsYou[0]!;
+    expect(told.notifyAt).toBeNull();
+    expect(told.toldAt).toBe(s.delivery()?.firstToldAt);
   } finally {
     s.board.dispose();
   }
