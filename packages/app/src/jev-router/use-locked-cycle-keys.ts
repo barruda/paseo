@@ -16,6 +16,8 @@ export function useLockedCycleKeys(input: {
   sourceId: string;
   enabled: boolean;
   controls: AgentControlCommandCenterSource;
+  /** CUSTOM(model-picker-focus): only the composer holding the caret takes ←/→. */
+  isActive?: () => boolean;
 }): void {
   const { sourceId, controls } = input;
   useKeyboardActionHandler({
@@ -23,6 +25,7 @@ export function useLockedCycleKeys(input: {
     actions: CYCLE_ACTIONS,
     enabled: input.enabled,
     priority: 210,
+    isActive: input.isActive,
     handle: (action) => {
       // ← only in an empty composer; → also with text when the caret is at the end.
       const keyApplies =

@@ -77,6 +77,7 @@ import {
 import { useComposerKeyboardScope } from "@/composer/keyboard-scope";
 // CUSTOM(model-picker)
 import { useModelPickerSource } from "@/model-picker/use-model-picker-source";
+import { isComposerKeyboardTarget } from "@/composer/focused-composer"; // CUSTOM(model-picker-focus)
 import { useModelPickerStore } from "@/model-picker/store";
 import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import { useModelFavoritesStore } from "@/model-picker/favorites-store";
@@ -270,22 +271,35 @@ function AgentControlCommandCenterRegistration({
   controls: AgentControlCommandCenterSource;
   isInputEmpty?: () => boolean;
 }) {
-  const { isActiveComposer } = useComposerKeyboardScope();
+  const { isActiveComposer, composerId } = useComposerKeyboardScope();
   useAgentControlCommandCenterActions({
     sourceId,
     enabled: enabled && isActiveComposer,
     controls,
   });
+  // CUSTOM(model-picker-focus): Ctrl+M and ←/→ act on the composer holding the caret.
+  const isKeyboardTarget = useCallback(() => isComposerKeyboardTarget(composerId), [composerId]);
   // CUSTOM(model-picker)
-  useModelPickerSource({ sourceId, enabled: enabled && isActiveComposer, controls });
+  useModelPickerSource({
+    sourceId,
+    enabled: enabled && isActiveComposer,
+    controls,
+    isActive: isKeyboardTarget,
+  });
   // CUSTOM(jev-router): Effort focused's lock keeps ←/→ on its models and efforts.
-  useLockedCycleKeys({ sourceId, enabled: enabled && isActiveComposer, controls });
+  useLockedCycleKeys({
+    sourceId,
+    enabled: enabled && isActiveComposer,
+    controls,
+    isActive: isKeyboardTarget,
+  });
   // CUSTOM(task-shortcuts): ← cycles favorite models and → the effort in an ongoing chat.
   useKeyboardActionHandler({
     handlerId: `empty-composer-cycle:${sourceId}`,
     actions: EMPTY_COMPOSER_CYCLE_ACTIONS,
     enabled: enabled && isActiveComposer && Boolean(isInputEmpty),
     priority: 200,
+    isActive: isKeyboardTarget,
     handle: (action) => {
       // CUSTOM(jev-router): with text, → still changes the effort when the caret is at the end.
       const caretAtEnd = action.id === "task.draft.effort" && isFocusedComposerCaretAtEnd();
@@ -2242,7 +2256,9 @@ export function DraftAgentControls({
   // CUSTOM(model-picker): every draft composer (New Workspace screen and draft tabs) feeds the
   // Ctrl+M model picker; upstream only registers draft tabs with the command center.
   const pickerSourceId = `draft-controls:${useId()}`;
-  const { isActiveComposer } = useComposerKeyboardScope();
+  const { isActiveComposer, composerId } = useComposerKeyboardScope();
+  // CUSTOM(model-picker-focus): Ctrl+M and ←/→ act on the composer holding the caret.
+  const isKeyboardTarget = useCallback(() => isComposerKeyboardTarget(composerId), [composerId]);
   const pickerControls = useMemo<AgentControlCommandCenterSource>(
     () => ({
       serverId: modelSelectorServerId ?? "",
@@ -2283,12 +2299,14 @@ export function DraftAgentControls({
     enabled: isActiveComposer && !disabled,
     controls: pickerControls,
     project: modelPickerProject,
+    isActive: isKeyboardTarget,
   });
   // CUSTOM(jev-router): Effort focused's lock keeps ←/→ on its models and efforts.
   useLockedCycleKeys({
     sourceId: pickerSourceId,
     enabled: isActiveComposer && !disabled,
     controls: pickerControls,
+    isActive: isKeyboardTarget,
   });
 
   return (

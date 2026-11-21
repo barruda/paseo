@@ -1,4 +1,5 @@
 import { isFocusedComposerCaretAtEnd } from "@/jev-router/cycle"; // CUSTOM(jev-router)
+import { isComposerKeyboardTarget } from "@/composer/focused-composer"; // CUSTOM(model-picker-focus)
 import { useModelFavoritesStore } from "@/model-picker/favorites-store";
 import { getEffortFavorites } from "@/composer/effort-favorites-store";
 import { useProjectFavoritesStore } from "@/composer/project-favorites-store";
@@ -804,6 +805,8 @@ export function WorkspaceDraftAgentTab({
     ],
   );
   const modelPickerProject = useDraftTabProjectSource(serverId, workspaceId, tabId, projectSetup);
+  // CUSTOM(model-picker-focus): ←/↑/↓/→ only drive this draft while its composer has the caret.
+  const composerKeyboardTargetId = `draft-tab:${tabId}`;
   // CUSTOM(task-shortcuts): only an untouched prompt yields arrow keys to draft selection.
   useKeyboardActionHandler({
     handlerId: `draft-selection:${tabId}`,
@@ -815,6 +818,7 @@ export function WorkspaceDraftAgentTab({
     ],
     enabled: isPaneFocused,
     priority: 200,
+    isActive: () => isComposerKeyboardTarget(composerKeyboardTargetId),
     handle: (action) => {
       // CUSTOM(jev-router): with text, → still changes the effort when the caret is at the end.
       const hasText = draftInput.textSource.getSnapshot().length > 0;
@@ -931,6 +935,7 @@ export function WorkspaceDraftAgentTab({
             serverId={serverId}
             workspaceId={workspaceId}
             isPaneFocused={isPaneFocused}
+            keyboardTargetId={composerKeyboardTargetId}
             onSubmitMessage={handleCreateFromInput}
             isSubmitLoading={isSubmitting}
             blurOnSubmit={true}
