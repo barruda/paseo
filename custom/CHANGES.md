@@ -7309,7 +7309,13 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   a detached HEAD, busy agents, open terminals and running scripts still defer the archive. The
   delay setting now accepts 0 (archive as soon as the task is Done or Canceled) and defaults to 0,
   and automatic archive is on by default. Schema version 9 migrates existing data to automatic
-  archive on with a 0-day delay, once.
+  archive on with a 0-day delay, once. Two cases used to leave a card in Done for good. An
+  archive left `uncertain` (the daemon restarted mid-archive, or the call timed out) resolves to
+  archived once its workspace is no longer in Paseo's active list; while the workspace is still
+  listed it keeps asking for "Confirm archived". And a recorded provider child that vanished
+  without an observed time no longer blocks the archive gate when its parent can't list children
+  (archived parent, or the listing failed) and no agent of the workspace is running or waiting:
+  the parent's activity time bounds it, since a child lives inside its parent's turn.
 - **Core files touched:** none (plugin only).
 - **Re-apply:** re-apply the plugin changes in `custom/plugins/power-workboard`: `checkGitSafety`
   takes the policy base, `PaseoHost.safety` passes it, `scan()` supplies it from the task's
@@ -7318,6 +7324,9 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Verify:** `cd custom/plugins/power-workboard && npm run check`. Merge a task into the base
   branch from its Done card: its workspace is archived within a scan. A Done task with an unmerged
   commit stays, with the issue "Its branch has work that is not merged into the base branch yet".
+  The tests "resolves an uncertain archive whose workspace is gone…" and "gates on the parent when
+  its vanished children can't be listed…" in `tests/power-workboard.test.ts` cover the two stuck
+  cases.
 
 ## auto-archive-worktrees: a worktree whose chats are all archived and whose branch is merged is archived
 

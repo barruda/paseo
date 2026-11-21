@@ -1245,3 +1245,90 @@ it("never archives a worktree whose task is not in a done or canceled group", as
     test.board.dispose();
   }
 });
+
+// CUSTOM(done-auto-archive): an uncertain archive resolves once its workspace leaves Paseo.
+it("resolves an uncertain archive whose workspace is gone and keeps one still listed", async () => {
+  for (const listed of [false, true]) {
+    const test = archiveScan("pwb:done");
+    await test.store.load();
+    await test.store.update((data) => {
+      data.tasks[0].issue = "native-archive-unknown";
+      data.tasks[0].archived = {
+        operationId: "op",
+        status: "uncertain",
+        kind: "automatic",
+        stage: "done",
+        group: null,
+        startedAt: "2026-08-01T00:00:00.000Z",
+        archivedAt: null,
+        lastConversationAt: "2026-08-01T00:00:00.000Z",
+        detail: "Native archive outcome unknown after restart",
+      };
+    });
+    if (!listed) test.inventory.workspaces.length = 0;
+    try {
+      await test.board.start();
+      const card = test.board.snapshot().cards[0];
+      expect(test.host.archive, String(listed)).not.toHaveBeenCalled();
+      expect(card.archived?.status, String(listed)).toBe(
+        listed ? "uncertain" : "archived",
+      );
+      expect(card.issue ?? null, String(listed)).toBe(
+        listed ? "native-archive-unknown" : null,
+      );
+      if (!listed) expect(card.archived?.detail).toMatch(/uncertain/);
+    } finally {
+      test.board.dispose();
+    }
+  }
+});
+
+// CUSTOM(done-auto-archive): children of an archived parent are bounded by the quiet parent.
+it("gates on the parent when its vanished children can't be listed and nothing is busy", async () => {
+  for (const variant of ["refused", "unavailable", "busy", "complete"]) {
+    const test = archiveScan("pwb:done");
+    await test.store.load();
+    await test.store.update((data) => {
+      data.tasks[0].conversationGateAt = null;
+      data.tasks[0].conversationGateEvidence = "unknown";
+      data.tasks[0].conversationAgents = [
+        { id: "a/provider/child", lastObservedAt: null, seenWhileLive: false },
+      ];
+    });
+    const parent = test.inventory.agents[0];
+    parent.updatedAt = "2026-08-02T00:00:00Z";
+    if (variant === "refused") parent.archivedAt = "2026-08-02T00:00:00Z";
+    parent.childEnumeration = (variant === "busy" ? "refused" : variant) as
+      | "refused"
+      | "unavailable"
+      | "complete";
+    test.inventory.agents.push({
+      id: "b",
+      workspaceId: "w",
+      title: null,
+      updatedAt: "2026-08-03T00:00:00Z",
+      lastUserMessageAt: "2026-08-03T00:00:00Z",
+      activity: variant === "busy" ? "running" : "idle",
+    });
+    try {
+      await test.board.start();
+      const card = test.board.snapshot().cards[0];
+      expect(card.conversationReason, variant).toBe(
+        "child-enumeration-unavailable",
+      );
+      if (variant === "refused" || variant === "unavailable") {
+        expect(card.conversationGateEvidence, variant).toBe("upper-bound");
+        expect(card.conversationGateAt, variant).toBe(
+          "2026-08-03T00:00:00.000Z",
+        );
+        expect(test.host.archive, variant).toHaveBeenCalledExactlyOnceWith("w");
+      } else {
+        expect(card.conversationGateEvidence, variant).toBe("unknown");
+        expect(card.conversationGateAt, variant).toBeNull();
+        expect(test.host.archive, variant).not.toHaveBeenCalled();
+      }
+    } finally {
+      test.board.dispose();
+    }
+  }
+});
