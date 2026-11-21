@@ -9938,3 +9938,24 @@ src/utils/navigate-to-agent/index.test.ts)` (in the update script). Needs an app
   then `paseo plugin reload power-workboard`. In a PM reply on desktop: hover a "pedido" row to see
   the proof and the comment button; tap it on a narrow window; pick a tile on a waiting decision.
 - **Tests:** `tests/option-tiles.test.ts` (recommended, chosen, faded, archived, sending, locked).
+
+## pending-open-keeps-sidebar: opening a task from the phone sidebar keeps that sidebar open while the workspace loads
+
+- **Added:** 2026-11-21 (based on upstream 0.17.0, `ed786e799`)
+- **Commit:** `custom: a pending workspace open leaves an open phone sidebar alone`
+- **Why:** On a phone, opening an agent route and then the sidebar right away lost the sidebar: once
+  the workspace hydrated (a few hundred ms later), the pending open revealed its tab through
+  `revealWorkspaceTab`, which calls `showMobileAgent()` and closed the sidebar the user had just
+  opened. Found by desktop `e2e/task-navigation.spec.ts` "Phone sidebar lists tasks…" after the
+  v0.17.0 merge.
+- **What:** The pending open still focuses its tab, but when the compact panel shows the agent list
+  it leaves the panel alone. Every other caller keeps `revealWorkspaceTab`.
+- **Core files touched** (marked `CUSTOM(pending-open-keeps-sidebar)`):
+  - `packages/app/src/workspace-tabs/navigation.ts`: `revealPendingWorkspaceTab`.
+  - `packages/app/src/screens/workspace/workspace-screen.tsx`: `usePendingWorkspaceOpen` gets
+    `onOpened: revealPendingWorkspaceTab`.
+- **Re-apply:** Find where the workspace screen consumes a pending open (`usePendingWorkspaceOpen`
+  or its successor). Before it reveals the tab, check the compact panel target; if it is the agent
+  list, focus the tab in the layout store without switching the mobile panel.
+- **Verify:** desktop `e2e/task-navigation.spec.ts` "Phone sidebar lists tasks, opens one in its
+  workspace and switches to Workspaces" (in the update script).

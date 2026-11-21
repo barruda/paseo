@@ -12,7 +12,7 @@ import {
 } from "@/assistant-file-links";
 import { useFileExplorerActions } from "@/hooks/use-file-explorer-actions";
 import { useWindowLayout, resolveWorkspaceActionPlacement } from "@/window-layout";
-import { revealWorkspaceTab } from "@/workspace-tabs/navigation";
+import { revealPendingWorkspaceTab, revealWorkspaceTab } from "@/workspace-tabs/navigation";
 // CUSTOM(recent-tabs)
 import { stepRecentTab, useWorkspaceRecentTabs } from "@/workspace-tabs/recent-tabs";
 import { RecentTabSwitcher } from "@/workspace-tabs/recent-tab-switcher";
@@ -1191,7 +1191,7 @@ function WorkspaceScreenContent({
     (state) => state.sessions[normalizedServerId]?.hasHydratedWorkspaces ?? false,
   );
   const pendingOpenTarget = usePendingWorkspaceOpen({
-    onOpened: revealWorkspaceTab,
+    onOpened: revealPendingWorkspaceTab, // CUSTOM(pending-open-keeps-sidebar)
     workspaceKey: persistenceKey,
     hasHydratedWorkspaces,
     workspaceExists: workspaceDescriptor !== null,
