@@ -115,6 +115,9 @@ type Props = {
   /** CUSTOM(packages): the cards a marquee drag on a column selected. */
   onMarqueeSelect?(ids: readonly string[], additive: boolean): void;
   groupColor(group: Group): string;
+  /** Archived cards shown on the board, by the column they were archived from. */
+  archivedByStage?: Record<string, Card[]>;
+  renderArchivedCard?(card: Card): ReactNode;
 };
 
 export function BoardView(props: Props) {
@@ -792,45 +795,53 @@ export function BoardView(props: Props) {
             <ScrollView key={stage} contentContainerStyle={styles.compactList}>
               {selectedGroup?.kind === "todo" &&
                 props.renderQuickCreate?.(selectedGroup)}
-              {cardsForStage(cards, stage, props.cardOrderByStage).length ? (
-                cardsForStage(cards, stage, props.cardOrderByStage).map(
-                  (card, index, visible) => (
-                    <View
-                      key={card.id}
-                      testID={`workboard-order-${card.id}`}
-                      tabIndex={0}
-                      accessibilityHint={t.cardOrderHint}
-                      {...cardKeys(card)}
-                    >
-                      {renderCard(card, null)}
-                      <View style={{ flexDirection: "row", gap: 2 }}>
-                        {([-1, 1] as const).map((direction) => (
-                          <HintButton
-                            key={direction}
-                            hint={t.cardOrderHint}
-                            accessibilityRole="button"
-                            accessibilityLabel={`${direction < 0 ? t.moveCardUp : t.moveCardDown}: ${card.title}`}
-                            disabled={
-                              disabled ||
-                              props.orderPending?.has(card.stage) ||
-                              !!card.archived ||
-                              !!card.binding ||
-                              !visible[index + direction]
-                            }
-                            onPress={() => moveCardRelative(card, direction)}
-                            style={styles.iconButton}
-                          >
-                            <Icon
-                              name={direction < 0 ? "ArrowUp" : "ArrowDown"}
-                              size={14}
-                              color={theme.colors.foregroundMuted}
-                            />
-                          </HintButton>
-                        ))}
+              {cardsForStage(cards, stage, props.cardOrderByStage).length ||
+              props.archivedByStage?.[stage]?.length ? (
+                <>
+                  {cardsForStage(cards, stage, props.cardOrderByStage).map(
+                    (card, index, visible) => (
+                      <View
+                        key={card.id}
+                        testID={`workboard-order-${card.id}`}
+                        tabIndex={0}
+                        accessibilityHint={t.cardOrderHint}
+                        {...cardKeys(card)}
+                      >
+                        {renderCard(card, null)}
+                        <View style={{ flexDirection: "row", gap: 2 }}>
+                          {([-1, 1] as const).map((direction) => (
+                            <HintButton
+                              key={direction}
+                              hint={t.cardOrderHint}
+                              accessibilityRole="button"
+                              accessibilityLabel={`${direction < 0 ? t.moveCardUp : t.moveCardDown}: ${card.title}`}
+                              disabled={
+                                disabled ||
+                                props.orderPending?.has(card.stage) ||
+                                !!card.archived ||
+                                !!card.binding ||
+                                !visible[index + direction]
+                              }
+                              onPress={() => moveCardRelative(card, direction)}
+                              style={styles.iconButton}
+                            >
+                              <Icon
+                                name={direction < 0 ? "ArrowUp" : "ArrowDown"}
+                                size={14}
+                                color={theme.colors.foregroundMuted}
+                              />
+                            </HintButton>
+                          ))}
+                        </View>
                       </View>
+                    ),
+                  )}
+                  {props.archivedByStage?.[stage]?.map((card) => (
+                    <View key={card.id}>
+                      {props.renderArchivedCard?.(card)}
                     </View>
-                  ),
-                )
+                  ))}
+                </>
               ) : (
                 <BoardEmpty
                   filtered={props.hasActiveFilter}
@@ -931,6 +942,7 @@ export function BoardView(props: Props) {
                 >
                   {group.kind === "todo" && props.renderQuickCreate?.(group)}
                   {stageCards.length === 0 &&
+                    !props.archivedByStage?.[group.id]?.length &&
                     (target === group.id ? (
                       <Text
                         style={[
@@ -990,6 +1002,11 @@ export function BoardView(props: Props) {
                     >
                       {(handle) => renderCard(card, handle)}
                     </TaskDragShell>
+                  ))}
+                  {props.archivedByStage?.[group.id]?.map((card) => (
+                    <View key={card.id}>
+                      {props.renderArchivedCard?.(card)}
+                    </View>
                   ))}
                 </BoardColumn>
               );

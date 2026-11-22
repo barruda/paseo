@@ -78,6 +78,11 @@ import {
   mappingPreview,
   shortDate,
   splitTitleArea,
+  archiveListCards,
+  archiveOutcomes,
+  archivedBoardCards,
+  archivedByColumn,
+  isArchivedOffBoard,
   visibleCards,
   withOptimisticStages,
   cardsForStage,
@@ -93,6 +98,7 @@ import {
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { factoryOwnsConfig } from "./FactoryLine"; // CUSTOM(factory)
 import { BoardView } from "./BoardView";
+import { ArchivedBoardCard } from "./ArchivedBoardCard";
 import { cardMenuItems } from "./card-menu"; // CUSTOM(task-panel)
 import {
   clampPanelWidth,
@@ -332,6 +338,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     Platform.OS === "web"
       ? { width: windowSize.width, height: windowSize.height }
       : rootSize;
+  const [restoringArchived, setRestoringArchived] = useState<Card | null>(null);
   const [archivingDraft, setArchivingDraft] = useState<Card | null>(null);
   const [detachingDraft, setDetachingDraft] = useState<{
     card: Card;
@@ -364,9 +371,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   // CUSTOM(task-description-files): the search matches descriptions, read only while it has text.
   const searchDescriptions = useSearchDescriptions(
     (boardQuery.data?.cards ?? []).filter(
-      (card) =>
-        card.archived?.status !== "archived" &&
-        card.archived?.status !== "external",
+      (card) => filters.showArchived || !isArchivedOffBoard(card),
     ),
     search.trim().length > 0,
   );
@@ -560,6 +565,14 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     optimisticStages,
   );
   const cards = visibleCards(
+    board,
+    projectId,
+    search,
+    attentionOnly,
+    filters,
+    searchDescriptions,
+  );
+  const archivedCards = archivedBoardCards(
     board,
     projectId,
     search,
@@ -779,7 +792,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   };
   const allCards = visibleCards(board, "all", "", false);
   const conflicts = cards.filter((card) => card.stage === "conflict");
-  const archived = board.cards.filter((card) => card.archived !== null);
+  const archived = archiveListCards(board.cards);
   // CUSTOM(task-panel): one ticket at a time; switching replaces the panel's content.
   const panelCard = panelCardFor(board.cards, panel?.taskId ?? null);
   // CUSTOM(packages)
@@ -1834,6 +1847,20 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               fullCards={board.cards}
               cardOrderByStage={board.cardOrderByStage}
               filterKey={JSON.stringify(filters)}
+              archivedByStage={archivedByColumn(
+                archivedCards,
+                board.settings.groups,
+              )}
+              renderArchivedCard={(card) => (
+                <ArchivedBoardCard
+                  card={card}
+                  t={t}
+                  theme={props.theme}
+                  disabled={writesDisabled}
+                  onOpen={() => setPanel(openPanel(card.id, "ticket", null))}
+                  onRestore={() => setRestoringArchived(card)}
+                />
+              )}
               orderPending={
                 new Set(
                   [...pendingMutationIds]
@@ -2178,6 +2205,29 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           })
         }
       />
+      {restoringArchived && (
+        <ConfirmationModal
+          title={t.restoreTask}
+          description={t.restoreTaskConfirm.replace(
+            "{name}",
+            restoringArchived.title,
+          )}
+          confirmLabel={t.restoreTask}
+          disabled={writesDisabled}
+          t={t}
+          theme={props.theme}
+          onClose={() => setRestoringArchived(null)}
+          onConfirm={async () =>
+            !!(await mutate({
+              action: "resolve-archive",
+              taskId: restoringArchived.id,
+              updatedAt: restoringArchived.updatedAt,
+              operationId: restoringArchived.archived!.operationId,
+              outcome: "restore",
+            }))
+          }
+        />
+      )}
       {archivingDraft && (
         <ConfirmationModal
           title={t.archiveDraft}
@@ -5368,30 +5418,23 @@ export function ArchivePage({
                   ID: {card.archived.operationId}
                 </Text>
               )}
-              {(card.archived?.status === "uncertain" ||
-                card.archived?.status === "external" ||
-                card.archived?.kind === "draft") && (
-                <View style={styles.cardFooter}>
-                  {(card.archived?.kind === "draft"
-                    ? ["restore" as const]
-                    : (["confirm", "restore"] as const)
-                  ).map((outcome) => (
-                    <Pressable
-                      key={outcome}
-                      accessibilityRole="button"
-                      disabled={disabled}
-                      onPress={() => setResolving({ card, outcome })}
-                      style={styles.toolbarButton}
-                    >
-                      <Text style={{ color: theme.colors.foreground }}>
-                        {outcome === "confirm"
-                          ? t.confirmArchived
-                          : t.restoreTask}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-              )}
+              <View style={styles.cardFooter}>
+                {archiveOutcomes(card).map((outcome) => (
+                  <Pressable
+                    key={outcome}
+                    accessibilityRole="button"
+                    disabled={disabled}
+                    onPress={() => setResolving({ card, outcome })}
+                    style={styles.toolbarButton}
+                  >
+                    <Text style={{ color: theme.colors.foreground }}>
+                      {outcome === "confirm"
+                        ? t.confirmArchived
+                        : t.restoreTask}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
               <Text style={{ color: theme.colors.foregroundMuted }}>
                 {card.archived?.archivedAt
                   ? shortDate(card.archived.archivedAt, t.locale)

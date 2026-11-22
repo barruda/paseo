@@ -1345,3 +1345,50 @@ it("gates on the parent when its vanished children can't be listed and nothing i
     }
   }
 });
+
+// CUSTOM(board-show-archived): a confirmed automatic archive can be restored to the board, never re-confirmed.
+it("restores a confirmed automatic archive and refuses to confirm it again", async () => {
+  const archived = {
+    operationId: "archive-op",
+    kind: "automatic" as const,
+    status: "archived" as const,
+    stage: "done",
+    group: null,
+    startedAt: "2026-08-01T00:00:00Z",
+    archivedAt: "2026-08-01T00:00:00Z",
+    lastConversationAt: null,
+    detail: "Native archive confirmed",
+  };
+  const test = fixture({
+    tasks: [
+      {
+        ...newTask("task", "Task", "2026-08-01T00:00:00Z"),
+        workspaceId: "w",
+        lastStage: "done",
+        archived,
+      },
+    ],
+  });
+  await test.board.start();
+  try {
+    const card = test.board.snapshot().cards[0];
+    const input = {
+      action: "resolve-archive" as const,
+      taskId: card.id,
+      updatedAt: card.updatedAt,
+      operationId: "archive-op",
+    };
+    await expect(
+      test.board.mutate({ ...input, outcome: "confirm" }),
+    ).rejects.toThrow("archive-resolution-unavailable");
+    expect(test.store.current.tasks[0].archived).toEqual(archived);
+    const result = await test.board.mutate({ ...input, outcome: "restore" });
+    expect(result.cards[0]).toMatchObject({
+      archived: null,
+      stage: "done",
+      issue: "archive-restored-workspace-unavailable",
+    });
+  } finally {
+    test.board.dispose();
+  }
+});
