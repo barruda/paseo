@@ -207,8 +207,11 @@ export interface Host {
   gitStatusLines(directory: string): Promise<string[]>;
   /** CUSTOM(orchestrator-in-place): the checkout's HEAD, the base an in-place task's diff uses. */
   gitHead(directory: string): Promise<string>;
-  /** Commit everything in the checkout with a generated message, as the app's Git menu does. */
-  commit(directory: string): Promise<void>;
+  /**
+   * Commit everything in the checkout with a generated message, as the app's Git menu does.
+   * CUSTOM(orchestrator-in-place): with `paths`, commit only those (the daemon's commit-selection).
+   */
+  commit(directory: string, paths?: string[]): Promise<void>;
   /** Merge the checkout's branch into its base branch in the main checkout. */
   // CUSTOM(projects-assistant): optional target and strictness for the assistant's merge.
   mergeToBase(directory: string, options?: MergeOptions): Promise<void>;
@@ -1064,8 +1067,14 @@ export class PaseoHost implements Host {
     );
     return stdout.trim();
   }
-  async commit(directory: string): Promise<void> {
-    await this.checkout("checkout_commit", { cwd: directory, addAll: true });
+  async commit(directory: string, paths?: string[]): Promise<void> {
+    await this.checkout("checkout_commit", {
+      cwd: directory,
+      addAll: true,
+      // CUSTOM(orchestrator-in-place): needs `features.checkoutCommitPaths` (commit-selection);
+      // this plugin runs only on the custom daemon, which has it.
+      ...(paths ? { paths } : {}),
+    });
   }
   // CUSTOM(projects-assistant): options default to the old behavior.
   async mergeToBase(
