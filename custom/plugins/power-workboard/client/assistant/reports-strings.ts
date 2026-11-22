@@ -128,6 +128,7 @@ const en = {
   eventKind: {
     "task-created": "Task created",
     "task-moved": "Task moved",
+    "stage-entered": "Pipeline stage", // CUSTOM(factory)
     "task-started": "Task started",
     "task-continued": "Task continued",
     "folder-dirty": "Folder had uncommitted changes", // CUSTOM(orchestrator-in-place)
@@ -244,6 +245,7 @@ const pt: ReportsStrings = {
   eventKind: {
     "task-created": "Tarefa criada",
     "task-moved": "Tarefa movida",
+    "stage-entered": "Etapa do pipeline", // CUSTOM(factory)
     "task-started": "Tarefa iniciada",
     "task-continued": "Tarefa continuada",
     "folder-dirty": "A pasta tinha mudanças não commitadas", // CUSTOM(orchestrator-in-place)

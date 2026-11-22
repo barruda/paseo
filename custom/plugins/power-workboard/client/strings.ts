@@ -599,6 +599,8 @@ const zh = {
   mutationErrors: {
     "This setting comes from the factory; edit it in the factory":
       "这个设置来自 factory；请在 factory 的文件中编辑。",
+    "Pick one of the gate's options: each one names the stage the task goes to":
+      "请选择这个关卡的一个选项：每个选项都指明任务要进入的阶段。",
     "This prompt comes from the factory; edit worker.md in the factory":
       "这个提示词来自 factory；请在 factory 中编辑 worker.md。",
     "card-order-changed": "列内任务顺序或成员已改变，请刷新后重试。",
@@ -1466,6 +1468,8 @@ const en: typeof zh = {
   mutationErrors: {
     "This setting comes from the factory; edit it in the factory":
       "This setting comes from the factory. Edit it in the factory's files.",
+    "Pick one of the gate's options: each one names the stage the task goes to":
+      "Pick one of the gate's options. Each one names the stage the task goes to.",
     "This prompt comes from the factory; edit worker.md in the factory":
       "This prompt comes from the factory. Edit worker.md in the factory.",
     "card-order-changed":

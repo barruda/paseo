@@ -1,0 +1,484 @@
+// CUSTOM(factory): the pipeline engine (docs/factory.md, ticket 11). Pure transitions, then the
+// board in active mode running each transition kind on a fixture factory.
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { GATE_OPTION_REQUIRED_ERROR } from "../server/workboard";
+import type { CompiledPipeline } from "../shared/factory/compile";
+import {
+  enterStage,
+  previousWorkerStage,
+  stageChip,
+  stageExit,
+  startPipeline,
+} from "../shared/factory/engine";
+import {
+  CHECKOUT,
+  LIVE_ID,
+  boot,
+  disposeBooted,
+  startTask,
+  type Booted,
+} from "./factory-boot";
+
+afterEach(() => {
+  disposeBooted();
+  vi.useRealTimers();
+});
+
+const AT = "2026-09-23T00:00:00.000Z";
+
+const stage = (
+  id: string,
+  fields: Partial<CompiledPipeline["stages"][number]> = {},
+): CompiledPipeline["stages"][number] => ({
+  id,
+  role: "implement",
+  worker: null,
+  prompt: `Do ${id}.`,
+  session: "continue",
+  maxVisits: 3,
+  gate: null,
+  to: "deliver",
+  ...fields,
+});
+
+const pipeline: CompiledPipeline = {
+  id: "p",
+  description: "",
+  start: "build",
+  stages: [
+    stage("build", { to: "check" }),
+    stage("check", { role: "verify", maxVisits: 2, to: "build" }),
+    stage("review", { role: "pm", to: "deliver" }),
+  ],
+  layout: {},
+};
+
+describe("pipeline engine: transitions", () => {
+  it("starts at start with one visit", () => {
+    const state = startPipeline(pipeline, AT);
+    expect(state).toMatchObject({
+      id: "p",
+      stage: "build",
+      visits: { build: 1 },
+      pending: false,
+      history: [{ stage: "build", via: "start" }],
+    });
+    expect(stageChip(pipeline, state)).toBe("build 1/3");
+  });
+
+  it("a worker stage is entered pending, a pm stage and a built-in are not", () => {
+    const start = startPipeline(pipeline, AT);
+    const check = enterStage(pipeline, start, "check", "to", AT);
+    expect(check.target).toMatchObject({ kind: "worker" });
+    expect(check.state).toMatchObject({
+      stage: "check",
+      pending: true,
+      visits: { build: 1, check: 1 },
+    });
+    const review = enterStage(pipeline, start, "review", "to", AT);
+    expect(review.target).toMatchObject({ kind: "pm" });
+    expect(review.state.pending).toBe(false);
+    const deliver = enterStage(pipeline, start, "deliver", "to", AT);
+    expect(deliver.target).toEqual({ kind: "builtin", stage: "deliver" });
+    expect(deliver.state.visits).toEqual({ build: 1 });
+    expect(stageChip(pipeline, deliver.state)).toBeNull();
+  });
+
+  it("one visit past maxVisits is a loop and keeps the stage", () => {
+    let state = startPipeline(pipeline, AT);
+    state = enterStage(pipeline, state, "check", "to", AT).state;
+    state = enterStage(pipeline, state, "build", "to", AT).state;
+    state = enterStage(pipeline, state, "check", "to", AT).state;
+    state = enterStage(pipeline, state, "build", "to", AT).state;
+    const looped = enterStage(pipeline, state, "check", "to", AT);
+    expect(looped.target).toBeNull();
+    expect(looped.loop).toEqual({ stage: "check", visits: 3, maxVisits: 2 });
+    expect(looped.state.stage).toBe("build");
+    expect(looped.state.visits.check).toBe(2);
+    expect(looped.state.history.at(-1)).toMatchObject({
+      stage: "check",
+      via: "loop",
+    });
+  });
+
+  it("names each exit kind and the worker stage before a pm stage", () => {
+    expect(stageExit(stage("a", { to: "b" }))).toEqual({ kind: "go", to: "b" });
+    expect(
+      stageExit(stage("a", { to: [{ stage: "b", when: "Small." }] })),
+    ).toEqual({ kind: "choose", candidates: [{ stage: "b", when: "Small." }] });
+    const gate = {
+      question: "Ok?",
+      options: [{ id: "yes", label: "Yes", to: "b" }],
+    };
+    expect(stageExit(stage("a", { to: null, gate }))).toEqual({
+      kind: "gate",
+      ...gate,
+    });
+    let state = startPipeline(pipeline, AT);
+    state = enterStage(pipeline, state, "check", "to", AT).state;
+    state = enterStage(pipeline, state, "review", "to", AT).state;
+    expect(previousWorkerStage(pipeline, state)).toBe("check");
+    expect(stageChip(pipeline, { ...state, stage: "check" })).toBe("check 1/2");
+    expect(
+      stageChip(pipeline, {
+        ...state,
+        gate: { cardId: "pm-1", stage: "review", kind: "gate" },
+      }),
+    ).toBe("review · gate");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+
+const BUILTIN = path.join(
+  import.meta.dirname,
+  "..",
+  "server",
+  "factory",
+  "builtin",
+);
+const builtin = (file: string) =>
+  readFileSync(path.join(BUILTIN, file), "utf8");
+
+const done = (summary = "Did it") =>
+  `Done.\n<report>${JSON.stringify({ status: "done", summary })}</report>`;
+
+/** Boots on the fixture factory with `pipelineYaml` as the project's pipeline. */
+function bootWith(
+  pipelineYaml: string,
+  files: Record<string, string> = {},
+  id = "flow",
+): Promise<Booted> {
+  return boot({
+    files: {
+      [`pipelines/${id}.yaml`]: pipelineYaml,
+      "projects/proj.yaml": `path: ${CHECKOUT}
+pipeline: ${id}
+delivery:
+  action: review
+  baseBranch: custom
+`,
+      ...files,
+    },
+  });
+}
+
+function helpers(s: Booted, taskId: string) {
+  const task = () => s.store.current.tasks.find((t) => t.id === taskId)!;
+  const card = () => s.board.snapshot().cards.find((c) => c.id === taskId)!;
+  const record = () => s.store.current.orchestrations[taskId]!;
+  const delivery = () => s.store.current.assistant.deliveries[taskId];
+  const starts = () => (s.host.startAgent as any).mock.calls;
+  const sends = () => (s.host.sendAgent as any).mock.calls;
+  /** The current agent's turn ends with `reply`, and the board settles it. */
+  const finish = async (reply: string) => {
+    vi.mocked(s.host.lastReply).mockResolvedValue(reply);
+    await s.board.refresh(); // sees it running
+    const agent = s.inventory.agents.find((a) => a.id === record().agentId)!;
+    agent.activity = "idle";
+    s.advance(1000);
+    await s.board.refresh(); // sees it idle
+    s.advance(20_000);
+    await s.board.refresh(); // idle long enough to settle
+  };
+  const gateCard = () =>
+    s.board.pmCards().find((c) => c.id === task().pipeline?.gate?.cardId)!;
+  return { task, card, record, delivery, starts, sends, finish, gateCard };
+}
+
+describe("pipeline engine: the board", () => {
+  it("the default pipeline keeps today's flow", async () => {
+    const s = await bootWith(
+      builtin("pipelines/default.yaml"),
+      {
+        "roles/implement.md": builtin("roles/implement.md"),
+        "roles/review.md": builtin("roles/review.md"),
+      },
+      "default",
+    );
+    const taskId = await startTask(s);
+    const t = helpers(s, taskId);
+    // Started by the project's worker with today's prompt: no stage text for an implement start.
+    expect(t.starts()).toHaveLength(1);
+    expect(t.record().orchestratorId).toBe(LIVE_ID);
+    const prompt: string = t.starts()[0][1].prompt;
+    expect(prompt).toContain("Factory task prompt.");
+    expect(prompt).not.toContain("Pipeline stage");
+    expect(t.task().pipeline).toMatchObject({
+      id: "default",
+      stage: "implement",
+      visits: { implement: 1 },
+    });
+    expect(t.card().stageChip).toBe("implement 1/3");
+    // Done: today's delivery with the project's action, the Project Manager's review.
+    await t.finish(done());
+    expect(t.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "review",
+    });
+    expect(t.card().stage).toBe("review");
+    expect(t.task().pipeline?.stage).toBe("review");
+    // Sent back: the same agent continues with the feedback, as today.
+    await s.board.mutate({
+      action: "review",
+      taskId,
+      outcome: "continue",
+      feedback: "Fix the typo",
+    });
+    expect(t.starts()).toHaveLength(1);
+    expect(t.sends().at(-1)[1]).toContain(
+      "The reviewer sent this task back to you",
+    );
+    expect(t.sends().at(-1)[1]).toContain("Fix the typo");
+    expect(t.sends().at(-1)[1]).not.toContain("Pipeline stage");
+    expect(t.task().pipeline).toMatchObject({
+      stage: "implement",
+      visits: { implement: 2 },
+    });
+    await t.finish(done("Fixed"));
+    expect(t.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "review",
+    });
+    // Today's review has no round limit: a `pm` stage has no loop guard.
+    for (let round = 3; round <= 5; round++) {
+      await s.board.mutate({
+        action: "review",
+        taskId,
+        outcome: "continue",
+        feedback: `Round ${round}`,
+      });
+      await t.finish(done(`Fixed ${round}`));
+      expect(t.delivery()).toMatchObject({
+        stage: "needs-you",
+        reason: "review",
+      });
+    }
+    expect(t.task().pipeline?.visits.review).toBe(5);
+    expect(t.card().stageChip).toBe("review 5");
+    await s.board.mutate({
+      action: "review",
+      taskId,
+      outcome: "done",
+      feedback: "",
+    });
+    expect(t.card().stage).toBe("done");
+    expect(t.card().stageChip).toBeNull();
+  });
+
+  it("a single to runs the next stage on its role's worker, continue or fresh", async () => {
+    const s = await bootWith(
+      `start: build
+stages:
+  build: { role: implement, prompt: Build it., to: check }
+  check: { role: verify, prompt: Check it with evidence., to: polish }
+  polish: { role: implement, prompt: Polish it., session: fresh, to: deliver }
+`,
+      {
+        "workers/checker/worker.md": `---
+name: Checker
+role: verify
+project: proj
+schedule: automatic
+---
+
+Check things.
+`,
+      },
+    );
+    const taskId = await startTask(s);
+    const t = helpers(s, taskId);
+    expect(t.starts()).toHaveLength(1);
+    expect(t.starts()[0][1].prompt).toContain(
+      "## Pipeline stage: build (implement)",
+    );
+    const first = t.record().agentId;
+    // build → check: the verify worker starts its own agent on the task's workspace.
+    await t.finish(done("Built"));
+    expect(t.starts()).toHaveLength(2);
+    expect(t.starts()[1][0]).toBe(t.task().workspaceId);
+    expect(t.starts()[1][1].prompt).toContain("Check it with evidence.");
+    expect(t.starts()[1][1].systemPrompt).toBe("Check things.");
+    expect(t.record().orchestratorId).toBe("checker");
+    expect(t.card().stage).toBe("in-progress");
+    expect(t.task().pipeline).toMatchObject({
+      stage: "check",
+      pending: false,
+      agents: { implement: first, verify: t.record().agentId },
+    });
+    expect(t.card().stageChip).toBe("check 1/3");
+    // An answer on the board continues the stage on its own worker, even for a task that names
+    // another orchestrator.
+    await s.store.update((data) => {
+      data.tasks.find((task) => task.id === taskId)!.orchestratorId = LIVE_ID;
+    });
+    const checker = t.record().agentId;
+    await t.finish(
+      `Q.\n<report>${JSON.stringify({ status: "needs_input", summary: "Which env?", question: "Which env?" })}</report>`,
+    );
+    expect(t.delivery()).toMatchObject({ reason: "needs-input" });
+    await s.board.mutate({
+      action: "review",
+      taskId,
+      outcome: "continue",
+      feedback: "Staging",
+    });
+    expect(t.record()).toMatchObject({
+      orchestratorId: "checker",
+      agentId: checker,
+    });
+    expect(t.sends().at(-1)).toEqual([
+      checker,
+      expect.stringContaining("Staging"),
+    ]);
+    // check → polish: implement again, but `fresh` starts a new agent though the first is alive.
+    await t.finish(done("Checked"));
+    expect(t.starts()).toHaveLength(3);
+    expect(t.starts()[2][1].prompt).toContain("Polish it.");
+    expect(t.record().orchestratorId).toBe(LIVE_ID);
+    expect(t.record().agentId).not.toBe(first);
+    // polish → deliver: today's delivery.
+    await t.finish(done("Polished"));
+    expect(t.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "review",
+    });
+    expect(t.task().pipeline?.stage).toBe("deliver");
+    expect(t.card().stage).toBe("review");
+  });
+
+  it("a gate waits in Needs you on a Decisões proposal and advances with no PM turn", async () => {
+    const s = await bootWith(
+      `start: spec
+stages:
+  spec:
+    role: spec
+    prompt: Write the spec.
+    gate:
+      question: Approve this spec?
+      options:
+        - { id: approve, label: Approve, to: build }
+        - { id: changes, label: Request changes, to: spec }
+  build: { role: implement, prompt: Build it., to: end }
+`,
+      { "templates/spec.md": "SPEC TEMPLATE\n" },
+    );
+    const taskId = await startTask(s);
+    const t = helpers(s, taskId);
+    // No spec worker: the implement worker runs it with the stage prompt and the spec template.
+    const prompt: string = t.starts()[0][1].prompt;
+    expect(prompt).toContain("Write the spec.");
+    expect(prompt).toContain("SPEC TEMPLATE");
+    await t.finish(done("Spec written"));
+    expect(t.delivery()).toMatchObject({ stage: "needs-you", reason: "gate" });
+    expect(t.card().stageChip).toBe("spec · gate");
+    const card = t.gateCard();
+    expect(card).toMatchObject({
+      kind: "proposal",
+      status: "waiting",
+      question: "Approve this spec?",
+      links: { taskIds: [taskId] },
+    });
+    expect(card.options.map((o) => o.id)).toEqual(["approve", "changes"]);
+    await expect(
+      s.board.pmCardDecide(card.id, { answer: "maybe", by: "user" }),
+    ).rejects.toThrow(GATE_OPTION_REQUIRED_ERROR);
+    // Request changes: the spec stage runs again, on the same agent, with the user's words.
+    await s.board.pmCardDecide(card.id, {
+      optionId: "changes",
+      answer: "Add a rollback section",
+      by: "user",
+    });
+    await s.board.refresh();
+    expect(t.delivery()).toBeUndefined();
+    expect(t.card().stage).toBe("in-progress");
+    expect(t.starts()).toHaveLength(1);
+    expect(t.sends().at(-1)[1]).toContain("Add a rollback section");
+    expect(t.task().pipeline).toMatchObject({
+      stage: "spec",
+      visits: { spec: 2 },
+      gate: null,
+    });
+    // Approve: build has no implement agent yet, so a new one starts; `end` closes the task.
+    await t.finish(done("Spec v2"));
+    await s.board.pmCardDecide(t.gateCard().id, {
+      optionId: "approve",
+      by: "user",
+    });
+    await s.board.refresh();
+    expect(t.starts()).toHaveLength(2);
+    expect(t.starts()[1][1].prompt).toContain("Build it.");
+    await t.finish(done("Built"));
+    expect(t.delivery()).toMatchObject({ stage: "delivered" });
+    expect(t.card().stage).toBe("done");
+    expect(t.task().pipeline?.stage).toBe("end");
+  });
+
+  it("maxVisits sends the task to Needs you as loop", async () => {
+    const s = await bootWith(
+      `start: build
+stages:
+  build: { role: implement, prompt: Build it., maxVisits: 2, to: build }
+`,
+    );
+    const taskId = await startTask(s);
+    const t = helpers(s, taskId);
+    await t.finish(done("Round 1"));
+    expect(t.task().pipeline).toMatchObject({ visits: { build: 2 } });
+    expect(t.sends().at(-1)[1]).toContain("Build it.");
+    await t.finish(done("Round 2"));
+    expect(t.delivery()).toMatchObject({ stage: "needs-you", reason: "loop" });
+    expect(t.card().stage).toBe("review");
+    expect(t.task().pipeline).toMatchObject({
+      stage: "build",
+      visits: { build: 2 },
+      pending: false,
+    });
+    expect(t.task().pipeline?.history.at(-1)).toMatchObject({ via: "loop" });
+    // Continue gives the looped stage a new budget: the next transition runs it again.
+    await s.board.mutate({
+      action: "review",
+      taskId,
+      outcome: "continue",
+      feedback: "One more",
+    });
+    await t.finish(done("Round 3"));
+    expect(t.delivery()).toBeUndefined();
+    expect(t.task().pipeline).toMatchObject({ visits: { build: 1 } });
+  });
+
+  it("a list of when conditions asks the user for now, and cancel closes the task", async () => {
+    const s = await bootWith(
+      `start: triage
+stages:
+  triage:
+    role: triage
+    prompt: Size it.
+    to:
+      - { stage: build, when: Small. }
+      - { stage: cancel, when: Not worth it. }
+  build: { role: implement, prompt: Build it., to: deliver }
+`,
+    );
+    const taskId = await startTask(s);
+    const t = helpers(s, taskId);
+    await t.finish(done("Not worth it"));
+    expect(t.delivery()).toMatchObject({ stage: "needs-you", reason: "gate" });
+    const card = t.gateCard();
+    expect(card.options.map((o) => o.id)).toEqual(["build", "cancel"]);
+    expect(t.task().pipeline?.gate?.kind).toBe("choose");
+    // A card closed through pm_card_update counts too.
+    await expect(
+      s.board.pmCardUpdate(card.id, { status: "decided", answer: "Drop it" }),
+    ).rejects.toThrow(GATE_OPTION_REQUIRED_ERROR);
+    await s.board.pmCardUpdate(card.id, {
+      status: "decided",
+      answer: "Drop it",
+      answerOptionId: "cancel",
+    });
+    expect(t.delivery()).toMatchObject({ stage: "dismissed" });
+    expect(t.task().pipeline).toMatchObject({ stage: "cancel", gate: null });
+  });
+});

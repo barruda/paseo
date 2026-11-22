@@ -8,6 +8,7 @@ import {
 import { skillSelectionSchema } from "./profiles"; // CUSTOM(agent-profiles)
 import { orchestratorHoldSchema, type OrchestratorHold } from "./hold"; // CUSTOM(resource-pools)
 import { factorySummarySchema } from "./factory/status"; // CUSTOM(factory)
+import { taskPipelineSchema } from "./factory/engine"; // CUSTOM(factory)
 
 export const STAGES = [
   "inbox",
@@ -615,6 +616,11 @@ export const taskSchema = z.object({
   // CUSTOM(packages): the package this ticket belongs to (at most one), and its test level.
   packageId: z.string().nullable().default(null),
   testTier: testTierOverrideSchema.nullable().default(null),
+  /**
+   * CUSTOM(factory): the task's stage in its project's pipeline (docs/factory.md, ticket 11). Null
+   * while the factory is not active, and on tasks started before.
+   */
+  pipeline: taskPipelineSchema.nullable().default(null),
   binding: z
     .object({
       operationId: z.string(),
@@ -943,6 +949,8 @@ export const cardSchema = taskSchema.omit({ description: true }).extend({
   pinState: pinStateSchema,
   /** CUSTOM(orchestrator-in-place): runs in the project folder; no worktree to merge. */
   inPlace: z.boolean().default(false),
+  /** CUSTOM(factory): the pipeline stage chip (`spec · gate`, `implement 2/3`), or null. */
+  stageChip: z.string().nullable().optional(),
   dueAt: z.string().nullable(),
   agents: z.array(
     z.object({
@@ -1055,6 +1063,7 @@ export function newTask(
     timing: null,
     packageId: null,
     testTier: null,
+    pipeline: null, // CUSTOM(factory)
     binding: null,
   };
 }

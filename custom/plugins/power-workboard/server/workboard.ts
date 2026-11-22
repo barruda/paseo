@@ -195,6 +195,23 @@ import {
   type AppliedFactory,
 } from "../shared/factory/active";
 import type { FactoryMode } from "../shared/factory/status";
+import {
+  PIPELINE_HISTORY_LIMIT,
+  enterStage,
+  findStage,
+  pipelineForProject,
+  previousWorkerStage,
+  stageChip,
+  stageExit,
+  stageSection,
+  startPipeline,
+  type TaskPipeline,
+} from "../shared/factory/engine";
+import { projectWorkers, stageRunner } from "../shared/factory/pipeline";
+import type {
+  CompiledPipeline,
+  CompiledStage,
+} from "../shared/factory/compile";
 import type { ViewSource } from "./assistant/views";
 import {
   checkpointResumePrompt, // CUSTOM(task-checkpoints)
@@ -207,6 +224,7 @@ import {
   parseTicket,
   pullRequestPrompt,
   refinementPrompt,
+  stageRunPrompt, // CUSTOM(factory)
   usageLimitResumePrompt, // CUSTOM(usage-limit)
   writeTicketPrompt,
 } from "./orchestrator";
@@ -266,6 +284,9 @@ export interface FactoryAccess {
 }
 
 /** CUSTOM(factory): the error an edit of a factory-owned setting gets in active mode. */
+/** CUSTOM(factory): a gate's Decisões card needs one of its options. */
+export const GATE_OPTION_REQUIRED_ERROR =
+  "Pick one of the gate's options: each one names the stage the task goes to";
 export const FACTORY_READ_ONLY_ERROR =
   "This setting comes from the factory; edit it in the factory";
 /** CUSTOM(factory): mutations that only change factory-owned config. */
@@ -1072,6 +1093,10 @@ export class Workboard {
           ),
           activity,
           inPlace: data.orchestrations[task.id]?.inPlace ?? false, // CUSTOM(orchestrator-in-place)
+          // CUSTOM(factory): the pipeline stage, until the card reaches Done or Canceled.
+          stageChip: isTerminalGroup(stage, data.settings.groups)
+            ? null
+            : this.stageChipOf(task),
           changeRequest: projectChangeRequest(workspace),
           changeRequestUnavailable: !!workspace?.githubRuntime?.error,
           pinState:
@@ -2673,6 +2698,7 @@ export class Workboard {
           : "Add a Ready to start group first",
       );
     await this.moveBound(taskId, target.id);
+    await this.pipelineReviewed(taskId, outcome, by); // CUSTOM(factory)
     if (outcome === "done") {
       if (this.store.current.orchestrations[taskId])
         await this.setOrchestration(taskId, { feedback: null });
@@ -3555,6 +3581,22 @@ export class Workboard {
       });
       return this.settle(taskId, "failed", report.question);
     }
+    // CUSTOM(factory): a pipeline stage that reported done goes where its pipeline says.
+    const routed = await this.pipelineStageDone(taskId, report);
+    if (routed !== null) return routed;
+    return this.deliverDone(taskId, action, observe);
+  }
+  /**
+   * Today's delivery of a done report, from the action on. Returns whether an asynchronous step
+   * (verify, merge or PR) must run. Inside `serial`.
+   */
+  private async deliverDone(
+    taskId: string,
+    action: Delivery["action"],
+    observe: boolean,
+  ): Promise<boolean> {
+    const task = this.task(taskId);
+    const policy = this.policy(this.projectIdOf(task));
     if (action === "nothing") {
       // CUSTOM(orchestrator-in-place): a folder task in review keeps the folder until the user
       // approves it, marks it done or dismisses it.
@@ -3929,6 +3971,394 @@ export class Workboard {
         detail: null,
       });
     await this.record(taskId, "done", "Marked done", { by });
+  }
+  // CUSTOM(factory): the pipeline engine (docs/factory.md, ticket 11) -------------------------
+  /** The pipeline a task of this project starts: active mode with the PM on; else null. */
+  private projectPipeline(projectId: string | null) {
+    if (this.factoryMode() !== "active" || !this.assistantOn()) return null;
+    const applied = this.factoryApplied();
+    if (!applied) return null;
+    const pipeline = pipelineForProject(
+      applied.compiled,
+      applied.defaultPipeline,
+      projectId,
+    );
+    return pipeline ? { applied, pipeline } : null;
+  }
+  /** The task's pipeline state and its pipeline, while active mode still has that pipeline. */
+  private taskPipeline(task: Pick<Task, "pipeline">) {
+    const state = task.pipeline;
+    if (!state || this.factoryMode() !== "active" || !this.assistantOn())
+      return null;
+    const applied = this.factoryApplied();
+    const pipeline = applied?.compiled.pipelines.find((p) => p.id === state.id);
+    return applied && pipeline ? { applied, pipeline, state } : null;
+  }
+  private setTaskPipeline(
+    taskId: string,
+    state: TaskPipeline | null,
+  ): Promise<void> {
+    return this.store.update((data) => {
+      const task = data.tasks.find((t) => t.id === taskId);
+      if (task) task.pipeline = state;
+    });
+  }
+  /**
+   * The live orchestrator that runs a stage for a project: the pinned worker, the project's worker
+   * with the stage's role, else its implement worker. Null for a `pm` stage or when none exists.
+   */
+  private stageOrchestrator(
+    applied: AppliedFactory,
+    stage: CompiledStage,
+    projectId: string | null,
+    data: Data,
+  ): string | null {
+    const workers = projectWorkers(
+      projectId ?? "",
+      applied.compiled.workers.map((worker) => ({
+        id: worker.id,
+        project: worker.config.projectId,
+        role: worker.role,
+      })),
+    );
+    const runner = stageRunner(
+      { role: stage.role, ...(stage.worker ? { worker: stage.worker } : {}) },
+      workers,
+    );
+    if (runner?.kind !== "worker") return null;
+    const id = new FactoryIds(data.factoryIds, applied.fileIds).liveWorker(
+      runner.workerId,
+    );
+    return data.orchestrators.some((o) => o.id === id) ? id : null;
+  }
+  /**
+   * Who takes the task's next run when its pipeline decides it: the worker of a stage a transition
+   * entered or of a running stage whose role is not implement (or that pins a worker), and for a
+   * task leaving Ready, the worker of a `start` like that. Null keeps today's rule, so an
+   * implement stage goes where every task goes today.
+   */
+  private stageOwner(
+    task: Pick<Task, "projectId"> &
+      Partial<Pick<Task, "pipeline" | "workspaceId">>,
+    data: Data,
+  ): string | null {
+    // A task with a workspace runs its current stage; one without starts over at `start`.
+    if (task.workspaceId) {
+      const live = this.taskPipeline({ pipeline: task.pipeline ?? null });
+      const stage = live && findStage(live.pipeline, live.state.stage);
+      if (
+        !live ||
+        !stage ||
+        stage.role === "pm" ||
+        (!live.state.pending && stage.role === "implement" && !stage.worker)
+      )
+        return null;
+      return this.stageOrchestrator(live.applied, stage, task.projectId, data);
+    }
+    const entry = this.projectPipeline(task.projectId);
+    const start = entry && findStage(entry.pipeline, entry.pipeline.start);
+    if (!entry || !start || (start.role === "implement" && !start.worker))
+      return null;
+    return this.stageOrchestrator(entry.applied, start, task.projectId, data);
+  }
+  /**
+   * The stage's text for its run: its procedure, the spec template for a `spec` stage and the
+   * user's gate answer. The run that starts the pipeline from Ready gets none for an implement
+   * stage with no `prompt` or `file` of its own: the worker's task prompt is today's procedure.
+   */
+  private async stagePrompt(
+    applied: AppliedFactory,
+    pipeline: CompiledPipeline,
+    stage: CompiledStage,
+    projectId: string | null,
+    options: { first?: boolean; note?: string | null } = {},
+  ): Promise<string> {
+    const own = applied.pipelines[pipeline.id]?.stages[stage.id];
+    if (
+      options.first &&
+      stage.role === "implement" &&
+      own?.prompt === undefined &&
+      own?.file === undefined
+    )
+      return "";
+    let template: string | null = null;
+    if (stage.role === "spec") {
+      const project = applied.compiled.projects.find(
+        (p) => p.projectId === projectId,
+      );
+      template = await readFile(
+        join(applied.root, project?.specTemplate ?? "templates/spec.md"),
+        "utf8",
+      ).catch(() => null);
+    }
+    return stageSection(stage, { template, note: options.note ?? null });
+  }
+  /** The card's stage chip. */
+  private stageChipOf(task: Task): string | null {
+    const live = this.taskPipeline(task);
+    return live ? stageChip(live.pipeline, live.state) : null;
+  }
+  /**
+   * A stage reported done: follow its `to`, or open a Decisões proposal for a gate or a list of
+   * `when` conditions. Null hands the report to today's delivery (a `pm` stage, `deliver`, or a
+   * task the engine does not run). Inside `serial`, with the delivery created.
+   */
+  private async pipelineStageDone(
+    taskId: string,
+    report: Report,
+  ): Promise<boolean | null> {
+    const task = this.task(taskId);
+    const live = this.taskPipeline(task);
+    const stage = live && findStage(live.pipeline, live.state.stage);
+    if (!live || !stage || stage.role === "pm") return null;
+    const exit = stageExit(stage);
+    if (exit.kind === "go")
+      return this.pipelineEnter(taskId, exit.to, "to", null);
+    // A list of conditions asks the user too, until the Project Manager chooses (ticket 12).
+    const question =
+      exit.kind === "gate"
+        ? exit.question
+        : `Which stage comes after "${stage.id}"?`;
+    const options =
+      exit.kind === "gate"
+        ? exit.options.map((option) => ({
+            id: option.id,
+            label: option.label,
+            gains: null,
+            costs: null,
+          }))
+        : exit.candidates
+            .filter(
+              (candidate, index, all) =>
+                all.findIndex((other) => other.stage === candidate.stage) ===
+                index,
+            )
+            .map((candidate) => ({
+              id: candidate.stage,
+              label: `${candidate.stage}: ${candidate.when}`.slice(0, 500),
+              gains: null,
+              costs: null,
+            }));
+    const card = await this.addPmCard({
+      kind: "proposal",
+      title: `${task.title}: ${question}`.slice(0, 500),
+      question,
+      options,
+      why:
+        exit.kind === "gate"
+          ? `The "${stage.id}" stage of the ${live.pipeline.id} pipeline ends at this gate.`
+          : `The "${stage.id}" stage of the ${live.pipeline.id} pipeline lists conditions; pick the one that fits its report.`,
+      findings: report.summary.slice(0, 20_000),
+      links: { taskIds: [taskId], reportIds: [], packageIds: [] },
+    });
+    await this.setTaskPipeline(taskId, {
+      ...live.state,
+      gate: { cardId: card.id, stage: stage.id, kind: exit.kind },
+    });
+    return this.settle(taskId, "gate", question);
+  }
+  /**
+   * Moves the task into `to` and does what that needs. A worker stage queues the task (it stays
+   * in progress and the next pass runs the stage); `end` and `cancel` close it. Null: a `pm`
+   * stage or `deliver`, which today's delivery runs. Inside `serial`, with a delivery to settle.
+   */
+  private async pipelineEnter(
+    taskId: string,
+    to: string,
+    via: "to" | "gate" | "choose",
+    detail: string | null,
+  ): Promise<boolean | null> {
+    const live = this.taskPipeline(this.task(taskId));
+    if (!live) return null;
+    const from = live.state.stage;
+    const entered = enterStage(
+      live.pipeline,
+      live.state,
+      to,
+      via,
+      this.stamp(),
+      detail,
+    );
+    await this.setTaskPipeline(taskId, entered.state);
+    if (entered.loop) {
+      const text = `Stage "${entered.loop.stage}" would start visit ${entered.loop.visits}; its limit is ${entered.loop.maxVisits}`;
+      await this.record(taskId, "stage-entered", `Pipeline loop: ${text}`, {
+        detail,
+      });
+      return this.settle(taskId, "loop", text);
+    }
+    await this.record(taskId, "stage-entered", `Pipeline: ${from} → ${to}`, {
+      detail,
+    });
+    const target = entered.target;
+    if (target.kind === "worker") {
+      await this.store.update((data) => {
+        delete data.assistant.deliveries[taskId];
+      });
+      await this.setOrchestration(taskId, {
+        status: "queued",
+        feedback: null,
+        ask: null,
+        error: null,
+        checkpoint: false,
+        resumeAt: null,
+        waitingFor: null,
+      });
+      return false;
+    }
+    if (target.kind === "pm" || target.stage === "deliver") return null;
+    const kind = target.stage === "end" ? "done" : "canceled";
+    await this.patchDelivery(taskId, {
+      stage: target.stage === "end" ? "delivered" : "dismissed",
+      reason: null,
+      detail: null,
+    });
+    await this.record(
+      taskId,
+      target.stage === "end" ? "done" : "dismissed",
+      target.stage === "end"
+        ? "The pipeline ended with no delivery"
+        : "The pipeline canceled the task",
+    );
+    const group = orderedGroups(this.store.current.settings).find(
+      (g) => g.kind === kind,
+    );
+    if (group)
+      await this.moveBound(taskId, group.id).catch((error) =>
+        this.setOrchestration(taskId, { error: message(error) }),
+      );
+    return false;
+  }
+  /** The task whose open gate is this Decisões card. */
+  private gateTask(cardId: string): Task | null {
+    return (
+      this.store.current.tasks.find(
+        (task) => task.pipeline?.gate?.cardId === cardId,
+      ) ?? null
+    );
+  }
+  /**
+   * The user answered a gate (or the stage choice) in Decisões: the task leaves Needs you and
+   * enters the option's stage, with no PM turn.
+   */
+  private async pipelineGateDecided(card: PmCard): Promise<void> {
+    if (!this.gateTask(card.id)) return;
+    await this.serial(async () => {
+      const task = this.gateTask(card.id);
+      const live = task && this.taskPipeline(task);
+      const gate = live?.state.gate;
+      if (!task || !live || !gate || gate.cardId !== card.id) return;
+      // The task left Needs you another way (dismissed, merged, moved by hand): the gate closes.
+      const delivery = this.store.current.assistant.deliveries[task.id];
+      if (delivery?.stage !== "needs-you" || delivery.reason !== "gate") {
+        await this.setTaskPipeline(task.id, { ...live.state, gate: null });
+        return;
+      }
+      const stage = findStage(live.pipeline, gate.stage);
+      const exit = stage ? stageExit(stage) : null;
+      const to =
+        exit?.kind === "gate"
+          ? exit.options.find((option) => option.id === card.answerOptionId)?.to
+          : exit?.kind === "choose"
+            ? exit.candidates.find(
+                (candidate) => candidate.stage === card.answerOptionId,
+              )?.stage
+            : undefined;
+      if (!to) return;
+      const label =
+        card.options.find((option) => option.id === card.answerOptionId)
+          ?.label ?? to;
+      const detail =
+        card.answer && card.answer !== label
+          ? `${label}: ${card.answer}`
+          : label;
+      const result = await this.pipelineEnter(task.id, to, gate.kind, detail);
+      if (result === null) {
+        // A `pm` stage or `deliver`: today's delivery takes the stage's report.
+        await this.patchDelivery(task.id, {
+          stage: "reported",
+          reason: null,
+          detail: null,
+        });
+        const policy = this.policy(this.projectIdOf(task));
+        if (await this.deliverDone(task.id, policy.action, policy.observe))
+          this.launch(task.id);
+        return;
+      }
+      if (this.task(task.id).pipeline?.pending) {
+        const inProgress = orderedGroups(this.store.current.settings).find(
+          (g) => g.kind === "in-progress",
+        );
+        if (inProgress) await this.moveBound(task.id, inProgress.id);
+        this.changed(task.workspaceId ?? undefined);
+        await this.orchestrate();
+      }
+    });
+  }
+  /**
+   * The reviewer answered the task on the board instead of in Decisões: its gate closes. Sent
+   * back from a `pm` stage (today's review), the task returns to the worker stage before it.
+   * Inside `serial`.
+   */
+  private async pipelineReviewed(
+    taskId: string,
+    outcome: "done" | "continue",
+    by: Exclude<HistoryActor, "orchestrator">,
+  ): Promise<void> {
+    const task = this.task(taskId);
+    const live = this.taskPipeline(task);
+    if (!live) return;
+    let state = live.state;
+    if (state.gate) {
+      const cardId = state.gate.cardId;
+      await this.store.update((data) => {
+        const card = data.assistant.pmBoard.cards.find((c) => c.id === cardId);
+        if (card && card.status !== "decided" && card.status !== "archived") {
+          card.status = "archived";
+          card.updatedAt = this.stamp(card.updatedAt);
+        }
+      });
+      state = { ...state, gate: null };
+    }
+    // Continue after a loop gives the stage that looped a new budget of visits.
+    const delivery = this.store.current.assistant.deliveries[taskId];
+    const looped = state.history.findLast((entry) => entry.via === "loop");
+    if (
+      outcome === "continue" &&
+      delivery?.stage === "needs-you" &&
+      delivery.reason === "loop" &&
+      looped
+    )
+      state = { ...state, visits: { ...state.visits, [looped.stage]: 0 } };
+    const stage = findStage(live.pipeline, state.stage);
+    if (
+      outcome === "continue" &&
+      (stage?.role === "pm" || state.stage === "deliver")
+    ) {
+      const back = previousWorkerStage(live.pipeline, state);
+      state = {
+        ...state,
+        stage: back,
+        visits: { ...state.visits, [back]: (state.visits[back] ?? 0) + 1 },
+        pending: false,
+        history: [
+          ...state.history,
+          {
+            stage: back,
+            at: this.stamp(),
+            via: "review" as const,
+            detail: null,
+          },
+        ].slice(-PIPELINE_HISTORY_LIMIT),
+      };
+      await this.record(
+        taskId,
+        "stage-entered",
+        `Pipeline: ${live.state.stage} → ${back}`,
+        { by },
+      );
+    }
+    if (state !== live.state) await this.setTaskPipeline(taskId, state);
   }
   /** Runs the delivery's asynchronous steps, one task at a time. Never blocks `orchestrate`. */
   private launch(taskId: string): void {
@@ -5536,21 +5966,23 @@ export class Workboard {
     }));
   }
   async pmCardCreate(input: PmCardCreateInput): Promise<PmCard> {
+    return this.serial(() => this.addPmCard(input));
+  }
+  /** Creates a PM card; inside `serial` (CUSTOM(factory): pipeline gates add theirs there). */
+  private async addPmCard(input: PmCardCreateInput): Promise<PmCard> {
     const card = newPmCard(
       `${PM_CARD_ID_PREFIX}${randomUUID().slice(0, 8)}`,
       this.stamp(),
       input,
     );
-    await this.serial(() =>
-      this.store.update((data) => {
-        const cards = trimPmCards([card, ...data.assistant.pmBoard.cards]);
-        if (cards.length > PM_CARD_LIMIT)
-          console.warn(
-            `PM board passed its ${PM_CARD_LIMIT}-card limit (${cards.length} cards): no archived card is left to drop.`,
-          );
-        data.assistant.pmBoard.cards = cards;
-      }),
-    );
+    await this.store.update((data) => {
+      const cards = trimPmCards([card, ...data.assistant.pmBoard.cards]);
+      if (cards.length > PM_CARD_LIMIT)
+        console.warn(
+          `PM board passed its ${PM_CARD_LIMIT}-card limit (${cards.length} cards): no archived card is left to drop.`,
+        );
+      data.assistant.pmBoard.cards = cards;
+    });
     return card;
   }
   async pmCardUpdate(id: string, input: PmCardUpdateInput): Promise<PmCard> {
@@ -5584,6 +6016,13 @@ export class Workboard {
         };
         const becomingDecided =
           next.status === "decided" && current.status !== "decided";
+        // CUSTOM(factory): a pipeline gate moves the task to the stage its option names.
+        if (
+          becomingDecided &&
+          !next.options.some((option) => option.id === next.answerOptionId) &&
+          this.gateTask(id)
+        )
+          throw new Error(GATE_OPTION_REQUIRED_ERROR);
         // Closing a proposal or a decision without a decision or an answer leaves the user
         // without what they were waiting for.
         if (becomingDecided && pmNeedsAnswerToDecide(current.kind)) {
@@ -5615,7 +6054,9 @@ export class Workboard {
       }),
     );
     if (!updated) throw new Error(`No PM card with id ${id}.`);
-    return updated;
+    const card: PmCard = updated;
+    if (card.status === "decided") await this.pipelineGateDecided(card); // CUSTOM(factory)
+    return card;
   }
   /** Records a decision on a card: the user's answer, or the PM deciding alone. */
   async pmCardDecide(
@@ -6421,7 +6862,12 @@ export class Workboard {
           ask: askOf(summary ? parseReport(summary).report : null),
         });
       // CUSTOM(task-checkpoints): the task stays in progress and resumes later.
-      if (this.store.current.orchestrations[taskId]?.checkpoint) continue;
+      // CUSTOM(factory): so does a task its pipeline moved to the next worker stage.
+      if (
+        this.store.current.orchestrations[taskId]?.checkpoint ||
+        this.taskPipeline(this.task(taskId))?.state.pending
+      )
+        continue;
       await this.log(
         record.orchestratorId,
         "info",
@@ -6432,7 +6878,8 @@ export class Workboard {
       if (
         review &&
         workspace &&
-        groupKind(task.lastStage, groups) === "in-progress"
+        // CUSTOM(factory): read again; a pipeline's `end` or `cancel` already moved it.
+        groupKind(this.task(taskId).lastStage, groups) === "in-progress"
       ) {
         try {
           await this.moveBound(taskId, review.id);
@@ -6501,7 +6948,8 @@ export class Workboard {
           !card.binding &&
           !card.archived &&
           !!card.workspaceId &&
-          !!record?.checkpoint &&
+          // CUSTOM(factory): a pipeline stage waiting for its run resumes the same way.
+          (!!record?.checkpoint || !!card.pipeline?.pending) &&
           this.resumable(record)
         );
       });
@@ -6878,9 +7326,13 @@ export class Workboard {
    */
   private owns(
     config: OrchestratorConfig,
-    task: Pick<Task, "id" | "orchestratorId" | "projectId">,
+    task: Pick<Task, "id" | "orchestratorId" | "projectId"> &
+      Partial<Pick<Task, "pipeline" | "workspaceId">>,
     data: Data = this.store.current,
   ): boolean {
+    // CUSTOM(factory): the worker of the pipeline stage the task is about to run.
+    const stageOwner = this.stageOwner(task, data);
+    if (stageOwner) return stageOwner === config.id;
     const exists = (id: string | null | undefined): id is string =>
       !!id && data.orchestrators.some((o) => o.id === id);
     if (exists(task.orchestratorId)) return task.orchestratorId === config.id;
@@ -7424,6 +7876,14 @@ export class Workboard {
       await this.setOrchestration(card.id, {
         workspaceId: task.workspaceId,
       });
+      // CUSTOM(factory): the task enters its pipeline at `start` (a `pm` start runs today's way).
+      const entry = this.projectPipeline(project.id);
+      const startStage =
+        entry && findStage(entry.pipeline, entry.pipeline.start);
+      const pipelineStart =
+        entry && startStage && startStage.role !== "pm"
+          ? { ...entry, stage: startStage }
+          : null;
       const agentId = await this.host.startAgent(task.workspaceId, {
         ...(await this.orchestratorProfile(config)), // CUSTOM(agent-profiles)
         provider: config.provider,
@@ -7437,6 +7897,16 @@ export class Workboard {
           config.instructions,
           this.assistantOn(),
           this.testSection(task), // CUSTOM(packages)
+          // CUSTOM(factory)
+          pipelineStart
+            ? await this.stagePrompt(
+                pipelineStart.applied,
+                pipelineStart.pipeline,
+                pipelineStart.stage,
+                project.id,
+                { first: true },
+              )
+            : "",
         ), // CUSTOM(projects-assistant)
         labels: BOARD_AGENT_LABELS, // CUSTOM(hidden-board-agents)
       });
@@ -7445,6 +7915,12 @@ export class Workboard {
         agentId,
         startedAt: this.stamp(),
       });
+      // CUSTOM(factory): a new run starts the pipeline over.
+      if (pipelineStart) {
+        const state = startPipeline(pipelineStart.pipeline, this.stamp());
+        state.agents[pipelineStart.stage.role] = agentId;
+        await this.setTaskPipeline(card.id, state);
+      } else if (task.pipeline) await this.setTaskPipeline(card.id, null);
       // CUSTOM(projects-assistant)
       if (this.assistantOn()) {
         const attempt = await this.openAttempt(
@@ -7511,16 +7987,39 @@ export class Workboard {
     const limited = checkpoint && record.limited; // CUSTOM(usage-limit)
     const progress = this.store.current.assistant.progress[taskId];
     const tests = this.testSection(this.task(taskId)); // CUSTOM(packages)
-    const nextPrompt = limited
-      ? usageLimitResumePrompt(progress, this.assistantOn(), tests)
-      : checkpoint
-        ? checkpointResumePrompt(
-            progress,
-            record.waitingFor,
-            this.assistantOn(),
-            tests,
-          )
-        : continuationPrompt(feedback, this.assistantOn(), tests); // CUSTOM(projects-assistant)
+    // CUSTOM(factory): a stage a pipeline transition entered runs now, on the stage's worker.
+    const live = this.taskPipeline(this.task(taskId));
+    const stageRun =
+      live?.state.pending && !checkpoint
+        ? findStage(live.pipeline, live.state.stage)
+        : null;
+    const nextPrompt = stageRun
+      ? stageRunPrompt(
+          await this.stagePrompt(
+            live!.applied,
+            live!.pipeline,
+            stageRun,
+            this.projectIdOf(this.task(taskId)),
+            {
+              note:
+                [live!.state.note, feedback.trim()]
+                  .filter(Boolean)
+                  .join("\n\n") || null,
+            },
+          ),
+          this.assistantOn(),
+          tests,
+        )
+      : limited
+        ? usageLimitResumePrompt(progress, this.assistantOn(), tests)
+        : checkpoint
+          ? checkpointResumePrompt(
+              progress,
+              record.waitingFor,
+              this.assistantOn(),
+              tests,
+            )
+          : continuationPrompt(feedback, this.assistantOn(), tests); // CUSTOM(projects-assistant)
     // CUSTOM(usage-limit)
     const resumed = (title: string, fresh: boolean) =>
       limited
@@ -7530,7 +8029,13 @@ export class Workboard {
     try {
       await this.moveBound(taskId, stage);
       const task = this.task(taskId);
-      let agentId = record.agentId;
+      // CUSTOM(factory): `session: continue` hands the stage to the role's last agent here;
+      // `fresh` always starts a new one.
+      let agentId = stageRun
+        ? stageRun.session === "fresh"
+          ? null
+          : (live!.state.agents[stageRun.role] ?? null)
+        : record.agentId;
       // CUSTOM(factory): a new agent starts from the current config; a live one keeps its stamp.
       let stamp: RevisionStamp | null = null;
       if (agentId && (await this.host.agentAlive(agentId)))
@@ -7589,39 +8094,63 @@ export class Workboard {
         limitPauses: limited ? (record.limitPauses ?? 0) : 0,
         ...stamp, // CUSTOM(factory)
       });
+      // CUSTOM(factory): the stage runs; its agent continues the role's next stage. A pending
+      // stage left over from active mode runs as a plain continuation and stops being pending.
+      const pipelineNow = this.task(taskId).pipeline;
+      if (pipelineNow && (stageRun || pipelineNow.pending))
+        await this.setTaskPipeline(taskId, {
+          ...pipelineNow,
+          pending: false,
+          note: null,
+          agents: stageRun
+            ? { ...pipelineNow.agents, [stageRun.role]: agentId! }
+            : pipelineNow.agents,
+        });
+      const stageText = stageRun
+        ? `Started stage "${stageRun.id}" of "${task.title}"${fresh ? " with a new agent" : ""}`
+        : null;
       // CUSTOM(projects-assistant)
       if (this.assistantOn()) {
         const attempt = await this.openAttempt(
           taskId,
-          // CUSTOM(task-checkpoints), CUSTOM(usage-limit)
-          limited ? "usage-limit" : checkpoint ? "checkpoint" : "feedback",
+          // CUSTOM(task-checkpoints), CUSTOM(usage-limit), CUSTOM(factory)
+          stageRun
+            ? "start"
+            : limited
+              ? "usage-limit"
+              : checkpoint
+                ? "checkpoint"
+                : "feedback",
           agentId,
           settings.id,
-          checkpoint ? null : feedback.trim() || null,
+          checkpoint || stageRun ? null : feedback.trim() || null,
         );
         await this.record(
           taskId,
           "task-continued",
-          checkpoint
-            ? resumed(task.title, fresh)
-            : `Continued "${task.title}" with the review feedback`,
+          stageText ??
+            (checkpoint
+              ? resumed(task.title, fresh)
+              : `Continued "${task.title}" with the review feedback`),
           {
             attempt,
             agentId,
             detail: checkpoint ? null : feedback.trim() || null,
             // CUSTOM(assistant-cards): the feedback's author; a checkpoint resume is the board's.
-            by: checkpoint
-              ? "orchestrator"
-              : (record.feedbackBy ?? "orchestrator"),
+            by:
+              checkpoint || stageRun
+                ? "orchestrator"
+                : (record.feedbackBy ?? "orchestrator"),
           },
         );
       }
       await this.log(
         settings.id,
         "info",
-        checkpoint
-          ? resumed(task.title, fresh)
-          : `Continued "${task.title}" with the review feedback`,
+        stageText ??
+          (checkpoint
+            ? resumed(task.title, fresh)
+            : `Continued "${task.title}" with the review feedback`),
         taskId,
         agentId,
       );
@@ -7643,13 +8172,16 @@ export class Workboard {
         taskId,
       );
       // CUSTOM(task-checkpoints): a resume nobody retries goes to the user, not to a dead end.
-      if (checkpoint && this.assistantOn())
+      // CUSTOM(factory): so does a pipeline stage that could not start.
+      if ((checkpoint || stageRun) && this.assistantOn())
         await this.assistantFailed(
           taskId,
           this.store.current.orchestrations[taskId],
-          limited
-            ? `Could not resume after the usage limit: ${message(error)}`
-            : `Could not resume from the checkpoint: ${message(error)}`,
+          stageRun
+            ? `Could not start the "${stageRun.id}" stage: ${message(error)}`
+            : limited
+              ? `Could not resume after the usage limit: ${message(error)}`
+              : `Could not resume from the checkpoint: ${message(error)}`,
         );
       return "failed";
     }

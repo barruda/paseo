@@ -153,11 +153,13 @@ export function orchestratorPrompt(
   instructions: string,
   assistant = false, // CUSTOM(projects-assistant)
   tests = "", // CUSTOM(packages)
+  stage = "", // CUSTOM(factory): the pipeline stage's procedure
 ): string {
   return [
     instructions.trim(),
     `# ${task.title}`,
     task.body.trim(),
+    stage.trim(),
     "---",
     "You were started by the Workboard orchestrator for the task above. Do the whole task in this workspace without waiting for confirmation. When you are done, reply with a short summary of what you changed and what a reviewer should check.",
     tests,
@@ -181,6 +183,23 @@ export function continuationPrompt(
     "When you are done, reply with a short summary of what you changed and what a reviewer should check.",
     tests,
     assistant ? assistantSection() : "", // CUSTOM(projects-assistant)
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+/** CUSTOM(factory): what a task's agent receives when its pipeline moves it to a new stage. */
+export function stageRunPrompt(
+  stage: string,
+  assistant = false,
+  tests = "",
+): string {
+  return [
+    "The Workboard pipeline moved this task to a new stage. Do it in this workspace without waiting for confirmation.",
+    stage.trim(),
+    "When you are done, reply with a short summary of what you did and what a reviewer should check.",
+    tests,
+    assistant ? assistantSection() : "",
   ]
     .filter(Boolean)
     .join("\n\n");

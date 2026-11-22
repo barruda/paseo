@@ -309,6 +309,10 @@ export const NEEDS_YOU_REASONS = [
   "usage-limit",
   // CUSTOM(unattended-automation): an automatic agent has waited too long on a permission.
   "permission",
+  // CUSTOM(factory): a pipeline gate waits for the user's choice (a Decisões proposal).
+  "gate",
+  // CUSTOM(factory): a pipeline stage passed its `maxVisits`.
+  "loop",
 ] as const;
 export const needsYouReasonSchema = z.enum(NEEDS_YOU_REASONS);
 export type NeedsYouReason = z.infer<typeof needsYouReasonSchema>;
@@ -487,6 +491,7 @@ export const HISTORY_EVENT_KINDS = [
   "task-moved",
   "task-started",
   "task-continued",
+  "stage-entered", // CUSTOM(factory): the pipeline moved the task to a stage
   "folder-dirty", // CUSTOM(orchestrator-in-place): the project folder had uncommitted changes
   "report",
   "checkpoint", // CUSTOM(task-checkpoints)

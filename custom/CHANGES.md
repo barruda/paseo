@@ -10465,3 +10465,39 @@ tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). I
   the cutover: follow "Cutover" in `docs/factory.md`; with the mode on Active the board shows
   "factory: active, revision …", the Orchestrators tab is read only, and a new task's run records
   the factory revision.
+
+## factory-engine: the pipeline engine runs each task through its project's pipeline
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: pipeline engine runs Power Workboard tasks through their project's pipeline`
+- **Why:** Ticket 11 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "pipelines/<id>.yaml" and "Pipeline engine"): in active mode a task walks its project's
+  pipeline (stages on their role's worker, gates, a loop guard) instead of one run and a review.
+- **What:**
+  - `shared/factory/engine.ts`: the task's pipeline state (`task.pipeline`: id, stage, visits,
+    the last agent per role, `pending`, open gate, history) and pure transitions (`startPipeline`,
+    `enterStage` with the `maxVisits` guard, `stageExit`, `previousWorkerStage`, `stageChip`,
+    `stageSection`).
+  - `server/workboard.ts` (`CUSTOM(factory)`, "the pipeline engine" block): leaving Ready starts
+    the pipeline; `owns()` gives a pending stage (and a non-implement `start`) to its worker by
+    role; `continueTask` runs a pending stage (`session: continue` reuses the role's agent,
+    `fresh` starts one); `assistantFinished` follows a single `to` with no PM turn, opens a
+    Decisões proposal for a gate or a `when` list (reason `gate`), and stops a loop (reason
+    `loop`); `pmCardDecide` on a gate card advances to the option's stage; `pm` stages and
+    `deliver` hand off to today's delivery; `end` and `cancel` close the task. Reviewer feedback
+    from a `pm` stage returns the task to the worker stage before it.
+  - Needs-you reasons `gate` and `loop`, history kind `stage-entered`, card field `stageChip`
+    shown next to `#42` on the card.
+- **Core files touched:** none.
+- **Plugin files:** `shared/factory/engine.ts`, `shared/model.ts`, `shared/assistant.ts`,
+  `server/workboard.ts`, `server/orchestrator.ts`, `client/WorkboardScreen.tsx`,
+  `client/strings.ts`, `client/assistant/dashboard-strings.ts`,
+  `client/assistant/reports-strings.ts`, `client/assistant/reports-format.ts`,
+  `docs/factory.md`, `tests/pipeline-engine.test.ts`, `tests/factory-boot.ts` (the active-mode
+  boot harness, moved out of `tests/factory-active.test.ts`).
+- **Re-apply:** plugin only; re-run the hooks named above in `server/workboard.ts` if upstream
+  plugin code moved (search `CUSTOM(factory)`).
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/pipeline-engine.test.ts
+tests/factory-active.test.ts)` (plugin suite in the update script). Live only after the cutover
+  to active mode: a task of a project on `critical` shows `triage 1/3` on its card, and its gate
+  shows up in Decisões.

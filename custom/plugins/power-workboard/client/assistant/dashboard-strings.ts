@@ -29,11 +29,14 @@ export const REASON_LABELS: Record<NeedsYouReason, string> = {
   "fix-waiting": "Fix waiting for a slot", // CUSTOM(resource-pools)
   "usage-limit": "Usage limit hit again", // CUSTOM(usage-limit)
   permission: "Waiting for a permission", // CUSTOM(unattended-automation)
+  gate: "Pipeline gate waits for you", // CUSTOM(factory)
+  loop: "Pipeline stage looped", // CUSTOM(factory)
 };
 
 export const KIND_LABELS: Record<HistoryEventKind, string> = {
   "task-created": "Created", // CUSTOM(assistant-reports)
   "task-moved": "Moved", // CUSTOM(assistant-reports)
+  "stage-entered": "Pipeline stage", // CUSTOM(factory)
   "task-started": "Started",
   "task-continued": "Continued",
   "folder-dirty": "Folder dirty at start", // CUSTOM(orchestrator-in-place)

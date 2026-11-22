@@ -3,23 +3,14 @@
 // every write, and refuses edits of what the factory owns. Everything lives in temp folders.
 import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  realpath,
-  writeFile,
-} from "node:fs/promises";
-import os from "node:os";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { FACTORY_GITIGNORE } from "../server/factory/builtin";
 import { runFactoryCli } from "../server/factory/cli";
 import { copyProfileMemory } from "../server/factory/cutover";
-import { FactoryShadow, factoryStoreView } from "../server/factory/shadow";
 import { compiledWorkerConfigHash } from "../server/factory/stamp";
 import { FACTORY_PROMPT_READ_ONLY } from "../server/profiles";
-import { FACTORY_READ_ONLY_ERROR, Workboard } from "../server/workboard";
+import { FACTORY_READ_ONLY_ERROR } from "../server/workboard";
 import {
   FactoryIds,
   applyFactory,
@@ -29,210 +20,23 @@ import {
   restoreJsonConfig,
 } from "../shared/factory/active";
 import { factoryPipelinesRpc } from "../shared/rpc";
-import type { FactoryMode } from "../shared/factory/status";
-import {
-  dataSchema,
-  orchestratorConfigSchema,
-  type Data,
-} from "../shared/model";
+import { dataSchema, type Data } from "../shared/model";
 import { AUTOMATIC_SCHEDULE } from "../shared/schedule";
-import { fixture } from "./fixtures";
+import {
+  LIVE_ID,
+  boot,
+  disposeBooted,
+  liveData,
+  startTask,
+  temp,
+  write,
+  writeFixtureFactory,
+} from "./factory-boot";
 
-const temp = async (prefix: string) =>
-  realpath(await mkdtemp(path.join(os.tmpdir(), prefix)));
-
-async function write(file: string, text: string) {
-  await mkdir(path.dirname(file), { recursive: true });
-  await writeFile(file, text);
-}
-
-const LIVE_ID = "3f0c1a2b-0000-4000-8000-000000000001";
-
-/** A factory with one worker (`night`, the live orchestrator LIVE_ID) for the project at `checkout`. */
-async function writeFixtureFactory(checkout: string, git = true) {
-  const root = path.join(await temp("pwb-active-"), "factory");
-  const files: Record<string, string> = {
-    "factory.yaml": `schemaVersion: pwb/v1alpha1
-name: active-fixture
-defaults:
-  worker:
-    model: claude/claude-opus-5-5
-    thinking: medium
-  delivery:
-    action: notify
-`,
-    "board.yaml": `night: { start: "23:00", end: "05:00", shutdownWhenDone: false, shutdownCommand: "" }
-housekeeping:
-  autoArchive: false
-`,
-    "pm/worker.md": `---
-model: claude/claude-sonnet-5-5
-thinking: high
----
-
-You are the factory's Project Manager.
-`,
-    "workers/night/worker.md": `---
-name: Night
-project: proj
-model: claude/claude-sonnet-5-5
-thinking: high
-permission: plan
-schedule: automatic
-maxConcurrent: 1
-skills: [review]
-memory: true
----
-
-Work at night, from the factory.
-`,
-    "workers/night/task-prompt.md": "Factory task prompt.\n",
-    "workers/night/skills/notes/SKILL.md":
-      "---\nname: notes\ndescription: Night notes\n---\nNotes.\n",
-    "pipelines/simple.yaml": `start: implement
-stages:
-  implement:
-    role: implement
-    prompt: Implement it.
-    to: deliver
-`,
-    "projects/proj.yaml": `path: ${checkout}
-pipeline: simple
-delivery:
-  action: review
-  baseBranch: custom
-`,
-    ".gitignore": FACTORY_GITIGNORE,
-    ".factory-ids.json": `${JSON.stringify({ workers: { [LIVE_ID]: "night" }, pools: {}, projects: { p: "proj" } })}\n`,
-  };
-  for (const [file, text] of Object.entries(files))
-    await write(path.join(root, file), text);
-  if (git) {
-    const git = (...args: string[]) =>
-      execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim();
-    git("init", "-q");
-    git("add", "-A");
-    git(
-      "-c",
-      "user.name=test",
-      "-c",
-      "user.email=test@example.com",
-      "commit",
-      "-qm",
-      "fixture",
-    );
-    return { root, head: git("rev-parse", "HEAD") };
-  }
-  return { root, head: null };
-}
-
-/** The JSON's own config: a different orchestrator under the live id, and its own PM settings. */
-function liveData(root: string, mode: FactoryMode = "active") {
-  return {
-    defaultOrchestratorSeeded: true,
-    orchestrators: [
-      orchestratorConfigSchema.parse({
-        id: LIVE_ID,
-        name: "Old night",
-        projectId: "p",
-        provider: "codex/gpt-5",
-        schedule: { kind: "manual" },
-        instructions: "JSON task prompt.",
-      }),
-    ],
-    assistant: {
-      settings: {
-        defaultAction: "nothing" as const,
-        factory: { root, mode },
-      },
-    },
-  };
-}
-
-const boards: Workboard[] = [];
-const shadows: FactoryShadow[] = [];
 afterEach(() => {
-  for (const board of boards.splice(0)) board.dispose();
-  for (const shadow of shadows.splice(0)) shadow.dispose();
+  disposeBooted();
   vi.useRealTimers();
 });
-
-/** Boots the board as index.server.ts does: the shadow, the store view, then `start`. */
-async function boot(options: { git?: boolean; factory?: string } = {}) {
-  const checkout = await temp("pwb-active-checkout-");
-  const written = await writeFixtureFactory(checkout, options.git ?? true);
-  const root = options.factory ?? written.root;
-  const profilesDirectory = await temp("pwb-active-profiles-");
-  const setup = fixture(dataSchema.parse(liveData(root)));
-  setup.inventory.projects.push({
-    id: "p",
-    name: "Project",
-    directory: checkout,
-    isGit: false,
-  });
-  let board: Workboard | undefined;
-  const watchers = new Set<() => void>();
-  const factory = new FactoryShadow({
-    live: () =>
-      board
-        ? {
-            settings: () =>
-              setup.store.peek((data) => data.assistant.settings.factory),
-            revision: () => setup.store.peek((data) => data.revision),
-            data: () => setup.store.peek((data) => structuredClone(data)),
-            projects: () => board?.inventoryProjects() ?? [],
-          }
-        : null,
-    defaultRoot: root,
-    profilesRoot: profilesDirectory,
-    watch: (_dir, changed) => {
-      watchers.add(changed);
-      return () => watchers.delete(changed);
-    },
-    applied: () => void board?.factoryChanged().catch(() => undefined),
-  });
-  shadows.push(factory);
-  setup.store.setView(factoryStoreView(factory));
-  board = new Workboard(setup.host, setup.store, setup.now, 60000, {
-    profilesDirectory,
-    chatDirectory: path.join(profilesDirectory, "chat"),
-    factory,
-  });
-  boards.push(board);
-  await board.start();
-  /** Plays a change in the factory folder, as the watcher would. */
-  const touch = () => {
-    for (const changed of watchers) changed();
-  };
-  return {
-    ...setup,
-    board,
-    factory,
-    root,
-    head: written.head,
-    checkout,
-    touch,
-  };
-}
-
-type Booted = Awaited<ReturnType<typeof boot>>;
-
-async function startTask(s: Booted) {
-  await s.board.mutate({
-    action: "create",
-    title: "Task",
-    description: "Do it",
-    projectId: "p",
-  });
-  const task = s.board.snapshot().cards.find((c) => c.title === "Task")!;
-  await s.board.mutate({
-    action: "stage",
-    taskId: task.id,
-    stage: "ready",
-    expectedLabels: [],
-  });
-  return task.id;
-}
 
 describe("factory active mode: boot", () => {
   it("starts a task with the factory worker's settings, profile and revision stamp", async () => {

@@ -3828,6 +3828,15 @@ export function TaskCard({
               {`#${card.number}`}
             </Text>
           ) : null}
+          {/* CUSTOM(factory): the pipeline stage chip, `spec · gate` or `implement 2/3`. */}
+          {card.stageChip ? (
+            <Text
+              numberOfLines={1}
+              style={[styles.cardMeta, { color: theme.colors.foregroundMuted }]}
+            >
+              {card.stageChip}
+            </Text>
+          ) : null}
           {!isDraft && (
             <CardAction
               theme={theme}

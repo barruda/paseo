@@ -3,7 +3,8 @@
 Status: approved design. Built so far: tickets 2 (schemas, loader, compiler and `bin/factory`), 4
 (`bin/factory export`) and 6 (pipelines and roles), ticket 5 (revision stamps), ticket 7
 (shadow mode: the board loads and diffs the factory, applies nothing), ticket 8 (the read-only
-Pipelines tab) and ticket 9 (active mode; the live cutover waits for the user). Tickets at the end. Inspired by Warp Factories
+Pipelines tab), ticket 9 (active mode; the live cutover waits for the user) and ticket 11 (the
+pipeline engine). Tickets at the end. Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -351,6 +352,41 @@ the migration maps `fresh-agent` projects to `critical`.
   "edit in the factory". Still editable: the default-column preferences, the default task prompt,
   `reviews`, the factory setting itself (so active can be turned off), Run now and Stop.
 - The Pipelines tab reads the factory's `pipelines/` and each project's `pipeline:`.
+
+## Pipeline engine
+
+The engine runs in active mode with the Project Manager on. Otherwise a task runs today's way and
+its `task.pipeline` is left as it was. Code: `shared/factory/engine.ts` (state and transitions) and
+the "pipeline engine" block of `server/workboard.ts`.
+
+- **State.** `task.pipeline`: pipeline id, stage, visits per stage, the last agent per role,
+  `pending`, the open gate and a history of 50 entries. A new run from Ready starts it at `start`.
+- **Who runs a stage.** A stage a transition entered (`pending`), and any running stage whose
+  role is not implement, goes to its runner (`stageRunner`): the pinned worker, the project's
+  worker with the role, else its implement worker. An implement stage that pins no worker goes
+  where every task goes today (the task's chosen orchestrator, the project's first one, pools), so
+  `default` picks the same worker as before. A task back in Ready starts over at `start`.
+- **Prompt.** A stage run gets the stage procedure, the spec template for `spec`, and what the
+  user said at the gate. The run that starts the pipeline from Ready leaves out the procedure of an
+  implement stage with no `prompt` or `file`: the worker's task prompt is today's procedure.
+- **Transitions.** A single `to` to a worker stage queues the task: it stays In progress and the
+  next pass runs the stage, like a checkpoint resume (no batch quota). A gate opens a Decisões
+  proposal with its options and puts the task in Needs you (`gate`); deciding an option advances
+  the task, and an answer with no option is refused. A `when` list does the same with the
+  candidates as options until ticket 12 gives that choice to the PM. A `pm` stage and `deliver`
+  hand the report to today's delivery with the project's action (`review` is the PM's review).
+  `end` marks it delivered and moves it to Done; `cancel` dismisses it and moves it to Canceled
+  when the board has that column.
+- **Loop guard.** Entering a stage once past its `maxVisits` keeps the task where it was and sends
+  it to Needs you (`loop`); Continue there gives that stage a new budget. A `pm` stage has no
+  guard: today's review decides how many rounds it takes. Reviewer feedback from a `pm` stage
+  sends the task back to the worker stage before it.
+- **Answering.** Any way the gate's card gets decided (Decisões, `pm_card_decide`,
+  `pm_card_update`) needs one of its options. Done or Continue on the board archives the open
+  proposal; Continue runs the current stage again with the feedback. A gate decided after the task
+  left Needs you some other way only closes the gate.
+- **Chip.** The card shows `card.stageChip` (`spec · gate`, `implement 2/3`, `review 4` for a
+  `pm` stage) next to its number, except in Done and Canceled.
 
 ## Cutover
 

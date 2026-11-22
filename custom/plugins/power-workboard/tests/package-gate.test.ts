@@ -66,6 +66,7 @@ const task = (id: string, number: number): Task => ({
   timing: null,
   packageId: "pkg-1",
   testTier: null,
+  pipeline: null,
   binding: null,
 });
 
