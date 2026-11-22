@@ -10131,3 +10131,43 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
   (in the update script) and the token-ledger `npm test`. In the app, finish a turn and narrow the
   window or open the PM sidebar: "Worked for" stays on one line next to the copy and fork icons, and
   the model and token figures wrap below each other to its right.
+
+## factory-schema: factory schemas, loader, compiler and `bin/factory validate`
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: factory schemas, loader, compiler and bin/factory for the Power Workboard`
+- **Why:** Ticket 2 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`):
+  the board's configuration will come from a git repository of YAML and Markdown files. This is
+  the pure code the later tickets (export, shadow, active mode) build on. Nothing reads a factory
+  yet: no behavior change.
+- **What:**
+  - `shared/factory/schema.ts`: strict Zod schemas with no defaults for `factory.yaml`,
+    `board.yaml`, `projects/<id>.yaml`, the frontmatter of `workers/<id>/worker.md` and
+    `pm/worker.md`, and SKILL.md (only `name`/`description` checked). Issue kinds: `missing-file`,
+    `parse`, `schema`, `invalid-id`, `unknown-file`, `unsupported` (`scorers/`, `automations/`),
+    `reference`, `inactive-project` (warning), `compile`.
+  - `shared/factory/frontmatter.ts`: splits `---` frontmatter from the body.
+  - `server/factory/loader.ts` + `yaml-source.ts`: reads the directory with the `yaml` package
+    (new plugin dependency), reports each issue with file and line (the key's line, including
+    unknown keys; frontmatter lines count from the file's top), resolves project paths with
+    realpath (`~/` and factory-relative), and checks worker → project, worker/default → pool,
+    duplicate checkouts and `templates.spec`. Any error leaves the factory null.
+  - `shared/factory/compile.ts`: turns the factory into today's `orchestrator`,
+    `orchestrators` (by `priority`, then id), `settings`, `night`, and the config part of
+    `assistant.settings` (`enabled`, `defaultAction`, `projects` keyed by the Paseo project id,
+    `chat`), each parsed by today's schema. Worker fields inherit `defaults.worker`, then today's
+    defaults; `permission: full` is `modeId: null`; `workspace` is `useWorktree`; the PM's
+    `interactivePermission` is `refineModeId`. Paseo project ids come from a caller's
+    `projectIdForPath`.
+  - `bin/factory validate [dir]` and `bin/factory schema [dir]` (`server/factory/cli.ts`, run
+    through the checkout's tsx): print `file:line: message [kind]`, exit 1 on errors; write
+    `.schema/*.json` with `z.toJSONSchema`.
+  - Left for ticket 6: `pipelines/*.yaml` and `roles/*.md` are checked by name only; `pipeline:`
+    is not resolved. Worker `role` and an optional `name` are already in the worker schema.
+- **Core files touched:** none.
+- **Plugin files:** `shared/factory/*`, `server/factory/*`, `bin/factory`, `docs/factory.md`,
+  `package.json` (+ lock: `yaml`), `tests/factory.test.ts`, `tests/factory-fixtures.ts`.
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory.test.ts)` (part of
+  the plugin suite in the update script). By hand: `custom/plugins/power-workboard/bin/factory
+validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`, `name: x`).

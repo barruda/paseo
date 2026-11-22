@@ -1,6 +1,7 @@
 # Factory as code, worker roles and pipelines
 
-Status: approved design, not built yet. Tickets at the end. Inspired by Warp Factories
+Status: approved design. Built so far: ticket 2 (schemas, loader, compiler and `bin/factory`, not
+wired into the board). Tickets at the end. Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -99,10 +100,11 @@ A column's `label` (`pwb:*`) is optional and defaults as today.
 
 ```markdown
 ---
+name: Paseo # shown in the board; defaults to the id
 description: Implements paseo tickets on the custom branch
 role: implement # triage | spec | implement | verify | review
 project: paseo # id of projects/*.yaml; null = projects with no worker of their own
-priority: 10 # lower takes tasks first; replaces the list arrows
+priority: 10 # lower takes tasks first (default 0, ties by id); replaces the list arrows
 enabled: true
 model: claude/claude-opus-5-5
 thinking: high
@@ -122,7 +124,7 @@ System prompt (today's profile `system-prompt.md`).
 
 `schedule` forms: `automatic`, `manual`, `{ window: { days: [1,2,3,4,5], start: "09:00", end:
 "18:00" } }`, `{ daily: { days: [...], times: ["08:00"] } }`. An omitted field inherits
-`defaults.worker`.
+`defaults.worker`, then today's orchestrator default. A worker whose project is inactive is left out.
 
 ## pm/worker.md
 
@@ -167,8 +169,10 @@ templates:
   spec: templates/spec.md
 ```
 
-A project with no file uses `defaults`. A `path` that does not resolve is a warning and the project
-stays inactive.
+A project with no file uses `defaults`, and so does one with neither `delivery` nor `tests`: it
+gets no project policy, as today. `path` takes `~/`; a relative path starts at the factory root. A
+`path` that does not resolve, or that Paseo has no project for, is a warning and the project stays
+inactive.
 
 ## pipelines/<id>.yaml
 
@@ -261,8 +265,13 @@ the migration maps `fresh-agent` projects to `critical`.
 - **Revision**: git `HEAD`, plus `+dirty.<content hash>` with uncommitted changes. Each new
   orchestration and each history event records `factoryRevision`, `workerId` and
   `workerConfigHash` (a stable hash of the compiled worker config, its prompt and task prompt).
-- Validation outside the app: `bin/factory validate [dir]`. The JSON Schema in `.schema/` is
-  generated with `z.toJSONSchema` from the same schemas.
+- Validation outside the app: `bin/factory validate [dir]` (default `$PASEO_HOME/factory`) prints
+  `file:line: message [kind]` and exits 1 on any error. `bin/factory schema [dir]` writes
+  `.schema/*.json` with `z.toJSONSchema` from the same schemas. Code: `shared/factory/` (schemas,
+  compiler) and `server/factory/` (loader, CLI).
+- Until ticket 6, `pipelines/*.yaml` and `roles/*.md` are checked by name only, and `pipeline:`
+  references are not resolved. Skill names in `skills:` are not resolved either: they may be
+  personal or plugin skills outside the factory.
 - UI edits in `active` mode go through a writer that edits the YAML with the `yaml` Document API
   (comments survive) and commits `ui: <what changed>`. A file changed on disk since it was read
   reloads instead of being overwritten.
