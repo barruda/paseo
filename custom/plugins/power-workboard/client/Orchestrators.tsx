@@ -27,6 +27,7 @@ import { ConfirmationModal } from "./ConfirmationModal";
 import { HintButton } from "./Hint";
 import type { strings } from "./strings";
 import { toggleButtonState } from "./web";
+import { FactoryLine } from "./FactoryLine"; // CUSTOM(factory)
 import { formatHold } from "./hold-format"; // CUSTOM(resource-pools)
 // CUSTOM(agent-profiles)
 import {
@@ -207,6 +208,7 @@ export function OrchestratorsPanel(
       <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
         {panel.intro}
       </Text>
+      <FactoryLine summary={board.factory} t={t.factory} theme={theme} />
       {/* CUSTOM(bulk-orchestrator-agent): what to do with the selected orchestrators */}
       {selectedConfigs.length > 0 && (
         <View

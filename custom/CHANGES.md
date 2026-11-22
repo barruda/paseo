@@ -10211,3 +10211,49 @@ validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`
   (part of the plugin suite in the update script). By hand, read-only on the live data:
   `custom/plugins/power-workboard/bin/factory export /home/bruno/uprojects/tmp/factory-try`, then
   `bin/factory validate` on the same folder.
+
+## factory-shadow: shadow mode loads the factory and diffs it against the live config
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: factory shadow mode watches, compiles and diffs the Power Workboard factory`
+- **Why:** Ticket 7 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Loading and revisions"): before the factory becomes the configuration (ticket 9), the board
+  loads it on every change and shows where it disagrees with today's settings, applying nothing.
+- **What:**
+  - Setting `factory: { root, mode: off | shadow | active }` in `assistant.settings` (default
+    `off`; empty root is `$PASEO_HOME/factory`, `~/` is the home), edited in Settings > Bruno's
+    Customizations > Project Manager > Factory. `active` runs as shadow, with a note, until
+    ticket 9; the page only offers it when it is the saved value.
+  - `server/factory/shadow.ts` (`FactoryShadow`, created in `index.server.ts`): watches the
+    folders the loader reads (no `memory/`, no dot folders but `.git`, non-recursive `fs.watch`),
+    loads 500 ms after the last change (trailing debounce), compiles with the board's Paseo
+    projects (realpath; a shared checkout resolves to the project the data names), and diffs
+    against the live data and profile prompts. An invalid factory keeps the last valid compile
+    for the diff and reports its errors. A missing folder is looked for again every 30 s.
+  - `shared/factory/diff.ts`: field-level diff with factory ids (`.factory-ids.json`, or name
+    slugs without it): `defaults`, `workers.<id>.*` (+ `systemPrompt`, `order`), `board.columns`,
+    `board.pools`, housekeeping, `night`, `pm.enabled`, `pm.chat`, `pm.systemPrompt`,
+    `delivery.defaultAction`, `projects.<paseo id>.*`. The default task prompt of new
+    orchestrators is left out (the factory has no place for it).
+  - `server/factory/revision.ts`: git `HEAD` plus `+dirty.<hash>` (`--no-optional-locks`, so git
+    never rewrites the watched `.git/index`).
+  - RPC `workboard.factory.status` (mode, root, revision, errors, warnings, diff, at most 200
+    differences + the count). The snapshot carries `factory` (summary or null); `FactoryLine`
+    shows "factory: shadow, N differences" and the first error under the board toolbar and the
+    Orchestrators tab intro.
+- **Core files touched:** `packages/app/src/screens/settings/bruno-customizations/projects-assistant-model.ts`
+  (+ test) and `projects-assistant-page.tsx` (`CUSTOM(factory)`: the mirror schema keeps
+  `factory`, so saving from Settings no longer drops it; the Factory card).
+- **Plugin files:** `shared/factory/status.ts`, `shared/factory/diff.ts`,
+  `server/factory/shadow.ts`, `server/factory/revision.ts`, `server/factory/export.ts` (exports
+  `slugger`), `server/store.ts` (`peek`), `server/workboard.ts` (`inventoryProjects`),
+  `shared/assistant.ts`, `shared/model.ts`, `shared/rpc.ts`, `index.server.ts`,
+  `client/FactoryLine.tsx`, `client/strings.ts`, `client/WorkboardScreen.tsx`,
+  `client/Orchestrators.tsx`, `docs/factory.md`, `tests/factory-shadow.test.ts`.
+- **Re-apply:** The two app files are custom pages; nothing else in core.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-shadow.test.ts)`
+  and the app model test (both already in the update script). By hand: export a factory to a
+  scratch folder (`bin/factory export /home/bruno/uprojects/tmp/factory-try`), set Settings >
+  Bruno's Customizations > Project Manager > Factory to Shadow with that folder, and the board
+  shows "factory: shadow, 0 differences"; change `maxConcurrent` in a `worker.md` and it shows 1
+  within a second; break the YAML and the error line appears while the count stays.

@@ -1,7 +1,8 @@
 # Factory as code, worker roles and pipelines
 
-Status: approved design. Built so far: ticket 2 (schemas, loader, compiler and `bin/factory`) and
-ticket 4 (`bin/factory export`), not wired into the board. Tickets at the end. Inspired by Warp Factories
+Status: approved design. Built so far: ticket 2 (schemas, loader, compiler and `bin/factory`),
+ticket 4 (`bin/factory export`) and ticket 7 (shadow mode: the board loads and diffs the factory,
+applies nothing). Tickets at the end. Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -258,10 +259,24 @@ the migration maps `fresh-agent` projects to `critical`.
   validates with Zod, resolves references (project paths, pools, skills, workers, stages) and
   compiles to the structures the engine already uses (`orchestratorConfigSchema`,
   `projectPolicySchema`, `settingsSchema`, `assistantChatSettingsSchema`).
+- The setting is `assistant.settings.factory` (`root`, `mode`), in Settings > Bruno's
+  Customizations > Project Manager > Factory. It stays in the JSON in every mode.
 - `shadow` mode applies nothing and reports the diff between the compiled factory and the live
-  config. `active` mode applies it, and the JSON stops being read for these fields.
-- RPC `workboard.factory.status`: mode, root, revision, errors, warnings, diff. A banner shows
-  errors.
+  config. `active` mode applies it, and the JSON stops being read for these fields. Until ticket
+  9, `active` runs as `shadow` and the status says so.
+- The watcher is one non-recursive `fs.watch` per folder the loader reads, plus `.git` for
+  commits; `memory/` is skipped because agents write there. Do not switch to recursive
+  `fs.watch`: on Linux it watches every file (see `docs/file-observation.md` at the repo root).
+  New folders are picked up after the next load. Git runs with `--no-optional-locks`; without it,
+  `git status` rewrites `.git/index` and every load would trigger the next one.
+- The diff uses the factory's ids. Live orchestrators and pools map through `.factory-ids.json`,
+  or through name slugs when the file is missing, so a renamed worker shows as one worker missing
+  and one extra. The default task prompt of new orchestrators is not compared (the factory has no
+  place for it). Profile prompts are read on each diff; a prompt edit shows on the next status
+  call or data change, since it does not bump the data revision.
+- RPC `workboard.factory.status`: mode, root, revision, errors, warnings, diff (at most 200 entries
+  plus the count). Every board snapshot carries the summary, and the board and the Orchestrators
+  tab show "factory: shadow, N differences" and the first error.
 - **Revision**: git `HEAD`, plus `+dirty.<content hash>` with uncommitted changes. Each new
   orchestration and each history event records `factoryRevision`, `workerId` and
   `workerConfigHash` (a stable hash of the compiled worker config, its prompt and task prompt).

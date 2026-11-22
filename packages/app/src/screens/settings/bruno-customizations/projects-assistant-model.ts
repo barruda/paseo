@@ -92,12 +92,29 @@ export const assistantChatSettingsSchema = z.object({
 });
 export type AssistantChatSettings = z.infer<typeof assistantChatSettingsSchema>;
 
+// CUSTOM(factory): mirrors factorySettingsSchema in the plugin's shared/factory/status.ts. The
+// plugin also accepts `active`; until its ticket 9 it runs as shadow, so the page offers off and
+// shadow and only shows `active` when the saved value has it.
+export const FACTORY_MODES = ["off", "shadow", "active"] as const;
+export type FactoryMode = (typeof FACTORY_MODES)[number];
+export const factorySettingsSchema = z.object({
+  root: z.string().trim().max(4096).default(""),
+  mode: z.enum(FACTORY_MODES).default("off"),
+});
+export type FactorySettings = z.infer<typeof factorySettingsSchema>;
+export const FACTORY_MODE_LABELS: Record<FactoryMode, string> = {
+  off: "Off",
+  shadow: "Shadow",
+  active: "Active (as shadow for now)",
+};
+
 export const assistantSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   defaultAction: defaultActionSchema.default("review"),
   projects: z.record(z.string(), projectPolicySchema).default({}),
   reviews: z.record(z.string(), reviewPolicySchema).default({}),
   chat: assistantChatSettingsSchema.default(() => assistantChatSettingsSchema.parse({})),
+  factory: factorySettingsSchema.default(() => factorySettingsSchema.parse({})),
 });
 export type AssistantSettings = z.infer<typeof assistantSettingsSchema>;
 export type AssistantAction = z.infer<typeof actionSchema>;
@@ -287,6 +304,21 @@ function parseSeconds(text: string): number {
   const digits = text.replace(/\s/g, "");
   if (!digits) return DEFAULT_WAKE_DELAY_SECONDS;
   return /^\d+$/.test(digits) ? Number(digits) : Number.NaN;
+}
+
+/** CUSTOM(factory): the modes the page offers; `active` only while it is the saved one. */
+export function factoryModeOptions(current: FactoryMode): FactoryMode[] {
+  return current === "active" ? [...FACTORY_MODES] : ["off", "shadow"];
+}
+
+/** CUSTOM(factory): the root is kept as typed (trimmed); empty means `$PASEO_HOME/factory`. */
+export function patchFactorySettings(
+  settings: AssistantSettings,
+  patch: Partial<FactorySettings>,
+): AssistantSettings {
+  const factory = { ...settings.factory, ...patch };
+  if (patch.root !== undefined) factory.root = patch.root.trim();
+  return { ...settings, factory };
 }
 
 export function chatSettingsValid(settings: AssistantSettings): boolean {

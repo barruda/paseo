@@ -137,7 +137,7 @@ export function slugOf(value: string, fallback: string): string {
 }
 
 /** Hands out slugs, adding `-2`, `-3`... to repeats. */
-function slugger() {
+export function slugger() {
   const taken = new Set<string>();
   return (value: string, fallback: string) => {
     const base = slugOf(value, fallback);

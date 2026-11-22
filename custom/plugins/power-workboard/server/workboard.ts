@@ -4650,6 +4650,10 @@ export class Workboard {
       throw new Error("A delivery step is already running for this task");
     await this.review(taskId, "continue", input.text, by);
   }
+  /** CUSTOM(factory): Paseo's projects as the last refresh saw them, without cloning the data. */
+  inventoryProjects(): ReadonlyArray<{ id: string; directory: string }> {
+    return this.inventory.projects;
+  }
   assistantSettings(): {
     settings: AssistantSettings;
     projects: Board["projects"];

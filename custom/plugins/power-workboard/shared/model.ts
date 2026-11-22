@@ -7,6 +7,7 @@ import {
 } from "./assistant"; // CUSTOM(projects-assistant), CUSTOM(task-checkpoints)
 import { skillSelectionSchema } from "./profiles"; // CUSTOM(agent-profiles)
 import { orchestratorHoldSchema, type OrchestratorHold } from "./hold"; // CUSTOM(resource-pools)
+import { factorySummarySchema } from "./factory/status"; // CUSTOM(factory)
 
 export const STAGES = [
   "inbox",
@@ -964,6 +965,8 @@ export const boardSchema = z.object({
     .default({ open: false, nextStartAt: null, waiting: 0 }),
   // CUSTOM(packages): the open and closed packages with their counts and last gate run.
   packages: z.array(packageViewSchema).default([]),
+  /** CUSTOM(factory): the factory banner; null or missing while the factory mode is off. */
+  factory: factorySummarySchema.nullable().optional(),
   projects: z.array(
     z.object({
       id: z.string(),

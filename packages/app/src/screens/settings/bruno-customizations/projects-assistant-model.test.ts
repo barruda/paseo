@@ -21,6 +21,8 @@ import {
   setProjectReview,
   assistantChatSettingsSchema,
   assistantSettingsSchema,
+  factoryModeOptions,
+  patchFactorySettings,
 } from "./projects-assistant-model";
 
 describe("projects assistant settings model", () => {
@@ -44,7 +46,19 @@ describe("projects assistant settings model", () => {
         wakeDelaySeconds: 12,
         compactAtTokens: 180_000,
       },
+      factory: { root: "", mode: "off" },
     });
+  });
+
+  // CUSTOM(factory)
+  it("keeps the factory setting and edits it", () => {
+    const base = assistantSettingsSchema.parse({ factory: { mode: "shadow" } });
+    expect(base.factory).toEqual({ root: "", mode: "shadow" });
+    const edited = patchFactorySettings(base, { root: "  ~/factory  " });
+    expect(edited.factory).toEqual({ root: "~/factory", mode: "shadow" });
+    expect(patchFactorySettings(edited, { mode: "off" }).factory.mode).toBe("off");
+    expect(factoryModeOptions("shadow")).toEqual(["off", "shadow"]);
+    expect(factoryModeOptions("active")).toEqual(["off", "shadow", "active"]);
   });
 
   it("edits the chat settings, empty thinking and mode meaning the provider default", () => {
