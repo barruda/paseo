@@ -9381,7 +9381,20 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     the count.
   - **Delivery without merge.** The delivery's `committing` step commits in the folder (under the
     project's `mergeLock`, with the same `dependencyRefusal` protection) and then skips
-    `merging`: it marks the delivery delivered and moves the task to Done. Before committing, it
+    `merging`: it marks the delivery delivered and moves the task to Done.
+  - **Only the task's files.** The folder is the user's checkout and often has their own
+    uncommitted work (an open Unity Editor, for one). The delivery commit (and the `preparing-pr`
+    one) takes the paths dirty now minus the `initialDirty` paths, untracked included, and commits
+    them by path through the daemon's commit-selection (`paths` on `checkout_commit`), never
+    `add -A`. An untracked directory listed at the start covers the files under it, and a line
+    with any path dirty at the start (one side of a rename) stays out. With nothing left (only the
+    old dirt, or the agent already committed) there is no commit and the delivery still ends; the
+    history gets `committed` or `folder-dirty` with how many paths were left out and which. When
+    the agent's report lists in `filesChanged` a path that was dirty at the start and still is, the
+    two people's changes can't be told apart: nothing is committed and the delivery goes to Needs
+    you (`dirty-checkout`) naming those paths; the user commits or reverts them and delivers again
+    or marks the task done. Files the user dirties during the task are not in `initialDirty` and
+    still go in. Before committing, it
     checks whether another board task's agent is still running in the folder; if one is, the
     delivery stays in `committing` (or `preparing-pr`) with a visible
     `Waiting: "<task>" is still running in <folder>` detail and log line, and retries on the next
@@ -9399,10 +9412,13 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   - **Safety.** The project folder's workspace is never archived (the auto-archive already only
     touches worktrees) and the task never switches the folder's branch. Worktree orchestrators
     behave exactly as before.
-- **Core files touched:** none.
+- **Core files touched:** none. The path-limited commit depends on the `commit-selection`
+  customization's `paths` field on `checkout_commit`; a daemon without it would commit everything.
 - **Re-apply:** Plugin-only. The server side is `CUSTOM(orchestrator-in-place)` in
   `server/workboard.ts` (`inPlaceFolder`, `inPlaceDirectories`, `folderHold`, `logFolderWait`,
-  the `startCard` start state and `completeInPlace`) and in
+  the `startCard` start state, `commitInPlace` and `completeInPlace`), in
+  `server/assistant/delivery.ts` (`porcelainPaths`, `inPlaceCommitPlan`), in `server/host.ts`
+  (`commit(directory, paths)`) and in
   `server/assistant/task-git.ts` (`baseHead` / `initialDirty`). The model fields are in
   `shared/model.ts` (`Orchestration.inPlace/baseHead/initialDirty`, `Card.inPlace`), the hold kind
   in `shared/hold.ts`, the history kind in `shared/assistant.ts`. The form is the Workspace chips
@@ -9419,8 +9435,11 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   release B; a nothing-policy task keeps the folder until approved; `committing`, `preparing-pr`
   and the approval commit wait while another task's agent runs in the folder; a failed approval
   commit goes to Needs you; dirty folder recorded; delivery commits without `mergeToBase`; diff
-  from the starting HEAD; worktree unchanged) and `tests/finish-buttons.test.ts` (no Merge for a
-  folder-mode Done card).
+  from the starting HEAD; worktree unchanged; the commit takes only the task's paths and leaves
+  the earlier dirt; only earlier dirt delivers without a commit; a reported file that was dirty
+  before goes to Needs you with nothing committed), `tests/assistant-delivery.test.ts` (porcelain
+  path parsing, the commit plan, a plan from real `git status` with spaces and non-ASCII names) and
+  `tests/finish-buttons.test.ts` (no Merge for a folder-mode Done card).
 
 ## pm-board: a Project Manager board for investigations, proposals and decisions
 

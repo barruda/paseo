@@ -84,6 +84,10 @@ async function finish(s: Setup, title: string) {
   s.advance(21_000);
   await s.board.refresh();
 }
+/** After the task started clean, the folder holds the task's change. */
+function taskChanges(s: Setup, lines = [" M src/task.ts"]) {
+  (s.host.gitStatusLines as any).mockResolvedValue(lines);
+}
 /** A task started by hand in the project folder, with an agent that keeps running. */
 async function manualRunner(s: Setup, title = "Manual") {
   await s.board.mutate({
@@ -188,6 +192,7 @@ it("does not start B before A's folder commit finishes", async () => {
     s.inventory.workspaces.find(
       (w) => w.id === card(s.board, "A").workspaceId,
     )!.projectKind = "git";
+    taskChanges(s);
     await finish(s, "A");
     await vi.waitFor(() => expect(s.host.commit).toHaveBeenCalled());
     expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe(
@@ -237,6 +242,7 @@ it("waits before committing while another task's agent runs in the folder", asyn
     s.inventory.workspaces.find(
       (w) => w.id === card(s.board, "A").workspaceId,
     )!.projectKind = "git";
+    taskChanges(s);
     // A manual task starts in the same folder while A runs, bypassing the folder queue.
     const manual = await manualRunner(s, "B");
     await finish(s, "A");
@@ -277,6 +283,7 @@ it("waits before a prepare-pr commit while another task's agent runs in the fold
     s.inventory.workspaces.find(
       (w) => w.id === card(s.board, "A").workspaceId,
     )!.projectKind = "git";
+    taskChanges(s);
     const manual = await manualRunner(s, "B");
     await finish(s, "A");
     await vi.waitFor(() =>
@@ -311,6 +318,7 @@ it("waits before the approval commit while another task's agent runs in the fold
     s.inventory.workspaces.find(
       (w) => w.id === card(s.board, "A").workspaceId,
     )!.projectKind = "git";
+    taskChanges(s);
     await finish(s, "A");
     expect(card(s.board, "A").stage).toBe("review");
     const manual = await manualRunner(s, "B");
@@ -361,6 +369,7 @@ it("sends a failed approval commit to Needs you", async () => {
     s.inventory.workspaces.find(
       (w) => w.id === card(s.board, "A").workspaceId,
     )!.projectKind = "git";
+    taskChanges(s);
     await finish(s, "A");
     await s.board.mutate({
       action: "review",
@@ -405,6 +414,7 @@ it("keeps the folder for a nothing-policy task until it is approved", async () =
     s.inventory.workspaces.find(
       (w) => w.id === card(s.board, "A").workspaceId,
     )!.projectKind = "git";
+    taskChanges(s);
     await finish(s, "A");
     expect(card(s.board, "A").stage).toBe("review");
     expect(s.store.current.assistant.deliveries[taskA]?.stage).toBe("reported");
@@ -535,13 +545,14 @@ it("delivers a folder-mode task with a commit on the current branch, without mer
     s.inventory.workspaces.find(
       (w) => w.id === card(s.board, "A").workspaceId,
     )!.projectKind = "git";
+    taskChanges(s);
     await finish(s, "A");
     await vi.waitFor(() =>
       expect(s.store.current.assistant.deliveries[taskId]?.stage).toBe(
         "delivered",
       ),
     );
-    expect(s.host.commit).toHaveBeenCalledWith("/fixture/p");
+    expect(s.host.commit).toHaveBeenCalledWith("/fixture/p", ["src/task.ts"]);
     expect(s.host.mergeToBase).not.toHaveBeenCalled();
     expect(s.store.current.finishes[taskId]?.committedAt).toBeTruthy();
     expect(s.store.current.finishes[taskId]?.mergedAt ?? null).toBeNull();
@@ -565,6 +576,7 @@ it("commits when the user approves a folder task from review", async () => {
     s.inventory.workspaces.find(
       (w) => w.id === card(s.board, "A").workspaceId,
     )!.projectKind = "git";
+    taskChanges(s);
     await finish(s, "A");
     expect(card(s.board, "A").stage).toBe("review");
     await s.board.mutate({
@@ -574,7 +586,7 @@ it("commits when the user approves a folder task from review", async () => {
       feedback: "",
     });
     await vi.waitFor(() =>
-      expect(s.host.commit).toHaveBeenCalledWith("/fixture/p"),
+      expect(s.host.commit).toHaveBeenCalledWith("/fixture/p", ["src/task.ts"]),
     );
     expect(s.host.mergeToBase).not.toHaveBeenCalled();
     expect(card(s.board, "A").stage).toBe("done");
@@ -643,6 +655,122 @@ it("keeps worktree orchestrators unchanged", async () => {
     ).toBe(true);
     const taskId = card(s.board, "A").id;
     expect(s.board.snapshot().orchestrations[taskId]?.inPlace).toBe(false);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+// The user's own uncommitted work in the folder when the task starts.
+const userDirt = [
+  " M ProjectSettings/a.asset",
+  "?? Assets/Resources/user.json",
+];
+const reportWith = (filesChanged: string[]) =>
+  `Done.\n<report>${JSON.stringify({ status: "done", summary: "Added X", filesChanged })}</report>`;
+/** A merge-policy folder task that starts on top of `userDirt` and ends with `after` dirty. */
+async function deliverOverUserDirt(after: string[], filesChanged: string[]) {
+  const history = {
+    append: vi.fn(
+      async (_event: { kind: string; text: string; detail?: string }) => {},
+    ),
+  };
+  const s = setup(
+    {
+      defaultOrchestratorSeeded: true,
+      assistant: assistantDataSchema.parse({
+        settings: {
+          projects: { p: { action: "merge", verifyCommand: "" } },
+        },
+      }),
+    },
+    { history: history as unknown as AssistantOptions["history"] },
+  );
+  (s.host.lastReply as any).mockResolvedValue(reportWith(filesChanged));
+  (s.host.gitStatusLines as any).mockResolvedValue(userDirt);
+  await s.board.start();
+  const id = await addOrchestrator(s.board, {
+    name: "Folder",
+    useWorktree: false,
+  });
+  await create(s, "A", id);
+  const taskId = card(s.board, "A").id;
+  s.inventory.workspaces.find(
+    (w) => w.id === card(s.board, "A").workspaceId,
+  )!.projectKind = "git";
+  taskChanges(s, after);
+  await finish(s, "A");
+  return { s, taskId, history };
+}
+const historyEvent = (history: { append: any }, kind: string) =>
+  history.append.mock.calls
+    .map(([event]: [{ kind: string; text: string; detail?: string }]) => event)
+    .find((event: { kind: string }) => event.kind === kind);
+
+it("commits only the task's paths and leaves the folder's earlier changes uncommitted", async () => {
+  const { s, taskId, history } = await deliverOverUserDirt(
+    [...userDirt, "?? src/task.ts"],
+    ["src/task.ts"],
+  );
+  try {
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.deliveries[taskId]?.stage).toBe(
+        "delivered",
+      ),
+    );
+    expect(s.host.commit).toHaveBeenCalledTimes(1);
+    expect(s.host.commit).toHaveBeenCalledWith("/fixture/p", ["src/task.ts"]);
+    expect(s.store.current.finishes[taskId]?.committedAt).toBeTruthy();
+    const committed = historyEvent(history, "committed");
+    expect(committed?.detail).toContain(
+      "Left out 2 path(s) already uncommitted when the task started",
+    );
+    expect(committed?.detail).toContain("ProjectSettings/a.asset");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("creates no commit when only the folder's earlier changes are dirty, and still delivers", async () => {
+  const { s, taskId, history } = await deliverOverUserDirt(userDirt, []);
+  try {
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.deliveries[taskId]?.stage).toBe(
+        "delivered",
+      ),
+    );
+    expect(s.host.commit).not.toHaveBeenCalled();
+    expect(s.host.mergeToBase).not.toHaveBeenCalled();
+    expect(card(s.board, "A").stage).toBe("done");
+    expect(historyEvent(history, "committed")).toBeUndefined();
+    expect(
+      history.append.mock.calls.some(
+        ([event]: [{ kind: string; text: string }]) =>
+          event.kind === "folder-dirty" &&
+          event.text.includes("Nothing new to commit. Left out 2 path(s)"),
+      ),
+    ).toBe(true);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("needs you when the task reports a file that was already dirty, and commits nothing", async () => {
+  const { s, taskId } = await deliverOverUserDirt(
+    [...userDirt, "?? src/task.ts"],
+    ["src/task.ts", "/fixture/p/ProjectSettings/a.asset"],
+  );
+  try {
+    await vi.waitFor(() =>
+      expect(s.store.current.assistant.deliveries[taskId]?.stage).toBe(
+        "needs-you",
+      ),
+    );
+    const delivery = s.store.current.assistant.deliveries[taskId]!;
+    expect(delivery.reason).toBe("dirty-checkout");
+    expect(delivery.detail).toContain("ProjectSettings/a.asset");
+    expect(delivery.detail).not.toContain("user.json");
+    expect(s.host.commit).not.toHaveBeenCalled();
+    expect(s.store.current.finishes[taskId]?.committedAt ?? null).toBeNull();
   } finally {
     s.board.dispose();
   }

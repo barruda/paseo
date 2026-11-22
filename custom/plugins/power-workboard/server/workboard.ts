@@ -178,6 +178,7 @@ import {
   isUpToDate,
   runVerify,
   type VerifyRunner,
+  inPlaceCommitPlan, // CUSTOM(orchestrator-in-place)
 } from "./assistant/delivery";
 import type { HistoryEventInput, HistoryStore } from "./assistant/history";
 // CUSTOM(factory)
@@ -4573,35 +4574,18 @@ export class Workboard {
           continue;
         }
         if (stage === "committing") {
-          if (await this.host.gitDirty(directory)) {
+          // CUSTOM(orchestrator-in-place): the project folder commits only the task's paths.
+          if (inPlace) {
+            if (!(await this.commitInPlace(taskId, task, directory, stage)))
+              return;
+          } else if (await this.host.gitDirty(directory)) {
             // CUSTOM(assistant-autonomy): `commit` stages every new file; a symlinked
             // node_modules would land in the base branch.
             const refusal = dependencyRefusal(
               await this.host.gitStatusLines(directory),
             );
             if (refusal) return await needsYou("dependency-files", refusal);
-            // CUSTOM(orchestrator-in-place): another agent still running in the folder would
-            // have its work swept into this commit; wait for the next pass instead.
-            if (inPlace) {
-              const occupant = this.runningFolderOccupant(taskId, directory);
-              if (occupant) {
-                await this.waitForFolder(
-                  taskId,
-                  directory,
-                  occupant,
-                  "committing",
-                );
-                return;
-              }
-            }
-            // CUSTOM(orchestrator-in-place): commits in the project folder share the project's
-            // lock with merges, so two deliveries never write the same checkout at once.
-            if (inPlace)
-              await this.mergeLock.run(
-                this.projectIdOf(task) ?? directory,
-                () => this.host.commit(directory),
-              );
-            else await this.host.commit(directory);
+            await this.host.commit(directory);
             await this.serial(() =>
               this.setFinish(taskId, { committedAt: this.stamp() }),
             );
@@ -4773,29 +4757,16 @@ export class Workboard {
         // preparing-pr
         if (!agentId)
           throw new Error("No agent of this task can write the description");
-        if (await this.host.gitDirty(directory)) {
+        // CUSTOM(orchestrator-in-place): the PR path commits too, the same way.
+        if (inPlace) {
+          if (!(await this.commitInPlace(taskId, task, directory, stage)))
+            return;
+        } else if (await this.host.gitDirty(directory)) {
           const refusal = dependencyRefusal(
             await this.host.gitStatusLines(directory),
           );
           if (refusal) return await needsYou("dependency-files", refusal);
-          // CUSTOM(orchestrator-in-place): the PR path commits too, so it waits the same way.
-          if (inPlace) {
-            const occupant = this.runningFolderOccupant(taskId, directory);
-            if (occupant) {
-              await this.waitForFolder(
-                taskId,
-                directory,
-                occupant,
-                "preparing-pr",
-              );
-              return;
-            }
-          }
-          if (inPlace)
-            await this.mergeLock.run(this.projectIdOf(task) ?? directory, () =>
-              this.host.commit(directory),
-            );
-          else await this.host.commit(directory);
+          await this.host.commit(directory);
           await this.serial(() =>
             this.setFinish(taskId, { committedAt: this.stamp() }),
           );
@@ -4831,6 +4802,89 @@ export class Workboard {
         return;
       }
     }
+  }
+  /**
+   * CUSTOM(orchestrator-in-place): the delivery commit of a task that ran in the project folder.
+   * The folder is the user's checkout, so only paths that were clean when the task started go in
+   * (`inPlaceCommitPlan`). Resolves false when the delivery stops here: it waits for another
+   * agent in the folder, or needs the user.
+   */
+  private async commitInPlace(
+    taskId: string,
+    task: Task,
+    directory: string,
+    stage: Delivery["stage"],
+  ): Promise<boolean> {
+    if (!(await this.host.gitDirty(directory))) return true;
+    // Another agent still running in the folder would have its work swept into this commit;
+    // wait for the next pass instead.
+    const occupant = this.runningFolderOccupant(taskId, directory);
+    if (occupant) {
+      await this.waitForFolder(taskId, directory, occupant, stage);
+      return false;
+    }
+    // Commits in the project folder share the project's lock with merges, so two deliveries
+    // never write the same checkout at once.
+    const outcome = await this.mergeLock.run(
+      this.projectIdOf(task) ?? directory,
+      async () => {
+        const plan = inPlaceCommitPlan({
+          current: await this.host.gitStatusLines(directory),
+          initialDirty:
+            this.store.current.orchestrations[taskId]?.initialDirty ?? [],
+          filesChanged:
+            this.store.current.assistant.deliveries[taskId]?.report
+              ?.filesChanged ?? [],
+          directory,
+        });
+        if (plan.overlap.length) return { plan, refusal: null };
+        const refusal = dependencyRefusal(plan.lines);
+        if (!refusal && plan.paths.length)
+          await this.host.commit(directory, plan.paths);
+        return { plan, refusal };
+      },
+    );
+    const { plan, refusal } = outcome;
+    if (plan.overlap.length) {
+      const shown = plan.overlap.slice(0, 10).join(", ");
+      const more =
+        plan.overlap.length > 10 ? ` and ${plan.overlap.length - 10} more` : "";
+      await this.serial(() =>
+        this.markNeedsYou(
+          taskId,
+          "dirty-checkout",
+          `Not committed: the task changed files that were already uncommitted when it started (${shown}${more}). Their changes can't be told apart from yours. Commit or revert them yourself, then deliver again or mark the task done.`,
+        ),
+      );
+      return false;
+    }
+    if (refusal) {
+      await this.serial(() =>
+        this.markNeedsYou(taskId, "dependency-files", refusal),
+      );
+      return false;
+    }
+    const leftOut = plan.leftOut.length
+      ? `Left out ${plan.leftOut.length} path(s) already uncommitted when the task started`
+      : null;
+    if (plan.paths.length) {
+      await this.serial(() =>
+        this.setFinish(taskId, { committedAt: this.stamp() }),
+      );
+      await this.record(
+        taskId,
+        "committed",
+        "Committed the task's changes",
+        leftOut ? { detail: `${leftOut}:\n${plan.leftOut.join("\n")}` } : {},
+      );
+    } else if (leftOut)
+      await this.record(
+        taskId,
+        "folder-dirty",
+        `Nothing new to commit. ${leftOut}`,
+        { detail: plan.leftOut.join("\n") },
+      );
+    return true;
   }
   /** The merge landed: remember it and move the task to Done. Inside `serial`. */
   private async completeMerge(taskId: string): Promise<void> {
