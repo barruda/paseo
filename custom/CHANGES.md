@@ -9538,6 +9538,7 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   base merge, the package-level branch lock and ticket removal, the click-versus-drag threshold and
   the same-package guard, the remaining `board_list_tasks` snapshot, the merge commit read inside
   the lock, a vanished branch, branch-name validation and the dead `PmCardUpdateInput.action`).
+- **Follow-up 4:** `custom: package detail as a large modal with sub-tabs and hinted actions`.
 - **Why:** Every ticket paid for the full suite in its own agent turn, and the fixed "run everything"
   line in the orchestrator's instructions could not tell a migration from a one-file change. The
   analysis in `docs/improvements/workboard-test-tiers.html` found three layers run per ticket, two
@@ -9556,8 +9557,15 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     the previous package ids and deletes a package this action created) and **Adjust**.
   - **Cards and views.** A package chip and a test-level chip on the card; a **Columns | Packages**
     toggle; one rail per open package plus a last **No package** rail with progress, the last gate
-    and the suspect; a package filter; a package detail with the merge order, the config, the runs
-    and **Run gate now**.
+    and the suspect; a package filter; a package detail, a large modal (`size: "large"`, from
+    [plugin-modal-size](#plugin-modal-size-plugin-modals-at-80-of-the-window)) with three sub-tabs:
+    **Summary** (status, progress, last gate, the gate setup and the actions), **Tickets** (merge
+    order) and **Gate history** (the runs, with the suspect ticket by number). The tab is local
+    state of the modal, so a board refresh keeps it. Actions are grouped by role and colored by
+    intent from theme tokens: **Run gate now** (accent fill) and **Adjust** (neutral) under Gate;
+    **Propose closing** (accent outline) and **Close package** (danger outline, pushed to the
+    right) under Closing. Each shows a short hint on hover, focus or long press; the modal has its
+    own `HintProvider` because the board's draws under the modal overlay.
   - **Test levels.** `full` is the ticket without a package (today's prompt, unchanged);
     `restricted` is the default in a package (the suites of its area, plus the project's verify
     command runs in the delivery, never twice); `gate` runs the package gate for that ticket. The
@@ -9625,8 +9633,9 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     `server/assistant/chat.ts` (tools, overview, package line), `index.server.ts`.
   - `client/selection.ts` (marquee geometry and selection), `client/web.ts` (marquee and rail
     pointer gestures), `client/BoardView.tsx` (marquee), `client/PackageMenu.tsx`,
-    `client/PackagesView.tsx` (rail drag, tap opens the panel), `client/PackageDetail.tsx` (gate
-    per merge, propose close), `client/PackageAdjust.tsx` (branch), `client/WorkboardScreen.tsx`,
+    `client/PackagesView.tsx` (rail drag, tap opens the panel), `client/PackageDetail.tsx` (sub-tabs,
+    grouped actions with hints, gate per merge, propose close), `client/PackageAdjust.tsx`
+    (branch), `client/WorkboardScreen.tsx`,
     `client/assistant/nav.ts` (`openBoardSelection`), `client/assistant/pm-board/PmBoardScreen.tsx`
     (select-tasks, package filter), `client/assistant/DashboardScreen.tsx` and
     `client/assistant/dashboard-format.ts` (Needs you by package), `client/TaskPanel` menu via
@@ -9648,12 +9657,15 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   Set a branch in **Adjust**, let a ticket merge, then close the package and check the base has the
   branch's commits. In **Decisões**, a select-tasks proposal marks the tickets and opens the
   package menu; the package filter narrows the columns; **Propose closing** in the package detail
-  asks the PM for the close card. In Settings > Bruno's Customizations > Project Manager, set the
+  asks the PM for the close card. Open a package: the modal fills most of the window, Summary,
+  Tickets and Gate history switch, hovering each action shows its hint, and Close package is the
+  red one on the right. In Settings > Bruno's Customizations > Project Manager, set the
   gate fields, save, reopen the page and check they survived.
 - **Tests:** `tests/packages.test.ts` (tiers, prompt section, gate resolution, required env, risk
   globs, progress/views, bisect, colors, merge target, the gate run per merge),
-  `tests/package-gate.test.ts` (missing env, no command, pass, bisect to the suspect, merge order,
-  bisect error), `tests/package-git.test.ts` (branch creation/validation, worktree merge, abort,
+  `tests/package-detail.test.ts` (tabs survive a re-render, the four hints, intent colors, closed
+  package), `tests/package-gate.test.ts` (missing env, no command, pass, bisect to the suspect,
+  merge order, bisect error), `tests/package-git.test.ts` (branch creation/validation, worktree merge, abort,
   missing ref), `tests/package-drag.test.ts` (a click is not a drag, the threshold, another rail, the
   same-package guard),
   `tests/workboard-packages.test.ts` (create/assign/remove/delete, project guard, tier override,

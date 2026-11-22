@@ -823,6 +823,25 @@ const zh = {
     save: "保存",
     cancel: "取消",
     menu: "更多操作",
+    // CUSTOM(packages): the package modal's sub-tabs, action groups and action tooltips.
+    tabs: { summary: "概览", tickets: "工单", gate: "门禁记录" },
+    statusOpen: "进行中",
+    statusClosed: "已关闭",
+    lastGate: "最近一次门禁",
+    gateConfig: "门禁配置",
+    gateCommand: "命令",
+    env: "环境变量",
+    envNone: "无",
+    trigger: "触发",
+    triggerNone: "仅手动",
+    groupGate: "门禁",
+    groupClose: "关闭",
+    hints: {
+      runGate: "立即在集成后的代码上运行整个包的测试（类型检查 + 测试）。",
+      adjust: "修改名称、集成分支，以及门禁何时运行（每晚、关闭时）。",
+      proposeClose: "在 Decisões 中创建一张卡片，请求同意关闭。",
+      closePackage: "立即关闭并运行门禁。没有确认。",
+    },
   },
   bootErrors: {
     "invalid-storage-data":
@@ -1729,6 +1748,26 @@ const en: typeof zh = {
     save: "Save",
     cancel: "Cancel",
     menu: "More actions",
+    tabs: { summary: "Summary", tickets: "Tickets", gate: "Gate history" },
+    statusOpen: "Open",
+    statusClosed: "Closed",
+    lastGate: "Last gate",
+    gateConfig: "Gate setup",
+    gateCommand: "Command",
+    env: "Env",
+    envNone: "none",
+    trigger: "Runs",
+    triggerNone: "Only by hand",
+    groupGate: "Gate",
+    groupClose: "Closing",
+    hints: {
+      runGate:
+        "Runs the whole package's test (typecheck + tests) on the integrated code now.",
+      adjust:
+        "Changes the name, integration branch and when the gate runs (nightly, on close).",
+      proposeClose: "Creates a card in Decisões asking for the ok to close.",
+      closePackage: "Closes now and runs the gate. No confirmation.",
+    },
   },
   bootErrors: {
     "invalid-storage-data":

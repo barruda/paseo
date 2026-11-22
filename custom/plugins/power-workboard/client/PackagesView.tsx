@@ -229,7 +229,7 @@ export function PackagesView({
   );
 }
 
-function gateLabel(
+export function gateLabel(
   pkg: PackageView,
   t: ReturnType<typeof strings>,
 ): string | null {
