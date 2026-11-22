@@ -328,8 +328,8 @@ export default function contribute(server: PluginServerContext) {
     return ready().setAssistantSettings(input.settings);
   });
   // CUSTOM(factory): the Pipelines tab, read only. Off mode shows the legacy `reviews` map as the
-  // projects' pipelines (COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the
-  // factory cutover).
+  // projects' pipelines (COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after
+  // 2027-02-20 once the factory cutover is done).
   server.handle(factoryPipelinesRpc, () => {
     const applied = factory.applied();
     return applied

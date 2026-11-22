@@ -7,7 +7,7 @@ import type {
   CompiledPipeline,
   CompiledStage,
 } from "./compile";
-import { isBuiltinStage, type BuiltinStage } from "./pipeline";
+import { isBuiltinStage, stageTargets, type BuiltinStage } from "./pipeline";
 
 /** Oldest entries go first once a task's history passes this. */
 export const PIPELINE_HISTORY_LIMIT = 50;
@@ -94,6 +94,23 @@ export function findStage(
   id: string,
 ): CompiledStage | null {
   return pipeline.stages.find((stage) => stage.id === id) ?? null;
+}
+
+/** The `spec` stage Refine runs: the first one a task reaches from `start`, breadth first; else
+ * the first in the file, so a pipeline edited out of order still gets one. */
+export function refineSpecStage(
+  pipeline: CompiledPipeline,
+): CompiledStage | null {
+  const seen = new Set<string>();
+  const queue = [pipeline.start];
+  while (queue.length) {
+    const stage = findStage(pipeline, queue.shift()!);
+    if (!stage || seen.has(stage.id)) continue;
+    if (stage.role === "spec") return stage;
+    seen.add(stage.id);
+    queue.push(...stageTargets(stage));
+  }
+  return pipeline.stages.find((stage) => stage.role === "spec") ?? null;
 }
 
 function pushHistory(

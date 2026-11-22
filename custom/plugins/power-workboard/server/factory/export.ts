@@ -205,7 +205,7 @@ export async function exportFactory(
   for (const orchestrator of data.orchestrators)
     if (orchestrator.projectId) wanted.add(orchestrator.projectId);
   for (const id of Object.keys(settings.projects)) wanted.add(id);
-  // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+  // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
   // The review policy is gone, but the live board's JSON still holds it: a project it marks
   // fresh-agent is exported with the `critical` pipeline.
   for (const id of Object.keys(settings.reviews ?? {}))
@@ -279,7 +279,7 @@ export async function exportFactory(
     const front: Record<string, unknown> = {
       path: homePath(project.rootPath, home),
     };
-    // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+    // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
     const pipelineId = legacyPipelineFor(settings, projectId);
     if (pipelineId !== "default") front.pipeline = pipelineId;
     Object.assign(front, projectPolicyOf(policy));

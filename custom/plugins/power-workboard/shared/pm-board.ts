@@ -94,7 +94,7 @@ export const pmCardSchema = z.object({
    * CUSTOM(factory): why a proposal is the user's, from the project's autonomy preset
    * (shared/autonomy.ts); null when the PM gave none.
    */
-  // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+  // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
   // Cards stored before the rename say `fresh-agent`; they read as `critical-merge`.
   userOnlyReason: storedUserOnlyReasonSchema.nullable().default(null),
   createdAt: z.string(),

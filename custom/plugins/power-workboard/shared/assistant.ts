@@ -121,7 +121,7 @@ export const assistantSettingsSchema = z.object({
   defaultAction: assistantDefaultActionSchema.default("review"),
   /** Keyed by project id. */
   projects: z.record(z.string(), projectPolicySchema).default({}),
-  // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+  // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
   // The review policy is gone. The live board still stores the old per-project map; the export
   // reads it to give DreamMMO the `critical` pipeline, and until the cutover those projects stay
   // critical (legacyPipelineFor). Nothing writes it, nothing seeds it.

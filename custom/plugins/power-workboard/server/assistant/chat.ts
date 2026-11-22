@@ -455,7 +455,7 @@ export function pipelineTools(
           .min(1)
           .max(8),
         recommend: z.string().max(80).nullable().default(null),
-        reason: z.union([z.literal("no-fit"), storedUserOnlyReasonSchema]), // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover: the live PM may still say fresh-agent
+        reason: z.union([z.literal("no-fit"), storedUserOnlyReasonSchema]), // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done: the live PM may still say fresh-agent
         why: z.string().max(2000).nullable().default(null),
       }),
       async execute({ taskId, ...input }) {
@@ -1156,7 +1156,7 @@ export function chatTools(
         taskIds: z.array(z.string()).max(50).default([]),
         reportIds: z.array(z.string()).max(50).default([]),
         packageIds: z.array(z.string()).max(50).default([]),
-        // CUSTOM(factory); COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover: the live PM may still say fresh-agent
+        // CUSTOM(factory); COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done: the live PM may still say fresh-agent
         userOnlyReason: storedUserOnlyReasonSchema.nullable().default(null),
       }),
       async execute(input) {

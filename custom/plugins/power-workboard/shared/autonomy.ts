@@ -28,7 +28,7 @@ export const USER_ONLY_REASONS = [
 export const userOnlyReasonSchema = z.enum(USER_ONLY_REASONS);
 export type UserOnlyReason = z.infer<typeof userOnlyReasonSchema>;
 
-// COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+// COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
 // A stored card, or a live PM prompt that predates the rename, still says `fresh-agent`. This is
 // plugin data, not the packages/protocol wire, so a transform is allowed.
 export const storedUserOnlyReasonSchema = z.union([

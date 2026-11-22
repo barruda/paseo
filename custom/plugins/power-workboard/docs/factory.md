@@ -277,18 +277,22 @@ role prompts, `templates/spec.md` and the factory's `README.md`; `readBuiltinFac
 
 The review policy is gone: a project is critical when its pipeline is `critical`. The live JSON
 still holds the old map (`assistant.settings.reviews`), read only and tagged
-`COMPAT(factory-pipelines)` until the cutover: the export maps its `fresh-agent` projects (DreamMMO,
-DreamMMO-android) to `critical` and the rest to `default` (`legacyPipelineFor` in
+`COMPAT(factory-pipelines)` until the cutover (the tags say remove after 2027-02-20, once the
+cutover is done): the export maps its `fresh-agent` projects (DreamMMO, DreamMMO-android) to `critical` and the rest to `default` (`legacyPipelineFor` in
 `shared/factory/builtin-pipelines.ts`), and outside active mode it gives each project the pipeline
 the export would, so those projects stay critical before the cutover. Nothing writes it: the
 settings page lost its Review select, a save keeps the stored map, and `board_set_project_policy`
 has no `review`.
 
 Spec and Refine: a draft's **Refine** button runs the project's `spec` stage interactively, in a
-chat with the user, on the worker that runs that stage and with `interactivePermission`. A pipeline
-with no `spec` stage, and a board outside active mode, use the `spec` role prompt and the project's
-spec template (the built-in ones off active mode: the bundle cannot read `server/factory/builtin/`,
-so `shared/factory/builtin-spec.ts` holds copies a test keeps equal). `/write-ticket` writes the
+chat with the user, on the worker that runs that stage and with `interactivePermission`. The stage
+is the first `spec` stage a task reaches from `start`, breadth first (`refineSpecStage`), else the
+first one in the file. In active mode this holds with the Project Manager off too: the chat needs
+no PM, so it reads the pipeline the factory gives the project even though that pipeline does not
+run the task. A pipeline with no `spec` stage uses the factory's `roles/spec.md` and the project's
+spec template. A board outside active mode uses the built-in `spec` role prompt and spec template:
+the bundle cannot read `server/factory/builtin/`, so `shared/factory/builtin-spec.ts` holds copies
+a test keeps equal. `/write-ticket` writes the
 stage's output, the spec, into the ticket's title and description. The chat is still recorded in
 `data.refinements`; Refine does not move `task.pipeline`, so a `critical` task still runs its own
 `spec` stage after it leaves Ready.

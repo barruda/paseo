@@ -68,7 +68,7 @@ export const BUILTIN_PIPELINES = {
 
 export type BuiltinPipelineId = keyof typeof BUILTIN_PIPELINES;
 
-// COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+// COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
 // The old review policy, still stored in `assistant.settings.reviews` on the live board: the
 // export maps `fresh-agent` to the `critical` pipeline, and outside active mode those projects
 // stay critical until the cutover.
@@ -85,7 +85,7 @@ export function legacyPipelineFor(
  * What the Pipelines tab shows while the factory is off: the built-in pipelines and, for each
  * project in the legacy review map, the one it gives it.
  */
-// COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+// COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
 // The projects come from the legacy `reviews` map.
 export function builtinPipelinesView(
   reviews: Record<string, string> | undefined,

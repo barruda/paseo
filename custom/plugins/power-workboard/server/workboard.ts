@@ -209,6 +209,7 @@ import {
   findStage,
   loopContinued,
   pipelineForProject,
+  refineSpecStage,
   reviewRework,
   stageChip,
   stageExit,
@@ -2519,17 +2520,18 @@ export class Workboard {
   }
   /**
    * CUSTOM(factory): the spec stage Refine runs, as the text its chat gets and the worker that
-   * runs it. Active mode: the first `spec` stage of the project's pipeline, with its worker; a
-   * pipeline with no spec stage gets the factory's `roles/spec.md` and the project's spec template.
-   * Off mode: the built-in ones. No worker means the task's orchestrator, else the defaults.
+   * runs it. Active mode, with the Project Manager on or off: the project pipeline's spec stage
+   * (`refineSpecStage`), with its worker; a pipeline with no spec stage gets the factory's
+   * `roles/spec.md` and the project's spec template. Off mode: the built-in ones. No worker means
+   * the task's orchestrator, else the defaults.
    */
   private async refineStage(
     task: Task,
   ): Promise<{ text: string; orchestratorId: string | null }> {
-    const entry = this.projectPipeline(task.projectId);
-    const stage =
-      entry &&
-      Object.values(entry.pipeline.stages).find((s) => s.role === "spec");
+    // The chat needs no Project Manager, so it reads the pipeline the factory gives the project
+    // even when the PM is off and the pipeline does not run the task.
+    const entry = this.factoryPipeline(task.projectId);
+    const stage = entry && refineSpecStage(entry.pipeline);
     if (entry && stage) {
       const runner = this.stageOrchestrator(
         entry.applied,
@@ -4101,7 +4103,11 @@ export class Workboard {
   // CUSTOM(factory): the pipeline engine (docs/factory.md, ticket 11) -------------------------
   /** The pipeline a task of this project starts: active mode with the PM on; else null. */
   private projectPipeline(projectId: string | null) {
-    if (this.factoryMode() !== "active" || !this.assistantOn()) return null;
+    return this.assistantOn() ? this.factoryPipeline(projectId) : null;
+  }
+  /** The pipeline the factory gives this project in active mode, PM on or off; else null. */
+  private factoryPipeline(projectId: string | null) {
+    if (this.factoryMode() !== "active") return null;
     const applied = this.factoryApplied();
     if (!applied) return null;
     const pipeline = pipelineForProject(
@@ -4359,7 +4365,7 @@ export class Workboard {
         applied.defaultPipeline ??
         "default"
       );
-    // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+    // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
     // Until the cutover the live board has no pipelines; the old review map keeps DreamMMO critical.
     return legacyPipelineFor(this.store.current.assistant.settings, projectId);
   }
@@ -5775,7 +5781,7 @@ export class Workboard {
     await this.serial(() =>
       this.store.update(
         (data) => {
-          // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+          // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
           // The page no longer sends `reviews`; the stored legacy map stays as it is (the export
           // reads it), and an incoming one is ignored.
           const { reviews: _incoming, ...rest } = settings;

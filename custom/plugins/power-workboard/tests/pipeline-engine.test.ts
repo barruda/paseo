@@ -19,6 +19,7 @@ import type { CompiledPipeline } from "../shared/factory/compile";
 import {
   enterStage,
   loopContinued,
+  refineSpecStage,
   reviewRework,
   reworkStage,
   stageChip,
@@ -70,6 +71,53 @@ const pipeline: CompiledPipeline = {
 };
 
 describe("pipeline engine: transitions", () => {
+  it("Refine's spec stage is the first one reached from start, not the first in the file", () => {
+    const flow: CompiledPipeline = {
+      ...pipeline,
+      start: "triage",
+      stages: [
+        stage("respec", { role: "spec", to: "deliver" }),
+        stage("build", { to: "respec" }),
+        stage("triage", { role: "triage", to: "draft" }),
+        stage("draft", { role: "spec", to: "build" }),
+      ],
+    };
+    expect(refineSpecStage(flow)?.id).toBe("draft");
+    // A gate option counts as a way forward, and breadth first beats file order.
+    const gated: CompiledPipeline = {
+      ...flow,
+      stages: [
+        stage("respec", { role: "spec", to: "deliver" }),
+        stage("triage", {
+          role: "triage",
+          to: null,
+          gate: {
+            question: "Which?",
+            options: [
+              { id: "a", label: "A", to: "build" },
+              { id: "b", label: "B", to: "draft" },
+            ],
+          },
+        }),
+        stage("build", { to: "respec" }),
+        stage("draft", { role: "spec", to: "build" }),
+      ],
+    };
+    expect(refineSpecStage(gated)?.id).toBe("draft");
+    // No spec stage reachable: the first one in the file.
+    expect(
+      refineSpecStage({
+        ...flow,
+        stages: [
+          stage("triage", { role: "triage", to: "deliver" }),
+          stage("late", { role: "spec", to: "deliver" }),
+          stage("later", { role: "spec", to: "deliver" }),
+        ],
+      })?.id,
+    ).toBe("late");
+    expect(refineSpecStage(pipeline)).toBeNull();
+  });
+
   it("starts at start with one visit", () => {
     const state = startPipeline(pipeline, AT);
     expect(state).toMatchObject({
@@ -756,6 +804,44 @@ Zeta works.
       });
       const chosen = await refined(s);
       expect(chosen.call.provider).toBe(zeta.provider);
+    });
+
+    it("runs the spec stage reached from start, not the first spec stage in the file", async () => {
+      const s = await bootWith(
+        `start: triage
+stages:
+  respec: { role: spec, prompt: Second spec stage., to: deliver }
+  build: { role: implement, prompt: Build it., to: respec }
+  triage: { role: implement, prompt: Triage it., to: spec }
+  spec: { role: spec, prompt: First spec stage., to: build }
+`,
+      );
+      const { call } = await refined(s);
+      expect(call.prompt).toContain("## Pipeline stage: spec (spec)");
+      expect(call.prompt).toContain("First spec stage.");
+      expect(call.prompt).not.toContain("Second spec stage.");
+    });
+
+    it("active mode with the Project Manager off still runs the project's spec stage", async () => {
+      const s = await bootWith(
+        `start: spec
+stages:
+  spec: { role: spec, prompt: Factory spec stage prompt., to: build }
+  build: { role: implement, prompt: Build it., to: deliver }
+`,
+        {
+          "pm/worker.md": `---
+model: claude/claude-sonnet-5-5
+enabled: false
+---
+
+You are the factory's Project Manager.
+`,
+        },
+      );
+      expect(s.store.current.assistant.settings.enabled).toBe(false);
+      const { call } = await refined(s);
+      expect(call.prompt).toContain("Factory spec stage prompt.");
     });
 
     it("a pipeline with no spec stage gets the factory's roles/spec.md and the project's spec template", async () => {

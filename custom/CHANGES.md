@@ -10729,8 +10729,11 @@ tests/pipeline-engine.test.ts` (both in the plugin suite of the update script). 
   - Export: `pm/worker.md` gets `autonomy: standard`, no project gets an override. With DreamMMO =
     fresh-agent and paseo = self: DreamMMO is `critical` (merge ok is the user's), paseo `default`
     (merge is the PM's).
-  - Refine: `refineStage` in `server/workboard.ts` gives the chat the project's first `spec` stage
-    (stage prompt + spec template, on that stage's worker) in active mode; the factory's
+  - Refine: `refineStage` in `server/workboard.ts` gives the chat the project's `spec` stage
+    (stage prompt + spec template, on that stage's worker) in active mode, with the PM on or off
+    (`factoryPipeline`; the chat needs no PM). The stage is the first `spec` stage reached from
+    `start`, breadth first (`refineSpecStage` in `shared/factory/engine.ts`), else the first in
+    the file, so an edited pipeline out of file order still gets the right one. The factory's
     `roles/spec.md` and template when the pipeline has none; the built-in ones
     (`shared/factory/builtin-spec.ts`, kept equal to `server/factory/builtin/` by a test) off
     active mode. `specChatPrompt` replaces `refinementPrompt`; `/write-ticket` asks for the spec
@@ -10744,8 +10747,8 @@ tests/pipeline-engine.test.ts` (both in the plugin suite of the update script). 
   `server/factory/export.ts`, `index.server.ts`, `index.client.tsx`, `client/strings.ts`, README,
   `docs/factory.md`, `docs/pm-board.md` and the tests listed under Verify.
 - **Re-apply:** plugin code needs nothing on an upstream update. In the app, drop `reviews` from
-  the settings mirror again if an update brings it back. After the cutover, delete every
-  `rg "COMPAT\(factory-pipelines\)"` site.
+  the settings mirror again if an update brings it back. After the cutover (the tags say remove
+  after 2027-02-20), delete every `rg "COMPAT\(factory-pipelines\)"` site.
 - **Verify:** in `custom/plugins/power-workboard`, `npx vitest run <file>` for
   `tests/factory-export.test.ts`, `tests/pipeline-engine.test.ts`, `tests/power-workboard.test.ts`,
   `tests/assistant-chat.test.ts`, `tests/assistant-engine.test.ts` and

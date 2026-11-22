@@ -20,8 +20,14 @@ export type PipelineProblem = {
   message: string;
 };
 
+/** The fields of a stage, in its file or compiled, that lead to another stage. */
+type StageLinks = {
+  to?: string | Array<{ stage: string }> | null;
+  gate?: { options: Array<{ to?: string }> } | null;
+};
+
 /** Where a stage can go next: its `to` stages and its gate options' stages. */
-export function stageTargets(stage: PipelineStage): string[] {
+export function stageTargets(stage: StageLinks): string[] {
   const targets: string[] = [];
   if (typeof stage.to === "string") targets.push(stage.to);
   else for (const option of stage.to ?? []) targets.push(option.stage);
