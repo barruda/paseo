@@ -984,11 +984,16 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             }}
           />
         ) : tab === "pipelines" ? (
-          // CUSTOM(factory): the pipelines, read only.
+          // CUSTOM(factory): the pipelines, read only. A task in the live overlay opens its
+          // ticket in the board's side panel, which only the board tab renders.
           <PipelinesView
             board={board}
             theme={props.theme}
             compact={props.layout.compact}
+            onOpenCard={(cardId) => {
+              setPanel(openPanel(cardId, "ticket", null));
+              selectTab("board");
+            }}
           />
         ) : tab === "assistant-chat" ? (
           // CUSTOM(workboard-inner-pages): the same screens the Desk chips used to show.

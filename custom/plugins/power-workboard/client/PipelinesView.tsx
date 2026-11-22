@@ -1,5 +1,6 @@
 // CUSTOM(factory): the Pipelines tab (docs/factory.md, "Pipeline editor"), read only for now. The
-// graph is plain Views: orthogonal edges are thin rectangles, arrowheads are border triangles.
+// graph is plain Views: orthogonal edges are thin rectangles, arrowheads are border triangles. The
+// live overlay counts the project's tasks on each node from the polled board.
 import { useEffect, useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
@@ -17,7 +18,12 @@ import {
   type GraphNode,
 } from "./pipeline-layout";
 import { usePipelineStrings, type PipelineStrings } from "./pipeline-strings";
-import { pipelineForProject, stageRunnerLabel } from "./pipeline-view";
+import {
+  pipelineForProject,
+  pipelineOverlay,
+  stageRunnerLabel,
+  type StageOverlay,
+} from "./pipeline-view";
 
 type Theme = PluginSurfaceProps["theme"];
 
@@ -37,10 +43,13 @@ export function PipelinesView({
   board,
   theme,
   compact,
+  onOpenCard,
 }: {
   board: Board;
   theme: Theme;
   compact: boolean;
+  /** Opens the task's ticket in the board's side panel. */
+  onOpenCard(cardId: string): void;
 }) {
   const s = usePipelineStrings();
   const query = useFactoryPipelines();
@@ -57,6 +66,18 @@ export function PipelinesView({
       ? (view.pipelines[pipelineId] ?? view.pipelines[view.defaultPipeline])
       : undefined;
   useEffect(() => setSelected(null), [projectId, pipelineId]);
+  const overlay = useMemo(
+    () =>
+      projectId && pipelineId
+        ? pipelineOverlay(
+            board.cards,
+            board.settings.groups,
+            projectId,
+            pipelineId,
+          )
+        : {},
+    [board.cards, board.settings.groups, projectId, pipelineId],
+  );
 
   const muted = { color: theme.colors.foregroundMuted };
   if (query.isPending)
@@ -126,6 +147,8 @@ export function PipelinesView({
                 board={board}
                 theme={theme}
                 s={s}
+                tasks={overlay[id]}
+                onOpenCard={onOpenCard}
               />
             </View>
           ))}
@@ -144,6 +167,7 @@ export function PipelinesView({
               board={board}
               theme={theme}
               s={s}
+              overlay={overlay}
               selected={selected}
               onSelect={setSelected}
             />
@@ -165,6 +189,8 @@ export function PipelinesView({
               board={board}
               theme={theme}
               s={s}
+              tasks={overlay[selected]}
+              onOpenCard={onOpenCard}
             />
           ) : (
             <Text style={muted}>{s.selectStage}</Text>
@@ -181,6 +207,7 @@ function Graph({
   board,
   theme,
   s,
+  overlay,
   selected,
   onSelect,
 }: {
@@ -189,6 +216,7 @@ function Graph({
   board: Board;
   theme: Theme;
   s: PipelineStrings;
+  overlay: Record<string, StageOverlay>;
   selected: string | null;
   onSelect(id: string): void;
 }) {
@@ -204,6 +232,7 @@ function Graph({
           node={node}
           stage={pipeline.stages[node.id]}
           start={pipeline.start === node.id}
+          tasks={overlay[node.id]}
           selected={selected === node.id}
           projectId={projectId}
           board={board}
@@ -342,6 +371,7 @@ function Node({
   node,
   stage,
   start,
+  tasks,
   selected,
   projectId,
   board,
@@ -352,6 +382,7 @@ function Node({
   node: GraphNode;
   stage: PipelineStage | undefined;
   start: boolean;
+  tasks: StageOverlay | undefined;
   selected: boolean;
   projectId: string;
   board: Board;
@@ -423,7 +454,109 @@ function Node({
           ))}
         </View>
       ) : null}
+      <NodeBadges tasks={tasks} theme={theme} s={s} />
     </Pressable>
+  );
+}
+
+/** The node's live counts over its top-right corner: tasks in the stage, then tasks waiting. */
+function NodeBadges({
+  tasks,
+  theme,
+  s,
+}: {
+  tasks: StageOverlay | undefined;
+  theme: Theme;
+  s: PipelineStrings;
+}) {
+  const running = tasks?.running.length ?? 0;
+  const waiting = tasks?.waiting.length ?? 0;
+  if (!running && !waiting) return null;
+  return (
+    <View pointerEvents="none" style={styles.badges}>
+      {running ? (
+        <Text
+          accessibilityLabel={`${s.tasksRunning}: ${running}`}
+          numberOfLines={1}
+          style={[
+            styles.badge,
+            {
+              backgroundColor: theme.colors.accent,
+              borderColor: theme.colors.accent,
+              color: theme.colors.accentForeground,
+            },
+          ]}
+        >
+          {String(running)}
+        </Text>
+      ) : null}
+      {waiting ? (
+        <Text
+          accessibilityLabel={`${s.tasksWaiting}: ${waiting}`}
+          numberOfLines={1}
+          style={[
+            styles.badge,
+            {
+              backgroundColor: theme.colors.surface1,
+              borderColor: theme.colors.statusWarning,
+              color: theme.colors.statusWarning,
+            },
+          ]}
+        >
+          {`${waiting} ${s.waitingBadge}`}
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+
+/** The stage's tasks, each opening its ticket. */
+function StageTasks({
+  tasks,
+  theme,
+  s,
+  onOpenCard,
+}: {
+  tasks: StageOverlay | undefined;
+  theme: Theme;
+  s: PipelineStrings;
+  onOpenCard(cardId: string): void;
+}) {
+  const muted = { color: theme.colors.foregroundMuted };
+  const sections = [
+    { key: "running", title: s.tasksRunning, list: tasks?.running ?? [] },
+    { key: "waiting", title: s.tasksWaiting, list: tasks?.waiting ?? [] },
+  ].filter((section) => section.list.length > 0);
+  if (!sections.length) return <Text style={muted}>{s.noTasks}</Text>;
+  return (
+    <>
+      {sections.map((section) => (
+        <View key={section.key} style={styles.taskSection}>
+          <Text style={muted}>
+            {`${section.title} (${section.list.length})`}
+          </Text>
+          {section.list.map((task) => (
+            <Pressable
+              key={task.id}
+              accessibilityRole="button"
+              accessibilityHint={s.openTicket}
+              onPress={() => onOpenCard(task.id)}
+              style={[styles.taskRow, { borderColor: theme.colors.border }]}
+            >
+              <Text
+                numberOfLines={2}
+                style={{ color: theme.colors.foreground }}
+              >
+                {task.number > 0 ? (
+                  <Text style={muted}>{`#${task.number} `}</Text>
+                ) : null}
+                {task.title}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      ))}
+    </>
   );
 }
 
@@ -434,6 +567,8 @@ function StageDetails({
   board,
   theme,
   s,
+  tasks,
+  onOpenCard,
 }: {
   id: string;
   pipeline: PipelineFile;
@@ -441,10 +576,18 @@ function StageDetails({
   board: Board;
   theme: Theme;
   s: PipelineStrings;
+  tasks: StageOverlay | undefined;
+  onOpenCard(cardId: string): void;
 }) {
   const muted = { color: theme.colors.foregroundMuted };
   const text = { color: theme.colors.foreground };
   const stage = pipeline.stages[id];
+  const taskList = (
+    <>
+      <Text style={[styles.sectionTitle, text]}>{s.tasks}</Text>
+      <StageTasks tasks={tasks} theme={theme} s={s} onOpenCard={onOpenCard} />
+    </>
+  );
   if (!stage)
     return (
       <View style={styles.details}>
@@ -452,6 +595,7 @@ function StageDetails({
         <Text style={text}>
           {isBuiltinStage(id) ? s.builtinStages[id] : id}
         </Text>
+        {taskList}
       </View>
     );
   const field = (name: string, value: string) => (
@@ -512,6 +656,7 @@ function StageDetails({
           )}
         </>
       ) : null}
+      {taskList}
     </View>
   );
 }
@@ -555,5 +700,32 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   arrow: { position: "absolute", width: 0, height: 0 },
+  badges: {
+    position: "absolute",
+    top: -9,
+    right: -6,
+    flexDirection: "row",
+    gap: 4,
+  },
+  badge: {
+    fontSize: 11,
+    fontWeight: "700",
+    borderWidth: 1,
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
+    lineHeight: 16,
+    paddingHorizontal: 5,
+    textAlign: "center",
+    overflow: "hidden",
+  },
+  sectionTitle: { fontSize: 13, fontWeight: "600", marginTop: 8 },
+  taskSection: { gap: 4 },
+  taskRow: {
+    borderWidth: 1,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
   edgeLabel: { position: "absolute", width: LABEL_WIDTH, fontSize: 11 },
 });

@@ -487,8 +487,15 @@ A **Pipelines** tab in the board's tab bar, with a project picker. It draws the 
 as a graph: stages as nodes (role, worker, gate marker), transitions as edges labeled with their
 `when`, built-in `deliver`/`end`/`cancel` as terminal nodes. A side panel edits the selected stage.
 Validation runs live with the same schemas. Save writes `pipelines/<id>.yaml` through the factory
-writer, including `layout`. Live overlay: each node shows how many tasks are in that stage and how
-many wait on its gate; a click lists them. On phones the tab shows the stages as a read-only list.
+writer, including `layout`. On phones the tab shows the stages as a read-only list.
+
+Live overlay (`pipelineOverlay` in `client/pipeline-view.ts`): each node shows how many of the
+project's tasks are in that stage and how many wait on its gate or `when` choice; the stage panel
+(the card on phones) lists them, and a task opens its ticket in the board's side panel, which
+switches to the Board tab because only that tab renders the panel. It reads `task.pipeline` from
+the board's own polling. A task counts while its card shows the stage chip, so tasks in Done or
+Canceled, tasks the engine does not run and tasks outside active mode count nowhere. Tasks in a
+draft column and archived tasks are left out too: a run from Ready starts over at `start`.
 
 Drawing: the graph is plain React Native Views, with no SVG and no graph library. The plugin
 client gets only React, React Native, zod, react-query and the SDK from the host

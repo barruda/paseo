@@ -10609,3 +10609,29 @@ tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in 
   then `tests/factory-active.test.ts` (both in the plugin suite of the update script). Live only
   after the cutover to active mode: a task of a project on `critical` shows `triage 1/3` on its
   card, and its gate shows up in Decisões.
+
+## factory-pipeline-overlay: the Pipelines tab shows the tasks in each stage
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: live task overlay on the Power Workboard Pipelines tab`
+- **Why:** Ticket 15 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Pipeline editor"): see where the project's tasks are in its pipeline, and open one from there.
+- **What:**
+  - `client/pipeline-view.ts`: `pipelineOverlay` groups the project's cards by the stage of the
+    pipeline shown (`task.pipeline`), split into tasks in the stage and tasks waiting on its gate
+    or `when` choice. A card counts only while it shows the stage chip, and never from a draft
+    column or archived.
+  - `client/PipelinesView.tsx`: count badges over each node's top-right corner (accent for the
+    stage, amber outline for "waiting"), and a **Tasks** list in the stage panel and in each
+    phone card. A task in the list calls `onOpenCard`.
+  - `client/WorkboardScreen.tsx`: `onOpenCard` opens the ticket in the side panel and switches to
+    the Board tab, the only tab that renders the panel.
+  - `client/pipeline-strings.ts`: the new words in en/pt/zh.
+- **Core files touched:** none.
+- **Plugin files:** the files above, `docs/factory.md`, `tests/pipeline-view.test.ts`.
+- **Re-apply:** plugin only; nothing to re-apply on an upstream update.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/pipeline-view.test.ts`
+  (part of the plugin suite in the update script). Live only in active mode: Workboard →
+  **Pipelines** → a project with running tasks shows a number on the node of each task's stage
+  and "N waiting" on a stage whose gate is open; click the node, then a task in the panel, and its
+  ticket opens beside the board.
