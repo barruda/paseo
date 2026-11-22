@@ -10194,8 +10194,9 @@ validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`
     git-ignored, for the cutover). It validates with the loader and compiler and only then runs
     `git init -b main` and commits (hooks off, a fallback identity when git has none). It refuses a
     target that is not empty.
-  - `server/factory/builtins.ts`: the `default` and `critical` pipelines and the five role prompts
-    (ticket 6 gives them a schema).
+  - The built-in files (pipelines, role prompts, spec template, README, `.gitignore`) come from
+    `readBuiltinFactoryFiles()` (`server/factory/builtin.ts`, entry `factory-pipelines`); the
+    export's first minimal copies in `server/factory/builtins.ts` were removed there.
   - `bin/factory export <dir> [--data] [--profiles] [--projects]`: the inputs default to the live
     files under `$PASEO_HOME` (read only, `workboard-data.json` migrated in memory when old); the
     target has no default, so no call writes `~/.paseo/factory` by accident.
@@ -10203,14 +10204,87 @@ validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`
     default task prompt of new orchestrators, `defaultDraftGroup`/`defaultStartGroup`/
     `defaultStartWorkGroup` (they stay in the JSON).
 - **Core files touched:** none.
-- **Plugin files:** `server/factory/export.ts`, `server/factory/builtins.ts`,
-  `server/factory/cli.ts`, `bin/factory`, `docs/factory.md`, `tests/factory-export.test.ts`,
+- **Plugin files:** `server/factory/export.ts`, `server/factory/cli.ts`, `bin/factory`, `docs/factory.md`, `tests/factory-export.test.ts`,
   `tests/factory.test.ts` (its "unknown command" case used `export`).
 - **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
 - **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-export.test.ts)`
   (part of the plugin suite in the update script). By hand, read-only on the live data:
   `custom/plugins/power-workboard/bin/factory export /home/bruno/uprojects/tmp/factory-try`, then
   `bin/factory validate` on the same folder.
+
+## factory-stamps: revision stamps on runs and history
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: revision stamps on Power Workboard runs and history events`
+- **Why:** Ticket 5 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`):
+  metrics need to compare runs before and after a prompt or model change, so each run and history
+  event records which worker config it ran with.
+- **What:**
+  - `orchestrationSchema` and `historyEventSchema` get optional `factoryRevision`, `workerId` and
+    `workerConfigHash` (nullable, default null, so old data parses).
+  - `server/factory/stamp.ts`: `workerConfigHash` (16 hex of a sha256 over canonical JSON of the
+    agent-facing config fields, the trimmed system prompt, the task prompt and the role) and
+    `compiledWorkerConfigHash` for a compiled factory worker.
+  - `Workboard.startCard` stamps the new run; `continueTask` re-stamps only when it starts a new
+    agent. `record()` copies the run's stamp onto each history event; chat events stay null.
+  - With the factory off (the only mode until tickets 7 and 9) the revision is null and the hash
+    comes from the live orchestrator config plus its profile's `system-prompt.md`.
+- **Core files touched:** none.
+- **Plugin files:** `server/factory/stamp.ts`, `server/workboard.ts`, `server/assistant/history.ts`,
+  `shared/model.ts`, `shared/assistant.ts`, `docs/factory.md`, `tests/factory-stamp.test.ts`,
+  `tests/assistant-engine.test.ts` (+ fixture fields in `tests/assistant-reports.test.ts`,
+  `tests/assistant-views.test.ts`).
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** in `custom/plugins/power-workboard`, `npx vitest run tests/factory-stamp.test.ts` and
+  `npx vitest run tests/assistant-engine.test.ts` (part of the plugin suite in the update script).
+  After a `plugin reload`, start a task: its entry in `workboard-data.json` `orchestrations` and its
+  `task-started` line in `plugin-data/power-workboard/history/` carry `workerId` and
+  `workerConfigHash`, with `factoryRevision: null`.
+
+## factory-pipelines: worker roles, pipeline schema and built-in pipelines and role prompts
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: factory pipelines, worker roles and built-in role prompts for the Power Workboard`
+- **Why:** Ticket 6 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`):
+  projects declare a pipeline of stages run by worker roles. This adds the files and their checks;
+  no engine change, nothing reads a factory yet.
+- **What:**
+  - `shared/factory/schema.ts`: `pipelineFileSchema` (`start`, `stages` with `role`, `worker`,
+    `prompt`/`file`, `session`, `gate`, `to`, `maxVisits`, and `layout`), `STAGE_ROLES` (the five
+    worker roles plus `pm`), `pipeline.json` in `.schema/`. `LoadedFactory` gains `pipelines`
+    (with each stage's resolved prompt) and `roles`.
+  - `shared/factory/pipeline.ts`: built-in stages `deliver`/`end`/`cancel`, the in-file checks
+    run by the schema (unknown stage in `start`/`to`/`when`/gate option/`layout`, built-in used as
+    `start` or stage id, gate option without `to`, unreachable stage, `to`+`gate` or neither,
+    `prompt`+`file`, duplicate gate option), and `projectWorkers`/`stageRunner` (pinned worker,
+    else the project's worker with the role, else its implement worker; `pm` needs none).
+  - `server/factory/loader.ts`: reads `pipelines/*.yaml` and `roles/<role>.md` (only the stage
+    roles), and checks across files: pinned worker, stage `file`, missing `roles/<role>.md`,
+    project and `defaults.pipeline` references, and a role with no worker and no implement
+    fallback (projects no worker takes are skipped).
+  - `shared/factory/compile.ts`: `pipelines` (stages with defaults filled: `session: continue`,
+    `maxVisits: 3`), and a worker with no `role` compiles as `implement`.
+  - `server/factory/stamp.ts` (from `factory-stamps`): the hash treats `role: implement` as no
+    role, so a factory implement worker hashes like the same live orchestrator and the hashes
+    recorded before roles existed stay valid; another role still changes the hash.
+  - `server/factory/builtin/`: the `default` and `critical` pipelines, `roles/{triage,spec,
+    implement,verify,review}.md`, `templates/spec.md` and the factory `README.md`.
+    `readBuiltinFactoryFiles()` (`server/factory/builtin.ts`) returns them plus the `.gitignore`
+    (a constant: a real one in `builtin/` would apply to this repository) and is the only source
+    `bin/factory export` (`export.ts`) writes them from. It replaces ticket 4's
+    `server/factory/builtins.ts`, deleted here.
+- **Core files touched:** none.
+- **Plugin files:** `shared/factory/{schema,pipeline,compile}.ts`, `server/factory/loader.ts`,
+  `server/factory/builtin.ts`, `server/factory/builtin/**`, `server/factory/export.ts`,
+  `server/factory/stamp.ts`, `docs/factory.md`, `tests/factory-pipelines.test.ts`,
+  `tests/factory.test.ts`, `tests/factory-fixtures.ts`, `tests/factory-export.test.ts` (the export
+  copies the built-in files as they are), `tests/factory-stamp.test.ts` (implement hashes as none).
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-pipelines.test.ts
+tests/factory.test.ts tests/factory-export.test.ts)` (part of the plugin suite in the update script). By hand: copy
+  `server/factory/builtin/` into a folder with a `factory.yaml`, a worker and a project using
+  `pipeline: critical`, then `custom/plugins/power-workboard/bin/factory validate <dir>`; break a
+  `to:` and it prints the file, line and the stages it made unreachable.
 
 ## factory-shadow: shadow mode loads the factory and diffs it against the live config
 

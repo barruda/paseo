@@ -41,12 +41,7 @@ import {
 import { projectTestsSchema } from "../../shared/assistant";
 import { ASSISTANT_PROFILE, type SkillSelection } from "../../shared/profiles";
 import { AUTOMATIC_SCHEDULE, type Schedule } from "../../shared/schedule";
-import {
-  BUILTIN_PIPELINES,
-  BUILTIN_ROLES,
-  FACTORY_GITIGNORE,
-  FACTORY_README,
-} from "./builtins";
+import { readBuiltinFactoryFiles } from "./builtin";
 import { writeFactoryJsonSchemas } from "./json-schema";
 import { loadFactory } from "./loader";
 
@@ -447,12 +442,9 @@ export async function exportFactory(
     warnings,
   );
 
-  for (const [id, text] of Object.entries(BUILTIN_PIPELINES))
-    files.set(`pipelines/${id}.yaml`, text);
-  for (const [role, text] of Object.entries(BUILTIN_ROLES))
-    files.set(`roles/${role}.md`, text);
-  files.set("README.md", FACTORY_README);
-  files.set(".gitignore", FACTORY_GITIGNORE);
+  // Pipelines, role prompts, the spec template, README.md and .gitignore.
+  for (const [file, text] of Object.entries(await readBuiltinFactoryFiles()))
+    files.set(file, text);
   files.set(IDS_FILE, `${JSON.stringify(ids, null, 2)}\n`);
 
   await mkdir(root, { recursive: true });

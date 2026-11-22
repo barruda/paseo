@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { describe, expect, it } from "vitest";
+import { readBuiltinFactoryFiles } from "../server/factory/builtin";
 import { runFactoryCli } from "../server/factory/cli";
 import {
   exportFactory,
@@ -368,6 +369,9 @@ describe("exportFactory", () => {
       ".schema/factory.json",
     ])
       expect((await read(file)).length).toBeGreaterThan(0);
+    // The built-in files (ticket 6) are copied as they are.
+    for (const [file, text] of Object.entries(await readBuiltinFactoryFiles()))
+      expect(await read(file)).toBe(text);
     expect(JSON.parse(await read(IDS_FILE))).toEqual(result.ids);
     expect(result.warnings).toEqual(
       expect.arrayContaining([

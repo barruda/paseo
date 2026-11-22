@@ -1,8 +1,9 @@
 # Factory as code, worker roles and pipelines
 
-Status: approved design. Built so far: ticket 2 (schemas, loader, compiler and `bin/factory`),
-ticket 4 (`bin/factory export`) and ticket 7 (shadow mode: the board loads and diffs the factory,
-applies nothing). Tickets at the end. Inspired by Warp Factories
+Status: approved design. Built so far: tickets 2 (schemas, loader, compiler and `bin/factory`), 4
+(`bin/factory export`) and 6 (pipelines and roles), ticket 5 (revision stamps) and ticket 7
+(shadow mode: the board loads and diffs the factory, applies nothing). Tickets at the end.
+Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -123,6 +124,8 @@ memory: true
 System prompt (today's profile `system-prompt.md`).
 ```
 
+A worker with no `role` is an implement worker, as every orchestrator is today.
+
 `schedule` forms: `automatic`, `manual`, `{ window: { days: [1,2,3,4,5], start: "09:00", end:
 "18:00" } }`, `{ daily: { days: [...], times: ["08:00"] } }`. An omitted field inherits
 `defaults.worker`, then today's orchestrator default. A worker whose project is inactive is left out.
@@ -234,6 +237,9 @@ Stage fields:
 | `to`            | A stage id (the board advances), or a list of `{stage, when}` (the PM chooses)                                            |
 | `maxVisits`     | Default 3. One more visit sends the task to Needs you as `loop`                                                           |
 
+A stage has `to` or `gate`, never both, and `prompt` or `file`, never both. A `spec` stage gets
+the project's spec template (`templates.spec`, else `templates/spec.md`) after its prompt.
+
 Built-in stage ids: `deliver` (runs the project's `delivery`), `end` (Done with no delivery) and
 `cancel`. Transition rules:
 
@@ -243,9 +249,20 @@ Built-in stage ids: `deliver` (runs the project's `delivery`), `end` (Done with 
    calls `board_pipeline_advance` with the stage and a reason. **If no condition fits, it calls
    `board_pipeline_ask` (a Decisões proposal) and never picks a stage on its own.**
 
-Built-in pipelines that the export writes:
+The loader rejects, with the file and line: a `start`, `to`, `when` stage, gate option or `layout`
+key that names no stage and no built-in; `start` or a stage id that is a built-in; a gate option
+without `to`; a stage no transition from `start` reaches; a pinned `worker`, a `file` or a
+`roles/<role>.md` that does not exist; a `pipeline:` (project or `defaults`) with no file; and a
+project whose workers have neither the stage's role nor `implement`. A project no worker takes is
+not checked: it runs nothing, as today. The checks inside one file run in `pipelineFileSchema` (rules
+in `shared/factory/pipeline.ts`), so the editor gets them from the schema. `roles/` takes only
+`<role>.md` for the five roles and `pm`.
 
-- `default`: `implement → review (role: pm) → deliver`. This is today's behavior and the review policy `self`.
+Built-in pipelines that the export writes. They live in `server/factory/builtin/` with the five
+role prompts, `templates/spec.md` and the factory's `README.md`; `readBuiltinFactoryFiles()`
+(`server/factory/builtin.ts`) returns them plus the `.gitignore`, and is the export's only source.
+
+- `default`: `implement → review (role: pm, file: roles/review.md) → deliver`. This is today's behavior and the review policy `self`.
 - `critical`: `triage → spec (gate) → implement → verify → review (fresh) → deliver`. This replaces the review policy `fresh-agent`.
 
 Spec and Refine: a draft's **Refine** button runs the project's `spec` stage interactively (or the
@@ -280,13 +297,19 @@ the migration maps `fresh-agent` projects to `critical`.
 - **Revision**: git `HEAD`, plus `+dirty.<content hash>` with uncommitted changes. Each new
   orchestration and each history event records `factoryRevision`, `workerId` and
   `workerConfigHash` (a stable hash of the compiled worker config, its prompt and task prompt).
+  The stamp is taken when an agent starts (a new run, or a new agent for a continued task); a
+  continuation that reuses the live agent keeps it, and history events copy their run's stamp.
+  Until active mode the revision is null and the hash comes from the live orchestrator and its
+  profile's `system-prompt.md`. The hash covers only what changes the agent's work (model,
+  permission, thinking, workspace, prompts, skills, memory, checkpoints, role), so a schedule,
+  name or id change keeps it and the same config hashes alike under a UUID and a slug
+  (`server/factory/stamp.ts`).
 - Validation outside the app: `bin/factory validate [dir]` (default `$PASEO_HOME/factory`) prints
   `file:line: message [kind]` and exits 1 on any error. `bin/factory schema [dir]` writes
   `.schema/*.json` with `z.toJSONSchema` from the same schemas. Code: `shared/factory/` (schemas,
   compiler) and `server/factory/` (loader, CLI).
-- Until ticket 6, `pipelines/*.yaml` and `roles/*.md` are checked by name only, and `pipeline:`
-  references are not resolved. The export's copies live in `server/factory/builtins.ts`. Skill names in `skills:` are not resolved either: they may be
-  personal or plugin skills outside the factory.
+- Skill names in `skills:` are not resolved: they may be personal or plugin skills outside the
+  factory.
 - UI edits in `active` mode go through a writer that edits the YAML with the `yaml` Document API
   (comments survive) and commits `ui: <what changed>`. A file changed on disk since it was read
   reloads instead of being overwritten.
@@ -295,7 +318,8 @@ the migration maps `fresh-agent` projects to `critical`.
 
 `bin/factory export <dir> [--data <file>] [--profiles <dir>] [--projects <file>]` writes the
 factory from `workboard-data.json`, the profile folders and Paseo's `projects.json` (defaults: the
-live files under `$PASEO_HOME`, only read), adds the built-in pipelines and role prompts, validates
+live files under `$PASEO_HOME`, only read), adds the built-in files (pipelines, role prompts, spec
+template, README, `.gitignore`), validates
 the result and only then runs `git init` and commits. `<dir>` has no default and must be missing or
 empty, so no call writes the live factory by accident. Worker ids become slugs of their names
 (`-2` on repeats), and so do project and pool ids. The map goes to `.factory-ids.json` (git-ignored);

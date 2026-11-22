@@ -57,6 +57,9 @@ const event = (
   text: `event ${id}`,
   detail: null,
   by: null,
+  factoryRevision: null,
+  workerId: null,
+  workerConfigHash: null,
   ...over,
 });
 
