@@ -319,7 +319,6 @@ describe("factory active mode: the UI writes the factory", () => {
         ...settings.projects,
         p: { ...settings.projects.p!, verifyCommand: "npm test" },
       },
-      reviews: { p: "fresh-agent" },
     });
     expect(await readRoot(s.root, "factory.yaml")).toMatch(
       /delivery:\n {4}action: review\n/,
@@ -337,10 +336,10 @@ describe("factory active mode: the UI writes the factory", () => {
     const read = s.board.assistantSettings().settings;
     expect(read.defaultAction).toBe("review");
     expect(read.projects.p!.verifyCommand).toBe("npm test");
-    // `reviews` is not the factory's: it is saved in the JSON.
-    expect(s.store.peek((data) => data.assistant.settings.reviews)).toEqual({
-      p: "fresh-agent",
-    });
+    // COMPAT(factory-pipelines): the legacy `reviews` map is not the factory's and is not written.
+    expect(
+      s.store.peek((data) => data.assistant.settings.reviews),
+    ).toBeUndefined();
     expect(s.store.peek((data) => data.assistant.settings.defaultAction)).toBe(
       "nothing",
     );

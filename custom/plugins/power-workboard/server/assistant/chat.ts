@@ -17,11 +17,8 @@ import {
 import {
   ASSISTANT_ACTIONS,
   ASSISTANT_DEFAULT_ACTIONS,
-  DEFAULT_REVIEW_POLICY,
-  REVIEW_POLICIES,
   assistantSettingsSchema,
   projectPolicySchema,
-  reviewPolicyFor,
   type AssistantActionInput,
   type ProjectPolicy,
   type HistoryEvent,
@@ -57,7 +54,10 @@ import {
   REPLY_PROTOCOL_VERSION,
 } from "../../shared/reply-protocol";
 // CUSTOM(factory): autonomy presets and PM transitions (ticket 12)
-import { autonomyRulesText, userOnlyReasonSchema } from "../../shared/autonomy";
+import {
+  autonomyRulesText,
+  storedUserOnlyReasonSchema,
+} from "../../shared/autonomy";
 import { PIPELINE_CHOICE_RULE } from "../../shared/factory/engine";
 // CUSTOM(pm-board)
 import {
@@ -121,9 +121,9 @@ export const ASSISTANT_ROLE = [
   "New tasks go to the Backlog unless the user asks to start them now; then create them with start=true so they land in the Ready to start column and an orchestrator picks them up.",
   "Write each task description as a complete ticket: goal, context, acceptance criteria and what is out of scope. If the project or the goal is unclear, make the most reasonable choice, say it, and create the task; ask only when you cannot guess.",
   [
-    "When a task lands in Ready to review, size the review to its risk. Each project's review policy (self or fresh-agent) is in board_overview and comes from the Project Manager's settings: follow it, and treat a big or risky change as fresh-agent even in a self project.",
-    "- Low risk (a project whose review is self, and a small change that is easy to revert): review the diff against each acceptance criterion, yourself or with a read-only reviewer subagent. If it is good, use board_task_action merge-now with wait=true without asking, create follow-up tasks for the non-blocking points, then report what you did.",
-    "- Critical (a project whose review is fresh-agent in board_overview, or a big or risky change in any project): create a review task with start=true so a fresh agent, not the author, reviews the diff against the acceptance criteria without changing code. Read its report, tell the user what merge-now or mark-done will do, and wait for their ok.",
+    "When a task lands in Ready to review, size the review to its risk. Each project's pipeline (default or critical) is in board_overview and in each Needs you line: treat a big or risky change as critical even on a default project.",
+    "- Low risk (pipeline default, and a small change that is easy to revert): review the diff against each acceptance criterion, yourself or with a read-only reviewer subagent. If it is good and the project's autonomy line says the merge is yours, use board_task_action merge-now with wait=true without asking, create follow-up tasks for the non-blocking points, then report what you did.",
+    "- Critical (pipeline critical, or a big or risky change): when the task's pipeline already ran a fresh review stage, read that report; otherwise create a review task with start=true so a fresh agent, not the author, reviews the diff against the acceptance criteria without changing code. Then tell the user what merge-now or mark-done will do and wait for their ok when the autonomy line says the merge ok is the user's.",
     "- Has problems: board_task_action continue with your feedback.",
   ].join("\n"),
   "Every message that wakes you (a quick message, a [Board] wake, a message from the user) carries the current Needs you list. Handle it before you end the reply: review and merge-now, send feedback with continue, answer the agent, settle each pipeline choice, or dismiss what is not yours; leave for the user only what the task's autonomy preset gives them.",
@@ -455,7 +455,7 @@ export function pipelineTools(
           .min(1)
           .max(8),
         recommend: z.string().max(80).nullable().default(null),
-        reason: z.union([z.literal("no-fit"), userOnlyReasonSchema]),
+        reason: z.union([z.literal("no-fit"), storedUserOnlyReasonSchema]), // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover: the live PM may still say fresh-agent
         why: z.string().max(2000).nullable().default(null),
       }),
       async execute({ taskId, ...input }) {
@@ -630,19 +630,12 @@ export function chatTools(
           }
         })();
         const settings = source.data.assistant.settings;
-        // CUSTOM(assistant-review-policy): each project's review policy, and the ones set apart.
-        const reviewed = Object.entries(settings.reviews)
-          .filter(([, review]) => review !== DEFAULT_REVIEW_POLICY)
-          .map(([id, review]) => {
-            const name = snapshot.projects.find((p) => p.id === id)?.name;
-            return `${name ? `${name} (${id})` : id}=${review}`;
-          });
         const pm = buildPmOverview(source.data.assistant?.pmBoard); // CUSTOM(pm-board)
         const taskNumbers = new Map(
           source.data.tasks.map((task) => [task.id, task.number]),
         ); // CUSTOM(task-numbers)
         const lines = [
-          `Projects:\n${snapshot.projects.map((p) => `- ${p.id} | ${p.name} | ${p.isGit ? "git" : "not git"} | ${p.directory} | review: ${reviewPolicyFor(settings, p.id)} | ${board().autonomyRule(p.id)}`).join("\n") || "- none"}`,
+          `Projects:\n${snapshot.projects.map((p) => `- ${p.id} | ${p.name} | ${p.isGit ? "git" : "not git"} | ${p.directory} | pipeline: ${board().projectPipelineId(p.id)} | ${board().autonomyRule(p.id)}`).join("\n") || "- none"}`,
           `Orchestrators:\n${
             snapshot.orchestrators
               .map((o) => {
@@ -677,7 +670,7 @@ export function chatTools(
                   `${id}=${p.action}${p.observe ? " (observe)" : ""}`,
               )
               .join(", ") || "none"
-          }; review per project: ${reviewed.join(", ") || "none"}, the rest ${DEFAULT_REVIEW_POLICY}`,
+          }`,
         ];
         return text(lines.join("\n\n"));
       },
@@ -952,7 +945,7 @@ export function chatTools(
     define({
       name: "board_set_project_policy",
       description:
-        "Change a project's delivery policy (project by id or name). Only the fields you pass change; a project without its own policy starts from the default action. action: review, merge, prepare-pr, notify or nothing. review: self or fresh-agent (you cannot change fresh-agent to self; only the user does, in Settings). The package gate: gateCommand (empty uses verifyCommand), gateRequiredEnv (a missing one fails the gate instead of letting suites skip), gateEnv (NAME=value set for the run), gateSetupCommand, gateRiskPaths (globs that escalate a ticket's diff to the gate) and gateRunIn (worktree or checkout). Returns the resulting policy.",
+        "Change a project's delivery policy (project by id or name). Only the fields you pass change; a project without its own policy starts from the default action. action: review, merge, prepare-pr, notify or nothing. The package gate: gateCommand (empty uses verifyCommand), gateRequiredEnv (a missing one fails the gate instead of letting suites skip), gateEnv (NAME=value set for the run), gateSetupCommand, gateRiskPaths (globs that escalate a ticket's diff to the gate) and gateRunIn (worktree or checkout). Returns the resulting policy.",
       input: z.object({
         project: z.string().describe("A project's id or name"),
         action: z.enum(ASSISTANT_ACTIONS).optional(),
@@ -960,7 +953,6 @@ export function chatTools(
         verifyCommand: z.string().max(2000).optional(),
         autoFixes: z.number().int().min(0).max(3).optional(),
         observe: z.boolean().optional(),
-        review: z.enum(REVIEW_POLICIES).optional(),
         // CUSTOM(packages): the package gate and the risk rule.
         gateCommand: z.string().max(2000).optional(),
         gateRequiredEnv: z.array(z.string().trim().min(1)).optional(),
@@ -972,13 +964,6 @@ export function chatTools(
       async execute(input) {
         const projectId = resolveProject(input.project);
         const settings = board().assistantSettings().settings;
-        if (
-          input.review === "self" &&
-          reviewPolicyFor(settings, projectId) === "fresh-agent"
-        )
-          throw new Error(
-            "This project's review is fresh-agent; only the user changes that, in Settings.",
-          );
         const patch: Partial<ProjectPolicy> = {};
         if (input.action !== undefined) patch.action = input.action;
         if (input.baseBranch !== undefined) patch.baseBranch = input.baseBranch;
@@ -1023,24 +1008,20 @@ export function chatTools(
           projectPolicySchema.parse({ action: settings.defaultAction });
         const changesPolicy = Object.keys(patch).length > 0;
         const policy = projectPolicySchema.parse({ ...current, ...patch });
-        const reviews = { ...settings.reviews };
-        if (input.review === "fresh-agent") reviews[projectId] = "fresh-agent";
-        else if (input.review === "self") delete reviews[projectId];
         const saved = await board().setAssistantSettings(
           assistantSettingsSchema.parse({
             ...settings,
-            // Setting only the review gives the project no policy of its own.
+            // A call that changes nothing gives the project no policy of its own.
             projects:
               changesPolicy || settings.projects[projectId]
                 ? { ...settings.projects, [projectId]: policy }
                 : settings.projects,
-            reviews,
           }),
         );
         const name =
           saved.projects.find((p) => p.id === projectId)?.name ?? projectId;
         return text(
-          `${name} (${projectId}): action ${policy.action}${policy.observe ? " (observe)" : ""}, review ${reviewPolicyFor(saved.settings, projectId)}, base branch ${policy.baseBranch || "the project's current branch"}, check command ${policy.verifyCommand || "none"}, auto-fixes ${policy.autoFixes}, package gate ${policy.tests.gateCommand || policy.verifyCommand || "none"}, gate env ${policy.tests.gateRequiredEnv.join(", ") || "none"}, risk paths ${policy.tests.gateRiskPaths.join(", ") || "none"}.`,
+          `${name} (${projectId}): action ${policy.action}${policy.observe ? " (observe)" : ""}, pipeline ${board().projectPipelineId(projectId)}, base branch ${policy.baseBranch || "the project's current branch"}, check command ${policy.verifyCommand || "none"}, auto-fixes ${policy.autoFixes}, package gate ${policy.tests.gateCommand || policy.verifyCommand || "none"}, gate env ${policy.tests.gateRequiredEnv.join(", ") || "none"}, risk paths ${policy.tests.gateRiskPaths.join(", ") || "none"}.`,
         );
       },
     }),
@@ -1175,7 +1156,8 @@ export function chatTools(
         taskIds: z.array(z.string()).max(50).default([]),
         reportIds: z.array(z.string()).max(50).default([]),
         packageIds: z.array(z.string()).max(50).default([]),
-        userOnlyReason: userOnlyReasonSchema.nullable().default(null), // CUSTOM(factory)
+        // CUSTOM(factory); COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover: the live PM may still say fresh-agent
+        userOnlyReason: storedUserOnlyReasonSchema.nullable().default(null),
       }),
       async execute(input) {
         const card = await board().pmCardCreate({

@@ -573,6 +573,15 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
     expect(
       (host.startAgentIn as any).mock.calls[0][1].prompt as string,
     ).toContain("# rough idea\n\nmake it faster");
+    // Refine runs the spec stage: off mode gives the built-in procedure and spec template.
+    const first = (host.startAgentIn as any).mock.calls[0][1].prompt as string;
+    expect(first).toContain("## Pipeline stage: spec (spec)");
+    expect(first).toContain(
+      "Write the spec this ticket will be implemented from.",
+    );
+    expect(first).toContain("### Spec template");
+    expect(first).toContain("/write-ticket");
+    expect(first).not.toContain("final ticket");
     // CUSTOM(sidebar-agent-tabs): the refinement chat is an orchestrator in the sidebar, but the
     // label does not make it a board agent, so it still opens and notifies like before.
     expect((host.startAgentIn as any).mock.calls[0][1].labels).toEqual({
@@ -588,6 +597,9 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
     await board.writeTicket(refinement.agentId, "the cache");
     expect((host.runAgent as any).mock.calls[0][1]).toContain(
       "Focus on: the cache",
+    );
+    expect((host.runAgent as any).mock.calls[0][1]).toContain(
+      "close the spec stage",
     );
     await new Promise((resolve) => setTimeout(resolve, 0));
     await board.refresh();

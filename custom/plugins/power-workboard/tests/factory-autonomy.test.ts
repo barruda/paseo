@@ -43,13 +43,13 @@ const ACCEPTED: Record<
   },
   standard: {
     default: ["product", "irreversible"],
-    critical: ["fresh-agent", "product", "irreversible"],
+    critical: ["critical-merge", "product", "irreversible"],
   },
   cautious: {
     default: ["merge", "data-migration", "product", "irreversible"],
     critical: [
       "merge",
-      "fresh-agent",
+      "critical-merge",
       "data-migration",
       "product",
       "irreversible",
@@ -121,7 +121,7 @@ describe("autonomy presets", () => {
     }
     for (const reason of AUTONOMY_PRESETS.standard.userDecides)
       expect(autonomyProjectRule("standard", true)).toContain(
-        reason === "fresh-agent"
+        reason === "critical-merge"
           ? "merge ok is the user's"
           : USER_ONLY_REASON_TEXT[reason],
       );
@@ -273,7 +273,7 @@ describe("autonomy resolution: project > pipeline > pm > standard", () => {
 });
 
 describe("outside active mode", () => {
-  it("every project is standard, as before presets: only a fresh-agent project's merge is the user's", async () => {
+  it("every project is standard, as before presets: only a legacy-critical project's merge is the user's", async () => {
     const setup = fixture({
       assistant: { settings: { reviews: { dream: "fresh-agent" } } },
     } as any);
@@ -286,8 +286,8 @@ describe("outside active mode", () => {
       expect(board.autonomyRule("dream")).toContain(
         "the merge ok is the user's",
       );
-      expect(board.userOnlyRefusal("dream", "fresh-agent")).toBeNull();
-      expect(board.userOnlyRefusal("p", "fresh-agent")).toMatch(
+      expect(board.userOnlyRefusal("dream", "critical-merge")).toBeNull();
+      expect(board.userOnlyRefusal("p", "critical-merge")).toMatch(
         /the project is not critical/,
       );
     } finally {

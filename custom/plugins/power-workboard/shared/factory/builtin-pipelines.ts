@@ -2,7 +2,6 @@
 // the plugin bundle. The YAML files in server/factory/builtin/pipelines/ stay the source the
 // export writes; the bundle cannot read them (the daemon runs the plugin as one CommonJS bundle,
 // so there is no path to `builtin/`). tests/pipeline-layout.test.ts fails when the two drift.
-import type { ReviewPolicy } from "../assistant";
 import type { PipelineFile } from "./schema";
 
 export const BUILTIN_PIPELINES = {
@@ -69,24 +68,36 @@ export const BUILTIN_PIPELINES = {
 
 export type BuiltinPipelineId = keyof typeof BUILTIN_PIPELINES;
 
-/** The pipeline the migration gives a project: `critical` for the `fresh-agent` review policy. */
-export function builtinPipelineFor(policy: ReviewPolicy): BuiltinPipelineId {
-  return policy === "fresh-agent" ? "critical" : "default";
+// COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+// The old review policy, still stored in `assistant.settings.reviews` on the live board: the
+// export maps `fresh-agent` to the `critical` pipeline, and outside active mode those projects
+// stay critical until the cutover.
+export function legacyPipelineFor(
+  settings: { reviews?: Record<string, string> },
+  projectId: string | null | undefined,
+): BuiltinPipelineId {
+  return projectId && settings.reviews?.[projectId] === "fresh-agent"
+    ? "critical"
+    : "default";
 }
 
 /**
  * What the Pipelines tab shows while the factory is off: the built-in pipelines and, for each
- * board project, the one its review policy gives it.
+ * project in the legacy review map, the one it gives it.
  */
-export function builtinPipelinesView(reviews: Record<string, ReviewPolicy>): {
+// COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+// The projects come from the legacy `reviews` map.
+export function builtinPipelinesView(
+  reviews: Record<string, string> | undefined,
+): {
   source: "builtin";
   pipelines: Record<string, PipelineFile>;
   projects: Record<string, string>;
   defaultPipeline: string;
 } {
   const projects: Record<string, string> = {};
-  for (const [projectId, policy] of Object.entries(reviews))
-    projects[projectId] = builtinPipelineFor(policy);
+  for (const projectId of Object.keys(reviews ?? {}))
+    projects[projectId] = legacyPipelineFor({ reviews }, projectId);
   return {
     source: "builtin",
     pipelines: BUILTIN_PIPELINES,

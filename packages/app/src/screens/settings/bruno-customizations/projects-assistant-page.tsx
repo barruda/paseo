@@ -28,8 +28,6 @@ import {
   GATE_RUN_IN,
   GATE_RUN_IN_LABELS,
   MAX_AUTO_FIXES,
-  REVIEW_LABELS,
-  REVIEW_POLICIES,
   actionNeedsGit,
   assistantSettingsResponseSchema,
   chatSettingsValid,
@@ -42,10 +40,8 @@ import {
   parseEnv,
   parseList,
   policyActs,
-  projectReview,
   resetProjectPolicy,
   setProjectAction,
-  setProjectReview,
   settingsEqual,
   type AssistantAction,
   type AssistantDefaultAction,
@@ -53,7 +49,6 @@ import {
   type AssistantSettings,
   type AssistantSettingsResponse,
   type FactoryMode,
-  type ReviewPolicy,
 } from "./projects-assistant-model";
 
 const PLUGIN_ID = "power-workboard";
@@ -63,10 +58,6 @@ const SET_METHOD = "workboard.assistant.settings.set";
 const DEFAULT_OPTIONS = ASSISTANT_DEFAULT_ACTIONS.map((value) => ({
   value,
   label: ACTION_LABELS[value],
-}));
-const REVIEW_OPTIONS = REVIEW_POLICIES.map((value) => ({
-  value,
-  label: REVIEW_LABELS[value],
 }));
 const AUTO_FIX_OPTIONS = Array.from({ length: MAX_AUTO_FIXES + 1 }, (_, index) => ({
   value: String(index),
@@ -272,7 +263,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
           <SettingsCard testID="projects-assistant-factory">
             <SettingsSelect
               label="Mode"
-              hint="Shadow loads the factory folder on every change and compares it with the board's settings; the board shows the errors and differences and keeps using its own settings. Active makes the factory the board's configuration; saving these settings writes its files and commits the change. Review stays in the board."
+              hint="Shadow loads the factory folder on every change and compares it with the board's settings; the board shows the errors and differences and keeps using its own settings. Active makes the factory the board's configuration; saving these settings writes its files and commits the change. Which projects are critical comes from each project's pipeline in the factory."
               value={draft.factory.mode}
               options={factoryModeOptions(draft.factory.mode).map((value) => ({
                 value,
@@ -351,10 +342,6 @@ function ProjectCard({
   );
   const handleReset = useCallback(
     () => onChange((current) => resetProjectPolicy(current, project.id)),
-    [onChange, project.id],
-  );
-  const handleReview = useCallback(
-    (review: ReviewPolicy) => onChange((current) => setProjectReview(current, project.id, review)),
     [onChange, project.id],
   );
   const handleObserve = useCallback(
@@ -448,13 +435,6 @@ function ProjectCard({
         value={value}
         options={selectOptions}
         onValueChange={handleSelect}
-      />
-      <SettingsSelect
-        label="Review"
-        hint="Who reviews a finished task before it is merged. A big or risky change still goes to a fresh agent."
-        value={projectReview(settings, project.id)}
-        options={REVIEW_OPTIONS}
-        onValueChange={handleReview}
       />
       {policy ? (
         <SettingsRow label="Rule" hint="This project has its own rule.">

@@ -12,7 +12,7 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { readBuiltinFactoryFiles } from "../server/factory/builtin";
 import { runFactoryCli } from "../server/factory/cli";
 import {
@@ -30,6 +30,7 @@ import {
   type Data,
 } from "../shared/model";
 import { AUTOMATIC_SCHEDULE } from "../shared/schedule";
+import { boot, CHECKOUT, disposeBooted } from "./factory-boot";
 
 const run = promisify(execFile);
 const temp = async (prefix: string) =>
@@ -275,6 +276,8 @@ describe("slugOf", () => {
   });
 });
 
+afterEach(disposeBooted);
+
 describe("exportFactory", () => {
   it("round trip: export → load → compile gives the source config, ids aside", async () => {
     const source = await fixture();
@@ -380,6 +383,66 @@ describe("exportFactory", () => {
         expect.stringMatching(/skills\/broken is left out/),
       ]),
     );
+  });
+
+  // COMPAT(factory-pipelines): the legacy review map is the export's only input for the pipeline.
+  it("maps the legacy review map to pipelines and writes autonomy standard to the PM only; active mode then asks the critical project's merge ok", async () => {
+    const source = await fixture();
+    const target = path.join(await temp("pwb-export-target-"), "factory");
+    const result = await exportFactory({
+      data: source.data,
+      projects: source.projects,
+      profilesRoot: source.profiles,
+      target,
+      homeDir: source.home,
+    });
+    expect(result.errors).toEqual([]);
+    const read = (file: string) => readFile(path.join(target, file), "utf8");
+    const dream = await read("projects/dreammmo.yaml");
+    const paseo = await read("projects/paseo.yaml");
+    expect(dream).toContain("pipeline: critical");
+    expect(paseo).not.toContain("pipeline:");
+    expect(dream).not.toContain("autonomy");
+    expect(paseo).not.toContain("autonomy");
+    expect(await read("pm/worker.md")).toMatch(/^autonomy: standard$/m);
+
+    // Boots active mode from the exported factory, one project at a time (the fixture board has
+    // one project, `p`): the pipelines, roles and PM come from the export.
+    const exported: Record<string, string | null> = {
+      "workers/night/worker.md": null,
+      "workers/night/task-prompt.md": null,
+      "workers/night/skills/notes/SKILL.md": null,
+      "projects/proj.yaml": null,
+      "pipelines/simple.yaml": null,
+      "pm/worker.md": await read("pm/worker.md"),
+    };
+    for (const entry of Object.keys(await readBuiltinFactoryFiles()))
+      if (/^(pipelines|roles|templates)\//.test(entry))
+        exported[entry] = await read(entry);
+    const requiresOk = async (file: string, id: string) => {
+      const booted = await boot({
+        files: {
+          ...exported,
+          [`projects/${id}.yaml`]: (await read(file)).replace(
+            /^path: .*$/m,
+            `path: ${CHECKOUT}`,
+          ),
+          ".factory-ids.json": `${JSON.stringify({ workers: {}, pools: {}, projects: { p: id } })}\n`,
+        },
+      });
+      return {
+        user: booted.board.requiresUserMergeOk("p"),
+        pipeline: booted.board.projectPipelineId("p"),
+      };
+    };
+    expect(await requiresOk("projects/dreammmo.yaml", "dreammmo")).toEqual({
+      user: true,
+      pipeline: "critical",
+    });
+    expect(await requiresOk("projects/paseo.yaml", "paseo")).toEqual({
+      user: false,
+      pipeline: "default",
+    });
   });
 
   it("commits everything but memory and the id map in a new git repository", async () => {

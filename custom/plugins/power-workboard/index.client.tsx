@@ -137,7 +137,7 @@ export default function contribute(client: PluginClientContext) {
   const removeWriteTicket = client.addSlashCommand({
     name: "write-ticket",
     description:
-      "Workboard: close this refinement and write the ticket into the task.",
+      "Workboard: close the spec chat and write the spec into the task.",
     argumentHint: "[what to focus on]",
     context: "agent",
     async onSubmit({ args, agent, rpc }) {

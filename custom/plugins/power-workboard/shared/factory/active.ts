@@ -77,7 +77,7 @@ export const FACTORY_SETTINGS_KEYS = [
   "tmpCleanup",
 ] as const satisfies ReadonlyArray<keyof Settings>;
 
-/** The `assistant.settings` fields the factory owns; `reviews` and `factory` stay in the JSON. */
+/** The `assistant.settings` fields the factory owns; `factory` and the legacy `reviews` map stay in the JSON (the export reads `reviews`; nothing writes it). */
 export const FACTORY_ASSISTANT_KEYS = [
   "enabled",
   "defaultAction",

@@ -120,7 +120,7 @@ const en: PipelineStrings = {
   breakerOn: "Breaker: {minutes} min.",
   breakerOff: "Breaker: off.",
   reasons: {
-    "fresh-agent": "the merge ok of a critical project",
+    "critical-merge": "the merge ok of a critical project",
     merge: "the ok for every merge",
     "data-migration": "every migration of live data",
     product: "product decisions",
@@ -201,7 +201,7 @@ const pt: PipelineStrings = {
   breakerOn: "Disjuntor: {minutes} min.",
   breakerOff: "Disjuntor: desligado.",
   reasons: {
-    "fresh-agent": "o ok do merge de projeto crítico",
+    "critical-merge": "o ok do merge de projeto crítico",
     merge: "o ok de todo merge",
     "data-migration": "toda migração de dados vivos",
     product: "decisões de produto",
@@ -282,7 +282,7 @@ const zh: PipelineStrings = {
   breakerOn: "断路器：{minutes} 分钟。",
   breakerOff: "断路器：关闭。",
   reasons: {
-    "fresh-agent": "关键项目合并前的确认",
+    "critical-merge": "关键项目合并前的确认",
     merge: "每次合并前的确认",
     "data-migration": "每次在线数据迁移",
     product: "产品决策",

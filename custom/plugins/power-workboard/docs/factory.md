@@ -6,9 +6,9 @@ orchestrator logs in JSONL), 2 (schemas, loader, compiler and `bin/factory`), 4
 (shadow mode: the board loads and diffs the factory, applies nothing), ticket 8 (the read-only
 Pipelines tab), ticket 9 (active mode; the live cutover waits for the user), ticket 10 (the UI
 writes the factory), ticket 11 (the pipeline engine), ticket 12 (PM transitions and the
-autonomy presets), ticket 14 (the pipeline editor edits) and ticket 15 (the live overlay). Tickets
-at the end. Inspired by Warp Factories (https://docs.warp.dev/factories/), adapted to one local
-board with no cloud.
+autonomy presets), ticket 13 (the review policy and the refinement flow replaced), ticket 14 (the
+pipeline editor edits) and ticket 15 (the live overlay). Tickets at the end. Inspired by Warp
+Factories (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
 Markdown files: the **factory**. Workers (today's orchestrators) get a **role**, and each project
@@ -270,13 +270,28 @@ Built-in pipelines that the export writes. They live in `server/factory/builtin/
 role prompts, `templates/spec.md` and the factory's `README.md`; `readBuiltinFactoryFiles()`
 (`server/factory/builtin.ts`) returns them plus the `.gitignore`, and is the export's only source.
 
-- `default`: `implement → review (role: pm, file: roles/review.md) → deliver`. This is today's behavior and the review policy `self`.
-- `critical`: `triage → spec (gate) → implement → verify → review (fresh) → deliver`. This replaces the review policy `fresh-agent`.
+- `default`: `implement → review (role: pm, file: roles/review.md) → deliver`. This is the old
+  review policy `self`.
+- `critical`: `triage → spec (gate) → implement → verify → review (fresh) → deliver`. This replaces
+  the review policy `fresh-agent`.
 
-Spec and Refine: a draft's **Refine** button runs the project's `spec` stage interactively (or the
-`spec` role prompt when the pipeline has none), and `/write-ticket` writes that stage's output into
-the ticket. The review policy (`settings.reviews`) and the separate refinement flow go away;
-the migration maps `fresh-agent` projects to `critical`.
+The review policy is gone: a project is critical when its pipeline is `critical`. The live JSON
+still holds the old map (`assistant.settings.reviews`), read only and tagged
+`COMPAT(factory-pipelines)` until the cutover: the export maps its `fresh-agent` projects (DreamMMO,
+DreamMMO-android) to `critical` and the rest to `default` (`legacyPipelineFor` in
+`shared/factory/builtin-pipelines.ts`), and outside active mode it gives each project the pipeline
+the export would, so those projects stay critical before the cutover. Nothing writes it: the
+settings page lost its Review select, a save keeps the stored map, and `board_set_project_policy`
+has no `review`.
+
+Spec and Refine: a draft's **Refine** button runs the project's `spec` stage interactively, in a
+chat with the user, on the worker that runs that stage and with `interactivePermission`. A pipeline
+with no `spec` stage, and a board outside active mode, use the `spec` role prompt and the project's
+spec template (the built-in ones off active mode: the bundle cannot read `server/factory/builtin/`,
+so `shared/factory/builtin-spec.ts` holds copies a test keeps equal). `/write-ticket` writes the
+stage's output, the spec, into the ticket's title and description. The chat is still recorded in
+`data.refinements`; Refine does not move `task.pipeline`, so a `critical` task still runs its own
+`spec` stage after it leaves Ready.
 
 ## Loading and revisions
 
@@ -365,7 +380,7 @@ the migration maps `fresh-agent` projects to `critical`.
   stay), loads and compiles the result (an invalid one is undone and the edit fails), commits
   exactly the files it touched as `ui: <file> <keys>`, and loads the factory before the reply. A
   write the board does on its own (column repairs, bookkeeping) is not marked and never reaches the
-  factory. Other writes of the same save (task changes, `reviews`) still go to the JSON.
+  factory. Other writes of the same save (task changes) still go to the JSON.
 - **Conflicts.** The edit runs on the compile the board showed: when the factory on disk is not
   that revision (a file changed, whether or not the debounce has loaded it), the board loads it
   and refuses the edit with "The factory changed on disk and was loaded again". A factory with
@@ -456,11 +471,16 @@ first, a plugin reload, a config change with a copy.
   A project with no file takes `defaults.pipeline`'s. Outside active mode every project is
   `standard`. The compiled worker hash carries its project's preset, except `standard`, so hashes
   from before presets stay valid.
-- **Critical project.** Its pipeline is `critical`, or its review policy is `fresh-agent` (ticket 13
-  removes the review policy). `Workboard.requiresUserMergeOk(projectId)` reads both and the preset.
+- **Critical project.** Its pipeline is `critical`: the factory's in active mode, the legacy map's
+  outside it (see "pipelines/<id>.yaml"). `Workboard.requiresUserMergeOk(projectId)` reads it and
+  the preset. The export writes `autonomy: standard` into `pm/worker.md` and no project override:
+  `standard` with `critical` leaves the merge to the user, `standard` with `default` leaves it to
+  the PM, as the old `fresh-agent` and `self` did.
 - **Refusals.** `pm_card_create` (`userOnlyReason`) and `board_pipeline_ask` (`reason`) refuse a
   reason the project's preset leaves to the PM. `board_pipeline_ask` also takes `no-fit`, which the
-  choice rule always allows. A card stores its `userOnlyReason`.
+  choice rule always allows. A card stores its `userOnlyReason`. The merge ok of a critical project
+  is `critical-merge`; the old name `fresh-agent` is still read, from stored cards and from the
+  tools, as `critical-merge` (`storedUserOnlyReasonSchema`, `COMPAT(factory-pipelines)`).
 - **Breaker.** `breakerMinutes` and `autonomyBreakerMs()` hold each preset's deadline. The breaker
   itself (a proposal left waiting wakes the PM to decide it) belongs to the "PM decides on its own"
   task, which reads this data; it must skip a card that holds an open pipeline gate or choice,
@@ -578,7 +598,7 @@ Source: RPC `workboard.factory.pipelines.get`. In active mode it answers with th
 `pipelines/` and each project's `pipeline:` (`factoryPipelinesView`). Otherwise it answers with the
 built-in pipelines (`shared/factory/builtin-pipelines.ts`, kept equal to
 `server/factory/builtin/pipelines/` by a test) and gives each project the one the migration would:
-`critical` for the `fresh-agent` review policy, else `default`. The worker shown on a node is the
+`critical` for a `fresh-agent` project in the legacy review map, else `default`. The worker shown on a node is the
 project's orchestrator, taken as an implement worker.
 
 ## Tickets

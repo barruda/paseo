@@ -50,7 +50,7 @@ describe("stageRunnerLabel", () => {
 
 describe("builtinPipelinesView", () => {
   const view = builtinPipelinesView({ a: "fresh-agent", b: "self" });
-  it("maps review policies to pipelines", () => {
+  it("maps the legacy review map to pipelines (COMPAT(factory-pipelines))", () => {
     expect(view.source).toBe("builtin");
     expect(view.projects).toEqual({ a: "critical", b: "default" });
     expect(view.defaultPipeline).toBe("default");

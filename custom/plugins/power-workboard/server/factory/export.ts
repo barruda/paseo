@@ -21,7 +21,7 @@ import {
   compileFactory,
   type CompiledFactory,
 } from "../../shared/factory/compile";
-import { builtinPipelineFor } from "../../shared/factory/builtin-pipelines";
+import { legacyPipelineFor } from "../../shared/factory/builtin-pipelines";
 import { splitFrontmatter } from "../../shared/factory/frontmatter";
 import {
   FACTORY_SCHEMA_VERSION,
@@ -199,14 +199,17 @@ export async function exportFactory(
       ? poolSlug(pool.id, "pool")
       : poolSlug(pool.name, "pool");
 
-  // Projects: the ones a worker, a delivery policy or a review policy names.
+  // Projects: the ones a worker, a delivery policy or the legacy review map marks critical names.
   const projectSlug = slugger();
   const wanted = new Set<string>();
   for (const orchestrator of data.orchestrators)
     if (orchestrator.projectId) wanted.add(orchestrator.projectId);
   for (const id of Object.keys(settings.projects)) wanted.add(id);
-  for (const [id, review] of Object.entries(settings.reviews))
-    if (review === "fresh-agent") wanted.add(id);
+  // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+  // The review policy is gone, but the live board's JSON still holds it: a project it marks
+  // fresh-agent is exported with the `critical` pipeline.
+  for (const id of Object.keys(settings.reviews ?? {}))
+    if (legacyPipelineFor(settings, id) === "critical") wanted.add(id);
   for (const projectId of wanted) {
     const project = paseoProjects.get(projectId);
     if (!project) {
@@ -276,9 +279,8 @@ export async function exportFactory(
     const front: Record<string, unknown> = {
       path: homePath(project.rootPath, home),
     };
-    const pipelineId = builtinPipelineFor(
-      settings.reviews[projectId] ?? "self",
-    );
+    // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+    const pipelineId = legacyPipelineFor(settings, projectId);
     if (pipelineId !== "default") front.pipeline = pipelineId;
     Object.assign(front, projectPolicyOf(policy));
     files.set(
@@ -330,6 +332,8 @@ export async function exportFactory(
     markdown(
       {
         role: "foreman",
+        // Every project ran as `standard` before presets: a critical one asks for the merge ok.
+        autonomy: "standard",
         ...pmFrontOf(settings.enabled, chat, defaults.refineModeId),
       },
       await readText(path.join(pmProfile, "system-prompt.md")),

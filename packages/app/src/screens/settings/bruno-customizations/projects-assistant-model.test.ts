@@ -15,10 +15,8 @@ import {
   formatEnv,
   parseEnv,
   parseList,
-  projectReview,
   resetProjectPolicy,
   setProjectAction,
-  setProjectReview,
   assistantChatSettingsSchema,
   assistantSettingsSchema,
   factoryModeOptions,
@@ -35,7 +33,6 @@ describe("projects assistant settings model", () => {
       enabled: true,
       defaultAction: "review",
       projects: {},
-      reviews: {},
       chat: {
         provider: "claude/claude-opus-5-5",
         thinkingOptionId: "high",
@@ -153,22 +150,11 @@ describe("projects assistant settings model", () => {
     expect(patchProjectPolicy(base, "p", { observe: true })).toBe(base);
   });
 
-  // CUSTOM(assistant-review-policy)
-  it("keeps the review apart from the project's rule, self by default", () => {
-    const base = assistantSettingsSchema.parse({
-      reviews: { dream: "fresh-agent" },
-    });
-    expect(projectReview(base, "dream")).toBe("fresh-agent");
-    expect(projectReview(base, "p")).toBe("self");
-    const raised = setProjectReview(base, "p", "fresh-agent");
-    expect(raised.reviews).toEqual({ dream: "fresh-agent", p: "fresh-agent" });
-    // Setting the review gives no project its own action.
-    expect(raised.projects).toEqual({});
-    expect(setProjectReview(raised, "dream", "self").reviews).toEqual({ p: "fresh-agent" });
-    // A rule's reset leaves the review alone.
-    const ruled = setProjectAction(raised, "p", "merge");
-    expect(resetProjectPolicy(ruled, "p").reviews.p).toBe("fresh-agent");
-    expect(assistantSettingsSchema.safeParse({ reviews: { p: "someone" } }).success).toBe(false);
+  // CUSTOM(factory): the review policy became the project's pipeline; the page no longer
+  // carries `reviews`, so a save never sends it and the plugin keeps its stored legacy map.
+  it("drops the legacy review map the plugin may still send", () => {
+    const parsed = assistantSettingsSchema.parse({ reviews: { dream: "fresh-agent" } });
+    expect("reviews" in parsed).toBe(false);
   });
 
   it("clamps auto-fix attempts to 0-3", () => {

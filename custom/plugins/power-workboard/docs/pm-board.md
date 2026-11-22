@@ -153,6 +153,6 @@ The page has a **package filter**: the chips list the packages that appear on a 
 ## What stays on the task board
 
 Code tasks, their orchestrators and their deliveries are unchanged. Code reviews, including the
-fresh-agent review of a critical change, are tasks with an agent and stay on the task board. The
+fresh review of a critical change, are tasks with an agent and stay on the task board. The
 PM's Needs you list still holds only delivery reasons, now grouped by package; the cards waiting for
 the user are counted on the Decisões tab.
