@@ -348,7 +348,9 @@ export class FactoryShadow {
       })
       .finally(() => {
         this.running = null;
-        if (this.again && generation === this.generation) {
+        // A change that came in meanwhile loads now, even when it is a new folder or mode (a new
+        // generation): `run` reads the current target. `restart` clears `again` for off.
+        if (this.again && !this.disposed && this.target.mode !== "off") {
           this.again = false;
           this.run();
         }

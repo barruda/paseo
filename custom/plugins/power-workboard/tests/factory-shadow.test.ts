@@ -1,6 +1,7 @@
 // CUSTOM(factory): shadow mode (docs/factory.md, ticket 7): watch debounce, the diff against the
 // live config and the invalid-file case. Everything lives in temp folders; ~/.paseo is never read.
 import {
+  cp,
   mkdir,
   mkdtemp,
   readFile,
@@ -306,6 +307,61 @@ describe("factory shadow: watch", () => {
       },
       { timeout: 5000, interval: 50 },
     );
+  });
+
+  it("loads a new folder set while a slow load of the old one runs", async () => {
+    const source = await fixture();
+    const other = path.join(path.dirname(source.root), "other");
+    await cp(source.root, other, { recursive: true });
+    const { state, live } = liveState(source, { root: "", mode: "shadow" });
+    const { watched, watch } = fakeWatch();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const roots: string[] = [];
+    const load: typeof loadFactory = async (root, options) => {
+      roots.push(root);
+      if (roots.length === 1) await gate;
+      return loadFactory(root, options);
+    };
+    const shadow = shadowOf(source, live, { watch, load });
+    shadow.sync();
+    await vi.waitFor(() => expect(roots).toEqual([source.root]));
+    state.settings = { root: other, mode: "shadow" };
+    shadow.sync();
+    // Let the new folder's load be asked for while the old one still runs.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+    await vi.waitFor(() => expect(roots).toEqual([source.root, other]));
+    await shadow.idle();
+    expect(watched.has(other)).toBe(true);
+    expect(watched.has(source.root)).toBe(false);
+    expect(shadow.summary()).toMatchObject({ errors: 0, differences: 0 });
+  });
+
+  it("loads again after shadow → off → shadow during a slow load", async () => {
+    const source = await fixture();
+    const { state, live } = liveState(source, { root: "", mode: "shadow" });
+    const { watched, watch } = fakeWatch();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    let calls = 0;
+    const load: typeof loadFactory = async (root, options) => {
+      if (++calls === 1) await gate;
+      return loadFactory(root, options);
+    };
+    const shadow = shadowOf(source, live, { watch, load });
+    shadow.sync();
+    await vi.waitFor(() => expect(calls).toBe(1));
+    state.settings = { root: "", mode: "off" };
+    shadow.sync();
+    state.settings = { root: "", mode: "shadow" };
+    shadow.sync();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    release();
+    await vi.waitFor(() => expect(calls).toBe(2));
+    await shadow.idle();
+    expect(watched.has(source.root)).toBe(true);
+    expect(shadow.summary()).toMatchObject({ errors: 0, differences: 0 });
   });
 
   it("stops watching when the mode goes off and starts over when it comes back", async () => {
