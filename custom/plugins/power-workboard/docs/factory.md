@@ -330,8 +330,13 @@ the migration maps `fresh-agent` projects to `critical`.
 - **Ids.** Workers and pools run under the id the live board knew them by: `factoryIds` (live id →
   factory id) maps them back, so running tasks, orchestrator runtime and logs stay theirs. Each
   load adds the `.factory-ids.json` entries the data lacks to `factoryIds`; the data's entries
-  win. Without the file, the name slugs the diff uses stand in. A worker with no live id runs under
-  its factory id.
+  win, also when two live ids map to the same worker (an orchestrator recreated under the same
+  name before a new export): the older live id keeps it. Without the file, the name slugs the diff
+  uses stand in. A worker with no live id runs under its factory id.
+- **A worker leaves the factory while its task runs.** Its live id is gone from the orchestrators,
+  so the task's rework and checkpoint resume go to the project's first orchestrator (`owns()`),
+  and log lines for the old id are dropped. Put the worker back under the same factory id and the
+  task goes back to it, with its old log.
 - **Profiles** come from the factory: a worker's prompt is its `worker.md` body, its folder
   `workers/<id>/` (own skills, `memory/`), its Claude plugin `pwb-<id>`; the Project Manager's is
   `pm/` as `pwb-assistant`. The board writes `.claude-plugin/plugin.json` and `memory/` there; both
@@ -392,7 +397,9 @@ here changes the board until step 5.
    (`board_get_task`), and its agent gets the worker's prompt from `worker.md`.
 
 To undo, set the mode back to Shadow or Off: the board reads the JSON again at once. Memory written
-in active mode stays in the factory.
+in active mode stays in the factory. A task in a column only board.yaml has moves to the JSON's
+default column (To do for a draft, the default start column for a task with a workspace), and
+`daemon.log` gets a warning per task; a workspace keeps the factory column's label.
 
 ## Migration
 

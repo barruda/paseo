@@ -10,6 +10,7 @@ import {
   readdir,
   readFile,
   realpath,
+  rm,
   writeFile,
 } from "node:fs/promises";
 import os from "node:os";
@@ -30,12 +31,14 @@ import {
   applyFactory,
   missingFactoryIds,
   factoryPipelinesView,
+  moveOffUnknownColumns,
   restoreJsonConfig,
 } from "../shared/factory/active";
 import { factoryPipelinesRpc } from "../shared/rpc";
 import type { FactoryMode } from "../shared/factory/status";
 import {
   dataSchema,
+  newTask,
   orchestratorConfigSchema,
   type Data,
 } from "../shared/model";
@@ -53,7 +56,11 @@ async function write(file: string, text: string) {
 const LIVE_ID = "3f0c1a2b-0000-4000-8000-000000000001";
 
 /** A factory with one worker (`night`, the live orchestrator LIVE_ID) for the project at `checkout`. */
-async function writeFixtureFactory(checkout: string, git = true) {
+async function writeFixtureFactory(
+  checkout: string,
+  git = true,
+  extra: Record<string, string> = {},
+) {
   const root = path.join(await temp("pwb-active-"), "factory");
   const files: Record<string, string> = {
     "factory.yaml": `schemaVersion: pwb/v1alpha1
@@ -111,6 +118,7 @@ delivery:
 `,
     ".gitignore": FACTORY_GITIGNORE,
     ".factory-ids.json": `${JSON.stringify({ workers: { [LIVE_ID]: "night" }, pools: {}, projects: { p: "proj" } })}\n`,
+    ...extra,
   };
   for (const [file, text] of Object.entries(files))
     await write(path.join(root, file), text);
@@ -165,12 +173,30 @@ afterEach(() => {
 });
 
 /** Boots the board as index.server.ts does: the shadow, the store view, then `start`. */
-async function boot(options: { git?: boolean; factory?: string } = {}) {
+async function boot(
+  options: {
+    git?: boolean;
+    factory?: string;
+    /** Factory files over the fixture's. */
+    files?: Record<string, string>;
+    /** `factoryIds.workers` the data already has. */
+    dataIds?: Record<string, string>;
+  } = {},
+) {
   const checkout = await temp("pwb-active-checkout-");
-  const written = await writeFixtureFactory(checkout, options.git ?? true);
+  const written = await writeFixtureFactory(
+    checkout,
+    options.git ?? true,
+    options.files,
+  );
   const root = options.factory ?? written.root;
   const profilesDirectory = await temp("pwb-active-profiles-");
-  const setup = fixture(dataSchema.parse(liveData(root)));
+  const setup = fixture(
+    dataSchema.parse({
+      ...liveData(root),
+      factoryIds: { workers: options.dataIds ?? {}, pools: {} },
+    }),
+  );
   setup.inventory.projects.push({
     id: "p",
     name: "Project",
@@ -769,6 +795,160 @@ describe("factory active mode: overlay", () => {
     expect(
       missingFactoryIds({ workers: { a: "alpha" }, pools: {} }, null),
     ).toBeNull();
+  });
+});
+
+describe("factory active mode: ids and columns", () => {
+  const NIGHT_WORKER = `---
+name: Night
+project: proj
+model: claude/claude-sonnet-5-5
+---
+
+Work at night, from the factory.
+`;
+
+  it("gives a running task back to its worker when the worker comes back to the factory", async () => {
+    const s = await boot();
+    const taskId = await startTask(s);
+    expect(s.store.current.orchestrations[taskId]?.orchestratorId).toBe(
+      LIVE_ID,
+    );
+    const owner = () => {
+      const data = s.store.current;
+      const task = data.tasks.find((t) => t.id === taskId)!;
+      return data.orchestrators
+        .filter((config) => (s.board as any).owns(config, task, data))
+        .map((config) => config.id);
+    };
+    await (s.board as any).log(LIVE_ID, "info", "Before the worker left");
+    // The worker leaves the factory; another one takes the project.
+    await rm(path.join(s.root, "workers", "night"), { recursive: true });
+    await write(
+      path.join(s.root, "workers", "day", "worker.md"),
+      NIGHT_WORKER.replace("name: Night", "name: Day"),
+    );
+    s.touch();
+    await s.factory.status();
+    expect(s.board.snapshot().orchestrators.map((o) => o.id)).toEqual(["day"]);
+    // Its rework goes to the project's first orchestrator, and its id logs nothing.
+    expect(owner()).toEqual(["day"]);
+    await (s.board as any).log(LIVE_ID, "info", "While gone");
+    // The worker comes back under the same factory id, so under its live id too.
+    await rm(path.join(s.root, "workers", "day"), { recursive: true });
+    await write(
+      path.join(s.root, "workers", "night", "worker.md"),
+      NIGHT_WORKER,
+    );
+    s.touch();
+    await s.factory.status();
+    expect(s.board.snapshot().orchestrators.map((o) => o.id)).toEqual([
+      LIVE_ID,
+    ]);
+    expect(owner()).toEqual([LIVE_ID]);
+    const log = s.store.current.orchestratorLogs[LIVE_ID]!.map((e) => e.text);
+    expect(log).toContain("Before the worker left");
+    expect(log).not.toContain("While gone");
+  });
+
+  it("keeps the worker on the data's live id when a re-export maps a recreated orchestrator to it", async () => {
+    const RECREATED = "3f0c1a2b-0000-4000-8000-000000000002";
+    // The first cutover copied LIVE_ID → night into the data; then the orchestrator was deleted,
+    // recreated with the same name and exported again, so the file maps the new id to `night`.
+    const s = await boot({
+      dataIds: { [LIVE_ID]: "night" },
+      files: {
+        ".factory-ids.json": `${JSON.stringify({ workers: { [RECREATED]: "night" }, pools: {} })}\n`,
+      },
+    });
+    expect(s.board.snapshot().orchestrators.map((o) => o.id)).toEqual([
+      LIVE_ID,
+    ]);
+    // The load adds the file's entry to the data; the data's older entry still wins.
+    await vi.waitFor(() =>
+      expect(s.store.peek((data) => data.factoryIds.workers)).toEqual({
+        [LIVE_ID]: "night",
+        [RECREATED]: "night",
+      }),
+    );
+    expect(s.board.snapshot().orchestrators.map((o) => o.id)).toEqual([
+      LIVE_ID,
+    ]);
+    const ids = new FactoryIds(
+      { workers: { [LIVE_ID]: "night" }, pools: {} },
+      { workers: { [RECREATED]: "night" }, pools: {} },
+    );
+    expect(ids.liveWorker("night")).toBe(LIVE_ID);
+    expect(ids.factoryWorker(RECREATED)).toBe("night");
+  });
+
+  it("moves tasks off the factory's own columns when active mode is turned off", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const s = await boot({
+      files: {
+        "board.yaml": `columns:
+  - { id: backlog, kind: todo }
+  - { id: ideas, kind: todo, name: Ideas }
+  - { id: scheduled, kind: scheduled }
+  - { id: ready, kind: ready }
+  - { id: in-progress, kind: in-progress }
+  - { id: review, kind: review }
+  - { id: done, kind: done }
+`,
+      },
+    });
+    await s.board.mutate({
+      action: "create",
+      title: "An idea",
+      description: "",
+      projectId: "p",
+      stage: "ideas",
+    });
+    await s.board.mutate({
+      action: "create",
+      title: "Backlog task",
+      description: "",
+      projectId: "p",
+    });
+    const stageOf = (title: string) =>
+      s.store.current.tasks.find((t) => t.title === title)!.draftStage;
+    expect(stageOf("An idea")).toBe("ideas");
+    const { settings } = s.board.assistantSettings();
+    await s.board.setAssistantSettings({
+      ...settings,
+      factory: { ...settings.factory, mode: "shadow" },
+    });
+    expect(s.store.current.settings.groups.map((g) => g.id)).not.toContain(
+      "ideas",
+    );
+    expect(stageOf("An idea")).toBe("backlog");
+    expect(stageOf("Backlog task")).toBe("backlog");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toMatch(
+      /"An idea" .* moved from column "ideas", which only the factory has, to "backlog"/,
+    );
+    warn.mockRestore();
+  });
+
+  it("moves a task with a workspace to the default start column", () => {
+    const data = dataSchema.parse({});
+    const now = new Date(0).toISOString();
+    const started = newTask("w", "Started", now, "qa");
+    started.workspaceId = "ws";
+    data.tasks.push(
+      started,
+      newTask("d", "Draft", now, "ideas"),
+      newTask("k", "Kept", now, "ready"),
+    );
+    expect(moveOffUnknownColumns(data, data.settings.groups)).toEqual([
+      { taskId: "w", title: "Started", from: "qa", to: "in-progress" },
+      { taskId: "d", title: "Draft", from: "ideas", to: "backlog" },
+    ]);
+    expect(data.tasks.map((t) => [t.draftStage, t.lastStage])).toEqual([
+      ["qa", "in-progress"],
+      ["backlog", "ideas"],
+      ["ready", "ready"],
+    ]);
   });
 });
 
