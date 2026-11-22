@@ -39,6 +39,18 @@ it("keeps connection failures transient", () => {
   });
 });
 
+// A boot that reads its data goes on to read the description and record files (Store.load).
+// Those are real disk reads: fake timers do not wait for them, so a check that the board
+// connected polls until they land.
+const connects = (test: ReturnType<typeof startup>) =>
+  vi.waitFor(
+    () =>
+      expect(test.snapshot()).toMatchObject({ connected: true, error: null }),
+    {
+      timeout: 5_000,
+    },
+  );
+
 function startup(read: () => Promise<unknown>) {
   vi.useFakeTimers();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -155,7 +167,7 @@ it("retries a transient read failure after ten seconds and recovers", async () =
     expect(test.read).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
     expect(test.read).toHaveBeenCalledTimes(2);
-    expect(test.snapshot()).toMatchObject({ connected: true, error: null });
+    await connects(test);
   } finally {
     test.stop();
   }
@@ -183,7 +195,7 @@ it("registers the same v10 schema and migration that upgrade stored v6 data", as
       tasks: [],
     });
     await vi.advanceTimersByTimeAsync(0);
-    expect(test.snapshot().connected).toBe(true);
+    await connects(test);
   } finally {
     test.stop();
   }

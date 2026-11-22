@@ -261,6 +261,53 @@ export function reworkStage(
   return worker ?? pipeline.start;
 }
 
+/**
+ * Reviewer feedback on a task in a `pm` stage or `deliver`: back to `reworkStage`, counting a
+ * visit. The reviewer's answer is never refused as a loop (today's review decides how many rounds
+ * it takes), so a visit past the stage's `maxVisits` starts a new budget there instead of going
+ * over it, and the next automatic entry is not a loop at once.
+ */
+export function reviewRework(
+  pipeline: CompiledPipeline,
+  state: TaskPipeline,
+  at: string,
+): TaskPipeline {
+  const back = reworkStage(pipeline, state);
+  const stage = findStage(pipeline, back);
+  const visits = (state.visits[back] ?? 0) + 1;
+  const over = !!stage && stage.role !== "pm" && visits > stage.maxVisits;
+  return {
+    ...state,
+    stage: back,
+    visits: { ...state.visits, [back]: over ? 1 : visits },
+    pending: false,
+    history: pushHistory(state, {
+      stage: back,
+      at,
+      via: "review",
+      detail: over
+        ? `Visit ${visits} of ${stage.maxVisits}: the reviewer's answer starts a new budget`
+        : null,
+    }),
+  };
+}
+
+/**
+ * Continue on a task in Needs you for a `loop`: the stage that looped gets a new budget. A task
+ * that looped on its own stage runs it again now, so that run is visit 1 of the new budget.
+ */
+export function loopContinued(state: TaskPipeline): TaskPipeline {
+  const looped = state.history.findLast((entry) => entry.via === "loop");
+  if (!looped) return state;
+  return {
+    ...state,
+    visits: {
+      ...state.visits,
+      [looped.stage]: looped.stage === state.stage ? 1 : 0,
+    },
+  };
+}
+
 /** The card's stage chip: `spec · gate`, `implement 2/3`; null once the task left the stages. */
 export function stageChip(
   pipeline: CompiledPipeline | null,

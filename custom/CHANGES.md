@@ -10573,8 +10573,8 @@ tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in 
 - **What:**
   - `shared/factory/engine.ts`: the task's pipeline state (`task.pipeline`: id, stage, visits,
     the last agent per role, `pending`, open gate, history) and pure transitions (`startPipeline`,
-    `enterStage` with the `maxVisits` guard, `stageExit`, `previousWorkerStage`, `stageChip`,
-    `stageSection`).
+    `enterStage` with the `maxVisits` guard, `stageExit`, `reworkStage`, `reviewRework`,
+    `loopContinued`, `stageChip`, `stageSection`).
   - `server/workboard.ts` (`CUSTOM(factory)`, "the pipeline engine" block): leaving Ready starts
     the pipeline; `owns()` gives a pending stage (and a non-implement `start`) to its worker by
     role; `continueTask` runs a pending stage (`session: continue` reuses the role's agent,
@@ -10589,6 +10589,13 @@ tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in 
     decision (`GATE_USER_ONLY_ERROR`) and an archive while the task waits (`GATE_ARCHIVE_ERROR`).
   - Needs-you reasons `gate` and `loop`, history kind `stage-entered`, card field `stageChip`
     shown next to `#42` on the card.
+  - Review follow-up (`custom: pipeline engine follow-up: visit budget on rework, the user's orchestrator, gates closed off active`): reviewer feedback that would pass
+    the rework stage's `maxVisits` starts a new budget there (`reviewRework`, chip `implement 1/3`
+    instead of `4/3`); Continue out of a `loop` counts the stage the task runs again as visit 1
+    (`loopContinued`); the orchestrator the user chose for a task takes every stage the implement
+    worker would run (`stageOwner`); leaving active mode closes each open gate and archives its
+    proposal with `GATE_CLOSED_NOTE` (`closePipelineGates`), and `gateTask`/`userGate` hold no
+    gate outside active mode.
 - **Core files touched:** none.
 - **Plugin files:** `shared/factory/engine.ts`, `shared/model.ts`, `shared/assistant.ts`,
   `server/workboard.ts`, `server/orchestrator.ts`, `client/WorkboardScreen.tsx`,
@@ -10624,7 +10631,9 @@ tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in 
     outside the candidates) and `pipelineAsk` (a Decisões proposal over candidate stages, only
     the user answers it); `projectAutonomy`, `criticalProject`, `requiresUserMergeOk`,
     `autonomyRule` and `userOnlyRefusal`; each Needs you line names the project's preset; the
-    wake's closing text (`WAKE_INSTRUCTIONS`) drops "anything risky or hard to undo".
+    wake's closing text (`WAKE_INSTRUCTIONS`) drops "anything risky or hard to undo". Leaving
+    active mode (`closePipelineGates`) also closes a `when` choice, and archives an open
+    board_pipeline_ask card with `GATE_CLOSED_NOTE`; `userGate` and `gateTask` hold only in active.
   - `server/assistant/chat.ts`: tools `board_pipeline_advance` (records a `moved` report) and
     `board_pipeline_ask`; `pm_card_create` takes `userOnlyReason` and refuses one the preset
     leaves to the PM (stored on the card, `shared/pm-board.ts`); the seed prompt, `CHAT_RULES`

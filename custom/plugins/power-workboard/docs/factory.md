@@ -392,7 +392,9 @@ the "pipeline engine" block of `server/workboard.ts`.
   role is not implement, goes to its runner (`stageRunner`): the pinned worker, the project's
   worker with the role, else its implement worker. An implement stage that pins no worker goes
   where every task goes today (the task's chosen orchestrator, the project's first one, pools), so
-  `default` picks the same worker as before. A task back in Ready starts over at `start`.
+  `default` picks the same worker as before. The orchestrator the user chose for the task also
+  takes a stage whose role has no worker in the project, which would otherwise fall back to the
+  first implement worker. A task back in Ready starts over at `start`.
 - **Prompt.** A stage run gets the stage procedure, the spec template for `spec`, and what the
   user said at the gate. The run that starts the pipeline from Ready leaves out the procedure of an
   implement stage with no `prompt` or `file`: the worker's task prompt is today's procedure.
@@ -408,15 +410,28 @@ the "pipeline engine" block of `server/workboard.ts`.
   `end` marks it delivered and moves it to Done; `cancel` dismisses it and moves it to Canceled
   when the board has that column.
 - **Loop guard.** Entering a stage once past its `maxVisits` keeps the task where it was and sends
-  it to Needs you (`loop`); Continue there gives that stage a new budget. A `pm` stage has no
-  guard: today's review decides how many rounds it takes. Reviewer feedback on a task in a `pm`
-  stage or `deliver` sends it back to its last implement stage (the last one that changed code).
+  it to Needs you (`loop`); Continue there gives that stage a new budget, and a task that looped
+  on its own stage counts the run Continue starts as visit 1. A `pm` stage has no guard: today's
+  review decides how many rounds it takes. Reviewer feedback on a task in a `pm` stage or
+  `deliver` sends it back to its last implement stage (the last one that changed code) and counts
+  a visit there; one past that stage's `maxVisits` starts a new budget (`implement 1/3`), since
+  the reviewer's answer is never a loop and `default` keeps today's unlimited review rounds.
 - **Answering.** A gate is the user's, and so is a stage choice once the PM asked: the Project
   Manager is not woken for it, and a PM decision on its card is refused. Any way
   the card gets decided needs one of its options, and archiving it while the task waits is
   refused. Done or Continue on the board archives the open
   proposal; Continue runs the current stage again with the feedback. A gate decided after the task
   left Needs you some other way only closes the gate.
+- **Leaving active mode.** The engine stops and `task.pipeline` is kept. Each open gate closes and
+  its Decisões proposal is archived with a note (`GATE_CLOSED_NOTE`); so does a `when` list's
+  choice, whether it waited on the PM or on a `board_pipeline_ask` card. The task stays in Needs you,
+  where Continue and Done work as today, and the Project Manager hears about it. A stage left
+  `pending` runs as a plain continuation and stops being pending.
+- **Back in active mode.** A task resumes from the stage it kept, with its visits: its next report
+  follows that stage's exit. A task whose gate closed is still in Needs you; Continue runs the
+  stage again and its report opens the gate, or the PM's choice, anew. A task that started while active was off has no
+  pipeline and runs today's way until it starts again from Ready, which starts it at `start`. A
+  task whose pipeline is gone from the factory also runs today's way.
 - **Chip.** The card shows `card.stageChip` (`spec · gate`, `implement 2/3`, `review 4` for a
   `pm` stage) next to its number, except in Done and Canceled.
 
