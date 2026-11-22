@@ -97,6 +97,11 @@ export const pmCardSchema = z.object({
   // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after 2027-02-20 once the factory cutover is done
   // Cards stored before the rename say `fresh-agent`; they read as `critical-merge`.
   userOnlyReason: storedUserOnlyReasonSchema.nullable().default(null),
+  /**
+   * CUSTOM(factory): when the breaker woke the PM about this proposal, or the user reopened it;
+   * either way the breaker leaves the card alone from then on (#165).
+   */
+  breakerAt: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -204,6 +209,7 @@ export interface PmCardUpdateInput {
   answer?: string | null;
   answerOptionId?: string | null;
   links?: PmCardLinks;
+  breakerAt?: string | null;
 }
 
 /** Kinds whose cards must record a decision or an answer before they can be closed. */
@@ -247,9 +253,25 @@ export function newPmCard(
     decidedAt: decided ? now : null,
     links: input.links ?? { taskIds: [], reportIds: [], packageIds: [] },
     userOnlyReason: input.userOnlyReason ?? null,
+    breakerAt: null,
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/**
+ * CUSTOM(factory): a proposal the breaker may expire (#165): waiting on the user, with a
+ * recommendation, no `userOnlyReason`, no action, and not yet woken about or reopened.
+ */
+export function pmBreakerCandidate(card: PmCard): boolean {
+  return (
+    card.kind === "proposal" &&
+    card.status === "waiting" &&
+    card.recommend !== null &&
+    card.userOnlyReason === null &&
+    card.action === null &&
+    card.breakerAt === null
+  );
 }
 
 /** Cards in a column, newest update first. */

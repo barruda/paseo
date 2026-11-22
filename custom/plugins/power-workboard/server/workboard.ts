@@ -70,6 +70,7 @@ import {
   newPmCard,
   normalizePmRecommend,
   pmAnswerOption,
+  pmBreakerCandidate,
   pmNeedsAnswerToDecide,
   PM_CARD_ID_PREFIX,
   PM_CARD_LIMIT,
@@ -181,6 +182,7 @@ import {
   inPlaceCommitPlan, // CUSTOM(orchestrator-in-place)
 } from "./assistant/delivery";
 import type { HistoryEventInput, HistoryStore } from "./assistant/history";
+import type { ReportStore } from "./assistant/reports"; // CUSTOM(factory)
 // CUSTOM(factory)
 import {
   compiledWorkerConfigHash,
@@ -221,7 +223,10 @@ import { projectWorkers, stageRunner } from "../shared/factory/pipeline";
 import {
   DEFAULT_AUTONOMY,
   PM_DECIDES_TEXT,
+  approvedMergeRefusal,
+  autonomyBreakerMs,
   autonomyProjectRule,
+  breakerWakeText,
   mergeNeedsUser,
   userOnlyRefusal,
   type AutonomyPresetId,
@@ -261,6 +266,8 @@ import type { Store } from "./store";
 // CUSTOM(projects-assistant): what the engine needs from the history and the outside world.
 export interface AssistantOptions {
   history?: Pick<HistoryStore, "append">;
+  /** CUSTOM(factory): the PM's board_report entries; pm_card_create reads reviews from them (#165). */
+  reports?: Pick<ReportStore, "since">;
   verify?: VerifyRunner;
   /** Waits before each "Continue the task where you stopped." after an agent error. */
   retryDelaysMs?: number[];
@@ -996,6 +1003,7 @@ export class Workboard {
         this.requeueUntold(); // CUSTOM(assistant-wake)
         void this.checkWakeTurn(); // CUSTOM(usage-limit)
         this.compactOnRefresh(); // CUSTOM(assistant-compact)
+        void this.checkPmBreaker(); // CUSTOM(factory)
       } catch (error) {
         this.connected = false;
         this.error = message(error);
@@ -6507,7 +6515,20 @@ export class Workboard {
       color: pkg.color ?? "gray",
     }));
   }
-  async pmCardCreate(input: PmCardCreateInput): Promise<PmCard> {
+  /**
+   * `source` is "pm" for the Project Manager's pm_card_create tool, whose proposals are checked
+   * against the autonomy preset; the board's own cards are not.
+   */
+  async pmCardCreate(
+    input: PmCardCreateInput,
+    source: "pm" | "board" = "board",
+  ): Promise<PmCard> {
+    // CUSTOM(factory): a proposal on a task whose merge is the PM's and whose review approved is
+    // the PM's to decide (#165); `userOnlyReason` is the way out.
+    if (source === "pm") {
+      const refusal = await this.approvedMergeRefusal(input);
+      if (refusal) throw new Error(refusal);
+    }
     // CUSTOM(factory): a reason the projects' autonomy preset does not give the user is refused.
     const reason = input.userOnlyReason;
     if (reason) {
@@ -6521,6 +6542,115 @@ export class Workboard {
         throw new Error(refusals[0]!);
     }
     return this.serial(() => this.addPmCard(input));
+  }
+  /**
+   * CUSTOM(factory): the #165 refusal for a PM proposal with no `userOnlyReason` and no action,
+   * when a linked task's project leaves the merge to the PM (`requiresUserMergeOk`) and that task's
+   * review approved; null otherwise.
+   */
+  private async approvedMergeRefusal(
+    input: PmCardCreateInput,
+  ): Promise<string | null> {
+    if (input.kind !== "proposal" || input.userOnlyReason || input.action)
+      return null;
+    const ids = new Set(input.links?.taskIds ?? []);
+    for (const task of this.store.current.tasks) {
+      if (!ids.has(task.id)) continue;
+      const projectId = this.projectIdOf(task);
+      if (this.requiresUserMergeOk(projectId)) continue;
+      if (!(await this.reviewApproved(task))) continue;
+      return approvedMergeRefusal(
+        this.projectAutonomy(projectId),
+        this.criticalProject(projectId),
+        task.number > 0 ? `#${task.number}` : `"${task.title}"`,
+      );
+    }
+    return null;
+  }
+  /**
+   * CUSTOM(factory): the PM recorded an approved review of this task: among its board_report
+   * entries of kind reviewed, feedback and merged, the newest is `reviewed`. A review task the PM
+   * closed as approved counts the same way, since the PM records it as `reviewed` on that task.
+   */
+  private async reviewApproved(task: Task): Promise<boolean> {
+    const reports = this.assistantOptions.reports;
+    if (!reports) return false;
+    const kinds = new Set(["reviewed", "feedback", "merged"]);
+    const entries = await reports.since(
+      task.createdAt,
+      (entry) => entry.taskId === task.id && kinds.has(entry.kind),
+    );
+    const newest = entries.reduce<(typeof entries)[number] | null>(
+      (best, entry) =>
+        !best || Date.parse(entry.at) >= Date.parse(best.at) ? entry : best,
+      null,
+    );
+    return newest?.kind === "reviewed";
+  }
+  /** CUSTOM(factory): a breaker pass is running. */
+  private breakerChecking = false;
+  /**
+   * CUSTOM(factory): the breaker (#165). A proposal that waited on the user past its preset's
+   * `breakerMinutes`, with a recommendation and no `userOnlyReason`, wakes the PM once to decide
+   * it. A card with `userOnlyReason` never expires. A busy chat, or one on its usage limit, is
+   * tried again on the next tick.
+   */
+  async checkPmBreaker(): Promise<void> {
+    if (this.stopped || this.breakerChecking || !this.assistantOn()) return;
+    this.breakerChecking = true;
+    try {
+      const now = this.now();
+      const due = this.pmCards().filter((card) => {
+        if (!pmBreakerCandidate(card) || this.gateTask(card.id)) return false;
+        const ms = this.breakerMs(card);
+        return ms !== null && now - Date.parse(card.createdAt) >= ms;
+      });
+      if (!due.length) return;
+      const agentId = this.store.current.assistant.chatAgentId;
+      if (!agentId || this.wakeWait() > 0) return;
+      const activity = await this.host.agentActivity(agentId);
+      if (activity === null || activity === "running" || activity === "waiting")
+        return;
+      await this.host.sendAgent(
+        agentId,
+        breakerWakeText(
+          due.map((card) => ({
+            id: card.id,
+            title: card.title,
+            recommend: card.recommend!,
+            waited: this.waitFor(card.createdAt),
+          })),
+        ),
+      );
+      const at = this.stamp();
+      const ids = new Set(due.map((card) => card.id));
+      await this.store.update((data) => {
+        for (const card of data.assistant.pmBoard.cards)
+          if (ids.has(card.id)) card.breakerAt = at;
+      });
+    } catch (error) {
+      console.error("Could not run the PM card breaker:", message(error));
+    } finally {
+      this.breakerChecking = false;
+    }
+  }
+  /**
+   * CUSTOM(factory): the breaker's deadline for a card: the shortest of its linked tasks' presets
+   * (the board's own preset when it links none); null when any of them has no breaker.
+   */
+  private breakerMs(card: PmCard): number | null {
+    const ids = new Set(card.links.taskIds);
+    const tasks = this.store.current.tasks.filter((task) => ids.has(task.id));
+    const projects = tasks.length
+      ? tasks.map((task) => this.projectIdOf(task))
+      : [null];
+    let shortest: number | null = null;
+    for (const projectId of projects) {
+      const ms = autonomyBreakerMs(this.projectAutonomy(projectId));
+      if (ms === null) return null;
+      shortest = shortest === null ? ms : Math.min(shortest, ms);
+    }
+    return shortest;
   }
   /** Creates a PM card; inside `serial` (CUSTOM(factory): pipeline gates add theirs there). */
   private async addPmCard(input: PmCardCreateInput): Promise<PmCard> {
@@ -6566,6 +6696,9 @@ export class Workboard {
             : {}),
           ...(input.status !== undefined ? { status: input.status } : {}),
           ...(input.links !== undefined ? { links: input.links } : {}),
+          ...(input.breakerAt !== undefined
+            ? { breakerAt: input.breakerAt }
+            : {}),
           updatedAt: this.stamp(current.updatedAt),
         };
         const becomingDecided =
@@ -6661,6 +6794,8 @@ export class Workboard {
       answer: null,
       answerOptionId: null,
       decision: null,
+      // CUSTOM(factory): the user reopened it to answer it themselves; the breaker stays off.
+      breakerAt: this.stamp(),
     });
   }
   async pmCardArchive(id: string): Promise<PmCard> {

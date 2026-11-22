@@ -153,9 +153,11 @@ describe("profile folders", () => {
     expect(ASSISTANT_SEED_PROMPT).toContain(
       "Never discard those edits: no `checkout --`, no `reset --hard`, no `stash drop` without a pop.",
     );
+    // CUSTOM(factory): the closed list of the autonomy rule replaced "destructive or hard to undo" (#165).
     expect(ASSISTANT_SEED_PROMPT).toContain(
-      "Ask before anything destructive or hard to undo",
+      "Outside these steps, the autonomy rule says what goes to the user.",
     );
+    expect(ASSISTANT_SEED_PROMPT).not.toContain("hard to undo");
   });
 
   it("rejects ids that could leave the profiles folder", async () => {

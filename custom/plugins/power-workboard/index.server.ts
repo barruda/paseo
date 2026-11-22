@@ -250,6 +250,7 @@ export default function contribute(server: PluginServerContext) {
       // CUSTOM(projects-assistant), CUSTOM(assistant-compact): the chat waits for quick messages.
       board = new Workboard(host, store, Date.now, 60000, {
         history,
+        reports, // CUSTOM(factory): pm_card_create reads approved reviews (#165)
         chatQueued: (agentId) => inbox.pending(agentId),
         factory, // CUSTOM(factory)
       });
