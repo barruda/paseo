@@ -10171,3 +10171,43 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
 - **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory.test.ts)` (part of
   the plugin suite in the update script). By hand: `custom/plugins/power-workboard/bin/factory
 validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`, `name: x`).
+
+## factory-export: `bin/factory export` and the round trip
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: bin/factory export writes the Power Workboard factory from the board data`
+- **Why:** Ticket 4 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Migration"): the first factory is written from today's config instead of by hand, and a round
+  trip test proves the factory holds the same config. Nothing reads a factory yet: no behavior
+  change.
+- **What:**
+  - `server/factory/export.ts`: `exportFactory` writes `factory.yaml` (`defaults.worker` from
+    `data.orchestrator`), `board.yaml` (columns in screen order, pools, night, housekeeping),
+    `pm/worker.md` (chat settings + the `assistant` profile's prompt and skills),
+    `workers/<slug>/worker.md` (every field explicit, `priority` in steps of 10 in today's order,
+    `role: implement`, the profile's prompt), `task-prompt.md` (the orchestrator's `instructions`),
+    profile skills with a valid SKILL.md (others are warned about and left out; memory is never
+    copied), and `projects/<slug>.yaml` for every project a worker, a delivery policy or a
+    `fresh-agent` review names (`~/` paths; `fresh-agent` → `pipeline: critical`). Then the
+    built-in pipelines and roles, `README.md`, `.gitignore`, `.schema/*.json` and
+    `.factory-ids.json` (orchestrator UUID → slug, Paseo project id → slug, pool id → slug;
+    git-ignored, for the cutover). It validates with the loader and compiler and only then runs
+    `git init -b main` and commits (hooks off, a fallback identity when git has none). It refuses a
+    target that is not empty.
+  - `server/factory/builtins.ts`: the `default` and `critical` pipelines and the five role prompts
+    (ticket 6 gives them a schema).
+  - `bin/factory export <dir> [--data] [--profiles] [--projects]`: the inputs default to the live
+    files under `$PASEO_HOME` (read only, `workboard-data.json` migrated in memory when old); the
+    target has no default, so no call writes `~/.paseo/factory` by accident.
+  - Left out with a warning: orchestrators and policies of a project Paseo no longer has, the
+    default task prompt of new orchestrators, `defaultDraftGroup`/`defaultStartGroup`/
+    `defaultStartWorkGroup` (they stay in the JSON).
+- **Core files touched:** none.
+- **Plugin files:** `server/factory/export.ts`, `server/factory/builtins.ts`,
+  `server/factory/cli.ts`, `bin/factory`, `docs/factory.md`, `tests/factory-export.test.ts`,
+  `tests/factory.test.ts` (its "unknown command" case used `export`).
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-export.test.ts)`
+  (part of the plugin suite in the update script). By hand, read-only on the live data:
+  `custom/plugins/power-workboard/bin/factory export /home/bruno/uprojects/tmp/factory-try`, then
+  `bin/factory validate` on the same folder.

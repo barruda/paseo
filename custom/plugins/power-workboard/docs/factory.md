@@ -1,7 +1,7 @@
 # Factory as code, worker roles and pipelines
 
-Status: approved design. Built so far: ticket 2 (schemas, loader, compiler and `bin/factory`, not
-wired into the board). Tickets at the end. Inspired by Warp Factories
+Status: approved design. Built so far: ticket 2 (schemas, loader, compiler and `bin/factory`) and
+ticket 4 (`bin/factory export`), not wired into the board. Tickets at the end. Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -270,7 +270,7 @@ the migration maps `fresh-agent` projects to `critical`.
   `.schema/*.json` with `z.toJSONSchema` from the same schemas. Code: `shared/factory/` (schemas,
   compiler) and `server/factory/` (loader, CLI).
 - Until ticket 6, `pipelines/*.yaml` and `roles/*.md` are checked by name only, and `pipeline:`
-  references are not resolved. Skill names in `skills:` are not resolved either: they may be
+  references are not resolved. The export's copies live in `server/factory/builtins.ts`. Skill names in `skills:` are not resolved either: they may be
   personal or plugin skills outside the factory.
 - UI edits in `active` mode go through a writer that edits the YAML with the `yaml` Document API
   (comments survive) and commits `ui: <what changed>`. A file changed on disk since it was read
@@ -278,11 +278,22 @@ the migration maps `fresh-agent` projects to `critical`.
 
 ## Migration
 
-`bin/factory export [dir]` writes the factory from `workboard-data.json` and the profile folders,
-adds the built-in pipelines and role prompts, runs `git init` and commits. Worker ids become slugs
-of their names. The UUID → slug map stays in the runtime state (`factoryIds`), so running tasks
-keep their worker. In `active` mode the profile folders move to `workers/<slug>/`, and a
+`bin/factory export <dir> [--data <file>] [--profiles <dir>] [--projects <file>]` writes the
+factory from `workboard-data.json`, the profile folders and Paseo's `projects.json` (defaults: the
+live files under `$PASEO_HOME`, only read), adds the built-in pipelines and role prompts, validates
+the result and only then runs `git init` and commits. `<dir>` has no default and must be missing or
+empty, so no call writes the live factory by accident. Worker ids become slugs of their names
+(`-2` on repeats), and so do project and pool ids. The map goes to `.factory-ids.json` (git-ignored);
+the cutover copies it into the runtime state (`factoryIds`), so running tasks keep their worker.
+Profile memory is not copied: in `active` mode the profile folders move to `workers/<slug>/`, and a
 `workboard-data.json.bak-pre-factory` backup is kept.
+
+What the export cannot carry, it reports as a warning and leaves out: orchestrators and policies of
+a project Paseo no longer has, the default task prompt of new orchestrators, a profile skill without
+a valid SKILL.md, and the default-column preferences (`defaultDraftGroup`, `defaultStartGroup`,
+`defaultStartWorkGroup`), which stay in the JSON. Two Paseo projects may share a checkout (one path a
+symlink to the other); the export resolves the path to the project the data names, and active mode
+must do the same.
 
 The live export and the switch to `active` need the user's approval (a Decisões proposal). Worktree
 agents never write to `~/.paseo`.

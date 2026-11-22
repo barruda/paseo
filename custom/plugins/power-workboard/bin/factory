@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# CUSTOM(factory): validate a Power Workboard factory, or write its JSON Schemas (docs/factory.md).
+# CUSTOM(factory): validate, export or write the JSON Schemas of a Power Workboard factory (docs/factory.md).
 #
 #   factory validate [dir]   print errors (file:line) and warnings; exit 1 on any error
 #   factory schema [dir]     write <dir>/.schema/*.json for editor completion
+#   factory export <dir> [--data <file>] [--profiles <dir>] [--projects <file>]
+#                            write a new factory from the board data, git init and commit
 #
-# The directory defaults to $PASEO_HOME/factory (~/.paseo/factory). Runs the plugin's TypeScript
-# through the Paseo checkout's tsx.
+# validate and schema default to $PASEO_HOME/factory (~/.paseo/factory); export needs its <dir>.
+# Runs the plugin's TypeScript through the Paseo checkout's tsx.
 set -euo pipefail
 
 here="$(cd "$(dirname "$(readlink -f "$0")")" && pwd)"
