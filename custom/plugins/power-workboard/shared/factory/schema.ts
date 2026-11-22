@@ -6,6 +6,7 @@ import {
   assistantActionSchema,
   assistantDefaultActionSchema,
 } from "../assistant";
+import { autonomyPresetIdSchema } from "../autonomy";
 import {
   GROUP_COLORS,
   nightSettingsSchema,
@@ -222,6 +223,8 @@ export const pmFrontmatterSchema = z.strictObject({
   compactAtTokens: z.number().int().min(0).max(10_000_000).optional(),
   /** Permission of interactive chats (refinement, spec stages): `default` asks before edits. */
   interactivePermission: permission.optional(),
+  /** The board's autonomy preset (shared/autonomy.ts); a pipeline or project may override it. */
+  autonomy: autonomyPresetIdSchema.optional(),
 });
 export type PmFrontmatter = z.infer<typeof pmFrontmatterSchema>;
 
@@ -230,6 +233,8 @@ export const projectFileSchema = z.strictObject({
   path: z.string().trim().min(1),
   /** Id of pipelines/*.yaml; defaults to `defaults.pipeline` in factory.yaml. */
   pipeline: factoryIdSchema.optional(),
+  /** Overrides the pipeline's and pm/worker.md's autonomy preset. */
+  autonomy: autonomyPresetIdSchema.optional(),
   delivery: z
     .strictObject({
       action: assistantActionSchema.optional(),
@@ -322,6 +327,8 @@ export type PipelineStage = z.infer<typeof pipelineStageSchema>;
 
 const pipelineShapeSchema = z.strictObject({
   description: z.string().optional(),
+  /** Overrides pm/worker.md's autonomy preset for the projects that run this pipeline. */
+  autonomy: autonomyPresetIdSchema.optional(),
   /** The stage a task enters when it leaves Ready. */
   start: factoryIdSchema,
   stages: z.record(factoryIdSchema, pipelineStageSchema),

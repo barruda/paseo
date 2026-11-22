@@ -2,6 +2,7 @@
 // between the user and the PM live here, apart from the task board. A card here never starts an
 // agent or a workspace: code tasks and code reviews stay on the task board.
 import { z } from "zod";
+import { userOnlyReasonSchema, type UserOnlyReason } from "./autonomy";
 import { taskNumberLabel } from "./task-reference";
 
 export const PM_CARD_KINDS = [
@@ -89,6 +90,11 @@ export const pmCardSchema = z.object({
   decidedBy: pmDeciderSchema.nullable().default(null),
   decidedAt: z.string().nullable().default(null),
   links: pmCardLinksSchema.default(() => pmCardLinksSchema.parse({})),
+  /**
+   * CUSTOM(factory): why a proposal is the user's, from the project's autonomy preset
+   * (shared/autonomy.ts); null when the PM gave none.
+   */
+  userOnlyReason: userOnlyReasonSchema.nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
@@ -180,6 +186,7 @@ export interface PmCardCreateInput {
   decision?: string | null;
   decidedBy?: PmDecider | null;
   links?: PmCardLinks;
+  userOnlyReason?: UserOnlyReason | null;
 }
 
 export interface PmCardUpdateInput {
@@ -237,6 +244,7 @@ export function newPmCard(
     decidedBy: decided ? (input.decidedBy ?? "pm") : null,
     decidedAt: decided ? now : null,
     links: input.links ?? { taskIds: [], reportIds: [], packageIds: [] },
+    userOnlyReason: input.userOnlyReason ?? null,
     createdAt: now,
     updatedAt: now,
   };

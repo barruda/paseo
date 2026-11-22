@@ -108,8 +108,20 @@ describe("workerConfigHash", () => {
         description: "Paseo worker",
         systemPrompt: PROMPT,
         ownSkills: [],
+        autonomy: "standard",
       }),
     ).toBe(workerConfigHash({ config: config(), systemPrompt: PROMPT }));
+  });
+
+  // CUSTOM(factory): ticket 12. The resolved preset is in the hash; `standard` hashes as before.
+  it("the resolved autonomy preset changes the hash, except standard", () => {
+    const base = workerConfigHash({ config: config(), systemPrompt: PROMPT });
+    const of = (autonomy: string) =>
+      workerConfigHash({ config: config(), systemPrompt: PROMPT, autonomy });
+    expect(of("standard")).toBe(base);
+    expect(of("autonomous")).not.toBe(base);
+    expect(of("cautious")).not.toBe(base);
+    expect(of("cautious")).not.toBe(of("autonomous"));
   });
 });
 

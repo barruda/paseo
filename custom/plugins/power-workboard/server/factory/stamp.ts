@@ -1,6 +1,7 @@
 // CUSTOM(factory): the revision stamp each run and history event records (docs/factory.md,
 // "Loading and revisions"), so metrics can compare runs before and after a config change.
 import { createHash } from "node:crypto";
+import { DEFAULT_AUTONOMY } from "../../shared/autonomy";
 import type { CompiledWorker } from "../../shared/factory/compile";
 import { DEFAULT_WORKER_ROLE } from "../../shared/factory/pipeline";
 import type { OrchestratorConfig } from "../../shared/model";
@@ -37,6 +38,8 @@ export type WorkerHashInput = {
   systemPrompt: string;
   /** The factory role; null on the live board, whose orchestrators are all implement workers. */
   role?: string | null;
+  /** CUSTOM(factory): the resolved autonomy preset of the worker's project (ticket 12). */
+  autonomy?: string | null;
 };
 
 /** JSON with object keys sorted at every level, so key order never changes the hash. */
@@ -76,6 +79,11 @@ export function workerConfigHash(input: WorkerHashInput): string {
     // A live orchestrator (null) and a factory implement worker are the same worker: hash both as
     // null, so their hashes match and the hashes recorded before roles existed stay valid.
     role: input.role && input.role !== DEFAULT_WORKER_ROLE ? input.role : null,
+    // Left out at `standard` (and on the live board), so the hashes from before presets stay valid.
+    autonomy:
+      input.autonomy && input.autonomy !== DEFAULT_AUTONOMY
+        ? input.autonomy
+        : undefined,
   };
   return createHash("sha256")
     .update(canonical(payload))
@@ -89,5 +97,6 @@ export function compiledWorkerConfigHash(worker: CompiledWorker): string {
     config: worker.config,
     systemPrompt: worker.systemPrompt,
     role: worker.role,
+    autonomy: worker.autonomy,
   });
 }
