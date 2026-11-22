@@ -10363,3 +10363,51 @@ tests/factory.test.ts tests/factory-export.test.ts)` (part of the plugin suite i
 tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). In the app:
   Workboard → **Pipelines** tab → pick DreamMMO (`critical`) or another project (`default`), click a
   node to see the stage in the right panel.
+
+## factory-active: active mode makes the factory the board's configuration
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: factory active mode applies the compiled factory as the Power Workboard config`
+- **Why:** Ticket 9 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Active mode" and "Cutover"): after shadow mode proved the factory matches the board, `active`
+  makes the files the configuration, with the cutover steps the PM runs once the user approves.
+- **What:**
+  - `shared/factory/active.ts` + `Store.setView` (`server/store.ts`, wired by `factoryStoreView`
+    in `server/factory/shadow.ts` and `index.server.ts`): every read gets the compiled factory in
+    the config fields (orchestrators under their live ids, defaults but the default task prompt,
+    columns, pools, housekeeping, night, PM `enabled`/`defaultAction`/`projects`/`chat`); every
+    write puts the JSON's own values back, so `workboard-data.json` keeps its config.
+  - `data.factoryIds` (live id → factory id, `shared/model.ts`): filled from `.factory-ids.json` on
+    each active load (`Workboard.factoryChanged`).
+  - `FactoryShadow`: `applied()`, `mode()`, `ready()` (the board waits for it in `start` before
+    the first orchestration) and an `applied` callback; no compile yet holds new starts with a
+    note. The summary carries `revision` in active mode.
+  - Profiles in active mode (`server/profiles.ts`, `Workboard.profileRef`): `workers/<id>/` and
+    `pm/`, prompt from `worker.md`, plugin `pwb-<id>`; the board writes only the git-ignored
+    `.claude-plugin/` (added to the factory `.gitignore`) and `memory/`. Run stamps record the
+    factory revision, worker id and compiled hash.
+  - Read only until ticket 10: the server refuses factory-owned edits
+    (`FACTORY_READ_ONLY_ERROR`, `FACTORY_PROMPT_READ_ONLY`); the Orchestrators tab, column and
+    housekeeping settings, the PM profile tab and the core PM settings page disable them and say
+    "edit in the factory". The core page now offers `active`.
+  - `bin/factory memory <dir>` (`server/factory/cutover.ts`) copies the profiles' memory into the
+    factory. The Pipelines tab reads the factory's pipelines in active mode.
+- **Core files touched:**
+  `packages/app/src/screens/settings/bruno-customizations/projects-assistant-page.tsx`,
+  `projects-assistant-model.ts` (+ test) (`CUSTOM(factory)`: `active` offered, owned fields
+  disabled while the saved mode is active) and `packages/app/src/components/settings-textarea.tsx`
+  (`CUSTOM(factory)`: optional `disabled`).
+- **Plugin files:** `shared/factory/active.ts`, `shared/factory/status.ts`, `shared/model.ts`,
+  `shared/rpc.ts`, `server/store.ts`, `server/workboard.ts`, `server/profiles.ts`,
+  `server/factory/shadow.ts`, `server/factory/builtin.ts`, `server/factory/cli.ts`,
+  `server/factory/cutover.ts`, `bin/factory`, `index.server.ts`, `client/FactoryLine.tsx`,
+  `client/strings.ts`, `client/Orchestrators.tsx`, `client/WorkboardScreen.tsx`,
+  `client/GroupSettings.tsx`, `client/Profiles.tsx`, `docs/factory.md`,
+  `tests/factory-active.test.ts`, `tests/factory-shadow.test.ts`.
+- **Re-apply:** `settings-textarea.tsx`: add `disabled?: boolean` and pass `editable={!disabled}`
+  to its input. The two settings files are custom pages.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-active.test.ts)`
+  (plugin suite in the update script) and the app model test. By hand, only after the user approves
+  the cutover: follow "Cutover" in `docs/factory.md`; with the mode on Active the board shows
+  "factory: active, revision …", the Orchestrators tab is read only, and a new task's run records
+  the factory revision.

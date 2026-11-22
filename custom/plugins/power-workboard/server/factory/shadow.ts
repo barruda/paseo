@@ -1,7 +1,8 @@
-// CUSTOM(factory): shadow mode (docs/factory.md, ticket 7). Watches the factory folder, loads and
-// compiles it 500 ms after the last change, and diffs it against the live config. It applies
-// nothing: the board keeps reading workboard-data.json. An invalid factory keeps the last valid
-// compile for the diff and reports its errors.
+// CUSTOM(factory): shadow and active mode (docs/factory.md, tickets 7 and 9). Watches the factory
+// folder, loads and compiles it 500 ms after the last change, and diffs it against the config in
+// workboard-data.json. Shadow applies nothing; in active mode `applied()` hands the compiled
+// factory to the board (shared/factory/active.ts). An invalid factory keeps the last valid compile
+// and reports its errors.
 import { watch as watchDir, type FSWatcher } from "node:fs";
 import { readdir, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -23,19 +24,25 @@ import {
   type FactorySummary,
 } from "../../shared/factory/status";
 import { factoryIdSchema } from "../../shared/factory/schema";
+import {
+  applyFactory,
+  restoreJsonConfig,
+  type AppliedFactory,
+} from "../../shared/factory/active";
 import type { Data } from "../../shared/model";
 import { ASSISTANT_PROFILE } from "../../shared/profiles";
 import { IDS_FILE, slugger } from "./export";
 import { loadFactory } from "./loader";
 import { factoryRevision } from "./revision";
+import type { StoreView } from "../store";
 
 export const FACTORY_DEBOUNCE_MS = 500;
 /** While the folder is missing, look for it again this often. */
 const MISSING_RETRY_MS = 30_000;
 /** Folders below a watched one; `workers/<id>/skills/<name>/` is the deepest the loader reads. */
 const MAX_DEPTH = 4;
-const ACTIVE_NOTE =
-  "Active mode is not built yet (ticket 9): the factory runs in shadow mode, nothing is applied";
+const HOLD_NOTE =
+  "No valid factory yet: no new task starts until the factory compiles";
 
 export type Unwatch = () => void;
 /** Calls `changed` on any change of the folder's direct entries. */
@@ -47,7 +54,7 @@ export type ShadowLive = {
   settings: () => FactorySettings;
   /** Changes with every saved change of the data. */
   revision: () => number;
-  /** The whole data, read only when the diff is computed again. */
+  /** The saved data (without the factory applied), read only when the diff is computed again. */
   data: () => Data;
   projects: () => ReadonlyArray<{ id: string; directory: string }>;
 };
@@ -64,12 +71,32 @@ export type FactoryShadowOptions = {
   load?: typeof loadFactory;
   revision?: (root: string) => Promise<string | null>;
   now?: () => number;
+  /** Active mode loaded the factory again: the board reads the new config. */
+  applied?: () => void;
 };
 
 const idsFileSchema = z.object({
   workers: z.record(z.string(), z.string()).default({}),
   pools: z.record(z.string(), z.string()).default({}),
 });
+
+/**
+ * Active mode's view of the store: every read gets the compiled factory in its config fields, and
+ * every write keeps the JSON's own values there. Other modes read and write the JSON as it is.
+ */
+export function factoryStoreView(factory: {
+  applied(): AppliedFactory | null;
+}): StoreView {
+  return {
+    apply: (data) => {
+      const applied = factory.applied();
+      if (applied) applyFactory(data, applied);
+    },
+    restore: (next, saved) => {
+      if (factory.applied()) restoreJsonConfig(next, saved);
+    },
+  };
+}
 
 export const watchFolder: WatchFolder = (dir, changed) => {
   let watcher: FSWatcher;
@@ -171,6 +198,13 @@ export class FactoryShadow {
   private errors: FactoryIssue[] = [];
   private warnings: FactoryIssue[] = [];
   private compiled: CompiledFactory | null = null;
+  /** The loaded pipeline files and default of the compile above. */
+  private pipelines: Pick<AppliedFactory, "pipelines" | "defaultPipeline"> = {
+    pipelines: {},
+    defaultPipeline: null,
+  };
+  /** The revision of the compile above; `revision` may be a newer, invalid one. */
+  private compiledRevision: string | null = null;
   private fileIds: LiveIds | null = null;
   private revision: string | null = null;
   private loadedAt: string | null = null;
@@ -245,7 +279,44 @@ export class FactoryShadow {
       firstError: this.errors[0] ? formatFactoryIssue(this.errors[0]) : null,
       differences: this.differences ? this.differences.length : null,
       note: this.note,
+      // Active mode's line shows the revision; shadow's shows the difference count.
+      ...(this.target.mode === "active"
+        ? { revision: this.compiledRevision }
+        : {}),
     };
+  }
+
+  /** The factory active mode applies: the last valid compile, or null in other modes or before one. */
+  applied(): AppliedFactory | null {
+    if (this.target.mode !== "active" || !this.compiled) return null;
+    return {
+      root: this.target.root,
+      revision: this.compiledRevision,
+      compiled: this.compiled,
+      fileIds: this.fileIds,
+      ...this.pipelines,
+    };
+  }
+
+  /** The setting's mode, read now (the board refuses config edits in active mode). */
+  mode(): FactoryMode {
+    this.sync();
+    return this.target.mode;
+  }
+
+  /**
+   * Active mode at boot: loads now and waits, so the board's first pass already runs on the
+   * factory. A load waiting for its debounce runs at once.
+   */
+  async ready(): Promise<void> {
+    this.sync();
+    if (this.target.mode !== "active") return;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+      this.run();
+    }
+    while (this.running) await this.running;
   }
 
   /**
@@ -295,10 +366,13 @@ export class FactoryShadow {
   }
 
   private get note(): string | null {
-    return this.target.mode === "active" ? ACTIVE_NOTE : null;
+    return this.target.mode === "active" && !this.compiled && !this.loading
+      ? HOLD_NOTE
+      : null;
   }
 
   private restart(target: Target) {
+    const leftActive = this.target.mode === "active" && this.compiled !== null;
     this.generation++;
     this.target = target;
     clearTimeout(this.timer);
@@ -310,12 +384,14 @@ export class FactoryShadow {
     this.errors = [];
     this.warnings = [];
     this.compiled = null;
+    this.compiledRevision = null;
     this.fileIds = null;
     this.revision = null;
     this.loadedAt = null;
     this.differences = null;
     this.diffRevision = null;
     this.again = false;
+    if (leftActive) this.options.applied?.(); // The board reads the JSON again.
   }
 
   /** Trailing debounce: every change pushes the load back. */
@@ -381,12 +457,21 @@ export class FactoryShadow {
     if (stale()) return;
     this.errors = errors;
     this.warnings = warnings;
-    if (compiled) {
+    if (compiled && loaded.factory) {
       this.compiled = compiled;
-      this.fileIds = ids;
+      this.compiledRevision = revision;
+      // Without `.factory-ids.json`, the export's ids by name, as the diff uses them.
+      this.fileIds = ids ?? (live ? idsByName(live.data()) : null);
+      this.pipelines = {
+        pipelines: Object.fromEntries(
+          loaded.factory.pipelines.map(({ id, pipeline }) => [id, pipeline]),
+        ),
+        defaultPipeline: loaded.factory.factory.defaults?.pipeline ?? null,
+      };
     }
     this.revision = revision;
     this.loadedAt = new Date(this.now()).toISOString();
+    if (this.target.mode === "active" && compiled) this.options.applied?.();
     await this.rewatch(root, generation);
     if (this.compiled) await this.refreshDiff();
   }

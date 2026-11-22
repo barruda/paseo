@@ -31,6 +31,9 @@ const zh = {
     loading: "factory：{mode}，加载中…",
     invalid: "factory：{mode}，还没有有效的配置",
     errors: "{count} 个错误（保留上一个有效配置）：{first}",
+    active: "factory：已启用，版本 {revision}",
+    activeNoRevision: "factory：已启用",
+    readOnly: "这些设置来自 factory。请编辑它的文件；在这里编辑功能稍后提供。",
   },
   ticketPanel: {
     close: "关闭面板",
@@ -592,6 +595,10 @@ const zh = {
   },
   archiveConfirmedByUser: "归档结果已由用户确认",
   mutationErrors: {
+    "This setting comes from the factory; edit it in the factory":
+      "这个设置来自 factory；请在 factory 的文件中编辑。",
+    "This prompt comes from the factory; edit worker.md in the factory":
+      "这个提示词来自 factory；请在 factory 中编辑 worker.md。",
     "card-order-changed": "列内任务顺序或成员已改变，请刷新后重试。",
     "card-order-invalid":
       "排序无效；只能移动当前任务并保留其它任务的相对顺序。",
@@ -848,6 +855,10 @@ const en: typeof zh = {
     loading: "factory: {mode}, loading…",
     invalid: "factory: {mode}, no valid factory yet",
     errors: "{count} error(s); the last valid factory is kept: {first}",
+    active: "factory: active, revision {revision}",
+    activeNoRevision: "factory: active",
+    readOnly:
+      "These settings come from the factory. Edit its files; editing them here comes later.",
   },
   ticketPanel: {
     close: "Close panel",
@@ -1449,6 +1460,10 @@ const en: typeof zh = {
   },
   archiveConfirmedByUser: "Archive outcome confirmed by user",
   mutationErrors: {
+    "This setting comes from the factory; edit it in the factory":
+      "This setting comes from the factory. Edit it in the factory's files.",
+    "This prompt comes from the factory; edit worker.md in the factory":
+      "This prompt comes from the factory. Edit worker.md in the factory.",
     "card-order-changed":
       "Column order or membership changed. Refresh and retry.",
     "card-order-invalid":

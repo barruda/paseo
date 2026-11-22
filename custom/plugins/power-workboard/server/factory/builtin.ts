@@ -14,6 +14,8 @@ export const BUILTIN_FACTORY_DIR = fileURLToPath(
 export const FACTORY_GITIGNORE = `# Written by the agents, not part of the config.
 workers/*/memory/
 pm/memory/
+# The Claude plugin manifest active mode writes next to each worker.md.
+.claude-plugin/
 # bin/factory export: worker UUID -> slug map, read once at the cutover (docs/factory.md, Migration).
 .factory-ids.json
 `;

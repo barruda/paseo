@@ -80,7 +80,12 @@ import {
 } from "./shared/profiles";
 import { redeployPaseo } from "./server/redeploy"; // CUSTOM(redeploy-button)
 // CUSTOM(factory)
-import { defaultFactoryRoot, FactoryShadow } from "./server/factory/shadow";
+import {
+  defaultFactoryRoot,
+  factoryStoreView,
+  FactoryShadow,
+} from "./server/factory/shadow";
+import { factoryPipelinesView } from "./shared/factory/active";
 import { defaultProfilesDirectory } from "./server/profiles";
 import { ImageStore, defaultImageDirectory } from "./server/images";
 import { PaseoCompat } from "./server/paseo-compat";
@@ -165,7 +170,9 @@ export default function contribute(server: PluginServerContext) {
     },
   });
   let board: Workboard | undefined;
-  // CUSTOM(factory): shadow mode reads the board's data and projects; it applies nothing.
+  // CUSTOM(factory): the factory reads the board's saved data and projects. Shadow mode applies
+  // nothing; active mode puts the compiled factory into every read of the store and keeps the
+  // JSON's own config on every write (docs/factory.md, "Active mode").
   const factory = new FactoryShadow({
     live: () =>
       board
@@ -173,13 +180,15 @@ export default function contribute(server: PluginServerContext) {
             settings: () =>
               store.peek((data) => data.assistant.settings.factory),
             revision: () => store.peek((data) => data.revision),
-            data: () => store.current,
+            data: () => store.peek((data) => structuredClone(data)),
             projects: () => board?.inventoryProjects() ?? [],
           }
         : null,
     defaultRoot: defaultFactoryRoot(),
     profilesRoot: defaultProfilesDirectory(),
+    applied: () => void board?.factoryChanged().catch(() => undefined),
   });
+  store.setView(factoryStoreView(factory));
   let disposed = false;
   let error = "Workboard is starting";
   let retry: ReturnType<typeof setTimeout> | undefined;
@@ -209,6 +218,7 @@ export default function contribute(server: PluginServerContext) {
       board = new Workboard(host, store, Date.now, 60000, {
         history,
         chatQueued: (agentId) => inbox.pending(agentId),
+        factory, // CUSTOM(factory)
       });
       await board.start();
       factory.sync(); // CUSTOM(factory)
@@ -277,14 +287,17 @@ export default function contribute(server: PluginServerContext) {
   };
   server.handle(assistantSettingsGetRpc, () => ready().assistantSettings());
   server.handle(assistantSettingsSetRpc, async (input) => {
-    const saved = await ready().setAssistantSettings(input.settings);
-    factory.sync(); // CUSTOM(factory): a new mode or folder applies now, not on the next poll.
-    return saved;
+    // CUSTOM(factory): the board syncs the factory before it answers, so a new mode or folder
+    // applies now and leaving active mode answers with the JSON's values.
+    return ready().setAssistantSettings(input.settings);
   });
   // CUSTOM(factory): the Pipelines tab, read only.
-  server.handle(factoryPipelinesRpc, () =>
-    builtinPipelinesView(ready().assistantSettings().settings.reviews),
-  );
+  server.handle(factoryPipelinesRpc, () => {
+    const applied = factory.applied();
+    return applied
+      ? factoryPipelinesView(applied)
+      : builtinPipelinesView(ready().assistantSettings().settings.reviews);
+  });
   server.handle(assistantOverviewRpc, () =>
     buildOverview(ready().assistantSource()),
   );

@@ -27,7 +27,7 @@ import { ConfirmationModal } from "./ConfirmationModal";
 import { HintButton } from "./Hint";
 import type { strings } from "./strings";
 import { toggleButtonState } from "./web";
-import { FactoryLine } from "./FactoryLine"; // CUSTOM(factory)
+import { FactoryLine, factoryOwnsConfig } from "./FactoryLine"; // CUSTOM(factory)
 import { formatHold } from "./hold-format"; // CUSTOM(resource-pools)
 // CUSTOM(agent-profiles)
 import {
@@ -160,7 +160,10 @@ export function newOrchestrator(board: Board, t: Strings) {
 export function OrchestratorsPanel(
   props: Shared & { onOpen(id: string): void; onCreate(): void },
 ) {
-  const { board, t, theme, disabled, mutate } = props;
+  const { board, t, theme, mutate } = props;
+  // CUSTOM(factory): in active mode the factory owns the orchestrators; Run now and Stop stay.
+  const owned = factoryOwnsConfig(board.factory);
+  const disabled = props.disabled || owned;
   const panel = t.panel;
   const profileText = profileStrings(usePaseoLanguage()); // CUSTOM(agent-profiles)
   // CUSTOM(bulk-orchestrator-agent)
@@ -210,6 +213,11 @@ export function OrchestratorsPanel(
         {panel.intro}
       </Text>
       <FactoryLine summary={board.factory} t={t.factory} theme={theme} />
+      {owned && (
+        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+          {t.factory.readOnly}
+        </Text>
+      )}
       {/* CUSTOM(bulk-orchestrator-agent): what to do with the selected orchestrators */}
       {selectedConfigs.length > 0 && (
         <View
@@ -304,8 +312,8 @@ export function OrchestratorsPanel(
           </Text>
         </Pressable>
       </View>
-      <NightSection {...props} />
-      <PoolsSection {...props} />
+      <NightSection {...props} disabled={disabled} />
+      <PoolsSection {...props} disabled={disabled} />
       {board.orchestrators.length === 0 && (
         <Text style={[styles.empty, { color: theme.colors.foregroundMuted }]}>
           {panel.empty}
@@ -422,8 +430,9 @@ export function OrchestratorsPanel(
               index={index}
               count={board.orchestrators.length}
               {...props}
+              disabled={disabled}
             />
-            <EnableToggle config={config} {...props} />
+            <EnableToggle config={config} {...props} disabled={disabled} />
             <RunControls config={config} {...props} />
           </View>
         );
@@ -1202,7 +1211,10 @@ function fromDraft(id: string, draft: Draft, enabled: boolean) {
 export function OrchestratorTab(
   props: Shared & { id: string; onDeleted(): void },
 ) {
-  const { board, t, theme, disabled, mutate } = props;
+  const { board, t, theme, mutate } = props;
+  // CUSTOM(factory): active mode makes the orchestrator's settings read only; Run now and Stop stay.
+  const owned = factoryOwnsConfig(board.factory);
+  const disabled = props.disabled || owned;
   const panel = t.panel;
   const config = board.orchestrators.find((o) => o.id === props.id);
   const [draft, setDraft] = useState<Draft | null>(
@@ -1721,7 +1733,14 @@ export function OrchestratorTab(
           </Text>
         </View>
         <View style={styles.inline}>
-          <EnableToggle config={config} {...props} />
+          {owned && (
+            <Text
+              style={[styles.meta, { color: theme.colors.foregroundMuted }]}
+            >
+              {t.factory.readOnly}
+            </Text>
+          )}
+          <EnableToggle config={config} {...props} disabled={disabled} />
           <RunControls config={config} {...props} />
           {unsaved && (
             <Text

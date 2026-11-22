@@ -862,6 +862,17 @@ export const dataSchema = z
     // CUSTOM(packages)
     packages: z.array(packageSchema).default([]),
     packageRuns: z.array(packageRunSchema).default([]),
+    /**
+     * CUSTOM(factory): live id → factory id of orchestrators and pools, copied from the factory's
+     * `.factory-ids.json` when active mode loads it, so tasks started before the cutover keep their
+     * worker (docs/factory.md, "Active mode").
+     */
+    factoryIds: z
+      .object({
+        workers: z.record(z.string(), z.string()).default({}),
+        pools: z.record(z.string(), z.string()).default({}),
+      })
+      .default(() => ({ workers: {}, pools: {} })),
   })
   .superRefine((data, context) => {
     const ids = new Set<string>();

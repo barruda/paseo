@@ -194,11 +194,14 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
     );
   }
 
+  // CUSTOM(factory): while the SAVED mode is active, the factory owns these settings.
+  const owned = load.status === "ready" && load.saved.settings.factory.mode === "active";
   return (
     <SettingsSection title="Project Manager">
       <Text style={settingsStyles.rowHint}>
         Works in Tasks mode. Decides what happens to a task&apos;s work when its agent finishes.
       </Text>
+      {owned ? <Text style={settingsStyles.rowHint}>{FACTORY_OWNED_HINT}</Text> : null}
       {load.status === "loading" ? <Text style={settingsStyles.rowHint}>Loading…</Text> : null}
       {load.status === "error" ? (
         <>
@@ -218,6 +221,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               hint="When off, finished tasks are left where they are."
               value={draft.enabled}
               onValueChange={handleEnabled}
+              disabled={owned}
             />
             <SettingsSelect
               label="Default action"
@@ -225,6 +229,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               value={draft.defaultAction}
               options={DEFAULT_OPTIONS}
               onValueChange={handleDefaultAction}
+              disabled={owned}
             />
           </SettingsCard>
           <Text style={settingsStyles.sectionHeaderTitle}>Chat</Text>
@@ -234,6 +239,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               hint="Used for new conversations. Its board tools need Agents > Enable Paseo tools on this host."
               initialValue={draft.chat.provider}
               onChangeText={handleModel}
+              disabled={owned}
               placeholder="claude/claude-opus-5-5"
             />
             <SettingsInput
@@ -241,6 +247,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               hint="Empty uses the provider's default."
               initialValue={draft.chat.thinkingOptionId ?? ""}
               onChangeText={handleThinking}
+              disabled={owned}
               placeholder="high"
             />
             <SettingsInput
@@ -248,6 +255,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               hint="It only uses the board's tools, in an empty folder"
               initialValue={draft.chat.modeId ?? ""}
               onChangeText={handleMode}
+              disabled={owned}
               placeholder="bypassPermissions"
             />
             <SettingsInput
@@ -255,6 +263,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               hint="When a turn leaves the chat's context at this size or more, the board starts a new chat with a short summary and archives the old one. 0 turns it off."
               initialValue={String(draft.chat.compactAtTokens)}
               onChangeText={handleCompactAt}
+              disabled={owned}
               placeholder={String(DEFAULT_COMPACT_AT_TOKENS)}
             />
             <SettingsInput
@@ -262,6 +271,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               hint="How long tasks that need you are batched before the board tells the Project Manager. A busy chat retries every 10 s."
               initialValue={String(draft.chat.wakeDelaySeconds)}
               onChangeText={handleWakeDelay}
+              disabled={owned}
               placeholder={String(DEFAULT_WAKE_DELAY_SECONDS)}
             />
           </SettingsCard>
@@ -269,7 +279,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
           <SettingsCard testID="projects-assistant-factory">
             <SettingsSelect
               label="Mode"
-              hint="Shadow loads the factory folder on every change and compares it with the board's settings; the board shows the errors and differences and keeps using its own settings."
+              hint="Shadow loads the factory folder on every change and compares it with the board's settings; the board shows the errors and differences and keeps using its own settings. Active makes the factory the board's configuration; these settings become read-only here."
               value={draft.factory.mode}
               options={factoryModeOptions(draft.factory.mode).map((value) => ({
                 value,
@@ -294,6 +304,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
                 key={project.id}
                 project={project}
                 settings={draft}
+                locked={owned}
                 onChange={handleProjectChange}
               />
             ))
@@ -317,13 +328,18 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
   );
 }
 
+// CUSTOM(factory)
+const FACTORY_OWNED_HINT = "Comes from the factory (pm/worker.md, factory.yaml, projects/*.yaml)";
+
 function ProjectCard({
   project,
   settings,
+  locked,
   onChange,
 }: {
   project: AssistantProject;
   settings: AssistantSettings;
+  locked: boolean; // CUSTOM(factory)
   onChange: (update: (settings: AssistantSettings) => AssistantSettings) => void;
 }) {
   const policy = settings.projects[project.id];
@@ -441,6 +457,7 @@ function ProjectCard({
         value={value}
         options={selectOptions}
         onValueChange={handleSelect}
+        disabled={locked}
       />
       <SettingsSelect
         label="Review"
@@ -451,7 +468,7 @@ function ProjectCard({
       />
       {policy ? (
         <SettingsRow label="Rule" hint="This project has its own rule.">
-          <Button variant="outline" size="sm" onPress={handleReset}>
+          <Button variant="outline" size="sm" onPress={handleReset} disabled={locked}>
             Reset to default
           </Button>
         </SettingsRow>
@@ -463,12 +480,14 @@ function ProjectCard({
             hint="Records what it would do, without doing it."
             value={policy.observe}
             onValueChange={handleObserve}
+            disabled={locked}
           />
           <SettingsInput
             label="Check command"
             hint="Runs in the task's worktree before merging; empty merges directly"
             initialValue={policy.verifyCommand}
             onChangeText={handleCheck}
+            disabled={locked}
             placeholder="npm run typecheck && npm run lint"
           />
           <SettingsSelect
@@ -480,13 +499,14 @@ function ProjectCard({
             }
             value={String(policy.autoFixes)}
             options={AUTO_FIX_OPTIONS}
-            disabled={!policy.verifyCommand.trim()}
+            disabled={locked || !policy.verifyCommand.trim()}
             onValueChange={handleFixes}
           />
           <SettingsInput
             label="Base branch"
             initialValue={policy.baseBranch}
             onChangeText={handleBase}
+            disabled={locked}
             placeholder="Current branch of the project"
           />
         </>
@@ -499,6 +519,7 @@ function ProjectCard({
             hint="The full suite a package runs once, by script. Empty uses the check command."
             initialValue={policy.tests.gateCommand}
             onChangeText={handleGateCommand}
+            disabled={locked}
             placeholder="npm test"
           />
           <SettingsInput
@@ -506,6 +527,7 @@ function ProjectCard({
             hint="Comma or newline separated names. A missing one fails the gate instead of letting suites skip."
             initialValue={policy.tests.gateRequiredEnv.join(", ")}
             onChangeText={handleRequiredEnv}
+            disabled={locked}
             placeholder="DATABASE_URL, REDIS_URL"
           />
           <SettingsRow label="Gate environment" hint="NAME=value per line, set for the gate run.">
@@ -513,6 +535,7 @@ function ProjectCard({
               accessibilityLabel="Gate environment"
               value={formatEnv(policy.tests.gateEnv)}
               onChangeText={handleGateEnv}
+              disabled={locked}
               placeholder="TH_SERVER_TEST_REQUIRE_DB=1"
             />
           </SettingsRow>
@@ -521,6 +544,7 @@ function ProjectCard({
             hint="Globs that raise a ticket's diff to the gate level. Comma or newline separated."
             initialValue={policy.tests.gateRiskPaths.join(", ")}
             onChangeText={handleRiskPaths}
+            disabled={locked}
             placeholder="**/migrations/**, **/auth/**"
           />
           <SettingsSelect
@@ -532,6 +556,7 @@ function ProjectCard({
               label: GATE_RUN_IN_LABELS[option],
             }))}
             onValueChange={handleRunIn}
+            disabled={locked}
           />
         </>
       ) : null}

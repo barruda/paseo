@@ -1,12 +1,20 @@
-// CUSTOM(factory): shadow mode's line (docs/factory.md, ticket 7): the difference count, and the
-// factory's errors while it is invalid. The board shows it under the toolbar and the Orchestrators
-// tab under its intro. Nothing renders while the factory mode is off.
+// CUSTOM(factory): the factory's line (docs/factory.md, tickets 7 and 9). Shadow mode shows the
+// difference count; active mode shows the loaded revision (the count compares against the ignored
+// JSON, so it is not shown). Both show the factory's errors while it is invalid. The board shows it
+// under the toolbar and the Orchestrators tab under its intro. Nothing renders while the mode is off.
 import { StyleSheet, Text, View } from "react-native";
 import type { PluginSurfaceProps } from "@getpaseo/plugin/client";
 import type { FactorySummary } from "../shared/factory/status";
 import type { strings } from "./strings";
 
 type Strings = ReturnType<typeof strings>["factory"];
+
+/** Active mode: the factory is the board's configuration and its fields are read only. */
+export function factoryOwnsConfig(
+  summary: FactorySummary | null | undefined,
+): boolean {
+  return summary?.mode === "active";
+}
 
 export function factoryLines(
   summary: FactorySummary | null | undefined,
@@ -15,7 +23,11 @@ export function factoryLines(
   if (!summary) return null;
   const status =
     summary.differences !== null
-      ? t.differences.replace("{count}", String(summary.differences))
+      ? summary.mode === "active"
+        ? summary.revision
+          ? t.active.replace("{revision}", summary.revision.slice(0, 7))
+          : t.activeNoRevision
+        : t.differences.replace("{count}", String(summary.differences))
       : summary.loading
         ? t.loading
         : t.invalid;

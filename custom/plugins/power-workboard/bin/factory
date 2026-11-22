@@ -5,8 +5,10 @@
 #   factory schema [dir]     write <dir>/.schema/*.json for editor completion
 #   factory export <dir> [--data <file>] [--profiles <dir>] [--projects <file>]
 #                            write a new factory from the board data, git init and commit
+#   factory memory <dir> [--profiles <dir>]
+#                            copy the profiles' memory into the factory (the cutover)
 #
-# validate and schema default to $PASEO_HOME/factory (~/.paseo/factory); export needs its <dir>.
+# validate and schema default to $PASEO_HOME/factory (~/.paseo/factory); export and memory need their <dir>.
 # Runs the plugin's TypeScript through the Paseo checkout's tsx.
 set -euo pipefail
 

@@ -12,6 +12,7 @@ interface SettingsTextAreaProps {
   placeholder?: string;
   testID?: string;
   style?: StyleProp<TextStyle>;
+  disabled?: boolean; // CUSTOM(factory)
 }
 
 export function SettingsTextArea({
@@ -21,6 +22,7 @@ export function SettingsTextArea({
   placeholder,
   testID,
   style,
+  disabled,
 }: SettingsTextAreaProps) {
   const { theme } = useUnistyles();
   const inputStyle = useMemo(() => [styles.input, style], [style]);
@@ -30,6 +32,7 @@ export function SettingsTextArea({
       testID={testID}
       accessibilityLabel={accessibilityLabel}
       multiline
+      editable={!disabled}
       initialValue={value}
       onChangeText={onChangeText}
       placeholder={placeholder}
