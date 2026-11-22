@@ -327,7 +327,9 @@ export default function contribute(server: PluginServerContext) {
     // applies now and leaving active mode answers with the JSON's values.
     return ready().setAssistantSettings(input.settings);
   });
-  // CUSTOM(factory): the Pipelines tab, read only.
+  // CUSTOM(factory): the Pipelines tab, read only. Off mode shows the legacy `reviews` map as the
+  // projects' pipelines (COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the
+  // factory cutover).
   server.handle(factoryPipelinesRpc, () => {
     const applied = factory.applied();
     return applied

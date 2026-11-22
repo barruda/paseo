@@ -15,8 +15,12 @@ import {
 } from "../client/pipeline-layout";
 import {
   BUILTIN_PIPELINES,
-  builtinPipelineFor,
+  legacyPipelineFor,
 } from "../shared/factory/builtin-pipelines";
+import {
+  BUILTIN_SPEC_PROMPT,
+  BUILTIN_SPEC_TEMPLATE,
+} from "../shared/factory/builtin-spec";
 import {
   pipelineFileSchema,
   type PipelineFile,
@@ -74,6 +78,16 @@ describe("built-in pipelines", () => {
     },
   );
 
+  it("the spec prompt and template constants equal their files", async () => {
+    const dir = builtinFactoryDir();
+    expect(BUILTIN_SPEC_PROMPT).toBe(
+      await readFile(path.join(dir, "roles", "spec.md"), "utf8"),
+    );
+    expect(BUILTIN_SPEC_TEMPLATE).toBe(
+      await readFile(path.join(dir, "templates", "spec.md"), "utf8"),
+    );
+  });
+
   it("has a constant for every YAML file", async () => {
     const { readdir } = await import("node:fs/promises");
     const files = await readdir(path.join(builtinFactoryDir(), "pipelines"));
@@ -82,9 +96,13 @@ describe("built-in pipelines", () => {
     );
   });
 
-  it("maps the fresh-agent review policy to critical, the rest to default", () => {
-    expect(builtinPipelineFor("fresh-agent")).toBe("critical");
-    expect(builtinPipelineFor("self")).toBe("default");
+  // COMPAT(factory-pipelines): the legacy review map gives a project its pipeline.
+  it("maps the legacy fresh-agent review to critical, the rest to default", () => {
+    const settings = { reviews: { a: "fresh-agent", b: "self" } };
+    expect(legacyPipelineFor(settings, "a")).toBe("critical");
+    expect(legacyPipelineFor(settings, "b")).toBe("default");
+    expect(legacyPipelineFor(settings, "c")).toBe("default");
+    expect(legacyPipelineFor({}, "a")).toBe("default");
   });
 });
 

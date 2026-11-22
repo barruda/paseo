@@ -13,6 +13,7 @@ import {
 } from "../server/assistant/chat";
 import { Store } from "../server/store";
 import { settingsSchema } from "../shared/model";
+import { pmCardSchema } from "../shared/pm-board";
 import { fixture, workspace } from "./fixtures";
 
 const project = {
@@ -640,39 +641,100 @@ it("board_get_task shows the worktree, branch, base, commits ahead and the diffs
   }
 });
 
-// CUSTOM(assistant-review-policy)
-it("review policies are saved, loaded back and shown per project in board_overview", async () => {
+// COMPAT(factory-pipelines): the review policy is gone; the stored map stays as a read-only legacy value.
+it("board_overview shows the pipeline per project, critical for a legacy fresh-agent project", async () => {
   const c = await chat();
   try {
-    const initial = c.board.assistantSettings().settings;
-    expect(initial.reviews).toMatchObject({
-      prj_1b497e9066c32377: "fresh-agent",
-      prj_dc85fecbbf8a290e: "fresh-agent",
-    });
+    expect(c.board.assistantSettings().settings.reviews).toBeUndefined();
     let overview = (await c.run("board_overview")).text!;
-    expect(overview).toContain("- p | Project | git | /fixture | review: self");
     expect(overview).toContain(
-      "review per project: prj_1b497e9066c32377=fresh-agent, prj_dc85fecbbf8a290e=fresh-agent, the rest self",
+      "- p | Project | git | /fixture | pipeline: default",
     );
+    expect(overview).not.toContain("review per project");
 
+    await c.store.update((data) => {
+      data.assistant.settings.reviews = { p: "fresh-agent" };
+    });
+    overview = (await c.run("board_overview")).text!;
+    expect(overview).toContain(
+      "- p | Project | git | /fixture | pipeline: critical",
+    );
+    expect(overview).not.toContain("review fresh-agent");
+  } finally {
+    c.board.dispose();
+  }
+});
+
+// COMPAT(factory-pipelines): a card stored with the old reason reads as critical-merge.
+it("pm_card_create accepts the old reason fresh-agent and stores critical-merge; a stored card reads it that way", async () => {
+  const c = await chat();
+  try {
+    await c.store.update((data) => {
+      data.assistant.settings.reviews = { p: "fresh-agent" };
+    });
+    const task = await create(c);
+    const created = await c.run("pm_card_create", {
+      kind: "proposal",
+      title: "Merge DreamMMO?",
+      taskIds: [task.taskId],
+      question: "Merge it?",
+      options: [{ id: "a", label: "Yes" }],
+      recommend: "a",
+      userOnlyReason: "fresh-agent",
+    });
+    expect(created.text).toContain("Created PM card");
+    expect(created.isError).toBeUndefined();
+    const id = /Created PM card (pm-[0-9a-f]{8})/.exec(created.text ?? "")![1];
+    expect(c.board.pmCards().find((card) => card.id === id)).toMatchObject({
+      userOnlyReason: "critical-merge",
+    });
+    const stored = pmCardSchema.parse({
+      ...c.board.pmCards().find((card) => card.id === id),
+      userOnlyReason: "fresh-agent",
+    });
+    expect(stored.userOnlyReason).toBe("critical-merge");
+    expect(() =>
+      pmCardSchema.parse({ ...stored, userOnlyReason: "nope" }),
+    ).toThrow();
+  } finally {
+    c.board.dispose();
+  }
+});
+
+it("setAssistantSettings without reviews keeps the stored legacy map and ignores an incoming one", async () => {
+  const c = await chat();
+  try {
+    await c.store.update((data) => {
+      data.assistant.settings.reviews = { p: "fresh-agent" };
+    });
+    const current = c.board.assistantSettings().settings;
+    const { reviews: _reviews, ...withoutReviews } = current;
+    await c.board.setAssistantSettings(withoutReviews);
+    expect(c.store.current.assistant.settings.reviews).toEqual({
+      p: "fresh-agent",
+    });
     await c.board.setAssistantSettings({
-      ...initial,
-      reviews: { p: "fresh-agent", prj_1b497e9066c32377: "self" },
+      ...withoutReviews,
+      reviews: { p: "self", other: "fresh-agent" },
+    });
+    expect(c.store.current.assistant.settings.reviews).toEqual({
+      p: "fresh-agent",
     });
     const reloaded = new Store(c.backing);
     await reloaded.load();
     expect(reloaded.current.assistant.settings.reviews).toEqual({
       p: "fresh-agent",
-      prj_1b497e9066c32377: "self",
     });
+  } finally {
+    c.board.dispose();
+  }
+});
 
-    overview = (await c.run("board_overview")).text!;
-    expect(overview).toContain(
-      "- p | Project | git | /fixture | review: fresh-agent",
-    );
-    expect(overview).toContain(
-      "review per project: Project (p)=fresh-agent, the rest self",
-    );
+it("setAssistantSettings writes no reviews key when none is stored", async () => {
+  const c = await chat();
+  try {
+    await c.board.setAssistantSettings(c.board.assistantSettings().settings);
+    expect("reviews" in c.store.current.assistant.settings).toBe(false);
   } finally {
     c.board.dispose();
   }
@@ -748,10 +810,9 @@ it("board_set_project_policy creates a policy from the default action and update
       verifyCommand: "npm test",
       autoFixes: 2,
       observe: true,
-      review: "fresh-agent",
     });
     expect(updated.text).toContain("action merge (observe)");
-    expect(updated.text).toContain("review fresh-agent");
+    expect(updated.text).toContain("pipeline default");
     expect(c.store.current.assistant.settings.projects.p).toEqual({
       action: "merge",
       observe: true,
@@ -773,47 +834,22 @@ it("board_set_project_policy creates a policy from the default action and update
         gateRunIn: "worktree",
       },
     });
-    expect(c.store.current.assistant.settings.reviews.p).toBe("fresh-agent");
   } finally {
     c.board.dispose();
   }
 });
 
-it("board_set_project_policy refuses fresh-agent to self, and unknown projects list the valid ones", async () => {
+it("board_set_project_policy lists the valid projects for an unknown one and writes no policy when nothing changes", async () => {
   const c = await chat();
   try {
-    await c.run("board_set_project_policy", {
-      project: "p",
-      review: "fresh-agent",
-    });
-    const refused = await c.run("board_set_project_policy", {
-      project: "p",
-      review: "self",
-      action: "merge",
-    });
-    expect(refused.isError).toBe(true);
-    expect(refused.text).toContain("only the user changes that, in Settings");
-    expect(c.store.current.assistant.settings.reviews.p).toBe("fresh-agent");
+    const noop = await c.run("board_set_project_policy", { project: "p" });
+    expect(noop.isError).toBeUndefined();
     expect(c.store.current.assistant.settings.projects.p).toBeUndefined();
     const unknown = await c.run("board_set_project_policy", {
       project: "nope",
     });
     expect(unknown.isError).toBe(true);
     expect(unknown.text).toContain("p (Project)");
-    // self to fresh-agent and self to self are allowed.
-    const c2 = await chat();
-    try {
-      expect(
-        (
-          await c2.run("board_set_project_policy", {
-            project: "p",
-            review: "self",
-          })
-        ).isError,
-      ).toBeUndefined();
-    } finally {
-      c2.board.dispose();
-    }
   } finally {
     c.board.dispose();
   }

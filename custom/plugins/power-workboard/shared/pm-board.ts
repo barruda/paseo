@@ -2,7 +2,7 @@
 // between the user and the PM live here, apart from the task board. A card here never starts an
 // agent or a workspace: code tasks and code reviews stay on the task board.
 import { z } from "zod";
-import { userOnlyReasonSchema, type UserOnlyReason } from "./autonomy";
+import { storedUserOnlyReasonSchema, type UserOnlyReason } from "./autonomy";
 import { taskNumberLabel } from "./task-reference";
 
 export const PM_CARD_KINDS = [
@@ -94,7 +94,9 @@ export const pmCardSchema = z.object({
    * CUSTOM(factory): why a proposal is the user's, from the project's autonomy preset
    * (shared/autonomy.ts); null when the PM gave none.
    */
-  userOnlyReason: userOnlyReasonSchema.nullable().default(null),
+  // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+  // Cards stored before the rename say `fresh-agent`; they read as `critical-merge`.
+  userOnlyReason: storedUserOnlyReasonSchema.nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

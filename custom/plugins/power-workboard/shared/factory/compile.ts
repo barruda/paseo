@@ -102,7 +102,7 @@ export type CompiledFactory = {
   settings: Settings;
   /** `data.night`. */
   night: NightSettings;
-  /** The config fields of `data.assistant.settings`; `reviews` belongs to the pipelines (ticket 13). */
+  /** The config fields of `data.assistant.settings`; a project's pipeline comes from its project file; the legacy `reviews` map is not compiled. */
   assistant: {
     enabled: boolean;
     defaultAction: z.infer<typeof assistantDefaultActionSchema>;

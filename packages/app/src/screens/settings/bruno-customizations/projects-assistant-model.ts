@@ -44,13 +44,6 @@ export const projectPolicySchema = z.object({
 });
 export type ProjectPolicy = z.infer<typeof projectPolicySchema>;
 
-// CUSTOM(assistant-review-policy): who reviews a project's finished task. A project without an
-// entry is `self`. The plugin seeds DreamMMO and DreamMMO-android as `fresh-agent` when its stored
-// settings have no `reviews`, so its responses always carry the field.
-export const REVIEW_POLICIES = ["self", "fresh-agent"] as const;
-const reviewPolicySchema = z.enum(REVIEW_POLICIES);
-export type ReviewPolicy = z.infer<typeof reviewPolicySchema>;
-
 // CUSTOM(agent-profiles): mirrors skillSelectionSchema in the plugin's shared/profiles.ts.
 export const skillSelectionSchema = z.object({
   mode: z.enum(["all", "selected"]).default("all"),
@@ -112,7 +105,8 @@ export const assistantSettingsSchema = z.object({
   enabled: z.boolean().default(true),
   defaultAction: defaultActionSchema.default("review"),
   projects: z.record(z.string(), projectPolicySchema).default({}),
-  reviews: z.record(z.string(), reviewPolicySchema).default({}),
+  // CUSTOM(factory): no `reviews`. The review policy became the project's pipeline (`critical` or
+  // `default`, edited in the factory); the plugin keeps its stored legacy map when this page saves.
   chat: assistantChatSettingsSchema.default(() => assistantChatSettingsSchema.parse({})),
   factory: factorySettingsSchema.default(() => factorySettingsSchema.parse({})),
 });
@@ -140,11 +134,6 @@ export const ACTION_LABELS: Record<AssistantAction, string> = {
   "prepare-pr": "Prepare PR",
   notify: "Tell me",
   nothing: "Nothing",
-};
-
-export const REVIEW_LABELS: Record<ReviewPolicy, string> = {
-  self: "The assistant",
-  "fresh-agent": "A fresh agent",
 };
 
 export const MAX_AUTO_FIXES = 3;
@@ -247,22 +236,6 @@ export function resetProjectPolicy(
   const projects = { ...settings.projects };
   delete projects[projectId];
   return { ...settings, projects };
-}
-
-export function projectReview(settings: AssistantSettings, projectId: string): ReviewPolicy {
-  return settings.reviews[projectId] ?? "self";
-}
-
-/** Kept apart from the project's rule: setting the review never gives a project its own action. */
-export function setProjectReview(
-  settings: AssistantSettings,
-  projectId: string,
-  review: ReviewPolicy,
-): AssistantSettings {
-  const reviews = { ...settings.reviews };
-  if (review === "self") delete reviews[projectId];
-  else reviews[projectId] = review;
-  return { ...settings, reviews };
 }
 
 /**

@@ -7187,6 +7187,9 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 
 ## assistant-review-policy: who reviews each project's tasks is a Projects Assistant setting
 
+- **Removed:** 2026-11-22 by [factory-review-policy-refine](#factory-review-policy-refine-pipelines-replace-the-review-policy-and-refine-runs-the-spec-stage):
+  the project's pipeline (`critical` or `default`) replaces the policy. What follows is history;
+  only the stored map survives, read only, until the factory cutover.
 - **Added:** 2026-11-17
 - **Commit:** `custom: Projects Assistant review policy per project (self or fresh-agent)`
 - **Why:** The rule "DreamMMO and DreamMMO-android get a fresh agent's review, the assistant
@@ -10697,3 +10700,54 @@ tests/pipeline-engine.test.ts` (both in the plugin suite of the update script). 
   **Pipelines** → a project with running tasks shows a number on the node of each task's stage
   and "N waiting" on a stage whose gate is open; click the node, then a task in the panel, and its
   ticket opens beside the board.
+
+## factory-review-policy-refine: pipelines replace the review policy, and Refine runs the spec stage
+
+- **Added:** 2026-11-22
+- **Commit:** `custom: factory pipelines replace the review policy and Refine runs the spec stage`
+- **Why:** Ticket 13 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "pipelines/<id>.yaml" and "Autonomy presets"): a project's pipeline (`critical` or `default`)
+  says what the review policy said, and the separate refinement flow becomes the spec stage run
+  with the user.
+- **What:**
+  - Review policy removed: `REVIEW_POLICIES`, `SEEDED_REVIEW_POLICIES`, `reviewPolicyFor`, the
+    `review` input of `board_set_project_policy` and the Review select in Settings. The stored map
+    `assistant.settings.reviews` stays as a read-only legacy field (`COMPAT(factory-pipelines)`):
+    `legacyPipelineFor` (`shared/factory/builtin-pipelines.ts`) maps `fresh-agent` to `critical`
+    for the export and, outside active mode, for `Workboard.projectPipelineId`, so DreamMMO and
+    DreamMMO-android stay critical until the cutover. A settings save keeps the stored map.
+  - `criticalProject` reads only the project's pipeline; board_overview and each Needs you line
+    say `pipeline: <id>` instead of `review: …`; `CHAT_RULES` sizes the review by pipeline and the
+    autonomy line.
+  - Autonomy reason `fresh-agent` renamed `critical-merge`; `storedUserOnlyReasonSchema` reads the
+    old name from stored PM cards and from `pm_card_create` / `board_pipeline_ask`
+    (`COMPAT(factory-pipelines)`).
+  - Export: `pm/worker.md` gets `autonomy: standard`, no project gets an override. With DreamMMO =
+    fresh-agent and paseo = self: DreamMMO is `critical` (merge ok is the user's), paseo `default`
+    (merge is the PM's).
+  - Refine: `refineStage` in `server/workboard.ts` gives the chat the project's first `spec` stage
+    (stage prompt + spec template, on that stage's worker) in active mode; the factory's
+    `roles/spec.md` and template when the pipeline has none; the built-in ones
+    (`shared/factory/builtin-spec.ts`, kept equal to `server/factory/builtin/` by a test) off
+    active mode. `specChatPrompt` replaces `refinementPrompt`; `/write-ticket` asks for the spec
+    with every template section. `data.refinements` and the chat label stay.
+- **Core files touched:** `packages/app/src/screens/settings/bruno-customizations/projects-assistant-model.ts`
+  (no `reviews`, no `projectReview`/`setProjectReview`), `projects-assistant-page.tsx` (Review
+  select removed, Factory hint), `projects-assistant-model.test.ts`.
+- **Plugin files:** `shared/assistant.ts`, `shared/autonomy.ts`, `shared/pm-board.ts`,
+  `shared/rpc.ts`, `shared/factory/{builtin-pipelines,builtin-spec,active,compile}.ts`,
+  `server/workboard.ts`, `server/orchestrator.ts`, `server/assistant/chat.ts`,
+  `server/factory/export.ts`, `index.server.ts`, `index.client.tsx`, `client/strings.ts`, README,
+  `docs/factory.md`, `docs/pm-board.md` and the tests listed under Verify.
+- **Re-apply:** plugin code needs nothing on an upstream update. In the app, drop `reviews` from
+  the settings mirror again if an update brings it back. After the cutover, delete every
+  `rg "COMPAT\(factory-pipelines\)"` site.
+- **Verify:** in `custom/plugins/power-workboard`, `npx vitest run <file>` for
+  `tests/factory-export.test.ts`, `tests/pipeline-engine.test.ts`, `tests/power-workboard.test.ts`,
+  `tests/assistant-chat.test.ts`, `tests/assistant-engine.test.ts` and
+  `tests/pipeline-layout.test.ts` (plugin suite), and
+  `(cd packages/app && npx vitest run src/screens/settings/bruno-customizations/projects-assistant-model.test.ts)`.
+  Needs a `plugin reload` and an app build. In the app: Settings > Bruno's Customizations >
+  Project Manager has no Review select on project cards; a draft's Refine opens a chat whose first
+  message has "## Pipeline stage: spec (spec)" and the spec template; `/write-ticket` writes a
+  spec into the ticket; `board_overview` says `pipeline: critical` on DreamMMO.

@@ -205,26 +205,34 @@ export function stageRunPrompt(
     .join("\n\n");
 }
 
-/** The first message of a refinement chat. */
-export function refinementPrompt(task: Ticket, instructions: string): string {
+/**
+ * CUSTOM(factory): the first message of a refinement chat. Refine runs the project's spec stage
+ * interactively; `stageText` is that stage's section (its procedure and the spec template).
+ */
+export function specChatPrompt(
+  task: Ticket,
+  instructions: string,
+  stageText: string,
+): string {
   return [
     instructions.trim(),
-    "You are refining a task from the Workboard before another agent executes it. Do not change files or run anything that changes state: read the code, ask the user questions and propose an approach. Keep answers short. When the user is satisfied they run /write-ticket, and you will write the final ticket.",
+    "You are running this task's spec stage interactively, in a chat with the user, before the task starts. Do not change files, create a branch, commit or run anything that changes state: read the code and ask questions. Follow the stage procedure below, ask the user the choices that are theirs instead of leaving them open, and skip the `<report>`. Keep answers short. When the user is satisfied they run /write-ticket, and you write the spec into the ticket.",
     `# ${task.title}`,
     task.body.trim(),
     "---",
+    stageText.trim(),
     "Start by reading what is relevant, then ask your most important questions.",
   ]
     .filter(Boolean)
     .join("\n\n");
 }
 
-/** The message `/write-ticket` sends to the refinement chat. */
+/** The message `/write-ticket` sends to the spec chat. */
 export function writeTicketPrompt(focus: string): string {
   return [
-    "/write-ticket: close the refinement now and write the final ticket for this task.",
+    "/write-ticket: close the spec stage now and write the final ticket for this task.",
     focus.trim() ? `Focus on: ${focus.trim()}` : "",
-    "Reply with only the ticket between <ticket> and </ticket>. Its first line is `# <short title>`, then the body in Markdown: goal, context, what to do, acceptance criteria and what is out of scope. Write it for an agent that will execute it alone, without this chat. Use the language of the original task.",
+    "Reply with only the ticket between <ticket> and </ticket>. Its first line is `# <short title>`, then the spec in Markdown with every section of the spec template. Write it for an agent that will execute it alone, without this chat. Use the language of the original task.",
   ]
     .filter(Boolean)
     .join("\n\n");

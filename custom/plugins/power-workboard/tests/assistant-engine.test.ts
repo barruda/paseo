@@ -3,10 +3,8 @@ import { Workboard, type AssistantOptions } from "../server/workboard";
 import {
   CHAT_HISTORY_TASK_ID, // CUSTOM(assistant-compact)
   DEFAULT_COMPACT_AT_TOKENS, // CUSTOM(assistant-compact)
-  SEEDED_REVIEW_POLICIES,
   assistantDataSchema,
   assistantSettingsSchema,
-  reviewPolicyFor,
   type HistoryEvent,
 } from "../shared/assistant";
 import {
@@ -14,6 +12,7 @@ import {
   orchestratorConfigSchema,
   type Data,
 } from "../shared/model";
+import { legacyPipelineFor } from "../shared/factory/builtin-pipelines"; // CUSTOM(factory)
 import { fixture } from "./fixtures";
 import { buildOverview } from "../server/assistant/views"; // CUSTOM(task-checkpoints)
 import { COMPACT_QUESTION } from "../server/assistant/compact"; // CUSTOM(assistant-compact)
@@ -899,10 +898,10 @@ it("two tasks that need the user are told in one prompt, and the batch is record
       ),
     ).toBe(true);
     expect(text).toContain(
-      `${s.taskId} | Task | Project | blocked | review: self`,
+      `${s.taskId} | Task | Project | blocked | pipeline: default`,
     );
     expect(text).toContain(`${second} | Second | `);
-    expect(text).toContain("failed: It broke badly | review: self");
+    expect(text).toContain("failed: It broke badly | pipeline: default");
     expect(text).toContain("Handle each one as your instructions say");
     expect(text).toContain("(or that nothing is).");
     expect(text).not.toContain("Do not merge or mark done.");
@@ -1326,27 +1325,23 @@ it("assistant settings stored without the field wake the chat", () => {
   ).toMatchObject({ wakeOnNeedsYou: true });
 });
 
-// CUSTOM(assistant-review-policy)
-it("assistant settings stored without reviews get DreamMMO and DreamMMO-android as fresh-agent", () => {
+// COMPAT(factory-pipelines): the review policy is gone; the stored map is a read-only legacy value.
+it("assistant settings stored without reviews have none: nothing seeds the legacy map", () => {
   const settings = assistantDataSchema.parse({ settings: {} }).settings;
-  expect(settings.reviews).toEqual({
-    prj_1b497e9066c32377: "fresh-agent",
-    prj_dc85fecbbf8a290e: "fresh-agent",
-  });
-  expect(SEEDED_REVIEW_POLICIES).toEqual(settings.reviews);
-  expect(reviewPolicyFor(settings, "prj_1b497e9066c32377")).toBe("fresh-agent");
-  expect(reviewPolicyFor(settings, "prj_dc85fecbbf8a290e")).toBe("fresh-agent");
-  // Any other project, and a task without one, defaults to self.
-  expect(reviewPolicyFor(settings, "prj_other")).toBe("self");
-  expect(reviewPolicyFor(settings, null)).toBe("self");
+  expect(settings.reviews).toBeUndefined();
+  expect("reviews" in settings).toBe(false);
+  expect(legacyPipelineFor(settings, "prj_1b497e9066c32377")).toBe("default");
 });
 
-it("saved review policies are kept as they are, without the seed coming back", () => {
+it("a stored legacy review map round-trips and maps fresh-agent to critical", () => {
+  const stored = { prj_1b497e9066c32377: "fresh-agent", prj_other: "self" };
   const settings = assistantDataSchema.parse({
-    settings: { reviews: { prj_1b497e9066c32377: "self" } },
+    settings: { reviews: stored },
   }).settings;
-  expect(settings.reviews).toEqual({ prj_1b497e9066c32377: "self" });
-  expect(reviewPolicyFor(settings, "prj_dc85fecbbf8a290e")).toBe("self");
+  expect(settings.reviews).toEqual(stored);
+  expect(legacyPipelineFor(settings, "prj_1b497e9066c32377")).toBe("critical");
+  expect(legacyPipelineFor(settings, "prj_other")).toBe("default");
+  expect(legacyPipelineFor(settings, null)).toBe("default");
   expect(() =>
     assistantDataSchema.parse({ settings: { reviews: { p: "someone" } } }),
   ).toThrow();
@@ -1492,18 +1487,18 @@ it("a task in a project with no rule follows the default action, which is review
   }
 });
 
-it("a review task wakes the assistant with the review policy of its project", async () => {
+it("a review task wakes the assistant with the pipeline of its project", async () => {
   const s = await wake();
   try {
     await s.store.update((data) => {
-      data.assistant.settings.reviews.p = "fresh-agent";
+      data.assistant.settings.reviews = { p: "fresh-agent" }; // COMPAT(factory-pipelines)
     });
     s.reply(report());
     await s.finishTurn();
     await vi.waitFor(() => expect(s.sent()).toHaveLength(1));
     const text = s.sent()[0]![1];
     expect(text).toContain(
-      `${s.taskId} | Task | Project | review | review: fresh-agent`,
+      `${s.taskId} | Task | Project | review | pipeline: critical`,
     );
     expect(text).toContain("review and merge-now (reason review)");
     // CUSTOM(factory): ticket 12. The project's preset says whose merge it is.

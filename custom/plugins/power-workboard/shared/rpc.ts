@@ -39,7 +39,7 @@ export const snapshotRpc = defineRpc({
   output: boardSchema,
 });
 // CUSTOM(factory): the Pipelines tab's source: the loaded factory in active mode, otherwise the
-// built-in pipelines with each project's from its review policy.
+// built-in pipelines with the pipeline each project gets from the legacy review map (COMPAT(factory-pipelines)).
 export const factoryPipelinesRpc = defineRpc({
   name: "workboard.factory.pipelines.get",
   input: z.object({}),

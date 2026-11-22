@@ -113,7 +113,6 @@ import {
   type NeedsYouReason,
   type ProjectPolicy,
   type AssistantSettings,
-  reviewPolicyFor,
   // CUSTOM(task-checkpoints)
   CHECKPOINT_LOG_LIMIT,
   STALL_LIMIT,
@@ -196,6 +195,11 @@ import {
   type ColumnMove,
 } from "../shared/factory/active";
 import type { FactoryMode } from "../shared/factory/status";
+import { legacyPipelineFor } from "../shared/factory/builtin-pipelines"; // CUSTOM(factory)
+import {
+  BUILTIN_SPEC_PROMPT,
+  BUILTIN_SPEC_TEMPLATE,
+} from "../shared/factory/builtin-spec"; // CUSTOM(factory)
 import {
   PIPELINE_CHOICE_RULE,
   autonomyForProject,
@@ -236,7 +240,7 @@ import {
   type Ticket, // CUSTOM(task-description-files)
   parseTicket,
   pullRequestPrompt,
-  refinementPrompt,
+  specChatPrompt,
   stageRunPrompt, // CUSTOM(factory)
   usageLimitResumePrompt, // CUSTOM(usage-limit)
   writeTicketPrompt,
@@ -2484,17 +2488,24 @@ export class Workboard {
     );
     if (!project) throw new Error("Choose a project for this task");
     const defaults = this.store.current.orchestrator;
-    // The chat uses the agent of the task's orchestrator, but always in the refinement mode.
+    // CUSTOM(factory): Refine runs the project's spec stage. The chat uses the settings of the
+    // worker that runs that stage; else the task's orchestrator, else the defaults. It is always
+    // in the refinement mode.
+    const stage = await this.refineStage(task);
     const settings =
       this.store.current.orchestrators.find(
-        (o) => o.id === task.orchestratorId,
+        (o) => o.id === (stage.orchestratorId ?? task.orchestratorId),
       ) ?? defaults;
     const agentId = await this.host.startAgentIn(project.directory, {
       provider: settings.provider,
       modeId: defaults.refineModeId,
       thinkingOptionId: settings.thinkingOptionId,
       title: refinementChatTitle(task.title),
-      prompt: refinementPrompt(this.ticket(task), settings.instructions),
+      prompt: specChatPrompt(
+        this.ticket(task),
+        settings.instructions,
+        stage.text,
+      ),
       labels: { [REFINEMENT_CHAT_LABEL]: "true" }, // CUSTOM(sidebar-agent-tabs)
       // CUSTOM(unattended-automation)
       unattended: true, // refinement chats have no form: full access
@@ -2504,6 +2515,75 @@ export class Workboard {
       status: "chatting",
       error: null,
     });
+  }
+  /**
+   * CUSTOM(factory): the spec stage Refine runs, as the text its chat gets and the worker that
+   * runs it. Active mode: the first `spec` stage of the project's pipeline, with its worker; a
+   * pipeline with no spec stage gets the factory's `roles/spec.md` and the project's spec template.
+   * Off mode: the built-in ones. No worker means the task's orchestrator, else the defaults.
+   */
+  private async refineStage(
+    task: Task,
+  ): Promise<{ text: string; orchestratorId: string | null }> {
+    const entry = this.projectPipeline(task.projectId);
+    const stage =
+      entry &&
+      Object.values(entry.pipeline.stages).find((s) => s.role === "spec");
+    if (entry && stage) {
+      const runner = this.stageOrchestrator(
+        entry.applied,
+        stage,
+        task.projectId,
+        this.store.current,
+      );
+      const chosen =
+        !!task.orchestratorId &&
+        this.store.current.orchestrators.some(
+          (o) => o.id === task.orchestratorId,
+        );
+      return {
+        text: await this.stagePrompt(
+          entry.applied,
+          entry.pipeline,
+          stage,
+          task.projectId,
+        ),
+        orchestratorId:
+          !runner || (runner.fallback && chosen && !stage.worker)
+            ? null
+            : runner.id,
+      };
+    }
+    let prompt = BUILTIN_SPEC_PROMPT;
+    let template = BUILTIN_SPEC_TEMPLATE;
+    if (entry) {
+      const project = entry.applied.compiled.projects.find(
+        (p) => p.projectId === task.projectId,
+      );
+      prompt =
+        (
+          await readFile(
+            join(entry.applied.root, "roles/spec.md"),
+            "utf8",
+          ).catch(() => "")
+        ).trim() || prompt;
+      template =
+        (await readFile(
+          join(
+            entry.applied.root,
+            project?.specTemplate ?? "templates/spec.md",
+          ),
+          "utf8",
+        ).catch(() => null)) || template;
+    }
+    return {
+      text: [
+        "## Pipeline stage: spec (spec)",
+        prompt.trim(),
+        `### Spec template\n\n${template.trim()}`,
+      ].join("\n\n"),
+      orchestratorId: null,
+    };
   }
   private setRefinement(
     taskId: string,
@@ -3177,7 +3257,7 @@ export class Workboard {
       clean(task.title, 200),
       clean(project, 100),
       delivery.detail ? `${reason}: ${clean(delivery.detail, 300)}` : reason,
-      `review: ${reviewPolicyFor(this.store.current.assistant.settings, projectId)}`,
+      `pipeline: ${this.projectPipelineId(projectId)}`,
       this.autonomyRule(projectId), // CUSTOM(factory)
       `waiting since ${delivery.updatedAt} (${this.waitFor(delivery.updatedAt)})`,
       ...(task.number > 0 ? [`#${task.number}`] : []), // CUSTOM(task-numbers)
@@ -4266,15 +4346,25 @@ export class Workboard {
       : DEFAULT_AUTONOMY;
   }
   /**
-   * A critical project: its pipeline is `critical`, or its review policy is fresh-agent (ticket 13
-   * drops the review policy and keeps only the pipeline).
+   * The id of the project's pipeline. In active mode it is the applied factory's, whether or not
+   * the PM is on; otherwise the legacy review map gives `critical` or `default`.
    */
+  projectPipelineId(projectId: string | null): string {
+    const applied = this.factoryMode() === "active" && this.factoryApplied();
+    if (applied)
+      return (
+        pipelineForProject(applied.compiled, applied.defaultPipeline, projectId)
+          ?.id ??
+        applied.defaultPipeline ??
+        "default"
+      );
+    // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+    // Until the cutover the live board has no pipelines; the old review map keeps DreamMMO critical.
+    return legacyPipelineFor(this.store.current.assistant.settings, projectId);
+  }
+  /** A critical project: its pipeline is `critical`. */
   criticalProject(projectId: string | null): boolean {
-    return (
-      reviewPolicyFor(this.store.current.assistant.settings, projectId) ===
-        "fresh-agent" ||
-      this.projectPipeline(projectId)?.pipeline.id === "critical"
-    );
+    return this.projectPipelineId(projectId) === "critical";
   }
   /** Whether merging this project needs the user's ok, by its preset. */
   requiresUserMergeOk(projectId: string | null): boolean {
@@ -5680,7 +5770,14 @@ export class Workboard {
     await this.serial(() =>
       this.store.update(
         (data) => {
-          data.assistant.settings = settings;
+          // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+          // The page no longer sends `reviews`; the stored legacy map stays as it is (the export
+          // reads it), and an incoming one is ignored.
+          const { reviews: _incoming, ...rest } = settings;
+          const legacy = data.assistant.settings.reviews;
+          data.assistant.settings = legacy
+            ? { ...rest, reviews: legacy }
+            : rest;
           // CUSTOM(factory): the JSON's columns come back; tasks in a column only the factory has
           // move to the default one. The engine stops, so open gates close.
           if (leavingActive) {

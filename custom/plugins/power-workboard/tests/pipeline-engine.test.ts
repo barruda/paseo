@@ -645,6 +645,142 @@ Zeta works.
     expect(t.record().orchestratorId).toBe(zeta.id);
   });
 
+  // Refine runs the project's spec stage (ticket 13).
+  describe("Refine runs the spec stage", () => {
+    const draft = async (s: Booted) => {
+      await s.board.mutate({
+        action: "create",
+        title: "rough idea",
+        description: "make it faster",
+        projectId: "p",
+      });
+      return s.board.snapshot().cards.find((c) => c.title === "rough idea")!;
+    };
+    const refined = async (s: Booted) => {
+      const task = await draft(s);
+      const view = await s.board.mutate({ action: "refine", taskId: task.id });
+      expect(view.refinements[task.id]!.status).toBe("chatting");
+      const calls = (s.host.startAgentIn as any).mock.calls;
+      return { task, call: calls[calls.length - 1][1] };
+    };
+
+    it("a spec stage run by a spec worker: the chat starts on that worker's settings with the stage prompt and template", async () => {
+      const s = await bootWith(
+        `start: spec
+stages:
+  spec: { role: spec, prompt: Factory spec stage prompt., to: build }
+  build: { role: implement, prompt: Build it., to: deliver }
+`,
+        {
+          "templates/spec.md": "SPEC TEMPLATE\n",
+          "workers/speccer/worker.md": `---
+name: Speccer
+role: spec
+project: proj
+model: claude/claude-haiku-4-5
+thinking: low
+schedule: automatic
+---
+
+Spec worker.
+`,
+          "workers/speccer/task-prompt.md": "Spec worker task prompt.\n",
+        },
+      );
+      const { call, task } = await refined(s);
+      expect(call).toMatchObject({
+        provider: "claude/claude-haiku-4-5",
+        thinkingOptionId: "low",
+        modeId: s.store.current.orchestrator.refineModeId,
+        unattended: true,
+      });
+      expect(call.prompt).toContain("Spec worker task prompt.");
+      expect(call.prompt).toContain("## Pipeline stage: spec (spec)");
+      expect(call.prompt).toContain("Factory spec stage prompt.");
+      expect(call.prompt).toContain("### Spec template\n\nSPEC TEMPLATE");
+      expect(call.prompt).toContain("# rough idea\n\nmake it faster");
+      expect(call.prompt).toContain("/write-ticket");
+
+      // /write-ticket writes the reply into the draft.
+      const agentId = s.board.snapshot().refinements[task.id]!.agentId;
+      vi.mocked(s.host.runAgent).mockResolvedValue(
+        "<ticket>\n# The spec\n\n## Problem\nSlow.\n</ticket>",
+      );
+      await s.board.writeTicket(agentId, "");
+      expect(vi.mocked(s.host.runAgent).mock.calls[0]![1]).toContain(
+        "close the spec stage",
+      );
+      await vi.waitFor(() =>
+        expect(s.board.snapshot().refinements[task.id]!.status).toBe("written"),
+      );
+      const written = s.board
+        .snapshot()
+        .cards.find((card) => card.id === task.id)!;
+      expect(written.title).toBe("The spec");
+      expect(s.store.description(task.id)).toBe("## Problem\nSlow.");
+    });
+
+    it("a spec stage with no spec worker uses the task's orchestrator, else the defaults", async () => {
+      const s = await bootWith(
+        `start: spec
+stages:
+  spec: { role: spec, prompt: Factory spec stage prompt., to: build }
+  build: { role: implement, prompt: Build it., to: deliver }
+`,
+        {
+          "workers/zeta/worker.md": `---
+name: Zeta
+project: proj
+model: claude/claude-haiku-4-5
+schedule: automatic
+---
+
+Zeta works.
+`,
+        },
+      );
+      const zeta = s.store.current.orchestrators.find(
+        (o) => o.name === "Zeta",
+      )!;
+      const night = s.store.current.orchestrators.find(
+        (o) => o.id === LIVE_ID,
+      )!;
+      const plain = await refined(s);
+      // The fallback is the project's implement worker, which the draft's own choice replaces.
+      expect(plain.call.provider).toBe(night.provider);
+      expect(plain.call.prompt).toContain("Factory spec stage prompt.");
+      await s.store.update((data) => {
+        data.tasks.find((t) => t.id === plain.task.id)!.orchestratorId =
+          zeta.id;
+        delete data.refinements[plain.task.id];
+      });
+      const chosen = await refined(s);
+      expect(chosen.call.provider).toBe(zeta.provider);
+    });
+
+    it("a pipeline with no spec stage gets the factory's roles/spec.md and the project's spec template", async () => {
+      const s = await bootWith(
+        `start: build
+stages:
+  build: { role: implement, prompt: Build it., to: deliver }
+`,
+        {
+          "roles/spec.md": "FACTORY SPEC ROLE\n",
+          "templates/spec.md": "FACTORY SPEC TEMPLATE\n",
+        },
+      );
+      const { call } = await refined(s);
+      expect(call.prompt).toContain("## Pipeline stage: spec (spec)");
+      expect(call.prompt).toContain("FACTORY SPEC ROLE");
+      expect(call.prompt).toContain(
+        "### Spec template\n\nFACTORY SPEC TEMPLATE",
+      );
+      expect(call.prompt).not.toContain("Build it.");
+      // No stage, no worker: the task's orchestrator, else the board's defaults.
+      expect(call.provider).toBe(s.store.current.orchestrator.provider);
+    });
+  });
+
   it("leaving active closes an open gate and archives its proposal; back in active the stage resumes", async () => {
     const s = await bootWith(`start: spec
 stages:
@@ -1001,12 +1137,12 @@ const USER_REASONS: Record<
   },
   standard: {
     flow: ["product", "irreversible"],
-    critical: ["fresh-agent", "product", "irreversible"],
+    critical: ["critical-merge", "product", "irreversible"],
   },
   cautious: {
     flow: ["merge", "data-migration", "product", "irreversible"],
     critical: [
-      "fresh-agent",
+      "critical-merge",
       "merge",
       "data-migration",
       "product",
@@ -1080,12 +1216,49 @@ describe("autonomy presets on the board", () => {
     expect(s.board.projectAutonomy("p")).toBe("standard");
     expect(s.board.requiresUserMergeOk("p")).toBe(false);
     expect(s.board.autonomyRule("p")).toContain("the merge is yours");
-    // The review policy fresh-agent makes it critical until ticket 13 removes it.
+    // COMPAT(factory-pipelines): in active mode only the pipeline counts; the legacy review map
+    // (still in the JSON) does not make a project critical.
     await s.store.update((data) => {
       data.assistant.settings.reviews = { p: "fresh-agent" };
     });
+    expect(s.board.requiresUserMergeOk("p")).toBe(false);
+    expect(s.board.projectPipelineId("p")).toBe("flow");
+  });
+
+  // COMPAT(factory-pipelines): the live PM's prompt may still say fresh-agent.
+  it("board_pipeline_ask and pm_card_create accept the old reason fresh-agent as critical-merge", async () => {
+    const s = await bootWith(ASK_PIPELINE, {}, "critical", "standard");
+    const taskId = await startTask(s);
+    await helpers(s, taskId).finish(done("Hard to tell"));
+    const tools = pipelineTools(() => s.board, {
+      append: async (entry: any) => entry,
+    } as any);
+    const ask = tools.find((tool) => tool.name === "board_pipeline_ask")!;
+    const asked = await ask.execute({
+      taskId,
+      question: "Build or drop?",
+      options: [{ stage: "build" }, { stage: "cancel" }],
+      reason: "fresh-agent",
+    });
+    expect(asked.isError).toBeUndefined();
+    const card = s.board
+      .pmCards()
+      .find((entry) => entry.userOnlyReason === "critical-merge");
+    expect(card).toBeDefined();
+    const created = await s.board.pmCardCreate({
+      kind: "proposal",
+      title: "Merge?",
+      links: { taskIds: [taskId], reportIds: [], packageIds: [] },
+      userOnlyReason: "critical-merge",
+    });
+    expect(created.userOnlyReason).toBe("critical-merge");
+  });
+
+  it("a project whose pipeline is critical is critical, and says so in projectPipelineId", async () => {
+    const s = await bootWith(ASK_PIPELINE, {}, "critical", "standard");
+    expect(s.board.projectPipelineId("p")).toBe("critical");
+    expect(s.board.criticalProject("p")).toBe(true);
     expect(s.board.requiresUserMergeOk("p")).toBe(true);
-    expect(s.board.autonomyRule("p")).toContain("the merge ok is the user's");
   });
 
   it("the Needs you line names the project's preset and who merges", async () => {

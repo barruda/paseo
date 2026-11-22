@@ -210,7 +210,7 @@ const zh = {
   },
   refine: "完善",
   refineOpen: "打开会话",
-  refineHint: "与 Agent 聊天完善任务；用 /write-ticket 写出工单",
+  refineHint: "与 Agent 聊天运行规格阶段；用 /write-ticket 把规格写入工单",
   refinementStatus: {
     chatting: "完善中 · 在会话里用 /write-ticket 结束",
     writing: "正在撰写工单…",
@@ -1056,7 +1056,7 @@ const en: typeof zh = {
   refine: "Refine",
   refineOpen: "Open chat",
   refineHint:
-    "Refine the task in a chat with an agent; /write-ticket [focus] closes it and writes the ticket",
+    "Run the spec stage in a chat with an agent; /write-ticket [focus] writes the spec into the ticket",
   refinementStatus: {
     chatting: "Refining · /write-ticket in the chat closes it",
     writing: "Writing the ticket…",

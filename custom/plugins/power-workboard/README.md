@@ -17,9 +17,10 @@ this repo) with these differences:
 - **Build and redeploy Paseo.** A board toolbar button (top right, before Settings) runs
   `custom/bin/build-paseo-if-needed-and-kill-daemons.sh` after a confirmation and shows its output;
   the daemons restart and every running agent stops.
-- **Refinement.** A draft's Refine button opens an agent chat in the project folder.
-  `/write-ticket [focus]` in that chat closes it and writes the ticket into the task's title and
-  description; then move it to Ready to start.
+- **Refine.** A draft's Refine button runs the project's spec stage in an agent chat in the project
+  folder (the spec role prompt and template when the pipeline has no spec stage, or outside the
+  factory's active mode). `/write-ticket [focus]` in that chat writes the spec into the task's title
+  and description; then move it to Ready to start. See `docs/factory.md`, "Spec and Refine".
 - **Orchestrators.** The Orchestrators tab lists them; each opens in its own tab with its
   settings, running tasks and log. An orchestrator takes Ready to start tasks (the ones chosen for
   it, or unassigned ones of its project; an All projects orchestrator only gets the projects
@@ -200,7 +201,7 @@ workspace labels.
 Each orchestrator is stored in `orchestrators` (`shared/model.ts`, `orchestratorConfigSchema`);
 schedules are in `shared/schedule.ts`. `orchestrator` holds the defaults new orchestrators start
 from (`claude/claude-opus-5-5`, full access, `medium`, worktree) and `refineModeId`
-(`default`) for refinement chats, with no UI yet. Permission is a per-orchestrator and
+(`default`) for Refine chats, with no UI yet. Permission is a per-orchestrator and
 Project Manager field (**Permissions**, full access by default): the mode for Claude, Codex and
 other mode providers, the `auto_accept` feature (`autoAccept`) for OpenCode, Cursor, Kimi, Kiro and Trae
 (`shared/permission.ts`).
@@ -221,7 +222,7 @@ You can write to the Project Manager without opening its chat.
   the Project Manager and you stay where you are.
 
 Every message that wakes the Project Manager carries the current **Needs you** list (task, project,
-reason, review policy and since when): the `[Board]` wake lists every task still waiting, a quick
+reason, pipeline, autonomy rule and since when): the `[Board]` wake lists every task still waiting, a quick
 message appends it, and a user message gets it steered into the same turn. The first wake waits 12 s
 (`assistant.settings.chat.wakeDelaySeconds`, 3-300 s, in Settings > Bruno's Customizations >
 Project Manager > Chat), so tasks arriving close together share one message. While the chat is busy

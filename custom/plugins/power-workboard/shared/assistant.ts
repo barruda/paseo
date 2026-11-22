@@ -74,32 +74,6 @@ export const projectPolicySchema = z.object({
 });
 export type ProjectPolicy = z.infer<typeof projectPolicySchema>;
 
-// CUSTOM(assistant-review-policy): who reviews a project's finished task before it is merged.
-// `self`: the assistant reviews the diff itself. `fresh-agent`: a new agent, not the author, reviews
-// it through a review task. A project without an entry is `self`. The assistant still raises a big or
-// risky change to `fresh-agent` by judgment; nothing runs the review automatically.
-export const REVIEW_POLICIES = ["self", "fresh-agent"] as const;
-export const reviewPolicySchema = z.enum(REVIEW_POLICIES);
-export type ReviewPolicy = z.infer<typeof reviewPolicySchema>;
-export const DEFAULT_REVIEW_POLICY: ReviewPolicy = "self";
-
-/**
- * Settings stored before the field existed get these on load (a zod default only fills a missing
- * field, so it runs once): DreamMMO and DreamMMO-android are the critical projects.
- */
-export const SEEDED_REVIEW_POLICIES: Readonly<Record<string, ReviewPolicy>> = {
-  prj_1b497e9066c32377: "fresh-agent", // DreamMMO
-  prj_dc85fecbbf8a290e: "fresh-agent", // DreamMMO-android
-};
-
-/** The project's review policy; `self` when it has none. */
-export function reviewPolicyFor(
-  settings: Pick<AssistantSettings, "reviews">,
-  projectId: string | null | undefined,
-): ReviewPolicy {
-  return (projectId && settings.reviews[projectId]) || DEFAULT_REVIEW_POLICY;
-}
-
 /** CUSTOM(assistant-compact): the chat restarts with a summary once its context reaches this. */
 export const DEFAULT_COMPACT_AT_TOKENS = 180_000;
 /** CUSTOM(assistant-wake): the first wake waits this long, so tasks arriving together share it. */
@@ -147,11 +121,11 @@ export const assistantSettingsSchema = z.object({
   defaultAction: assistantDefaultActionSchema.default("review"),
   /** Keyed by project id. */
   projects: z.record(z.string(), projectPolicySchema).default({}),
-  /** CUSTOM(assistant-review-policy): keyed by project id; kept apart from `projects` so setting
-   * the review does not give a project its own delivery rule. */
-  reviews: z
-    .record(z.string(), reviewPolicySchema)
-    .default(() => ({ ...SEEDED_REVIEW_POLICIES })),
+  // COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+  // The review policy is gone. The live board still stores the old per-project map; the export
+  // reads it to give DreamMMO the `critical` pipeline, and until the cutover those projects stay
+  // critical (legacyPipelineFor). Nothing writes it, nothing seeds it.
+  reviews: z.record(z.string(), z.enum(["self", "fresh-agent"])).optional(),
   chat: assistantChatSettingsSchema.default(() =>
     assistantChatSettingsSchema.parse({}),
   ),

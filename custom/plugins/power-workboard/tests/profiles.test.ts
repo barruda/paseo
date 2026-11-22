@@ -106,11 +106,12 @@ describe("profile folders", () => {
     expect(ASSISTANT_SEED_PROMPT).toContain(
       "merge-now with wait=true without asking",
     );
-    // CUSTOM(assistant-review-policy): the critical projects come from the settings, not the prompt.
+    // The critical projects come from each project's pipeline, not the prompt.
     expect(ASSISTANT_SEED_PROMPT).not.toContain("DreamMMO");
     expect(ASSISTANT_SEED_PROMPT).toContain(
-      "a project whose review is fresh-agent in board_overview",
+      "Critical (pipeline critical, or a big or risky change)",
     );
+    expect(ASSISTANT_SEED_PROMPT).not.toContain("review policy");
     expect(ASSISTANT_SEED_PROMPT).toContain("board_task_action continue");
     expect(ASSISTANT_SEED_PROMPT).toContain(
       "confirm the commit is on the project's base branch",

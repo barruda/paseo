@@ -15,11 +15,11 @@ export type AutonomyPresetId = z.infer<typeof autonomyPresetIdSchema>;
 export const DEFAULT_AUTONOMY: AutonomyPresetId = "standard";
 
 /**
- * Why a decision is the user's. `fresh-agent` is the merge ok of a critical project (pipeline
- * `critical`, or review policy fresh-agent until ticket 13 removes it); `merge` is any merge.
+ * Why a decision is the user's. `critical-merge` is the merge ok of a critical project (pipeline
+ * `critical`); `merge` is any merge.
  */
 export const USER_ONLY_REASONS = [
-  "fresh-agent",
+  "critical-merge",
   "merge",
   "data-migration",
   "product",
@@ -28,10 +28,18 @@ export const USER_ONLY_REASONS = [
 export const userOnlyReasonSchema = z.enum(USER_ONLY_REASONS);
 export type UserOnlyReason = z.infer<typeof userOnlyReasonSchema>;
 
+// COMPAT(factory-pipelines): added in ticket 13 (2026-11-22), remove after the factory cutover
+// A stored card, or a live PM prompt that predates the rename, still says `fresh-agent`. This is
+// plugin data, not the packages/protocol wire, so a transform is allowed.
+export const storedUserOnlyReasonSchema = z.union([
+  userOnlyReasonSchema,
+  z.literal("fresh-agent").transform(() => "critical-merge" as const),
+]);
+
 /** What each reason covers, as the prompts say it. */
 export const USER_ONLY_REASON_TEXT: Record<UserOnlyReason, string> = {
-  "fresh-agent":
-    "the ok before merging a critical project (pipeline critical or review fresh-agent)",
+  "critical-merge":
+    "the ok before merging a critical project (pipeline critical)",
   merge: "the ok before every merge",
   "data-migration": "every migration of live data, even with a backup",
   product:
@@ -67,7 +75,7 @@ export const AUTONOMY_PRESETS: Record<AutonomyPresetId, AutonomyPreset> = {
   standard: {
     id: "standard",
     label: "Padrão",
-    userDecides: ["fresh-agent", "product", "irreversible"],
+    userDecides: ["critical-merge", "product", "irreversible"],
     breakerMinutes: 15,
   },
   cautious: {
@@ -75,7 +83,7 @@ export const AUTONOMY_PRESETS: Record<AutonomyPresetId, AutonomyPreset> = {
     label: "Cauteloso",
     userDecides: [
       "merge",
-      "fresh-agent",
+      "critical-merge",
       "data-migration",
       "product",
       "irreversible",
@@ -101,17 +109,18 @@ export function mergeNeedsUser(
 ): boolean {
   const reasons = autonomyPreset(id).userDecides;
   return (
-    reasons.includes("merge") || (critical && reasons.includes("fresh-agent"))
+    reasons.includes("merge") ||
+    (critical && reasons.includes("critical-merge"))
   );
 }
 
-/** The reasons that hold for this project: `fresh-agent` only on a critical one. */
+/** The reasons that hold for this project: `critical-merge` only on a critical one. */
 export function userOnlyReasonsFor(
   id: AutonomyPresetId | null | undefined,
   critical: boolean,
 ): UserOnlyReason[] {
   return autonomyPreset(id).userDecides.filter(
-    (reason) => reason !== "fresh-agent" || critical,
+    (reason) => reason !== "critical-merge" || critical,
   );
 }
 
@@ -128,7 +137,7 @@ export function userOnlyRefusal(
   if (allowed.includes(reason)) return null;
   const preset = autonomyPreset(id);
   const why =
-    reason === "fresh-agent" && preset.userDecides.includes("fresh-agent")
+    reason === "critical-merge" && preset.userDecides.includes("critical-merge")
       ? "the project is not critical"
       : `the ${preset.label} (${preset.id}) preset leaves it to you`;
   return `This decision is yours, not the user's: ${USER_ONLY_REASON_TEXT[reason]} — ${why}. Decide it yourself (back up first when there is data), act, and record it as a kind decision card (decidedBy pm). Reasons the user owns on this project: ${allowed.join(", ") || "none"}.`;
@@ -147,7 +156,7 @@ export function autonomyProjectRule(
     ? "the merge ok is the user's"
     : "the merge is yours after an approved review";
   const others = userOnlyReasonsFor(preset.id, critical)
-    .filter((reason) => reason !== "fresh-agent" && reason !== "merge")
+    .filter((reason) => reason !== "critical-merge" && reason !== "merge")
     .map((reason) => USER_ONLY_REASON_TEXT[reason]);
   return `autonomy ${preset.label} (${preset.id}${critical ? ", critical" : ""}): ${merge}; the user also decides ${others.join("; ") || "nothing else"}`;
 }
