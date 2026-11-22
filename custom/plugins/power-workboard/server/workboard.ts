@@ -712,6 +712,18 @@ export class Workboard {
         );
         await this.store.load();
       }
+    // CUSTOM(task-records-jsonl): attempts and orchestrator logs still in the JSON move to their
+    // JSONL files the same way.
+    if (this.store.hasLegacyRecords)
+      try {
+        await this.store.moveRecords();
+      } catch (error) {
+        console.error(
+          "Moving attempts and orchestrator logs to files failed:",
+          message(error),
+        );
+        await this.store.load();
+      }
     // CUSTOM(packages): a gate interrupted by a restart is not left running forever.
     if (this.store.current.packageRuns.some((run) => run.status === "running"))
       await this.store.update((data) => {

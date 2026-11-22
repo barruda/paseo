@@ -1,14 +1,29 @@
-import { dataSchema, type Data } from "../shared/model";
+import {
+  dataSchema,
+  ORCHESTRATOR_LOG_LIMIT,
+  type Data,
+  type OrchestratorLogEntry,
+} from "../shared/model";
+import type { Attempt } from "../shared/assistant";
 import { z } from "zod";
 import { memoryDescriptionFiles, type DescriptionFiles } from "./descriptions"; // CUSTOM(task-description-files)
+// CUSTOM(task-records-jsonl)
+import {
+  attemptRecords,
+  memoryRecordFiles,
+  newLogEntries,
+  type AttemptRecord,
+  type RecordFiles,
+} from "./records";
 export interface SettingsBacking {
   read(): Promise<unknown>;
   write(revision: string, values: Data): Promise<unknown>;
   /**
-   * CUSTOM(task-description-files): keeps a copy of the stored JSON before descriptions first move
-   * out of it. Called before every move; only the first one copies.
+   * CUSTOM(task-description-files): keeps a copy of the stored JSON before descriptions (or, with
+   * "records", attempts and orchestrator logs) first move out of it. Called before every move;
+   * only the first one of each kind copies.
    */
-  backup?(): Promise<void>;
+  backup?(what: "descriptions" | "records"): Promise<void>;
 }
 /**
  * CUSTOM(task-description-files): what an `update` uses to read and change task descriptions.
@@ -36,8 +51,27 @@ const writeResult = z.discriminatedUnion("status", [
   z.object({ status: z.literal("conflict"), error: z.string() }),
 ]);
 const NONE: ReadonlySet<string> = new Set();
+/** CUSTOM(task-records-jsonl): see `Store.planRecords`. */
+interface RecordPlan {
+  kept: { attempts: boolean; logs: boolean };
+  attempts: AttemptRecord[];
+  attemptsAfter: Record<string, Attempt[]>;
+  removedLogs: string[];
+  logAppends: {
+    id: string;
+    added: OrchestratorLogEntry[];
+    entries: OrchestratorLogEntry[];
+  }[];
+  work: boolean;
+}
 // Tests reopen a Store on the same backing; without files of their own they share one set.
 const memoryFiles = new WeakMap<SettingsBacking, DescriptionFiles>();
+const memoryRecords = new WeakMap<SettingsBacking, RecordFiles>();
+/**
+ * CUSTOM(task-records-jsonl): attempts of tasks that left the board stay in memory this long after
+ * they started, so their agents still count as the board's (PM tools, wakes, Reports).
+ */
+const RECENT_ATTEMPTS_MS = 30 * 24 * 60 * 60 * 1000;
 export class Store {
   private value: Data = dataSchema.parse({});
   private revision: string | null = null;
@@ -54,15 +88,38 @@ export class Store {
    */
   private legacy = new Set<string>();
   private files: DescriptionFiles;
+  /**
+   * CUSTOM(task-records-jsonl): `assistant.attempts` and `orchestratorLogs` stay in `value` (every
+   * reader is unchanged), but the JSON saves them as `{}`: they are appended to `records`. The
+   * `*OnDisk` copies are what the files hold, and each save appends the difference.
+   */
+  private records: RecordFiles;
+  private attemptsOnDisk: Record<string, Attempt[]> = {};
+  private logsOnDisk: Record<string, OrchestratorLogEntry[]> = {};
+  /** The JSON still carries them (an older version, or a failed append); a move fixes it. */
+  private legacyAttempts = false;
+  private legacyLogs = false;
+  /**
+   * The attempt files could not be read, so `attemptsOnDisk` is unknown: appending could reuse an
+   * index the files already have. Attempts stay in the JSON until a load reads the files.
+   */
+  private attemptsUnread = false;
   constructor(
     private backing: SettingsBacking,
     files?: DescriptionFiles,
+    records?: RecordFiles,
   ) {
     if (files) this.files = files;
     else {
       const shared = memoryFiles.get(backing) ?? memoryDescriptionFiles();
       memoryFiles.set(backing, shared);
       this.files = shared;
+    }
+    if (records) this.records = records;
+    else {
+      const shared = memoryRecords.get(backing) ?? memoryRecordFiles();
+      memoryRecords.set(backing, shared);
+      this.records = shared;
     }
   }
   get current(): Data {
@@ -86,8 +143,21 @@ export class Store {
    */
   async moveDescriptions(): Promise<void> {
     if (!this.legacy.size) return;
-    await this.backing.backup?.();
+    await this.backing.backup?.("descriptions");
     await this.save(() => undefined, true);
+  }
+  /** CUSTOM(task-records-jsonl): true while the JSON still carries attempts or logs. */
+  get hasLegacyRecords(): boolean {
+    return (this.legacyAttempts && !this.attemptsUnread) || this.legacyLogs;
+  }
+  /**
+   * CUSTOM(task-records-jsonl): appends what the JSON still carries to the files, then clears the
+   * JSON copy. A failed backup stops the move; a failed append keeps that kind in the JSON.
+   */
+  async moveRecords(): Promise<void> {
+    if (!this.hasLegacyRecords) return;
+    await this.backing.backup?.("records");
+    await this.save(() => undefined, "records");
   }
   load(): Promise<void> {
     const work = this.queue.then(async () => {
@@ -111,6 +181,7 @@ export class Store {
         legacy.add(task.id);
         task.description = "";
       }
+      await this.loadRecords(values);
       this.value = values;
       this.revision = loaded.revision;
       this.texts = texts;
@@ -119,15 +190,68 @@ export class Store {
     this.queue = work.catch(() => undefined);
     return work;
   }
+  /**
+   * CUSTOM(task-records-jsonl): reads the files and fills `values` with what the JSON does not
+   * carry. A JSON copy (an older version, or an append that failed) wins over the files: it is the
+   * newer one, and the next move appends it.
+   */
+  private async loadRecords(values: Data): Promise<void> {
+    const jsonAttempts = values.assistant.attempts;
+    const jsonLogs = values.orchestratorLogs;
+    let disk: Record<string, Attempt[]> = {};
+    this.attemptsUnread = false;
+    try {
+      disk = await this.records.readAttempts();
+    } catch (error) {
+      this.attemptsUnread = true;
+      console.warn(
+        "Task attempts could not be read; new ones stay in the board JSON:",
+        error instanceof Error ? error.message : error,
+      );
+    }
+    const onBoard = new Set(values.tasks.map((task) => task.id));
+    const recent = Date.now() - RECENT_ATTEMPTS_MS;
+    const attempts: Record<string, Attempt[]> = {};
+    for (const [taskId, list] of Object.entries(disk))
+      if (
+        onBoard.has(taskId) ||
+        list.some((attempt) => Date.parse(attempt.startedAt) >= recent)
+      )
+        attempts[taskId] = list;
+    this.attemptsOnDisk = structuredClone(attempts);
+    Object.assign(attempts, jsonAttempts);
+    values.assistant.attempts = attempts;
+    this.legacyAttempts = Object.keys(jsonAttempts).length > 0;
+
+    const ids = new Set([
+      ...values.orchestrators.map((config) => config.id),
+      ...Object.keys(jsonLogs),
+    ]);
+    const logs = await this.records
+      .readLogs([...ids], ORCHESTRATOR_LOG_LIMIT)
+      .catch((error: unknown) => {
+        console.warn(
+          "Orchestrator logs could not be read:",
+          error instanceof Error ? error.message : error,
+        );
+        return {} as Record<string, OrchestratorLogEntry[]>;
+      });
+    this.logsOnDisk = structuredClone(logs);
+    values.orchestratorLogs = { ...logs, ...jsonLogs };
+    this.legacyLogs = Object.keys(jsonLogs).length > 0;
+  }
   update(
     change: (data: Data, descriptions: DescriptionEditor) => void,
   ): Promise<void> {
     return this.save(change, false);
   }
-  /** `moving`: also write the texts still in the JSON to their files (`moveDescriptions`). */
+  /**
+   * `moving`: also write what the JSON still carries to files: `true` the descriptions
+   * (`moveDescriptions`), "records" the attempts and logs (`moveRecords`).
+   */
   private save(
     change: (data: Data, descriptions: DescriptionEditor) => void,
-    moving: boolean,
+    moving: boolean | "records",
   ): Promise<void> {
     const work = this.queue.then(async () => {
       if (this.revision === null) throw new Error("Storage is unavailable");
@@ -137,8 +261,12 @@ export class Store {
         get: (taskId) => staged.get(taskId) ?? this.description(taskId),
         set: (taskId, text) => staged.set(taskId, text),
       });
-      const writes = this.stageDescriptions(next, staged, moving);
-      if (!writes.size && JSON.stringify(next) === JSON.stringify(this.value))
+      const writes = this.stageDescriptions(next, staged, moving === true);
+      if (
+        !writes.size &&
+        moving !== "records" &&
+        JSON.stringify(next) === JSON.stringify(this.value)
+      )
         return;
       next.revision = this.value.revision + 1;
       // The files go first, synced to disk: the JSON stops carrying a text only once its file is
@@ -149,14 +277,29 @@ export class Store {
         else if (this.legacy.has(task.id) && !writes.has(task.id))
           task.description = this.description(task.id);
       const parsed = dataSchema.parse(next);
+      // CUSTOM(task-records-jsonl): appended before the JSON, like the description files.
+      const plan = this.planRecords(parsed, moving === "records");
+      const kept = plan.work ? await this.writeRecords(plan) : plan.kept;
+      const stored: Data = {
+        ...parsed,
+        orchestratorLogs: kept.logs ? parsed.orchestratorLogs : {},
+        assistant: {
+          ...parsed.assistant,
+          attempts: kept.attempts ? parsed.assistant.attempts : {},
+        },
+      };
       try {
         const saved = writeResult.parse(
-          await this.backing.write(this.revision, parsed),
+          await this.backing.write(this.revision, stored),
         );
         if (saved.status !== "saved") throw new Error(saved.error);
         for (const task of saved.values.tasks) task.description = "";
+        saved.values.assistant.attempts = parsed.assistant.attempts;
+        saved.values.orchestratorLogs = parsed.orchestratorLogs;
         this.value = saved.values;
         this.revision = saved.revision;
+        this.legacyAttempts = kept.attempts;
+        this.legacyLogs = kept.logs;
       } catch (error) {
         // The host may have saved even if the reply was lost. Require a read before more writes.
         this.revision = null;
@@ -165,12 +308,83 @@ export class Store {
       for (const taskId of writes.keys())
         if (failed.has(taskId)) this.legacy.add(taskId);
         else this.legacy.delete(taskId);
-      const kept = new Set(next.tasks.map((task) => task.id));
-      const removed = [...this.texts.keys()].filter((id) => !kept.has(id));
+      const remaining = new Set(next.tasks.map((task) => task.id));
+      const removed = [...this.texts.keys()].filter((id) => !remaining.has(id));
       if (removed.length) await this.removeFiles(removed);
     });
     this.queue = work.catch(() => undefined);
     return work;
+  }
+  /**
+   * CUSTOM(task-records-jsonl): what this save appends or removes, and which kinds the JSON must
+   * keep: the ones still legacy (outside a move) or unread. Synchronous, so a save with nothing to
+   * append adds no tick to `update` (tests count them).
+   */
+  private planRecords(data: Data, moving: boolean): RecordPlan {
+    const kept = {
+      attempts: this.attemptsUnread || (this.legacyAttempts && !moving),
+      logs: this.legacyLogs && !moving,
+    };
+    const attempts = kept.attempts
+      ? []
+      : attemptRecords(this.attemptsOnDisk, data.assistant.attempts);
+    const logs = data.orchestratorLogs;
+    const removedLogs = kept.logs
+      ? []
+      : Object.keys(this.logsOnDisk).filter((id) => !(id in logs));
+    const logAppends = kept.logs
+      ? []
+      : Object.entries(logs).flatMap(([id, entries]) => {
+          const added = newLogEntries(this.logsOnDisk[id] ?? [], entries);
+          return added.length ? [{ id, added, entries }] : [];
+        });
+    return {
+      kept,
+      attempts,
+      attemptsAfter: data.assistant.attempts,
+      removedLogs,
+      logAppends,
+      work: !!(attempts.length || removedLogs.length || logAppends.length),
+    };
+  }
+  /** Appends the plan before the JSON is saved. A failed append keeps that kind in the JSON. */
+  private async writeRecords(
+    plan: RecordPlan,
+  ): Promise<{ attempts: boolean; logs: boolean }> {
+    const kept = { ...plan.kept };
+    const warn = (what: string, error: unknown) =>
+      console.warn(
+        `${what}; it stays in the board JSON:`,
+        error instanceof Error ? error.message : error,
+      );
+    if (plan.attempts.length)
+      try {
+        await this.records.appendAttempts(plan.attempts);
+        this.attemptsOnDisk = structuredClone(plan.attemptsAfter);
+      } catch (error) {
+        kept.attempts = true;
+        warn("Task attempts were not appended", error);
+      }
+    for (const id of plan.removedLogs) {
+      try {
+        await this.records.removeLogs(id);
+      } catch (error) {
+        console.error(
+          `Log file of removed orchestrator ${id} was not deleted:`,
+          error instanceof Error ? error.message : error,
+        );
+      }
+      delete this.logsOnDisk[id];
+    }
+    for (const { id, added, entries } of plan.logAppends)
+      try {
+        await this.records.appendLogs(id, added);
+        this.logsOnDisk[id] = structuredClone(entries);
+      } catch (error) {
+        kept.logs = true;
+        warn(`Log of orchestrator ${id} was not appended`, error);
+      }
+    return kept;
   }
   /**
    * Writes and syncs the files, then syncs the folder so the renames survive a power loss. Returns

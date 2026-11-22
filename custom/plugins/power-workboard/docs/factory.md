@@ -1,6 +1,7 @@
 # Factory as code, worker roles and pipelines
 
-Status: approved design. Built so far: tickets 2 (schemas, loader, compiler and `bin/factory`), 4
+Status: approved design. Built so far: tickets 1 (task descriptions in files), 3 (attempts and
+orchestrator logs in JSONL), 2 (schemas, loader, compiler and `bin/factory`), 4
 (`bin/factory export`) and 6 (pipelines and roles), ticket 5 (revision stamps), ticket 7
 (shadow mode: the board loads and diffs the factory, applies nothing) and ticket 8 (the read-only
 Pipelines tab). Tickets at the end. Inspired by Warp Factories

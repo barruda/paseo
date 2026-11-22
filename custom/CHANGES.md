@@ -10417,3 +10417,47 @@ tests/factory.test.ts tests/factory-export.test.ts)` (part of the plugin suite i
 tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). In the app:
   Workboard → **Pipelines** tab → pick DreamMMO (`critical`) or another project (`default`), click a
   node to see the stage in the right panel.
+
+## task-records-jsonl: Workboard attempts and orchestrator logs move to JSONL files
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Workboard attempts and orchestrator logs move out of the board JSON into JSONL files`
+- **Why:** Ticket 3 of `custom/plugins/power-workboard/docs/factory.md`. `assistant.attempts`
+  (about 116 KB) and `orchestratorLogs` (about 49 KB) were rewritten on every board save, and a log
+  line meant a full JSON write.
+- **What:**
+  - `server/records.ts`: append-only `plugin-data/power-workboard/attempts/YYYY-MM-DD.jsonl` (lines
+    `{ at, taskId, attempt }` upsert by index, `{ at, taskId, reset: true }` clears a task) and
+    `orchestrator-logs/<orchestratorId>.jsonl` (one entry per line). Each append is fsynced, and the
+    folder too when the file is new. Reading attempts folds every day file and throws on an
+    unreadable file (a partial fold could reuse an index); a line cut by a crash is skipped. Logs
+    read only the file's last 512 KB. Orchestrator ids that are not `[A-Za-z0-9_-]+` are refused.
+  - `server/store.ts`: attempts and logs stay in `Data` in memory, so every reader (snapshot
+    `orchestratorLogs`, delivery retries, Reports views, `board_get_task`, `isManagedAgent`) is
+    unchanged; the JSON saves them as `{}`. The Store keeps what the files hold (`attemptsOnDisk`,
+    `logsOnDisk`) and each save appends the difference (`attemptRecords`, `newLogEntries`) before
+    the JSON. The plan is synchronous and the save awaits only when something is appended (the
+    usage-limit wake test counts ticks). In memory: the last `ORCHESTRATOR_LOG_LIMIT` (100) lines
+    per orchestrator, and the attempts of tasks on the board or started in the last 30 days.
+    Deleting an orchestrator removes its log file. A failed append keeps that kind in the JSON
+    (legacy) until the next start; unreadable attempt files keep new attempts in the JSON.
+  - Migration (no schema bump): on load a JSON copy wins per task/orchestrator over the files and
+    marks the kind legacy; ordinary saves keep it in the JSON. `Workboard.load` calls
+    `moveRecords()`, which copies the JSON once to
+    `plugin-settings/power-workboard/workboard-data.pre-records.json` (backing `backup("records")`;
+    a failed copy postpones the move), appends the difference against the files and clears the JSON
+    copy. Interrupted between the two, the next move appends only what the files lack.
+- **Core files touched:** none (plugin only).
+- **Re-apply:** plugin files only: `server/records.ts`, `server/store.ts` (`loadRecords`,
+  `planRecords`, `writeRecords`, `moveRecords`, the stored copy without the records),
+  `server/workboard.ts` (the move in `load`), `index.server.ts` (record files and the backup kind),
+  `README.md`, `docs/factory.md`.
+- **Verify:** the plugin suite (`tests/task-records.test.ts`: diff and fold helpers, day files, a
+  cut line, log tail and removal, the in-memory cap, recent attempts of removed tasks, a failed
+  append, unreadable attempt files, migration with backup, an interrupted run and a failed backup,
+  start-up migration and a restart). Needs only `plugin reload power-workboard`. Then
+  `workboard-data.json` has `"attempts": {}` and `"orchestratorLogs": {}`,
+  `~/.paseo/plugin-settings/power-workboard/workboard-data.pre-records.json` holds the old copy, and
+  `~/.paseo/plugin-data/power-workboard/attempts/` and `orchestrator-logs/` hold the JSONL files. In
+  the app: the Orchestrators tab shows the same log, a task's conversation in Projects Reports
+  still lists its attempts, and a new task's attempt shows up after a reload.
