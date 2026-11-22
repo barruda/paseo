@@ -9,6 +9,7 @@ import {
   type Settings,
 } from "../model";
 import type { AssistantSettings } from "../assistant";
+import type { AutonomyPresetId } from "../autonomy";
 import type { CompiledFactory, CompiledWorker } from "./compile";
 import type { PipelineFile } from "./schema";
 
@@ -29,6 +30,10 @@ export type AppliedFactory = {
   pipelines: Record<string, PipelineFile>;
   /** `defaults.pipeline` of factory.yaml. */
   defaultPipeline: string | null;
+  /** pm/worker.md's own autonomy preset, for the pipeline editor's "Inherit" label. */
+  pmAutonomy: AutonomyPresetId | null;
+  /** Each project file's own autonomy preset, by factory project id (projects/<id>.yaml). */
+  projectAutonomy: Record<string, AutonomyPresetId>;
 };
 
 /** The Pipelines tab's source in active mode: the factory's pipelines and each project's. */
@@ -37,15 +42,27 @@ export function factoryPipelinesView(applied: AppliedFactory): {
   pipelines: Record<string, PipelineFile>;
   projects: Record<string, string>;
   defaultPipeline: string;
+  pmAutonomy: AutonomyPresetId | null;
+  projectAutonomy: Record<string, AutonomyPresetId>;
+  workers: Record<string, string>;
 } {
   const projects: Record<string, string> = {};
-  for (const project of applied.compiled.projects)
+  const projectAutonomy: Record<string, AutonomyPresetId> = {};
+  for (const project of applied.compiled.projects) {
     if (project.pipeline) projects[project.projectId] = project.pipeline;
+    const own = applied.projectAutonomy[project.id];
+    if (own) projectAutonomy[project.projectId] = own;
+  }
   return {
     source: "factory",
     pipelines: applied.pipelines,
     projects,
     defaultPipeline: applied.defaultPipeline ?? "default",
+    pmAutonomy: applied.pmAutonomy,
+    projectAutonomy,
+    workers: Object.fromEntries(
+      applied.compiled.workers.map((worker) => [worker.id, worker.config.name]),
+    ),
   };
 }
 

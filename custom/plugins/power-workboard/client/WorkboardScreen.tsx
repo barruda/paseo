@@ -984,11 +984,12 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             }}
           />
         ) : tab === "pipelines" ? (
-          // CUSTOM(factory): the pipelines, read only.
+          // CUSTOM(factory): the pipelines and their editor.
           <PipelinesView
             board={board}
             theme={props.theme}
             compact={props.layout.compact}
+            onError={(error) => toast.error(mutationErrorText(error, t))}
           />
         ) : tab === "assistant-chat" ? (
           // CUSTOM(workboard-inner-pages): the same screens the Desk chips used to show.

@@ -21,6 +21,8 @@ import {
   writeTicketRpc,
   redeployPaseoRpc,
   factoryPipelinesRpc, // CUSTOM(factory)
+  factoryPipelineSaveRpc, // CUSTOM(factory)
+  factoryAutonomySetRpc, // CUSTOM(factory)
   factoryStatusRpc, // CUSTOM(factory)
 } from "./shared/rpc";
 // CUSTOM(projects-assistant)
@@ -327,12 +329,26 @@ export default function contribute(server: PluginServerContext) {
     // applies now and leaving active mode answers with the JSON's values.
     return ready().setAssistantSettings(input.settings);
   });
-  // CUSTOM(factory): the Pipelines tab, read only.
-  server.handle(factoryPipelinesRpc, () => {
+  // CUSTOM(factory): the Pipelines tab; in active mode it edits the factory's pipelines.
+  const pipelinesView = () => {
     const applied = factory.applied();
     return applied
       ? factoryPipelinesView(applied)
       : builtinPipelinesView(ready().assistantSettings().settings.reviews);
+  };
+  server.handle(factoryPipelinesRpc, pipelinesView);
+  server.handle(factoryPipelineSaveRpc, async (input) => {
+    await factory.writePipeline(
+      input.id,
+      input.base,
+      input.pipeline,
+      input.renames,
+    );
+    return pipelinesView();
+  });
+  server.handle(factoryAutonomySetRpc, async (input) => {
+    await factory.setAutonomy(input.target, input.id, input.autonomy);
+    return pipelinesView();
   });
   server.handle(assistantOverviewRpc, () =>
     buildOverview(ready().assistantSource()),

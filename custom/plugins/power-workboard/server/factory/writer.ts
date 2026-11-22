@@ -22,6 +22,7 @@ import {
   isScalar,
   parseDocument,
   type Document,
+  type Pair,
 } from "yaml";
 import type { FieldEdit, FileEdit } from "../../shared/factory/edits";
 import { splitFrontmatter } from "../../shared/factory/frontmatter";
@@ -69,6 +70,25 @@ function applyField(doc: Document, field: FieldEdit, target: unknown) {
   else doc.setIn(field.path, doc.createNode(value));
 }
 
+/** The `rename` edits: every pair is found before any key changes, so two keys can swap names. */
+function renameKeys(doc: Document, fields: readonly FieldEdit[]) {
+  const found: Array<[Pair, string]> = [];
+  for (const field of fields) {
+    if (field.rename === undefined) continue;
+    const parent = doc.getIn(field.path.slice(0, -1), true);
+    const key = field.path[field.path.length - 1];
+    const pair = isMap(parent)
+      ? parent.items.find((item) =>
+          isScalar(item.key) ? item.key.value === key : item.key === key,
+        )
+      : undefined;
+    if (pair) found.push([pair, field.rename]);
+  }
+  for (const [pair, name] of found)
+    if (isScalar(pair.key)) pair.key.value = name;
+    else pair.key = name;
+}
+
 /** Applies field edits to a YAML text; comments and untouched keys survive. */
 export function editYaml(
   text: string,
@@ -78,7 +98,9 @@ export function editYaml(
   const doc = parseDocument(text);
   if (doc.errors.length) throw new Error(doc.errors[0]!.message.split("\n")[0]);
   if (!isMap(doc.contents)) doc.contents = doc.createNode({}) as never;
-  for (const field of fields) applyField(doc, field, target);
+  renameKeys(doc, fields);
+  for (const field of fields)
+    if (field.rename === undefined) applyField(doc, field, target);
   return doc.toString(YAML_OPTIONS);
 }
 

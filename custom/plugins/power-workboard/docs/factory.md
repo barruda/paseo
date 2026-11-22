@@ -5,8 +5,8 @@ orchestrator logs in JSONL), 2 (schemas, loader, compiler and `bin/factory`), 4
 (`bin/factory export`) and 6 (pipelines and roles), ticket 5 (revision stamps), ticket 7
 (shadow mode: the board loads and diffs the factory, applies nothing), ticket 8 (the read-only
 Pipelines tab), ticket 9 (active mode; the live cutover waits for the user), ticket 10 (the UI
-writes the factory), ticket 11 (the pipeline engine) and ticket 12 (PM transitions and the
-autonomy presets). Tickets at the end. Inspired by Warp Factories
+writes the factory), ticket 11 (the pipeline engine), ticket 12 (PM transitions and the
+autonomy presets) and ticket 14 (the pipeline editor edits). Tickets at the end. Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -523,10 +523,33 @@ descriptions, `assistant.attempts` and `orchestratorLogs` move to their own file
 
 A **Pipelines** tab in the board's tab bar, with a project picker. It draws the project's pipeline
 as a graph: stages as nodes (role, worker, gate marker), transitions as edges labeled with their
-`when`, built-in `deliver`/`end`/`cancel` as terminal nodes. A side panel edits the selected stage.
-Validation runs live with the same schemas. Save writes `pipelines/<id>.yaml` through the factory
-writer, including `layout`. Live overlay: each node shows how many tasks are in that stage and how
-many wait on its gate; a click lists them. On phones the tab shows the stages as a read-only list.
+`when`, built-in `deliver`/`end`/`cancel` as terminal nodes. Live overlay: each node shows how many
+tasks are in that stage and how many wait on its gate; a click lists them. On phones the tab shows
+the stages as a read-only list.
+
+Editing (active mode, wide screens only; the built-in view stays read only):
+
+- **Draft.** Edits go to a local draft (`shared/factory/pipeline-edit.ts`, pure): add, remove and
+  rename stages, the stage fields, gate and options, `to` or `when` conditions, connect and
+  disconnect, move. Connect from the node's bottom handle by dragging onto another node, or with the
+  panel's picker; connecting a stage that already has a single `to` turns it into `when`
+  conditions with empty text, so validation asks for them. `pipelineFileSchema` validates the draft
+  on every edit and Save stays disabled while it has problems.
+- **Layout.** The first move saves every node's place, since a `layout` that misses a node is
+  ignored. After that, a node an edit adds goes below the others (`keepManualLayout`), so one new
+  stage never sends the drawing back to rows.
+- **Save** (`workboard.factory.pipelines.save`) sends the loaded pipeline, the draft and the stage
+  renames. The server refuses when the file changed since it was loaded, renames the keys in place
+  (the stage keeps its comments and place in the file), writes only the fields that differ through
+  the factory writer, and commits `ui: pipelines/<id> …`. A change the factory rejects (a pinned
+  worker that does not exist, a missing `file`) is undone.
+- **Autonomy.** A combobox beside the pipeline name writes `autonomy` to `pipelines/<id>.yaml`, and
+  one beside the project picker writes it to `projects/<id>.yaml` (`workboard.factory.autonomy.set`,
+  one commit each). A project with no file gets one with its `path`. "Herdar" removes the key; its
+  label names the preset it inherits (a pipeline: `pm/worker.md`'s, else Padrão; a project: its
+  pipeline's, then the same). The line below says what goes to the user and the breaker, from
+  `shared/autonomy.ts`. The pipeline's Save never writes `autonomy`, so a draft opened before a
+  combobox change does not undo it.
 
 Drawing: the graph is plain React Native Views, with no SVG and no graph library. The plugin
 client gets only React, React Native, zod, react-query and the SDK from the host

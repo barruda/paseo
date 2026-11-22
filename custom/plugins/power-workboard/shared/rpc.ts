@@ -26,6 +26,7 @@ import {
   testTierSchema, // CUSTOM(packages)
 } from "./model";
 import { pipelineFileSchema } from "./factory/schema"; // CUSTOM(factory)
+import { autonomyPresetIdSchema } from "./autonomy"; // CUSTOM(factory)
 
 // CUSTOM(factory): shadow mode's full report (docs/factory.md, "Loading and revisions").
 export const factoryStatusRpc = defineRpc({
@@ -40,15 +41,46 @@ export const snapshotRpc = defineRpc({
 });
 // CUSTOM(factory): the Pipelines tab's source: the loaded factory in active mode, otherwise the
 // built-in pipelines with each project's from its review policy.
+const factoryPipelinesViewSchema = z.object({
+  source: z.enum(["builtin", "factory"]),
+  pipelines: z.record(z.string(), pipelineFileSchema),
+  projects: z.record(z.string(), z.string()),
+  defaultPipeline: z.string(),
+  /** Active mode (ticket 14): pm/worker.md's own preset, for the "Inherit" labels. */
+  pmAutonomy: autonomyPresetIdSchema.nullable().optional(),
+  /** Active mode: each board project's own preset (projects/<id>.yaml), by Paseo project id. */
+  projectAutonomy: z.record(z.string(), autonomyPresetIdSchema).optional(),
+  /** Active mode: factory worker id → name, for a stage's pinned `worker`. */
+  workers: z.record(z.string(), z.string()).optional(),
+});
+export type FactoryPipelinesView = z.infer<typeof factoryPipelinesViewSchema>;
 export const factoryPipelinesRpc = defineRpc({
   name: "workboard.factory.pipelines.get",
   input: z.object({}),
-  output: z.object({
-    source: z.enum(["builtin", "factory"]),
-    pipelines: z.record(z.string(), pipelineFileSchema),
-    projects: z.record(z.string(), z.string()),
-    defaultPipeline: z.string(),
+  output: factoryPipelinesViewSchema,
+});
+// CUSTOM(factory): the pipeline editor's Save (ticket 14). `base` is the pipeline the editor
+// loaded; the write refuses when the file changed since. `renames`: base stage id → new id.
+export const factoryPipelineSaveRpc = defineRpc({
+  name: "workboard.factory.pipelines.save",
+  input: z.object({
+    id: z.string(),
+    base: pipelineFileSchema,
+    pipeline: pipelineFileSchema,
+    renames: z.record(z.string(), z.string()),
   }),
+  output: factoryPipelinesViewSchema,
+});
+// CUSTOM(factory): the autonomy comboboxes of the pipeline editor (ticket 14). null ("Inherit")
+// removes the key. `id`: the pipeline's id, or the board project's (Paseo) id.
+export const factoryAutonomySetRpc = defineRpc({
+  name: "workboard.factory.autonomy.set",
+  input: z.object({
+    target: z.enum(["pipeline", "project"]),
+    id: z.string(),
+    autonomy: autonomyPresetIdSchema.nullable(),
+  }),
+  output: factoryPipelinesViewSchema,
 });
 // CUSTOM(project-icon-colors): the accent the assistant pages paint a project's name with.
 export const projectAccentsRpc = defineRpc({

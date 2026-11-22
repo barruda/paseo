@@ -14,7 +14,7 @@ import {
   type CompiledFactory,
 } from "../../shared/factory/compile";
 import { diffFactory, type LiveIds } from "../../shared/factory/diff";
-import type { FactoryIssue } from "../../shared/factory/schema";
+import type { FactoryIssue, PipelineFile } from "../../shared/factory/schema";
 import {
   FACTORY_DIFFERENCE_LIMIT,
   formatFactoryIssue,
@@ -32,12 +32,17 @@ import {
   type FactoryIdMap,
 } from "../../shared/factory/active";
 import {
+  diffFields,
   factoryConfigOf,
+  newProjectFile,
   planFactoryEdits,
   sameConfig,
   type FactoryConfig,
+  type FieldEdit,
   type FileEdit,
 } from "../../shared/factory/edits";
+import { renameStageKeys } from "../../shared/factory/pipeline-edit";
+import type { AutonomyPresetId } from "../../shared/autonomy";
 import type { Data } from "../../shared/model";
 import { ASSISTANT_PROFILE } from "../../shared/profiles";
 import { homePath, IDS_FILE, slugger } from "./export";
@@ -65,6 +70,12 @@ export const FACTORY_HAS_ERRORS_ERROR =
   "The factory has errors; fix its files before editing here";
 export const FACTORY_CHANGED_ERROR =
   "The factory changed on disk and was loaded again; check the change and try again";
+/** The pipeline editor saved a pipeline the factory no longer has (ticket 14). */
+export const FACTORY_PIPELINE_MISSING_ERROR =
+  "This pipeline is no longer in the factory";
+/** The project autonomy combobox named a project Paseo no longer has. */
+export const FACTORY_PROJECT_MISSING_ERROR =
+  "This project is no longer in Paseo";
 
 export type Unwatch = () => void;
 /** Calls `changed` on any change of the folder's direct entries. */
@@ -250,9 +261,14 @@ export class FactoryShadow {
   private warnings: FactoryIssue[] = [];
   private compiled: CompiledFactory | null = null;
   /** The loaded pipeline files and default of the compile above. */
-  private pipelines: Pick<AppliedFactory, "pipelines" | "defaultPipeline"> = {
+  private pipelines: Pick<
+    AppliedFactory,
+    "pipelines" | "defaultPipeline" | "pmAutonomy" | "projectAutonomy"
+  > = {
     pipelines: {},
     defaultPipeline: null,
+    pmAutonomy: null,
+    projectAutonomy: {},
   };
   /** The revision of the compile above; `revision` may be a newer, invalid one. */
   private compiledRevision: string | null = null;
@@ -472,6 +488,85 @@ export class FactoryShadow {
   }
 
   /**
+   * Active mode, the pipeline editor's Save: writes what changed from `base` (the pipeline the
+   * editor loaded) to `pipeline` into `pipelines/<id>.yaml`, renaming stage keys in place, and
+   * commits. Refuses when the file changed since `base`. `autonomy` is left out on both sides: the
+   * editor sets it on its own (setAutonomy), so a draft never undoes it.
+   */
+  async writePipeline(
+    id: string,
+    base: PipelineFile,
+    pipeline: PipelineFile,
+    renames: Record<string, string>,
+  ): Promise<void> {
+    await this.edit((applied) => {
+      const current = applied.pipelines[id];
+      if (!current) throw new Error(FACTORY_PIPELINE_MISSING_ERROR);
+      if (!sameConfig(withoutAutonomy(current), withoutAutonomy(base)))
+        throw new Error(FACTORY_CHANGED_ERROR);
+      const known = Object.fromEntries(
+        Object.entries(renames).filter(([from]) =>
+          Object.hasOwn(base.stages, from),
+        ),
+      );
+      const renamed = renameStageKeys(base, known);
+      const fields: FieldEdit[] = [
+        ...Object.entries(known).flatMap(([from, to]) => [
+          { path: ["stages", from], rename: to },
+          ...(base.layout && Object.hasOwn(base.layout, from)
+            ? [{ path: ["layout", from], rename: to }]
+            : []),
+        ]),
+        ...diffFields(withoutAutonomy(renamed), withoutAutonomy(pipeline)),
+      ];
+      if (!fields.length) return [];
+      return [{ file: `pipelines/${id}.yaml`, fields, target: pipeline }];
+    });
+  }
+
+  /**
+   * Active mode, the autonomy comboboxes: sets or (null) removes `autonomy` in a pipeline's file or
+   * in a board project's `projects/<id>.yaml`. A project with no file gets one with its `path`.
+   */
+  async setAutonomy(
+    target: "pipeline" | "project",
+    id: string,
+    autonomy: AutonomyPresetId | null,
+  ): Promise<void> {
+    await this.edit(async (applied) => {
+      if (target === "pipeline") {
+        if (!applied.pipelines[id])
+          throw new Error(FACTORY_PIPELINE_MISSING_ERROR);
+        return [
+          { file: `pipelines/${id}.yaml`, fields: keyEdits({ autonomy }) },
+        ];
+      }
+      const known = applied.compiled.projects.find(
+        (project) => project.projectId === id,
+      );
+      if (known)
+        return [
+          { file: `projects/${known.id}.yaml`, fields: keyEdits({ autonomy }) },
+        ];
+      if (autonomy === null) return [];
+      const directory = this.options
+        .live()
+        ?.projects()
+        .find((project) => project.id === id)?.directory;
+      if (!directory) throw new Error(FACTORY_PROJECT_MISSING_ERROR);
+      const taken = new Set(
+        [...(await folderNames(path.join(applied.root, "projects"), true))]
+          .filter((name) => name.endsWith(".yaml"))
+          .map((name) => name.slice(0, -".yaml".length)),
+      );
+      const { edit } = newProjectFile(directory, taken, (dir) =>
+        homePath(dir, this.home),
+      );
+      return [{ ...edit, fields: keyEdits({ autonomy }) }];
+    });
+  }
+
+  /**
    * One factory edit: the loaded compile must be valid and current (a file changed on disk since
    * it was read loads it again and refuses the edit), the result must load and compile, then it
    * is committed `ui: <what changed>` and loaded at once, so the reply already shows it.
@@ -671,6 +766,12 @@ export class FactoryShadow {
           loaded.factory.pipelines.map(({ id, pipeline }) => [id, pipeline]),
         ),
         defaultPipeline: loaded.factory.factory.defaults?.pipeline ?? null,
+        pmAutonomy: loaded.factory.pm.settings.autonomy ?? null,
+        projectAutonomy: Object.fromEntries(
+          loaded.factory.projects.flatMap(({ id, settings }) =>
+            settings.autonomy ? [[id, settings.autonomy]] : [],
+          ),
+        ),
       };
     }
     this.revision = revision;
@@ -811,6 +912,14 @@ async function projectResolver(
 }
 
 /** Names of a folder's subfolders (or, with `files`, of its files); empty when it is missing. */
+/** A pipeline without its `autonomy`, which the editor's Save never writes. */
+function withoutAutonomy(
+  pipeline: PipelineFile,
+): Omit<PipelineFile, "autonomy"> {
+  const { autonomy: _autonomy, ...rest } = pipeline;
+  return rest;
+}
+
 async function folderNames(dir: string, files = false): Promise<Set<string>> {
   try {
     return new Set(
