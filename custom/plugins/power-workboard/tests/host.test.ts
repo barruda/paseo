@@ -649,3 +649,27 @@ it("treats the plugin reload request's timeout as success and rethrows other err
   await expect(host.reloadPlugin()).rejects.toThrow("bridge closed");
   host.dispose();
 });
+
+// CUSTOM(orchestrator-in-place): an in-place delivery names its commit; other commits let the daemon write it.
+it("sends a commit's paths and message only when given", async () => {
+  const request = vi.fn(async () => ({ success: true, error: null }));
+  const host = new PaseoHost(
+    {} as PaseoApi,
+    { request } as unknown as PaseoCompat,
+    { serverId: "h", version: "0.9.1" },
+    () => {},
+  );
+  await host.commit("/repo", ["src/a.ts"], "Task\n\nDid it");
+  await host.commit("/repo");
+  const fields = request.mock.calls.map((call) => (call as unknown[])[1]);
+  expect(fields).toEqual([
+    {
+      cwd: "/repo",
+      addAll: true,
+      message: "Task\n\nDid it",
+      paths: ["src/a.ts"],
+    },
+    { cwd: "/repo", addAll: true },
+  ]);
+  host.dispose();
+});

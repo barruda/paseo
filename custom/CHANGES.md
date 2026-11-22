@@ -9389,7 +9389,10 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     uncommitted work (an open Unity Editor, for one). The delivery commit (and the `preparing-pr`
     one) takes the paths dirty now minus the `initialDirty` paths, untracked included, and commits
     them by path through the daemon's commit-selection (`paths` on `checkout_commit`), never
-    `add -A`. An untracked directory listed at the start covers the files under it, and a line
+    `add -A`. The commit message is the task title plus the report's `summary`
+    (`inPlaceCommitMessage`), passed as `message` on `checkout_commit`: the daemon would otherwise
+    generate one from the whole folder's diff and could describe the user's left-out files. An
+    untracked directory listed at the start covers the files under it, and a line
     with any path dirty at the start (one side of a rename) stays out. With nothing left (only the
     old dirt, or the agent already committed) there is no commit and the delivery still ends; the
     history gets `committed` or `folder-dirty` with how many paths were left out and which. When
@@ -9420,8 +9423,8 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
 - **Re-apply:** Plugin-only. The server side is `CUSTOM(orchestrator-in-place)` in
   `server/workboard.ts` (`inPlaceFolder`, `inPlaceDirectories`, `folderHold`, `logFolderWait`,
   the `startCard` start state, `commitInPlace` and `completeInPlace`), in
-  `server/assistant/delivery.ts` (`porcelainPaths`, `inPlaceCommitPlan`), in `server/host.ts`
-  (`commit(directory, paths)`) and in
+  `server/assistant/delivery.ts` (`porcelainPaths`, `inPlaceCommitPlan`, `inPlaceCommitMessage`),
+  in `server/host.ts` (`commit(directory, paths, message)`) and in
   `server/assistant/task-git.ts` (`baseHead` / `initialDirty`). The model fields are in
   `shared/model.ts` (`Orchestration.inPlace/baseHead/initialDirty`, `Card.inPlace`), the hold kind
   in `shared/hold.ts`, the history kind in `shared/assistant.ts`. The form is the Workspace chips
@@ -9439,9 +9442,10 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   and the approval commit wait while another task's agent runs in the folder; a failed approval
   commit goes to Needs you; dirty folder recorded; delivery commits without `mergeToBase`; diff
   from the starting HEAD; worktree unchanged; the commit takes only the task's paths and leaves
-  the earlier dirt; only earlier dirt delivers without a commit; a reported file that was dirty
-  before goes to Needs you with nothing committed), `tests/assistant-delivery.test.ts` (porcelain
-  path parsing, the commit plan, a plan from real `git status` with spaces and non-ASCII names) and
+  the earlier dirt, with the task's title and summary as the message; only earlier dirt delivers
+  without a commit; a reported file that was dirty before goes to Needs you with nothing
+  committed), `tests/assistant-delivery.test.ts` (porcelain path parsing, the commit plan and message, a plan from real `git status` with spaces and
+  non-ASCII names), `tests/host.test.ts` (`commit` sends `paths` and `message` only when given) and
   `tests/finish-buttons.test.ts` (no Merge for a folder-mode Done card).
 
 ## pm-board: a Project Manager board for investigations, proposals and decisions
