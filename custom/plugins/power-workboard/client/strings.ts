@@ -25,6 +25,13 @@ const zh = {
   agentGone: "这个任务的 Agent 已不存在。",
   openInPanel: "在面板中打开",
   closeMenu: "关闭菜单",
+  // CUSTOM(factory): shadow mode's line on the board and in the Orchestrators tab.
+  factory: {
+    differences: "factory：{mode}，{count} 处差异",
+    loading: "factory：{mode}，加载中…",
+    invalid: "factory：{mode}，还没有有效的配置",
+    errors: "{count} 个错误（保留上一个有效配置）：{first}",
+  },
   ticketPanel: {
     close: "关闭面板",
     description: "说明",
@@ -836,6 +843,12 @@ const en: typeof zh = {
   agentGone: "This task's agent no longer exists.",
   openInPanel: "Open in panel",
   closeMenu: "Close menu",
+  factory: {
+    differences: "factory: {mode}, {count} differences",
+    loading: "factory: {mode}, loading…",
+    invalid: "factory: {mode}, no valid factory yet",
+    errors: "{count} error(s); the last valid factory is kept: {first}",
+  },
   ticketPanel: {
     close: "Close panel",
     description: "Description",

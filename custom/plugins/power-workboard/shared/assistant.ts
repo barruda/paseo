@@ -9,6 +9,7 @@ import { z } from "zod";
 import { skillSelectionSchema } from "./profiles";
 import { orchestratorHoldSchema } from "./hold"; // CUSTOM(resource-pools)
 import { pmBoardSchema, pmOverviewSchema } from "./pm-board"; // CUSTOM(pm-board)
+import { factorySettingsSchema } from "./factory/status"; // CUSTOM(factory)
 
 /**
  * What happens to a task's work when its agent finishes with a `done` report. `review` (the
@@ -154,6 +155,8 @@ export const assistantSettingsSchema = z.object({
   chat: assistantChatSettingsSchema.default(() =>
     assistantChatSettingsSchema.parse({}),
   ),
+  /** CUSTOM(factory): where the factory lives and whether the board reads it (docs/factory.md). */
+  factory: factorySettingsSchema.default(() => factorySettingsSchema.parse({})),
 });
 export type AssistantSettings = z.infer<typeof assistantSettingsSchema>;
 

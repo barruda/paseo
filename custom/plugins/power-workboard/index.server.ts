@@ -20,6 +20,7 @@ import {
   writeTicketRpc,
   redeployPaseoRpc,
   factoryPipelinesRpc, // CUSTOM(factory)
+  factoryStatusRpc, // CUSTOM(factory)
 } from "./shared/rpc";
 // CUSTOM(projects-assistant)
 import {
@@ -78,6 +79,9 @@ import {
   profilesSkillsRpc,
 } from "./shared/profiles";
 import { redeployPaseo } from "./server/redeploy"; // CUSTOM(redeploy-button)
+// CUSTOM(factory)
+import { defaultFactoryRoot, FactoryShadow } from "./server/factory/shadow";
+import { defaultProfilesDirectory } from "./server/profiles";
 import { ImageStore, defaultImageDirectory } from "./server/images";
 import { PaseoCompat } from "./server/paseo-compat";
 import { PaseoHost } from "./server/host";
@@ -161,6 +165,21 @@ export default function contribute(server: PluginServerContext) {
     },
   });
   let board: Workboard | undefined;
+  // CUSTOM(factory): shadow mode reads the board's data and projects; it applies nothing.
+  const factory = new FactoryShadow({
+    live: () =>
+      board
+        ? {
+            settings: () =>
+              store.peek((data) => data.assistant.settings.factory),
+            revision: () => store.peek((data) => data.revision),
+            data: () => store.current,
+            projects: () => board?.inventoryProjects() ?? [],
+          }
+        : null,
+    defaultRoot: defaultFactoryRoot(),
+    profilesRoot: defaultProfilesDirectory(),
+  });
   let disposed = false;
   let error = "Workboard is starting";
   let retry: ReturnType<typeof setTimeout> | undefined;
@@ -192,6 +211,7 @@ export default function contribute(server: PluginServerContext) {
         chatQueued: (agentId) => inbox.pending(agentId),
       });
       await board.start();
+      factory.sync(); // CUSTOM(factory)
     } catch (failure) {
       const classified = classifyBootFailure(failure);
       error = classified.error;
@@ -215,7 +235,12 @@ export default function contribute(server: PluginServerContext) {
     // CUSTOM(resource-pools): the board polls every 1.5 s, so a pool's RAM hold shows the RAM
     // read at the previous poll instead of the last pass's.
     void board.readPoolMemory().catch(() => undefined);
-    return board.snapshot();
+    return { ...board.snapshot(), factory: factory.summary() }; // CUSTOM(factory)
+  });
+  // CUSTOM(factory): mode, root, revision, errors, warnings and the diff of shadow mode.
+  server.handle(factoryStatusRpc, () => {
+    if (!board) throw new Error(error);
+    return factory.status();
   });
   // CUSTOM(workboard-chip-status): the Desk header chip's counts.
   server.handle(deskStatusRpc, () => {
@@ -251,9 +276,11 @@ export default function contribute(server: PluginServerContext) {
     return board;
   };
   server.handle(assistantSettingsGetRpc, () => ready().assistantSettings());
-  server.handle(assistantSettingsSetRpc, (input) =>
-    ready().setAssistantSettings(input.settings),
-  );
+  server.handle(assistantSettingsSetRpc, async (input) => {
+    const saved = await ready().setAssistantSettings(input.settings);
+    factory.sync(); // CUSTOM(factory): a new mode or folder applies now, not on the next poll.
+    return saved;
+  });
   // CUSTOM(factory): the Pipelines tab, read only.
   server.handle(factoryPipelinesRpc, () =>
     builtinPipelinesView(ready().assistantSettings().settings.reviews),
@@ -394,6 +421,7 @@ export default function contribute(server: PluginServerContext) {
     for (const off of removeChatTurns) off(); // CUSTOM(assistant-wake)
     inbox.dispose(); // CUSTOM(assistant-quick)
     board?.dispose();
+    factory.dispose(); // CUSTOM(factory)
     compat.dispose();
   };
 }

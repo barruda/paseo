@@ -82,6 +82,7 @@ import {
   cardsForStage,
 } from "./board-utils";
 import { groupTitle, stageTitle, strings } from "./strings";
+import { FactoryLine } from "./FactoryLine"; // CUSTOM(factory)
 import {
   limitLine,
   logLines,
@@ -1752,6 +1753,12 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           {bootErrorText(board.error, t)}
         </Text>
       )}
+      <FactoryLine
+        summary={board.factory}
+        t={t.factory}
+        theme={props.theme}
+        inset
+      />
       {conflicts.length > 0 && (
         <ConflictNotice
           cards={conflicts}

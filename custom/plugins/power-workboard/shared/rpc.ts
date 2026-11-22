@@ -1,6 +1,7 @@
 import { defineRpc } from "@getpaseo/plugin";
 import { z } from "zod";
 import { deskStatusSchema } from "./desk-status";
+import { factoryStatusSchema } from "./factory/status"; // CUSTOM(factory)
 import {
   FINISH_STEPS,
   GROUP_COLORS,
@@ -26,6 +27,12 @@ import {
 } from "./model";
 import { pipelineFileSchema } from "./factory/schema"; // CUSTOM(factory)
 
+// CUSTOM(factory): shadow mode's full report (docs/factory.md, "Loading and revisions").
+export const factoryStatusRpc = defineRpc({
+  name: "workboard.factory.status",
+  input: z.object({}),
+  output: factoryStatusSchema,
+});
 export const snapshotRpc = defineRpc({
   name: "workboard.snapshot",
   input: z.object({}),
