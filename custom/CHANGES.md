@@ -10285,3 +10285,35 @@ tests/factory.test.ts tests/factory-export.test.ts)` (part of the plugin suite i
   `server/factory/builtin/` into a folder with a `factory.yaml`, a worker and a project using
   `pipeline: critical`, then `custom/plugins/power-workboard/bin/factory validate <dir>`; break a
   `to:` and it prints the file, line and the stages it made unreachable.
+
+## factory-pipeline-graph: the read-only Pipelines tab
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: read-only Pipelines tab with the pipeline graph in the Power Workboard`
+- **Why:** Ticket 8 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Pipeline editor"): see a project's pipeline as a graph before the editor and the engine exist.
+- **What:**
+  - Spike result, written in `docs/factory.md`: the plugin client has no SVG and cannot bundle
+    `react-native-svg` (native module), so the graph is plain Views with orthogonal edges.
+  - `client/pipeline-layout.ts`: pure layered layout (rows by longest path from `start`; next-row
+    edges straight down, skips in right lanes, back edges in left lanes, self loops), `layout`
+    used when it places every node, and the segment rectangles the view draws.
+  - `shared/factory/builtin-pipelines.ts`: the `default` and `critical` pipelines as data for the
+    bundle (the daemon cannot read `server/factory/builtin/`), `builtinPipelineFor` (the
+    `fresh-agent` → `critical` mapping, now also used by `bin/factory export`) and
+    `builtinPipelinesView`.
+  - RPC `workboard.factory.pipelines.get` (`shared/rpc.ts`, `index.server.ts`): the built-in
+    pipelines and each project's pipeline from its review policy.
+  - **Pipelines** tab after Orchestrators (`client/Orchestrators.tsx`, `client/WorkboardScreen.tsx`,
+    restorable in `client/assistant/workboard-pages.ts`): project chips, the graph (role, worker,
+    start/gate/fresh tags, `when` and gate labels on edges) and a read-only stage panel. Phones get
+    a list of stage cards. `client/PipelinesView.tsx`, `client/pipeline-view.ts`,
+    `client/pipeline-strings.ts` (en/pt/zh).
+- **Core files touched:** none.
+- **Plugin files:** the files above, `server/factory/export.ts`, `docs/factory.md`,
+  `tests/pipeline-layout.test.ts`, `tests/pipeline-view.test.ts`, `tests/workboard-pages.test.ts`.
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/pipeline-layout.test.ts
+tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). In the app:
+  Workboard → **Pipelines** tab → pick DreamMMO (`critical`) or another project (`default`), click a
+  node to see the stage in the right panel.

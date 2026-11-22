@@ -21,6 +21,7 @@ import {
   compileFactory,
   type CompiledFactory,
 } from "../../shared/factory/compile";
+import { builtinPipelineFor } from "../../shared/factory/builtin-pipelines";
 import { splitFrontmatter } from "../../shared/factory/frontmatter";
 import {
   FACTORY_SCHEMA_VERSION,
@@ -311,8 +312,10 @@ export async function exportFactory(
     const front: Record<string, unknown> = {
       path: homePath(project.rootPath, home),
     };
-    if (settings.reviews[projectId] === "fresh-agent")
-      front.pipeline = "critical";
+    const pipelineId = builtinPipelineFor(
+      settings.reviews[projectId] ?? "self",
+    );
+    if (pipelineId !== "default") front.pipeline = pipelineId;
     if (policy) {
       front.delivery = {
         action: policy.action,

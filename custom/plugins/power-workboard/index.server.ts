@@ -1,5 +1,6 @@
 import { defineSettings } from "@getpaseo/plugin";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
+import { builtinPipelinesView } from "./shared/factory/builtin-pipelines"; // CUSTOM(factory)
 import { DATA_SCHEMA_VERSION, dataSchema } from "./shared/model";
 import {
   migrateData,
@@ -18,6 +19,7 @@ import {
   deskStatusRpc,
   writeTicketRpc,
   redeployPaseoRpc,
+  factoryPipelinesRpc, // CUSTOM(factory)
 } from "./shared/rpc";
 // CUSTOM(projects-assistant)
 import {
@@ -251,6 +253,10 @@ export default function contribute(server: PluginServerContext) {
   server.handle(assistantSettingsGetRpc, () => ready().assistantSettings());
   server.handle(assistantSettingsSetRpc, (input) =>
     ready().setAssistantSettings(input.settings),
+  );
+  // CUSTOM(factory): the Pipelines tab, read only.
+  server.handle(factoryPipelinesRpc, () =>
+    builtinPipelinesView(ready().assistantSettings().settings.reviews),
   );
   server.handle(assistantOverviewRpc, () =>
     buildOverview(ready().assistantSource()),

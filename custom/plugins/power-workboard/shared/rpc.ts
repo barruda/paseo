@@ -24,11 +24,24 @@ import {
   taskTimingSchema,
   testTierSchema, // CUSTOM(packages)
 } from "./model";
+import { pipelineFileSchema } from "./factory/schema"; // CUSTOM(factory)
 
 export const snapshotRpc = defineRpc({
   name: "workboard.snapshot",
   input: z.object({}),
   output: boardSchema,
+});
+// CUSTOM(factory): the Pipelines tab's source. Today it answers with the built-in pipelines;
+// ticket 9 (active mode) switches it to the loaded factory.
+export const factoryPipelinesRpc = defineRpc({
+  name: "workboard.factory.pipelines.get",
+  input: z.object({}),
+  output: z.object({
+    source: z.literal("builtin"),
+    pipelines: z.record(z.string(), pipelineFileSchema),
+    projects: z.record(z.string(), z.string()),
+    defaultPipeline: z.string(),
+  }),
 });
 // CUSTOM(project-icon-colors): the accent the assistant pages paint a project's name with.
 export const projectAccentsRpc = defineRpc({

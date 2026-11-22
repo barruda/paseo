@@ -1,8 +1,8 @@
 # Factory as code, worker roles and pipelines
 
 Status: approved design. Built so far: tickets 2 (schemas, loader, compiler and `bin/factory`), 4
-(`bin/factory export`) and 6 (pipelines and roles), not wired into the board, and ticket 5
-(revision stamps). Tickets at the end. Inspired by Warp Factories
+(`bin/factory export`) and 6 (pipelines and roles), not wired into the board, ticket 5
+(revision stamps) and ticket 8 (the read-only Pipelines tab). Tickets at the end. Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -336,6 +336,24 @@ as a graph: stages as nodes (role, worker, gate marker), transitions as edges la
 Validation runs live with the same schemas. Save writes `pipelines/<id>.yaml` through the factory
 writer, including `layout`. Live overlay: each node shows how many tasks are in that stage and how
 many wait on its gate; a click lists them. On phones the tab shows the stages as a read-only list.
+
+Drawing: the graph is plain React Native Views, with no SVG and no graph library. The plugin
+client gets only React, React Native, zod, react-query and the SDK from the host
+(`runtimeRequire` in `packages/app/src/plugins/evaluate.ts`). A pure-JS package from the plugin's
+`node_modules` would bundle, but `react-native-svg` is a native module: a bundled copy would register
+its native views a second time, and the host does not hand its own copy to plugins. So
+`client/pipeline-layout.ts` does the layout itself and routes every edge orthogonally: stages in rows
+by longest path from `start`, an edge to the next row straight down, a skip in a lane on the right, a
+back edge in a lane on the left, a self loop on the node's right side. The view draws each segment as
+a thin View and the arrowhead as a border triangle. A `layout` that places every node replaces the
+rows; one that misses a node is ignored. A layered layout library such as dagre would bundle if the
+hand-made one stops being enough.
+
+Source: until active mode (ticket 9) the tab reads RPC `workboard.factory.pipelines.get`, which
+answers with the built-in pipelines (`shared/factory/builtin-pipelines.ts`, kept equal to
+`server/factory/builtin/pipelines/` by a test) and gives each project the one the migration would:
+`critical` for the `fresh-agent` review policy, else `default`. The worker shown on a node is the
+project's orchestrator, taken as an implement worker.
 
 ## Tickets
 

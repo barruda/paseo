@@ -107,6 +107,7 @@ import {
   supplementalColor,
 } from "./colors";
 import { ProjectIcon } from "./ProjectIcon";
+import { PipelinesView } from "./PipelinesView"; // CUSTOM(factory)
 import {
   projectIconFor,
   useProjectIcons,
@@ -956,6 +957,13 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               );
               if (created) openOrchestrator(created.id);
             }}
+          />
+        ) : tab === "pipelines" ? (
+          // CUSTOM(factory): the pipelines, read only.
+          <PipelinesView
+            board={board}
+            theme={props.theme}
+            compact={props.layout.compact}
           />
         ) : tab === "assistant-chat" ? (
           // CUSTOM(workboard-inner-pages): the same screens the Desk chips used to show.
