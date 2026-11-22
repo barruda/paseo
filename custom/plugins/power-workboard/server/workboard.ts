@@ -180,6 +180,7 @@ import {
   type VerifyRunner,
 } from "./assistant/delivery";
 import type { HistoryEventInput, HistoryStore } from "./assistant/history";
+import { workerConfigHash, type RevisionStamp } from "./factory/stamp"; // CUSTOM(factory)
 import type { ViewSource } from "./assistant/views";
 import {
   checkpointResumePrompt, // CUSTOM(task-checkpoints)
@@ -546,6 +547,26 @@ export class Workboard {
       config.skills,
       config.memory,
     );
+  }
+  /**
+   * CUSTOM(factory): the revision stamp of a new agent of this orchestrator. The factory is off
+   * or in shadow until ticket 9, so the hash comes from the live config and the revision is null.
+   * An unreadable profile hashes as no system prompt, as the agent then starts without one.
+   */
+  private async workerStamp(
+    config: OrchestratorConfig,
+  ): Promise<RevisionStamp> {
+    const systemPrompt = await this.profiles
+      .read({ id: config.id, label: config.name })
+      .then(
+        (profile) => profile.systemPrompt,
+        () => "",
+      );
+    return {
+      factoryRevision: null,
+      workerId: config.id,
+      workerConfigHash: workerConfigHash({ config, systemPrompt }),
+    };
   }
   // CUSTOM(projects-assistant)
   private delivering = new Set<string>();
@@ -2632,6 +2653,10 @@ export class Workboard {
         text: text.slice(0, 2000),
         detail: extra.detail ?? null,
         by: extra.by ?? "orchestrator", // CUSTOM(assistant-cards)
+        // CUSTOM(factory): the stamp of the run the event belongs to.
+        factoryRevision: run?.factoryRevision ?? null,
+        workerId: run?.workerId ?? null,
+        workerConfigHash: run?.workerConfigHash ?? null,
       });
     } catch {
       // The history is a log; the board does not depend on it.
@@ -4686,6 +4711,10 @@ export class Workboard {
     if (this.delivering.has(taskId))
       throw new Error("A delivery step is already running for this task");
     await this.review(taskId, "continue", input.text, by);
+  }
+  /** CUSTOM(factory): Paseo's projects as the last refresh saw them, without cloning the data. */
+  inventoryProjects(): ReadonlyArray<{ id: string; directory: string }> {
+    return this.inventory.projects;
   }
   assistantSettings(): {
     settings: AssistantSettings;
@@ -7199,6 +7228,7 @@ export class Workboard {
     await this.setOrchestration(card.id, {
       status: "starting",
       orchestratorId: config.id,
+      ...(await this.workerStamp(config)), // CUSTOM(factory)
       night,
       inPlace,
       baseHead,
@@ -7343,10 +7373,13 @@ export class Workboard {
       await this.moveBound(taskId, stage);
       const task = this.task(taskId);
       let agentId = record.agentId;
+      // CUSTOM(factory): a new agent starts from the current config; a live one keeps its stamp.
+      let stamp: RevisionStamp | null = null;
       if (agentId && (await this.host.agentAlive(agentId)))
         await this.host.sendAgent(agentId, nextPrompt);
       else {
         fresh = true;
+        stamp = await this.workerStamp(settings);
         agentId = await this.host.startAgent(task.workspaceId!, {
           ...(await this.orchestratorProfile(settings)), // CUSTOM(agent-profiles)
           provider: settings.provider,
@@ -7396,6 +7429,7 @@ export class Workboard {
         // CUSTOM(usage-limit): only a resume after the limit keeps counting pauses.
         limited: false,
         limitPauses: limited ? (record.limitPauses ?? 0) : 0,
+        ...stamp, // CUSTOM(factory)
       });
       // CUSTOM(projects-assistant)
       if (this.assistantOn()) {

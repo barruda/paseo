@@ -195,6 +195,9 @@ const event = (
   text: "",
   detail: null,
   by: null,
+  factoryRevision: null,
+  workerId: null,
+  workerConfigHash: null,
   ...over,
 });
 

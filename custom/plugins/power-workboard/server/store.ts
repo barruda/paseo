@@ -68,6 +68,10 @@ export class Store {
   get current(): Data {
     return structuredClone(this.value);
   }
+  /** CUSTOM(factory): reads a field without cloning the whole data; `read` must not keep or change it. */
+  peek<T>(read: (data: Readonly<Data>) => T): T {
+    return read(this.value);
+  }
   /** CUSTOM(task-description-files): the one accessor for a task's description. */
   description(taskId: string): string {
     return this.texts.get(taskId) ?? "";

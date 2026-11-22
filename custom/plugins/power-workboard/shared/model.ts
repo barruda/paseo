@@ -7,6 +7,7 @@ import {
 } from "./assistant"; // CUSTOM(projects-assistant), CUSTOM(task-checkpoints)
 import { skillSelectionSchema } from "./profiles"; // CUSTOM(agent-profiles)
 import { orchestratorHoldSchema, type OrchestratorHold } from "./hold"; // CUSTOM(resource-pools)
+import { factorySummarySchema } from "./factory/status"; // CUSTOM(factory)
 
 export const STAGES = [
   "inbox",
@@ -699,6 +700,14 @@ export const orchestrationSchema = z.object({
   baseHead: z.string().nullable().default(null),
   /** CUSTOM(orchestrator-in-place): `git status --porcelain` lines the folder already had. */
   initialDirty: z.array(z.string()).default([]),
+  /**
+   * CUSTOM(factory): the revision stamp of the agent's start (docs/factory.md, "Loading and
+   * revisions"). Null on runs started before the stamp existed; `factoryRevision` is also null
+   * while the factory is off or in shadow.
+   */
+  factoryRevision: z.string().nullable().default(null),
+  workerId: z.string().nullable().default(null),
+  workerConfigHash: z.string().nullable().default(null),
 });
 export type Orchestration = z.infer<typeof orchestrationSchema>;
 /**
@@ -974,6 +983,8 @@ export const boardSchema = z.object({
     .default({ open: false, nextStartAt: null, waiting: 0 }),
   // CUSTOM(packages): the open and closed packages with their counts and last gate run.
   packages: z.array(packageViewSchema).default([]),
+  /** CUSTOM(factory): the factory banner; null or missing while the factory mode is off. */
+  factory: factorySummarySchema.nullable().optional(),
   projects: z.array(
     z.object({
       id: z.string(),

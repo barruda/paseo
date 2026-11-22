@@ -27,6 +27,7 @@ import { ConfirmationModal } from "./ConfirmationModal";
 import { HintButton } from "./Hint";
 import type { strings } from "./strings";
 import { toggleButtonState } from "./web";
+import { FactoryLine } from "./FactoryLine"; // CUSTOM(factory)
 import { formatHold } from "./hold-format"; // CUSTOM(resource-pools)
 // CUSTOM(agent-profiles)
 import {
@@ -42,6 +43,7 @@ import {
   WORKBOARD_PAGES,
   workboardPageLabels,
 } from "./assistant/workboard-pages";
+import { pipelineStrings } from "./pipeline-strings"; // CUSTOM(factory)
 import { profileStrings } from "./profiles-strings";
 import { ASSISTANT_PROFILE, type SkillSelection } from "../shared/profiles";
 
@@ -207,6 +209,7 @@ export function OrchestratorsPanel(
       <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
         {panel.intro}
       </Text>
+      <FactoryLine summary={board.factory} t={t.factory} theme={theme} />
       {/* CUSTOM(bulk-orchestrator-agent): what to do with the selected orchestrators */}
       {selectedConfigs.length > 0 && (
         <View
@@ -1859,7 +1862,8 @@ export function WorkboardTabs({
   badges?: Record<string, number>;
 }) {
   const language = usePaseoLanguage(); // CUSTOM(agent-profiles)
-  const pageLabels = workboardPageLabels(usePaseoLocale()); // CUSTOM(workboard-inner-pages)
+  const pageLocale = usePaseoLocale();
+  const pageLabels = workboardPageLabels(pageLocale); // CUSTOM(workboard-inner-pages)
   const active = Object.values(board.orchestratorStatus).filter(
     (status) => status.active,
   ).length;
@@ -1885,6 +1889,13 @@ export function WorkboardTabs({
         ? `${t.panel.title} · ${active} ${t.panel.active.toLowerCase()}`
         : t.panel.title,
       icon: "Bot",
+      closable: false,
+    },
+    // CUSTOM(factory): the pipelines, read only.
+    {
+      id: "pipelines",
+      label: pipelineStrings(pageLocale).tab,
+      icon: "Workflow",
       closable: false,
     },
     ...pages.filter((page) => page.id !== "pm-board"),

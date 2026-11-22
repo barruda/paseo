@@ -10185,3 +10185,235 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
   with a description. In the app: open a card in the panel (the description shows), Edit a card
   (the text is there; save a change), search the board for a word only in a description, create a
   task and start one.
+
+## factory-schema: factory schemas, loader, compiler and `bin/factory validate`
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: factory schemas, loader, compiler and bin/factory for the Power Workboard`
+- **Why:** Ticket 2 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`):
+  the board's configuration will come from a git repository of YAML and Markdown files. This is
+  the pure code the later tickets (export, shadow, active mode) build on. Nothing reads a factory
+  yet: no behavior change.
+- **What:**
+  - `shared/factory/schema.ts`: strict Zod schemas with no defaults for `factory.yaml`,
+    `board.yaml`, `projects/<id>.yaml`, the frontmatter of `workers/<id>/worker.md` and
+    `pm/worker.md`, and SKILL.md (only `name`/`description` checked). Issue kinds: `missing-file`,
+    `parse`, `schema`, `invalid-id`, `unknown-file`, `unsupported` (`scorers/`, `automations/`),
+    `reference`, `inactive-project` (warning), `compile`.
+  - `shared/factory/frontmatter.ts`: splits `---` frontmatter from the body.
+  - `server/factory/loader.ts` + `yaml-source.ts`: reads the directory with the `yaml` package
+    (new plugin dependency), reports each issue with file and line (the key's line, including
+    unknown keys; frontmatter lines count from the file's top), resolves project paths with
+    realpath (`~/` and factory-relative), and checks worker → project, worker/default → pool,
+    duplicate checkouts and `templates.spec`. Any error leaves the factory null.
+  - `shared/factory/compile.ts`: turns the factory into today's `orchestrator`,
+    `orchestrators` (by `priority`, then id), `settings`, `night`, and the config part of
+    `assistant.settings` (`enabled`, `defaultAction`, `projects` keyed by the Paseo project id,
+    `chat`), each parsed by today's schema. Worker fields inherit `defaults.worker`, then today's
+    defaults; `permission: full` is `modeId: null`; `workspace` is `useWorktree`; the PM's
+    `interactivePermission` is `refineModeId`. Paseo project ids come from a caller's
+    `projectIdForPath`.
+  - `bin/factory validate [dir]` and `bin/factory schema [dir]` (`server/factory/cli.ts`, run
+    through the checkout's tsx): print `file:line: message [kind]`, exit 1 on errors; write
+    `.schema/*.json` with `z.toJSONSchema`.
+  - Left for ticket 6: `pipelines/*.yaml` and `roles/*.md` are checked by name only; `pipeline:`
+    is not resolved. Worker `role` and an optional `name` are already in the worker schema.
+- **Core files touched:** none.
+- **Plugin files:** `shared/factory/*`, `server/factory/*`, `bin/factory`, `docs/factory.md`,
+  `package.json` (+ lock: `yaml`), `tests/factory.test.ts`, `tests/factory-fixtures.ts`.
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory.test.ts)` (part of
+  the plugin suite in the update script). By hand: `custom/plugins/power-workboard/bin/factory
+validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`, `name: x`).
+
+## factory-export: `bin/factory export` and the round trip
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: bin/factory export writes the Power Workboard factory from the board data`
+- **Why:** Ticket 4 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Migration"): the first factory is written from today's config instead of by hand, and a round
+  trip test proves the factory holds the same config. Nothing reads a factory yet: no behavior
+  change.
+- **What:**
+  - `server/factory/export.ts`: `exportFactory` writes `factory.yaml` (`defaults.worker` from
+    `data.orchestrator`), `board.yaml` (columns in screen order, pools, night, housekeeping),
+    `pm/worker.md` (chat settings + the `assistant` profile's prompt and skills),
+    `workers/<slug>/worker.md` (every field explicit, `priority` in steps of 10 in today's order,
+    `role: implement`, the profile's prompt), `task-prompt.md` (the orchestrator's `instructions`),
+    profile skills with a valid SKILL.md (others are warned about and left out; memory is never
+    copied), and `projects/<slug>.yaml` for every project a worker, a delivery policy or a
+    `fresh-agent` review names (`~/` paths; `fresh-agent` → `pipeline: critical`). Then the
+    built-in pipelines and roles, `README.md`, `.gitignore`, `.schema/*.json` and
+    `.factory-ids.json` (orchestrator UUID → slug, Paseo project id → slug, pool id → slug;
+    git-ignored, for the cutover). It validates with the loader and compiler and only then runs
+    `git init -b main` and commits (hooks off, a fallback identity when git has none). It refuses a
+    target that is not empty.
+  - The built-in files (pipelines, role prompts, spec template, README, `.gitignore`) come from
+    `readBuiltinFactoryFiles()` (`server/factory/builtin.ts`, entry `factory-pipelines`); the
+    export's first minimal copies in `server/factory/builtins.ts` were removed there.
+  - `bin/factory export <dir> [--data] [--profiles] [--projects]`: the inputs default to the live
+    files under `$PASEO_HOME` (read only, `workboard-data.json` migrated in memory when old); the
+    target has no default, so no call writes `~/.paseo/factory` by accident.
+  - Left out with a warning: orchestrators and policies of a project Paseo no longer has, the
+    default task prompt of new orchestrators, `defaultDraftGroup`/`defaultStartGroup`/
+    `defaultStartWorkGroup` (they stay in the JSON).
+- **Core files touched:** none.
+- **Plugin files:** `server/factory/export.ts`, `server/factory/cli.ts`, `bin/factory`, `docs/factory.md`, `tests/factory-export.test.ts`,
+  `tests/factory.test.ts` (its "unknown command" case used `export`).
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-export.test.ts)`
+  (part of the plugin suite in the update script). By hand, read-only on the live data:
+  `custom/plugins/power-workboard/bin/factory export /home/bruno/uprojects/tmp/factory-try`, then
+  `bin/factory validate` on the same folder.
+
+## factory-stamps: revision stamps on runs and history
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: revision stamps on Power Workboard runs and history events`
+- **Why:** Ticket 5 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`):
+  metrics need to compare runs before and after a prompt or model change, so each run and history
+  event records which worker config it ran with.
+- **What:**
+  - `orchestrationSchema` and `historyEventSchema` get optional `factoryRevision`, `workerId` and
+    `workerConfigHash` (nullable, default null, so old data parses).
+  - `server/factory/stamp.ts`: `workerConfigHash` (16 hex of a sha256 over canonical JSON of the
+    agent-facing config fields, the trimmed system prompt, the task prompt and the role) and
+    `compiledWorkerConfigHash` for a compiled factory worker.
+  - `Workboard.startCard` stamps the new run; `continueTask` re-stamps only when it starts a new
+    agent. `record()` copies the run's stamp onto each history event; chat events stay null.
+  - With the factory off (the only mode until tickets 7 and 9) the revision is null and the hash
+    comes from the live orchestrator config plus its profile's `system-prompt.md`.
+- **Core files touched:** none.
+- **Plugin files:** `server/factory/stamp.ts`, `server/workboard.ts`, `server/assistant/history.ts`,
+  `shared/model.ts`, `shared/assistant.ts`, `docs/factory.md`, `tests/factory-stamp.test.ts`,
+  `tests/assistant-engine.test.ts` (+ fixture fields in `tests/assistant-reports.test.ts`,
+  `tests/assistant-views.test.ts`).
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** in `custom/plugins/power-workboard`, `npx vitest run tests/factory-stamp.test.ts` and
+  `npx vitest run tests/assistant-engine.test.ts` (part of the plugin suite in the update script).
+  After a `plugin reload`, start a task: its entry in `workboard-data.json` `orchestrations` and its
+  `task-started` line in `plugin-data/power-workboard/history/` carry `workerId` and
+  `workerConfigHash`, with `factoryRevision: null`.
+
+## factory-pipelines: worker roles, pipeline schema and built-in pipelines and role prompts
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: factory pipelines, worker roles and built-in role prompts for the Power Workboard`
+- **Why:** Ticket 6 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`):
+  projects declare a pipeline of stages run by worker roles. This adds the files and their checks;
+  no engine change, nothing reads a factory yet.
+- **What:**
+  - `shared/factory/schema.ts`: `pipelineFileSchema` (`start`, `stages` with `role`, `worker`,
+    `prompt`/`file`, `session`, `gate`, `to`, `maxVisits`, and `layout`), `STAGE_ROLES` (the five
+    worker roles plus `pm`), `pipeline.json` in `.schema/`. `LoadedFactory` gains `pipelines`
+    (with each stage's resolved prompt) and `roles`.
+  - `shared/factory/pipeline.ts`: built-in stages `deliver`/`end`/`cancel`, the in-file checks
+    run by the schema (unknown stage in `start`/`to`/`when`/gate option/`layout`, built-in used as
+    `start` or stage id, gate option without `to`, unreachable stage, `to`+`gate` or neither,
+    `prompt`+`file`, duplicate gate option), and `projectWorkers`/`stageRunner` (pinned worker,
+    else the project's worker with the role, else its implement worker; `pm` needs none).
+  - `server/factory/loader.ts`: reads `pipelines/*.yaml` and `roles/<role>.md` (only the stage
+    roles), and checks across files: pinned worker, stage `file`, missing `roles/<role>.md`,
+    project and `defaults.pipeline` references, and a role with no worker and no implement
+    fallback (projects no worker takes are skipped).
+  - `shared/factory/compile.ts`: `pipelines` (stages with defaults filled: `session: continue`,
+    `maxVisits: 3`), and a worker with no `role` compiles as `implement`.
+  - `server/factory/stamp.ts` (from `factory-stamps`): the hash treats `role: implement` as no
+    role, so a factory implement worker hashes like the same live orchestrator and the hashes
+    recorded before roles existed stay valid; another role still changes the hash.
+  - `server/factory/builtin/`: the `default` and `critical` pipelines, `roles/{triage,spec,
+    implement,verify,review}.md`, `templates/spec.md` and the factory `README.md`.
+    `readBuiltinFactoryFiles()` (`server/factory/builtin.ts`) returns them plus the `.gitignore`
+    (a constant: a real one in `builtin/` would apply to this repository) and is the only source
+    `bin/factory export` (`export.ts`) writes them from. It replaces ticket 4's
+    `server/factory/builtins.ts`, deleted here.
+- **Core files touched:** none.
+- **Plugin files:** `shared/factory/{schema,pipeline,compile}.ts`, `server/factory/loader.ts`,
+  `server/factory/builtin.ts`, `server/factory/builtin/**`, `server/factory/export.ts`,
+  `server/factory/stamp.ts`, `docs/factory.md`, `tests/factory-pipelines.test.ts`,
+  `tests/factory.test.ts`, `tests/factory-fixtures.ts`, `tests/factory-export.test.ts` (the export
+  copies the built-in files as they are), `tests/factory-stamp.test.ts` (implement hashes as none).
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-pipelines.test.ts
+tests/factory.test.ts tests/factory-export.test.ts)` (part of the plugin suite in the update script). By hand: copy
+  `server/factory/builtin/` into a folder with a `factory.yaml`, a worker and a project using
+  `pipeline: critical`, then `custom/plugins/power-workboard/bin/factory validate <dir>`; break a
+  `to:` and it prints the file, line and the stages it made unreachable.
+
+## factory-shadow: shadow mode loads the factory and diffs it against the live config
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: factory shadow mode watches, compiles and diffs the Power Workboard factory`
+- **Why:** Ticket 7 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Loading and revisions"): before the factory becomes the configuration (ticket 9), the board
+  loads it on every change and shows where it disagrees with today's settings, applying nothing.
+- **What:**
+  - Setting `factory: { root, mode: off | shadow | active }` in `assistant.settings` (default
+    `off`; empty root is `$PASEO_HOME/factory`, `~/` is the home), edited in Settings > Bruno's
+    Customizations > Project Manager > Factory. `active` runs as shadow, with a note, until
+    ticket 9; the page only offers it when it is the saved value.
+  - `server/factory/shadow.ts` (`FactoryShadow`, created in `index.server.ts`): watches the
+    folders the loader reads (no `memory/`, no dot folders but `.git`, non-recursive `fs.watch`),
+    loads 500 ms after the last change (trailing debounce), compiles with the board's Paseo
+    projects (realpath; a shared checkout resolves to the project the data names), and diffs
+    against the live data and profile prompts. An invalid factory keeps the last valid compile
+    for the diff and reports its errors. A missing folder is looked for again every 30 s.
+  - `shared/factory/diff.ts`: field-level diff with factory ids (`.factory-ids.json`, or name
+    slugs without it): `defaults`, `workers.<id>.*` (+ `systemPrompt`, `order`), `board.columns`,
+    `board.pools`, housekeeping, `night`, `pm.enabled`, `pm.chat`, `pm.systemPrompt`,
+    `delivery.defaultAction`, `projects.<paseo id>.*`. The default task prompt of new
+    orchestrators is left out (the factory has no place for it).
+  - `server/factory/revision.ts`: git `HEAD` plus `+dirty.<hash>` (`--no-optional-locks`, so git
+    never rewrites the watched `.git/index`).
+  - RPC `workboard.factory.status` (mode, root, revision, errors, warnings, diff, at most 200
+    differences + the count). The snapshot carries `factory` (summary or null); `FactoryLine`
+    shows "factory: shadow, N differences" and the first error under the board toolbar and the
+    Orchestrators tab intro.
+- **Core files touched:** `packages/app/src/screens/settings/bruno-customizations/projects-assistant-model.ts`
+  (+ test) and `projects-assistant-page.tsx` (`CUSTOM(factory)`: the mirror schema keeps
+  `factory`, so saving from Settings no longer drops it; the Factory card).
+- **Plugin files:** `shared/factory/status.ts`, `shared/factory/diff.ts`,
+  `server/factory/shadow.ts`, `server/factory/revision.ts`, `server/factory/export.ts` (exports
+  `slugger`), `server/store.ts` (`peek`), `server/workboard.ts` (`inventoryProjects`),
+  `shared/assistant.ts`, `shared/model.ts`, `shared/rpc.ts`, `index.server.ts`,
+  `client/FactoryLine.tsx`, `client/strings.ts`, `client/WorkboardScreen.tsx`,
+  `client/Orchestrators.tsx`, `docs/factory.md`, `tests/factory-shadow.test.ts`.
+- **Re-apply:** The two app files are custom pages; nothing else in core.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-shadow.test.ts)`
+  and the app model test (both already in the update script). By hand: export a factory to a
+  scratch folder (`bin/factory export /home/bruno/uprojects/tmp/factory-try`), set Settings >
+  Bruno's Customizations > Project Manager > Factory to Shadow with that folder, and the board
+  shows "factory: shadow, 0 differences"; change `maxConcurrent` in a `worker.md` and it shows 1
+  within a second; break the YAML and the error line appears while the count stays.
+
+## factory-pipeline-graph: the read-only Pipelines tab
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: read-only Pipelines tab with the pipeline graph in the Power Workboard`
+- **Why:** Ticket 8 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Pipeline editor"): see a project's pipeline as a graph before the editor and the engine exist.
+- **What:**
+  - Spike result, written in `docs/factory.md`: the plugin client has no SVG and cannot bundle
+    `react-native-svg` (native module), so the graph is plain Views with orthogonal edges.
+  - `client/pipeline-layout.ts`: pure layered layout (rows by longest path from `start`; next-row
+    edges straight down, skips in right lanes, back edges in left lanes, self loops), `layout`
+    used when it places every node, and the segment rectangles the view draws.
+  - `shared/factory/builtin-pipelines.ts`: the `default` and `critical` pipelines as data for the
+    bundle (the daemon cannot read `server/factory/builtin/`), `builtinPipelineFor` (the
+    `fresh-agent` → `critical` mapping, now also used by `bin/factory export`) and
+    `builtinPipelinesView`.
+  - RPC `workboard.factory.pipelines.get` (`shared/rpc.ts`, `index.server.ts`): the built-in
+    pipelines and each project's pipeline from its review policy.
+  - **Pipelines** tab after Orchestrators (`client/Orchestrators.tsx`, `client/WorkboardScreen.tsx`,
+    restorable in `client/assistant/workboard-pages.ts`): project chips, the graph (role, worker,
+    start/gate/fresh tags, `when` and gate labels on edges) and a read-only stage panel. Phones get
+    a list of stage cards. `client/PipelinesView.tsx`, `client/pipeline-view.ts`,
+    `client/pipeline-strings.ts` (en/pt/zh).
+- **Core files touched:** none.
+- **Plugin files:** the files above, `server/factory/export.ts`, `docs/factory.md`,
+  `tests/pipeline-layout.test.ts`, `tests/pipeline-view.test.ts`, `tests/workboard-pages.test.ts`.
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/pipeline-layout.test.ts
+tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). In the app:
+  Workboard → **Pipelines** tab → pick DreamMMO (`critical`) or another project (`default`), click a
+  node to see the stage in the right panel.

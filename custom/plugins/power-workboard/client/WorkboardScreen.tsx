@@ -83,6 +83,7 @@ import {
   cardsForStage,
 } from "./board-utils";
 import { groupTitle, stageTitle, strings } from "./strings";
+import { FactoryLine } from "./FactoryLine"; // CUSTOM(factory)
 import {
   limitLine,
   logLines,
@@ -108,6 +109,7 @@ import {
   supplementalColor,
 } from "./colors";
 import { ProjectIcon } from "./ProjectIcon";
+import { PipelinesView } from "./PipelinesView"; // CUSTOM(factory)
 import {
   projectIconFor,
   useProjectIcons,
@@ -980,6 +982,13 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               if (created) openOrchestrator(created.id);
             }}
           />
+        ) : tab === "pipelines" ? (
+          // CUSTOM(factory): the pipelines, read only.
+          <PipelinesView
+            board={board}
+            theme={props.theme}
+            compact={props.layout.compact}
+          />
         ) : tab === "assistant-chat" ? (
           // CUSTOM(workboard-inner-pages): the same screens the Desk chips used to show.
           <ChatLauncher
@@ -1784,6 +1793,12 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
           {bootErrorText(board.error, t)}
         </Text>
       )}
+      <FactoryLine
+        summary={board.factory}
+        t={t.factory}
+        theme={props.theme}
+        inset
+      />
       {conflicts.length > 0 && (
         <ConflictNotice
           cards={conflicts}

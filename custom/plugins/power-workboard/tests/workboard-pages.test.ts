@@ -92,6 +92,7 @@ describe("Project Manager pages inside the Workboard", () => {
       reportTab(navigation, tab);
     expect(reported).toEqual(["board", "pm-board", "dashboard", "reports"]);
     expect(isRestorableTab("assistant-chat")).toBe(false);
+    expect(isRestorableTab("pipelines")).toBe(true);
     expect(() => reportTab(hostNavigation(), "board")).not.toThrow();
   });
 

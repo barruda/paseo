@@ -24,6 +24,7 @@ import {
   ASSISTANT_DEFAULT_ACTIONS,
   DEFAULT_COMPACT_AT_TOKENS,
   DEFAULT_WAKE_DELAY_SECONDS,
+  FACTORY_MODE_LABELS,
   GATE_RUN_IN,
   GATE_RUN_IN_LABELS,
   MAX_AUTO_FIXES,
@@ -32,7 +33,9 @@ import {
   actionNeedsGit,
   assistantSettingsResponseSchema,
   chatSettingsValid,
+  factoryModeOptions,
   patchChatSettings,
+  patchFactorySettings,
   patchProjectPolicy,
   patchProjectTests,
   formatEnv,
@@ -49,6 +52,7 @@ import {
   type AssistantProject,
   type AssistantSettings,
   type AssistantSettingsResponse,
+  type FactoryMode,
   type ReviewPolicy,
 } from "./projects-assistant-model";
 
@@ -159,6 +163,17 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
     (wakeDelaySeconds: string) => handleChat({ wakeDelaySeconds }),
     [handleChat],
   );
+  // CUSTOM(factory)
+  const handleFactoryMode = useCallback(
+    (mode: FactoryMode) =>
+      setDraft((current) => (current ? patchFactorySettings(current, { mode }) : current)),
+    [],
+  );
+  const handleFactoryRoot = useCallback(
+    (root: string) =>
+      setDraft((current) => (current ? patchFactorySettings(current, { root }) : current)),
+    [],
+  );
   const handleProjectChange = useCallback(
     (update: (settings: AssistantSettings) => AssistantSettings) =>
       setDraft((current) => (current ? update(current) : current)),
@@ -248,6 +263,26 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
               initialValue={String(draft.chat.wakeDelaySeconds)}
               onChangeText={handleWakeDelay}
               placeholder={String(DEFAULT_WAKE_DELAY_SECONDS)}
+            />
+          </SettingsCard>
+          <Text style={settingsStyles.sectionHeaderTitle}>Factory</Text>
+          <SettingsCard testID="projects-assistant-factory">
+            <SettingsSelect
+              label="Mode"
+              hint="Shadow loads the factory folder on every change and compares it with the board's settings; the board shows the errors and differences and keeps using its own settings."
+              value={draft.factory.mode}
+              options={factoryModeOptions(draft.factory.mode).map((value) => ({
+                value,
+                label: FACTORY_MODE_LABELS[value],
+              }))}
+              onValueChange={handleFactoryMode}
+            />
+            <SettingsInput
+              label="Folder"
+              hint="A git repository of YAML and Markdown files. Empty uses ~/.paseo/factory; ~/ is your home."
+              initialValue={draft.factory.root}
+              onChangeText={handleFactoryRoot}
+              placeholder="~/.paseo/factory"
             />
           </SettingsCard>
           <Text style={settingsStyles.sectionHeaderTitle}>Per project</Text>

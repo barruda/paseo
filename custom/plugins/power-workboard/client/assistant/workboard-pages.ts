@@ -84,14 +84,16 @@ export function pageTabForSurface(surfaceId: string): WorkboardPageTab | null {
 }
 
 /**
- * Tabs a host may ask for and remember. Orchestrator tabs are left out (they close with the
- * board), and so is the assistant chat: it opens the chat agent and hands back the tab it came
- * from, so remembering it would reopen the chat every time the board shows.
+ * Tabs a host may ask for and remember: the fixed ones, `pipelines` included (CUSTOM(factory)).
+ * Orchestrator tabs are left out (they close with the board), and so is the assistant chat: it
+ * opens the chat agent and hands back the tab it came from, so remembering it would reopen the chat
+ * every time the board shows.
  */
 export function isRestorableTab(tab: string): boolean {
   return (
     tab === "board" ||
     tab === "orchestrators" ||
+    tab === "pipelines" || // CUSTOM(factory)
     (isWorkboardPageTab(tab) && tab !== "assistant-chat")
   );
 }

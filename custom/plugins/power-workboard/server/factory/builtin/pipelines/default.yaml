@@ -1,0 +1,15 @@
+# yaml-language-server: $schema=../.schema/pipeline.json
+description: Today's flow. The worker implements, the Project Manager reviews, then delivery.
+start: implement
+stages:
+  implement:
+    role: implement
+    to: review
+  review:
+    role: pm
+    file: roles/review.md
+    to:
+      - stage: deliver
+        when: No blocking findings.
+      - stage: implement
+        when: Blocking findings remain.
