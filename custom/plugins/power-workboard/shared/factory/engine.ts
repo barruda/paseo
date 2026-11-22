@@ -205,20 +205,24 @@ export function enterStage(
 }
 
 /**
- * The worker stage the task ran before its current one, for a reviewer who sends it back from a
- * `pm` stage. Falls back to `start`.
+ * Where reviewer feedback sends a task that is in a `pm` stage or `deliver`: the last implement
+ * stage it ran (the last one that changed code), else the last worker stage before its current
+ * one, else `start`.
  */
-export function previousWorkerStage(
+export function reworkStage(
   pipeline: CompiledPipeline,
   state: TaskPipeline,
 ): string {
+  let worker: string | null = null;
   for (let index = state.history.length - 1; index >= 0; index--) {
     const entry = state.history[index]!;
     if (entry.via === "loop" || entry.stage === state.stage) continue;
     const stage = findStage(pipeline, entry.stage);
-    if (stage && stage.role !== "pm") return stage.id;
+    if (!stage || stage.role === "pm") continue;
+    if (stage.role === "implement") return stage.id;
+    worker ??= stage.id;
   }
-  return pipeline.start;
+  return worker ?? pipeline.start;
 }
 
 /** The card's stage chip: `spec · gate`, `implement 2/3`; null once the task left the stages. */

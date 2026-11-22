@@ -606,6 +606,10 @@ const zh = {
     "The factory edit is invalid": "factory 不接受这个修改，已撤销：",
     "Pick one of the gate's options: each one names the stage the task goes to":
       "请选择这个关卡的一个选项：每个选项都指明任务要进入的阶段。",
+    "Only the user answers a pipeline gate, in Decisões":
+      "只有用户可以在 Decisões 中回答流水线关卡。",
+    "This card holds an open pipeline gate; answer it instead of archiving it":
+      "这张卡片对应一个未回答的流水线关卡；请回答它，而不是归档。",
     "This prompt comes from the factory; edit worker.md in the factory":
       "这个提示词来自 factory；请在 factory 中编辑 worker.md。",
     "card-order-changed": "列内任务顺序或成员已改变，请刷新后重试。",
@@ -1481,6 +1485,10 @@ const en: typeof zh = {
       "The factory rejected this change, so it was undone:",
     "Pick one of the gate's options: each one names the stage the task goes to":
       "Pick one of the gate's options. Each one names the stage the task goes to.",
+    "Only the user answers a pipeline gate, in Decisões":
+      "Only the user answers a pipeline gate, in Decisões.",
+    "This card holds an open pipeline gate; answer it instead of archiving it":
+      "This card holds an open pipeline gate. Answer it instead of archiving it.",
     "This prompt comes from the factory; edit worker.md in the factory":
       "This prompt comes from the factory. Edit worker.md in the factory.",
     "card-order-changed":

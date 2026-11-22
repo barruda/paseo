@@ -402,10 +402,12 @@ the "pipeline engine" block of `server/workboard.ts`.
   when the board has that column.
 - **Loop guard.** Entering a stage once past its `maxVisits` keeps the task where it was and sends
   it to Needs you (`loop`); Continue there gives that stage a new budget. A `pm` stage has no
-  guard: today's review decides how many rounds it takes. Reviewer feedback from a `pm` stage
-  sends the task back to the worker stage before it.
-- **Answering.** Any way the gate's card gets decided (Decisões, `pm_card_decide`,
-  `pm_card_update`) needs one of its options. Done or Continue on the board archives the open
+  guard: today's review decides how many rounds it takes. Reviewer feedback on a task in a `pm`
+  stage or `deliver` sends it back to its last implement stage (the last one that changed code).
+- **Answering.** A gate is the user's: the Project Manager is not woken for it, and a PM
+  decision on its card is refused (a `when` list's stage choice stays open to the PM). Any way
+  the card gets decided needs one of its options, and archiving it while the task waits is
+  refused. Done or Continue on the board archives the open
   proposal; Continue runs the current stage again with the feedback. A gate decided after the task
   left Needs you some other way only closes the gate.
 - **Chip.** The card shows `card.stageChip` (`spec · gate`, `implement 2/3`, `review 4` for a

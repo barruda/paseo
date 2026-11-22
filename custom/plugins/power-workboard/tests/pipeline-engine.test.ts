@@ -3,11 +3,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { GATE_OPTION_REQUIRED_ERROR } from "../server/workboard";
+import {
+  GATE_ARCHIVE_ERROR,
+  GATE_OPTION_REQUIRED_ERROR,
+  GATE_USER_ONLY_ERROR,
+} from "../server/workboard";
 import type { CompiledPipeline } from "../shared/factory/compile";
 import {
   enterStage,
-  previousWorkerStage,
+  reworkStage,
   stageChip,
   stageExit,
   startPipeline,
@@ -119,7 +123,11 @@ describe("pipeline engine: transitions", () => {
     let state = startPipeline(pipeline, AT);
     state = enterStage(pipeline, state, "check", "to", AT).state;
     state = enterStage(pipeline, state, "review", "to", AT).state;
-    expect(previousWorkerStage(pipeline, state)).toBe("check");
+    // Feedback from a pm stage goes to the last implement stage, past later worker stages.
+    expect(reworkStage(pipeline, state)).toBe("build");
+    expect(
+      reworkStage(pipeline, { ...state, history: state.history.slice(1) }),
+    ).toBe("check");
     expect(stageChip(pipeline, { ...state, stage: "check" })).toBe("check 1/2");
     expect(
       stageChip(pipeline, {
@@ -385,6 +393,25 @@ stages:
     await expect(
       s.board.pmCardDecide(card.id, { answer: "maybe", by: "user" }),
     ).rejects.toThrow(GATE_OPTION_REQUIRED_ERROR);
+    // The gate is the user's: the PM is not told about it and may not answer or archive it.
+    expect(s.board.assistantNeedsYouBrief().ids).not.toContain(taskId);
+    await expect(
+      s.board.pmCardDecide(card.id, { optionId: "approve", by: "pm" }),
+    ).rejects.toThrow(GATE_USER_ONLY_ERROR);
+    await expect(
+      s.board.pmCardUpdate(card.id, {
+        status: "decided",
+        answer: "Approve",
+        answerOptionId: "approve",
+      }),
+    ).rejects.toThrow(GATE_USER_ONLY_ERROR);
+    await expect(s.board.pmCardArchive(card.id)).rejects.toThrow(
+      GATE_ARCHIVE_ERROR,
+    );
+    await expect(
+      s.board.pmCardUpdate(card.id, { status: "archived" }),
+    ).rejects.toThrow(GATE_ARCHIVE_ERROR);
+    expect(t.gateCard().status).toBe("waiting");
     // Request changes: the spec stage runs again, on the same agent, with the user's words.
     await s.board.pmCardDecide(card.id, {
       optionId: "changes",
@@ -469,6 +496,8 @@ stages:
     const card = t.gateCard();
     expect(card.options.map((o) => o.id)).toEqual(["build", "cancel"]);
     expect(t.task().pipeline?.gate?.kind).toBe("choose");
+    // A `when` list's stage choice still goes to the PM (ticket 12).
+    expect(s.board.assistantNeedsYouBrief().ids).toContain(taskId);
     // A card closed through pm_card_update counts too.
     await expect(
       s.board.pmCardUpdate(card.id, { status: "decided", answer: "Drop it" }),
@@ -480,5 +509,99 @@ stages:
     });
     expect(t.delivery()).toMatchObject({ stage: "dismissed" });
     expect(t.task().pipeline).toMatchObject({ stage: "cancel", gate: null });
+  });
+
+  it("a report that arrives late after no-report still moves the task to its next stage", async () => {
+    const s = await bootWith(`start: build
+stages:
+  build: { role: implement, prompt: Build it., to: check }
+  check: { role: verify, prompt: Check it., to: deliver }
+`);
+    const taskId = await startTask(s);
+    const t = helpers(s, taskId);
+    await t.finish("I forgot the report block");
+    expect(t.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "no-report",
+    });
+    expect(t.card().stage).toBe("review");
+    // The agent writes its report later; the board reads it once the agent is idle again.
+    const agent = s.inventory.agents.find((a) => a.id === t.record().agentId)!;
+    agent.updatedAt = new Date(
+      Date.parse(t.record().finishedAt!) + 60_000,
+    ).toISOString();
+    vi.mocked(s.host.lastReply).mockResolvedValue(done("Built late"));
+    for (let i = 0; i < 4; i++) {
+      s.advance(25_000);
+      await s.board.refresh();
+    }
+    expect(t.delivery()).toBeUndefined();
+    expect(t.card().stage).toBe("in-progress");
+    expect(t.task().pipeline).toMatchObject({ stage: "check", pending: false });
+    expect(t.record().status).toBe("running");
+    expect(t.starts()).toHaveLength(2);
+    expect(t.starts()[1][1].prompt).toContain("Check it.");
+  });
+
+  it("critical: feedback after deliver goes back to implement, on the implement agent", async () => {
+    const s = await bootWith(
+      builtin("pipelines/critical.yaml"),
+      {
+        ...Object.fromEntries(
+          ["triage", "spec", "implement", "verify", "review"].map((role) => [
+            `roles/${role}.md`,
+            builtin(`roles/${role}.md`),
+          ]),
+        ),
+        "templates/spec.md": builtin("templates/spec.md"),
+      },
+      "critical",
+    );
+    const taskId = await startTask(s);
+    const t = helpers(s, taskId);
+    const choose = async (stage: string) => {
+      await s.board.pmCardDecide(t.gateCard().id, {
+        optionId: stage,
+        by: "user",
+      });
+      await s.board.refresh();
+    };
+    await t.finish(done("Small and clear"));
+    await choose("implement");
+    expect(t.task().pipeline?.stage).toBe("implement");
+    const implementer = t.record().agentId!;
+    // implement → verify is a single `to`; verify's conditions go to the user.
+    await t.finish(done("Implemented"));
+    expect(t.task().pipeline?.stage).toBe("verify");
+    await t.finish(done("Every check passed"));
+    await choose("review");
+    // `review` is `fresh`: a new agent, never the author.
+    expect(t.record().agentId).not.toBe(implementer);
+    await t.finish(done("No blocking findings"));
+    await choose("deliver");
+    expect(t.task().pipeline?.stage).toBe("deliver");
+    expect(t.delivery()).toMatchObject({
+      stage: "needs-you",
+      reason: "review",
+    });
+    // The PM's correction reaches the implement stage and its agent, not the reviewer.
+    await s.board.mutate({
+      action: "review",
+      taskId,
+      outcome: "continue",
+      feedback: "Rename the flag",
+    });
+    expect(t.task().pipeline).toMatchObject({
+      stage: "implement",
+      visits: { implement: 2 },
+    });
+    expect(t.record()).toMatchObject({
+      agentId: implementer,
+      orchestratorId: LIVE_ID,
+    });
+    expect(t.sends().at(-1)).toEqual([
+      implementer,
+      expect.stringContaining("Rename the flag"),
+    ]);
   });
 });

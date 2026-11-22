@@ -200,7 +200,7 @@ import {
   enterStage,
   findStage,
   pipelineForProject,
-  previousWorkerStage,
+  reworkStage,
   stageChip,
   stageExit,
   stageSection,
@@ -295,6 +295,12 @@ const CONFIG_EDIT = { factory: true } as const;
 /** CUSTOM(factory): a gate's Decisões card needs one of its options. */
 export const GATE_OPTION_REQUIRED_ERROR =
   "Pick one of the gate's options: each one names the stage the task goes to";
+/** CUSTOM(factory): the Project Manager may not answer a pipeline gate. */
+export const GATE_USER_ONLY_ERROR =
+  "Only the user answers a pipeline gate, in Decisões";
+/** CUSTOM(factory): archiving an open gate's card would leave its task with no way forward. */
+export const GATE_ARCHIVE_ERROR =
+  "This card holds an open pipeline gate; answer it instead of archiving it";
 /** Longest agent title the board sets. */
 const AGENT_TITLE_MAX = 200;
 /**
@@ -2933,10 +2939,26 @@ export class Workboard {
       detail,
     });
     // CUSTOM(assistant-wake)
-    if (this.store.current.assistant.settings.chat.wakeOnNeedsYou) {
+    if (
+      this.store.current.assistant.settings.chat.wakeOnNeedsYou &&
+      !this.userGate(taskId) // CUSTOM(factory)
+    ) {
       this.wakePending.add(taskId);
       this.armWake();
     }
+  }
+  /**
+   * CUSTOM(factory): the task waits on a pipeline gate, which only the user answers (in Decisões),
+   * so the Project Manager is not woken for it. A `when` list's stage choice still wakes it.
+   */
+  private userGate(taskId: string): boolean {
+    const delivery = this.store.current.assistant.deliveries[taskId];
+    return (
+      delivery?.stage === "needs-you" &&
+      delivery.reason === "gate" &&
+      this.store.current.tasks.find((t) => t.id === taskId)?.pipeline?.gate
+        ?.kind === "gate"
+    );
   }
   /** CUSTOM(unattended-automation): a hidden board subagent of this task waits on a permission. */
   private waitingBoardChild(parentAgentId: string | null): boolean {
@@ -3034,7 +3056,8 @@ export class Workboard {
         delivery.stage !== "needs-you" ||
         this.wakePending.has(taskId) ||
         this.wakeSending.has(taskId) ||
-        !this.store.current.tasks.some((t) => t.id === taskId)
+        !this.store.current.tasks.some((t) => t.id === taskId) ||
+        this.userGate(taskId) // CUSTOM(factory)
       )
         continue;
       if (!delivery.toldAt) {
@@ -3092,7 +3115,8 @@ export class Workboard {
       if (
         !task ||
         task.archived?.status === "archived" ||
-        task.archived?.status === "external"
+        task.archived?.status === "external" ||
+        this.userGate(id) // CUSTOM(factory)
       )
         continue;
       entries.push({ id, task, delivery });
@@ -4032,20 +4056,23 @@ export class Workboard {
    */
   private stageOwner(
     task: Pick<Task, "projectId"> &
-      Partial<Pick<Task, "pipeline" | "workspaceId">>,
+      Partial<Pick<Task, "id" | "pipeline" | "workspaceId">>,
     data: Data,
   ): string | null {
     // A task with a workspace runs its current stage; one without starts over at `start`.
     if (task.workspaceId) {
       const live = this.taskPipeline({ pipeline: task.pipeline ?? null });
       const stage = live && findStage(live.pipeline, live.state.stage);
-      if (
-        !live ||
-        !stage ||
-        stage.role === "pm" ||
-        (!live.state.pending && stage.role === "implement" && !stage.worker)
-      )
-        return null;
+      if (!live || !stage || stage.role === "pm") return null;
+      // An implement stage keeps today's owner, unless another role's worker ran last (a rework
+      // sent back from `deliver` after a review stage).
+      if (!live.state.pending && stage.role === "implement" && !stage.worker) {
+        const ran = task.id
+          ? data.orchestrations[task.id]?.orchestratorId
+          : null;
+        const ranRole = ran ? this.factoryWorker(ran)?.worker.role : undefined;
+        if (!ranRole || ranRole === "implement") return null;
+      }
       return this.stageOrchestrator(live.applied, stage, task.projectId, data);
     }
     const entry = this.projectPipeline(task.projectId);
@@ -4197,6 +4224,19 @@ export class Workboard {
         resumeAt: null,
         waitingFor: null,
       });
+      // Resumes are taken from In progress only: a task that waited in Review (a gate, or a
+      // report that arrived late) goes back there.
+      const task = this.task(taskId);
+      const groups = this.store.current.settings.groups;
+      const inProgress = orderedGroups(this.store.current.settings).find(
+        (g) => g.kind === "in-progress",
+      );
+      if (
+        inProgress &&
+        task.workspaceId &&
+        groupKind(this.currentStage(task), groups) !== "in-progress"
+      )
+        await this.moveBound(taskId, inProgress.id);
       return false;
     }
     if (target.kind === "pm" || target.stage === "deliver") return null;
@@ -4221,6 +4261,15 @@ export class Workboard {
         this.setOrchestration(taskId, { error: message(error) }),
       );
     return false;
+  }
+  /** The gate this Decisões card holds, while its task still waits on it in Needs you. */
+  private openGate(cardId: string): { kind: "gate" | "choose" } | null {
+    const task = this.gateTask(cardId);
+    const gate = task?.pipeline?.gate;
+    const delivery = task && this.store.current.assistant.deliveries[task.id];
+    return gate && delivery?.stage === "needs-you" && delivery.reason === "gate"
+      ? { kind: gate.kind }
+      : null;
   }
   /** The task whose open gate is this Decisões card. */
   private gateTask(cardId: string): Task | null {
@@ -4279,10 +4328,6 @@ export class Workboard {
         return;
       }
       if (this.task(task.id).pipeline?.pending) {
-        const inProgress = orderedGroups(this.store.current.settings).find(
-          (g) => g.kind === "in-progress",
-        );
-        if (inProgress) await this.moveBound(task.id, inProgress.id);
         this.changed(task.workspaceId ?? undefined);
         await this.orchestrate();
       }
@@ -4290,7 +4335,8 @@ export class Workboard {
   }
   /**
    * The reviewer answered the task on the board instead of in Decisões: its gate closes. Sent
-   * back from a `pm` stage (today's review), the task returns to the worker stage before it.
+   * back from a `pm` stage (today's review) or `deliver`, the task returns to its last implement
+   * stage (`reworkStage`), so a correction never lands on a reviewer or verifier.
    * Inside `serial`.
    */
   private async pipelineReviewed(
@@ -4328,7 +4374,7 @@ export class Workboard {
       outcome === "continue" &&
       (stage?.role === "pm" || state.stage === "deliver")
     ) {
-      const back = previousWorkerStage(live.pipeline, state);
+      const back = reworkStage(live.pipeline, state);
       state = {
         ...state,
         stage: back,
@@ -6020,13 +6066,18 @@ export class Workboard {
         };
         const becomingDecided =
           next.status === "decided" && current.status !== "decided";
-        // CUSTOM(factory): a pipeline gate moves the task to the stage its option names.
-        if (
-          becomingDecided &&
-          !next.options.some((option) => option.id === next.answerOptionId) &&
-          this.gateTask(id)
-        )
-          throw new Error(GATE_OPTION_REQUIRED_ERROR);
+        // CUSTOM(factory): a pipeline gate moves the task to the stage its option names. Only
+        // the user answers a gate (a `when` list's stage choice stays open to the PM), and its
+        // card stays until it is answered.
+        const gate = this.openGate(id);
+        if (becomingDecided && gate) {
+          if (gate.kind === "gate" && (input.decidedBy ?? "pm") !== "user")
+            throw new Error(GATE_USER_ONLY_ERROR);
+          if (!next.options.some((option) => option.id === next.answerOptionId))
+            throw new Error(GATE_OPTION_REQUIRED_ERROR);
+        }
+        if (gate && next.status === "archived" && current.status !== "archived")
+          throw new Error(GATE_ARCHIVE_ERROR);
         // Closing a proposal or a decision without a decision or an answer leaves the user
         // without what they were waiting for.
         if (becomingDecided && pmNeedsAnswerToDecide(current.kind)) {
@@ -6869,7 +6920,7 @@ export class Workboard {
       // CUSTOM(factory): so does a task its pipeline moved to the next worker stage.
       if (
         this.store.current.orchestrations[taskId]?.checkpoint ||
-        this.taskPipeline(this.task(taskId))?.state.pending
+        this.task(taskId).pipeline?.pending
       )
         continue;
       await this.log(
@@ -8035,11 +8086,16 @@ export class Workboard {
       const task = this.task(taskId);
       // CUSTOM(factory): `session: continue` hands the stage to the role's last agent here;
       // `fresh` always starts a new one.
+      // A continuation of the current stage goes to that stage's role agent: after a rework
+      // from `deliver`, the implement agent, not the reviewer that ran last.
+      const liveStage = live && findStage(live.pipeline, live.state.stage);
       let agentId = stageRun
         ? stageRun.session === "fresh"
           ? null
           : (live!.state.agents[stageRun.role] ?? null)
-        : record.agentId;
+        : liveStage && liveStage.role !== "pm"
+          ? (live!.state.agents[liveStage.role] ?? record.agentId)
+          : record.agentId;
       // CUSTOM(factory): a new agent starts from the current config; a live one keeps its stamp.
       let stamp: RevisionStamp | null = null;
       if (agentId && (await this.host.agentAlive(agentId)))

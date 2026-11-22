@@ -10582,7 +10582,11 @@ tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in 
     Decisões proposal for a gate or a `when` list (reason `gate`), and stops a loop (reason
     `loop`); `pmCardDecide` on a gate card advances to the option's stage; `pm` stages and
     `deliver` hand off to today's delivery; `end` and `cancel` close the task. Reviewer feedback
-    from a `pm` stage returns the task to the worker stage before it.
+    on a task in a `pm` stage or `deliver` returns it to its last implement stage and agent
+    (`reworkStage`). A worker stage entered from Review (a gate, a late report) moves the card
+    back to In progress.
+  - A gate is the user's: the PM is not woken for it (`userGate`), and its card refuses a PM
+    decision (`GATE_USER_ONLY_ERROR`) and an archive while the task waits (`GATE_ARCHIVE_ERROR`).
   - Needs-you reasons `gate` and `loop`, history kind `stage-entered`, card field `stageChip`
     shown next to `#42` on the card.
 - **Core files touched:** none.
@@ -10594,7 +10598,7 @@ tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in 
   boot harness, moved out of `tests/factory-active.test.ts`).
 - **Re-apply:** plugin only; re-run the hooks named above in `server/workboard.ts` if upstream
   plugin code moved (search `CUSTOM(factory)`).
-- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/pipeline-engine.test.ts
-  tests/factory-active.test.ts)` (plugin suite in the update script). Live only after the cutover
-  to active mode: a task of a project on `critical` shows `triage 1/3` on its card, and its gate
-  shows up in Decisões.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/pipeline-engine.test.ts`,
+  then `tests/factory-active.test.ts` (both in the plugin suite of the update script). Live only
+  after the cutover to active mode: a task of a project on `critical` shows `triage 1/3` on its
+  card, and its gate shows up in Decisões.
