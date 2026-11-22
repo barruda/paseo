@@ -1272,7 +1272,7 @@ describe("autonomy presets on the board", () => {
         }
       }
       expect(accepted).toEqual(USER_REASONS[preset][id]);
-      // No reason: created as before (the #165 refusal is not here yet).
+      // No reason and no linked task: created; the #165 refusal reads approved reviews (pm-decides.test.ts).
       await expect(
         s.board.pmCardCreate({ kind: "proposal", title: "Plain" }),
       ).resolves.toMatchObject({ userOnlyReason: null });

@@ -294,6 +294,10 @@ export function parseReplyBlock(body: string): ParsedReply {
       };
     }
   }
+  // CUSTOM(factory): something left for the user means the PM stopped for them (#165), whatever
+  // `próximo` says: `espera` next to a filled `seu` hid that the queue waits on the user.
+  if (reply.yours && !reply.yours.none && reply.next?.value !== "você")
+    reply.next = { value: "você", text: "você" };
   if (question || options.length) {
     const known = recommend && options.some((o) => o.id === recommend.id);
     reply.question = {

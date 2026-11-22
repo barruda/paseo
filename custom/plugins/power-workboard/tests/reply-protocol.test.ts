@@ -296,7 +296,8 @@ describe("parseReplyBlock", () => {
         },
       ],
       blockers: [{ text: "CI fora do ar", taskIds: [], pmCardIds: [] }],
-      next: { value: "revisão", text: "revisão" },
+      // CUSTOM(factory): a `seu` other than nada reads `próximo` as você (#165).
+      next: { value: "você", text: "você" },
       yours: {
         none: false,
         text: "aprovar o merge",

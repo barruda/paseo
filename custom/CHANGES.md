@@ -10806,3 +10806,45 @@ tests/factory-pipeline-editor.test.ts tests/factory-writer.test.ts` (all in the 
   **Pipelines** → pick a project, drag a node, change a stage in the right panel, Save; the
   factory gets a `ui: pipelines/<id> …` commit. Change "Autonomia do pipeline" or "Autonomia do
   projeto": one commit each; "Herdar (…)" removes the key.
+
+## pm-decides-its-own: pm_card_create refuses the PM's own merge, and a proposal left waiting expires
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Project Manager decides its own merges: pm_card_create refusal, proposal breaker, seu wins over próximo`
+- **Why:** Task #165. Three times (2026-11-18, -19, -21) the PM asked the user for a decision that
+  was its own and the queue stopped: on 2026-11-21 card pm-c70a91a2 held an approved,
+  self-review merge for 33 min while the board woke the PM three times and it wrote
+  `próximo: espera` next to `seu: aprovar merge`. Prompt and memory had already failed; this puts
+  the rule in code, on top of the autonomy presets of ticket 12 (`factory-pm-transitions`).
+- **What:**
+  - `pm_card_create` (`Workboard.pmCardCreate(input, "pm")`) refuses a proposal with no
+    `userOnlyReason` and no action linked to a task whose review approved, on a project where
+    `requiresUserMergeOk` is false. "Approved" is the newest of the task's `board_report`
+    entries of kind `reviewed`, `feedback` and `merged` being `reviewed` (a review task the PM
+    closed as approved counts on that task the same way); the board gets the `ReportStore`
+    through `AssistantOptions.reports`. The text is `approvedMergeRefusal()` in
+    `shared/autonomy.ts`. The board's own cards pass no source and are not checked.
+  - Breaker: `Workboard.checkPmBreaker()`, on every tick. A proposal waiting with a `recommend`,
+    no `userOnlyReason`, no action and older than its linked projects' shortest
+    `breakerMinutes` (15 in Padrão and Autônomo; none in Cauteloso) wakes the PM once with
+    `breakerWakeText()`; the card's new `breakerAt` (`shared/pm-board.ts`) keeps it from waking
+    again. It skips pipeline gate/choice cards, cards the user reopened (reopen sets
+    `breakerAt`), a busy chat and a chat on its usage limit (tried on the next tick).
+  - `autonomyRulesText()` now also states the refusal and each preset's breaker, from the data,
+    so it reaches the live PM through `CHAT_RULES` and the tool descriptions. The seed's
+    dirty-checkout paragraph no longer says "Ask before anything destructive or hard to undo".
+  - `parseReplyBlock` (`shared/reply-protocol.ts`): a `seu` other than `nada` reads `próximo`
+    as `você`.
+- **Core files touched:** none.
+- **Plugin files:** `shared/autonomy.ts`, `shared/pm-board.ts`, `shared/reply-protocol.ts`,
+  `server/workboard.ts`, `server/assistant/chat.ts`, `index.server.ts`, `docs/factory.md`,
+  `docs/assistant-reply-protocol.md`, `tests/pm-decides.test.ts`, and expectations in
+  `tests/reply-protocol.test.ts`, `tests/profiles.test.ts`, `tests/pipeline-engine.test.ts`.
+- **Re-apply:** plugin only; search `#165` and `checkPmBreaker` in the files above. When the
+  review policy source changes again, only `requiresUserMergeOk` and `projectAutonomy` move.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/pm-decides.test.ts`
+  (in the plugin suite of the update script). Needs a `plugin reload`. In the app: the PM's
+  proposal asking to merge an approved task of a non-critical project comes back refused; a
+  proposal with a recommendation left in "Esperando você" for 15 min gets a `[Board] These
+Decisões proposals waited…` message in the PM chat, once. The live PM's `system-prompt.md`
+  and `~/.paseo/factory/pm/worker.md` keep the old "destructive or hard to undo" sentence.

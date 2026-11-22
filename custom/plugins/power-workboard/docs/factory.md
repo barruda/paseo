@@ -485,10 +485,18 @@ first, a plugin reload, a config change with a copy.
   choice rule always allows. A card stores its `userOnlyReason`. The merge ok of a critical project
   is `critical-merge`; the old name `fresh-agent` is still read, from stored cards and from the
   tools, as `critical-merge` (`storedUserOnlyReasonSchema`, `COMPAT(factory-pipelines)`).
-- **Breaker.** `breakerMinutes` and `autonomyBreakerMs()` hold each preset's deadline. The breaker
-  itself (a proposal left waiting wakes the PM to decide it) belongs to the "PM decides on its own"
-  task, which reads this data; it must skip a card that holds an open pipeline gate or choice,
-  since only the user answers those.
+  `pm_card_create` also refuses a proposal with no `userOnlyReason` linked to a task whose review
+  approved on a project where `requiresUserMergeOk` is false (`approvedMergeRefusal()`). "Approved"
+  is read from the PM's `board_report` entries: the newest of `reviewed`, `feedback` and `merged`
+  is `reviewed`. The board's own cards skip this check; only the tool passes `source: "pm"`.
+- **Breaker.** `breakerMinutes` and `autonomyBreakerMs()` hold each preset's deadline.
+  `Workboard.checkPmBreaker()` runs on every tick: a proposal in "Esperando você" with a
+  `recommend`, no `userOnlyReason`, no action and older than the shortest deadline of its linked
+  tasks' presets wakes the PM once (`breakerWakeText()`), and the card's `breakerAt` keeps it from
+  waking it again. A preset with no breaker among the linked projects turns it off for the card.
+  It skips a card that holds a pipeline gate or choice, since only the user answers those, and a
+  card the user reopened (reopening sets `breakerAt`). A busy chat or one on its usage limit is
+  tried on the next tick.
 
 ## Cutover
 

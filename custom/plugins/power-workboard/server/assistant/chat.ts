@@ -131,7 +131,7 @@ export const ASSISTANT_ROLE = [
   AUTONOMY_RULE,
   PIPELINE_CHOICE_RULE,
   "Act for the user. When a board task's agent waits for the user's ok or a decision (a needs_input or blocked report, a question in its reply, the open decisions of a proposal), answer it yourself with board_task_action continue when you can do it with reasonable precision and no real risk. Agents outside the board may refuse an ok that comes from you; then leave that one for the user and don't insist. End with the list of decisions you took.",
-  'Fix small blockers yourself. When a delivery is blocked by something small and reversible outside a project\'s code (your settings, through board_set_project_policy or board_set_default_action; daemon metadata such as a worktree\'s stored base; a stale lock), fix it, keep a backup in /home/bruno/uprojects/tmp when you change a file, and report it. Merge conflicts are retried by the board on its own; step in only when it gives up. A dirty base checkout may be another agent\'s live work, so check it before touching anything: when a task in `merging` shows "Waiting for a clean checkout" (in board_get_task or in Needs you), call list_agents and look for any agent, of any origin, whose cwd is that checkout and that is running or touched it recently. If one is there, do not stash and do not touch the checkout: let the board keep retrying the merge; if it gives up, tell the user which agent is in the checkout and which tasks are waiting on it. If no agent is working there, do not ask: save a backup of `git diff` and of the untracked files in /home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/, run `git stash push -u -m "assistant: <origin>, reaplicar após merges"` in that checkout, run the tests of each approved task that was waiting on the checkout, then run merge-now with wait=true on them, one at a time, and check with git log that their commits are on the base branch and their cards reached Done. Finish with `git stash pop` right after and tell the user what merged, where the backup is and that the edits are back. Escalate only if the stash pop conflicts: leave the stash intact and say which stash it is. Never discard those edits: no `checkout --`, no `reset --hard`, no `stash drop` without a pop. Ask before anything destructive or hard to undo, except for these steps.',
+  'Fix small blockers yourself. When a delivery is blocked by something small and reversible outside a project\'s code (your settings, through board_set_project_policy or board_set_default_action; daemon metadata such as a worktree\'s stored base; a stale lock), fix it, keep a backup in /home/bruno/uprojects/tmp when you change a file, and report it. Merge conflicts are retried by the board on its own; step in only when it gives up. A dirty base checkout may be another agent\'s live work, so check it before touching anything: when a task in `merging` shows "Waiting for a clean checkout" (in board_get_task or in Needs you), call list_agents and look for any agent, of any origin, whose cwd is that checkout and that is running or touched it recently. If one is there, do not stash and do not touch the checkout: let the board keep retrying the merge; if it gives up, tell the user which agent is in the checkout and which tasks are waiting on it. If no agent is working there, do not ask: save a backup of `git diff` and of the untracked files in /home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/, run `git stash push -u -m "assistant: <origin>, reaplicar após merges"` in that checkout, run the tests of each approved task that was waiting on the checkout, then run merge-now with wait=true on them, one at a time, and check with git log that their commits are on the base branch and their cards reached Done. Finish with `git stash pop` right after and tell the user what merged, where the backup is and that the edits are back. Escalate only if the stash pop conflicts: leave the stash intact and say which stash it is. Never discard those edits: no `checkout --`, no `reset --hard`, no `stash drop` without a pop. Outside these steps, the autonomy rule says what goes to the user.',
   'Ship what you merge in the paseo project. After merging changes under custom/plugins/power-workboard, call board_reload_plugin as the last action of your turn: it reloads the plugin when the turn ends, so your board tools keep working until then. Never run `plugin reload` yourself while you still need the board tools in this turn: a direct reload retires them and they only come back on the next message. When a merged change touches packages/ (the app or the daemon) and no paseo task is still in review or delivering, create one Paseo agent in /home/bruno/projetos/paseo whose only job is to ship: load the paseo-customizations skill, build and install, reopen the clients, and never restart a daemon. Create it with create_agent and labels {"paseo.board-agent": "true"}: that label keeps it out of the user\'s sidebar and notifications, and you report on it instead. Pass the same label to every Paseo agent you create. If the change needs a daemon restart, tell the user once, with the command kill-paseos-and-daemons.sh.',
   // CUSTOM(assistant-reports)
   "Report each action on a task once, with board_report: one entry per action (created, started, reviewed, sent feedback, answered an agent, fixed a blocker, merged, escalated to the user), with a one-sentence summary, a short markdown detail, the decisions you took and, when you talked to the task's agent, orchestrator {agentId, prompt: what you asked, reply: its answer, or leave reply out to store its last reply}. For a quick message, pass its id as quickMessageId: the summary becomes the status row's text. Then reply with the block below instead of writing the summary again.",
@@ -1160,23 +1160,26 @@ export function chatTools(
         userOnlyReason: storedUserOnlyReasonSchema.nullable().default(null),
       }),
       async execute(input) {
-        const card = await board().pmCardCreate({
-          userOnlyReason: input.userOnlyReason,
-          kind: input.kind,
-          title: input.title,
-          question: input.question,
-          options: input.options,
-          recommend: input.recommend,
-          action: input.action,
-          why: input.why,
-          findings: input.findings,
-          decision: input.decision,
-          links: {
-            taskIds: input.taskIds,
-            reportIds: input.reportIds,
-            packageIds: input.packageIds,
+        const card = await board().pmCardCreate(
+          {
+            userOnlyReason: input.userOnlyReason,
+            kind: input.kind,
+            title: input.title,
+            question: input.question,
+            options: input.options,
+            recommend: input.recommend,
+            action: input.action,
+            why: input.why,
+            findings: input.findings,
+            decision: input.decision,
+            links: {
+              taskIds: input.taskIds,
+              reportIds: input.reportIds,
+              packageIds: input.packageIds,
+            },
           },
-        });
+          "pm", // CUSTOM(factory): the #165 refusal applies to the PM's own proposals
+        );
         return text(
           `Created PM card ${card.id} (${card.kind}, ${card.status}): "${card.title}".`,
         );

@@ -114,6 +114,9 @@ Always the **last** key line, so the user finds it in the same place every time.
 `reiniciar <x>`. Anything other than `nada` is highlighted. A trailing `[pm:<card id>]` names a
 card on the Project Manager board (see below); a bare `[<task id>]` opens the task.
 
+A `seu` other than `nada` reads `próximo` as `você`, whatever the PM wrote: a queue that waits on
+the user says so (`parseReplyBlock`).
+
 ### `[pm:<card id>]`: the Project Manager board
 
 Investigation, proposals and decisions between the user and the Project Manager live on the PM's
