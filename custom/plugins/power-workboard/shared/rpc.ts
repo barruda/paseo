@@ -171,6 +171,8 @@ export const mutationSchema = z.discriminatedUnion("action", [
     expectedOrder: z.array(z.string()),
   }),
   z.object({ action: z.literal("archive-draft"), taskId: z.string() }),
+  // CUSTOM(delete-task): removes the task from the board for good; git is left alone.
+  z.object({ action: z.literal("delete-task"), taskId: z.string() }),
   z.object({
     action: z.literal("detach-draft"),
     taskId: z.string(),

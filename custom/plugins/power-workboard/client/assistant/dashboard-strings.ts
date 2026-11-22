@@ -36,6 +36,7 @@ export const REASON_LABELS: Record<NeedsYouReason, string> = {
 export const KIND_LABELS: Record<HistoryEventKind, string> = {
   "task-created": "Created", // CUSTOM(assistant-reports)
   "task-moved": "Moved", // CUSTOM(assistant-reports)
+  "task-deleted": "Deleted", // CUSTOM(delete-task)
   "stage-entered": "Pipeline stage", // CUSTOM(factory)
   "task-started": "Started",
   "task-continued": "Continued",

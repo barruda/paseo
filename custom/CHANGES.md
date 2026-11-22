@@ -10860,3 +10860,36 @@ tests/factory-pipeline-editor.test.ts tests/factory-writer.test.ts` (all in the 
   proposal with a recommendation left in "Esperando você" for 15 min gets a `[Board] These
 Decisões proposals waited…` message in the PM chat, once. The live PM's `system-prompt.md`
   and `~/.paseo/factory/pm/worker.md` keep the old "destructive or hard to undo" sentence.
+
+## delete-task: the card menu deletes a task, after a confirmation
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Power Workboard deletes a task from the card menu, after a confirmation`
+- **Why:** On 2026-11-22 the user wanted to delete a task in progress (#181) and could not: the
+  only way off the board was `archive-draft`, which takes canceled, unbound drafts only.
+- **What:**
+  - `workboard.mutate` action `delete-task` (`shared/rpc.ts`, `Workboard.deleteTask` in
+    `server/workboard.ts`): archives the task's orchestration and refinement agents, clears its
+    timers and in-memory waits (`retryAt`, `dirtyTimers`, `folderTimers`, late-report and
+    archive-deferral maps, `wakePending`), records a `task-deleted` history event (new
+    `HISTORY_EVENT_KINDS` entry) while the task still exists, then removes the task and its
+    `orchestrations`, `refinements`, `finishes`, `deliveries`, `progress` and card-order
+    entries. The store deletes the description file of a task that left the board. Attempts
+    stay. Archived tasks can be deleted too. An unknown id fails with "Task no longer exists".
+    No git or workspace change.
+  - `cardMenuItems` (`client/card-menu.ts`) ends with a destructive **Delete task** item when
+    the board passes `onDelete`; `CardContextMenu` (`client/TaskPanel.tsx`) draws destructive
+    items in the danger color. `WorkboardScreen` opens a `ConfirmationModal` with the number
+    and title ("Delete task #42 “Title”? This can't be undone."); Esc or a click outside cancels.
+  - Strings in `client/strings.ts` (zh, en; that file has no pt) and the history kind's label in
+    the Reports and dashboard strings (en, pt).
+- **Core files touched:** none.
+- **Plugin files:** `shared/rpc.ts`, `shared/assistant.ts`, `server/workboard.ts`,
+  `client/card-menu.ts`, `client/TaskPanel.tsx`, `client/WorkboardScreen.tsx`,
+  `client/strings.ts`, `client/assistant/{dashboard-strings,reports-strings,reports-format}.ts`,
+  `README.md`, `tests/delete-task.test.ts`, `tests/card-menu.test.ts`.
+- **Re-apply:** plugin only; search `CUSTOM(delete-task)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/delete-task.test.ts
+tests/card-menu.test.ts` (in the plugin suite of the update script). Needs a `plugin reload`.
+  In the app: right-click any card → **Delete task** → Cancel leaves it; Delete removes it at
+  once, and it stays gone after a plugin reload.
