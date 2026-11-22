@@ -18,6 +18,7 @@ import { fixture } from "./fixtures";
 import { buildOverview } from "../server/assistant/views"; // CUSTOM(task-checkpoints)
 import { COMPACT_QUESTION } from "../server/assistant/compact"; // CUSTOM(assistant-compact)
 import { CHAT_LABEL, CHAT_RULES } from "../server/assistant/chat"; // CUSTOM(assistant-compact)
+import { workerConfigHash } from "../server/factory/stamp"; // CUSTOM(factory)
 import { QuickInbox } from "../server/assistant/quick"; // CUSTOM(assistant-quick)
 import { AGENT_REPLACES_LABEL } from "../shared/reply-protocol"; // CUSTOM(assistant-compact-follow)
 
@@ -3477,6 +3478,66 @@ it("a failed risk scan escalates the package ticket and records why", async () =
         item.kind === "decision" && item.links.taskIds.includes(s.taskId),
     );
     expect(card?.decision).toContain("risk scan failed");
+  } finally {
+    s.board.dispose();
+  }
+});
+
+// CUSTOM(factory) ------------------------------------------------------------------------------
+const stampOf = (value: {
+  factoryRevision: string | null;
+  workerId: string | null;
+  workerConfigHash: string | null;
+}) => ({
+  factoryRevision: value.factoryRevision,
+  workerId: value.workerId,
+  workerConfigHash: value.workerConfigHash,
+});
+
+it("a new run and its history events carry the worker's revision stamp, from the live config", async () => {
+  const s = await scenario();
+  try {
+    const run = s.store.current.orchestrations[s.taskId];
+    const config = s.store.current.orchestrators.find(
+      (o) => o.id === run.orchestratorId,
+    )!;
+    const expected = {
+      factoryRevision: null,
+      workerId: config.id,
+      workerConfigHash: workerConfigHash({ config, systemPrompt: "" }),
+    };
+    expect(stampOf(run)).toEqual(expected);
+    const started = s.history.events.find((e) => e.kind === "task-started")!;
+    expect(stampOf(started)).toEqual(expected);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a new agent after a checkpoint is stamped with the config it starts from", async () => {
+  const s = await scenario();
+  try {
+    const before = s.store.current.orchestrations[s.taskId];
+    s.reply(
+      checkpoint(["Schema"], ["UI"], { resumeAfter: "2026-09-23T01:00:00Z" }),
+    );
+    await s.finishTurn();
+    await s.board.setProfilePrompt(before.orchestratorId!, "Be brief.");
+    s.agent.archivedAt = "2026-09-23T00:30:00Z";
+    s.advance(2 * 3_600_000);
+    await s.board.refresh();
+    const run = s.store.current.orchestrations[s.taskId];
+    expect(run.agentId).not.toBe(s.agent.id);
+    const config = s.store.current.orchestrators.find(
+      (o) => o.id === run.orchestratorId,
+    )!;
+    const hash = workerConfigHash({ config, systemPrompt: "Be brief." });
+    expect(run.workerConfigHash).toBe(hash);
+    expect(hash).not.toBe(before.workerConfigHash);
+    const continued = s.history.events.filter(
+      (e) => e.kind === "task-continued",
+    );
+    expect(continued.at(-1)!.workerConfigHash).toBe(hash);
   } finally {
     s.board.dispose();
   }

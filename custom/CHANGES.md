@@ -10171,3 +10171,32 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
 - **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory.test.ts)` (part of
   the plugin suite in the update script). By hand: `custom/plugins/power-workboard/bin/factory
 validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`, `name: x`).
+
+## factory-stamps: revision stamps on runs and history
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: revision stamps on Power Workboard runs and history events`
+- **Why:** Ticket 5 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`):
+  metrics need to compare runs before and after a prompt or model change, so each run and history
+  event records which worker config it ran with.
+- **What:**
+  - `orchestrationSchema` and `historyEventSchema` get optional `factoryRevision`, `workerId` and
+    `workerConfigHash` (nullable, default null, so old data parses).
+  - `server/factory/stamp.ts`: `workerConfigHash` (16 hex of a sha256 over canonical JSON of the
+    agent-facing config fields, the trimmed system prompt, the task prompt and the role) and
+    `compiledWorkerConfigHash` for a compiled factory worker.
+  - `Workboard.startCard` stamps the new run; `continueTask` re-stamps only when it starts a new
+    agent. `record()` copies the run's stamp onto each history event; chat events stay null.
+  - With the factory off (the only mode until tickets 7 and 9) the revision is null and the hash
+    comes from the live orchestrator config plus its profile's `system-prompt.md`.
+- **Core files touched:** none.
+- **Plugin files:** `server/factory/stamp.ts`, `server/workboard.ts`, `server/assistant/history.ts`,
+  `shared/model.ts`, `shared/assistant.ts`, `docs/factory.md`, `tests/factory-stamp.test.ts`,
+  `tests/assistant-engine.test.ts` (+ fixture fields in `tests/assistant-reports.test.ts`,
+  `tests/assistant-views.test.ts`).
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** in `custom/plugins/power-workboard`, `npx vitest run tests/factory-stamp.test.ts` and
+  `npx vitest run tests/assistant-engine.test.ts` (part of the plugin suite in the update script).
+  After a `plugin reload`, start a task: its entry in `workboard-data.json` `orchestrations` and its
+  `task-started` line in `plugin-data/power-workboard/history/` carry `workerId` and
+  `workerConfigHash`, with `factoryRevision: null`.

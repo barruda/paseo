@@ -21,12 +21,23 @@ import {
 
 export type HistoryEventInput = Omit<
   HistoryEvent,
-  "id" | "at" | "reason" | "detail" | "by"
+  | "id"
+  | "at"
+  | "reason"
+  | "detail"
+  | "by"
+  | "factoryRevision"
+  | "workerId"
+  | "workerConfigHash"
 > & {
   at?: string;
   reason?: HistoryEvent["reason"];
   detail?: HistoryEvent["detail"];
   by?: HistoryEvent["by"]; // CUSTOM(assistant-cards)
+  // CUSTOM(factory)
+  factoryRevision?: HistoryEvent["factoryRevision"];
+  workerId?: HistoryEvent["workerId"];
+  workerConfigHash?: HistoryEvent["workerConfigHash"];
 };
 
 export interface HistoryQuery {
