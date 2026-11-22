@@ -552,7 +552,11 @@ it("delivers a folder-mode task with a commit on the current branch, without mer
         "delivered",
       ),
     );
-    expect(s.host.commit).toHaveBeenCalledWith("/fixture/p", ["src/task.ts"]);
+    expect(s.host.commit).toHaveBeenCalledWith(
+      "/fixture/p",
+      ["src/task.ts"],
+      "A\n\nAdded X",
+    );
     expect(s.host.mergeToBase).not.toHaveBeenCalled();
     expect(s.store.current.finishes[taskId]?.committedAt).toBeTruthy();
     expect(s.store.current.finishes[taskId]?.mergedAt ?? null).toBeNull();
@@ -586,7 +590,11 @@ it("commits when the user approves a folder task from review", async () => {
       feedback: "",
     });
     await vi.waitFor(() =>
-      expect(s.host.commit).toHaveBeenCalledWith("/fixture/p", ["src/task.ts"]),
+      expect(s.host.commit).toHaveBeenCalledWith(
+        "/fixture/p",
+        ["src/task.ts"],
+        "A",
+      ),
     );
     expect(s.host.mergeToBase).not.toHaveBeenCalled();
     expect(card(s.board, "A").stage).toBe("done");
@@ -718,7 +726,12 @@ it("commits only the task's paths and leaves the folder's earlier changes uncomm
       ),
     );
     expect(s.host.commit).toHaveBeenCalledTimes(1);
-    expect(s.host.commit).toHaveBeenCalledWith("/fixture/p", ["src/task.ts"]);
+    // The message comes from the task, not from the folder's diff, so the user's files stay out.
+    expect(s.host.commit).toHaveBeenCalledWith(
+      "/fixture/p",
+      ["src/task.ts"],
+      "A\n\nAdded X",
+    );
     expect(s.store.current.finishes[taskId]?.committedAt).toBeTruthy();
     const committed = historyEvent(history, "committed");
     expect(committed?.detail).toContain(

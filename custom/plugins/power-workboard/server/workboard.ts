@@ -178,6 +178,7 @@ import {
   isUpToDate,
   runVerify,
   type VerifyRunner,
+  inPlaceCommitMessage, // CUSTOM(orchestrator-in-place)
   inPlaceCommitPlan, // CUSTOM(orchestrator-in-place)
 } from "./assistant/delivery";
 import type { HistoryEventInput, HistoryStore } from "./assistant/history";
@@ -4828,19 +4829,23 @@ export class Workboard {
     const outcome = await this.mergeLock.run(
       this.projectIdOf(task) ?? directory,
       async () => {
+        const report =
+          this.store.current.assistant.deliveries[taskId]?.report ?? null;
         const plan = inPlaceCommitPlan({
           current: await this.host.gitStatusLines(directory),
           initialDirty:
             this.store.current.orchestrations[taskId]?.initialDirty ?? [],
-          filesChanged:
-            this.store.current.assistant.deliveries[taskId]?.report
-              ?.filesChanged ?? [],
+          filesChanged: report?.filesChanged ?? [],
           directory,
         });
         if (plan.overlap.length) return { plan, refusal: null };
         const refusal = dependencyRefusal(plan.lines);
         if (!refusal && plan.paths.length)
-          await this.host.commit(directory, plan.paths);
+          await this.host.commit(
+            directory,
+            plan.paths,
+            inPlaceCommitMessage(task.title, report?.summary),
+          );
         return { plan, refusal };
       },
     );
