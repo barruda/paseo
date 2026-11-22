@@ -1,11 +1,17 @@
 // CUSTOM(factory): the Pipelines tab's pure helpers.
 import { describe, expect, it } from "vitest";
-import { pipelineForProject, stageRunnerLabel } from "../client/pipeline-view";
+import {
+  pipelineForProject,
+  pipelineOverlay,
+  stageRunnerLabel,
+} from "../client/pipeline-view";
 import { pipelineStrings } from "../client/pipeline-strings";
 import {
   BUILTIN_PIPELINES,
   builtinPipelinesView,
 } from "../shared/factory/builtin-pipelines";
+import { taskPipelineSchema } from "../shared/factory/engine";
+import { DEFAULT_GROUPS } from "../shared/model";
 
 const s = pipelineStrings("en");
 const orchestrators = [
@@ -53,5 +59,109 @@ describe("builtinPipelinesView", () => {
   it("picks the default pipeline for a project with no entry", () => {
     expect(pipelineForProject(view, "a")).toBe("critical");
     expect(pipelineForProject(view, "zzz")).toBe("default");
+  });
+});
+
+describe("pipelineOverlay", () => {
+  let next = 0;
+  const card = (
+    fields: {
+      stage?: string;
+      projectId?: string | null;
+      pipeline?: Record<string, unknown> | null;
+      stageChip?: string | null;
+      archived?: "archived" | "external" | "pending" | null;
+      number?: number;
+    } = {},
+  ) => {
+    next += 1;
+    return {
+      id: `t${next}`,
+      number: fields.number ?? next,
+      title: `Task ${next}`,
+      projectId: fields.projectId === undefined ? "a" : fields.projectId,
+      stage: fields.stage ?? "in-progress",
+      archived: fields.archived ? { status: fields.archived } : null,
+      pipeline:
+        fields.pipeline === null
+          ? null
+          : taskPipelineSchema.parse({
+              id: "critical",
+              stage: "implement",
+              ...fields.pipeline,
+            }),
+      stageChip: fields.stageChip === undefined ? "chip" : fields.stageChip,
+    } as Parameters<typeof pipelineOverlay>[0][number];
+  };
+  const gate = (stage: string, kind: "gate" | "choose" = "gate") => ({
+    stage,
+    gate: { cardId: "pm-card", stage, kind },
+  });
+  const counts = (overlay: ReturnType<typeof pipelineOverlay>) =>
+    Object.fromEntries(
+      Object.entries(overlay).map(([stage, tasks]) => [
+        stage,
+        [tasks.running.length, tasks.waiting.length],
+      ]),
+    );
+
+  it("counts tasks per stage and the ones waiting on a gate or a stage choice", () => {
+    const cards = [
+      card({ pipeline: { stage: "implement" } }),
+      card({ pipeline: { stage: "implement" }, stage: "review" }),
+      card({ pipeline: gate("spec") }),
+      card({ pipeline: gate("spec") }),
+      card({ pipeline: { stage: "spec" } }),
+      card({ pipeline: gate("verify", "choose") }),
+      card({ pipeline: { stage: "deliver" }, stage: "review" }),
+    ];
+    expect(
+      counts(pipelineOverlay(cards, DEFAULT_GROUPS, "a", "critical")),
+    ).toEqual({
+      implement: [2, 0],
+      spec: [1, 2],
+      verify: [0, 1],
+      deliver: [1, 0],
+    });
+  });
+
+  it("leaves out other projects, other pipelines and tasks the engine does not run", () => {
+    const cards = [
+      card({ projectId: "b" }),
+      card({ projectId: null }),
+      card({ pipeline: { id: "default" } }),
+      card({ pipeline: null }),
+      // No chip: Done or Canceled, the factory not active, or a pipeline gone from it.
+      card({ stageChip: null }),
+      // A draft column: a run from Ready starts over at `start`.
+      card({ stage: "ready" }),
+      card({ stage: "backlog" }),
+      card({ archived: "archived" }),
+      card({ archived: "external" }),
+    ];
+    expect(pipelineOverlay(cards, DEFAULT_GROUPS, "a", "critical")).toEqual({});
+    expect(
+      counts(
+        pipelineOverlay(
+          [card({ archived: "pending" })],
+          DEFAULT_GROUPS,
+          "a",
+          "critical",
+        ),
+      ),
+    ).toEqual({ implement: [1, 0] });
+  });
+
+  it("lists the tasks by number, for the panel", () => {
+    const cards = [
+      card({ number: 9 }),
+      card({ number: 3 }),
+      card({ number: 5, pipeline: gate("implement") }),
+    ];
+    const overlay = pipelineOverlay(cards, DEFAULT_GROUPS, "a", "critical");
+    expect(overlay.implement?.running.map((t) => t.number)).toEqual([3, 9]);
+    expect(overlay.implement?.waiting).toEqual([
+      { id: cards[2]!.id, number: 5, title: cards[2]!.title },
+    ]);
   });
 });

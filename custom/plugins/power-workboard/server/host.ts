@@ -209,9 +209,10 @@ export interface Host {
   gitHead(directory: string): Promise<string>;
   /**
    * Commit everything in the checkout with a generated message, as the app's Git menu does.
-   * CUSTOM(orchestrator-in-place): with `paths`, commit only those (the daemon's commit-selection).
+   * CUSTOM(orchestrator-in-place): with `paths`, commit only those (the daemon's commit-selection);
+   * with `message`, use it instead of the generated one.
    */
-  commit(directory: string, paths?: string[]): Promise<void>;
+  commit(directory: string, paths?: string[], message?: string): Promise<void>;
   /** Merge the checkout's branch into its base branch in the main checkout. */
   // CUSTOM(projects-assistant): optional target and strictness for the assistant's merge.
   mergeToBase(directory: string, options?: MergeOptions): Promise<void>;
@@ -1067,10 +1068,15 @@ export class PaseoHost implements Host {
     );
     return stdout.trim();
   }
-  async commit(directory: string, paths?: string[]): Promise<void> {
+  async commit(
+    directory: string,
+    paths?: string[],
+    message?: string,
+  ): Promise<void> {
     await this.checkout("checkout_commit", {
       cwd: directory,
       addAll: true,
+      ...(message ? { message } : {}),
       // CUSTOM(orchestrator-in-place): needs `features.checkoutCommitPaths` (commit-selection);
       // this plugin runs only on the custom daemon, which has it.
       ...(paths ? { paths } : {}),

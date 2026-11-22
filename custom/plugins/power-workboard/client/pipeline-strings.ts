@@ -26,6 +26,12 @@ export interface PipelineStrings {
   implementFallback: string;
   builtinStages: { deliver: string; end: string; cancel: string };
   selectStage: string;
+  tasks: string;
+  tasksRunning: string;
+  tasksWaiting: string;
+  waitingBadge: string;
+  noTasks: string;
+  openTicket: string;
   loading: string;
   loadFailed: string;
   noProjects: string;
@@ -98,6 +104,12 @@ const en: PipelineStrings = {
     cancel: "Cancels the task.",
   },
   selectStage: "Select a stage",
+  tasks: "Tasks",
+  tasksRunning: "In this stage",
+  tasksWaiting: "Waiting for a decision",
+  waitingBadge: "waiting",
+  noTasks: "No tasks in this stage.",
+  openTicket: "Opens the ticket beside the board",
   loading: "Loading pipelines...",
   loadFailed: "Could not load the pipelines.",
   noProjects: "No projects on the board.",
@@ -173,6 +185,12 @@ const pt: PipelineStrings = {
     cancel: "Cancela a tarefa.",
   },
   selectStage: "Selecione uma etapa",
+  tasks: "Tarefas",
+  tasksRunning: "Nesta etapa",
+  tasksWaiting: "Aguardando decisão",
+  waitingBadge: "aguardando",
+  noTasks: "Nenhuma tarefa nesta etapa.",
+  openTicket: "Abre o ticket ao lado do quadro",
   loading: "Carregando pipelines...",
   loadFailed: "Não foi possível carregar os pipelines.",
   noProjects: "Nenhum projeto no quadro.",
@@ -248,6 +266,12 @@ const zh: PipelineStrings = {
     cancel: "取消任务。",
   },
   selectStage: "选择一个阶段",
+  tasks: "任务",
+  tasksRunning: "在此阶段",
+  tasksWaiting: "等待决定",
+  waitingBadge: "等待",
+  noTasks: "此阶段没有任务。",
+  openTicket: "在看板旁打开工单",
   loading: "正在加载流水线...",
   loadFailed: "无法加载流水线。",
   noProjects: "看板上没有项目。",

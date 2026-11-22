@@ -12,6 +12,7 @@ import {
   type AutonomyPresetId,
 } from "../shared/autonomy";
 import type { PipelineFile } from "../shared/factory/schema";
+import { isDraftGroup, type Card, type Group } from "../shared/model";
 import type { PipelineStrings } from "./pipeline-strings";
 
 /** Who runs the stage for the project, as text: the Project Manager, a worker or none. Live
@@ -118,4 +119,66 @@ export function autonomySummary(
       ? s.breakerOff
       : s.breakerOn.replace("{minutes}", String(preset.breakerMinutes));
   return `${s.autonomyUser.replace("{reasons}", reasons.join("; "))} ${breaker}`;
+}
+
+/** A task on a node of the Pipelines overlay. */
+export interface StageTask {
+  id: string;
+  number: number;
+  title: string;
+}
+
+/** The tasks on one node: `waiting` on its gate or stage choice, `running` the rest. */
+export interface StageOverlay {
+  running: StageTask[];
+  waiting: StageTask[];
+}
+
+type OverlayCard = Pick<
+  Card,
+  | "id"
+  | "number"
+  | "title"
+  | "projectId"
+  | "stage"
+  | "archived"
+  | "pipeline"
+  | "stageChip"
+>;
+
+/**
+ * The project's tasks per stage of the pipeline the tab shows, by stage id. A task counts while
+ * its card shows the stage chip (the engine runs its pipeline and the card is not in Done or
+ * Canceled) and only on the pipeline it runs; never from a draft column, where a run starts over
+ * at `start`, nor archived. One whose gate or `when` choice is open waits on that stage.
+ */
+export function pipelineOverlay(
+  cards: readonly OverlayCard[],
+  groups: readonly Group[],
+  projectId: string,
+  pipelineId: string,
+): Record<string, StageOverlay> {
+  const overlay: Record<string, StageOverlay> = {};
+  const live = cards
+    .filter(
+      (card) =>
+        card.projectId === projectId &&
+        card.pipeline?.id === pipelineId &&
+        !!card.stageChip &&
+        card.archived?.status !== "archived" &&
+        card.archived?.status !== "external" &&
+        !isDraftGroup(card.stage, groups),
+    )
+    .sort((a, b) => a.number - b.number);
+  for (const card of live) {
+    const state = card.pipeline!;
+    const stage = state.gate?.stage ?? state.stage;
+    const entry = (overlay[stage] ??= { running: [], waiting: [] });
+    (state.gate ? entry.waiting : entry.running).push({
+      id: card.id,
+      number: card.number,
+      title: card.title,
+    });
+  }
+  return overlay;
 }

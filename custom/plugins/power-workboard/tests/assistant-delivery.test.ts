@@ -5,6 +5,7 @@ import path from "node:path";
 import { expect, it } from "vitest";
 import {
   dependencyRefusal,
+  inPlaceCommitMessage,
   inPlaceCommitPlan,
   newDependencyPaths,
   porcelainPaths,
@@ -140,4 +141,14 @@ it("plans from real git status output with spaces and non-ASCII names", () => {
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+it("an in-place commit message is the task title and the agent's summary", () => {
+  expect(inPlaceCommitMessage("Fix the login", "Added X\nin src/a.ts\n")).toBe(
+    "Fix the login\n\nAdded X\nin src/a.ts",
+  );
+  expect(inPlaceCommitMessage("Fix the login\nmore", null)).toBe(
+    "Fix the login",
+  );
+  expect(inPlaceCommitMessage("  ", "  ")).toBe("Task changes");
 });

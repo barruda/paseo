@@ -6,8 +6,9 @@ orchestrator logs in JSONL), 2 (schemas, loader, compiler and `bin/factory`), 4
 (shadow mode: the board loads and diffs the factory, applies nothing), ticket 8 (the read-only
 Pipelines tab), ticket 9 (active mode; the live cutover waits for the user), ticket 10 (the UI
 writes the factory), ticket 11 (the pipeline engine), ticket 12 (PM transitions and the
-autonomy presets) and ticket 14 (the pipeline editor edits). Tickets at the end. Inspired by Warp Factories
-(https://docs.warp.dev/factories/), adapted to one local board with no cloud.
+autonomy presets), ticket 14 (the pipeline editor edits) and ticket 15 (the live overlay). Tickets
+at the end. Inspired by Warp Factories (https://docs.warp.dev/factories/), adapted to one local
+board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
 Markdown files: the **factory**. Workers (today's orchestrators) get a **role**, and each project
@@ -523,9 +524,16 @@ descriptions, `assistant.attempts` and `orchestratorLogs` move to their own file
 
 A **Pipelines** tab in the board's tab bar, with a project picker. It draws the project's pipeline
 as a graph: stages as nodes (role, worker, gate marker), transitions as edges labeled with their
-`when`, built-in `deliver`/`end`/`cancel` as terminal nodes. Live overlay: each node shows how many
-tasks are in that stage and how many wait on its gate; a click lists them. On phones the tab shows
-the stages as a read-only list.
+`when`, built-in `deliver`/`end`/`cancel` as terminal nodes. On phones the tab shows the stages as a
+read-only list.
+
+Live overlay (`pipelineOverlay` in `client/pipeline-view.ts`): each node shows how many of the
+project's tasks are in that stage and how many wait on its gate or `when` choice; the stage panel
+(the card on phones) lists them, and a task opens its ticket in the board's side panel, which
+switches to the Board tab because only that tab renders the panel. It reads `task.pipeline` from
+the board's own polling. A task counts while its card shows the stage chip, so tasks in Done or
+Canceled, tasks the engine does not run and tasks outside active mode count nowhere. Tasks in a
+draft column and archived tasks are left out too: a run from Ready starts over at `start`.
 
 Editing (active mode, wide screens only; the built-in view stays read only):
 
