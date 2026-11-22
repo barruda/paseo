@@ -73,6 +73,8 @@ export interface PipelineGraph {
   edges: GraphEdge[];
   width: number;
   height: number;
+  /** What the drawing adds to a layout position; a node's layout position is its x/y minus it. */
+  offset: Point;
 }
 
 /** Every transition of the pipeline, in file order: each stage's `to`, then its gate options. */
@@ -199,7 +201,14 @@ function arrowOf(points: Point[]): GraphEdge["arrow"] {
 
 export function layoutPipeline(pipeline: PipelineFile): PipelineGraph {
   const order = pipelineNodeOrder(pipeline);
-  if (order.length === 0) return { nodes: [], edges: [], width: 0, height: 0 };
+  if (order.length === 0)
+    return {
+      nodes: [],
+      edges: [],
+      width: 0,
+      height: 0,
+      offset: { x: 0, y: 0 },
+    };
   const nodeIds = new Set(order);
   const shapes = groupEdges(pipelineTransitions(pipeline), nodeIds);
   const back = backEdges(order, shapes);
@@ -382,7 +391,62 @@ export function layoutPipeline(pipeline: PipelineFile): PipelineGraph {
     })),
     width: rightEdge - leftEdge + 2 * MARGIN,
     height: bottom - top + 2 * MARGIN,
+    offset: { x: dx, y: dy },
   };
+}
+
+/** Where every node of the drawing sits, in layout coordinates (what `layout` saves). */
+export function layoutPositions(graph: PipelineGraph): Record<string, Point> {
+  return Object.fromEntries(
+    graph.nodes.map((node) => [
+      node.id,
+      { x: node.x - graph.offset.x, y: node.y - graph.offset.y },
+    ]),
+  );
+}
+
+/** The node under a point of the drawing, or null. */
+export function nodeAt(graph: PipelineGraph, point: Point): GraphNode | null {
+  return (
+    graph.nodes.find(
+      (node) =>
+        point.x >= node.x &&
+        point.x <= node.x + node.width &&
+        point.y >= node.y &&
+        point.y <= node.y + node.height,
+    ) ?? null
+  );
+}
+
+/** True when `layout` places every node, so the drawing uses it instead of the rows. */
+export function layoutIsManual(pipeline: PipelineFile): boolean {
+  const saved = pipeline.layout ?? {};
+  const order = pipelineNodeOrder(pipeline);
+  return order.length > 0 && order.every((id) => Object.hasOwn(saved, id));
+}
+
+/**
+ * After an edit: when `before` was laid out by hand and `after` draws a node its layout lacks (a
+ * new stage, a built-in a new transition names), that node goes below the others, so one new node
+ * never sends the whole drawing back to the rows.
+ */
+export function keepManualLayout(
+  before: PipelineFile,
+  after: PipelineFile,
+): PipelineFile {
+  if (!layoutIsManual(before) || layoutIsManual(after)) return after;
+  const layout = { ...(after.layout ?? {}) };
+  const placed = Object.values(layout);
+  const left = placed.length ? Math.min(...placed.map((at) => at.x)) : 0;
+  let y = placed.length
+    ? Math.max(...placed.map((at) => at.y)) + NODE_HEIGHT + ROW_GAP
+    : 0;
+  for (const id of pipelineNodeOrder(after)) {
+    if (Object.hasOwn(layout, id)) continue;
+    layout[id] = { x: left, y };
+    y += NODE_HEIGHT + ROW_GAP;
+  }
+  return { ...after, layout };
 }
 
 export interface Segment {

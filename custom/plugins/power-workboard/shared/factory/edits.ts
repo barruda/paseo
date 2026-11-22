@@ -14,11 +14,15 @@ import {
   workerFrontOf,
 } from "./to-files";
 
-/** Sets `value` at `path`; `remove` deletes the key instead. */
+/**
+ * Sets `value` at `path`; `remove` deletes the key instead; `rename` gives the key at `path` a new
+ * name where it is, so its comments and place in the file stay. Renames run first, all at once.
+ */
 export type FieldEdit = {
   path: ReadonlyArray<string | number>;
   value?: unknown;
   remove?: boolean;
+  rename?: string;
 };
 
 /**
@@ -116,6 +120,27 @@ function freeId(value: string, fallback: string, taken: Set<string>): string {
   return id;
 }
 
+/**
+ * A new `projects/<id>.yaml` for a checkout the factory has no file for: its id a slug of the
+ * folder name that `taken` lacks (added to it), its text only the `path`.
+ */
+export function newProjectFile(
+  directory: string,
+  taken: Set<string>,
+  pathText: (directory: string) => string,
+): { id: string; edit: FileEdit } {
+  const name = directory.split(/[\\/]/).filter(Boolean).pop() ?? "project";
+  const id = freeId(name, "project", taken);
+  return {
+    id,
+    edit: {
+      file: `projects/${id}.yaml`,
+      create: `# yaml-language-server: $schema=../.schema/project.json\npath: ${JSON.stringify(pathText(directory))}\n`,
+      fields: [],
+    },
+  };
+}
+
 export type PlanContext = {
   applied: AppliedFactory;
   /** Live id → factory id of the saved data and of `.factory-ids.json`. */
@@ -191,15 +216,14 @@ export function planFactoryEdits(
     if (known) return known;
     const directory = context.projectDirectory(projectId);
     if (!directory) throw new Error(`Paseo has no project ${projectId}`);
-    const name = directory.split(/[\\/]/).filter(Boolean).pop() ?? "project";
-    const id = freeId(name, "project", takenProjects);
+    const { id, edit } = newProjectFile(
+      directory,
+      takenProjects,
+      context.pathText,
+    );
     projectIds.set(projectId, id);
     created.add(id);
-    edits.push({
-      file: `projects/${id}.yaml`,
-      create: `# yaml-language-server: $schema=../.schema/project.json\npath: ${JSON.stringify(context.pathText(directory))}\n`,
-      fields: [],
-    });
+    edits.push(edit);
     return id;
   };
 

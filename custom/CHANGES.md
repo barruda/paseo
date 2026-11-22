@@ -10758,3 +10758,43 @@ tests/pipeline-engine.test.ts` (both in the plugin suite of the update script). 
   Project Manager has no Review select on project cards; a draft's Refine opens a chat whose first
   message has "## Pipeline stage: spec (spec)" and the spec template; `/write-ticket` writes a
   spec into the ticket; `board_overview` says `pipeline: critical` on DreamMMO.
+
+## factory-pipeline-editor: the Pipelines tab edits the factory's pipelines and autonomy presets
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: pipeline editor edits stages, transitions, layout and autonomy in the factory`
+- **Why:** Ticket 14 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Pipeline editor"), plus the 2026-11-22 addition: an autonomy combobox per pipeline and per
+  project, so the presets of ticket 12 are set from the board instead of by hand in YAML.
+- **What:**
+  - `shared/factory/pipeline-edit.ts`: the pure edit model. A draft keeps the loaded pipeline and
+    the stage renames; add, remove (drops the transitions to it), rename (every reference),
+    update fields, set start, connect/disconnect (a single `to` becomes `when` conditions, a gate
+    gets an option), gate on/off keeping the targets, move (the first move saves every node's
+    place); `pipelineIssues` is live validation with `pipelineFileSchema`.
+  - Writer (`server/factory/writer.ts`, `shared/factory/edits.ts`): a `FieldEdit` can `rename` a
+    key in place, all renames at once, so a renamed stage keeps its comments and place.
+  - `FactoryShadow.writePipeline` and `setAutonomy` (`server/factory/shadow.ts`): Save refuses a
+    file changed since it was loaded or renames that would leave one id twice (`renameCollides`;
+    the draft also keeps a base stage's id taken until it is renamed away), writes the diff (never
+    `autonomy`) and commits `ui: pipelines/<id> …`; the comboboxes set or remove `autonomy` in
+    `pipelines/<id>.yaml` or `projects/<id>.yaml` (a project with no file gets one with its
+    `path`). RPCs `workboard.factory.pipelines.save` and `workboard.factory.autonomy.set` (`shared/rpc.ts`,
+    `index.server.ts`); the pipelines view gains `pmAutonomy`, `projectAutonomy` and `workers`
+    (`shared/factory/active.ts`).
+  - `client/PipelinesView.tsx`: in active mode on wide screens, drag nodes to move them, drag
+    from a node's handle onto another to connect, a stage panel that edits every field, Add
+    stage, Save (disabled while invalid) and Discard; autonomy comboboxes with "Herdar (<preset>)"
+    and the preset's summary line (`client/pipeline-view.ts`, `client/pipeline-layout.ts`,
+    `client/pipeline-strings.ts`). The built-in view and phones stay read only.
+- **Core files touched:** none.
+- **Plugin files:** the files above, `client/strings.ts`, `client/WorkboardScreen.tsx` (error
+  toast prop), `docs/factory.md`, `tests/pipeline-edit.test.ts`,
+  `tests/factory-pipeline-editor.test.ts`, `tests/factory-writer.test.ts`.
+- **Re-apply:** plugin only; search `CUSTOM(factory)` and `ticket 14` in the files above.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/pipeline-edit.test.ts
+tests/factory-pipeline-editor.test.ts tests/factory-writer.test.ts` (all in the plugin suite of
+  the update script). Needs a `plugin reload`. Live only in factory active mode: Workboard →
+  **Pipelines** → pick a project, drag a node, change a stage in the right panel, Save; the
+  factory gets a `ui: pipelines/<id> …` commit. Change "Autonomia do pipeline" or "Autonomia do
+  projeto": one commit each; "Herdar (…)" removes the key.

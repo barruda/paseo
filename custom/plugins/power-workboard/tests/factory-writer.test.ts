@@ -114,6 +114,29 @@ describe("factory writer: YAML edits", () => {
     );
   });
 
+  it("renames keys in place, all at once, keeping their comments and values", () => {
+    const text = `stages:
+  # First.
+  a:
+    role: implement # builds
+  b:
+    role: review
+`;
+    expect(
+      editYaml(text, [
+        { path: ["stages", "a"], rename: "b" },
+        { path: ["stages", "b"], rename: "a" },
+        { path: ["stages", "a", "role"], value: "verify" },
+      ]),
+    ).toBe(`stages:
+  # First.
+  b:
+    role: implement # builds
+  a:
+    role: verify
+`);
+  });
+
   it("writes an inherited block whole from the target", () => {
     const target = {
       housekeeping: { autoArchive: false, archiveAfterDays: 0 },
