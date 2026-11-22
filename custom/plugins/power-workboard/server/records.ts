@@ -147,32 +147,56 @@ export function newLogEntries(
   return after.map((entry) => structuredClone(entry));
 }
 
-/** Appends the lines and syncs the file; syncs the folder too when the file is new. */
+async function syncDirectory(directory: string): Promise<void> {
+  const folder = await open(directory, "r");
+  try {
+    await folder.sync();
+  } finally {
+    await folder.close();
+  }
+}
+
+/**
+ * Creates the folder, and syncs the parent of each folder it creates so the new entries survive a
+ * power loss.
+ */
+async function ensureDirectory(directory: string): Promise<void> {
+  const first = await mkdir(directory, { recursive: true });
+  if (!first) return;
+  for (let created = directory; ; created = path.dirname(created)) {
+    await syncDirectory(path.dirname(created));
+    if (created === first || path.dirname(created) === created) break;
+  }
+}
+
+/**
+ * Appends the lines and syncs the file; syncs the folder too when the file is new. A file whose
+ * last line was cut by a crash gets a newline first, so the cut line does not swallow the next one.
+ */
 async function appendLines(
   file: string,
   lines: readonly string[],
 ): Promise<void> {
   if (!lines.length) return;
-  const directory = path.dirname(file);
   const created = await stat(file).then(
     () => false,
     () => true,
   );
-  const handle = await open(file, "a");
+  const handle = await open(file, "a+");
   try {
-    await handle.writeFile(`${lines.join("\n")}\n`, "utf8");
+    const { size } = await handle.stat();
+    let prefix = "";
+    if (size > 0) {
+      const last = Buffer.alloc(1);
+      await handle.read(last, 0, 1, size - 1);
+      if (last[0] !== 0x0a) prefix = "\n";
+    }
+    await handle.writeFile(`${prefix}${lines.join("\n")}\n`, "utf8");
     await handle.sync();
   } finally {
     await handle.close();
   }
-  if (created) {
-    const folder = await open(directory, "r");
-    try {
-      await folder.sync();
-    } finally {
-      await folder.close();
-    }
-  }
+  if (created) await syncDirectory(path.dirname(file));
 }
 
 /** The last `bytes` of a file, starting at a whole line. */
@@ -216,7 +240,6 @@ export function directoryRecordFiles(
 ): RecordFiles {
   const attemptsDirectory = path.join(directory, "attempts");
   const logsDirectory = path.join(directory, "orchestrator-logs");
-  const ensure = (folder: string) => mkdir(folder, { recursive: true });
   return {
     async readAttempts() {
       let names: string[];
@@ -246,7 +269,7 @@ export function directoryRecordFiles(
     async appendAttempts(records) {
       if (!records.length) return;
       const at = now().toISOString();
-      await ensure(attemptsDirectory);
+      await ensureDirectory(attemptsDirectory);
       await appendLines(
         path.join(attemptsDirectory, `${at.slice(0, 10)}.jsonl`),
         records.map((record) => JSON.stringify({ at, ...record })),
@@ -279,7 +302,7 @@ export function directoryRecordFiles(
     async appendLogs(orchestratorId, entries) {
       if (!entries.length) return;
       const file = path.join(logsDirectory, logFileName(orchestratorId));
-      await ensure(logsDirectory);
+      await ensureDirectory(logsDirectory);
       await appendLines(
         file,
         entries.map((entry) => JSON.stringify(entry)),

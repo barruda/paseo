@@ -10429,7 +10429,10 @@ tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). I
   - `server/records.ts`: append-only `plugin-data/power-workboard/attempts/YYYY-MM-DD.jsonl` (lines
     `{ at, taskId, attempt }` upsert by index, `{ at, taskId, reset: true }` clears a task) and
     `orchestrator-logs/<orchestratorId>.jsonl` (one entry per line). Each append is fsynced, and the
-    folder too when the file is new. Reading attempts folds every day file and throws on an
+    folder too when the file is new; a file that ends in a line cut by a crash gets a newline
+    first, so the cut line does not swallow the next record. Folders created on the way
+    (`attempts/`, `orchestrator-logs/`, `plugin-data/power-workboard/`) get their parent fsynced.
+    Reading attempts folds every day file and throws on an
     unreadable file (a partial fold could reuse an index); a line cut by a crash is skipped. Logs
     read only the file's last 512 KB. Orchestrator ids that are not `[A-Za-z0-9_-]+` are refused.
   - `server/store.ts`: attempts and logs stay in `Data` in memory, so every reader (snapshot
@@ -10441,8 +10444,9 @@ tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). I
     per orchestrator, and the attempts of tasks on the board or started in the last 30 days.
     Deleting an orchestrator removes its log file. A failed append keeps that kind in the JSON
     (legacy) until the next start; unreadable attempt files keep new attempts in the JSON.
-  - Migration (no schema bump): on load a JSON copy wins per task/orchestrator over the files and
-    marks the kind legacy; ordinary saves keep it in the JSON. `Workboard.load` calls
+  - Migration (no schema bump): on load a JSON copy is merged into the files' attempts by index
+    (the JSON wins on the same index) and replaces an orchestrator's file tail, and marks the kind
+    legacy; ordinary saves keep it in the JSON. `Workboard.load` calls
     `moveRecords()`, which copies the JSON once to
     `plugin-settings/power-workboard/workboard-data.pre-records.json` (backing `backup("records")`;
     a failed copy postpones the move), appends the difference against the files and clears the JSON

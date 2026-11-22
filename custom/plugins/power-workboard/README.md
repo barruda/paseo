@@ -94,7 +94,9 @@ this repo) with these differences:
   the last append is written. Data saved in the JSON by an older version moves to the files when
   the board starts, after a one-time copy to `workboard-data.pre-records.json`; a move cut short
   appends nothing twice. A failed append keeps that kind in the JSON until the next start. When
-  the attempt files cannot be read, new attempts stay in the JSON so no index is reused. Deleting
+  the attempt files cannot be read, new attempts stay in the JSON and are merged back by attempt
+  index once they can (the JSON wins on the same index). A line cut by a crash is skipped, and the
+  next append starts on a new line. Deleting
   an orchestrator deletes its log file. The files are never pruned.
 - **Ticket panel.** Middle-click a card, right-click it and choose **Open in panel**, or
   long-press it on a phone or tablet, to read the ticket beside the board without leaving it. The

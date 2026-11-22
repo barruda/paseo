@@ -192,8 +192,8 @@ export class Store {
   }
   /**
    * CUSTOM(task-records-jsonl): reads the files and fills `values` with what the JSON does not
-   * carry. A JSON copy (an older version, or an append that failed) wins over the files: it is the
-   * newer one, and the next move appends it.
+   * carry. A JSON copy (an older version, or an append that failed) is merged into the files' copy
+   * by attempt index and wins on the same index: it is the newer one, and the next move appends it.
    */
   private async loadRecords(values: Data): Promise<void> {
     const jsonAttempts = values.assistant.attempts;
@@ -218,8 +218,18 @@ export class Store {
         list.some((attempt) => Date.parse(attempt.startedAt) >= recent)
       )
         attempts[taskId] = list;
+    for (const taskId of Object.keys(jsonAttempts))
+      if (disk[taskId] && !attempts[taskId]) attempts[taskId] = disk[taskId];
     this.attemptsOnDisk = structuredClone(attempts);
-    Object.assign(attempts, jsonAttempts);
+    for (const [taskId, list] of Object.entries(jsonAttempts)) {
+      const byIndex = new Map(
+        (attempts[taskId] ?? []).map((attempt) => [attempt.index, attempt]),
+      );
+      for (const attempt of list) byIndex.set(attempt.index, attempt);
+      attempts[taskId] = [...byIndex.values()].sort(
+        (left, right) => left.index - right.index,
+      );
+    }
     values.assistant.attempts = attempts;
     this.legacyAttempts = Object.keys(jsonAttempts).length > 0;
 

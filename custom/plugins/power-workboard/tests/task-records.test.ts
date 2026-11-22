@@ -192,6 +192,39 @@ describe("record files", () => {
     expect(await files.readAttempts()).toEqual({ t1: [attempt(1)] });
   });
 
+  it("keeps the next append after a line cut by a crash", async () => {
+    const directory = tempDirectory();
+    const files = directoryRecordFiles(directory, () => new Date(NOW));
+    await files.appendAttempts([{ taskId: "t1", attempt: attempt(1) }]);
+    appendFileSync(
+      join(directory, "attempts", "2026-11-21.jsonl"),
+      '{"at":"x","taskId":"t1","attem',
+    );
+    await files.appendAttempts([{ taskId: "t1", attempt: attempt(2) }]);
+    expect(await files.readAttempts()).toEqual({
+      t1: [attempt(1), attempt(2)],
+    });
+
+    await files.appendLogs("orch", [entry("1")]);
+    appendFileSync(
+      join(directory, "orchestrator-logs", "orch.jsonl"),
+      '{"at":"x","lev',
+    );
+    await files.appendLogs("orch", [entry("2")]);
+    expect(await files.readLogs(["orch"], 10)).toEqual({
+      orch: [entry("1"), entry("2")],
+    });
+  });
+
+  it("creates the folders under a plugin-data folder that does not exist yet", async () => {
+    const directory = join(tempDirectory(), "plugin-data", "power-workboard");
+    const files = directoryRecordFiles(directory, () => new Date(NOW));
+    await files.appendAttempts([{ taskId: "t1", attempt: attempt(1) }]);
+    await files.appendLogs("orch", [entry("1")]);
+    expect(await files.readAttempts()).toEqual({ t1: [attempt(1)] });
+    expect(await files.readLogs(["orch"], 10)).toEqual({ orch: [entry("1")] });
+  });
+
   it("reads the tail of an orchestrator log and removes it", async () => {
     const directory = tempDirectory();
     const files = directoryRecordFiles(directory);
@@ -357,6 +390,33 @@ describe("Store with record files", () => {
     });
     expect(records.attempts).toHaveLength(1);
     expect(json.saved().assistant.attempts.t1[0].agentId).toBe("new");
+  });
+
+  it("merges the JSON copy into the files by index once they can be read again", async () => {
+    const records = memoryRecordFiles();
+    records.attempts.push(
+      { taskId: "t1", attempt: attempt(1, { outcome: "done" }) },
+      { taskId: "t1", attempt: attempt(2, { outcome: "done" }) },
+    );
+    // A boot that could not read the files saved its attempts in the JSON.
+    const json = backing({
+      tasks: [newTask("t1", "Task", NOW)],
+      assistant: {
+        ...dataSchema.parse({}).assistant,
+        attempts: { t1: [attempt(2, { agentId: "json" }), attempt(3)] },
+      },
+    });
+    const store = new Store(json, undefined, records);
+    await store.load();
+    const merged = [
+      attempt(1, { outcome: "done" }),
+      attempt(2, { agentId: "json" }),
+      attempt(3),
+    ];
+    expect(store.current.assistant.attempts.t1).toEqual(merged);
+    await store.moveRecords();
+    expect(json.saved().assistant.attempts).toEqual({});
+    expect(await records.readAttempts()).toEqual({ t1: merged });
   });
 });
 
