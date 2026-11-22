@@ -252,6 +252,10 @@ export function renameStage(
   if (!factoryIdSchema.safeParse(to).success) return { error: "invalid" };
   if (isBuiltinStage(to)) return { error: "builtin" };
   if (Object.hasOwn(draft.pipeline.stages, to)) return { error: "taken" };
+  // A base stage's id stays taken until that stage is renamed away, even after it is removed:
+  // Save renames keys before it removes any, so the file would hold the id twice.
+  if (Object.hasOwn(draft.base.stages, to) && !Object.hasOwn(draft.renames, to))
+    return { error: "taken" };
   const pipeline = renameReferences(
     renameStageKeys(draft.pipeline, { [from]: to }),
     from,

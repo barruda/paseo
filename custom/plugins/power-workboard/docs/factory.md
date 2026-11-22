@@ -550,7 +550,10 @@ Editing (active mode, wide screens only; the built-in view stays read only):
   renames. The server refuses when the file changed since it was loaded, renames the keys in place
   (the stage keeps its comments and place in the file), writes only the fields that differ through
   the factory writer, and commits `ui: pipelines/<id> …`. A change the factory rejects (a pinned
-  worker that does not exist, a missing `file`) is undone.
+  worker that does not exist, a missing `file`) is undone. The writer renames keys before it removes
+  any, so a base stage's id stays taken in the draft until that stage is renamed away (a removed
+  one included), and the server refuses renames that would leave one id twice; a swap through a
+  temporary id works.
 - **Autonomy.** A combobox beside the pipeline name writes `autonomy` to `pipelines/<id>.yaml`, and
   one beside the project picker writes it to `projects/<id>.yaml` (`workboard.factory.autonomy.set`,
   one commit each). A project with no file gets one with its `path`. "Herdar" removes the key; its

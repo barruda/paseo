@@ -607,6 +607,8 @@ const zh = {
     "This pipeline is no longer in the factory":
       "factory 中已没有这个流水线。请刷新。",
     "This project is no longer in Paseo": "Paseo 中已没有这个项目。请刷新。",
+    "A renamed stage takes the id of another stage":
+      "重命名后的阶段与另一个阶段同名；请换一个 id。",
     "Pick one of the gate's options: each one names the stage the task goes to":
       "请选择这个关卡的一个选项：每个选项都指明任务要进入的阶段。",
     "Only the user answers a pipeline gate, in Decisões":
@@ -1490,6 +1492,8 @@ const en: typeof zh = {
       "This pipeline is no longer in the factory. Refresh.",
     "This project is no longer in Paseo":
       "This project is no longer in Paseo. Refresh.",
+    "A renamed stage takes the id of another stage":
+      "A renamed stage takes the id of another stage. Pick another id.",
     "Pick one of the gate's options: each one names the stage the task goes to":
       "Pick one of the gate's options. Each one names the stage the task goes to.",
     "Only the user answers a pipeline gate, in Decisões":

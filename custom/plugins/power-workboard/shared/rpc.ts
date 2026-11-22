@@ -25,7 +25,7 @@ import {
   taskTimingSchema,
   testTierSchema, // CUSTOM(packages)
 } from "./model";
-import { pipelineFileSchema } from "./factory/schema"; // CUSTOM(factory)
+import { factoryIdSchema, pipelineFileSchema } from "./factory/schema"; // CUSTOM(factory)
 import { autonomyPresetIdSchema } from "./autonomy"; // CUSTOM(factory)
 
 // CUSTOM(factory): shadow mode's full report (docs/factory.md, "Loading and revisions").
@@ -67,7 +67,7 @@ export const factoryPipelineSaveRpc = defineRpc({
     id: z.string(),
     base: pipelineFileSchema,
     pipeline: pipelineFileSchema,
-    renames: z.record(z.string(), z.string()),
+    renames: z.record(z.string(), factoryIdSchema),
   }),
   output: factoryPipelinesViewSchema,
 });

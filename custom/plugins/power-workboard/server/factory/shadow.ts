@@ -73,6 +73,12 @@ export const FACTORY_CHANGED_ERROR =
 /** The pipeline editor saved a pipeline the factory no longer has (ticket 14). */
 export const FACTORY_PIPELINE_MISSING_ERROR =
   "This pipeline is no longer in the factory";
+/**
+ * A stage rename whose new id is a base stage that keeps its id, or the new id of another rename:
+ * the file would get the key twice.
+ */
+export const FACTORY_RENAME_COLLISION_ERROR =
+  "A renamed stage takes the id of another stage";
 /** The project autonomy combobox named a project Paseo no longer has. */
 export const FACTORY_PROJECT_MISSING_ERROR =
   "This project is no longer in Paseo";
@@ -500,8 +506,9 @@ export class FactoryShadow {
     renames: Record<string, string>,
   ): Promise<void> {
     await this.edit((applied) => {
-      const current = applied.pipelines[id];
-      if (!current) throw new Error(FACTORY_PIPELINE_MISSING_ERROR);
+      if (!Object.hasOwn(applied.pipelines, id))
+        throw new Error(FACTORY_PIPELINE_MISSING_ERROR);
+      const current = applied.pipelines[id]!;
       if (!sameConfig(withoutAutonomy(current), withoutAutonomy(base)))
         throw new Error(FACTORY_CHANGED_ERROR);
       const known = Object.fromEntries(
@@ -509,6 +516,8 @@ export class FactoryShadow {
           Object.hasOwn(base.stages, from),
         ),
       );
+      if (renameCollides(base, known))
+        throw new Error(FACTORY_RENAME_COLLISION_ERROR);
       const renamed = renameStageKeys(base, known);
       const fields: FieldEdit[] = [
         ...Object.entries(known).flatMap(([from, to]) => [
@@ -535,7 +544,7 @@ export class FactoryShadow {
   ): Promise<void> {
     await this.edit(async (applied) => {
       if (target === "pipeline") {
-        if (!applied.pipelines[id])
+        if (!Object.hasOwn(applied.pipelines, id))
           throw new Error(FACTORY_PIPELINE_MISSING_ERROR);
         return [
           { file: `pipelines/${id}.yaml`, fields: keyEdits({ autonomy }) },
@@ -911,7 +920,22 @@ async function projectResolver(
   return (realPath) => byPath.get(realPath) ?? null;
 }
 
-/** Names of a folder's subfolders (or, with `files`, of its files); empty when it is missing. */
+/**
+ * True when applying `renames` (base id → new id, base ids only) to the base's stage keys would
+ * leave two stages with one id: a target that is a base stage not renamed itself, or a target two
+ * renames share. A swap (a → b, b → a) is fine.
+ */
+export function renameCollides(
+  base: PipelineFile,
+  renames: Record<string, string>,
+): boolean {
+  const targets = Object.values(renames);
+  if (new Set(targets).size !== targets.length) return true;
+  return targets.some(
+    (to) => Object.hasOwn(base.stages, to) && !Object.hasOwn(renames, to),
+  );
+}
+
 /** A pipeline without its `autonomy`, which the editor's Save never writes. */
 function withoutAutonomy(
   pipeline: PipelineFile,
@@ -920,6 +944,7 @@ function withoutAutonomy(
   return rest;
 }
 
+/** Names of a folder's subfolders (or, with `files`, of its files); empty when it is missing. */
 async function folderNames(dir: string, files = false): Promise<Set<string>> {
   try {
     return new Set(

@@ -133,6 +133,25 @@ describe("pipeline edit model", () => {
     });
   });
 
+  it("keeps a removed base stage's id taken, but lets a swap through", () => {
+    const removed = removeStage(critical(), "verify");
+    expect(renameStage(removed, "implement", "verify")).toEqual({
+      error: "taken",
+    });
+    // A new stage may reuse the id: no rename, so Save writes it over the old key.
+    const added = addStage(removed, "verify");
+    expect(added.id).toBe("verify");
+    expect(added.draft.renames).toEqual({});
+    // A renamed-away base id is free again: the swap spec ↔ verify through a temporary id.
+    let draft = ok(renameStage(critical(), "spec", "tmp"));
+    draft = ok(renameStage(draft, "verify", "spec"));
+    draft = ok(renameStage(draft, "tmp", "verify"));
+    expect(draft.renames).toEqual({ spec: "verify", verify: "spec" });
+    expect(draft.pipeline.stages.verify.role).toBe("spec");
+    expect(draft.pipeline.stages.spec.role).toBe("verify");
+    expect(pipelineIssues(draft.pipeline)).toEqual([]);
+  });
+
   it("does not record a rename for a new stage, and drops one for a removed stage", () => {
     const added = addStage(critical(), "verify");
     const renamed = ok(renameStage(added.draft, added.id, "check"));

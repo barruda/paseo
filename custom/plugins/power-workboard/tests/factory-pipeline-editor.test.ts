@@ -16,6 +16,8 @@ import { pipelineStrings } from "../client/pipeline-strings";
 import {
   FACTORY_CHANGED_ERROR,
   FACTORY_PIPELINE_MISSING_ERROR,
+  FACTORY_RENAME_COLLISION_ERROR,
+  renameCollides,
 } from "../server/factory/shadow";
 import { factoryPipelinesView } from "../shared/factory/active";
 import {
@@ -153,6 +155,58 @@ layout:
     const s = await bootFlow();
     await save(s, draftOf(s));
     expect(gitLog(s.root)).toEqual(["fixture"]);
+  });
+
+  it("refuses a rename onto a base stage that keeps its id, before writing anything", async () => {
+    const s = await bootFlow();
+    const draft = draftOf(s);
+    // What an old client could send: check removed, implement renamed to check.
+    const { check: _removed, ...stages } = draft.pipeline.stages;
+    const pipeline = {
+      ...draft.pipeline,
+      start: "check",
+      stages: { check: { ...stages.implement!, to: "deliver" } },
+      layout: undefined,
+    };
+    await expect(
+      save(s, { ...draft, pipeline, renames: { implement: "check" } }),
+    ).rejects.toThrow(FACTORY_RENAME_COLLISION_ERROR);
+    expect(await readRoot(s.root, "pipelines/flow.yaml")).toBe(FLOW);
+    expect(gitLog(s.root)).toEqual(["fixture"]);
+    expect(gitOut(s.root, "status", "--porcelain")).toBe("");
+    // Two renames onto one id collide too; a swap does not.
+    const base = draft.base;
+    expect(renameCollides(base, { implement: "x", check: "x" })).toBe(true);
+    expect(
+      renameCollides(base, { implement: "check", check: "implement" }),
+    ).toBe(false);
+    expect(renameCollides(base, { implement: "build" })).toBe(false);
+  });
+
+  it("swaps two stage ids in place", async () => {
+    const s = await bootFlow();
+    let draft = ok(renameStage(draftOf(s), "implement", "tmp"));
+    draft = ok(renameStage(draft, "check", "implement"));
+    draft = ok(renameStage(draft, "tmp", "check"));
+    expect(draft.renames).toEqual({ implement: "check", check: "implement" });
+    await save(s, draft);
+    const text = await readRoot(s.root, "pipelines/flow.yaml");
+    expect(text).toContain(`stages:
+  # Write the code.
+  check:
+    role: implement
+    prompt: Implement it.
+    to: implement # then the checks
+  implement:
+    role: verify # evidence, always
+    to:
+      - stage: deliver
+        when: Every check passed.
+      - stage: check
+        when: A check failed.`);
+    expect(text).toContain("start: check\n");
+    expect(view(s).pipelines.flow!.start).toBe("check");
+    expect(gitLog(s.root)[0]).toBe("ui: pipelines/flow stages, layout, start");
   });
 
   it("refuses a draft whose base is no longer the file", async () => {

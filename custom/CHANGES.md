@@ -10718,9 +10718,10 @@ tests/pipeline-engine.test.ts` (both in the plugin suite of the update script). 
   - Writer (`server/factory/writer.ts`, `shared/factory/edits.ts`): a `FieldEdit` can `rename` a
     key in place, all renames at once, so a renamed stage keeps its comments and place.
   - `FactoryShadow.writePipeline` and `setAutonomy` (`server/factory/shadow.ts`): Save refuses a
-    file changed since it was loaded, writes the diff (never `autonomy`) and commits
-    `ui: pipelines/<id> …`; the comboboxes set or remove `autonomy` in `pipelines/<id>.yaml` or
-    `projects/<id>.yaml` (a project with no file gets one with its `path`). RPCs
+    file changed since it was loaded or renames that would leave one id twice (`renameCollides`;
+    the draft also keeps a base stage's id taken until it is renamed away), writes the diff (never
+    `autonomy`) and commits `ui: pipelines/<id> …`; the comboboxes set or remove `autonomy` in
+    `pipelines/<id>.yaml` or `projects/<id>.yaml` (a project with no file gets one with its `path`). RPCs
     `workboard.factory.pipelines.save` and `workboard.factory.autonomy.set` (`shared/rpc.ts`,
     `index.server.ts`); the pipelines view gains `pmAutonomy`, `projectAutonomy` and `workers`
     (`shared/factory/active.ts`).
