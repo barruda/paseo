@@ -6936,7 +6936,8 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
 - **Added:** 2026-11-20
 - **Commit:** `custom: Projects Assistant gets the Needs you list on every wake`; follow-up
   `custom: fix the Needs you wake edge cases`; follow-up
-  `custom: tell the Project Manager about Needs you sooner`
+  `custom: tell the Project Manager about Needs you sooner`; follow-up
+  `custom: board_reload_plugin reloads once the turn ends, and the PM hears a failed reload`
 - **Why:** A task finished at 14:29 with `needs_input` and the `[Board]` notice did not reach the
   assistant while it answered two quick messages; the user had to ask why nothing moved. The
   notice was not lost or deduplicated: the board retried every 90 s while the chat was busy, so
@@ -6979,9 +6980,16 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
     steer may rewrite `toldAt`, but a `board_report` (or an assistant action that leaves the task
     in Needs you) after `firstToldAt` still counts as handled, so the 10-minute reminder does not
     fire for a task already treated.
-  - The deferred reload runs only when `agentActivity(chatId)` is `idle`; an interrupted turn's
-    `turn_ended` no longer retires the tools in the middle of the turn that replaces it. The
-    reload request's timeout counts as success, since the daemon stops the plugin to reload it.
+  - The deferred reload is held only while `agentActivity(chatId)` is `running` or `waiting`, so an
+    interrupted turn's `turn_ended` does not retire the tools in the middle of the turn that
+    replaces it. A finished turn the user has not read reads `attention`, not `idle`: requiring
+    `idle` kept every reload on 2026-11-22 from running while the PM worked on its own. The
+    daemon also sends `agent.turn.after` before it marks the chat idle, so a busy chat is looked at
+    again every second, ten times, before the flag waits for the next turn end.
+  - The reload request's timeout counts as success, and so does its rejection once the board is
+    disposed: the daemon stops the plugin to reload it, which closes the bridge under the request.
+    Any other failure is steered into the chat's next turn as `[Plugin reload] ...` (once), so the
+    PM retries or tells the user.
   - A wake whose send fails restores the previous `lastToldAt`, so the user's turns in the next
     60 s still steer the list in.
 - **Files:** `server/workboard.ts`, `server/assistant/{chat,quick}.ts`, `server/host.ts`,

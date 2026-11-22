@@ -270,6 +270,8 @@ export interface AssistantOptions {
   profilesDirectory?: string;
   /** CUSTOM(assistant-wake): quiet time before the chat agent is told about tasks that need the user. */
   wakeDelayMs?: number;
+  /** CUSTOM(assistant-wake): wait between looks at a chat that still reads busy after its turn ended. */
+  reloadRetryMs?: number;
   /** CUSTOM(night-tasks): notifications and the power-off command. */
   night?: NightSystem;
   /** CUSTOM(assistant-autonomy): wait before retrying a merge blocked by a dirty base checkout. */
@@ -378,6 +380,9 @@ function defaultRestartSkipFile(): string {
 }
 /** CUSTOM(assistant-wake): how soon to look again while the chat is busy with another turn. */
 const BUSY_WAKE_RETRY_MS = 10_000;
+/** CUSTOM(assistant-wake): a deferred reload looks again this often, this many times, while the chat ends its turn. */
+const RELOAD_RETRY_MS = 1_000;
+const RELOAD_RETRIES = 10;
 /** CUSTOM(assistant-wake): a task told and left waiting this long is told again once. */
 const NEEDS_YOU_REMIND_MS = 10 * 60_000;
 /** CUSTOM(assistant-wake): a user message re-steers the Needs you list when it is this old. */
@@ -3338,6 +3343,7 @@ export class Workboard {
    * or quick message sets `toldAt` right before its turn, so it is not repeated here.
    */
   chatTurnStarted(agentId: string): void {
+    this.tellReloadFailure(agentId);
     const assistant = this.store.current.assistant;
     if (
       !assistant.settings.chat.wakeOnNeedsYou ||
@@ -3375,16 +3381,20 @@ export class Workboard {
   }
   /** CUSTOM(assistant-wake): board_reload_plugin defers the reload to the end of this turn. */
   private reloadAfterTurn = false;
+  /** CUSTOM(assistant-wake): the next look at a chat that still read busy when its turn ended. */
+  private reloadTimer?: ReturnType<typeof setTimeout>;
+  private reloadTries = 0;
+  /** CUSTOM(assistant-wake): why the last deferred reload failed; the chat's next turn hears it. */
+  private reloadFailure: string | null = null;
   requestPluginReload(): boolean {
     if (!this.store.current.assistant.chatAgentId) return false;
     this.reloadAfterTurn = true;
+    this.reloadFailure = null;
     return true;
   }
   /**
    * CUSTOM(assistant-wake): the chat's turn ended. A deferred plugin reload runs now, so the
    * board tools stay attached for the whole turn and the next prompt opens a fresh session.
-   * An interrupted turn's `turn_ended` can arrive right before the turn that replaces it, so
-   * reload only while the chat is idle; otherwise the flag stays for the next end.
    */
   chatTurnEnded(agentId: string): void {
     if (
@@ -3392,22 +3402,64 @@ export class Workboard {
       agentId !== this.store.current.assistant.chatAgentId
     )
       return;
+    clearTimeout(this.reloadTimer);
+    this.reloadTries = 0;
     void this.reloadPluginWhenIdle(agentId);
   }
+  private reloadStillWanted(agentId: string): boolean {
+    return (
+      !this.stopped &&
+      this.reloadAfterTurn &&
+      agentId === this.store.current.assistant.chatAgentId
+    );
+  }
   private async reloadPluginWhenIdle(agentId: string): Promise<void> {
-    if (agentId !== this.store.current.assistant.chatAgentId) return;
-    if ((await this.host.agentActivity(agentId)) !== "idle") return;
-    if (
-      !this.reloadAfterTurn ||
-      agentId !== this.store.current.assistant.chatAgentId
-    )
+    this.reloadTimer = undefined;
+    if (!this.reloadStillWanted(agentId)) return;
+    const activity = await this.host.agentActivity(agentId);
+    if (!this.reloadStillWanted(agentId) || activity === null) return;
+    // A finished turn reads "attention" until the user opens the chat (or "error"): only a
+    // running turn or a permission prompt holds the reload, which would retire its tools.
+    if (activity === "running" || activity === "waiting") {
+      // The turn's end reaches plugins before the daemon marks the chat idle, and an
+      // interrupted turn ends right before the one that replaces it. Look again for a short
+      // while; after that the flag waits for the next end.
+      if (this.reloadTries++ < RELOAD_RETRIES)
+        this.reloadTimer = setTimeout(
+          () => void this.reloadPluginWhenIdle(agentId),
+          this.assistantOptions.reloadRetryMs ?? RELOAD_RETRY_MS,
+        );
       return;
+    }
     this.reloadAfterTurn = false;
-    await this.host
-      .reloadPlugin()
-      .catch((error) =>
-        console.error("Could not reload the plugin:", message(error)),
-      );
+    try {
+      await this.host.reloadPlugin();
+    } catch (error) {
+      // The daemon stops this process to reload it, and stopping closes the bridge under the
+      // pending request: that rejection is the reload working.
+      if (this.stopped) return;
+      this.reloadFailure = message(error);
+      console.error("Could not reload the plugin:", this.reloadFailure);
+    }
+  }
+  /** CUSTOM(assistant-wake): a deferred reload failed; tell the chat in the turn that starts. */
+  private tellReloadFailure(agentId: string): void {
+    const failure = this.reloadFailure;
+    if (!failure || agentId !== this.store.current.assistant.chatAgentId)
+      return;
+    this.reloadFailure = null;
+    void this.host
+      .steerAgent(
+        agentId,
+        `[Plugin reload] The reload board_reload_plugin asked for failed: ${failure}. The board still runs its old code. Call board_reload_plugin again at the end of this reply; if it fails again, tell the user.`,
+      )
+      .catch((error) => {
+        this.reloadFailure ??= failure;
+        console.error(
+          "Could not tell the assistant the plugin reload failed:",
+          message(error),
+        );
+      });
   }
   /** CUSTOM(usage-limit): how long the chat still waits for its usage limit to reset; 0 when it doesn't. */
   private wakeWait(): number {
@@ -8988,6 +9040,7 @@ export class Workboard {
     clearTimeout(this.debounce);
     clearTimeout(this.settleTimer);
     clearTimeout(this.wakeTimer); // CUSTOM(assistant-wake)
+    clearTimeout(this.reloadTimer); // CUSTOM(assistant-wake)
     this.wakeDueAt = null; // CUSTOM(assistant-wake)
     clearTimeout(this.compactTimer); // CUSTOM(assistant-compact)
     for (const timer of this.dirtyTimers.values()) clearTimeout(timer); // CUSTOM(assistant-autonomy)

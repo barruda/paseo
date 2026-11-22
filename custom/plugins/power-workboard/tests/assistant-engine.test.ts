@@ -838,7 +838,9 @@ async function wake(
       },
     },
     assistant:
-      options.delayMs === null ? {} : { wakeDelayMs: options.delayMs ?? 5 },
+      options.delayMs === null
+        ? { reloadRetryMs: 5 }
+        : { wakeDelayMs: options.delayMs ?? 5, reloadRetryMs: 5 },
   });
   let chatId: string | null = null;
   if (options.chat ?? true) {
@@ -1288,6 +1290,94 @@ it("a deferred plugin reload waits for the chat to be idle, not the turn that re
     await vi.waitFor(() =>
       expect(s.host.reloadPlugin).toHaveBeenCalledTimes(1),
     );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+// The bug of 2026-11-22: a turn the user has not read leaves the chat in "attention", and the
+// reload waited for "idle", so it never ran.
+it("a deferred plugin reload runs when the ended turn left the chat unread", async () => {
+  const s = await wake();
+  try {
+    expect(s.board.requestPluginReload()).toBe(true);
+    s.inventory.agents.find((a) => a.id === s.chatId)!.activity = "attention";
+    s.board.chatTurnEnded(s.chatId!);
+    await vi.waitFor(() =>
+      expect(s.host.reloadPlugin).toHaveBeenCalledTimes(1),
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a deferred plugin reload looks again when the turn's end arrives before the chat reads idle", async () => {
+  const s = await wake();
+  try {
+    expect(s.board.requestPluginReload()).toBe(true);
+    const chat = s.inventory.agents.find((a) => a.id === s.chatId)!;
+    // The daemon tells plugins the turn ended before it marks the chat idle.
+    chat.activity = "running";
+    const looks = () => (s.host.agentActivity as any).mock.calls.length;
+    const before = looks();
+    s.board.chatTurnEnded(s.chatId!);
+    // It looked again after the first look found the chat busy.
+    await vi.waitFor(() => expect(looks()).toBeGreaterThanOrEqual(before + 2));
+    expect(s.host.reloadPlugin).not.toHaveBeenCalled();
+    // No other turn ends: the next look finds it idle.
+    chat.activity = "idle";
+    await vi.waitFor(() =>
+      expect(s.host.reloadPlugin).toHaveBeenCalledTimes(1),
+    );
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a failed deferred plugin reload is told to the chat's next turn, once", async () => {
+  const s = await wake();
+  try {
+    (s.host.reloadPlugin as any).mockRejectedValueOnce(
+      new Error("Plugin service is unavailable"),
+    );
+    const told = () =>
+      (s.host.steerAgent as any).mock.calls.filter(([, text]: string[]) =>
+        text!.startsWith("[Plugin reload]"),
+      ) as [string, string][];
+    expect(s.board.requestPluginReload()).toBe(true);
+    s.board.chatTurnEnded(s.chatId!);
+    await vi.waitFor(() =>
+      expect(s.host.reloadPlugin).toHaveBeenCalledTimes(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(told()).toHaveLength(0);
+    s.board.chatTurnStarted(s.chatId!);
+    expect(told()).toHaveLength(1);
+    expect(told()[0]![0]).toBe(s.chatId);
+    expect(told()[0]![1]).toContain("Plugin service is unavailable");
+    expect(told()[0]![1]).toContain("board_reload_plugin");
+    s.board.chatTurnStarted(s.chatId!);
+    expect(told()).toHaveLength(1);
+  } finally {
+    s.board.dispose();
+  }
+});
+
+it("a deferred plugin reload that stops this process is not a failure", async () => {
+  const s = await wake();
+  try {
+    // The daemon stops the plugin under the pending request, which rejects it.
+    (s.host.reloadPlugin as any).mockImplementationOnce(async () => {
+      s.board.dispose();
+      throw new Error("Workboard bridge closed");
+    });
+    expect(s.board.requestPluginReload()).toBe(true);
+    s.board.chatTurnEnded(s.chatId!);
+    await vi.waitFor(() =>
+      expect(s.host.reloadPlugin).toHaveBeenCalledTimes(1),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((s.board as any).reloadFailure).toBeNull();
   } finally {
     s.board.dispose();
   }
