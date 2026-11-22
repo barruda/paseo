@@ -10602,3 +10602,44 @@ tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in 
   then `tests/factory-active.test.ts` (both in the plugin suite of the update script). Live only
   after the cutover to active mode: a task of a project on `critical` shows `triage 1/3` on its
   card, and its gate shows up in Decisões.
+
+## factory-pm-transitions: the Project Manager picks a pipeline's `when` transitions, under an autonomy preset
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Project Manager picks pipeline transitions under factory autonomy presets`
+- **Why:** Ticket 12 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Pipeline engine" and "Autonomy presets"): a stage whose `to` is a list of `when` conditions
+  is the PM's choice, and what the PM decides alone versus what goes to the user becomes factory
+  config (`autonomy`: Autônomo, Padrão, Cauteloso) instead of loose prompt text.
+- **What:**
+  - `shared/autonomy.ts`: the presets as data (what the user decides, the breaker's deadline),
+    `userOnlyRefusal`, `mergeNeedsUser`, and the prompt texts generated from them
+    (`autonomyRulesText`, `autonomyProjectRule`).
+  - `autonomy` in `pm/worker.md`, `pipelines/<id>.yaml` and `projects/<id>.yaml`
+    (`shared/factory/schema.ts`); the compiler resolves project > pipeline > pm > `standard`
+    (`CompiledProject.autonomy`, `CompiledFactory.autonomy`, `CompiledWorker.autonomy`) and the
+    worker hash carries it except at `standard` (`server/factory/stamp.ts`).
+  - `server/workboard.ts`: a `when` list puts the task in Needs you (`gate`) with no card and
+    wakes the PM with the stage's report and the candidates; `pipelineAdvance` (refuses a stage
+    outside the candidates) and `pipelineAsk` (a Decisões proposal over candidate stages, only
+    the user answers it); `projectAutonomy`, `criticalProject`, `requiresUserMergeOk`,
+    `autonomyRule` and `userOnlyRefusal`; each Needs you line names the project's preset; the
+    wake's closing text (`WAKE_INSTRUCTIONS`) drops "anything risky or hard to undo".
+  - `server/assistant/chat.ts`: tools `board_pipeline_advance` (records a `moved` report) and
+    `board_pipeline_ask`; `pm_card_create` takes `userOnlyReason` and refuses one the preset
+    leaves to the PM (stored on the card, `shared/pm-board.ts`); the seed prompt, `CHAT_RULES`
+    and the tool descriptions carry `AUTONOMY_RULE` and `PIPELINE_CHOICE_RULE`; board_overview
+    shows each project's preset.
+- **Core files touched:** none.
+- **Plugin files:** `shared/autonomy.ts`, `shared/factory/schema.ts`, `shared/factory/compile.ts`,
+  `shared/factory/engine.ts`, `shared/pm-board.ts`, `server/factory/stamp.ts`,
+  `server/workboard.ts`, `server/assistant/chat.ts`, `index.server.ts`, `docs/factory.md`,
+  `tests/factory-autonomy.test.ts`, `tests/pipeline-engine.test.ts` and the fixtures of
+  `tests/factory*.test.ts` and `tests/assistant-engine.test.ts`.
+- **Re-apply:** plugin only; search `CUSTOM(factory)` and `ticket 12` in the files above.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/factory-autonomy.test.ts
+tests/pipeline-engine.test.ts` (both in the plugin suite of the update script). Needs a
+  `plugin reload`. Live only after the cutover to active mode: a `critical` task leaving triage
+  shows up in the PM's wake with its candidates, and the PM moves it with board_pipeline_advance.
+  The live PM's `system-prompt.md` keeps its old text; the new rules reach it through
+  `CHAT_RULES` and the tool descriptions.

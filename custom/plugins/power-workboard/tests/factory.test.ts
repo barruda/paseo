@@ -251,6 +251,7 @@ describe("loadFactory and compileFactory", () => {
         projectId: "prj_dream",
         pipeline: "default",
         specTemplate: null,
+        autonomy: "standard",
       },
       {
         id: "paseo",
@@ -258,6 +259,7 @@ describe("loadFactory and compileFactory", () => {
         projectId: "prj_paseo",
         pipeline: "default",
         specTemplate: "templates/spec.md",
+        autonomy: "standard",
       },
     ]);
   });
