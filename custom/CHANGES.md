@@ -10446,6 +10446,11 @@ tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). I
     "edit in the factory". The core page now offers `active`.
   - `bin/factory memory <dir>` (`server/factory/cutover.ts`) copies the profiles' memory into the
     factory. The Pipelines tab reads the factory's pipelines in active mode.
+  - Review follow-ups (`custom: factory active mode review follow-ups`, 2026-11-22): `FactoryIds`
+    lets the data's live id win when two map to the same worker; leaving active moves tasks out of
+    factory-only columns to the JSON's default column (`moveOffUnknownColumns`, warning in
+    `daemon.log`); `setAssistantSettings` calls `FactoryAccess.sync()` instead of `mode()`; a test
+    pins that a running task goes back to its worker when the worker returns to the factory.
 - **Core files touched:**
   `packages/app/src/screens/settings/bruno-customizations/projects-assistant-page.tsx`,
   `projects-assistant-model.ts` (+ test) (`CUSTOM(factory)`: `active` offered, owned fields

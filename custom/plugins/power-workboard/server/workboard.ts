@@ -191,8 +191,10 @@ import {
   changedAssistantKeys,
   changedSettingsKeys,
   missingFactoryIds,
+  moveOffUnknownColumns,
   workerOf,
   type AppliedFactory,
+  type ColumnMove,
 } from "../shared/factory/active";
 import type { FactoryMode } from "../shared/factory/status";
 import type { ViewSource } from "./assistant/views";
@@ -263,6 +265,8 @@ export interface FactoryAccess {
   applied(): AppliedFactory | null;
   /** Active mode: resolves once the first load is done. */
   ready(): Promise<void>;
+  /** Follows the setting now: a new mode applies (or stops applying) the factory at once. */
+  sync(): void;
 }
 
 /** CUSTOM(factory): the error an edit of a factory-owned setting gets in active mode. */
@@ -4874,21 +4878,35 @@ export class Workboard {
     const settings = assistantSettingsSchema.parse(input);
     // CUSTOM(factory): the factory owns the PM chat, delivery and project policies in active mode;
     // the factory setting itself stays editable, so active mode can be turned off.
+    const wasActive = this.factoryMode() === "active";
     if (
-      this.factoryMode() === "active" &&
+      wasActive &&
       settings.factory.mode === "active" &&
       changedAssistantKeys(this.store.current.assistant.settings, settings)
         .length > 0
     )
       throw new Error(FACTORY_READ_ONLY_ERROR);
+    const leavingActive = wasActive && settings.factory.mode !== "active";
+    let moves: ColumnMove[] = [];
     await this.serial(() =>
       this.store.update((data) => {
         data.assistant.settings = settings;
+        // CUSTOM(factory): the JSON's columns come back; tasks in a column only the factory has
+        // move to the default one.
+        if (leavingActive)
+          moves = moveOffUnknownColumns(
+            data,
+            this.store.peek((saved) => saved.settings.groups),
+          );
       }),
     );
+    for (const move of moves)
+      console.warn(
+        `Factory active mode off: task "${move.title}" (${move.taskId}) moved from column "${move.from}", which only the factory has, to "${move.to}".`,
+      );
     // CUSTOM(factory): the factory follows a new mode before the reply is read, so leaving active
     // answers with the JSON's values and the page never saves the factory's back into the JSON.
-    this.factoryMode();
+    this.assistantOptions.factory?.sync();
     return this.assistantSettings();
   }
   /** The inputs of the read-side views. */
