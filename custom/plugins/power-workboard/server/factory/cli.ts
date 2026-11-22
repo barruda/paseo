@@ -2,13 +2,24 @@
 //
 //   factory validate [dir]   load and compile; print errors and warnings; exit 1 on any error
 //   factory schema [dir]     write <dir>/.schema/*.json from the Zod schemas
+//   factory export <dir> [--data <file>] [--profiles <dir>] [--projects <file>]
+//                            write a new factory from the board's data and commit it (git init);
+//                            the inputs default to the live files under $PASEO_HOME, which are
+//                            only read
 //
-// The directory defaults to $PASEO_HOME/factory (~/.paseo/factory).
+// The directory of validate and schema defaults to $PASEO_HOME/factory (~/.paseo/factory). Export
+// takes no default: writing the live factory is the cutover, which the user approves.
 import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { compileFactory } from "../../shared/factory/compile";
-import type { FactoryIssue } from "../../shared/factory/schema";
+import {
+  exportFactory,
+  formatIssue,
+  IDS_FILE,
+  readPaseoProjects,
+  readWorkboardData,
+} from "./export";
 import { writeFactoryJsonSchemas } from "./json-schema";
 import { loadFactory } from "./loader";
 
@@ -19,13 +30,77 @@ export type CliIo = {
   cwd: string;
 };
 
-const USAGE = "usage: factory validate [dir] | factory schema [dir]";
+const USAGE =
+  "usage: factory validate [dir] | factory schema [dir] | factory export <dir> [--data <file>] [--profiles <dir>] [--projects <file>]";
 
-const format = (issue: FactoryIssue) =>
-  `${issue.file}${issue.line ? `:${issue.line}` : ""}: ${issue.message} [${issue.kind}]`;
+const paseoHome = (env: CliIo["env"]) =>
+  env.PASEO_HOME || path.join(homedir(), ".paseo");
 
 export function defaultFactoryRoot(env: CliIo["env"]): string {
-  return path.join(env.PASEO_HOME || path.join(homedir(), ".paseo"), "factory");
+  return path.join(paseoHome(env), "factory");
+}
+
+const EXPORT_FLAGS = ["--data", "--profiles", "--projects"] as const;
+
+async function runExport(args: string[], io: CliIo): Promise<number> {
+  const flags: Record<string, string> = {};
+  const positional: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!;
+    if ((EXPORT_FLAGS as readonly string[]).includes(arg)) {
+      const value = args[++index];
+      if (!value) {
+        io.err(USAGE);
+        return 2;
+      }
+      flags[arg] = path.resolve(io.cwd, value);
+    } else if (arg.startsWith("-") || positional.length) {
+      io.err(USAGE);
+      return 2;
+    } else positional.push(arg);
+  }
+  if (!positional[0]) {
+    io.err(USAGE);
+    return 2;
+  }
+  const home = paseoHome(io.env);
+  const target = path.resolve(io.cwd, positional[0]);
+  const dataFile =
+    flags["--data"] ??
+    path.join(
+      home,
+      "plugin-settings",
+      "power-workboard",
+      "workboard-data.json",
+    );
+  let result;
+  try {
+    result = await exportFactory({
+      data: await readWorkboardData(dataFile),
+      projects: await readPaseoProjects(
+        flags["--projects"] ?? path.join(home, "projects", "projects.json"),
+      ),
+      profilesRoot:
+        flags["--profiles"] ??
+        path.join(home, "plugin-data", "power-workboard", "profiles"),
+      target,
+    });
+  } catch (error) {
+    io.err(`error: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+  for (const warning of result.warnings) io.err(`warning: ${warning}`);
+  for (const issue of result.errors) io.err(`error: ${formatIssue(issue)}`);
+  if (!result.commit) {
+    io.err(`${target}: the exported factory is invalid; nothing was committed`);
+    return 1;
+  }
+  for (const [uuid, slug] of Object.entries(result.ids.workers))
+    io.out(`worker ${uuid} -> ${slug}`);
+  io.out(
+    `${target}: exported ${Object.keys(result.ids.workers).length} workers and ${Object.keys(result.ids.projects).length} projects (commit ${result.commit.slice(0, 12)}; ids in ${IDS_FILE})`,
+  );
+  return 0;
 }
 
 /** Runs one command; returns the exit code. */
@@ -34,6 +109,7 @@ export async function runFactoryCli(
   io: CliIo,
 ): Promise<number> {
   const [command, dir, ...rest] = args;
+  if (command === "export") return runExport(args.slice(1), io);
   if ((command !== "validate" && command !== "schema") || rest.length) {
     io.err(USAGE);
     return 2;
@@ -57,8 +133,8 @@ export async function runFactoryCli(
     if (compiled.compiled)
       summary = `${compiled.compiled.orchestrators.length} workers, ${compiled.compiled.projects.length} projects`;
   }
-  for (const issue of errors) io.err(`error: ${format(issue)}`);
-  for (const issue of warnings) io.err(`warning: ${format(issue)}`);
+  for (const issue of errors) io.err(`error: ${formatIssue(issue)}`);
+  for (const issue of warnings) io.err(`warning: ${formatIssue(issue)}`);
   if (errors.length) {
     io.err(`${root}: ${errors.length} error(s)`);
     return 1;
