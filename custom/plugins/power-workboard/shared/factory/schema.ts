@@ -14,6 +14,7 @@ import {
   tmpCleanupSchema,
 } from "../model";
 import { timeOfDaySchema } from "../schedule";
+import { pipelineProblems } from "./pipeline";
 
 export const FACTORY_SCHEMA_VERSION = "pwb/v1alpha1";
 
@@ -108,7 +109,7 @@ export const factoryFileSchema = z.strictObject({
       delivery: z
         .strictObject({ action: assistantDefaultActionSchema.optional() })
         .optional(),
-      /** Id of pipelines/*.yaml (checked by the pipeline schema, ticket 6). */
+      /** Id of pipelines/*.yaml for projects that name none. */
       pipeline: factoryIdSchema.optional(),
     })
     .optional(),
@@ -185,6 +186,7 @@ export const WORKER_ROLES = [
   "verify",
   "review",
 ] as const;
+export type WorkerRole = (typeof WORKER_ROLES)[number];
 
 /** The frontmatter of workers/<id>/worker.md; the body is the system prompt. */
 export const workerFrontmatterSchema = z.strictObject({
@@ -226,7 +228,7 @@ export type PmFrontmatter = z.infer<typeof pmFrontmatterSchema>;
 export const projectFileSchema = z.strictObject({
   /** The checkout; `~/` is the home folder, a relative path starts at the factory root. */
   path: z.string().trim().min(1),
-  /** Id of pipelines/*.yaml (checked by the pipeline schema, ticket 6). */
+  /** Id of pipelines/*.yaml; defaults to `defaults.pipeline` in factory.yaml. */
   pipeline: factoryIdSchema.optional(),
   delivery: z
     .strictObject({
@@ -266,6 +268,82 @@ export const skillFrontmatterSchema = z.looseObject({
   description: z.string().trim().min(1),
 });
 
+/** Max length of a task prompt (today's orchestrator `instructions`) and of a stage's `prompt`. */
+export const TASK_PROMPT_LIMIT = 20_000;
+
+/** A stage's role: a worker role, or `pm` for the Project Manager (today's self review). */
+export const STAGE_ROLES = [...WORKER_ROLES, "pm"] as const;
+export type StageRole = (typeof STAGE_ROLES)[number];
+
+export const pipelineStageSchema = z.strictObject({
+  role: z.enum(STAGE_ROLES),
+  /** Pins one worker; otherwise the project's worker with the role, else its implement worker. */
+  worker: factoryIdSchema.optional(),
+  /** The stage procedure. Defaults to roles/<role>.md. */
+  prompt: z.string().trim().min(1).max(TASK_PROMPT_LIMIT).optional(),
+  /** A file under the factory root holding the stage procedure. */
+  file: z.string().trim().min(1).optional(),
+  /** `continue` (default): the role's last agent on the task continues; `fresh`: a new agent. */
+  session: z.enum(["continue", "fresh"]).optional(),
+  /** After the stage, ask the user; each option names the stage it leads to. */
+  gate: z
+    .strictObject({
+      question: z.string().trim().min(1).max(500),
+      options: z
+        .array(
+          z.strictObject({
+            id: factoryIdSchema,
+            label: z.string().trim().min(1).max(80),
+            // Optional here so the pipeline check names the option that lacks it.
+            to: factoryIdSchema.optional(),
+          }),
+        )
+        .min(1),
+    })
+    .optional(),
+  /** One stage (the board advances) or a list of conditions (the Project Manager chooses). */
+  to: z
+    .union([
+      factoryIdSchema,
+      z
+        .array(
+          z.strictObject({
+            stage: factoryIdSchema,
+            when: z.string().trim().min(1).max(500),
+          }),
+        )
+        .min(1),
+    ])
+    .optional(),
+  /** Visits before the task goes to Needs you as `loop`; defaults to 3. */
+  maxVisits: z.number().int().min(1).max(20).optional(),
+});
+export type PipelineStage = z.infer<typeof pipelineStageSchema>;
+
+const pipelineShapeSchema = z.strictObject({
+  description: z.string().optional(),
+  /** The stage a task enters when it leaves Ready. */
+  start: factoryIdSchema,
+  stages: z.record(factoryIdSchema, pipelineStageSchema),
+  /** Editor positions only; the engine ignores it. */
+  layout: z
+    .record(factoryIdSchema, z.strictObject({ x: z.number(), y: z.number() }))
+    .optional(),
+});
+
+/** pipelines/<id>.yaml. The checks inside one file run here, so the editor gets them too. */
+export const pipelineFileSchema = pipelineShapeSchema.superRefine(
+  (pipeline, context) => {
+    for (const problem of pipelineProblems(pipeline))
+      context.addIssue({
+        code: "custom",
+        path: problem.path,
+        message: problem.message,
+      });
+  },
+);
+export type PipelineFile = z.infer<typeof pipelineFileSchema>;
+
 /** The JSON Schema files `bin/factory schema` writes to `.schema/`, for editor completion. */
 export const FACTORY_JSON_SCHEMAS = {
   "factory.json": factoryFileSchema,
@@ -273,10 +351,8 @@ export const FACTORY_JSON_SCHEMAS = {
   "project.json": projectFileSchema,
   "worker.json": workerFrontmatterSchema,
   "pm.json": pmFrontmatterSchema,
+  "pipeline.json": pipelineFileSchema,
 } as const;
-
-/** Max length of a task prompt (today's orchestrator `instructions`). */
-export const TASK_PROMPT_LIMIT = 20_000;
 
 /** A skill folder with a valid SKILL.md. */
 export type FactorySkill = { name: string; description: string; file: string };
@@ -307,6 +383,15 @@ export type LoadedFactory = {
     /** The checkout's real path; null when it does not exist (the project stays inactive). */
     realPath: string | null;
   }>;
+  pipelines: Array<{
+    id: string;
+    file: string;
+    pipeline: PipelineFile;
+    /** Each stage's procedure: its `prompt`, its `file`'s text, else roles/<role>.md. */
+    prompts: Record<string, string>;
+  }>;
+  /** roles/<role>.md, trimmed. */
+  roles: Partial<Record<StageRole, string>>;
   /** skills/<name>/SKILL.md, for every worker. */
   skills: FactorySkill[];
 };

@@ -23,18 +23,22 @@ import {
 } from "../model";
 import type { SkillSelection } from "../profiles";
 import { AUTOMATIC_SCHEDULE, type Schedule } from "../schedule";
+import { DEFAULT_MAX_VISITS, DEFAULT_WORKER_ROLE } from "./pipeline";
 import type {
   FactoryIssue,
   FactorySchedule,
   LoadedFactory,
-  WorkerFrontmatter,
+  PipelineStage,
+  StageRole,
+  WorkerRole,
 } from "./schema";
 
 export type CompiledWorker = {
   id: string;
   /** The orchestrator it compiles to; its id is the worker id. */
   config: OrchestratorConfig;
-  role: WorkerFrontmatter["role"] | null;
+  /** Defaults to implement, the role of every orchestrator today. */
+  role: WorkerRole;
   description: string;
   systemPrompt: string;
   /** Names of workers/<id>/skills/*. */
@@ -49,6 +53,33 @@ export type CompiledProject = {
   pipeline: string | null;
   /** Path of the spec template relative to the factory root, or null. */
   specTemplate: string | null;
+};
+
+export type CompiledStage = {
+  id: string;
+  role: StageRole;
+  /** The pinned worker; null: the project's worker with the role, else its implement worker. */
+  worker: string | null;
+  /** The stage procedure: its prompt, its file's text, or roles/<role>.md. */
+  prompt: string;
+  session: "continue" | "fresh";
+  maxVisits: number;
+  /** Gate options always name their next stage once loaded. */
+  gate: {
+    question: string;
+    options: Array<{ id: string; label: string; to: string }>;
+  } | null;
+  /** One stage (the board advances), conditions (the Project Manager chooses), or null with a gate. */
+  to: string | Array<{ stage: string; when: string }> | null;
+};
+
+export type CompiledPipeline = {
+  id: string;
+  description: string;
+  start: string;
+  /** In file order. */
+  stages: CompiledStage[];
+  layout: Record<string, { x: number; y: number }>;
 };
 
 export type CompiledFactory = {
@@ -72,6 +103,7 @@ export type CompiledFactory = {
   };
   pm: { systemPrompt: string; ownSkills: string[] };
   projects: CompiledProject[];
+  pipelines: CompiledPipeline[];
   /** Names of skills/*, for every worker. */
   sharedSkills: string[];
 };
@@ -282,7 +314,7 @@ export function compileFactory(
     workers.push({
       id: worker.id,
       config,
-      role: own.role ?? null,
+      role: own.role ?? DEFAULT_WORKER_ROLE,
       description: own.description ?? "",
       systemPrompt: worker.systemPrompt,
       ownSkills: worker.skills.map((skill) => skill.name),
@@ -385,9 +417,45 @@ export function compileFactory(
         ownSkills: factory.pm.skills.map((skill) => skill.name),
       },
       projects,
+      pipelines: factory.pipelines.map(({ id, pipeline, prompts }) => ({
+        id,
+        description: pipeline.description ?? "",
+        start: pipeline.start,
+        stages: Object.entries(pipeline.stages).map(([stageId, stage]) =>
+          compileStage(stageId, stage, prompts[stageId] ?? ""),
+        ),
+        layout: pipeline.layout ?? {},
+      })),
       sharedSkills: factory.skills.map((skill) => skill.name),
     },
     errors,
     warnings,
+  };
+}
+
+function compileStage(
+  id: string,
+  stage: PipelineStage,
+  prompt: string,
+): CompiledStage {
+  return {
+    id,
+    role: stage.role,
+    worker: stage.worker ?? null,
+    prompt,
+    session: stage.session ?? "continue",
+    maxVisits: stage.maxVisits ?? DEFAULT_MAX_VISITS,
+    gate: stage.gate
+      ? {
+          question: stage.gate.question,
+          // The pipeline schema rejects an option without `to`.
+          options: stage.gate.options.map((option) => ({
+            id: option.id,
+            label: option.label,
+            to: option.to ?? "",
+          })),
+        }
+      : null,
+    to: stage.to ?? null,
   };
 }

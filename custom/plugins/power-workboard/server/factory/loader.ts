@@ -8,12 +8,19 @@ import path from "node:path";
 import type { z } from "zod";
 import { splitFrontmatter } from "../../shared/factory/frontmatter";
 import {
+  DEFAULT_WORKER_ROLE,
+  projectWorkers,
+  stageRunner,
+} from "../../shared/factory/pipeline";
+import {
   boardFileSchema,
   factoryFileSchema,
   factoryIdSchema,
+  pipelineFileSchema,
   pmFrontmatterSchema,
   projectFileSchema,
   skillFrontmatterSchema,
+  STAGE_ROLES,
   TASK_PROMPT_LIMIT,
   workerFrontmatterSchema,
   type BoardFile,
@@ -21,6 +28,7 @@ import {
   type FactorySkill,
   type LoadedFactory,
   type PmFrontmatter,
+  type StageRole,
 } from "../../shared/factory/schema";
 import { parseYaml, validate, type YamlSource } from "./yaml-source";
 
@@ -265,21 +273,50 @@ export async function loadFactory(
     });
   }
 
-  // Their contents belong to the pipeline schema (ticket 6); only the file names are checked here.
-  await checkEntries(
+  const pipelines: Array<
+    Omit<LoadedFactory["pipelines"][number], "prompts"> & {
+      source: YamlSource;
+    }
+  > = [];
+  /** Every pipeline file with a valid id, so a broken one is not also reported as missing. */
+  const pipelineIds = new Set<string>();
+  for (const entry of await checkEntries(
     "pipelines",
     (entry) => entry.isFile() && entry.name.endsWith(".yaml"),
     "pipelines/ holds one <id>.yaml per pipeline",
-  );
-  await checkEntries(
+  )) {
+    const file = `pipelines/${entry.name}`;
+    const id = entry.name.slice(0, -".yaml".length);
+    if (!validId(id, file)) continue;
+    pipelineIds.add(id);
+    const pipeline = await yamlFile(file, pipelineFileSchema);
+    if (pipeline)
+      pipelines.push({
+        id,
+        file,
+        pipeline: pipeline.data,
+        source: pipeline.source,
+      });
+  }
+
+  const roleNames = new Set<string>(STAGE_ROLES);
+  const roles: LoadedFactory["roles"] = {};
+  for (const entry of await checkEntries(
     "roles",
-    (entry) => entry.isFile() && entry.name.endsWith(".md"),
-    "roles/ holds one <role>.md per role",
-  );
+    (entry) =>
+      entry.isFile() &&
+      entry.name.endsWith(".md") &&
+      roleNames.has(entry.name.slice(0, -".md".length)),
+    `roles/ holds one <role>.md per role (${STAGE_ROLES.join(", ")})`,
+  )) {
+    const role = entry.name.slice(0, -".md".length) as StageRole;
+    roles[role] = ((await read(`roles/${entry.name}`)) ?? "").trim();
+  }
   const skills = await readSkills("skills");
 
   // References.
   const projectIds = new Set(projects.map((project) => project.id));
+  const workerIds = new Set(workers.map((worker) => worker.id));
   const poolIds = new Set((boardFile?.data.pools ?? []).map((pool) => pool.id));
   for (const worker of workers) {
     const source = workerSources.get(worker.id)!;
@@ -335,6 +372,91 @@ export async function loadFactory(
       );
   }
 
+  // Pipelines: stage workers and procedures, then the pipeline each project runs.
+  const loadedPipelines: LoadedFactory["pipelines"] = [];
+  for (const { id, file, pipeline, source } of pipelines) {
+    const prompts: Record<string, string> = {};
+    for (const [stageId, stage] of Object.entries(pipeline.stages)) {
+      const line = (key?: string) =>
+        source.lineOf(key ? ["stages", stageId, key] : ["stages", stageId]);
+      if (stage.worker && !workerIds.has(stage.worker))
+        issue(
+          "reference",
+          file,
+          `stages.${stageId}.worker: no workers/${stage.worker}/worker.md`,
+          line("worker"),
+        );
+      if (stage.prompt !== undefined) prompts[stageId] = stage.prompt;
+      else if (stage.file !== undefined) {
+        if (await isFileUnder(root, stage.file))
+          prompts[stageId] = ((await read(stage.file)) ?? "").trim();
+        else
+          issue(
+            "reference",
+            file,
+            `stages.${stageId}.file: no file ${stage.file} in the factory`,
+            line("file"),
+          );
+      } else if (roles[stage.role] !== undefined)
+        prompts[stageId] = roles[stage.role]!;
+      else
+        issue(
+          "reference",
+          file,
+          `stages.${stageId}: no roles/${stage.role}.md; add it or set prompt or file`,
+          line("role"),
+        );
+    }
+    loadedPipelines.push({ id, file, pipeline, prompts });
+  }
+  const defaultPipeline = factoryFile?.data.defaults?.pipeline;
+  if (defaultPipeline && !pipelineIds.has(defaultPipeline))
+    issue(
+      "reference",
+      "factory.yaml",
+      `defaults.pipeline: no pipelines/${defaultPipeline}.yaml`,
+      factoryFile!.source.lineOf(["defaults", "pipeline"]),
+    );
+  // Same order as the compiled orchestrators, so the first match is the one that takes the task.
+  const candidates = [...workers]
+    .sort(
+      (a, b) =>
+        (a.settings.priority ?? 0) - (b.settings.priority ?? 0) ||
+        a.id.localeCompare(b.id),
+    )
+    .map((worker) => ({
+      id: worker.id,
+      project: worker.settings.project ?? null,
+      role: worker.settings.role ?? DEFAULT_WORKER_ROLE,
+    }));
+  for (const project of projects) {
+    const source = projectSources.get(project.id)!;
+    const named = project.settings.pipeline;
+    if (named && !pipelineIds.has(named)) {
+      issue(
+        "reference",
+        project.file,
+        `pipeline: no pipelines/${named}.yaml`,
+        source.lineOf(["pipeline"]),
+      );
+      continue;
+    }
+    const pipeline = pipelines.find(
+      (pipeline) => pipeline.id === (named ?? defaultPipeline),
+    );
+    const serving = projectWorkers(project.id, candidates);
+    // A project no worker takes runs nothing, as today; there is no role to miss.
+    if (!pipeline || serving.length === 0) continue;
+    for (const [stageId, stage] of Object.entries(pipeline.pipeline.stages))
+      if (!stageRunner(stage, serving))
+        issue(
+          "reference",
+          project.file,
+          `pipeline ${pipeline.id}, stage ${stageId}: no worker of this project has role ${stage.role === DEFAULT_WORKER_ROLE ? stage.role : `${stage.role} or ${DEFAULT_WORKER_ROLE}`} (set worker: on the stage, or add a worker)`,
+          source.lineOf(named ? ["pipeline"] : ["path"]),
+        );
+  }
+
   if (errors.length || !factoryFile || !boardFile || !pmFile)
     return { factory: null, errors, warnings };
   return {
@@ -349,6 +471,8 @@ export async function loadFactory(
       },
       workers,
       projects,
+      pipelines: loadedPipelines,
+      roles,
       skills,
     },
     errors,

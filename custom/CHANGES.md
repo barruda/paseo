@@ -10171,3 +10171,40 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
 - **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory.test.ts)` (part of
   the plugin suite in the update script). By hand: `custom/plugins/power-workboard/bin/factory
 validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`, `name: x`).
+
+## factory-pipelines: worker roles, pipeline schema and built-in pipelines and role prompts
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: factory pipelines, worker roles and built-in role prompts for the Power Workboard`
+- **Why:** Ticket 6 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`):
+  projects declare a pipeline of stages run by worker roles. This adds the files and their checks;
+  no engine change, nothing reads a factory yet.
+- **What:**
+  - `shared/factory/schema.ts`: `pipelineFileSchema` (`start`, `stages` with `role`, `worker`,
+    `prompt`/`file`, `session`, `gate`, `to`, `maxVisits`, and `layout`), `STAGE_ROLES` (the five
+    worker roles plus `pm`), `pipeline.json` in `.schema/`. `LoadedFactory` gains `pipelines`
+    (with each stage's resolved prompt) and `roles`.
+  - `shared/factory/pipeline.ts`: built-in stages `deliver`/`end`/`cancel`, the in-file checks
+    run by the schema (unknown stage in `start`/`to`/`when`/gate option/`layout`, built-in used as
+    `start` or stage id, gate option without `to`, unreachable stage, `to`+`gate` or neither,
+    `prompt`+`file`, duplicate gate option), and `projectWorkers`/`stageRunner` (pinned worker,
+    else the project's worker with the role, else its implement worker; `pm` needs none).
+  - `server/factory/loader.ts`: reads `pipelines/*.yaml` and `roles/<role>.md` (only the stage
+    roles), and checks across files: pinned worker, stage `file`, missing `roles/<role>.md`,
+    project and `defaults.pipeline` references, and a role with no worker and no implement
+    fallback (projects no worker takes are skipped).
+  - `shared/factory/compile.ts`: `pipelines` (stages with defaults filled: `session: continue`,
+    `maxVisits: 3`), and a worker with no `role` compiles as `implement`.
+  - `server/factory/builtin/`: the `default` and `critical` pipelines, `roles/{triage,spec,
+    implement,verify,review}.md` and `templates/spec.md`, read by `readBuiltinFactoryFiles()`
+    (`server/factory/builtin.ts`) for the export (ticket 4).
+- **Core files touched:** none.
+- **Plugin files:** `shared/factory/{schema,pipeline,compile}.ts`, `server/factory/loader.ts`,
+  `server/factory/builtin.ts`, `server/factory/builtin/**`, `docs/factory.md`,
+  `tests/factory-pipelines.test.ts`, `tests/factory.test.ts`, `tests/factory-fixtures.ts`.
+- **Re-apply:** Plugin-only; nothing to re-apply on an upstream update.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-pipelines.test.ts
+tests/factory.test.ts)` (part of the plugin suite in the update script). By hand: copy
+  `server/factory/builtin/` into a folder with a `factory.yaml`, a worker and a project using
+  `pipeline: critical`, then `custom/plugins/power-workboard/bin/factory validate <dir>`; break a
+  `to:` and it prints the file, line and the stages it made unreachable.

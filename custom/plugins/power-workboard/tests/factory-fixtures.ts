@@ -147,8 +147,20 @@ templates:
   spec: templates/spec.md
 `,
   "projects/dreammmo.yaml": "path: {{DREAM}}\n",
-  "pipelines/default.yaml": "start: implement\n",
+  "pipelines/default.yaml": `start: implement
+stages:
+  implement:
+    role: implement
+    to: review
+  review:
+    role: pm
+    file: roles/review.md
+    to:
+      - { stage: deliver, when: No blocking findings. }
+      - { stage: implement, when: Blocking findings remain. }
+`,
   "roles/implement.md": "Implement the ticket.\n",
+  "roles/review.md": "Review the diff.\n",
   "skills/shared-skill/SKILL.md":
     "---\nname: shared-skill\ndescription: For every worker\n---\nBody.\n",
   "skills/shared-skill/scripts/run.sh": "echo hi\n",

@@ -1,0 +1,36 @@
+# yaml-language-server: $schema=../.schema/pipeline.json
+description: Critical projects. Triage, an approved spec, implementation, verification with evidence and a fresh review.
+start: triage
+stages:
+  triage:
+    role: triage
+    to:
+      - stage: spec
+        when: The ticket is large, ambiguous, or changes visible behavior.
+      - stage: implement
+        when: The ticket is small and clear.
+  spec:
+    role: spec
+    gate:
+      question: Approve this spec?
+      options:
+        - { id: approve, label: Approve, to: implement }
+        - { id: changes, label: Request changes, to: spec }
+  implement:
+    role: implement
+    to: verify
+  verify:
+    role: verify
+    to:
+      - stage: review
+        when: Every check passed, with evidence.
+      - stage: implement
+        when: A check failed.
+  review:
+    role: review
+    session: fresh # a new agent, never the author
+    to:
+      - stage: deliver
+        when: No blocking findings.
+      - stage: implement
+        when: Blocking findings remain.

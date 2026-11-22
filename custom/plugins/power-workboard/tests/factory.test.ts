@@ -494,6 +494,7 @@ describe("JSON Schema", () => {
       "project.json",
       "worker.json",
       "pm.json",
+      "pipeline.json",
     ]);
     for (const schema of Object.values(schemas)) {
       expect(schema.type).toBe("object");
@@ -550,6 +551,7 @@ describe("bin/factory", () => {
       "project.json",
       "worker.json",
       "pm.json",
+      "pipeline.json",
     ]);
     const factory = JSON.parse(
       await readFile(path.join(root, ".schema", "factory.json"), "utf8"),
