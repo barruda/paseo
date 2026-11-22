@@ -1,5 +1,5 @@
 // CUSTOM(task-panel): the card's context menu entries, kept pure so the behavior is testable.
-import type { Card } from "../shared/model";
+import { isTerminalGroup, type Card, type Group } from "../shared/model";
 import type { strings } from "./strings";
 
 export type CardMenuItem = {
@@ -8,6 +8,19 @@ export type CardMenuItem = {
   icon: string;
   onPress(): void;
 };
+
+/**
+ * CUSTOM(archive-task): a bound card in Done or Canceled can be archived by hand. A canceled
+ * draft keeps its own Archive draft action.
+ */
+export function canArchiveTask(card: Card, groups: readonly Group[]): boolean {
+  return (
+    card.workspaceId !== null &&
+    !card.binding &&
+    !card.archived &&
+    isTerminalGroup(card.stage, groups)
+  );
+}
 
 export function cardMenuItems({
   card,
@@ -24,6 +37,7 @@ export function cardMenuItems({
   onRemoveFromPackage,
   onAskPmToGroup,
   selectionCount = 0,
+  onArchiveTask,
 }: {
   card: Card;
   agentId: string | null;
@@ -40,6 +54,8 @@ export function cardMenuItems({
   onRemoveFromPackage?(): void;
   onAskPmToGroup?(): void;
   selectionCount?: number;
+  /** CUSTOM(archive-task): passed only when the card can be archived (`canArchiveTask`). */
+  onArchiveTask?(): void;
 }): CardMenuItem[] {
   return [
     {
@@ -106,6 +122,16 @@ export function cardMenuItems({
             label: t.status,
             icon: "ArrowRightLeft",
             onPress: onStatus,
+          },
+        ]
+      : []),
+    ...(!disabled && onArchiveTask
+      ? [
+          {
+            id: "archive-task",
+            label: t.archiveTask,
+            icon: "Archive",
+            onPress: onArchiveTask,
           },
         ]
       : []),

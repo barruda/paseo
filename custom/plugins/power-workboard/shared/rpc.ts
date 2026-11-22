@@ -171,6 +171,8 @@ export const mutationSchema = z.discriminatedUnion("action", [
     expectedOrder: z.array(z.string()),
   }),
   z.object({ action: z.literal("archive-draft"), taskId: z.string() }),
+  // CUSTOM(archive-task): archive a Done or Canceled card; see Workboard.archiveTask.
+  z.object({ action: z.literal("archive-task"), taskId: z.string() }),
   z.object({
     action: z.literal("detach-draft"),
     taskId: z.string(),

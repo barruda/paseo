@@ -373,7 +373,8 @@ export type StartInput = z.infer<typeof startSchema>;
 const archiveSchema = z.object({
   operationId: z.string(),
   status: z.enum(["pending", "archived", "uncertain", "external"]),
-  kind: z.enum(["automatic", "external", "draft"]),
+  // CUSTOM(archive-task): `manual` is a Done or Canceled card the user archived.
+  kind: z.enum(["automatic", "external", "draft", "manual"]),
   stage: z.string(),
   group: groupSchema.nullable().default(null),
   startedAt: z.string(),

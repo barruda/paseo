@@ -436,6 +436,7 @@ const zh = {
   archived: "归档记录",
   back: "返回看板",
   archiveDraft: "归档草稿",
+  archiveTask: "归档任务", // CUSTOM(archive-task)
   archiveDraftConfirm:
     "归档草稿“{name}”？归档后将移出看板，可在归档页放回原分组。",
   autoArchive: "自动归档",
@@ -747,6 +748,13 @@ const zh = {
       "归档响应后 workspace 仍活跃，请核实原生状态。",
     "archive-draft-group-unavailable":
       "原分组类型已改变，不再支持草稿；归档记录已保留。",
+    // CUSTOM(archive-task)
+    "archive-task-not-finished": "只有已完成或已取消的任务可以归档，请刷新。",
+    "archive-task-workspace-unavailable":
+      "任务的 workspace 不再活跃或正在归档，请刷新。",
+    "archive-task-busy": "任务的 Agent 仍在运行，请等它结束再归档。",
+    "archive-restore-workspace-archived":
+      "任务的 workspace 已归档，无法放回看板。",
     "group-tasks-in-use": "分组内还有任务，请先移走任务。",
     "group-default-in-use": "此分组是默认落点，请先在设置中更改对应默认分组。",
     "group-default-start-work-invalid":
@@ -1323,6 +1331,7 @@ const en: typeof zh = {
   archived: "Archive",
   back: "Back to board",
   archiveDraft: "Archive draft",
+  archiveTask: "Archive task", // CUSTOM(archive-task)
   archiveDraftConfirm:
     "Archive draft “{name}”? It will leave the board. You can restore it to its original group from Archive.",
   autoArchive: "Automatic archive",
@@ -1666,6 +1675,15 @@ const en: typeof zh = {
       "The workspace remained active after the archive response. Verify its native state.",
     "archive-draft-group-unavailable":
       "The original group type no longer accepts drafts. The archive record is kept.",
+    // CUSTOM(archive-task)
+    "archive-task-not-finished":
+      "Only a Done or Canceled task can be archived. Refresh.",
+    "archive-task-workspace-unavailable":
+      "The task's workspace is no longer active or is being archived. Refresh.",
+    "archive-task-busy":
+      "An agent of this task is still running. Archive it once the agent stops.",
+    "archive-restore-workspace-archived":
+      "The task's workspace was archived, so the task can't go back to the board.",
     "group-tasks-in-use": "This group still contains tasks. Move them first.",
     "group-default-in-use":
       "This group is a default destination. Change its default group in settings first.",

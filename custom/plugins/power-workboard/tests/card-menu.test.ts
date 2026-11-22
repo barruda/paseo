@@ -1,7 +1,12 @@
 import { expect, it } from "vitest";
-import { cardMenuItems } from "../client/card-menu";
+import { canArchiveTask, cardMenuItems } from "../client/card-menu";
 import { strings } from "../client/strings";
-import { cardSchema, newTask } from "../shared/model";
+import {
+  cardSchema,
+  groupSchema,
+  newTask,
+  settingsSchema,
+} from "../shared/model";
 
 const t = strings("en");
 const card = (over: Record<string, unknown> = {}) =>
@@ -58,4 +63,45 @@ it("a disabled draft keeps only the panel and edit entries", () => {
     onStatus: () => {},
   });
   expect(items.map((item) => item.id)).toEqual(["panel", "edit"]);
+});
+
+// CUSTOM(archive-task)
+it("a bound Done or Canceled card offers Archive task; drafts and open cards don't", () => {
+  const groups = [
+    ...settingsSchema.parse({}).groups,
+    groupSchema.parse({
+      id: "canceled",
+      kind: "canceled",
+      label: "pwb:canceled",
+    }),
+  ];
+  expect(
+    canArchiveTask(card({ workspaceId: "w1", stage: "done" }), groups),
+  ).toBe(true);
+  expect(
+    canArchiveTask(card({ workspaceId: "w1", stage: "todo" }), groups),
+  ).toBe(false);
+  expect(
+    canArchiveTask(card({ workspaceId: "w1", stage: "canceled" }), groups),
+  ).toBe(true);
+  expect(canArchiveTask(card({ stage: "canceled" }), groups)).toBe(false);
+  const calls: string[] = [];
+  const menu = (disabled: boolean) =>
+    cardMenuItems({
+      card: card({ workspaceId: "w1", stage: "done" }),
+      agentId: null,
+      t,
+      disabled,
+      onOpenPanel: () => {},
+      onOpen: () => {},
+      onOpenAgent: () => {},
+      onEdit: () => {},
+      onStatus: () => {},
+      onArchiveTask: () => calls.push("archive"),
+    });
+  const item = menu(false).at(-1)!;
+  expect(item).toMatchObject({ id: "archive-task", label: "Archive task" });
+  item.onPress();
+  expect(calls).toEqual(["archive"]);
+  expect(menu(true).some((entry) => entry.id === "archive-task")).toBe(false);
 });
