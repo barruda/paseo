@@ -223,6 +223,20 @@ function relativeReportPath(path: string, directory: string): string {
 }
 
 /**
+ * CUSTOM(orchestrator-in-place): the message of an in-place delivery commit: the task title, then
+ * the agent's summary. The daemon would otherwise generate one from the diff of the whole folder,
+ * which includes the user's uncommitted work that stays out of the commit.
+ */
+export function inPlaceCommitMessage(
+  title: string,
+  summary: string | null | undefined,
+): string {
+  const subject = title.split("\n")[0].trim() || "Task changes";
+  const body = (summary ?? "").trim().slice(0, 4000);
+  return body ? `${subject}\n\n${body}` : subject;
+}
+
+/**
  * CUSTOM(orchestrator-in-place): what an in-place delivery commits. The folder is the user's
  * checkout, so whatever was uncommitted when the task started stays out of the commit. A line
  * counts as the user's when any of its paths was dirty at the start (an untracked directory
