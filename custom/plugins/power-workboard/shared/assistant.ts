@@ -540,6 +540,10 @@ export const historyEventSchema = z.object({
   detail: z.string().max(5000).nullable().default(null),
   /** CUSTOM(assistant-cards): null on events written before the field existed. */
   by: historyActorSchema.nullable().default(null),
+  /** CUSTOM(factory): the task run's revision stamp; null on older events and chat events. */
+  factoryRevision: z.string().nullable().default(null),
+  workerId: z.string().nullable().default(null),
+  workerConfigHash: z.string().nullable().default(null),
 });
 export type HistoryEvent = z.infer<typeof historyEventSchema>;
 

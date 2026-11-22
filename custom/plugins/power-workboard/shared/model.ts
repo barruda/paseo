@@ -691,6 +691,14 @@ export const orchestrationSchema = z.object({
   baseHead: z.string().nullable().default(null),
   /** CUSTOM(orchestrator-in-place): `git status --porcelain` lines the folder already had. */
   initialDirty: z.array(z.string()).default([]),
+  /**
+   * CUSTOM(factory): the revision stamp of the agent's start (docs/factory.md, "Loading and
+   * revisions"). Null on runs started before the stamp existed; `factoryRevision` is also null
+   * while the factory is off or in shadow.
+   */
+  factoryRevision: z.string().nullable().default(null),
+  workerId: z.string().nullable().default(null),
+  workerConfigHash: z.string().nullable().default(null),
 });
 export type Orchestration = z.infer<typeof orchestrationSchema>;
 /**

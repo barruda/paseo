@@ -1,8 +1,8 @@
 # Factory as code, worker roles and pipelines
 
 Status: approved design. Built so far: tickets 2 (schemas, loader, compiler and `bin/factory`), 4
-(`bin/factory export`) and 6 (pipelines and roles), not wired into the board. Tickets at the end.
-Inspired by Warp Factories
+(`bin/factory export`) and 6 (pipelines and roles), not wired into the board, and ticket 5
+(revision stamps). Tickets at the end. Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -282,6 +282,13 @@ the migration maps `fresh-agent` projects to `critical`.
 - **Revision**: git `HEAD`, plus `+dirty.<content hash>` with uncommitted changes. Each new
   orchestration and each history event records `factoryRevision`, `workerId` and
   `workerConfigHash` (a stable hash of the compiled worker config, its prompt and task prompt).
+  The stamp is taken when an agent starts (a new run, or a new agent for a continued task); a
+  continuation that reuses the live agent keeps it, and history events copy their run's stamp.
+  Until active mode the revision is null and the hash comes from the live orchestrator and its
+  profile's `system-prompt.md`. The hash covers only what changes the agent's work (model,
+  permission, thinking, workspace, prompts, skills, memory, checkpoints, role), so a schedule,
+  name or id change keeps it and the same config hashes alike under a UUID and a slug
+  (`server/factory/stamp.ts`).
 - Validation outside the app: `bin/factory validate [dir]` (default `$PASEO_HOME/factory`) prints
   `file:line: message [kind]` and exits 1 on any error. `bin/factory schema [dir]` writes
   `.schema/*.json` with `z.toJSONSchema` from the same schemas. Code: `shared/factory/` (schemas,
