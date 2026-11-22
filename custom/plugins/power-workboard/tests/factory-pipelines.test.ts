@@ -53,9 +53,11 @@ async function errorsOf(files: FactoryFiles, worker?: string) {
 const pipeline = (yaml: string) => ({ "pipelines/flow.yaml": yaml });
 
 describe("built-in factory files", () => {
-  it("ships the default and critical pipelines, five role prompts and the spec template", async () => {
+  it("ships the default and critical pipelines, five role prompts, the spec template, README and .gitignore", async () => {
     const files = await readBuiltinFactoryFiles();
     expect(Object.keys(files)).toEqual([
+      ".gitignore",
+      "README.md",
       "pipelines/critical.yaml",
       "pipelines/default.yaml",
       "roles/implement.md",

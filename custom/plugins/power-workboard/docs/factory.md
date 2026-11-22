@@ -1,7 +1,8 @@
 # Factory as code, worker roles and pipelines
 
-Status: approved design. Built so far: tickets 2 and 6 (schemas, pipelines, loader, compiler and
-`bin/factory`, not wired into the board). Tickets at the end. Inspired by Warp Factories
+Status: approved design. Built so far: tickets 2 (schemas, loader, compiler and `bin/factory`), 4
+(`bin/factory export`) and 6 (pipelines and roles), not wired into the board. Tickets at the end.
+Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -256,8 +257,9 @@ not checked: it runs nothing, as today. The checks inside one file run in `pipel
 in `shared/factory/pipeline.ts`), so the editor gets them from the schema. `roles/` takes only
 `<role>.md` for the five roles and `pm`.
 
-Built-in pipelines that the export writes (from `server/factory/builtin/`, with the five role
-prompts and `templates/spec.md`; `readBuiltinFactoryFiles()` lists them):
+Built-in pipelines that the export writes. They live in `server/factory/builtin/` with the five
+role prompts, `templates/spec.md` and the factory's `README.md`; `readBuiltinFactoryFiles()`
+(`server/factory/builtin.ts`) returns them plus the `.gitignore`, and is the export's only source.
 
 - `default`: `implement → review (role: pm, file: roles/review.md) → deliver`. This is today's behavior and the review policy `self`.
 - `critical`: `triage → spec (gate) → implement → verify → review (fresh) → deliver`. This replaces the review policy `fresh-agent`.
@@ -292,11 +294,23 @@ the migration maps `fresh-agent` projects to `critical`.
 
 ## Migration
 
-`bin/factory export [dir]` writes the factory from `workboard-data.json` and the profile folders,
-adds the built-in pipelines and role prompts, runs `git init` and commits. Worker ids become slugs
-of their names. The UUID → slug map stays in the runtime state (`factoryIds`), so running tasks
-keep their worker. In `active` mode the profile folders move to `workers/<slug>/`, and a
+`bin/factory export <dir> [--data <file>] [--profiles <dir>] [--projects <file>]` writes the
+factory from `workboard-data.json`, the profile folders and Paseo's `projects.json` (defaults: the
+live files under `$PASEO_HOME`, only read), adds the built-in files (pipelines, role prompts, spec
+template, README, `.gitignore`), validates
+the result and only then runs `git init` and commits. `<dir>` has no default and must be missing or
+empty, so no call writes the live factory by accident. Worker ids become slugs of their names
+(`-2` on repeats), and so do project and pool ids. The map goes to `.factory-ids.json` (git-ignored);
+the cutover copies it into the runtime state (`factoryIds`), so running tasks keep their worker.
+Profile memory is not copied: in `active` mode the profile folders move to `workers/<slug>/`, and a
 `workboard-data.json.bak-pre-factory` backup is kept.
+
+What the export cannot carry, it reports as a warning and leaves out: orchestrators and policies of
+a project Paseo no longer has, the default task prompt of new orchestrators, a profile skill without
+a valid SKILL.md, and the default-column preferences (`defaultDraftGroup`, `defaultStartGroup`,
+`defaultStartWorkGroup`), which stay in the JSON. Two Paseo projects may share a checkout (one path a
+symlink to the other); the export resolves the path to the project the data names, and active mode
+must do the same.
 
 The live export and the switch to `active` need the user's approval (a Decisões proposal). Worktree
 agents never write to `~/.paseo`.

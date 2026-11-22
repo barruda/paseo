@@ -561,6 +561,6 @@ describe("bin/factory", () => {
   });
 
   it("rejects an unknown command", async () => {
-    expect((await run(["export"])).code).toBe(2);
+    expect((await run(["frobnicate"])).code).toBe(2);
   });
 });
