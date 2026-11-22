@@ -248,7 +248,12 @@ it("update_task and move_task go through the board's own mutations", async () =>
     ).toContain("No column");
     const detail = await c.run("board_get_task", { taskId });
     expect(detail.text).toContain("Renamed");
+    expect(detail.text).toContain("Description:\nGoal"); // CUSTOM(task-description-files)
     expect(detail.text).toContain("Delivery: none");
+    // The list's search reads the description too.
+    expect((await c.run("board_list_tasks", { query: "goal" })).text).toContain(
+      "Renamed",
+    );
   } finally {
     c.board.dispose();
   }

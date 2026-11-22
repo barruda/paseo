@@ -1178,13 +1178,13 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   // never replaces a text it did not load.
   const editTask = async (card: Card) => {
     try {
-      const description = await cache.fetchQuery(
+      const { text } = await cache.fetchQuery(
         taskDescriptionQuery(callDescriptions, card),
       );
       setDraft({
         task: card,
         title: card.title,
-        description,
+        description: text,
         projectId: card.projectId,
         orchestratorId: card.orchestratorId,
         timing: card.timing,

@@ -616,10 +616,10 @@ function TicketDescription({
   theme: Theme;
 }) {
   const query = useTaskDescription(card);
-  if (query.data?.trim())
+  if (query.data?.text.trim())
     return (
       <RichText
-        text={query.data}
+        text={query.data.text}
         color={theme.colors.foreground}
         theme={theme}
       />

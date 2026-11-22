@@ -80,8 +80,11 @@ import { redeployPaseo } from "./server/redeploy"; // CUSTOM(redeploy-button)
 import { ImageStore, defaultImageDirectory } from "./server/images";
 // CUSTOM(task-description-files)
 import {
+  backupOnce,
   defaultDescriptionDirectory,
+  defaultSettingsFile,
   directoryDescriptionFiles,
+  preDescriptionsBackupFile,
 } from "./server/descriptions";
 import { PaseoCompat } from "./server/paseo-compat";
 import { PaseoHost } from "./server/host";
@@ -136,6 +139,13 @@ export default function contribute(server: PluginServerContext) {
       },
       write: (revision, values) =>
         compat.invoke("settings.workboard-data.write", { revision, values }),
+      // CUSTOM(task-description-files): one copy of the JSON before descriptions leave it.
+      backup: async () => {
+        const file = defaultSettingsFile();
+        const target = preDescriptionsBackupFile(file);
+        if (await backupOnce(file, target))
+          console.log(`Workboard data backed up to ${target}`);
+      },
     },
     directoryDescriptionFiles(defaultDescriptionDirectory()),
   ); // CUSTOM(task-description-files)

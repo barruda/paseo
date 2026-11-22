@@ -10141,15 +10141,22 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
   cloned them, and the snapshot the board polls every 1.5 s carried them all.
 - **What:**
   - `server/descriptions.ts`: `plugin-data/power-workboard/tasks/<taskId>.md`, written to a
-    temporary file and renamed; ids that are not `[A-Za-z0-9_-]+` are refused.
+    temporary file that is fsynced, then renamed; `flush()` fsyncs the folder, and the Store calls
+    it before saving the JSON (ext4 delays writes: without it a power loss could keep the cleared
+    JSON and 0-byte files). Ids that are not `[A-Za-z0-9_-]+` are refused. Reading never throws:
+    an unreadable file or bad id is logged and left out, so the board always opens.
   - `server/store.ts`: the Store keeps every text in memory (`description(taskId)` is the one
     accessor) and the task in the JSON keeps `description: ""`, `descriptionLength` and
     `descriptionRevision`. `update((data, descriptions) => …)` gets an editor (`get`/`set`); a save
     writes the changed files first, then the JSON, and deletes the files of tasks that left the
-    board. A text set straight on `task.description` is moved to its file too.
+    board. A text set straight on `task.description` is moved to its file too. A text whose file
+    fails (or whose folder sync fails) stays in the JSON's `description` and is read from there.
   - Migration (no schema version bump: the new fields default): `Store.load` reads a JSON
     `description` as the text and marks the task legacy; `Workboard.load` calls
-    `moveDescriptions()`, which writes the files and then clears the JSON copy. Interrupted
+    `moveDescriptions()`, which first copies the JSON once to
+    `plugin-settings/power-workboard/workboard-data.pre-descriptions.json` (backing `backup()`, only
+    if it does not exist; a failed copy postpones the move), then writes the files and clears the
+    JSON copy. Only a move rewrites legacy texts; an ordinary save keeps their JSON copy. Interrupted
     between the two, the JSON copy wins on the next load and the move runs again. A failed move is
     logged and the board starts anyway.
   - Readers: orchestrator and refinement prompts (`Ticket { title, body }`, so a `Task` with its
@@ -10169,9 +10176,12 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
   `shared/rpc.ts`, `client/task-description.ts`, `TaskPanel.tsx`, `WorkboardScreen.tsx`,
   `board-utils.ts`.
 - **Verify:** the plugin suite (`tests/task-descriptions.test.ts`: files, accessor, revision,
-  removal, migration with an interrupted run and with a failed file write, start-up migration, the
-  start prompt, search). Needs only `plugin reload power-workboard`. Then `workboard-data.json`
-  drops by about 430 KB and `~/.paseo/plugin-data/power-workboard/tasks/` holds one `.md` per task
+  removal, migration with an interrupted run, a failed file write, a failed folder sync and a
+  failed backup, the write → fsync → JSON order, the one-time backup, a board that opens with an
+  unreadable file and a bad id, start-up migration, the start prompt, search;
+  `tests/assistant-chat.test.ts`: `board_get_task` shows the description). Needs only `plugin reload power-workboard`. Then `workboard-data.json`
+  drops by about 430 KB, `~/.paseo/plugin-settings/power-workboard/workboard-data.pre-descriptions.json`
+  holds the old copy, and `~/.paseo/plugin-data/power-workboard/tasks/` holds one `.md` per task
   with a description. In the app: open a card in the panel (the description shows), Edit a card
   (the text is there; save a change), search the board for a word only in a description, create a
   task and start one.

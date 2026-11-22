@@ -1,12 +1,22 @@
 // CUSTOM(task-description-files): descriptions live in one file per task, out of the board JSON.
-import { mkdtempSync, readdirSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { visibleCards } from "../client/board-utils";
 import {
+  backupOnce,
   defaultDescriptionDirectory,
+  defaultSettingsFile,
   directoryDescriptionFiles,
+  preDescriptionsBackupFile,
   memoryDescriptionFiles,
   type DescriptionFiles,
 } from "../server/descriptions";
@@ -211,19 +221,109 @@ describe("migration of descriptions saved in the JSON", () => {
     expect(again.hasLegacyDescriptions).toBe(false);
   });
 
-  it("leaves the JSON untouched when a file cannot be written", async () => {
-    const json = backing({ tasks: [legacyTask("t1", "keep me")] });
+  it("keeps a text in the JSON when its file cannot be written, and moves the others", async () => {
+    const json = backing({
+      tasks: [legacyTask("t1", "keep me"), legacyTask("t2", "move me")],
+    });
+    const files = memoryDescriptionFiles();
+    let attempts = 0;
     const broken: DescriptionFiles = {
-      ...memoryDescriptionFiles(),
-      write: async () => {
-        throw new Error("disk full");
+      ...files,
+      write: async (taskId, text) => {
+        if (taskId === "t1") {
+          attempts++;
+          throw new Error("disk full");
+        }
+        await files.write(taskId, text);
       },
     };
     const store = new Store(json, broken);
     await store.load();
-    await expect(store.moveDescriptions()).rejects.toThrow("disk full");
-    expect(json.saved().tasks[0].description).toBe("keep me");
+    await store.moveDescriptions();
+    expect(json.saved().tasks.map((t) => t.description)).toEqual([
+      "keep me",
+      "",
+    ]);
+    expect(files.texts).toEqual(new Map([["t2", "move me"]]));
     expect(store.description("t1")).toBe("keep me");
+    expect(store.hasLegacyDescriptions).toBe(true);
+    expect(store.current.tasks[0].description).toBe("");
+    // An ordinary save neither retries the file nor drops the JSON copy.
+    await store.update((data) => {
+      data.settings.pinInProgressWorkspaces = false;
+    });
+    expect(attempts).toBe(1);
+    expect(json.saved().tasks[0].description).toBe("keep me");
+    // An edit whose file fails is kept in the JSON too.
+    await store.update((_data, descriptions) => descriptions.set("t1", "new"));
+    expect(json.saved().tasks[0].description).toBe("new");
+    const reopened = new Store(json, broken);
+    await reopened.load();
+    expect(reopened.description("t1")).toBe("new");
+    expect(reopened.description("t2")).toBe("move me");
+  });
+
+  it("syncs the files and their folder before the JSON drops its copy", async () => {
+    const order: string[] = [];
+    const files = memoryDescriptionFiles();
+    const json = backing({ tasks: [legacyTask("t1", "text")] });
+    const store = new Store(
+      {
+        ...json,
+        backup: async () => {
+          order.push("backup");
+        },
+        write: async (revision, values) => {
+          order.push("json");
+          return json.write(revision, values);
+        },
+      },
+      {
+        ...files,
+        write: async (taskId, text) => {
+          order.push(`file ${taskId}`);
+          await files.write(taskId, text);
+        },
+        flush: async () => {
+          order.push("flush");
+        },
+      },
+    );
+    await store.load();
+    await store.moveDescriptions();
+    expect(order).toEqual(["backup", "file t1", "flush", "json"]);
+  });
+
+  it("keeps the texts in the JSON when the folder cannot be synced", async () => {
+    const json = backing({ tasks: [legacyTask("t1", "text")] });
+    const store = new Store(json, {
+      ...memoryDescriptionFiles(),
+      flush: async () => {
+        throw new Error("EIO");
+      },
+    });
+    await store.load();
+    await store.moveDescriptions();
+    expect(json.saved().tasks[0].description).toBe("text");
+    expect(store.hasLegacyDescriptions).toBe(true);
+  });
+
+  it("does not move anything when the backup fails", async () => {
+    const json = backing({ tasks: [legacyTask("t1", "text")] });
+    const files = memoryDescriptionFiles();
+    const store = new Store(
+      {
+        ...json,
+        backup: async () => {
+          throw new Error("read-only");
+        },
+      },
+      files,
+    );
+    await store.load();
+    await expect(store.moveDescriptions()).rejects.toThrow("read-only");
+    expect(files.texts.size).toBe(0);
+    expect(json.saved().tasks[0].description).toBe("text");
   });
 
   it("runs when the board starts, and the JSON gets smaller", async () => {
@@ -247,6 +347,79 @@ describe("migration of descriptions saved in the JSON", () => {
     } finally {
       board.dispose();
     }
+  });
+});
+
+describe("backup of the JSON before the first move", () => {
+  it("sits next to the JSON and is written only once", async () => {
+    expect(defaultSettingsFile({ PASEO_HOME: "/h" })).toBe(
+      "/h/plugin-settings/power-workboard/workboard-data.json",
+    );
+    const directory = tempDirectory();
+    const source = join(directory, "workboard-data.json");
+    const target = preDescriptionsBackupFile(source);
+    expect(target).toBe(
+      join(directory, "workboard-data.pre-descriptions.json"),
+    );
+    writeFileSync(source, "first");
+    expect(await backupOnce(source, target)).toBe(true);
+    writeFileSync(source, "second");
+    expect(await backupOnce(source, target)).toBe(false);
+    expect(readFileSync(target, "utf8")).toBe("first");
+  });
+
+  it("fails when the JSON is missing, so nothing moves without it", async () => {
+    const directory = tempDirectory();
+    await expect(
+      backupOnce(join(directory, "missing.json"), join(directory, "copy.json")),
+    ).rejects.toThrow();
+    expect(existsSync(join(directory, "copy.json"))).toBe(false);
+  });
+});
+
+describe("a description that cannot be read", () => {
+  it("is logged and the board opens with the JSON text or nothing", async () => {
+    const directory = join(tempDirectory(), "tasks");
+    mkdirSync(join(directory, "t2.md"), { recursive: true }); // reading it fails with EISDIR
+    const files = directoryDescriptionFiles(directory);
+    const setup = fixture({
+      defaultOrchestratorSeeded: true,
+      tasks: [
+        legacyTask("bad/id", "kept in the JSON"),
+        { ...newTask("t2", "t2", NOW), descriptionLength: 4 },
+        legacyTask("t3", "moved"),
+      ],
+    });
+    const store = new Store(setup.backing, files);
+    const board = new Workboard(setup.host, store, () => Date.parse(NOW));
+    await board.start();
+    try {
+      expect(board.snapshot().cards).toHaveLength(3);
+      expect(store.description("bad/id")).toBe("kept in the JSON");
+      expect(store.description("t2")).toBe("");
+      expect(store.description("t3")).toBe("moved");
+      const saved = (await setup.backing.read()).values.tasks;
+      expect(saved.map((t) => t.description)).toEqual([
+        "kept in the JSON",
+        "",
+        "",
+      ]);
+      expect(readFileSync(join(directory, "t3.md"), "utf8")).toBe("moved");
+    } finally {
+      board.dispose();
+    }
+  });
+
+  it("does not stop the Store when the whole folder fails", async () => {
+    const json = backing({ tasks: [legacyTask("t1", "json text")] });
+    const store = new Store(json, {
+      ...memoryDescriptionFiles(),
+      readAll: async () => {
+        throw new Error("EACCES");
+      },
+    });
+    await store.load();
+    expect(store.description("t1")).toBe("json text");
   });
 });
 

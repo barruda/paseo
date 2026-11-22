@@ -10,7 +10,10 @@ type DescriptionCall = (input: { taskIds: string[] }) => Promise<{
 }>;
 type DescribedCard = Pick<Card, "id" | "descriptionRevision">;
 
-/** One task's description, as a query: the revision in the key refetches it after an edit. */
+/**
+ * One task's description, as a query: the revision in the key refetches it after an edit. The
+ * result keeps the revision the server answered with, which can be newer than the key's.
+ */
 export function taskDescriptionQuery(
   call: DescriptionCall,
   card: DescribedCard,
@@ -22,9 +25,12 @@ export function taskDescriptionQuery(
       card.id,
       card.descriptionRevision,
     ],
-    queryFn: async () => {
+    queryFn: async (): Promise<{ text: string; revision: number }> => {
       const { descriptions } = await call({ taskIds: [card.id] });
-      return descriptions.find((d) => d.taskId === card.id)?.text ?? "";
+      const found = descriptions.find((d) => d.taskId === card.id);
+      return found
+        ? { text: found.text, revision: found.revision }
+        : { text: "", revision: card.descriptionRevision };
     },
     staleTime: Infinity,
   };
