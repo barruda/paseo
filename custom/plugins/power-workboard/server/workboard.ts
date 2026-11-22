@@ -196,11 +196,11 @@ import {
 } from "../shared/factory/active";
 import type { FactoryMode } from "../shared/factory/status";
 import {
-  PIPELINE_HISTORY_LIMIT,
   enterStage,
   findStage,
+  loopContinued,
   pipelineForProject,
-  reworkStage,
+  reviewRework,
   stageChip,
   stageExit,
   stageSection,
@@ -301,6 +301,9 @@ export const GATE_USER_ONLY_ERROR =
 /** CUSTOM(factory): archiving an open gate's card would leave its task with no way forward. */
 export const GATE_ARCHIVE_ERROR =
   "This card holds an open pipeline gate; answer it instead of archiving it";
+/** CUSTOM(factory): the note on a gate's Decisões proposal archived when active mode turns off. */
+export const GATE_CLOSED_NOTE =
+  "Closed without an answer: factory active mode was turned off, so this gate no longer moves the task. Continue or Done on the task works as today.";
 /** Longest agent title the board sets. */
 const AGENT_TITLE_MAX = 200;
 /**
@@ -2957,7 +2960,8 @@ export class Workboard {
       delivery?.stage === "needs-you" &&
       delivery.reason === "gate" &&
       this.store.current.tasks.find((t) => t.id === taskId)?.pipeline?.gate
-        ?.kind === "gate"
+        ?.kind === "gate" &&
+      this.factoryMode() === "active"
     );
   }
   /** CUSTOM(unattended-automation): a hidden board subagent of this task waits on a permission. */
@@ -4022,14 +4026,15 @@ export class Workboard {
   }
   /**
    * The live orchestrator that runs a stage for a project: the pinned worker, the project's worker
-   * with the stage's role, else its implement worker. Null for a `pm` stage or when none exists.
+   * with the stage's role, else its implement worker (`fallback`). Null for a `pm` stage or when
+   * none exists.
    */
   private stageOrchestrator(
     applied: AppliedFactory,
     stage: CompiledStage,
     projectId: string | null,
     data: Data,
-  ): string | null {
+  ): { id: string; fallback: boolean } | null {
     const workers = projectWorkers(
       projectId ?? "",
       applied.compiled.workers.map((worker) => ({
@@ -4046,19 +4051,24 @@ export class Workboard {
     const id = new FactoryIds(data.factoryIds, applied.fileIds).liveWorker(
       runner.workerId,
     );
-    return data.orchestrators.some((o) => o.id === id) ? id : null;
+    return data.orchestrators.some((o) => o.id === id)
+      ? { id, fallback: runner.fallback }
+      : null;
   }
   /**
    * Who takes the task's next run when its pipeline decides it: the worker of a stage a transition
    * entered or of a running stage whose role is not implement (or that pins a worker), and for a
    * task leaving Ready, the worker of a `start` like that. Null keeps today's rule, so an
-   * implement stage goes where every task goes today.
+   * implement stage goes where every task goes today. The orchestrator the user chose for the
+   * task takes every stage the project's implement worker would run: an implement stage, and a
+   * stage whose role has no worker of its own (the fallback).
    */
   private stageOwner(
     task: Pick<Task, "projectId"> &
-      Partial<Pick<Task, "id" | "pipeline" | "workspaceId">>,
+      Partial<Pick<Task, "id" | "orchestratorId" | "pipeline" | "workspaceId">>,
     data: Data,
   ): string | null {
+    let found: { applied: AppliedFactory; stage: CompiledStage };
     // A task with a workspace runs its current stage; one without starts over at `start`.
     if (task.workspaceId) {
       const live = this.taskPipeline({ pipeline: task.pipeline ?? null });
@@ -4073,13 +4083,31 @@ export class Workboard {
         const ranRole = ran ? this.factoryWorker(ran)?.worker.role : undefined;
         if (!ranRole || ranRole === "implement") return null;
       }
-      return this.stageOrchestrator(live.applied, stage, task.projectId, data);
+      found = { applied: live.applied, stage };
+    } else {
+      const entry = this.projectPipeline(task.projectId);
+      const start = entry && findStage(entry.pipeline, entry.pipeline.start);
+      if (!entry || !start || (start.role === "implement" && !start.worker))
+        return null;
+      found = { applied: entry.applied, stage: start };
     }
-    const entry = this.projectPipeline(task.projectId);
-    const start = entry && findStage(entry.pipeline, entry.pipeline.start);
-    if (!entry || !start || (start.role === "implement" && !start.worker))
+    const runner = this.stageOrchestrator(
+      found.applied,
+      found.stage,
+      task.projectId,
+      data,
+    );
+    if (!runner) return null;
+    const chosen =
+      !!task.orchestratorId &&
+      data.orchestrators.some((o) => o.id === task.orchestratorId);
+    if (
+      chosen &&
+      !found.stage.worker &&
+      (runner.fallback || found.stage.role === "implement")
+    )
       return null;
-    return this.stageOrchestrator(entry.applied, start, task.projectId, data);
+    return runner.id;
   }
   /**
    * The stage's text for its run: its procedure, the spec template for a `spec` stage and the
@@ -4271,13 +4299,37 @@ export class Workboard {
       ? { kind: gate.kind }
       : null;
   }
-  /** The task whose open gate is this Decisões card. */
+  /**
+   * The task whose open gate is this Decisões card. Only active mode has gates: one left over from
+   * it (see `closePipelineGates`) holds nothing.
+   */
   private gateTask(cardId: string): Task | null {
+    if (this.factoryMode() !== "active") return null;
     return (
       this.store.current.tasks.find(
         (task) => task.pipeline?.gate?.cardId === cardId,
       ) ?? null
     );
+  }
+  /**
+   * Active mode turned off: the engine stops, so nothing would answer an open gate. Each gate
+   * closes and its Decisões proposal is archived with `GATE_CLOSED_NOTE`. The task keeps its stage
+   * and stays in Needs you, where Continue and Done work as today. Inside a store update.
+   */
+  private closePipelineGates(data: Data): void {
+    for (const task of data.tasks) {
+      const gate = task.pipeline?.gate;
+      if (!task.pipeline || !gate) continue;
+      task.pipeline = { ...task.pipeline, gate: null };
+      const card = data.assistant.pmBoard.cards.find(
+        (c) => c.id === gate.cardId,
+      );
+      if (!card || card.status === "decided" || card.status === "archived")
+        continue;
+      card.status = "archived";
+      card.decision = GATE_CLOSED_NOTE;
+      card.updatedAt = this.stamp(card.updatedAt);
+    }
   }
   /**
    * The user answered a gate (or the stage choice) in Decisões: the task leaves Needs you and
@@ -4361,40 +4413,23 @@ export class Workboard {
     }
     // Continue after a loop gives the stage that looped a new budget of visits.
     const delivery = this.store.current.assistant.deliveries[taskId];
-    const looped = state.history.findLast((entry) => entry.via === "loop");
     if (
       outcome === "continue" &&
       delivery?.stage === "needs-you" &&
-      delivery.reason === "loop" &&
-      looped
+      delivery.reason === "loop"
     )
-      state = { ...state, visits: { ...state.visits, [looped.stage]: 0 } };
+      state = loopContinued(state);
     const stage = findStage(live.pipeline, state.stage);
     if (
       outcome === "continue" &&
       (stage?.role === "pm" || state.stage === "deliver")
     ) {
-      const back = reworkStage(live.pipeline, state);
-      state = {
-        ...state,
-        stage: back,
-        visits: { ...state.visits, [back]: (state.visits[back] ?? 0) + 1 },
-        pending: false,
-        history: [
-          ...state.history,
-          {
-            stage: back,
-            at: this.stamp(),
-            via: "review" as const,
-            detail: null,
-          },
-        ].slice(-PIPELINE_HISTORY_LIMIT),
-      };
+      state = reviewRework(live.pipeline, state, this.stamp());
       await this.record(
         taskId,
         "stage-entered",
-        `Pipeline: ${live.state.stage} → ${back}`,
-        { by },
+        `Pipeline: ${live.state.stage} → ${state.stage}`,
+        { by, detail: state.history.at(-1)?.detail ?? null },
       );
     }
     if (state !== live.state) await this.setTaskPipeline(taskId, state);
@@ -5352,12 +5387,14 @@ export class Workboard {
         (data) => {
           data.assistant.settings = settings;
           // CUSTOM(factory): the JSON's columns come back; tasks in a column only the factory has
-          // move to the default one.
-          if (leavingActive)
+          // move to the default one. The engine stops, so open gates close.
+          if (leavingActive) {
             moves = moveOffUnknownColumns(
               data,
               this.store.peek((saved) => saved.settings.groups),
             );
+            this.closePipelineGates(data);
+          }
         },
         settings.factory.mode === "active" ? CONFIG_EDIT : {},
       ),

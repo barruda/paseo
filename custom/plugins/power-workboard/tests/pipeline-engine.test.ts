@@ -5,12 +5,15 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   GATE_ARCHIVE_ERROR,
+  GATE_CLOSED_NOTE,
   GATE_OPTION_REQUIRED_ERROR,
   GATE_USER_ONLY_ERROR,
 } from "../server/workboard";
 import type { CompiledPipeline } from "../shared/factory/compile";
 import {
   enterStage,
+  loopContinued,
+  reviewRework,
   reworkStage,
   stageChip,
   stageExit,
@@ -135,6 +138,54 @@ describe("pipeline engine: transitions", () => {
         gate: { cardId: "pm-1", stage: "review", kind: "gate" },
       }),
     ).toBe("review · gate");
+  });
+  it("reviewer feedback past maxVisits starts a new budget instead of going over it", () => {
+    let state = startPipeline(pipeline, AT);
+    state = enterStage(pipeline, state, "review", "to", AT).state;
+    state = reviewRework(pipeline, state, AT);
+    expect(state).toMatchObject({ stage: "build", visits: { build: 2 } });
+    expect(state.history.at(-1)).toMatchObject({ via: "review", detail: null });
+    state = enterStage(pipeline, state, "review", "to", AT).state;
+    state = reviewRework(pipeline, state, AT);
+    expect(state.visits.build).toBe(3);
+    state = enterStage(pipeline, state, "review", "to", AT).state;
+    state = reviewRework(pipeline, state, AT);
+    expect(state).toMatchObject({
+      stage: "build",
+      visits: { build: 1 },
+      pending: false,
+    });
+    expect(state.history.at(-1)?.detail).toBe(
+      "Visit 4 of 3: the reviewer's answer starts a new budget",
+    );
+    expect(stageChip(pipeline, state)).toBe("build 1/3");
+    // The next automatic entry counts on from there, with no loop.
+    const next = enterStage(pipeline, state, "build", "to", AT);
+    expect(next.loop).toBeNull();
+    expect(next.state.visits.build).toBe(2);
+  });
+
+  it("Continue after a loop counts the stage the task runs again as visit 1", () => {
+    let state = startPipeline(pipeline, AT);
+    state = enterStage(pipeline, state, "build", "to", AT).state;
+    state = enterStage(pipeline, state, "build", "to", AT).state;
+    const self = enterStage(pipeline, state, "build", "to", AT);
+    expect(self.loop).toMatchObject({ stage: "build" });
+    expect(loopContinued(self.state).visits.build).toBe(1);
+    expect(stageChip(pipeline, loopContinued(self.state))).toBe("build 1/3");
+    // A loop into another stage leaves the task where it was; that stage starts again at 0.
+    const other = enterStage(
+      pipeline,
+      { ...state, visits: { ...state.visits, check: 2 } },
+      "check",
+      "to",
+      AT,
+    );
+    expect(other.loop).toMatchObject({ stage: "check" });
+    expect(loopContinued(other.state).visits).toMatchObject({
+      build: 3,
+      check: 0,
+    });
   });
 });
 
@@ -464,16 +515,175 @@ stages:
       pending: false,
     });
     expect(t.task().pipeline?.history.at(-1)).toMatchObject({ via: "loop" });
-    // Continue gives the looped stage a new budget: the next transition runs it again.
+    // Continue gives the looped stage a new budget. The task runs that stage again now, so the
+    // chip counts it as visit 1, and the next transition is visit 2.
     await s.board.mutate({
       action: "review",
       taskId,
       outcome: "continue",
       feedback: "One more",
     });
+    expect(t.card().stageChip).toBe("build 1/2");
     await t.finish(done("Round 3"));
     expect(t.delivery()).toBeUndefined();
-    expect(t.task().pipeline).toMatchObject({ visits: { build: 1 } });
+    expect(t.task().pipeline).toMatchObject({ visits: { build: 2 } });
+    expect(t.card().stageChip).toBe("build 2/2");
+  });
+
+  it("reviewer feedback past maxVisits starts a new budget, so the next entry is no loop", async () => {
+    const s = await bootWith(`start: build
+stages:
+  build: { role: implement, prompt: Build it., maxVisits: 2, to: check }
+  check:
+    role: verify
+    prompt: Check it.
+    gate:
+      question: Did it pass?
+      options:
+        - { id: pass, label: Pass, to: deliver }
+        - { id: fail, label: Fail, to: build }
+`);
+    const taskId = await startTask(s);
+    const t = helpers(s, taskId);
+    const choose = async (optionId: string) => {
+      await s.board.pmCardDecide(t.gateCard().id, { optionId, by: "user" });
+      await s.board.refresh();
+    };
+    const sendBack = (feedback: string) =>
+      s.board.mutate({
+        action: "review",
+        taskId,
+        outcome: "continue",
+        feedback,
+      });
+    await t.finish(done("Built"));
+    await t.finish(done("Checked"));
+    await choose("pass");
+    expect(t.delivery()).toMatchObject({ reason: "review" });
+    await sendBack("Round 2");
+    expect(t.card().stageChip).toBe("build 2/2");
+    await t.finish(done("Built 2"));
+    await t.finish(done("Checked 2"));
+    await choose("pass");
+    // The third send-back would be visit 3 of 2: the reviewer's answer is not a loop, and the
+    // stage starts a new budget instead of showing 3/2.
+    await sendBack("Round 3");
+    expect(t.delivery()).toBeUndefined();
+    expect(t.card().stageChip).toBe("build 1/2");
+    expect(t.task().pipeline?.history.at(-1)).toMatchObject({
+      stage: "build",
+      via: "review",
+      detail: "Visit 3 of 2: the reviewer's answer starts a new budget",
+    });
+    await t.finish(done("Built 3"));
+    await t.finish(done("Checked 3"));
+    // The check fails: build is entered again as visit 2, not a loop.
+    await choose("fail");
+    expect(t.delivery()).toBeUndefined();
+    expect(t.task().pipeline).toMatchObject({
+      stage: "build",
+      visits: { build: 2 },
+    });
+    expect(t.card().stageChip).toBe("build 2/2");
+  });
+
+  it("the orchestrator the user chose runs a stage that falls back to the implement worker", async () => {
+    const s = await bootWith(
+      `start: spec
+stages:
+  spec: { role: spec, prompt: Write the spec., to: build }
+  build: { role: implement, prompt: Build it., to: deliver }
+`,
+      {
+        "workers/zeta/worker.md": `---
+name: Zeta
+project: proj
+schedule: automatic
+---
+
+Zeta works.
+`,
+      },
+    );
+    const zeta = s.store.current.orchestrators.find((o) => o.name === "Zeta")!;
+    expect(zeta).toBeDefined();
+    // With no choice, the spec stage (no spec worker) falls back to the first implement worker.
+    const plain = helpers(s, await startTask(s));
+    expect(plain.record().orchestratorId).toBe(LIVE_ID);
+    await s.board.mutate({
+      action: "create",
+      title: "Chosen",
+      description: "Do it",
+      projectId: "p",
+    });
+    const chosenId = s.board
+      .snapshot()
+      .cards.find((c) => c.title === "Chosen")!.id;
+    await s.store.update((data) => {
+      data.tasks.find((task) => task.id === chosenId)!.orchestratorId = zeta.id;
+    });
+    await s.board.mutate({
+      action: "stage",
+      taskId: chosenId,
+      stage: "ready",
+      expectedLabels: [],
+    });
+    const t = helpers(s, chosenId);
+    expect(t.record().orchestratorId).toBe(zeta.id);
+    expect(t.starts().at(-1)[1].prompt).toContain("Write the spec.");
+    // spec → build: the implement stage stays with the chosen orchestrator too.
+    await t.finish(done("Spec written"));
+    expect(t.task().pipeline?.stage).toBe("build");
+    expect(t.record().orchestratorId).toBe(zeta.id);
+  });
+
+  it("leaving active closes an open gate and archives its proposal; back in active the stage resumes", async () => {
+    const s = await bootWith(`start: spec
+stages:
+  spec:
+    role: spec
+    prompt: Write the spec.
+    gate:
+      question: Approve this spec?
+      options:
+        - { id: approve, label: Approve, to: build }
+  build: { role: implement, prompt: Build it., to: end }
+`);
+    const taskId = await startTask(s);
+    const t = helpers(s, taskId);
+    await t.finish(done("Spec written"));
+    const cardId = t.gateCard().id;
+    expect(s.board.assistantNeedsYouBrief().ids).not.toContain(taskId);
+    const setMode = async (mode: "shadow" | "active") => {
+      const { settings } = s.board.assistantSettings();
+      await s.board.setAssistantSettings({
+        ...settings,
+        factory: { ...settings.factory, mode },
+      });
+      await s.factory.ready();
+    };
+    await setMode("shadow");
+    expect(t.task().pipeline).toMatchObject({ stage: "spec", gate: null });
+    expect(s.board.pmCards().find((c) => c.id === cardId)).toMatchObject({
+      status: "archived",
+      decision: GATE_CLOSED_NOTE,
+    });
+    // The task waits in Needs you like any other, so the Project Manager hears about it.
+    expect(t.delivery()).toMatchObject({ stage: "needs-you", reason: "gate" });
+    expect(s.board.assistantNeedsYouBrief().ids).toContain(taskId);
+    // Back in active, the task keeps its stage: Continue runs it again and its gate opens anew.
+    await setMode("active");
+    expect(t.card().stageChip).toBe("spec 1/3");
+    await s.board.mutate({
+      action: "review",
+      taskId,
+      outcome: "continue",
+      feedback: "Again",
+    });
+    await t.finish(done("Spec v2"));
+    expect(t.delivery()).toMatchObject({ stage: "needs-you", reason: "gate" });
+    expect(t.gateCard().id).not.toBe(cardId);
+    expect(t.card().stageChip).toBe("spec · gate");
   });
 
   it("a list of when conditions asks the user for now, and cancel closes the task", async () => {
