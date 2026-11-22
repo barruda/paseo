@@ -374,3 +374,13 @@ export function splitTitleArea(title: string): {
     return { area: null, title: whole };
   return { area, title: rest };
 }
+
+/** CUSTOM(no-orchestrator-warning): the alert of a Ready to start card nobody will pick up. */
+export function noOrchestratorText(
+  card: Pick<Card, "projectName">,
+  t: { noOrchestrator: string; noOrchestratorNoProject: string },
+): string {
+  return card.projectName
+    ? t.noOrchestrator.replace("{project}", card.projectName)
+    : t.noOrchestratorNoProject;
+}

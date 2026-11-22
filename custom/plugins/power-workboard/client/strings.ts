@@ -14,6 +14,11 @@ const zh = {
   startNeedsDirectory: "请输入 workspace 目录。",
   startNeedsGitProject: "创建 worktree 需要选择 Git 项目。",
   undoMove: "撤销移动",
+  // CUSTOM(no-orchestrator-warning)
+  noOrchestrator:
+    "项目 {project} 没有配置编排器。请在 Orchestrators 标签页中配置一个。",
+  noOrchestratorNoProject:
+    "没有编排器接收无项目的任务。请在 Orchestrators 标签页中配置一个。",
   undoMoveHint: "在 8 秒内放回移动前的分组；任务变化后不可撤销。",
   undoMoveExpired: "撤销窗口已过期或任务已变化，请刷新后手动调整分组。",
   moveUndone: "任务已放回原分组。",
@@ -877,6 +882,11 @@ const en: typeof zh = {
   startNeedsDirectory: "Enter a workspace directory.",
   startNeedsGitProject: "Select a Git project to create a worktree.",
   undoMove: "Undo move",
+  // CUSTOM(no-orchestrator-warning)
+  noOrchestrator:
+    "No orchestrator is set up for project {project}. Set one up in the Orchestrators tab.",
+  noOrchestratorNoProject:
+    "No orchestrator takes tasks without a project. Set one up in the Orchestrators tab.",
   undoMoveHint:
     "Return to the previous group within 8 seconds; task changes invalidate undo.",
   undoMoveExpired:

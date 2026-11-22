@@ -951,6 +951,11 @@ export const cardSchema = taskSchema.omit({ description: true }).extend({
   inPlace: z.boolean().default(false),
   /** CUSTOM(factory): the pipeline stage chip (`spec · gate`, `implement 2/3`), or null. */
   stageChip: z.string().nullable().optional(),
+  /**
+   * CUSTOM(no-orchestrator-warning): in Ready to start, and no enabled orchestrator takes it (none
+   * covers its project, the project's one is off, or the one chosen for it is off).
+   */
+  noOrchestrator: z.boolean().optional(),
   dueAt: z.string().nullable(),
   agents: z.array(
     z.object({

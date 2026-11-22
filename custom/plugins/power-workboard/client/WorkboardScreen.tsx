@@ -81,6 +81,7 @@ import {
   visibleCards,
   withOptimisticStages,
   cardsForStage,
+  noOrchestratorText, // CUSTOM(no-orchestrator-warning)
 } from "./board-utils";
 import { groupTitle, stageTitle, strings } from "./strings";
 import { FactoryLine } from "./FactoryLine"; // CUSTOM(factory)
@@ -1316,6 +1317,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       onStatus={() => setStatusCard(card)}
       onArchive={() => setArchivingDraft(card)}
       onDelete={() => setDeletingTask(card)}
+      onOpenOrchestrators={() => selectTab("orchestrators")}
       onCancelBinding={() => setCancelingBinding(card)}
       onDetachDraft={(draftId) => setDetachingDraft({ card, draftId })}
       onOpenPanel={() => setPanel(openPanel(card.id, "ticket", null))}
@@ -3343,6 +3345,51 @@ function ShutdownBanner({
   );
 }
 
+// CUSTOM(no-orchestrator-warning): amber tints for the card and its alert, per theme brightness.
+const NO_ORCHESTRATOR_CARD_LIGHT = "#fffbeb";
+const NO_ORCHESTRATOR_CARD_DARK = "#2a2310";
+const NO_ORCHESTRATOR_ALERT_LIGHT = "#fef3c7";
+const NO_ORCHESTRATOR_ALERT_DARK = "#3d3112";
+function NoOrchestratorAlert({
+  card,
+  t,
+  theme,
+  onPress,
+}: {
+  card: Card;
+  t: ReturnType<typeof strings>;
+  theme: PluginSurfaceProps["theme"];
+  onPress?(): void;
+}) {
+  const text = noOrchestratorText(card, t);
+  return (
+    <Pressable
+      accessibilityRole={onPress ? "link" : "text"}
+      accessibilityLabel={text}
+      testID={`workboard-no-orchestrator-${card.id}`}
+      disabled={!onPress}
+      onPress={onPress}
+      style={[
+        styles.noOrchestratorAlert,
+        {
+          borderColor: theme.colors.statusWarning,
+          backgroundColor: supplementalColor(
+            theme,
+            NO_ORCHESTRATOR_ALERT_LIGHT,
+            NO_ORCHESTRATOR_ALERT_DARK,
+          ),
+        },
+      ]}
+    >
+      <Icon name="TriangleAlert" size={13} color={theme.colors.statusWarning} />
+      <Text
+        style={[styles.noOrchestratorText, { color: theme.colors.foreground }]}
+      >
+        {text}
+      </Text>
+    </Pressable>
+  );
+}
 export function TaskCard({
   card,
   board,
@@ -3380,6 +3427,7 @@ export function TaskCard({
   onAskPmToGroup,
   selectionCount = 0,
   onDelete,
+  onOpenOrchestrators,
 }: {
   card: Card;
   board: Board;
@@ -3422,6 +3470,8 @@ export function TaskCard({
   selectionCount?: number;
   /** CUSTOM(delete-task): the context menu's Delete task. */
   onDelete?(): void;
+  /** CUSTOM(no-orchestrator-warning): the alert opens the Orchestrators tab. */
+  onOpenOrchestrators?(): void;
 }) {
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [titleHovered, setTitleHovered] = useState(false);
@@ -3504,11 +3554,19 @@ export function TaskCard({
   });
   const openMenu = (event: { nativeEvent: { pageX: number; pageY: number } }) =>
     menuAt(event.nativeEvent.pageX, event.nativeEvent.pageY);
+  // CUSTOM(no-orchestrator-warning): an amber card for a Ready to start task nobody will take.
+  const stuck = !!card.noOrchestrator;
   const cardStyle = [
     styles.card,
     {
-      backgroundColor: theme.colors.surface0,
-      borderColor: theme.colors.border,
+      backgroundColor: stuck
+        ? supplementalColor(
+            theme,
+            NO_ORCHESTRATOR_CARD_LIGHT,
+            NO_ORCHESTRATOR_CARD_DARK,
+          )
+        : theme.colors.surface0,
+      borderColor: stuck ? theme.colors.statusWarning : theme.colors.border,
       ...(onUndo && compact
         ? {
             outlineColor: theme.colors.accent,
@@ -3693,6 +3751,14 @@ export function TaskCard({
             </Text>
           )}
         </View>
+      )}
+      {stuck && (
+        <NoOrchestratorAlert
+          card={card}
+          t={t}
+          theme={theme}
+          onPress={onOpenOrchestrators}
+        />
       )}
       {card.timing && <TimingChip timing={card.timing} t={t} theme={theme} />}
       {request && (
@@ -6099,6 +6165,17 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   cardProjectText: { flexShrink: 1 },
+  // CUSTOM(no-orchestrator-warning)
+  noOrchestratorAlert: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 6,
+    borderWidth: 1,
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+  },
+  noOrchestratorText: { flex: 1, fontSize: 12, lineHeight: 16 },
   timingChip: {
     flexDirection: "row",
     alignItems: "center",

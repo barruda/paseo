@@ -24,8 +24,11 @@ this repo) with these differences:
 - **Orchestrators.** The Orchestrators tab lists them; each opens in its own tab with its
   settings, running tasks and log. An orchestrator takes Ready to start tasks (the ones chosen for
   it, or unassigned ones of its project; an All projects orchestrator only gets the projects
-  that have none of their own), top of the column first, on a schedule: Automatic (always on,
-  the default for new orchestrators; stored as a 00:00–00:00 window every day), a time window,
+  that have none of their own), top of the column first. A Ready to start card that no enabled
+  orchestrator takes turns amber with an alert that opens the Orchestrators tab, and
+  `board_overview`/`board_get_task` list it for the Project Manager. It runs on a schedule:
+  Automatic (always on, the default for new orchestrators; stored as a 00:00–00:00 window every
+  day), a time window,
   daily times with a batch per run, or Manual (Run now). Each task gets a workspace in its
   project (a worktree for git projects, cut from the Project Manager's base branch for that
   project, or else from the branch the project checkout is on), moves to In progress, and gets an

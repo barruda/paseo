@@ -77,6 +77,9 @@ const BOARD_TOOLS =
 
 // CUSTOM(task-numbers): the same reference is accepted everywhere a tool takes a task.
 const TASK_ID_HINT = "Task UUID, or its short number as 42 or #42";
+/** CUSTOM(no-orchestrator-warning): a Ready to start task no enabled orchestrator takes. */
+export const NO_ORCHESTRATOR =
+  "no orchestrator takes it: no enabled orchestrator covers its project (or the one chosen for it is off); it waits until one is set up in the Orchestrators tab";
 
 // CUSTOM(assistant-reply-protocol): the block every reply ends with. The doc path is the main
 // checkout's, since the Project Manager runs in an empty folder; the words come from the parser.
@@ -577,7 +580,7 @@ export function chatTools(
       ? (snapshot.orchestrators.find((o) => o.id === c.orchestratorId)?.name ??
         c.orchestratorId)
       : "-";
-    return `${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${group ? groupName(group) : c.stage} (${c.stage}) | orchestrator: ${orchestrator} | delivery: ${deliveries[c.id]?.stage ?? "-"} | package: ${pkg ? `${pkg.name} (${pkg.id})` : "-"} | tests: ${effectiveTestTier(c)} | updated: ${c.updatedAt}`;
+    return `${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | column: ${group ? groupName(group) : c.stage} (${c.stage}) | orchestrator: ${orchestrator} | delivery: ${deliveries[c.id]?.stage ?? "-"} | package: ${pkg ? `${pkg.name} (${pkg.id})` : "-"} | tests: ${effectiveTestTier(c)} | updated: ${c.updatedAt}${c.noOrchestrator ? ` | ${NO_ORCHESTRATOR}` : ""}`;
   };
   const managedAgent = (agentId: string) =>
     isManagedAgent(board().assistantSource().data, agentId);
@@ -642,6 +645,16 @@ export function chatTools(
                 const status = snapshot.orchestratorStatus[o.id];
                 return `- ${o.id} | ${o.name} | project: ${o.projectId ?? "any"} | ${o.enabled ? "enabled" : "disabled"}${status?.active ? ", active" : ""} | running ${status?.running ?? 0}, waiting ${status?.waiting ?? 0}`;
               })
+              .join("\n") || "- none"
+          }`,
+          // CUSTOM(no-orchestrator-warning): Ready to start tasks nobody will pick up.
+          `Waiting with no orchestrator:\n${
+            snapshot.cards
+              .filter((c) => c.noOrchestrator)
+              .map(
+                (c) =>
+                  `- ${c.number > 0 ? `#${c.number} | ` : ""}${c.id} | ${c.title} | project: ${c.projectName || c.projectId || "-"} | ${NO_ORCHESTRATOR}`,
+              )
               .join("\n") || "- none"
           }`,
           `Columns:\n${groups

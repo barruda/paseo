@@ -1138,6 +1138,11 @@ export class Workboard {
           stageChip: isTerminalGroup(stage, data.settings.groups)
             ? null
             : this.stageChipOf(task),
+          // CUSTOM(no-orchestrator-warning): a Ready to start task no enabled orchestrator takes.
+          noOrchestrator:
+            !task.archived &&
+            groupKind(stage, data.settings.groups) === "ready" &&
+            !this.taken(task, data),
           changeRequest: projectChangeRequest(workspace),
           changeRequestUnavailable: !!workspace?.githubRuntime?.error,
           pinState:
@@ -7916,11 +7921,7 @@ export class Workboard {
       const cards = new Map(this.snapshot().cards.map((c) => [c.id, c]));
       const startable = this.nightWaiting(data).some((task) => {
         const card = cards.get(task.id);
-        return (
-          !!card &&
-          this.eligible(card) &&
-          data.orchestrators.some((o) => o.enabled && this.owns(o, task, data))
-        );
+        return !!card && this.eligible(card) && this.taken(task, data);
       });
       if (startable) return "night tasks are still waiting";
     }
@@ -8095,6 +8096,19 @@ export class Workboard {
     return (
       task.projectId === null ||
       !data.orchestrators.some((o) => o.projectId === task.projectId)
+    );
+  }
+  /**
+   * CUSTOM(no-orchestrator-warning): an enabled orchestrator takes the task, by the same rule the
+   * runs use. False leaves a Ready to start task waiting with nobody to pick it up.
+   */
+  private taken(
+    task: Pick<Task, "id" | "orchestratorId" | "projectId"> &
+      Partial<Pick<Task, "pipeline" | "workspaceId">>,
+    data: Data = this.store.current,
+  ): boolean {
+    return data.orchestrators.some(
+      (o) => o.enabled && this.owns(o, task, data),
     );
   }
   /** The slots an orchestrator uses. */

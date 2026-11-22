@@ -10893,3 +10893,37 @@ Decisões proposals waited…` message in the PM chat, once. The live PM's `syst
 tests/card-menu.test.ts` (in the plugin suite of the update script). Needs a `plugin reload`.
   In the app: right-click any card → **Delete task** → Cancel leaves it; Delete removes it at
   once, and it stays gone after a plugin reload.
+
+## no-orchestrator-warning: a Ready to start card nobody will take turns amber and says why
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Power Workboard warns on a Ready to start card that no orchestrator takes`
+- **Why:** A task in Ready to start whose project has no enabled orchestrator sat there with no
+  explanation: nobody picked it up and the board said nothing.
+- **What:**
+  - `Workboard.taken(task, data)` (`server/workboard.ts`): some enabled orchestrator `owns()` the
+    task. It reads `store.current`, which in factory active mode already holds the factory's
+    workers. The night power-off check uses it too, instead of its own copy of the rule.
+  - Each card in the snapshot gets `noOrchestrator` (optional in `cardSchema`): not archived, in a
+    `ready` column and not `taken`. So a project with no orchestrator, its own one disabled (a
+    general one doesn't take a project that has its own), a scope moved off the project, or a
+    chosen orchestrator that is off all warn. The snapshot is rebuilt on every store change, so
+    the warning clears as soon as an orchestrator covers the task.
+  - `TaskCard` (`client/WorkboardScreen.tsx`) paints such a card amber (light/dark picked with
+    `supplementalColor`, border in `statusWarning`) and shows `NoOrchestratorAlert`: "No
+    orchestrator is set up for project X. Set one up in the Orchestrators tab." (zh and en in
+    `client/strings.ts`, built by `noOrchestratorText` in `client/board-utils.ts`). Pressing it
+    opens the Orchestrators tab.
+  - PM tools (`server/assistant/chat.ts`): `board_overview` has a "Waiting with no orchestrator"
+    section, and the task line of `board_get_task`/`board_list_tasks` ends with
+    `NO_ORCHESTRATOR`.
+- **Core files touched:** none.
+- **Plugin files:** `shared/model.ts`, `server/workboard.ts`, `server/assistant/chat.ts`,
+  `client/WorkboardScreen.tsx`, `client/board-utils.ts`, `client/strings.ts`, `README.md`,
+  `tests/no-orchestrator.test.ts`.
+- **Re-apply:** plugin only; search `CUSTOM(no-orchestrator-warning)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/no-orchestrator.test.ts`
+  (in the plugin suite of the update script). Needs a `plugin reload`. In the app: move a task
+  of a project with no orchestrator (or with its orchestrator off) to Ready to start; the card
+  turns amber with the alert, and the alert opens the Orchestrators tab. Turn the orchestrator
+  on: the card goes back to normal without reloading.
