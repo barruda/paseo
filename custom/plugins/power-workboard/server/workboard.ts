@@ -188,6 +188,7 @@ import {
   handoffSection, // CUSTOM(task-checkpoints)
   fixPrompt,
   orchestratorPrompt,
+  type Ticket, // CUSTOM(task-description-files)
   parseTicket,
   pullRequestPrompt,
   refinementPrompt,
@@ -575,6 +576,21 @@ export class Workboard {
   private inventoryNow(): Promise<Inventory> {
     return this.host.inventory(this.trackedWorkspaces());
   }
+  /** CUSTOM(task-description-files): a task's title and description, for a prompt. */
+  private ticket(task: Pick<Task, "id" | "title">): Ticket {
+    return { title: task.title, body: this.store.description(task.id) };
+  }
+  /** CUSTOM(task-description-files): the texts behind taskDescriptionsRpc. */
+  taskDescriptions(taskIds: readonly string[]) {
+    const wanted = new Set(taskIds);
+    return this.store.current.tasks
+      .filter((task) => wanted.has(task.id))
+      .map((task) => ({
+        taskId: task.id,
+        revision: task.descriptionRevision,
+        text: this.store.description(task.id),
+      }));
+  }
   private task(id: string): Task {
     const task = this.store.current.tasks.find((t) => t.id === id);
     if (!task) throw new Error("Task no longer exists");
@@ -663,6 +679,18 @@ export class Workboard {
   }
   private async load() {
     await this.store.load();
+    // CUSTOM(task-description-files): descriptions still in the JSON move to their files. If that
+    // fails they stay in the JSON, still readable, and the next load tries again.
+    if (this.store.hasLegacyDescriptions)
+      try {
+        await this.store.moveDescriptions();
+      } catch (error) {
+        console.error(
+          "Moving task descriptions to files failed:",
+          message(error),
+        );
+        await this.store.load();
+      }
     // CUSTOM(packages): a gate interrupted by a restart is not left running forever.
     if (this.store.current.packageRuns.some((run) => run.status === "running"))
       await this.store.update((data) => {
@@ -867,8 +895,10 @@ export class Workboard {
             activities.includes(a),
           ) ?? "idle";
         const stage = this.taskStage(task, data, workspace);
+        // CUSTOM(task-description-files): the snapshot carries no description.
+        const { description: _description, ...fields } = task;
         return {
-          ...task,
+          ...fields,
           stage,
           labels: workspace?.labels ?? [],
           managedLabels: statusLabels(
@@ -1506,7 +1536,7 @@ export class Workboard {
             throw new Error("Choose a To do group for a new draft");
           if (kind === "scheduled") timing ??= { kind: "night" };
           const taskId = randomUUID();
-          await this.store.update((data) => {
+          await this.store.update((data, descriptions) => {
             const task = newTask(
               taskId,
               input.title,
@@ -1515,7 +1545,7 @@ export class Workboard {
               data.nextTaskNumber, // CUSTOM(task-numbers)
             );
             data.nextTaskNumber += 1;
-            task.description = input.description;
+            descriptions.set(taskId, input.description);
             task.projectId = input.projectId;
             task.orchestratorId = input.orchestratorId ?? null;
             task.timing = timing; // CUSTOM(night-tasks)
@@ -1770,7 +1800,7 @@ export class Workboard {
                 : "Task is archived",
             );
           if (input.action === "edit") {
-            await this.store.update((data) => {
+            await this.store.update((data, descriptions) => {
               const current = data.tasks.find((t) => t.id === task.id)!;
               if (current.updatedAt !== input.updatedAt)
                 throw new Error("Task changed; refresh before saving");
@@ -1781,7 +1811,7 @@ export class Workboard {
                   this.inventory.projects.find((p) => p.id === input.projectId)
                     ?.name ?? "";
               }
-              current.description = input.description;
+              descriptions.set(current.id, input.description);
               if (input.orchestratorId !== undefined)
                 current.orchestratorId = input.orchestratorId;
               // CUSTOM(night-tasks): only a draft can be scheduled; it moves in or out of Scheduled.
@@ -1950,7 +1980,7 @@ export class Workboard {
               };
             });
           } else if (input.action === "detach-draft") {
-            await this.store.update((data) => {
+            await this.store.update((data, descriptions) => {
               const current = data.tasks.find((t) => t.id === task.id)!;
               if (current.updatedAt !== input.updatedAt)
                 throw new Error("detach-draft-stale");
@@ -1960,10 +1990,11 @@ export class Workboard {
               if (!source) throw new Error("detach-draft-missing");
               if (data.tasks.some((t) => t.id === source.draftId))
                 throw new Error("detach-draft-id-in-use");
-              const start = current.description.indexOf(source.appendedText);
+              const text = descriptions.get(current.id);
+              const start = text.indexOf(source.appendedText);
               if (
                 start < 0 ||
-                current.description.indexOf(source.appendedText, start + 1) >= 0
+                text.indexOf(source.appendedText, start + 1) >= 0
               )
                 throw new Error("detach-draft-text-changed");
               const draft = newTask(
@@ -1977,10 +2008,12 @@ export class Workboard {
                 data.nextTaskNumber, // CUSTOM(task-numbers)
               );
               data.nextTaskNumber += 1;
-              draft.description = source.description;
-              current.description =
-                current.description.slice(0, start) +
-                current.description.slice(start + source.appendedText.length);
+              descriptions.set(draft.id, source.description);
+              descriptions.set(
+                current.id,
+                text.slice(0, start) +
+                  text.slice(start + source.appendedText.length),
+              );
               current.mergedDrafts = current.mergedDrafts.filter(
                 (entry) => entry !== source,
               );
@@ -2085,18 +2118,20 @@ export class Workboard {
       const workspace = await this.host.workspace(workspaceId);
       if (!workspace) throw new Error("Binding workspace is unavailable");
       let survivorId = id;
-      await this.store.update((data) => {
+      await this.store.update((data, descriptions) => {
         const current = data.tasks.find((t) => t.id === id)!;
         const imported = data.tasks.find(
           (t) => t.workspaceId === workspaceId && t.id !== id,
         );
+        const currentText = descriptions.get(current.id);
         if (binding.target.kind === "existing" && imported) {
-          const appendedText = `${imported.description ? "\n\n" : ""}[${current.title}]\n${current.description}`;
-          imported.description += appendedText;
+          const importedText = descriptions.get(imported.id);
+          const appendedText = `${importedText ? "\n\n" : ""}[${current.title}]\n${currentText}`;
+          descriptions.set(imported.id, importedText + appendedText);
           imported.mergedDrafts.push({
             draftId: current.id,
             title: current.title,
-            description: current.description,
+            description: currentText,
             mergedAt: this.stamp(),
             appendedText,
           });
@@ -2105,14 +2140,16 @@ export class Workboard {
           survivorId = imported.id;
           data.tasks = data.tasks.filter((t) => t.id !== id);
         } else {
+          let text = currentText;
           if (imported) {
-            current.description = [current.description, imported.description]
+            text = [text, descriptions.get(imported.id)]
               .filter(Boolean)
               .join("\n\n");
             data.tasks = data.tasks.filter((t) => t.id !== imported.id);
           }
           if (binding.target.kind === "existing" && !binding.workspaceId)
-            current.description = `[${current.title}]\n${current.description}`;
+            text = `[${current.title}]\n${text}`;
+          descriptions.set(current.id, text);
           current.workspaceId = workspaceId;
           current.binding = { ...binding, workspaceId };
           current.updatedAt = this.stamp(current.updatedAt);
@@ -2246,7 +2283,7 @@ export class Workboard {
       modeId: defaults.refineModeId,
       thinkingOptionId: settings.thinkingOptionId,
       title: refinementChatTitle(task.title),
-      prompt: refinementPrompt(task, settings.instructions),
+      prompt: refinementPrompt(this.ticket(task), settings.instructions),
       labels: { [REFINEMENT_CHAT_LABEL]: "true" }, // CUSTOM(sidebar-agent-tabs)
       // CUSTOM(unattended-automation)
       unattended: true, // refinement chats have no form: full access
@@ -2397,11 +2434,11 @@ export class Workboard {
       .then((reply) =>
         this.serial(async () => {
           const ticket = parseTicket(reply);
-          await this.store.update((data) => {
+          await this.store.update((data, descriptions) => {
             const current = data.tasks.find((t) => t.id === taskId);
             if (!current || current.workspaceId) return;
             if (ticket.title) current.title = ticket.title;
-            current.description = ticket.description;
+            descriptions.set(current.id, ticket.description);
             current.updatedAt = this.stamp(current.updatedAt);
           });
           await this.setRefinement(taskId, { status: "written" });
@@ -4677,6 +4714,7 @@ export class Workboard {
       now: new Date(),
       // CUSTOM(assistant-wake): the dashboard counts down to this wake.
       notifyAt: this.wakeDueAt ? new Date(this.wakeDueAt).toISOString() : null,
+      description: (taskId) => this.store.description(taskId), // CUSTOM(task-description-files)
     };
   }
   /**
@@ -7207,7 +7245,7 @@ export class Workboard {
         unattended: runsUnattended(config),
         title: task.title,
         prompt: orchestratorPrompt(
-          task,
+          this.ticket(task),
           config.instructions,
           this.assistantOn(),
           this.testSection(task), // CUSTOM(packages)
@@ -7318,7 +7356,12 @@ export class Workboard {
           unattended: runsUnattended(settings),
           title: task.title,
           prompt: [
-            orchestratorPrompt(task, settings.instructions, false, tests),
+            orchestratorPrompt(
+              this.ticket(task),
+              settings.instructions,
+              false,
+              tests,
+            ),
             // CUSTOM(task-checkpoints): the new agent gets the checklist, last summary and branch.
             handoffSection({
               progress,

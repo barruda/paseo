@@ -70,6 +70,16 @@ this repo) with these differences:
   reused. Existing tickets get theirs in a migration. The board tools accept the UUID or the
   short number as `42` or `#42` wherever they take a task id, and
   `board_list_tasks`/`board_overview` show the number.
+- **Descriptions on disk.** A task's description is saved in
+  `plugin-data/power-workboard/tasks/<taskId>.md` (written to a temporary file, then renamed), not
+  in `workboard-data.json`, which keeps only its length and a revision. The daemon plugin holds
+  every text in memory and reads it through one accessor (`Store.description`); the board snapshot
+  carries none, so the ticket panel, the editor and the board search fetch them by revision. The
+  editor opens once its text is read, so a save never replaces a description it did not load.
+  Descriptions saved in the JSON by an older version move to their files when the board starts; the
+  JSON copy is cleared only after the file is written, and until then it is the one read. A task
+  that leaves the board takes its file with it. Images keep working: the text still references
+  them by path.
 - **Ticket panel.** Middle-click a card, right-click it and choose **Open in panel**, or
   long-press it on a phone or tablet, to read the ticket beside the board without leaving it. The
   context menu stays inside the screen near an edge. One panel at a time: opening another ticket

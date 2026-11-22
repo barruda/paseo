@@ -10131,3 +10131,47 @@ src/assistant-sidebar)` (in the update script). Needs an app build; no daemon re
   (in the update script) and the token-ledger `npm test`. In the app, finish a turn and narrow the
   window or open the PM sidebar: "Worked for" stays on one line next to the copy and fork icons, and
   the model and token figures wrap below each other to its right.
+
+## task-description-files: Workboard task descriptions live in one file per task
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: Workboard task descriptions move out of the board JSON into one file per task`
+- **Why:** Ticket 1 of `custom/plugins/power-workboard/docs/factory.md`. Descriptions were about
+  430 KB of the 870 KB `workboard-data.json`; every board save rewrote them, every `store.current`
+  cloned them, and the snapshot the board polls every 1.5 s carried them all.
+- **What:**
+  - `server/descriptions.ts`: `plugin-data/power-workboard/tasks/<taskId>.md`, written to a
+    temporary file and renamed; ids that are not `[A-Za-z0-9_-]+` are refused.
+  - `server/store.ts`: the Store keeps every text in memory (`description(taskId)` is the one
+    accessor) and the task in the JSON keeps `description: ""`, `descriptionLength` and
+    `descriptionRevision`. `update((data, descriptions) => …)` gets an editor (`get`/`set`); a save
+    writes the changed files first, then the JSON, and deletes the files of tasks that left the
+    board. A text set straight on `task.description` is moved to its file too.
+  - Migration (no schema version bump: the new fields default): `Store.load` reads a JSON
+    `description` as the text and marks the task legacy; `Workboard.load` calls
+    `moveDescriptions()`, which writes the files and then clears the JSON copy. Interrupted
+    between the two, the JSON copy wins on the next load and the move runs again. A failed move is
+    logged and the board starts anyway.
+  - Readers: orchestrator and refinement prompts (`Ticket { title, body }`, so a `Task` with its
+    empty field no longer fits), `/write-ticket`, draft merges and detach, the PM tools
+    (`board_list_tasks` search, `board_get_task`, `board_update_task` keeps the text when omitted,
+    `board_create_task`), and the Reports page (`ViewSource.description`).
+  - Wire: `cardSchema` omits `description`; new `workboard.task-descriptions` RPC
+    (`taskDescriptionsRpc`, `{ taskIds }` → `{ taskId, revision, text }[]`). Client:
+    `client/task-description.ts` caches per revision; the ticket panel loads it (with loading and
+    error text), the editor opens only after `fetchQuery` returns it, and the board search fetches
+    the visible cards' texts only while it has text.
+- **Core files touched:** none (plugin only).
+- **Re-apply:** plugin files only: `server/descriptions.ts`, `server/store.ts`, the
+  `descriptions` editor uses in `server/workboard.ts` (create, edit, detach-draft, bind, write
+  ticket, prompts via `ticket()`, snapshot without `description`, `taskDescriptions`, the move in
+  `load`), `index.server.ts` (files passed to the Store, the RPC), `shared/model.ts`,
+  `shared/rpc.ts`, `client/task-description.ts`, `TaskPanel.tsx`, `WorkboardScreen.tsx`,
+  `board-utils.ts`.
+- **Verify:** the plugin suite (`tests/task-descriptions.test.ts`: files, accessor, revision,
+  removal, migration with an interrupted run and with a failed file write, start-up migration, the
+  start prompt, search). Needs only `plugin reload power-workboard`. Then `workboard-data.json`
+  drops by about 430 KB and `~/.paseo/plugin-data/power-workboard/tasks/` holds one `.md` per task
+  with a description. In the app: open a card in the panel (the description shows), Edit a card
+  (the text is there; save a change), search the board for a word only in a description, create a
+  task and start one.

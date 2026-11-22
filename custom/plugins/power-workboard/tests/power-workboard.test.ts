@@ -549,7 +549,7 @@ it("disabling stops new starts and a task without a project waits for an edit", 
 });
 
 it("refines a draft in a chat and /write-ticket replaces its title and description", async () => {
-  const { board, host, inventory } = orchestrated();
+  const { board, host, inventory, store } = orchestrated();
   await board.start();
   try {
     await board.mutate({
@@ -592,7 +592,8 @@ it("refines a draft in a chat and /write-ticket replaces its title and descripti
     await new Promise((resolve) => setTimeout(resolve, 0));
     await board.refresh();
     const written = board.snapshot().cards.find((card) => card.id === task.id)!;
-    expect(written).toMatchObject({ title: "Ticket", description: "Body" });
+    expect(written.title).toBe("Ticket");
+    expect(store.description(task.id)).toBe("Body");
     expect(written.stage).toBe("backlog");
     expect(board.snapshot().refinements[task.id].status).toBe("written");
 

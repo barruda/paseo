@@ -208,9 +208,10 @@ it("create_task goes to the Backlog by default and to Ready to start with start:
     const cards = c.board.snapshot().cards;
     expect(cards.find((x) => x.id === draft.taskId)).toMatchObject({
       title: "Fix it",
-      description: "Goal",
+      descriptionLength: 4,
       projectId: "p",
     });
+    expect(c.store.description(draft.taskId)).toBe("Goal");
     const list = await c.run("board_list_tasks", { column: "ready" });
     expect(list.text).toContain("Now");
     expect(list.text).not.toContain("Fix it");
@@ -229,10 +230,8 @@ it("update_task and move_task go through the board's own mutations", async () =>
     expect(
       (await c.run("board_update_task", { taskId, title: "Renamed" })).isError,
     ).toBeUndefined();
-    expect(c.board.snapshot().cards[0]).toMatchObject({
-      title: "Renamed",
-      description: "Goal",
-    });
+    expect(c.board.snapshot().cards[0]).toMatchObject({ title: "Renamed" });
+    expect(c.store.description(taskId)).toBe("Goal");
     expect(
       (await c.run("board_move_task", { taskId, column: "ready" })).text,
     ).toContain("Moved");

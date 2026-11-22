@@ -292,7 +292,7 @@ function taskInfo(
     projectName,
     column: card ? (group ? (group.name ?? group.label) : card.stage) : null,
     columnId: card ? card.stage : null,
-    description: task?.description ?? "",
+    description: task ? source.description(taskId) : "",
   };
 }
 

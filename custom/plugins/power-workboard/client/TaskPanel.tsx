@@ -21,6 +21,7 @@ import { ConversationThread, RichText } from "./assistant/conversations-thread";
 import { conversationsStrings } from "./assistant/conversations-strings";
 import { usePaseoLanguage } from "./paseo-language";
 import { onEscapeKey } from "./web";
+import { useTaskDescription } from "./task-description"; // CUSTOM(task-description-files)
 import type { CardMenuItem } from "./card-menu";
 import {
   MENU_EDGE,
@@ -540,19 +541,7 @@ export function TaskPanel({
             >
               {t.ticketPanel.description}
             </Text>
-            {card.description.trim() ? (
-              <RichText
-                text={card.description}
-                color={theme.colors.foreground}
-                theme={theme}
-              />
-            ) : (
-              <Text
-                style={[styles.body, { color: theme.colors.foregroundMuted }]}
-              >
-                {t.ticketPanel.emptyDescription}
-              </Text>
-            )}
+            <TicketDescription card={card} t={t} theme={theme} />
           </View>
           {record?.summary ? (
             <View style={styles.section}>
@@ -613,6 +602,36 @@ export function TaskPanel({
         </ScrollView>
       )}
     </View>
+  );
+}
+
+/** CUSTOM(task-description-files): the description is read on open, not from the snapshot. */
+function TicketDescription({
+  card,
+  t,
+  theme,
+}: {
+  card: Card;
+  t: Strings;
+  theme: Theme;
+}) {
+  const query = useTaskDescription(card);
+  if (query.data?.trim())
+    return (
+      <RichText
+        text={query.data}
+        color={theme.colors.foreground}
+        theme={theme}
+      />
+    );
+  return (
+    <Text style={[styles.body, { color: theme.colors.foregroundMuted }]}>
+      {query.isPending
+        ? t.ticketPanel.loadingDescription
+        : query.isError
+          ? t.ticketPanel.descriptionFailed
+          : t.ticketPanel.emptyDescription}
+    </Text>
   );
 }
 

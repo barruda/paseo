@@ -44,6 +44,8 @@ const task = (id: string, number: number): Task => ({
   workspaceId: null,
   title: id,
   description: "",
+  descriptionLength: 0,
+  descriptionRevision: 0,
   projectId: "p",
   projectName: "Project",
   createdAt: "2026-01-01T00:00:00Z",

@@ -571,7 +571,15 @@ export const taskSchema = z.object({
   number: z.number().int().min(0).default(0),
   workspaceId: z.string().nullable(),
   title: z.string().min(1),
-  description: z.string(),
+  /**
+   * CUSTOM(task-description-files): the text lives in `plugin-data/power-workboard/tasks/<id>.md`
+   * and is read through `Store.description`. Here it is "" except on data saved before that, until
+   * the Store moves it to the file.
+   */
+  description: z.string().default(""),
+  descriptionLength: z.number().int().min(0).default(0),
+  /** Goes up on every change of the description, so a client refetches only then. */
+  descriptionRevision: z.number().int().min(0).default(0),
   projectId: z.string().nullable(),
   projectName: z.string(),
   createdAt: z.string(),
@@ -889,7 +897,9 @@ export const activitySchema = z.enum([
 export const pinStateSchema = z
   .enum(["none", "automatic", "manual"])
   .default("none");
-export const cardSchema = taskSchema.extend({
+// CUSTOM(task-description-files): the snapshot carries no description; the client reads it with
+// taskDescriptionsRpc.
+export const cardSchema = taskSchema.omit({ description: true }).extend({
   stage: z.union([stageSchema, z.literal("conflict")]),
   labels: z.array(z.string()),
   managedLabels: z.array(z.string()),
@@ -1000,6 +1010,8 @@ export function newTask(
     number,
     title,
     description: "",
+    descriptionLength: 0,
+    descriptionRevision: 0,
     workspaceId: null,
     projectId: null,
     projectName: "",

@@ -232,7 +232,7 @@ it("Scheduled holds the timing: dropping a draft there makes it a night task, ed
         taskId: card.id,
         updatedAt: card.updatedAt,
         title: card.title,
-        description: card.description,
+        description: s.store.description(card.id),
         projectId: card.projectId,
         timing: timing as never,
       });

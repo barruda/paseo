@@ -145,6 +145,7 @@ const source: ViewSource = {
     agent("sub1", { parentAgentId: "a1b" } as never),
   ],
   now,
+  description: () => "",
 };
 
 describe("overview", () => {
