@@ -14,6 +14,7 @@ import {
   readImageRpc,
   saveImageRpc,
   snapshotRpc,
+  taskDescriptionsRpc, // CUSTOM(task-description-files)
   projectAccentsRpc, // CUSTOM(project-icon-colors)
   projectIconsRpc, // CUSTOM(project-icon-colors)
   deskStatusRpc,
@@ -88,6 +89,14 @@ import {
 import { factoryPipelinesView } from "./shared/factory/active";
 import { defaultProfilesDirectory } from "./server/profiles";
 import { ImageStore, defaultImageDirectory } from "./server/images";
+// CUSTOM(task-description-files)
+import {
+  backupOnce,
+  defaultDescriptionDirectory,
+  defaultSettingsFile,
+  directoryDescriptionFiles,
+  preDescriptionsBackupFile,
+} from "./server/descriptions";
 import { PaseoCompat } from "./server/paseo-compat";
 import { PaseoHost } from "./server/host";
 import { Store } from "./server/store";
@@ -118,29 +127,39 @@ export default function contribute(server: PluginServerContext) {
       migrate: migrateData,
     }),
   );
-  const store = new Store({
-    read: async () => {
-      const result = await settings.read();
-      if (result.status === "invalid") {
-        if (result.error.includes(UNSUPPORTED_STORAGE_VERSION_ERROR_CODE))
+  const store = new Store(
+    {
+      read: async () => {
+        const result = await settings.read();
+        if (result.status === "invalid") {
+          if (result.error.includes(UNSUPPORTED_STORAGE_VERSION_ERROR_CODE))
+            throw new UnsupportedStorageVersionError();
+          throw new InvalidStorageDataError();
+        }
+        const version =
+          result.values &&
+          typeof result.values === "object" &&
+          "schemaVersion" in result.values
+            ? result.values.schemaVersion
+            : undefined;
+        if (typeof version === "number" && version !== DATA_SCHEMA_VERSION)
           throw new UnsupportedStorageVersionError();
-        throw new InvalidStorageDataError();
-      }
-      const version =
-        result.values &&
-        typeof result.values === "object" &&
-        "schemaVersion" in result.values
-          ? result.values.schemaVersion
-          : undefined;
-      if (typeof version === "number" && version !== DATA_SCHEMA_VERSION)
-        throw new UnsupportedStorageVersionError();
-      if (!dataSchema.safeParse(result.values).success)
-        throw new InvalidStorageDataError();
-      return result;
+        if (!dataSchema.safeParse(result.values).success)
+          throw new InvalidStorageDataError();
+        return result;
+      },
+      write: (revision, values) =>
+        compat.invoke("settings.workboard-data.write", { revision, values }),
+      // CUSTOM(task-description-files): one copy of the JSON before descriptions leave it.
+      backup: async () => {
+        const file = defaultSettingsFile();
+        const target = preDescriptionsBackupFile(file);
+        if (await backupOnce(file, target))
+          console.log(`Workboard data backed up to ${target}`);
+      },
     },
-    write: (revision, values) =>
-      compat.invoke("settings.workboard-data.write", { revision, values }),
-  });
+    directoryDescriptionFiles(defaultDescriptionDirectory()),
+  ); // CUSTOM(task-description-files)
   // CUSTOM(projects-assistant): created once; the board gets it on every (re)boot.
   const history = new HistoryStore(defaultHistoryDirectory());
   void history.prune().catch(() => undefined);
@@ -251,6 +270,11 @@ export default function contribute(server: PluginServerContext) {
   server.handle(factoryStatusRpc, () => {
     if (!board) throw new Error(error);
     return factory.status();
+  });
+  // CUSTOM(task-description-files): descriptions are not in the snapshot.
+  server.handle(taskDescriptionsRpc, (input) => {
+    if (!board) throw new Error(error);
+    return { descriptions: board.taskDescriptions(input.taskIds) };
   });
   // CUSTOM(workboard-chip-status): the Desk header chip's counts.
   server.handle(deskStatusRpc, () => {

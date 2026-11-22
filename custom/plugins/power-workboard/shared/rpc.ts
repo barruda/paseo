@@ -305,6 +305,18 @@ export const readImageRpc = defineRpc({
   output: z.object({ dataUri: z.string() }),
 });
 
+// CUSTOM(task-description-files): the snapshot has no descriptions; the ticket panel, the editor
+// and the board search read them here. A task that no longer exists is left out.
+export const taskDescriptionsRpc = defineRpc({
+  name: "workboard.task-descriptions",
+  input: z.object({ taskIds: z.array(z.string()).max(10000) }),
+  output: z.object({
+    descriptions: z.array(
+      z.object({ taskId: z.string(), revision: z.number(), text: z.string() }),
+    ),
+  }),
+});
+
 export const writeTicketRpc = defineRpc({
   name: "workboard.refinement.write-ticket",
   input: z.object({

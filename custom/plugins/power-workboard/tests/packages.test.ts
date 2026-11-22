@@ -36,6 +36,8 @@ const task = (
   workspaceId: null,
   title: id,
   description: "",
+  descriptionLength: 0,
+  descriptionRevision: 0,
   projectId: "p",
   projectName: "Project",
   createdAt: "2026-01-01T00:00:00Z",
@@ -107,10 +109,13 @@ describe("test tiers", () => {
   });
 
   it("keeps a ticket without a package on exactly today's prompt", () => {
-    const without = orchestratorPrompt(task("t1", null), "Do it.");
+    const without = orchestratorPrompt(
+      { title: task("t1", null).title, body: "" },
+      "Do it.",
+    );
     expect(without).not.toContain("## Tests");
     const withPackage = orchestratorPrompt(
-      task("t2", "pkg-1"),
+      { title: task("t2", "pkg-1").title, body: "" },
       "Do it.",
       false,
       testSectionFor(task("t2", "pkg-1"), policy(), "Auth"),

@@ -29,6 +29,8 @@ export interface ViewSource {
   now: Date;
   /** CUSTOM(assistant-wake): when the pending wake fires; absent when none is armed. */
   notifyAt?: string | null;
+  /** CUSTOM(task-description-files): a task's description (`Store.description`). */
+  description(taskId: string): string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;

@@ -593,7 +593,9 @@ export function chatTools(
               (!stage || c.stage === stage) &&
               (!project || c.projectId === project) &&
               (!query ||
-                `${c.title}\n${c.description}`.toLowerCase().includes(query)),
+                `${c.title}\n${source.description(c.id)}` // CUSTOM(task-description-files)
+                  .toLowerCase()
+                  .includes(query)),
           )
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
           .slice(0, input.limit);
@@ -614,14 +616,15 @@ export function chatTools(
       async execute({ taskId }) {
         const c = card(taskId);
         const id = c.id;
-        const data = board().assistantSource().data;
+        const source = board().assistantSource();
+        const data = source.data;
         const run = data.orchestrations[id];
         const d = data.assistant.deliveries[id];
         const finish = data.finishes[id];
         const attempts = data.assistant.attempts[id] ?? [];
         const parts = [
           line(c, board().snapshot(), data.assistant.deliveries),
-          `Description:\n${c.description || "(empty)"}`,
+          `Description:\n${source.description(id) || "(empty)"}`, // CUSTOM(task-description-files)
           `Run: ${run ? `${run.status}, agent ${run.agentId ?? "-"}${run.error ? `, error: ${run.error}` : ""}` : "none"}`,
           `Last summary: ${run?.summary ?? "-"}`,
           checkpointLines(run, data.assistant.progress[id]), // CUSTOM(task-checkpoints)
@@ -749,7 +752,8 @@ export function chatTools(
             taskId: c.id,
             updatedAt: c.updatedAt,
             title: input.title ?? c.title,
-            description: input.description ?? c.description,
+            description:
+              input.description ?? board().assistantSource().description(c.id), // CUSTOM(task-description-files)
             projectId: projectId !== undefined ? projectId : c.projectId,
             ...(orchestratorId !== undefined ? { orchestratorId } : {}),
           },

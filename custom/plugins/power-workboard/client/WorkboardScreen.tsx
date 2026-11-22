@@ -63,6 +63,7 @@ import {
   redeployPaseoRpc,
   saveImageRpc,
   snapshotRpc,
+  taskDescriptionsRpc, // CUSTOM(task-description-files)
   packageRunsRpc,
   type Mutation,
 } from "../shared/rpc";
@@ -178,6 +179,11 @@ import {
 } from "./assistant/workboard-pages";
 // CUSTOM(workboard-images)
 import { DescriptionImages } from "./DescriptionImages";
+// CUSTOM(task-description-files)
+import {
+  taskDescriptionQuery,
+  useSearchDescriptions,
+} from "./task-description";
 import {
   blobToBase64,
   pickImages,
@@ -236,6 +242,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
   const callSnapshot = useRpc(snapshotRpc);
   const callMutation = useRpc(mutateRpc);
   const callRedeploy = useRpc(redeployPaseoRpc); // CUSTOM(redeploy-button)
+  const callDescriptions = useRpc(taskDescriptionsRpc); // CUSTOM(task-description-files)
   const [confirmingRedeploy, setConfirmingRedeploy] = useState(false);
   const [redeployResult, setRedeployResult] = useState<{
     ok: boolean;
@@ -354,6 +361,15 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     queryFn: () => callSnapshot({}),
     refetchInterval: 1_500,
   });
+  // CUSTOM(task-description-files): the search matches descriptions, read only while it has text.
+  const searchDescriptions = useSearchDescriptions(
+    (boardQuery.data?.cards ?? []).filter(
+      (card) =>
+        card.archived?.status !== "archived" &&
+        card.archived?.status !== "external",
+    ),
+    search.trim().length > 0,
+  );
   // CUSTOM(packages): the gate history is only read while a package detail is open.
   const callPackageRuns = useRpc(packageRunsRpc);
   const callAsk = useRpc(assistantAskRpc);
@@ -543,7 +559,14 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     },
     optimisticStages,
   );
-  const cards = visibleCards(board, projectId, search, attentionOnly, filters);
+  const cards = visibleCards(
+    board,
+    projectId,
+    search,
+    attentionOnly,
+    filters,
+    searchDescriptions,
+  );
   const filterCount = activeFilterCount(filters);
   const hasActiveFilter = filterCount > 0;
   // CUSTOM(packages): selection and package actions. The board snapshot updates optimistically
@@ -1173,6 +1196,27 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       projectId: projectId === "all" || projectId === "none" ? null : projectId,
     });
   const clearFilters = () => updateFilters(DEFAULT_FILTERS);
+  // CUSTOM(task-description-files): the editor opens once the description is read, so a save
+  // never replaces a text it did not load.
+  const editTask = async (card: Card) => {
+    try {
+      const { text } = await cache.fetchQuery(
+        taskDescriptionQuery(callDescriptions, card),
+      );
+      setDraft({
+        task: card,
+        title: card.title,
+        description: text,
+        projectId: card.projectId,
+        orchestratorId: card.orchestratorId,
+        timing: card.timing,
+      });
+    } catch (failure) {
+      toast.error(
+        `${t.ticketPanel.descriptionFailed} ${failure instanceof Error ? failure.message : String(failure)}`,
+      );
+    }
+  };
   const notifyTaskSaved = (next: Board, editedId?: string, quick = false) => {
     const saved = editedId
       ? next.cards.find((card) => card.id === editedId)
@@ -1183,9 +1227,14 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
         );
     const hidden =
       saved &&
-      !visibleCards(next, projectId, search, attentionOnly, filters).some(
-        (card) => card.id === saved.id,
-      );
+      !visibleCards(
+        next,
+        projectId,
+        search,
+        attentionOnly,
+        filters,
+        searchDescriptions,
+      ).some((card) => card.id === saved.id);
     const message = editedId
       ? hidden
         ? t.taskUpdatedHidden
@@ -1227,16 +1276,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             serverId: board.serverId,
           });
       }}
-      onEdit={() =>
-        setDraft({
-          task: card,
-          title: card.title,
-          description: card.description,
-          projectId: card.projectId,
-          orchestratorId: card.orchestratorId,
-          timing: card.timing,
-        })
-      }
+      onEdit={() => void editTask(card)}
       onStart={() => setStarting({ card })}
       onOpenAgent={(agentId) => openAgent(agentId, card)}
       onRefine={async () => {
@@ -1982,16 +2022,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
                 : undefined
             }
             onOpenAgent={(id) => openAgent(id, panelCard)}
-            onEdit={() =>
-              setDraft({
-                task: panelCard,
-                title: panelCard.title,
-                description: panelCard.description,
-                projectId: panelCard.projectId,
-                orchestratorId: panelCard.orchestratorId,
-                timing: panelCard.timing,
-              })
-            }
+            onEdit={() => void editTask(panelCard)}
             onStatus={
               panelCard.binding || panelCard.archived
                 ? undefined

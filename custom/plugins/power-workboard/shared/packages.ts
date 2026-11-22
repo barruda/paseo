@@ -183,11 +183,13 @@ export function packageViews(
 }
 
 /** The package's tickets in merge order: merged ones first, oldest merge first. */
-export function packageTaskOrder(
-  tasks: readonly Task[],
+export function packageTaskOrder<
+  T extends Pick<Task, "id" | "number" | "packageId">,
+>(
+  tasks: readonly T[],
   finishes: Readonly<Record<string, Finish>>,
   packageId: string,
-): Task[] {
+): T[] {
   return tasks
     .filter((task) => task.packageId === packageId)
     .sort((left, right) => {

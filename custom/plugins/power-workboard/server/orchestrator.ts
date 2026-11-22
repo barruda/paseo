@@ -138,9 +138,18 @@ export function conflictPrompt(baseBranch: string, tests = ""): string {
     .join("\n\n");
 }
 
+/**
+ * CUSTOM(task-description-files): the ticket a prompt is built from. `body` is the description
+ * from `Store.description`; a `Task` does not fit here, because its `description` field is "".
+ */
+export interface Ticket {
+  title: string;
+  body: string;
+}
+
 /** The first message an orchestrated agent receives. */
 export function orchestratorPrompt(
-  task: Task,
+  task: Ticket,
   instructions: string,
   assistant = false, // CUSTOM(projects-assistant)
   tests = "", // CUSTOM(packages)
@@ -148,7 +157,7 @@ export function orchestratorPrompt(
   return [
     instructions.trim(),
     `# ${task.title}`,
-    task.description.trim(),
+    task.body.trim(),
     "---",
     "You were started by the Workboard orchestrator for the task above. Do the whole task in this workspace without waiting for confirmation. When you are done, reply with a short summary of what you changed and what a reviewer should check.",
     tests,
@@ -178,12 +187,12 @@ export function continuationPrompt(
 }
 
 /** The first message of a refinement chat. */
-export function refinementPrompt(task: Task, instructions: string): string {
+export function refinementPrompt(task: Ticket, instructions: string): string {
   return [
     instructions.trim(),
     "You are refining a task from the Workboard before another agent executes it. Do not change files or run anything that changes state: read the code, ask the user questions and propose an approach. Keep answers short. When the user is satisfied they run /write-ticket, and you will write the final ticket.",
     `# ${task.title}`,
-    task.description.trim(),
+    task.body.trim(),
     "---",
     "Start by reading what is relevant, then ask your most important questions.",
   ]

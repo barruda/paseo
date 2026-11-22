@@ -21,7 +21,7 @@ import {
   pipelineFileSchema,
   type PipelineFile,
 } from "../shared/factory/schema";
-import { BUILTIN_FACTORY_DIR } from "../server/factory/builtin";
+import { builtinFactoryDir } from "../server/factory/builtin";
 
 const edge = (graph: PipelineGraph, from: string, to: string): GraphEdge => {
   const found = graph.edges.find((e) => e.from === from && e.to === to);
@@ -64,7 +64,7 @@ describe("built-in pipelines", () => {
     "%s matches its YAML file and is valid",
     async (id) => {
       const text = await readFile(
-        path.join(BUILTIN_FACTORY_DIR, "pipelines", `${id}.yaml`),
+        path.join(builtinFactoryDir(), "pipelines", `${id}.yaml`),
         "utf8",
       );
       const fromFile = pipelineFileSchema.parse(parse(text));
@@ -76,7 +76,7 @@ describe("built-in pipelines", () => {
 
   it("has a constant for every YAML file", async () => {
     const { readdir } = await import("node:fs/promises");
-    const files = await readdir(path.join(BUILTIN_FACTORY_DIR, "pipelines"));
+    const files = await readdir(path.join(builtinFactoryDir(), "pipelines"));
     expect(files.map((file) => file.replace(/\.yaml$/, "")).sort()).toEqual(
       Object.keys(BUILTIN_PIPELINES).sort(),
     );

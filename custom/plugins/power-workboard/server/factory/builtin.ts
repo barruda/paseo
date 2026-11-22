@@ -6,9 +6,14 @@ import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-export const BUILTIN_FACTORY_DIR = fileURLToPath(
-  new URL("./builtin/", import.meta.url),
-);
+/**
+ * A function, not a module-level constant: shadow.ts imports export.ts, which imports this file,
+ * into the plugin bundle, where the daemon evaluates CJS and `import.meta.url` is undefined, so
+ * `new URL` at import time threw "Invalid URL" and the plugin failed to load.
+ */
+export function builtinFactoryDir(): string {
+  return fileURLToPath(new URL("./builtin/", import.meta.url));
+}
 
 /** A constant, not a file in `builtin/`: a real .gitignore there would apply to this repository. */
 export const FACTORY_GITIGNORE = `# Written by the agents, not part of the config.
@@ -25,17 +30,15 @@ export async function readBuiltinFactoryFiles(): Promise<
   Record<string, string>
 > {
   const files: Record<string, string> = { ".gitignore": FACTORY_GITIGNORE };
-  const entries = await readdir(BUILTIN_FACTORY_DIR, {
+  const dir = builtinFactoryDir();
+  const entries = await readdir(dir, {
     recursive: true,
     withFileTypes: true,
   });
   for (const entry of entries) {
     if (!entry.isFile()) continue;
     const full = path.join(entry.parentPath, entry.name);
-    const relative = path
-      .relative(BUILTIN_FACTORY_DIR, full)
-      .split(path.sep)
-      .join("/");
+    const relative = path.relative(dir, full).split(path.sep).join("/");
     files[relative] = await readFile(full, "utf8");
   }
   return Object.fromEntries(

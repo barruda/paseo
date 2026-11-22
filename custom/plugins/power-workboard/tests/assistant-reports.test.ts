@@ -590,6 +590,8 @@ const source = (tasks: Record<string, unknown>[]): ViewSource => ({
   } as unknown as Board,
   agents: [],
   now: new Date(T0),
+  description: (taskId) =>
+    String(tasks.find((t) => t.id === taskId)?.description ?? ""),
 });
 
 describe("Reports views", () => {

@@ -63,6 +63,8 @@ export function visibleCards(
   filters: Pick<BoardFilters, "activity" | "changeRequest"> & {
     packageId?: string;
   } = DEFAULT_FILTERS,
+  // CUSTOM(task-description-files): the snapshot has no descriptions; the search passes them here.
+  descriptions: ReadonlyMap<string, string> = new Map(),
 ): Card[] {
   const needle = search.trim().toLocaleLowerCase();
   return board.cards.filter(
@@ -81,7 +83,7 @@ export function visibleCards(
       (filters.activity === "all" || card.activity === filters.activity) &&
       matchesRequest(card, filters.changeRequest) &&
       (!needle ||
-        `${card.title} ${card.projectName} ${card.description}`
+        `${card.title} ${card.projectName} ${descriptions.get(card.id) ?? ""}`
           .toLocaleLowerCase()
           .includes(needle)),
   );
