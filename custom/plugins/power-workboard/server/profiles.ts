@@ -57,7 +57,23 @@ export interface ProfileRef {
   label: string;
   /** The first `system-prompt.md`; orchestrators start empty. */
   seedPrompt?: string;
+  /**
+   * CUSTOM(factory): active mode reads the profile from the factory instead: `workers/<id>/` or
+   * `pm/`, with the prompt from its `worker.md`. The plugin never writes the prompt there.
+   */
+  factory?: FactoryProfile;
 }
+
+/** CUSTOM(factory): a profile folder inside the factory. */
+export interface FactoryProfile {
+  directory: string;
+  pluginName: string;
+  systemPrompt: string;
+}
+
+/** CUSTOM(factory): the error a profile prompt edit gets in active mode. */
+export const FACTORY_PROMPT_READ_ONLY =
+  "This prompt comes from the factory; edit worker.md in the factory";
 
 async function writeAtomic(file: string, text: string) {
   const temporary = `${file}.${randomUUID()}.tmp`;
@@ -87,6 +103,7 @@ export class Profiles {
   async ensure(
     ref: ProfileRef,
   ): Promise<{ directory: string; pluginName: string }> {
+    if (ref.factory) return ensureFactoryProfile(ref.factory); // CUSTOM(factory)
     const directory = this.directory(ref.id);
     await mkdir(path.join(directory, ".claude-plugin"), { recursive: true });
     await mkdir(path.join(directory, "skills"), { recursive: true });
@@ -129,8 +146,9 @@ export class Profiles {
 
   async read(ref: ProfileRef): Promise<ProfileView> {
     const { directory, pluginName } = await this.ensure(ref);
-    const systemPrompt =
-      (await readText(path.join(directory, "system-prompt.md"))) ?? "";
+    const systemPrompt = ref.factory // CUSTOM(factory)
+      ? ref.factory.systemPrompt
+      : ((await readText(path.join(directory, "system-prompt.md"))) ?? "");
     const own = await scanSkills(path.join(directory, "skills"));
     return {
       directory,
@@ -144,9 +162,33 @@ export class Profiles {
   }
 
   async setSystemPrompt(ref: ProfileRef, text: string): Promise<void> {
+    if (ref.factory) throw new Error(FACTORY_PROMPT_READ_ONLY); // CUSTOM(factory)
     const { directory } = await this.ensure(ref);
     await writeAtomic(path.join(directory, "system-prompt.md"), text);
   }
+}
+
+/**
+ * CUSTOM(factory): the Claude plugin manifest and the memory folder of a factory profile. Both are
+ * git-ignored in the factory (`.claude-plugin/`, `memory/`); nothing tracked is written.
+ */
+async function ensureFactoryProfile(
+  profile: FactoryProfile,
+): Promise<{ directory: string; pluginName: string }> {
+  const { directory, pluginName } = profile;
+  await mkdir(path.join(directory, ".claude-plugin"), { recursive: true });
+  await mkdir(path.join(directory, "memory"), { recursive: true });
+  const manifest = path.join(directory, ".claude-plugin", "plugin.json");
+  const text = `${JSON.stringify(
+    {
+      name: pluginName,
+      description: `Workboard factory profile ${pluginName}`,
+    },
+    null,
+    2,
+  )}\n`;
+  if ((await readText(manifest)) !== text) await writeAtomic(manifest, text);
+  return { directory, pluginName };
 }
 
 export interface AgentProfile {

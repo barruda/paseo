@@ -38,13 +38,13 @@ export const snapshotRpc = defineRpc({
   input: z.object({}),
   output: boardSchema,
 });
-// CUSTOM(factory): the Pipelines tab's source. Today it answers with the built-in pipelines;
-// ticket 9 (active mode) switches it to the loaded factory.
+// CUSTOM(factory): the Pipelines tab's source: the loaded factory in active mode, otherwise the
+// built-in pipelines with each project's from its review policy.
 export const factoryPipelinesRpc = defineRpc({
   name: "workboard.factory.pipelines.get",
   input: z.object({}),
   output: z.object({
-    source: z.literal("builtin"),
+    source: z.enum(["builtin", "factory"]),
     pipelines: z.record(z.string(), pipelineFileSchema),
     projects: z.record(z.string(), z.string()),
     defaultPipeline: z.string(),

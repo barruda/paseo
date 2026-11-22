@@ -39,6 +39,8 @@ export type CompiledWorker = {
   config: OrchestratorConfig;
   /** Defaults to implement, the role of every orchestrator today. */
   role: WorkerRole;
+  /** `priority` of worker.md, 0 when it has none. */
+  priority: number;
   description: string;
   systemPrompt: string;
   /** Names of workers/<id>/skills/*. */
@@ -315,6 +317,7 @@ export function compileFactory(
       id: worker.id,
       config,
       role: own.role ?? DEFAULT_WORKER_ROLE,
+      priority: own.priority ?? 0,
       description: own.description ?? "",
       systemPrompt: worker.systemPrompt,
       ownSkills: worker.skills.map((skill) => skill.name),
@@ -323,6 +326,18 @@ export function compileFactory(
 
   const housekeeping = factory.board.housekeeping ?? {};
   const columns = groupsOf(factory);
+  // The board adds these to the JSON's columns on its own; active mode reads board.yaml as it is.
+  for (const kind of ["ready", "scheduled"] as const)
+    if (!columns.some((column) => column.kind === kind))
+      warnings.push({
+        kind: "compile",
+        file: "board.yaml",
+        line: null,
+        message:
+          kind === "ready"
+            ? "No ready column: in active mode no task starts"
+            : "No scheduled column: in active mode night and scheduled tasks have nowhere to wait",
+      });
   const settings = parseOrIssue(
     settingsSchema,
     defined({

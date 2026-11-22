@@ -2,7 +2,7 @@ import { deskStatusOf, type DeskStatus } from "../shared/desk-status";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   archiveDueAt,
@@ -180,7 +180,21 @@ import {
   type VerifyRunner,
 } from "./assistant/delivery";
 import type { HistoryEventInput, HistoryStore } from "./assistant/history";
-import { workerConfigHash, type RevisionStamp } from "./factory/stamp"; // CUSTOM(factory)
+// CUSTOM(factory)
+import {
+  compiledWorkerConfigHash,
+  workerConfigHash,
+  type RevisionStamp,
+} from "./factory/stamp";
+import {
+  FactoryIds,
+  missingFactoryIds,
+  moveOffUnknownColumns,
+  workerOf,
+  type AppliedFactory,
+  type ColumnMove,
+} from "../shared/factory/active";
+import type { FactoryMode } from "../shared/factory/status";
 import type { ViewSource } from "./assistant/views";
 import {
   checkpointResumePrompt, // CUSTOM(task-checkpoints)
@@ -238,7 +252,28 @@ export interface AssistantOptions {
   chatQueued?: (agentId: string) => boolean;
   /** CUSTOM(restart-resume): the restart script's skip file; tests point it elsewhere. */
   restartStateFile?: string;
+  /** CUSTOM(factory): the factory's mode and, in active mode, the config it applies. */
+  factory?: FactoryAccess;
 }
+
+/** CUSTOM(factory): what the board reads of the factory (server/factory/shadow.ts). */
+export interface FactoryAccess {
+  mode(): FactoryMode;
+  /** The compiled factory active mode applies; null in other modes or before one compiles. */
+  applied(): AppliedFactory | null;
+  /** Active mode: resolves once the first load is done. */
+  ready(): Promise<void>;
+  /** Follows the setting now: a new mode applies (or stops applying) the factory at once. */
+  sync(): void;
+  /** Active mode: replaces the prompt (the body) of a factory `worker.md`, by root-relative path. */
+  writePrompt(file: string, text: string): Promise<void>;
+}
+
+/**
+ * CUSTOM(factory): a user's config edit. In active mode the store writes it to the factory
+ * (server/factory/shadow.ts `factoryStoreView`); otherwise it is a plain save.
+ */
+const CONFIG_EDIT = { factory: true } as const;
 /** Longest agent title the board sets. */
 const AGENT_TITLE_MAX = 200;
 /**
@@ -495,22 +530,102 @@ export class Workboard {
     ));
   }
   private profileRef(profile: string): ProfileRef {
-    if (profile === ASSISTANT_PROFILE)
+    if (profile === ASSISTANT_PROFILE) {
+      // CUSTOM(factory): active mode reads the Project Manager from the factory's pm/.
+      const applied = this.factoryApplied();
       return {
         id: ASSISTANT_PROFILE,
         label: "Project Manager",
         seedPrompt: ASSISTANT_SEED_PROMPT,
+        ...(applied
+          ? {
+              factory: {
+                directory: join(applied.root, "pm"),
+                pluginName: "pwb-assistant",
+                systemPrompt: applied.compiled.pm.systemPrompt,
+              },
+            }
+          : {}),
       };
+    }
+    return this.orchestratorProfileRef(this.orchestratorConfig(profile));
+  }
+  /** CUSTOM(factory): the factory's mode; "off" when the board runs without one (tests). */
+  private factoryMode(): FactoryMode {
+    return this.assistantOptions.factory?.mode() ?? "off";
+  }
+  private factoryApplied(): AppliedFactory | null {
+    return this.assistantOptions.factory?.applied() ?? null;
+  }
+  /** CUSTOM(factory): the compiled worker an orchestrator runs in active mode. */
+  private factoryWorker(orchestratorId: string) {
+    const applied = this.factoryApplied();
+    if (!applied) return null;
+    const ids = new FactoryIds(
+      this.store.peek((data) => data.factoryIds),
+      applied.fileIds,
+    );
+    const worker = workerOf(applied, ids, orchestratorId);
+    return worker ? { applied, worker } : null;
+  }
+  /** CUSTOM(factory): active mode reads an orchestrator's profile from `workers/<id>/`. */
+  private orchestratorProfileRef(config: OrchestratorConfig): ProfileRef {
+    const found = this.factoryWorker(config.id);
+    if (!found) return { id: config.id, label: config.name };
     return {
-      id: this.orchestratorConfig(profile).id,
-      label: this.orchestratorConfig(profile).name,
+      id: config.id,
+      label: config.name,
+      factory: {
+        directory: join(found.applied.root, "workers", found.worker.id),
+        pluginName: `pwb-${found.worker.id}`,
+        systemPrompt: found.worker.systemPrompt,
+      },
     };
+  }
+  /**
+   * CUSTOM(factory): active mode with nothing compiled yet starts no task, so the board never runs
+   * the JSON's config by mistake while the factory owns it.
+   */
+  private factoryHeld(): boolean {
+    return this.factoryMode() === "active" && !this.factoryApplied();
+  }
+  /**
+   * CUSTOM(factory): active mode loaded the factory. The ids `.factory-ids.json` adds go into the
+   * runtime state, so tasks keep their worker even if the file goes away, and the board runs a pass
+   * on the new config.
+   */
+  async factoryChanged(): Promise<void> {
+    const applied = this.factoryApplied();
+    if (applied) {
+      const missing = missingFactoryIds(
+        this.store.peek((data) => data.factoryIds),
+        applied.fileIds,
+      );
+      if (missing)
+        await this.serial(() =>
+          this.store.update((data) => {
+            Object.assign(data.factoryIds.workers, missing.workers);
+            Object.assign(data.factoryIds.pools, missing.pools);
+          }),
+        );
+    }
+    this.changed();
   }
   async profileView(profile: string) {
     return this.profiles.read(this.profileRef(profile));
   }
   async setProfilePrompt(profile: string, text: string) {
-    return this.profiles.setSystemPrompt(this.profileRef(profile), text);
+    const ref = this.profileRef(profile);
+    // CUSTOM(factory): active mode keeps the prompt in the body of the profile's worker.md.
+    const applied = this.factoryApplied();
+    if (ref.factory && applied)
+      return this.assistantOptions.factory!.writePrompt(
+        relative(applied.root, join(ref.factory.directory, "worker.md"))
+          .split(sep)
+          .join("/"),
+        text,
+      );
+    return this.profiles.setSystemPrompt(ref, text);
   }
   async profileSkills(profile: string) {
     const { directory, pluginName } = await this.profiles.ensure(
@@ -542,20 +657,28 @@ export class Workboard {
   }
   private orchestratorProfile(config: OrchestratorConfig) {
     return this.agentProfile(
-      { id: config.id, label: config.name },
+      this.orchestratorProfileRef(config), // CUSTOM(factory)
       config.provider,
       config.skills,
       config.memory,
     );
   }
   /**
-   * CUSTOM(factory): the revision stamp of a new agent of this orchestrator. The factory is off
-   * or in shadow until ticket 9, so the hash comes from the live config and the revision is null.
-   * An unreadable profile hashes as no system prompt, as the agent then starts without one.
+   * CUSTOM(factory): the revision stamp of a new agent of this orchestrator. In active mode it is
+   * the factory's revision, worker id and compiled hash; otherwise the hash comes from the live
+   * config and the revision is null. An unreadable profile hashes as no system prompt, as the agent
+   * then starts without one.
    */
   private async workerStamp(
     config: OrchestratorConfig,
   ): Promise<RevisionStamp> {
+    const found = this.factoryWorker(config.id);
+    if (found)
+      return {
+        factoryRevision: found.applied.revision,
+        workerId: found.worker.id,
+        workerConfigHash: compiledWorkerConfigHash(found.worker),
+      };
     const systemPrompt = await this.profiles
       .read({ id: config.id, label: config.name })
       .then(
@@ -649,6 +772,9 @@ export class Workboard {
         this.bindingInFlight.delete(task.binding!.operationId);
       await this.reconcile();
       await this.scan();
+      // CUSTOM(factory): active mode loads the factory (it needs the projects the scan read)
+      // before the first orchestration, so no task starts on the JSON's config.
+      await this.assistantOptions.factory?.ready();
       await this.orchestrate();
       this.chatId = this.store.current.assistant.chatAgentId; // CUSTOM(assistant-compact)
       this.requeueUntold(); // CUSTOM(assistant-wake)
@@ -1470,7 +1596,7 @@ export class Workboard {
         throw new Error("Settings changed; refresh before saving");
       for (const group of removed) delete data.cardOrderByStage[group.id];
       data.settings = next;
-    });
+    }, CONFIG_EDIT);
   }
   private checkCardOrder(
     data: Data,
@@ -1601,7 +1727,7 @@ export class Workboard {
           // CUSTOM(night-tasks)
           await this.store.update((data) => {
             data.night = nightSettingsSchema.parse(input.night);
-          });
+          }, CONFIG_EDIT);
           await this.orchestrate();
         } else if (input.action === "night-shutdown-cancel") {
           await this.store.update((data) => {
@@ -1622,7 +1748,7 @@ export class Workboard {
               ...data.orchestrator,
               ...input.orchestrator,
             });
-          });
+          }, CONFIG_EDIT);
         } else if (input.action === "orchestrator-save") {
           const id = input.orchestrator.id ?? randomUUID();
           const next = orchestratorConfigSchema.parse({
@@ -1642,7 +1768,7 @@ export class Workboard {
             data.orchestrators = created
               ? [...data.orchestrators, next]
               : data.orchestrators.map((o) => (o.id === id ? next : o));
-          });
+          }, CONFIG_EDIT);
           await this.log(id, "info", created ? "Created" : "Settings saved");
           await this.orchestrate();
         } else if (input.action === "orchestrators-set-agent") {
@@ -1673,7 +1799,7 @@ export class Workboard {
                   })
                 : config,
             );
-          });
+          }, CONFIG_EDIT);
           for (const config of selected)
             await this.log(
               config.id,
@@ -1693,7 +1819,7 @@ export class Workboard {
             delete data.orchestratorLogs[input.id];
             for (const task of data.tasks)
               if (task.orchestratorId === input.id) task.orchestratorId = null;
-          });
+          }, CONFIG_EDIT);
         } else if (input.action === "orchestrator-move") {
           // CUSTOM(resource-pools): swaps it with its neighbour in the list.
           this.orchestratorConfig(input.id);
@@ -1705,7 +1831,7 @@ export class Workboard {
               const next = [...data.orchestrators];
               [next[from], next[to]] = [next[to]!, next[from]!];
               data.orchestrators = next;
-            });
+            }, CONFIG_EDIT);
             await this.orchestrate();
           }
         } else if (input.action === "pools-save") {
@@ -1718,7 +1844,7 @@ export class Workboard {
                 !input.pools.some((pool) => pool.id === config.poolId)
               )
                 config.poolId = null;
-          });
+          }, CONFIG_EDIT);
           await this.orchestrate();
         } else if (input.action === "orchestrator-run") {
           const config = this.orchestratorConfig(input.id);
@@ -1740,7 +1866,7 @@ export class Workboard {
             data.orchestrators = data.orchestrators.map((o) =>
               o.id === input.id ? { ...o, enabled: input.enabled } : o,
             );
-          });
+          }, CONFIG_EDIT);
           await this.log(
             input.id,
             "info",
@@ -1823,7 +1949,7 @@ export class Workboard {
             if (!sameOrder(input.expectedGroupOrder, fresh))
               throw new Error("Group order changed; refresh before reordering");
             data.settings.groupOrder = input.groupOrder;
-          });
+          }, CONFIG_EDIT);
         } else {
           const task = this.task(input.taskId);
           if (hidden(task) && input.action !== "resolve-archive")
@@ -4739,11 +4865,34 @@ export class Workboard {
   }
   async setAssistantSettings(input: AssistantSettings) {
     const settings = assistantSettingsSchema.parse(input);
+    // CUSTOM(factory): in active mode the factory owns the PM chat, delivery and project policies,
+    // so they go to its files. A save that leaves active mode writes nothing there: the board reads
+    // the JSON again, and the factory's values are not copied into it.
+    const leavingActive =
+      this.factoryMode() === "active" && settings.factory.mode !== "active";
+    let moves: ColumnMove[] = [];
     await this.serial(() =>
-      this.store.update((data) => {
-        data.assistant.settings = settings;
-      }),
+      this.store.update(
+        (data) => {
+          data.assistant.settings = settings;
+          // CUSTOM(factory): the JSON's columns come back; tasks in a column only the factory has
+          // move to the default one.
+          if (leavingActive)
+            moves = moveOffUnknownColumns(
+              data,
+              this.store.peek((saved) => saved.settings.groups),
+            );
+        },
+        settings.factory.mode === "active" ? CONFIG_EDIT : {},
+      ),
     );
+    for (const move of moves)
+      console.warn(
+        `Factory active mode off: task "${move.title}" (${move.taskId}) moved from column "${move.from}", which only the factory has, to "${move.to}".`,
+      );
+    // CUSTOM(factory): the factory follows a new mode before the reply is read, so leaving active
+    // answers with the JSON's values and the page never saves the factory's back into the JSON.
+    this.assistantOptions.factory?.sync();
     return this.assistantSettings();
   }
   /** The inputs of the read-side views. */
@@ -6317,6 +6466,7 @@ export class Workboard {
    * schedule, without using its run's batch.
    */
   private async startReady(stage: Stage): Promise<void> {
+    if (this.factoryHeld()) return; // CUSTOM(factory)
     const board = this.snapshot();
     const nightStart = openWindowStart(
       nightSchedule(this.store.current.night),

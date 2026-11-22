@@ -31,6 +31,9 @@ const zh = {
     loading: "factory：{mode}，加载中…",
     invalid: "factory：{mode}，还没有有效的配置",
     errors: "{count} 个错误（保留上一个有效配置）：{first}",
+    active: "factory：已启用，版本 {revision}",
+    activeNoRevision: "factory：已启用",
+    writes: "factory 已启用：这里的修改会写入 factory 的文件并提交（ui: …）。",
   },
   ticketPanel: {
     close: "关闭面板",
@@ -594,6 +597,15 @@ const zh = {
   },
   archiveConfirmedByUser: "归档结果已由用户确认",
   mutationErrors: {
+    "The factory is not active; this setting is saved in the board":
+      "factory 未启用；这个设置保存在看板中。请刷新后重试。",
+    "The factory has errors; fix its files before editing here":
+      "factory 有错误；请先修正它的文件，再在这里编辑。",
+    "The factory changed on disk and was loaded again; check the change and try again":
+      "factory 的文件已在磁盘上修改，已重新加载；请检查修改后重试。",
+    "The factory edit is invalid": "factory 不接受这个修改，已撤销：",
+    "This prompt comes from the factory; edit worker.md in the factory":
+      "这个提示词来自 factory；请在 factory 中编辑 worker.md。",
     "card-order-changed": "列内任务顺序或成员已改变，请刷新后重试。",
     "card-order-invalid":
       "排序无效；只能移动当前任务并保留其它任务的相对顺序。",
@@ -850,6 +862,10 @@ const en: typeof zh = {
     loading: "factory: {mode}, loading…",
     invalid: "factory: {mode}, no valid factory yet",
     errors: "{count} error(s); the last valid factory is kept: {first}",
+    active: "factory: active, revision {revision}",
+    activeNoRevision: "factory: active",
+    writes:
+      "The factory is active: changes here are written to its files and committed (ui: …).",
   },
   ticketPanel: {
     close: "Close panel",
@@ -1453,6 +1469,16 @@ const en: typeof zh = {
   },
   archiveConfirmedByUser: "Archive outcome confirmed by user",
   mutationErrors: {
+    "The factory is not active; this setting is saved in the board":
+      "The factory is not active; this setting is saved in the board. Refresh and retry.",
+    "The factory has errors; fix its files before editing here":
+      "The factory has errors. Fix its files before editing here.",
+    "The factory changed on disk and was loaded again; check the change and try again":
+      "The factory changed on disk and was loaded again. Check the change and try again.",
+    "The factory edit is invalid":
+      "The factory rejected this change, so it was undone:",
+    "This prompt comes from the factory; edit worker.md in the factory":
+      "This prompt comes from the factory. Edit worker.md in the factory.",
     "card-order-changed":
       "Column order or membership changed. Refresh and retry.",
     "card-order-invalid":

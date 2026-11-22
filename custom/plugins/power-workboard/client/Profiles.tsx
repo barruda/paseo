@@ -53,6 +53,7 @@ import {
   isFeaturePermissionProvider,
 } from "../shared/permission"; // CUSTOM(unattended-automation)
 import { profileStrings, type ProfileStrings } from "./profiles-strings";
+import { strings } from "./strings"; // CUSTOM(factory)
 import {
   activeInternalProviders,
   filterModelCatalog,
@@ -1147,11 +1148,15 @@ const draftOf = (chat: AssistantChatSettings) => ({
 export function AssistantProfileTab({
   theme,
   disabled,
+  factoryOwned = false,
 }: {
   theme: Theme;
   disabled: boolean;
+  /** CUSTOM(factory): active mode; the chat settings and the prompt are saved to the factory. */
+  factoryOwned?: boolean;
 }) {
   const s = profileStrings(usePaseoLanguage());
+  const factoryText = strings(usePaseoLanguage()).factory.writes;
   const callGet = useRpc(assistantSettingsGetRpc);
   const callSet = useRpc(assistantSettingsSetRpc);
   const toast = useToast();
@@ -1168,6 +1173,19 @@ export function AssistantProfileTab({
     if (settings.data && !draft) setDraft(draftOf(settings.data.settings.chat));
   }, [settings.data, draft]);
   const [dirty, setDirty] = useState(false);
+  // CUSTOM(factory): entering or leaving active mode changes where the chat settings come from;
+  // read them again so a save never sends the other side's values.
+  const ownedSeen = useRef(factoryOwned);
+  const refetchSettings = settings.refetch;
+  useEffect(() => {
+    if (ownedSeen.current === factoryOwned) return;
+    ownedSeen.current = factoryOwned;
+    setDraft(null);
+    setDirty(false);
+    void refetchSettings().then((result) => {
+      if (result.data) setDraft(draftOf(result.data.settings.chat));
+    });
+  }, [factoryOwned, refetchSettings]);
   if (settings.isError)
     return (
       <Text style={[styles.empty, { color: theme.colors.statusDanger }]}>
@@ -1250,6 +1268,11 @@ export function AssistantProfileTab({
       <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
         {s.assistantHint}
       </Text>
+      {factoryOwned && (
+        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+          {factoryText}
+        </Text>
+      )}
       {error && (
         <Text style={[styles.meta, { color: theme.colors.statusDanger }]}>
           {error}

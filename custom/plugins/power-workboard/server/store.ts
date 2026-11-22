@@ -50,6 +50,23 @@ const writeResult = z.discriminatedUnion("status", [
   z.object({ status: z.literal("invalid"), error: z.string() }),
   z.object({ status: z.literal("conflict"), error: z.string() }),
 ]);
+/**
+ * CUSTOM(factory): a view over the saved data. `apply` changes the copy every read returns;
+ * `restore` undoes it on the changed copy before a save. Active mode puts the compiled factory in
+ * the config fields this way (shared/factory/active.ts). For an update marked `factory`, `restore`
+ * may return work the save awaits first (active mode writes the config change to the factory); if
+ * it fails, nothing is saved.
+ */
+export interface StoreView {
+  apply(data: Data): void;
+  restore(
+    next: Data,
+    saved: Readonly<Data>,
+    options: UpdateOptions,
+  ): (() => Promise<void>) | void;
+}
+/** CUSTOM(factory): `factory`: a user's config edit, which active mode writes to the factory. */
+export type UpdateOptions = { factory?: boolean };
 const NONE: ReadonlySet<string> = new Set();
 /** CUSTOM(task-records-jsonl): see `Store.planRecords`. */
 interface RecordPlan {
@@ -74,6 +91,7 @@ const memoryRecords = new WeakMap<SettingsBacking, RecordFiles>();
 const RECENT_ATTEMPTS_MS = 30 * 24 * 60 * 60 * 1000;
 export class Store {
   private value: Data = dataSchema.parse({});
+  private view: StoreView | null = null;
   private revision: string | null = null;
   private queue: Promise<unknown> = Promise.resolve();
   /**
@@ -123,9 +141,18 @@ export class Store {
     }
   }
   get current(): Data {
-    return structuredClone(this.value);
+    const copy = structuredClone(this.value);
+    this.view?.apply(copy); // CUSTOM(factory)
+    return copy;
   }
-  /** CUSTOM(factory): reads a field without cloning the whole data; `read` must not keep or change it. */
+  /** CUSTOM(factory): reads and writes go through `view` from now on; null drops it. */
+  setView(view: StoreView | null): void {
+    this.view = view;
+  }
+  /**
+   * CUSTOM(factory): reads a field of the saved data (no view) without cloning the whole data;
+   * `read` must not keep or change it.
+   */
   peek<T>(read: (data: Readonly<Data>) => T): T {
     return read(this.value);
   }
@@ -252,8 +279,9 @@ export class Store {
   }
   update(
     change: (data: Data, descriptions: DescriptionEditor) => void,
+    options: UpdateOptions = {}, // CUSTOM(factory)
   ): Promise<void> {
-    return this.save(change, false);
+    return this.save(change, false, options);
   }
   /**
    * `moving`: also write what the JSON still carries to files: `true` the descriptions
@@ -262,6 +290,7 @@ export class Store {
   private save(
     change: (data: Data, descriptions: DescriptionEditor) => void,
     moving: boolean | "records",
+    options: UpdateOptions = {},
   ): Promise<void> {
     const work = this.queue.then(async () => {
       if (this.revision === null) throw new Error("Storage is unavailable");
@@ -271,6 +300,9 @@ export class Store {
         get: (taskId) => staged.get(taskId) ?? this.description(taskId),
         set: (taskId, text) => staged.set(taskId, text),
       });
+      // CUSTOM(factory): awaited only when there is a factory write, so plain saves keep their ticks.
+      const pending = this.view?.restore(next, this.value, options);
+      if (pending) await pending();
       const writes = this.stageDescriptions(next, staged, moving === true);
       if (
         !writes.size &&

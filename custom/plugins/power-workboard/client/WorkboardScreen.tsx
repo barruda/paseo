@@ -91,6 +91,7 @@ import {
   waitingLine,
 } from "./checkpoint-format"; // CUSTOM(task-checkpoints)
 import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
+import { factoryOwnsConfig } from "./FactoryLine"; // CUSTOM(factory)
 import { BoardView } from "./BoardView";
 import { cardMenuItems } from "./card-menu"; // CUSTOM(task-panel)
 import {
@@ -1008,7 +1009,11 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
         ) : tab === "reports" ? (
           <ReportsScreen {...props} navigation={pageNavigation} />
         ) : tab === ASSISTANT_TAB ? (
-          <AssistantProfileTab theme={props.theme} disabled={writesDisabled} /> // CUSTOM(agent-profiles)
+          <AssistantProfileTab
+            theme={props.theme}
+            disabled={writesDisabled}
+            factoryOwned={factoryOwnsConfig(board.factory)}
+          /> // CUSTOM(agent-profiles)
         ) : (
           <OrchestratorTab
             key={tab}
@@ -5478,6 +5483,9 @@ export function SettingsPage({
     Number(tmpHoursText) >= 1 &&
     Number(tmpHoursText) <= 8760;
   const preview = mappingPreview(board.cards, settings, Date.now());
+  // CUSTOM(factory): in active mode the columns and housekeeping are saved to the factory; the
+  // default-column preferences stay in the board.
+  const factoryOwned = factoryOwnsConfig(board.factory);
   const controlDisabled = (id: string) =>
     disabled || !!pendingMutationIds?.has(`settings:${id}`);
   const persist = async (next: Settings, control = "groups") => {
@@ -5499,6 +5507,13 @@ export function SettingsPage({
       <PageHeader title={t.settingsTitle} t={t} theme={theme} onBack={onBack} />
       <ScrollView contentContainerStyle={styles.settings}>
         <View style={styles.settingsContent}>
+          {factoryOwned && (
+            <Text
+              style={[styles.hintText, { color: theme.colors.foregroundMuted }]}
+            >
+              {t.factory.writes}
+            </Text>
+          )}
           <SettingsSection title={t.generalSettings}>
             <SettingsCard>
               <SettingsSwitch

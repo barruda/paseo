@@ -1,4 +1,4 @@
-// CUSTOM(factory): the factory setting and what shadow mode reports (docs/factory.md, ticket 7).
+// CUSTOM(factory): the factory setting and what shadow and active mode report (docs/factory.md).
 // The board and the Orchestrators tab read the summary from the snapshot; the full status comes
 // from `workboard.factory.status`.
 import { z } from "zod";
@@ -51,7 +51,7 @@ export const factoryStatusSchema = z.object({
   compiled: z.boolean(),
   differences: z.array(factoryDifferenceSchema),
   differenceCount: z.number().int(),
-  /** Why the mode runs differently than its name says (`active` before ticket 9). */
+  /** Why the mode runs differently than its name says (`active` with nothing compiled yet). */
   note: z.string().nullable(),
 });
 export type FactoryStatus = z.infer<typeof factoryStatusSchema>;
@@ -66,6 +66,8 @@ export const factorySummarySchema = z.object({
   /** null until a factory compiles. */
   differences: z.number().int().nullable(),
   note: z.string().nullable(),
+  /** The loaded revision; active mode shows it. Optional: older plugin builds do not send it. */
+  revision: z.string().nullable().optional(),
 });
 export type FactorySummary = z.infer<typeof factorySummarySchema>;
 

@@ -306,9 +306,9 @@ function parseSeconds(text: string): number {
   return /^\d+$/.test(digits) ? Number(digits) : Number.NaN;
 }
 
-/** CUSTOM(factory): the modes the page offers; `active` only while it is the saved one. */
-export function factoryModeOptions(current: FactoryMode): FactoryMode[] {
-  return current === "active" ? [...FACTORY_MODES] : ["off", "shadow"];
+/** CUSTOM(factory): the modes the page offers: all three. */
+export function factoryModeOptions(_current: FactoryMode): FactoryMode[] {
+  return [...FACTORY_MODES];
 }
 
 /** CUSTOM(factory): the root is kept as typed (trimmed); empty means `$PASEO_HOME/factory`. */

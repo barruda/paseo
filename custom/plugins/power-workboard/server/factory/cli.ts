@@ -6,13 +6,19 @@
 //                            write a new factory from the board's data and commit it (git init);
 //                            the inputs default to the live files under $PASEO_HOME, which are
 //                            only read
+//   factory memory <dir> [--profiles <dir>]
+//                            copy each profile's memory/ into <dir>/workers/<id>/memory and
+//                            <dir>/pm/memory through .factory-ids.json (the cutover); never
+//                            overwrites a file; the profiles default to $PASEO_HOME's, only read
 //
 // The directory of validate and schema defaults to $PASEO_HOME/factory (~/.paseo/factory). Export
-// takes no default: writing the live factory is the cutover, which the user approves.
+// takes no default, and neither does memory: writing the live factory is the cutover, which the
+// user approves.
 import { homedir } from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { compileFactory } from "../../shared/factory/compile";
+import { copyProfileMemory } from "./cutover";
 import {
   exportFactory,
   formatIssue,
@@ -31,7 +37,7 @@ export type CliIo = {
 };
 
 const USAGE =
-  "usage: factory validate [dir] | factory schema [dir] | factory export <dir> [--data <file>] [--profiles <dir>] [--projects <file>]";
+  "usage: factory validate [dir] | factory schema [dir] | factory export <dir> [--data <file>] [--profiles <dir>] [--projects <file>] | factory memory <dir> [--profiles <dir>]";
 
 const paseoHome = (env: CliIo["env"]) =>
   env.PASEO_HOME || path.join(homedir(), ".paseo");
@@ -103,6 +109,43 @@ async function runExport(args: string[], io: CliIo): Promise<number> {
   return 0;
 }
 
+async function runMemory(args: string[], io: CliIo): Promise<number> {
+  let profiles: string | null = null;
+  const positional: string[] = [];
+  for (let index = 0; index < args.length; index++) {
+    const arg = args[index]!;
+    if (arg === "--profiles" && args[index + 1])
+      profiles = path.resolve(io.cwd, args[++index]!);
+    else if (arg.startsWith("-") || positional.length) {
+      io.err(USAGE);
+      return 2;
+    } else positional.push(arg);
+  }
+  if (!positional[0]) {
+    io.err(USAGE);
+    return 2;
+  }
+  try {
+    const copied = await copyProfileMemory({
+      factoryRoot: path.resolve(io.cwd, positional[0]),
+      profilesRoot:
+        profiles ??
+        path.join(
+          paseoHome(io.env),
+          "plugin-data",
+          "power-workboard",
+          "profiles",
+        ),
+    });
+    for (const { from, to } of copied) io.out(`${from} -> ${to}`);
+    io.out(`copied ${copied.length} memory folder(s)`);
+    return 0;
+  } catch (error) {
+    io.err(`error: ${error instanceof Error ? error.message : String(error)}`);
+    return 1;
+  }
+}
+
 /** Runs one command; returns the exit code. */
 export async function runFactoryCli(
   args: string[],
@@ -110,6 +153,7 @@ export async function runFactoryCli(
 ): Promise<number> {
   const [command, dir, ...rest] = args;
   if (command === "export") return runExport(args.slice(1), io);
+  if (command === "memory") return runMemory(args.slice(1), io);
   if ((command !== "validate" && command !== "schema") || rest.length) {
     io.err(USAGE);
     return 2;

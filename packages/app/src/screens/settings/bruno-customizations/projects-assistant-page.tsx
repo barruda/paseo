@@ -194,11 +194,14 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
     );
   }
 
+  // CUSTOM(factory): while the SAVED mode is active, these settings are saved to the factory.
+  const owned = load.status === "ready" && load.saved.settings.factory.mode === "active";
   return (
     <SettingsSection title="Project Manager">
       <Text style={settingsStyles.rowHint}>
         Works in Tasks mode. Decides what happens to a task&apos;s work when its agent finishes.
       </Text>
+      {owned ? <Text style={settingsStyles.rowHint}>{FACTORY_OWNED_HINT}</Text> : null}
       {load.status === "loading" ? <Text style={settingsStyles.rowHint}>Loading…</Text> : null}
       {load.status === "error" ? (
         <>
@@ -269,7 +272,7 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
           <SettingsCard testID="projects-assistant-factory">
             <SettingsSelect
               label="Mode"
-              hint="Shadow loads the factory folder on every change and compares it with the board's settings; the board shows the errors and differences and keeps using its own settings."
+              hint="Shadow loads the factory folder on every change and compares it with the board's settings; the board shows the errors and differences and keeps using its own settings. Active makes the factory the board's configuration; saving these settings writes its files and commits the change. Review stays in the board."
               value={draft.factory.mode}
               options={factoryModeOptions(draft.factory.mode).map((value) => ({
                 value,
@@ -316,6 +319,10 @@ function ProjectsAssistantSettings({ serverId }: { serverId: string }) {
     </SettingsSection>
   );
 }
+
+// CUSTOM(factory)
+const FACTORY_OWNED_HINT =
+  "Saved to the factory (pm/worker.md, factory.yaml, projects/*.yaml), with a commit for each save";
 
 function ProjectCard({
   project,

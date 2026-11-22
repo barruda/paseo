@@ -1,7 +1,9 @@
-// CUSTOM(factory): shadow mode (docs/factory.md, ticket 7). Watches the factory folder, loads and
-// compiles it 500 ms after the last change, and diffs it against the live config. It applies
-// nothing: the board keeps reading workboard-data.json. An invalid factory keeps the last valid
-// compile for the diff and reports its errors.
+// CUSTOM(factory): shadow and active mode (docs/factory.md, tickets 7, 9 and 10). Watches the
+// factory folder, loads and compiles it 500 ms after the last change, and diffs it against the
+// config in workboard-data.json. Shadow applies nothing; in active mode `applied()` hands the
+// compiled factory to the board (shared/factory/active.ts), and the board's config edits come back
+// through `writeConfig` as edits of the factory's files. An invalid factory keeps the last valid
+// compile and reports its errors.
 import { watch as watchDir, type FSWatcher } from "node:fs";
 import { readdir, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -23,19 +25,46 @@ import {
   type FactorySummary,
 } from "../../shared/factory/status";
 import { factoryIdSchema } from "../../shared/factory/schema";
+import {
+  applyFactory,
+  restoreJsonConfig,
+  type AppliedFactory,
+  type FactoryIdMap,
+} from "../../shared/factory/active";
+import {
+  factoryConfigOf,
+  planFactoryEdits,
+  sameConfig,
+  type FactoryConfig,
+  type FileEdit,
+} from "../../shared/factory/edits";
 import type { Data } from "../../shared/model";
 import { ASSISTANT_PROFILE } from "../../shared/profiles";
-import { IDS_FILE, slugger } from "./export";
+import { homePath, IDS_FILE, slugger } from "./export";
 import { loadFactory } from "./loader";
 import { factoryRevision } from "./revision";
+import type { StoreView } from "../store";
+import {
+  applyFileEdits,
+  commitFactory,
+  describeEdits,
+  keyEdits,
+} from "./writer";
 
 export const FACTORY_DEBOUNCE_MS = 500;
 /** While the folder is missing, look for it again this often. */
 const MISSING_RETRY_MS = 30_000;
 /** Folders below a watched one; `workers/<id>/skills/<name>/` is the deepest the loader reads. */
 const MAX_DEPTH = 4;
-const ACTIVE_NOTE =
-  "Active mode is not built yet (ticket 9): the factory runs in shadow mode, nothing is applied";
+const HOLD_NOTE =
+  "No valid factory yet: no new task starts until the factory compiles";
+/** The board's errors for a factory edit it cannot make (client/strings.ts translates them). */
+export const FACTORY_NOT_ACTIVE_ERROR =
+  "The factory is not active; this setting is saved in the board";
+export const FACTORY_HAS_ERRORS_ERROR =
+  "The factory has errors; fix its files before editing here";
+export const FACTORY_CHANGED_ERROR =
+  "The factory changed on disk and was loaded again; check the change and try again";
 
 export type Unwatch = () => void;
 /** Calls `changed` on any change of the folder's direct entries. */
@@ -47,7 +76,7 @@ export type ShadowLive = {
   settings: () => FactorySettings;
   /** Changes with every saved change of the data. */
   revision: () => number;
-  /** The whole data, read only when the diff is computed again. */
+  /** The saved data (without the factory applied), read only when the diff is computed again. */
   data: () => Data;
   projects: () => ReadonlyArray<{ id: string; directory: string }>;
 };
@@ -58,18 +87,67 @@ export type FactoryShadowOptions = {
   defaultRoot: string;
   /** `<PASEO_HOME>/plugin-data/power-workboard/profiles`, read for the prompts. */
   profilesRoot: string;
+  /**
+   * Where a worker the UI removes leaves its memory; defaults to `factory-removed/` next to
+   * `profilesRoot`.
+   */
+  removedRoot?: string;
   homeDir?: string;
   debounceMs?: number;
   watch?: WatchFolder;
   load?: typeof loadFactory;
   revision?: (root: string) => Promise<string | null>;
   now?: () => number;
+  /** Active mode loaded the factory again: the board reads the new config. */
+  applied?: () => void;
 };
 
 const idsFileSchema = z.object({
   workers: z.record(z.string(), z.string()).default({}),
   pools: z.record(z.string(), z.string()).default({}),
 });
+
+/**
+ * Active mode's view of the store: every read gets the compiled factory in its config fields, and
+ * every write keeps the JSON's own values there. A write marked `factory` (a user's config edit)
+ * first goes to the factory's files; one that is not (the board's own bookkeeping) leaves the
+ * factory alone. Other modes read and write the JSON as it is.
+ */
+export function factoryStoreView(factory: {
+  applied(): AppliedFactory | null;
+  writeConfig(
+    before: FactoryConfig,
+    after: FactoryConfig,
+    basis: AppliedFactory,
+  ): Promise<FactoryIdMap>;
+}): StoreView {
+  return {
+    apply: (data) => {
+      const applied = factory.applied();
+      if (applied) applyFactory(data, applied);
+    },
+    restore: (next, saved, options) => {
+      const applied = factory.applied();
+      if (!applied) return;
+      if (!options.factory) {
+        restoreJsonConfig(next, saved);
+        return;
+      }
+      const shown = structuredClone(saved) as Data;
+      applyFactory(shown, applied);
+      const before = factoryConfigOf(shown);
+      const after = factoryConfigOf(next);
+      restoreJsonConfig(next, saved);
+      if (sameConfig(before, after)) return;
+      return async () => {
+        const ids = await factory.writeConfig(before, after, applied);
+        // New workers and pools keep the id the board gave them, so the reply finds them.
+        Object.assign(next.factoryIds.workers, ids.workers);
+        Object.assign(next.factoryIds.pools, ids.pools);
+      };
+    },
+  };
+}
 
 export const watchFolder: WatchFolder = (dir, changed) => {
   let watcher: FSWatcher;
@@ -171,6 +249,13 @@ export class FactoryShadow {
   private errors: FactoryIssue[] = [];
   private warnings: FactoryIssue[] = [];
   private compiled: CompiledFactory | null = null;
+  /** The loaded pipeline files and default of the compile above. */
+  private pipelines: Pick<AppliedFactory, "pipelines" | "defaultPipeline"> = {
+    pipelines: {},
+    defaultPipeline: null,
+  };
+  /** The revision of the compile above; `revision` may be a newer, invalid one. */
+  private compiledRevision: string | null = null;
   private fileIds: LiveIds | null = null;
   private revision: string | null = null;
   private loadedAt: string | null = null;
@@ -178,6 +263,8 @@ export class FactoryShadow {
   /** The live data revision the differences were computed against. */
   private diffRevision: number | null = null;
   private diffing: Promise<void> | null = null;
+  /** The factory edit in progress; edits run one at a time. */
+  private writing: Promise<unknown> = Promise.resolve();
 
   private readonly home: string;
   private readonly debounceMs: number;
@@ -245,7 +332,44 @@ export class FactoryShadow {
       firstError: this.errors[0] ? formatFactoryIssue(this.errors[0]) : null,
       differences: this.differences ? this.differences.length : null,
       note: this.note,
+      // Active mode's line shows the revision; shadow's shows the difference count.
+      ...(this.target.mode === "active"
+        ? { revision: this.compiledRevision }
+        : {}),
     };
+  }
+
+  /** The factory active mode applies: the last valid compile, or null in other modes or before one. */
+  applied(): AppliedFactory | null {
+    if (this.target.mode !== "active" || !this.compiled) return null;
+    return {
+      root: this.target.root,
+      revision: this.compiledRevision,
+      compiled: this.compiled,
+      fileIds: this.fileIds,
+      ...this.pipelines,
+    };
+  }
+
+  /** The setting's mode, read now (the board refuses config edits in active mode). */
+  mode(): FactoryMode {
+    this.sync();
+    return this.target.mode;
+  }
+
+  /**
+   * Active mode at boot: loads now and waits, so the board's first pass already runs on the
+   * factory. A load waiting for its debounce runs at once.
+   */
+  async ready(): Promise<void> {
+    this.sync();
+    if (this.target.mode !== "active") return;
+    if (this.timer) {
+      clearTimeout(this.timer);
+      this.timer = undefined;
+      this.run();
+    }
+    while (this.running) await this.running;
   }
 
   /**
@@ -277,6 +401,157 @@ export class FactoryShadow {
     };
   }
 
+  /**
+   * Active mode: writes the board's config change (`before` → `after`) to the factory's files,
+   * commits it and loads the factory again. Returns the factory ids of the workers and pools it
+   * created, keyed by the board's ids.
+   */
+  async writeConfig(
+    before: FactoryConfig,
+    after: FactoryConfig,
+    basis: AppliedFactory,
+  ): Promise<FactoryIdMap> {
+    let ids: FactoryIdMap = { workers: {}, pools: {} };
+    await this.edit(async (applied) => {
+      // `before` was read from `basis`; a load since then may list other workers at its indexes.
+      if (
+        applied.revision === null
+          ? applied.compiled !== basis.compiled
+          : applied.revision !== basis.revision
+      )
+        throw new Error(FACTORY_CHANGED_ERROR);
+      const live = this.options.live();
+      const data = live?.data();
+      const plan = planFactoryEdits(before, after, {
+        applied,
+        knownIds: [
+          ...(data ? [data.factoryIds] : []),
+          ...(applied.fileIds ? [applied.fileIds] : []),
+        ],
+        workerFolders: await folderNames(path.join(applied.root, "workers")),
+        projectFiles: new Set(
+          [...(await folderNames(path.join(applied.root, "projects"), true))]
+            .filter((name) => name.endsWith(".yaml"))
+            .map((name) => name.slice(0, -".yaml".length)),
+        ),
+        projectDirectory: (projectId) =>
+          live?.projects().find((project) => project.id === projectId)
+            ?.directory ?? null,
+        pathText: (directory) => homePath(directory, this.home),
+      });
+      ids = plan.ids;
+      return plan.edits;
+    });
+    return ids;
+  }
+
+  /** Active mode: replaces the prompt (the body) of `pm/worker.md` or `workers/<id>/worker.md`. */
+  async writePrompt(file: string, text: string): Promise<void> {
+    await this.edit(() => [{ file, body: text, create: "---\n---\n" }]);
+  }
+
+  /**
+   * Active mode: sets top-level keys of a factory file (a YAML file, or a Markdown file's
+   * frontmatter); null removes a key. Any key works, so a new field needs no writer code.
+   */
+  async writeKeys(
+    file: string,
+    keys: Record<string, unknown>,
+    message?: string,
+  ): Promise<void> {
+    await this.edit(
+      () => [
+        {
+          file,
+          fields: keyEdits(keys),
+          create: file.endsWith(".md") ? "---\n---\n" : "",
+        },
+      ],
+      message,
+    );
+  }
+
+  /**
+   * One factory edit: the loaded compile must be valid and current (a file changed on disk since
+   * it was read loads it again and refuses the edit), the result must load and compile, then it
+   * is committed `ui: <what changed>` and loaded at once, so the reply already shows it.
+   */
+  private edit(
+    build: (applied: AppliedFactory) => FileEdit[] | Promise<FileEdit[]>,
+    message?: string,
+  ): Promise<void> {
+    const work = this.writing.then(async () => {
+      if (this.timer) {
+        clearTimeout(this.timer);
+        this.timer = undefined;
+        this.run();
+      }
+      while (this.running) await this.running;
+      const applied = this.applied();
+      if (!applied) throw new Error(FACTORY_NOT_ACTIVE_ERROR);
+      // Nothing to write is no edit, even while the factory is broken or behind.
+      const edits = await build(applied);
+      if (!edits.length) return;
+      if (this.errors.length) throw new Error(FACTORY_HAS_ERRORS_ERROR);
+      const root = applied.root;
+      if (
+        (await this.revisionOf(root).catch(() => null)) !== applied.revision
+      ) {
+        this.run();
+        while (this.running) await this.running;
+        throw new Error(FACTORY_CHANGED_ERROR);
+      }
+      const stamp = new Date(this.now()).toISOString().replace(/[:.]/g, "-");
+      const written = await applyFileEdits(root, edits, {
+        keepRemoved: (folder) =>
+          path.join(
+            this.options.removedRoot ??
+              path.join(
+                path.dirname(this.options.profilesRoot),
+                "factory-removed",
+              ),
+            `${path.basename(folder)}-${stamp}`,
+          ),
+      });
+      if (!written.files.length) return;
+      try {
+        const problem = await this.problemOf(root);
+        if (problem) throw new Error(`The factory edit is invalid: ${problem}`);
+        await commitFactory(
+          root,
+          written.files,
+          message ?? describeEdits(edits, written.created),
+        );
+      } catch (error) {
+        await written.undo();
+        throw error;
+      }
+      clearTimeout(this.timer);
+      this.timer = undefined;
+      this.run();
+      while (this.running) await this.running;
+    });
+    this.writing = work.catch(() => undefined);
+    return work;
+  }
+
+  /** The first error of the factory as it is on disk now, or null when it loads and compiles. */
+  private async problemOf(root: string): Promise<string | null> {
+    const live = this.options.live();
+    const loaded = await this.load(root, { homeDir: this.home });
+    const errors = [...loaded.errors];
+    if (loaded.factory) {
+      const projectIdForPath = await projectResolver(
+        live?.projects() ?? [],
+        live?.data() ?? null,
+      );
+      errors.push(
+        ...compileFactory(loaded.factory, { projectIdForPath }).errors,
+      );
+    }
+    return errors[0] ? formatFactoryIssue(errors[0]) : null;
+  }
+
   /** Resolves once no load or diff is running; a debounced load still waiting is not awaited. */
   async idle(): Promise<void> {
     while (this.running || this.diffing) {
@@ -295,10 +570,13 @@ export class FactoryShadow {
   }
 
   private get note(): string | null {
-    return this.target.mode === "active" ? ACTIVE_NOTE : null;
+    return this.target.mode === "active" && !this.compiled && !this.loading
+      ? HOLD_NOTE
+      : null;
   }
 
   private restart(target: Target) {
+    const leftActive = this.target.mode === "active" && this.compiled !== null;
     this.generation++;
     this.target = target;
     clearTimeout(this.timer);
@@ -310,12 +588,14 @@ export class FactoryShadow {
     this.errors = [];
     this.warnings = [];
     this.compiled = null;
+    this.compiledRevision = null;
     this.fileIds = null;
     this.revision = null;
     this.loadedAt = null;
     this.differences = null;
     this.diffRevision = null;
     this.again = false;
+    if (leftActive) this.options.applied?.(); // The board reads the JSON again.
   }
 
   /** Trailing debounce: every change pushes the load back. */
@@ -381,12 +661,21 @@ export class FactoryShadow {
     if (stale()) return;
     this.errors = errors;
     this.warnings = warnings;
-    if (compiled) {
+    if (compiled && loaded.factory) {
       this.compiled = compiled;
-      this.fileIds = ids;
+      this.compiledRevision = revision;
+      // Without `.factory-ids.json`, the export's ids by name, as the diff uses them.
+      this.fileIds = ids ?? (live ? idsByName(live.data()) : null);
+      this.pipelines = {
+        pipelines: Object.fromEntries(
+          loaded.factory.pipelines.map(({ id, pipeline }) => [id, pipeline]),
+        ),
+        defaultPipeline: loaded.factory.factory.defaults?.pipeline ?? null,
+      };
     }
     this.revision = revision;
     this.loadedAt = new Date(this.now()).toISOString();
+    if (this.target.mode === "active" && compiled) this.options.applied?.();
     await this.rewatch(root, generation);
     if (this.compiled) await this.refreshDiff();
   }
@@ -519,6 +808,19 @@ async function projectResolver(
       byPath.set(real, project.id);
   }
   return (realPath) => byPath.get(realPath) ?? null;
+}
+
+/** Names of a folder's subfolders (or, with `files`, of its files); empty when it is missing. */
+async function folderNames(dir: string, files = false): Promise<Set<string>> {
+  try {
+    return new Set(
+      (await readdir(dir, { withFileTypes: true }))
+        .filter((entry) => (files ? entry.isFile() : entry.isDirectory()))
+        .map((entry) => entry.name),
+    );
+  } catch {
+    return new Set();
+  }
 }
 
 async function readIds(root: string): Promise<LiveIds | null> {

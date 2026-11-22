@@ -104,6 +104,7 @@ describe("workerConfigHash", () => {
         config: config({ id: "paseo" }),
         // A worker with no role compiles as implement (ticket 6).
         role: "implement",
+        priority: 0,
         description: "Paseo worker",
         systemPrompt: PROMPT,
         ownSkills: [],

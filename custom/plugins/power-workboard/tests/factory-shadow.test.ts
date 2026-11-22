@@ -377,7 +377,8 @@ describe("factory shadow: watch", () => {
     state.settings = { root: source.root, mode: "active" };
     const status = await shadow.status();
     expect(status.mode).toBe("active");
-    expect(status.note).toMatch(/shadow/);
+    expect(status.note).toBeNull();
+    expect(shadow.applied()?.root).toBe(source.root);
     expect(status.differences).toEqual([]);
   });
 });
@@ -475,6 +476,18 @@ describe("factory line", () => {
   it("shows nothing while the mode is off", () => {
     expect(factoryLines(null, t)).toBeNull();
     expect(factoryLines(undefined, t)).toBeNull();
+  });
+  it("shows the revision in active mode, not the difference count", () => {
+    const active = { ...summary, mode: "active" as const };
+    expect(
+      factoryLines({ ...active, revision: "abcdef0123456" }, t)?.status,
+    ).toBe("factory: active, revision abcdef0");
+    expect(factoryLines({ ...active, revision: null }, t)?.status).toBe(
+      "factory: active",
+    );
+    expect(
+      factoryLines({ ...active, differences: null, loading: true }, t)?.status,
+    ).toBe("factory: active, loading…");
   });
   it("shows the mode and the difference count, and the first error", () => {
     expect(factoryLines(summary, t)).toEqual({

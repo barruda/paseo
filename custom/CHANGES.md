@@ -10322,7 +10322,7 @@ validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`
     role, so a factory implement worker hashes like the same live orchestrator and the hashes
     recorded before roles existed stay valid; another role still changes the hash.
   - `server/factory/builtin/`: the `default` and `critical` pipelines, `roles/{triage,spec,
-    implement,verify,review}.md`, `templates/spec.md` and the factory `README.md`.
+implement,verify,review}.md`, `templates/spec.md` and the factory `README.md`.
     `readBuiltinFactoryFiles()` (`server/factory/builtin.ts`) returns them plus the `.gitignore`
     (a constant: a real one in `builtin/` would apply to this repository) and is the only source
     `bin/factory export` (`export.ts`) writes them from. It replaces ticket 4's
@@ -10417,6 +10417,103 @@ tests/factory.test.ts tests/factory-export.test.ts)` (part of the plugin suite i
 tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). In the app:
   Workboard → **Pipelines** tab → pick DreamMMO (`critical`) or another project (`default`), click a
   node to see the stage in the right panel.
+
+## factory-active: active mode makes the factory the board's configuration
+
+- **Added:** 2026-11-21 (on `custom`)
+- **Commit:** `custom: factory active mode applies the compiled factory as the Power Workboard config`
+- **Why:** Ticket 9 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Active mode" and "Cutover"): after shadow mode proved the factory matches the board, `active`
+  makes the files the configuration, with the cutover steps the PM runs once the user approves.
+- **What:**
+  - `shared/factory/active.ts` + `Store.setView` (`server/store.ts`, wired by `factoryStoreView`
+    in `server/factory/shadow.ts` and `index.server.ts`): every read gets the compiled factory in
+    the config fields (orchestrators under their live ids, defaults but the default task prompt,
+    columns, pools, housekeeping, night, PM `enabled`/`defaultAction`/`projects`/`chat`); every
+    write puts the JSON's own values back, so `workboard-data.json` keeps its config.
+  - `data.factoryIds` (live id → factory id, `shared/model.ts`): filled from `.factory-ids.json` on
+    each active load (`Workboard.factoryChanged`).
+  - `FactoryShadow`: `applied()`, `mode()`, `ready()` (the board waits for it in `start` before
+    the first orchestration) and an `applied` callback; no compile yet holds new starts with a
+    note. The summary carries `revision` in active mode.
+  - Profiles in active mode (`server/profiles.ts`, `Workboard.profileRef`): `workers/<id>/` and
+    `pm/`, prompt from `worker.md`, plugin `pwb-<id>`; the board writes only the git-ignored
+    `.claude-plugin/` (added to the factory `.gitignore`) and `memory/`. Run stamps record the
+    factory revision, worker id and compiled hash.
+  - Read only until ticket 10: the server refuses factory-owned edits
+    (`FACTORY_READ_ONLY_ERROR`, `FACTORY_PROMPT_READ_ONLY`); the Orchestrators tab, column and
+    housekeeping settings, the PM profile tab and the core PM settings page disable them and say
+    "edit in the factory". The core page now offers `active`.
+  - `bin/factory memory <dir>` (`server/factory/cutover.ts`) copies the profiles' memory into the
+    factory. The Pipelines tab reads the factory's pipelines in active mode.
+  - Review follow-ups (`custom: factory active mode review follow-ups`, 2026-11-22): `FactoryIds`
+    lets the data's live id win when two map to the same worker; leaving active moves tasks out of
+    factory-only columns to the JSON's default column (`moveOffUnknownColumns`, warning in
+    `daemon.log`); `setAssistantSettings` calls `FactoryAccess.sync()` instead of `mode()`; a test
+    pins that a running task goes back to its worker when the worker returns to the factory.
+- **Core files touched:**
+  `packages/app/src/screens/settings/bruno-customizations/projects-assistant-page.tsx`,
+  `projects-assistant-model.ts` (+ test) (`CUSTOM(factory)`: `active` offered, owned fields
+  disabled while the saved mode is active) and `packages/app/src/components/settings-textarea.tsx`
+  (`CUSTOM(factory)`: optional `disabled`).
+- **Plugin files:** `shared/factory/active.ts`, `shared/factory/status.ts`, `shared/model.ts`,
+  `shared/rpc.ts`, `server/store.ts`, `server/workboard.ts`, `server/profiles.ts`,
+  `server/factory/shadow.ts`, `server/factory/builtin.ts`, `server/factory/cli.ts`,
+  `server/factory/cutover.ts`, `bin/factory`, `index.server.ts`, `client/FactoryLine.tsx`,
+  `client/strings.ts`, `client/Orchestrators.tsx`, `client/WorkboardScreen.tsx`,
+  `client/GroupSettings.tsx`, `client/Profiles.tsx`, `docs/factory.md`,
+  `tests/factory-active.test.ts`, `tests/factory-shadow.test.ts`.
+- **Re-apply:** `settings-textarea.tsx`: add `disabled?: boolean` and pass `editable={!disabled}`
+  to its input. The two settings files are custom pages.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-active.test.ts)`
+  (plugin suite in the update script) and the app model test. By hand, only after the user approves
+  the cutover: follow "Cutover" in `docs/factory.md`; with the mode on Active the board shows
+  "factory: active, revision …", and a new task's run records the factory revision. (Ticket 10
+  made the settings editable again; see factory-ui-writes.)
+
+## factory-ui-writes: the UI writes the factory in active mode
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Power Workboard UI edits write the factory files in active mode`
+- **Why:** Ticket 10 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Active mode"): ticket 9 made the factory-owned settings read only; editing them from the board
+  again, with the files and their comments kept as the source of truth and a commit per change.
+- **What:**
+  - `server/factory/writer.ts`: edits YAML and Markdown frontmatter through the `yaml` Document API
+    (comments, quotes and key order kept; a scalar keeps its node), replaces a `worker.md` body,
+    creates and removes files, commits exactly the touched files as `ui: <file> <keys>`.
+    `writeFactoryKeys` / `FactoryShadow.writeKeys` set any top-level key (null removes it), so a new
+    field such as `autonomy` needs no writer code.
+  - `shared/factory/to-files.ts`: the config → file projections, now shared by `bin/factory export`
+    (which moved its mapping and `slugOf` there). `shared/factory/edits.ts`: diffs the projections
+    before and after and plans the file edits (new and removed workers, `priority` on moves, new
+    pools and project files, project policies, factory defaults, board, PM).
+  - `Store.update(change, { factory: true })` (`server/store.ts`): the view may return work the
+    save awaits; `factoryStoreView` sends a marked config edit to `FactoryShadow.writeConfig`
+    (checks the loaded revision is current, else reloads and refuses; validates the result and
+    undoes an invalid one; commits; reloads before the reply). Unmarked writes still drop config
+    changes, as in ticket 9. A removed worker's `memory/` moves to
+    `plugin-data/power-workboard/factory-removed/`.
+  - `server/workboard.ts`: the read-only refusal is gone; the config mutations, `saveSettings` and
+    `setAssistantSettings` (so `board_set_project_policy` and `board_set_default_action`) mark
+    their writes, and `setProfilePrompt` writes the `worker.md` body in active mode.
+  - UI (`client/Orchestrators.tsx`, `GroupSettings.tsx`, `Profiles.tsx`, `WorkboardScreen.tsx`,
+    `strings.ts`): the settings are editable again, with a note that saves go to the factory; new
+    error strings for a changed, broken or rejecting factory.
+- **Core files touched:**
+  `packages/app/src/screens/settings/bruno-customizations/projects-assistant-page.tsx`
+  (`CUSTOM(factory)`: fields editable again, the hint says saves go to the factory).
+  `packages/app/src/components/settings-textarea.tsx` is back to upstream (ticket 9's `disabled`
+  prop is gone).
+- **Plugin files:** the files above, `shared/factory/compile.ts` (`CompiledWorker.priority`),
+  `shared/factory/active.ts` (unused `changed*Keys` removed), `server/factory/shadow.ts`,
+  `server/factory/export.ts`, `docs/factory.md`, `tests/factory-writer.test.ts`,
+  `tests/factory-active.test.ts`, `tests/factory-stamp.test.ts`.
+- **Re-apply:** The settings page is a custom page; nothing else in core.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-writer.test.ts
+tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in active mode:
+  change an orchestrator's model in the Orchestrators tab; `git -C ~/.paseo/factory log -1` shows
+  `ui: workers/<id> model` and the `worker.md` keeps its comments.
 
 ## task-records-jsonl: Workboard attempts and orchestrator logs move to JSONL files
 

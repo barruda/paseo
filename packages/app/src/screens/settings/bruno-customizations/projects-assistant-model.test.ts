@@ -57,7 +57,7 @@ describe("projects assistant settings model", () => {
     const edited = patchFactorySettings(base, { root: "  ~/factory  " });
     expect(edited.factory).toEqual({ root: "~/factory", mode: "shadow" });
     expect(patchFactorySettings(edited, { mode: "off" }).factory.mode).toBe("off");
-    expect(factoryModeOptions("shadow")).toEqual(["off", "shadow"]);
+    expect(factoryModeOptions("shadow")).toEqual(["off", "shadow", "active"]);
     expect(factoryModeOptions("active")).toEqual(["off", "shadow", "active"]);
   });
 

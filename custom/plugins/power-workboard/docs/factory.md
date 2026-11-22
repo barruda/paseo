@@ -3,8 +3,9 @@
 Status: approved design. Built so far: tickets 1 (task descriptions in files), 3 (attempts and
 orchestrator logs in JSONL), 2 (schemas, loader, compiler and `bin/factory`), 4
 (`bin/factory export`) and 6 (pipelines and roles), ticket 5 (revision stamps), ticket 7
-(shadow mode: the board loads and diffs the factory, applies nothing) and ticket 8 (the read-only
-Pipelines tab). Tickets at the end. Inspired by Warp Factories
+(shadow mode: the board loads and diffs the factory, applies nothing), ticket 8 (the read-only
+Pipelines tab), ticket 9 (active mode; the live cutover waits for the user) and ticket 10 (the UI
+writes the factory). Tickets at the end. Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -42,6 +43,7 @@ diff and a history. Scorers and automations get a place to live later.
   workers/<id>/task-prompt.md     optional: text that opens every task (today's `instructions`)
   workers/<id>/skills/<name>/SKILL.md
   workers/<id>/memory/            git-ignored
+  workers/<id>/.claude-plugin/    git-ignored; active mode writes the Claude plugin manifest
   projects/<id>.yaml              path, delivery, tests gate, pipeline
   pipelines/<id>.yaml             stages, gates, transitions, editor layout
   roles/<role>.md                 default stage prompt per role
@@ -280,8 +282,8 @@ the migration maps `fresh-agent` projects to `critical`.
 - The setting is `assistant.settings.factory` (`root`, `mode`), in Settings > Bruno's
   Customizations > Project Manager > Factory. It stays in the JSON in every mode.
 - `shadow` mode applies nothing and reports the diff between the compiled factory and the live
-  config. `active` mode applies it, and the JSON stops being read for these fields. Until ticket
-  9, `active` runs as `shadow` and the status says so.
+  config. `active` mode applies it, and the JSON stops being read for these fields (see "Active
+  mode").
 - The watcher is one non-recursive `fs.watch` per folder the loader reads, plus `.git` for
   commits; `memory/` is skipped because agents write there. Do not switch to recursive
   `fs.watch`: on Linux it watches every file (see `docs/file-observation.md` at the repo root).
@@ -294,14 +296,17 @@ the migration maps `fresh-agent` projects to `critical`.
   call or data change, since it does not bump the data revision.
 - RPC `workboard.factory.status`: mode, root, revision, errors, warnings, diff (at most 200 entries
   plus the count). Every board snapshot carries the summary, and the board and the Orchestrators
-  tab show "factory: shadow, N differences" and the first error.
+  tab show "factory: shadow, N differences" (in active mode "factory: active, revision abc1234")
+  and the first error. In active mode the diff still compares against the JSON, which the board no
+  longer reads; after the cutover it shows what the JSON would bring back if you left active.
 - **Revision**: git `HEAD`, plus `+dirty.<content hash>` with uncommitted changes. Each new
   orchestration and each history event records `factoryRevision`, `workerId` and
   `workerConfigHash` (a stable hash of the compiled worker config, its prompt and task prompt).
   The stamp is taken when an agent starts (a new run, or a new agent for a continued task); a
   continuation that reuses the live agent keeps it, and history events copy their run's stamp.
-  Until active mode the revision is null and the hash comes from the live orchestrator and its
-  profile's `system-prompt.md`. The hash covers only what changes the agent's work (model,
+  In active mode the stamp is the factory's revision, the worker's factory id and
+  `compiledWorkerConfigHash`; in the other modes the revision is null and the hash comes from the
+  live orchestrator and its profile's `system-prompt.md`. The hash covers only what changes the agent's work (model,
   permission, thinking, workspace, prompts, skills, memory, checkpoints, role), so a schedule,
   name or id change keeps it and the same config hashes alike under a UUID and a slug
   (`server/factory/stamp.ts`).
@@ -311,9 +316,91 @@ the migration maps `fresh-agent` projects to `critical`.
   compiler) and `server/factory/` (loader, CLI).
 - Skill names in `skills:` are not resolved: they may be personal or plugin skills outside the
   factory.
-- UI edits in `active` mode go through a writer that edits the YAML with the `yaml` Document API
-  (comments survive) and commits `ui: <what changed>`. A file changed on disk since it was read
-  reloads instead of being overwritten.
+- UI edits in `active` mode go through the writer; see "Active mode".
+
+## Active mode
+
+- **Overlay, not a copy.** `Store.setView` (`server/factory/shadow.ts` `factoryStoreView`,
+  `shared/factory/active.ts`) puts the last valid compile into every `store.current`: orchestrators,
+  orchestrator defaults (all but the default task prompt), the factory-owned `settings` fields
+  (columns, pools, housekeeping), `night`, and `assistant.settings` `enabled`, `defaultAction`,
+  `projects` and `chat`. Every `store.update` puts the JSON's own values back before saving, so
+  `workboard-data.json` keeps its pre-cutover config and going back to `shadow` or `off` is
+  instant and loses nothing. Keep any new factory-owned field in both `applyFactory` and
+  `restoreJsonConfig`, or the board saves the factory's value into the JSON.
+- **Ids.** Workers and pools run under the id the live board knew them by: `factoryIds` (live id →
+  factory id) maps them back, so running tasks, orchestrator runtime and logs stay theirs. Each
+  load adds the `.factory-ids.json` entries the data lacks to `factoryIds`; the data's entries
+  win, also when two live ids map to the same worker (an orchestrator recreated under the same
+  name before a new export): the older live id keeps it. Without the file, the name slugs the diff
+  uses stand in. A worker with no live id runs under its factory id.
+- **A worker leaves the factory while its task runs.** Its live id is gone from the orchestrators,
+  so the task's rework and checkpoint resume go to the project's first orchestrator (`owns()`),
+  and log lines for the old id are dropped. Put the worker back under the same factory id and the
+  task goes back to it, with its old log.
+- **Profiles** come from the factory: a worker's prompt is its `worker.md` body, its folder
+  `workers/<id>/` (own skills, `memory/`), its Claude plugin `pwb-<id>`; the Project Manager's is
+  `pm/` as `pwb-assistant`. The board writes `.claude-plugin/plugin.json` and `memory/` there; both
+  are git-ignored, so they never make the revision dirty. A prompt edit in the UI goes through the
+  writer into the body of `worker.md`.
+- **Boot.** `Workboard.start` waits for the factory's first load after the scan (the compile
+  needs Paseo's projects) and before the first orchestration. With no valid compile yet (missing
+  folder, invalid from the start) the board starts no task (`startReady` returns) and the line
+  says so; tasks already running go on. An invalid file later keeps the last valid compile, and
+  stamps and the line keep its revision, not the newer broken one. board.yaml without a ready or
+  scheduled column is a warning: the board adds them to the JSON's columns, never to the factory's.
+- **The UI writes the factory.** A user's config edit is a store write marked `factory`
+  (`CONFIG_EDIT` in `server/workboard.ts`: the orchestrator mutations but run and stop, pools,
+  night, columns and housekeeping, `orchestrator-defaults`, the PM settings, and so the PM's
+  `board_set_project_policy` and `board_set_default_action`). The store view turns it into file
+  edits before saving (`factoryStoreView` → `FactoryShadow.writeConfig`): each file's projection
+  (`shared/factory/to-files.ts`, which the export writes too) is diffed before and after, and only
+  the keys that changed are written (`shared/factory/edits.ts`), so inherited keys stay inherited.
+  `server/factory/writer.ts` edits through the `yaml` Document API (comments, quotes and key order
+  stay), loads and compiles the result (an invalid one is undone and the edit fails), commits
+  exactly the files it touched as `ui: <file> <keys>`, and loads the factory before the reply. A
+  write the board does on its own (column repairs, bookkeeping) is not marked and never reaches the
+  factory. Other writes of the same save (task changes, `reviews`) still go to the JSON.
+- **Conflicts.** The edit runs on the compile the board showed: when the factory on disk is not
+  that revision (a file changed, whether or not the debounce has loaded it), the board loads it
+  and refuses the edit with "The factory changed on disk and was loaded again". A factory with
+  errors refuses edits until its files are fixed. A factory outside git has no revision, so only a
+  load that already happened is caught there. A failed load or commit puts the files back.
+- **Ids of new things.** A new worker or pool gets a slug of its name (`-2` on repeats, never an id
+  `.factory-ids.json` or `factoryIds` already uses) and keeps the board's id through `factoryIds`.
+  A new worker is appended with the next `priority`; moving workers numbers them again in steps of 10. A project the factory has no file for gets `projects/<slug>.yaml` with its `path`.
+  Removing a worker deletes its files; what the `.gitignore` keeps out (`memory/`,
+  `.claude-plugin/`) moves to `plugin-data/power-workboard/factory-removed/<id>-<time>/`.
+- **Any key.** `FactoryShadow.writeKeys(file, keys)` sets top-level keys of a YAML file or of a
+  Markdown frontmatter, and null removes one; it needs no code per field, so a new field (such as
+  `autonomy`) only needs its schema. The load after the write still validates it.
+- The Pipelines tab reads the factory's `pipelines/` and each project's `pipeline:`.
+
+## Cutover
+
+The PM asks the user first (a Decisões proposal), then runs these on the main checkout. Nothing
+here changes the board until step 5.
+
+1. Back up the data:
+   `cp ~/.paseo/plugin-settings/power-workboard/workboard-data.json{,.bak-pre-factory}`.
+2. Export: `custom/plugins/power-workboard/bin/factory export ~/.paseo/factory` (the folder must be
+   missing or empty). Read its warnings: what it leaves out stays in the JSON or is lost in active.
+3. Copy the memory: `bin/factory memory ~/.paseo/factory`. It copies each profile's `memory/` to
+   `workers/<id>/memory/` and `pm/memory/` through `.factory-ids.json`, never overwrites, and
+   leaves the profile folders in place.
+4. Check: `bin/factory validate ~/.paseo/factory`, then Settings > Bruno's Customizations >
+   Project Manager > Factory set to **Shadow**: the board shows "factory: shadow, 0 differences".
+   Anything else is a difference the export got wrong; fix it before going on.
+5. Switch the same setting to **Active**. The board shows "factory: active, revision …", the
+   Orchestrators tab and the column settings save to the factory's files with a `ui:` commit, and
+   `factoryIds` gets the id map.
+6. Watch the next task start: its run records `factoryRevision` and the worker's factory id
+   (`board_get_task`), and its agent gets the worker's prompt from `worker.md`.
+
+To undo, set the mode back to Shadow or Off: the board reads the JSON again at once. Memory written
+in active mode stays in the factory. A task in a column only board.yaml has moves to the JSON's
+default column (To do for a draft, the default start column for a task with a workspace), and
+`daemon.log` gets a warning per task; a workspace keeps the factory column's label.
 
 ## Migration
 
@@ -324,16 +411,15 @@ template, README, `.gitignore`), validates
 the result and only then runs `git init` and commits. `<dir>` has no default and must be missing or
 empty, so no call writes the live factory by accident. Worker ids become slugs of their names
 (`-2` on repeats), and so do project and pool ids. The map goes to `.factory-ids.json` (git-ignored);
-the cutover copies it into the runtime state (`factoryIds`), so running tasks keep their worker.
-Profile memory is not copied: in `active` mode the profile folders move to `workers/<slug>/`, and a
-`workboard-data.json.bak-pre-factory` backup is kept.
+active mode copies it into the runtime state (`factoryIds`), so running tasks keep their worker.
+The export copies no profile memory; `bin/factory memory` does, as a cutover step.
 
 What the export cannot carry, it reports as a warning and leaves out: orchestrators and policies of
 a project Paseo no longer has, the default task prompt of new orchestrators, a profile skill without
 a valid SKILL.md, and the default-column preferences (`defaultDraftGroup`, `defaultStartGroup`,
 `defaultStartWorkGroup`), which stay in the JSON. Two Paseo projects may share a checkout (one path a
-symlink to the other); the export resolves the path to the project the data names, and active mode
-must do the same.
+symlink to the other); the export resolves the path to the project the data names, and so does the
+loader in shadow and active mode (`projectResolver` in `server/factory/shadow.ts`).
 
 The live export and the switch to `active` need the user's approval (a Decisões proposal). Worktree
 agents never write to `~/.paseo`.
@@ -365,8 +451,9 @@ a thin View and the arrowhead as a border triangle. A `layout` that places every
 rows; one that misses a node is ignored. A layered layout library such as dagre would bundle if the
 hand-made one stops being enough.
 
-Source: until active mode (ticket 9) the tab reads RPC `workboard.factory.pipelines.get`, which
-answers with the built-in pipelines (`shared/factory/builtin-pipelines.ts`, kept equal to
+Source: RPC `workboard.factory.pipelines.get`. In active mode it answers with the factory's
+`pipelines/` and each project's `pipeline:` (`factoryPipelinesView`). Otherwise it answers with the
+built-in pipelines (`shared/factory/builtin-pipelines.ts`, kept equal to
 `server/factory/builtin/pipelines/` by a test) and gives each project the one the migration would:
 `critical` for the `fresh-agent` review policy, else `default`. The worker shown on a node is the
 project's orchestrator, taken as an implement worker.

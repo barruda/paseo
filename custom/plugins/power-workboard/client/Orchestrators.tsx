@@ -27,7 +27,7 @@ import { ConfirmationModal } from "./ConfirmationModal";
 import { HintButton } from "./Hint";
 import type { strings } from "./strings";
 import { toggleButtonState } from "./web";
-import { FactoryLine } from "./FactoryLine"; // CUSTOM(factory)
+import { FactoryLine, factoryOwnsConfig } from "./FactoryLine"; // CUSTOM(factory)
 import { formatHold } from "./hold-format"; // CUSTOM(resource-pools)
 // CUSTOM(agent-profiles)
 import {
@@ -161,6 +161,8 @@ export function OrchestratorsPanel(
   props: Shared & { onOpen(id: string): void; onCreate(): void },
 ) {
   const { board, t, theme, disabled, mutate } = props;
+  // CUSTOM(factory): in active mode every edit here goes to the factory's files, with a commit.
+  const owned = factoryOwnsConfig(board.factory);
   const panel = t.panel;
   const profileText = profileStrings(usePaseoLanguage()); // CUSTOM(agent-profiles)
   // CUSTOM(bulk-orchestrator-agent)
@@ -210,6 +212,11 @@ export function OrchestratorsPanel(
         {panel.intro}
       </Text>
       <FactoryLine summary={board.factory} t={t.factory} theme={theme} />
+      {owned && (
+        <Text style={[styles.meta, { color: theme.colors.foregroundMuted }]}>
+          {t.factory.writes}
+        </Text>
+      )}
       {/* CUSTOM(bulk-orchestrator-agent): what to do with the selected orchestrators */}
       {selectedConfigs.length > 0 && (
         <View
