@@ -39,6 +39,8 @@ export type CompiledWorker = {
   config: OrchestratorConfig;
   /** Defaults to implement, the role of every orchestrator today. */
   role: WorkerRole;
+  /** `priority` of worker.md, 0 when it has none. */
+  priority: number;
   description: string;
   systemPrompt: string;
   /** Names of workers/<id>/skills/*. */
@@ -315,6 +317,7 @@ export function compileFactory(
       id: worker.id,
       config,
       role: own.role ?? DEFAULT_WORKER_ROLE,
+      priority: own.priority ?? 0,
       description: own.description ?? "",
       systemPrompt: worker.systemPrompt,
       ownSkills: worker.skills.map((skill) => skill.name),

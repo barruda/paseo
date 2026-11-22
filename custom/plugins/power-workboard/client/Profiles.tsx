@@ -1147,17 +1147,16 @@ const draftOf = (chat: AssistantChatSettings) => ({
 /** The Project Manager's fixed entry: the same editor, without project or schedule fields. */
 export function AssistantProfileTab({
   theme,
-  disabled: busy,
+  disabled,
   factoryOwned = false,
 }: {
   theme: Theme;
   disabled: boolean;
-  /** CUSTOM(factory): active mode; the chat settings and the prompt come from the factory. */
+  /** CUSTOM(factory): active mode; the chat settings and the prompt are saved to the factory. */
   factoryOwned?: boolean;
 }) {
-  const disabled = busy || factoryOwned;
   const s = profileStrings(usePaseoLanguage());
-  const factoryText = strings(usePaseoLanguage()).factory.readOnly;
+  const factoryText = strings(usePaseoLanguage()).factory.writes;
   const callGet = useRpc(assistantSettingsGetRpc);
   const callSet = useRpc(assistantSettingsSetRpc);
   const toast = useToast();

@@ -972,7 +972,6 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
             {...shared}
             onOpen={openOrchestrator}
             onCreate={async () => {
-              if (factoryOwnsConfig(board.factory)) return; // CUSTOM(factory)
               const before = new Set(board.orchestrators.map((o) => o.id));
               const next = await mutate({
                 action: "orchestrator-save",
@@ -1167,19 +1166,12 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
     if (!next) void boardQuery.refetch();
     return !!next;
   };
-  // CUSTOM(factory): in active mode the factory owns the columns; the board only says so.
-  const columnsOwned = factoryOwnsConfig(board.factory);
-  const columnsReadOnly = () => {
-    toast.show(t.factory.readOnly, { variant: "warning" });
-  };
   const editGroup = (group: Group) =>
-    columnsOwned
-      ? columnsReadOnly()
-      : setEditingGroup({
-          group,
-          settings: board.settings,
-          revision: board.revision,
-        });
+    setEditingGroup({
+      group,
+      settings: board.settings,
+      revision: board.revision,
+    });
   const deleteReason = (group: Group) => {
     const reason = groupDeleteReason(
       board.cards,
@@ -1910,10 +1902,6 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               theme={props.theme}
               onStage={setStage}
               onReorder={async (groupOrder, expectedGroupOrder) => {
-                if (columnsOwned) {
-                  columnsReadOnly();
-                  return false;
-                }
                 if (mutationPending.current.has("reorder-groups")) {
                   toast.error(t.mutationPending);
                   return false;
@@ -1936,10 +1924,6 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               onAdd={() => editGroup(newGroup(board.settings.groups))}
               deleteReason={deleteReason}
               onDelete={async (group) => {
-                if (columnsOwned) {
-                  columnsReadOnly();
-                  return false;
-                }
                 const reason = deleteReason(group);
                 if (reason) {
                   toast.show(reason, { variant: "warning" });
@@ -5499,21 +5483,11 @@ export function SettingsPage({
     Number(tmpHoursText) >= 1 &&
     Number(tmpHoursText) <= 8760;
   const preview = mappingPreview(board.cards, settings, Date.now());
-  // CUSTOM(factory): housekeeping comes from the factory in active mode; the default-column
-  // preferences stay editable.
+  // CUSTOM(factory): in active mode the columns and housekeeping are saved to the factory; the
+  // default-column preferences stay in the board.
   const factoryOwned = factoryOwnsConfig(board.factory);
-  const factoryControls = [
-    "pin",
-    "archive",
-    "days",
-    "tmp-path",
-    "tmp-hours",
-    "tmp-cleanup",
-  ];
   const controlDisabled = (id: string) =>
-    disabled ||
-    (factoryOwned && factoryControls.includes(id)) ||
-    !!pendingMutationIds?.has(`settings:${id}`);
+    disabled || !!pendingMutationIds?.has(`settings:${id}`);
   const persist = async (next: Settings, control = "groups") => {
     const result = await mutate(
       {
@@ -5537,7 +5511,7 @@ export function SettingsPage({
             <Text
               style={[styles.hintText, { color: theme.colors.foregroundMuted }]}
             >
-              {t.factory.readOnly}
+              {t.factory.writes}
             </Text>
           )}
           <SettingsSection title={t.generalSettings}>

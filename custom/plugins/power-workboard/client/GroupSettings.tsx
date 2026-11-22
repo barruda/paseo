@@ -29,7 +29,6 @@ import { groupDeleteReason, groupTasks, mappingPreview } from "./board-utils";
 import { groupColor, groupColorValue } from "./colors";
 import { groupTitle, strings } from "./strings";
 import { ConfirmationModal } from "./ConfirmationModal";
-import { factoryOwnsConfig } from "./FactoryLine"; // CUSTOM(factory)
 
 type Props = {
   board: Board;
@@ -45,14 +44,11 @@ export function GroupSettings({
   board,
   groups,
   onChange,
-  disabled: busy,
+  disabled,
   saving,
   t,
   theme,
 }: Props) {
-  // CUSTOM(factory): the columns come from the factory in active mode.
-  const owned = factoryOwnsConfig(board.factory);
-  const disabled = busy || owned;
   const [editing, setEditing] = useState<Group | null>(null);
   const [deleting, setDeleting] = useState<Group | null>(null);
   return (
@@ -79,7 +75,7 @@ export function GroupSettings({
       }
     >
       <Text style={[styles.hint, { color: theme.colors.foregroundMuted }]}>
-        {owned ? t.factory.readOnly : t.groupsHint}
+        {t.groupsHint}
       </Text>
       <SettingsCard>
         {orderedGroups({ ...board.settings, groups }).map((group) => {

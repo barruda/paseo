@@ -38,12 +38,20 @@ const writeResult = z.discriminatedUnion("status", [
 /**
  * CUSTOM(factory): a view over the saved data. `apply` changes the copy every read returns;
  * `restore` undoes it on the changed copy before a save. Active mode puts the compiled factory in
- * the config fields this way (shared/factory/active.ts).
+ * the config fields this way (shared/factory/active.ts). For an update marked `factory`, `restore`
+ * may return work the save awaits first (active mode writes the config change to the factory); if
+ * it fails, nothing is saved.
  */
 export interface StoreView {
   apply(data: Data): void;
-  restore(next: Data, saved: Readonly<Data>): void;
+  restore(
+    next: Data,
+    saved: Readonly<Data>,
+    options: UpdateOptions,
+  ): (() => Promise<void>) | void;
 }
+/** CUSTOM(factory): `factory`: a user's config edit, which active mode writes to the factory. */
+export type UpdateOptions = { factory?: boolean };
 const NONE: ReadonlySet<string> = new Set();
 // Tests reopen a Store on the same backing; without files of their own they share one set.
 const memoryFiles = new WeakMap<SettingsBacking, DescriptionFiles>();
@@ -140,13 +148,15 @@ export class Store {
   }
   update(
     change: (data: Data, descriptions: DescriptionEditor) => void,
+    options: UpdateOptions = {}, // CUSTOM(factory)
   ): Promise<void> {
-    return this.save(change, false);
+    return this.save(change, false, options);
   }
   /** `moving`: also write the texts still in the JSON to their files (`moveDescriptions`). */
   private save(
     change: (data: Data, descriptions: DescriptionEditor) => void,
     moving: boolean,
+    options: UpdateOptions = {},
   ): Promise<void> {
     const work = this.queue.then(async () => {
       if (this.revision === null) throw new Error("Storage is unavailable");
@@ -156,7 +166,9 @@ export class Store {
         get: (taskId) => staged.get(taskId) ?? this.description(taskId),
         set: (taskId, text) => staged.set(taskId, text),
       });
-      this.view?.restore(next, this.value); // CUSTOM(factory)
+      // CUSTOM(factory): awaited only when there is a factory write, so plain saves keep their ticks.
+      const pending = this.view?.restore(next, this.value, options);
+      if (pending) await pending();
       const writes = this.stageDescriptions(next, staged, moving);
       if (!writes.size && JSON.stringify(next) === JSON.stringify(this.value))
         return;

@@ -62,20 +62,6 @@ export const FACTORY_ASSISTANT_KEYS = [
   "chat",
 ] as const satisfies ReadonlyArray<keyof AssistantSettings>;
 
-/** JSON with sorted keys and no undefined values, so key order never makes two values differ. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object")
-    return `{${Object.entries(value)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-      .join(",")}}`;
-  return JSON.stringify(value ?? null);
-}
-
-const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
-
 /** Both directions of the id map; the data's entries win over the file's. */
 export class FactoryIds {
   private readonly toFactory: FactoryIdMap;
@@ -184,20 +170,4 @@ export function restoreJsonConfig(next: Data, saved: Readonly<Data>): void {
     (next.assistant.settings as Record<string, unknown>)[key] = structuredClone(
       saved.assistant.settings[key],
     );
-}
-
-/** The factory-owned settings fields `next` changes, by name. */
-export function changedSettingsKeys(
-  current: Settings,
-  next: Settings,
-): string[] {
-  return FACTORY_SETTINGS_KEYS.filter((key) => !same(current[key], next[key]));
-}
-
-/** The factory-owned PM fields `next` changes, by name. */
-export function changedAssistantKeys(
-  current: AssistantSettings,
-  next: AssistantSettings,
-): string[] {
-  return FACTORY_ASSISTANT_KEYS.filter((key) => !same(current[key], next[key]));
 }
