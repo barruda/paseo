@@ -8,6 +8,7 @@ import {
   type AssistantChatSettings,
   type ProjectPolicy,
 } from "../assistant";
+import { DEFAULT_AUTONOMY, type AutonomyPresetId } from "../autonomy";
 import {
   DEFAULT_GROUPS,
   DEFAULT_LABELS,
@@ -45,6 +46,8 @@ export type CompiledWorker = {
   systemPrompt: string;
   /** Names of workers/<id>/skills/*. */
   ownSkills: string[];
+  /** The resolved autonomy preset of its project (the board's for a worker of no project). */
+  autonomy: AutonomyPresetId;
 };
 
 export type CompiledProject = {
@@ -55,6 +58,8 @@ export type CompiledProject = {
   pipeline: string | null;
   /** Path of the spec template relative to the factory root, or null. */
   specTemplate: string | null;
+  /** Resolved: the project's own, its pipeline's, pm/worker.md's, else `standard`. */
+  autonomy: AutonomyPresetId;
 };
 
 export type CompiledStage = {
@@ -79,6 +84,8 @@ export type CompiledPipeline = {
   id: string;
   description: string;
   start: string;
+  /** The pipeline's own autonomy preset, or null when it sets none. */
+  autonomy: AutonomyPresetId | null;
   /** In file order. */
   stages: CompiledStage[];
   layout: Record<string, { x: number; y: number }>;
@@ -104,6 +111,8 @@ export type CompiledFactory = {
     chat: AssistantChatSettings;
   };
   pm: { systemPrompt: string; ownSkills: string[] };
+  /** The preset of a project with no file: `defaults.pipeline`'s, pm/worker.md's, else `standard`. */
+  autonomy: AutonomyPresetId;
   projects: CompiledProject[];
   pipelines: CompiledPipeline[];
   /** Names of skills/*, for every worker. */
@@ -215,6 +224,11 @@ export function compileFactory(
   const defaults = factory.factory.defaults ?? {};
   const workerDefaults = defaults.worker ?? {};
   const pm = factory.pm.settings;
+  // Project > pipeline > pm > standard.
+  const pipelineAutonomy = (id: string | null | undefined) =>
+    factory.pipelines.find((entry) => entry.id === id)?.pipeline.autonomy;
+  const boardAutonomy =
+    pipelineAutonomy(defaults.pipeline) ?? pm.autonomy ?? DEFAULT_AUTONOMY;
 
   const projects: CompiledProject[] = [];
   const activeProjects = new Map<string, CompiledProject>();
@@ -230,12 +244,18 @@ export function compileFactory(
       });
       continue;
     }
+    const pipeline = project.settings.pipeline ?? defaults.pipeline ?? null;
     const compiled: CompiledProject = {
       id: project.id,
       realPath: project.realPath,
       projectId,
-      pipeline: project.settings.pipeline ?? defaults.pipeline ?? null,
+      pipeline,
       specTemplate: project.settings.templates?.spec ?? null,
+      autonomy:
+        project.settings.autonomy ??
+        pipelineAutonomy(pipeline) ??
+        pm.autonomy ??
+        DEFAULT_AUTONOMY,
     };
     projects.push(compiled);
     activeProjects.set(project.id, compiled);
@@ -268,6 +288,7 @@ export function compileFactory(
   for (const worker of sorted) {
     const own = worker.settings;
     let projectId: string | null = null;
+    let autonomy = boardAutonomy;
     if (own.project) {
       const project = activeProjects.get(own.project);
       if (!project) {
@@ -280,6 +301,7 @@ export function compileFactory(
         continue;
       }
       projectId = project.projectId;
+      autonomy = project.autonomy;
     }
     const setting = <K extends keyof typeof workerDefaults>(key: K) =>
       pick(own[key], workerDefaults[key]);
@@ -321,6 +343,7 @@ export function compileFactory(
       description: own.description ?? "",
       systemPrompt: worker.systemPrompt,
       ownSkills: worker.skills.map((skill) => skill.name),
+      autonomy,
     });
   }
 
@@ -431,11 +454,13 @@ export function compileFactory(
         systemPrompt: factory.pm.systemPrompt,
         ownSkills: factory.pm.skills.map((skill) => skill.name),
       },
+      autonomy: boardAutonomy,
       projects,
       pipelines: factory.pipelines.map(({ id, pipeline, prompts }) => ({
         id,
         description: pipeline.description ?? "",
         start: pipeline.start,
+        autonomy: pipeline.autonomy ?? null,
         stages: Object.entries(pipeline.stages).map(([stageId, stage]) =>
           compileStage(stageId, stage, prompts[stageId] ?? ""),
         ),

@@ -137,3 +137,127 @@ export function dependencyRefusal(lines: string[]): string | null {
   const more = paths.length > 5 ? ` and ${paths.length - 5} more` : "";
   return `Not committed: untracked dependency paths would enter the commit (${shown}${more}). A symlinked node_modules is a file to git, so a node_modules/ ignore rule misses it. Replace it with a real install in the worktree (or ignore it), then deliver again.`;
 }
+
+/**
+ * CUSTOM(orchestrator-in-place): the paths of one `git status --porcelain` (v1) line. A rename or
+ * copy gives both paths, old first. C-quoted paths (spaces, non-ASCII under `core.quotePath`)
+ * come back as the real file names, ready for literal pathspecs.
+ */
+export function porcelainPaths(line: string): string[] {
+  const code = line.slice(0, 2);
+  const rest = line.slice(3);
+  const twoPaths = code.includes("R") || code.includes("C");
+  const paths: string[] = [];
+  let index = 0;
+  while (index < rest.length) {
+    let path: string;
+    if (rest[index] === '"') {
+      const bytes: number[] = [];
+      index += 1;
+      while (index < rest.length && rest[index] !== '"') {
+        const char = rest[index]!;
+        if (char !== "\\") {
+          bytes.push(...Buffer.from(char, "utf8"));
+          index += 1;
+          continue;
+        }
+        const next = rest[index + 1] ?? "";
+        const octal = /^[0-7]{3}/.exec(rest.slice(index + 1, index + 4));
+        if (octal) {
+          bytes.push(parseInt(octal[0], 8));
+          index += 4;
+          continue;
+        }
+        const escapes: Record<string, number> = {
+          a: 7,
+          b: 8,
+          t: 9,
+          n: 10,
+          v: 11,
+          f: 12,
+          r: 13,
+        };
+        bytes.push(escapes[next] ?? next.charCodeAt(0));
+        index += 2;
+      }
+      index += 1;
+      path = Buffer.from(bytes).toString("utf8");
+    } else {
+      const arrow = twoPaths ? rest.indexOf(" -> ", index) : -1;
+      const end = arrow === -1 ? rest.length : arrow;
+      path = rest.slice(index, end);
+      index = end;
+    }
+    paths.push(path);
+    if (!twoPaths || !rest.startsWith(" -> ", index)) break;
+    index += 4;
+  }
+  return paths.filter((path) => path.length > 0);
+}
+
+export interface InPlaceCommitPlan {
+  /** The status lines the commit takes: dirty now and not dirty when the task started. */
+  lines: string[];
+  /** Their paths, for `commit` (a rename gives both). */
+  paths: string[];
+  /** Paths left out because they were already uncommitted when the task started. */
+  leftOut: string[];
+  /** Left-out paths the agent's report also lists as changed: whose change is whose is unknown. */
+  overlap: string[];
+}
+
+/** `path` is `dirty`, or sits in a directory that `git status` listed as dirty (`dir/`). */
+function coveredBy(path: string, dirty: readonly string[]): boolean {
+  return dirty.some(
+    (entry) =>
+      entry === path || (entry.endsWith("/") && path.startsWith(entry)),
+  );
+}
+
+/** A report path relative to the folder, as `git status` prints it. */
+function relativeReportPath(path: string, directory: string): string {
+  const root = directory.replace(/\/+$/, "") + "/";
+  let relative = path.trim();
+  if (relative.startsWith(root)) relative = relative.slice(root.length);
+  return relative.replace(/^(\.\/)+/, "");
+}
+
+/**
+ * CUSTOM(orchestrator-in-place): what an in-place delivery commits. The folder is the user's
+ * checkout, so whatever was uncommitted when the task started stays out of the commit. A line
+ * counts as the user's when any of its paths was dirty at the start (an untracked directory
+ * covers the files under it). Paths that were dirty before and that the agent also reports as
+ * changed hold both people's work in one file; they go to `overlap` for the user to sort out.
+ */
+export function inPlaceCommitPlan(input: {
+  current: readonly string[];
+  initialDirty: readonly string[];
+  filesChanged: readonly string[];
+  directory: string;
+}): InPlaceCommitPlan {
+  const before = input.initialDirty.flatMap(porcelainPaths);
+  const reported = input.filesChanged
+    .map((path) => relativeReportPath(path, input.directory))
+    .filter((path) => path.length > 0);
+  const plan: InPlaceCommitPlan = {
+    lines: [],
+    paths: [],
+    leftOut: [],
+    overlap: [],
+  };
+  for (const line of input.current) {
+    const paths = porcelainPaths(line);
+    if (!paths.length) continue;
+    const old = paths.filter((path) => coveredBy(path, before));
+    if (!old.length) {
+      plan.lines.push(line);
+      plan.paths.push(...paths);
+      continue;
+    }
+    plan.leftOut.push(...old);
+    for (const path of old)
+      if (reported.some((file) => file === path || coveredBy(file, [path])))
+        plan.overlap.push(path);
+  }
+  return plan;
+}

@@ -41,7 +41,10 @@ import type { Workboard } from "../workboard";
 import { ACK_MESSAGE_MAX, normalizeAckStatus } from "../../shared/quick";
 import type { QuickInbox } from "./quick";
 // CUSTOM(assistant-reports)
-import { reportEntryInputSchema } from "../../shared/assistant-reports";
+import {
+  REPORT_SUMMARY_MAX,
+  reportEntryInputSchema,
+} from "../../shared/assistant-reports";
 import type { Data, Orchestration } from "../../shared/model";
 import { resolveTaskReference } from "../../shared/task-reference"; // CUSTOM(task-numbers)
 import { effectiveTestTier } from "../../shared/packages"; // CUSTOM(packages)
@@ -53,6 +56,9 @@ import {
   REPLY_FENCE,
   REPLY_PROTOCOL_VERSION,
 } from "../../shared/reply-protocol";
+// CUSTOM(factory): autonomy presets and PM transitions (ticket 12)
+import { autonomyRulesText, userOnlyReasonSchema } from "../../shared/autonomy";
+import { PIPELINE_CHOICE_RULE } from "../../shared/factory/engine";
 // CUSTOM(pm-board)
 import {
   buildPmOverview,
@@ -67,7 +73,7 @@ export const CHAT_LABEL = "pwb/assistant-chat";
 // CUSTOM(agent-profiles): the role text is the seed of the Project Manager profile's system-prompt.md;
 // from then on that file is the source of truth and the chat's first message is only CHAT_INSTRUCTIONS.
 const BOARD_TOOLS =
-  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_package_propose_close, board_run_package_gate, board_package_history, board_set_test_tier";
+  "board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_package_propose_close, board_run_package_gate, board_package_history, board_set_test_tier, board_pipeline_advance, board_pipeline_ask";
 
 // CUSTOM(task-numbers): the same reference is accepted everywhere a tool takes a task.
 const TASK_ID_HINT = "Task UUID, or its short number as 42 or #42";
@@ -97,6 +103,12 @@ export const REPLY_PROTOCOL_RULE = [
   "Put the why, criteria checked, checks, decisions and links after a `---` line inside the block: the chat shows them collapsed. Outside the block write at most a one-line direct answer when the user asked something. Never list commands you ran, test output that passed or steps that changed nothing.",
 ].join("\n");
 
+/**
+ * CUSTOM(factory): what is the user's, generated from the presets in shared/autonomy.ts (ticket
+ * 12). The seed prompt, CHAT_RULES and the tool descriptions all carry this one text.
+ */
+export const AUTONOMY_RULE = autonomyRulesText();
+
 export const ASSISTANT_ROLE = [
   "You are the Project Manager: the user's manager for their Workboard tasks and orchestrators, in Tasks mode. You act for the user: they want decisions made and reported, not questions.",
   `Manage tasks through your board tools (${BOARD_TOOLS}): create, move, start, continue and deliver every task there. Never edit a project's code, commit or merge outside board_task_action.`,
@@ -114,7 +126,10 @@ export const ASSISTANT_ROLE = [
     "- Critical (a project whose review is fresh-agent in board_overview, or a big or risky change in any project): create a review task with start=true so a fresh agent, not the author, reviews the diff against the acceptance criteria without changing code. Read its report, tell the user what merge-now or mark-done will do, and wait for their ok.",
     "- Has problems: board_task_action continue with your feedback.",
   ].join("\n"),
-  "Every message that wakes you (a quick message, a [Board] wake, a message from the user) carries the current Needs you list. Handle it before you end the reply: review and merge-now, send feedback with continue, answer the agent, or dismiss what is not yours; leave for the user only the ok before a fresh-agent merge, real product decisions and anything risky or hard to undo.",
+  "Every message that wakes you (a quick message, a [Board] wake, a message from the user) carries the current Needs you list. Handle it before you end the reply: review and merge-now, send feedback with continue, answer the agent, settle each pipeline choice, or dismiss what is not yours; leave for the user only what the task's autonomy preset gives them.",
+  // CUSTOM(factory): ticket 12
+  AUTONOMY_RULE,
+  PIPELINE_CHOICE_RULE,
   "Act for the user. When a board task's agent waits for the user's ok or a decision (a needs_input or blocked report, a question in its reply, the open decisions of a proposal), answer it yourself with board_task_action continue when you can do it with reasonable precision and no real risk. Agents outside the board may refuse an ok that comes from you; then leave that one for the user and don't insist. End with the list of decisions you took.",
   'Fix small blockers yourself. When a delivery is blocked by something small and reversible outside a project\'s code (your settings, through board_set_project_policy or board_set_default_action; daemon metadata such as a worktree\'s stored base; a stale lock), fix it, keep a backup in /home/bruno/uprojects/tmp when you change a file, and report it. Merge conflicts are retried by the board on its own; step in only when it gives up. A dirty base checkout may be another agent\'s live work, so check it before touching anything: when a task in `merging` shows "Waiting for a clean checkout" (in board_get_task or in Needs you), call list_agents and look for any agent, of any origin, whose cwd is that checkout and that is running or touched it recently. If one is there, do not stash and do not touch the checkout: let the board keep retrying the merge; if it gives up, tell the user which agent is in the checkout and which tasks are waiting on it. If no agent is working there, do not ask: save a backup of `git diff` and of the untracked files in /home/bruno/uprojects/tmp/<project>-dirty-backup-<YYYY-MM-DD>/, run `git stash push -u -m "assistant: <origin>, reaplicar após merges"` in that checkout, run the tests of each approved task that was waiting on the checkout, then run merge-now with wait=true on them, one at a time, and check with git log that their commits are on the base branch and their cards reached Done. Finish with `git stash pop` right after and tell the user what merged, where the backup is and that the edits are back. Escalate only if the stash pop conflicts: leave the stash intact and say which stash it is. Never discard those edits: no `checkout --`, no `reset --hard`, no `stash drop` without a pop. Ask before anything destructive or hard to undo, except for these steps.',
   'Ship what you merge in the paseo project. After merging changes under custom/plugins/power-workboard, call board_reload_plugin as the last action of your turn: it reloads the plugin when the turn ends, so your board tools keep working until then. Never run `plugin reload` yourself while you still need the board tools in this turn: a direct reload retires them and they only come back on the next message. When a merged change touches packages/ (the app or the daemon) and no paseo task is still in review or delivering, create one Paseo agent in /home/bruno/projetos/paseo whose only job is to ship: load the paseo-customizations skill, build and install, reopen the clients, and never restart a daemon. Create it with create_agent and labels {"paseo.board-agent": "true"}: that label keeps it out of the user\'s sidebar and notifications, and you report on it instead. Pass the same label to every Paseo agent you create. If the change needs a daemon restart, tell the user once, with the command kill-paseos-and-daemons.sh.',
@@ -135,8 +150,9 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 
 // CUSTOM(assistant-compact): the rules alone open a chat started by compaction, which must not greet.
 export const CHAT_RULES =
-  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_package_propose_close, board_run_package_gate, board_package_history and board_set_test_tier. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications. ' +
-  PM_CHAT_SYNC_RULE; // CUSTOM(pm-chat-sync)
+  'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_package_propose_close, board_run_package_gate, board_package_history, board_set_test_tier, board_pipeline_advance and board_pipeline_ask. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications. ' +
+  PM_CHAT_SYNC_RULE + // CUSTOM(pm-chat-sync)
+  ` ${AUTONOMY_RULE} ${PIPELINE_CHOICE_RULE}`; // CUSTOM(factory)
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS = `Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). ${CHAT_RULES}`;
 
@@ -352,6 +368,107 @@ export function boardReportTool(
   });
 }
 
+/**
+ * CUSTOM(factory): ticket 12. The Project Manager settles a pipeline stage that ended with a list
+ * of `when` conditions: it advances to a candidate whose condition fits, or asks the user. Each
+ * advance is recorded as a board_report entry of kind `moved`.
+ */
+export function pipelineTools(
+  getBoard: () => Pick<
+    Workboard,
+    | "assistantSource"
+    | "snapshot"
+    | "pipelineAdvance"
+    | "pipelineAsk"
+    | "noteAssistantReported"
+  >,
+  reports: Pick<ReportStore, "append">,
+): ChatTool[] {
+  const resolve = (reference: string) => {
+    const task = resolveTaskReference(
+      getBoard().assistantSource().data.tasks,
+      reference,
+    );
+    if (!task)
+      throw new Error(
+        `No task with id ${reference}. Use board_list_tasks to find its id or number.`,
+      );
+    return task;
+  };
+  return [
+    define({
+      name: "board_pipeline_advance",
+      description: `Move a task whose pipeline stage ended with a list of when conditions to the candidate stage whose condition fits the stage's report (the Needs you line lists the candidates and the report). ${TASK_ID_HINT}. stage: one of the candidates; any other is refused. reason: one sentence on why its condition fits, in the user's language. The board records the move in the Projects Reports (kind moved) and runs the stage. ${PIPELINE_CHOICE_RULE}`,
+      input: z.object({
+        taskId: z.string(),
+        stage: z.string().min(1).max(80),
+        reason: z.string().trim().min(1).max(2000),
+      }),
+      async execute({ taskId, stage, reason }) {
+        const board = getBoard();
+        const task = resolve(taskId);
+        const moved = await board.pipelineAdvance(task.id, stage, reason);
+        const line = reason.replace(/\s+/g, " ").trim();
+        const snapshot = board.snapshot();
+        const card = snapshot.cards.find((c) => c.id === task.id);
+        const projectId = card?.projectId ?? task.projectId ?? null;
+        await reports.append({
+          taskId: task.id,
+          taskTitle: task.title,
+          projectId,
+          projectName:
+            card?.projectName ||
+            task.projectName ||
+            snapshot.projects.find((p) => p.id === projectId)?.name ||
+            "",
+          kind: "moved",
+          summary: `Pipeline: ${moved.from} → ${moved.to}. ${line}`.slice(
+            0,
+            REPORT_SUMMARY_MAX,
+          ),
+          detail: null,
+          decisions: [`${moved.to}: ${line}`.slice(0, 500)],
+          orchestrator: null,
+          quickMessageId: null,
+        });
+        await board.noteAssistantReported(task.id);
+        return text(
+          `Moved "${task.title}" from ${moved.from} to ${moved.to} and recorded it (moved).`,
+        );
+      },
+    }),
+    define({
+      name: "board_pipeline_ask",
+      description: `Ask the user which stage follows a pipeline stage that ended with a list of when conditions, when no condition fits its report. It creates a Decisões proposal whose options are candidate stages; the user's answer moves the task with no turn of yours, and you may not decide that card yourself. ${TASK_ID_HINT}. options: each { stage (a candidate), label, gains, costs }; recommend: one of those stages. reason: "no-fit" when no condition fits, or the userOnlyReason the project's preset gives the user; a reason the preset leaves to you is refused. Put the card id in your reply's \`seu\` line as [pm:<card id>]. ${PIPELINE_CHOICE_RULE} ${AUTONOMY_RULE}`,
+      input: z.object({
+        taskId: z.string(),
+        question: z.string().trim().min(1).max(5000),
+        options: z
+          .array(
+            z.object({
+              stage: z.string().min(1).max(80),
+              label: z.string().max(500).nullable().default(null),
+              gains: z.string().max(500).nullable().default(null),
+              costs: z.string().max(500).nullable().default(null),
+            }),
+          )
+          .min(1)
+          .max(8),
+        recommend: z.string().max(80).nullable().default(null),
+        reason: z.union([z.literal("no-fit"), userOnlyReasonSchema]),
+        why: z.string().max(2000).nullable().default(null),
+      }),
+      async execute({ taskId, ...input }) {
+        const task = resolve(taskId);
+        const card = await getBoard().pipelineAsk(task.id, input);
+        return text(
+          `Asked the user on PM card ${card.id} which stage follows; "${task.title}" waits for their answer. Cite it as [pm:${card.id}].`,
+        );
+      },
+    }),
+  ];
+}
+
 /** How long board_task_action with wait=true waits for a delivery, and how often it looks. */
 const WAIT_LIMIT_MS = 120_000;
 const WAIT_POLL_MS = 200;
@@ -525,7 +642,7 @@ export function chatTools(
           source.data.tasks.map((task) => [task.id, task.number]),
         ); // CUSTOM(task-numbers)
         const lines = [
-          `Projects:\n${snapshot.projects.map((p) => `- ${p.id} | ${p.name} | ${p.isGit ? "git" : "not git"} | ${p.directory} | review: ${reviewPolicyFor(settings, p.id)}`).join("\n") || "- none"}`,
+          `Projects:\n${snapshot.projects.map((p) => `- ${p.id} | ${p.name} | ${p.isGit ? "git" : "not git"} | ${p.directory} | review: ${reviewPolicyFor(settings, p.id)} | ${board().autonomyRule(p.id)}`).join("\n") || "- none"}`,
           `Orchestrators:\n${
             snapshot.orchestrators
               .map((o) => {
@@ -1042,7 +1159,9 @@ export function chatTools(
     define({
       name: "pm_card_create",
       description:
-        'Create a card on your own Project Manager board (the Decisões tab), apart from the task board. kind: "investigation" (something you are looking into, starts in Investigating), "proposal" (a choice the user must make: put question, options with gains and costs, and recommend one; it waits in "Esperando você"; to suggest a package grouping, set action "select-tasks" with the ticket ids in taskIds, and the card shows "Select these tickets" and "Ignore" — selecting only marks the tickets and opens the package menu, so never create the package yourself), "decision" (a call you already made on your own; pass decision and it starts Decided with decidedBy pm) or "notice" (information the user should track). Never create a card for every event: only what the user should track. Code tasks and code reviews are not PM cards: they stay on the task board (board_create_task). taskIds/reportIds link the card to tasks and their Reports tickets.',
+        'Create a card on your own Project Manager board (the Decisões tab), apart from the task board. kind: "investigation" (something you are looking into, starts in Investigating), "proposal" (a choice the user must make: put question, options with gains and costs, and recommend one; it waits in "Esperando você"; to suggest a package grouping, set action "select-tasks" with the ticket ids in taskIds, and the card shows "Select these tickets" and "Ignore" — selecting only marks the tickets and opens the package menu, so never create the package yourself), "decision" (a call you already made on your own; pass decision and it starts Decided with decidedBy pm) or "notice" (information the user should track). Never create a card for every event: only what the user should track. Code tasks and code reviews are not PM cards: they stay on the task board (board_create_task). taskIds/reportIds link the card to tasks and their Reports tickets. ' +
+        // CUSTOM(factory): ticket 12
+        `userOnlyReason: on a proposal, why the decision is the user's; it is refused when the linked tasks' projects' presets leave it to you. ${AUTONOMY_RULE}`,
       input: z.object({
         kind: pmCardKindSchema,
         title: z.string().min(1).max(500),
@@ -1056,9 +1175,11 @@ export function chatTools(
         taskIds: z.array(z.string()).max(50).default([]),
         reportIds: z.array(z.string()).max(50).default([]),
         packageIds: z.array(z.string()).max(50).default([]),
+        userOnlyReason: userOnlyReasonSchema.nullable().default(null), // CUSTOM(factory)
       }),
       async execute(input) {
         const card = await board().pmCardCreate({
+          userOnlyReason: input.userOnlyReason,
           kind: input.kind,
           title: input.title,
           question: input.question,

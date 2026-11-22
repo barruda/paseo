@@ -181,6 +181,7 @@ layout:
         id: "flow",
         description: "Everything",
         start: "a",
+        autonomy: null,
         stages: [
           {
             id: "a",

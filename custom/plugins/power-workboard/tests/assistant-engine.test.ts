@@ -1506,7 +1506,10 @@ it("a review task wakes the assistant with the review policy of its project", as
       `${s.taskId} | Task | Project | review | review: fresh-agent`,
     );
     expect(text).toContain("review and merge-now (reason review)");
-    expect(text).toContain("the ok before merging a fresh-agent project");
+    // CUSTOM(factory): ticket 12. The project's preset says whose merge it is.
+    expect(text).toContain(
+      "autonomy Padrão (standard, critical): the merge ok is the user's",
+    );
     await vi.waitFor(() =>
       expect(
         s.history.events.find((e) => e.kind === "told-assistant")?.text,

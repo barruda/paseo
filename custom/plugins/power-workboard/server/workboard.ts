@@ -178,6 +178,7 @@ import {
   isUpToDate,
   runVerify,
   type VerifyRunner,
+  inPlaceCommitPlan, // CUSTOM(orchestrator-in-place)
 } from "./assistant/delivery";
 import type { HistoryEventInput, HistoryStore } from "./assistant/history";
 // CUSTOM(factory)
@@ -196,6 +197,9 @@ import {
 } from "../shared/factory/active";
 import type { FactoryMode } from "../shared/factory/status";
 import {
+  PIPELINE_CHOICE_RULE,
+  autonomyForProject,
+  chooseCandidates,
   enterStage,
   findStage,
   loopContinued,
@@ -208,6 +212,15 @@ import {
   type TaskPipeline,
 } from "../shared/factory/engine";
 import { projectWorkers, stageRunner } from "../shared/factory/pipeline";
+import {
+  DEFAULT_AUTONOMY,
+  PM_DECIDES_TEXT,
+  autonomyProjectRule,
+  mergeNeedsUser,
+  userOnlyRefusal,
+  type AutonomyPresetId,
+  type UserOnlyReason,
+} from "../shared/autonomy";
 import type {
   CompiledPipeline,
   CompiledStage,
@@ -301,6 +314,11 @@ export const GATE_USER_ONLY_ERROR =
 /** CUSTOM(factory): archiving an open gate's card would leave its task with no way forward. */
 export const GATE_ARCHIVE_ERROR =
   "This card holds an open pipeline gate; answer it instead of archiving it";
+/**
+ * The last line of a board wake. CUSTOM(factory): what is the user's comes from each task's
+ * autonomy preset, which its Needs you line names (ticket 12).
+ */
+export const WAKE_INSTRUCTIONS = `Handle each one as your instructions say: review and merge-now (reason review), send feedback with continue, answer the agent's question or give the ok yourself when you can do it with reasonable precision and no real risk, fix small reversible blockers, and settle each pipeline choice with board_pipeline_advance or board_pipeline_ask. Leave to the user only what each line's autonomy gives them; everything else is yours: ${PM_DECIDES_TEXT}. ${PIPELINE_CHOICE_RULE} Then tell the user in 2-4 lines, in the language they write to you in, what you did and what is left for them (or that nothing is).`;
 /** CUSTOM(factory): the note on a gate's Decisões proposal archived when active mode turns off. */
 export const GATE_CLOSED_NOTE =
   "Closed without an answer: factory active mode was turned off, so this gate no longer moves the task. Continue or Done on the task works as today.";
@@ -2951,16 +2969,19 @@ export class Workboard {
     }
   }
   /**
-   * CUSTOM(factory): the task waits on a pipeline gate, which only the user answers (in Decisões),
-   * so the Project Manager is not woken for it. A `when` list's stage choice still wakes it.
+   * CUSTOM(factory): the task waits on a pipeline gate, or on a stage choice the Project Manager
+   * asked the user about (board_pipeline_ask). Only the user answers those (in Decisões), so the
+   * PM is not woken for them. A `when` list's choice with no card yet wakes the PM (ticket 12).
    */
   private userGate(taskId: string): boolean {
     const delivery = this.store.current.assistant.deliveries[taskId];
+    const gate = this.store.current.tasks.find((t) => t.id === taskId)?.pipeline
+      ?.gate;
     return (
       delivery?.stage === "needs-you" &&
       delivery.reason === "gate" &&
-      this.store.current.tasks.find((t) => t.id === taskId)?.pipeline?.gate
-        ?.kind === "gate" &&
+      !!gate &&
+      (gate.kind === "gate" || gate.cardId !== null) &&
       this.factoryMode() === "active"
     );
   }
@@ -3150,15 +3171,18 @@ export class Workboard {
       return line.length > max ? `${line.slice(0, max)}...` : line;
     };
     const reason = delivery.reason ?? "unknown";
-    return [
+    const projectId = this.projectIdOf(task);
+    const line = [
       id,
       clean(task.title, 200),
       clean(project, 100),
       delivery.detail ? `${reason}: ${clean(delivery.detail, 300)}` : reason,
-      `review: ${reviewPolicyFor(this.store.current.assistant.settings, this.projectIdOf(task))}`,
+      `review: ${reviewPolicyFor(this.store.current.assistant.settings, projectId)}`,
+      this.autonomyRule(projectId), // CUSTOM(factory)
       `waiting since ${delivery.updatedAt} (${this.waitFor(delivery.updatedAt)})`,
       ...(task.number > 0 ? [`#${task.number}`] : []), // CUSTOM(task-numbers)
     ].join(" | ");
+    return [line, ...this.pipelineChoiceLines(task, delivery)].join("\n");
   }
   /** CUSTOM(assistant-wake): "6 min", "2 h 5 min", for the prompt. */
   private waitFor(since: string): string {
@@ -3468,7 +3492,7 @@ export class Workboard {
           "[Board] These tasks finished or stopped and wait for you, the Project Manager, first:",
           "This list is every task still on Needs you, including ones you were told about before and left waiting.",
           ...lines,
-          "Handle each one as your instructions say: review and merge-now (reason review), send feedback with continue, answer the agent's question or give the ok yourself when you can do it with reasonable precision and no real risk, and fix small reversible blockers. Leave to the user only what is really theirs: the ok before merging a fresh-agent project, real product decisions, anything risky or hard to undo. Then tell the user in 2-4 lines, in the language they write to you in, what you did and what is left for them (or that nothing is).",
+          WAKE_INSTRUCTIONS, // CUSTOM(factory)
         ].join("\n"),
       );
       const toldAt = this.stamp();
@@ -4147,9 +4171,10 @@ export class Workboard {
     return live ? stageChip(live.pipeline, live.state) : null;
   }
   /**
-   * A stage reported done: follow its `to`, or open a Decisões proposal for a gate or a list of
-   * `when` conditions. Null hands the report to today's delivery (a `pm` stage, `deliver`, or a
-   * task the engine does not run). Inside `serial`, with the delivery created.
+   * A stage reported done: follow its `to`, open a Decisões proposal for a gate, or wait in Needs
+   * you for the Project Manager to choose among a list of `when` conditions (ticket 12). Null
+   * hands the report to today's delivery (a `pm` stage, `deliver`, or a task the engine does not
+   * run). Inside `serial`, with the delivery created.
    */
   private async pipelineStageDone(
     taskId: string,
@@ -4162,48 +4187,265 @@ export class Workboard {
     const exit = stageExit(stage);
     if (exit.kind === "go")
       return this.pipelineEnter(taskId, exit.to, "to", null);
-    // A list of conditions asks the user too, until the Project Manager chooses (ticket 12).
-    const question =
-      exit.kind === "gate"
-        ? exit.question
-        : `Which stage comes after "${stage.id}"?`;
-    const options =
-      exit.kind === "gate"
-        ? exit.options.map((option) => ({
-            id: option.id,
-            label: option.label,
-            gains: null,
-            costs: null,
-          }))
-        : exit.candidates
-            .filter(
-              (candidate, index, all) =>
-                all.findIndex((other) => other.stage === candidate.stage) ===
-                index,
-            )
-            .map((candidate) => ({
-              id: candidate.stage,
-              label: `${candidate.stage}: ${candidate.when}`.slice(0, 500),
-              gains: null,
-              costs: null,
-            }));
+    if (exit.kind === "choose") {
+      // The Project Manager chooses (board_pipeline_advance) or asks (board_pipeline_ask); Needs
+      // you wakes it with the report and the candidates.
+      await this.setTaskPipeline(taskId, {
+        ...live.state,
+        gate: { cardId: null, stage: stage.id, kind: "choose" },
+      });
+      return this.settle(
+        taskId,
+        "gate",
+        `The Project Manager picks the stage after "${stage.id}"`,
+      );
+    }
     const card = await this.addPmCard({
       kind: "proposal",
-      title: `${task.title}: ${question}`.slice(0, 500),
-      question,
-      options,
-      why:
-        exit.kind === "gate"
-          ? `The "${stage.id}" stage of the ${live.pipeline.id} pipeline ends at this gate.`
-          : `The "${stage.id}" stage of the ${live.pipeline.id} pipeline lists conditions; pick the one that fits its report.`,
+      title: `${task.title}: ${exit.question}`.slice(0, 500),
+      question: exit.question,
+      options: exit.options.map((option) => ({
+        id: option.id,
+        label: option.label,
+        gains: null,
+        costs: null,
+      })),
+      why: `The "${stage.id}" stage of the ${live.pipeline.id} pipeline ends at this gate.`,
       findings: report.summary.slice(0, 20_000),
       links: { taskIds: [taskId], reportIds: [], packageIds: [] },
     });
     await this.setTaskPipeline(taskId, {
       ...live.state,
-      gate: { cardId: card.id, stage: stage.id, kind: exit.kind },
+      gate: { cardId: card.id, stage: stage.id, kind: "gate" },
     });
-    return this.settle(taskId, "gate", question);
+    return this.settle(taskId, "gate", exit.question);
+  }
+  /**
+   * The open `when` choice of a task that waits on it in Needs you: the stage that ended, its
+   * candidates and whether the PM already asked the user. Null otherwise.
+   */
+  private openChoice(task: Task) {
+    const live = this.taskPipeline(task);
+    const gate = live?.state.gate;
+    const delivery = this.store.current.assistant.deliveries[task.id];
+    if (
+      !live ||
+      gate?.kind !== "choose" ||
+      delivery?.stage !== "needs-you" ||
+      delivery.reason !== "gate"
+    )
+      return null;
+    const stage = findStage(live.pipeline, gate.stage);
+    if (!stage) return null;
+    return {
+      live,
+      stage,
+      cardId: gate.cardId,
+      candidates: chooseCandidates(stage),
+      report: delivery.report,
+    };
+  }
+  /** The wake's extra lines for a task whose `when` choice waits on the PM. */
+  private pipelineChoiceLines(task: Task, delivery: Delivery): string[] {
+    const choice = this.openChoice(task);
+    if (!choice || choice.cardId) return [];
+    const clean = (value: string) => value.replace(/\s+/g, " ").trim();
+    const summary = clean(delivery.report?.summary ?? "");
+    return [
+      `  pipeline choice: the "${choice.stage.id}" stage of the ${choice.live.pipeline.id} pipeline ended; settle it with board_pipeline_advance (a candidate whose condition fits the report) or board_pipeline_ask (none fits).`,
+      `  candidates: ${choice.candidates.map((c) => `${c.stage} (when: ${clean(c.when)})`).join("; ")}`,
+      `  report: ${summary ? (summary.length > 2000 ? `${summary.slice(0, 2000)}...` : summary) : "none"}`,
+    ];
+  }
+  // CUSTOM(factory): autonomy presets (shared/autonomy.ts, ticket 12) ----------------------------
+  /** The project's resolved autonomy preset; `standard` outside active mode. */
+  projectAutonomy(projectId: string | null): AutonomyPresetId {
+    const applied = this.factoryMode() === "active" && this.factoryApplied();
+    return applied
+      ? autonomyForProject(applied.compiled, projectId)
+      : DEFAULT_AUTONOMY;
+  }
+  /**
+   * A critical project: its pipeline is `critical`, or its review policy is fresh-agent (ticket 13
+   * drops the review policy and keeps only the pipeline).
+   */
+  criticalProject(projectId: string | null): boolean {
+    return (
+      reviewPolicyFor(this.store.current.assistant.settings, projectId) ===
+        "fresh-agent" ||
+      this.projectPipeline(projectId)?.pipeline.id === "critical"
+    );
+  }
+  /** Whether merging this project needs the user's ok, by its preset. */
+  requiresUserMergeOk(projectId: string | null): boolean {
+    return mergeNeedsUser(
+      this.projectAutonomy(projectId),
+      this.criticalProject(projectId),
+    );
+  }
+  /** The project's rule as the wake and board_overview say it. */
+  autonomyRule(projectId: string | null): string {
+    return autonomyProjectRule(
+      this.projectAutonomy(projectId),
+      this.criticalProject(projectId),
+    );
+  }
+  /** Null when `reason` lets a decision on this project go to the user; else the refusal. */
+  userOnlyRefusal(
+    projectId: string | null,
+    reason: UserOnlyReason,
+  ): string | null {
+    return userOnlyRefusal(
+      this.projectAutonomy(projectId),
+      this.criticalProject(projectId),
+      reason,
+    );
+  }
+  /**
+   * board_pipeline_advance: the Project Manager picks the stage after a `when` list. Refused when
+   * the task has no open choice, when the PM already asked the user, or when `stage` is not a
+   * candidate. Returns the stage the task left and the one it entered.
+   */
+  async pipelineAdvance(
+    taskId: string,
+    stage: string,
+    reason: string,
+  ): Promise<{ from: string; to: string }> {
+    return this.serial(async () => {
+      const task = this.task(taskId);
+      const choice = this.openChoice(task);
+      if (!choice)
+        throw new Error(
+          `Task "${task.title}" has no open pipeline choice: only a stage that ended with a list of when conditions waits for board_pipeline_advance.`,
+        );
+      if (choice.cardId)
+        throw new Error(
+          `You already asked the user on card ${choice.cardId}: their answer there moves the task. When they answer in the chat, record it with pm_card_decide (decidedBy user).`,
+        );
+      if (!choice.candidates.some((candidate) => candidate.stage === stage))
+        throw new Error(
+          `"${stage}" is not a candidate after "${choice.stage.id}". Candidates: ${choice.candidates.map((c) => `${c.stage} (when: ${c.when})`).join("; ")}. When no condition fits, use board_pipeline_ask.`,
+        );
+      const from = choice.stage.id;
+      const entered = await this.pipelineEnter(
+        taskId,
+        stage,
+        "choose",
+        reason.trim() || null,
+        "assistant",
+      );
+      await this.afterPipelineChoice(taskId, entered);
+      if (this.task(taskId).pipeline?.pending) {
+        this.changed(task.workspaceId ?? undefined);
+        await this.orchestrate();
+      }
+      return { from, to: stage };
+    });
+  }
+  /**
+   * board_pipeline_ask: no condition fits, so the Project Manager asks the user on a Decisões
+   * proposal whose options are candidate stages. The user's answer moves the task with no PM turn.
+   * Refused when the task has no open choice, an option is not a candidate, or the preset leaves
+   * the decision to the PM (`reason` other than `no-fit`).
+   */
+  async pipelineAsk(
+    taskId: string,
+    input: {
+      question: string;
+      options: Array<{
+        stage: string;
+        label?: string | null;
+        gains?: string | null;
+        costs?: string | null;
+      }>;
+      recommend?: string | null;
+      reason: UserOnlyReason | "no-fit";
+      why?: string | null;
+    },
+  ): Promise<PmCard> {
+    return this.serial(async () => {
+      const task = this.task(taskId);
+      const choice = this.openChoice(task);
+      if (!choice)
+        throw new Error(
+          `Task "${task.title}" has no open pipeline choice to ask about.`,
+        );
+      if (choice.cardId)
+        throw new Error(
+          `The user was already asked on card ${choice.cardId}; update that card instead.`,
+        );
+      if (input.reason !== "no-fit") {
+        const refusal = this.userOnlyRefusal(
+          this.projectIdOf(task),
+          input.reason,
+        );
+        if (refusal) throw new Error(refusal);
+      }
+      const candidates = new Map(
+        choice.candidates.map((candidate) => [candidate.stage, candidate]),
+      );
+      const unknown = input.options.filter((o) => !candidates.has(o.stage));
+      if (unknown.length || !input.options.length)
+        throw new Error(
+          `Each option must be a candidate stage after "${choice.stage.id}": ${[...candidates.keys()].join(", ")}${unknown.length ? ` (not candidates: ${unknown.map((o) => o.stage).join(", ")})` : ""}.`,
+        );
+      const options = input.options
+        .filter(
+          (option, index, all) =>
+            all.findIndex((other) => other.stage === option.stage) === index,
+        )
+        .map((option) => ({
+          id: option.stage,
+          label: (
+            option.label?.trim() ||
+            `${option.stage}: ${candidates.get(option.stage)!.when}`
+          ).slice(0, 500),
+          gains: option.gains ?? null,
+          costs: option.costs ?? null,
+        }));
+      const card = await this.addPmCard({
+        kind: "proposal",
+        title: `${task.title}: ${input.question}`.slice(0, 500),
+        question: input.question,
+        options,
+        recommend: input.recommend ?? null,
+        userOnlyReason: input.reason === "no-fit" ? null : input.reason,
+        why:
+          input.why?.trim() ||
+          `The "${choice.stage.id}" stage of the ${choice.live.pipeline.id} pipeline lists conditions and none fits its report.`,
+        findings: (choice.report?.summary ?? "").slice(0, 20_000),
+        links: { taskIds: [taskId], reportIds: [], packageIds: [] },
+      });
+      await this.setTaskPipeline(taskId, {
+        ...choice.live.state,
+        gate: { cardId: card.id, stage: choice.stage.id, kind: "choose" },
+      });
+      await this.record(
+        taskId,
+        "needs-you",
+        `Pipeline: the Project Manager asked the user which stage follows "${choice.stage.id}"`,
+        { detail: input.question, by: "assistant" },
+      );
+      return card;
+    });
+  }
+  /**
+   * After the task entered a chosen stage: a `pm` stage or `deliver` (null) hands the report to
+   * today's delivery; a worker stage runs on the next pass. Inside `serial`.
+   */
+  private async afterPipelineChoice(
+    taskId: string,
+    result: boolean | null,
+  ): Promise<void> {
+    if (result !== null) return;
+    await this.patchDelivery(taskId, {
+      stage: "reported",
+      reason: null,
+      detail: null,
+    });
+    const policy = this.policy(this.projectIdOf(this.task(taskId)));
+    if (await this.deliverDone(taskId, policy.action, policy.observe))
+      this.launch(taskId);
   }
   /**
    * Moves the task into `to` and does what that needs. A worker stage queues the task (it stays
@@ -4215,6 +4457,7 @@ export class Workboard {
     to: string,
     via: "to" | "gate" | "choose",
     detail: string | null,
+    by?: Exclude<HistoryActor, "orchestrator">, // CUSTOM(factory): ticket 12, the PM's advance
   ): Promise<boolean | null> {
     const live = this.taskPipeline(this.task(taskId));
     if (!live) return null;
@@ -4232,11 +4475,13 @@ export class Workboard {
       const text = `Stage "${entered.loop.stage}" would start visit ${entered.loop.visits}; its limit is ${entered.loop.maxVisits}`;
       await this.record(taskId, "stage-entered", `Pipeline loop: ${text}`, {
         detail,
+        by,
       });
       return this.settle(taskId, "loop", text);
     }
     await this.record(taskId, "stage-entered", `Pipeline: ${from} → ${to}`, {
       detail,
+      by,
     });
     const target = entered.target;
     if (target.kind === "worker") {
@@ -4313,7 +4558,8 @@ export class Workboard {
   }
   /**
    * Active mode turned off: the engine stops, so nothing would answer an open gate. Each gate
-   * closes and its Decisões proposal is archived with `GATE_CLOSED_NOTE`. The task keeps its stage
+   * closes and its Decisões proposal is archived with `GATE_CLOSED_NOTE`; so does a `when` list's
+   * choice, waiting on the PM (no card) or on a board_pipeline_ask card. The task keeps its stage
    * and stays in Needs you, where Continue and Done work as today. Inside a store update.
    */
   private closePipelineGates(data: Data): void {
@@ -4369,14 +4615,7 @@ export class Workboard {
       const result = await this.pipelineEnter(task.id, to, gate.kind, detail);
       if (result === null) {
         // A `pm` stage or `deliver`: today's delivery takes the stage's report.
-        await this.patchDelivery(task.id, {
-          stage: "reported",
-          reason: null,
-          detail: null,
-        });
-        const policy = this.policy(this.projectIdOf(task));
-        if (await this.deliverDone(task.id, policy.action, policy.observe))
-          this.launch(task.id);
+        await this.afterPipelineChoice(task.id, result);
         return;
       }
       if (this.task(task.id).pipeline?.pending) {
@@ -4402,13 +4641,16 @@ export class Workboard {
     let state = live.state;
     if (state.gate) {
       const cardId = state.gate.cardId;
-      await this.store.update((data) => {
-        const card = data.assistant.pmBoard.cards.find((c) => c.id === cardId);
-        if (card && card.status !== "decided" && card.status !== "archived") {
-          card.status = "archived";
-          card.updatedAt = this.stamp(card.updatedAt);
-        }
-      });
+      if (cardId)
+        await this.store.update((data) => {
+          const card = data.assistant.pmBoard.cards.find(
+            (c) => c.id === cardId,
+          );
+          if (card && card.status !== "decided" && card.status !== "archived") {
+            card.status = "archived";
+            card.updatedAt = this.stamp(card.updatedAt);
+          }
+        });
       state = { ...state, gate: null };
     }
     // Continue after a loop gives the stage that looped a new budget of visits.
@@ -4573,35 +4815,18 @@ export class Workboard {
           continue;
         }
         if (stage === "committing") {
-          if (await this.host.gitDirty(directory)) {
+          // CUSTOM(orchestrator-in-place): the project folder commits only the task's paths.
+          if (inPlace) {
+            if (!(await this.commitInPlace(taskId, task, directory, stage)))
+              return;
+          } else if (await this.host.gitDirty(directory)) {
             // CUSTOM(assistant-autonomy): `commit` stages every new file; a symlinked
             // node_modules would land in the base branch.
             const refusal = dependencyRefusal(
               await this.host.gitStatusLines(directory),
             );
             if (refusal) return await needsYou("dependency-files", refusal);
-            // CUSTOM(orchestrator-in-place): another agent still running in the folder would
-            // have its work swept into this commit; wait for the next pass instead.
-            if (inPlace) {
-              const occupant = this.runningFolderOccupant(taskId, directory);
-              if (occupant) {
-                await this.waitForFolder(
-                  taskId,
-                  directory,
-                  occupant,
-                  "committing",
-                );
-                return;
-              }
-            }
-            // CUSTOM(orchestrator-in-place): commits in the project folder share the project's
-            // lock with merges, so two deliveries never write the same checkout at once.
-            if (inPlace)
-              await this.mergeLock.run(
-                this.projectIdOf(task) ?? directory,
-                () => this.host.commit(directory),
-              );
-            else await this.host.commit(directory);
+            await this.host.commit(directory);
             await this.serial(() =>
               this.setFinish(taskId, { committedAt: this.stamp() }),
             );
@@ -4773,29 +4998,16 @@ export class Workboard {
         // preparing-pr
         if (!agentId)
           throw new Error("No agent of this task can write the description");
-        if (await this.host.gitDirty(directory)) {
+        // CUSTOM(orchestrator-in-place): the PR path commits too, the same way.
+        if (inPlace) {
+          if (!(await this.commitInPlace(taskId, task, directory, stage)))
+            return;
+        } else if (await this.host.gitDirty(directory)) {
           const refusal = dependencyRefusal(
             await this.host.gitStatusLines(directory),
           );
           if (refusal) return await needsYou("dependency-files", refusal);
-          // CUSTOM(orchestrator-in-place): the PR path commits too, so it waits the same way.
-          if (inPlace) {
-            const occupant = this.runningFolderOccupant(taskId, directory);
-            if (occupant) {
-              await this.waitForFolder(
-                taskId,
-                directory,
-                occupant,
-                "preparing-pr",
-              );
-              return;
-            }
-          }
-          if (inPlace)
-            await this.mergeLock.run(this.projectIdOf(task) ?? directory, () =>
-              this.host.commit(directory),
-            );
-          else await this.host.commit(directory);
+          await this.host.commit(directory);
           await this.serial(() =>
             this.setFinish(taskId, { committedAt: this.stamp() }),
           );
@@ -4831,6 +5043,89 @@ export class Workboard {
         return;
       }
     }
+  }
+  /**
+   * CUSTOM(orchestrator-in-place): the delivery commit of a task that ran in the project folder.
+   * The folder is the user's checkout, so only paths that were clean when the task started go in
+   * (`inPlaceCommitPlan`). Resolves false when the delivery stops here: it waits for another
+   * agent in the folder, or needs the user.
+   */
+  private async commitInPlace(
+    taskId: string,
+    task: Task,
+    directory: string,
+    stage: Delivery["stage"],
+  ): Promise<boolean> {
+    if (!(await this.host.gitDirty(directory))) return true;
+    // Another agent still running in the folder would have its work swept into this commit;
+    // wait for the next pass instead.
+    const occupant = this.runningFolderOccupant(taskId, directory);
+    if (occupant) {
+      await this.waitForFolder(taskId, directory, occupant, stage);
+      return false;
+    }
+    // Commits in the project folder share the project's lock with merges, so two deliveries
+    // never write the same checkout at once.
+    const outcome = await this.mergeLock.run(
+      this.projectIdOf(task) ?? directory,
+      async () => {
+        const plan = inPlaceCommitPlan({
+          current: await this.host.gitStatusLines(directory),
+          initialDirty:
+            this.store.current.orchestrations[taskId]?.initialDirty ?? [],
+          filesChanged:
+            this.store.current.assistant.deliveries[taskId]?.report
+              ?.filesChanged ?? [],
+          directory,
+        });
+        if (plan.overlap.length) return { plan, refusal: null };
+        const refusal = dependencyRefusal(plan.lines);
+        if (!refusal && plan.paths.length)
+          await this.host.commit(directory, plan.paths);
+        return { plan, refusal };
+      },
+    );
+    const { plan, refusal } = outcome;
+    if (plan.overlap.length) {
+      const shown = plan.overlap.slice(0, 10).join(", ");
+      const more =
+        plan.overlap.length > 10 ? ` and ${plan.overlap.length - 10} more` : "";
+      await this.serial(() =>
+        this.markNeedsYou(
+          taskId,
+          "dirty-checkout",
+          `Not committed: the task changed files that were already uncommitted when it started (${shown}${more}). Their changes can't be told apart from yours. Commit or revert them yourself, then deliver again or mark the task done.`,
+        ),
+      );
+      return false;
+    }
+    if (refusal) {
+      await this.serial(() =>
+        this.markNeedsYou(taskId, "dependency-files", refusal),
+      );
+      return false;
+    }
+    const leftOut = plan.leftOut.length
+      ? `Left out ${plan.leftOut.length} path(s) already uncommitted when the task started`
+      : null;
+    if (plan.paths.length) {
+      await this.serial(() =>
+        this.setFinish(taskId, { committedAt: this.stamp() }),
+      );
+      await this.record(
+        taskId,
+        "committed",
+        "Committed the task's changes",
+        leftOut ? { detail: `${leftOut}:\n${plan.leftOut.join("\n")}` } : {},
+      );
+    } else if (leftOut)
+      await this.record(
+        taskId,
+        "folder-dirty",
+        `Nothing new to commit. ${leftOut}`,
+        { detail: plan.leftOut.join("\n") },
+      );
+    return true;
   }
   /** The merge landed: remember it and move the task to Done. Inside `serial`. */
   private async completeMerge(taskId: string): Promise<void> {
@@ -6053,6 +6348,18 @@ export class Workboard {
     }));
   }
   async pmCardCreate(input: PmCardCreateInput): Promise<PmCard> {
+    // CUSTOM(factory): a reason the projects' autonomy preset does not give the user is refused.
+    const reason = input.userOnlyReason;
+    if (reason) {
+      const tasks = this.store.current.tasks.filter((task) =>
+        input.links?.taskIds.includes(task.id),
+      );
+      const refusals = (
+        tasks.length ? tasks.map((task) => this.projectIdOf(task)) : [null]
+      ).map((projectId) => this.userOnlyRefusal(projectId, reason));
+      if (refusals.every((refusal) => refusal !== null))
+        throw new Error(refusals[0]!);
+    }
     return this.serial(() => this.addPmCard(input));
   }
   /** Creates a PM card; inside `serial` (CUSTOM(factory): pipeline gates add theirs there). */
@@ -6104,11 +6411,11 @@ export class Workboard {
         const becomingDecided =
           next.status === "decided" && current.status !== "decided";
         // CUSTOM(factory): a pipeline gate moves the task to the stage its option names. Only
-        // the user answers a gate (a `when` list's stage choice stays open to the PM), and its
-        // card stays until it is answered.
+        // the user answers a gate, and a stage choice the PM asked about (board_pipeline_ask);
+        // its card stays until it is answered.
         const gate = this.openGate(id);
         if (becomingDecided && gate) {
-          if (gate.kind === "gate" && (input.decidedBy ?? "pm") !== "user")
+          if ((input.decidedBy ?? "pm") !== "user")
             throw new Error(GATE_USER_ONLY_ERROR);
           if (!next.options.some((option) => option.id === next.answerOptionId))
             throw new Error(GATE_OPTION_REQUIRED_ERROR);

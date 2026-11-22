@@ -1,6 +1,7 @@
 // CUSTOM(factory): the pipeline engine (docs/factory.md, "pipelines/<id>.yaml", ticket 11). Pure
 // transitions over a task's pipeline state; server/workboard.ts runs the stages they name.
 import { z } from "zod";
+import { DEFAULT_AUTONOMY, type AutonomyPresetId } from "../autonomy";
 import type {
   CompiledFactory,
   CompiledPipeline,
@@ -46,10 +47,13 @@ export const taskPipelineSchema = z.object({
   pending: z.boolean().default(false),
   /** What the pending run gets besides the stage procedure: the user's answer at a gate. */
   note: z.string().nullable().default(null),
-  /** The Decisões proposal the task waits on: a gate, or the stage choice of a `when` list. */
+  /**
+   * What the task waits on: a gate's Decisões proposal, or the stage choice of a `when` list. A
+   * choice has no card (null) while the Project Manager picks; board_pipeline_ask adds one.
+   */
   gate: z
     .object({
-      cardId: z.string(),
+      cardId: z.string().nullable(),
       stage: z.string(),
       kind: z.enum(["gate", "choose"]),
     })
@@ -70,6 +74,19 @@ export function pipelineForProject(
   );
   const id = own?.pipeline ?? defaultPipeline;
   return compiled.pipelines.find((pipeline) => pipeline.id === id) ?? null;
+}
+
+/** A project's resolved autonomy preset: its own compiled one, else the board's (ticket 12). */
+export function autonomyForProject(
+  compiled: CompiledFactory,
+  projectId: string | null,
+): AutonomyPresetId {
+  return (
+    compiled.projects.find((project) => project.projectId === projectId)
+      ?.autonomy ??
+    compiled.autonomy ??
+    DEFAULT_AUTONOMY
+  );
 }
 
 export function findStage(
@@ -123,6 +140,25 @@ export function stageExit(stage: CompiledStage): StageExit {
     };
   if (typeof stage.to === "string") return { kind: "go", to: stage.to };
   return { kind: "choose", candidates: stage.to ?? [] };
+}
+
+/**
+ * Ticket 12: the rule for a `when` list's choice. It goes into the seed prompt, CHAT_RULES, the
+ * wake and the descriptions of board_pipeline_advance and board_pipeline_ask.
+ */
+export const PIPELINE_CHOICE_RULE =
+  "When a pipeline stage ends with a list of `when` conditions, the board wakes you with the stage's report and the candidate stages. Pick a stage with board_pipeline_advance only when its condition fits the report; when none fits, or more than one does and the report does not settle it, ask the user with board_pipeline_ask and never pick on your own. Never finish silently: every such task ends your turn advanced or asked.";
+
+/** A `when` list's candidates, one per stage (the first condition of a repeated stage). */
+export function chooseCandidates(
+  stage: CompiledStage,
+): Array<{ stage: string; when: string }> {
+  const exit = stageExit(stage);
+  if (exit.kind !== "choose") return [];
+  return exit.candidates.filter(
+    (candidate, index, all) =>
+      all.findIndex((other) => other.stage === candidate.stage) === index,
+  );
 }
 
 /** Where a transition lands. */

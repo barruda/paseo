@@ -9381,7 +9381,20 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
     the count.
   - **Delivery without merge.** The delivery's `committing` step commits in the folder (under the
     project's `mergeLock`, with the same `dependencyRefusal` protection) and then skips
-    `merging`: it marks the delivery delivered and moves the task to Done. Before committing, it
+    `merging`: it marks the delivery delivered and moves the task to Done.
+  - **Only the task's files.** The folder is the user's checkout and often has their own
+    uncommitted work (an open Unity Editor, for one). The delivery commit (and the `preparing-pr`
+    one) takes the paths dirty now minus the `initialDirty` paths, untracked included, and commits
+    them by path through the daemon's commit-selection (`paths` on `checkout_commit`), never
+    `add -A`. An untracked directory listed at the start covers the files under it, and a line
+    with any path dirty at the start (one side of a rename) stays out. With nothing left (only the
+    old dirt, or the agent already committed) there is no commit and the delivery still ends; the
+    history gets `committed` or `folder-dirty` with how many paths were left out and which. When
+    the agent's report lists in `filesChanged` a path that was dirty at the start and still is, the
+    two people's changes can't be told apart: nothing is committed and the delivery goes to Needs
+    you (`dirty-checkout`) naming those paths; the user commits or reverts them and delivers again
+    or marks the task done. Files the user dirties during the task are not in `initialDirty` and
+    still go in. Before committing, it
     checks whether another board task's agent is still running in the folder; if one is, the
     delivery stays in `committing` (or `preparing-pr`) with a visible
     `Waiting: "<task>" is still running in <folder>` detail and log line, and retries on the next
@@ -9399,10 +9412,13 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   - **Safety.** The project folder's workspace is never archived (the auto-archive already only
     touches worktrees) and the task never switches the folder's branch. Worktree orchestrators
     behave exactly as before.
-- **Core files touched:** none.
+- **Core files touched:** none. The path-limited commit depends on the `commit-selection`
+  customization's `paths` field on `checkout_commit`; a daemon without it would commit everything.
 - **Re-apply:** Plugin-only. The server side is `CUSTOM(orchestrator-in-place)` in
   `server/workboard.ts` (`inPlaceFolder`, `inPlaceDirectories`, `folderHold`, `logFolderWait`,
-  the `startCard` start state and `completeInPlace`) and in
+  the `startCard` start state, `commitInPlace` and `completeInPlace`), in
+  `server/assistant/delivery.ts` (`porcelainPaths`, `inPlaceCommitPlan`), in `server/host.ts`
+  (`commit(directory, paths)`) and in
   `server/assistant/task-git.ts` (`baseHead` / `initialDirty`). The model fields are in
   `shared/model.ts` (`Orchestration.inPlace/baseHead/initialDirty`, `Card.inPlace`), the hold kind
   in `shared/hold.ts`, the history kind in `shared/assistant.ts`. The form is the Workspace chips
@@ -9419,8 +9435,11 @@ src/subagents/track.browser.test.tsx --bail=1)`. Needs an app build/install. Wit
   release B; a nothing-policy task keeps the folder until approved; `committing`, `preparing-pr`
   and the approval commit wait while another task's agent runs in the folder; a failed approval
   commit goes to Needs you; dirty folder recorded; delivery commits without `mergeToBase`; diff
-  from the starting HEAD; worktree unchanged) and `tests/finish-buttons.test.ts` (no Merge for a
-  folder-mode Done card).
+  from the starting HEAD; worktree unchanged; the commit takes only the task's paths and leaves
+  the earlier dirt; only earlier dirt delivers without a commit; a reported file that was dirty
+  before goes to Needs you with nothing committed), `tests/assistant-delivery.test.ts` (porcelain
+  path parsing, the commit plan, a plan from real `git status` with spaces and non-ASCII names) and
+  `tests/finish-buttons.test.ts` (no Merge for a folder-mode Done card).
 
 ## pm-board: a Project Manager board for investigations, proposals and decisions
 
@@ -10609,6 +10628,49 @@ tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in 
   then `tests/factory-active.test.ts` (both in the plugin suite of the update script). Live only
   after the cutover to active mode: a task of a project on `critical` shows `triage 1/3` on its
   card, and its gate shows up in Decisões.
+
+## factory-pm-transitions: the Project Manager picks a pipeline's `when` transitions, under an autonomy preset
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Project Manager picks pipeline transitions under factory autonomy presets`
+- **Why:** Ticket 12 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Pipeline engine" and "Autonomy presets"): a stage whose `to` is a list of `when` conditions
+  is the PM's choice, and what the PM decides alone versus what goes to the user becomes factory
+  config (`autonomy`: Autônomo, Padrão, Cauteloso) instead of loose prompt text.
+- **What:**
+  - `shared/autonomy.ts`: the presets as data (what the user decides, the breaker's deadline),
+    `userOnlyRefusal`, `mergeNeedsUser`, and the prompt texts generated from them
+    (`autonomyRulesText`, `autonomyProjectRule`).
+  - `autonomy` in `pm/worker.md`, `pipelines/<id>.yaml` and `projects/<id>.yaml`
+    (`shared/factory/schema.ts`); the compiler resolves project > pipeline > pm > `standard`
+    (`CompiledProject.autonomy`, `CompiledFactory.autonomy`, `CompiledWorker.autonomy`) and the
+    worker hash carries it except at `standard` (`server/factory/stamp.ts`).
+  - `server/workboard.ts`: a `when` list puts the task in Needs you (`gate`) with no card and
+    wakes the PM with the stage's report and the candidates; `pipelineAdvance` (refuses a stage
+    outside the candidates) and `pipelineAsk` (a Decisões proposal over candidate stages, only
+    the user answers it); `projectAutonomy`, `criticalProject`, `requiresUserMergeOk`,
+    `autonomyRule` and `userOnlyRefusal`; each Needs you line names the project's preset; the
+    wake's closing text (`WAKE_INSTRUCTIONS`) drops "anything risky or hard to undo". Leaving
+    active mode (`closePipelineGates`) also closes a `when` choice, and archives an open
+    board_pipeline_ask card with `GATE_CLOSED_NOTE`; `userGate` and `gateTask` hold only in active.
+  - `server/assistant/chat.ts`: tools `board_pipeline_advance` (records a `moved` report) and
+    `board_pipeline_ask`; `pm_card_create` takes `userOnlyReason` and refuses one the preset
+    leaves to the PM (stored on the card, `shared/pm-board.ts`); the seed prompt, `CHAT_RULES`
+    and the tool descriptions carry `AUTONOMY_RULE` and `PIPELINE_CHOICE_RULE`; board_overview
+    shows each project's preset.
+- **Core files touched:** none.
+- **Plugin files:** `shared/autonomy.ts`, `shared/factory/schema.ts`, `shared/factory/compile.ts`,
+  `shared/factory/engine.ts`, `shared/pm-board.ts`, `server/factory/stamp.ts`,
+  `server/workboard.ts`, `server/assistant/chat.ts`, `index.server.ts`, `docs/factory.md`,
+  `tests/factory-autonomy.test.ts`, `tests/pipeline-engine.test.ts` and the fixtures of
+  `tests/factory*.test.ts` and `tests/assistant-engine.test.ts`.
+- **Re-apply:** plugin only; search `CUSTOM(factory)` and `ticket 12` in the files above.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/factory-autonomy.test.ts
+tests/pipeline-engine.test.ts` (both in the plugin suite of the update script). Needs a
+  `plugin reload`. Live only after the cutover to active mode: a `critical` task leaving triage
+  shows up in the PM's wake with its candidates, and the PM moves it with board_pipeline_advance.
+  The live PM's `system-prompt.md` keeps its old text; the new rules reach it through
+  `CHAT_RULES` and the tool descriptions.
 
 ## factory-pipeline-overlay: the Pipelines tab shows the tasks in each stage
 

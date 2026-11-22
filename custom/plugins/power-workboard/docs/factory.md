@@ -5,7 +5,8 @@ orchestrator logs in JSONL), 2 (schemas, loader, compiler and `bin/factory`), 4
 (`bin/factory export`) and 6 (pipelines and roles), ticket 5 (revision stamps), ticket 7
 (shadow mode: the board loads and diffs the factory, applies nothing), ticket 8 (the read-only
 Pipelines tab), ticket 9 (active mode; the live cutover waits for the user), ticket 10 (the UI
-writes the factory) and ticket 11 (the pipeline engine). Tickets at the end. Inspired by Warp Factories
+writes the factory), ticket 11 (the pipeline engine) and ticket 12 (PM transitions and the
+autonomy presets). Tickets at the end. Inspired by Warp Factories
 (https://docs.warp.dev/factories/), adapted to one local board with no cloud.
 
 The board's configuration moves out of `workboard-data.json` into a git repository of YAML and
@@ -147,6 +148,7 @@ memory: true
 wake: { onNeedsYou: true, delaySeconds: 12 }
 compactAtTokens: 180000
 interactivePermission: default # spec stages run interactively ask before edits
+autonomy: standard # autonomous | standard | cautious; see "Autonomy presets"
 ---
 
 Project Manager system prompt.
@@ -157,6 +159,7 @@ Project Manager system prompt.
 ```yaml
 path: ~/projetos/paseo
 pipeline: default # id of pipelines/*.yaml
+autonomy: standard # optional; overrides the pipeline's and pm/worker.md's
 delivery:
   action: review
   observe: false
@@ -190,6 +193,7 @@ Needs you with reason `gate`, and Done comes after `deliver`. The card shows a s
 
 ```yaml
 description: Critical projects (DreamMMO)
+autonomy: standard # optional; overrides pm/worker.md's for the projects on this pipeline
 start: triage
 stages:
   triage:
@@ -397,8 +401,11 @@ the "pipeline engine" block of `server/workboard.ts`.
 - **Transitions.** A single `to` to a worker stage queues the task: it stays In progress and the
   next pass runs the stage, like a checkpoint resume (no batch quota). A gate opens a Decisões
   proposal with its options and puts the task in Needs you (`gate`); deciding an option advances
-  the task, and an answer with no option is refused. A `when` list does the same with the
-  candidates as options until ticket 12 gives that choice to the PM. A `pm` stage and `deliver`
+  the task, and an answer with no option is refused. A `when` list puts the task in Needs you
+  (`gate`) with no card (`gate.cardId: null`), and the wake carries the stage's report and the
+  candidates. The PM calls `board_pipeline_advance` (a candidate whose condition fits; any other
+  stage is refused, and the move is recorded as a `moved` report) or `board_pipeline_ask` (a
+  Decisões proposal whose options are candidate stages). A `pm` stage and `deliver`
   hand the report to today's delivery with the project's action (`review` is the PM's review).
   `end` marks it delivered and moves it to Done; `cancel` dismisses it and moves it to Canceled
   when the board has that column.
@@ -409,23 +416,54 @@ the "pipeline engine" block of `server/workboard.ts`.
   `deliver` sends it back to its last implement stage (the last one that changed code) and counts
   a visit there; one past that stage's `maxVisits` starts a new budget (`implement 1/3`), since
   the reviewer's answer is never a loop and `default` keeps today's unlimited review rounds.
-- **Answering.** A gate is the user's: the Project Manager is not woken for it, and a PM
-  decision on its card is refused (a `when` list's stage choice stays open to the PM). Any way
+- **Answering.** A gate is the user's, and so is a stage choice once the PM asked: the Project
+  Manager is not woken for it, and a PM decision on its card is refused. Any way
   the card gets decided needs one of its options, and archiving it while the task waits is
   refused. Done or Continue on the board archives the open
   proposal; Continue runs the current stage again with the feedback. A gate decided after the task
   left Needs you some other way only closes the gate.
 - **Leaving active mode.** The engine stops and `task.pipeline` is kept. Each open gate closes and
-  its Decisões proposal is archived with a note (`GATE_CLOSED_NOTE`); the task stays in Needs you,
+  its Decisões proposal is archived with a note (`GATE_CLOSED_NOTE`); so does a `when` list's
+  choice, whether it waited on the PM or on a `board_pipeline_ask` card. The task stays in Needs you,
   where Continue and Done work as today, and the Project Manager hears about it. A stage left
   `pending` runs as a plain continuation and stops being pending.
 - **Back in active mode.** A task resumes from the stage it kept, with its visits: its next report
   follows that stage's exit. A task whose gate closed is still in Needs you; Continue runs the
-  stage again and its report opens the gate anew. A task that started while active was off has no
+  stage again and its report opens the gate, or the PM's choice, anew. A task that started while active was off has no
   pipeline and runs today's way until it starts again from Ready, which starts it at `start`. A
   task whose pipeline is gone from the factory also runs today's way.
 - **Chip.** The card shows `card.stageChip` (`spec · gate`, `implement 2/3`, `review 4` for a
   `pm` stage) next to its number, except in Done and Canceled.
+
+## Autonomy presets
+
+What the Project Manager decides alone and what goes to the user is data in `shared/autonomy.ts`,
+not prompt text. The wake's line per task, `CHAT_RULES`, the seed prompt and the descriptions of
+`board_pipeline_ask` and `pm_card_create` are generated from it; `tests/factory-autonomy.test.ts`
+fails when a text stops matching the data.
+
+| Preset                  | The user decides                                             | Breaker |
+| ----------------------- | ------------------------------------------------------------ | ------- |
+| `autonomous` (Autônomo) | product decisions, actions with no backup and no revert      | 15 min  |
+| `standard` (Padrão)     | the above, plus the merge ok of a critical project           | 15 min  |
+| `cautious` (Cauteloso)  | the above, plus every merge and every migration of live data | off     |
+
+Everything else is the PM's: merging after an approved review, a data migration with a backup made
+first, a plugin reload, a config change with a copy.
+
+- **Resolution.** `projects/<id>.yaml` > its `pipelines/<id>.yaml` > `pm/worker.md` > `standard`.
+  A project with no file takes `defaults.pipeline`'s. Outside active mode every project is
+  `standard`. The compiled worker hash carries its project's preset, except `standard`, so hashes
+  from before presets stay valid.
+- **Critical project.** Its pipeline is `critical`, or its review policy is `fresh-agent` (ticket 13
+  removes the review policy). `Workboard.requiresUserMergeOk(projectId)` reads both and the preset.
+- **Refusals.** `pm_card_create` (`userOnlyReason`) and `board_pipeline_ask` (`reason`) refuse a
+  reason the project's preset leaves to the PM. `board_pipeline_ask` also takes `no-fit`, which the
+  choice rule always allows. A card stores its `userOnlyReason`.
+- **Breaker.** `breakerMinutes` and `autonomyBreakerMs()` hold each preset's deadline. The breaker
+  itself (a proposal left waiting wakes the PM to decide it) belongs to the "PM decides on its own"
+  task, which reads this data; it must skip a card that holds an open pipeline gate or choice,
+  since only the user answers those.
 
 ## Cutover
 

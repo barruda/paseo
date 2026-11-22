@@ -55,6 +55,7 @@ import {
 import {
   attachChatTools,
   boardReportTool,
+  pipelineTools,
   chatTools,
   quickAckTool,
 } from "./server/assistant/chat";
@@ -438,6 +439,7 @@ export default function contribute(server: PluginServerContext) {
     ...chatTools(ready, history),
     quickAckTool(inbox), // CUSTOM(assistant-quick)
     boardReportTool(ready, reports, inbox), // CUSTOM(assistant-reports)
+    ...pipelineTools(ready, reports), // CUSTOM(factory): ticket 12
   ];
   const removeChatTools = server.before("agent.session_open", ({ request }) =>
     attachChatTools(request, boardTools),
