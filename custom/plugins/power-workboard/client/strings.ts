@@ -33,7 +33,7 @@ const zh = {
     errors: "{count} 个错误（保留上一个有效配置）：{first}",
     active: "factory：已启用，版本 {revision}",
     activeNoRevision: "factory：已启用",
-    readOnly: "这些设置来自 factory。请编辑它的文件；在这里编辑功能稍后提供。",
+    writes: "factory 已启用：这里的修改会写入 factory 的文件并提交（ui: …）。",
   },
   ticketPanel: {
     close: "关闭面板",
@@ -597,8 +597,13 @@ const zh = {
   },
   archiveConfirmedByUser: "归档结果已由用户确认",
   mutationErrors: {
-    "This setting comes from the factory; edit it in the factory":
-      "这个设置来自 factory；请在 factory 的文件中编辑。",
+    "The factory is not active; this setting is saved in the board":
+      "factory 未启用；这个设置保存在看板中。请刷新后重试。",
+    "The factory has errors; fix its files before editing here":
+      "factory 有错误；请先修正它的文件，再在这里编辑。",
+    "The factory changed on disk and was loaded again; check the change and try again":
+      "factory 的文件已在磁盘上修改，已重新加载；请检查修改后重试。",
+    "The factory edit is invalid": "factory 不接受这个修改，已撤销：",
     "Pick one of the gate's options: each one names the stage the task goes to":
       "请选择这个关卡的一个选项：每个选项都指明任务要进入的阶段。",
     "This prompt comes from the factory; edit worker.md in the factory":
@@ -861,8 +866,8 @@ const en: typeof zh = {
     errors: "{count} error(s); the last valid factory is kept: {first}",
     active: "factory: active, revision {revision}",
     activeNoRevision: "factory: active",
-    readOnly:
-      "These settings come from the factory. Edit its files; editing them here comes later.",
+    writes:
+      "The factory is active: changes here are written to its files and committed (ui: …).",
   },
   ticketPanel: {
     close: "Close panel",
@@ -1466,8 +1471,14 @@ const en: typeof zh = {
   },
   archiveConfirmedByUser: "Archive outcome confirmed by user",
   mutationErrors: {
-    "This setting comes from the factory; edit it in the factory":
-      "This setting comes from the factory. Edit it in the factory's files.",
+    "The factory is not active; this setting is saved in the board":
+      "The factory is not active; this setting is saved in the board. Refresh and retry.",
+    "The factory has errors; fix its files before editing here":
+      "The factory has errors. Fix its files before editing here.",
+    "The factory changed on disk and was loaded again; check the change and try again":
+      "The factory changed on disk and was loaded again. Check the change and try again.",
+    "The factory edit is invalid":
+      "The factory rejected this change, so it was undone:",
     "Pick one of the gate's options: each one names the stage the task goes to":
       "Pick one of the gate's options. Each one names the stage the task goes to.",
     "This prompt comes from the factory; edit worker.md in the factory":

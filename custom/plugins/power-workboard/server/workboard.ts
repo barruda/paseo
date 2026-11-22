@@ -2,7 +2,7 @@ import { deskStatusOf, type DeskStatus } from "../shared/desk-status";
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, relative, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import {
   archiveDueAt,
@@ -188,11 +188,11 @@ import {
 } from "./factory/stamp";
 import {
   FactoryIds,
-  changedAssistantKeys,
-  changedSettingsKeys,
   missingFactoryIds,
+  moveOffUnknownColumns,
   workerOf,
   type AppliedFactory,
+  type ColumnMove,
 } from "../shared/factory/active";
 import type { FactoryMode } from "../shared/factory/status";
 import {
@@ -281,25 +281,20 @@ export interface FactoryAccess {
   applied(): AppliedFactory | null;
   /** Active mode: resolves once the first load is done. */
   ready(): Promise<void>;
+  /** Follows the setting now: a new mode applies (or stops applying) the factory at once. */
+  sync(): void;
+  /** Active mode: replaces the prompt (the body) of a factory `worker.md`, by root-relative path. */
+  writePrompt(file: string, text: string): Promise<void>;
 }
 
-/** CUSTOM(factory): the error an edit of a factory-owned setting gets in active mode. */
+/**
+ * CUSTOM(factory): a user's config edit. In active mode the store writes it to the factory
+ * (server/factory/shadow.ts `factoryStoreView`); otherwise it is a plain save.
+ */
+const CONFIG_EDIT = { factory: true } as const;
 /** CUSTOM(factory): a gate's Decisões card needs one of its options. */
 export const GATE_OPTION_REQUIRED_ERROR =
   "Pick one of the gate's options: each one names the stage the task goes to";
-export const FACTORY_READ_ONLY_ERROR =
-  "This setting comes from the factory; edit it in the factory";
-/** CUSTOM(factory): mutations that only change factory-owned config. */
-const FACTORY_OWNED_ACTIONS = new Set<Mutation["action"]>([
-  "orchestrator-save",
-  "orchestrators-set-agent",
-  "orchestrator-delete",
-  "orchestrator-move",
-  "orchestrator-enable",
-  "pools-save",
-  "night-settings",
-  "reorder-groups",
-]);
 /** Longest agent title the board sets. */
 const AGENT_TITLE_MAX = 200;
 /**
@@ -615,29 +610,6 @@ export class Workboard {
   private factoryHeld(): boolean {
     return this.factoryMode() === "active" && !this.factoryApplied();
   }
-  /** CUSTOM(factory): active mode refuses edits of what the factory owns (ticket 10 writes them). */
-  private refuseFactoryEdit(input: Mutation): void {
-    if (this.factoryMode() !== "active") return;
-    const current = this.store.current;
-    const owned =
-      FACTORY_OWNED_ACTIONS.has(input.action) ||
-      (input.action === "orchestrator-defaults" &&
-        Object.entries(input.orchestrator).some(
-          ([key, value]) =>
-            key !== "instructions" &&
-            value !== undefined &&
-            !isDeepStrictEqual(
-              value,
-              current.orchestrator[key as keyof typeof current.orchestrator],
-            ),
-        )) ||
-      (input.action === "settings" &&
-        changedSettingsKeys(
-          current.settings,
-          settingsSchema.parse(input.settings),
-        ).some((key) => key !== "pools")); // saveSettings keeps the pools as they are
-    if (owned) throw new Error(FACTORY_READ_ONLY_ERROR);
-  }
   /**
    * CUSTOM(factory): active mode loaded the factory. The ids `.factory-ids.json` adds go into the
    * runtime state, so tasks keep their worker even if the file goes away, and the board runs a pass
@@ -664,7 +636,17 @@ export class Workboard {
     return this.profiles.read(this.profileRef(profile));
   }
   async setProfilePrompt(profile: string, text: string) {
-    return this.profiles.setSystemPrompt(this.profileRef(profile), text);
+    const ref = this.profileRef(profile);
+    // CUSTOM(factory): active mode keeps the prompt in the body of the profile's worker.md.
+    const applied = this.factoryApplied();
+    if (ref.factory && applied)
+      return this.assistantOptions.factory!.writePrompt(
+        relative(applied.root, join(ref.factory.directory, "worker.md"))
+          .split(sep)
+          .join("/"),
+        text,
+      );
+    return this.profiles.setSystemPrompt(ref, text);
   }
   async profileSkills(profile: string) {
     const { directory, pluginName } = await this.profiles.ensure(
@@ -873,6 +855,18 @@ export class Workboard {
       } catch (error) {
         console.error(
           "Moving task descriptions to files failed:",
+          message(error),
+        );
+        await this.store.load();
+      }
+    // CUSTOM(task-records-jsonl): attempts and orchestrator logs still in the JSON move to their
+    // JSONL files the same way.
+    if (this.store.hasLegacyRecords)
+      try {
+        await this.store.moveRecords();
+      } catch (error) {
+        console.error(
+          "Moving attempts and orchestrator logs to files failed:",
           message(error),
         );
         await this.store.load();
@@ -1627,7 +1621,7 @@ export class Workboard {
         throw new Error("Settings changed; refresh before saving");
       for (const group of removed) delete data.cardOrderByStage[group.id];
       data.settings = next;
-    });
+    }, CONFIG_EDIT);
   }
   private checkCardOrder(
     data: Data,
@@ -1692,7 +1686,6 @@ export class Workboard {
     input: Mutation,
     by: Exclude<HistoryActor, "orchestrator"> = "user",
   ): Promise<Board> {
-    this.refuseFactoryEdit(input); // CUSTOM(factory)
     // Reject before queueing so an active or queued start cannot be canceled after it fails.
     if (
       input.action === "cancel-binding" &&
@@ -1759,7 +1752,7 @@ export class Workboard {
           // CUSTOM(night-tasks)
           await this.store.update((data) => {
             data.night = nightSettingsSchema.parse(input.night);
-          });
+          }, CONFIG_EDIT);
           await this.orchestrate();
         } else if (input.action === "night-shutdown-cancel") {
           await this.store.update((data) => {
@@ -1780,7 +1773,7 @@ export class Workboard {
               ...data.orchestrator,
               ...input.orchestrator,
             });
-          });
+          }, CONFIG_EDIT);
         } else if (input.action === "orchestrator-save") {
           const id = input.orchestrator.id ?? randomUUID();
           const next = orchestratorConfigSchema.parse({
@@ -1800,7 +1793,7 @@ export class Workboard {
             data.orchestrators = created
               ? [...data.orchestrators, next]
               : data.orchestrators.map((o) => (o.id === id ? next : o));
-          });
+          }, CONFIG_EDIT);
           await this.log(id, "info", created ? "Created" : "Settings saved");
           await this.orchestrate();
         } else if (input.action === "orchestrators-set-agent") {
@@ -1831,7 +1824,7 @@ export class Workboard {
                   })
                 : config,
             );
-          });
+          }, CONFIG_EDIT);
           for (const config of selected)
             await this.log(
               config.id,
@@ -1851,7 +1844,7 @@ export class Workboard {
             delete data.orchestratorLogs[input.id];
             for (const task of data.tasks)
               if (task.orchestratorId === input.id) task.orchestratorId = null;
-          });
+          }, CONFIG_EDIT);
         } else if (input.action === "orchestrator-move") {
           // CUSTOM(resource-pools): swaps it with its neighbour in the list.
           this.orchestratorConfig(input.id);
@@ -1863,7 +1856,7 @@ export class Workboard {
               const next = [...data.orchestrators];
               [next[from], next[to]] = [next[to]!, next[from]!];
               data.orchestrators = next;
-            });
+            }, CONFIG_EDIT);
             await this.orchestrate();
           }
         } else if (input.action === "pools-save") {
@@ -1876,7 +1869,7 @@ export class Workboard {
                 !input.pools.some((pool) => pool.id === config.poolId)
               )
                 config.poolId = null;
-          });
+          }, CONFIG_EDIT);
           await this.orchestrate();
         } else if (input.action === "orchestrator-run") {
           const config = this.orchestratorConfig(input.id);
@@ -1898,7 +1891,7 @@ export class Workboard {
             data.orchestrators = data.orchestrators.map((o) =>
               o.id === input.id ? { ...o, enabled: input.enabled } : o,
             );
-          });
+          }, CONFIG_EDIT);
           await this.log(
             input.id,
             "info",
@@ -1981,7 +1974,7 @@ export class Workboard {
             if (!sameOrder(input.expectedGroupOrder, fresh))
               throw new Error("Group order changed; refresh before reordering");
             data.settings.groupOrder = input.groupOrder;
-          });
+          }, CONFIG_EDIT);
         } else {
           const task = this.task(input.taskId);
           if (hidden(task) && input.action !== "resolve-archive")
@@ -5302,23 +5295,34 @@ export class Workboard {
   }
   async setAssistantSettings(input: AssistantSettings) {
     const settings = assistantSettingsSchema.parse(input);
-    // CUSTOM(factory): the factory owns the PM chat, delivery and project policies in active mode;
-    // the factory setting itself stays editable, so active mode can be turned off.
-    if (
-      this.factoryMode() === "active" &&
-      settings.factory.mode === "active" &&
-      changedAssistantKeys(this.store.current.assistant.settings, settings)
-        .length > 0
-    )
-      throw new Error(FACTORY_READ_ONLY_ERROR);
+    // CUSTOM(factory): in active mode the factory owns the PM chat, delivery and project policies,
+    // so they go to its files. A save that leaves active mode writes nothing there: the board reads
+    // the JSON again, and the factory's values are not copied into it.
+    const leavingActive =
+      this.factoryMode() === "active" && settings.factory.mode !== "active";
+    let moves: ColumnMove[] = [];
     await this.serial(() =>
-      this.store.update((data) => {
-        data.assistant.settings = settings;
-      }),
+      this.store.update(
+        (data) => {
+          data.assistant.settings = settings;
+          // CUSTOM(factory): the JSON's columns come back; tasks in a column only the factory has
+          // move to the default one.
+          if (leavingActive)
+            moves = moveOffUnknownColumns(
+              data,
+              this.store.peek((saved) => saved.settings.groups),
+            );
+        },
+        settings.factory.mode === "active" ? CONFIG_EDIT : {},
+      ),
     );
+    for (const move of moves)
+      console.warn(
+        `Factory active mode off: task "${move.title}" (${move.taskId}) moved from column "${move.from}", which only the factory has, to "${move.to}".`,
+      );
     // CUSTOM(factory): the factory follows a new mode before the reply is read, so leaving active
     // answers with the JSON's values and the page never saves the factory's back into the JSON.
-    this.factoryMode();
+    this.assistantOptions.factory?.sync();
     return this.assistantSettings();
   }
   /** The inputs of the read-side views. */

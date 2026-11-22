@@ -84,6 +84,20 @@ this repo) with these differences:
   opens anyway, with that task's JSON text or none. A task that leaves the board takes its file
   with it. Images keep working: the text still references
   them by path.
+- **Attempts and orchestrator logs on disk.** Task attempts are appended to
+  `plugin-data/power-workboard/attempts/YYYY-MM-DD.jsonl` (one line per new or changed attempt,
+  the last line per task and index wins, a `reset` line clears a task's list) and each
+  orchestrator's log to `orchestrator-logs/<orchestratorId>.jsonl`; `workboard-data.json` saves
+  both as `{}`. The daemon plugin keeps in memory the last 100 log lines per orchestrator and the
+  attempts of tasks on the board or started in the last 30 days, so the Orchestrators tab, the
+  delivery engine, the Reports page and the PM tools read them as before. Only the difference since
+  the last append is written. Data saved in the JSON by an older version moves to the files when
+  the board starts, after a one-time copy to `workboard-data.pre-records.json`; a move cut short
+  appends nothing twice. A failed append keeps that kind in the JSON until the next start. When
+  the attempt files cannot be read, new attempts stay in the JSON and are merged back by attempt
+  index once they can (the JSON wins on the same index). A line cut by a crash is skipped, and the
+  next append starts on a new line. Deleting
+  an orchestrator deletes its log file. The files are never pruned.
 - **Ticket panel.** Middle-click a card, right-click it and choose **Open in panel**, or
   long-press it on a phone or tablet, to read the ticket beside the board without leaving it. The
   context menu stays inside the screen near an edge. One panel at a time: opening another ticket

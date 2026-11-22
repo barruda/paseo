@@ -10322,7 +10322,7 @@ validate <dir>` on a folder with a `factory.yaml` (`schemaVersion: pwb/v1alpha1`
     role, so a factory implement worker hashes like the same live orchestrator and the hashes
     recorded before roles existed stay valid; another role still changes the hash.
   - `server/factory/builtin/`: the `default` and `critical` pipelines, `roles/{triage,spec,
-    implement,verify,review}.md`, `templates/spec.md` and the factory `README.md`.
+implement,verify,review}.md`, `templates/spec.md` and the factory `README.md`.
     `readBuiltinFactoryFiles()` (`server/factory/builtin.ts`) returns them plus the `.gitignore`
     (a constant: a real one in `builtin/` would apply to this repository) and is the only source
     `bin/factory export` (`export.ts`) writes them from. It replaces ticket 4's
@@ -10446,6 +10446,11 @@ tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). I
     "edit in the factory". The core page now offers `active`.
   - `bin/factory memory <dir>` (`server/factory/cutover.ts`) copies the profiles' memory into the
     factory. The Pipelines tab reads the factory's pipelines in active mode.
+  - Review follow-ups (`custom: factory active mode review follow-ups`, 2026-11-22): `FactoryIds`
+    lets the data's live id win when two map to the same worker; leaving active moves tasks out of
+    factory-only columns to the JSON's default column (`moveOffUnknownColumns`, warning in
+    `daemon.log`); `setAssistantSettings` calls `FactoryAccess.sync()` instead of `mode()`; a test
+    pins that a running task goes back to its worker when the worker returns to the factory.
 - **Core files touched:**
   `packages/app/src/screens/settings/bruno-customizations/projects-assistant-page.tsx`,
   `projects-assistant-model.ts` (+ test) (`CUSTOM(factory)`: `active` offered, owned fields
@@ -10463,8 +10468,100 @@ tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). I
 - **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-active.test.ts)`
   (plugin suite in the update script) and the app model test. By hand, only after the user approves
   the cutover: follow "Cutover" in `docs/factory.md`; with the mode on Active the board shows
-  "factory: active, revision …", the Orchestrators tab is read only, and a new task's run records
-  the factory revision.
+  "factory: active, revision …", and a new task's run records the factory revision. (Ticket 10
+  made the settings editable again; see factory-ui-writes.)
+
+## factory-ui-writes: the UI writes the factory in active mode
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Power Workboard UI edits write the factory files in active mode`
+- **Why:** Ticket 10 of the factory-as-code design (`custom/plugins/power-workboard/docs/factory.md`,
+  "Active mode"): ticket 9 made the factory-owned settings read only; editing them from the board
+  again, with the files and their comments kept as the source of truth and a commit per change.
+- **What:**
+  - `server/factory/writer.ts`: edits YAML and Markdown frontmatter through the `yaml` Document API
+    (comments, quotes and key order kept; a scalar keeps its node), replaces a `worker.md` body,
+    creates and removes files, commits exactly the touched files as `ui: <file> <keys>`.
+    `writeFactoryKeys` / `FactoryShadow.writeKeys` set any top-level key (null removes it), so a new
+    field such as `autonomy` needs no writer code.
+  - `shared/factory/to-files.ts`: the config → file projections, now shared by `bin/factory export`
+    (which moved its mapping and `slugOf` there). `shared/factory/edits.ts`: diffs the projections
+    before and after and plans the file edits (new and removed workers, `priority` on moves, new
+    pools and project files, project policies, factory defaults, board, PM).
+  - `Store.update(change, { factory: true })` (`server/store.ts`): the view may return work the
+    save awaits; `factoryStoreView` sends a marked config edit to `FactoryShadow.writeConfig`
+    (checks the loaded revision is current, else reloads and refuses; validates the result and
+    undoes an invalid one; commits; reloads before the reply). Unmarked writes still drop config
+    changes, as in ticket 9. A removed worker's `memory/` moves to
+    `plugin-data/power-workboard/factory-removed/`.
+  - `server/workboard.ts`: the read-only refusal is gone; the config mutations, `saveSettings` and
+    `setAssistantSettings` (so `board_set_project_policy` and `board_set_default_action`) mark
+    their writes, and `setProfilePrompt` writes the `worker.md` body in active mode.
+  - UI (`client/Orchestrators.tsx`, `GroupSettings.tsx`, `Profiles.tsx`, `WorkboardScreen.tsx`,
+    `strings.ts`): the settings are editable again, with a note that saves go to the factory; new
+    error strings for a changed, broken or rejecting factory.
+- **Core files touched:**
+  `packages/app/src/screens/settings/bruno-customizations/projects-assistant-page.tsx`
+  (`CUSTOM(factory)`: fields editable again, the hint says saves go to the factory).
+  `packages/app/src/components/settings-textarea.tsx` is back to upstream (ticket 9's `disabled`
+  prop is gone).
+- **Plugin files:** the files above, `shared/factory/compile.ts` (`CompiledWorker.priority`),
+  `shared/factory/active.ts` (unused `changed*Keys` removed), `server/factory/shadow.ts`,
+  `server/factory/export.ts`, `docs/factory.md`, `tests/factory-writer.test.ts`,
+  `tests/factory-active.test.ts`, `tests/factory-stamp.test.ts`.
+- **Re-apply:** The settings page is a custom page; nothing else in core.
+- **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/factory-writer.test.ts
+tests/factory-active.test.ts)` (plugin suite in the update script). By hand, in active mode:
+  change an orchestrator's model in the Orchestrators tab; `git -C ~/.paseo/factory log -1` shows
+  `ui: workers/<id> model` and the `worker.md` keeps its comments.
+
+## task-records-jsonl: Workboard attempts and orchestrator logs move to JSONL files
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Workboard attempts and orchestrator logs move out of the board JSON into JSONL files`
+- **Why:** Ticket 3 of `custom/plugins/power-workboard/docs/factory.md`. `assistant.attempts`
+  (about 116 KB) and `orchestratorLogs` (about 49 KB) were rewritten on every board save, and a log
+  line meant a full JSON write.
+- **What:**
+  - `server/records.ts`: append-only `plugin-data/power-workboard/attempts/YYYY-MM-DD.jsonl` (lines
+    `{ at, taskId, attempt }` upsert by index, `{ at, taskId, reset: true }` clears a task) and
+    `orchestrator-logs/<orchestratorId>.jsonl` (one entry per line). Each append is fsynced, and the
+    folder too when the file is new; a file that ends in a line cut by a crash gets a newline
+    first, so the cut line does not swallow the next record. Folders created on the way
+    (`attempts/`, `orchestrator-logs/`, `plugin-data/power-workboard/`) get their parent fsynced.
+    Reading attempts folds every day file and throws on an
+    unreadable file (a partial fold could reuse an index); a line cut by a crash is skipped. Logs
+    read only the file's last 512 KB. Orchestrator ids that are not `[A-Za-z0-9_-]+` are refused.
+  - `server/store.ts`: attempts and logs stay in `Data` in memory, so every reader (snapshot
+    `orchestratorLogs`, delivery retries, Reports views, `board_get_task`, `isManagedAgent`) is
+    unchanged; the JSON saves them as `{}`. The Store keeps what the files hold (`attemptsOnDisk`,
+    `logsOnDisk`) and each save appends the difference (`attemptRecords`, `newLogEntries`) before
+    the JSON. The plan is synchronous and the save awaits only when something is appended (the
+    usage-limit wake test counts ticks). In memory: the last `ORCHESTRATOR_LOG_LIMIT` (100) lines
+    per orchestrator, and the attempts of tasks on the board or started in the last 30 days.
+    Deleting an orchestrator removes its log file. A failed append keeps that kind in the JSON
+    (legacy) until the next start; unreadable attempt files keep new attempts in the JSON.
+  - Migration (no schema bump): on load a JSON copy is merged into the files' attempts by index
+    (the JSON wins on the same index) and replaces an orchestrator's file tail, and marks the kind
+    legacy; ordinary saves keep it in the JSON. `Workboard.load` calls
+    `moveRecords()`, which copies the JSON once to
+    `plugin-settings/power-workboard/workboard-data.pre-records.json` (backing `backup("records")`;
+    a failed copy postpones the move), appends the difference against the files and clears the JSON
+    copy. Interrupted between the two, the next move appends only what the files lack.
+- **Core files touched:** none (plugin only).
+- **Re-apply:** plugin files only: `server/records.ts`, `server/store.ts` (`loadRecords`,
+  `planRecords`, `writeRecords`, `moveRecords`, the stored copy without the records),
+  `server/workboard.ts` (the move in `load`), `index.server.ts` (record files and the backup kind),
+  `README.md`, `docs/factory.md`.
+- **Verify:** the plugin suite (`tests/task-records.test.ts`: diff and fold helpers, day files, a
+  cut line, log tail and removal, the in-memory cap, recent attempts of removed tasks, a failed
+  append, unreadable attempt files, migration with backup, an interrupted run and a failed backup,
+  start-up migration and a restart). Needs only `plugin reload power-workboard`. Then
+  `workboard-data.json` has `"attempts": {}` and `"orchestratorLogs": {}`,
+  `~/.paseo/plugin-settings/power-workboard/workboard-data.pre-records.json` holds the old copy, and
+  `~/.paseo/plugin-data/power-workboard/attempts/` and `orchestrator-logs/` hold the JSONL files. In
+  the app: the Orchestrators tab shows the same log, a task's conversation in Projects Reports
+  still lists its attempts, and a new task's attempt shows up after a reload.
 
 ## factory-engine: the pipeline engine runs each task through its project's pipeline
 
@@ -10498,6 +10595,6 @@ tests/pipeline-view.test.ts)` (part of the plugin suite in the update script). I
 - **Re-apply:** plugin only; re-run the hooks named above in `server/workboard.ts` if upstream
   plugin code moved (search `CUSTOM(factory)`).
 - **Verify:** `(cd custom/plugins/power-workboard && npx vitest run tests/pipeline-engine.test.ts
-tests/factory-active.test.ts)` (plugin suite in the update script). Live only after the cutover
+  tests/factory-active.test.ts)` (plugin suite in the update script). Live only after the cutover
   to active mode: a task of a project on `critical` shows `triage 1/3` on its card, and its gate
   shows up in Decisões.

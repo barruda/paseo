@@ -97,6 +97,12 @@ import {
   directoryDescriptionFiles,
   preDescriptionsBackupFile,
 } from "./server/descriptions";
+// CUSTOM(task-records-jsonl)
+import {
+  defaultRecordDirectory,
+  directoryRecordFiles,
+  preRecordsBackupFile,
+} from "./server/records";
 import { PaseoCompat } from "./server/paseo-compat";
 import { PaseoHost } from "./server/host";
 import { Store } from "./server/store";
@@ -151,14 +157,19 @@ export default function contribute(server: PluginServerContext) {
       write: (revision, values) =>
         compat.invoke("settings.workboard-data.write", { revision, values }),
       // CUSTOM(task-description-files): one copy of the JSON before descriptions leave it.
-      backup: async () => {
+      // CUSTOM(task-records-jsonl): and another before attempts and orchestrator logs do.
+      backup: async (what) => {
         const file = defaultSettingsFile();
-        const target = preDescriptionsBackupFile(file);
+        const target =
+          what === "records"
+            ? preRecordsBackupFile(file)
+            : preDescriptionsBackupFile(file);
         if (await backupOnce(file, target))
           console.log(`Workboard data backed up to ${target}`);
       },
     },
     directoryDescriptionFiles(defaultDescriptionDirectory()),
+    directoryRecordFiles(defaultRecordDirectory()), // CUSTOM(task-records-jsonl)
   ); // CUSTOM(task-description-files)
   // CUSTOM(projects-assistant): created once; the board gets it on every (re)boot.
   const history = new HistoryStore(defaultHistoryDirectory());

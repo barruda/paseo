@@ -1,7 +1,13 @@
 // CUSTOM(factory): active mode (docs/factory.md, "Active mode"). The compiled factory replaces the
 // config fields of the board data on every read, and every write puts the JSON's own values back,
 // so `workboard-data.json` keeps its config untouched and only its runtime state changes.
-import type { Data, Settings } from "../model";
+import {
+  defaultGroup,
+  defaultWorkspaceGroup,
+  type Data,
+  type Group,
+  type Settings,
+} from "../model";
 import type { AssistantSettings } from "../assistant";
 import type { CompiledFactory, CompiledWorker } from "./compile";
 import type { PipelineFile } from "./schema";
@@ -62,21 +68,11 @@ export const FACTORY_ASSISTANT_KEYS = [
   "chat",
 ] as const satisfies ReadonlyArray<keyof AssistantSettings>;
 
-/** JSON with sorted keys and no undefined values, so key order never makes two values differ. */
-function canonical(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
-  if (value && typeof value === "object")
-    return `{${Object.entries(value)
-      .filter(([, entry]) => entry !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([key, entry]) => `${JSON.stringify(key)}:${canonical(entry)}`)
-      .join(",")}}`;
-  return JSON.stringify(value ?? null);
-}
-
-const same = (a: unknown, b: unknown) => canonical(a) === canonical(b);
-
-/** Both directions of the id map; the data's entries win over the file's. */
+/**
+ * Both directions of the id map; the data's entries win over the file's, both for a live id the
+ * two map differently and for a factory id two live ids map to (an orchestrator recreated under
+ * the same name before a new export): the first live id the data has keeps the worker.
+ */
 export class FactoryIds {
   private readonly toFactory: FactoryIdMap;
   private readonly toLive: FactoryIdMap = { workers: {}, pools: {} };
@@ -87,8 +83,10 @@ export class FactoryIds {
       pools: { ...file?.pools, ...data.pools },
     };
     for (const kind of ["workers", "pools"] as const)
-      for (const [live, factory] of Object.entries(this.toFactory[kind]))
-        this.toLive[kind][factory] ??= live;
+      for (const entries of [data[kind], file?.[kind] ?? {}])
+        for (const [live, factory] of Object.entries(entries))
+          if (this.toFactory[kind][live] === factory)
+            this.toLive[kind][factory] ??= live;
   }
 
   /** The orchestrator id a factory worker runs under: its live id when it had one. */
@@ -186,18 +184,34 @@ export function restoreJsonConfig(next: Data, saved: Readonly<Data>): void {
     );
 }
 
-/** The factory-owned settings fields `next` changes, by name. */
-export function changedSettingsKeys(
-  current: Settings,
-  next: Settings,
-): string[] {
-  return FACTORY_SETTINGS_KEYS.filter((key) => !same(current[key], next[key]));
-}
+/** A task `moveOffUnknownColumns` moved. */
+export type ColumnMove = {
+  taskId: string;
+  title: string;
+  from: string;
+  to: string;
+};
 
-/** The factory-owned PM fields `next` changes, by name. */
-export function changedAssistantKeys(
-  current: AssistantSettings,
-  next: AssistantSettings,
-): string[] {
-  return FACTORY_ASSISTANT_KEYS.filter((key) => !same(current[key], next[key]));
+/**
+ * Leaving active mode: the JSON's `groups` come back, and a task in a column only the factory had
+ * would sit in an unknown one. Moves each to the JSON's default column (its default draft column,
+ * or for a task with a workspace the default start column) and returns the moves.
+ */
+export function moveOffUnknownColumns(
+  data: Data,
+  groups: readonly Group[],
+): ColumnMove[] {
+  const known = new Set(groups.map((group) => group.id));
+  const moves: ColumnMove[] = [];
+  for (const task of data.tasks) {
+    const from = task.workspaceId ? task.lastStage : task.draftStage;
+    if (from === "conflict" || known.has(from)) continue;
+    const to = task.workspaceId
+      ? defaultWorkspaceGroup(groups, data.settings.defaultStartGroup)
+      : defaultGroup(groups, data.settings.defaultDraftGroup);
+    if (task.workspaceId) task.lastStage = to;
+    else task.draftStage = to;
+    moves.push({ taskId: task.id, title: task.title, from, to });
+  }
+  return moves;
 }

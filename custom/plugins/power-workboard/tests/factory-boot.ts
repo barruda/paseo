@@ -1,7 +1,13 @@
 // CUSTOM(factory): boots the board in active mode on a fixture factory, as index.server.ts does.
 // Shared by the active-mode and pipeline engine tests; everything lives in temp folders.
 import { execFileSync } from "node:child_process";
-import { mkdir, mkdtemp, realpath, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  writeFile,
+} from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { FACTORY_GITIGNORE } from "../server/factory/builtin";
@@ -27,10 +33,11 @@ export const LIVE_ID = "3f0c1a2b-0000-4000-8000-000000000001";
 export async function writeFixtureFactory(
   checkout: string,
   git = true,
-  overrides: Record<string, string | null> = {},
+  /** Files over the fixture's; null drops one. */
+  extra: Record<string, string | null> = {},
 ) {
   const root = path.join(await temp("pwb-active-"), "factory");
-  const files: Record<string, string> = {
+  const files: Record<string, string | null> = {
     "factory.yaml": `schemaVersion: pwb/v1alpha1
 name: active-fixture
 defaults:
@@ -40,9 +47,10 @@ defaults:
   delivery:
     action: notify
 `,
-    "board.yaml": `night: { start: "23:00", end: "05:00", shutdownWhenDone: false, shutdownCommand: "" }
+    "board.yaml": `# The board's columns, pools and night.
+night: { start: "23:00", end: "05:00", shutdownWhenDone: false, shutdownCommand: "" }
 housekeeping:
-  autoArchive: false
+  autoArchive: false # keep the cards
 `,
     "pm/worker.md": `---
 model: claude/claude-sonnet-5-5
@@ -54,8 +62,9 @@ You are the factory's Project Manager.
     "workers/night/worker.md": `---
 name: Night
 project: proj
+# The night shift runs on Sonnet.
 model: claude/claude-sonnet-5-5
-thinking: high
+thinking: high # think harder at night
 permission: plan
 schedule: automatic
 maxConcurrent: 1
@@ -75,16 +84,18 @@ stages:
     prompt: Implement it.
     to: deliver
 `,
-    "projects/proj.yaml": `path: ${checkout}
+    "projects/proj.yaml": `# The fixture project.
+path: ${checkout}
 pipeline: simple
 delivery:
-  action: review
+  action: review # the PM reviews first
   baseBranch: custom
 `,
     ".gitignore": FACTORY_GITIGNORE,
     ".factory-ids.json": `${JSON.stringify({ workers: { [LIVE_ID]: "night" }, pools: {}, projects: { p: "proj" } })}\n`,
+    ...extra,
   };
-  for (const [file, text] of Object.entries({ ...files, ...overrides }))
+  for (const [file, text] of Object.entries(files))
     if (text !== null)
       await write(path.join(root, file), text.replaceAll(CHECKOUT, checkout));
   if (git) {
@@ -142,8 +153,10 @@ export async function boot(
   options: {
     git?: boolean;
     factory?: string;
-    /** Factory files to add or replace (null drops one), by path under the root. */
+    /** Factory files over the fixture's (null drops one); `CHECKOUT` stands for its path. */
     files?: Record<string, string | null>;
+    /** `factoryIds.workers` the data already has. */
+    dataIds?: Record<string, string>;
   } = {},
 ) {
   const checkout = await temp("pwb-active-checkout-");
@@ -154,7 +167,12 @@ export async function boot(
   );
   const root = options.factory ?? written.root;
   const profilesDirectory = await temp("pwb-active-profiles-");
-  const setup = fixture(dataSchema.parse(liveData(root)));
+  const setup = fixture(
+    dataSchema.parse({
+      ...liveData(root),
+      factoryIds: { workers: options.dataIds ?? {}, pools: {} },
+    }),
+  );
   setup.inventory.projects.push({
     id: "p",
     name: "Project",
@@ -176,6 +194,7 @@ export async function boot(
         : null,
     defaultRoot: root,
     profilesRoot: profilesDirectory,
+    removedRoot: path.join(profilesDirectory, "removed"),
     watch: (_dir, changed) => {
       watchers.add(changed);
       return () => watchers.delete(changed);
@@ -205,11 +224,20 @@ export async function boot(
     head: written.head,
     checkout,
     touch,
+    profilesRoot: profilesDirectory,
     advance: (ms: number) => (clock += ms),
   };
 }
 
 export type Booted = Awaited<ReturnType<typeof boot>>;
+
+export const gitOut = (root: string, ...args: string[]) =>
+  execFileSync("git", args, { cwd: root, encoding: "utf8" });
+/** Commit subjects, newest first. */
+export const gitLog = (root: string) =>
+  gitOut(root, "log", "--format=%s").trim().split("\n");
+export const readRoot = (root: string, file: string) =>
+  readFile(path.join(root, file), "utf8");
 
 export async function startTask(s: Booted) {
   await s.board.mutate({
