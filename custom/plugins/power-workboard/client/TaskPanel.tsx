@@ -253,8 +253,25 @@ export function CardContextMenu({
               pressed && { backgroundColor: theme.colors.surface2 },
             ]}
           >
-            <Icon name={item.icon} size={14} color={theme.colors.foreground} />
-            <Text style={[styles.menuText, { color: theme.colors.foreground }]}>
+            <Icon
+              name={item.icon}
+              size={14}
+              color={
+                item.destructive
+                  ? theme.colors.statusDanger
+                  : theme.colors.foreground
+              }
+            />
+            <Text
+              style={[
+                styles.menuText,
+                {
+                  color: item.destructive
+                    ? theme.colors.statusDanger
+                    : theme.colors.foreground,
+                },
+              ]}
+            >
               {item.label}
             </Text>
           </Pressable>

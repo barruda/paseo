@@ -162,6 +162,7 @@ import { HintButton, HintProvider } from "./Hint";
 import { usePaseoLanguage } from "./paseo-language";
 import { AssistantProfileTab } from "./Profiles"; // CUSTOM(agent-profiles)
 import { optionAnswer } from "../shared/card-answers";
+import { taskNumberLabel } from "../shared/task-reference"; // CUSTOM(delete-task)
 import { ConfirmationModal } from "./ConfirmationModal";
 // CUSTOM(task-panel)
 import {
@@ -340,6 +341,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       : rootSize;
   const [restoringArchived, setRestoringArchived] = useState<Card | null>(null);
   const [archivingDraft, setArchivingDraft] = useState<Card | null>(null);
+  const [deletingTask, setDeletingTask] = useState<Card | null>(null); // CUSTOM(delete-task)
   const [detachingDraft, setDetachingDraft] = useState<{
     card: Card;
     draftId: string;
@@ -1326,6 +1328,7 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       }
       onStatus={() => setStatusCard(card)}
       onArchive={() => setArchivingDraft(card)}
+      onDelete={() => setDeletingTask(card)}
       onCancelBinding={() => setCancelingBinding(card)}
       onDetachDraft={(draftId) => setDetachingDraft({ card, draftId })}
       onOpenPanel={() => setPanel(openPanel(card.id, "ticket", null))}
@@ -2224,6 +2227,29 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
               updatedAt: restoringArchived.updatedAt,
               operationId: restoringArchived.archived!.operationId,
               outcome: "restore",
+            }))
+          }
+        />
+      )}
+      {/* CUSTOM(delete-task) */}
+      {deletingTask && (
+        <ConfirmationModal
+          title={t.deleteTask}
+          description={t.deleteTaskConfirm.replace(
+            "{name}",
+            [taskNumberLabel(deletingTask.number), `“${deletingTask.title}”`]
+              .filter(Boolean)
+              .join(" "),
+          )}
+          confirmLabel={t.deleteTask}
+          disabled={writesDisabled}
+          t={t}
+          theme={props.theme}
+          onClose={() => setDeletingTask(null)}
+          onConfirm={async () =>
+            !!(await mutate({
+              action: "delete-task",
+              taskId: deletingTask.id,
             }))
           }
         />
@@ -3403,6 +3429,7 @@ export function TaskCard({
   onRemoveFromPackage,
   onAskPmToGroup,
   selectionCount = 0,
+  onDelete,
 }: {
   card: Card;
   board: Board;
@@ -3443,6 +3470,8 @@ export function TaskCard({
   onRemoveFromPackage?(): void;
   onAskPmToGroup?(): void;
   selectionCount?: number;
+  /** CUSTOM(delete-task): the context menu's Delete task. */
+  onDelete?(): void;
 }) {
   const [agentsOpen, setAgentsOpen] = useState(false);
   const [titleHovered, setTitleHovered] = useState(false);
@@ -3516,6 +3545,7 @@ export function TaskCard({
         onRemoveFromPackage,
         onAskPmToGroup,
         selectionCount,
+        onDelete,
       }),
     });
   const pointerRef = useCardPointerActions({

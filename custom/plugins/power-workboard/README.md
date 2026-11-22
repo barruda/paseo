@@ -108,6 +108,13 @@ this repo) with these differences:
   a card's **Open agent** link to open the panel straight in the Agent view. Open agent on a
   Done or archived task whose agent was deleted shows a message instead. The SDK workspace
   panel cannot carry a ticket id and the board is a surface, so the board owns this side panel.
+- **Delete task.** The card's context menu (right-click, or long-press the title on a phone)
+  ends with **Delete task**, in every column, after a confirmation. The board archives the
+  task's orchestration and refinement agents (archiving stops a running turn), drops its timers
+  and its records (orchestration, refinement, finish, delivery, progress, card order), takes it
+  out of its package, removes it and its description file, and writes a `task-deleted` history
+  event. Attempts stay as the task's record. Its workspace, branch and commits are left as they
+  are. There is no undo.
 - **Checkpoints.** A task that does not fit in one session ends its turn with a `checkpoint`
   report (`progress {done, next}`, optional `resumeAfter` and `waitingFor`). The engine commits
   the partial work in the task's worktree only, keeps the card in In progress, and resumes it on

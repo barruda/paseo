@@ -444,6 +444,9 @@ const zh = {
   resolveConflict: "选择分组",
   archived: "归档记录",
   back: "返回看板",
+  // CUSTOM(delete-task)
+  deleteTask: "删除任务",
+  deleteTaskConfirm: "删除任务 {name}？此操作无法撤销。",
   archiveDraft: "归档草稿",
   archiveDraftConfirm:
     "归档草稿“{name}”？归档后将移出看板，可在归档页放回原分组。",
@@ -1340,6 +1343,9 @@ const en: typeof zh = {
   resolveConflict: "Choose group",
   archived: "Archive",
   back: "Back to board",
+  // CUSTOM(delete-task)
+  deleteTask: "Delete task",
+  deleteTaskConfirm: "Delete task {name}? This can't be undone.",
   archiveDraft: "Archive draft",
   archiveDraftConfirm:
     "Archive draft “{name}”? It will leave the board. You can restore it to its original group from Archive.",

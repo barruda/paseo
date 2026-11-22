@@ -1,4 +1,5 @@
 import { deskStatusOf, type DeskStatus } from "../shared/desk-status";
+import { taskNumberLabel } from "../shared/task-reference"; // CUSTOM(delete-task)
 import { randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -2023,7 +2024,11 @@ export class Workboard {
           }, CONFIG_EDIT);
         } else {
           const task = this.task(input.taskId);
-          if (hidden(task) && input.action !== "resolve-archive")
+          if (
+            hidden(task) &&
+            input.action !== "resolve-archive" &&
+            input.action !== "delete-task"
+          )
             throw new Error(
               input.action === "detach-draft"
                 ? "detach-draft-archived"
@@ -2183,6 +2188,8 @@ export class Workboard {
                 `Moved to ${this.groupLabel(input.stage)}`,
                 { agentId: null, action: null, by },
               );
+          } else if (input.action === "delete-task") {
+            await this.deleteTask(task, by);
           } else if (input.action === "archive-draft") {
             if (
               task.workspaceId ||
@@ -2325,6 +2332,50 @@ export class Workboard {
         if (remaining) this.queuedStarts.set(input.taskId, remaining);
         else this.queuedStarts.delete(input.taskId);
       }
+    });
+  }
+  /**
+   * CUSTOM(delete-task): stop the task's agents, forget every record and timer keyed by it, and
+   * drop it from the board. Runs inside `serial`, so no start, binding or orchestrator pass is
+   * halfway through it. The workspace, branch and commits are left as they are.
+   */
+  private async deleteTask(task: Task, by: HistoryActor): Promise<void> {
+    const data = this.store.current;
+    const agentIds = new Set(
+      [
+        data.orchestrations[task.id]?.agentId,
+        data.refinements[task.id]?.agentId,
+      ].filter((id): id is string => !!id),
+    );
+    for (const agentId of agentIds)
+      await this.host.archiveAgent(agentId).catch(() => undefined);
+    // Recorded while the task still exists: the history reads its title and project from it.
+    await this.record(
+      task.id,
+      "task-deleted",
+      `Deleted ${taskNumberLabel(task.number) || task.id}: ${task.title}`,
+      { agentId: null, action: null, by },
+    );
+    this.retryAt.delete(task.id);
+    this.clearDirtyTimer(task.id);
+    this.clearFolderTimer(task.id);
+    this.loggedFolderCommitWaits.delete(task.id);
+    this.lateIdleSince.delete(task.id);
+    this.lateChecked.delete(task.id);
+    this.archiveDeferrals.delete(task.id);
+    this.wakePending.delete(task.id);
+    // The store deletes the description file of a task that left the board. Attempts stay: they
+    // are the task's record, and the next load prunes old ones of tasks off the board.
+    await this.store.update((data) => {
+      data.tasks = data.tasks.filter((t) => t.id !== task.id);
+      delete data.orchestrations[task.id];
+      delete data.refinements[task.id];
+      delete data.finishes[task.id];
+      delete data.assistant.deliveries[task.id];
+      delete data.assistant.progress[task.id];
+      for (const [stage, order] of Object.entries(data.cardOrderByStage))
+        if (order.includes(task.id))
+          data.cardOrderByStage[stage] = order.filter((id) => id !== task.id);
     });
   }
   private async bind(id: string): Promise<void> {

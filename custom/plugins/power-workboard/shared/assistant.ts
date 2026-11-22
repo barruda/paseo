@@ -463,6 +463,7 @@ export const HISTORY_EVENT_KINDS = [
   // CUSTOM(assistant-reports): created and moved by the user or the assistant, for the Reports page.
   "task-created",
   "task-moved",
+  "task-deleted", // CUSTOM(delete-task): the user deleted the task from the board
   "task-started",
   "task-continued",
   "stage-entered", // CUSTOM(factory): the pipeline moved the task to a stage

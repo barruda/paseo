@@ -59,3 +59,30 @@ it("a disabled draft keeps only the panel and edit entries", () => {
   });
   expect(items.map((item) => item.id)).toEqual(["panel", "edit"]);
 });
+
+// CUSTOM(delete-task)
+it("Delete task is the last entry in every column, drawn as destructive", () => {
+  const deleted: string[] = [];
+  for (const over of [{}, { workspaceId: "w1", stage: "review" }]) {
+    const items = cardMenuItems({
+      card: card(over),
+      agentId: null,
+      t,
+      disabled: true,
+      onOpenPanel: () => {},
+      onOpen: () => {},
+      onOpenAgent: () => {},
+      onEdit: () => {},
+      onStatus: () => {},
+      onDelete: () => deleted.push("t1"),
+    });
+    const last = items.at(-1)!;
+    expect(last).toMatchObject({
+      id: "delete",
+      label: "Delete task",
+      destructive: true,
+    });
+    last.onPress();
+  }
+  expect(deleted).toEqual(["t1", "t1"]);
+});

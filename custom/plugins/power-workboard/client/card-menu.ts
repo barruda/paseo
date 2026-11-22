@@ -6,6 +6,8 @@ export type CardMenuItem = {
   id: string;
   label: string;
   icon: string;
+  /** CUSTOM(delete-task): drawn in the danger color. */
+  destructive?: boolean;
   onPress(): void;
 };
 
@@ -24,6 +26,7 @@ export function cardMenuItems({
   onRemoveFromPackage,
   onAskPmToGroup,
   selectionCount = 0,
+  onDelete,
 }: {
   card: Card;
   agentId: string | null;
@@ -40,6 +43,8 @@ export function cardMenuItems({
   onRemoveFromPackage?(): void;
   onAskPmToGroup?(): void;
   selectionCount?: number;
+  /** CUSTOM(delete-task): always offered last, in any column, when the board passes it. */
+  onDelete?(): void;
 }): CardMenuItem[] {
   return [
     {
@@ -106,6 +111,17 @@ export function cardMenuItems({
             label: t.status,
             icon: "ArrowRightLeft",
             onPress: onStatus,
+          },
+        ]
+      : []),
+    ...(onDelete
+      ? [
+          {
+            id: "delete",
+            label: t.deleteTask,
+            icon: "Trash2",
+            destructive: true,
+            onPress: onDelete,
           },
         ]
       : []),
