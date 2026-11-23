@@ -100,7 +100,7 @@ import { GroupEditor, GroupSettings, newGroup } from "./GroupSettings";
 import { factoryOwnsConfig } from "./FactoryLine"; // CUSTOM(factory)
 import { BoardView } from "./BoardView";
 import { ArchivedBoardCard } from "./ArchivedBoardCard";
-import { cardMenuItems } from "./card-menu"; // CUSTOM(task-panel)
+import { canArchiveTask, cardMenuItems } from "./card-menu"; // CUSTOM(task-panel, archive-task)
 import {
   clampPanelWidth,
   loadPanelWidth,
@@ -1329,6 +1329,10 @@ function HostWorkboard(props: PluginSurfaceProps & { initialPage?: Page }) {
       }
       onStatus={() => setStatusCard(card)}
       onArchive={() => setArchivingDraft(card)}
+      // CUSTOM(archive-task): reversible from Archive, so no confirmation.
+      onArchiveTask={() =>
+        void mutate({ action: "archive-task", taskId: card.id })
+      }
       onDelete={() => setDeletingTask(card)}
       onOpenOrchestrators={() => selectTab("orchestrators")}
       onCancelBinding={() => setCancelingBinding(card)}
@@ -3476,6 +3480,7 @@ export function TaskCard({
   onRemoveFromPackage,
   onAskPmToGroup,
   selectionCount = 0,
+  onArchiveTask,
   onDelete,
   onOpenOrchestrators,
 }: {
@@ -3518,6 +3523,7 @@ export function TaskCard({
   onRemoveFromPackage?(): void;
   onAskPmToGroup?(): void;
   selectionCount?: number;
+  onArchiveTask?(): void;
   /** CUSTOM(delete-task): the context menu's Delete task. */
   onDelete?(): void;
   /** CUSTOM(no-orchestrator-warning): the alert opens the Orchestrators tab. */
@@ -3573,6 +3579,11 @@ export function TaskCard({
   const projectAccent = project?.accent;
   const agentId = cardAgentId(card, record);
   const standaloneAgentLink = !!agentId && (inReview || !record);
+  // CUSTOM(archive-task)
+  const archiveTask =
+    onArchiveTask && canArchiveTask(card, board.settings.groups)
+      ? onArchiveTask
+      : undefined;
   // CUSTOM(task-panel): middle click and the context menu open the side panel; left click keeps
   // every existing behavior. Native has neither pointer event, so a long press opens the same menu.
   const openPanel = onOpenPanel ?? (() => {});
@@ -3595,6 +3606,7 @@ export function TaskCard({
         onRemoveFromPackage,
         onAskPmToGroup,
         selectionCount,
+        onArchiveTask: archiveTask,
         onDelete,
       }),
     });
@@ -4179,6 +4191,28 @@ export function TaskCard({
                 />
               </CardAction>
             )}
+          {archiveTask && (
+            <CardAction
+              theme={theme}
+              hint={t.archiveTask}
+              accessibilityRole="button"
+              accessibilityLabel={t.archiveTask}
+              testID={`workboard-archive-task-${card.id}`}
+              disabled={disabled || pending}
+              onPress={archiveTask}
+              style={({ pressed }) => [
+                styles.iconAction,
+                { opacity: disabled || pending ? 0.5 : 1 },
+                pressed && { backgroundColor: theme.colors.surface2 },
+              ]}
+            >
+              <Icon
+                name="Archive"
+                size={15}
+                color={theme.colors.foregroundMuted}
+              />
+            </CardAction>
+          )}
           {/* CUSTOM(card-open-agent): pin and move live here so the title gets the card's width. */}
           {card.pinState !== "none" && (
             <HintButton

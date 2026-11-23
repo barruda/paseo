@@ -52,7 +52,9 @@ this repo) with these differences:
   event, and the review diff warns and lists those files apart. Its delivery commits on the
   branch the folder is on and never merges, and approving it from Ready to review also commits
   what is left, so the Done card offers Commit and PR description only. The project folder's
-  workspace is never archived. Worktree orchestrators are unchanged.
+  workspace is never archived, and its Done card shows no archive due date; **Archive task**
+  (the card's archive icon or context menu) takes the card off the board and leaves the
+  workspace and its agents active. Worktree orchestrators are unchanged.
 - **Resource pools.** Orchestrators can share a pool (Orchestrators tab, **Resource pools**): a
   task starts only with a free slot in its orchestrator and in its pool, and nothing of a pool
   starts while the machine's free RAM (`MemAvailable` in `/proc/meminfo`) is under the pool's

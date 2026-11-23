@@ -10964,3 +10964,34 @@ tests/card-menu.test.ts` (in the plugin suite of the update script). Needs a `pl
 tests/power-workboard.test.ts`. Needs a `plugin reload`. In the app: the toolbar shows
   "List archived (N)"; its page has Restore to board on every row. Filters > Show archived puts
   the newest 10 archived tasks, dimmed, at the bottom of their columns; Restore brings one back.
+
+## archive-task: archive a Done or Canceled card by hand, without archiving a local workspace
+
+- **Added:** 2026-11-22
+- **Commit:** `custom: Power Workboard archives a Done task by hand and drops the false due date of in-place tasks`
+- **Why:** a task worked in the project folder (in place, no worktree), like #171 of
+  DreamMMO, stayed in Done for good with "Due; waiting for checks": `scan()` only archives task
+  worktrees (see `## done-auto-archive`), but the card still computed `dueAt`, and the only manual
+  archive was for canceled drafts.
+- **What:** new `workboard.mutate` action `archive-task` (`Workboard.archiveTask`), for a bound
+  task in a Done or Canceled group. A task worked in place, or whose workspace is not a
+  `worktree`, gets `archived` with the new kind `manual` and leaves the board; its workspace and
+  agents are not touched. A task worktree goes through the native archive, after the busy-agent
+  and git checks of the automatic archive (a failed git check rejects with the card issue's
+  code). Restore (from Archive or the archived card, see `## board-show-archived`) brings a
+  manual archive back without an issue while its workspace is still listed. `dueAt` is computed only for a worktree task not run in
+  place, so in-place and local-checkout tasks no longer show "Due; waiting for checks". The card
+  gets an archive icon and an **Archive task** item in its context menu (right click, long press
+  on the title, or the ⋯ button on native), without confirmation. `canArchiveTask` in
+  `client/card-menu.ts` decides when; in `cardMenuItems` it sits right before Delete task
+  (`## delete-task`), which stays last.
+- **Core files touched:** none (plugin only).
+- **Plugin files:** `shared/model.ts` (archive kind `manual`), `shared/rpc.ts`,
+  `server/workboard.ts`, `client/card-menu.ts`, `client/WorkboardScreen.tsx`, `client/strings.ts`,
+  `README.md`, `tests/archive-task.test.ts`, `tests/card-menu.test.ts`.
+- **Re-apply:** plugin only; search `archive-task` in the files above.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/archive-task.test.ts
+  tests/card-menu.test.ts` (in the plugin suite of the update script). Needs a `plugin reload`.
+  In the app: the Done card of #171 has no "Due; waiting for checks"; its archive icon (or right
+  click > Archive task) removes it from the board, it shows in Archive with Restore, and the
+  DreamMMO workspace and its agents stay active.

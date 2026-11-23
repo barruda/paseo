@@ -1151,8 +1151,12 @@ export class Workboard {
               : data.autoPins[workspace.id] === workspace.pinnedAt
                 ? "automatic"
                 : "manual",
+          // CUSTOM(archive-task): only a task worktree is ever archived on its own; a task worked
+          // in place or in a local checkout keeps its workspace, so it shows no due date.
           dueAt:
-            task.workspaceId && isTerminalGroup(stage, data.settings.groups)
+            workspace?.workspaceKind === "worktree" &&
+            !data.orchestrations[task.id]?.inPlace &&
+            isTerminalGroup(stage, data.settings.groups)
               ? archiveDueAt(archiveGate(task), data.settings.archiveAfterDays)
               : null,
           agents: agents.map((a) => ({
@@ -2221,6 +2225,8 @@ export class Workboard {
                 detail: "Draft archived; no native workspace",
               };
             });
+          } else if (input.action === "archive-task") {
+            await this.archiveTask(task);
           } else if (input.action === "detach-draft") {
             await this.store.update((data, descriptions) => {
               const current = data.tasks.find((t) => t.id === task.id)!;
@@ -2286,6 +2292,14 @@ export class Workboard {
                   ))
               )
                 throw new Error("archive-resolution-unavailable");
+              // CUSTOM(archive-task): a manual archive of a task worked in place never left its
+              // workspace, so restoring it while that workspace is listed raises no issue.
+              const keptWorkspace =
+                archive.kind === "manual" &&
+                (!current.workspaceId ||
+                  this.inventory.workspaces.some(
+                    (w) => w.id === current.workspaceId,
+                  ));
               if (archive.operationId !== input.operationId)
                 throw new Error("archive-resolution-stale");
               if (input.outcome === "confirm") {
@@ -2312,9 +2326,10 @@ export class Workboard {
                   current.draftStage = archive.stage;
                 current.lastStage = archive.stage;
                 // Keep the manual restore until reconciliation confirms native membership.
-                current.issue = current.workspaceId
-                  ? "archive-restored-workspace-unavailable"
-                  : null;
+                current.issue =
+                  current.workspaceId && !keptWorkspace
+                    ? "archive-restored-workspace-unavailable"
+                    : null;
               }
               current.updatedAt = this.stamp(current.updatedAt);
             });
@@ -9012,6 +9027,109 @@ export class Workboard {
       fingerprint: this.archiveFingerprint(workspace, agents),
     });
     await this.issue(task.id, reason);
+  }
+  /**
+   * CUSTOM(archive-task): the user archives a Done or Canceled card. A task worked in place, or
+   * bound to a local checkout or directory, only leaves the board: its workspace holds the user's
+   * other chats, so the workspace and its agents stay active. A task worktree is archived
+   * natively, after the busy and git checks of the automatic archive.
+   */
+  private async archiveTask(task: Task): Promise<void> {
+    const data = this.store.current;
+    const workspace = this.inventory.workspaces.find(
+      (w) => w.id === task.workspaceId,
+    );
+    const stage = this.taskStage(task, data, workspace);
+    if (task.binding || !isTerminalGroup(stage, data.settings.groups))
+      throw new Error("archive-task-not-finished");
+    const native =
+      workspace?.workspaceKind === "worktree" &&
+      !data.orchestrations[task.id]?.inPlace;
+    const operationId = randomUUID();
+    const record = (data: Data) => ({
+      operationId,
+      kind: "manual" as const,
+      stage,
+      group: data.settings.groups.find((group) => group.id === stage) ?? null,
+      startedAt: this.stamp(),
+      lastConversationAt: task.lastConversationAt,
+    });
+    if (!native) {
+      await this.store.update((data) => {
+        const current = data.tasks.find((t) => t.id === task.id)!;
+        current.archived = {
+          ...record(data),
+          status: "archived",
+          archivedAt: this.stamp(),
+          detail:
+            "Archived by the user; the workspace and its agents stay active",
+        };
+        current.issue = null;
+        current.updatedAt = this.stamp(current.updatedAt);
+      });
+      this.archiveDeferrals.delete(task.id);
+      return;
+    }
+    const id = workspace.id;
+    const fresh = await this.inventoryNow();
+    const live = fresh.workspaces.find((w) => w.id === id);
+    if (!live || live.archivingAt)
+      throw new Error("archive-task-workspace-unavailable");
+    if (
+      live.status === "running" ||
+      live.status === "needs_input" ||
+      fresh.agents.some(
+        (a) =>
+          a.workspaceId === id &&
+          !a.archivedAt &&
+          (a.activity === "running" || a.activity === "waiting"),
+      )
+    )
+      throw new Error("archive-task-busy");
+    const safety = await this.host.safety(
+      live,
+      this.policy(this.projectIdOf(task)).baseBranch.trim() || null,
+    );
+    // The issue code itself: the client shows the card issue's text for it.
+    if (safety) throw new Error(safety);
+    await this.store.update((data) => {
+      data.tasks.find((t) => t.id === task.id)!.archived = {
+        ...record(data),
+        status: "pending",
+        archivedAt: null,
+        detail: "Archive intent persisted; native result not yet known",
+      };
+    });
+    this.archiveDeferrals.delete(task.id);
+    try {
+      const result = await this.host.archive(id);
+      if (result.error || !result.archivedAt)
+        throw new Error(result.error ?? "Native archive returned no timestamp");
+      this.inventory = await this.inventoryNow();
+      if (this.inventory.workspaces.some((w) => w.id === id))
+        throw new Error("Native workspace still active after archive response");
+      await this.store.update((data) => {
+        const current = data.tasks.find((t) => t.id === task.id)!;
+        current.archived = {
+          ...current.archived!,
+          status: "archived",
+          archivedAt: result.archivedAt,
+          detail:
+            "Native archive confirmed; worktree cleanup is not independently verified",
+        };
+        current.issue = null;
+      });
+    } catch (error) {
+      await this.store.update((data) => {
+        const current = data.tasks.find((t) => t.id === task.id)!;
+        current.archived = {
+          ...current.archived!,
+          status: "uncertain",
+          detail: message(error),
+        };
+        current.issue = "native-archive-unknown";
+      });
+    }
   }
   private async scan(scope?: ReadonlySet<string>): Promise<void> {
     if (!this.connected || !this.store.current.settings.autoArchive) return;
