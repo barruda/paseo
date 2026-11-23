@@ -10927,3 +10927,40 @@ tests/card-menu.test.ts` (in the plugin suite of the update script). Needs a `pl
   of a project with no orchestrator (or with its orchestrator off) to Ready to start; the card
   turns amber with the alert, and the alert opens the Orchestrators tab. Turn the orchestrator
   on: the card goes back to normal without reloading.
+
+## board-show-archived: Show archived filter on the board, Restore on every archived task, "List archived (N)"
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Power Workboard shows archived tasks on the board and restores any archived task`
+- **Why:** the user wanted to see archived tasks on the board and thought the Archive rows with no
+  button (only a date and "Native archive confirmed…") were not board tasks. They are board tasks.
+  `data.tasks` only holds tasks the board created ("Workspaces are never imported" in
+  `reconcile()`), and on 2026-11-22 all 177 archived tasks of the live board had a
+  `task-started` history record or a task number. The rows with no button are tasks that
+  done-auto-archive archived (`kind: automatic`, `status: archived`). The rows with Confirm/Restore
+  are `status: external`: the workspace left Paseo's active list without the board archiving it.
+- **What:**
+  - `resolve-archive` accepts `restore` for any `status: archived` archive, not only drafts.
+    `confirm` stays for `uncertain`/`external`. Restore works as before: the task returns to its
+    group with the issue `archive-restored-workspace-unavailable`, which also keeps auto-archive
+    off it. The native workspace stays archived.
+  - The Archive page and the toolbar count come from `archiveListCards()` (`client/board-utils.ts`):
+    archived tasks except an in-flight `pending` archive, newest first. Every row has Restore;
+    `uncertain`/`external` rows also have Confirm archived. The button reads "List archived (N)"
+    (zh "归档列表").
+  - Filters gets "Show archived" (off by default) and, when on, "How many": Last 10/20/50/All.
+    `archivedBoardCards()` applies the same predicate as `visibleCards()` (project, package,
+    search, attention, activity, request) to the off-board archived tasks, then the limit. Each one
+    shows dimmed with an "Archived" badge and a Restore to board button (`client/ArchivedBoardCard.tsx`)
+    at the end of the column it was archived from, or the first Done group if that group is gone.
+    They don't drag, reorder or count in the column header. Both values live in the saved board
+    filters (`client/filters.ts`).
+- **Core files touched:** none (plugin only).
+- **Re-apply:** plugin only: `client/filters.ts`, `client/board-utils.ts`, `client/FilterPanel.tsx`,
+  `client/BoardView.tsx` (`archivedByStage`/`renderArchivedCard` props), `client/WorkboardScreen.tsx`,
+  `client/ArchivedBoardCard.tsx`, `client/strings.ts`, and the `resolve-archive` branch in
+  `server/workboard.ts`.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/filters.test.ts
+tests/power-workboard.test.ts`. Needs a `plugin reload`. In the app: the toolbar shows
+  "List archived (N)"; its page has Restore to board on every row. Filters > Show archived puts
+  the newest 10 archived tasks, dimmed, at the bottom of their columns; Restore brings one back.

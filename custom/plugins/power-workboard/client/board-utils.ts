@@ -55,37 +55,145 @@ export function attentionReasons(card: Card): string[] {
   return reasons;
 }
 
+type CardFilters = Pick<BoardFilters, "activity" | "changeRequest"> & {
+  packageId?: string;
+};
+
+/** The per-card board filter predicate, without any archive exclusion. */
+export function matchesBoardFilters(
+  card: Card,
+  projectId: string,
+  search: string,
+  attentionOnly: boolean,
+  filters: CardFilters = DEFAULT_FILTERS,
+  // CUSTOM(task-description-files): the snapshot has no descriptions; the search passes them here.
+  descriptions: ReadonlyMap<string, string> = new Map(),
+): boolean {
+  const needle = search.trim().toLocaleLowerCase();
+  return (
+    (projectId === "all" ||
+      (projectId === "none"
+        ? card.projectId === null
+        : card.projectId === projectId)) &&
+    ((filters.packageId ?? "all") === "all" ||
+      (filters.packageId === "none"
+        ? card.packageId === null
+        : card.packageId === filters.packageId)) &&
+    (!attentionOnly || attentionReasons(card).length > 0) &&
+    (filters.activity === "all" || card.activity === filters.activity) &&
+    matchesRequest(card, filters.changeRequest) &&
+    (!needle ||
+      `${card.title} ${card.projectName} ${descriptions.get(card.id) ?? ""}`
+        .toLocaleLowerCase()
+        .includes(needle))
+  );
+}
+
+export function isArchivedOffBoard(card: Card): boolean {
+  return (
+    card.archived?.status === "archived" || card.archived?.status === "external"
+  );
+}
+
+export function archiveTime(card: Card): number {
+  const value =
+    card.archived?.archivedAt ?? card.archived?.startedAt ?? card.updatedAt;
+  const time = new Date(value).getTime();
+  return Number.isNaN(time) ? 0 : time;
+}
+
+function newestArchivedFirst(a: Card, b: Card): number {
+  return (
+    archiveTime(b) - archiveTime(a) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  );
+}
+
+/**
+ * The cards the Archive page lists. Every task is created by the board
+ * (workspaces are never imported), so the only exclusion is the in-flight
+ * `pending` archive, which is still on the board.
+ */
+export function archiveListCards(cards: readonly Card[]): Card[] {
+  return cards
+    .filter(
+      (card) => card.archived !== null && card.archived.status !== "pending",
+    )
+    .sort(newestArchivedFirst);
+}
+
+/** The Archive page's actions: Confirm only when the native outcome is unknown. */
+export function archiveOutcomes(card: Card): ("confirm" | "restore")[] {
+  return card.archived?.status === "uncertain" ||
+    card.archived?.status === "external"
+    ? ["confirm", "restore"]
+    : ["restore"];
+}
+
+export function archivedBoardCards(
+  board: Board,
+  projectId: string,
+  search: string,
+  attentionOnly: boolean,
+  filters: CardFilters & Pick<BoardFilters, "showArchived" | "archivedLimit">,
+  descriptions: ReadonlyMap<string, string> = new Map(),
+): Card[] {
+  if (!filters.showArchived) return [];
+  const list = board.cards
+    .filter(
+      (card) =>
+        isArchivedOffBoard(card) &&
+        matchesBoardFilters(
+          card,
+          projectId,
+          search,
+          attentionOnly,
+          filters,
+          descriptions,
+        ),
+    )
+    .sort(newestArchivedFirst);
+  return filters.archivedLimit === "all"
+    ? list
+    : list.slice(0, Number(filters.archivedLimit));
+}
+
+export function archivedColumn(card: Card, groups: readonly Group[]): string {
+  const stage = card.archived?.stage;
+  if (stage && groups.some((group) => group.id === stage)) return stage;
+  return (
+    groups.find((group) => group.kind === "done")?.id ?? groups[0]?.id ?? ""
+  );
+}
+
+export function archivedByColumn(
+  cards: readonly Card[],
+  groups: readonly Group[],
+): Record<string, Card[]> {
+  const result: Record<string, Card[]> = {};
+  for (const card of cards)
+    (result[archivedColumn(card, groups)] ??= []).push(card);
+  return result;
+}
+
 export function visibleCards(
   board: Board,
   projectId: string,
   search: string,
   attentionOnly: boolean,
-  filters: Pick<BoardFilters, "activity" | "changeRequest"> & {
-    packageId?: string;
-  } = DEFAULT_FILTERS,
-  // CUSTOM(task-description-files): the snapshot has no descriptions; the search passes them here.
+  filters: CardFilters = DEFAULT_FILTERS,
   descriptions: ReadonlyMap<string, string> = new Map(),
 ): Card[] {
-  const needle = search.trim().toLocaleLowerCase();
   return board.cards.filter(
     (card) =>
-      card.archived?.status !== "archived" &&
-      card.archived?.status !== "external" &&
-      (projectId === "all" ||
-        (projectId === "none"
-          ? card.projectId === null
-          : card.projectId === projectId)) &&
-      ((filters.packageId ?? "all") === "all" ||
-        (filters.packageId === "none"
-          ? card.packageId === null
-          : card.packageId === filters.packageId)) &&
-      (!attentionOnly || attentionReasons(card).length > 0) &&
-      (filters.activity === "all" || card.activity === filters.activity) &&
-      matchesRequest(card, filters.changeRequest) &&
-      (!needle ||
-        `${card.title} ${card.projectName} ${descriptions.get(card.id) ?? ""}`
-          .toLocaleLowerCase()
-          .includes(needle)),
+      !isArchivedOffBoard(card) &&
+      matchesBoardFilters(
+        card,
+        projectId,
+        search,
+        attentionOnly,
+        filters,
+        descriptions,
+      ),
   );
 }
 

@@ -2282,9 +2282,7 @@ export class Workboard {
                 !archive ||
                 (!["uncertain", "external"].includes(archive.status) &&
                   !(
-                    archive.kind === "draft" &&
-                    archive.status === "archived" &&
-                    input.outcome === "restore"
+                    archive.status === "archived" && input.outcome === "restore"
                   ))
               )
                 throw new Error("archive-resolution-unavailable");
