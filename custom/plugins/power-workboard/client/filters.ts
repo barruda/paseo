@@ -21,6 +21,7 @@ export const REQUEST_FILTERS = [
   "changes-requested",
   "unavailable",
 ] as const;
+export const ARCHIVED_LIMITS = ["10", "20", "50", "all"] as const;
 const filterSchema = z.object({
   projectId: z.string().min(1).catch("all"),
   // CUSTOM(packages): "all", "none" (no package), or a package id.
@@ -29,6 +30,8 @@ const filterSchema = z.object({
   attentionOnly: z.boolean().catch(false),
   activity: z.enum(ACTIVITY_FILTERS).catch("all"),
   changeRequest: z.enum(REQUEST_FILTERS).catch("all"),
+  showArchived: z.boolean().catch(false),
+  archivedLimit: z.enum(ARCHIVED_LIMITS).catch("10"),
 });
 export type BoardFilters = z.infer<typeof filterSchema>;
 export const DEFAULT_FILTERS: BoardFilters = filterSchema.parse({});
@@ -47,6 +50,7 @@ export function activeFilterCount(filters: BoardFilters): number {
     filters.attentionOnly,
     filters.activity !== "all",
     filters.changeRequest !== "all",
+    filters.showArchived,
   ].filter(Boolean).length;
 }
 

@@ -315,7 +315,16 @@ const zh = {
   openWorkspace: "打开 workspace",
   pinAutomatic: "Paseo 侧边栏：由 Workboard 自动置顶。离开进行中分组后取消。",
   pinManual: "Paseo 侧边栏：已有或手动置顶，Workboard 不会自动取消。",
-  archive: "归档",
+  archive: "归档列表",
+  showArchived: "显示已归档",
+  archivedLimit: "显示数量",
+  archivedLimits: {
+    "10": "最近 10 个",
+    "20": "最近 20 个",
+    "50": "最近 50 个",
+    all: "全部",
+  },
+  archivedBadge: "已归档",
   settings: "设置",
   redeployPaseo: "构建并重新部署 Paseo",
   redeployPaseoConfirm:
@@ -435,6 +444,9 @@ const zh = {
   resolveConflict: "选择分组",
   archived: "归档记录",
   back: "返回看板",
+  // CUSTOM(delete-task)
+  deleteTask: "删除任务",
+  deleteTaskConfirm: "删除任务 {name}？此操作无法撤销。",
   archiveDraft: "归档草稿",
   archiveTask: "归档任务", // CUSTOM(archive-task)
   archiveDraftConfirm:
@@ -753,8 +765,6 @@ const zh = {
     "archive-task-workspace-unavailable":
       "任务的 workspace 不再活跃或正在归档，请刷新。",
     "archive-task-busy": "任务的 Agent 仍在运行，请等它结束再归档。",
-    "archive-restore-workspace-archived":
-      "任务的 workspace 已归档，无法放回看板。",
     "group-tasks-in-use": "分组内还有任务，请先移走任务。",
     "group-default-in-use": "此分组是默认落点，请先在设置中更改对应默认分组。",
     "group-default-start-work-invalid":
@@ -1207,7 +1217,16 @@ const en: typeof zh = {
     "Paseo sidebar: automatically pinned by Workboard. Leaving In progress removes this pin.",
   pinManual:
     "Paseo sidebar: existing or manual pin. Workboard will not remove it automatically.",
-  archive: "Archive",
+  archive: "List archived",
+  showArchived: "Show archived",
+  archivedLimit: "How many",
+  archivedLimits: {
+    "10": "Last 10",
+    "20": "Last 20",
+    "50": "Last 50",
+    all: "All",
+  },
+  archivedBadge: "Archived",
   settings: "Settings",
   redeployPaseo: "Build and redeploy Paseo",
   redeployPaseoConfirm:
@@ -1330,6 +1349,9 @@ const en: typeof zh = {
   resolveConflict: "Choose group",
   archived: "Archive",
   back: "Back to board",
+  // CUSTOM(delete-task)
+  deleteTask: "Delete task",
+  deleteTaskConfirm: "Delete task {name}? This can't be undone.",
   archiveDraft: "Archive draft",
   archiveTask: "Archive task", // CUSTOM(archive-task)
   archiveDraftConfirm:
@@ -1682,8 +1704,6 @@ const en: typeof zh = {
       "The task's workspace is no longer active or is being archived. Refresh.",
     "archive-task-busy":
       "An agent of this task is still running. Archive it once the agent stops.",
-    "archive-restore-workspace-archived":
-      "The task's workspace was archived, so the task can't go back to the board.",
     "group-tasks-in-use": "This group still contains tasks. Move them first.",
     "group-default-in-use":
       "This group is a default destination. Change its default group in settings first.",

@@ -95,6 +95,7 @@ const ENTRY_ICONS: Record<string, string> = {
 const EVENT_ICONS: Record<string, string> = {
   "task-created": "Plus",
   "task-moved": "ArrowRight",
+  "task-deleted": "Trash2",
   "task-started": "Play",
   "task-continued": "Play",
   "stage-entered": "ArrowRight", // CUSTOM(factory)

@@ -6,6 +6,8 @@ export type CardMenuItem = {
   id: string;
   label: string;
   icon: string;
+  /** CUSTOM(delete-task): drawn in the danger color. */
+  destructive?: boolean;
   onPress(): void;
 };
 
@@ -38,6 +40,7 @@ export function cardMenuItems({
   onAskPmToGroup,
   selectionCount = 0,
   onArchiveTask,
+  onDelete,
 }: {
   card: Card;
   agentId: string | null;
@@ -56,6 +59,8 @@ export function cardMenuItems({
   selectionCount?: number;
   /** CUSTOM(archive-task): passed only when the card can be archived (`canArchiveTask`). */
   onArchiveTask?(): void;
+  /** CUSTOM(delete-task): always offered last, in any column, when the board passes it. */
+  onDelete?(): void;
 }): CardMenuItem[] {
   return [
     {
@@ -132,6 +137,17 @@ export function cardMenuItems({
             label: t.archiveTask,
             icon: "Archive",
             onPress: onArchiveTask,
+          },
+        ]
+      : []),
+    ...(onDelete
+      ? [
+          {
+            id: "delete",
+            label: t.deleteTask,
+            icon: "Trash2",
+            destructive: true,
+            onPress: onDelete,
           },
         ]
       : []),

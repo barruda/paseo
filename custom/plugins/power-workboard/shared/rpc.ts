@@ -173,6 +173,8 @@ export const mutationSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("archive-draft"), taskId: z.string() }),
   // CUSTOM(archive-task): archive a Done or Canceled card; see Workboard.archiveTask.
   z.object({ action: z.literal("archive-task"), taskId: z.string() }),
+  // CUSTOM(delete-task): removes the task from the board for good; git is left alone.
+  z.object({ action: z.literal("delete-task"), taskId: z.string() }),
   z.object({
     action: z.literal("detach-draft"),
     taskId: z.string(),

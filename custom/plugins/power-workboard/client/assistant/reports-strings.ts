@@ -128,6 +128,7 @@ const en = {
   eventKind: {
     "task-created": "Task created",
     "task-moved": "Task moved",
+    "task-deleted": "Task deleted",
     "stage-entered": "Pipeline stage", // CUSTOM(factory)
     "task-started": "Task started",
     "task-continued": "Task continued",
@@ -245,6 +246,7 @@ const pt: ReportsStrings = {
   eventKind: {
     "task-created": "Tarefa criada",
     "task-moved": "Tarefa movida",
+    "task-deleted": "Tarefa excluída",
     "stage-entered": "Etapa do pipeline", // CUSTOM(factory)
     "task-started": "Tarefa iniciada",
     "task-continued": "Tarefa continuada",

@@ -98,10 +98,44 @@ it("a bound Done or Canceled card offers Archive task; drafts and open cards don
       onEdit: () => {},
       onStatus: () => {},
       onArchiveTask: () => calls.push("archive"),
+      onDelete: () => calls.push("delete"),
     });
-  const item = menu(false).at(-1)!;
+  // Archive task sits right before Delete task, which stays last.
+  const items = menu(false);
+  expect(items.slice(-2).map((entry) => entry.id)).toEqual([
+    "archive-task",
+    "delete",
+  ]);
+  const item = items.at(-2)!;
   expect(item).toMatchObject({ id: "archive-task", label: "Archive task" });
   item.onPress();
   expect(calls).toEqual(["archive"]);
   expect(menu(true).some((entry) => entry.id === "archive-task")).toBe(false);
+});
+
+// CUSTOM(delete-task)
+it("Delete task is the last entry in every column, drawn as destructive", () => {
+  const deleted: string[] = [];
+  for (const over of [{}, { workspaceId: "w1", stage: "review" }]) {
+    const items = cardMenuItems({
+      card: card(over),
+      agentId: null,
+      t,
+      disabled: true,
+      onOpenPanel: () => {},
+      onOpen: () => {},
+      onOpenAgent: () => {},
+      onEdit: () => {},
+      onStatus: () => {},
+      onDelete: () => deleted.push("t1"),
+    });
+    const last = items.at(-1)!;
+    expect(last).toMatchObject({
+      id: "delete",
+      label: "Delete task",
+      destructive: true,
+    });
+    last.onPress();
+  }
+  expect(deleted).toEqual(["t1", "t1"]);
 });

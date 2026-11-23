@@ -10861,6 +10861,76 @@ tests/factory-pipeline-editor.test.ts tests/factory-writer.test.ts` (all in the 
 Decisões proposals waited…` message in the PM chat, once. The live PM's `system-prompt.md`
   and `~/.paseo/factory/pm/worker.md` keep the old "destructive or hard to undo" sentence.
 
+## delete-task: the card menu deletes a task, after a confirmation
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Power Workboard deletes a task from the card menu, after a confirmation`
+- **Why:** On 2026-11-22 the user wanted to delete a task in progress (#181) and could not: the
+  only way off the board was `archive-draft`, which takes canceled, unbound drafts only.
+- **What:**
+  - `workboard.mutate` action `delete-task` (`shared/rpc.ts`, `Workboard.deleteTask` in
+    `server/workboard.ts`): archives the task's orchestration and refinement agents, clears its
+    timers and in-memory waits (`retryAt`, `dirtyTimers`, `folderTimers`, late-report and
+    archive-deferral maps, `wakePending`), records a `task-deleted` history event (new
+    `HISTORY_EVENT_KINDS` entry) while the task still exists, then removes the task and its
+    `orchestrations`, `refinements`, `finishes`, `deliveries`, `progress` and card-order
+    entries. The store deletes the description file of a task that left the board. Attempts
+    stay. Archived tasks can be deleted too. An unknown id fails with "Task no longer exists".
+    No git or workspace change.
+  - `cardMenuItems` (`client/card-menu.ts`) ends with a destructive **Delete task** item when
+    the board passes `onDelete`; `CardContextMenu` (`client/TaskPanel.tsx`) draws destructive
+    items in the danger color. `WorkboardScreen` opens a `ConfirmationModal` with the number
+    and title ("Delete task #42 “Title”? This can't be undone."); Esc or a click outside cancels.
+  - Strings in `client/strings.ts` (zh, en; that file has no pt) and the history kind's label in
+    the Reports and dashboard strings (en, pt).
+- **Core files touched:** none.
+- **Plugin files:** `shared/rpc.ts`, `shared/assistant.ts`, `server/workboard.ts`,
+  `client/card-menu.ts`, `client/TaskPanel.tsx`, `client/WorkboardScreen.tsx`,
+  `client/strings.ts`, `client/assistant/{dashboard-strings,reports-strings,reports-format}.ts`,
+  `README.md`, `tests/delete-task.test.ts`, `tests/card-menu.test.ts`.
+- **Re-apply:** plugin only; search `CUSTOM(delete-task)`.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/delete-task.test.ts
+tests/card-menu.test.ts` (in the plugin suite of the update script). Needs a `plugin reload`.
+  In the app: right-click any card → **Delete task** → Cancel leaves it; Delete removes it at
+  once, and it stays gone after a plugin reload.
+
+## board-show-archived: Show archived filter on the board, Restore on every archived task, "List archived (N)"
+
+- **Added:** 2026-11-22 (on `custom`)
+- **Commit:** `custom: Power Workboard shows archived tasks on the board and restores any archived task`
+- **Why:** the user wanted to see archived tasks on the board and thought the Archive rows with no
+  button (only a date and "Native archive confirmed…") were not board tasks. They are board tasks.
+  `data.tasks` only holds tasks the board created ("Workspaces are never imported" in
+  `reconcile()`), and on 2026-11-22 all 177 archived tasks of the live board had a
+  `task-started` history record or a task number. The rows with no button are tasks that
+  done-auto-archive archived (`kind: automatic`, `status: archived`). The rows with Confirm/Restore
+  are `status: external`: the workspace left Paseo's active list without the board archiving it.
+- **What:**
+  - `resolve-archive` accepts `restore` for any `status: archived` archive, not only drafts.
+    `confirm` stays for `uncertain`/`external`. Restore works as before: the task returns to its
+    group with the issue `archive-restored-workspace-unavailable`, which also keeps auto-archive
+    off it. The native workspace stays archived.
+  - The Archive page and the toolbar count come from `archiveListCards()` (`client/board-utils.ts`):
+    archived tasks except an in-flight `pending` archive, newest first. Every row has Restore;
+    `uncertain`/`external` rows also have Confirm archived. The button reads "List archived (N)"
+    (zh "归档列表").
+  - Filters gets "Show archived" (off by default) and, when on, "How many": Last 10/20/50/All.
+    `archivedBoardCards()` applies the same predicate as `visibleCards()` (project, package,
+    search, attention, activity, request) to the off-board archived tasks, then the limit. Each one
+    shows dimmed with an "Archived" badge and a Restore to board button (`client/ArchivedBoardCard.tsx`)
+    at the end of the column it was archived from, or the first Done group if that group is gone.
+    They don't drag, reorder or count in the column header. Both values live in the saved board
+    filters (`client/filters.ts`).
+- **Core files touched:** none (plugin only).
+- **Re-apply:** plugin only: `client/filters.ts`, `client/board-utils.ts`, `client/FilterPanel.tsx`,
+  `client/BoardView.tsx` (`archivedByStage`/`renderArchivedCard` props), `client/WorkboardScreen.tsx`,
+  `client/ArchivedBoardCard.tsx`, `client/strings.ts`, and the `resolve-archive` branch in
+  `server/workboard.ts`.
+- **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/filters.test.ts
+tests/power-workboard.test.ts`. Needs a `plugin reload`. In the app: the toolbar shows
+  "List archived (N)"; its page has Restore to board on every row. Filters > Show archived puts
+  the newest 10 archived tasks, dimmed, at the bottom of their columns; Restore brings one back.
+
 ## archive-task: archive a Done or Canceled card by hand, without archiving a local workspace
 
 - **Added:** 2026-11-22
@@ -10874,14 +10944,13 @@ Decisões proposals waited…` message in the PM chat, once. The live PM's `syst
   `worktree`, gets `archived` with the new kind `manual` and leaves the board; its workspace and
   agents are not touched. A task worktree goes through the native archive, after the busy-agent
   and git checks of the automatic archive (a failed git check rejects with the card issue's
-  code). Archive restores a manual archive while its workspace is still active
-  (`resolve-archive` with `restore`); a natively archived one is refused with
-  `archive-restore-workspace-archived`. `dueAt` is computed only for a worktree task not run in
+  code). Restore (from Archive or the archived card, see `## board-show-archived`) brings a
+  manual archive back without an issue while its workspace is still listed. `dueAt` is computed only for a worktree task not run in
   place, so in-place and local-checkout tasks no longer show "Due; waiting for checks". The card
   gets an archive icon and an **Archive task** item in its context menu (right click, long press
   on the title, or the ⋯ button on native), without confirmation. `canArchiveTask` in
-  `client/card-menu.ts` decides when; the delete action of #182 can sit next to it in
-  `cardMenuItems`.
+  `client/card-menu.ts` decides when; in `cardMenuItems` it sits right before Delete task
+  (`## delete-task`), which stays last.
 - **Core files touched:** none (plugin only).
 - **Plugin files:** `shared/model.ts` (archive kind `manual`), `shared/rpc.ts`,
   `server/workboard.ts`, `client/card-menu.ts`, `client/WorkboardScreen.tsx`, `client/strings.ts`,

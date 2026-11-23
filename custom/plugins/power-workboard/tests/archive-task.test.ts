@@ -138,16 +138,18 @@ it("archives a Done task worktree natively, after the git check", async () => {
     expect(test.host.archive).toHaveBeenCalledExactlyOnceWith("w");
     const card = test.board.snapshot().cards[0];
     expect(card.archived).toMatchObject({ kind: "manual", status: "archived" });
-    // Its workspace is gone, so it can't come back to the board.
-    await expect(
-      test.board.mutate({
-        action: "resolve-archive",
-        taskId: "t",
-        operationId: card.archived!.operationId,
-        updatedAt: card.updatedAt,
-        outcome: "restore",
-      }),
-    ).rejects.toThrow("archive-restore-workspace-archived");
+    // Its workspace is gone: it comes back flagged, like any restored native archive.
+    const restored = await test.board.mutate({
+      action: "resolve-archive",
+      taskId: "t",
+      operationId: card.archived!.operationId,
+      updatedAt: card.updatedAt,
+      outcome: "restore",
+    });
+    expect(restored.cards[0]).toMatchObject({
+      archived: null,
+      issue: "archive-restored-workspace-unavailable",
+    });
   } finally {
     test.board.dispose();
   }
