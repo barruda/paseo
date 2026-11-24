@@ -11049,3 +11049,57 @@ src/components/add-project-landing.test.ts src/screens/projects-screen.test.tsx 
   Gotcha: upstream e2e specs that click `sidebar-add-project` or `sidebar-help`
   (`e2e/support/helpers/add-project-flow.ts`, `sidebar-help.spec.ts`,
   `sidebar-footer-overflow.spec.ts`) no longer find those buttons.
+
+## composer-project-order, pm-restart-button: the composer's project picker lists every project by name, and the Project Manager's `seu` gets a restart button
+
+- **Added:** 2026-11-24
+- **Commit:** `custom: composer project picker lists every project by name, PM restart-daemons button`
+- **Why:** A project added in Settings > Projects never showed in the composer's project picker in
+  Tasks mode (`unity-for-vfx`, 2026-11-24), and the picker followed the sidebar's drag order, so
+  the user could not find a project by name. When the Project Manager asks for a daemon restart,
+  the user had to go to the Workboard to press its button.
+- **What:**
+  - **composer-project-order:** the cause was not a daemon cache. The project reaches the app's
+    session store right away (`project.add` response and the `project.update` push); the empty
+    agent tab's picker in Tasks mode (`useDraftTabProjectSource`) listed only projects that
+    already had a workspace, and Add project creates none. It now lists every project the host
+    can open a workspace for. Picking one without a workspace creates its root workspace
+    (`createWorkspace` with a directory source, as the + menu's Agent flyout does) and moves the
+    draft there. The picker sorts by name, ignoring case and leading dots (`.paseo-voice` sorts
+    as `paseo-voice`), ties broken by the project path; stars do not change the order. The New
+    Workspace screen's project options (its composer menu and its combobox) use the same order.
+    The arrow-key project cycle follows the new order, so cycling onto a project without a
+    workspace also creates one.
+  - **pm-restart-button:** a `seu` whose verb is `reiniciar` and whose object names `daemon` or
+    `daemons` (canonical form `seu: reiniciar paseo daemons`) draws a **Reiniciar paseo daemons**
+    button next to the line, on the chat's newest reply only. It opens the same confirmation as
+    the Workboard's **Build and redeploy Paseo** button and calls the same RPC
+    (`workboard.redeploy-paseo`), then shows the script's output under the button. The protocol
+    doc and the PM's rules (seed and `CHAT_RULES`) name the canonical line; the format stays v3.
+- **Core files touched:**
+  - `packages/app/src/model-picker/use-draft-tab-project-source.ts`
+    (`CUSTOM(composer-project-order)`): choices from `draftTabProjectChoices`; `select` creates
+    the root workspace when the project has none.
+  - `packages/app/src/screens/new-workspace/project-picker.ts` (`CUSTOM(composer-project-order)`):
+    `computeProjectOptionData` sorts with `sortProjectPickerEntries`.
+  - `packages/app/src/new-agent-projects/menu.tsx`: `createProjectWorkspace` moved to
+    `new-agent-projects/create-project-workspace.ts` and returns the workspace.
+  - New files: `packages/app/src/composer/project-picker-order.ts` and its test.
+  - Plugin: `custom/plugins/power-workboard/shared/reply-protocol.ts`
+    (`yoursRestartsDaemons`, `replyRestartsDaemons`, `YOURS_RESTART_DAEMONS`),
+    `client/assistant/RestartDaemonsButton.tsx`, `client/assistant/AssistantReplyCard.tsx`,
+    `client/assistant/reports-strings.ts`, `server/assistant/chat.ts` (`RESTART_DAEMONS_RULE`),
+    `docs/assistant-reply-protocol.md`, `tests/reply-protocol.test.ts`.
+- **Re-apply:** in the empty agent tab's project source, build the choices from every project the
+  host can create a workspace for (plus the current one), sorted with
+  `sortHostProjectsForPicker`; when Tasks mode picks a project with no workspace, call
+  `createProjectWorkspace` with its root and move the draft tab to the result. In the New Workspace
+  project picker, sort the options with `sortProjectPickerEntries` before mapping them.
+- **Verify:** `(cd packages/app && npx vitest run src/composer/project-picker-order.test.ts
+--bail=1)` (in the update script) and the power-workboard suite. Needs an app build for the
+  picker and a `plugin reload power-workboard` for the button; no daemon restart. In the app, in
+  Tasks mode: add a folder in Settings > Projects > Add project, open an empty agent tab and its
+  project menu: the project is listed, in name order (`.paseo-voice` between `paseo` and
+  `pipeline`); picking it moves the draft into a new root workspace. In the Project Manager chat, a
+  reply ending in `seu: reiniciar paseo daemons` shows the button; pressing it asks for
+  confirmation and then runs the redeploy.

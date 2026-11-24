@@ -17,6 +17,7 @@ import {
   type ProjectSelection,
   type ProjectSelectionContext,
 } from "./project-selection";
+import { sortProjectPickerEntries } from "@/composer/project-picker-order";
 
 const PROJECT_OPTION_PREFIX = "project:";
 
@@ -45,7 +46,12 @@ function projectOptionId(projectId: string): string {
 
 function computeProjectOptionData(projects: readonly HostProjectListItem[]) {
   const projectByOptionId = new Map<string, HostProjectListItem>();
-  const options = projects.map((project) => {
+  // CUSTOM(composer-project-order): the composer's project menu lists projects by name.
+  const sorted = sortProjectPickerEntries(projects, (project) => ({
+    name: project.projectName,
+    path: project.iconWorkingDir,
+  }));
+  const options = sorted.map((project) => {
     const id = projectOptionId(project.viewKey);
     projectByOptionId.set(id, project);
     return { id, label: project.projectName };

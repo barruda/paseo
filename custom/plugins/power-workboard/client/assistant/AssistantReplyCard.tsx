@@ -17,6 +17,7 @@ import {
   NEXT_LOOK,
   nextLegend,
   replyDetails,
+  replyRestartsDaemons,
   shortTaskId,
   splitReply,
   type NextValue,
@@ -56,6 +57,7 @@ import {
   type ReplyTaskView,
 } from "../../shared/reply-task-sync";
 import { useCitedTaskStates } from "./task-states-query";
+import { RestartDaemonsButton } from "./RestartDaemonsButton"; // CUSTOM(pm-restart-button)
 
 type Theme = PluginTimelineItemProps["theme"];
 type Layout = PluginTimelineItemProps["layout"];
@@ -532,6 +534,11 @@ function ReplyCard({
               theme={theme}
               labels={labels}
             />
+          ) : null}
+          {/* CUSTOM(pm-restart-button): only on the newest reply, so the history keeps no stale
+          restart buttons. */}
+          {newest && replyRestartsDaemons(reply) ? (
+            <RestartDaemonsButton theme={theme} labels={labels} />
           ) : null}
         </View>
       ) : null}

@@ -5,12 +5,17 @@ import { useSessionStore } from "@/stores/session-store";
 import { router } from "expo-router";
 import { useCallback, useMemo } from "react";
 import {
-  filterWorkspaceProjectsForHost,
   getHostProjectId,
   getHostProjectSourceDirectory,
   useHostProjects,
 } from "@/projects/host-projects";
 import { useHostFeature } from "@/runtime/host-features";
+// CUSTOM(composer-project-order)
+import { draftTabProjectChoices } from "@/composer/project-picker-order";
+import { useToast } from "@/contexts/toast-context";
+import { createProjectWorkspace } from "@/new-agent-projects/create-project-workspace";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
+import type { WorkspaceDescriptor } from "@/stores/session-store";
 import { useWorkspaceFields } from "@/stores/session-store-hooks";
 import { buildNewWorkspaceRoute } from "@/utils/host-routes";
 import type { ModelPickerProjectSource } from "./project";
@@ -18,7 +23,8 @@ import type { ModelPickerProjectSource } from "./project";
 /**
  * The Project row for an empty agent tab. The tab belongs to its workspace, so picking another
  * project opens New Workspace for it in workspace mode. Desks can move a draft reference
- * to an existing workspace while retaining its prompt and model configuration.
+ * to an existing workspace while retaining its prompt and model configuration; a project with no
+ * workspace yet gets one in its root first (CUSTOM(composer-project-order)).
  */
 export function useDraftTabProjectSource(
   serverId: string,
@@ -38,22 +44,14 @@ export function useDraftTabProjectSource(
       null,
     [projects, serverId, workspaceProjectId],
   );
-  const choices = useMemo(() => {
-    const available =
-      tasksMode && tabId
-        ? projects.filter((project) =>
-            [...(workspaces?.values() ?? [])].some(
-              (w) => w.projectId === getHostProjectId(project, serverId),
-            ),
-          )
-        : projects;
-    const creatable = filterWorkspaceProjectsForHost({
-      projects: available,
-      serverId,
-      allowAllProjects,
-    });
-    return current && !creatable.includes(current) ? [current, ...creatable] : creatable;
-  }, [allowAllProjects, current, projects, serverId, tasksMode, tabId, workspaces]);
+  // CUSTOM(composer-project-order): every project, sorted by name. Tasks mode used to list only
+  // projects with a workspace, so a project added without one never showed up here.
+  const choices = useMemo(
+    () => draftTabProjectChoices({ projects, serverId, allowAllProjects, current }),
+    [allowAllProjects, current, projects, serverId],
+  );
+  const client = useHostRuntimeClient(serverId);
+  const toast = useToast();
   const select = useCallback(
     (viewKey: string) => {
       const project = choices.find((entry) => entry.viewKey === viewKey);
@@ -65,20 +63,38 @@ export function useDraftTabProjectSource(
         );
         const target =
           candidates.find((w) => w.workspaceDirectory === w.projectRootPath) ?? candidates[0];
-        const store = useDesksStore.getState();
-        const tab = activeDeskTab(store);
-        if (target && tab?.id === tabId && tab.target.kind === "draft") {
+        const moveDraft = (workspace: WorkspaceDescriptor) => {
+          const store = useDesksStore.getState();
+          const tab = activeDeskTab(store);
+          if (tab?.id !== tabId || tab.target.kind !== "draft") return;
           const selectedSetup = setup ?? tab.target.setup;
           store.updateTab(tabId, {
-            workspaceId: target.id,
+            workspaceId: workspace.id,
             target: {
               ...tab.target,
               setup: selectedSetup
-                ? { ...selectedSetup, cwd: target.workspaceDirectory }
+                ? { ...selectedSetup, cwd: workspace.workspaceDirectory }
                 : undefined,
             },
           });
+        };
+        if (target) {
+          moveDraft(target);
+          return;
         }
+        // CUSTOM(composer-project-order): a project added without a workspace gets one in its
+        // root, like the + menu's Agent flyout does.
+        const rootPath = getHostProjectSourceDirectory(project, serverId);
+        if (!projectId || !rootPath) return;
+        if (!client) {
+          toast.error("Host is disconnected");
+          return;
+        }
+        void createProjectWorkspace(client, serverId, { projectId, rootPath })
+          .then(moveDraft)
+          .catch((error: unknown) =>
+            toast.error(error instanceof Error ? error.message : "Could not open the project"),
+          );
         return;
       }
       router.push(
@@ -90,7 +106,7 @@ export function useDraftTabProjectSource(
         }),
       );
     },
-    [choices, serverId, tasksMode, tabId, workspaces, setup],
+    [choices, client, serverId, tasksMode, tabId, toast, workspaces, setup],
   );
   return useMemo(
     () =>

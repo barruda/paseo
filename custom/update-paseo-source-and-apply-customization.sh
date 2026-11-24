@@ -525,6 +525,8 @@ if $VERIFY; then
   (cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts src/task-navigation/use-archived-tasks.test.ts --bail=1)
   # Sidebar footer cleanup, Add project in Settings > Projects, Project Manager pill row.
   (cd packages/app && npx vitest run src/composer/project-manager-pills.test.ts src/components/add-project-landing.test.ts src/screens/projects-screen.test.tsx --bail=1)
+  # Composer project picker: every project (also one added without a workspace), by name.
+  (cd packages/app && npx vitest run src/composer/project-picker-order.test.ts --bail=1)
   (cd packages/server && npx vitest run src/server/websocket-server.notifications.test.ts --bail=1)
 fi
 

@@ -34,6 +34,10 @@ export interface CardLabels {
   archived: string;
   /** CUSTOM(pm-chat-task-sync): a task the `seu` line cites, back with its agent. */
   taskRunning: string;
+  /** CUSTOM(pm-restart-button): the button next to `seu: reiniciar paseo daemons`. */
+  restartDaemons: string;
+  restartDaemonsConfirm: string;
+  restartDaemonsFailed: string;
 }
 
 const en = {
@@ -105,6 +109,10 @@ const en = {
     at: "at",
     archived: "archived",
     taskRunning: "in progress",
+    restartDaemons: "Restart paseo daemons",
+    restartDaemonsConfirm:
+      "Builds and installs Paseo if the installed build is behind the committed source, then restarts the Paseo daemons and windows. Every running agent stops.",
+    restartDaemonsFailed: "Could not start the redeploy.",
   },
   reportStatus: {
     done: "Done",
@@ -223,6 +231,10 @@ const pt: ReportsStrings = {
     at: "em",
     archived: "arquivado",
     taskRunning: "em andamento",
+    restartDaemons: "Reiniciar paseo daemons",
+    restartDaemonsConfirm:
+      "Faz o build e instala o Paseo se o build instalado estiver atrás do código commitado, depois reinicia os daemons e as janelas do Paseo. Todo agente rodando para.",
+    restartDaemonsFailed: "Não foi possível iniciar o redeploy.",
   },
   reportStatus: {
     done: "Concluído",

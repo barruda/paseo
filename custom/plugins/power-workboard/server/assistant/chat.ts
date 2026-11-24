@@ -52,6 +52,7 @@ import {
   NEXT_VALUES,
   REPLY_FENCE,
   REPLY_PROTOCOL_VERSION,
+  YOURS_RESTART_DAEMONS,
 } from "../../shared/reply-protocol";
 // CUSTOM(factory): autonomy presets and PM transitions (ticket 12)
 import {
@@ -94,6 +95,12 @@ export const REPLY_PROTOCOL_DOC =
 export const PM_CHAT_SYNC_RULE =
   'Keep your PM board in step with the chat: the chat draws a decided card\'s reply green. A message "Resposta a \"<question>\" no card <id>: ..." comes from a tap on the card or on the chat\'s option button, and the board already recorded it with decidedBy user: do not decide that card again. When the user answers an open proposal by typing in the chat, call pm_card_decide on its card in the same turn with decidedBy "user", their answer in their words, and answerOptionId when it names one of the options. When you settle in the chat a question you had left open on a card, call pm_card_decide with decidedBy "pm" in the same turn. In a block whose question is a card, write the `opção` lines with the card\'s option ids, so a tap in the chat decides the card.';
 
+/**
+ * CUSTOM(pm-restart-button): the `seu` that draws the chat's "Reiniciar paseo daemons" button. In
+ * the seed and in CHAT_RULES, since the live system prompt is only seeded once.
+ */
+export const RESTART_DAEMONS_RULE = `When the user must restart the Paseo daemons, write \`seu: ${YOURS_RESTART_DAEMONS}\`: the chat shows a button that runs the restart.`;
+
 export const REPLY_PROTOCOL_RULE = [
   `End every reply to the user with a \`\`\`${REPLY_FENCE} block, protocol v${REPLY_PROTOCOL_VERSION} in ${REPLY_PROTOCOL_DOC}. One \`key: value\` per line, no braces, in this order:`,
   `- \`feito: <verb> <short task title> [<first 8 characters of the task id>]\`, one line per thing done; the verb is one of ${DONE_VERBS.join(", ")}.`,
@@ -102,7 +109,8 @@ export const REPLY_PROTOCOL_RULE = [
   "- `aviso: <short>` and `bloqueio: <short>`, only when there is one.",
   "- When the user must decide: `pergunta: <question>`, then `opção: <id> | <label> | ganha: <what it gains> | custa: <what it costs>` per option and `recomendo: <id> | <why>`. Never ask an empty question: lay out the options and recommend one. The user answers in one tap. The same question is a proposal card on your PM board (pm_card_create, kind proposal): put its id in `seu` so the user can also decide it there.",
   `- \`próximo: <${NEXT_VALUES.join(" | ")}>\`: sigo = you carry on, agente = back to the task's agent, revisão = a reviewer is on it, você = waiting for the user, espera = waiting on something outside, fim = delivered.`,
-  "- `seu: nada`, or a short verb and its object (decidir, aprovar, testar, reiniciar <x>), always the last key line. For a decision on a PM board proposal, add its card id: `seu: decidir <x> [pm:<card id>]`; a bare `[<task id>]` still opens the task.",
+  "- `seu: nada`, or a short verb and its object (decidir, aprovar, testar, reiniciar <x>), always the last key line. For a decision on a PM board proposal, add its card id: `seu: decidir <x> [pm:<card id>]`; a bare `[<task id>]` still opens the task. " +
+    RESTART_DAEMONS_RULE,
   "Put the why, criteria checked, checks, decisions and links after a `---` line inside the block: the chat shows them collapsed. Outside the block write at most a one-line direct answer when the user asked something. Never list commands you ran, test output that passed or steps that changed nothing.",
 ].join("\n");
 
@@ -155,7 +163,8 @@ export const ASSISTANT_SEED_PROMPT = `${ASSISTANT_ROLE}\n\n${ASSISTANT_MEMORY_NO
 export const CHAT_RULES =
   'Your board tools are board_overview, board_list_tasks, board_get_task, board_task_diff, board_create_task, board_update_task, board_move_task, board_task_action, board_run_orchestrator, board_set_project_policy, board_set_default_action, board_history, board_read_agent, board_ack, board_report, board_reload_plugin, pm_card_create, pm_card_update, pm_card_decide, pm_card_archive, board_package_create, board_package_update, board_package_assign, board_package_remove, board_package_close, board_package_propose_close, board_run_package_gate, board_package_history, board_set_test_tier, board_pipeline_advance and board_pipeline_ask. A task reference is its UUID or its short number as 42 or #42. Messages that start with [Quick message <id> ...] come from outside this chat; call board_ack first, before any other tool. Every message that wakes you carries the current Needs you list; handle it before you end the reply. Use board_reload_plugin (never a direct `plugin reload`) when the plugin code changed: it reloads at the end of the turn. After each action on a task, record it once with board_report (pass the quick message id when there is one). Investigation, proposals and decisions with the user go on your own board with the pm_card_* tools, never on the task board; code tasks and code reviews stay on the task board. End every reply with the ```pwb block your system prompt describes. Every Paseo agent you create with create_agent gets labels {"paseo.board-agent": "true"}, which hides it from the user\'s sidebar and notifications. ' +
   PM_CHAT_SYNC_RULE + // CUSTOM(pm-chat-sync)
-  ` ${AUTONOMY_RULE} ${PIPELINE_CHOICE_RULE}`; // CUSTOM(factory)
+  ` ${AUTONOMY_RULE} ${PIPELINE_CHOICE_RULE}` + // CUSTOM(factory)
+  ` ${RESTART_DAEMONS_RULE}`; // CUSTOM(pm-restart-button)
 /** The chat's first message; the role itself is in the profile's system prompt. */
 export const CHAT_INSTRUCTIONS = `Call board_overview, then reply in one line: that you're ready, plus what is in Needs you (or that nothing is waiting). ${CHAT_RULES}`;
 

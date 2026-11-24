@@ -83,6 +83,28 @@ export const EVIDENCE_WORDS: Readonly<Record<string, EvidenceKind>> = {
 /** The `seu` value that means the user has nothing to do. */
 export const YOURS_NONE = "nada";
 
+/**
+ * CUSTOM(pm-restart-button): the canonical `seu` that asks the user to restart the Paseo daemons.
+ * The chat draws a "Reiniciar paseo daemons" button next to it.
+ */
+export const YOURS_RESTART_DAEMONS = "reiniciar paseo daemons";
+
+/**
+ * CUSTOM(pm-restart-button): whether a `seu` value asks for the Paseo daemons' restart: the verb
+ * `reiniciar` followed by an object that names `daemon` or `daemons` (`reiniciar paseo daemons`,
+ * `reiniciar o daemon do paseo`, `reiniciar com kill-paseos-and-daemons.sh`). Other `reiniciar`
+ * lines (the app, a chat) do not.
+ */
+export function yoursRestartsDaemons(text: string): boolean {
+  const words = normalizeWord(text)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean);
+  return (
+    words[0] === "reiniciar" &&
+    words.slice(1).some((word) => word === "daemon" || word === "daemons")
+  );
+}
+
 /** Lowercase without accents, so "Proximo", "próximo" and "PRÓXIMO" match. */
 export function normalizeWord(word: string): string {
   return word.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim();
@@ -310,6 +332,18 @@ export function parseReplyBlock(body: string): ParsedReply {
     };
   }
   return reply;
+}
+
+/**
+ * CUSTOM(pm-restart-button): whether the chat draws the "Reiniciar paseo daemons" button next to
+ * the block's `seu`.
+ */
+export function replyRestartsDaemons(reply: ParsedReply): boolean {
+  return (
+    reply.yours !== null &&
+    !reply.yours.none &&
+    yoursRestartsDaemons(reply.yours.text)
+  );
 }
 
 /** The `|`-separated fields of a value, trimmed, without empty ones. */

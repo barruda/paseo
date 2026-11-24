@@ -11,16 +11,17 @@ import { useProjectFavoritesStore } from "@/composer/project-favorites-store";
 import { resolveComposerProjectIdentity } from "@/composer/project-icon-model";
 import { useHostProjects } from "@/projects/host-projects";
 import { useProjectIcons } from "@/projects/icons";
-import { getHostRuntimeStore, useHostRuntimeClient } from "@/runtime/host-runtime";
+import { useHostRuntimeClient } from "@/runtime/host-runtime";
 import { generateDraftId } from "@/stores/draft-keys";
 import {
   navigateToWorkspace,
   useActiveWorkspaceSelection,
 } from "@/stores/navigation-active-workspace-store";
-import { normalizeWorkspaceDescriptor, useSessionStore } from "@/stores/session-store";
+import { useSessionStore } from "@/stores/session-store";
 import { activeDeskTab, useDesksStore } from "@/task-navigation/desks-store";
 import { launchDeskTarget } from "@/task-navigation/new-tab-menu";
 import { useTaskNavigationStore } from "@/task-navigation/store";
+import { createProjectWorkspace } from "./create-project-workspace";
 import { favoritesFirst, listNewAgentProjects, type NewAgentProject } from "./model";
 
 export const NEW_AGENT_PROJECTS_PAGE_ID = "new-agent-projects";
@@ -123,7 +124,7 @@ function NewAgentProjectList({
       }
       // A project added without a workspace (e.g. a git worktree): give it one in its root first.
       void createProjectWorkspace(client, serverId, project)
-        .then(openIn)
+        .then((workspace) => openIn(workspace.id))
         .catch((error: unknown) =>
           toast.error(error instanceof Error ? error.message : "Could not open the project"),
         );
@@ -147,23 +148,6 @@ function NewAgentProjectList({
       />
     );
   });
-}
-
-async function createProjectWorkspace(
-  client: NonNullable<ReturnType<typeof useHostRuntimeClient>>,
-  serverId: string,
-  project: NewAgentProject,
-): Promise<string> {
-  const payload = await client.createWorkspace({
-    idempotencyKey: generateDraftId(),
-    source: { kind: "directory", path: project.rootPath, projectId: project.projectId },
-  });
-  if (payload.error || !payload.workspace) {
-    throw new Error(payload.error ?? "Could not open the project");
-  }
-  const workspace = normalizeWorkspaceDescriptor(payload.workspace);
-  getHostRuntimeStore().acceptWorkspaceSnapshots(serverId, [workspace]);
-  return workspace.id;
 }
 
 function NewAgentProjectItem({

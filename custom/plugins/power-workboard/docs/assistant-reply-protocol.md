@@ -114,6 +114,12 @@ Always the **last** key line, so the user finds it in the same place every time.
 `reiniciar <x>`. Anything other than `nada` is highlighted. A trailing `[pm:<card id>]` names a
 card on the Project Manager board (see below); a bare `[<task id>]` opens the task.
 
+When the user must restart the Paseo daemons, write `seu: reiniciar paseo daemons`. The chat
+draws a **Reiniciar paseo daemons** button next to the line. It runs the Workboard's **Build and
+redeploy Paseo** action, after the same confirmation. The parser takes any `seu` whose verb is
+`reiniciar` and whose object names `daemon` or `daemons` (`reiniciar o daemon do paseo` works too),
+so older blocks get the button as well; every other `seu` draws as before.
+
 A `seu` other than `nada` reads `próximo` as `você`, whatever the PM wrote: a queue that waits on
 the user says so (`parseReplyBlock`).
 
@@ -223,6 +229,8 @@ the old two-minute rule until they age out of the history.
 
 ## Changelog
 
+- **v3**, 2026-11-24: `seu: reiniciar paseo daemons` draws a button that restarts the
+  daemons. No format change.
 - **v3** (2026-11-20): `[pm:<card id>]` at the end of a line, for the Project Manager board's
   investigation, proposals and decisions; the `pm_card_*` tools. v1 and v2 blocks parse as before.
 - **v2** (2026-11-19): `pedido`, `fora`, `pergunta`, `opção`, `recomendo`; the task report's

@@ -18,9 +18,12 @@ import {
   parseReplyBlock,
   replyDetails,
   replyItemDataSchema,
+  replyRestartsDaemons,
   replyTimelineItems,
   splitReply,
   splitReplyIds,
+  YOURS_RESTART_DAEMONS,
+  yoursRestartsDaemons,
 } from "../shared/reply-protocol";
 import {
   ASSISTANT_ROLE,
@@ -386,6 +389,48 @@ describe("parseReplyBlock", () => {
 });
 
 // CUSTOM(pm-board): protocol v3 adds `[pm:<card id>]`.
+// CUSTOM(pm-restart-button)
+describe("seu: reiniciar paseo daemons", () => {
+  it("asks for the restart button with the canonical line and its variants", () => {
+    for (const yours of [
+      YOURS_RESTART_DAEMONS,
+      "Reiniciar paseo daemons [10b1b0d7]",
+      "reiniciar o daemon do paseo",
+      "reiniciar os daemons do Paseo",
+      "reiniciar com kill-paseos-and-daemons.sh",
+    ]) {
+      const reply = parseReplyBlock(`próximo: você\nseu: ${yours}`);
+      expect(replyRestartsDaemons(reply), yours).toBe(true);
+    }
+  });
+
+  it("draws no button for other seu lines", () => {
+    for (const yours of [
+      "nada",
+      "reiniciar o app",
+      "reiniciar o chat",
+      "testar o daemon",
+      "decidir se reinicia o daemon [pm:pm-abc12345]",
+    ]) {
+      const reply = parseReplyBlock(`próximo: você\nseu: ${yours}`);
+      expect(replyRestartsDaemons(reply), yours).toBe(false);
+    }
+    expect(replyRestartsDaemons(parseReplyBlock("próximo: fim"))).toBe(false);
+    expect(yoursRestartsDaemons("")).toBe(false);
+  });
+
+  it("is in the doc and the PM's reply rule", () => {
+    const doc = readFileSync(
+      fileURLToPath(
+        new URL("../docs/assistant-reply-protocol.md", import.meta.url),
+      ),
+      "utf8",
+    );
+    expect(doc).toContain(`seu: ${YOURS_RESTART_DAEMONS}`);
+    expect(CHAT_RULES).toContain(`seu: ${YOURS_RESTART_DAEMONS}`);
+  });
+});
+
 describe("parseReplyBlock v3", () => {
   it("reads a PM card id at the end of a line", () => {
     const reply = parseReplyBlock(
