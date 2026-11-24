@@ -172,6 +172,7 @@ vi.mock("@/projects/icons", () => ({
 }));
 
 import { i18n } from "@/i18n/i18next";
+import { useAddProjectFlowStore } from "@/stores/add-project-flow-store";
 import ProjectsScreen from "./projects-screen";
 
 function workspaceSummary(overrides: Partial<WorkspaceSummary> = {}): WorkspaceSummary {
@@ -374,6 +375,25 @@ describe("ProjectsScreen", () => {
 
     expect(container?.textContent).not.toContain("Host A");
     expect(container?.textContent).toContain("Host B");
+  });
+
+  // CUSTOM(add-project-settings): Add project moved here from the sidebar footer.
+  it.each([
+    ["with projects", [project()]],
+    ["with no projects", []],
+  ])("opens the Add project flow on this host from the top button %s", (_label, projects) => {
+    useAddProjectFlowStore.setState({ request: null });
+    setProjectsState({ projects });
+
+    render("host-a");
+
+    const button = container?.querySelector<HTMLElement>('[data-testid="settings-add-project"]');
+    expect(button?.textContent).toContain("Add project");
+    act(() => {
+      button?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(useAddProjectFlowStore.getState().request?.preferredHostId).toBe("host-a");
   });
 
   it("does not include the word 'checkout' anywhere in the rendered tree", () => {

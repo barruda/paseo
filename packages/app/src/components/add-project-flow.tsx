@@ -2,6 +2,7 @@ import { useOverlayRegistration, type KeyboardInputEvent } from "@/keyboard";
 import { useAddHost } from "@/hosts/add-host";
 import { Modal } from "@/components/ui/modal";
 import { usePanelStore } from "@/stores/panel-store";
+import { opensNewWorkspaceAfterAddProject } from "@/components/add-project-landing"; // CUSTOM(add-project-settings)
 import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { router } from "expo-router";
 import type { WorkspaceProjectDescriptorPayload } from "@getpaseo/protocol/messages";
@@ -465,6 +466,8 @@ export function AddProjectFlow({ request, onClose }: AddProjectFlowProps) {
   const openNewWorkspaceForProject = useCallback(
     (serverId: string, project: WorkspaceProjectDescriptorPayload) => {
       onClose();
+      // CUSTOM(add-project-settings): Tasks mode stays where it was; see add-project-landing.ts.
+      if (!opensNewWorkspaceAfterAddProject()) return;
       usePanelStore.getState().showMobileAgent();
       router.push(
         buildNewWorkspaceRoute({

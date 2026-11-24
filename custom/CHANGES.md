@@ -172,8 +172,9 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
     refused when the panel is the only ordinary pane left.
   - Desktop and wide web only. Compact layouts ignore the shortcut.
   - Rebindable in Settings → Keyboard shortcuts ("Toggle bottom panel", Layout section).
-  - A **Toggle bottom panel** icon in the left sidebar footer, after Hosts. It dispatches the same
-    keyboard action, so it does nothing outside a workspace.
+  - A **Toggle bottom panel** icon in the left sidebar footer, the last icon, right of Settings
+    (see [sidebar-footer-cleanup](#sidebar-footer-cleanup-add-project-settings-pm-composer-pills-a-leaner-sidebar-footer-add-project-in-settings-and-a-leaner-project-manager-pill-row)).
+    It dispatches the same keyboard action, so it does nothing outside a workspace.
 - **Files:** `packages/app/src/workspace-tabs/bottom-panel.ts` (toggle logic) and
   `bottom-panel.test.ts`. New files; no conflict risk.
 - **Core files touched** (each marked `CUSTOM(bottom-panel)`):
@@ -187,7 +188,7 @@ Find every patched spot in core code with `rg "CUSTOM\("`.
   - `packages/app/src/screens/workspace/workspace-screen.tsx`: `handleBottomPanelToggle` and its
     `useKeyboardActionHandler` registration after the sidebar one.
   - `packages/app/src/components/left-sidebar.tsx`: `BottomPanelToggleButton` (before
-    `IconTooltipContent`) and its use in `SidebarFooter` after `SidebarHostPicker`.
+    `IconTooltipContent`) and its use in `SidebarFooter` after the Settings button.
 - **Re-apply:** Copy `splitWorkspaceRootRightInLayout` as `splitWorkspaceRootBottomInLayout`
   with `direction: "vertical"` and a caller-supplied pane id. Add the action id to both
   `KeyboardActionId` unions and the dispatcher's `KeyboardActionDefinition`, route it as a
@@ -7074,7 +7075,8 @@ src/server/agent/idle-runtime-cleanup/idle-runtime-cleanup.test.ts`. Needs a dae
   `pwb/assistant-chat`. Its popover asks for confirmation; Restart creates a new chat
   (`assistantChatOpenRpc` with `fresh` and `archivePrevious`), archives the old one and opens the
   new one. In the row above the composer, the pill and the reading-mode pill sit together on the
-  right, the pill first. Plugin popover and menu content now get the host `navigation` that
+  right, the pill first. Changed 2026-11-24: on the Project Manager chat the pill leads the row
+  instead (see `pm-composer-pills` below). Plugin popover and menu content now get the host `navigation` that
   surfaces get.
 - **Core files touched:** `packages/plugin/src/client/buttons.ts` (`PluginButtonContentProps`
   gains optional `navigation`), `packages/app/src/plugins/buttons/view.tsx`
@@ -10995,3 +10997,55 @@ tests/power-workboard.test.ts`. Needs a `plugin reload`. In the app: the toolbar
   In the app: the Done card of #171 has no "Due; waiting for checks"; its archive icon (or right
   click > Archive task) removes it from the board, it shows in Archive with Restore, and the
   DreamMMO workspace and its agents stay active.
+
+## sidebar-footer-cleanup, add-project-settings, pm-composer-pills: a leaner sidebar footer, Add project in Settings, and a leaner Project Manager pill row
+
+- **Added:** 2026-11-24
+- **Commit:** `custom: leaner sidebar footer, Add project in Settings > Projects, leaner Project Manager pills`
+- **Why:** The footer had icons the user never uses (Help, Add project), and adding a project in
+  Tasks mode jumped to a New workspace screen the user does not work from. The Project Manager
+  chat had pills that make no sense for it (Commit: wip, Rename session, the Vitals disk
+  warning), with Restart chat, the one it needs, at the far end.
+- **What:**
+  - **sidebar-footer-cleanup:** the left sidebar footer drops the Help ("?") and Add project
+    icons, also from its overflow menu. The Help menu itself still exists. The Toggle bottom panel
+    icon moved to the end, right of Settings.
+  - **add-project-settings:** Settings > Projects (per host) has an **Add project** button at the
+    top, also on the empty list. It opens the same flow on that host. In Tasks mode
+    (`useTaskNavigationStore.enabled`), a project added from anywhere just closes the flow: no New
+    workspace screen, no agent tab, so the user stays on Settings > Projects with the project in
+    the list. Outside Tasks mode the flow still lands on New workspace.
+  - **pm-composer-pills:** on the Project Manager chat (label `pwb/assistant-chat`), the pill row
+    hides `commit`, `rename` and `plugin:vitals:pressure`, and Restart chat is the first pill,
+    whatever the Chat Options order says. Reading mode stays on the right. Other agents keep their
+    row.
+- **Core files touched:**
+  - `packages/app/src/components/left-sidebar.tsx` (`CUSTOM(sidebar-footer-cleanup)`):
+    `FOOTER_ACTIONS` filters `add-project` and `help` out of `SIDEBAR_FOOTER_ACTIONS`; the Add
+    project and Help JSX are gone; `BottomPanelToggleButton` renders after Settings.
+  - `packages/app/src/screens/projects-screen.tsx` (`CUSTOM(add-project-settings)`):
+    `AddProjectButton` in a toolbar above the list and in the empty state.
+  - `packages/app/src/components/add-project-flow.tsx` (`CUSTOM(add-project-settings)`):
+    `openNewWorkspaceForProject` returns after `onClose()` when
+    `opensNewWorkspaceAfterAddProject()` is false.
+  - `packages/app/src/panels/agent-tracks.tsx` (`CUSTOM(pm-composer-pills)`): reads
+    `isAssistantChatAgent` for the agent and splits the ordered keys with `layoutAboveRow`, which
+    replaced the local `RIGHT_ALIGNED_KEYS`/`RIGHT_ALIGNED_ORDER`.
+  - New files: `packages/app/src/components/add-project-landing.ts`,
+    `packages/app/src/composer/project-manager-pills.ts`, and their tests.
+- **Re-apply:** in `SidebarFooter`, pass the footer layout a copy of `SIDEBAR_FOOTER_ACTIONS`
+  without `add-project` and `help`, drop their buttons, and render `BottomPanelToggleButton` last.
+  In `ProjectsScreen`, render an outline button calling `useOpenAddProject()(serverId)` above the
+  list and in the empty state. In the add project flow, make the function that pushes the New
+  workspace route return right after closing the flow when Tasks mode is on. In `AgentTracks`,
+  build the row and the right group with `layoutAboveRow(orderedKeys, isAssistantChatAgent(agent))`.
+- **Verify:** `(cd packages/app && npx vitest run src/composer/project-manager-pills.test.ts
+src/components/add-project-landing.test.ts src/screens/projects-screen.test.tsx --bail=1)` (in
+  the update script). Needs an app build. In the app: the footer shows no "?" and no folder-plus
+  icon, and the bottom panel icon is the last one, right of the gear. Settings > a host >
+  Projects > Add project: add a folder in Tasks mode and the modal closes with the project in the
+  list; outside Tasks mode it opens New workspace. The Project Manager chat's pill row starts with
+  Restart chat and has no Commit: wip, Rename session or disk warning; a normal agent keeps them.
+  Gotcha: upstream e2e specs that click `sidebar-add-project` or `sidebar-help`
+  (`e2e/support/helpers/add-project-flow.ts`, `sidebar-help.spec.ts`,
+  `sidebar-footer-overflow.spec.ts`) no longer find those buttons.

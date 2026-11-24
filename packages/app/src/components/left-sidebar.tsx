@@ -7,7 +7,6 @@ import {
   // CUSTOM(do-not-disturb)
   BellOff,
   CircleGauge,
-  FolderPlus,
   GitBranch,
   Keyboard,
   // CUSTOM(bottom-panel)
@@ -72,7 +71,6 @@ import {
 } from "@/components/sidebar/sidebar-nav-rows";
 
 import { SidebarFooterIconHighlight } from "@/components/sidebar/sidebar-footer-icon-highlight";
-import { SidebarHelpMenu } from "@/components/sidebar/sidebar-help-menu";
 import { SidebarFooterOverflowMenu } from "@/components/sidebar/sidebar-footer-overflow-menu";
 import {
   resolveSidebarFooterLayout,
@@ -143,6 +141,12 @@ type SidebarTheme = ReturnType<typeof useUnistyles>["theme"];
 
 /** The footer icon line's inset; the overflow layout counts it as space the buttons can't use. */
 const FOOTER_ROW_PADDING = SPACING[2];
+
+// CUSTOM(sidebar-footer-cleanup): Add project moved to Settings > Projects and Help is hidden, so
+// neither takes a slot in the row nor in its overflow menu.
+const FOOTER_ACTIONS = SIDEBAR_FOOTER_ACTIONS.filter(
+  (action) => action !== "add-project" && action !== "help",
+);
 
 const DEV_BUILD_LABEL = process.env.EXPO_PUBLIC_PASEO_DEV_BUILD_LABEL?.trim() || null;
 
@@ -523,7 +527,6 @@ function SidebarFooter({
   /** CUSTOM(status-bar): compact layouts only, where the window has no status bar. */
   statusBarInDrawer?: boolean;
 }) {
-  const newAgentKeys = useShortcutKeys("new-agent");
   const settingsKeys = useShortcutKeys("toggle-settings");
   const { t } = useTranslation();
   const shortcutsAvailable = getIsElectron();
@@ -546,15 +549,14 @@ function SidebarFooter({
         rowWidth,
         controlSize,
         rowPadding: FOOTER_ROW_PADDING + (extraInlineControls * controlSize) / 2,
-        actions: SIDEBAR_FOOTER_ACTIONS,
+        actions: FOOTER_ACTIONS,
       }),
     [rowWidth, controlSize, extraInlineControls],
   );
   const isInline = (action: SidebarFooterAction) => inline.includes(action);
 
-  // One line of icons: Add project, Usage, Hosts, Bottom panel, Do not disturb, then Help,
-  // Shortcuts and Settings at the end. Actions that
-  // don't fit move behind a caret before Settings.
+  // One line of icons: Usage, Hosts, Do not disturb, then Shortcuts, Settings and Bottom panel at
+  // the end. Actions that don't fit move behind a caret before Shortcuts.
 
   return (
     <UsageSidebarRoot>
@@ -569,15 +571,7 @@ function SidebarFooter({
           onLayout={handleRowLayout}
           testID="sidebar-footer-bottom-line"
         >
-          {isInline("add-project") ? (
-            <FooterIconButton
-              onPress={handleOpenProject}
-              testID="sidebar-add-project"
-              label={labels.addProject}
-              icon={FolderPlus}
-              shortcutKeys={newAgentKeys}
-            />
-          ) : null}
+          {/* CUSTOM(sidebar-footer-cleanup): Add project lives in Settings > Projects. */}
           {isInline("usage") ? <SidebarUsageIcon label={labels.usage} /> : null}
           {isInline("hosts") ? (
             <SidebarHostPicker
@@ -586,12 +580,10 @@ function SidebarFooter({
               onOpenHostSettings={handleOpenHostSettings}
             />
           ) : null}
-          {/* CUSTOM(bottom-panel) */}
-          <BottomPanelToggleButton />
           {/* CUSTOM(do-not-disturb) */}
           <DoNotDisturbButton />
           <View style={styles.footerSpacer} />
-          {isInline("help") ? <SidebarHelpMenu /> : null}
+          {/* CUSTOM(sidebar-footer-cleanup): the Help icon is hidden. */}
           {overflow.length > 0 ? (
             <SidebarFooterOverflowMenu
               actions={overflow}
@@ -620,6 +612,8 @@ function SidebarFooter({
               shortcutKeys={settingsKeys}
             />
           ) : null}
+          {/* CUSTOM(bottom-panel), CUSTOM(sidebar-footer-cleanup): the last icon, right of Settings. */}
+          <BottomPanelToggleButton />
         </View>
       </View>
     </UsageSidebarRoot>

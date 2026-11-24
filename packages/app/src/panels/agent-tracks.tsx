@@ -42,13 +42,10 @@ import { navigateToAgent } from "@/utils/navigate-to-agent";
 import { buildWorkspaceTabPersistenceKey, type WorkspaceTabTarget } from "@/workspace-tabs/model";
 import { openComposerChanges } from "@/workspace-tabs/open-supporting-view";
 import { chatOptionEnabled, defaultAboveOrder, orderChatOptions } from "@/composer/chat-options";
-
-// CUSTOM(assistant-restart-pill): drawn last, pushed right, restart pill just left of reading mode.
-const RIGHT_ALIGNED_KEYS: ReadonlySet<string> = new Set([
-  "plugin:power-workboard:restart-chat",
-  "reading",
-]);
-const RIGHT_ALIGNED_ORDER = ["plugin:power-workboard:restart-chat", "reading"];
+// CUSTOM(assistant-restart-pill), CUSTOM(pm-composer-pills): the right-aligned group, and the
+// Project Manager chat's leaner row.
+import { layoutAboveRow } from "@/composer/project-manager-pills";
+import { isAssistantChatAgent } from "@/assistant-sidebar/model";
 
 /**
  * The pane's ambient context — workspace changes, subagents, and tasks — as a row of pills above
@@ -92,6 +89,11 @@ export const AgentTracks = memo(function AgentTracks({
   // CUSTOM(git-sync): conflicts and worktrees to bring in, for the git chips.
   const gitSync = useGitSync({ serverId, workspaceId, agentId });
   const backgroundTools = useAgentBackgroundTools(serverId, agentId); // CUSTOM(background-tools)
+  // CUSTOM(pm-composer-pills): the Project Manager chat drops commit, rename and the disk warning.
+  const isProjectManager = useSessionStore((state) => {
+    const session = state.sessions[serverId];
+    return isAssistantChatAgent(session?.agents.get(agentId) ?? session?.agentDetails.get(agentId));
+  });
   const backgroundWorkCount = useSessionStore((state) => {
     const session = state.sessions[serverId];
     const agent = session?.agents.get(agentId) ?? session?.agentDetails.get(agentId);
@@ -246,7 +248,7 @@ export const AgentTracks = memo(function AgentTracks({
     defaultAboveOrder(pluginPills.map(({ optionKey }) => optionKey)),
     orderSetting.above,
   ).filter((key) => nodes[key]);
-  const rightKeys = RIGHT_ALIGNED_ORDER.filter((key) => orderedKeys.includes(key));
+  const { row: rowKeys, right: rightKeys } = layoutAboveRow(orderedKeys, isProjectManager);
 
   return (
     <ComposerTrackBar>
@@ -264,11 +266,9 @@ export const AgentTracks = memo(function AgentTracks({
           gitSync={gitSync}
         />
       ) : null}
-      {orderedKeys
-        .filter((key) => !RIGHT_ALIGNED_KEYS.has(key))
-        .map((key) => (
-          <Fragment key={key}>{nodes[key]}</Fragment>
-        ))}
+      {rowKeys.map((key) => (
+        <Fragment key={key}>{nodes[key]}</Fragment>
+      ))}
       {/* CUSTOM(assistant-restart-pill) */}
       {rightKeys.length > 0 ? (
         <View style={styles.rightGroup}>

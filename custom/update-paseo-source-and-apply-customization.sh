@@ -523,6 +523,8 @@ if $VERIFY; then
   # Board agents: never a tab, no notification, no badge, and their own sidebar tabs (hidden-board-agents, sidebar-agent-tabs).
   (cd packages/protocol && npx vitest run src/board-agents.test.ts --bail=1)
   (cd packages/app && npx vitest run src/board-agents src/workspace-tabs/agent-visibility.test.ts src/task-navigation/use-archived-tasks.test.ts --bail=1)
+  # Sidebar footer cleanup, Add project in Settings > Projects, Project Manager pill row.
+  (cd packages/app && npx vitest run src/composer/project-manager-pills.test.ts src/components/add-project-landing.test.ts src/screens/projects-screen.test.tsx --bail=1)
   (cd packages/server && npx vitest run src/server/websocket-server.notifications.test.ts --bail=1)
 fi
 

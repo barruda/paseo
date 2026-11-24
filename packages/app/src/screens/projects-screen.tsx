@@ -1,10 +1,12 @@
 import { useCallback, useMemo } from "react";
 import { Pressable, Text, View, type PressableStateCallbackType } from "react-native";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { ChevronRight } from "lucide-react-native";
+import { ChevronRight, FolderPlus } from "lucide-react-native";
 import { useTranslation } from "react-i18next";
 import { ProjectIconView } from "@/components/project-icon-view";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
+import { Button } from "@/components/ui/button"; // CUSTOM(add-project-settings)
+import { useOpenAddProject } from "@/hooks/use-open-add-project"; // CUSTOM(add-project-settings)
 import { useProjects, type ProjectHostError } from "@/hooks/use-projects";
 import { useProjectIcons } from "@/projects/icons";
 import { createProjectIconTarget } from "@/projects/icon-target";
@@ -61,6 +63,7 @@ export default function ProjectsScreen({ serverId }: ProjectsScreenProps) {
   if (hostProjects.length === 0) {
     return (
       <View style={styles.centered} testID="projects-list">
+        <AddProjectButton serverId={serverId} />
         <Text style={styles.emptyText}>{t("sidebar.project.empty.title")}</Text>
       </View>
     );
@@ -68,6 +71,9 @@ export default function ProjectsScreen({ serverId }: ProjectsScreenProps) {
 
   return (
     <View testID="projects-list">
+      <View style={styles.toolbar}>
+        <AddProjectButton serverId={serverId} />
+      </View>
       {scopedErrors.length > 0 ? <HostErrorsBanner errors={scopedErrors} /> : null}
       <View style={settingsStyles.card}>
         {hostProjects.map(({ project, host }, index) => (
@@ -81,6 +87,27 @@ export default function ProjectsScreen({ serverId }: ProjectsScreenProps) {
         ))}
       </View>
     </View>
+  );
+}
+
+/**
+ * CUSTOM(add-project-settings): Add project moved here from the sidebar footer. It opens the same
+ * flow, on this host.
+ */
+function AddProjectButton({ serverId }: { serverId: string }) {
+  const { t } = useTranslation();
+  const openAddProject = useOpenAddProject();
+  const handlePress = useCallback(() => openAddProject(serverId), [openAddProject, serverId]);
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      leftIcon={FolderPlus}
+      onPress={handlePress}
+      testID="settings-add-project"
+    >
+      {t("sidebar.actions.addProject")}
+    </Button>
   );
 }
 
@@ -188,6 +215,13 @@ const styles = StyleSheet.create((theme) => ({
     alignItems: "center",
     justifyContent: "center",
     padding: theme.spacing[6],
+    gap: theme.spacing[3], // CUSTOM(add-project-settings)
+  },
+  // CUSTOM(add-project-settings)
+  toolbar: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    marginBottom: theme.spacing[3],
   },
   emptyText: {
     color: theme.colors.foregroundMuted,
