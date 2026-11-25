@@ -11122,7 +11122,8 @@ src/components/add-project-landing.test.ts src/screens/projects-screen.test.tsx 
     `test` (`pi --no-session --model <provider>/<model> --thinking <level> -p ...`, 120 s). The
     file is `$PI_CODING_AGENT_DIR/models.json` or `~/.pi/agent/models.json`; `pi` comes from the
     daemon's PATH or `~/.local/bin/pi`. `pi` runs with stdin closed: with an open stdin pipe
-    (`execFile`) `pi -p` waits forever.
+    (`execFile`) `pi -p` waits forever. Its `index.client.tsx` contributes nothing but must exist:
+    the app only lists plugins with a client bundle, and the page finds the plugin in that list.
   - The Pi provider page (Settings > Providers > Pi) shows, after its model list, one section per
     endpoint (Connection row with URL, API and key in plain text; one row per model with **Test**
     and **Edit**; Add model) and a **Pi models.json** section (path, Reload, **Edit JSON**, what

@@ -150,18 +150,16 @@ function SheetActions({
 
 function Sheet({
   title,
-  subtitle,
   onClose,
   testID,
   children,
 }: {
   title: string;
-  subtitle?: string;
   onClose: () => void;
   testID: string;
   children: ReactNode;
 }) {
-  const header = useMemo<SheetHeader>(() => ({ title, subtitle }), [subtitle, title]);
+  const header = useMemo<SheetHeader>(() => ({ title }), [title]);
   return (
     <AdaptiveModalSheet visible onClose={onClose} header={header} testID={testID}>
       <View style={styles.body}>{children}</View>
@@ -218,8 +216,7 @@ export function PiProviderSheet({
   );
   return (
     <Sheet
-      title={provider ? `Endpoint ${provider.id}` : "Add Pi endpoint"}
-      subtitle="A provider in Pi's models.json"
+      title={provider ? `Pi endpoint ${provider.id}` : "Add Pi endpoint"}
       onClose={onClose}
       testID="pi-models-provider-sheet"
     >
@@ -349,8 +346,7 @@ export function PiModelSheet({
   const providerApi = provider.api || "built-in";
   return (
     <Sheet
-      title={model ? model.name || model.id : "Add model"}
-      subtitle={`Pi endpoint ${provider.id}`}
+      title={`${model ? model.name || model.id : "Add model"} (${provider.id})`}
       onClose={onClose}
       testID="pi-models-model-sheet"
     >
@@ -488,12 +484,7 @@ export function PiRawSheet({
   const { saving, error, run } = useSheetSave(onClose);
   const handleSave = useCallback(() => run(() => save(draft)), [draft, run, save]);
   return (
-    <Sheet
-      title="models.json"
-      subtitle="Every field Pi reads, including headers, compat and cost"
-      onClose={onClose}
-      testID="pi-models-raw-sheet"
-    >
+    <Sheet title="Pi models.json" onClose={onClose} testID="pi-models-raw-sheet">
       <FormTextInput
         size="sm"
         multiline
