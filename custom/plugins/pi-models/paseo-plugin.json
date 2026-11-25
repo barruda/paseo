@@ -1,0 +1,5 @@
+{
+  "id": "pi-models",
+  "description": "Edits Pi's models.json (custom endpoints, keys, APIs and thinking levels) from the Pi provider page, and tests a model with the real pi CLI.",
+  "requirements": { "paseo": ">=0.11.0" }
+}

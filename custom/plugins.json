@@ -32,6 +32,11 @@
     { "id": "critic", "source": "custom/plugins/critic", "what": "Critic review of agent work" },
     { "id": "jev-router", "source": "custom/plugins/jev-router", "what": "Prompt router" },
     {
+      "id": "pi-models",
+      "source": "custom/plugins/pi-models",
+      "what": "Edit Pi's models.json from the Pi provider page"
+    },
+    {
       "id": "token-ledger",
       "source": "custom/plugins/token-ledger",
       "what": "Token usage ledger with turn jumps and MLflow links"

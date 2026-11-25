@@ -10993,7 +10993,7 @@ tests/power-workboard.test.ts`. Needs a `plugin reload`. In the app: the toolbar
   `README.md`, `tests/archive-task.test.ts`, `tests/card-menu.test.ts`.
 - **Re-apply:** plugin only; search `archive-task` in the files above.
 - **Verify:** `cd custom/plugins/power-workboard && npx vitest run tests/archive-task.test.ts
-  tests/card-menu.test.ts` (in the plugin suite of the update script). Needs a `plugin reload`.
+tests/card-menu.test.ts` (in the plugin suite of the update script). Needs a `plugin reload`.
   In the app: the Done card of #171 has no "Due; waiting for checks"; its archive icon (or right
   click > Archive task) removes it from the board, it shows in Archive with Restore, and the
   DreamMMO workspace and its agents stay active.
@@ -11103,3 +11103,46 @@ src/components/add-project-landing.test.ts src/screens/projects-screen.test.tsx 
   `pipeline`); picking it moves the draft into a new root workspace. In the Project Manager chat, a
   reply ending in `seu: reiniciar paseo daemons` shows the button; pressing it asks for
   confirmation and then runs the redeploy.
+
+## pi-models: edit Pi's models.json from the Pi provider page
+
+- **Added:** 2026-11-25
+- **Commit:** `custom: Pi provider page edits Pi's models.json (endpoints, keys, thinking levels)`
+- **Why:** Paseo lists whatever `pi --list-models` prints, so a custom OpenAI-compatible endpoint
+  (FuelIX on paseo-telus) only shows models, efforts and working requests once Pi's own
+  `~/.pi/agent/models.json` is right: a literal key (the daemon does not see `~/.bashrc` exports),
+  `"reasoning": true` for the effort picker, `api: "openai-responses"` for a model whose endpoint
+  rejects effort with tools on chat completions, and a `thinkingLevelMap` that marks `off` and
+  `minimal` unsupported when the endpoint rejects `none`. Upstream's **Custom models** only labels
+  models in Paseo's config and cannot set any of that.
+- **What:**
+  - The `pi-models` plugin (`custom/plugins/pi-models`) owns the file: `read` (text, a revision hash
+    and what `pi --list-models` prints), `write` (whole file, refused as `conflict` when the file
+    changed since its revision, `invalid` when it is not a JSON object; atomic, mode 0600) and
+    `test` (`pi --no-session --model <provider>/<model> --thinking <level> -p ...`, 120 s). The
+    file is `$PI_CODING_AGENT_DIR/models.json` or `~/.pi/agent/models.json`; `pi` comes from the
+    daemon's PATH or `~/.local/bin/pi`. `pi` runs with stdin closed: with an open stdin pipe
+    (`execFile`) `pi -p` waits forever.
+  - The Pi provider page (Settings > Providers > Pi) shows, after its model list, one section per
+    endpoint (Connection row with URL, API and key in plain text; one row per model with **Test**
+    and **Edit**; Add model) and a **Pi models.json** section (path, Reload, **Edit JSON**, what
+    pi lists, Add provider). Sheets edit an endpoint (id, name, base URL, key, API) or a model (id,
+    name, API override, Thinking, Images, effort levels as toggles, context window, max output
+    tokens), with Remove. Every save refreshes the Pi provider, so the pickers update. Hidden
+    when the plugin is not installed. **Test** asks for `high` when the model offers it, the case
+    that fails on endpoints that need the responses API.
+  - The editing functions (`packages/app/src/pi-models/document.ts`) keep every field they don't
+    show (headers, compat, cost, `modelOverrides`, `$schema`) and a hand-written value in
+    `thinkingLevelMap`. An effort level left out of a model becomes `null` for `off`..`high` (Pi
+    sends those by default) and stays out of the map for `xhigh`/`max` (Pi only sends those when
+    mapped).
+- **Core files touched:** `packages/protocol/src/pi-models.ts` (new),
+  `packages/app/src/pi-models/` (new), `packages/app/src/provider-settings/internal/provider-detail.tsx`
+  (`PiModelsSection` after `ProviderModels` when `provider === "pi"`, plus `refreshModels`),
+  `custom/plugins.json`, `custom/update-paseo-source-and-apply-customization.sh`.
+- **Re-apply:** in the provider detail body, render `<PiModelsSection serverId onSaved>` for the
+  `pi` provider, with `onSaved` refreshing that provider's snapshot. The rest is new files.
+- **Verify:** `packages/app/src/pi-models/document.test.ts` and
+  `packages/server/src/server/plugins/custom-pi-models-plugin.e2e.test.ts`. By hand: Settings >
+  Providers > Pi shows the FuelIX endpoint and its five models; **Test** on `gpt-6.2-sol` answers
+  `ok` on `high`; turning a level off and saving changes the effort picker of a new Pi agent.

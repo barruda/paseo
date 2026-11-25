@@ -27,6 +27,7 @@ import { DiagnosticSheet } from "./diagnostic-sheet";
 import { useProviderConfigActions, type ProviderEntry } from "./provider-config";
 import { ProviderModels } from "./provider-models";
 import { ProviderNotice } from "./provider-notice";
+import { PiModelsSection } from "@/pi-models/section"; // CUSTOM(pi-models)
 
 export interface ProviderDetailState {
   provider: string;
@@ -97,6 +98,8 @@ export function ProviderDetail({
     void refresh([provider]);
     refreshInstallation();
   }, [provider, refresh, refreshInstallation]);
+  // CUSTOM(pi-models): a models.json save changes what pi lists.
+  const refreshModels = useCallback(() => void refresh([provider]), [provider, refresh]);
   if (presence.kind !== "found") return <AbsentProvider presence={presence} />;
 
   const entry = presence.entry;
@@ -124,6 +127,8 @@ export function ProviderDetail({
           refresh={refresh}
         />
       ) : null}
+      {/* CUSTOM(pi-models): edit Pi's own models.json (endpoints, keys, thinking levels). */}
+      {provider === "pi" ? <PiModelsSection serverId={serverId} onSaved={refreshModels} /> : null}
       <Troubleshooting
         serverId={serverId}
         entry={entry}
